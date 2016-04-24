@@ -62,7 +62,7 @@ def main():
                     strline += '\t'
                 newindex = rownum + colnum*indexendofcolumnone
                 if newindex < len(times):
-                    strline += '{:4d}: {:.3f}'.format(newindex,float(times[newindex+1]))
+                    strline += '{0:4d}: {1:.3f}'.format(newindex,float(times[newindex+1]))
             print(strline)
     else:
         makeplot()
@@ -85,7 +85,7 @@ def makeplot():
             elementlist.append(elementtuple._make(list(map(int,linesplit[:5]))+list(map(float,linesplit[5:]))))
             print(elementlist[-1])
 
-    print('nelements {}'.format(nelements))
+    print('nelements {0}'.format(nelements))
     maxion = 5 #must match sn3d.h value
 
     fig, ax = plt.subplots(1, 1, sharey=True, figsize=(8,5), tight_layout={"pad":0.2,"w_pad":0.0,"h_pad":0.0})
@@ -108,7 +108,7 @@ def makeplot():
               #obsdata = scipy.signal.resample(obsdata, 10000)
               obsdata = obsdata[::3]
           obsdata = obsdata[(obsdata[:,0] > xminvalue) & (obsdata[:,0] < xmaxvalue)]
-          print("'{}' has {} points".format(serieslabel,len(obsdata)))
+          print("'{0}' has {1} points".format(serieslabel,len(obsdata)))
           obsxvalues = obsdata[:,0]
           obsyvalues = obsdata[:,1] * (1.0 / max(obsdata[:,1]))
 
@@ -119,9 +119,9 @@ def makeplot():
     timeindexlow = args.timestepmin
     if args.timestepmax:
         timeindexhigh = args.timestepmax
-        print('Ploting timesteps {} to {}'.format(args.timestepmin,args.timestepmax))
+        print('Ploting timesteps {0} to {1}'.format(args.timestepmin,args.timestepmax))
     else:
-        print('Ploting timestep {}'.format(args.timestepmin))
+        print('Ploting timestep {0}'.format(args.timestepmin))
         timeindexhigh = timeindexlow
 
     specdata = np.loadtxt(specfiles[0])
@@ -162,11 +162,11 @@ def makeplot():
 
                 linelabel = ''
                 if emissiontype != 'free-free':
-                    linelabel += '{:} {:}'.format(elsymbols[elementlist[element].Z],roman_numerals[ion_stage])
+                    linelabel += '{0} {1}'.format(elsymbols[elementlist[element].Z],roman_numerals[ion_stage])
                 #linelabel += ' {:}'.format(emissiontype)
-                plotlabel = 't={}d'.format(specdata[0,timeindexlow])
+                plotlabel = 't={0}d'.format(specdata[0,timeindexlow])
                 if timeindexhigh > timeindexlow:
-                    plotlabel += ' to {}d'.format(specdata[0,timeindexhigh])
+                    plotlabel += ' to {0}d'.format(specdata[0,timeindexhigh])
                 linewidth = [1.8,0.8][emissiontype=='bound-free']
                 if emissiontype == 'bound-bound' and linelabel in ['Fe II','Fe III','O I','O II']:
                     ax.plot(1e10 * arraylambda, arrayFlambda/maxyvalueglobal, color=colorlist[int(linenumber) % len(colorlist)], lw=linewidth, label=linelabel)
@@ -186,7 +186,7 @@ def makeplot():
     #filenameout = 'plotartisspec_{:}_to_{:}.pdf'.format(*timesteparray)
     filenameout = 'plotartisemission.pdf'
     fig.savefig(filenameout,format='pdf')
-    print('Saving {:}'.format(filenameout))
+    print('Saving {0}'.format(filenameout))
     plt.close()
 
     #plt.setp(plt.getp(ax, 'xticklabels'), fontsize=fsticklabel)

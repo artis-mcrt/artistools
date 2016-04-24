@@ -22,7 +22,7 @@ def showtimesteptimes(filename):
                 strline += '\t'
             newindex = rownum + colnum*indexendofcolumnone
             if newindex < len(times):
-                strline += '{:4d}: {:.3f}'.format(newindex,float(times[newindex+1]))
+                strline += '{0:4d}: {1:.3f}'.format(newindex,float(times[newindex+1]))
         print(strline)
 
 def getartiselementlist(filename):

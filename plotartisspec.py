@@ -73,7 +73,7 @@ def makeplot():
               #obsdata = scipy.signal.resample(obsdata, 10000)
               obsdata = obsdata[::3]
           obsdata = obsdata[(obsdata[:,0] > xminvalue) & (obsdata[:,0] < xmaxvalue)]
-          print("'{}' has {} points".format(serieslabel,len(obsdata)))
+          print("'{0}' has {1} points".format(serieslabel,len(obsdata)))
           obsxvalues = obsdata[:,0]
           obsyvalues = obsdata[:,1] * (1.0 / max(obsdata[:,1]))
 
@@ -84,9 +84,9 @@ def makeplot():
     timeindexlow = args.timestepmin+1
     if args.timestepmax:
         timeindexhigh = args.timestepmax+1
-        print('Ploting timesteps {} to {}'.format(args.timestepmin,args.timestepmax))
+        print('Ploting timesteps {0} to {1}'.format(args.timestepmin,args.timestepmax))
     else:
-        print('Ploting timestep {}'.format(args.timestepmin))
+        print('Ploting timestep {0}'.format(args.timestepmin))
         timeindexhigh = timeindexlow
 
     for s in range(len(specfiles)):
@@ -130,7 +130,7 @@ def makeplot():
     #filenameout = 'plotartisspec_{:}_to_{:}.pdf'.format(*timesteparray)
     filenameout = args.outputfile
     fig.savefig(filenameout,format='pdf')
-    print('Saving {:}'.format(filenameout))
+    print('Saving {0}'.format(filenameout))
     plt.close()
 
     #plt.setp(plt.getp(ax, 'xticklabels'), fontsize=fsticklabel)
