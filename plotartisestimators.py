@@ -89,7 +89,7 @@ def main():
         el_pop = [sum(x[elindex]) for x in list_populations]
         for ion in range(element.nions):
             ax.plot(list_timestep, [pop_ts[elindex][ion]/el_pop[tsindex] for tsindex,pop_ts in enumerate(list_populations)], lw=1.5,
-                    label="{:} {:}".format(af.elsymbols[element.Z],af.roman_numerals[ion+1]))
+                    label="{0} {1}".format(af.elsymbols[element.Z],af.roman_numerals[ion+1]))
 
     #ax.plot(list_timestep, [x[0][0] for x in list_populations], lw=1.5, label="Fe I")
     #ax.plot(list_timestep, [x[0][1] for x in list_populations], lw=1.5, label="Fe II")

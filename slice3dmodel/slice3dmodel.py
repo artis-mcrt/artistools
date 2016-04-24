@@ -53,10 +53,10 @@ with open(inputfolder+'model.txt', 'r') as fmodelin:
                 dict3dcellidto1dcellid[int(cellid)] = outcellid
                 dist = math.sqrt(float(posx) ** 2 + float(posy) ** 2 + float(posz) ** 2)
                 velocity = float(dist) / float(t_model) / 86400. / 1.e5
-                listout.append("{:6d}  {:8.2f}  {:8.5f}  {:.5f}  {:.5f}  {:.5f}  {:.5f}  {:.5f}".format(outcellid,velocity,math.log10(max(float(rho),1e-100)),ffe,f56ni,fco,f52fe,f48cr))
-                print("Cell {:4d} input1: {:}".format(outcellid,blockline1.rstrip()))
-                print("Cell {:4d} input2: {:}".format(outcellid,blockline2.rstrip()))
-                print("Cell {:4d} output: {:}".format(outcellid,listout[-1]))
+                listout.append("{0:6d}  {1:8.2f}  {2:8.5f}  {3:.5f}  {4:.5f}  {5:.5f}  {6:.5f}  {7:.5f}".format(outcellid,velocity,math.log10(max(float(rho),1e-100)),ffe,f56ni,fco,f52fe,f48cr))
+                print("Cell {0:4d} input1: {1}".format(outcellid,blockline1.rstrip()))
+                print("Cell {0:4d} input2: {1}".format(outcellid,blockline2.rstrip()))
+                print("Cell {0:4d} output: {1}".format(outcellid,listout[-1]))
                 xlist.append(velocity)
                 ylist.append(f56ni)
 
@@ -64,7 +64,7 @@ ax.set_xlabel(r'v (km/s)')
 ax.set_ylabel(r'Density (g/cm$^3$)')
 
 with open(outputfolder+'model.txt', 'w') as fmodelout:
-  fmodelout.write("{:7d}\n".format(outcellid))
+  fmodelout.write("{0:7d}\n".format(outcellid))
   fmodelout.write(t_model)
   for line in listout:
     fmodelout.write(line + "\n")
@@ -85,7 +85,7 @@ with open(inputfolder+'abundances.txt', 'r') as fabundancesin, open(outputfolder
       currentblock = linesplit
       if int(linesplit[0]) in dict3dcellidto1dcellid.keys():
         outcellid = dict3dcellidto1dcellid[int(linesplit[0])]
-        currentblock[0] = "{:6d}".format(outcellid)
+        currentblock[0] = "{0:6d}".format(outcellid)
         keepcurrentblock = True
     else:
       currentblock.append(linesplit)

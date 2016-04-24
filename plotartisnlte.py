@@ -61,8 +61,8 @@ def main():
         list_departure_ratio = [nlte/lte for (nlte,lte) in zip(list_nltepop[ion],list_ltepop[ion])]
         #ax.plot(list_levels[ion], list_departure_ratio, lw=1.5, label='NLTE/LTE', linestyle='None', marker='x')
         #ax.set_ylabel(r'')
-        plotlabel = "Fe {}".format(af.roman_numerals[ion+1])
-        plotlabel += ' at t={}d'.format(timesteptimes[selectedtimestep])
+        plotlabel = "Fe {0}".format(af.roman_numerals[ion+1])
+        plotlabel += ' at t={0}d'.format(timesteptimes[selectedtimestep])
         ax.annotate(plotlabel, xy=(0.5,0.96), xycoords='axes fraction', horizontalalignment='center', verticalalignment='top', fontsize=12)
 
     for ax in axes:
