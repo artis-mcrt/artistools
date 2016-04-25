@@ -6,7 +6,7 @@ import matplotlib
 matplotlib.use('PDF')
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-#import numpy as np
+# import numpy as np
 import glob
 import readartisfiles as af
 
@@ -64,7 +64,7 @@ def main():
                 label='NLTE', linestyle='None', marker='x')
         list_departure_ratio = [
             nlte / lte for (nlte, lte) in zip(list_nltepop[ion], list_ltepop[ion])]
-        #ax.plot(list_levels[ion], list_departure_ratio, lw=1.5, label='NLTE/LTE', linestyle='None', marker='x')
+        # ax.plot(list_levels[ion], list_departure_ratio, lw=1.5, label='NLTE/LTE', linestyle='None', marker='x')
         # ax.set_ylabel(r'')
         plotlabel = "Fe {0}".format(af.roman_numerals[ion + 1])
         plotlabel += ' at t={0}d'.format(timesteptimes[selectedtimestep])
@@ -72,8 +72,8 @@ def main():
                     horizontalalignment='center', verticalalignment='top', fontsize=12)
 
     for ax in axes:
-      # ax.set_xlim(xmin=270,xmax=300)
-      # ax.set_ylim(ymin=-0.1,ymax=1.3)
+        # ax.set_xlim(xmin=270,xmax=300)
+        # ax.set_ylim(ymin=-0.1,ymax=1.3)
         ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
         ax.set_yscale('log')
     axes[-1].set_xlabel(r'Level number')

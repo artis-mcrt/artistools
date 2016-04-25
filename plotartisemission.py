@@ -31,7 +31,7 @@ args = parser.parse_args()
 
 xminvalue, xmaxvalue = args.xmin, args.xmax
 
-#colorlist = ['black',(0.0,0.5,0.7),(0.35,0.7,1.0),(0.9,0.2,0.0),(0.9,0.6,0.0),(0.0,0.6,0.5),(0.8,0.5,1.0),(0.95,0.9,0.25)]
+# colorlist = ['black',(0.0,0.5,0.7),(0.35,0.7,1.0),(0.9,0.2,0.0),(0.9,0.6,0.0),(0.0,0.6,0.5),(0.8,0.5,1.0),(0.95,0.9,0.25)]
 colorlist = [(0.0, 0.5, 0.7), (0.9, 0.2, 0.0), (0.9, 0.6, 0.0),
              (0.0, 0.6, 0.5), (0.8, 0.5, 1.0), (0.95, 0.9, 0.25)]
 
@@ -42,10 +42,6 @@ h = 6.62607004e-34  # m^2 kg / s
 c = 299792458  # m / s
 
 specfiles = glob.glob(args.specpath, recursive=True)
-# could alternatively use
-#specfiles = glob.glob('**/spec.out',recursive=True)
-# but this might
-# be very slow if called from the wrong place
 
 
 def main():
@@ -53,7 +49,7 @@ def main():
         print('no spec.out files found')
         sys.exit()
     if args.listtimesteps:
-        af.showtimesteptimes(specfiles[0],numberofcolumns)
+        af.showtimesteptimes(specfiles[0], numberofcolumns)
     else:
         makeplot()
 
@@ -84,7 +80,7 @@ def makeplot():
     fig, ax = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
                            "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    if args.obsspecfiles != None:
+    if args.obsspecfiles is not None:
         dir = os.path.dirname(os.path.abspath(__file__))
         obsspectralabels = \
             {
@@ -99,14 +95,14 @@ def makeplot():
             obsfile = os.path.join(dir, 'spectra', filename)
             obsdata = np.loadtxt(obsfile)
             if len(obsdata[:, 1]) > 5000:
-                #obsdata = scipy.signal.resample(obsdata, 10000)
+                # obsdata = scipy.signal.resample(obsdata, 10000)
                 obsdata = obsdata[::3]
             obsdata = obsdata[(obsdata[:, 0] > xminvalue) & (obsdata[:, 0] < xmaxvalue)]
             print("'{0}' has {1} points".format(serieslabel, len(obsdata)))
             obsxvalues = obsdata[:, 0]
             obsyvalues = obsdata[:, 1] * (1.0 / max(obsdata[:, 1]))
 
-            #obsyvalues = scipy.signal.savgol_filter(obsyvalues, 5, 3)
+            # obsyvalues = scipy.signal.savgol_filter(obsyvalues, 5, 3)
             ax.plot(obsxvalues, obsyvalues / max(obsyvalues), lw=1.5,
                     label=serieslabel, zorder=-1, color=linecolor)
 
@@ -130,7 +126,7 @@ def makeplot():
     maxyvalueglobal = 0.0
     linenumber = 0
     for element in reversed(range(nelements)):
-        #nions = elementlist[element].nions
+        # nions = elementlist[element].nions
         nions = elementlist[element].uppermost_ionstage - \
             elementlist[element].lowermost_ionstage + 1
         for ion in range(nions):
@@ -161,8 +157,8 @@ def makeplot():
                 linelabel = ''
                 if emissiontype != 'free-free':
                     linelabel += '{0} {1}'.format(af.elsymbols[elementlist[element].Z],
-                                                  roman_numerals[ion_stage])
-                #linelabel += ' {:}'.format(emissiontype)
+                                                  af.roman_numerals[ion_stage])
+                # linelabel += ' {:}'.format(emissiontype)
                 plotlabel = 't={0}d'.format(specdata[0, timeindexlow])
                 if timeindexhigh > timeindexlow:
                     plotlabel += ' to {0}d'.format(specdata[0, timeindexhigh])
@@ -184,14 +180,14 @@ def makeplot():
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
     ax.set_ylabel(r'F$_\lambda$')
 
-    #filenameout = 'plotartisspec_{:}_to_{:}.pdf'.format(*timesteparray)
+    # filenameout = 'plotartisspec_{:}_to_{:}.pdf'.format(*timesteparray)
     filenameout = 'plotartisemission.pdf'
     fig.savefig(filenameout, format='pdf')
     print('Saving {0}'.format(filenameout))
     plt.close()
 
-    #plt.setp(plt.getp(ax, 'xticklabels'), fontsize=fsticklabel)
-    #plt.setp(plt.getp(ax, 'yticklabels'), fontsize=fsticklabel)
+    # plt.setp(plt.getp(ax, 'xticklabels'), fontsize=fsticklabel)
+    # plt.setp(plt.getp(ax, 'yticklabels'), fontsize=fsticklabel)
     # for axis in ['top','bottom','left','right']:
     #    ax.spines[axis].set_linewidth(framewidth)
 
