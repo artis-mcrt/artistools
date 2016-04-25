@@ -193,4 +193,6 @@ def makeplot():
 
     # for (x,y,symbol) in zip(highlightedatomicnumbers,highlightedelementyposition,highlightedelements):
     #    ax.annotate(symbol, xy=(x, y - 0.0 * (x % 2)), xycoords='data', textcoords='offset points', xytext=(0,10), horizontalalignment='center', verticalalignment='center', weight='bold', fontsize=fs-1.5)
-main()
+
+if __name__ == "__main__":
+    main()

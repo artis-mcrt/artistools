@@ -37,7 +37,7 @@ def main():
 
             if row and row[0] == 'timestep':
                 currenttimestep = int(row[1])
-                if selectedtimestep in [-1,currenttimestep]:
+                if selectedtimestep in [-1, currenttimestep]:
                     list_ltepop = [[] for x in range(nions)]
                     list_nltepop = [[] for x in range(nions)]
                     list_levels = [[] for x in range(nions)]
@@ -82,4 +82,5 @@ def main():
     fig.savefig('plotnlte.pdf', format='pdf')
     plt.close()
 
-main()
+if __name__ == "__main__":
+    main()

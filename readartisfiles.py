@@ -73,3 +73,7 @@ def getinitialabundances1d(filename):
             abundancedata.append([int(row[0])] + list(map(float, row[1:])))
 
     return abundancedata
+
+
+if __name__ == "__main__":
+    print("this script is for inclusion only")

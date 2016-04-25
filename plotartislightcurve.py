@@ -53,4 +53,5 @@ def makeplot(lcfiles):
     fig.savefig('plotartislightcurve.pdf', format='pdf')
     plt.close()
 
-main()
+if __name__ == "__main__":
+    main()

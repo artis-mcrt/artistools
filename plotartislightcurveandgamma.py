@@ -59,4 +59,5 @@ def makeplot(lcfiles, glcfiles):
     # for axis in ['top','bottom','left','right']:
     #    ax.spines[axis].set_linewidth(framewidth)
 
-main()
+if __name__ == "__main__":
+    main()
