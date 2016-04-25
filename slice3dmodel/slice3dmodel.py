@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-import os
 import sys
 import math
 import matplotlib
-matplotlib.use('PDF')
 import matplotlib.pyplot as plt
+matplotlib.use('PDF')
 
 
 def main():
@@ -49,15 +48,17 @@ def main():
                 print("Wrong line size")
                 sys.exit()
 
-            if (((posx == "0.0000000" or (chosenaxis == 'x' and float(posx) >= 0.)) and
-                 (posy == "0.0000000" or (chosenaxis == 'y' and float(posy) >= 0.)) and
-                 (posz == "0.0000000" or (chosenaxis == 'z' and float(posz) >= 0.)))):
+            if ((posx == "0.0000000" or (chosenaxis == 'x' and float(posx) >= 0.)) and
+                    (posy == "0.0000000" or (chosenaxis == 'y' and float(posy) >= 0.)) and
+                    (posz == "0.0000000" or (chosenaxis == 'z' and float(posz) >= 0.))):
                 outcellid += 1
                 dict3dcellidto1dcellid[int(cellid)] = outcellid
                 dist = math.sqrt(float(posx) ** 2 + float(posy) ** 2 + float(posz) ** 2)
                 velocity = float(dist) / float(t_model) / 86400. / 1.e5
-                listout.append("{0:6d}  {1:8.2f}  {2:8.5f}  {3:.5f}  {4:.5f}  {5:.5f}  {6:.5f}  {7:.5f}".format(
-                    outcellid, velocity, math.log10(max(float(rho), 1e-100)), ffe, f56ni, fco, f52fe, f48cr))
+                listout.append(
+                    "{0:6d}  {1:8.2f}  {2:8.5f}  {3:.5f}  {4:.5f}  {5:.5f}  {6:.5f}  {7:.5f}"
+                    .format(outcellid, velocity, math.log10(max(float(rho), 1e-100)),
+                            ffe, f56ni, fco, f52fe, f48cr))
                 print("Cell {0:4d} input1: {1}".format(outcellid, blockline1.rstrip()))
                 print("Cell {0:4d} input2: {1}".format(outcellid, blockline2.rstrip()))
                 print("Cell {0:4d} output: {1}".format(outcellid, listout[-1]))
@@ -73,7 +74,8 @@ def main():
         for line in listout:
             fmodelout.write(line + "\n")
 
-    with open(inputfolder + 'abundances.txt', 'r') as fabundancesin, open(outputfolder + 'abundances.txt', 'w') as fabundancesout:
+    with open(inputfolder + 'abundances.txt', 'r') as fabundancesin, open(
+            outputfolder + 'abundances.txt', 'w') as fabundancesout:
         currentblock = []
         keepcurrentblock = False
         for line in fabundancesin:

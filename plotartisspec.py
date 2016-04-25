@@ -4,7 +4,7 @@ import sys
 import math
 import scipy.signal
 import numpy as np
-import pandas as pd
+# import pandas as pd
 import glob
 import argparse
 import readartisfiles as af
@@ -53,12 +53,12 @@ def makeplot():
     import matplotlib
     matplotlib.use('PDF')
     import matplotlib.pyplot as plt
-    import matplotlib.ticker as ticker
+    # import matplotlib.ticker as ticker
     fig, ax = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
                            "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if args.obsspecfiles is not None:
-        dir = os.path.dirname(os.path.abspath(__file__))
+        scriptdir = os.path.dirname(os.path.abspath(__file__))
         obsspectralabels = \
             {
                 '2010lp_20110928_fors2.txt': 'SN2010lp +264d (Taubenberger et al. 2013)',
@@ -68,7 +68,7 @@ def makeplot():
         colorlist = ['black', '0.4']
         obsspectra = [(fn, obsspectralabels[fn], c) for fn, c in zip(args.obsspecfiles, colorlist)]
         for (filename, serieslabel, linecolor) in obsspectra:
-            obsfile = os.path.join(dir, 'spectra', filename)
+            obsfile = os.path.join(scriptdir, 'spectra', filename)
             obsdata = np.loadtxt(obsfile)
             if len(obsdata[:, 1]) > 5000:
                 # obsdata = scipy.signal.resample(obsdata, 10000)
@@ -146,6 +146,10 @@ def makeplot():
     #    ax.spines[axis].set_linewidth(framewidth)
 
     # for (x,y,symbol) in zip(highlightedatomicnumbers,highlightedelementyposition,highlightedelements):
-    #    ax.annotate(symbol, xy=(x, y - 0.0 * (x % 2)), xycoords='data', textcoords='offset points', xytext=(0,10), horizontalalignment='center', verticalalignment='center', weight='bold', fontsize=fs-1.5)
+    #    ax.annotate(symbol, xy=(x, y - 0.0 * (x % 2)), xycoords='data',
+    #               textcoords='offset points', xytext=(0,10), horizontalalignment='center',
+    #               verticalalignment='center', weight='bold', fontsize=fs-1.5)
+
+    
 if __name__ == "__main__":
     main()

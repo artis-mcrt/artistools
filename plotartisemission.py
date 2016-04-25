@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 import os
 import sys
-import math
 import scipy.signal
 import numpy as np
-import pandas as pd
 import glob
 import argparse
 import readartisfiles as af
@@ -58,7 +56,6 @@ def makeplot():
     import matplotlib
     matplotlib.use('PDF')
     import matplotlib.pyplot as plt
-    import matplotlib.ticker as ticker
 
     import collections
     elementtuple = collections.namedtuple(
@@ -81,7 +78,7 @@ def makeplot():
                            "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if args.obsspecfiles is not None:
-        dir = os.path.dirname(os.path.abspath(__file__))
+        scriptdir = os.path.dirname(os.path.abspath(__file__))
         obsspectralabels = \
             {
                 '2010lp_20110928_fors2.txt': 'SN2010lp +264d (Taubenberger et al. 2013)',
@@ -92,7 +89,7 @@ def makeplot():
         obsspectra = [(fn, obsspectralabels[fn], c)
                       for fn, c in zip(args.obsspecfiles, obscolorlist)]
         for (filename, serieslabel, linecolor) in obsspectra:
-            obsfile = os.path.join(dir, 'spectra', filename)
+            obsfile = os.path.join(scriptdir, 'spectra', filename)
             obsdata = np.loadtxt(obsfile)
             if len(obsdata[:, 1]) > 5000:
                 # obsdata = scipy.signal.resample(obsdata, 10000)

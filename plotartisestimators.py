@@ -24,7 +24,7 @@ def main():
 
     elementlist = af.getartiselementlist('compositiondata.txt')
     modeldata = af.getmodeldata('model.txt')
-    initalabundances = af.getinitialabundances1d('abundances.txt')
+    # initalabundances = af.getinitialabundances1d('abundances.txt')
 
     list_timestep = []
     list_modelgridindex = []

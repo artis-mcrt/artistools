@@ -23,7 +23,7 @@ def makeplot(lcfiles, glcfiles):
     import matplotlib
     matplotlib.use('PDF')
     import matplotlib.pyplot as plt
-    import matplotlib.ticker as ticker
+    # import matplotlib.ticker as ticker
     fig, ax = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
                            "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
