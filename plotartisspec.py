@@ -10,9 +10,11 @@ import argparse
 import readartisfiles as af
 
 parser = argparse.ArgumentParser(
-    description='Plot artis model spectra by finding spec.out files in the current directory or subdirectories.')
+    description='Plot artis model spectra by finding spec.out files '
+                'in the current directory or subdirectories.')
 parser.add_argument('-specpath', action='store', default='**/spec.out',
-                    help='Path to spec.out file (may include wildcards such as * and **)')
+                    help='Path to spec.out file (may include wildcards '
+                         'such as * and **)')
 parser.add_argument('-listtimesteps', action='store_true', default=False,
                     help='Show the times at each timestep')
 parser.add_argument('-timestepmin', type=int, default=70,
@@ -25,7 +27,8 @@ parser.add_argument('-xmax', type=int, default=7000,
                     help='Plot range: maximum wavelength')
 parser.add_argument('-obsspec', action='append', dest='obsspecfiles',
                     help='Include observational spectrum with this file name')
-parser.add_argument('-o', action='store', dest='outputfile', default='plotartisspec.pdf',
+parser.add_argument('-o', action='store', dest='outputfile',
+                    default='plotartisspec.pdf',
                     help='path/filename for PDF file')
 args = parser.parse_args()
 
@@ -150,6 +153,6 @@ def makeplot():
     #               textcoords='offset points', xytext=(0,10), horizontalalignment='center',
     #               verticalalignment='center', weight='bold', fontsize=fs-1.5)
 
-    
+
 if __name__ == "__main__":
     main()

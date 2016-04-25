@@ -75,7 +75,7 @@ def main():
             fmodelout.write(line + "\n")
 
     with open(inputfolder + 'abundances.txt', 'r') as fabundancesin, open(
-            outputfolder + 'abundances.txt', 'w') as fabundancesout:
+              outputfolder + 'abundances.txt', 'w') as fabundancesout:
         currentblock = []
         keepcurrentblock = False
         for line in fabundancesin:
