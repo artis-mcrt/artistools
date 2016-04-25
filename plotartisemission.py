@@ -135,20 +135,20 @@ def makeplot():
             ionserieslist.append((element * maxion + ion, 'bound-bound'))
             ionserieslist.append((nelements * maxion + element * maxion + ion, 'bound-free'))
             for (selectedcolumn, emissiontype) in ionserieslist:
-                arrayFnu = emissiondata[timeindexlow::len(timearray), selectedcolumn]
+                array_fnu = emissiondata[timeindexlow::len(timearray), selectedcolumn]
 
                 for timeindex in range(timeindexlow + 1, timeindexhigh + 1):
-                    arrayFnu += emissiondata[timeindex::len(timearray), selectedcolumn]
+                    array_fnu += emissiondata[timeindex::len(timearray), selectedcolumn]
 
-                arrayFnu = arrayFnu / (timeindexhigh - timeindexlow + 1)
+                array_fnu = array_fnu / (timeindexhigh - timeindexlow + 1)
 
                 # best to use the filter on this list (because it hopefully has regular sampling)
-                arrayFnu = scipy.signal.savgol_filter(arrayFnu, 5, 2)
+                array_fnu = scipy.signal.savgol_filter(array_fnu, 5, 2)
 
-                arrayFlambda = arrayFnu * (arraynu ** 2) / c
+                array_flambda = array_fnu * (arraynu ** 2) / c
 
-                maxyvaluethisseries = max([arrayFlambda[i] if (xminvalue < (
-                    1e10 * arraylambda[i]) < xmaxvalue) else -99.0 for i in range(len(arrayFlambda))])
+                maxyvaluethisseries = max([array_flambda[i] if (xminvalue < (
+                    1e10 * arraylambda[i]) < xmaxvalue) else -99.0 for i in range(len(array_flambda))])
                 maxyvalueglobal = max(maxyvalueglobal, maxyvaluethisseries)
 
                 linelabel = ''
@@ -161,7 +161,7 @@ def makeplot():
                     plotlabel += ' to {0}d'.format(specdata[0, timeindexhigh])
                 linewidth = [1.8, 0.8][emissiontype == 'bound-free']
                 if emissiontype == 'bound-bound' and linelabel in ['Fe II', 'Fe III', 'O I', 'O II']:
-                    ax.plot(1e10 * arraylambda, arrayFlambda / maxyvalueglobal,
+                    ax.plot(1e10 * arraylambda, array_flambda / maxyvalueglobal,
                             color=colorlist[int(linenumber) % len(colorlist)], lw=linewidth, label=linelabel)
                     linenumber += 1
 
