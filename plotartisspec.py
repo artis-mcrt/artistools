@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 import os
 import sys
-import math
-import scipy.signal
-import numpy as np
-# import pandas as pd
 import glob
 import argparse
+import numpy as np
+import scipy.signal
 import readartisfiles as af
 
 parser = argparse.ArgumentParser(
@@ -58,25 +56,30 @@ def makeplot():
     import matplotlib.pyplot as plt
     # import matplotlib.ticker as ticker
     fig, ax = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
-                           "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+        "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if args.obsspecfiles is not None:
         scriptdir = os.path.dirname(os.path.abspath(__file__))
         obsspectralabels = \
             {
-                '2010lp_20110928_fors2.txt': 'SN2010lp +264d (Taubenberger et al. 2013)',
-                'dop_dered_SN2013aa_20140208_fc_final.txt': 'SN2013aa +360d (Maguire et al. in prep)',
-                '2003du_20031213_3219_8822_00.txt': 'SN2003du +221.3d (Stanishev et al. 2007)'
+                '2010lp_20110928_fors2.txt':
+                    'SN2010lp +264d (Taubenberger et al. 2013)',
+                'dop_dered_SN2013aa_20140208_fc_final.txt':
+                    'SN2013aa +360d (Maguire et al. in prep)',
+                '2003du_20031213_3219_8822_00.txt':
+                    'SN2003du +221.3d (Stanishev et al. 2007)'
             }
         colorlist = ['black', '0.4']
-        obsspectra = [(fn, obsspectralabels[fn], c) for fn, c in zip(args.obsspecfiles, colorlist)]
+        obsspectra = [(fn, obsspectralabels[fn], c)
+                      for fn, c in zip(args.obsspecfiles, colorlist)]
         for (filename, serieslabel, linecolor) in obsspectra:
             obsfile = os.path.join(scriptdir, 'spectra', filename)
             obsdata = np.loadtxt(obsfile)
             if len(obsdata[:, 1]) > 5000:
                 # obsdata = scipy.signal.resample(obsdata, 10000)
                 obsdata = obsdata[::3]
-            obsdata = obsdata[(obsdata[:, 0] > xminvalue) & (obsdata[:, 0] < xmaxvalue)]
+            obsdata = obsdata[(obsdata[:, 0] > xminvalue) &
+                              (obsdata[:, 0] < xmaxvalue)]
             print("'{0}' has {1} points".format(serieslabel, len(obsdata)))
             obsxvalues = obsdata[:, 0]
             obsyvalues = obsdata[:, 1] * (1.0 / max(obsdata[:, 1]))
@@ -90,7 +93,8 @@ def makeplot():
     timeindexlow = args.timestepmin + 1
     if args.timestepmax:
         timeindexhigh = args.timestepmax + 1
-        print('Ploting timesteps {0} to {1}'.format(args.timestepmin, args.timestepmax))
+        print('Ploting timesteps {0} to {1}'.format(
+            args.timestepmin, args.timestepmax))
     else:
         print('Ploting timestep {0}'.format(args.timestepmin))
         timeindexhigh = timeindexlow
@@ -115,13 +119,16 @@ def makeplot():
 
         array_fnu = array_fnu / (timeindexhigh - timeindexlow + 1)
 
-        # best to use the filter on this list (because it hopefully has regular sampling)
+        # best to use the filter on this list (because
+        # it hopefully has regular sampling)
         array_fnu = scipy.signal.savgol_filter(array_fnu, 5, 2)
 
         array_flambda = array_fnu * (arraynu ** 2) / c
 
-        maxyvaluethisseries = max([flambda if (
-            xminvalue < 1e10 * arraylambda[i] < xmaxvalue) else -99.0 for i, flambda in enumerate(array_flambda)])
+        maxyvaluethisseries = max(
+            [flambda if (xminvalue < 1e10 * arraylambda[i] < xmaxvalue)
+             else -99.0
+             for i, flambda in enumerate(array_flambda)])
 
         linestyle = ['-', '--'][int(s / 7)]
         ax.plot(1e10 * arraylambda, array_flambda / maxyvaluethisseries,
@@ -132,7 +139,8 @@ def makeplot():
     # ax.set_ylim(ymin=-0.1*maxyvalueglbal,ymax=maxyvalueglobal*1.1)
     ax.set_ylim(ymin=-0.1, ymax=1.1)
 
-    ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 11})
+    ax.legend(loc='best', handlelength=2, frameon=False,
+              numpoints=1, prop={'size': 11})
     ax.set_xlabel(r'Wavelength ($\AA$)')
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
     ax.set_ylabel(r'F$_\lambda$')
@@ -148,10 +156,10 @@ def makeplot():
     # for axis in ['top','bottom','left','right']:
     #    ax.spines[axis].set_linewidth(framewidth)
 
-    # for (x,y,symbol) in zip(highlightedatomicnumbers,highlightedelementyposition,highlightedelements):
-    #    ax.annotate(symbol, xy=(x, y - 0.0 * (x % 2)), xycoords='data',
-    #               textcoords='offset points', xytext=(0,10), horizontalalignment='center',
-    #               verticalalignment='center', weight='bold', fontsize=fs-1.5)
+    # ax.annotate(symbol, xy=(x, y - 0.0 * (x % 2)), xycoords='data',
+    #             textcoords='offset points', xytext=(0, 10),
+    #             horizontalalignment='center', verticalalignment='center',
+    #             weight='bold', fontsize=15)
 
 
 if __name__ == "__main__":
