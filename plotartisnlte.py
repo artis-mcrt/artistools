@@ -37,7 +37,7 @@ def main():
 
             if row and row[0] == 'timestep':
                 currenttimestep = int(row[1])
-                if selectedtimestep == currenttimestep or selectedtimestep == -1:
+                if selectedtimestep in [-1,currenttimestep]:
                     list_ltepop = [[] for x in range(nions)]
                     list_nltepop = [[] for x in range(nions)]
                     list_levels = [[] for x in range(nions)]

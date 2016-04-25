@@ -40,7 +40,7 @@ specfiles = glob.glob(args.specpath, recursive=True)
 
 
 def main():
-    if len(specfiles) == 0:
+    if not specfiles:
         print('no spec.out files found')
         sys.exit()
     if args.listtimesteps:
@@ -92,12 +92,12 @@ def makeplot():
         print('Ploting timestep {0}'.format(args.timestepmin))
         timeindexhigh = timeindexlow
 
-    for s in range(len(specfiles)):
-        specdata = np.loadtxt(specfiles[s])
+    for s, specfilename in enumerate(specfiles):
+        specdata = np.loadtxt(specfilename)
         # specdata = pd.read_csv(specfiles[s], delim_whitespace=True)  #maybe
         # switch to Pandas at some point
 
-        linelabel = '{0} at t={1}d'.format(specfiles[s].split(
+        linelabel = '{0} at t={1}d'.format(specfilename.split(
             '/spec.out')[0], specdata[0, timeindexlow])
         if timeindexhigh > timeindexlow:
             linelabel += ' to {0}d'.format(specdata[0, timeindexhigh])
@@ -105,23 +105,23 @@ def makeplot():
         arraynu = specdata[1:, 0]
         arraylambda = c / specdata[1:, 0]
 
-        arrayFnu = specdata[1:, timeindexlow]
+        array_fnu = specdata[1:, timeindexlow]
 
         for timeindex in range(timeindexlow + 1, timeindexhigh + 1):
-            arrayFnu += specdata[1:, timeindex]
+            array_fnu += specdata[1:, timeindex]
 
-        arrayFnu = arrayFnu / (timeindexhigh - timeindexlow + 1)
+        array_fnu = array_fnu / (timeindexhigh - timeindexlow + 1)
 
         # best to use the filter on this list (because it hopefully has regular sampling)
-        arrayFnu = scipy.signal.savgol_filter(arrayFnu, 5, 2)
+        array_fnu = scipy.signal.savgol_filter(array_fnu, 5, 2)
 
-        arrayFlambda = arrayFnu * (arraynu ** 2) / c
+        array_flambda = array_fnu * (arraynu ** 2) / c
 
-        maxyvaluethisseries = max([arrayFlambda[i] if (
-            xminvalue < 1e10 * arraylambda[i] < xmaxvalue) else -99.0 for i in range(len(arrayFlambda))])
+        maxyvaluethisseries = max([flambda if (
+            xminvalue < 1e10 * arraylambda[i] < xmaxvalue) else -99.0 for i, flambda in enumerate(array_flambda)])
 
         linestyle = ['-', '--'][int(s / 7)]
-        ax.plot(1e10 * arraylambda, arrayFlambda / maxyvaluethisseries,
+        ax.plot(1e10 * arraylambda, array_flambda / maxyvaluethisseries,
                 linestyle=linestyle, lw=2.5 - (0.1 * s), label=linelabel)
 
     ax.set_xlim(xmin=xminvalue, xmax=xmaxvalue)

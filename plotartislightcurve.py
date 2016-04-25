@@ -13,7 +13,7 @@ def main():
     # could alternatively use
     # specfiles = glob.glob('**/light_curve.out',recursive=True)
 
-    if len(lcfiles) == 0:
+    if not lcfiles:
         print('no light_curve.out files found')
         sys.exit()
     else:
@@ -28,12 +28,12 @@ def makeplot(lcfiles):
     fig, ax = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
                            "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    for n in range(len(lcfiles)):
-        lightcurvedata = np.loadtxt(lcfiles[n])
+    for n, lcfilename in enumerate(lcfiles):
+        lightcurvedata = np.loadtxt(lcfilename)
         # lightcurvedata = pd.read_csv(lcfiles[n], delim_whitespace=True)  #maybe
         # switch to Pandas at some point
 
-        linelabel = '{0}'.format(lcfiles[n].split('/light_curve.out')[0])
+        linelabel = '{0}'.format(lcfilename.split('/light_curve.out')[0])
 
         arraytime = lightcurvedata[:, 0]
 

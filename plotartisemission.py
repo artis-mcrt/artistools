@@ -45,7 +45,7 @@ specfiles = glob.glob(args.specpath, recursive=True)
 
 
 def main():
-    if len(specfiles) == 0:
+    if not specfiles:
         print('no spec.out files found')
         sys.exit()
     if args.listtimesteps:
