@@ -77,15 +77,16 @@ def make_plot():
             fittedyvalues.append(j_lambda)
 
     specoutxvalues, specoutyvalues = af.get_spectrum('spec.out',
-                                                     selected_timestep)
+                                                     40, 70,
+                                                     normalised=True)
+    specoutyvalues *= max(yvalues)
 
     binedges = [C / radfielddata['nu_lower'].iloc[0] * 1e10] + \
         list(C / radfielddata[:]['nu_upper'] * 1e10)
-    print(binedges)
+    # print(binedges)
     print('Plotting...')
     draw_plot(xvalues, yvalues, fittedxvalues, fittedyvalues, binedges,
               specoutxvalues, specoutyvalues)
-    # print(xvalues)
 
 
 def draw_plot(xvalues, yvalues, fittedxvalues, fittedyvalues, binedges,
@@ -94,11 +95,12 @@ def draw_plot(xvalues, yvalues, fittedxvalues, fittedyvalues, binedges,
                            tight_layout={
                                "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    ax.plot(xvalues, yvalues, linewidth=1, label='Field estimators')
+    ax.plot(xvalues, yvalues, linewidth=1, label='Field estimators',
+            color='blue')
     ax.plot(fittedxvalues, fittedyvalues, linewidth=1, color='green',
             label='Fitted field')
-    ax.vlines(binedges, ymin=0.0, ymax=max(yvalues) * 2.0, linewidth=0.5,
-              color='red', label='')
+    ax.vlines(binedges, ymin=0.0, ymax=max(yvalues), linewidth=0.2,
+              color='0.5', label='')
     ax.plot(specoutxvalues, specoutyvalues, linewidth=1, color='black',
             label='Emergent spectrum')
 

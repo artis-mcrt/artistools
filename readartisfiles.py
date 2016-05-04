@@ -18,8 +18,8 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
 C = 299792458  # [m / s]
 
 
-def showtimesteptimes(filename, numberofcolumns=5):
-    specdata = pd.read_csv(filename, delim_whitespace=True)
+def showtimesteptimes(specfilename, numberofcolumns=5):
+    specdata = pd.read_csv(specfilename, delim_whitespace=True)
     print('Time steps and times in days:\n')
 
     times = specdata.columns
@@ -46,13 +46,14 @@ def getartiselementlist(filename):
         fcompdata.readline()  # T_preset
         fcompdata.readline()  # homogeneous_abundances
         startindex = 0
-        for element in range(nelements):
+        for _ in nelements:
             line = fcompdata.readline()
             linesplit = line.split()
             elementlist.append(elementtuple._make(
                 list(map(int, linesplit[:5])) + list(map(float, linesplit[5:])) + [startindex]))
             startindex += elementlist[-1].nions
             print(elementlist[-1])
+
     return elementlist
 
 
@@ -62,8 +63,8 @@ def getmodeldata(filename):
         'gridcell', 'cellid velocity logrho ffe fni fco f52fe f48cr')
     modeldata.append(gridcelltuple._make([-1, 0., 0., 0., 0., 0., 0., 0.]))
     with open(filename, 'r') as fmodel:
-        gridcellcount = int(fmodel.readline())
-        t_model_init = float(fmodel.readline())
+        # gridcellcount = int(fmodel.readline())
+        # t_model_init = float(fmodel.readline())
         for line in fmodel:
             row = line.split()
             modeldata.append(gridcelltuple._make(
@@ -83,29 +84,32 @@ def getinitialabundances1d(filename):
     return abundancedata
 
 
-def get_spectrum(specfilename, timeindexlow, timeindexhigh=-1):
+def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False):
     specdata = np.loadtxt(specfilename)
     # specdata = pd.read_csv(specfiles[s], delim_whitespace=True)  #maybe
     # switch to Pandas at some point
 
     linelabel = '{0} at t={1}d'.format(specfilename.split(
-        '/spec.out')[0], specdata[0, timeindexlow])
-    if timeindexhigh > timeindexlow:
-        linelabel += ' to {0}d'.format(specdata[0, timeindexhigh])
+        '/spec.out')[0], specdata[0, timesteplow])
+    if timestephigh > timesteplow:
+        linelabel += ' to {0}d'.format(specdata[0, timestephigh])
 
     arraynu = specdata[1:, 0]
     arraylambda = C / specdata[1:, 0]
 
-    array_fnu = specdata[1:, timeindexlow]
+    array_fnu = specdata[1:, timesteplow]
 
-    for timeindex in range(timeindexlow + 1, timeindexhigh + 1):
+    for timeindex in range(timesteplow + 1, timestephigh + 1):
         array_fnu += specdata[1:, timeindex]
 
-    array_fnu = array_fnu / (timeindexhigh - timeindexlow + 1)
+    array_fnu = array_fnu / (timestephigh - timesteplow + 1)
 
     array_flambda = array_fnu * (arraynu ** 2) / C
 
-    return arraylambda, array_flambda
+    if normalised:
+            array_flambda /= max(array_flambda)
+
+    return arraylambda * 1e10, array_flambda
 
 if __name__ == "__main__":
     print("this script is for inclusion only")
