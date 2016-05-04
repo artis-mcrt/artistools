@@ -1,15 +1,23 @@
 #!/usr/bin/env python3
-import os
-import math
 import collections
+import math
+import os
+
+import numpy as np
 import pandas as pd
 
 pydir = os.path.dirname(os.path.abspath(__file__))
 
-elsymbols = ['n'] + [line.split(',')[1] for line in open(os.path.join(pydir, 'elements.csv'))]
+elsymbols = ['n'] + [line.split(',')[1]
+                     for line in open(os.path.join(pydir, 'elements.csv'))]
 
-roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII',
-                  'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
+roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
+                  'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII',
+                  'XVIII', 'XIX', 'XX')
+
+C = 299792458  # [m / s]
+
+numberofcolumns = 5  # when listing times of all timesteps
 
 
 def showtimesteptimes(filename, numberofcolumns):
@@ -25,7 +33,8 @@ def showtimesteptimes(filename, numberofcolumns):
                 strline += '\t'
             newindex = rownum + colnum * indexendofcolumnone
             if newindex < len(times):
-                strline += '{0:4d}: {1:.3f}'.format(newindex, float(times[newindex + 1]))
+                strline += '{0:4d}: {1:.3f}'.format(
+                    newindex, float(times[newindex + 1]))
         print(strline)
 
 
@@ -59,7 +68,8 @@ def getmodeldata(filename):
         t_model_init = float(fmodel.readline())
         for line in fmodel:
             row = line.split()
-            modeldata.append(gridcelltuple._make([int(row[0])] + list(map(float, row[1:]))))
+            modeldata.append(gridcelltuple._make(
+                [int(row[0])] + list(map(float, row[1:]))))
 
     return modeldata
 
@@ -74,6 +84,30 @@ def getinitialabundances1d(filename):
 
     return abundancedata
 
+
+def get_spectrum(specfilename, timeindexlow, timeindexhigh=-1):
+    specdata = np.loadtxt(specfilename)
+    # specdata = pd.read_csv(specfiles[s], delim_whitespace=True)  #maybe
+    # switch to Pandas at some point
+
+    linelabel = '{0} at t={1}d'.format(specfilename.split(
+        '/spec.out')[0], specdata[0, timeindexlow])
+    if timeindexhigh > timeindexlow:
+        linelabel += ' to {0}d'.format(specdata[0, timeindexhigh])
+
+    arraynu = specdata[1:, 0]
+    arraylambda = C / specdata[1:, 0]
+
+    array_fnu = specdata[1:, timeindexlow]
+
+    for timeindex in range(timeindexlow + 1, timeindexhigh + 1):
+        array_fnu += specdata[1:, timeindex]
+
+    array_fnu = array_fnu / (timeindexhigh - timeindexlow + 1)
+
+    array_flambda = array_fnu * (arraynu ** 2) / C
+
+    return arraylambda, array_flambda
 
 if __name__ == "__main__":
     print("this script is for inclusion only")

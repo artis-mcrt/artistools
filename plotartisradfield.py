@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
+import argparse
 import math
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import readartisfiles as af
 
 # import matplotlib.ticker as ticker
 
@@ -11,18 +12,39 @@ K_B = 8.617332478e-5   # Boltzmann constant [eV / K]
 C = 299792458          # [m / s]
 H = 4.13566766225e-15  # Planck constant [eV / s]
 
-plot_xmin = 200        # plot range in Angstroms
-plot_xmax = 10000
-selected_timestep = 10
+parser = argparse.ArgumentParser(description='Plot ARTIS radiation field.')
+parser.add_argument('-path', action='store', default='./',
+                    help='Path to radfield.out file')
+parser.add_argument('-listtimesteps', action='store_true', default=False,
+                    help='Show the times at each timestep')
+parser.add_argument('-timestep', type=int, default=10,
+                    help='Timestep number to plot')
+parser.add_argument('-xmin', type=int, default=2000,
+                    help='Plot range: minimum wavelength in Angstroms')
+parser.add_argument('-xmax', type=int, default=10000,
+                    help='Plot range: maximum wavelength in Angstroms')
+parser.add_argument('-o', action='store', dest='outputfile',
+                    default='plotartisradfield.pdf',
+                    help='Filename for PDF file')
+args = parser.parse_args()
 
 
 def main():
+    if args.listtimesteps:
+        af.showtimesteptimes('spec.out', af.numberofcolumns)
+    else:
+        make_plot()
+
+
+def make_plot():
     radfield_file = 'radfield.out'
     print('Loading {:}...'.format(radfield_file))
     radfielddata = pd.read_csv(radfield_file, delim_whitespace=True)
 
-    if selected_timestep < 0:
+    if not args.timestep or args.timestep < 0:
         selected_timestep = max(radfielddata['timestep'])
+    else:
+        selected_timestep = args.timestep
 
     # filter the list
     radfielddata = radfielddata[
@@ -54,14 +76,20 @@ def main():
             fittedxvalues.append(C / nu * 1e10)
             fittedyvalues.append(j_lambda)
 
-    binedges = [C / radfielddata['nu_lower'].iloc[0] * 1e10] + list(C / radfielddata[:]['nu_upper'] * 1e10)
-    # print(binedges)
+    specoutxvalues, specoutyvalues = af.get_spectrum('spec.out',
+                                                     selected_timestep)
+
+    binedges = [C / radfielddata['nu_lower'].iloc[0] * 1e10] + \
+        list(C / radfielddata[:]['nu_upper'] * 1e10)
+    print(binedges)
     print('Plotting...')
-    make_plot(xvalues, yvalues, fittedxvalues, fittedyvalues, binedges)
+    draw_plot(xvalues, yvalues, fittedxvalues, fittedyvalues, binedges,
+              specoutxvalues, specoutyvalues)
     # print(xvalues)
 
 
-def make_plot(xvalues, yvalues, fittedxvalues, fittedyvalues, binedges):
+def draw_plot(xvalues, yvalues, fittedxvalues, fittedyvalues, binedges,
+              specoutxvalues, specoutyvalues):
     fig, ax = plt.subplots(1, 1, sharex=True, figsize=(8, 4),
                            tight_layout={
                                "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
@@ -69,12 +97,14 @@ def make_plot(xvalues, yvalues, fittedxvalues, fittedyvalues, binedges):
     ax.plot(xvalues, yvalues, linewidth=1, label='Field estimators')
     ax.plot(fittedxvalues, fittedyvalues, linewidth=1, color='green',
             label='Fitted field')
-    ax.vlines(binedges, ymin=0.0, ymax=max(yvalues) * 2.0, linewidth=1.0,
+    ax.vlines(binedges, ymin=0.0, ymax=max(yvalues) * 2.0, linewidth=0.5,
               color='red', label='')
+    ax.plot(specoutxvalues, specoutyvalues, linewidth=1, color='black',
+            label='Emergent spectrum')
 
     ax.set_xlabel(r'Wavelength ($\AA$)')
     ax.set_ylabel(r'J$_\lambda$ [erg/cm$^2$/m]')
-    ax.set_xlim(xmin=plot_xmin, xmax=plot_xmax)
+    ax.set_xlim(xmin=args.xmin, xmax=args.xmax)
 
     # ax.set_xlabel(r'Energy (eV)')
     # ax.set_ylabel(r'dJ / dE')

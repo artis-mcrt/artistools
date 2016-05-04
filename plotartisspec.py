@@ -26,14 +26,13 @@ parser.add_argument('-xmax', type=int, default=7000,
 parser.add_argument('-obsspec', action='append', dest='obsspecfiles',
                     help='Include observational spectrum with this file name')
 parser.add_argument('-o', action='store', dest='outputfile',
-                    default='plotartisspec.pdf',
+                    default='plotspec.pdf',
                     help='path/filename for PDF file')
 args = parser.parse_args()
 
 xminvalue, xmaxvalue = args.xmin, args.xmax
 # xminvalue, xmaxvalue = 10000, 20000
 
-numberofcolumns = 5
 h = 6.62607004e-34  # m^2 kg / s
 c = 299792458  # m / s
 
@@ -45,7 +44,7 @@ def main():
         print('no spec.out files found')
         sys.exit()
     if args.listtimesteps:
-        af.showtimesteptimes(specfiles[0], numberofcolumns)
+        af.showtimesteptimes(specfiles[0], af.numberofcolumns)
     else:
         makeplot()
 
