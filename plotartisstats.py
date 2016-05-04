@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
-import os
 import sys
-import math
-import matplotlib
-matplotlib.use('PDF')
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-import numpy as np
 import glob
 
 xminvalue, xmaxvalue = 3500, 7000
