@@ -7,7 +7,7 @@ import pandas as pd
 
 # import matplotlib.ticker as ticker
 
-K_b = 8.617332478e-5   # Boltzmann constant [eV / K]
+K_B = 8.617332478e-5   # Boltzmann constant [eV / K]
 C = 299792458          # [m / s]
 H = 4.13566766225e-15  # Planck constant [eV / s]
 
@@ -48,7 +48,7 @@ def main():
         delta_nu = (row['nu_upper'] - row['nu_lower']) / 100
         for nu in np.arange(row['nu_lower'], row['nu_upper'], delta_nu):
             j_nu = (row['W'] * 1.4745007e-47 * pow(nu, 3) *
-                    1.0 / (math.expm1(H * nu / row['T_R'] / K_b)))  # CGS units
+                    1.0 / (math.expm1(H * nu / row['T_R'] / K_B)))  # CGS units
             j_lambda = j_nu * (nu ** 2) / C
 
             fittedxvalues.append(C / nu * 1e10)
