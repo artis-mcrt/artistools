@@ -17,10 +17,8 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
 
 C = 299792458  # [m / s]
 
-numberofcolumns = 5  # when listing times of all timesteps
 
-
-def showtimesteptimes(filename, numberofcolumns):
+def showtimesteptimes(filename, numberofcolumns=5):
     specdata = pd.read_csv(filename, delim_whitespace=True)
     print('Time steps and times in days:\n')
 

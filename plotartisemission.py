@@ -47,7 +47,7 @@ def main():
         print('no spec.out files found')
         sys.exit()
     if args.listtimesteps:
-        af.showtimesteptimes(specfiles[0], numberofcolumns)
+        af.showtimesteptimes(specfiles[0])
     else:
         makeplot()
 

@@ -31,7 +31,7 @@ args = parser.parse_args()
 
 def main():
     if args.listtimesteps:
-        af.showtimesteptimes('spec.out', af.numberofcolumns)
+        af.showtimesteptimes('spec.out')
     else:
         make_plot()
 
