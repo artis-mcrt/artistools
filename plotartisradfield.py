@@ -7,13 +7,13 @@ import pandas as pd
 
 # import matplotlib.ticker as ticker
 
-k_b = 8.617332478e-5   # Boltzmann constant [eV / K]
-c = 299792458          # [m / s]
-h = 4.13566766225e-15  # Planck constant [eV / s]
+K_b = 8.617332478e-5   # Boltzmann constant [eV / K]
+C = 299792458          # [m / s]
+H = 4.13566766225e-15  # Planck constant [eV / s]
 
-plot_xmin = 1500        # plot range in Angstroms
+plot_xmin = 200        # plot range in Angstroms
 plot_xmax = 10000
-plot_resolution = 1    # measured in Angstroms
+selected_timestep = 10
 
 
 def main():
@@ -21,36 +21,41 @@ def main():
     print('Loading {:}...'.format(radfield_file))
     radfielddata = pd.read_csv(radfield_file, delim_whitespace=True)
 
+    if selected_timestep < 0:
+        selected_timestep = max(radfielddata['timestep'])
+
     # filter the list
     radfielddata = radfielddata[
         ((radfielddata[:]['modelgridindex'] == 0) &
-         (radfielddata[:]['timestep'] == 10))
+         (radfielddata[:]['timestep'] == selected_timestep))
     ]
+
+    print('Timestep {0:d}'.format(selected_timestep))
 
     xvalues = []
     yvalues = []
-    for index, row in radfielddata.iterrows():
-        xvalues.append(1e10 * c / row['nu_lower'])
-        xvalues.append(1e10 * c / row['nu_upper'])
-        dlambda = (c / row['nu_lower']) - \
-            (c / row['nu_upper'])
+    for _, row in radfielddata.iterrows():
+        xvalues.append(1e10 * C / row['nu_lower'])
+        xvalues.append(1e10 * C / row['nu_upper'])
+        dlambda = (C / row['nu_lower']) - \
+            (C / row['nu_upper'])
         yvalues.append(row['J'] / dlambda)
         yvalues.append(row['J'] / dlambda)
 
     fittedxvalues = []
     fittedyvalues = []
-    for index, row in radfielddata.iterrows():
+    for _, row in radfielddata.iterrows():
         delta_nu = (row['nu_upper'] - row['nu_lower']) / 100
         for nu in np.arange(row['nu_lower'], row['nu_upper'], delta_nu):
             j_nu = (row['W'] * 1.4745007e-47 * pow(nu, 3) *
-                    1.0 / (math.expm1(h * nu / row['T_R'] / k_b)))
-            j_lambda = j_nu * (nu ** 2) / c
+                    1.0 / (math.expm1(H * nu / row['T_R'] / K_b)))  # CGS units
+            j_lambda = j_nu * (nu ** 2) / C
 
-            fittedxvalues.append(c / nu * 1e10)
+            fittedxvalues.append(C / nu * 1e10)
             fittedyvalues.append(j_lambda)
 
-    binedges = list(c / radfielddata[:]['nu_upper'] * 1e10)
-
+    binedges = [C / radfielddata['nu_lower'].iloc[0] * 1e10] + list(C / radfielddata[:]['nu_upper'] * 1e10)
+    # print(binedges)
     print('Plotting...')
     make_plot(xvalues, yvalues, fittedxvalues, fittedyvalues, binedges)
     # print(xvalues)
@@ -64,7 +69,8 @@ def make_plot(xvalues, yvalues, fittedxvalues, fittedyvalues, binedges):
     ax.plot(xvalues, yvalues, linewidth=1, label='Field estimators')
     ax.plot(fittedxvalues, fittedyvalues, linewidth=1, color='green',
             label='Fitted field')
-    ax.vlines(binedges, ymin=0.0, ymax=max(yvalues) * 2.0, linewidth=1.0, color='red', label='')
+    ax.vlines(binedges, ymin=0.0, ymax=max(yvalues) * 2.0, linewidth=1.0,
+              color='red', label='')
 
     ax.set_xlabel(r'Wavelength ($\AA$)')
     ax.set_ylabel(r'J$_\lambda$ [erg/cm$^2$/m]')
@@ -80,5 +86,6 @@ def make_plot(xvalues, yvalues, fittedxvalues, fittedyvalues, binedges):
 
     fig.savefig('plotradfield.pdf', format='pdf')
     plt.close()
+
 
 main()
