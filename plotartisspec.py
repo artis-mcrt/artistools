@@ -98,14 +98,11 @@ def makeplot():
         timeindexhigh = timeindexlow
 
     for s, specfilename in enumerate(specfiles):
-        specdata = np.loadtxt(specfilename)
-        # specdata = pd.read_csv(specfiles[s], delim_whitespace=True)  #maybe
-        # switch to Pandas at some point
-
         linelabel = '{0} at t={1}d'.format(specfilename.split(
-            '/spec.out')[0], specdata[0, timeindexlow])
+            '/spec.out')[0], af.get_timestep_time(specfilename, timeindexlow))
         if timeindexhigh > timeindexlow:
-            linelabel += ' to {0}d'.format(specdata[0, timeindexhigh])
+            linelabel += ' to {0}d'.format(af.get_timestep_time(specfilename,
+                                                                timeindexhigh))
 
         arraylambda, array_flambda = af.get_spectrum(specfilename,
                                                      timeindexlow,

@@ -113,5 +113,13 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
 
     return arraylambda * 1e10, array_flambda
 
+def get_timestep_time(specfilename, timestep):
+    specdata = np.loadtxt(specfilename)
+    # specdata = pd.read_csv(specfiles[s], delim_whitespace=True)  #maybe
+    # switch to Pandas at some point
+
+    return specdata[0, timestep]
+
+
 if __name__ == "__main__":
     print("this script is for inclusion only")
