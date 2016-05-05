@@ -44,82 +44,17 @@ def main():
     if args.listtimesteps:
         af.showtimesteptimes(specfiles[0])
     else:
-        makeplot()
+        make_plot()
 
 
-def makeplot():
-    import matplotlib
-    matplotlib.use('PDF')
+def make_plot():
     import matplotlib.pyplot as plt
     # import matplotlib.ticker as ticker
     fig, ax = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
         "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    if args.obsspecfiles is not None:
-        scriptdir = os.path.dirname(os.path.abspath(__file__))
-        obsspectralabels = \
-            {
-                '2010lp_20110928_fors2.txt':
-                    'SN2010lp +264d (Taubenberger et al. 2013)',
-                'dop_dered_SN2013aa_20140208_fc_final.txt':
-                    'SN2013aa +360d (Maguire et al. in prep)',
-                '2003du_20031213_3219_8822_00.txt':
-                    'SN2003du +221.3d (Stanishev et al. 2007)'
-            }
-        colorlist = ['black', '0.4']
-        obsspectra = [(fn, obsspectralabels[fn], c)
-                      for fn, c in zip(args.obsspecfiles, colorlist)]
-        for (filename, serieslabel, linecolor) in obsspectra:
-            obsfile = os.path.join(scriptdir, 'spectra', filename)
-            obsdata = pd.read_csv(obsfile, delim_whitespace=True, header=None)
-
-            if len(obsdata) > 5000:
-                # obsdata = scipy.signal.resample(obsdata, 10000)
-                obsdata = obsdata[::3]
-
-            obsdata = obsdata[(obsdata[:][0] > xminvalue) &
-                              (obsdata[:][0] < xmaxvalue)]
-            print("'{0}' has {1} points".format(serieslabel, len(obsdata)))
-            obsxvalues = obsdata[0]
-            obsyvalues = obsdata[1]
-
-            # obsyvalues = scipy.signal.savgol_filter(obsyvalues, 5, 3)
-            ax.plot(obsxvalues, obsyvalues / max(obsyvalues), lw=1.5,
-                    label=serieslabel, zorder=-1, color=linecolor)
-
-    # in the spec.out file, the column index is one more than the timestep
-    # (because column 0 is wavelength row headers, not flux at a timestep)
-    if args.timestepmax:
-        print('Ploting timesteps {0} to {1}'.format(
-            args.timestepmin, args.timestepmax))
-    else:
-        print('Ploting timestep {0}'.format(args.timestepmin))
-
-    for s, specfilename in enumerate(specfiles):
-        linelabel = '{0} at t={1}d'.format(specfilename.split(
-            '/spec.out')[0], af.get_timestep_time(specfilename,
-                                                  args.timestepmin))
-        if args.timestepmax > args.timestepmin:
-            linelabel += ' to {0}d'.format(af.get_timestep_time(specfilename,
-                                                                args.timestepmax))
-
-        from scipy.signal import savgol_filter
-        filterfunc = lambda x: savgol_filter(x, 5, 2)
-
-        arraylambda, array_flambda = af.get_spectrum(specfilename,
-                                                     args.timestepmin,
-                                                     args.timestepmax,
-                                                     normalised=False,
-                                                     fnufilterfunc=filterfunc)
-
-        maxyvaluethisseries = max(
-            [flambda if (xminvalue < arraylambda[i] < xmaxvalue)
-             else -99.0
-             for i, flambda in enumerate(array_flambda)])
-
-        linestyle = ['-', '--'][int(s / 7)]
-        ax.plot(arraylambda, array_flambda / maxyvaluethisseries,
-                linestyle=linestyle, lw=2.5 - (0.1 * s), label=linelabel)
+    plot_obs_spectra(ax)
+    plot_artis_spectra(ax)
 
     ax.set_xlim(xmin=xminvalue, xmax=xmaxvalue)
     #        ax.set_xlim(xmin=12000,xmax=19000)
@@ -148,6 +83,75 @@ def makeplot():
     #             horizontalalignment='center', verticalalignment='center',
     #             weight='bold', fontsize=15)
 
+
+def plot_obs_spectra(ax):
+    if args.obsspecfiles is not None:
+        scriptdir = os.path.dirname(os.path.abspath(__file__))
+        obsspectralabels = {
+            '2010lp_20110928_fors2.txt':
+                'SN2010lp +264d (Taubenberger et al. 2013)',
+            'dop_dered_SN2013aa_20140208_fc_final.txt':
+                'SN2013aa +360d (Maguire et al. in prep)',
+            '2003du_20031213_3219_8822_00.txt':
+                'SN2003du +221.3d (Stanishev et al. 2007)'
+            }
+        colorlist = ['black', '0.4']
+        obsspectra = [(fn, obsspectralabels[fn], c)
+                      for fn, c in zip(args.obsspecfiles, colorlist)]
+        for (filename, serieslabel, linecolor) in obsspectra:
+            obsfile = os.path.join(scriptdir, 'spectra', filename)
+            obsdata = pd.read_csv(obsfile, delim_whitespace=True, header=None)
+
+            if len(obsdata) > 5000:
+                # obsdata = scipy.signal.resample(obsdata, 10000)
+                obsdata = obsdata[::3]
+
+            obsdata = obsdata[(obsdata[:][0] > xminvalue) &
+                              (obsdata[:][0] < xmaxvalue)]
+            print("'{0}' has {1} points".format(serieslabel, len(obsdata)))
+            obsxvalues = obsdata[0]
+            obsyvalues = obsdata[1]
+
+            # obsyvalues = scipy.signal.savgol_filter(obsyvalues, 5, 3)
+            ax.plot(obsxvalues, obsyvalues / max(obsyvalues), lw=1.5,
+                    label=serieslabel, zorder=-1, color=linecolor)
+
+
+def plot_artis_spectra(ax):
+    # in the spec.out file, the column index is one more than the timestep
+    # (because column 0 is wavelength row headers, not flux at a timestep)
+    if args.timestepmax:
+        print('Plotting timesteps {0} to {1}'.format(
+            args.timestepmin, args.timestepmax))
+    else:
+        print('Plotting timestep {0}'.format(args.timestepmin))
+
+    for s, specfilename in enumerate(specfiles):
+        linelabel = '{0} at t={1}d'.format(specfilename.split(
+            '/spec.out')[0], af.get_timestep_time(specfilename,
+                                                  args.timestepmin))
+        if args.timestepmax > args.timestepmin:
+            linelabel += ' to {0}d'.format(
+                af.get_timestep_time(specfilename, args.timestepmax))
+
+        def filterfunc(arrayfnu):
+            from scipy.signal import savgol_filter
+            return savgol_filter(arrayfnu, 5, 2)
+
+        arraylambda, array_flambda = af.get_spectrum(specfilename,
+                                                     args.timestepmin,
+                                                     args.timestepmax,
+                                                     normalised=False,
+                                                     fnufilterfunc=filterfunc)
+
+        maxyvaluethisseries = max(
+            [flambda if (xminvalue < arraylambda[i] < xmaxvalue)
+             else -99.0
+             for i, flambda in enumerate(array_flambda)])
+
+        linestyle = ['-', '--'][int(s / 7)]
+        ax.plot(arraylambda, array_flambda / maxyvaluethisseries,
+                linestyle=linestyle, lw=2.5 - (0.1 * s), label=linelabel)
 
 if __name__ == "__main__":
     main()
