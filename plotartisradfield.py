@@ -9,6 +9,10 @@ from astropy import constants as const
 
 import readartisfiles as af
 
+C = const.c.to('m/s').value
+K_B = const.k_B.to('eV/K').value
+H = const.h.to('eV s').value
+
 parser = argparse.ArgumentParser(description='Plot ARTIS radiation field.')
 parser.add_argument('-path', action='store', default='./',
                     help='Path to radfield.out file')
@@ -34,9 +38,6 @@ def main():
 
 
 def make_plot():
-    C = const.c.to('m/s').value
-    K_B = const.k_B.to('eV/K').value
-    H = const.h.to('eV s').value
     radfield_file = 'radfield.out'
     print('Loading {:}...'.format(radfield_file))
     radfielddata = pd.read_csv(radfield_file, delim_whitespace=True)
