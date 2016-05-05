@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
+import argparse
+import glob
 import os
 import sys
-import glob
-import argparse
 import numpy as np
-import scipy.signal
 import readartisfiles as af
 
 parser = argparse.ArgumentParser(
@@ -108,29 +107,22 @@ def makeplot():
         if timeindexhigh > timeindexlow:
             linelabel += ' to {0}d'.format(specdata[0, timeindexhigh])
 
-        arraynu = specdata[1:, 0]
-        arraylambda = c / specdata[1:, 0]
-
-        array_fnu = specdata[1:, timeindexlow]
-
-        for timeindex in range(timeindexlow + 1, timeindexhigh + 1):
-            array_fnu += specdata[1:, timeindex]
-
-        array_fnu = array_fnu / (timeindexhigh - timeindexlow + 1)
-
-        # best to use the filter on this list (because
-        # it hopefully has regular sampling)
-        array_fnu = scipy.signal.savgol_filter(array_fnu, 5, 2)
-
-        array_flambda = array_fnu * (arraynu ** 2) / c
+        arraylambda, array_flambda = af.get_spectrum(specfilename,
+                                                     timeindexlow,
+                                                     timeindexhigh,
+                                                     normalised=False,
+                                                     filter=True,
+                                                     filter_kwargs={
+                                                         'window_length': 5,
+                                                         'polyorder': 2})
 
         maxyvaluethisseries = max(
-            [flambda if (xminvalue < 1e10 * arraylambda[i] < xmaxvalue)
+            [flambda if (xminvalue < arraylambda[i] < xmaxvalue)
              else -99.0
              for i, flambda in enumerate(array_flambda)])
 
         linestyle = ['-', '--'][int(s / 7)]
-        ax.plot(1e10 * arraylambda, array_flambda / maxyvaluethisseries,
+        ax.plot(arraylambda, array_flambda / maxyvaluethisseries,
                 linestyle=linestyle, lw=2.5 - (0.1 * s), label=linelabel)
 
     ax.set_xlim(xmin=xminvalue, xmax=xmaxvalue)

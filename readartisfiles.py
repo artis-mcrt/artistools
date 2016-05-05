@@ -84,15 +84,11 @@ def getinitialabundances1d(filename):
     return abundancedata
 
 
-def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False):
+def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
+                 filter=False, filter_kwargs={}):
     specdata = np.loadtxt(specfilename)
     # specdata = pd.read_csv(specfiles[s], delim_whitespace=True)  #maybe
     # switch to Pandas at some point
-
-    linelabel = '{0} at t={1}d'.format(specfilename.split(
-        '/spec.out')[0], specdata[0, timesteplow])
-    if timestephigh > timesteplow:
-        linelabel += ' to {0}d'.format(specdata[0, timestephigh])
 
     arraynu = specdata[1:, 0]
     arraylambda = C / specdata[1:, 0]
@@ -101,6 +97,12 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False):
 
     for timeindex in range(timesteplow + 1, timestephigh + 1):
         array_fnu += specdata[1:, timeindex]
+
+    # best to use the filter on this list (because
+    # it hopefully has regular sampling)
+    if filter:
+        import scipy.signal
+        array_fnu = scipy.signal.savgol_filter(array_fnu, **filter_kwargs)
 
     array_fnu = array_fnu / (timestephigh - timesteplow + 1)
 
