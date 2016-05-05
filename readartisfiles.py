@@ -3,7 +3,7 @@ import collections
 import math
 import os
 
-import numpy as np
+# import numpy as np
 import pandas as pd
 
 pydir = os.path.dirname(os.path.abspath(__file__))
@@ -15,8 +15,7 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII',
                   'XVIII', 'XIX', 'XX')
 
-C = 299792458  # [m / s]
-
+from astropy import constants as const
 
 def showtimesteptimes(specfilename, numberofcolumns=5):
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
@@ -91,8 +90,10 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
     """
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
 
+    c = const.c.value
+
     arraynu = specdata['0']
-    arraylambda = C / arraynu
+    arraylambda = c / arraynu
 
     array_fnu = specdata[specdata.columns[timesteplow + 1]]
 
@@ -107,7 +108,7 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
 
     array_fnu = array_fnu / (timestephigh - timesteplow + 1)
 
-    array_flambda = array_fnu * (arraynu ** 2) / C
+    array_flambda = array_fnu * (arraynu ** 2) / c
 
     if normalised:
         array_flambda /= max(array_flambda)

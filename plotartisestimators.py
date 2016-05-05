@@ -3,9 +3,10 @@ import math
 import matplotlib.pyplot as plt
 # import numpy as np
 import readartisfiles as af
+# from astropy import constants as const
 
-h = 6.62607004e-34  # m^2 kg / s
-c = 299792458  # m / s
+# h = const.h.to('J s').value
+# c = const.c.to('m/s').value
 
 selectedtimesteps = [-1]  # -1 means all time steps
 

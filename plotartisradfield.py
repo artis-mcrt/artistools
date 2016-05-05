@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 import argparse
 import math
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from astropy import constants as const
+
+
 import readartisfiles as af
-
-# import matplotlib.ticker as ticker
-
-K_B = 8.617332478e-5   # Boltzmann constant [eV / K]
-C = 299792458          # [m / s]
-H = 4.13566766225e-15  # Planck constant [eV / s]
 
 parser = argparse.ArgumentParser(description='Plot ARTIS radiation field.')
 parser.add_argument('-path', action='store', default='./',

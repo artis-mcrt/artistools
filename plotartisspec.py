@@ -32,9 +32,6 @@ args = parser.parse_args()
 xminvalue, xmaxvalue = args.xmin, args.xmax
 # xminvalue, xmaxvalue = 10000, 20000
 
-h = 6.62607004e-34  # m^2 kg / s
-c = 299792458  # m / s
-
 specfiles = glob.glob(args.specpath, recursive=True)
 
 
