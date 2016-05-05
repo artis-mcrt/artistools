@@ -86,17 +86,18 @@ def getinitialabundances1d(filename):
 
 def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
                  filter=False, filter_kwargs={}):
-    specdata = np.loadtxt(specfilename)
-    # specdata = pd.read_csv(specfiles[s], delim_whitespace=True)  #maybe
-    # switch to Pandas at some point
+    """
+        returns a tuple of (wavelgnth in Angstroms, flux over d lambda [lambda in meters])
+    """
+    specdata = pd.read_csv(specfilename, delim_whitespace=True)
 
-    arraynu = specdata[1:, 0]
-    arraylambda = C / specdata[1:, 0]
+    arraynu = specdata['0']
+    arraylambda = C / arraynu
 
-    array_fnu = specdata[1:, timesteplow + 1]
+    array_fnu = specdata[specdata.columns[timesteplow + 1]]
 
-    for timeindex in range(timesteplow + 1, timestephigh + 1):
-        array_fnu += specdata[1:, timeindex + 1]
+    for timestep in range(timesteplow + 1, timestephigh + 1):
+        array_fnu += specdata[specdata.columns[timestep + 1]]
 
     # best to use the filter on this list (because
     # it hopefully has regular sampling)
