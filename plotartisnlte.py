@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import matplotlib.pyplot as plt
 # import matplotlib.ticker as ticker
 # import numpy as np
@@ -7,31 +8,46 @@ import readartisfiles as af
 h = 6.62607004e-34  # m^2 kg / s
 c = 299792458  # m / s
 
-selectedtimestep = 22  # -1
+parser = argparse.ArgumentParser(
+    description='Plot ARTIS non-LTE corrections.')
+parser.add_argument('-in', action='store', dest='nltefile',
+                    default='nlte_0000.out',
+                    help='Path to nlte_*.out file.')
+parser.add_argument('-listtimesteps', action='store_true', default=False,
+                    help='Show the times at each timestep')
+parser.add_argument('-timestep', type=int, default=22,
+                    help='Plotted timestep (-1 for last timestep)')
+parser.add_argument('-o', action='store', dest='outputfile',
+                    default='plotnlte.pdf',
+                    help='path/filename for PDF file')
+args = parser.parse_args()
 
 
 def main():
-    timesteptimes = []
-    with open('light_curve.out', 'r') as lcfile:
-        for line in lcfile:
-            timesteptimes.append(line.split()[0])
-    timesteptimes = timesteptimes[:len(timesteptimes) // 2]
+    if args.listtimesteps:
+        af.showtimesteptimes('spec.out')
+    else:
+        make_plot()
 
-    elementlist = af.getartiselementlist('compositiondata.txt')
+
+def make_plot():
+    elementlist = af.get_elementlist('compositiondata.txt')
     nions = elementlist[0].nions - 1
 
     list_ltepop = [[] for _ in range(nions)]
     list_nltepop = [[] for _ in range(nions)]
     list_levels = [[] for _ in range(nions)]
     skip_block = False
-    with open('nlte_0000.out', 'r') as nltefile:
+    selected_timestep = args.timestep
+    with open(args.nltefile, 'r') as nltefile:
         currenttimestep = -1
         for line in nltefile:
             row = line.split()
 
             if row and row[0] == 'timestep':
                 currenttimestep = int(row[1])
-                if selectedtimestep in [-1, currenttimestep]:
+                if args.timestep in [-1, currenttimestep]:
+                    selected_timestep = currenttimestep
                     # reset the lists, since they apply to a previous
                     # timestep
                     list_ltepop = [[] for _ in range(nions)]
@@ -67,7 +83,8 @@ def main():
         #         label='NLTE/LTE', linestyle='None', marker='x')
         # ax.set_ylabel(r'')
         plotlabel = "Fe {0}".format(af.roman_numerals[ion + 1])
-        plotlabel += ' at t={0}d'.format(timesteptimes[selectedtimestep])
+        plotlabel += ' at t={0}d'.format(
+            af.get_timestep_time('spec.out', selected_timestep))
         ax.annotate(plotlabel, xy=(0.5, 0.96), xycoords='axes fraction',
                     horizontalalignment='center', verticalalignment='top',
                     fontsize=12)
@@ -81,8 +98,9 @@ def main():
     axes[-1].set_xlabel(r'Level number')
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
 
-    fig.savefig('plotnlte.pdf', format='pdf')
+    fig.savefig(args.outputfile, format='pdf')
     plt.close()
+
 
 if __name__ == "__main__":
     main()

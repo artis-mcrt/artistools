@@ -35,7 +35,7 @@ def showtimesteptimes(specfilename, numberofcolumns=5):
         print(strline)
 
 
-def getartiselementlist(filename):
+def get_elementlist(filename):
     elementtuple = collections.namedtuple(
         'elementtuple', 'Z,nions,lowermost_ionstage,uppermost_ionstage,nlevelsmax_readin,abundance,mass,startindex')
 
@@ -45,7 +45,7 @@ def getartiselementlist(filename):
         fcompdata.readline()  # T_preset
         fcompdata.readline()  # homogeneous_abundances
         startindex = 0
-        for _ in nelements:
+        for _ in range(nelements):
             line = fcompdata.readline()
             linesplit = line.split()
             elementlist.append(elementtuple._make(

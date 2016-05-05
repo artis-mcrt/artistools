@@ -74,7 +74,7 @@ def draw_plot(xvalues, yvalues, radfielddata):
                            tight_layout={
                                "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    binedges = [C / radfielddata['nu_lower'].iloc[0] * 1e10] + \
+    binedges = [C / radfielddata['nu_lower'][0] * 1e10] + \
         list(C / radfielddata[:]['nu_upper'] * 1e10)
     ax.vlines(binedges, ymin=0.0, ymax=max(yvalues), linewidth=0.2,
               color='0.5', label='')
