@@ -3,7 +3,9 @@ import argparse
 import glob
 import os
 import sys
-import numpy as np
+
+import pandas as pd
+
 import readartisfiles as af
 
 parser = argparse.ArgumentParser(
@@ -69,15 +71,17 @@ def makeplot():
                       for fn, c in zip(args.obsspecfiles, colorlist)]
         for (filename, serieslabel, linecolor) in obsspectra:
             obsfile = os.path.join(scriptdir, 'spectra', filename)
-            obsdata = np.loadtxt(obsfile)
-            if len(obsdata[:, 1]) > 5000:
+            obsdata = pd.read_csv(obsfile, delim_whitespace=True, header=None)
+
+            if len(obsdata) > 5000:
                 # obsdata = scipy.signal.resample(obsdata, 10000)
                 obsdata = obsdata[::3]
-            obsdata = obsdata[(obsdata[:, 0] > xminvalue) &
-                              (obsdata[:, 0] < xmaxvalue)]
+
+            obsdata = obsdata[(obsdata[:][0] > xminvalue) &
+                              (obsdata[:][0] < xmaxvalue)]
             print("'{0}' has {1} points".format(serieslabel, len(obsdata)))
-            obsxvalues = obsdata[:, 0]
-            obsyvalues = obsdata[:, 1] * (1.0 / max(obsdata[:, 1]))
+            obsxvalues = obsdata[0]
+            obsyvalues = obsdata[1]
 
             # obsyvalues = scipy.signal.savgol_filter(obsyvalues, 5, 3)
             ax.plot(obsxvalues, obsyvalues / max(obsyvalues), lw=1.5,
@@ -99,14 +103,14 @@ def makeplot():
             linelabel += ' to {0}d'.format(af.get_timestep_time(specfilename,
                                                                 args.timestepmax))
 
+        from scipy.signal import savgol_filter
+        filterfunc = lambda x: savgol_filter(x, 5, 2)
+
         arraylambda, array_flambda = af.get_spectrum(specfilename,
                                                      args.timestepmin,
                                                      args.timestepmax,
                                                      normalised=False,
-                                                     filter=True,
-                                                     filter_kwargs={
-                                                         'window_length': 5,
-                                                         'polyorder': 2})
+                                                     fnufilterfunc=filterfunc)
 
         maxyvaluethisseries = max(
             [flambda if (xminvalue < arraylambda[i] < xmaxvalue)

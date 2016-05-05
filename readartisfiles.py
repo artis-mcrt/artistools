@@ -84,7 +84,7 @@ def getinitialabundances1d(filename):
 
 
 def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
-                 filter=False, filter_kwargs={}):
+                 fnufilterfunc=None):
     """
         returns a tuple of (wavelgnth in Angstroms, flux over d lambda [lambda in meters])
     """
@@ -100,11 +100,10 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
     for timestep in range(timesteplow + 1, timestephigh + 1):
         array_fnu += specdata[specdata.columns[timestep + 1]]
 
-    # best to use the filter on this list (because
-    # it hopefully has regular sampling)
-    if filter:
-        import scipy.signal
-        array_fnu = scipy.signal.savgol_filter(array_fnu, **filter_kwargs)
+    # best to use the filter on this list because it
+    # has regular sampling
+    if fnufilterfunc:
+        array_fnu = fnufilterfunc(array_fnu)
 
     array_fnu = array_fnu / (timestephigh - timesteplow + 1)
 
