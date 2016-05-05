@@ -93,10 +93,10 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
     arraynu = specdata[1:, 0]
     arraylambda = C / specdata[1:, 0]
 
-    array_fnu = specdata[1:, timesteplow]
+    array_fnu = specdata[1:, timesteplow + 1]
 
     for timeindex in range(timesteplow + 1, timestephigh + 1):
-        array_fnu += specdata[1:, timeindex]
+        array_fnu += specdata[1:, timeindex + 1]
 
     # best to use the filter on this list (because
     # it hopefully has regular sampling)
@@ -109,16 +109,15 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
     array_flambda = array_fnu * (arraynu ** 2) / C
 
     if normalised:
-            array_flambda /= max(array_flambda)
+        array_flambda /= max(array_flambda)
 
     return arraylambda * 1e10, array_flambda
 
-def get_timestep_time(specfilename, timestep):
-    specdata = np.loadtxt(specfilename)
-    # specdata = pd.read_csv(specfiles[s], delim_whitespace=True)  #maybe
-    # switch to Pandas at some point
 
-    return specdata[0, timestep]
+def get_timestep_time(specfilename, timestep):
+    time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
+
+    return time_columns.columns[timestep + 1]
 
 
 if __name__ == "__main__":

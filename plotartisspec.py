@@ -88,25 +88,23 @@ def makeplot():
 
     # in the spec.out file, the column index is one more than the timestep
     # (because column 0 is wavelength row headers, not flux at a timestep)
-    timeindexlow = args.timestepmin + 1
     if args.timestepmax:
-        timeindexhigh = args.timestepmax + 1
         print('Ploting timesteps {0} to {1}'.format(
             args.timestepmin, args.timestepmax))
     else:
         print('Ploting timestep {0}'.format(args.timestepmin))
-        timeindexhigh = timeindexlow
 
     for s, specfilename in enumerate(specfiles):
         linelabel = '{0} at t={1}d'.format(specfilename.split(
-            '/spec.out')[0], af.get_timestep_time(specfilename, timeindexlow))
-        if timeindexhigh > timeindexlow:
+            '/spec.out')[0], af.get_timestep_time(specfilename,
+                                                  args.timestepmin))
+        if args.timestepmax > args.timestepmin:
             linelabel += ' to {0}d'.format(af.get_timestep_time(specfilename,
-                                                                timeindexhigh))
+                                                                args.timestepmax))
 
         arraylambda, array_flambda = af.get_spectrum(specfilename,
-                                                     timeindexlow,
-                                                     timeindexhigh,
+                                                     args.timestepmin,
+                                                     args.timestepmax,
                                                      normalised=False,
                                                      filter=True,
                                                      filter_kwargs={
