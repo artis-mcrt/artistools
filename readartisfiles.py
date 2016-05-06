@@ -8,8 +8,8 @@ from astropy import constants as const
 
 pydir = os.path.dirname(os.path.abspath(__file__))
 
-elsymbols = ['n'] + [line.split(',')[1]
-                     for line in open(os.path.join(pydir, 'elements.csv'))]
+elsymbols = ['n'] + list(pd.read_csv(os.path.join(pydir, 'elements.csv'),
+                                     header=None)[1].values)
 
 roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII',
@@ -81,6 +81,9 @@ def getmodeldata(filename):
 
 
 def getinitialabundances1d(filename):
+    """
+        Returns a list of mass fractions
+    """
     abundancedata = []
     abundancedata.append([])
     with open(filename, 'r') as fabund:
@@ -94,7 +97,7 @@ def getinitialabundances1d(filename):
 def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
                  fnufilterfunc=None):
     """
-        returns a tuple of (wavelgnth in Angstroms, flux over d lambda [lambda in meters])
+        Return a tuple of (wavelength in Angstroms, flux over d lambda [lambda in meters])
     """
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
 
@@ -123,10 +126,20 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
     return arraylambda * 1e10, array_flambda
 
 
-def get_timestep_time(specfilename, timestep):
+def get_timestep_times(specfilename):
+    """
+        Return a list of the time in days of each timestep using a spec.out file
+    """
     time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
 
-    return time_columns.columns[timestep + 1]
+    return time_columns.columns[1:]
+
+
+def get_timestep_time(specfilename, timestep):
+    """
+        Return the time in days of a timestep number using a spec.out file
+    """
+    return get_timestep_times(specfilename)[timestep]
 
 
 if __name__ == "__main__":
