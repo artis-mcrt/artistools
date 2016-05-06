@@ -3,8 +3,8 @@ import collections
 import math
 import os
 
-# import numpy as np
 import pandas as pd
+from astropy import constants as const
 
 pydir = os.path.dirname(os.path.abspath(__file__))
 
@@ -15,9 +15,12 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII',
                   'XVIII', 'XIX', 'XX')
 
-from astropy import constants as const
+
 
 def showtimesteptimes(specfilename, numberofcolumns=5):
+    """
+        Print a table showing the timeteps and their corresponding times
+    """
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     print('Time steps and times in days:\n')
 
@@ -36,6 +39,9 @@ def showtimesteptimes(specfilename, numberofcolumns=5):
 
 
 def get_elementlist(filename):
+    """
+        Return a list containing named tuples for all included ions
+    """
     elementtuple = collections.namedtuple(
         'elementtuple', 'Z,nions,lowermost_ionstage,uppermost_ionstage,nlevelsmax_readin,abundance,mass,startindex')
 
@@ -57,6 +63,9 @@ def get_elementlist(filename):
 
 
 def getmodeldata(filename):
+    """
+        Return a list containing named tuples for all model grid cells
+    """
     modeldata = []
     gridcelltuple = collections.namedtuple(
         'gridcell', 'cellid velocity logrho ffe fni fco f52fe f48cr')
