@@ -55,33 +55,23 @@ def make_plot():
 
     print('Timestep {0:d}'.format(selected_timestep))
 
-    xvalues = []
-    yvalues = []
-    for _, row in radfielddata.iterrows():
-        xvalues.append(1e10 * C / row['nu_lower'])
-        xvalues.append(1e10 * C / row['nu_upper'])
-        dlambda = (C / row['nu_lower']) - \
-            (C / row['nu_upper'])
-        yvalues.append(row['J'] / dlambda)
-        yvalues.append(row['J'] / dlambda)
-
     print('Plotting...')
-    draw_plot(xvalues, yvalues, radfielddata)
+    draw_plot(radfielddata)
 
 
-def draw_plot(xvalues, yvalues, radfielddata):
+def draw_plot(radfielddata):
     fig, ax = plt.subplots(1, 1, sharex=True, figsize=(8, 4),
                            tight_layout={
                                "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     binedges = [C / radfielddata['nu_lower'][0] * 1e10] + \
         list(C / radfielddata[:]['nu_upper'] * 1e10)
-    ax.vlines(binedges, ymin=0.0, ymax=max(yvalues), linewidth=0.2,
+
+    ymax = plot_field_estimators(ax, radfielddata)
+    ax.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.2,
               color='0.5', label='')
-    ax.plot(xvalues, yvalues, linewidth=1, label='Field estimators',
-            color='blue')
     plot_fitted_field(ax, radfielddata)
-    plot_specout(ax, max(yvalues))
+    plot_specout(ax, ymax)
 
     ax.set_xlabel(r'Wavelength ($\AA$)')
     ax.set_ylabel(r'J$_\lambda$ [erg/cm$^2$/m]')
@@ -99,15 +89,19 @@ def draw_plot(xvalues, yvalues, radfielddata):
     plt.close()
 
 
-def plot_specout(ax, peak_value):
-    specoutxvalues, specoutyvalues = af.get_spectrum(
-        '../example_run_testing/spec.out',
-        10, 10, normalised=True)
-    # specoutxvalues *= 1 + (8000/299792)
-    specoutyvalues *= peak_value
-
-    ax.plot(specoutxvalues, specoutyvalues, linewidth=1, color='black',
-            label='Emergent spectrum')
+def plot_field_estimators(ax, radfielddata):
+    xvalues = []
+    yvalues = []
+    for _, row in radfielddata.iterrows():
+        xvalues.append(1e10 * C / row['nu_lower'])
+        xvalues.append(1e10 * C / row['nu_upper'])
+        dlambda = (C / row['nu_lower']) - \
+            (C / row['nu_upper'])
+        yvalues.append(row['J'] / dlambda)
+        yvalues.append(row['J'] / dlambda)
+    ax.plot(xvalues, yvalues, linewidth=1, label='Field estimators',
+            color='blue')
+    return max(yvalues)
 
 
 def plot_fitted_field(ax, radfielddata):
@@ -124,6 +118,17 @@ def plot_fitted_field(ax, radfielddata):
             fittedyvalues.append(j_lambda)
     ax.plot(fittedxvalues, fittedyvalues, linewidth=1, color='green',
             label='Fitted field')
+
+
+def plot_specout(ax, peak_value):
+    specoutxvalues, specoutyvalues = af.get_spectrum(
+        '../example_run_testing/spec.out',
+        10, 10, normalised=True)
+    # specoutxvalues *= 1 + (8000/299792)
+    specoutyvalues *= peak_value
+
+    ax.plot(specoutxvalues, specoutyvalues, linewidth=1, color='black',
+            label='Emergent spectrum')
 
 
 if __name__ == "__main__":

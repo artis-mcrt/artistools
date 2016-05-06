@@ -16,7 +16,6 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'XVIII', 'XIX', 'XX')
 
 
-
 def showtimesteptimes(specfilename, numberofcolumns=5):
     """
         Print a table showing the timeteps and their corresponding times
