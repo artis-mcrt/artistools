@@ -119,8 +119,6 @@ def plot_obs_spectra(ax):
 
 
 def plot_artis_spectra(ax):
-    # in the spec.out file, the column index is one more than the timestep
-    # (because column 0 is wavelength row headers, not flux at a timestep)
     if args.timestepmax:
         print('Plotting timesteps {0} to {1}'.format(
             args.timestepmin, args.timestepmax))

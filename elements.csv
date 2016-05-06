@@ -1,3 +1,4 @@
+Z,symbol,name
 1,H,Hydrogen
 2,He,Helium
 3,Li,Lithium
@@ -56,7 +57,7 @@
 56,Ba,Barium
 57,La,Lanthanum
 58,Ce,Cerium
-59,Pr,Praseodymium -1   
+59,Pr,Praseodymium -1
 60,Nd,Neodymium
 61,Pm,Promethium
 62,Sm,Samarium
