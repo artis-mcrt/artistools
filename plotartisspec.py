@@ -109,6 +109,7 @@ def plot_obs_spectra(ax):
             obsdata = obsdata[(obsdata[:][0] > xminvalue) &
                               (obsdata[:][0] < xmaxvalue)]
             print("'{0}' has {1} points".format(serieslabel, len(obsdata)))
+
             obsxvalues = obsdata[0]
             obsyvalues = obsdata[1]
 
