@@ -8,9 +8,11 @@ import argparse
 import readartisfiles as af
 
 parser = argparse.ArgumentParser(
-    description='Plot artis model spectra by finding spec.out files in the current directory or subdirectories.')
+    description='Plot artis model spectra by finding spec.out files in the '
+                'current directory or subdirectories.')
 parser.add_argument('-specpath', action='store', default='**/spec.out',
-                    help='Path to spec.out file (may include wildcards such as * and **)')
+                    help='Path to spec.out file (may include wildcards '
+                    'such as * and **)')
 parser.add_argument('-listtimesteps', action='store_true', default=False,
                     help='Show the times at each timestep')
 parser.add_argument('-timestepmin', type=int, default=70,
