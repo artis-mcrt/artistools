@@ -91,7 +91,8 @@ def main():
     make_plot(xlist, ylist, args.pdfoutputfile)
 
 
-def convert_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid):
+def convert_abundance_file(inputfolder, outputfolder,
+                           dict3dcellidto1dcellid):
     with open(os.path.join(
         inputfolder, 'abundances.txt'), 'r') as fabundancesin, open(
             os.path.join(outputfolder, 'abundances.txt'),
@@ -121,12 +122,12 @@ def convert_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid):
 
 
 def make_plot(xlist, ylist, pdfoutputfile):
-    fig, ax = plt.subplots(1, 1, sharey=True, figsize=(6, 4),
-                           tight_layout={
-                               "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
-    ax.set_xlabel(r'v (km/s)')
-    ax.set_ylabel(r'Density (g/cm$^3$)')
-    ax.plot(xlist, ylist, lw=1.5)
+    fig, axis = plt.subplots(1, 1, sharey=True, figsize=(6, 4),
+                             tight_layout={
+                                 "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    axis.set_xlabel(r'v (km/s)')
+    axis.set_ylabel(r'Density (g/cm$^3$)')
+    axis.plot(xlist, ylist, lw=1.5)
     fig.savefig(pdfoutputfile, format='pdf')
     plt.close()
 
