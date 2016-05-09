@@ -12,6 +12,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument('-inputfolder', action='store', default='3dmodel',
                     help='Path to folder with 3D files')
 parser.add_argument('-axis', action='store', dest='chosenaxis', default='x',
+                    choices=['x', 'y', 'z'],
                     help='Slice axis (x, y, or z)')
 parser.add_argument('-outputfolder', action='store', default='1dslice',
                     help='Path to folder in which to store 1D output files')
