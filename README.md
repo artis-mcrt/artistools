@@ -2,7 +2,7 @@
 
 A collection of plotting, analysis, and file format conversion tools for the ARTIS radiative transfer code.
 
-ARTIS (Sim et al. 2007; Kromer & Sim 2009) is a 3D radiative transfer code for Type Ia supernovae that uses the Monte Carlo method with indivisible energy packets (Lucy 2002). The simulation code is not publicly available.
+ARTIS (Sim et al. 2007; Kromer & Sim 2009) is a 3D radiative transfer code for Type Ia supernovae using the Monte Carlo method with indivisible energy packets (Lucy 2002). The simulation code is not publicly available.
 
 (This is also a bit of a test ground for GitHub integrations)
 
