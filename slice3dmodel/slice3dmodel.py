@@ -7,6 +7,7 @@ import sys
 import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser(
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     description='Covert abundances.txt and model.txt from 3D to a '
                 'one dimensional slice.')
 parser.add_argument('-inputfolder', action='store', default='3dmodel',
@@ -18,7 +19,7 @@ parser.add_argument('-outputfolder', action='store', default='1dslice',
                     help='Path to folder in which to store 1D output files')
 parser.add_argument('-opdf', action='store', dest='pdfoutputfile',
                     default='plotmodel.pdf',
-                    help='path/filename for PDF file')
+                    help='Path/filename for PDF plot.')
 args = parser.parse_args()
 
 
