@@ -3,7 +3,6 @@ import collections
 import math
 import os
 
-import numpy as np
 import pandas as pd
 from astropy import constants as const
 
@@ -40,7 +39,8 @@ def showtimesteptimes(specfilename, numberofcolumns=5):
 
 def get_composition_data(filename):
     """
-        Return a list containing named tuples for all included ions
+        Return a pandas DataFrame containing details of included
+        elements and ions
     """
 
     columns = ('Z,nions,lowermost_ionstage,uppermost_ionstage,nlevelsmax_readin,'
@@ -48,7 +48,6 @@ def get_composition_data(filename):
 
     compdf = pd.DataFrame()
 
-    elementlist = []
     with open(filename, 'r') as fcompdata:
         nelements = int(fcompdata.readline())
         fcompdata.readline()  # T_preset
