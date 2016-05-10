@@ -121,13 +121,12 @@ def plot_fitted_field(ax, radfielddata):
 
 
 def plot_specout(ax, peak_value):
-    specoutxvalues, specoutyvalues = af.get_spectrum(
-        '../example_run_testing/spec.out',
-        10, 10, normalised=True)
-    # specoutxvalues *= 1 + (8000/299792)
-    specoutyvalues *= peak_value
+    spectrum = af.get_spectrum('../example_run_testing/spec.out',
+                               10, 10, normalised=True)
 
-    ax.plot(specoutxvalues, specoutyvalues, linewidth=1, color='black',
+    ax.plot(spectrum['lambda_angstroms'],
+            spectrum['f_lambda'] * peak_value,
+            linewidth=1, color='black',
             label='Emergent spectrum')
 
 

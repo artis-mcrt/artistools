@@ -94,7 +94,7 @@ def plot_obs_spectra(ax):
                 'SN2013aa +360d (Maguire et al. in prep)',
             '2003du_20031213_3219_8822_00.txt':
                 'SN2003du +221.3d (Stanishev et al. 2007)'
-            }
+        }
         colorlist = ['black', '0.4']
         obsspectra = [(fn, obsspectralabels[fn], c)
                       for fn, c in zip(args.obsspecfiles, colorlist)]
@@ -137,19 +137,20 @@ def plot_artis_spectra(ax):
             from scipy.signal import savgol_filter
             return savgol_filter(arrayfnu, 5, 2)
 
-        arraylambda, array_flambda = af.get_spectrum(specfilename,
-                                                     args.timestepmin,
-                                                     args.timestepmax,
-                                                     normalised=False,
-                                                     fnufilterfunc=filterfunc)
+        spectrum = af.get_spectrum(specfilename,
+                                   args.timestepmin,
+                                   args.timestepmax,
+                                   normalised=False,
+                                   fnufilterfunc=filterfunc)
 
-        maxyvaluethisseries = max(
-            [flambda if (xminvalue < arraylambda[i] < xmaxvalue)
-             else -99.0
-             for i, flambda in enumerate(array_flambda)])
+        maxyvaluethisseries = max(spectrum[
+            ((xminvalue < spectrum[:]['lambda_angstroms']) &
+             (spectrum[:]['lambda_angstroms'] < xmaxvalue))]['f_lambda'])
 
+        print(s, maxyvaluethisseries)
         linestyle = ['-', '--'][int(s / 7)]
-        ax.plot(arraylambda, array_flambda / maxyvaluethisseries,
+        ax.plot(spectrum['lambda_angstroms'],
+                spectrum['f_lambda'] / maxyvaluethisseries,
                 linestyle=linestyle, lw=2.5 - (0.1 * s), label=linelabel)
 
 if __name__ == "__main__":

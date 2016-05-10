@@ -42,7 +42,8 @@ def get_elementlist(filename):
         Return a list containing named tuples for all included ions
     """
     elementtuple = collections.namedtuple(
-        'elementtuple', 'Z,nions,lowermost_ionstage,uppermost_ionstage,nlevelsmax_readin,abundance,mass,startindex')
+        'elementtuple',
+        'Z,nions,lowermost_ionstage,uppermost_ionstage,nlevelsmax_readin,abundance,mass,startindex')
 
     elementlist = []
     with open(filename, 'r') as fcompdata:
@@ -97,7 +98,7 @@ def getinitialabundances1d(filename):
 def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
                  fnufilterfunc=None):
     """
-        Return a tuple of (wavelength in Angstroms, flux over d lambda [lambda in meters])
+        Return a pandas DataFrame containing an ARTIS emergent spectrum
     """
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
 
@@ -123,7 +124,12 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
     if normalised:
         array_flambda /= max(array_flambda)
 
-    return arraylambda * 1e10, array_flambda
+    df = pd.DataFrame({'lambda_angstroms': arraylambda * 1e10,
+                       'f_lambda': array_flambda,
+                       'f_nu': array_fnu})
+
+    # return arraylambda * 1e10, array_flambda
+    return df
 
 
 def get_timestep_times(specfilename):
