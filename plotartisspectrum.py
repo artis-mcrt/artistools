@@ -8,64 +8,61 @@ import pandas as pd
 
 import readartisfiles as af
 
-parser = argparse.ArgumentParser(
-    description='Plot artis model spectra by finding spec.out files '
-                'in the current directory or subdirectories.')
-parser.add_argument('-specpath', action='store', default='**/spec.out',
-                    help='Path to spec.out file (may include wildcards '
-                         'such as * and **)')
-parser.add_argument('-listtimesteps', action='store_true', default=False,
-                    help='Show the times at each timestep')
-parser.add_argument('-timestepmin', type=int, default=70,
-                    help='First or only included timestep')
-parser.add_argument('-timestepmax', type=int, default=80,
-                    help='Last included timestep')
-parser.add_argument('-xmin', type=int, default=3500,
-                    help='Plot range: minimum wavelength')
-parser.add_argument('-xmax', type=int, default=7000,
-                    help='Plot range: maximum wavelength')
-parser.add_argument('-obsspec', action='append', dest='obsspecfiles',
-                    help='Include observational spectrum with this file name')
-parser.add_argument('-o', action='store', dest='outputfile',
-                    default='plotspec.pdf',
-                    help='path/filename for PDF file')
-args = parser.parse_args()
-
-xminvalue, xmaxvalue = args.xmin, args.xmax
-# xminvalue, xmaxvalue = 10000, 20000
-
-specfiles = glob.glob(args.specpath, recursive=True)
-
 
 def main():
+    parser = argparse.ArgumentParser(
+        description='Plot artis model spectra by finding spec.out files '
+                    'in the current directory or subdirectories.')
+    parser.add_argument('-specpath', action='store', default='**/spec.out',
+                        help='Path to spec.out file (may include wildcards '
+                             'such as * and **)')
+    parser.add_argument('-listtimesteps', action='store_true', default=False,
+                        help='Show the times at each timestep')
+    parser.add_argument('-timestepmin', type=int, default=70,
+                        help='First or only included timestep')
+    parser.add_argument('-timestepmax', type=int, default=80,
+                        help='Last included timestep')
+    parser.add_argument('-xmin', type=int, default=3500,
+                        help='Plot range: minimum wavelength')
+    parser.add_argument('-xmax', type=int, default=7000,
+                        help='Plot range: maximum wavelength')
+    parser.add_argument('-obsspec', action='append', dest='obsspecfiles',
+                        help='Include observational spectrum with this'
+                             ' file name')
+    parser.add_argument('-o', action='store', dest='outputfile',
+                        default='plotspec.pdf',
+                        help='path/filename for PDF file')
+    args = parser.parse_args()
+
+    specfiles = glob.glob(args.specpath, recursive=True)
     if not specfiles:
         print('no spec.out files found')
         sys.exit()
     if args.listtimesteps:
         af.showtimesteptimes(specfiles[0])
     else:
-        make_plot()
+        make_plot(args, specfiles)
 
 
-def make_plot():
+def make_plot(args, specfiles):
     import matplotlib.pyplot as plt
     # import matplotlib.ticker as ticker
-    fig, ax = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
+    fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
         "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    plot_obs_spectra(ax)
-    plot_artis_spectra(ax)
+    plot_obs_spectra(axis, args)
+    plot_artis_spectra(axis, args, specfiles)
 
-    ax.set_xlim(xmin=xminvalue, xmax=xmaxvalue)
+    axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
     #        ax.set_xlim(xmin=12000,xmax=19000)
     # ax.set_ylim(ymin=-0.1*maxyvalueglbal,ymax=maxyvalueglobal*1.1)
-    ax.set_ylim(ymin=-0.1, ymax=1.1)
+    axis.set_ylim(ymin=-0.1, ymax=1.1)
 
-    ax.legend(loc='best', handlelength=2, frameon=False,
-              numpoints=1, prop={'size': 11})
-    ax.set_xlabel(r'Wavelength ($\AA$)')
+    axis.legend(loc='best', handlelength=2, frameon=False,
+                numpoints=1, prop={'size': 11})
+    axis.set_xlabel(r'Wavelength ($\AA$)')
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
-    ax.set_ylabel(r'F$_\lambda$')
+    axis.set_ylabel(r'F$_\lambda$')
 
     # filenameout = 'plotartisspec_{:}_to_{:}.pdf'.format(*timesteparray)
     filenameout = args.outputfile
@@ -84,7 +81,7 @@ def make_plot():
     #             weight='bold', fontsize=15)
 
 
-def plot_obs_spectra(ax):
+def plot_obs_spectra(ax,args):
     if args.obsspecfiles is not None:
         scriptdir = os.path.dirname(os.path.abspath(__file__))
         obsspectralabels = {
@@ -106,8 +103,8 @@ def plot_obs_spectra(ax):
                 # obsdata = scipy.signal.resample(obsdata, 10000)
                 obsdata = obsdata[::3]
 
-            obsdata = obsdata[(obsdata[:][0] > xminvalue) &
-                              (obsdata[:][0] < xmaxvalue)]
+            obsdata = obsdata[(obsdata[:][0] > args.xmin) &
+                              (obsdata[:][0] < args.xmax)]
             print("'{0}' has {1} points".format(serieslabel, len(obsdata)))
 
             obsxvalues = obsdata[0]
@@ -118,7 +115,7 @@ def plot_obs_spectra(ax):
                     label=serieslabel, zorder=-1, color=linecolor)
 
 
-def plot_artis_spectra(ax):
+def plot_artis_spectra(axis, args, specfiles):
     if args.timestepmax:
         print('Plotting timesteps {0} to {1}'.format(
             args.timestepmin, args.timestepmax))
@@ -144,13 +141,14 @@ def plot_artis_spectra(ax):
                                    fnufilterfunc=filterfunc)
 
         maxyvaluethisseries = max(spectrum[
-            ((xminvalue < spectrum[:]['lambda_angstroms']) &
-             (spectrum[:]['lambda_angstroms'] < xmaxvalue))]['f_lambda'])
+            ((args.xmin < spectrum[:]['lambda_angstroms']) &
+             (spectrum[:]['lambda_angstroms'] < args.xmax))]['f_lambda'])
 
         linestyle = ['-', '--'][int(s / 7)]
-        ax.plot(spectrum['lambda_angstroms'],
-                spectrum['f_lambda'] / maxyvaluethisseries,
-                linestyle=linestyle, lw=2.5 - (0.1 * s), label=linelabel)
+        spectrum['f_lambda_scaled'] = (spectrum['f_lambda'] /
+                                       maxyvaluethisseries)
+        spectrum.plot(x='lambda_angstroms', y='f_lambda_scaled', ax=axis,
+                      linestyle=linestyle, lw=2.5 - (0.1 * s), label=linelabel)
 
 if __name__ == "__main__":
     main()
