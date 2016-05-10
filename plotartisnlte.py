@@ -31,8 +31,8 @@ def main():
 
 
 def make_plot():
-    elementlist = af.get_elementlist('compositiondata.txt')
-    nions = elementlist[0].nions - 1
+    elementlist = af.get_composition_data('compositiondata.txt')
+    nions = int(elementlist.iloc[0]['nions']) - 1
 
     list_ltepop = [[] for _ in range(nions)]
     list_nltepop = [[] for _ in range(nions)]

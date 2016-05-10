@@ -3,6 +3,7 @@ import collections
 import math
 import os
 
+import numpy as np
 import pandas as pd
 from astropy import constants as const
 
@@ -37,13 +38,15 @@ def showtimesteptimes(specfilename, numberofcolumns=5):
         print(strline)
 
 
-def get_elementlist(filename):
+def get_composition_data(filename):
     """
         Return a list containing named tuples for all included ions
     """
-    elementtuple = collections.namedtuple(
-        'elementtuple',
-        'Z,nions,lowermost_ionstage,uppermost_ionstage,nlevelsmax_readin,abundance,mass,startindex')
+
+    columns = ('Z,nions,lowermost_ionstage,uppermost_ionstage,nlevelsmax_readin,'
+               'abundance,mass,startindex').split(',')
+
+    compdf = pd.DataFrame()
 
     elementlist = []
     with open(filename, 'r') as fcompdata:
@@ -54,12 +57,15 @@ def get_elementlist(filename):
         for _ in range(nelements):
             line = fcompdata.readline()
             linesplit = line.split()
-            elementlist.append(elementtuple._make(
-                list(map(int, linesplit[:5])) + list(map(float, linesplit[5:])) + [startindex]))
-            startindex += elementlist[-1].nions
-            print(elementlist[-1])
+            row_list = list(map(int, linesplit[:5])) + list(map(float, linesplit[5:])) + [startindex]
 
-    return elementlist
+            rowdf = pd.DataFrame([row_list], columns=columns)
+            compdf = compdf.append(rowdf, ignore_index=True)
+
+            startindex += int(rowdf['nions'])
+
+    print(compdf)
+    return compdf
 
 
 def getmodeldata(filename):
