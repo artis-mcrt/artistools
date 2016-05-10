@@ -147,7 +147,6 @@ def plot_artis_spectra(ax):
             ((xminvalue < spectrum[:]['lambda_angstroms']) &
              (spectrum[:]['lambda_angstroms'] < xmaxvalue))]['f_lambda'])
 
-        print(s, maxyvaluethisseries)
         linestyle = ['-', '--'][int(s / 7)]
         ax.plot(spectrum['lambda_angstroms'],
                 spectrum['f_lambda'] / maxyvaluethisseries,
