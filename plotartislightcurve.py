@@ -19,7 +19,7 @@ def makeplot(lcfiles):
     fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
                            "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    for n, lcfilename in enumerate(lcfiles):
+    for index, lcfilename in enumerate(lcfiles):
         print(lcfilename)
         lightcurvedata = pd.read_csv(lcfilename, delim_whitespace=True,
                                      header=None, names=['time', 'flux',
@@ -27,7 +27,7 @@ def makeplot(lcfiles):
 
         linelabel = '{0}'.format(lcfilename.split('/light_curve.out')[0])
 
-        linestyle = ['-', '--'][int(n / 7)]
+        linestyle = ['-', '--'][int(index / 7)]
 
         lightcurvedata.plot(x='time', y='flux', lw=1.5, ax=axis,
                             linestyle=linestyle, label=linelabel)

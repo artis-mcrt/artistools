@@ -107,10 +107,8 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
     """
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
 
-    c = const.c.value
-
     arraynu = specdata['0']
-    arraylambda = c / arraynu
+    arraylambda = const.c.value / arraynu
 
     array_fnu = specdata[specdata.columns[timesteplow + 1]]
 
@@ -124,17 +122,17 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
 
     array_fnu = array_fnu / (timestephigh - timesteplow + 1)
 
-    array_flambda = array_fnu * (arraynu ** 2) / c
+    dfspectrum = pd.DataFrame({'nu': arraynu,
+                               'f_nu': array_fnu})
+
+    dfspectrum['lambda_angstroms'] = const.c.value / dfspectrum['nu']  * 1e10
+    dfspectrum['f_lambda'] = dfspectrum['f_nu'] * (dfspectrum['nu'] ** 2) / const.c.value
 
     if normalised:
-        array_flambda /= max(array_flambda)
+        dfspectrum['f_nu'] /= dfspectrum['f_nu'].max()
+        dfspectrum['f_lambda'] /= dfspectrum['f_lambda'].max()
 
-    df = pd.DataFrame({'lambda_angstroms': arraylambda * 1e10,
-                       'f_lambda': array_flambda,
-                       'f_nu': array_fnu})
-
-    # return arraylambda * 1e10, array_flambda
-    return df
+    return dfspectrum
 
 
 def get_timestep_times(specfilename):

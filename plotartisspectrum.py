@@ -78,7 +78,7 @@ def make_plot(args, specfiles):
     #             weight='bold', fontsize=15)
 
 
-def plot_obs_spectra(ax, args):
+def plot_obs_spectra(axis, args):
     """
         Plot observational spectra listed in args.obsspecfiles
     """
@@ -118,7 +118,7 @@ def plot_obs_spectra(ax, args):
                 obsdata['f_lambda'], 5, 3)
 
             obsdata.plot(x='lambda_angstroms',
-                         y='f_lambda', lw=1.5, ax=ax,
+                         y='f_lambda', lw=1.5, ax=axis,
                          label=serieslabel, zorder=-1, color=linecolor)
 
 
@@ -132,7 +132,7 @@ def plot_artis_spectra(axis, args, specfiles):
     else:
         print('Plotting timestep {0}'.format(args.timestepmin))
 
-    for s, specfilename in enumerate(specfiles):
+    for index, specfilename in enumerate(specfiles):
         linelabel = '{0} at t={1}d'.format(specfilename.split(
             '/spec.out')[0], af.get_timestep_time(specfilename,
                                                   args.timestepmin))
@@ -154,12 +154,13 @@ def plot_artis_spectra(axis, args, specfiles):
             '@args.xmin < lambda_angstroms and '
             'lambda_angstroms < @args.xmax')['f_lambda'].max()
 
-        linestyle = ['-', '--'][int(s / 7)]
+        linestyle = ['-', '--'][int(index / 7)]
         spectrum['f_lambda_scaled'] = (spectrum['f_lambda'] /
                                        maxyvaluethisseries)
 
         spectrum.plot(x='lambda_angstroms', y='f_lambda_scaled', ax=axis,
-                      linestyle=linestyle, lw=2.5 - (0.1 * s), label=linelabel)
+                      linestyle=linestyle, lw=2.5 - (0.1 * index),
+                      label=linelabel)
 
 if __name__ == "__main__":
     main()
