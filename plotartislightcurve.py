@@ -23,7 +23,7 @@ def makeplot(lcfiles):
         print(lcfilename)
         lightcurvedata = pd.read_csv(lcfilename, delim_whitespace=True,
                                      header=None, names=['time', 'flux',
-                                                         'other'])
+                                                         'flux_cmf'])
 
         linelabel = '{0}'.format(lcfilename.split('/light_curve.out')[0])
 
