@@ -3,6 +3,7 @@ import argparse
 import matplotlib.pyplot as plt
 import readartisfiles as af
 
+
 def main():
     parser = argparse.ArgumentParser(
         description='Plot ARTIS non-LTE corrections.')

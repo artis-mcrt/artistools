@@ -108,7 +108,6 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
 
     arraynu = specdata['0']
-    arraylambda = const.c.value / arraynu
 
     array_fnu = specdata[specdata.columns[timesteplow + 1]]
 

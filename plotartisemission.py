@@ -4,77 +4,62 @@ import glob
 import os
 import sys
 
+import matplotlib.pyplot as plt
 import numpy as np
 import scipy.signal
 
 import readartisfiles as af
 
-parser = argparse.ArgumentParser(
-    description='Plot artis model spectra by finding spec.out files in the '
-                'current directory or subdirectories.')
-parser.add_argument('-specpath', action='store', default='**/spec.out',
-                    help='Path to spec.out file (may include wildcards '
-                    'such as * and **)')
-parser.add_argument('-listtimesteps', action='store_true', default=False,
-                    help='Show the times at each timestep')
-parser.add_argument('-timestepmin', type=int, default=70,
-                    help='First or only included timestep')
-parser.add_argument('-timestepmax', type=int, default=80,
-                    help='Last included timestep')
-parser.add_argument('-xmin', type=int, default=3500,
-                    help='Plot range: minimum wavelength')
-parser.add_argument('-xmax', type=int, default=7000,
-                    help='Plot range: maximum wavelength')
-parser.add_argument('-obsspec', action='append', dest='obsspecfiles',
-                    help='Include observational spectrum with this file name')
-parser.add_argument('-o', action='store', dest='outputfile', default='plotartisspec.pdf',
-                    help='path/filename for PDF file')
-args = parser.parse_args()
-
-xminvalue, xmaxvalue = args.xmin, args.xmax
-
-#colorlist = ['black',(0.0,0.5,0.7),(0.35,0.7,1.0),(0.9,0.2,0.0),
+# colorlist = ['black',(0.0,0.5,0.7),(0.35,0.7,1.0),(0.9,0.2,0.0),
 #             (0.9,0.6,0.0),(0.0,0.6,0.5),(0.8,0.5,1.0),(0.95,0.9,0.25)]
 colorlist = [(0.0, 0.5, 0.7), (0.9, 0.2, 0.0), (0.9, 0.6, 0.0),
              (0.0, 0.6, 0.5), (0.8, 0.5, 1.0), (0.95, 0.9, 0.25)]
-
-elementlist = []
 
 numberofcolumns = 5
 h = 6.62607004e-34  # m^2 kg / s
 c = 299792458  # m / s
 
-specfiles = glob.glob(args.specpath, recursive=True)
-
 
 def main():
+    parser = argparse.ArgumentParser(
+        description='Plot artis model spectra by finding spec.out files in '
+                    'the current directory or subdirectories.')
+    parser.add_argument('-specpath', action='store', default='**/spec.out',
+                        help='Path to spec.out file (may include wildcards '
+                        'such as * and **)')
+    parser.add_argument('-listtimesteps', action='store_true', default=False,
+                        help='Show the times at each timestep')
+    parser.add_argument('-timestepmin', type=int, default=70,
+                        help='First or only included timestep')
+    parser.add_argument('-timestepmax', type=int, default=80,
+                        help='Last included timestep')
+    parser.add_argument('-xmin', type=int, default=3500,
+                        help='Plot range: minimum wavelength')
+    parser.add_argument('-xmax', type=int, default=7000,
+                        help='Plot range: maximum wavelength')
+    parser.add_argument('-obsspec', action='append', dest='obsspecfiles',
+                        help='Include observational spectrum with this '
+                        'file name')
+    parser.add_argument('-o', action='store', dest='outputfile',
+                        default='plotartisemission.pdf',
+                        help='path/filename for PDF file')
+    args = parser.parse_args()
+
+    specfiles = glob.glob(args.specpath, recursive=True)
+
     if not specfiles:
         print('no spec.out files found')
         sys.exit()
     if args.listtimesteps:
         af.showtimesteptimes(specfiles[0])
     else:
-        makeplot()
+        makeplot(specfiles, args)
 
 
-def makeplot():
-    import matplotlib
-    matplotlib.use('PDF')
-    import matplotlib.pyplot as plt
-
-    import collections
-    elementtuple = collections.namedtuple(
-        'elementtuple', 'Z,nions,lowermost_ionstage,uppermost_ionstage,nlevelsmax_readin,abundance,mass')
-    with open(specfiles[0].replace('spec.out', 'compositiondata.txt'), 'r') as fcompdata:
-        nelements = int(fcompdata.readline())
-        fcompdata.readline()  # T_preset
-        fcompdata.readline()  # homogeneous_abundances
-        for element in range(nelements):
-            line = fcompdata.readline()
-            linesplit = line.split()
-            elementlist.append(elementtuple._make(
-                list(map(int, linesplit[:5])) + list(map(float, linesplit[5:]))))
-            print(elementlist[-1])
+def makeplot(specfiles, args):
+    elementlist = af.get_composition_data(
+        specfiles[0].replace('spec.out', 'compositiondata.txt'))
+    nelements = len(elementlist)
 
     print('nelements {0}'.format(nelements))
     maxion = 5  # must match sn3d.h value
@@ -85,9 +70,12 @@ def makeplot():
     if args.obsspecfiles is not None:
         scriptdir = os.path.dirname(os.path.abspath(__file__))
         obsspectralabels = {
-            '2010lp_20110928_fors2.txt': 'SN2010lp +264d (Taubenberger et al. 2013)',
-            'dop_dered_SN2013aa_20140208_fc_final.txt': 'SN2013aa +360d (Maguire et al. in prep)',
-            '2003du_20031213_3219_8822_00.txt': 'SN2003du +221.3d (Stanishev et al. 2007)'
+            '2010lp_20110928_fors2.txt':
+                'SN2010lp +264d (Taubenberger et al. 2013)',
+            'dop_dered_SN2013aa_20140208_fc_final.txt':
+                'SN2013aa +360d (Maguire et al. in prep)',
+            '2003du_20031213_3219_8822_00.txt':
+                'SN2003du +221.3d (Stanishev et al. 2007)'
         }
         obscolorlist = ['black', '0.4']
         obsspectra = [(fn, obsspectralabels[fn], c)
@@ -98,8 +86,8 @@ def makeplot():
             if len(obsdata[:, 1]) > 5000:
                 # obsdata = scipy.signal.resample(obsdata, 10000)
                 obsdata = obsdata[::3]
-            obsdata = obsdata[(obsdata[:, 0] > xminvalue) &
-                              (obsdata[:, 0] < xmaxvalue)]
+            obsdata = obsdata[(obsdata[:, 0] > args.xmin) &
+                              (obsdata[:, 0] < args.xmax)]
             print("'{0}' has {1} points".format(serieslabel, len(obsdata)))
             obsxvalues = obsdata[:, 0]
             obsyvalues = obsdata[:, 1] * (1.0 / max(obsdata[:, 1]))
@@ -157,27 +145,33 @@ def makeplot():
 
                 array_flambda = array_fnu * (arraynu ** 2) / c
 
-                maxyvaluethisseries = max([array_flambda[i] if (xminvalue < (
-                    1e10 * arraylambda[i]) < xmaxvalue) else -99.0 for i in range(len(array_flambda))])
+                maxyvaluethisseries = max([array_flambda[i] if (args.xmin < (
+                    1e10 * arraylambda[i]) < args.xmax) else -99.0
+                    for i in range(len(array_flambda))])
                 maxyvalueglobal = max(maxyvalueglobal, maxyvaluethisseries)
 
                 linelabel = ''
                 if emissiontype != 'free-free':
-                    linelabel += '{0} {1}'.format(af.elsymbols[elementlist[element].Z],
-                                                  af.roman_numerals[ion_stage])
+                    linelabel += '{0} {1}'.format(
+                        af.elsymbols[elementlist[element].Z],
+                        af.roman_numerals[ion_stage])
                 # linelabel += ' {:}'.format(emissiontype)
                 plotlabel = 't={0}d'.format(specdata[0, timeindexlow])
                 if timeindexhigh > timeindexlow:
                     plotlabel += ' to {0}d'.format(specdata[0, timeindexhigh])
                 linewidth = [1.8, 0.8][emissiontype == 'bound-free']
-                if emissiontype == 'bound-bound' and linelabel in ['Fe II', 'Fe III', 'O I', 'O II']:
-                    ax.plot(1e10 * arraylambda, array_flambda / maxyvalueglobal,
-                            color=colorlist[int(linenumber) % len(colorlist)], lw=linewidth, label=linelabel)
+                if (emissiontype == 'bound-bound' and
+                        linelabel in ['Fe II', 'Fe III', 'O I', 'O II']):
+                    ax.plot(1e10 * arraylambda,
+                            array_flambda / maxyvalueglobal,
+                            color=colorlist[int(linenumber) % len(colorlist)],
+                            lw=linewidth, label=linelabel)
                     linenumber += 1
 
     ax.annotate(plotlabel, xy=(0.1, 0.96), xycoords='axes fraction',
-                horizontalalignment='left', verticalalignment='top', fontsize=12)
-    ax.set_xlim(xmin=xminvalue, xmax=xmaxvalue)
+                horizontalalignment='left', verticalalignment='top',
+                fontsize=12)
+    ax.set_xlim(xmin=args.xmin, xmax=args.xmax)
     #        ax.set_xlim(xmin=12000,xmax=19000)
     # ax.set_ylim(ymin=-0.05*maxyvalueglobal,ymax=maxyvalueglobal*1.3)
     ax.set_ylim(ymin=-0.1, ymax=1.1)
@@ -188,9 +182,8 @@ def makeplot():
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
     ax.set_ylabel(r'F$_\lambda$')
 
-    filenameout = 'plotartisemission.pdf'
-    fig.savefig(filenameout, format='pdf')
-    print('Saving {0}'.format(filenameout))
+    fig.savefig(args.outputfile, format='pdf')
+    print('Saving {0}'.format(args.outputfile))
     plt.close()
 
     # plt.setp(plt.getp(ax, 'xticklabels'), fontsize=fsticklabel)
@@ -198,8 +191,13 @@ def makeplot():
     # for axis in ['top','bottom','left','right']:
     #    ax.spines[axis].set_linewidth(framewidth)
 
-    # for (x,y,symbol) in zip(highlightedatomicnumbers,highlightedelementyposition,highlightedelements):
-    #    ax.annotate(symbol, xy=(x, y - 0.0 * (x % 2)), xycoords='data', textcoords='offset points', xytext=(0,10), horizontalalignment='center', verticalalignment='center', weight='bold', fontsize=fs-1.5)
+    # for (x,y,symbol) in zip(highlightedatomicnumbers,
+    #                         highlightedelementyposition,highlightedelements):
+    #    ax.annotate(symbol, xy=(x, y - 0.0 * (x % 2)), xycoords='data',
+    #                textcoords='offset points', xytext=(0,10),
+    #                horizontalalignment='center',
+    #                verticalalignment='center', weight='bold',
+    #                fontsize=fs-1.5)
 
 if __name__ == "__main__":
     main()
