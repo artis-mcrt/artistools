@@ -13,29 +13,29 @@ C = const.c.to('m/s').value
 K_B = const.k_B.to('eV/K').value
 H = const.h.to('eV s').value
 
-parser = argparse.ArgumentParser(description='Plot ARTIS radiation field.')
-parser.add_argument('-path', action='store', default='./',
-                    help='Path to radfield.out file')
-parser.add_argument('-listtimesteps', action='store_true', default=False,
-                    help='Show the times at each timestep')
-parser.add_argument('-timestep', type=int, default=10,
-                    help='Timestep number to plot')
-parser.add_argument('-xmin', type=int, default=2000,
-                    help='Plot range: minimum wavelength in Angstroms')
-parser.add_argument('-xmax', type=int, default=10000,
-                    help='Plot range: maximum wavelength in Angstroms')
-parser.add_argument('-o', action='store', dest='outputfile',
-                    default='plotartisradfield.pdf',
-                    help='Filename for PDF file')
-args = parser.parse_args()
-
 
 def main():
     """
-        Plots the radiation field estimators, and the fitted radiation field
+        Plot the radiation field estimators and the fitted radiation field
         based on the fitted field parameters (temperature and scale factor W
         for a diluted blackbody)
     """
+    parser = argparse.ArgumentParser(description='Plot ARTIS radiation field.')
+    parser.add_argument('-path', action='store', default='./',
+                        help='Path to radfield.out file')
+    parser.add_argument('-listtimesteps', action='store_true', default=False,
+                        help='Show the times at each timestep')
+    parser.add_argument('-timestep', type=int, default=10,
+                        help='Timestep number to plot')
+    parser.add_argument('-xmin', type=int, default=2000,
+                        help='Plot range: minimum wavelength in Angstroms')
+    parser.add_argument('-xmax', type=int, default=10000,
+                        help='Plot range: maximum wavelength in Angstroms')
+    parser.add_argument('-o', action='store', dest='outputfile',
+                        default='plotartisradfield.pdf',
+                        help='Filename for PDF file')
+    args = parser.parse_args()
+
     if args.listtimesteps:
         af.showtimesteptimes('spec.out')
     else:
@@ -55,10 +55,10 @@ def main():
         print('Timestep {0:d}'.format(selected_timestep))
 
         print('Plotting...')
-        draw_plot(radfielddata)
+        draw_plot(radfielddata, args)
 
 
-def draw_plot(radfielddata):
+def draw_plot(radfielddata, args):
     """
         Draw the bin edges, fitted field, and emergent spectrum
     """
@@ -87,6 +87,9 @@ def draw_plot(radfielddata):
 
 
 def plot_field_estimators(ax, radfielddata):
+    """
+        Plot the dJ/dlambda estimators for each bin
+    """
     xvalues = []
     yvalues = []
     for _, row in radfielddata.iterrows():
@@ -102,6 +105,9 @@ def plot_field_estimators(ax, radfielddata):
 
 
 def plot_fitted_field(ax, radfielddata):
+    """
+        Plot the fitted diluted blackbody of each bins
+    """
     fittedxvalues = []
     fittedyvalues = []
 
