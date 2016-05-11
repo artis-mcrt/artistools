@@ -4,6 +4,7 @@ import glob
 import os
 import sys
 
+import matplotlib.pyplot as plt
 import pandas as pd
 
 import readartisfiles as af
@@ -45,7 +46,6 @@ def main():
 
 
 def make_plot(args, specfiles):
-    import matplotlib.pyplot as plt
     # import matplotlib.ticker as ticker
     fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
         "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
@@ -54,8 +54,6 @@ def make_plot(args, specfiles):
     plot_artis_spectra(axis, args, specfiles)
 
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
-    #        ax.set_xlim(xmin=12000,xmax=19000)
-    # ax.set_ylim(ymin=-0.1*maxyvalueglbal,ymax=maxyvalueglobal*1.1)
     axis.set_ylim(ymin=-0.1, ymax=1.1)
 
     axis.legend(loc='best', handlelength=2, frameon=False,
@@ -64,7 +62,6 @@ def make_plot(args, specfiles):
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
     axis.set_ylabel(r'F$_\lambda$')
 
-    # filenameout = 'plotartisspec_{:}_to_{:}.pdf'.format(*timesteparray)
     filenameout = args.outputfile
     fig.savefig(filenameout, format='pdf')
     print('Saving {0}'.format(filenameout))
@@ -81,7 +78,11 @@ def make_plot(args, specfiles):
     #             weight='bold', fontsize=15)
 
 
-def plot_obs_spectra(ax,args):
+def plot_obs_spectra(ax, args):
+    """
+        Plot observational spectra listed in args.obsspecfiles
+    """
+    import scipy.signal
     if args.obsspecfiles is not None:
         scriptdir = os.path.dirname(os.path.abspath(__file__))
         obsspectralabels = {
@@ -97,25 +98,34 @@ def plot_obs_spectra(ax,args):
                       for fn, c in zip(args.obsspecfiles, colorlist)]
         for (filename, serieslabel, linecolor) in obsspectra:
             obsfile = os.path.join(scriptdir, 'spectra', filename)
-            obsdata = pd.read_csv(obsfile, delim_whitespace=True, header=None)
+            obsdata = pd.read_csv(obsfile, delim_whitespace=True, header=None,
+                                  names=['lambda_angstroms', 'f_lambda'])
 
             if len(obsdata) > 5000:
                 # obsdata = scipy.signal.resample(obsdata, 10000)
                 obsdata = obsdata[::3]
 
-            obsdata = obsdata[(obsdata[:][0] > args.xmin) &
-                              (obsdata[:][0] < args.xmax)]
+            obsdata.query('lambda_angstroms > @args.xmin and '
+                          'lambda_angstroms < @args.xmax',
+                          inplace=True)
+
             print("'{0}' has {1} points".format(serieslabel, len(obsdata)))
 
-            obsxvalues = obsdata[0]
-            obsyvalues = obsdata[1]
+            obsdata['f_lambda'] = (obsdata['f_lambda'] /
+                                   obsdata['f_lambda'].max())
 
-            # obsyvalues = scipy.signal.savgol_filter(obsyvalues, 5, 3)
-            ax.plot(obsxvalues, obsyvalues / max(obsyvalues), lw=1.5,
-                    label=serieslabel, zorder=-1, color=linecolor)
+            obsdata['f_lambda'] = scipy.signal.savgol_filter(
+                obsdata['f_lambda'], 5, 3)
+
+            obsdata.plot(x='lambda_angstroms',
+                         y='f_lambda', lw=1.5, ax=ax,
+                         label=serieslabel, zorder=-1, color=linecolor)
 
 
 def plot_artis_spectra(axis, args, specfiles):
+    """
+        Plot ARTIS emergent spectra
+    """
     if args.timestepmax:
         print('Plotting timesteps {0} to {1}'.format(
             args.timestepmin, args.timestepmax))
@@ -140,13 +150,14 @@ def plot_artis_spectra(axis, args, specfiles):
                                    normalised=False,
                                    fnufilterfunc=filterfunc)
 
-        maxyvaluethisseries = max(spectrum[
-            ((args.xmin < spectrum[:]['lambda_angstroms']) &
-             (spectrum[:]['lambda_angstroms'] < args.xmax))]['f_lambda'])
+        maxyvaluethisseries = spectrum.query(
+            '@args.xmin < lambda_angstroms and '
+            'lambda_angstroms < @args.xmax')['f_lambda'].max()
 
         linestyle = ['-', '--'][int(s / 7)]
         spectrum['f_lambda_scaled'] = (spectrum['f_lambda'] /
                                        maxyvaluethisseries)
+
         spectrum.plot(x='lambda_angstroms', y='f_lambda_scaled', ax=axis,
                       linestyle=linestyle, lw=2.5 - (0.1 * s), label=linelabel)
 
