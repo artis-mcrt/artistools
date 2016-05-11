@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
+import argparse
+import glob
 import os
 import sys
-import scipy.signal
+
 import numpy as np
-import glob
-import argparse
+import scipy.signal
+
 import readartisfiles as af
 
 parser = argparse.ArgumentParser(
@@ -31,7 +33,8 @@ args = parser.parse_args()
 
 xminvalue, xmaxvalue = args.xmin, args.xmax
 
-# colorlist = ['black',(0.0,0.5,0.7),(0.35,0.7,1.0),(0.9,0.2,0.0),(0.9,0.6,0.0),(0.0,0.6,0.5),(0.8,0.5,1.0),(0.95,0.9,0.25)]
+#colorlist = ['black',(0.0,0.5,0.7),(0.35,0.7,1.0),(0.9,0.2,0.0),
+#             (0.9,0.6,0.0),(0.0,0.6,0.5),(0.8,0.5,1.0),(0.95,0.9,0.25)]
 colorlist = [(0.0, 0.5, 0.7), (0.9, 0.2, 0.0), (0.9, 0.6, 0.0),
              (0.0, 0.6, 0.5), (0.8, 0.5, 1.0), (0.95, 0.9, 0.25)]
 
@@ -81,12 +84,11 @@ def makeplot():
 
     if args.obsspecfiles is not None:
         scriptdir = os.path.dirname(os.path.abspath(__file__))
-        obsspectralabels = \
-            {
-                '2010lp_20110928_fors2.txt': 'SN2010lp +264d (Taubenberger et al. 2013)',
-                'dop_dered_SN2013aa_20140208_fc_final.txt': 'SN2013aa +360d (Maguire et al. in prep)',
-                '2003du_20031213_3219_8822_00.txt': 'SN2003du +221.3d (Stanishev et al. 2007)'
-            }
+        obsspectralabels = {
+            '2010lp_20110928_fors2.txt': 'SN2010lp +264d (Taubenberger et al. 2013)',
+            'dop_dered_SN2013aa_20140208_fc_final.txt': 'SN2013aa +360d (Maguire et al. in prep)',
+            '2003du_20031213_3219_8822_00.txt': 'SN2003du +221.3d (Stanishev et al. 2007)'
+        }
         obscolorlist = ['black', '0.4']
         obsspectra = [(fn, obsspectralabels[fn], c)
                       for fn, c in zip(args.obsspecfiles, obscolorlist)]
@@ -96,7 +98,8 @@ def makeplot():
             if len(obsdata[:, 1]) > 5000:
                 # obsdata = scipy.signal.resample(obsdata, 10000)
                 obsdata = obsdata[::3]
-            obsdata = obsdata[(obsdata[:, 0] > xminvalue) & (obsdata[:, 0] < xmaxvalue)]
+            obsdata = obsdata[(obsdata[:, 0] > xminvalue) &
+                              (obsdata[:, 0] < xmaxvalue)]
             print("'{0}' has {1} points".format(serieslabel, len(obsdata)))
             obsxvalues = obsdata[:, 0]
             obsyvalues = obsdata[:, 1] * (1.0 / max(obsdata[:, 1]))
@@ -110,7 +113,8 @@ def makeplot():
     timeindexlow = args.timestepmin
     if args.timestepmax:
         timeindexhigh = args.timestepmax
-        print('Ploting timesteps {0} to {1}'.format(args.timestepmin, args.timestepmax))
+        print('Ploting timesteps {0} to {1}'.format(
+            args.timestepmin, args.timestepmax))
     else:
         print('Ploting timestep {0}'.format(args.timestepmin))
         timeindexhigh = timeindexlow
@@ -135,16 +139,20 @@ def makeplot():
                 ionserieslist.append((2 * nelements * maxion, 'free-free'))
                 linenumber += 1  # so the linestyle resets
             ionserieslist.append((element * maxion + ion, 'bound-bound'))
-            ionserieslist.append((nelements * maxion + element * maxion + ion, 'bound-free'))
+            ionserieslist.append(
+                (nelements * maxion + element * maxion + ion, 'bound-free'))
             for (selectedcolumn, emissiontype) in ionserieslist:
-                array_fnu = emissiondata[timeindexlow::len(timearray), selectedcolumn]
+                array_fnu = emissiondata[
+                    timeindexlow::len(timearray), selectedcolumn]
 
                 for timeindex in range(timeindexlow + 1, timeindexhigh + 1):
-                    array_fnu += emissiondata[timeindex::len(timearray), selectedcolumn]
+                    array_fnu += emissiondata[
+                        timeindex::len(timearray), selectedcolumn]
 
                 array_fnu = array_fnu / (timeindexhigh - timeindexlow + 1)
 
-                # best to use the filter on this list (because it hopefully has regular sampling)
+                # best to use the filter on this list (because it hopefully has
+                # regular sampling)
                 array_fnu = scipy.signal.savgol_filter(array_fnu, 5, 2)
 
                 array_flambda = array_fnu * (arraynu ** 2) / c
@@ -174,12 +182,12 @@ def makeplot():
     # ax.set_ylim(ymin=-0.05*maxyvalueglobal,ymax=maxyvalueglobal*1.3)
     ax.set_ylim(ymin=-0.1, ymax=1.1)
 
-    ax.legend(loc='upper right', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
+    ax.legend(loc='upper right', handlelength=2,
+              frameon=False, numpoints=1, prop={'size': 9})
     ax.set_xlabel(r'Wavelength ($\AA$)')
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
     ax.set_ylabel(r'F$_\lambda$')
 
-    # filenameout = 'plotartisspec_{:}_to_{:}.pdf'.format(*timesteparray)
     filenameout = 'plotartisemission.pdf'
     fig.savefig(filenameout, format='pdf')
     print('Saving {0}'.format(filenameout))
