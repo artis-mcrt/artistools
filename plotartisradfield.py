@@ -31,45 +31,47 @@ args = parser.parse_args()
 
 
 def main():
+    """
+        Plots the radiation field estimators, and the fitted radiation field
+        based on the fitted field parameters (temperature and scale factor W
+        for a diluted blackbody)
+    """
     if args.listtimesteps:
         af.showtimesteptimes('spec.out')
     else:
-        make_plot()
+        radfield_file = 'radfield.out'
+        print('Loading {:}...'.format(radfield_file))
+        radfielddata = pd.read_csv(radfield_file, delim_whitespace=True)
 
+        if not args.timestep or args.timestep < 0:
+            selected_timestep = max(radfielddata['timestep'])
+        else:
+            selected_timestep = args.timestep
 
-def make_plot():
-    radfield_file = 'radfield.out'
-    print('Loading {:}...'.format(radfield_file))
-    radfielddata = pd.read_csv(radfield_file, delim_whitespace=True)
+        radfielddata.query(
+            'modelgridindex==0 and timestep==@selected_timestep',
+            inplace=True)
 
-    if not args.timestep or args.timestep < 0:
-        selected_timestep = max(radfielddata['timestep'])
-    else:
-        selected_timestep = args.timestep
+        print('Timestep {0:d}'.format(selected_timestep))
 
-    # filter the list
-    radfielddata = radfielddata[
-        ((radfielddata[:]['modelgridindex'] == 0) &
-         (radfielddata[:]['timestep'] == selected_timestep))
-    ]
-
-    print('Timestep {0:d}'.format(selected_timestep))
-
-    print('Plotting...')
-    draw_plot(radfielddata)
+        print('Plotting...')
+        draw_plot(radfielddata)
 
 
 def draw_plot(radfielddata):
+    """
+        Draw the bin edges, fitted field, and emergent spectrum
+    """
     fig, ax = plt.subplots(1, 1, sharex=True, figsize=(8, 4),
                            tight_layout={
                                "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    binedges = [C / radfielddata['nu_lower'][0] * 1e10] + \
-        list(C / radfielddata[:]['nu_upper'] * 1e10)
+    binedges = [C / radfielddata['nu_lower'].iloc[0] * 1e10] + \
+        list(C / radfielddata['nu_upper'] * 1e10)
 
     ymax = plot_field_estimators(ax, radfielddata)
     ax.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.2,
-              color='0.5', label='')
+              color='red', label='')
     plot_fitted_field(ax, radfielddata)
     plot_specout(ax, ymax)
 
@@ -77,13 +79,8 @@ def draw_plot(radfielddata):
     ax.set_ylabel(r'J$_\lambda$ [erg/cm$^2$/m]')
     ax.set_xlim(xmin=args.xmin, xmax=args.xmax)
 
-    # ax.set_xlabel(r'Energy (eV)')
-    # ax.set_ylabel(r'dJ / dE')
-    # ax.set_xlim(xmin=0.0, xmax=5)
     ax.legend(loc='best', handlelength=2,
               frameon=False, numpoints=1, prop={'size': 13})
-
-    # ax.set_ylim(ymin=-0.05,ymax=1.1)
 
     fig.savefig('plotradfield.pdf', format='pdf')
     plt.close()
@@ -107,8 +104,10 @@ def plot_field_estimators(ax, radfielddata):
 def plot_fitted_field(ax, radfielddata):
     fittedxvalues = []
     fittedyvalues = []
+
     for _, row in radfielddata.iterrows():
         delta_nu = (row['nu_upper'] - row['nu_lower']) / 100
+
         for nu in np.arange(row['nu_lower'], row['nu_upper'], delta_nu):
             j_nu = (row['W'] * 1.4745007e-47 * pow(nu, 3) *
                     1.0 / (math.expm1(H * nu / row['T_R'] / K_B)))  # CGS units
@@ -116,6 +115,7 @@ def plot_fitted_field(ax, radfielddata):
 
             fittedxvalues.append(C / nu * 1e10)
             fittedyvalues.append(j_lambda)
+
     ax.plot(fittedxvalues, fittedyvalues, linewidth=1, color='green',
             label='Fitted field')
 
@@ -123,11 +123,12 @@ def plot_fitted_field(ax, radfielddata):
 def plot_specout(ax, peak_value):
     spectrum = af.get_spectrum('../example_run_testing/spec.out',
                                10, 10, normalised=True)
+    spectrum['f_lambda'] = spectrum['f_lambda'] * peak_value
 
-    ax.plot(spectrum['lambda_angstroms'],
-            spectrum['f_lambda'] * peak_value,
-            linewidth=1, color='black',
-            label='Emergent spectrum')
+    spectrum.plot(x='lambda_angstroms',
+                  y='f_lambda', ax=ax,
+                  linewidth=1, color='black',
+                  label='Emergent spectrum')
 
 
 if __name__ == "__main__":
