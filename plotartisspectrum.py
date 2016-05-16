@@ -11,9 +11,12 @@ import readartisfiles as af
 
 
 def main():
+    """
+        Plot ARTIS spectra
+    """
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot artis model spectra by finding spec.out files '
+        description='Plot ARTIS model spectra by finding spec.out files '
                     'in the current directory or subdirectories.')
     parser.add_argument('-specpath', action='store', default='**/spec.out',
                         help='Path to spec.out file (may include wildcards '
@@ -47,6 +50,9 @@ def main():
 
 
 def make_plot(args, specfiles):
+    """
+        Set up a matplotlib figure and plot observational and ARTIS spectra
+    """
     # import matplotlib.ticker as ticker
     fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
         "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})

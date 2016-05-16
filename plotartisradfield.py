@@ -116,7 +116,7 @@ def plot_fitted_field(axis, radfielddata):
     fittedxvalues = []
     fittedyvalues = []
 
-    k_B = const.k_B.to('eV/K').value
+    k_b = const.k_B.to('eV/K').value
     h = const.h.to('eV s').value
 
     for _, row in radfielddata.iterrows():
@@ -125,7 +125,7 @@ def plot_fitted_field(axis, radfielddata):
             for nu_Hz in np.arange(row['nu_lower'], row['nu_upper'], delta_nu):
                 # CGS units
                 j_nu = (row['W'] * 1.4745007e-47 * pow(nu_Hz, 3) *
-                        1.0 / (math.expm1(h * nu_Hz / row['T_R'] / k_B)))
+                        1.0 / (math.expm1(h * nu_Hz / row['T_R'] / k_b)))
                 j_lambda = j_nu * (nu_Hz ** 2) / C
 
                 fittedxvalues.append(C / nu_Hz * 1e10)
@@ -138,6 +138,9 @@ def plot_fitted_field(axis, radfielddata):
 
 
 def plot_specout(axis, peak_value):
+    """
+        Plot the ARTIS spectrum
+    """
     spectrum = af.get_spectrum('../example_run_testing/spec.out',
                                10, 10, normalised=True)
     spectrum['f_lambda'] = spectrum['f_lambda'] * peak_value
