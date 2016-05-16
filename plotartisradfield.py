@@ -18,7 +18,9 @@ def main():
         based on the fitted field parameters (temperature and scale factor W
         for a diluted blackbody)
     """
-    parser = argparse.ArgumentParser(description='Plot ARTIS radiation field.')
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description='Plot ARTIS radiation field.')
     parser.add_argument('-path', action='store', default='./',
                         help='Path to radfield.out file')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
@@ -65,7 +67,7 @@ def draw_plot(radfielddata, args):
                                  "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     ymax1 = plot_field_estimators(axis, radfielddata)
-    
+
     if len(radfielddata) < 1000:
         ymax2 = plot_fitted_field(axis, radfielddata)
         ymax = max(ymax1, ymax2)
@@ -114,19 +116,19 @@ def plot_fitted_field(axis, radfielddata):
     fittedxvalues = []
     fittedyvalues = []
 
-    K_B = const.k_B.to('eV/K').value
-    H = const.h.to('eV s').value
+    k_B = const.k_B.to('eV/K').value
+    h = const.h.to('eV s').value
 
     for _, row in radfielddata.iterrows():
         delta_nu = (row['nu_upper'] - row['nu_lower']) / 500
         if row['W'] >= 0.0:
-            for nu in np.arange(row['nu_lower'], row['nu_upper'], delta_nu):
+            for nu_Hz in np.arange(row['nu_lower'], row['nu_upper'], delta_nu):
                 # CGS units
-                j_nu = (row['W'] * 1.4745007e-47 * pow(nu, 3) *
-                        1.0 / (math.expm1(H * nu / row['T_R'] / K_B)))
-                j_lambda = j_nu * (nu ** 2) / C
+                j_nu = (row['W'] * 1.4745007e-47 * pow(nu_Hz, 3) *
+                        1.0 / (math.expm1(h * nu_Hz / row['T_R'] / k_B)))
+                j_lambda = j_nu * (nu_Hz ** 2) / C
 
-                fittedxvalues.append(C / nu * 1e10)
+                fittedxvalues.append(C / nu_Hz * 1e10)
                 fittedyvalues.append(j_lambda)
 
     if fittedxvalues:

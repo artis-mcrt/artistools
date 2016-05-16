@@ -114,17 +114,15 @@ def main():
     #                  horizontalalignment='left', verticalalignment='top',
     #                  fontsize=12)
 
-    """
-    list_abund_o = [initalabundances[mgi][8] for mgi in list_modelgridindex]
-    axes[1].plot(list_velocity, list_abund_o, lw=1.5, label="O")
-    list_abund_ni = [initalabundances[mgi][28] for mgi in list_modelgridindex]
-    axes[1].plot(list_velocity, list_abund_ni, lw=1.5, label="Ni")
-    axes[1].set_ylabel(r'Mass fraction')
-    plotlabel = 'Initial abundances'
-    axes[1].annotate(plotlabel, xy=(0.5,0.96), xycoords='axes fraction',
-                     horizontalalignment='center', verticalalignment='top',
-                     fontsize=12)
-    """
+    # list_abund_o = [initalabundances[mgi][8] for mgi in list_modelgridindex]
+    # axes[1].plot(list_velocity, list_abund_o, lw=1.5, label="O")
+    # list_abund_ni = [initalabundances[mgi][28] for mgi in list_modelgridindex]
+    # axes[1].plot(list_velocity, list_abund_ni, lw=1.5, label="Ni")
+    # axes[1].set_ylabel(r'Mass fraction')
+    # plotlabel = 'Initial abundances'
+    # axes[1].annotate(plotlabel, xy=(0.5,0.96), xycoords='axes fraction',
+    #                  horizontalalignment='center', verticalalignment='top',
+    #                  fontsize=12)
 
     for ax in axes:
         #      pass

@@ -12,6 +12,7 @@ import readartisfiles as af
 
 def main():
     parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot artis model spectra by finding spec.out files '
                     'in the current directory or subdirectories.')
     parser.add_argument('-specpath', action='store', default='**/spec.out',
