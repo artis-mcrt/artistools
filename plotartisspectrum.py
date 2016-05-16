@@ -57,7 +57,7 @@ def make_plot(args, specfiles):
     axis.set_ylim(ymin=-0.1, ymax=1.1)
 
     axis.legend(loc='best', handlelength=2, frameon=False,
-                numpoints=1, prop={'size': 11})
+                numpoints=1, prop={'size': 10})
     axis.set_xlabel(r'Wavelength ($\AA$)')
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
     axis.set_ylabel(r'F$_\lambda$')

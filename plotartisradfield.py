@@ -27,9 +27,9 @@ def main():
                         help='Show the times at each timestep')
     parser.add_argument('-timestep', type=int, default=10,
                         help='Timestep number to plot')
-    parser.add_argument('-xmin', type=int, default=2000,
+    parser.add_argument('-xmin', type=int, default=50,
                         help='Plot range: minimum wavelength in Angstroms')
-    parser.add_argument('-xmax', type=int, default=10000,
+    parser.add_argument('-xmax', type=int, default=16000,
                         help='Plot range: maximum wavelength in Angstroms')
     parser.add_argument('-o', action='store', dest='outputfile',
                         default='plotartisradfield.pdf',
@@ -69,15 +69,17 @@ def draw_plot(radfielddata, args):
     binedges = [C / radfielddata['nu_lower'].iloc[0] * 1e10] + \
         list(C / radfielddata['nu_upper'] * 1e10)
 
-    ymax = plot_field_estimators(axis, radfielddata)
+    ymax1 = plot_field_estimators(axis, radfielddata)
+    ymax2 = plot_fitted_field(axis, radfielddata)
+    ymax = max(ymax1,ymax2)
     axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=1.0,
-                color='red', label='')
-    plot_fitted_field(axis, radfielddata)
+                color='red', label='', zorder=-1)
     plot_specout(axis, ymax)
 
     axis.set_xlabel(r'Wavelength ($\AA$)')
     axis.set_ylabel(r'J$_\lambda$ [erg/cm$^2$/m]')
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
+    axis.set_ylim(ymin=0.0, ymax=ymax)
 
     axis.legend(loc='best', handlelength=2,
                 frameon=False, numpoints=1, prop={'size': 13})
@@ -100,7 +102,7 @@ def plot_field_estimators(axis, radfielddata):
         yvalues.append(row['J'] / dlambda)
         yvalues.append(row['J'] / dlambda)
     axis.plot(xvalues, yvalues, linewidth=1, label='Field estimators',
-            color='blue')
+              color='blue')
     return max(yvalues)
 
 
@@ -112,7 +114,7 @@ def plot_fitted_field(axis, radfielddata):
     fittedyvalues = []
 
     for _, row in radfielddata.iterrows():
-        delta_nu = (row['nu_upper'] - row['nu_lower']) / 100
+        delta_nu = (row['nu_upper'] - row['nu_lower']) / 500
 
         for nu in np.arange(row['nu_lower'], row['nu_upper'], delta_nu):
             j_nu = (row['W'] * 1.4745007e-47 * pow(nu, 3) *
@@ -123,7 +125,8 @@ def plot_fitted_field(axis, radfielddata):
             fittedyvalues.append(j_lambda)
 
     axis.plot(fittedxvalues, fittedyvalues, linewidth=1, color='green',
-            label='Fitted field')
+              label='Fitted field')
+    return max(fittedyvalues)
 
 
 def plot_specout(axis, peak_value):
