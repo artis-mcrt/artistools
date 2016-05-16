@@ -10,8 +10,6 @@ from astropy import constants as const
 import readartisfiles as af
 
 C = const.c.to('m/s').value
-K_B = const.k_B.to('eV/K').value
-H = const.h.to('eV s').value
 
 
 def main():
@@ -66,14 +64,17 @@ def draw_plot(radfielddata, args):
                              tight_layout={
                                  "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    binedges = [C / radfielddata['nu_lower'].iloc[0] * 1e10] + \
-        list(C / radfielddata['nu_upper'] * 1e10)
-
     ymax1 = plot_field_estimators(axis, radfielddata)
-    ymax2 = plot_fitted_field(axis, radfielddata)
-    ymax = max(ymax1,ymax2)
-    axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=1.0,
-                color='red', label='', zorder=-1)
+    
+    if len(radfielddata) < 1000:
+        ymax2 = plot_fitted_field(axis, radfielddata)
+        ymax = max(ymax1, ymax2)
+        binedges = [C / radfielddata['nu_lower'].iloc[0] * 1e10] + \
+            list(C / radfielddata['nu_upper'] * 1e10)
+        axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=1.0,
+                    color='red', label='', zorder=-1)
+    else:
+        ymax = ymax1
     plot_specout(axis, ymax)
 
     axis.set_xlabel(r'Wavelength ($\AA$)')
@@ -113,19 +114,24 @@ def plot_fitted_field(axis, radfielddata):
     fittedxvalues = []
     fittedyvalues = []
 
+    K_B = const.k_B.to('eV/K').value
+    H = const.h.to('eV s').value
+
     for _, row in radfielddata.iterrows():
         delta_nu = (row['nu_upper'] - row['nu_lower']) / 500
+        if row['W'] >= 0.0:
+            for nu in np.arange(row['nu_lower'], row['nu_upper'], delta_nu):
+                # CGS units
+                j_nu = (row['W'] * 1.4745007e-47 * pow(nu, 3) *
+                        1.0 / (math.expm1(H * nu / row['T_R'] / K_B)))
+                j_lambda = j_nu * (nu ** 2) / C
 
-        for nu in np.arange(row['nu_lower'], row['nu_upper'], delta_nu):
-            j_nu = (row['W'] * 1.4745007e-47 * pow(nu, 3) *
-                    1.0 / (math.expm1(H * nu / row['T_R'] / K_B)))  # CGS units
-            j_lambda = j_nu * (nu ** 2) / C
+                fittedxvalues.append(C / nu * 1e10)
+                fittedyvalues.append(j_lambda)
 
-            fittedxvalues.append(C / nu * 1e10)
-            fittedyvalues.append(j_lambda)
-
-    axis.plot(fittedxvalues, fittedyvalues, linewidth=1, color='green',
-              label='Fitted field')
+    if fittedxvalues:
+        axis.plot(fittedxvalues, fittedyvalues, linewidth=1, color='green',
+                  label='Fitted field')
     return max(fittedyvalues)
 
 
