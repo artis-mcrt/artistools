@@ -110,7 +110,7 @@ def convert_abundance_file(inputfolder, outputfolder,
 
             if not currentblock:
                 currentblock = linesplit
-                if int(linesplit[0]) in dict3dcellidto1dcellid.keys():
+                if int(linesplit[0]) in dict3dcellidto1dcellid:
                     outcellid = dict3dcellidto1dcellid[int(linesplit[0])]
                     currentblock[0] = "{0:6d}".format(outcellid)
                     keepcurrentblock = True

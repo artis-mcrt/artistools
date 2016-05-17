@@ -25,11 +25,11 @@ def main():
                         help='Path to radfield.out file')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
-    parser.add_argument('-timestep', type=int, default=10,
+    parser.add_argument('-timestep', type=int, default=11,
                         help='Timestep number to plot')
-    parser.add_argument('-xmin', type=int, default=50,
+    parser.add_argument('-xmin', type=int, default=100,
                         help='Plot range: minimum wavelength in Angstroms')
-    parser.add_argument('-xmax', type=int, default=16000,
+    parser.add_argument('-xmax', type=int, default=10000,
                         help='Plot range: maximum wavelength in Angstroms')
     parser.add_argument('-o', action='store', dest='outputfile',
                         default='plotartisradfield.pdf',
@@ -69,12 +69,12 @@ def draw_plot(radfielddata, args):
     ymax1 = plot_field_estimators(axis, radfielddata)
 
     if len(radfielddata) < 1000:
-        ymax2 = plot_fitted_field(axis, radfielddata)
+        ymax2 = plot_fitted_field(axis, radfielddata, args)
         ymax = max(ymax1, ymax2)
-        binedges = [C / radfielddata['nu_lower'].iloc[0] * 1e10] + \
-            list(C / radfielddata['nu_upper'] * 1e10)
+        binedges = [C / radfielddata['nu_lower'].iloc[1] * 1e10] + \
+            list(C / radfielddata['nu_upper'][1:] * 1e10)
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=1.0,
-                    color='red', label='', zorder=-1)
+                    color='red', label='', zorder=-1, alpha=0.3)
     else:
         ymax = ymax1
     plot_specout(axis, ymax)
@@ -98,43 +98,68 @@ def plot_field_estimators(axis, radfielddata):
     xvalues = []
     yvalues = []
     for _, row in radfielddata.iterrows():
-        xvalues.append(1e10 * C / row['nu_lower'])
-        xvalues.append(1e10 * C / row['nu_upper'])
-        dlambda = (C / row['nu_lower']) - \
-            (C / row['nu_upper'])
-        yvalues.append(row['J'] / dlambda)
-        yvalues.append(row['J'] / dlambda)
+        if row['bin_num'] >= 0:
+            xvalues.append(1e10 * C / row['nu_lower'])
+            xvalues.append(1e10 * C / row['nu_upper'])
+            dlambda = (C / row['nu_lower']) - \
+                (C / row['nu_upper'])
+            yvalues.append(row['J'] / dlambda)
+            yvalues.append(row['J'] / dlambda)
+
     axis.plot(xvalues, yvalues, linewidth=1, label='Field estimators',
               color='blue')
+
     return max(yvalues)
 
 
-def plot_fitted_field(axis, radfielddata):
+def plot_fitted_field(axis, radfielddata, args):
     """
         Plot the fitted diluted blackbody of each bins
     """
     fittedxvalues = []
     fittedyvalues = []
 
-    k_b = const.k_B.to('eV/K').value
-    h = const.h.to('eV s').value
+    fullspecfitxvalues = []
+    fullspecfityvalues = []
 
     for _, row in radfielddata.iterrows():
-        delta_nu = (row['nu_upper'] - row['nu_lower']) / 500
-        if row['W'] >= 0.0:
-            for nu_Hz in np.arange(row['nu_lower'], row['nu_upper'], delta_nu):
-                # CGS units
-                j_nu = (row['W'] * 1.4745007e-47 * pow(nu_Hz, 3) *
-                        1.0 / (math.expm1(h * nu_Hz / row['T_R'] / k_b)))
-                j_lambda = j_nu * (nu_Hz ** 2) / C
+        if (row['bin_num'] == -1):
+            nu_lower = C / (args.xmin * 1e-10)
+            nu_upper = C / (args.xmax * 1e-10)
+            arr_nu_Hz = np.linspace(nu_lower, nu_upper, num=500)
+            arr_j_nu = j_nu_dbb(arr_nu_Hz, row['W'], row['T_R'])
+            arr_j_lambda = [j_nu * (nu_Hz ** 2) / C for (nu_Hz, j_nu) in zip(arr_nu_Hz, arr_j_nu)]
 
-                fittedxvalues.append(C / nu_Hz * 1e10)
-                fittedyvalues.append(j_lambda)
+            fullspecfitxvalues += list(C / arr_nu_Hz * 1e10)
+            fullspecfityvalues += arr_j_lambda
+            axis.plot(fullspecfitxvalues, fullspecfityvalues, linewidth=1, color='purple',
+                      label='Full-spectrum fitted field')
+        else:
+            arr_nu_Hz = np.linspace(row['nu_lower'], row['nu_upper'], num=500)
+            arr_j_nu = j_nu_dbb(arr_nu_Hz, row['W'], row['T_R'])
+            arr_j_lambda = [j_nu * (nu_Hz ** 2) / C for (nu_Hz, j_nu) in zip(arr_nu_Hz, arr_j_nu)]
+
+            fittedxvalues += list(C / arr_nu_Hz * 1e10)
+            fittedyvalues += arr_j_lambda
 
     if fittedxvalues:
         axis.plot(fittedxvalues, fittedyvalues, linewidth=1, color='green',
                   label='Fitted field')
-    return max(fittedyvalues)
+
+    return max(fittedyvalues + fullspecfityvalues)
+
+
+# CGS units
+def j_nu_dbb(arr_nu_Hz, W, T):
+    k_b = const.k_B.to('eV/K').value
+    h = const.h.to('eV s').value
+
+    if W > 0.:
+        for nu_Hz in arr_nu_Hz:
+            yield (W * 1.4745007e-47 * pow(nu_Hz, 3) * 1.0 / (math.expm1(h * nu_Hz / T / k_b)))
+    else:
+        for nu_Hz in arr_nu_Hz:
+            yield 0.
 
 
 def plot_specout(axis, peak_value):
