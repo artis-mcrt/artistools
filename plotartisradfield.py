@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import math
+import os
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -103,8 +104,9 @@ def plot_field_estimators(axis, radfielddata):
             xvalues.append(1e10 * C / row['nu_upper'])
             dlambda = (C / row['nu_lower']) - \
                 (C / row['nu_upper'])
-            yvalues.append(row['J'] / dlambda)
-            yvalues.append(row['J'] / dlambda)
+            j_lambda = row['J'] / dlambda
+            yvalues.append(j_lambda)
+            yvalues.append(j_lambda)
 
     axis.plot(xvalues, yvalues, linewidth=1, label='Field estimators',
               color='blue')
@@ -123,23 +125,23 @@ def plot_fitted_field(axis, radfielddata, args):
     fullspecfityvalues = []
 
     for _, row in radfielddata.iterrows():
-        if (row['bin_num'] == -1):
+        if row['bin_num'] == -1:
             nu_lower = C / (args.xmin * 1e-10)
             nu_upper = C / (args.xmax * 1e-10)
-            arr_nu_Hz = np.linspace(nu_lower, nu_upper, num=500)
-            arr_j_nu = j_nu_dbb(arr_nu_Hz, row['W'], row['T_R'])
-            arr_j_lambda = [j_nu * (nu_Hz ** 2) / C for (nu_Hz, j_nu) in zip(arr_nu_Hz, arr_j_nu)]
+            arr_nu_hz = np.linspace(nu_lower, nu_upper, num=500)
+            arr_j_nu = j_nu_dbb(arr_nu_hz, row['W'], row['T_R'])
+            arr_j_lambda = [j_nu * (nu_hz ** 2) / C for (nu_hz, j_nu) in zip(arr_nu_hz, arr_j_nu)]
 
-            fullspecfitxvalues += list(C / arr_nu_Hz * 1e10)
+            fullspecfitxvalues += list(C / arr_nu_hz * 1e10)
             fullspecfityvalues += arr_j_lambda
             axis.plot(fullspecfitxvalues, fullspecfityvalues, linewidth=1, color='purple',
                       label='Full-spectrum fitted field')
         else:
-            arr_nu_Hz = np.linspace(row['nu_lower'], row['nu_upper'], num=500)
-            arr_j_nu = j_nu_dbb(arr_nu_Hz, row['W'], row['T_R'])
-            arr_j_lambda = [j_nu * (nu_Hz ** 2) / C for (nu_Hz, j_nu) in zip(arr_nu_Hz, arr_j_nu)]
+            arr_nu_hz = np.linspace(row['nu_lower'], row['nu_upper'], num=500)
+            arr_j_nu = j_nu_dbb(arr_nu_hz, row['W'], row['T_R'])
+            arr_j_lambda = [j_nu * (nu_hz ** 2) / C for (nu_hz, j_nu) in zip(arr_nu_hz, arr_j_nu)]
 
-            fittedxvalues += list(C / arr_nu_Hz * 1e10)
+            fittedxvalues += list(C / arr_nu_hz * 1e10)
             fittedyvalues += arr_j_lambda
 
     if fittedxvalues:
@@ -150,15 +152,15 @@ def plot_fitted_field(axis, radfielddata, args):
 
 
 # CGS units
-def j_nu_dbb(arr_nu_Hz, W, T):
+def j_nu_dbb(arr_nu_hz, W, T):
     k_b = const.k_B.to('eV/K').value
     h = const.h.to('eV s').value
 
     if W > 0.:
-        for nu_Hz in arr_nu_Hz:
-            yield (W * 1.4745007e-47 * pow(nu_Hz, 3) * 1.0 / (math.expm1(h * nu_Hz / T / k_b)))
+        for nu_hz in arr_nu_hz:
+            yield W * 1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(h * nu_hz / T / k_b))
     else:
-        for nu_Hz in arr_nu_Hz:
+        for nu_hz in arr_nu_hz:
             yield 0.
 
 
@@ -166,7 +168,11 @@ def plot_specout(axis, peak_value):
     """
         Plot the ARTIS spectrum
     """
-    spectrum = af.get_spectrum('../example_run_testing/spec.out',
+    specfilename = 'spec.out'
+    if not os.path.isfile(specfilename):
+        specfilename = '../example_run_testing/spec.out'
+
+    spectrum = af.get_spectrum(specfilename,
                                10, 10, normalised=True)
     spectrum['f_lambda'] = spectrum['f_lambda'] * peak_value
 

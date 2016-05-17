@@ -166,8 +166,8 @@ def plot_artis_spectra(axis, args, specfiles):
                                        maxyvaluethisseries)
 
         spectrum.plot(x='lambda_angstroms', y='f_lambda_scaled', ax=axis,
-                      linestyle=linestyle, lw=2.5 - (0.5 * index),
-                      label=linelabel, alpha=0.8)
+                      linestyle=linestyle, lw=2.5 - (0.2 * index),
+                      label=linelabel, alpha=0.9)
 
 if __name__ == "__main__":
     main()
