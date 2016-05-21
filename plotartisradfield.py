@@ -28,6 +28,8 @@ def main():
                         help='Show the times at each timestep')
     parser.add_argument('-timestep', type=int, default=11,
                         help='Timestep number to plot')
+    parser.add_argument('-modelgridindex', type=int, default=0,
+                        help='Modelgridindex to plot')
     parser.add_argument('-xmin', type=int, default=100,
                         help='Plot range: minimum wavelength in Angstroms')
     parser.add_argument('-xmax', type=int, default=10000,
@@ -49,9 +51,8 @@ def main():
         else:
             selected_timestep = args.timestep
 
-        radfielddata.query(
-            'modelgridindex==0 and timestep==@selected_timestep',
-            inplace=True)
+        radfielddata.query('modelgridindex==@args.modelgridindex and timestep==@selected_timestep',
+                           inplace=True)
 
         print('Timestep {0:d}'.format(selected_timestep))
 
@@ -78,7 +79,7 @@ def draw_plot(radfielddata, args):
                     color='red', label='', zorder=-1, alpha=0.3)
     else:
         ymax = ymax1
-    plot_specout(axis, ymax)
+    plot_specout(axis, ymax, args)
 
     axis.set_xlabel(r'Wavelength ($\AA$)')
     axis.set_ylabel(r'J$_\lambda$ [erg/cm$^2$/m]')
@@ -164,7 +165,7 @@ def j_nu_dbb(arr_nu_hz, W, T):
             yield 0.
 
 
-def plot_specout(axis, peak_value):
+def plot_specout(axis, peak_value, args):
     """
         Plot the ARTIS spectrum
     """
@@ -172,8 +173,7 @@ def plot_specout(axis, peak_value):
     if not os.path.isfile(specfilename):
         specfilename = '../example_run_testing/spec.out'
 
-    spectrum = af.get_spectrum(specfilename,
-                               10, 10, normalised=True)
+    spectrum = af.get_spectrum(specfilename, args.timestep, normalised=True)
     spectrum['f_lambda'] = spectrum['f_lambda'] * peak_value
 
     spectrum.plot(x='lambda_angstroms',

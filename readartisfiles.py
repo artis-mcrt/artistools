@@ -105,6 +105,9 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
     """
         Return a pandas DataFrame containing an ARTIS emergent spectrum
     """
+    if timestephigh < 0:
+        timestephigh = timesteplow
+        
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
 
     arraynu = specdata['0']
