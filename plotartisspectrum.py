@@ -140,6 +140,7 @@ def plot_artis_spectra(axis, args, specfiles):
         print('Plotting timestep {0}'.format(args.timestepmin))
 
     for index, specfilename in enumerate(specfiles):
+        print(specfilename)
         linelabel = '{0} at t={1}d'.format(specfilename.split(
             '/spec.out')[0], af.get_timestep_time(specfilename,
                                                   args.timestepmin))
