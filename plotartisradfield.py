@@ -89,7 +89,7 @@ def draw_plot(radfielddata, args):
     axis.legend(loc='best', handlelength=2,
                 frameon=False, numpoints=1, prop={'size': 13})
 
-    fig.savefig('plotradfield.pdf', format='pdf')
+    fig.savefig(args.outputfile, format='pdf')
     plt.close()
 
 
