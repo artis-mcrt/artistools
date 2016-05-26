@@ -70,9 +70,10 @@ def draw_plot(radfielddata, args):
 
     ymax1 = plot_field_estimators(axis, radfielddata)
 
-    if len(radfielddata) < 1000:
-        ymax2 = plot_fitted_field(axis, radfielddata, args)
-        ymax = max(ymax1, ymax2)
+    ymax2 = plot_fitted_field(axis, radfielddata, args)
+    ymax = max(ymax1, ymax2)
+
+    if len(radfielddata) < 400:
         binedges = [C / radfielddata['nu_lower'].iloc[1] * 1e10] + \
             list(C / radfielddata['nu_upper'][1:] * 1e10)
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=1.0,
@@ -117,25 +118,24 @@ def plot_field_estimators(axis, radfielddata):
 
 def plot_fitted_field(axis, radfielddata, args):
     """
-        Plot the fitted diluted blackbody of each bins
+        Plot the fitted diluted blackbody for each bin as well as the global fit
     """
     fittedxvalues = []
     fittedyvalues = []
-
-    fullspecfitxvalues = []
-    fullspecfityvalues = []
+    ymaxglobalfit = -1
 
     for _, row in radfielddata.iterrows():
         if row['bin_num'] == -1:
+            # Full-spectrum fit
             nu_lower = C / (args.xmin * 1e-10)
             nu_upper = C / (args.xmax * 1e-10)
             arr_nu_hz = np.linspace(nu_lower, nu_upper, num=500)
             arr_j_nu = j_nu_dbb(arr_nu_hz, row['W'], row['T_R'])
             arr_j_lambda = [j_nu * (nu_hz ** 2) / C for (nu_hz, j_nu) in zip(arr_nu_hz, arr_j_nu)]
 
-            fullspecfitxvalues += list(C / arr_nu_hz * 1e10)
-            fullspecfityvalues += arr_j_lambda
-            axis.plot(fullspecfitxvalues, fullspecfityvalues, linewidth=1, color='purple',
+            arr_lambda_angstroms = C / arr_nu_hz * 1e10
+            ymaxglobalfit = max(arr_j_lambda)
+            axis.plot(arr_lambda_angstroms, arr_j_lambda, linewidth=1, color='purple',
                       label='Full-spectrum fitted field')
         else:
             arr_nu_hz = np.linspace(row['nu_lower'], row['nu_upper'], num=500)
@@ -147,13 +147,14 @@ def plot_fitted_field(axis, radfielddata, args):
 
     if fittedxvalues:
         axis.plot(fittedxvalues, fittedyvalues, linewidth=1, color='green',
-                  label='Fitted field')
+                  label='Fitted field', alpha=0.8)
 
-    return max(fittedyvalues + fullspecfityvalues)
+    return max(max(fittedyvalues), ymaxglobalfit)
 
 
-# CGS units
 def j_nu_dbb(arr_nu_hz, W, T):
+    """# CGS units J_nu for diluted blackbody"""
+
     k_b = const.k_B.to('eV/K').value
     h = const.h.to('eV s').value
 
