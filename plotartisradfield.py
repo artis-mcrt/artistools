@@ -47,14 +47,12 @@ def main():
         radfielddata = pd.read_csv(radfield_file, delim_whitespace=True)
 
         if not args.timestep or args.timestep < 0:
-            selected_timestep = max(radfielddata['timestep'])
-        else:
-            selected_timestep = args.timestep
+            args.timestep = max(radfielddata['timestep'])
 
-        radfielddata.query('modelgridindex==@args.modelgridindex and timestep==@selected_timestep',
+        radfielddata.query('modelgridindex==@args.modelgridindex and timestep==@args.timestep',
                            inplace=True)
 
-        print('Timestep {0:d}'.format(selected_timestep))
+        print('Timestep {0:d}'.format(args.timestep))
 
         print('Plotting...')
         draw_plot(radfielddata, args)
@@ -76,11 +74,14 @@ def draw_plot(radfielddata, args):
     if len(radfielddata) < 400:
         binedges = [C / radfielddata['nu_lower'].iloc[1] * 1e10] + \
             list(C / radfielddata['nu_upper'][1:] * 1e10)
-        axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=1.0,
-                    color='red', label='', zorder=-1, alpha=0.3)
-    else:
-        ymax = ymax1
+        axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5,
+                    color='red', label='', zorder=-1, alpha=0.4)
+
     plot_specout(axis, ymax, args)
+
+    axis.annotate('Timestep {0:d}\nCell {1:d}'.format(args.timestep, args.modelgridindex),
+                  xy=(0.02, 0.96), xycoords='axes fraction',
+                  horizontalalignment='left', verticalalignment='top', fontsize=8)
 
     axis.set_xlabel(r'Wavelength ($\AA$)')
     axis.set_ylabel(r'J$_\lambda$ [erg/cm$^2$/m]')
