@@ -173,7 +173,7 @@ def plot_specout(axis, peak_value, args):
     """
     specfilename = 'spec.out'
     if not os.path.isfile(specfilename):
-        specfilename = '../example_run_testing/spec.out'
+        specfilename = '../example_run/spec.out'
 
     spectrum = af.get_spectrum(specfilename, args.timestep, normalised=True)
     spectrum['f_lambda'] = spectrum['f_lambda'] * peak_value
@@ -181,6 +181,7 @@ def plot_specout(axis, peak_value, args):
     spectrum.plot(x='lambda_angstroms',
                   y='f_lambda', ax=axis,
                   linewidth=1, color='black',
+                  alpha=0.7,
                   label='Emergent spectrum')
 
 
