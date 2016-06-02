@@ -30,7 +30,7 @@ def main():
                         help='Timestep number to plot')
     parser.add_argument('-modelgridindex', type=int, default=0,
                         help='Modelgridindex to plot')
-    parser.add_argument('-xmin', type=int, default=100,
+    parser.add_argument('-xmin', type=int, default=50,
                         help='Plot range: minimum wavelength in Angstroms')
     parser.add_argument('-xmax', type=int, default=10000,
                         help='Plot range: maximum wavelength in Angstroms')
@@ -52,10 +52,12 @@ def main():
         radfielddata.query('modelgridindex==@args.modelgridindex and timestep==@args.timestep',
                            inplace=True)
 
-        print('Timestep {0:d}'.format(args.timestep))
-
-        print('Plotting...')
-        draw_plot(radfielddata, args)
+        if len(radfielddata) > 0:
+            print('Timestep {0:d}'.format(args.timestep))
+            print('Plotting...')
+            draw_plot(radfielddata, args)
+        else:
+            print('No data for timestep {0:d}'.format(args.timestep))
 
 
 def draw_plot(radfielddata, args):
