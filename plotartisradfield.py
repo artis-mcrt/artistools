@@ -11,7 +11,7 @@ from astropy import constants as const
 import readartisfiles as af
 
 C = const.c.to('m/s').value
-
+DEFAULTSPECPATH = '../example_run/spec.out'
 
 def main():
     """
@@ -28,14 +28,16 @@ def main():
                         help='Show the times at each timestep')
     parser.add_argument('-timestep', type=int, default=11,
                         help='Timestep number to plot')
+    parser.add_argument('-timestepmax', type=int, default=-1,
+                        help='Make plots for all timesteps up to this timestep')
     parser.add_argument('-modelgridindex', type=int, default=0,
                         help='Modelgridindex to plot')
-    parser.add_argument('-xmin', type=int, default=50,
+    parser.add_argument('-xmin', type=int, default=40,
                         help='Plot range: minimum wavelength in Angstroms')
     parser.add_argument('-xmax', type=int, default=10000,
                         help='Plot range: maximum wavelength in Angstroms')
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plotartisradfield.pdf',
+                        default='plotartisradfield_{0:d}.pdf',
                         help='Filename for PDF file')
     args = parser.parse_args()
 
@@ -45,22 +47,27 @@ def main():
         radfield_file = 'radfield.out'
         print('Loading {:}...'.format(radfield_file))
         radfielddata = pd.read_csv(radfield_file, delim_whitespace=True)
+        radfielddata.query('modelgridindex==@args.modelgridindex', inplace=True)
 
         if not args.timestep or args.timestep < 0:
-            args.timestep = max(radfielddata['timestep'])
-
-        radfielddata.query('modelgridindex==@args.modelgridindex and timestep==@args.timestep',
-                           inplace=True)
-
-        if len(radfielddata) > 0:
-            print('Timestep {0:d}'.format(args.timestep))
-            print('Plotting...')
-            draw_plot(radfielddata, args)
+            timestepmin = max(radfielddata['timestep'])
         else:
-            print('No data for timestep {0:d}'.format(args.timestep))
+            timestepmin = args.timestep
+
+        list_timesteps = range(timestepmin, args.timestepmax+1)
+
+        for timestep in list_timesteps:
+            radfielddata_currenttimestep = radfielddata.query('timestep==@timestep')
+
+            if len(radfielddata_currenttimestep) > 0:
+                print('Plotting timestep {0:d}'.format(timestep))
+                outputfile = args.outputfile.format(timestep)
+                make_plot(radfielddata_currenttimestep, timestep, outputfile, args)
+            else:
+                print('No data for timestep {0:d}'.format(timestep))
 
 
-def draw_plot(radfielddata, args):
+def make_plot(radfielddata, timestep, outputfile, args):
     """
         Draw the bin edges, fitted field, and emergent spectrum
     """
@@ -79,9 +86,9 @@ def draw_plot(radfielddata, args):
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5,
                     color='red', label='', zorder=-1, alpha=0.4)
 
-    plot_specout(axis, ymax, args)
+    plot_specout(axis, ymax, timestep, args)
 
-    axis.annotate('Timestep {0:d}\nCell {1:d}'.format(args.timestep, args.modelgridindex),
+    axis.annotate('Timestep {0:d}\nCell {1:d}'.format(timestep, args.modelgridindex),
                   xy=(0.02, 0.96), xycoords='axes fraction',
                   horizontalalignment='left', verticalalignment='top', fontsize=8)
 
@@ -93,7 +100,8 @@ def draw_plot(radfielddata, args):
     axis.legend(loc='best', handlelength=2,
                 frameon=False, numpoints=1, prop={'size': 13})
 
-    fig.savefig(args.outputfile, format='pdf')
+    print('Saving to {0:s}'.format(outputfile))
+    fig.savefig(outputfile, format='pdf')
     plt.close()
 
 
@@ -140,7 +148,7 @@ def plot_fitted_field(axis, radfielddata, args):
             ymaxglobalfit = max(arr_j_lambda)
             axis.plot(arr_lambda_angstroms, arr_j_lambda, linewidth=1, color='purple',
                       label='Full-spectrum fitted field')
-        else:
+        elif row['W'] >= 0:
             arr_nu_hz = np.linspace(row['nu_lower'], row['nu_upper'], num=500)
             arr_j_nu = j_nu_dbb(arr_nu_hz, row['W'], row['T_R'])
             arr_j_lambda = [j_nu * (nu_hz ** 2) / C for (nu_hz, j_nu) in zip(arr_nu_hz, arr_j_nu)]
@@ -169,15 +177,15 @@ def j_nu_dbb(arr_nu_hz, W, T):
             yield 0.
 
 
-def plot_specout(axis, peak_value, args):
+def plot_specout(axis, peak_value, timestep, args):
     """
         Plot the ARTIS spectrum
     """
     specfilename = 'spec.out'
     if not os.path.isfile(specfilename):
-        specfilename = '../example_run/spec.out'
+        specfilename = DEFAULTSPECPATH
 
-    spectrum = af.get_spectrum(specfilename, args.timestep, normalised=True)
+    spectrum = af.get_spectrum(specfilename, timestep, normalised=True)
     spectrum['f_lambda'] = spectrum['f_lambda'] * peak_value
 
     spectrum.plot(x='lambda_angstroms',
