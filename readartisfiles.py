@@ -107,7 +107,7 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
     """
     if timestephigh < 0:
         timestephigh = timesteplow
-        
+
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
 
     arraynu = specdata['0']
