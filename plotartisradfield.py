@@ -86,7 +86,7 @@ def make_plot(radfielddata, timestep, outputfile, args):
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5,
                     color='red', label='', zorder=-1, alpha=0.4)
 
-    plot_specout(axis, ymax, timestep, args)
+    plot_specout(axis, ymax, timestep)
 
     axis.annotate('Timestep {0:d}\nCell {1:d}'.format(timestep, args.modelgridindex),
                   xy=(0.02, 0.96), xycoords='axes fraction',
@@ -177,7 +177,7 @@ def j_nu_dbb(arr_nu_hz, W, T):
             yield 0.
 
 
-def plot_specout(axis, peak_value, timestep, args):
+def plot_specout(axis, peak_value, timestep):
     """
         Plot the ARTIS spectrum
     """
