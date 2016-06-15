@@ -115,15 +115,23 @@ def plot_field_estimators(axis, radfielddata):
         if row['bin_num'] >= 0:
             xvalues.append(1e10 * C / row['nu_lower'])
             xvalues.append(1e10 * C / row['nu_upper'])
-            dlambda = (C / row['nu_lower']) - \
-                (C / row['nu_upper'])
-            j_lambda = row['J'] / dlambda
-            yvalues.append(j_lambda)
-            yvalues.append(j_lambda)
+            if row['T_R'] >= 0.:
+                dlambda = (C / row['nu_lower']) - \
+                    (C / row['nu_upper'])
+                j_lambda = row['J'] / dlambda
+                if not math.isnan(j_lambda):
+                    yvalues.append(j_lambda)
+                    yvalues.append(j_lambda)
+                else:
+                    yvalues.append(0.)
+                    yvalues.append(0.)
+            else:
+                yvalues.append(0.)
+                yvalues.append(0.)
+
 
     axis.plot(xvalues, yvalues, linewidth=1, label='Field estimators',
               color='blue')
-
     return max(yvalues)
 
 
