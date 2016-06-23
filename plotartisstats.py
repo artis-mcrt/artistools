@@ -18,8 +18,9 @@ def main():
         print('no output log files found')
         sys.exit()
 
-    fig, axes = plt.subplots(2, 1, sharey=True, figsize=(8, 5), tight_layout={
-                             "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    fig, axes = plt.subplots(
+        2, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+
     for n, logfilename in enumerate(logfiles):
         runfolder = logfilename.split('/output_0-0.txt')[0]
 
