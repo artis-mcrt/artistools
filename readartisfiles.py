@@ -150,7 +150,10 @@ def get_timestep_time(specfilename, timestep):
     """
         Return the time in days of a timestep number using a spec.out file
     """
-    return get_timestep_times(specfilename)[timestep]
+    if os.path.isfile(specfilename):
+        return get_timestep_times(specfilename)[timestep]
+    else:
+        return -1
 
 
 if __name__ == "__main__":
