@@ -57,11 +57,12 @@ def make_plot(args):
 
                 ion = int(row[row.index('ion') + 1])
                 level = int(row[row.index('level') + 1])
-                nltepop = float(row[row.index('nnlevelnlte') + 1])
-                ltepop = float(row[row.index('nnlevellte') + 1])
-                list_ltepop[ion].append(ltepop)
-                list_nltepop[ion].append(nltepop)
-                list_levels[ion].append(level)
+                nltepop = float(row[row.index('nnlevel_NLTE') + 1])
+                ltepop = float(row[row.index('nnlevel_LTE') + 1])
+                if ion < len(list_ltepop):
+                    list_ltepop[ion].append(ltepop)
+                    list_nltepop[ion].append(nltepop)
+                    list_levels[ion].append(level)
 
     fig, axes = plt.subplots(nions, 1, sharex=False, figsize=(
         8, 10), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
@@ -78,8 +79,11 @@ def make_plot(args):
         #         label='NLTE/LTE', linestyle='None', marker='x')
         # ax.set_ylabel(r'')
         plotlabel = "Fe {0}".format(af.roman_numerals[ion + 1])
-        plotlabel += ' at t={0}d'.format(
-            af.get_timestep_time('spec.out', selected_timestep))
+        time_days = af.get_timestep_time('spec.out', selected_timestep)
+        if time_days >= 0:
+            plotlabel += ' at t={0} days'.format(time_days)
+        else:
+            plotlabel += ' at timestep {0:d}'.format(selected_timestep)
 
         axis.annotate(plotlabel, xy=(0.5, 0.96), xycoords='axes fraction',
                       horizontalalignment='center', verticalalignment='top',
