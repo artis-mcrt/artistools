@@ -162,7 +162,7 @@ def plot_artis_spectra(axis, args, specfiles):
             '@args.xmin < lambda_angstroms and '
             'lambda_angstroms < @args.xmax')['f_lambda'].max()
 
-        linestyle = ['-', '--'][int(index / 7)]
+        linestyle = ['-', '--'][int(index / 7) % 2]
         spectrum['f_lambda_scaled'] = (spectrum['f_lambda'] /
                                        maxyvaluethisseries)
 
