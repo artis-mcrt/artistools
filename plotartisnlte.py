@@ -80,7 +80,7 @@ def make_plot(args):
         # ax.set_ylabel(r'')
         plotlabel = "Fe {0}".format(af.roman_numerals[ion + 1])
         time_days = af.get_timestep_time('spec.out', selected_timestep)
-        if time_days >= 0:
+        if time_days != -1:
             plotlabel += ' at t={0} days'.format(time_days)
         else:
             plotlabel += ' at timestep {0:d}'.format(selected_timestep)
@@ -92,8 +92,7 @@ def make_plot(args):
     for axis in axes:
         # ax.set_xlim(xmin=270,xmax=300)
         # ax.set_ylim(ymin=-0.1,ymax=1.3)
-        axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1,
-                    prop={'size': 9})
+        axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
         axis.set_yscale('log')
     axes[-1].set_xlabel(r'Level number')
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
