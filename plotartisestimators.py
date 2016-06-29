@@ -8,7 +8,7 @@ import readartisfiles as af
 # h = const.h.to('J s').value
 # c = const.c.to('m/s').value
 
-selectedtimesteps = [-1]  # -1 means all time steps
+selectedtimestep = 70  # -1 means all time steps
 
 
 def main():
@@ -17,9 +17,9 @@ def main():
         for line in lcfile:
             timesteptimes.append(line.split()[0])
 
-    elementlist = af.getartiselementlist('compositiondata.txt')
-    # modeldata = af.getmodeldata('model.txt')
-    # initalabundances = af.getinitialabundances1d('abundances.txt')
+    elementlist = af.get_composition_data('compositiondata.txt')
+    modeldata = af.getmodeldata('model.txt')
+    initalabundances = af.getinitialabundances1d('abundances.txt')
 
     list_timestep = []
     list_modelgridindex = []
@@ -44,7 +44,7 @@ def main():
                 print(linenum, row)
             if linenum % 7 == 1:
                 timestep = int(row[1])
-                if timestep in [-1, selectedtimesteps or -1]:
+                if timestep == selectedtimestep:
                     skip_block = False
                     list_timestep.append(timestep)
                     list_modelgridindex.append(int(row[3]))
@@ -63,9 +63,8 @@ def main():
                         list_populations.append([])
                         currentelementindex = 0
                         while colnum < len(row):
-                            nions = elementlist[currentelementindex].nions
-                            list_populations[-1].append(
-                                list(map(float, row[colnum:colnum + nions])))
+                            nions = elementlist.nions[currentelementindex]
+                            list_populations[-1].append(list(map(float, row[colnum:colnum + nions])))
                             colnum += (1 + nions)
                             currentelementindex += 1
                         print(row)
@@ -85,18 +84,20 @@ def main():
     fig, ax = plt.subplots(1, 1, sharex=True, figsize=(6, 4),
                            tight_layout={
                                "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
-    # list_velocity = [modeldata[mgi].velocity for mgi in list_modelgridindex]
+    list_velocity = [modeldata[mgi].velocity for mgi in range(max(list_modelgridindex))]
     axes = [ax]
-    # print(list_timestep,list_populations)
-    for elindex, element in enumerate(elementlist):
-        el_pop = [sum(x[elindex]) for x in list_populations]
-        for ion in range(element.nions):
-            ax.plot(list_timestep, [
-                pop_ts[elindex][ion] / el_pop[tsindex]
-                for tsindex, pop_ts in enumerate(list_populations)],
-                    lw=1.5,
-                    label="{0} {1}".format(
-                        af.elsymbols[element.Z], af.roman_numerals[ion + 1]))
+
+    for elindex, element in elementlist.iterrows():
+        if element['Z'] != 8:
+            continue
+        for ion in range(elementlist['nions'][elindex]):
+            ylist = []
+            for mgi in range(max(list_modelgridindex)+1):
+                for index, thismgi in enumerate(list_modelgridindex):
+                    if thismgi == mgi:
+                        el_pop = sum(list_populations[index][elindex])
+                        ylist.append(list_populations[index][elindex][ion] / el_pop)
+            ax.plot(list_velocity, ylist, lw=1.5, label="{0} {1}".format(af.elsymbols[elementlist['Z'][elindex]], af.roman_numerals[ion + 1]))
 
     # ax.plot(list_timestep, [x[0][0] for x in list_populations],
     #         lw=1.5, label="Fe I")
