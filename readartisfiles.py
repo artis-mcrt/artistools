@@ -76,8 +76,8 @@ def getmodeldata(filename):
         'gridcell', 'cellid velocity logrho ffe fni fco f52fe f48cr')
     modeldata.append(gridcelltuple._make([-1, 0., 0., 0., 0., 0., 0., 0.]))
     with open(filename, 'r') as fmodel:
-        # gridcellcount = int(fmodel.readline())
-        # t_model_init = float(fmodel.readline())
+        gridcellcount = int(fmodel.readline())
+        t_model_init = float(fmodel.readline())
         for line in fmodel:
             row = line.split()
             modeldata.append(gridcelltuple._make(
