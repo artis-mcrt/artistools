@@ -41,7 +41,7 @@ def main():
                         help='Include observational spectrum with this '
                         'file name')
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plotartisemission.pdf',
+                        default='plotemission.pdf',
                         help='path/filename for PDF file')
     args = parser.parse_args()
 
@@ -117,11 +117,11 @@ def makeplot(specfiles, args):
     maxyvalueglobal = 0.0
     linenumber = 0
     for element in reversed(range(nelements)):
-        # nions = elementlist[element].nions
-        nions = elementlist[element].uppermost_ionstage - \
-            elementlist[element].lowermost_ionstage + 1
+        nions = elementlist.nions[element]
+
+        # nions = elementlist.iloc[element].uppermost_ionstage - elementlist.iloc[element].lowermost_ionstage + 1
         for ion in range(nions):
-            ion_stage = ion + elementlist[element].lowermost_ionstage
+            ion_stage = ion + elementlist.lowermost_ionstage[element]
             ionserieslist = []
             if linenumber == 0:
                 ionserieslist.append((2 * nelements * maxion, 'free-free'))
@@ -153,7 +153,7 @@ def makeplot(specfiles, args):
                 linelabel = ''
                 if emissiontype != 'free-free':
                     linelabel += '{0} {1}'.format(
-                        af.elsymbols[elementlist[element].Z],
+                        af.elsymbols[elementlist.Z[element]],
                         af.roman_numerals[ion_stage])
                 # linelabel += ' {:}'.format(emissiontype)
                 plotlabel = 't={0}d'.format(specdata[0, timeindexlow])
