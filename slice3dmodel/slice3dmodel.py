@@ -25,13 +25,19 @@ def main():
                         help='Path/filename for PDF plot.')
     args = parser.parse_args()
 
-    xlist = []
-    ylist = []
+    dict3dcellidto1dcellid, xlist, ylists = slice_3dmodel(args.inputfolder, args.outputfolder, args.chosenaxis)
+    convert_abundance_file(args.inputfolder, args.outputfolder, dict3dcellidto1dcellid)
 
+    make_plot(xlist, ylists, args.pdfoutputfile)
+
+
+def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
+    xlist = []
+    ylists = [[], [], []]
     listout = []
     dict3dcellidto1dcellid = {}
     outcellid = 0
-    with open(os.path.join(args.inputfolder, 'model.txt'), 'r') as fmodelin:
+    with open(os.path.join(inputfolder, 'model.txt'), 'r') as fmodelin:
         fmodelin.readline()  # npts_model3d
         t_model = fmodelin.readline()  # days
         fmodelin.readline()  # v_max in [cm/s]
@@ -60,43 +66,33 @@ def main():
                 sys.exit()
 
             if cell['posx'] != "0.0000000" and (
-                    args.chosenaxis != 'x' or float(cell['posx']) < 0.):
+                    chosenaxis != 'x' or float(cell['posx']) < 0.):
                 pass
             elif cell['posy'] != "0.0000000" and (
-                    args.chosenaxis != 'y' or float(cell['posy']) < 0.):
+                    chosenaxis != 'y' or float(cell['posy']) < 0.):
                 pass
             elif cell['posz'] != "0.0000000" and (
-                    args.chosenaxis != 'z' or float(cell['posz']) < 0.):
+                    chosenaxis != 'z' or float(cell['posz']) < 0.):
                 pass
             else:
                 outcellid += 1
                 dict3dcellidto1dcellid[int(cell['cellid'])] = outcellid
-                append_cell_to_output(cell, outcellid, t_model, listout,
-                                      xlist, ylist)
-                print("Cell {0:4d} input1: {1}".format(
-                    outcellid, block[0].rstrip()))
-                print("Cell {0:4d} input2: {1}".format(
-                    outcellid, block[1].rstrip()))
+                append_cell_to_output(cell, outcellid, t_model, listout, xlist, ylists)
+                print("Cell {0:4d} input1: {1}".format(outcellid, block[0].rstrip()))
+                print("Cell {0:4d} input2: {1}".format(outcellid, block[1].rstrip()))
                 print("Cell {0:4d} output: {1}".format(outcellid, listout[-1]))
 
-    with open(os.path.join(args.outputfolder, 'model.txt'), 'w') as fmodelout:
+    with open(os.path.join(outputfolder, 'model.txt'), 'w') as fmodelout:
         fmodelout.write("{0:7d}\n".format(outcellid))
         fmodelout.write(t_model)
         for line in listout:
             fmodelout.write(line + "\n")
 
-    convert_abundance_file(args.inputfolder, args.outputfolder,
-                           dict3dcellidto1dcellid)
-
-    make_plot(xlist, ylist, args.pdfoutputfile)
+    return dict3dcellidto1dcellid, xlist, ylists
 
 
-def convert_abundance_file(inputfolder, outputfolder,
-                           dict3dcellidto1dcellid):
-    with open(os.path.join(
-        inputfolder, 'abundances.txt'), 'r') as fabundancesin, open(
-            os.path.join(outputfolder, 'abundances.txt'),
-            'w') as fabundancesout:
+def convert_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid):
+    with open(os.path.join(inputfolder, 'abundances.txt'), 'r') as fabundancesin, open(os.path.join(outputfolder, 'abundances.txt'), 'w') as fabundancesout:
         currentblock = []
         keepcurrentblock = False
         for line in fabundancesin:
@@ -121,33 +117,35 @@ def convert_abundance_file(inputfolder, outputfolder,
         print("WARNING: unfinished block")
 
 
-def make_plot(xlist, ylist, pdfoutputfile):
-    fig, axis = plt.subplots(1, 1, sharey=True, figsize=(6, 4),
-                             tight_layout={
-                                 "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
-    axis.set_xlabel(r'v (km/s)')
-    axis.set_ylabel(r'Density (g/cm$^3$)')
-    axis.plot(xlist, ylist, lw=1.5)
-    fig.savefig(pdfoutputfile, format='pdf')
-    plt.close()
-
-
-def append_cell_to_output(cell, outcellid, t_model, listout, xlist, ylist):
+def append_cell_to_output(cell, outcellid, t_model, listout, xlist, ylists):
     dist = math.sqrt(
         float(cell['posx']) ** 2 + float(cell['posy']) ** 2 +
         float(cell['posz']) ** 2)
     velocity = float(dist) / float(t_model) / 86400. / 1.e5
 
-    listout.append(
-        '{0:6d}  {1:8.2f}  {2:8.5f}  {3:.5f}  '
-        '{4:.5f}  {5:.5f}  {6:.5f}  {7:.5f}'
-        .format(outcellid, velocity,
-                math.log10(max(float(cell['rho']), 1e-100)),
-                cell['ffe'], cell['f56ni'], cell['fco'],
-                cell['f52fe'], cell['f48cr']))
+    listout.append('{0:6d}  {1:8.2f}  {2:8.5f}  {3:.5f}  {4:.5f}  {5:.5f}  {6:.5f}  {7:.5f}'.format(
+        outcellid, velocity, math.log10(max(float(cell['rho']), 1e-100)),
+        cell['ffe'], cell['f56ni'], cell['fco'], cell['f52fe'], cell['f48cr']))
 
     xlist.append(velocity)
-    ylist.append(cell['f56ni'])
+    ylists[0].append(cell['rho'])
+    ylists[1].append(cell['f56ni'])
+    ylists[2].append(cell['fco'])
+
+
+def make_plot(xlist, ylists, pdfoutputfile):
+    fig, axis = plt.subplots(1, 1, sharey=True, figsize=(6, 4),
+                             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    axis.set_xlabel(r'v (km/s)')
+    axis.set_ylabel(r'Density (g/cm$^3$) or mass fraction')
+    ylabels = [r'$\rho$', 'fNi56', 'fCo']
+    for ylist, ylabel in zip(ylists, ylabels):
+        axis.plot(xlist, ylist, lw=1.5, label=ylabel)
+    axis.set_yscale("log", nonposy='clip')
+    axis.legend(loc='best', handlelength=2, frameon=False,
+                numpoints=1, prop={'size': 10})
+    fig.savefig(pdfoutputfile, format='pdf')
+    plt.close()
 
 
 if __name__ == "__main__":
