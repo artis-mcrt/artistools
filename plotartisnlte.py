@@ -2,6 +2,7 @@
 import argparse
 import matplotlib.pyplot as plt
 import readartisfiles as af
+import matplotlib.ticker as ticker
 
 
 def main():
@@ -27,7 +28,9 @@ def main():
 
 def make_plot(args):
     elementlist = af.get_composition_data('compositiondata.txt')
-    nions = int(elementlist.iloc[0]['nions']) - 1
+    #nions = int(elementlist.iloc[0]['nions']) - 1  # top ion has 1 level, so not output
+    nions = 3
+    all_levels = af.get_levels('adata.txt')
 
     list_ltepop = [[] for _ in range(nions)]
     list_nltepop = [[] for _ in range(nions)]
@@ -48,6 +51,7 @@ def make_plot(args):
                     list_ltepop = [[] for _ in range(nions)]
                     list_nltepop = [[] for _ in range(nions)]
                     list_levels = [[] for _ in range(nions)]
+                    list_odd_levels = [[] for _ in range(nions)]
                     skip_block = False
                 else:
                     skip_block = True
@@ -60,18 +64,29 @@ def make_plot(args):
                 nltepop = float(row[row.index('nnlevel_NLTE') + 1])
                 ltepop = float(row[row.index('nnlevel_LTE') + 1])
                 if ion < len(list_ltepop):
-                    list_ltepop[ion].append(ltepop)
-                    list_nltepop[ion].append(nltepop)
                     list_levels[ion].append(level)
+                    list_nltepop[ion].append(nltepop)
+                    list_ltepop[ion].append(ltepop)
+                    hillier_name = all_levels[ion].level_list[level].hillier_name.split('[')[0]
+                    parity = 1 if hillier_name[-1] == 'o' else 0
+                    if parity == 1:
+                        list_odd_levels[ion].append(level)
 
-    fig, axes = plt.subplots(nions, 1, sharex=False, figsize=(
-        8, 10), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    fig, axes = plt.subplots(nions, 1, sharex=False, figsize=(8, 7),
+                             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     for ion, axis in enumerate(axes):
-        axis.plot(list_levels[ion], list_ltepop[ion], lw=1.5,
+        axis.plot(list_levels[ion][:-1], list_ltepop[ion][:-1], lw=1.5,
                   label='LTE', linestyle='None', marker='+')
-        axis.plot(list_levels[ion], list_nltepop[ion], lw=1.5,
+        axis.plot(list_levels[ion][:-1], list_nltepop[ion][:-1], lw=1.5,
                   label='NLTE', linestyle='None', marker='x')
+
+        list_odd_levels_no_sl = [l for l in list_odd_levels[ion] if l != list_levels[ion][-1]]
+        list_nltepop_oddonly = [list_nltepop[ion][i] for i in range(len(list_levels[ion])) if list_levels[ion][i] in list_odd_levels_no_sl]
+
+        axis.plot(list_odd_levels_no_sl, list_nltepop_oddonly, lw=2, label='Odd parity',
+                  linestyle='None', marker='s', markersize=10, color='None')
+
         # list_departure_ratio = [
         #     nlte / lte for (nlte, lte) in zip(list_nltepop[ion],
         #                                       list_ltepop[ion])]
@@ -88,6 +103,7 @@ def make_plot(args):
         axis.annotate(plotlabel, xy=(0.5, 0.96), xycoords='axes fraction',
                       horizontalalignment='center', verticalalignment='top',
                       fontsize=12)
+        axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
 
     for axis in axes:
         # ax.set_xlim(xmin=270,xmax=300)
@@ -95,7 +111,6 @@ def make_plot(args):
         axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
         axis.set_yscale('log')
     axes[-1].set_xlabel(r'Level number')
-    # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
 
     fig.savefig(args.outputfile, format='pdf')
     plt.close()
