@@ -93,7 +93,7 @@ def makeplot(specfiles, args):
             obsyvalues = obsdata[:, 1] * (1.0 / max(obsdata[:, 1]))
 
             # obsyvalues = scipy.signal.savgol_filter(obsyvalues, 5, 3)
-            ax.plot(obsxvalues, obsyvalues / max(obsyvalues), lw=1.5,
+            ax.plot(obsxvalues, obsyvalues, lw=1.5,
                     label=serieslabel, zorder=-1, color=linecolor)
 
     # in the spec.out file, the column index is one more than the timestep
