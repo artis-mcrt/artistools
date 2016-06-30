@@ -81,22 +81,25 @@ def main():
                         math.log10(max(1e-15, float(row[6]))))
 
     timesteptimes = timesteptimes[:len(timesteptimes) // 2]
-    fig, ax = plt.subplots(1, 1, sharex=True, figsize=(6, 4),
-                           tight_layout={
-                               "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
-    list_velocity = [modeldata[mgi].velocity for mgi in range(max(list_modelgridindex))]
-    axes = [ax]
+    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(6, 6),
+                             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    list_velocity = [modeldata[mgi].velocity for mgi in sorted(list_modelgridindex)]
 
     for elindex, element in elementlist.iterrows():
-        if element['Z'] != 8:
-            continue
+        # if element['Z'] != 8:
+        #     continue
+        ax = axes[1 + elindex]
+        ax.set_ylabel(r'Population fraction')
         for ion in range(elementlist['nions'][elindex]):
+            if element['Z'] == 26 and ion == 0:
+                continue
             ylist = []
-            for mgi in range(max(list_modelgridindex)+1):
+            for mgi in sorted(list_modelgridindex):
                 for index, thismgi in enumerate(list_modelgridindex):
+                    total_pop = sum([ionpop for ions in list_populations[index] for ionpop in ions])
+                    el_pop = sum(list_populations[index][elindex])
                     if thismgi == mgi:
-                        el_pop = sum(list_populations[index][elindex])
-                        ylist.append(list_populations[index][elindex][ion] / el_pop)
+                        ylist.append(list_populations[index][elindex][ion] / total_pop)
             ax.plot(list_velocity, ylist, lw=1.5, label="{0} {1}".format(af.elsymbols[elementlist['Z'][elindex]], af.roman_numerals[ion + 1]))
 
     # ax.plot(list_timestep, [x[0][0] for x in list_populations],
@@ -109,21 +112,20 @@ def main():
     #         lw=1.5, label="Fe IV")
     # ax.plot(list_timestep, [x[0][4] for x in list_populations],
     #         lw=1.5, label="Fe V")
-    ax.set_ylabel(r'Population fraction')
-    # plotlabel = 't={}d'.format(timesteptimes[selectedtimestep])
-    # axes[1].annotate(plotlabel, xy=(0.1,0.96), xycoords='axes fraction',
-    #                  horizontalalignment='left', verticalalignment='top',
-    #                  fontsize=12)
+    plotlabel = 't={}d'.format(timesteptimes[selectedtimestep])
+    axes[1].annotate(plotlabel, xy=(0.1, 0.96), xycoords='axes fraction',
+                     horizontalalignment='left', verticalalignment='top',
+                     fontsize=12)
 
-    # list_abund_o = [initalabundances[mgi][8] for mgi in list_modelgridindex]
-    # axes[1].plot(list_velocity, list_abund_o, lw=1.5, label="O")
-    # list_abund_ni = [initalabundances[mgi][28] for mgi in list_modelgridindex]
-    # axes[1].plot(list_velocity, list_abund_ni, lw=1.5, label="Ni")
-    # axes[1].set_ylabel(r'Mass fraction')
-    # plotlabel = 'Initial abundances'
-    # axes[1].annotate(plotlabel, xy=(0.5,0.96), xycoords='axes fraction',
-    #                  horizontalalignment='center', verticalalignment='top',
-    #                  fontsize=12)
+    list_abund_o = [initalabundances[mgi][8] for mgi in list_modelgridindex]
+    axes[0].plot(list_velocity, list_abund_o, lw=1.5, label="O")
+    list_abund_ni = [initalabundances[mgi][28] for mgi in list_modelgridindex]
+    axes[0].plot(list_velocity, list_abund_ni, lw=1.5, label="Ni")
+    axes[0].set_ylabel(r'Mass fraction')
+    plotlabel = 'Initial abundances'
+    axes[0].annotate(plotlabel, xy=(0.5, 0.96), xycoords='axes fraction',
+                     horizontalalignment='center', verticalalignment='top',
+                     fontsize=12)
 
     for ax in axes:
         #      pass
@@ -132,7 +134,7 @@ def main():
         ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1,
                   prop={'size': 9})
 
-    axes[-1].set_xlabel(r'Timestep')
+    axes[-1].set_xlabel(r'Velocity [km/s]')
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
 
     fig.savefig('plotestimators.pdf', format='pdf')
