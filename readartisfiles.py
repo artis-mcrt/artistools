@@ -156,5 +156,37 @@ def get_timestep_time(specfilename, timestep):
         return -1
 
 
+def get_levels(adatafilename):
+    """
+        Return a list of lists of levels
+    """
+    level_lists = []
+    iontuple = collections.namedtuple(
+        'ion', 'Z ion_stage level_count ion_pot level_list')
+    leveltuple = collections.namedtuple(
+        'level', 'number energyev g transition_count hillier_name')
+
+    with open(adatafilename, 'r') as fadata:
+        EOFfound = False
+        while not EOFfound:
+            line = fadata.readline()
+            if not line:
+                EOFfound = True
+            elif len(line.strip()) > 0:
+                ionheader = line.split()
+                level_count = int(ionheader[2])
+
+                level_list = []
+                for n in range(level_count):
+                    line = fadata.readline()
+                    row = line.split()
+                    hillier_name = row[5].strip('\'')
+                    level_list.append(leveltuple(int(row[0]), float(row[1]), float(row[2]), int(row[3]), hillier_name))
+
+                level_lists.append(iontuple(int(ionheader[0]), int(ionheader[1]), level_count, float(ionheader[3]), list(level_list)))
+
+    return level_lists
+
+
 if __name__ == "__main__":
     print("this script is for inclusion only")
