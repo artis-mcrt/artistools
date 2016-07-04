@@ -13,6 +13,7 @@ import readartisfiles as af
 C = const.c.to('m/s').value
 DEFAULTSPECPATH = '../example_run/spec.out'
 
+
 def main():
     """
         Plot the radiation field estimators and the fitted radiation field
@@ -113,7 +114,7 @@ def plot_field_estimators(axis, radfielddata):
     yvalues = []
     for _, row in radfielddata.iterrows():
         if row['bin_num'] >= 0:
-            xvalues.append(1e10 * C / row['nu_lower'])
+            xvalues.append(1e10 * C / row['nu_lower'])  # in future, avoid this and use drawstyle='steps-pre'
             xvalues.append(1e10 * C / row['nu_upper'])
             if row['T_R'] >= 0.:
                 dlambda = (C / row['nu_lower']) - \
@@ -128,7 +129,6 @@ def plot_field_estimators(axis, radfielddata):
             else:
                 yvalues.append(0.)
                 yvalues.append(0.)
-
 
     axis.plot(xvalues, yvalues, linewidth=1, label='Field estimators',
               color='blue')

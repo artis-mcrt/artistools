@@ -76,8 +76,10 @@ def getmodeldata(filename):
         'gridcell', 'cellid velocity logrho ffe fni fco f52fe f48cr')
     modeldata.append(gridcelltuple._make([-1, 0., 0., 0., 0., 0., 0., 0.]))
     with open(filename, 'r') as fmodel:
-        gridcellcount = int(fmodel.readline())
-        t_model_init = float(fmodel.readline())
+        line = fmodel.readline()
+        # gridcellcount = int(line)
+        line = fmodel.readline()
+        # t_model_init = float(line)
         for line in fmodel:
             row = line.split()
             modeldata.append(gridcelltuple._make(
@@ -127,7 +129,7 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
     dfspectrum = pd.DataFrame({'nu': arraynu,
                                'f_nu': array_fnu})
 
-    dfspectrum['lambda_angstroms'] = const.c.value / dfspectrum['nu']  * 1e10
+    dfspectrum['lambda_angstroms'] = const.c.value / dfspectrum['nu'] * 1e10
     dfspectrum['f_lambda'] = dfspectrum['f_nu'] * (dfspectrum['nu'] ** 2) / const.c.value
 
     if normalised:
@@ -164,7 +166,7 @@ def get_levels(adatafilename):
     iontuple = collections.namedtuple(
         'ion', 'Z ion_stage level_count ion_pot level_list')
     leveltuple = collections.namedtuple(
-        'level', 'number energyev g transition_count hillier_name')
+        'level', 'number energy_ev g transition_count hillier_name')
 
     with open(adatafilename, 'r') as fadata:
         EOFfound = False
@@ -177,7 +179,7 @@ def get_levels(adatafilename):
                 level_count = int(ionheader[2])
 
                 level_list = []
-                for n in range(level_count):
+                for _ in range(level_count):
                     line = fadata.readline()
                     row = line.split()
                     hillier_name = row[5].strip('\'')

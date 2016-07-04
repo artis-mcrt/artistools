@@ -97,7 +97,7 @@ def main():
             for mgi in sorted(list_modelgridindex):
                 for index, thismgi in enumerate(list_modelgridindex):
                     total_pop = sum([ionpop for ions in list_populations[index] for ionpop in ions])
-                    el_pop = sum(list_populations[index][elindex])
+                    # el_pop = sum(list_populations[index][elindex])
                     if thismgi == mgi:
                         ylist.append(list_populations[index][elindex][ion] / total_pop)
             ax.plot(list_velocity, ylist, lw=1.5, label="{0} {1}".format(af.elsymbols[elementlist['Z'][elindex]], af.roman_numerals[ion + 1]))
