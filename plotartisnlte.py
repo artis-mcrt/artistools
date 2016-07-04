@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import argparse
+import math
 import matplotlib.pyplot as plt
 import readartisfiles as af
 import matplotlib.ticker as ticker
+from astropy import constants as const
 
 
 def main():
@@ -28,8 +30,7 @@ def main():
 
 def make_plot(args):
     elementlist = af.get_composition_data('compositiondata.txt')
-    #nions = int(elementlist.iloc[0]['nions']) - 1  # top ion has 1 level, so not output
-    nions = 3
+    nions = int(elementlist.iloc[0]['nions']) - 1  # top ion has 1 level, so not output
     all_levels = af.get_levels('adata.txt')
 
     list_ltepop = [[] for _ in range(nions)]
@@ -52,6 +53,7 @@ def make_plot(args):
                     list_nltepop = [[] for _ in range(nions)]
                     list_levels = [[] for _ in range(nions)]
                     list_odd_levels = [[] for _ in range(nions)]
+                    list_ltepop_custom = [[] for _ in range(nions)]
                     skip_block = False
                 else:
                     skip_block = True
@@ -60,17 +62,35 @@ def make_plot(args):
                     row[1] != '-' and not skip_block):
 
                 ion = int(row[row.index('ion') + 1])
-                level = int(row[row.index('level') + 1])
+                levelnumber = int(row[row.index('level') + 1])
                 nltepop = float(row[row.index('nnlevel_NLTE') + 1])
                 ltepop = float(row[row.index('nnlevel_LTE') + 1])
                 if ion < len(list_ltepop):
-                    list_levels[ion].append(level)
+                    list_levels[ion].append(levelnumber)
                     list_nltepop[ion].append(nltepop)
                     list_ltepop[ion].append(ltepop)
-                    hillier_name = all_levels[ion].level_list[level].hillier_name.split('[')[0]
+
+                    level = all_levels[ion].level_list[levelnumber]
+                    gslevel = all_levels[ion].level_list[0]
+                    k_B = const.k_B.to('eV / K').value
+                    T_exc = 6000.
+                    ltepop_custom = list_nltepop[ion][0] * level.g / gslevel.g * math.exp(-(level.energy_ev - gslevel.energy_ev) / k_B / T_exc)
+                    list_ltepop_custom[ion].append(ltepop_custom)
+
+                    hillier_name = level.hillier_name.split('[')[0]
                     parity = 1 if hillier_name[-1] == 'o' else 0
                     if parity == 1:
-                        list_odd_levels[ion].append(level)
+                        list_odd_levels[ion].append(levelnumber)
+            elif len(row) > 1 and row[1] == '-' and not skip_block:
+                ion = int(row[row.index('ion') + 1])
+                if ion < len(list_ltepop):
+                    levelnumber = int(row[row.index('level') + 1])
+                    groundpop = float(row[row.index('nnlevel_LTE') + 1])
+
+                    list_levels[ion].append(levelnumber)
+                    list_nltepop[ion].append(groundpop)
+                    list_ltepop[ion].append(groundpop)
+                    list_ltepop_custom[ion].append(groundpop)
 
     fig, axes = plt.subplots(nions, 1, sharex=False, figsize=(8, 7),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
@@ -78,6 +98,9 @@ def make_plot(args):
     for ion, axis in enumerate(axes):
         axis.plot(list_levels[ion][:-1], list_ltepop[ion][:-1], lw=1.5,
                   label='LTE', linestyle='None', marker='+')
+
+        axis.plot(list_levels[ion][:-1], list_ltepop_custom[ion][:-1], lw=1.5,
+                  label='LTE custom', linestyle='None', marker='*')
         axis.plot(list_levels[ion][:-1], list_nltepop[ion][:-1], lw=1.5,
                   label='NLTE', linestyle='None', marker='x')
 
