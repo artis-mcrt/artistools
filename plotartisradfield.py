@@ -55,7 +55,12 @@ def main():
         else:
             timestepmin = args.timestep
 
-        list_timesteps = range(timestepmin, args.timestepmax+1)
+        if not args.timestepmax or args.timestepmax < 0:
+            timestepmax = timestepmin + 1
+        else:
+            timestepmax = args.timestepmax
+
+        list_timesteps = range(timestepmin, timestepmax)
 
         for timestep in list_timesteps:
             radfielddata_currenttimestep = radfielddata.query('timestep==@timestep')
