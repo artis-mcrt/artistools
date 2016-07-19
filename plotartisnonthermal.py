@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 import argparse
-import math
-import os
+# import math
+# import os
 
 import matplotlib.pyplot as plt
-import numpy as np
+# import numpy as np
 import pandas as pd
 from astropy import constants as const
 
@@ -97,7 +97,6 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
     print('Saving to {0:s}'.format(outputfile))
     fig.savefig(outputfile, format='pdf')
     plt.close()
-
 
 
 if __name__ == "__main__":
