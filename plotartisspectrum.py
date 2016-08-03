@@ -98,10 +98,12 @@ def plot_obs_spectra(axis, args):
             'dop_dered_SN2013aa_20140208_fc_final.txt':
                 'SN2013aa +360d (Maguire et al. in prep)',
             '2003du_20031213_3219_8822_00.txt':
-                'SN2003du +221.3d (Stanishev et al. 2007)'
+                'SN2003du +221.3d (Stanishev et al. 2007)',
+            'nero-nebspec.txt':
+                'NERO +300d'
         }
         colorlist = ['black', '0.4']
-        obsspectra = [(fn, obsspectralabels[fn], c)
+        obsspectra = [(fn, obsspectralabels.get(fn, fn), c)
                       for fn, c in zip(args.obsspecfiles, colorlist)]
         for (filename, serieslabel, linecolor) in obsspectra:
             obsfile = os.path.join(scriptdir, 'spectra', filename)
