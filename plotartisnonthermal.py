@@ -22,7 +22,7 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS radiation field.')
     parser.add_argument('-path', action='store', default='./',
-                        help='Path to nonthermal.out file')
+                        help='Path to nonthermalspec.out file')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
     parser.add_argument('-timestep', type=int, default=1,
@@ -43,7 +43,7 @@ def main():
     if args.listtimesteps:
         af.showtimesteptimes('spec.out')
     else:
-        input_file = 'nonthermal.out'
+        input_file = 'nonthermalspec.out'
         print('Loading {:}...'.format(input_file))
         nonthermaldata = pd.read_csv(input_file, delim_whitespace=True)
         nonthermaldata.query('modelgridindex==@args.modelgridindex', inplace=True)
@@ -80,7 +80,7 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
                                  "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     ymax = max(nonthermaldata['y'])
-    axis.plot(nonthermaldata['energy'], nonthermaldata['y'], linewidth=1, color='blue')
+    axis.plot(nonthermaldata['energy_ev'], nonthermaldata['y'], linewidth=1, color='blue')
 
     axis.annotate('Timestep {0:d}\nCell {1:d}'.format(timestep, args.modelgridindex),
                   xy=(0.02, 0.96), xycoords='axes fraction',
@@ -91,7 +91,7 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
     # axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
     axis.set_ylim(ymin=0.0, ymax=ymax)
 
-    axis.legend(loc='best', handlelength=2,
+    axis.legend(loc='upper center', handlelength=2,
                 frameon=False, numpoints=1, prop={'size': 13})
 
     print('Saving to {0:s}'.format(outputfile))
