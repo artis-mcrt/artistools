@@ -169,7 +169,7 @@ def plot_fitted_field(axis, radfielddata, args):
             fittedxvalues += list(C / arr_nu_hz * 1e10)
             fittedyvalues += arr_j_lambda
         else:
-            arr_nu_hz = [row['nu_lower'], row['nu_upper']]
+            arr_nu_hz = (row['nu_lower'], row['nu_upper'])
             arr_j_lambda = [0., 0.]
 
             fittedxvalues += [C / nu * 1e10 for nu in arr_nu_hz]
