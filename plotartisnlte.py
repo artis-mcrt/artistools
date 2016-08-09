@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 import argparse
 import math
+import sys
 import matplotlib.pyplot as plt
 import readartisfiles as af
 import matplotlib.ticker as ticker
 from astropy import constants as const
 
+T_exc = 6000.
 
 def main():
     parser = argparse.ArgumentParser(
@@ -38,6 +40,7 @@ def make_plot(args):
     list_levels = [[] for _ in range(nions)]
     skip_block = False
     selected_timestep = args.timestep
+    print("Reading from timestep {:}".format(selected_timestep))
     with open(args.nltefile, 'r') as nltefile:
         currenttimestep = -1
         for line in nltefile:
@@ -62,7 +65,11 @@ def make_plot(args):
                     row[1] != '-' and not skip_block):
 
                 ion = int(row[row.index('ion') + 1])
-                levelnumber = int(row[row.index('level') + 1])
+                if row[row.index('level') + 1] != 'SL':
+                    levelnumber = int(row[row.index('level') + 1])
+                else:
+                    levelnumber = list_levels[ion][-1] + 3
+                    print("Superlevel at level {:}".format(levelnumber))
                 nltepop = float(row[row.index('nnlevel_NLTE') + 1])
                 ltepop = float(row[row.index('nnlevel_LTE') + 1])
                 if ion < len(list_ltepop):
@@ -73,7 +80,6 @@ def make_plot(args):
                     level = all_levels[ion].level_list[levelnumber]
                     gslevel = all_levels[ion].level_list[0]
                     k_B = const.k_B.to('eV / K').value
-                    T_exc = 6000.
                     ltepop_custom = list_nltepop[ion][0] * level.g / gslevel.g * math.exp(-(level.energy_ev - gslevel.energy_ev) / k_B / T_exc)
                     list_ltepop_custom[ion].append(ltepop_custom)
 
@@ -95,13 +101,16 @@ def make_plot(args):
     fig, axes = plt.subplots(nions, 1, sharex=False, figsize=(8, 7),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
+    if not list_levels[ion]:
+        print("Error, no data for selected timestep")
+        sys.exit()
     for ion, axis in enumerate(axes):
-        axis.plot(list_levels[ion][:-1], list_ltepop[ion][:-1], lw=1.5,
+        axis.plot(list_levels[ion], list_ltepop[ion], lw=1.5,
                   label='LTE', linestyle='None', marker='+')
 
         axis.plot(list_levels[ion][:-1], list_ltepop_custom[ion][:-1], lw=1.5,
-                  label='LTE custom', linestyle='None', marker='*')
-        axis.plot(list_levels[ion][:-1], list_nltepop[ion][:-1], lw=1.5,
+                  label='LTE {0:.0f} K'.format(T_exc), linestyle='None', marker='*')
+        axis.plot(list_levels[ion], list_nltepop[ion], lw=1.5,
                   label='NLTE', linestyle='None', marker='x')
 
         list_odd_levels_no_sl = [l for l in list_odd_levels[ion] if l != list_levels[ion][-1]]
