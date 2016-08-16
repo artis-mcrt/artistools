@@ -155,15 +155,14 @@ def makeplot(specfiles, args):
                     linelabel += '{0} {1}'.format(
                         af.elsymbols[elementlist.Z[element]],
                         af.roman_numerals[ion_stage])
-                # linelabel += ' {:}'.format(emissiontype)
+                linelabel += ' {:}'.format(emissiontype)
                 plotlabel = 't={0}d'.format(specdata[0, timeindexlow])
                 if timeindexhigh > timeindexlow:
                     plotlabel += ' to {0}d'.format(specdata[0, timeindexhigh])
                 linewidth = [1.8, 0.8][emissiontype == 'bound-free']
-                if (emissiontype == 'bound-bound' and
-                        linelabel in ['Fe II', 'Fe III', 'O I', 'O II']):
-                    ax.plot(1e10 * arraylambda,
-                            array_flambda / maxyvalueglobal,
+                if (emissiontype == 'bound-bound'):
+                    #        linelabel in ['Fe II', 'Fe III', 'O I', 'O II']):
+                    ax.plot(1e10 * arraylambda, array_flambda,  # / maxyvalueglobal
                             color=colorlist[int(linenumber) % len(colorlist)],
                             lw=linewidth, label=linelabel)
                     linenumber += 1
@@ -174,7 +173,7 @@ def makeplot(specfiles, args):
     ax.set_xlim(xmin=args.xmin, xmax=args.xmax)
     #        ax.set_xlim(xmin=12000,xmax=19000)
     # ax.set_ylim(ymin=-0.05*maxyvalueglobal,ymax=maxyvalueglobal*1.3)
-    ax.set_ylim(ymin=-0.1, ymax=1.1)
+    # ax.set_ylim(ymin=-0.1, ymax=1.1)
 
     ax.legend(loc='upper right', handlelength=2,
               frameon=False, numpoints=1, prop={'size': 9})
