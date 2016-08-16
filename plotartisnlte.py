@@ -9,6 +9,7 @@ from astropy import constants as const
 
 T_exc = 6000.
 
+
 def main():
     parser = argparse.ArgumentParser(
         description='Plot ARTIS non-LTE corrections.')
@@ -20,7 +21,7 @@ def main():
     parser.add_argument('-timestep', type=int, default=22,
                         help='Plotted timestep (-1 for last timestep)')
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plotnlte.pdf',
+                        default='plotnlte_{0:03d}.pdf',
                         help='path/filename for PDF file')
     args = parser.parse_args()
 
@@ -144,7 +145,7 @@ def make_plot(args):
         axis.set_yscale('log')
     axes[-1].set_xlabel(r'Level number')
 
-    fig.savefig(args.outputfile, format='pdf')
+    fig.savefig(args.outputfile.format(selected_timestep), format='pdf')
     plt.close()
 
 
