@@ -8,8 +8,7 @@ from astropy import constants as const
 
 PYDIR = os.path.dirname(os.path.abspath(__file__))
 
-elsymbols = ['n'] + list(pd.read_csv(
-    os.path.join(PYDIR, 'elements.csv'))['symbol'].values)
+elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, 'elements.csv'))['symbol'].values)
 
 roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII',
