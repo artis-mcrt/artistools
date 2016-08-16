@@ -71,8 +71,7 @@ def getmodeldata(filename):
         Return a list containing named tuples for all model grid cells
     """
     modeldata = []
-    gridcelltuple = collections.namedtuple(
-        'gridcell', 'cellid velocity logrho ffe fni fco f52fe f48cr')
+    gridcelltuple = collections.namedtuple('gridcell', 'cellid velocity logrho ffe fni fco f52fe f48cr')
     modeldata.append(gridcelltuple._make([-1, 0., 0., 0., 0., 0., 0., 0.]))
     with open(filename, 'r') as fmodel:
         line = fmodel.readline()
@@ -162,17 +161,14 @@ def get_levels(adatafilename):
         Return a list of lists of levels
     """
     level_lists = []
-    iontuple = collections.namedtuple(
-        'ion', 'Z ion_stage level_count ion_pot level_list')
-    leveltuple = collections.namedtuple(
-        'level', 'number energy_ev g transition_count hillier_name')
+    iontuple = collections.namedtuple('ion', 'Z ion_stage level_count ion_pot level_list')
+    leveltuple = collections.namedtuple('level', 'number energy_ev g transition_count hillier_name')
 
     with open(adatafilename, 'r') as fadata:
-        EOFfound = False
-        while not EOFfound:
+        while (True):
             line = fadata.readline()
             if not line:
-                EOFfound = True
+                break
             elif len(line.strip()) > 0:
                 ionheader = line.split()
                 level_count = int(ionheader[2])
@@ -188,6 +184,75 @@ def get_levels(adatafilename):
 
     return level_lists
 
+
+def get_nlte_populations(nltefile, timestep, atomic_number, T_exc):
+    levelpoptuple = collections.namedtuple('ionpoptuple', 'timestep Z ion_stage level energy_ev parity pop_lte pop_nlte pop_ltecustom')
+
+    elementlist = get_composition_data('compositiondata.txt')
+    elementdata = elementlist.query('Z==@atomic_number')
+    if len(elementdata) < 1:
+        print("Error: element Z={0} not in composition file".format(atomic_number))
+        return None
+    nions = int(elementdata.nions) - 1  # top ion has 1 level, so not output
+    all_levels = get_levels('adata.txt')
+    dfpop = pd.DataFrame()
+    skip_block = False
+    with open(nltefile, 'r') as nltefile:
+        for line in nltefile:
+            row = line.split()
+
+            if row and row[0] == 'timestep':
+                if int(row[1]) == timestep:
+                    skip_block = False
+                else:
+                    skip_block = True
+
+            if (len(row) > 2 and row[0] == 'nlte_index' and
+                    row[1] != '-' and not skip_block):
+
+                ion = int(row[row.index('ion') + 1])
+                ion_stage = int(elementdata.iloc[0].lowermost_ionstage) + ion
+                if row[row.index('level') + 1] != 'SL':
+                    levelnumber = int(row[row.index('level') + 1])
+                    superlevel = False
+                else:
+                    levelnumber = dfpop.query('timestep==@timestep and ion_stage==@ion_stage').level.max() + 3
+                    print("Superlevel at level {:}".format(levelnumber))
+                    superlevel = True
+                nltepop = float(row[row.index('nnlevel_NLTE') + 1])
+                ltepop = float(row[row.index('nnlevel_LTE') + 1])
+
+                level = all_levels[ion].level_list[levelnumber]
+                gslevel = all_levels[ion].level_list[0]
+                k_B = const.k_B.to('eV / K').value
+                gspop = dfpop.query('timestep==@timestep and ion_stage==@ion_stage and level==0').iloc[0].pop_nlte
+                ltepop_custom = gspop * level.g / gslevel.g * math.exp(-(level.energy_ev - gslevel.energy_ev) / k_B / T_exc)
+
+                hillier_name = level.hillier_name.split('[')[0]
+                parity = 1 if hillier_name[-1] == 'o' else 0
+                if superlevel:
+                    parity = 0
+                newrow = levelpoptuple(timestep=timestep, Z=int(elementdata.iloc[0].Z), ion_stage=ion_stage, level=levelnumber,
+                                       energy_ev=(level.energy_ev - gslevel.energy_ev), parity=parity, pop_lte=ltepop,
+                                       pop_nlte=nltepop, pop_ltecustom=ltepop_custom)
+                dfpop = dfpop.append(pd.DataFrame(data=[newrow], columns=levelpoptuple._fields), ignore_index=True)
+
+            elif len(row) > 1 and row[1] == '-' and not skip_block:
+                ion = int(row[row.index('ion') + 1])
+                ion_stage = int(elementdata.iloc[0].lowermost_ionstage + ion)
+                levelnumber = 0
+                gslevel = all_levels[ion].level_list[levelnumber]
+                levelnumber = int(row[row.index('level') + 1])
+                groundpop = float(row[row.index('nnlevel_LTE') + 1])
+
+                hillier_name = gslevel.hillier_name.split('[')[0]
+                parity = 1 if hillier_name[-1] == 'o' else 0
+                newrow = levelpoptuple(timestep=timestep, Z=int(elementdata.iloc[0].Z), ion_stage=ion_stage, level=levelnumber,
+                                       energy_ev=gslevel.energy_ev, parity=parity, pop_lte=groundpop,
+                                       pop_nlte=groundpop, pop_ltecustom=groundpop)
+                dfpop = dfpop.append(pd.DataFrame(data=[newrow], columns=levelpoptuple._fields), ignore_index=True)
+
+    return dfpop
 
 if __name__ == "__main__":
     print("this script is for inclusion only")
