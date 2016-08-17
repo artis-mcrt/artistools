@@ -195,8 +195,9 @@ def get_nlte_populations(nltefile, timestep, atomic_number, T_exc):
         return None
     nions = int(elementdata.nions) - 1  # top ion has 1 level, so not output
     all_levels = get_levels('adata.txt')
-    dfpop = pd.DataFrame()
+
     skip_block = False
+    dfpop = pd.DataFrame().to_sparse()
     with open(nltefile, 'r') as nltefile:
         for line in nltefile:
             row = line.split()
@@ -239,7 +240,7 @@ def get_nlte_populations(nltefile, timestep, atomic_number, T_exc):
 
             elif len(row) > 1 and row[1] == '-' and not skip_block:
                 ion = int(row[row.index('ion') + 1])
-                ion_stage = int(elementdata.iloc[0].lowermost_ionstage + ion)
+                ion_stage = int(elementdata.iloc[0].lowermost_ionstage) + ion
                 levelnumber = 0
                 gslevel = all_levels[ion].level_list[levelnumber]
                 levelnumber = int(row[row.index('level') + 1])
@@ -253,6 +254,7 @@ def get_nlte_populations(nltefile, timestep, atomic_number, T_exc):
                 dfpop = dfpop.append(pd.DataFrame(data=[newrow], columns=levelpoptuple._fields), ignore_index=True)
 
     return dfpop
+
 
 if __name__ == "__main__":
     print("this script is for inclusion only")

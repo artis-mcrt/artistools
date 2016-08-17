@@ -160,7 +160,7 @@ def makeplot(specfiles, args):
                 if timeindexhigh > timeindexlow:
                     plotlabel += ' to {0}d'.format(specdata[0, timeindexhigh])
                 linewidth = [1.8, 0.8][emissiontype == 'bound-free']
-                if (emissiontype == 'bound-bound'):
+                if emissiontype == 'bound-bound':
                     #        linelabel in ['Fe II', 'Fe III', 'O I', 'O II']):
                     ax.plot(1e10 * arraylambda, array_flambda,  # / maxyvalueglobal
                             color=colorlist[int(linenumber) % len(colorlist)],
