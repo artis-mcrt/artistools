@@ -18,8 +18,8 @@ def main():
             timesteptimes.append(line.split()[0])
 
     elementlist = af.get_composition_data('compositiondata.txt')
-    modeldata = af.getmodeldata('model.txt')
-    initalabundances = af.getinitialabundances1d('abundances.txt')
+    modeldata = af.get_modeldata('model.txt')
+    initalabundances = af.get_initialabundances1d('abundances.txt')
 
     list_timestep = []
     list_modelgridindex = []
