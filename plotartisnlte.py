@@ -16,11 +16,13 @@ def main():
                         help='Path to nlte_*.out file.')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
-    parser.add_argument('-timestep', type=int, default=22,
+    parser.add_argument('-timestep', type=int, default=70,
                         help='Plotted timestep')
+    parser.add_argument('element', nargs='?', default='Fe',
+                        help='Plotted element')
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plotnlte_{0:03d}.pdf',
-                        help='path/filename for PDF file')
+                        default='plotnlte_{0}_{1:03d}.pdf',
+                        help='path/filename for PDF file .format(elsymbol, timestep)')
     args = parser.parse_args()
 
     if args.listtimesteps:
@@ -31,16 +33,21 @@ def main():
 
 def make_plot(args):
     T_exc = 6000.
-    print("Reading from timestep {:}".format(args.timestep))
-    dfpop = af.get_nlte_populations(args.nltefile, args.timestep, 26, T_exc)
-    print(dfpop)
+    try:
+        atomic_number = next(Z for Z, elsymb in enumerate(af.elsymbols) if elsymb.lower() == args.element.lower())
+    except StopIteration:
+        print("Could not find element '{0}'".format(args.element))
+        return
+
+    print("Getting data for timestep {:}".format(args.timestep))
+    dfpop = af.get_nlte_populations(args.nltefile, args.timestep, atomic_number, T_exc)
 
     ion_stage_list = dfpop.ion_stage.unique()
     fig, axes = plt.subplots(len(ion_stage_list), 1, sharex=False, figsize=(8, 7),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if len(dfpop) == 0:
-        print("Error, no data for selected timestep")
+        print("Error, no data for selected timestep and element")
         sys.exit()
     for ion, axis in enumerate(axes):
         ion_stage = ion_stage_list[ion]
@@ -63,12 +70,12 @@ def make_plot(args):
         # ax.plot(list_levels[ion], list_departure_ratio, lw=1.5,
         #         label='NLTE/LTE', linestyle='None', marker='x')
         # ax.set_ylabel(r'')
-        plotlabel = "Fe {0}".format(af.roman_numerals[ion_stage])
+        plotlabel = "{0} {1}".format(af.elsymbols[atomic_number], af.roman_numerals[ion_stage])
         time_days = af.get_timestep_time('spec.out', args.timestep)
         if time_days != -1:
             plotlabel += ' at t={0} days'.format(time_days)
         else:
-            plotlabel += ' at timestep {0:d}'.format(selected_timestep)
+            plotlabel += ' at timestep {0:d}'.format(args.timestep)
 
         axis.annotate(plotlabel, xy=(0.5, 0.96), xycoords='axes fraction',
                       horizontalalignment='center', verticalalignment='top',
@@ -82,7 +89,7 @@ def make_plot(args):
         axis.set_yscale('log')
     axes[-1].set_xlabel(r'Level index')
 
-    fig.savefig(args.outputfile.format(args.timestep), format='pdf')
+    fig.savefig(args.outputfile.format(af.elsymbols[atomic_number], args.timestep), format='pdf')
     plt.close()
 
 
