@@ -36,7 +36,7 @@ def main():
     parser.add_argument('-xmax', type=int, default=10000,
                         help='Plot range: maximum energy in ev')
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plotnonthermal_{0:03d}.pdf',
+                        default='plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf',
                         help='Filename for PDF file')
     args = parser.parse_args()
 
@@ -48,7 +48,7 @@ def main():
         nonthermaldata = pd.read_csv(input_file, delim_whitespace=True)
         nonthermaldata.query('modelgridindex==@args.modelgridindex', inplace=True)
 
-        if not args.timestep or args.timestep < 0:
+        if args.timestep < 0:
             timestepmin = max(nonthermaldata['timestep'])
         else:
             timestepmin = args.timestep
@@ -65,7 +65,7 @@ def main():
 
             if len(nonthermaldata_currenttimestep) > 0:
                 print('Plotting timestep {0:d}'.format(timestep))
-                outputfile = args.outputfile.format(timestep)
+                outputfile = args.outputfile.format(args.modelgridindex, timestep)
                 make_plot(nonthermaldata_currenttimestep, timestep, outputfile, args)
             else:
                 print('No data for timestep {0:d}'.format(timestep))
