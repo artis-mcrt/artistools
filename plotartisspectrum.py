@@ -143,7 +143,7 @@ def plot_artis_spectra(axis, args, specfiles):
 
     # dashesList = [(), (1.5, 2, 9, 2), (5, 1), (0.5, 2), (4, 2)]
     # dash_capstyleList = ['butt', 'butt', 'butt', 'round', 'butt']
-    colorList = [(0, .8*158./255, 0.6*115./255), (204./255, 121./255, 167./255), (213./255, 94./255, 0.0)]
+    colorlist = [(0, .8*158./255, 0.6*115./255), (204./255, 121./255, 167./255), (213./255, 94./255, 0.0)]
 
     for index, specfilename in enumerate(specfiles):
         print(specfilename)
@@ -174,7 +174,7 @@ def plot_artis_spectra(axis, args, specfiles):
 
         spectrum.plot(x='lambda_angstroms', y='f_lambda_scaled', ax=axis,
                       linestyle=linestyle, lw=2.5 - (0.2 * index),
-                      label=linelabel, alpha=0.95, color=colorList[index % len(colorList)])
+                      label=linelabel, alpha=0.95, color=colorlist[index % len(colorlist)])
         # dashes=dashesList[index], dash_capstyle=dash_capstyleList[index])
 
 if __name__ == "__main__":
