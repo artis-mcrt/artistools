@@ -64,37 +64,7 @@ def makeplot(specfiles, args):
     print('nelements {0}'.format(nelements))
     maxion = 5  # must match sn3d.h value
 
-    fig, ax = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
-                           "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
-
-    if args.obsspecfiles is not None:
-        scriptdir = os.path.dirname(os.path.abspath(__file__))
-        obsspectralabels = {
-            '2010lp_20110928_fors2.txt':
-                'SN2010lp +264d (Taubenberger et al. 2013)',
-            'dop_dered_SN2013aa_20140208_fc_final.txt':
-                'SN2013aa +360d (Maguire et al. in prep)',
-            '2003du_20031213_3219_8822_00.txt':
-                'SN2003du +221.3d (Stanishev et al. 2007)'
-        }
-        obscolorlist = ['black', '0.4']
-        obsspectra = [(fn, obsspectralabels[fn], c)
-                      for fn, c in zip(args.obsspecfiles, obscolorlist)]
-        for (filename, serieslabel, linecolor) in obsspectra:
-            obsfile = os.path.join(scriptdir, 'spectra', filename)
-            obsdata = np.loadtxt(obsfile)
-            if len(obsdata[:, 1]) > 5000:
-                # obsdata = scipy.signal.resample(obsdata, 10000)
-                obsdata = obsdata[::3]
-            obsdata = obsdata[(obsdata[:, 0] > args.xmin) &
-                              (obsdata[:, 0] < args.xmax)]
-            print("'{0}' has {1} points".format(serieslabel, len(obsdata)))
-            obsxvalues = obsdata[:, 0]
-            obsyvalues = obsdata[:, 1] * (1.0 / max(obsdata[:, 1]))
-
-            # obsyvalues = scipy.signal.savgol_filter(obsyvalues, 5, 3)
-            ax.plot(obsxvalues, obsyvalues, lw=1.5,
-                    label=serieslabel, zorder=-1, color=linecolor)
+    fig, ax = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     # in the spec.out file, the column index is one more than the timestep
     # (because column 0 is wavelength row headers, not flux at a timestep)
@@ -145,9 +115,9 @@ def makeplot(specfiles, args):
 
                 array_flambda = array_fnu * (arraynu ** 2) / c
 
-                maxyvaluethisseries = max([array_flambda[i] if (args.xmin < (
-                    1e10 * arraylambda[i]) < args.xmax) else -99.0
-                    for i in range(len(array_flambda))])
+                maxyvaluethisseries = max(
+                    [array_flambda[i] if (args.xmin < (1e10 * arraylambda[i]) < args.xmax) else -99.0
+                     for i in range(len(array_flambda))])
                 maxyvalueglobal = max(maxyvalueglobal, maxyvaluethisseries)
 
                 linelabel = ''
@@ -166,6 +136,35 @@ def makeplot(specfiles, args):
                             color=colorlist[int(linenumber) % len(colorlist)],
                             lw=linewidth, label=linelabel)
                     linenumber += 1
+
+    if args.obsspecfiles is not None:
+        scriptdir = os.path.dirname(os.path.abspath(__file__))
+        obsspectralabels = {
+            '2010lp_20110928_fors2.txt':
+                'SN2010lp +264d (Taubenberger et al. 2013)',
+            'dop_dered_SN2013aa_20140208_fc_final.txt':
+                'SN2013aa +360d (Maguire et al. in prep)',
+            '2003du_20031213_3219_8822_00.txt':
+                'SN2003du +221.3d (Stanishev et al. 2007)'
+        }
+        obscolorlist = ['black', '0.4']
+        obsspectra = [(fn, obsspectralabels[fn], c)
+                      for fn, c in zip(args.obsspecfiles, obscolorlist)]
+        for (filename, serieslabel, linecolor) in obsspectra:
+            obsfile = os.path.join(scriptdir, 'spectra', filename)
+            obsdata = np.loadtxt(obsfile)
+            if len(obsdata[:, 1]) > 5000:
+                # obsdata = scipy.signal.resample(obsdata, 10000)
+                obsdata = obsdata[::3]
+            obsdata = obsdata[(obsdata[:, 0] > args.xmin) &
+                              (obsdata[:, 0] < args.xmax)]
+            print("'{0}' has {1} points".format(serieslabel, len(obsdata)))
+            obsxvalues = obsdata[:, 0]
+            obsyvalues = obsdata[:, 1] * (1.0 / max(obsdata[:, 1])) * maxyvalueglobal
+
+            # obsyvalues = scipy.signal.savgol_filter(obsyvalues, 5, 3)
+            ax.plot(obsxvalues, obsyvalues, lw=1.5,
+                    label=serieslabel, zorder=-1, color=linecolor)
 
     ax.annotate(plotlabel, xy=(0.1, 0.96), xycoords='axes fraction',
                 horizontalalignment='left', verticalalignment='top',
