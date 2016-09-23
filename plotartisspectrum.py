@@ -64,10 +64,10 @@ def make_plot(args, specfiles):
     axis.set_ylim(ymin=-0.1, ymax=1.1)
 
     axis.legend(loc='best', handlelength=2, frameon=False,
-                numpoints=1, prop={'size': 10})
+                numpoints=1, prop={'size': 9})
     axis.set_xlabel(r'Wavelength ($\AA$)')
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
-    axis.set_ylabel(r'F$_\lambda$')
+    axis.set_ylabel(r'Scaled F$_\lambda$')
 
     filenameout = args.outputfile
     fig.savefig(filenameout, format='pdf')
@@ -141,6 +141,10 @@ def plot_artis_spectra(axis, args, specfiles):
     else:
         print('Plotting timestep {0}'.format(args.timestepmin))
 
+    # dashesList = [(), (1.5, 2, 9, 2), (5, 1), (0.5, 2), (4, 2)]
+    # dash_capstyleList = ['butt', 'butt', 'butt', 'round', 'butt']
+    colorList = [(0, .8*158./255, 0.6*115./255), (204./255, 121./255, 167./255), (213./255, 94./255, 0.0)]
+
     for index, specfilename in enumerate(specfiles):
         print(specfilename)
         linelabel = '{0} at t={1}d'.format(specfilename.split(
@@ -170,7 +174,8 @@ def plot_artis_spectra(axis, args, specfiles):
 
         spectrum.plot(x='lambda_angstroms', y='f_lambda_scaled', ax=axis,
                       linestyle=linestyle, lw=2.5 - (0.2 * index),
-                      label=linelabel, alpha=0.9)
+                      label=linelabel, alpha=0.95, color=colorList[index % len(colorList)])
+        # dashes=dashesList[index], dash_capstyle=dash_capstyleList[index])
 
 if __name__ == "__main__":
     main()
