@@ -204,6 +204,10 @@ def plot_specout(axis, peak_value, timestep):
     if not os.path.isfile(specfilename):
         specfilename = DEFAULTSPECPATH
 
+    if not os.path.isfile(specfilename):
+        print('Could not find ' + specfilename)
+        return
+
     spectrum = af.get_spectrum(specfilename, timestep, normalised=True)
     spectrum['f_lambda'] = spectrum['f_lambda'] * peak_value
 
