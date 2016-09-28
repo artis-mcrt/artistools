@@ -3,6 +3,7 @@ import argparse
 import glob
 import os
 import sys
+import math
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -31,6 +32,8 @@ def main():
                         help='Plot range: minimum wavelength')
     parser.add_argument('-xmax', type=int, default=7000,
                         help='Plot range: maximum wavelength')
+    parser.add_argument('-legendfontsize', type=int, default=6,
+                        help='Font size of legend text')
     parser.add_argument('-obsspec', action='append', dest='obsspecfiles',
                         help='Include observational spectrum with this'
                              ' file name')
@@ -53,7 +56,7 @@ def make_plot(args, specfiles):
     """
         Set up a matplotlib figure and plot observational and ARTIS spectra
     """
-    # import matplotlib.ticker as ticker
+    import matplotlib.ticker as ticker
     fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
         "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
@@ -61,12 +64,12 @@ def make_plot(args, specfiles):
     plot_artis_spectra(axis, args, specfiles)
 
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
-    axis.set_ylim(ymin=-0.1, ymax=1.1)
+    axis.set_ylim(ymin=-0.1, ymax=1.25)
 
     axis.legend(loc='best', handlelength=2, frameon=False,
-                numpoints=1, prop={'size': 9})
+                numpoints=1, prop={'size': args.legendfontsize})
     axis.set_xlabel(r'Wavelength ($\AA$)')
-    # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
+    axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
     axis.set_ylabel(r'Scaled F$_\lambda$')
 
     filenameout = args.outputfile
@@ -143,16 +146,22 @@ def plot_artis_spectra(axis, args, specfiles):
 
     # dashesList = [(), (1.5, 2, 9, 2), (5, 1), (0.5, 2), (4, 2)]
     # dash_capstyleList = ['butt', 'butt', 'butt', 'round', 'butt']
-    colorlist = [(0, .8*158./255, 0.6*115./255), (204./255, 121./255, 167./255), (213./255, 94./255, 0.0)]
+    # colorlist = [(0, .8*158./255, 0.6*115./255), (204./255, 121./255, 167./255), (213./255, 94./255, 0.0)]
 
     for index, specfilename in enumerate(specfiles):
         print(specfilename)
-        linelabel = '{0} at t={1}d'.format(specfilename.split(
-            '/spec.out')[0], af.get_timestep_time(specfilename,
-                                                  args.timestepmin))
+        try:
+            plotlabelfile = os.path.join(specfilename.split('/spec.out')[0], 'plotlabel.txt')
+            modelname = open(plotlabelfile, mode='r').readline().strip()
+        except (FileNotFoundError):
+            modelname = specfilename.split('/spec.out')[0]
+
+        linelabel = '{0} at t={1:d}d'.format(modelname, math.floor(float(af.get_timestep_time(specfilename, args.timestepmin))))
+
         if args.timestepmax > args.timestepmin:
-            linelabel += ' to {0}d'.format(
-                af.get_timestep_time(specfilename, args.timestepmax))
+            linelabel += ' to {0:d}d'.format(math.floor(float(af.get_timestep_time(specfilename, args.timestepmax))))
+
+        linelabel += " (Shingles et al., in prep)"
 
         def filterfunc(arrayfnu):
             from scipy.signal import savgol_filter
@@ -174,7 +183,7 @@ def plot_artis_spectra(axis, args, specfiles):
 
         spectrum.plot(x='lambda_angstroms', y='f_lambda_scaled', ax=axis,
                       linestyle=linestyle, lw=2.5 - (0.2 * index),
-                      label=linelabel, alpha=0.95, color=colorlist[index % len(colorlist)])
+                      label=linelabel, alpha=0.95, color=None)  # colorlist[index % len(colorlist)]
         # dashes=dashesList[index], dash_capstyle=dash_capstyleList[index])
 
 if __name__ == "__main__":
