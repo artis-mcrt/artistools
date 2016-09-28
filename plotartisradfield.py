@@ -2,6 +2,7 @@
 import argparse
 import math
 import os
+import glob
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -33,7 +34,7 @@ def main():
                         help='Make plots for all timesteps up to this timestep')
     parser.add_argument('-modelgridindex', type=int, default=0,
                         help='Modelgridindex to plot')
-    parser.add_argument('-xmin', type=int, default=40,
+    parser.add_argument('-xmin', type=int, default=1000,
                         help='Plot range: minimum wavelength in Angstroms')
     parser.add_argument('-xmax', type=int, default=10000,
                         help='Plot range: maximum wavelength in Angstroms')
@@ -45,11 +46,19 @@ def main():
     if args.listtimesteps:
         af.showtimesteptimes('spec.out')
     else:
-        radfield_file = 'radfield.out'
-        print('Loading {:}...'.format(radfield_file))
-        radfielddata = pd.read_csv(radfield_file, delim_whitespace=True)
-        radfielddata.query('modelgridindex==@args.modelgridindex', inplace=True)
+        radfielddata = None
+        radfield_files = glob.glob('radfield_????.out', recursive=True) + glob.glob('radfield-????.out', recursive=True) + glob.glob('radfield.out', recursive=True)
+        for radfield_file in radfield_files:
+            print('Loading {:}...'.format(radfield_file))
 
+            radfielddata_thisfile = pd.read_csv(radfield_file, delim_whitespace=True)
+            radfielddata_thisfile.query('modelgridindex==@args.modelgridindex', inplace=True)
+            if len(radfielddata_thisfile) > 0:
+                if radfielddata == None:
+                    radfielddata = radfielddata_thisfile.copy()
+                else:
+                    radfielddata.append(radfielddata_thisfile, ignore_index=True)
+            print(radfielddata)
         if not args.timestep or args.timestep < 0:
             timestepmin = max(radfielddata['timestep'])
         else:
