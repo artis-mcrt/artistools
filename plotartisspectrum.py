@@ -151,10 +151,10 @@ def plot_artis_spectra(axis, args, specfiles):
     for index, specfilename in enumerate(specfiles):
         print(specfilename)
         try:
-            plotlabelfile = os.path.join(specfilename.split('/spec.out')[0], 'plotlabel.txt')
+            plotlabelfile = os.path.join(os.path.dirname(specfilename), 'plotlabel.txt')
             modelname = open(plotlabelfile, mode='r').readline().strip()
         except (FileNotFoundError):
-            modelname = specfilename.split('/spec.out')[0]
+            modelname = os.path.dirname(specfilename)
 
         linelabel = '{0} at t={1:d}d'.format(modelname, math.floor(float(af.get_timestep_time(specfilename, args.timestepmin))))
 
