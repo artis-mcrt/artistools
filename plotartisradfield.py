@@ -4,6 +4,7 @@ import math
 import os
 import glob
 
+import matplotlib.ticker as ticker
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -58,7 +59,7 @@ def main():
                     radfielddata = radfielddata_thisfile.copy()
                 else:
                     radfielddata.append(radfielddata_thisfile, ignore_index=True)
-            print(radfielddata)
+
         if not args.timestep or args.timestep < 0:
             timestepmin = max(radfielddata['timestep'])
         else:
@@ -109,6 +110,7 @@ def make_plot(radfielddata, timestep, outputfile, args):
 
     axis.set_xlabel(r'Wavelength ($\AA$)')
     axis.set_ylabel(r'J$_\lambda$ [erg/cm$^2$/m]')
+    axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
     axis.set_ylim(ymin=0.0, ymax=ymax)
 
