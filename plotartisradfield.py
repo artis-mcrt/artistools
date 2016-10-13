@@ -55,7 +55,7 @@ def main():
             radfielddata_thisfile = pd.read_csv(radfield_file, delim_whitespace=True)
             radfielddata_thisfile.query('modelgridindex==@args.modelgridindex', inplace=True)
             if len(radfielddata_thisfile) > 0:
-                if radfielddata == None:
+                if radfielddata is None:
                     radfielddata = radfielddata_thisfile.copy()
                 else:
                     radfielddata.append(radfielddata_thisfile, ignore_index=True)

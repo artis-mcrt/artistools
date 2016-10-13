@@ -2,6 +2,7 @@
 import argparse
 # import math
 # import os
+import glob
 
 import matplotlib.pyplot as plt
 # import numpy as np
@@ -43,10 +44,18 @@ def main():
     if args.listtimesteps:
         af.showtimesteptimes('spec.out')
     else:
-        input_file = 'nonthermalspec.out'
-        print('Loading {:}...'.format(input_file))
-        nonthermaldata = pd.read_csv(input_file, delim_whitespace=True)
-        nonthermaldata.query('modelgridindex==@args.modelgridindex', inplace=True)
+        nonthermaldata = None
+        nonthermal_files = glob.glob('nonthermalspec_????.out', recursive=True) + glob.glob('nonthermalspec-????.out', recursive=True) + glob.glob('nonthermalspec.out', recursive=True)
+        for nonthermal_file in nonthermal_files:
+            print('Loading {:}...'.format(nonthermal_file))
+
+            nonthermaldata_thisfile = pd.read_csv(nonthermal_file, delim_whitespace=True)
+            nonthermaldata_thisfile.query('modelgridindex==@args.modelgridindex', inplace=True)
+            if len(nonthermaldata_thisfile) > 0:
+                if nonthermaldata is None:
+                    nonthermaldata = nonthermaldata_thisfile.copy()
+                else:
+                    nonthermaldata.append(nonthermaldata_thisfile, ignore_index=True)
 
         if args.timestep < 0:
             timestepmin = max(nonthermaldata['timestep'])
