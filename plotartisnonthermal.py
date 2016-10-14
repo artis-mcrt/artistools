@@ -84,24 +84,26 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
     """
         Draw the bin edges, fitted field, and emergent spectrum
     """
-    fig, axis = plt.subplots(1, 1, sharex=True, figsize=(8, 4),
-                             tight_layout={
-                                 "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    fig, axis = plt.subplots(1, 1, sharex=True, figsize=(6, 4),
+                             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     ymax = max(nonthermaldata['y'])
-    axis.plot(nonthermaldata['energy_ev'], nonthermaldata['y'], linewidth=1, color='blue')
+
+    # nonthermaldata.plot(x='energy_ev', y='y', lw=1.5, ax=axis, color='blue', legend=False)
+    axis.plot(nonthermaldata['energy_ev'], nonthermaldata['y'], linewidth=1.5, color='blue')
 
     axis.annotate('Timestep {0:d}\nCell {1:d}'.format(timestep, args.modelgridindex),
                   xy=(0.02, 0.96), xycoords='axes fraction',
                   horizontalalignment='left', verticalalignment='top', fontsize=8)
 
     axis.set_xlabel(r'Energy (eV)')
-    axis.set_ylabel(r'distribution y(x)')
+    axis.set_ylabel(r'y (e$^-$ / cm$^2$ / s / eV)')
+    axis.set_yscale("log", nonposy='clip')
     # axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
     axis.set_ylim(ymin=0.0, ymax=ymax)
 
-    axis.legend(loc='upper center', handlelength=2,
-                frameon=False, numpoints=1, prop={'size': 13})
+    # axis.legend(loc='upper center', handlelength=2,
+    #             frameon=False, numpoints=1, prop={'size': 13})
 
     print('Saving to {0:s}'.format(outputfile))
     fig.savefig(outputfile, format='pdf')
