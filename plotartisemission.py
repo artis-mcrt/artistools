@@ -3,6 +3,7 @@ import argparse
 import glob
 import os
 import sys
+import math
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -57,8 +58,7 @@ def main():
 
 
 def makeplot(specfiles, args):
-    elementlist = af.get_composition_data(
-        specfiles[0].replace('spec.out', 'compositiondata.txt'))
+    elementlist = af.get_composition_data(specfiles[0].replace('spec.out', 'compositiondata.txt'))
     nelements = len(elementlist)
 
     print('nelements {0}'.format(nelements))
@@ -86,7 +86,8 @@ def makeplot(specfiles, args):
 
     maxyvalueglobal = 0.0
     linenumber = 0
-    for element in reversed(range(nelements)):
+    contribution_list = []
+    for element in range(nelements):
         nions = elementlist.nions[element]
 
         # nions = elementlist.iloc[element].uppermost_ionstage - elementlist.iloc[element].lowermost_ionstage + 1
@@ -97,15 +98,12 @@ def makeplot(specfiles, args):
                 ionserieslist.append((2 * nelements * maxion, 'free-free'))
                 linenumber += 1  # so the linestyle resets
             ionserieslist.append((element * maxion + ion, 'bound-bound'))
-            ionserieslist.append(
-                (nelements * maxion + element * maxion + ion, 'bound-free'))
+            ionserieslist.append((nelements * maxion + element * maxion + ion, 'bound-free'))
             for (selectedcolumn, emissiontype) in ionserieslist:
-                array_fnu = emissiondata[
-                    timeindexlow::len(timearray), selectedcolumn]
+                array_fnu = emissiondata[timeindexlow::len(timearray), selectedcolumn]
 
                 for timeindex in range(timeindexlow + 1, timeindexhigh + 1):
-                    array_fnu += emissiondata[
-                        timeindex::len(timearray), selectedcolumn]
+                    array_fnu += emissiondata[timeindex::len(timearray), selectedcolumn]
 
                 array_fnu = array_fnu / (timeindexhigh - timeindexlow + 1)
 
@@ -126,16 +124,23 @@ def makeplot(specfiles, args):
                         af.elsymbols[elementlist.Z[element]],
                         af.roman_numerals[ion_stage])
                 linelabel += ' {:}'.format(emissiontype)
-                plotlabel = 't={0}d'.format(specdata[0, timeindexlow])
+                plotlabel = 't={0:d}d'.format(math.floor(specdata[0, timeindexlow]))
                 if timeindexhigh > timeindexlow:
-                    plotlabel += ' to {0}d'.format(specdata[0, timeindexhigh])
-                linewidth = [1.8, 0.8][emissiontype == 'bound-free']
+                    plotlabel += ' to {0:d}d'.format(math.floor(specdata[0, timeindexhigh]))
+                contribution_list.append([maxyvaluethisseries, linelabel, array_flambda])
                 if emissiontype == 'bound-bound':
-                    #        linelabel in ['Fe II', 'Fe III', 'O I', 'O II']):
-                    ax.plot(1e10 * arraylambda, array_flambda,  # / maxyvalueglobal
-                            color=colorlist[int(linenumber) % len(colorlist)],
-                            lw=linewidth, label=linelabel)
                     linenumber += 1
+
+    maxseriescount = 6
+    contribution_list = sorted(contribution_list, key=lambda x: x[0])
+    remainder_sum = np.zeros(len(arraylambda))
+    for row in contribution_list[:-maxseriescount]:
+        remainder_sum = np.add(remainder_sum, row[2])
+
+    contribution_list = contribution_list[-maxseriescount:]
+    contribution_list.insert(0, [0.0, 'other', remainder_sum])
+
+    stackplot_emission = ax.stackplot(1e10 * arraylambda, *[x[2] for x in contribution_list], linewidth=0)
 
     if args.obsspecfiles is not None:
         scriptdir = os.path.dirname(os.path.abspath(__file__))
@@ -150,6 +155,7 @@ def makeplot(specfiles, args):
         obscolorlist = ['black', '0.4']
         obsspectra = [(fn, obsspectralabels[fn], c)
                       for fn, c in zip(args.obsspecfiles, obscolorlist)]
+
         for (filename, serieslabel, linecolor) in obsspectra:
             obsfile = os.path.join(scriptdir, 'spectra', filename)
             obsdata = np.loadtxt(obsfile)
@@ -174,7 +180,7 @@ def makeplot(specfiles, args):
     # ax.set_ylim(ymin=-0.05*maxyvalueglobal,ymax=maxyvalueglobal*1.3)
     # ax.set_ylim(ymin=-0.1, ymax=1.1)
 
-    ax.legend(loc='upper right', handlelength=2,
+    ax.legend(reversed(stackplot_emission), reversed([x[1] for x in contribution_list]), loc='upper right', handlelength=2,
               frameon=False, numpoints=1, prop={'size': 9})
     ax.set_xlabel(r'Wavelength ($\AA$)')
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
