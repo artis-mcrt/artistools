@@ -155,13 +155,13 @@ def plot_artis_spectra(axis, args, specfiles):
             modelname = open(plotlabelfile, mode='r').readline().strip()
         except (FileNotFoundError):
             modelname = os.path.dirname(specfilename)
+            if not modelname:
+                modelname = os.path.split(os.path.dirname(os.path.abspath(specfilename)))[1]  # get the current directory name
 
         linelabel = '{0} at t={1:d}d'.format(modelname, math.floor(float(af.get_timestep_time(specfilename, args.timestepmin))))
 
         if args.timestepmax > args.timestepmin:
             linelabel += ' to {0:d}d'.format(math.floor(float(af.get_timestep_time(specfilename, args.timestepmax))))
-
-        linelabel += " (Shingles et al., in prep)"
 
         def filterfunc(arrayfnu):
             from scipy.signal import savgol_filter
