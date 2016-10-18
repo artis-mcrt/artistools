@@ -6,6 +6,7 @@ import sys
 import math
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import numpy as np
 import scipy.signal
 
@@ -38,6 +39,8 @@ def main():
                         help='Plot range: minimum wavelength')
     parser.add_argument('-xmax', type=int, default=7000,
                         help='Plot range: maximum wavelength')
+    parser.add_argument('-maxseriescount', type=int, default=6,
+                        help='Maximum number of plot series (ions/processes)')
     parser.add_argument('-obsspec', action='append', dest='obsspecfiles',
                         help='Include observational spectrum with this '
                         'file name')
@@ -60,6 +63,7 @@ def main():
 def makeplot(specfiles, args):
     elementlist = af.get_composition_data(specfiles[0].replace('spec.out', 'compositiondata.txt'))
     nelements = len(elementlist)
+    specfilename = specfiles[0]
 
     print('nelements {0}'.format(nelements))
     maxion = 5  # must match sn3d.h value
@@ -77,15 +81,26 @@ def makeplot(specfiles, args):
         print('Ploting timestep {0}'.format(args.timestepmin))
         timeindexhigh = timeindexlow
 
-    specdata = np.loadtxt(specfiles[0])
-    emissiondata = np.loadtxt(specfiles[0].replace('spec.out', 'emission.out'))
+    specdata = np.loadtxt(specfilename)
+
+    try:
+        plotlabelfile = os.path.join(os.path.dirname(specfilename), 'plotlabel.txt')
+        modelname = open(plotlabelfile, mode='r').readline().strip()
+    except (FileNotFoundError):
+        modelname = os.path.dirname(specfilename)
+        if not modelname:
+            modelname = os.path.split(os.path.dirname(os.path.abspath(specfilename)))[1]  # get the current directory name
+    plotlabel = '{0} at t={1:d}d'.format(modelname, math.floor(specdata[0, timeindexlow]))
+    if timeindexhigh > timeindexlow:
+        plotlabel += ' to {0:d}d'.format(math.floor(specdata[0, timeindexhigh]))
+
+    emissiondata = np.loadtxt(specfilename.replace('spec.out', 'emission.out'))
 
     timearray = specdata[0, 1:]
     arraynu = specdata[1:, 0]
     arraylambda = c / specdata[1:, 0]
 
     maxyvalueglobal = 0.0
-    linenumber = 0
     contribution_list = []
     for element in range(nelements):
         nions = elementlist.nions[element]
@@ -94,9 +109,8 @@ def makeplot(specfiles, args):
         for ion in range(nions):
             ion_stage = ion + elementlist.lowermost_ionstage[element]
             ionserieslist = []
-            if linenumber == 0:
+            if (element == ion == 0):
                 ionserieslist.append((2 * nelements * maxion, 'free-free'))
-                linenumber += 1  # so the linestyle resets
             ionserieslist.append((element * maxion + ion, 'bound-bound'))
             ionserieslist.append((nelements * maxion + element * maxion + ion, 'bound-free'))
             for (selectedcolumn, emissiontype) in ionserieslist:
@@ -120,18 +134,13 @@ def makeplot(specfiles, args):
 
                 linelabel = ''
                 if emissiontype != 'free-free':
-                    linelabel += '{0} {1}'.format(
-                        af.elsymbols[elementlist.Z[element]],
-                        af.roman_numerals[ion_stage])
-                linelabel += ' {:}'.format(emissiontype)
-                plotlabel = 't={0:d}d'.format(math.floor(specdata[0, timeindexlow]))
-                if timeindexhigh > timeindexlow:
-                    plotlabel += ' to {0:d}d'.format(math.floor(specdata[0, timeindexhigh]))
-                contribution_list.append([maxyvaluethisseries, linelabel, array_flambda])
-                if emissiontype == 'bound-bound':
-                    linenumber += 1
+                    linelabel += '{0} {1} '.format(af.elsymbols[elementlist.Z[element]], af.roman_numerals[ion_stage])
+                linelabel += '{:}'.format(emissiontype)
 
-    maxseriescount = 6
+                # if not linelabel.startswith('Fe I '):
+                contribution_list.append([maxyvaluethisseries, linelabel, array_flambda])
+
+    maxseriescount = args.maxseriescount
     contribution_list = sorted(contribution_list, key=lambda x: x[0])
     remainder_sum = np.zeros(len(arraylambda))
     for row in contribution_list[:-maxseriescount]:
@@ -184,6 +193,7 @@ def makeplot(specfiles, args):
               frameon=False, numpoints=1, prop={'size': 9})
     ax.set_xlabel(r'Wavelength ($\AA$)')
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
+    ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
     ax.set_ylabel(r'F$_\lambda$')
 
     fig.savefig(args.outputfile, format='pdf')
