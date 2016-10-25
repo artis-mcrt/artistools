@@ -22,21 +22,10 @@ def main():
     parser.add_argument('-specpath', action='store', default='**/spec.out',
                         help='Path to spec.out file (may include wildcards '
                              'such as * and **)')
-    parser.add_argument('-listtimesteps', action='store_true', default=False,
-                        help='Show the times at each timestep')
-    parser.add_argument('-timestepmin', type=int, default=70,
-                        help='First or only included timestep')
-    parser.add_argument('-timestepmax', type=int, default=80,
-                        help='Last included timestep')
-    parser.add_argument('-xmin', type=int, default=3500,
-                        help='Plot range: minimum wavelength')
-    parser.add_argument('-xmax', type=int, default=7000,
-                        help='Plot range: maximum wavelength')
+    af.addargs_timesteps(parser)
+    af.addargs_spectrum(parser)
     parser.add_argument('-legendfontsize', type=int, default=8,
                         help='Font size of legend text')
-    parser.add_argument('-obsspec', action='append', dest='obsspecfiles',
-                        help='Include observational spectrum with this'
-                             ' file name')
     parser.add_argument('-o', action='store', dest='outputfile',
                         default='plotspec.pdf',
                         help='path/filename for PDF file')

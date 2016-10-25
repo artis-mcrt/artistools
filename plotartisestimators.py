@@ -88,8 +88,8 @@ def main():
     for elindex, element in elementlist.iterrows():
         # if element['Z'] != 8:
         #     continue
-        ax = axes[1 + elindex]
-        ax.set_ylabel(r'Population fraction')
+        axis = axes[1 + elindex]
+        axis.set_ylabel(r'Population fraction')
         for ion in range(elementlist['nions'][elindex]):
             if element['Z'] == 26 and ion == 0:
                 continue
@@ -100,18 +100,18 @@ def main():
                     # el_pop = sum(list_populations[index][elindex])
                     if thismgi == mgi:
                         ylist.append(list_populations[index][elindex][ion] / total_pop)
-            ax.plot(list_velocity, ylist, lw=1.5, label="{0} {1}".format(af.elsymbols[elementlist['Z'][elindex]], af.roman_numerals[ion + 1]))
+            axis.plot(list_velocity, ylist, lw=1.5, label="{0} {1}".format(af.elsymbols[elementlist['Z'][elindex]], af.roman_numerals[ion + 1]))
 
-    # ax.plot(list_timestep, [x[0][0] for x in list_populations],
-    #         lw=1.5, label="Fe I")
-    # ax.plot(list_timestep, [x[0][1] for x in list_populations],
-    #         lw=1.5, label="Fe II")
-    # ax.plot(list_timestep, [x[0][2] for x in list_populations],
-    #         lw=1.5, label="Fe III")
-    # ax.plot(list_timestep, [x[0][3] for x in list_populations],
-    #         lw=1.5, label="Fe IV")
-    # ax.plot(list_timestep, [x[0][4] for x in list_populations],
-    #         lw=1.5, label="Fe V")
+    # axis.plot(list_timestep, [x[0][0] for x in list_populations],
+    #           lw=1.5, label="Fe I")
+    # axis.plot(list_timestep, [x[0][1] for x in list_populations],
+    #           lw=1.5, label="Fe II")
+    # axis.plot(list_timestep, [x[0][2] for x in list_populations],
+    #           lw=1.5, label="Fe III")
+    # axis.plot(list_timestep, [x[0][3] for x in list_populations],
+    #           lw=1.5, label="Fe IV")
+    # axis.plot(list_timestep, [x[0][4] for x in list_populations],
+    #           lw=1.5, label="Fe V")
     plotlabel = 't={}d'.format(timesteptimes[selectedtimestep])
     axes[1].annotate(plotlabel, xy=(0.1, 0.96), xycoords='axes fraction',
                      horizontalalignment='left', verticalalignment='top',
@@ -134,7 +134,7 @@ def main():
                   prop={'size': 9})
 
     axes[-1].set_xlabel(r'Velocity [km/s]')
-    # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
+    # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
 
     fig.savefig('plotestimators.pdf', format='pdf')
     plt.close()

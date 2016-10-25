@@ -67,9 +67,9 @@ def make_plot(args):
         # list_departure_ratio = [
         #     nlte / lte for (nlte, lte) in zip(list_nltepop[ion],
         #                                       list_ltepop[ion])]
-        # ax.plot(list_levels[ion], list_departure_ratio, lw=1.5,
+        # axis.plot(list_levels[ion], list_departure_ratio, lw=1.5,
         #         label='NLTE/LTE', linestyle='None', marker='x')
-        # ax.set_ylabel(r'')
+        # axis.set_ylabel(r'')
         plotlabel = "{0} {1}".format(af.elsymbols[atomic_number], af.roman_numerals[ion_stage])
         time_days = af.get_timestep_time('spec.out', args.timestep)
         if time_days != -1:
@@ -83,8 +83,8 @@ def make_plot(args):
         axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
 
     for axis in axes:
-        # ax.set_xlim(xmin=270,xmax=300)
-        # ax.set_ylim(ymin=-0.1,ymax=1.3)
+        # axis.set_xlim(xmin=270,xmax=300)
+        # axis.set_ylim(ymin=-0.1,ymax=1.3)
         axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
         axis.set_yscale('log')
     axes[-1].set_xlabel(r'Level index')

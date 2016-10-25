@@ -24,26 +24,15 @@ colorlist = [(0.0, 0.5, 0.7), (0.9, 0.2, 0.0), (0.9, 0.6, 0.0),
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Plot artis model spectra by finding spec.out files in '
-                    'the current directory or subdirectories.')
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description='Plot ARTIS emission spectra')
     parser.add_argument('-specpath', action='store', default='**/spec.out',
                         help='Path to spec.out file (may include wildcards '
                         'such as * and **)')
-    parser.add_argument('-listtimesteps', action='store_true', default=False,
-                        help='Show the times at each timestep')
-    parser.add_argument('-timestepmin', type=int, default=70,
-                        help='First or only included timestep')
-    parser.add_argument('-timestepmax', type=int, default=80,
-                        help='Last included timestep')
-    parser.add_argument('-xmin', type=int, default=3500,
-                        help='Plot range: minimum wavelength')
-    parser.add_argument('-xmax', type=int, default=7000,
-                        help='Plot range: maximum wavelength')
+    af.addargs_timesteps(parser)
+    af.addargs_spectrum(parser)
     parser.add_argument('-maxseriescount', type=int, default=6,
                         help='Maximum number of plot series (ions/processes)')
-    parser.add_argument('-obsspec', action='append', dest='obsspecfiles',
-                        help='Include observational spectrum with this '
-                        'file name')
     parser.add_argument('-o', action='store', dest='outputfile',
                         default='plotemission.pdf',
                         help='path/filename for PDF file')
@@ -109,10 +98,10 @@ def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arr
 
 
 def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, scale_to_peak=None):
-    if args.obsspecfiles is not None:
+    if args.refspecfiles is not None:
         scriptdir = os.path.dirname(os.path.abspath(__file__))
         refspeccolorlist = ['0.4', '0.8']
-        refspectra = [(fn, af.obsspectralabels.get(fn, fn), c) for fn, c in zip(args.obsspecfiles, refspeccolorlist)]
+        refspectra = [(fn, af.obsspectralabels.get(fn, fn), c) for fn, c in zip(args.refspecfiles, refspeccolorlist)]
 
         for (filename, serieslabel, linecolor) in refspectra:
             specdata = np.loadtxt(os.path.join(scriptdir, 'spectra', filename))

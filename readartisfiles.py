@@ -284,14 +284,14 @@ def get_nlte_populations(nltefile, timestep, atomic_number, T_exc):
 
 def plot_reference_spectra(axis, args):
     """
-        Plot reference spectra listed in args.obsspecfiles
+        Plot reference spectra listed in args.refspecfiles
     """
     import scipy.signal
-    if args.obsspecfiles is not None:
+    if args.refspecfiles is not None:
         scriptdir = os.path.dirname(os.path.abspath(__file__))
         colorlist = ['black', '0.4']
         refspectra = [(fn, obsspectralabels.get(fn, fn), c)
-                      for fn, c in zip(args.obsspecfiles, colorlist)]
+                      for fn, c in zip(args.refspecfiles, colorlist)]
         for (filename, serieslabel, linecolor) in refspectra:
             filepath = os.path.join(scriptdir, 'spectra', filename)
             specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
@@ -316,6 +316,23 @@ def plot_reference_spectra(axis, args):
                          y='f_lambda', lw=1.5, ax=axis,
                          label=serieslabel, zorder=-1, color=linecolor)
 
+
+def addargs_timesteps(parser):
+    parser.add_argument('-listtimesteps', action='store_true', default=False,
+                        help='Show the times at each timestep')
+    parser.add_argument('-timestepmin', type=int, default=70,
+                        help='First or only included timestep')
+    parser.add_argument('-timestepmax', type=int, default=80,
+                        help='Last included timestep')
+
+
+def addargs_spectrum(parser):
+    parser.add_argument('-xmin', type=int, default=3500,
+                        help='Plot range: minimum wavelength in Angstroms')
+    parser.add_argument('-xmax', type=int, default=7000,
+                        help='Plot range: maximum wavelength in Angstroms')
+    parser.add_argument('-obsspec', action='append', dest='refspecfiles',
+                        help='Also plot reference spectrum from this file')
 
 if __name__ == "__main__":
     print("this script is for inclusion only")
