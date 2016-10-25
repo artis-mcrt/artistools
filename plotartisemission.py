@@ -101,7 +101,7 @@ def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, scale_to_p
     if args.refspecfiles is not None:
         scriptdir = os.path.dirname(os.path.abspath(__file__))
         refspeccolorlist = ['0.4', '0.8']
-        refspectra = [(fn, af.obsspectralabels.get(fn, fn), c) for fn, c in zip(args.refspecfiles, refspeccolorlist)]
+        refspectra = [(fn, af.refspectralabels.get(fn, fn), c) for fn, c in zip(args.refspecfiles, refspeccolorlist)]
 
         for (filename, serieslabel, linecolor) in refspectra:
             specdata = np.loadtxt(os.path.join(scriptdir, 'spectra', filename))

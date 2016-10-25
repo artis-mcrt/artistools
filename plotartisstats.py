@@ -17,8 +17,7 @@ def main():
         print('no output log files found')
         sys.exit()
 
-    fig, axes = plt.subplots(
-        2, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    fig, axes = plt.subplots(2, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     for index, logfilename in enumerate(logfiles):
         runfolder = logfilename.split('/output_0-0.txt')[0]
@@ -47,11 +46,10 @@ def main():
 
         linestyle = ['-', '--'][int(index / 7)]
         # xvalues = range(len(stats))
-        xvalues = timesteptimes
         yvalues = [timestepstats['k_stat_to_r_fb'] for timestepstats in stats]
-        axes[0].plot(xvalues, yvalues, linestyle=linestyle, lw=1.5, label=linelabel)
+        axes[0].plot(timesteptimes, yvalues, linestyle=linestyle, lw=1.5, label=linelabel)
         yvalues = [timestepstats['k_stat_to_ma_collexc'] for timestepstats in stats]
-        axes[1].plot(xvalues, yvalues, linestyle=linestyle, lw=1.5, label=linelabel)
+        axes[1].plot(timesteptimes, yvalues, linestyle=linestyle, lw=1.5, label=linelabel)
 
     for axis in axes:
         axis.set_xlim(xmin=250, xmax=300)

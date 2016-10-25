@@ -14,15 +14,19 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII',
                   'XVIII', 'XIX', 'XX')
 
-obsspectralabels = {
+refspectralabels = {
     '2010lp_20110928_fors2.txt':
         'SN2010lp +264d (Taubenberger et al. 2013)',
+
     'dop_dered_SN2013aa_20140208_fc_final.txt':
         'SN2013aa +360d (Maguire et al. in prep)',
+
     '2003du_20031213_3219_8822_00.txt':
         'SN2003du +221.3d (Stanishev et al. 2007)',
+
     'nero-nebspec.txt':
         'NERO +300d Fe Ball',
+        
     'maurer2011_RTJ_W7_338d.txt':
         'RTJ W7 +338d (Maurer et al. 2011)'
 }
@@ -246,7 +250,8 @@ def get_nlte_populations(nltefile, timestep, atomic_number, T_exc):
                         gslevel = ion_data.level_list[0]
                 k_B = const.k_B.to('eV / K').value
                 gspop = dfpop.query('timestep==@timestep and ion_stage==@ion_stage and level==0').iloc[0].pop_nlte
-                ltepop_custom = gspop * level.g / gslevel.g * math.exp(-(level.energy_ev - gslevel.energy_ev) / k_B / T_exc)
+                ltepop_custom = gspop * level.g / gslevel.g * math.exp(
+                    -(level.energy_ev - gslevel.energy_ev) / k_B / T_exc)
 
                 levelname = level.levelname.split('[')[0]
                 parity = 1 if levelname[-1] == 'o' else 0
@@ -290,12 +295,11 @@ def plot_reference_spectra(axis, args):
     if args.refspecfiles is not None:
         scriptdir = os.path.dirname(os.path.abspath(__file__))
         colorlist = ['black', '0.4']
-        refspectra = [(fn, obsspectralabels.get(fn, fn), c)
-                      for fn, c in zip(args.refspecfiles, colorlist)]
+        refspectra = [(fn, refspectralabels.get(fn, fn), c)  for fn, c in zip(args.refspecfiles, colorlist)]
         for (filename, serieslabel, linecolor) in refspectra:
             filepath = os.path.join(scriptdir, 'spectra', filename)
             specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
-                                  names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
+                                   names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
 
             if len(specdata) > 5000:
                 # specdata = scipy.signal.resample(specdata, 10000)
