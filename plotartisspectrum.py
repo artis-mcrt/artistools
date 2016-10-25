@@ -4,11 +4,12 @@ import glob
 import os
 import sys
 import math
+import warnings
 
 import matplotlib.pyplot as plt
-
 import readartisfiles as af
 
+warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
 
 def main():
     """
@@ -59,7 +60,7 @@ def make_plot(specfiles, args):
     fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
         "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    af.plot_obs_spectra(axis, args)
+    af.plot_reference_spectra(axis, args)
     plot_artis_spectra(axis, args, specfiles)
 
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)

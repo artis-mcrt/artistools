@@ -4,6 +4,7 @@ import glob
 import os
 import sys
 import math
+import warnings
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -12,6 +13,8 @@ import numpy as np
 import scipy.signal
 from astropy import constants as const
 import readartisfiles as af
+
+warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
 
 # colorlist = ['black',(0.0,0.5,0.7),(0.35,0.7,1.0),(0.9,0.2,0.0),
 #             (0.9,0.6,0.0),(0.0,0.6,0.5),(0.8,0.5,1.0),(0.95,0.9,0.25)]
@@ -105,23 +108,25 @@ def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arr
     return contribution_list, maxyvalueglobal
 
 
-def plot_reference_spectra(axis, plotobjects, plotobjectlabels, maxyvalueglobal, args):
+def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, scale_to_peak = None):
     if args.obsspecfiles is not None:
         scriptdir = os.path.dirname(os.path.abspath(__file__))
-        obscolorlist = ['0.4', '0.8']
-        obsspectra = [(fn, af.obsspectralabels.get(fn, fn), c) for fn, c in zip(args.obsspecfiles, obscolorlist)]
+        refspeccolorlist = ['0.4', '0.8']
+        refspectra = [(fn, af.obsspectralabels.get(fn, fn), c) for fn, c in zip(args.obsspecfiles, refspeccolorlist)]
 
-        for (filename, serieslabel, linecolor) in obsspectra:
-            obsfile = os.path.join(scriptdir, 'spectra', filename)
-            obsdata = np.loadtxt(obsfile)
-            if len(obsdata[:, 1]) > 5000:
-                # obsdata = scipy.signal.resample(obsdata, 10000)
-                obsdata = obsdata[::3]
-            obsdata = obsdata[(obsdata[:, 0] > args.xmin) &
-                              (obsdata[:, 0] < args.xmax)]
-            print("'{0}' has {1} points".format(serieslabel, len(obsdata)))
-            obsxvalues = obsdata[:, 0]
-            obsyvalues = obsdata[:, 1] * (1.0 / max(obsdata[:, 1])) * maxyvalueglobal
+        for (filename, serieslabel, linecolor) in refspectra:
+            specdata = np.loadtxt(os.path.join(scriptdir, 'spectra', filename))
+
+            if len(specdata[:, 1]) > 5000:
+                # specdata = scipy.signal.resample(specdata, 10000)
+                specdata = specdata[::3]
+
+            specdata = specdata[(specdata[:, 0] > args.xmin) & (specdata[:, 0] < args.xmax)]
+            print("'{0}' has {1} points".format(serieslabel, len(specdata)))
+            obsxvalues = specdata[:, 0]
+            obsyvalues = specdata[:, 1]
+            if scale_to_peak:
+                obsyvalues *= scale_to_peak / max(obsyvalues)
 
             # obsyvalues = scipy.signal.savgol_filter(obsyvalues, 5, 3)
             axis.plot(obsxvalues, obsyvalues, lw=0.5, zorder=-1, color=linecolor)
@@ -172,27 +177,27 @@ def make_plot(specfiles, args):
     maxseriescount = args.maxseriescount
     contribution_list = sorted(contribution_list, key=lambda x: x[0])
     remainder_sum = np.zeros(len(arraylambda))
-    for row in contribution_list[:-maxseriescount]:
+    for row in contribution_list[:-args.maxseriescount]:
         remainder_sum = np.add(remainder_sum, row[2])
 
-    contribution_list = contribution_list[-maxseriescount:]
+    contribution_list = contribution_list[-args.maxseriescount:]
     contribution_list.insert(0, [0.0, 'other', remainder_sum])
 
     stackplot_emission_obj = axis.stackplot(1e10 * arraylambda, *[x[2] for x in contribution_list], linewidth=0)
     plotobjects = list(reversed(stackplot_emission_obj))
     plotobjectlabels = list(reversed([x[1] for x in contribution_list]))
 
-    plot_reference_spectra(axis, plotobjects, plotobjectlabels, maxyvalueglobal, args)
+    plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, scale_to_peak=maxyvalueglobal)
 
     axis.annotate(plotlabel, xy=(0.1, 0.96), xycoords='axes fraction',
-                horizontalalignment='left', verticalalignment='top', fontsize=12)
+                  horizontalalignment='left', verticalalignment='top', fontsize=12)
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
     #        axis.set_xlim(xmin=12000,xmax=19000)
     # axis.set_ylim(ymin=-0.05*maxyvalueglobal,ymax=maxyvalueglobal*1.3)
     # axis.set_ylim(ymin=-0.1, ymax=1.1)
 
     axis.legend(plotobjects, plotobjectlabels, loc='upper right', handlelength=2,
-              frameon=False, numpoints=1, prop={'size': 9})
+                frameon=False, numpoints=1, prop={'size': 9})
     axis.set_xlabel(r'Wavelength ($\AA$)')
     # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
