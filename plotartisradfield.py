@@ -47,7 +47,8 @@ def main():
         af.showtimesteptimes('spec.out')
     else:
         radfielddata = None
-        radfield_files = glob.glob('radfield_????.out', recursive=True) + glob.glob('radfield-????.out', recursive=True) + glob.glob('radfield.out', recursive=True)
+        radfield_files = glob.glob('radfield_????.out', recursive=True) + _
+            glob.glob('radfield-????.out', recursive=True) + glob.glob('radfield.out', recursive=True)
         for radfield_file in radfield_files:
             print('Loading {:}...'.format(radfield_file))
 

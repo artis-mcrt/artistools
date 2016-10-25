@@ -25,8 +25,8 @@ refspectralabels = {
         'SN2003du +221.3d (Stanishev et al. 2007)',
 
     'nero-nebspec.txt':
-        'NERO +300d Fe Ball',
-        
+        'NERO +300d one-zone',
+
     'maurer2011_RTJ_W7_338d.txt':
         'RTJ W7 +338d (Maurer et al. 2011)'
 }
