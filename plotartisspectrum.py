@@ -102,7 +102,7 @@ def plot_artis_spectra(axis, args, specfiles):
     # colorlist = [(0, .8*158./255, 0.6*115./255), (204./255, 121./255, 167./255), (213./255, 94./255, 0.0)]
 
     for index, specfilename in enumerate(specfiles):
-        print(specfilename)
+        print('Plotting {0}'.format(specfilename))
         try:
             plotlabelfile = os.path.join(os.path.dirname(specfilename), 'plotlabel.txt')
             modelname = open(plotlabelfile, mode='r').readline().strip()

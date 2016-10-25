@@ -108,7 +108,7 @@ def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arr
     return contribution_list, maxyvalueglobal
 
 
-def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, scale_to_peak = None):
+def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, scale_to_peak=None):
     if args.obsspecfiles is not None:
         scriptdir = os.path.dirname(os.path.abspath(__file__))
         refspeccolorlist = ['0.4', '0.8']
@@ -174,7 +174,6 @@ def make_plot(specfiles, args):
     contribution_list, maxyvalueglobal = get_flux_contributions(
         specfilename.replace('spec.out', 'emission.out'), elementlist, maxion, timearray, arraynu, args, timeindexhigh)
 
-    maxseriescount = args.maxseriescount
     contribution_list = sorted(contribution_list, key=lambda x: x[0])
     remainder_sum = np.zeros(len(arraylambda))
     for row in contribution_list[:-args.maxseriescount]:

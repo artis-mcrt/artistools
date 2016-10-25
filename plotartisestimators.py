@@ -127,11 +127,10 @@ def main():
                      horizontalalignment='center', verticalalignment='top',
                      fontsize=12)
 
-    for ax in axes:
-        #      pass
-        # ax.set_xlim(xmin=270,xmax=300)
-        # ax.set_ylim(ymin=-0.1,ymax=1.3)
-        ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1,
+    for axis in axes:
+        # axis.set_xlim(xmin=270,xmax=300)
+        # axis.set_ylim(ymin=-0.1,ymax=1.3)
+        axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1,
                   prop={'size': 9})
 
     axes[-1].set_xlabel(r'Velocity [km/s]')

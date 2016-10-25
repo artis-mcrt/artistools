@@ -177,7 +177,7 @@ def get_levels(adatafilename):
     leveltuple = collections.namedtuple('level', 'number energy_ev g transition_count levelname')
 
     with open(adatafilename, 'r') as fadata:
-        while (True):
+        while True:
             line = fadata.readline()
             if not line:
                 break
@@ -192,13 +192,15 @@ def get_levels(adatafilename):
                     levelname = row[4].strip('\'')
                     level_list.append(leveltuple(int(row[0]), float(row[1]), float(row[2]), int(row[3]), levelname))
 
-                level_lists.append(iontuple(int(ionheader[0]), int(ionheader[1]), level_count, float(ionheader[3]), list(level_list)))
+                level_lists.append(iontuple(int(ionheader[0]), int(ionheader[1]), level_count,
+                                            float(ionheader[3]), list(level_list)))
 
     return level_lists
 
 
 def get_nlte_populations(nltefile, timestep, atomic_number, T_exc):
-    levelpoptuple = collections.namedtuple('ionpoptuple', 'timestep Z ion_stage level energy_ev parity pop_lte pop_nlte pop_ltecustom')
+    levelpoptuple = collections.namedtuple(
+        'ionpoptuple', 'timestep Z ion_stage level energy_ev parity pop_lte pop_nlte pop_ltecustom')
 
     elementlist = get_composition_data('compositiondata.txt')
     elementdata = elementlist.query('Z==@atomic_number')
@@ -222,7 +224,7 @@ def get_nlte_populations(nltefile, timestep, atomic_number, T_exc):
                 else:
                     skip_block = True
 
-            if (len(row) > 2 and row[0] == 'nlte_index' and row[1] != '-' and not skip_block):
+            if len(row) > 2 and row[0] == 'nlte_index' and row[1] != '-' and not skip_block:
                 element = int(row[row.index('element') + 1])
                 if element != elementindex:
                     continue
@@ -250,8 +252,9 @@ def get_nlte_populations(nltefile, timestep, atomic_number, T_exc):
                 parity = 1 if levelname[-1] == 'o' else 0
                 if superlevel:
                     parity = 0
-                newrow = levelpoptuple(timestep=timestep, Z=int(elementdata.iloc[0].Z), ion_stage=ion_stage, level=levelnumber,
-                                       energy_ev=(level.energy_ev - gslevel.energy_ev), parity=parity, pop_lte=ltepop,
+                newrow = levelpoptuple(timestep=timestep, Z=int(elementdata.iloc[0].Z), ion_stage=ion_stage,
+                                       level=levelnumber, energy_ev=(level.energy_ev - gslevel.energy_ev),
+                                       parity=parity, pop_lte=ltepop,
                                        pop_nlte=nltepop, pop_ltecustom=ltepop_custom)
 
                 dfpop = dfpop.append(pd.DataFrame(data=[newrow], columns=levelpoptuple._fields), ignore_index=True)
@@ -271,9 +274,9 @@ def get_nlte_populations(nltefile, timestep, atomic_number, T_exc):
 
                 levelname = gslevel.levelname.split('[')[0]
                 parity = 1 if levelname[-1] == 'o' else 0
-                newrow = levelpoptuple(timestep=timestep, Z=int(elementdata.iloc[0].Z), ion_stage=ion_stage, level=levelnumber,
-                                       energy_ev=gslevel.energy_ev, parity=parity, pop_lte=groundpop,
-                                       pop_nlte=groundpop, pop_ltecustom=groundpop)
+                newrow = levelpoptuple(timestep=timestep, Z=int(elementdata.iloc[0].Z), ion_stage=ion_stage,
+                                       level=levelnumber, energy_ev=gslevel.energy_ev, parity=parity,
+                                       pop_lte=groundpop, pop_nlte=groundpop, pop_ltecustom=groundpop)
                 dfpop = dfpop.append(pd.DataFrame(data=[newrow], columns=levelpoptuple._fields), ignore_index=True)
 
     return dfpop
