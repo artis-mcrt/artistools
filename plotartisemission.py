@@ -7,6 +7,7 @@ import math
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import matplotlib.patches as mpatches
 import numpy as np
 import scipy.signal
 
@@ -60,46 +61,12 @@ def main():
         makeplot(specfiles, args)
 
 
-def makeplot(specfiles, args):
-    elementlist = af.get_composition_data(specfiles[0].replace('spec.out', 'compositiondata.txt'))
+def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arraynu, args, timeindexhigh):
+    emissiondata = np.loadtxt(emissionfilename)
+
+    arraylambda = c / arraynu
+
     nelements = len(elementlist)
-    specfilename = specfiles[0]
-
-    print('nelements {0}'.format(nelements))
-    maxion = 5  # must match sn3d.h value
-
-    fig, ax = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
-
-    # in the spec.out file, the column index is one more than the timestep
-    # (because column 0 is wavelength row headers, not flux at a timestep)
-    timeindexlow = args.timestepmin
-    if args.timestepmax:
-        timeindexhigh = args.timestepmax
-        print('Ploting timesteps {0} to {1}'.format(
-            args.timestepmin, args.timestepmax))
-    else:
-        print('Ploting timestep {0}'.format(args.timestepmin))
-        timeindexhigh = timeindexlow
-
-    specdata = np.loadtxt(specfilename)
-
-    try:
-        plotlabelfile = os.path.join(os.path.dirname(specfilename), 'plotlabel.txt')
-        modelname = open(plotlabelfile, mode='r').readline().strip()
-    except (FileNotFoundError):
-        modelname = os.path.dirname(specfilename)
-        if not modelname:
-            modelname = os.path.split(os.path.dirname(os.path.abspath(specfilename)))[1]  # get the current directory name
-    plotlabel = '{0} at t={1:d}d'.format(modelname, math.floor(specdata[0, timeindexlow]))
-    if timeindexhigh > timeindexlow:
-        plotlabel += ' to {0:d}d'.format(math.floor(specdata[0, timeindexhigh]))
-
-    emissiondata = np.loadtxt(specfilename.replace('spec.out', 'emission.out'))
-
-    timearray = specdata[0, 1:]
-    arraynu = specdata[1:, 0]
-    arraylambda = c / specdata[1:, 0]
-
     maxyvalueglobal = 0.0
     contribution_list = []
     for element in range(nelements):
@@ -114,12 +81,12 @@ def makeplot(specfiles, args):
             ionserieslist.append((element * maxion + ion, 'bound-bound'))
             ionserieslist.append((nelements * maxion + element * maxion + ion, 'bound-free'))
             for (selectedcolumn, emissiontype) in ionserieslist:
-                array_fnu = emissiondata[timeindexlow::len(timearray), selectedcolumn]
+                array_fnu = emissiondata[args.timestepmin::len(timearray), selectedcolumn]
 
-                for timeindex in range(timeindexlow + 1, timeindexhigh + 1):
+                for timeindex in range(args.timestepmin + 1, timeindexhigh + 1):
                     array_fnu += emissiondata[timeindex::len(timearray), selectedcolumn]
 
-                array_fnu = array_fnu / (timeindexhigh - timeindexlow + 1)
+                array_fnu = array_fnu / (timeindexhigh - args.timestepmin + 1)
 
                 # best to use the filter on this list (because it hopefully has
                 # regular sampling)
@@ -139,31 +106,14 @@ def makeplot(specfiles, args):
 
                 # if not linelabel.startswith('Fe I '):
                 contribution_list.append([maxyvaluethisseries, linelabel, array_flambda])
+    return contribution_list, maxyvalueglobal
 
-    maxseriescount = args.maxseriescount
-    contribution_list = sorted(contribution_list, key=lambda x: x[0])
-    remainder_sum = np.zeros(len(arraylambda))
-    for row in contribution_list[:-maxseriescount]:
-        remainder_sum = np.add(remainder_sum, row[2])
 
-    contribution_list = contribution_list[-maxseriescount:]
-    contribution_list.insert(0, [0.0, 'other', remainder_sum])
-
-    stackplot_emission = ax.stackplot(1e10 * arraylambda, *[x[2] for x in contribution_list], linewidth=0)
-
+def plot_reference_spectra(ax, plotobjects, plotobjectlabels, maxyvalueglobal, args):
     if args.obsspecfiles is not None:
         scriptdir = os.path.dirname(os.path.abspath(__file__))
-        obsspectralabels = {
-            '2010lp_20110928_fors2.txt':
-                'SN2010lp +264d (Taubenberger et al. 2013)',
-            'dop_dered_SN2013aa_20140208_fc_final.txt':
-                'SN2013aa +360d (Maguire et al. in prep)',
-            '2003du_20031213_3219_8822_00.txt':
-                'SN2003du +221.3d (Stanishev et al. 2007)'
-        }
-        obscolorlist = ['black', '0.4']
-        obsspectra = [(fn, obsspectralabels[fn], c)
-                      for fn, c in zip(args.obsspecfiles, obscolorlist)]
+        obscolorlist = ['0.4','0.8']
+        obsspectra = [(fn, af.obsspectralabels.get(fn, fn), c) for fn, c in zip(args.obsspecfiles, obscolorlist)]
 
         for (filename, serieslabel, linecolor) in obsspectra:
             obsfile = os.path.join(scriptdir, 'spectra', filename)
@@ -178,18 +128,72 @@ def makeplot(specfiles, args):
             obsyvalues = obsdata[:, 1] * (1.0 / max(obsdata[:, 1])) * maxyvalueglobal
 
             # obsyvalues = scipy.signal.savgol_filter(obsyvalues, 5, 3)
-            ax.plot(obsxvalues, obsyvalues, lw=1.5,
-                    label=serieslabel, zorder=-1, color=linecolor)
+            lineobj = ax.plot(obsxvalues, obsyvalues, lw=0.5, zorder=-1, color=linecolor)
+            plotobjects.append(mpatches.Patch(color=linecolor))
+            plotobjectlabels.append(serieslabel)
+
+
+def makeplot(specfiles, args):
+    elementlist = af.get_composition_data(specfiles[0].replace('spec.out', 'compositiondata.txt'))
+    specfilename = specfiles[0]
+
+    print('nelements {0}'.format(len(elementlist)))
+    maxion = 5  # must match sn3d.h value
+
+    fig, ax = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+
+    # in the spec.out file, the column index is one more than the timestep
+    # (because column 0 is wavelength row headers, not flux at a timestep)
+    if args.timestepmax:
+        timeindexhigh = args.timestepmax
+        print('Ploting timesteps {0} to {1}'.format(
+            args.timestepmin, args.timestepmax))
+    else:
+        print('Ploting timestep {0}'.format(args.timestepmin))
+        timeindexhigh = args.timestepmin
+
+    specdata = np.loadtxt(specfilename)
+
+    try:
+        plotlabelfile = os.path.join(os.path.dirname(specfilename), 'plotlabel.txt')
+        modelname = open(plotlabelfile, mode='r').readline().strip()
+    except (FileNotFoundError):
+        modelname = os.path.dirname(specfilename)
+        if not modelname:
+            modelname = os.path.split(os.path.dirname(os.path.abspath(specfilename)))[1]  # get the current directory name
+
+    plotlabel = '{0} at t={1:d}d'.format(modelname, math.floor(specdata[0, args.timestepmin + 1]))
+    if timeindexhigh > args.timestepmin:
+        plotlabel += ' to {0:d}d'.format(math.floor(specdata[0, timeindexhigh + 1]))
+
+    timearray = specdata[0, 1:]
+    arraynu = specdata[1:, 0]
+    arraylambda = c / arraynu
+    contribution_list, maxyvalueglobal = get_flux_contributions(specfilename.replace('spec.out', 'emission.out'), elementlist, maxion, timearray, arraynu, args, timeindexhigh)
+
+    maxseriescount = args.maxseriescount
+    contribution_list = sorted(contribution_list, key=lambda x: x[0])
+    remainder_sum = np.zeros(len(arraylambda))
+    for row in contribution_list[:-maxseriescount]:
+        remainder_sum = np.add(remainder_sum, row[2])
+
+    contribution_list = contribution_list[-maxseriescount:]
+    contribution_list.insert(0, [0.0, 'other', remainder_sum])
+
+    stackplot_emission_obj = ax.stackplot(1e10 * arraylambda, *[x[2] for x in contribution_list], linewidth=0)
+    plotobjects = list(reversed(stackplot_emission_obj))
+    plotobjectlabels = list(reversed([x[1] for x in contribution_list]))
+
+    plot_reference_spectra(ax, plotobjects, plotobjectlabels, maxyvalueglobal, args)
 
     ax.annotate(plotlabel, xy=(0.1, 0.96), xycoords='axes fraction',
-                horizontalalignment='left', verticalalignment='top',
-                fontsize=12)
+                horizontalalignment='left', verticalalignment='top', fontsize=12)
     ax.set_xlim(xmin=args.xmin, xmax=args.xmax)
     #        ax.set_xlim(xmin=12000,xmax=19000)
     # ax.set_ylim(ymin=-0.05*maxyvalueglobal,ymax=maxyvalueglobal*1.3)
     # ax.set_ylim(ymin=-0.1, ymax=1.1)
 
-    ax.legend(reversed(stackplot_emission), reversed([x[1] for x in contribution_list]), loc='upper right', handlelength=2,
+    ax.legend(plotobjects, plotobjectlabels, loc='upper right', handlelength=2,
               frameon=False, numpoints=1, prop={'size': 9})
     ax.set_xlabel(r'Wavelength ($\AA$)')
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))

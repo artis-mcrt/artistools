@@ -32,7 +32,7 @@ def main():
                         help='Plot range: minimum wavelength')
     parser.add_argument('-xmax', type=int, default=7000,
                         help='Plot range: maximum wavelength')
-    parser.add_argument('-legendfontsize', type=int, default=6,
+    parser.add_argument('-legendfontsize', type=int, default=8,
                         help='Font size of legend text')
     parser.add_argument('-obsspec', action='append', dest='obsspecfiles',
                         help='Include observational spectrum with this'
@@ -60,7 +60,7 @@ def make_plot(args, specfiles):
     fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
         "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    plot_obs_spectra(axis, args)
+    af.plot_obs_spectra(axis, args)
     plot_artis_spectra(axis, args, specfiles)
 
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
@@ -88,59 +88,12 @@ def make_plot(args, specfiles):
     #             weight='bold', fontsize=15)
 
 
-def plot_obs_spectra(axis, args):
-    """
-        Plot observational spectra listed in args.obsspecfiles
-    """
-    import scipy.signal
-    if args.obsspecfiles is not None:
-        scriptdir = os.path.dirname(os.path.abspath(__file__))
-        obsspectralabels = {
-            '2010lp_20110928_fors2.txt':
-                'SN2010lp +264d (Taubenberger et al. 2013)',
-            'dop_dered_SN2013aa_20140208_fc_final.txt':
-                'SN2013aa +360d (Maguire et al. in prep)',
-            '2003du_20031213_3219_8822_00.txt':
-                'SN2003du +221.3d (Stanishev et al. 2007)',
-            'nero-nebspec.txt':
-                'NERO +300d'
-        }
-        colorlist = ['black', '0.4']
-        obsspectra = [(fn, obsspectralabels.get(fn, fn), c)
-                      for fn, c in zip(args.obsspecfiles, colorlist)]
-        for (filename, serieslabel, linecolor) in obsspectra:
-            obsfile = os.path.join(scriptdir, 'spectra', filename)
-            obsdata = pd.read_csv(obsfile, delim_whitespace=True, header=None,
-                                  names=['lambda_angstroms', 'f_lambda'])
-
-            if len(obsdata) > 5000:
-                # obsdata = scipy.signal.resample(obsdata, 10000)
-                obsdata = obsdata[::3]
-
-            obsdata.query('lambda_angstroms > @args.xmin and '
-                          'lambda_angstroms < @args.xmax',
-                          inplace=True)
-
-            print("'{0}' has {1} points".format(serieslabel, len(obsdata)))
-
-            obsdata['f_lambda'] = (obsdata['f_lambda'] /
-                                   obsdata['f_lambda'].max())
-
-            obsdata['f_lambda'] = scipy.signal.savgol_filter(
-                obsdata['f_lambda'], 5, 3)
-
-            obsdata.plot(x='lambda_angstroms',
-                         y='f_lambda', lw=1.5, ax=axis,
-                         label=serieslabel, zorder=-1, color=linecolor)
-
-
 def plot_artis_spectra(axis, args, specfiles):
     """
         Plot ARTIS emergent spectra
     """
     if args.timestepmax:
-        print('Plotting timesteps {0} to {1}'.format(
-            args.timestepmin, args.timestepmax))
+        print('Plotting timesteps {0} to {1}'.format(args.timestepmin, args.timestepmax))
     else:
         print('Plotting timestep {0}'.format(args.timestepmin))
 
