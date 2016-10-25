@@ -111,7 +111,8 @@ def plot_artis_spectra(axis, args, specfiles):
                 # use the current directory name
                 modelname = os.path.split(os.path.dirname(os.path.abspath(specfilename)))[1]
 
-        linelabel = '{0} at t={1:d}d'.format(modelname, math.floor(float(af.get_timestep_time(specfilename, args.timestepmin))))
+        linelabel = '{0} at t={1:d}d'.format(
+            modelname, math.floor(float(af.get_timestep_time(specfilename, args.timestepmin))))
 
         if args.timestepmax > args.timestepmin:
             linelabel += ' to {0:d}d'.format(math.floor(float(af.get_timestep_time(specfilename, args.timestepmax))))

@@ -10,17 +10,13 @@ import matplotlib.ticker as ticker
 import matplotlib.patches as mpatches
 import numpy as np
 import scipy.signal
-
+from astropy import constants as const
 import readartisfiles as af
 
 # colorlist = ['black',(0.0,0.5,0.7),(0.35,0.7,1.0),(0.9,0.2,0.0),
 #             (0.9,0.6,0.0),(0.0,0.6,0.5),(0.8,0.5,1.0),(0.95,0.9,0.25)]
 colorlist = [(0.0, 0.5, 0.7), (0.9, 0.2, 0.0), (0.9, 0.6, 0.0),
              (0.0, 0.6, 0.5), (0.8, 0.5, 1.0), (0.95, 0.9, 0.25)]
-
-numberofcolumns = 5
-h = 6.62607004e-34  # m^2 kg / s
-c = 299792458  # m / s
 
 
 def main():
@@ -63,7 +59,7 @@ def main():
 
 def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arraynu, args, timeindexhigh):
     emissiondata = np.loadtxt(emissionfilename)
-
+    c = const.c.to('m/s').value
     arraylambda = c / arraynu
 
     nelements = len(elementlist)
@@ -128,7 +124,7 @@ def plot_reference_spectra(axis, plotobjects, plotobjectlabels, maxyvalueglobal,
             obsyvalues = obsdata[:, 1] * (1.0 / max(obsdata[:, 1])) * maxyvalueglobal
 
             # obsyvalues = scipy.signal.savgol_filter(obsyvalues, 5, 3)
-            lineobj = axis.plot(obsxvalues, obsyvalues, lw=0.5, zorder=-1, color=linecolor)
+            axis.plot(obsxvalues, obsyvalues, lw=0.5, zorder=-1, color=linecolor)
             plotobjects.append(mpatches.Patch(color=linecolor))
             plotobjectlabels.append(serieslabel)
 
@@ -169,8 +165,9 @@ def make_plot(specfiles, args):
 
     timearray = specdata[0, 1:]
     arraynu = specdata[1:, 0]
-    arraylambda = c / arraynu
-    contribution_list, maxyvalueglobal = get_flux_contributions(specfilename.replace('spec.out', 'emission.out'), elementlist, maxion, timearray, arraynu, args, timeindexhigh)
+    arraylambda = const.c.to('m/s').value / arraynu
+    contribution_list, maxyvalueglobal = get_flux_contributions(
+        specfilename.replace('spec.out', 'emission.out'), elementlist, maxion, timearray, arraynu, args, timeindexhigh)
 
     maxseriescount = args.maxseriescount
     contribution_list = sorted(contribution_list, key=lambda x: x[0])

@@ -6,7 +6,6 @@ import glob
 xminvalue, xmaxvalue = 3500, 7000
 # xminvalue, xmaxvalue = 10000, 20000
 
-numberofcolumns = 5
 h = 6.62607004e-34  # m^2 kg / s
 c = 299792458  # m / s
 
@@ -21,7 +20,7 @@ def main():
     fig, axes = plt.subplots(
         2, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    for n, logfilename in enumerate(logfiles):
+    for index, logfilename in enumerate(logfiles):
         runfolder = logfilename.split('/output_0-0.txt')[0]
 
         timesteptimes = []
@@ -46,7 +45,7 @@ def main():
 
         linelabel = runfolder
 
-        linestyle = ['-', '--'][int(n / 7)]
+        linestyle = ['-', '--'][int(index / 7)]
         # xvalues = range(len(stats))
         xvalues = timesteptimes
         yvalues = [timestepstats['k_stat_to_r_fb'] for timestepstats in stats]
@@ -54,9 +53,9 @@ def main():
         yvalues = [timestepstats['k_stat_to_ma_collexc'] for timestepstats in stats]
         axes[1].plot(xvalues, yvalues, linestyle=linestyle, lw=1.5, label=linelabel)
 
-    for ax in axes:
-        ax.set_xlim(xmin=250, xmax=300)
-        # ax.set_ylim(ymin=-0.1,ymax=1.3)
+    for axis in axes:
+        axis.set_xlim(xmin=250, xmax=300)
+        # axis.set_ylim(ymin=-0.1,ymax=1.3)
 
     axes[0].legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
     axes[-1].set_xlabel(r'Time (days)')
