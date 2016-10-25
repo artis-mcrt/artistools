@@ -58,7 +58,7 @@ def main():
     if args.listtimesteps:
         af.showtimesteptimes(specfiles[0])
     else:
-        makeplot(specfiles, args)
+        make_plot(specfiles, args)
 
 
 def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arraynu, args, timeindexhigh):
@@ -76,7 +76,7 @@ def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arr
         for ion in range(nions):
             ion_stage = ion + elementlist.lowermost_ionstage[element]
             ionserieslist = []
-            if (element == ion == 0):
+            if element == ion == 0:
                 ionserieslist.append((2 * nelements * maxion, 'free-free'))
             ionserieslist.append((element * maxion + ion, 'bound-bound'))
             ionserieslist.append((nelements * maxion + element * maxion + ion, 'bound-free'))
@@ -109,10 +109,10 @@ def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arr
     return contribution_list, maxyvalueglobal
 
 
-def plot_reference_spectra(ax, plotobjects, plotobjectlabels, maxyvalueglobal, args):
+def plot_reference_spectra(axis, plotobjects, plotobjectlabels, maxyvalueglobal, args):
     if args.obsspecfiles is not None:
         scriptdir = os.path.dirname(os.path.abspath(__file__))
-        obscolorlist = ['0.4','0.8']
+        obscolorlist = ['0.4', '0.8']
         obsspectra = [(fn, af.obsspectralabels.get(fn, fn), c) for fn, c in zip(args.obsspecfiles, obscolorlist)]
 
         for (filename, serieslabel, linecolor) in obsspectra:
@@ -128,19 +128,19 @@ def plot_reference_spectra(ax, plotobjects, plotobjectlabels, maxyvalueglobal, a
             obsyvalues = obsdata[:, 1] * (1.0 / max(obsdata[:, 1])) * maxyvalueglobal
 
             # obsyvalues = scipy.signal.savgol_filter(obsyvalues, 5, 3)
-            lineobj = ax.plot(obsxvalues, obsyvalues, lw=0.5, zorder=-1, color=linecolor)
+            lineobj = axis.plot(obsxvalues, obsyvalues, lw=0.5, zorder=-1, color=linecolor)
             plotobjects.append(mpatches.Patch(color=linecolor))
             plotobjectlabels.append(serieslabel)
 
 
-def makeplot(specfiles, args):
+def make_plot(specfiles, args):
     elementlist = af.get_composition_data(specfiles[0].replace('spec.out', 'compositiondata.txt'))
     specfilename = specfiles[0]
 
     print('nelements {0}'.format(len(elementlist)))
     maxion = 5  # must match sn3d.h value
 
-    fig, ax = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     # in the spec.out file, the column index is one more than the timestep
     # (because column 0 is wavelength row headers, not flux at a timestep)
@@ -157,10 +157,11 @@ def makeplot(specfiles, args):
     try:
         plotlabelfile = os.path.join(os.path.dirname(specfilename), 'plotlabel.txt')
         modelname = open(plotlabelfile, mode='r').readline().strip()
-    except (FileNotFoundError):
+    except FileNotFoundError:
         modelname = os.path.dirname(specfilename)
         if not modelname:
-            modelname = os.path.split(os.path.dirname(os.path.abspath(specfilename)))[1]  # get the current directory name
+            # use the current directory name
+            modelname = os.path.split(os.path.dirname(os.path.abspath(specfilename)))[1]
 
     plotlabel = '{0} at t={1:d}d'.format(modelname, math.floor(specdata[0, args.timestepmin + 1]))
     if timeindexhigh > args.timestepmin:
@@ -180,38 +181,38 @@ def makeplot(specfiles, args):
     contribution_list = contribution_list[-maxseriescount:]
     contribution_list.insert(0, [0.0, 'other', remainder_sum])
 
-    stackplot_emission_obj = ax.stackplot(1e10 * arraylambda, *[x[2] for x in contribution_list], linewidth=0)
+    stackplot_emission_obj = axis.stackplot(1e10 * arraylambda, *[x[2] for x in contribution_list], linewidth=0)
     plotobjects = list(reversed(stackplot_emission_obj))
     plotobjectlabels = list(reversed([x[1] for x in contribution_list]))
 
-    plot_reference_spectra(ax, plotobjects, plotobjectlabels, maxyvalueglobal, args)
+    plot_reference_spectra(axis, plotobjects, plotobjectlabels, maxyvalueglobal, args)
 
-    ax.annotate(plotlabel, xy=(0.1, 0.96), xycoords='axes fraction',
+    axis.annotate(plotlabel, xy=(0.1, 0.96), xycoords='axes fraction',
                 horizontalalignment='left', verticalalignment='top', fontsize=12)
-    ax.set_xlim(xmin=args.xmin, xmax=args.xmax)
-    #        ax.set_xlim(xmin=12000,xmax=19000)
-    # ax.set_ylim(ymin=-0.05*maxyvalueglobal,ymax=maxyvalueglobal*1.3)
-    # ax.set_ylim(ymin=-0.1, ymax=1.1)
+    axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
+    #        axis.set_xlim(xmin=12000,xmax=19000)
+    # axis.set_ylim(ymin=-0.05*maxyvalueglobal,ymax=maxyvalueglobal*1.3)
+    # axis.set_ylim(ymin=-0.1, ymax=1.1)
 
-    ax.legend(plotobjects, plotobjectlabels, loc='upper right', handlelength=2,
+    axis.legend(plotobjects, plotobjectlabels, loc='upper right', handlelength=2,
               frameon=False, numpoints=1, prop={'size': 9})
-    ax.set_xlabel(r'Wavelength ($\AA$)')
-    # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
-    ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
-    ax.set_ylabel(r'F$_\lambda$')
+    axis.set_xlabel(r'Wavelength ($\AA$)')
+    # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
+    axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
+    axis.set_ylabel(r'F$_\lambda$')
 
     fig.savefig(args.outputfile, format='pdf')
     print('Saving {0}'.format(args.outputfile))
     plt.close()
 
-    # plt.setp(plt.getp(ax, 'xticklabels'), fontsize=fsticklabel)
-    # plt.setp(plt.getp(ax, 'yticklabels'), fontsize=fsticklabel)
-    # for axis in ['top','bottom','left','right']:
-    #    ax.spines[axis].set_linewidth(framewidth)
+    # plt.setp(plt.getp(axis, 'xticklabels'), fontsize=fsticklabel)
+    # plt.setp(plt.getp(axis, 'yticklabels'), fontsize=fsticklabel)
+    # for axis in ['top', 'bottom', 'left', 'right']:
+    #    axis.spines[axis].set_linewidth(framewidth)
 
     # for (x,y,symbol) in zip(highlightedatomicnumbers,
     #                         highlightedelementyposition,highlightedelements):
-    #    ax.annotate(symbol, xy=(x, y - 0.0 * (x % 2)), xycoords='data',
+    #    axis.annotate(symbol, xy=(x, y - 0.0 * (x % 2)), xycoords='data',
     #                textcoords='offset points', xytext=(0,10),
     #                horizontalalignment='center',
     #                verticalalignment='center', weight='bold',

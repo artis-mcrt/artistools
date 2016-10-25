@@ -6,7 +6,6 @@ import sys
 import math
 
 import matplotlib.pyplot as plt
-import pandas as pd
 
 import readartisfiles as af
 
@@ -49,10 +48,10 @@ def main():
     if args.listtimesteps:
         af.showtimesteptimes(specfiles[0])
     else:
-        make_plot(args, specfiles)
+        make_plot(specfiles, args)
 
 
-def make_plot(args, specfiles):
+def make_plot(specfiles, args):
     """
         Set up a matplotlib figure and plot observational and ARTIS spectra
     """
@@ -106,10 +105,11 @@ def plot_artis_spectra(axis, args, specfiles):
         try:
             plotlabelfile = os.path.join(os.path.dirname(specfilename), 'plotlabel.txt')
             modelname = open(plotlabelfile, mode='r').readline().strip()
-        except (FileNotFoundError):
+        except FileNotFoundError:
             modelname = os.path.dirname(specfilename)
             if not modelname:
-                modelname = os.path.split(os.path.dirname(os.path.abspath(specfilename)))[1]  # get the current directory name
+                # use the current directory name
+                modelname = os.path.split(os.path.dirname(os.path.abspath(specfilename)))[1]
 
         linelabel = '{0} at t={1:d}d'.format(modelname, math.floor(float(af.get_timestep_time(specfilename, args.timestepmin))))
 
