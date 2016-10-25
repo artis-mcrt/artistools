@@ -25,7 +25,7 @@ colorlist = [(0.0, 0.5, 0.7), (0.9, 0.2, 0.0), (0.9, 0.6, 0.0),
 def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot ARTIS emission spectra')
+        description='Plot ARTIS emission spectrum')
     parser.add_argument('-specpath', action='store', default='**/spec.out',
                         help='Path to spec.out file (may include wildcards '
                         'such as * and **)')

@@ -12,7 +12,6 @@ from astropy import constants as const
 
 import readartisfiles as af
 
-C = const.c.to('m/s').value
 DEFAULTSPECPATH = '../example_run/spec.out'
 
 
@@ -87,13 +86,14 @@ def make_plot(radfielddata, timestep, outputfile, args):
     """
         Draw the bin edges, fitted field, and emergent spectrum
     """
+    C = const.c.to('m/s').value
+
     fig, axis = plt.subplots(1, 1, sharex=True, figsize=(8, 4),
-                             tight_layout={
-                                 "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+                             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     ymax1 = plot_field_estimators(axis, radfielddata)
-
     ymax2 = plot_fitted_field(axis, radfielddata, args)
+
     ymax = max(ymax1, ymax2)
 
     if len(radfielddata) < 400:

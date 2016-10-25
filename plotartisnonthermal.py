@@ -33,9 +33,9 @@ def main():
     parser.add_argument('-modelgridindex', type=int, default=0,
                         help='Modelgridindex to plot')
     parser.add_argument('-xmin', type=int, default=40,
-                        help='Plot range: minimum energy in ev')
+                        help='Plot range: minimum energy in eV')
     parser.add_argument('-xmax', type=int, default=10000,
-                        help='Plot range: maximum energy in ev')
+                        help='Plot range: maximum energy in eV')
     parser.add_argument('-o', action='store', dest='outputfile',
                         default='plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf',
                         help='Filename for PDF file')
