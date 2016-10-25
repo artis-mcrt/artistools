@@ -208,7 +208,6 @@ def get_nlte_populations(nltefile, timestep, atomic_number, T_exc):
     if len(elementdata) < 1:
         print("Error: element Z={0} not in composition file".format(atomic_number))
         return None
-    nions = int(elementdata.nions) - 1  # top ion has 1 level, so not output
     all_levels = get_levels('adata.txt')
 
     skip_block = False

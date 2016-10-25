@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 import argparse
-import math
+# import math
 import sys
 import matplotlib.pyplot as plt
 import readartisfiles as af
 import matplotlib.ticker as ticker
-from astropy import constants as const
+# from astropy import constants as const
 
 
 def main():
@@ -42,7 +42,7 @@ def make_plot(args):
     print("Getting data for timestep {:}".format(args.timestep))
     dfpop = af.get_nlte_populations(args.nltefile, args.timestep, atomic_number, T_exc)
 
-    ion_stage_list = dfpop.ion_stage.unique()
+    ion_stage_list = dfpop.ion_stage.unique()[:-1]  # skip top ion, which is probably ground state only
     fig, axes = plt.subplots(len(ion_stage_list), 1, sharex=False, figsize=(8, 7),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
