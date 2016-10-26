@@ -181,11 +181,8 @@ def get_levels(adatafilename):
     leveltuple = collections.namedtuple('level', 'number energy_ev g transition_count levelname')
 
     with open(adatafilename, 'r') as fadata:
-        while True:
-            line = fadata.readline()
-            if not line:
-                break
-            elif len(line.strip()) > 0:
+        for line in fadata:
+            if len(line.strip()) > 0:
                 ionheader = line.split()
                 level_count = int(ionheader[2])
 
@@ -208,12 +205,12 @@ def get_nlte_populations(nltefile, timestep, atomic_number, T_exc):
 
     elementlist = get_composition_data('compositiondata.txt')
     elementdata = elementlist.query('Z==@atomic_number')
-
     elementindex = elementdata.index[0]
 
     if len(elementdata) < 1:
         print("Error: element Z={0} not in composition file".format(atomic_number))
         return None
+
     all_levels = get_levels('adata.txt')
 
     skip_block = False
@@ -223,66 +220,62 @@ def get_nlte_populations(nltefile, timestep, atomic_number, T_exc):
             row = line.split()
 
             if row and row[0] == 'timestep':
-                if int(row[1]) == timestep:
-                    skip_block = False
-                else:
-                    skip_block = True
+                skip_block = int(row[1]) != timestep
 
-            if len(row) > 2 and row[0] == 'nlte_index' and row[1] != '-' and not skip_block:
-                element = int(row[row.index('element') + 1])
-                if element != elementindex:
-                    continue
-                ion = int(row[row.index('ion') + 1])
-                ion_stage = int(elementdata.iloc[0].lowermost_ionstage) + ion
-                if row[row.index('level') + 1] != 'SL':
-                    levelnumber = int(row[row.index('level') + 1])
-                    superlevel = False
-                else:
-                    levelnumber = dfpop.query('timestep==@timestep and ion_stage==@ion_stage').level.max() + 3
-                    print("Superlevel at level {:}".format(levelnumber))
-                    superlevel = True
-                nltepop = float(row[row.index('nnlevel_NLTE') + 1])
-                ltepop = float(row[row.index('nnlevel_LTE') + 1])
+            if skip_block:
+                continue
+            elif len(row) > 2 and row[0] == 'nlte_index' and row[1] != '-':  # level row
+                matchedgroundstateline = False
+            elif len(row) > 1 and row[1] == '-':  # ground state
+                matchedgroundstateline = True
+            else:
+                continue
 
-                for _, ion_data in enumerate(all_levels):
-                    if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
-                        level = ion_data.level_list[levelnumber]
-                        gslevel = ion_data.level_list[0]
-                k_B = const.k_B.to('eV / K').value
-                gspop = dfpop.query('timestep==@timestep and ion_stage==@ion_stage and level==0').iloc[0].pop_nlte
-                ltepop_custom = gspop * level.g / gslevel.g * math.exp(
-                    -(level.energy_ev - gslevel.energy_ev) / k_B / T_exc)
+            element = int(row[row.index('element') + 1])
+            if element != elementindex:
+                continue
+            ion = int(row[row.index('ion') + 1])
+            ion_stage = int(elementdata.iloc[0].lowermost_ionstage) + ion
 
-                levelname = level.levelname.split('[')[0]
-                parity = 1 if levelname[-1] == 'o' else 0
-                if superlevel:
-                    parity = 0
-                newrow = levelpoptuple(timestep=timestep, Z=int(elementdata.iloc[0].Z), ion_stage=ion_stage,
-                                       level=levelnumber, energy_ev=(level.energy_ev - gslevel.energy_ev),
-                                       parity=parity, pop_lte=ltepop,
-                                       pop_nlte=nltepop, pop_ltecustom=ltepop_custom)
-
-                dfpop = dfpop.append(pd.DataFrame(data=[newrow], columns=levelpoptuple._fields), ignore_index=True)
-
-            elif len(row) > 1 and row[1] == '-' and not skip_block:
-                element = int(row[row.index('element') + 1])
-                if element != elementindex:
-                    continue
-                ion = int(row[row.index('ion') + 1])
-                ion_stage = int(elementdata.iloc[0].lowermost_ionstage) + ion
-                levelnumber = 0
-                for _, ion_data in enumerate(all_levels):
-                    if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
-                        gslevel = ion_data.level_list[levelnumber]
+            if row[row.index('level') + 1] != 'SL':
                 levelnumber = int(row[row.index('level') + 1])
-                groundpop = float(row[row.index('nnlevel_LTE') + 1])
+                superlevel = False
+            else:
+                levelnumber = dfpop.query('timestep==@timestep and ion_stage==@ion_stage').level.max() + 3
+                print("Superlevel at level {:}".format(levelnumber))
+                superlevel = True
+
+            for _, ion_data in enumerate(all_levels):
+                if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
+                    level = ion_data.level_list[levelnumber]
+                    gslevel = ion_data.level_list[0]
+
+            ltepop = float(row[row.index('nnlevel_LTE') + 1])
+
+            if matchedgroundstateline:
+                nltepop = ltepop_custom = ltepop
 
                 levelname = gslevel.levelname.split('[')[0]
-                parity = 1 if levelname[-1] == 'o' else 0
-                newrow = levelpoptuple(timestep=timestep, Z=int(elementdata.iloc[0].Z), ion_stage=ion_stage,
-                                       level=levelnumber, energy_ev=gslevel.energy_ev, parity=parity,
-                                       pop_lte=groundpop, pop_nlte=groundpop, pop_ltecustom=groundpop)
-                dfpop = dfpop.append(pd.DataFrame(data=[newrow], columns=levelpoptuple._fields), ignore_index=True)
+                energy_ev = gslevel.energy_ev
+            else:
+                nltepop = float(row[row.index('nnlevel_NLTE') + 1])
+
+                k_B = const.k_B.to('eV / K').value
+                gspop = dfpop.query('timestep==@timestep and ion_stage==@ion_stage and level==0').iloc[0].pop_nlte
+                ltepop_custom = gspop * level.g / gslevel.g * math.exp(-(level.energy_ev - gslevel.energy_ev) / k_B / T_exc)
+
+                levelname = level.levelname.split('[')[0]
+                energy_ev = (level.energy_ev - gslevel.energy_ev)
+
+            parity = 1 if levelname[-1] == 'o' else 0
+            if superlevel:
+                parity = 0
+
+            newrow = levelpoptuple(timestep=timestep, Z=int(elementdata.iloc[0].Z), ion_stage=ion_stage,
+                                   level=levelnumber, energy_ev=energy_ev, parity=parity,
+                                   pop_lte=ltepop, pop_nlte=nltepop, pop_ltecustom=ltepop_custom)
+
+            dfpop = dfpop.append(pd.DataFrame(data=[newrow], columns=levelpoptuple._fields), ignore_index=True)
 
     return dfpop
 
@@ -295,7 +288,7 @@ def plot_reference_spectra(axis, args):
     if args.refspecfiles is not None:
         scriptdir = os.path.dirname(os.path.abspath(__file__))
         colorlist = ['black', '0.4']
-        refspectra = [(fn, refspectralabels.get(fn, fn), c)  for fn, c in zip(args.refspecfiles, colorlist)]
+        refspectra = [(fn, refspectralabels.get(fn, fn), c) for fn, c in zip(args.refspecfiles, colorlist)]
         for (filename, serieslabel, linecolor) in refspectra:
             filepath = os.path.join(scriptdir, 'spectra', filename)
             specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
@@ -305,20 +298,16 @@ def plot_reference_spectra(axis, args):
                 # specdata = scipy.signal.resample(specdata, 10000)
                 specdata = specdata[::3]
 
-            specdata.query('lambda_angstroms > @args.xmin and '
-                          'lambda_angstroms < @args.xmax',
-                          inplace=True)
+            specdata.query('lambda_angstroms > @args.xmin and lambda_angstroms < @args.xmax', inplace=True)
 
             print("'{0}' has {1} points".format(serieslabel, len(specdata)))
 
-            specdata['f_lambda'] = (specdata['f_lambda'] /
-                                   specdata['f_lambda'].max())
+            specdata['f_lambda'] = (specdata['f_lambda'] / specdata['f_lambda'].max())
 
             specdata['f_lambda'] = scipy.signal.savgol_filter(specdata['f_lambda'], 5, 3)
 
-            specdata.plot(x='lambda_angstroms',
-                         y='f_lambda', lw=1.5, ax=axis,
-                         label=serieslabel, zorder=-1, color=linecolor)
+            specdata.plot(x='lambda_angstroms', y='f_lambda', lw=1.5, ax=axis,
+                          label=serieslabel, zorder=-1, color=linecolor)
 
 
 def addargs_timesteps(parser):

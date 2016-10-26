@@ -187,7 +187,7 @@ def make_plot(specfiles, args):
     axis.legend(plotobjects, plotobjectlabels, loc='upper right', handlelength=2,
                 frameon=False, numpoints=1, prop={'size': 9})
     axis.set_xlabel(r'Wavelength ($\AA$)')
-    # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
+    axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
     axis.set_ylabel(r'F$_\lambda$')
 

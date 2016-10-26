@@ -22,8 +22,7 @@ def makeplot(lcfiles):
     for index, lcfilename in enumerate(lcfiles):
         print(lcfilename)
         lightcurvedata = pd.read_csv(lcfilename, delim_whitespace=True,
-                                     header=None, names=['time', 'flux',
-                                                         'flux_cmf'])
+                                     header=None, names=['time', 'flux', 'flux_cmf'])
 
         linelabel = '{0}'.format(lcfilename.split('/light_curve.out')[0])
 
@@ -35,8 +34,7 @@ def makeplot(lcfiles):
     # axis.set_xlim(xmin=xminvalue,xmax=xmaxvalue)
     # axis.set_ylim(ymin=-0.1,ymax=1.3)
 
-    axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1,
-                prop={'size': 9})
+    axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
     axis.set_xlabel(r'Time (days)')
     axis.set_ylabel(r'$\propto$ Flux')
 

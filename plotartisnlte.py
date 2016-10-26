@@ -55,7 +55,8 @@ def make_plot(args):
 
         axis.plot(dfpopion.level.values, dfpopion.pop_lte.values, lw=1.5, label='LTE', linestyle='None', marker='+')
 
-        axis.plot(dfpopion.level.values[:-1], dfpopion.pop_ltecustom.values[:-1], lw=1.5, label='LTE {0:.0f} K'.format(T_exc), linestyle='None', marker='*')
+        axis.plot(dfpopion.level.values[:-1], dfpopion.pop_ltecustom.values[:-1], lw=1.5,
+                  label='LTE {0:.0f} K'.format(T_exc), linestyle='None', marker='*')
         axis.plot(dfpopion.level.values, dfpopion.pop_nlte.values, lw=1.5,
                   label='NLTE', linestyle='None', marker='x')
 

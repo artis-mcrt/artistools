@@ -11,6 +11,7 @@ import readartisfiles as af
 
 warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
 
+
 def main():
     """
         Plot ARTIS spectra
@@ -58,6 +59,7 @@ def make_plot(specfiles, args):
     axis.legend(loc='best', handlelength=2, frameon=False,
                 numpoints=1, prop={'size': args.legendfontsize})
     axis.set_xlabel(r'Wavelength ($\AA$)')
+    axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
     axis.set_ylabel(r'Scaled F$_\lambda$')
 
