@@ -100,7 +100,8 @@ def main():
                     # el_pop = sum(list_populations[index][elindex])
                     if thismgi == mgi:
                         ylist.append(list_populations[index][elindex][ion] / total_pop)
-            axis.plot(list_velocity, ylist, lw=1.5, label="{0} {1}".format(af.elsymbols[elementlist['Z'][elindex]], af.roman_numerals[ion + 1]))
+            axis.plot(list_velocity, ylist, lw=1.5, label="{0} {1}".format(
+                af.elsymbols[elementlist['Z'][elindex]], af.roman_numerals[ion + 1]))
 
     # axis.plot(list_timestep, [x[0][0] for x in list_populations],
     #           lw=1.5, label="Fe I")
@@ -131,7 +132,7 @@ def main():
         # axis.set_xlim(xmin=270,xmax=300)
         # axis.set_ylim(ymin=-0.1,ymax=1.3)
         axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1,
-                  prop={'size': 9})
+                    prop={'size': 9})
 
     axes[-1].set_xlabel(r'Velocity [km/s]')
     # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
