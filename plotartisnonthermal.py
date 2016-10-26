@@ -45,7 +45,7 @@ def main():
         af.showtimesteptimes('spec.out')
     else:
         nonthermaldata = None
-        nonthermal_files = glob.glob('nonthermalspec_????.out', recursive=True) + _
+        nonthermal_files = glob.glob('nonthermalspec_????.out', recursive=True) + \
             glob.glob('nonthermalspec-????.out', recursive=True) + glob.glob('nonthermalspec.out', recursive=True)
         for nonthermal_file in nonthermal_files:
             print('Loading {:}...'.format(nonthermal_file))
