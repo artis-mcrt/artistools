@@ -236,6 +236,9 @@ def get_nlte_populations(nltefile, timestep, atomic_number, temperature_exc):
 
 
 def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_exc, matchedgroundstateline):
+    """
+        Read a line from the NLTE output file and return a Pandas DataFrame
+    """
     levelpoptuple = collections.namedtuple(
         'ionpoptuple', 'timestep Z ion_stage level energy_ev parity pop_lte pop_nlte pop_ltecustom')
 

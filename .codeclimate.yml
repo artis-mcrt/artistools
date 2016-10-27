@@ -1,5 +1,9 @@
----
 engines:
+  pep8:
+    enabled: true
+    checks:
+      E501:
+        enabled: false
   duplication:
     enabled: true
     config:
@@ -10,11 +14,6 @@ engines:
     enabled: true
   radon:
     enabled: true
-  pep8:
-    enabled: true
-    checks:
-      E501:
-        enabled: false
   paths:
   - "**.py"
 exclude_paths: []
