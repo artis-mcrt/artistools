@@ -262,7 +262,8 @@ def get_nlte_populations(nltefile, timestep, atomic_number, T_exc):
 
                 k_B = const.k_B.to('eV / K').value
                 gspop = dfpop.query('timestep==@timestep and ion_stage==@ion_stage and level==0').iloc[0].pop_nlte
-                ltepop_custom = gspop * level.g / gslevel.g * math.exp(-(level.energy_ev - gslevel.energy_ev) / k_B / T_exc)
+                ltepop_custom = gspop * level.g / gslevel.g * math.exp(
+                    -(level.energy_ev - gslevel.energy_ev) / k_B / T_exc)
 
                 levelname = level.levelname.split('[')[0]
                 energy_ev = (level.energy_ev - gslevel.energy_ev)
