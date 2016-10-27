@@ -199,13 +199,9 @@ def get_levels(adatafilename):
     return level_lists
 
 
-def get_nlte_populations(nltefile, timestep, atomic_number, T_exc):
-    levelpoptuple = collections.namedtuple(
-        'ionpoptuple', 'timestep Z ion_stage level energy_ev parity pop_lte pop_nlte pop_ltecustom')
-
-    elementlist = get_composition_data('compositiondata.txt')
-    elementdata = elementlist.query('Z==@atomic_number')
-    elementindex = elementdata.index[0]
+def get_nlte_populations(nltefile, timestep, atomic_number, temperature_exc):
+    compositiondata = get_composition_data('compositiondata.txt')
+    elementdata = compositiondata.query('Z==@atomic_number')
 
     if len(elementdata) < 1:
         print("Error: element Z={0} not in composition file".format(atomic_number))
@@ -231,54 +227,66 @@ def get_nlte_populations(nltefile, timestep, atomic_number, T_exc):
             else:
                 continue
 
-            element = int(row[row.index('element') + 1])
-            if element != elementindex:
-                continue
-            ion = int(row[row.index('ion') + 1])
-            ion_stage = int(elementdata.iloc[0].lowermost_ionstage) + ion
-
-            if row[row.index('level') + 1] != 'SL':
-                levelnumber = int(row[row.index('level') + 1])
-                superlevel = False
-            else:
-                levelnumber = dfpop.query('timestep==@timestep and ion_stage==@ion_stage').level.max() + 3
-                print("Superlevel at level {:}".format(levelnumber))
-                superlevel = True
-
-            for _, ion_data in enumerate(all_levels):
-                if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
-                    level = ion_data.level_list[levelnumber]
-                    gslevel = ion_data.level_list[0]
-
-            ltepop = float(row[row.index('nnlevel_LTE') + 1])
-
-            if matchedgroundstateline:
-                nltepop = ltepop_custom = ltepop
-
-                levelname = gslevel.levelname.split('[')[0]
-                energy_ev = gslevel.energy_ev
-            else:
-                nltepop = float(row[row.index('nnlevel_NLTE') + 1])
-
-                k_B = const.k_B.to('eV / K').value
-                gspop = dfpop.query('timestep==@timestep and ion_stage==@ion_stage and level==0').iloc[0].pop_nlte
-                ltepop_custom = gspop * level.g / gslevel.g * math.exp(
-                    -(level.energy_ev - gslevel.energy_ev) / k_B / T_exc)
-
-                levelname = level.levelname.split('[')[0]
-                energy_ev = (level.energy_ev - gslevel.energy_ev)
-
-            parity = 1 if levelname[-1] == 'o' else 0
-            if superlevel:
-                parity = 0
-
-            newrow = levelpoptuple(timestep=timestep, Z=int(elementdata.iloc[0].Z), ion_stage=ion_stage,
-                                   level=levelnumber, energy_ev=energy_ev, parity=parity,
-                                   pop_lte=ltepop, pop_nlte=nltepop, pop_ltecustom=ltepop_custom)
-
-            dfpop = dfpop.append(pd.DataFrame(data=[newrow], columns=levelpoptuple._fields), ignore_index=True)
+            dfrow = parse_nlte_row(row, dfpop, elementdata, all_levels, timestep,
+                                   temperature_exc, matchedgroundstateline)
+            if dfrow is not None:
+                dfpop = dfpop.append(dfrow, ignore_index=True)
 
     return dfpop
+
+
+def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_exc, matchedgroundstateline):
+    levelpoptuple = collections.namedtuple(
+        'ionpoptuple', 'timestep Z ion_stage level energy_ev parity pop_lte pop_nlte pop_ltecustom')
+
+    elementindex = elementdata.index[0]
+    atomic_number = int(elementdata.iloc[0].Z)
+    element = int(row[row.index('element') + 1])
+    if element != elementindex:
+        return None
+    ion = int(row[row.index('ion') + 1])
+    ion_stage = int(elementdata.iloc[0].lowermost_ionstage) + ion
+
+    if row[row.index('level') + 1] != 'SL':
+        levelnumber = int(row[row.index('level') + 1])
+        superlevel = False
+    else:
+        levelnumber = dfpop.query('timestep==@timestep and ion_stage==@ion_stage').level.max() + 3
+        print("Superlevel at level {:}".format(levelnumber))
+        superlevel = True
+
+    for _, ion_data in enumerate(all_levels):
+        if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
+            level = ion_data.level_list[levelnumber]
+            gslevel = ion_data.level_list[0]
+
+    ltepop = float(row[row.index('nnlevel_LTE') + 1])
+
+    if matchedgroundstateline:
+        nltepop = ltepop_custom = ltepop
+
+        levelname = gslevel.levelname.split('[')[0]
+        energy_ev = gslevel.energy_ev
+    else:
+        nltepop = float(row[row.index('nnlevel_NLTE') + 1])
+
+        k_b = const.k_B.to('eV / K').value
+        gspop = dfpop.query('timestep==@timestep and ion_stage==@ion_stage and level==0').iloc[0].pop_nlte
+        ltepop_custom = gspop * level.g / gslevel.g * math.exp(
+            -(level.energy_ev - gslevel.energy_ev) / k_b / temperature_exc)
+
+        levelname = level.levelname.split('[')[0]
+        energy_ev = (level.energy_ev - gslevel.energy_ev)
+
+    parity = 1 if levelname[-1] == 'o' else 0
+    if superlevel:
+        parity = 0
+
+    newrow = levelpoptuple(timestep=timestep, Z=int(elementdata.iloc[0].Z), ion_stage=ion_stage,
+                           level=levelnumber, energy_ev=energy_ev, parity=parity,
+                           pop_lte=ltepop, pop_nlte=nltepop, pop_ltecustom=ltepop_custom)
+
+    return pd.DataFrame(data=[newrow], columns=levelpoptuple._fields)
 
 
 def plot_reference_spectra(axis, args):
