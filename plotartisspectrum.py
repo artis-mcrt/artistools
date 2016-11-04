@@ -20,9 +20,8 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS model spectra by finding spec.out files '
                     'in the current directory or subdirectories.')
-    parser.add_argument('-specpath', action='store', default='**/spec.out',
-                        help='Path to spec.out file (may include wildcards '
-                             'such as * and **)')
+    parser.add_argument('-specpath', action='append', default=[],
+                        help='Path to spec.out file (may include wildcards such as * and **)')
     af.addargs_timesteps(parser)
     af.addargs_spectrum(parser)
     parser.add_argument('-legendfontsize', type=int, default=8,
@@ -32,7 +31,13 @@ def main():
                         help='path/filename for PDF file')
     args = parser.parse_args()
 
-    specfiles = glob.glob(args.specpath, recursive=True)
+    if len(args.specpath) == 0:
+        args.specpath = ['**/spec.out']
+
+    specfiles = []
+    for specpath in args.specpath:
+        specfiles.extend(glob.glob(specpath, recursive=True))
+
     if not specfiles:
         print('no spec.out files found')
         sys.exit()
