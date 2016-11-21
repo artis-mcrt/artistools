@@ -146,7 +146,7 @@ def plot_field_estimators(axis, radfielddata):
                 yvalues.append(0.)
                 yvalues.append(0.)
 
-    axis.plot(xvalues, yvalues, linewidth=1, label='Field estimators',
+    axis.plot(xvalues, yvalues, linewidth=1.5, label='Field estimators',
               color='blue')
     return max(yvalues)
 
@@ -170,7 +170,7 @@ def plot_fitted_field(axis, radfielddata, args):
 
             arr_lambda_angstroms = C / arr_nu_hz * 1e10
             ymaxglobalfit = max(arr_j_lambda)
-            axis.plot(arr_lambda_angstroms, arr_j_lambda, linewidth=1, color='purple',
+            axis.plot(arr_lambda_angstroms, arr_j_lambda, linewidth=1.5, color='purple',
                       label='Full-spectrum fitted field')
         elif row['W'] >= 0:
             arr_nu_hz = np.linspace(row['nu_lower'], row['nu_upper'], num=500)
@@ -187,7 +187,7 @@ def plot_fitted_field(axis, radfielddata, args):
             fittedyvalues += arr_j_lambda
 
     if fittedxvalues:
-        axis.plot(fittedxvalues, fittedyvalues, linewidth=1, color='green',
+        axis.plot(fittedxvalues, fittedyvalues, linewidth=1.5, color='green',
                   label='Fitted field', alpha=0.8)
 
     return max(max(fittedyvalues), ymaxglobalfit)
@@ -224,9 +224,9 @@ def plot_specout(axis, peak_value, timestep):
 
     spectrum.plot(x='lambda_angstroms',
                   y='f_lambda', ax=axis,
-                  linewidth=1, color='black',
+                  linewidth=1.5, color='black',
                   alpha=0.7,
-                  label='Emergent spectrum')
+                  label='Emergent spectrum (normalised)')
 
 
 if __name__ == "__main__":
