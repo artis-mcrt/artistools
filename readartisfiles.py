@@ -339,5 +339,6 @@ def addargs_spectrum(parser):
     parser.add_argument('-obsspec', action='append', dest='refspecfiles',
                         help='Also plot reference spectrum from this file')
 
+
 if __name__ == "__main__":
     print("this script is for inclusion only")

@@ -89,7 +89,7 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
     fig, axis = plt.subplots(1, 1, sharex=True, figsize=(6, 4),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    ymax = max(nonthermaldata['y'])
+    # ymax = max(nonthermaldata['y'])
 
     # nonthermaldata.plot(x='energy_ev', y='y', lw=1.5, ax=axis, color='blue', legend=False)
     axis.plot(nonthermaldata['energy_ev'], np.log10(nonthermaldata['y']), linewidth=2.0, color='blue')

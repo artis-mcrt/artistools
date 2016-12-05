@@ -32,7 +32,7 @@ def main():
 
 
 def make_plot(args):
-    T_exc = 6000.
+    exc_temperature = 6000.
     try:
         atomic_number = next(Z for Z, elsymb in enumerate(af.elsymbols) if elsymb.lower() == args.element.lower())
     except StopIteration:
@@ -40,7 +40,7 @@ def make_plot(args):
         return
 
     print("Getting data for timestep {:}".format(args.timestep))
-    dfpop = af.get_nlte_populations(args.nltefile, args.timestep, atomic_number, T_exc)
+    dfpop = af.get_nlte_populations(args.nltefile, args.timestep, atomic_number, exc_temperature)
 
     ion_stage_list = dfpop.ion_stage.unique()[:-1]  # skip top ion, which is probably ground state only
     fig, axes = plt.subplots(len(ion_stage_list), 1, sharex=False, figsize=(8, 7),
@@ -56,7 +56,7 @@ def make_plot(args):
         axis.plot(dfpopion.level.values, dfpopion.pop_lte.values, lw=1.5, label='LTE', linestyle='None', marker='+')
 
         axis.plot(dfpopion.level.values[:-1], dfpopion.pop_ltecustom.values[:-1], lw=1.5,
-                  label='LTE {0:.0f} K'.format(T_exc), linestyle='None', marker='*')
+                  label='LTE {0:.0f} K'.format(exc_temperature), linestyle='None', marker='*')
         axis.plot(dfpopion.level.values, dfpopion.pop_nlte.values, lw=1.5,
                   label='NLTE', linestyle='None', marker='x')
 

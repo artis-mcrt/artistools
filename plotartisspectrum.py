@@ -137,5 +137,6 @@ def plot_artis_spectra(axis, args, specfiles):
                       label=linelabel, alpha=0.95, color=None)  # colorlist[index % len(colorlist)]
         # dashes=dashesList[index], dash_capstyle=dash_capstyleList[index])
 
+
 if __name__ == "__main__":
     main()
