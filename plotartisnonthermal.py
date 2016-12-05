@@ -5,7 +5,8 @@ import argparse
 import glob
 
 import matplotlib.pyplot as plt
-# import numpy as np
+import matplotlib.ticker as ticker
+import numpy as np
 import pandas as pd
 from astropy import constants as const
 
@@ -91,17 +92,18 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
     ymax = max(nonthermaldata['y'])
 
     # nonthermaldata.plot(x='energy_ev', y='y', lw=1.5, ax=axis, color='blue', legend=False)
-    axis.plot(nonthermaldata['energy_ev'], nonthermaldata['y'], linewidth=1.5, color='blue')
+    axis.plot(nonthermaldata['energy_ev'], np.log10(nonthermaldata['y']), linewidth=2.0, color='blue')
 
     axis.annotate('Timestep {0:d}\nCell {1:d}'.format(timestep, args.modelgridindex),
                   xy=(0.02, 0.96), xycoords='axes fraction',
                   horizontalalignment='left', verticalalignment='top', fontsize=8)
 
     axis.set_xlabel(r'Energy (eV)')
-    axis.set_ylabel(r'y (e$^-$ / cm$^2$ / s / eV)')
-    axis.set_yscale("log", nonposy='clip')
+    axis.set_ylabel(r'log [y (e$^-$ / cm$^2$ / s / eV)]')
+    axis.yaxis.set_minor_locator(ticker.MultipleLocator(base=0.1))
+    # axis.set_yscale("log", nonposy='clip')
     # axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
-    axis.set_ylim(ymin=0.0, ymax=ymax)
+    # axis.set_ylim(ymin=0.0, ymax=ymax)
 
     # axis.legend(loc='upper center', handlelength=2,
     #             frameon=False, numpoints=1, prop={'size': 13})
