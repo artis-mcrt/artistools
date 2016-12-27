@@ -36,10 +36,10 @@ def make_plot(args):
     try:
         atomic_number = next(Z for Z, elsymb in enumerate(af.elsymbols) if elsymb.lower() == args.element.lower())
     except StopIteration:
-        print("Could not find element '{0}'".format(args.element))
+        print(f"Could not find element '{args.element}'")
         return
 
-    print("Getting data for timestep {:}".format(args.timestep))
+    print(f'Getting data for timestep {args.timestep}')
     dfpop = af.get_nlte_populations(args.nltefile, args.timestep, atomic_number, exc_temperature)
 
     ion_stage_list = dfpop.ion_stage.unique()[:-1]  # skip top ion, which is probably ground state only
@@ -47,7 +47,7 @@ def make_plot(args):
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if len(dfpop) == 0:
-        print("Error, no data for selected timestep and element")
+        print('Error, no data for selected timestep and element')
         sys.exit()
     for ion, axis in enumerate(axes):
         ion_stage = ion_stage_list[ion]
@@ -56,7 +56,7 @@ def make_plot(args):
         axis.plot(dfpopion.level.values, dfpopion.pop_lte.values, lw=1.5, label='LTE', linestyle='None', marker='+')
 
         axis.plot(dfpopion.level.values[:-1], dfpopion.pop_ltecustom.values[:-1], lw=1.5,
-                  label='LTE {0:.0f} K'.format(exc_temperature), linestyle='None', marker='*')
+                  label=f'LTE {exc_temperature:.0f} K', linestyle='None', marker='*')
         axis.plot(dfpopion.level.values, dfpopion.pop_nlte.values, lw=1.5,
                   label='NLTE', linestyle='None', marker='x')
 
@@ -71,12 +71,12 @@ def make_plot(args):
         # axis.plot(list_levels[ion], list_departure_ratio, lw=1.5,
         #         label='NLTE/LTE', linestyle='None', marker='x')
         # axis.set_ylabel(r'')
-        plotlabel = "{0} {1}".format(af.elsymbols[atomic_number], af.roman_numerals[ion_stage])
+        plotlabel = f'{af.elsymbols[atomic_number]} {af.roman_numerals[ion_stage]}'
         time_days = af.get_timestep_time('spec.out', args.timestep)
         if time_days != -1:
-            plotlabel += ' at t={0} days'.format(time_days)
+            plotlabel += f' at t={time_days} days'
         else:
-            plotlabel += ' at timestep {0:d}'.format(args.timestep)
+            plotlabel += f' at timestep {args.timestep:d}'
 
         axis.annotate(plotlabel, xy=(0.5, 0.96), xycoords='axes fraction',
                       horizontalalignment='center', verticalalignment='top',

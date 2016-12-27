@@ -49,7 +49,7 @@ def main():
         nonthermal_files = glob.glob('nonthermalspec_????.out', recursive=True) + \
             glob.glob('nonthermalspec-*.out', recursive=True) + glob.glob('nonthermalspec.out', recursive=True)
         for nonthermal_file in nonthermal_files:
-            print('Loading {:}...'.format(nonthermal_file))
+            print(f'Loading {nonthermal_file}...')
 
             nonthermaldata_thisfile = pd.read_csv(nonthermal_file, delim_whitespace=True)
             nonthermaldata_thisfile.query('modelgridindex==@args.modelgridindex', inplace=True)
@@ -75,11 +75,11 @@ def main():
             nonthermaldata_currenttimestep = nonthermaldata.query('timestep==@timestep')
 
             if len(nonthermaldata_currenttimestep) > 0:
-                print('Plotting timestep {0:d}'.format(timestep))
+                print(f'Plotting timestep {timestep:d}')
                 outputfile = args.outputfile.format(args.modelgridindex, timestep)
                 make_plot(nonthermaldata_currenttimestep, timestep, outputfile, args)
             else:
-                print('No data for timestep {0:d}'.format(timestep))
+                print(f'No data for timestep {timestep:d}')
 
 
 def make_plot(nonthermaldata, timestep, outputfile, args):
@@ -94,7 +94,7 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
     # nonthermaldata.plot(x='energy_ev', y='y', lw=1.5, ax=axis, color='blue', legend=False)
     axis.plot(nonthermaldata['energy_ev'], np.log10(nonthermaldata['y']), linewidth=2.0, color='blue')
 
-    axis.annotate('Timestep {0:d}\nCell {1:d}'.format(timestep, args.modelgridindex),
+    axis.annotate(f'Timestep {timestep:d}\nCell {args.modelgridindex:d}',
                   xy=(0.02, 0.96), xycoords='axes fraction',
                   horizontalalignment='left', verticalalignment='top', fontsize=8)
 
@@ -108,7 +108,7 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
     # axis.legend(loc='upper center', handlelength=2,
     #             frameon=False, numpoints=1, prop={'size': 13})
 
-    print('Saving to {0:s}'.format(outputfile))
+    print(f'Saving to {outputfile:s}')
     fig.savefig(outputfile, format='pdf')
     plt.close()
 

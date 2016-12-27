@@ -37,7 +37,7 @@ def showtimesteptimes(specfilename, numberofcolumns=5):
         Print a table showing the timeteps and their corresponding times
     """
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
-    print('Time steps and times in days:\n')
+    print('Time steps and corresponding times in days:\n')
 
     times = specdata.columns
     indexendofcolumnone = math.ceil((len(times) - 1) / numberofcolumns)
@@ -48,8 +48,7 @@ def showtimesteptimes(specfilename, numberofcolumns=5):
                 strline += '\t'
             newindex = rownum + colnum * indexendofcolumnone
             if newindex < len(times):
-                strline += '{0:4d}: {1:.3f}'.format(
-                    newindex, float(times[newindex + 1]))
+                strline += f'{newindex:4d}: {float(times[newindex + 1]):.3f}'
         print(strline)
 
 
@@ -204,7 +203,7 @@ def get_nlte_populations(nltefile, timestep, atomic_number, temperature_exc):
     elementdata = compositiondata.query('Z==@atomic_number')
 
     if len(elementdata) < 1:
-        print("Error: element Z={0} not in composition file".format(atomic_number))
+        print(f'Error: element Z={atomic_number} not in composition file')
         return None
 
     all_levels = get_levels('adata.txt')
@@ -255,7 +254,7 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
         superlevel = False
     else:
         levelnumber = dfpop.query('timestep==@timestep and ion_stage==@ion_stage').level.max() + 3
-        print("Superlevel at level {:}".format(levelnumber))
+        print(f'Superlevel at level {levelnumber}')
         superlevel = True
 
     for _, ion_data in enumerate(all_levels):
@@ -312,7 +311,7 @@ def plot_reference_spectra(axis, args):
 
             specdata.query('lambda_angstroms > @args.xmin and lambda_angstroms < @args.xmax', inplace=True)
 
-            print("'{0}' has {1} points".format(serieslabel, len(specdata)))
+            print(f"'{serieslabel}' has {len(specdata)} points")
 
             specdata['f_lambda'] = (specdata['f_lambda'] / specdata['f_lambda'].max())
 

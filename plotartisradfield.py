@@ -51,7 +51,7 @@ def main():
         radfield_files = glob.glob('radfield_????.out', recursive=True) + \
             glob.glob('radfield-????.out', recursive=True) + glob.glob('radfield.out', recursive=True)
         for radfield_file in radfield_files:
-            print('Loading {:}...'.format(radfield_file))
+            print(f'Loading {radfield_file}...')
 
             radfielddata_thisfile = pd.read_csv(radfield_file, delim_whitespace=True)
             radfielddata_thisfile.query('modelgridindex==@args.modelgridindex', inplace=True)
@@ -77,11 +77,11 @@ def main():
             radfielddata_currenttimestep = radfielddata.query('timestep==@timestep')
 
             if len(radfielddata_currenttimestep) > 0:
-                print('Plotting timestep {0:d}'.format(timestep))
+                print(f'Plotting timestep {timestep:d}')
                 outputfile = args.outputfile.format(timestep)
                 make_plot(radfielddata_currenttimestep, timestep, outputfile, args)
             else:
-                print('No data for timestep {0:d}'.format(timestep))
+                print(f'No data for timestep {timestep:d}')
 
 
 def make_plot(radfielddata, timestep, outputfile, args):
@@ -104,7 +104,7 @@ def make_plot(radfielddata, timestep, outputfile, args):
 
     plot_specout(axis, ymax, timestep)
 
-    axis.annotate('Timestep {0:d}\nCell {1:d}'.format(timestep, args.modelgridindex),
+    axis.annotate(f'Timestep {timestep:d}\nCell {args.modelgridindex:d}',
                   xy=(0.02, 0.96), xycoords='axes fraction',
                   horizontalalignment='left', verticalalignment='top', fontsize=8)
 
@@ -117,7 +117,7 @@ def make_plot(radfielddata, timestep, outputfile, args):
     axis.legend(loc='best', handlelength=2,
                 frameon=False, numpoints=1, prop={'size': 13})
 
-    print('Saving to {0:s}'.format(outputfile))
+    print('Saving to {outputfile:s}')
     fig.savefig(outputfile, format='pdf')
     plt.close()
 

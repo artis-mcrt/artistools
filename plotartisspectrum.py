@@ -70,7 +70,7 @@ def make_plot(specfiles, args):
 
     filenameout = args.outputfile
     fig.savefig(filenameout, format='pdf')
-    print('Saving {0}'.format(filenameout))
+    print(f'Saving {filenameout}')
     plt.close()
 
     # plt.setp(plt.getp(ax, 'xticklabels'), fontsize=fsticklabel)
@@ -89,16 +89,16 @@ def plot_artis_spectra(axis, args, specfiles):
         Plot ARTIS emergent spectra
     """
     if args.timestepmax:
-        print('Plotting timesteps {0} to {1}'.format(args.timestepmin, args.timestepmax))
+        print(f'Plotting timesteps {args.timestepmin} to {args.timestepmax}')
     else:
-        print('Plotting timestep {0}'.format(args.timestepmin))
+        print(f'Plotting timestep {args.timestepmin}')
 
     # dashesList = [(), (1.5, 2, 9, 2), (5, 1), (0.5, 2), (4, 2)]
     # dash_capstyleList = ['butt', 'butt', 'butt', 'round', 'butt']
     # colorlist = [(0, .8*158./255, 0.6*115./255), (204./255, 121./255, 167./255), (213./255, 94./255, 0.0)]
 
     for index, specfilename in enumerate(specfiles):
-        print('Plotting {0}'.format(specfilename))
+        print(f'Plotting {specfilename}')
         try:
             plotlabelfile = os.path.join(os.path.dirname(specfilename), 'plotlabel.txt')
             modelname = open(plotlabelfile, mode='r').readline().strip()
