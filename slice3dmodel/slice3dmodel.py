@@ -78,12 +78,12 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
                 outcellid += 1
                 dict3dcellidto1dcellid[int(cell['cellid'])] = outcellid
                 append_cell_to_output(cell, outcellid, t_model, listout, xlist, ylists)
-                print("Cell {0:4d} input1: {1}".format(outcellid, block[0].rstrip()))
-                print("Cell {0:4d} input2: {1}".format(outcellid, block[1].rstrip()))
-                print("Cell {0:4d} output: {1}".format(outcellid, listout[-1]))
+                print(f"Cell {outcellid:4d} input1: {block[0].rstrip()}")
+                print(f"Cell {outcellid:4d} input2: {block[1].rstrip()}")
+                print(f"Cell {outcellid:4d} output: {listout[-1]}")
 
     with open(os.path.join(outputfolder, 'model.txt'), 'w') as fmodelout:
-        fmodelout.write("{0:7d}\n".format(outcellid))
+        fmodelout.write(f"{outcellid:7d}\n")
         fmodelout.write(t_model)
         for line in listout:
             fmodelout.write(line + "\n")
@@ -108,7 +108,7 @@ def convert_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid):
                 currentblock = linesplit
                 if int(linesplit[0]) in dict3dcellidto1dcellid:
                     outcellid = dict3dcellidto1dcellid[int(linesplit[0])]
-                    currentblock[0] = "{0:6d}".format(outcellid)
+                    currentblock[0] = f"{outcellid:6d}"
                     keepcurrentblock = True
             else:
                 currentblock.append(linesplit)
@@ -123,9 +123,7 @@ def append_cell_to_output(cell, outcellid, t_model, listout, xlist, ylists):
         float(cell['posz']) ** 2)
     velocity = float(dist) / float(t_model) / 86400. / 1.e5
 
-    listout.append('{0:6d}  {1:8.2f}  {2:8.5f}  {3:.5f}  {4:.5f}  {5:.5f}  {6:.5f}  {7:.5f}'.format(
-        outcellid, velocity, math.log10(max(float(cell['rho']), 1e-100)),
-        cell['ffe'], cell['f56ni'], cell['fco'], cell['f52fe'], cell['f48cr']))
+    listout.append(f"{outcellid:6d}  {velocity:8.2f}  {math.log10(max(float(cell['rho']), 1e-100)):8.5f}  {cell['ffe']:.5f}  {cell['f56ni']:.5f}  {cell['fco']:.5f}  {cell['f52fe']:.5f}  {cell['f48cr']:.5f}")
 
     xlist.append(velocity)
     ylists[0].append(cell['rho'])

@@ -89,8 +89,8 @@ def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arr
 
                 linelabel = ''
                 if emissiontype != 'free-free':
-                    linelabel += '{0} {1} '.format(af.elsymbols[elementlist.Z[element]], af.roman_numerals[ion_stage])
-                linelabel += '{:}'.format(emissiontype)
+                    linelabel += f'{af.elsymbols[elementlist.Z[element]]} {af.roman_numerals[ion_stage]} '
+                linelabel += f'{emissiontype}'
 
                 # if not linelabel.startswith('Fe I '):
                 contribution_list.append([maxyvaluethisseries, linelabel, array_flambda])
@@ -111,7 +111,7 @@ def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, scale_to_p
                 specdata = specdata[::3]
 
             specdata = specdata[(specdata[:, 0] > args.xmin) & (specdata[:, 0] < args.xmax)]
-            print("'{0}' has {1} points".format(serieslabel, len(specdata)))
+            print(f"'{serieslabel}' has {len(specdata)} points")
             obsxvalues = specdata[:, 0]
             obsyvalues = specdata[:, 1]
             if scale_to_peak:
@@ -127,7 +127,7 @@ def make_plot(specfiles, args):
     elementlist = af.get_composition_data(specfiles[0].replace('spec.out', 'compositiondata.txt'))
     specfilename = specfiles[0]
 
-    print('nelements {0}'.format(len(elementlist)))
+    print(f'nelements {len(elementlist)}')
     maxion = 5  # must match sn3d.h value
 
     fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
@@ -136,10 +136,9 @@ def make_plot(specfiles, args):
     # (because column 0 is wavelength row headers, not flux at a timestep)
     if args.timestepmax:
         timeindexhigh = args.timestepmax
-        print('Ploting timesteps {0} to {1}'.format(
-            args.timestepmin, args.timestepmax))
+        print(f'Ploting timesteps {args.timestepmin} to {args.timestepmax}')
     else:
-        print('Ploting timestep {0}'.format(args.timestepmin))
+        print(f'Ploting timestep {args.timestepmin}')
         timeindexhigh = args.timestepmin
 
     specdata = np.loadtxt(specfilename)
@@ -153,9 +152,9 @@ def make_plot(specfiles, args):
             # use the current directory name
             modelname = os.path.split(os.path.dirname(os.path.abspath(specfilename)))[1]
 
-    plotlabel = '{0} at t={1:d}d'.format(modelname, math.floor(specdata[0, args.timestepmin + 1]))
+    plotlabel = f'{modelname} at t={math.floor(specdata[0, args.timestepmin + 1]):d}d'
     if timeindexhigh > args.timestepmin:
-        plotlabel += ' to {0:d}d'.format(math.floor(specdata[0, timeindexhigh + 1]))
+        plotlabel += f' to {math.floor(specdata[0, timeindexhigh + 1]):d}d'
 
     timearray = specdata[0, 1:]
     arraynu = specdata[1:, 0]
@@ -192,7 +191,7 @@ def make_plot(specfiles, args):
     axis.set_ylabel(r'F$_\lambda$')
 
     fig.savefig(args.outputfile, format='pdf')
-    print('Saving {0}'.format(args.outputfile))
+    print(f'Saving {args.outputfile}')
     plt.close()
 
     # plt.setp(plt.getp(axis, 'xticklabels'), fontsize=fsticklabel)

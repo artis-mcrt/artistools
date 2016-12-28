@@ -113,7 +113,7 @@ def main():
     #           lw=1.5, label="Fe IV")
     # axis.plot(list_timestep, [x[0][4] for x in list_populations],
     #           lw=1.5, label="Fe V")
-    plotlabel = 't={}d'.format(timesteptimes[selectedtimestep])
+    plotlabel = f't={timesteptimes[selectedtimestep]}d'
     axes[1].annotate(plotlabel, xy=(0.1, 0.96), xycoords='axes fraction',
                      horizontalalignment='left', verticalalignment='top',
                      fontsize=12)
