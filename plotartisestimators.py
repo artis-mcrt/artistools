@@ -100,8 +100,8 @@ def main():
                     # el_pop = sum(list_populations[index][elindex])
                     if thismgi == mgi:
                         ylist.append(list_populations[index][elindex][ion] / total_pop)
-            axis.plot(list_velocity, ylist, lw=1.5, label="{0} {1}".format(
-                af.elsymbols[elementlist['Z'][elindex]], af.roman_numerals[ion + 1]))
+            axis.plot(list_velocity, ylist, lw=1.5,
+                      label=f"{af.elsymbols[elementlist['Z'][elindex]]} {af.roman_numerals[ion + 1])}")
 
     # axis.plot(list_timestep, [x[0][0] for x in list_populations],
     #           lw=1.5, label="Fe I")

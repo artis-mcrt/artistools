@@ -24,7 +24,7 @@ def makeplot(lcfiles):
         lightcurvedata = pd.read_csv(lcfilename, delim_whitespace=True,
                                      header=None, names=['time', 'flux', 'flux_cmf'])
 
-        linelabel = '{0}'.format(lcfilename.split('/light_curve.out')[0])
+        linelabel = f"{lcfilename.split('/light_curve.out')[0]}"
 
         linestyle = ['-', '--'][int(index / 7)]
 
@@ -40,6 +40,7 @@ def makeplot(lcfiles):
 
     fig.savefig('plotlightcurve.pdf', format='pdf')
     plt.close()
+
 
 if __name__ == "__main__":
     main()
