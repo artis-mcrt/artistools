@@ -5,7 +5,7 @@ import argparse
 import glob
 
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
+# import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 from astropy import constants as const
@@ -100,7 +100,7 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
 
     axis.set_xlabel(r'Energy (eV)')
     axis.set_ylabel(r'log [y (e$^-$ / cm$^2$ / s / eV)]')
-    axis.yaxis.set_minor_locator(ticker.MultipleLocator(base=0.1))
+    # axis.yaxis.set_minor_locator(ticker.MultipleLocator(base=0.1))
     # axis.set_yscale("log", nonposy='clip')
     # axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
     # axis.set_ylim(ymin=0.0, ymax=ymax)
