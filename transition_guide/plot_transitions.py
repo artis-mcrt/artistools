@@ -58,12 +58,11 @@ def main():
     parser.add_argument('-sigma_v', type=float, default=4000.0,  # 4000 matches the data
                         help='Gaussian width in km/s')
     parser.add_argument('-gaussian_window', type=float, default=4,
-                        help='Gaussian line profile are zero beyond _n_ sigmas'
-                             ' from the centre')
+                        help='Truncate Gaussian line profiles n sigmas from the centre')
     parser.add_argument('--forbidden-only', action='store_true',
                         help='Only consider forbidden lines')
     parser.add_argument('--print-lines', action='store_true',
-                        help='Print matching line details to standard out')
+                        help='Output details of matching line details to standard out')
     args = parser.parse_args()
 
     # also calculate wavelengths outside the plot range to include lines whose
