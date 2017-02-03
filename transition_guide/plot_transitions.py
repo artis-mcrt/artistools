@@ -73,9 +73,12 @@ def main():
 
     for (atomic_number, ions) in elementslist:
         elsymbol = elsymbols[atomic_number]
-        transition_file = os.path.join(TRANSITION_FILES_DIR, f'transitions_{elsymbol}.txt')
-        print(f'Loading {transition_file}...')
-        transitions = load_transitions(transition_file)
+        transition_filename = f'transitions_{elsymbol}.txt'
+        if os.path.isfile(transition_filename):  # try the current directory first
+            transitions = load_transitions(transition_filename)
+        else:
+            transition_file = os.path.join(TRANSITION_FILES_DIR, transition_filename)
+            transitions = load_transitions(transition_file)
 
         ion_stage_list = [ion.ion_stage for ion in ions]
         # filter the line list
@@ -99,6 +102,7 @@ def main():
 
 
 def load_transitions(transition_file):
+    print(f"Loading '{transition_file}'...")
     if os.path.isfile(transition_file + '.tmp'):
         # read the sorted binary file (fast)
         transitions = pd.read_pickle(transition_file + '.tmp')
