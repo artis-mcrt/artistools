@@ -13,7 +13,7 @@ K_B = const.k_B.to('eV / K').value
 c = const.c.to('km / s').value
 
 PYDIR = os.path.dirname(os.path.abspath(__file__))
-elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, '../elements.csv'))['symbol'].values)
+elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, '..', 'elements.csv'))['symbol'].values)
 
 Fe3overFe2 = 2.3        # number ratio of these ions
 
@@ -38,10 +38,9 @@ elementslist = [(8, o_ions), (26, fe_ions), (27, co_ions)]
 # elementslist = [(20, ca_ions)]
 
 roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
-                  'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII',
-                  'XVIII', 'XIX', 'XX')
+                  'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
-TRANSITION_FILES_DIR = '../../artis-atomic/transition_guide'
+TRANSITION_FILES_DIR = os.path.join('..', '..', 'artis-atomic', 'transition_guide')
 SPECTRA_DIR = os.path.join(PYDIR, '..', 'spectra')
 
 
