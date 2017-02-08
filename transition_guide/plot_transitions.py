@@ -89,7 +89,7 @@ def main():
         if args.forbidden_only:
             transitions = transitions[transitions[:]['forbidden'] == 1]
 
-        print(f'{len(transitions):d} {elsymbol} lines in plot range')
+        print(f'{len(transitions):d} matching lines of {elsymbol}')
 
         if len(transitions) > 0:
             print('Generating spectra...')
