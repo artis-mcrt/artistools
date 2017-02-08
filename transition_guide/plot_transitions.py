@@ -166,13 +166,12 @@ def f_flux_factor(line, T_K):
 
 
 def print_line_details(line, T_K):
-    print('lambda: {:7.1f} flux: {:9.3E} {:2s} {:3s} {:}, {:}, lower: {:25s} upper: {:}'.format(
-        line['lambda_angstroms'], line['flux_factor'],
-        elsymbols[line['Z']],
-        roman_numerals[line['ion_stage']],
-        ['permitted', 'forbidden'][line['forbidden']],
-        [' upper is metastable', 'upper not metastable'][line['upper_has_permitted']],
-        line['lower_level'], line['upper_level']))
+    forbidden_status = 'forbidden' if line['forbidden'] else 'permitted'
+    metastable_status = 'upper not metastable' if line['upper_has_permitted'] else ' upper is metastable'
+    ion_name = f"{elsymbols[line['Z']]} {roman_numerals[line['ion_stage']]}"
+    print(f"{line['lambda_angstroms']:7.1f} Å flux: {line['flux_factor']:9.3E} "
+          f"{ion_name:6} {forbidden_status}, {metastable_status}, "
+          f"lower: {line['lower_level']:25s} upper: {line['upper_level']}")
 
     return
 
