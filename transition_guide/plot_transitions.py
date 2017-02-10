@@ -31,7 +31,10 @@ fe_ions = [
     # iontuple(4, 0.1)
 ]
 
-co_ions = [iontuple(3, 1.0)]
+co_ions = [
+    iontuple(2, 0.5),
+    iontuple(3, 0.5)
+]
 
 elementslist = [(8, o_ions), (26, fe_ions), (27, co_ions)]
 # elementslist = [(26, fe_ions),]
