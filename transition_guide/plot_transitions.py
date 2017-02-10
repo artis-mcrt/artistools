@@ -15,7 +15,7 @@ c = const.c.to('km / s').value
 PYDIR = os.path.dirname(os.path.abspath(__file__))
 elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, '..', 'elements.csv'))['symbol'].values)
 
-Fe3overFe2 = 2.3        # number ratio of these ions
+Fe3overFe2 = 2.7  # number ratio
 
 iontuple = namedtuple('ion', 'ion_stage number_fraction')
 
@@ -25,9 +25,9 @@ o_ions = [iontuple(1, 0.5),
 ca_ions = [iontuple(2, 1.0), ]
 
 fe_ions = [
-    # iontuple(1, 0.2),
-    iontuple(2, 0.3),
-    iontuple(3, 0.7),
+    iontuple(1, 0.2),
+    iontuple(2, 1 / (1 + Fe3overFe2)),
+    iontuple(3, Fe3overFe2 / (1 + Fe3overFe2)),
     # iontuple(4, 0.1)
 ]
 
@@ -36,8 +36,9 @@ co_ions = [
     iontuple(3, 0.5)
 ]
 
-elementslist = [(8, o_ions), (26, fe_ions), (27, co_ions)]
-# elementslist = [(26, fe_ions),]
+# elementslist = [(8, o_ions), (26, fe_ions), (27, co_ions)]
+elementslist = [(26, fe_ions)]
+# elementslist = [(27, co_ions)]
 # elementslist = [(20, ca_ions)]
 
 roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
@@ -55,9 +56,9 @@ def main():
                         help='Plot range: minimum wavelength in Angstroms')
     parser.add_argument('-xmax', type=int, default=7000,
                         help='Plot range: maximum wavelength in Angstroms')
-    parser.add_argument('-T', type=float, dest='T', default=3000.0,
+    parser.add_argument('-T', type=float, dest='T', default=8000.,
                         help='Temperature in Kelvin')
-    parser.add_argument('-sigma_v', type=float, default=4000.0,  # 4000 matches the data
+    parser.add_argument('-sigma_v', type=float, default=5500.,
                         help='Gaussian width in km/s')
     parser.add_argument('-gaussian_window', type=float, default=4,
                         help='Truncate Gaussian line profiles n sigmas from the centre')
