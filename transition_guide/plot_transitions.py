@@ -171,7 +171,7 @@ def print_line_details(line, T_K):
     ion_name = f"{elsymbols[line['Z']]} {roman_numerals[line['ion_stage']]}"
     print(f"{line['lambda_angstroms']:7.1f} Å flux: {line['flux_factor']:9.3E} "
           f"{ion_name:6} {forbidden_status}, {metastable_status}, "
-          f"lower: {line['lower_level']:25s} upper: {line['upper_level']}")
+          f"lower: {line['lower_level']:29s} upper: {line['upper_level']}")
 
     return
 
