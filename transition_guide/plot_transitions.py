@@ -161,8 +161,8 @@ def generate_spectra(transitions, atomic_number, ions, plot_xmin_wide,
 
 
 def f_flux_factor(line, T_K):
-    return (line['A'] * line['upper_statweight'] *
-            math.exp(-line['upper_energy_Ev'] / K_B / T_K))
+    return (line['upper_energy_Ev'] - line['lower_energy_Ev']) * (
+        line['A'] * line['upper_statweight'] * math.exp(-line['upper_energy_Ev'] / K_B / T_K))
 
 
 def print_line_details(line, T_K):
