@@ -82,9 +82,14 @@ def main():
         elsymbol = elsymbols[atomic_number]
         transition_filename = f'transitions_{elsymbol}.txt'
         transitions = load_transitions(transition_filename)
+
         if transitions is None:
             transition_file = os.path.join(TRANSITION_FILES_DIR, transition_filename)
             transitions = load_transitions(transition_file)
+
+        if transitions is None:
+            print(f"ERROR: could not find transitions file for {elsymbol}")
+            return
 
         ion_stage_list = [ion.ion_stage for ion in ions]
         # filter the line list
