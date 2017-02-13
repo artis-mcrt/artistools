@@ -15,31 +15,14 @@ c = const.c.to('km / s').value
 PYDIR = os.path.dirname(os.path.abspath(__file__))
 elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, '..', 'elements.csv'))['symbol'].values)
 
-Fe3overFe2 = 2.7  # number ratio
 
 iontuple = namedtuple('ion', 'ion_stage number_fraction')
 
-o_ions = [iontuple(1, 0.5),
-          iontuple(2, 0.5)]
-
-ca_ions = [iontuple(2, 1.0), ]
-
-fe_ions = [
-    iontuple(1, 0.2),
-    iontuple(2, 1 / (1 + Fe3overFe2)),
-    iontuple(3, Fe3overFe2 / (1 + Fe3overFe2)),
-    # iontuple(4, 0.1)
-]
-
-co_ions = [
-    iontuple(2, 0.5),
-    iontuple(3, 0.5)
-]
-
-# elementslist = [(8, o_ions), (26, fe_ions), (27, co_ions)]
-elementslist = [(26, fe_ions)]
-# elementslist = [(27, co_ions)]
-# elementslist = [(20, ca_ions)]
+default_ions = [
+    iontuple(2, 0.2),
+    iontuple(2, 0.2),
+    iontuple(3, 0.2),
+    iontuple(4, 0.2)]
 
 roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
@@ -52,21 +35,43 @@ def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot estimated spectra from bound-bound transitions.')
-    parser.add_argument('-xmin', type=int, default=3500,
+    parser.add_argument('-xmin', type=int, default=2000,
                         help='Plot range: minimum wavelength in Angstroms')
-    parser.add_argument('-xmax', type=int, default=7000,
+    parser.add_argument('-xmax', type=int, default=30000,
                         help='Plot range: maximum wavelength in Angstroms')
     parser.add_argument('-T', type=float, dest='T', default=8000.,
                         help='Temperature in Kelvin')
     parser.add_argument('-sigma_v', type=float, default=5500.,
                         help='Gaussian width in km/s')
-    parser.add_argument('-gaussian_window', type=float, default=4,
-                        help='Truncate Gaussian line profiles n sigmas from the centre')
-    parser.add_argument('--forbidden-only', action='store_true',
-                        help='Only consider forbidden lines')
+    # parser.add_argument('-gaussian_window', type=float, default=4,
+    #                     help='Truncate Gaussian line profiles n sigmas from the centre')
+    parser.add_argument('--include-permitted', action='store_true', default=False,
+                        help='Also consider permitted lines')
     parser.add_argument('--print-lines', action='store_true',
                         help='Output details of matching line details to standard out')
+    parser.add_argument('-elements', '--item', action='store', dest='elements',
+                        type=str, nargs='*', default=['Fe'],
+                        help="Examples: -elements Fe Co")
     args = parser.parse_args()
+    print(args)
+    args.gaussian_window = 4
+
+    elementslist = []
+    for elcode in args.elements:
+        atomic_number = elsymbols.index(elcode.title())
+        if atomic_number == 26:
+            Fe3overFe2 = 2.7  # number ratio
+            ionlist = [
+                iontuple(1, 0.2),
+                iontuple(2, 1 / (1 + Fe3overFe2)),
+                iontuple(3, Fe3overFe2 / (1 + Fe3overFe2)),
+                # iontuple(4, 0.1)
+            ]
+        elif atomic_number == 27:
+            ionlist = [iontuple(2, 0.5), iontuple(3, 0.5)]
+        else:
+            ionlist = default_ions
+        elementslist.append((atomic_number, ionlist))
 
     # also calculate wavelengths outside the plot range to include lines whose
     # edges pass through the plot range
@@ -76,9 +81,8 @@ def main():
     for (atomic_number, ions) in elementslist:
         elsymbol = elsymbols[atomic_number]
         transition_filename = f'transitions_{elsymbol}.txt'
-        if os.path.isfile(transition_filename):  # try the current directory first
-            transitions = load_transitions(transition_filename)
-        else:
+        transitions = load_transitions(transition_filename)
+        if transitions is None:
             transition_file = os.path.join(TRANSITION_FILES_DIR, transition_filename)
             transitions = load_transitions(transition_file)
 
@@ -90,7 +94,7 @@ def main():
             (transitions['ion_stage'].isin(ion_stage_list))
             # (transitions[:]['upper_has_permitted'] == 0)
         ]
-        if args.forbidden_only:
+        if not args.include_permitted:
             transitions = transitions[transitions[:]['forbidden'] == 1]
 
         print(f'{len(transitions):d} matching lines of {elsymbol}')
@@ -104,17 +108,20 @@ def main():
 
 
 def load_transitions(transition_file):
-    print(f"Loading '{transition_file}'...")
     if os.path.isfile(transition_file + '.tmp'):
+        print(f"Loading '{transition_file}.tmp'...")
         # read the sorted binary file (fast)
         transitions = pd.read_pickle(transition_file + '.tmp')
-    else:
+    elif os.path.isfile(transition_file):
+        print(f"Loading '{transition_file}'...")
         # read the text file (slower)
         transitions = pd.read_csv(transition_file, delim_whitespace=True)
         transitions.sort_values(by='lambda_angstroms', inplace=True)
 
         # save the dataframe in binary format for next time
-        # transitions.to_pickle(transition_file + '.tmp')
+        transitions.to_pickle(transition_file + '.tmp')
+    else:
+        transitions = None
 
     return transitions
 
