@@ -24,6 +24,8 @@ def main():
                         help='Path to spec.out file (may include wildcards such as * and **)')
     af.addargs_timesteps(parser)
     af.addargs_spectrum(parser)
+    parser.add_argument('-normalised', type=bool, default=False,
+                        help='Normalise to peak values')
     parser.add_argument('-legendfontsize', type=int, default=8,
                         help='Font size of legend text')
     parser.add_argument('-o', action='store', dest='outputfile',
@@ -55,18 +57,27 @@ def make_plot(specfiles, args):
     fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
         "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    af.plot_reference_spectra(axis, args)
+    # import scipy.signal
+    #
+    # def filterfunc(flambda):
+    #     return scipy.signal.savgol_filter(flambda, 5, 3)
+    filterfunc = None
+    af.plot_reference_spectra(axis, args, filterfunc)
     plot_artis_spectra(axis, args, specfiles)
 
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
-    axis.set_ylim(ymin=-0.1, ymax=1.25)
+    if args.normalised:
+        axis.set_ylim(ymin=-0.1, ymax=1.25)
 
     axis.legend(loc='best', handlelength=2, frameon=False,
                 numpoints=1, prop={'size': args.legendfontsize})
     axis.set_xlabel(r'Wavelength ($\AA$)')
     axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
-    axis.set_ylabel(r'Scaled F$_\lambda$')
+    if args.normalised:
+        axis.set_ylabel(r'Scaled F$_\lambda$')
+    else:
+        axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
 
     filenameout = args.outputfile
     fig.savefig(filenameout, format='pdf')
@@ -122,18 +133,17 @@ def plot_artis_spectra(axis, args, specfiles):
         spectrum = af.get_spectrum(specfilename,
                                    args.timestepmin,
                                    args.timestepmax,
-                                   normalised=False,
-                                   fnufilterfunc=filterfunc)
+                                   normalised=False,)
+        #                          fnufilterfunc=filterfunc)
 
         maxyvaluethisseries = spectrum.query(
             '@args.xmin < lambda_angstroms and '
             'lambda_angstroms < @args.xmax')['f_lambda'].max()
 
         linestyle = ['-', '--'][int(index / 7) % 2]
-        spectrum['f_lambda_scaled'] = (spectrum['f_lambda'] /
-                                       maxyvaluethisseries)
-
-        spectrum.plot(x='lambda_angstroms', y='f_lambda_scaled', ax=axis,
+        spectrum['f_lambda_scaled'] = (spectrum['f_lambda'] / maxyvaluethisseries)
+        ycolumnname = 'f_lambda_scaled' if args.normalised else 'f_lambda'
+        spectrum.plot(x='lambda_angstroms', y=ycolumnname, ax=axis,
                       linestyle=linestyle, lw=2.5 - (0.2 * index),
                       label=linelabel, alpha=0.95, color=None)  # colorlist[index % len(colorlist)]
         # dashes=dashesList[index], dash_capstyle=dash_capstyleList[index])

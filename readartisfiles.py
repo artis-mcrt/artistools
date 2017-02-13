@@ -115,8 +115,7 @@ def get_initialabundances1d(filename):
     return abundancedata
 
 
-def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
-                 fnufilterfunc=None):
+def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False, fnufilterfunc=None):
     """
         Return a pandas DataFrame containing an ARTIS emergent spectrum
     """
@@ -127,23 +126,28 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False,
 
     arraynu = specdata['0']
 
-    array_fnu = specdata[specdata.columns[timesteplow + 1]]
+    delta_t = float(get_timestep_time(specfilename, timesteplow + 1)) - float(get_timestep_time(specfilename, timesteplow))
+    delta_t_alltimesteps = delta_t
+    array_fnu = specdata[specdata.columns[timesteplow + 1]] * delta_t
 
     for timestep in range(timesteplow + 1, timestephigh + 1):
-        array_fnu += specdata[specdata.columns[timestep + 1]]
+        delta_t = float(get_timestep_time(specfilename, timestep + 1)) - float(get_timestep_time(specfilename, timestep))
+        delta_t_alltimesteps += delta_t
+        array_fnu += specdata[specdata.columns[timestep + 1]] * delta_t
 
     # best to use the filter on this list because it
     # has regular sampling
     if fnufilterfunc:
+        print("Applying filter")
         array_fnu = fnufilterfunc(array_fnu)
 
-    array_fnu = array_fnu / (timestephigh - timesteplow + 1)
+    array_fnu = array_fnu / delta_t_alltimesteps
 
     dfspectrum = pd.DataFrame({'nu': arraynu,
                                'f_nu': array_fnu})
 
     dfspectrum['lambda_angstroms'] = const.c.value / dfspectrum['nu'] * 1e10
-    dfspectrum['f_lambda'] = dfspectrum['f_nu'] * (dfspectrum['nu'] ** 2) / const.c.value
+    dfspectrum['f_lambda'] = dfspectrum['f_nu'] * dfspectrum['nu'] / dfspectrum['lambda_angstroms'] * math.pi * 4
 
     if normalised:
         dfspectrum['f_nu'] /= dfspectrum['f_nu'].max()
@@ -291,11 +295,10 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
     return pd.DataFrame(data=[newrow], columns=levelpoptuple._fields)
 
 
-def plot_reference_spectra(axis, args):
+def plot_reference_spectra(axis, args, flambdafilterfunc=None):
     """
         Plot reference spectra listed in args.refspecfiles
     """
-    import scipy.signal
     if args.refspecfiles is not None:
         scriptdir = os.path.dirname(os.path.abspath(__file__))
         colorlist = ['black', '0.4']
@@ -305,17 +308,20 @@ def plot_reference_spectra(axis, args):
             specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
                                    names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
 
-            if len(specdata) > 5000:
-                # specdata = scipy.signal.resample(specdata, 10000)
-                specdata = specdata[::3]
+            # if len(specdata) > 5000:
+            #     specdata = scipy.signal.resample(specdata, 10000)
+            #     print(f"downsamping {filename}")
+            #     specdata = specdata[::3]
 
             specdata.query('lambda_angstroms > @args.xmin and lambda_angstroms < @args.xmax', inplace=True)
 
             print(f"'{serieslabel}' has {len(specdata)} points")
 
-            specdata['f_lambda'] = (specdata['f_lambda'] / specdata['f_lambda'].max())
+            if args.normalised:
+                specdata['f_lambda'] = (specdata['f_lambda'] / specdata['f_lambda'].max())
 
-            specdata['f_lambda'] = scipy.signal.savgol_filter(specdata['f_lambda'], 5, 3)
+            if flambdafilterfunc:
+                specdata['f_lambda'] = flambdafilterfunc(specdata['f_lambda'])
 
             specdata.plot(x='lambda_angstroms', y='f_lambda', lw=1.5, ax=axis,
                           label=serieslabel, zorder=-1, color=linecolor)
