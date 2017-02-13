@@ -13,7 +13,7 @@ K_B = const.k_B.to('eV / K').value
 c = const.c.to('km / s').value
 
 PYDIR = os.path.dirname(os.path.abspath(__file__))
-elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, '..', 'elements.csv'))['symbol'].values)
+elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, 'elements.csv'))['symbol'].values)
 
 
 iontuple = namedtuple('ion', 'ion_stage number_fraction')
@@ -28,7 +28,7 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
 TRANSITION_FILES_DIR = os.path.join('..', '..', 'artis-atomic', 'transition_guide')
-SPECTRA_DIR = os.path.join(PYDIR, '..', 'spectra')
+SPECTRA_DIR = os.path.join(PYDIR, 'spectra')
 
 
 def main():
