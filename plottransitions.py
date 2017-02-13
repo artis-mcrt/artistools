@@ -27,7 +27,7 @@ default_ions = [
 roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
-TRANSITION_FILES_DIR = os.path.join('..', '..', 'artis-atomic', 'transition_guide')
+TRANSITION_FILES_DIR = os.path.join('..', 'artis-atomic', 'transition_guide')
 SPECTRA_DIR = os.path.join(PYDIR, 'spectra')
 
 
