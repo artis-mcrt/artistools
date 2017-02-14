@@ -47,8 +47,10 @@ def main():
     #                     help='Truncate Gaussian line profiles n sigmas from the centre')
     parser.add_argument('--include-permitted', action='store_true', default=False,
                         help='Also consider permitted lines')
-    parser.add_argument('--print-lines', action='store_true',
+    parser.add_argument('--print-lines', action='store_true', default=False,
                         help='Output details of matching line details to standard out')
+    parser.add_argument('--no-plot', action='store_true', default=False,
+                        help="Don't save a plot file")
     parser.add_argument('-elements', '--item', action='store', dest='elements',
                         type=str, nargs='*', default=['Fe'],
                         help="Examples: -elements Fe Co")
@@ -104,7 +106,7 @@ def main():
 
         print(f'{len(transitions):d} matching lines of {elsymbol}')
 
-        if len(transitions) > 0:
+        if len(transitions) > 0 and not args.no_plot:
             print('Generating spectra...')
             xvalues, yvalues = generate_spectra(
                 transitions, atomic_number, ions, plot_xmin_wide, plot_xmax_wide, args)
