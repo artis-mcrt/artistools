@@ -25,7 +25,7 @@ def main():
     af.addargs_timesteps(parser)
     af.addargs_spectrum(parser)
     parser.add_argument('-normalised', type=bool, default=False,
-                        help='Normalise to peak values')
+                        help='Normalise the spectra to their peak values')
     parser.add_argument('-legendfontsize', type=int, default=8,
                         help='Font size of legend text')
     parser.add_argument('-o', action='store', dest='outputfile',
