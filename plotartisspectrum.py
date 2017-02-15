@@ -14,7 +14,7 @@ warnings.filterwarnings(action="ignore", module="scipy", message="^internal gels
 
 def main():
     """
-        Plot ARTIS spectra
+        Plot ARTIS spectra and (optionally) reference spectra
     """
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -28,8 +28,7 @@ def main():
                         help='Normalise the spectra to their peak values')
     parser.add_argument('-legendfontsize', type=int, default=8,
                         help='Font size of legend text')
-    parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plotspec.pdf',
+    parser.add_argument('-o', action='store', dest='outputfile', default='plotspec.pdf',
                         help='path/filename for PDF file')
     args = parser.parse_args()
 
