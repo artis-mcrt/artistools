@@ -43,6 +43,7 @@ def main():
     if not specfiles:
         print('no spec.out files found')
         sys.exit()
+
     if args.listtimesteps:
         af.showtimesteptimes(specfiles[0])
     else:
@@ -64,10 +65,13 @@ def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arr
         for ion in range(nions):
             ion_stage = ion + elementlist.lowermost_ionstage[element]
             ionserieslist = []
+
             if element == ion == 0:
                 ionserieslist.append((2 * nelements * maxion, 'free-free'))
+
             ionserieslist.append((element * maxion + ion, 'bound-bound'))
             ionserieslist.append((nelements * maxion + element * maxion + ion, 'bound-free'))
+
             for (selectedcolumn, emissiontype) in ionserieslist:
                 array_fnu = emissiondata[args.timestepmin::len(timearray), selectedcolumn]
 
@@ -85,6 +89,7 @@ def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arr
                 maxyvaluethisseries = max(
                     [array_flambda[i] if (args.xmin < (1e10 * arraylambda[i]) < args.xmax) else -99.0
                      for i in range(len(array_flambda))])
+
                 maxyvalueglobal = max(maxyvalueglobal, maxyvaluethisseries)
 
                 linelabel = ''

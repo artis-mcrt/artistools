@@ -125,12 +125,14 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False, f
 
     arraynu = specdata['0']
 
-    delta_t = float(get_timestep_time(specfilename, timesteplow + 1)) - float(get_timestep_time(specfilename, timesteplow))
+    delta_t = (float(get_timestep_time(specfilename, timesteplow + 1)) -
+               float(get_timestep_time(specfilename, timesteplow)))
     delta_t_alltimesteps = delta_t
     array_fnu = specdata[specdata.columns[timesteplow + 1]] * delta_t
 
     for timestep in range(timesteplow + 1, timestephigh + 1):
-        delta_t = float(get_timestep_time(specfilename, timestep + 1)) - float(get_timestep_time(specfilename, timestep))
+        delta_t = (float(get_timestep_time(specfilename, timestep + 1)) -
+                   float(get_timestep_time(specfilename, timestep)))
         delta_t_alltimesteps += delta_t
         array_fnu += specdata[specdata.columns[timestep + 1]] * delta_t
 
@@ -231,6 +233,7 @@ def get_nlte_populations(nltefile, timestep, atomic_number, temperature_exc):
 
             dfrow = parse_nlte_row(row, dfpop, elementdata, all_levels, timestep,
                                    temperature_exc, matchedgroundstateline)
+
             if dfrow is not None:
                 dfpop = dfpop.append(dfrow, ignore_index=True)
 
