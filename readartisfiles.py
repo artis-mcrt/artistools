@@ -78,7 +78,6 @@ def get_composition_data(filename):
 
             startindex += int(rowdf['nions'])
 
-    print(compdf)
     return compdf
 
 
