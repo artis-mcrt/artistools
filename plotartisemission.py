@@ -105,7 +105,7 @@ def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arr
 def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, scale_to_peak=None):
     if args.refspecfiles is not None:
         scriptdir = os.path.dirname(os.path.abspath(__file__))
-        refspeccolorlist = ['0.4', '0.8']
+        refspeccolorlist = ['0.0', '0.8']
         refspectra = [(fn, af.refspectralabels.get(fn, fn), c) for fn, c in zip(args.refspecfiles, refspeccolorlist)]
 
         for (filename, serieslabel, linecolor) in refspectra:
