@@ -31,7 +31,7 @@ def main():
                         'such as * and **)')
     af.addargs_timesteps(parser)
     af.addargs_spectrum(parser)
-    parser.add_argument('-maxseriescount', type=int, default=6,
+    parser.add_argument('-maxseriescount', type=int, default=9,
                         help='Maximum number of plot series (ions/processes)')
     parser.add_argument('-o', action='store', dest='outputfile',
                         default='plotemission.pdf',
