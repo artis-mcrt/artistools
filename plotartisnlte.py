@@ -63,7 +63,7 @@ def make_plot(args):
         dfpopionoddlevels = dfpopion.query('parity==1')
 
         axis.plot(dfpopionoddlevels.level.values, dfpopionoddlevels.pop_nlte.values, lw=2, label='Odd parity',
-                  linestyle='None', marker='s', markersize=10, color='None')
+                  linestyle='None', marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
 
         # list_departure_ratio = [
         #     nlte / lte for (nlte, lte) in zip(list_nltepop[ion],
