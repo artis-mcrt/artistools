@@ -24,7 +24,7 @@ def main():
                         help='Path to spec.out file (may include wildcards such as * and **)')
     af.addargs_timesteps(parser)
     af.addargs_spectrum(parser)
-    parser.add_argument('-normalised', type=bool, default=False,
+    parser.add_argument('--normalised', default=False, action='store_true',
                         help='Normalise the spectra to their peak values')
     parser.add_argument('-legendfontsize', type=int, default=8,
                         help='Font size of legend text')
