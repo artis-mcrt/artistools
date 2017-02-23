@@ -29,8 +29,8 @@ def main():
                         help='Path to radfield.out file')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
-    parser.add_argument('-timestep', type=int, default=11,
-                        help='Timestep number to plot')
+    parser.add_argument('-timestep', type=int, default=-1,
+                        help='Timestep number to plot, or -1 for last')
     parser.add_argument('-timestepmax', type=int, default=-1,
                         help='Make plots for all timesteps up to this timestep')
     parser.add_argument('-modelgridindex', type=int, default=0,
