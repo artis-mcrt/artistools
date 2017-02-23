@@ -314,11 +314,6 @@ def plot_reference_spectra(axis, args, flambdafilterfunc=None):
 
             specdata.query('lambda_angstroms > @args.xmin and lambda_angstroms < @args.xmax', inplace=True)
 
-            if len(specdata) > 5000:
-                # specdata = scipy.signal.resample(specdata, 10000)
-                print(f"downsamping {filename}")
-                specdata = specdata[::3]
-
             print(f"'{serieslabel}' has {len(specdata)} points")
 
             if args.normalised:
@@ -326,6 +321,11 @@ def plot_reference_spectra(axis, args, flambdafilterfunc=None):
 
             if flambdafilterfunc:
                 specdata['f_lambda'] = flambdafilterfunc(specdata['f_lambda'])
+
+            if len(specdata) > 5000:
+                # specdata = scipy.signal.resample(specdata, 10000)
+                print(f"downsamping {filename}")
+                specdata = specdata.iloc[::3, :]
 
             specdata.plot(x='lambda_angstroms', y='f_lambda', lw=1.5, ax=axis,
                           label=serieslabel, zorder=-1, color=linecolor)
