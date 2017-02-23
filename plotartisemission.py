@@ -26,9 +26,8 @@ def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS emission spectrum')
-    parser.add_argument('-specpath', action='store', default='**/spec.out',
-                        help='Path to spec.out file (may include wildcards '
-                        'such as * and **)')
+    parser.add_argument('-filepath', action='store', default='**/emission.out',
+                        help='Path to emission.out file (may include wildcards such as * and **)')
     af.addargs_timesteps(parser)
     af.addargs_spectrum(parser)
     parser.add_argument('-maxseriescount', type=int, default=9,
@@ -38,16 +37,16 @@ def main():
                         help='path/filename for PDF file')
     args = parser.parse_args()
 
-    specfiles = glob.glob(args.specpath, recursive=True)
+    emissionfiles = glob.glob(args.filepath, recursive=True)
 
-    if not specfiles:
-        print('no spec.out files found')
+    if not emissionfiles:
+        print('no emission.out files found')
         sys.exit()
-
+    emissionfilename = emissionfiles[0]
     if args.listtimesteps:
-        af.showtimesteptimes(specfiles[0])
+        af.showtimesteptimes(os.path.join(os.path.dirname(emissionfilename), 'spec.out'))
     else:
-        make_plot(specfiles, args)
+        make_plot(emissionfilename, args)
 
 
 def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arraynu, args, timeindexhigh):
@@ -128,9 +127,8 @@ def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, scale_to_p
             plotobjectlabels.append(serieslabel)
 
 
-def make_plot(specfiles, args):
-    elementlist = af.get_composition_data(specfiles[0].replace('spec.out', 'compositiondata.txt'))
-    specfilename = specfiles[0]
+def make_plot(emissionfilename, args):
+    elementlist = af.get_composition_data(os.path.join(os.path.dirname(emissionfilename), 'compositiondata.txt'))
 
     print(f'nelements {len(elementlist)}')
     maxion = 5  # must match sn3d.h value
@@ -146,16 +144,16 @@ def make_plot(specfiles, args):
         print(f'Ploting timestep {args.timestepmin}')
         timeindexhigh = args.timestepmin
 
-    specdata = np.loadtxt(specfilename)
+    specdata = np.loadtxt(os.path.join(os.path.dirname(emissionfilename), 'spec.out'))
 
     try:
-        plotlabelfile = os.path.join(os.path.dirname(specfilename), 'plotlabel.txt')
+        plotlabelfile = os.path.join(os.path.dirname(emissionfilename), 'plotlabel.txt')
         modelname = open(plotlabelfile, mode='r').readline().strip()
     except FileNotFoundError:
-        modelname = os.path.dirname(specfilename)
+        modelname = os.path.dirname(emissionfilename)
         if not modelname:
             # use the current directory name
-            modelname = os.path.split(os.path.dirname(os.path.abspath(specfilename)))[1]
+            modelname = os.path.split(os.path.dirname(os.path.abspath(emissionfilename)))[1]
 
     plotlabel = f'{modelname} at t={math.floor(specdata[0, args.timestepmin + 1]):d}d'
     if timeindexhigh > args.timestepmin:
@@ -165,14 +163,15 @@ def make_plot(specfiles, args):
     arraynu = specdata[1:, 0]
     arraylambda = const.c.to('m/s').value / arraynu
     contribution_list, maxyvalueglobal = get_flux_contributions(
-        specfilename.replace('spec.out', 'emission.out'), elementlist, maxion, timearray, arraynu, args, timeindexhigh)
+        emissionfilename, elementlist, maxion, timearray, arraynu, args, timeindexhigh)
+    # print("\n".join([f"{x[0]}, {x[1]}" for x in contribution_list]))
 
     contribution_list = sorted(contribution_list, key=lambda x: x[0])
     remainder_sum = np.zeros(len(arraylambda))
-    for row in contribution_list[:-args.maxseriescount]:
+    for row in contribution_list[:- args.maxseriescount]:
         remainder_sum = np.add(remainder_sum, row[2])
 
-    contribution_list = contribution_list[-args.maxseriescount:]
+    contribution_list = contribution_list[- args.maxseriescount:]
     contribution_list.insert(0, [0.0, 'other', remainder_sum])
 
     stackplot_emission_obj = axis.stackplot(1e10 * arraylambda, *[x[2] for x in contribution_list], linewidth=0)
