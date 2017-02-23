@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 import math
+
 import matplotlib.pyplot as plt
+
 # import numpy as np
 import readartisfiles as af
+
 # from astropy import constants as const
 
 # h = const.h.to('J s').value

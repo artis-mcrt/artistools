@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-import sys
-import matplotlib.pyplot as plt
 import glob
+import sys
+
+import matplotlib.pyplot as plt
 
 xminvalue, xmaxvalue = 3500, 7000
 # xminvalue, xmaxvalue = 10000, 20000

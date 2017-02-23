@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 import argparse
 import glob
+import math
 import os
 import sys
-import math
 import warnings
 
 import matplotlib.pyplot as plt
+
 import readartisfiles as af
 
 warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")

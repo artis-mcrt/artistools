@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-import sys
 import glob
+import sys
+
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -17,7 +18,7 @@ def main():
 
 def makeplot(lcfiles):
     fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
-                           "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+        "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     for index, lcfilename in enumerate(lcfiles):
         print(lcfilename)

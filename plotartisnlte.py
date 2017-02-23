@@ -2,9 +2,13 @@
 import argparse
 # import math
 import sys
+
 import matplotlib.pyplot as plt
-import readartisfiles as af
 import matplotlib.ticker as ticker
+
+import readartisfiles as af
+
+
 # from astropy import constants as const
 
 

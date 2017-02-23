@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 import argparse
 import glob
+import math
 import os
 import sys
-import math
 import warnings
 
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-import matplotlib.patches as mpatches
 import numpy as np
 import scipy.signal
 from astropy import constants as const
+
 import readartisfiles as af
 
 warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
