@@ -117,7 +117,7 @@ def make_plot(radfielddata, timestep, outputfile, args):
     axis.legend(loc='best', handlelength=2,
                 frameon=False, numpoints=1, prop={'size': 13})
 
-    print('Saving to {outputfile:s}')
+    print(f'Saving to {outputfile:s}')
     fig.savefig(outputfile, format='pdf')
     plt.close()
 
