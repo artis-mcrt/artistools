@@ -2,7 +2,7 @@
 import collections
 import math
 import os
-
+# import scipy.signal
 import pandas as pd
 from astropy import constants as const
 
@@ -203,7 +203,7 @@ def get_levels(adatafilename):
     return level_lists
 
 
-def get_nlte_populations(nltefile, timestep, atomic_number, temperature_exc):
+def get_nlte_populations(nltefile, modelgridindex, timestep, atomic_number, temperature_exc):
     compositiondata = get_composition_data('compositiondata.txt')
     elementdata = compositiondata.query('Z==@atomic_number')
 
@@ -221,6 +221,8 @@ def get_nlte_populations(nltefile, timestep, atomic_number, temperature_exc):
 
             if row and row[0] == 'timestep':
                 skip_block = int(row[1]) != timestep
+                if row[2] == 'modelgridindex' and int(row[3]) != modelgridindex:
+                    skip_block = True
 
             if skip_block:
                 continue
@@ -310,12 +312,12 @@ def plot_reference_spectra(axis, args, flambdafilterfunc=None):
             specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
                                    names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
 
-            # if len(specdata) > 5000:
-            #     specdata = scipy.signal.resample(specdata, 10000)
-            #     print(f"downsamping {filename}")
-            #     specdata = specdata[::3]
-
             specdata.query('lambda_angstroms > @args.xmin and lambda_angstroms < @args.xmax', inplace=True)
+
+            if len(specdata) > 5000:
+                # specdata = scipy.signal.resample(specdata, 10000)
+                print(f"downsamping {filename}")
+                specdata = specdata[::3]
 
             print(f"'{serieslabel}' has {len(specdata)} points")
 

@@ -18,6 +18,8 @@ def main():
                         help='Show the times at each timestep')
     parser.add_argument('-timestep', type=int, default=70,
                         help='Plotted timestep')
+    parser.add_argument('-modelgridindex', type=int, default=0,
+                        help='Plotted modelgrid cell')
     parser.add_argument('element', nargs='?', default='Fe',
                         help='Plotted element')
     parser.add_argument('-o', action='store', dest='outputfile',
@@ -28,20 +30,23 @@ def main():
     if args.listtimesteps:
         af.showtimesteptimes('spec.out')
     else:
-        make_plot(args)
+        exc_temperature = 6000.
+        try:
+            atomic_number = next(Z for Z, elsymb in enumerate(af.elsymbols) if elsymb.lower() == args.element.lower())
+        except StopIteration:
+            print(f"Could not find element '{args.element}'")
+            return
+
+        print(f'Getting data for modelgrid cell {args.modelgridindex} timestep {args.timestep}')
+        dfpop = af.get_nlte_populations(args.nltefile, args.modelgridindex, args.timestep,
+                                        atomic_number, exc_temperature)
+        if dfpop.empty:
+            print(f'No data for modelgrid cell {args.modelgridindex} timestep {args.timestep}')
+        else:
+            make_plot(dfpop, atomic_number, exc_temperature, args)
 
 
-def make_plot(args):
-    exc_temperature = 6000.
-    try:
-        atomic_number = next(Z for Z, elsymb in enumerate(af.elsymbols) if elsymb.lower() == args.element.lower())
-    except StopIteration:
-        print(f"Could not find element '{args.element}'")
-        return
-
-    print(f'Getting data for timestep {args.timestep}')
-    dfpop = af.get_nlte_populations(args.nltefile, args.timestep, atomic_number, exc_temperature)
-
+def make_plot(dfpop, atomic_number, exc_temperature, args):
     ion_stage_list = dfpop.ion_stage.unique()[:-1]  # skip top ion, which is probably ground state only
     fig, axes = plt.subplots(len(ion_stage_list), 1, sharex=False, figsize=(8, 7),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
