@@ -4,6 +4,7 @@ import math
 import os
 from collections import namedtuple
 
+# import numexpr as ne
 import numpy as np
 import pandas as pd
 from astropy import constants as const
@@ -25,8 +26,8 @@ default_ions = [
     iontuple(3, 0.2),
     iontuple(4, 0.2)]
 
-roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
-                  'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
+roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X',
+                  'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
 TRANSITION_FILES_DIR = os.path.join('..', 'artis-atomic', 'transition_guide')
 SPECTRA_DIR = os.path.join(PYDIR, 'spectra')
@@ -109,8 +110,7 @@ def main():
 
         if len(transitions) > 0 and not args.no_plot:
             print('Generating spectra...')
-            xvalues, yvalues = generate_spectra(
-                transitions, atomic_number, ions, plot_xmin_wide, plot_xmax_wide, args)
+            xvalues, yvalues = generate_spectra(transitions, atomic_number, ions, plot_xmin_wide, plot_xmax_wide, args)
 
             make_plot(xvalues, yvalues, elsymbol, ions, args)
 
@@ -162,19 +162,15 @@ def generate_spectra(transitions, atomic_number, ions, plot_xmin_wide,
 
             # contribute the Gaussian line profile to the discrete flux bins
 
-            centre_index = int(round((line['lambda_angstroms'] - args.xmin) /
-                                     plot_resolution))
+            centre_index = int(round((line['lambda_angstroms'] - args.xmin) / plot_resolution))
             sigma_angstroms = line['lambda_angstroms'] * args.sigma_v / c
             sigma_gridpoints = int(math.ceil(sigma_angstroms / plot_resolution))
             window_left_index = max(int(centre_index - args.gaussian_window * sigma_gridpoints), 0)
-            window_right_index = min(
-                int(centre_index + args.gaussian_window * sigma_gridpoints),
-                len(xvalues))
+            window_right_index = min(int(centre_index + args.gaussian_window * sigma_gridpoints), len(xvalues))
 
-            for x in range(window_left_index, window_right_index):
-                if 0 < x < len(xvalues):
-                    yvalues[ion_index][x] += flux_factor * math.exp(
-                        -((x - centre_index) * plot_resolution / sigma_angstroms) ** 2) / sigma_angstroms
+            for x in range(max(0, window_left_index), min(len(xvalues), window_right_index)):
+                yvalues[ion_index][x] += flux_factor * math.exp(
+                    -((x - centre_index) * plot_resolution / sigma_angstroms) ** 2) / sigma_angstroms
 
     return xvalues, yvalues
 
@@ -192,8 +188,6 @@ def print_line_details(line, T_K):
           f"{ion_name:6} {forbidden_status}, {metastable_status}, "
           f"lower: {line['lower_level']:29s} upper: {line['upper_level']}")
 
-    return
-
 
 def make_plot(xvalues, yvalues, elsymbol, ions, args):
     import matplotlib
@@ -206,12 +200,11 @@ def make_plot(xvalues, yvalues, elsymbol, ions, args):
 
     yvalues_combined = np.zeros(len(xvalues))
     for ion_index in range(len(ions) + 1):
-        if ion_index < len(ions):  # an ion subplot
+        if ion_index < len(ions):
+            # an ion subplot
             if max(yvalues[ion_index]) > 0.0:
-                yvalues_normalised = yvalues[
-                    ion_index] / max(yvalues[ion_index])
-                yvalues_combined += yvalues_normalised * \
-                    ions[ion_index].number_fraction
+                yvalues_normalised = yvalues[ion_index] / max(yvalues[ion_index])
+                yvalues_combined += yvalues_normalised * ions[ion_index].number_fraction
             else:
                 yvalues_normalised = yvalues[ion_index]
             ax[ion_index].plot(xvalues, yvalues_normalised, linewidth=1.5,
@@ -231,15 +224,13 @@ def make_plot(xvalues, yvalues, elsymbol, ions, args):
 
             for (filename, serieslabel, linecolor) in obsspectra:
                 obsfile = os.path.join(SPECTRA_DIR, filename)
-                obsdata = pd.read_csv(obsfile, delim_whitespace=True,
-                                      header=None, names=[
-                                          'lambda_angstroms', 'flux'])
+                obsdata = pd.read_csv(obsfile, delim_whitespace=True, header=None, names=['lambda_angstroms', 'flux'])
                 obsdata = obsdata[
                     (obsdata[:]['lambda_angstroms'] > args.xmin) &
                     (obsdata[:]['lambda_angstroms'] < args.xmax)]
-                obsyvalues = obsdata[:]['flux'] * max(yvalues_combined) / max(obsdata[:]['flux'])
-                ax[-1].plot(obsdata[:]['lambda_angstroms'], obsyvalues,
-                            lw=1, color='black', label=serieslabel, zorder=-1)
+                obsdata['flux_scaled'] = obsdata['flux'] * max(yvalues_combined) / max(obsdata['flux'])
+                obsdata.plot(x='lambda_angstroms', y='flux_scaled', ax=ax[-1], lw=1,
+                             color='black', label=serieslabel, zorder=-1)
 
             combined_label = ' + '.join([
                 f'({ion.number_fraction:.1f} * {elsymbol} {roman_numerals[ion.ion_stage]})' for ion in ions])
