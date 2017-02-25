@@ -71,9 +71,7 @@ def main():
         else:
             timestepmax = args.timestepmax
 
-        list_timesteps = range(timestepmin, timestepmax)
-
-        for timestep in list_timesteps:
+        for timestep in range(timestepmin, timestepmax):
             radfielddata_currenttimestep = radfielddata.query('timestep==@timestep')
 
             if len(radfielddata_currenttimestep) > 0:
@@ -212,12 +210,15 @@ def plot_specout(axis, peak_value, timestep):
         Plot the ARTIS spectrum
     """
     specfilename = 'spec.out'
+
     if not os.path.isfile(specfilename):
         specfilename = DEFAULTSPECPATH
 
     if not os.path.isfile(specfilename):
         print('Could not find ' + specfilename)
         return
+
+    print(f"Plotting {specfilename}")
 
     spectrum = af.get_spectrum(specfilename, timestep, normalised=True)
     spectrum['f_lambda'] = spectrum['f_lambda'] * peak_value

@@ -263,7 +263,7 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
         superlevel = False
     else:
         levelnumber = dfpop.query('timestep==@timestep and ion_stage==@ion_stage').level.max() + 3
-        print(f'Superlevel at level {levelnumber}')
+        print(f'{elsymbols[atomic_number]} {roman_numerals[ion_stage]} has a superlevel at level {levelnumber}')
         superlevel = True
 
     for _, ion_data in enumerate(all_levels):
