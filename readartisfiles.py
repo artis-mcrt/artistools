@@ -205,6 +205,54 @@ def get_levels(adatafilename):
 
 
 def get_nlte_populations(nltefile, modelgridindex, timestep, atomic_number, temperature_exc):
+    all_levels = get_levels('adata.txt')
+
+    dfpop = pd.read_csv(nltefile, delim_whitespace=True)
+    dfpop.query('(modelgridindex==@modelgridindex) & (timestep==@timestep) & (Z==@atomic_number)',
+                inplace=True)
+
+    k_b = const.k_B.to('eV / K').value
+    list_indicies = []
+    list_ltepopcustom = []
+    list_parity = []
+    gspop = {}
+    for index, row in dfpop.iterrows():
+        list_indicies.append(index)
+
+        ion_stage = row.ion_stage
+        if (row.Z, row.ion_stage) not in gspop:
+            gspop[(row.Z, row.ion_stage)] = dfpop.query(
+                'timestep==@timestep and Z==@atomic_number and ion_stage==@ion_stage and level==0').iloc[0].n_NLTE
+
+        levelnumber = int(row.level)
+        if levelnumber == -1:  # superlevel
+            levelnumber = dfpop.query(
+                'timestep==@timestep and Z==@atomic_number and ion_stage==@ion_stage').level.max() + 2
+            dfpop.loc[index, 'level'] = levelnumber
+            ltepopcustom = 0.0
+            parity = 0
+        else:
+            for _, ion_data in enumerate(all_levels):
+                if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
+                    level = ion_data.level_list[levelnumber]
+                    gslevel = ion_data.level_list[0]
+
+            ltepopcustom = gspop[(row.Z, row.ion_stage)] * level.g / gslevel.g * math.exp(
+                - (level.energy_ev - gslevel.energy_ev) / k_b / temperature_exc)
+
+            levelname = level.levelname.split('[')[0]
+            parity = 1 if levelname[-1] == 'o' else 0
+
+        list_ltepopcustom.append(ltepopcustom)
+        list_parity.append(parity)
+
+    dfpop['n_LTE_custom'] = pd.Series(list_ltepopcustom, index=list_indicies)
+    dfpop['parity'] = pd.Series(list_parity, index=list_indicies)
+
+    return dfpop
+
+
+def get_nlte_populations_oldformat(nltefile, modelgridindex, timestep, atomic_number, temperature_exc):
     compositiondata = get_composition_data('compositiondata.txt')
     elementdata = compositiondata.query('Z==@atomic_number')
 
@@ -248,7 +296,7 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
         Read a line from the NLTE output file and return a Pandas DataFrame
     """
     levelpoptuple = collections.namedtuple(
-        'ionpoptuple', 'timestep Z ion_stage level energy_ev parity pop_lte pop_nlte pop_ltecustom')
+        'ionpoptuple', 'timestep Z ion_stage level energy_ev parity n_LTE n_NLTE n_LTE_custom')
 
     elementindex = elementdata.index[0]
     atomic_number = int(elementdata.iloc[0].Z)
@@ -282,12 +330,12 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
         nltepop = float(row[row.index('nnlevel_NLTE') + 1])
 
         k_b = const.k_B.to('eV / K').value
-        gspop = dfpop.query('timestep==@timestep and ion_stage==@ion_stage and level==0').iloc[0].pop_nlte
-        ltepop_custom = gspop * level.g / gslevel.g * math.exp(
-            -(level.energy_ev - gslevel.energy_ev) / k_b / temperature_exc)
-
+        gspop = dfpop.query('timestep==@timestep and ion_stage==@ion_stage and level==0').iloc[0].n_NLTE
         levelname = level.levelname.split('[')[0]
         energy_ev = (level.energy_ev - gslevel.energy_ev)
+
+        ltepop_custom = gspop * level.g / gslevel.g * math.exp(
+            -energy_ev / k_b / temperature_exc)
 
     parity = 1 if levelname[-1] == 'o' else 0
     if superlevel:
@@ -295,7 +343,7 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
 
     newrow = levelpoptuple(timestep=timestep, Z=int(elementdata.iloc[0].Z), ion_stage=ion_stage,
                            level=levelnumber, energy_ev=energy_ev, parity=parity,
-                           pop_lte=ltepop, pop_nlte=nltepop, pop_ltecustom=ltepop_custom)
+                           n_LTE=ltepop, n_NLTE=nltepop, n_LTE_custom=ltepop_custom)
 
     return pd.DataFrame(data=[newrow], columns=levelpoptuple._fields)
 

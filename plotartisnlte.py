@@ -26,6 +26,8 @@ def main():
                         help='Plotted modelgrid cell')
     parser.add_argument('element', nargs='?', default='Fe',
                         help='Plotted element')
+    parser.add_argument('--oldformat', default=False, action='store_true',
+                        help='Use the old file format')
     parser.add_argument('-o', action='store', dest='outputfile',
                         default='plotnlte_{0}_{1:03d}.pdf',
                         help='path/filename for PDF file .format(elsymbol, timestep)')
@@ -41,9 +43,15 @@ def main():
             print(f"Could not find element '{args.element}'")
             return
 
-        print(f'Getting data for modelgrid cell {args.modelgridindex} timestep {args.timestep}')
-        dfpop = af.get_nlte_populations(args.nltefile, args.modelgridindex, args.timestep,
-                                        atomic_number, exc_temperature)
+        print(f'Getting data for modelgrid cell {args.modelgridindex} timestep {args.timestep} element {args.element}')
+
+        if not args.oldformat:
+            dfpop = af.get_nlte_populations(args.nltefile, args.modelgridindex, args.timestep,
+                                            atomic_number, exc_temperature)
+        else:
+            dfpop = af.get_nlte_populations_oldformat(args.nltefile, args.modelgridindex, args.timestep,
+                                                      atomic_number, exc_temperature)
+
         if dfpop.empty:
             print(f'No data for modelgrid cell {args.modelgridindex} timestep {args.timestep}')
         else:
@@ -51,7 +59,8 @@ def main():
 
 
 def make_plot(dfpop, atomic_number, exc_temperature, args):
-    ion_stage_list = dfpop.ion_stage.unique()[:-1]  # skip top ion, which is probably ground state only
+    top_ion = -1 if args.oldformat else -2
+    ion_stage_list = dfpop.ion_stage.unique()[:top_ion]  # skip top ion, which is probably ground state only
     fig, axes = plt.subplots(len(ion_stage_list), 1, sharex=False, figsize=(8, 7),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
@@ -62,16 +71,16 @@ def make_plot(dfpop, atomic_number, exc_temperature, args):
         ion_stage = ion_stage_list[ion]
         dfpopion = dfpop.query('ion_stage==@ion_stage')
 
-        axis.plot(dfpopion.level.values, dfpopion.pop_lte.values, lw=1.5, label='LTE', linestyle='None', marker='+')
+        axis.plot(dfpopion.level.values, dfpopion.n_LTE.values, lw=1.5, label='LTE', linestyle='None', marker='+')
 
-        axis.plot(dfpopion.level.values[:-1], dfpopion.pop_ltecustom.values[:-1], lw=1.5,
+        axis.plot(dfpopion.level.values[:-1], dfpopion.n_LTE_custom.values[:-1], lw=1.5,
                   label=f'LTE {exc_temperature:.0f} K', linestyle='None', marker='*')
-        axis.plot(dfpopion.level.values, dfpopion.pop_nlte.values, lw=1.5,
+        axis.plot(dfpopion.level.values, dfpopion.n_NLTE.values, lw=1.5,
                   label='NLTE', linestyle='None', marker='x')
 
         dfpopionoddlevels = dfpopion.query('parity==1')
 
-        axis.plot(dfpopionoddlevels.level.values, dfpopionoddlevels.pop_nlte.values, lw=2, label='Odd parity',
+        axis.plot(dfpopionoddlevels.level.values, dfpopionoddlevels.n_NLTE.values, lw=2, label='Odd parity',
                   linestyle='None', marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
 
         # list_departure_ratio = [
