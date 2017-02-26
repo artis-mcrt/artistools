@@ -219,7 +219,8 @@ def get_nlte_populations(nltefile, modelgridindex, timestep, atomic_number, temp
     for index, row in dfpop.iterrows():
         list_indicies.append(index)
 
-        ion_stage = row.ion_stage
+        atomic_number = int(row.Z)
+        ion_stage = int(row.ion_stage)
         if (row.Z, row.ion_stage) not in gspop:
             gspop[(row.Z, row.ion_stage)] = dfpop.query(
                 'timestep==@timestep and Z==@atomic_number and ion_stage==@ion_stage and level==0').iloc[0].n_NLTE
