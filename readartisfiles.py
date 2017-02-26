@@ -228,10 +228,10 @@ def get_nlte_populations(nltefile, modelgridindex, timestep, atomic_number, temp
         if levelnumber == -1:  # superlevel
             levelnumber = dfpop.query(
                 'timestep==@timestep and Z==@atomic_number and ion_stage==@ion_stage').level.max()
-            print(f'{elsymbols[atomic_number]} {roman_numerals[ion_stage]} has a superlevel at level {levelnumber}')
             dfpop.loc[index, 'level'] = levelnumber + 2
             ltepopcustom = 0.0
             parity = 0
+            print(f'{elsymbols[atomic_number]} {roman_numerals[ion_stage]} has a superlevel at level {levelnumber}')
         else:
             for _, ion_data in enumerate(all_levels):
                 if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
