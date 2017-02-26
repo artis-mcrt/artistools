@@ -43,7 +43,8 @@ def main():
             print(f"Could not find element '{args.element}'")
             return
 
-        print(f'Getting data for modelgrid cell {args.modelgridindex} timestep {args.timestep} element {args.element}')
+        print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
+              f'timestep {args.timestep} element {args.element}')
 
         if not args.oldformat:
             dfpop = af.get_nlte_populations(args.nltefile, args.modelgridindex, args.timestep,
@@ -108,7 +109,9 @@ def make_plot(dfpop, atomic_number, exc_temperature, args):
         axis.set_yscale('log')
     axes[-1].set_xlabel(r'Level index')
 
-    fig.savefig(args.outputfile.format(af.elsymbols[atomic_number], args.timestep), format='pdf')
+    outputfilename = args.outputfile.format(af.elsymbols[atomic_number], args.timestep)
+    print(f"Saving {outputfilename}")
+    fig.savefig(outputfilename, format='pdf')
     plt.close()
 
 
