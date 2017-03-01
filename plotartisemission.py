@@ -156,7 +156,7 @@ def make_plot(emissionfilename, args):
             # use the current directory name
             modelname = os.path.split(os.path.dirname(os.path.abspath(emissionfilename)))[1]
 
-    plotlabel = f'{modelname} at t={math.floor(specdata[0, args.timestepmin + 1]):d}d'
+    plotlabel = f'{modelname}\nt={math.floor(specdata[0, args.timestepmin + 1]):d}d'
     if timeindexhigh > args.timestepmin:
         plotlabel += f' to {math.floor(specdata[0, timeindexhigh + 1]):d}d'
 
@@ -181,8 +181,8 @@ def make_plot(emissionfilename, args):
 
     plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, scale_to_peak=maxyvalueglobal)
 
-    axis.annotate(plotlabel, xy=(0.1, 0.96), xycoords='axes fraction',
-                  horizontalalignment='left', verticalalignment='top', fontsize=12)
+    axis.annotate(plotlabel, xy=(0.05, 0.96), xycoords='axes fraction',
+                  horizontalalignment='left', verticalalignment='top', fontsize=8)
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
     #        axis.set_xlim(xmin=12000,xmax=19000)
     # axis.set_ylim(ymin=-0.05*maxyvalueglobal,ymax=maxyvalueglobal*1.3)
