@@ -35,7 +35,7 @@ def main():
                         help='Make plots for all timesteps up to this timestep')
     parser.add_argument('-modelgridindex', type=int, default=0,
                         help='Modelgridindex to plot')
-    parser.add_argument('-xmin', type=int, default=2000,
+    parser.add_argument('-xmin', type=int, default=1000,
                         help='Plot range: minimum wavelength in Angstroms')
     parser.add_argument('-xmax', type=int, default=20000,
                         help='Plot range: maximum wavelength in Angstroms')
