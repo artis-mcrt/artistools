@@ -99,17 +99,12 @@ def plot_artis_spectra(axis, args, specfiles):
     """
         Plot ARTIS emergent spectra
     """
-    if args.timestepmax:
-        print(f'Plotting timesteps {args.timestepmin} to {args.timestepmax}')
-    else:
-        print(f'Plotting timestep {args.timestepmin}')
 
     # dashesList = [(), (1.5, 2, 9, 2), (5, 1), (0.5, 2), (4, 2)]
     # dash_capstyleList = ['butt', 'butt', 'butt', 'round', 'butt']
     # colorlist = [(0, .8*158./255, 0.6*115./255), (204./255, 121./255, 167./255), (213./255, 94./255, 0.0)]
 
     for index, specfilename in enumerate(specfiles):
-        print(f'Plotting {specfilename}')
         try:
             plotlabelfile = os.path.join(os.path.dirname(specfilename), 'plotlabel.txt')
             modelname = open(plotlabelfile, mode='r').readline().strip()
@@ -119,20 +114,38 @@ def plot_artis_spectra(axis, args, specfiles):
                 # use the current directory name
                 modelname = os.path.split(os.path.dirname(os.path.abspath(specfilename)))[1]
 
-        time_in_days_lower = math.floor(float(af.get_timestep_time(specfilename, args.timestepmin)))
+        if args.timemin:
+            timesteptimes = af.get_timestep_times(specfilename)
+            oldtime = -1
+            for timestep, time in enumerate(timesteptimes):
+                timefloat = float(time.strip('d'))
+                if (timefloat > args.timemin) and (oldtime <= args.timemin):
+                    timestepmin = timestep
+                if timefloat < args.timemax:
+                    timestepmax = timestep
+                oldtime = timefloat
+        else:
+            timestepmin = args.timestepmin
+            timestepmax = args.timestepmax
+
+        time_in_days_lower = math.floor(float(af.get_timestep_time(specfilename, timestepmin)))
         linelabel = f'{modelname} at t={time_in_days_lower:d}d'
 
-        if args.timestepmax > args.timestepmin:
-            time_in_days_upper = math.floor(float(af.get_timestep_time(specfilename, args.timestepmax)))
+        if timestepmax > timestepmin:
+            time_in_days_upper = math.floor(float(af.get_timestep_time(specfilename, timestepmax)))
             linelabel += f' to {time_in_days_upper:d}d'
+            print(f'Plotting {specfilename} timesteps {timestepmin} to {timestepmax} (t={time_in_days_lower}d'
+                  f' to {time_in_days_upper}d)')
+        else:
+            print(f'Plotting {specfilename} timestep {timestepmin} (t={time_in_days_lower}d)')
 
         def filterfunc(arrayfnu):
             from scipy.signal import savgol_filter
             return savgol_filter(arrayfnu, 5, 2)
 
         spectrum = af.get_spectrum(specfilename,
-                                   args.timestepmin,
-                                   args.timestepmax,
+                                   timestepmin,
+                                   timestepmax,
                                    normalised=False,)
         #                          fnufilterfunc=filterfunc)
 

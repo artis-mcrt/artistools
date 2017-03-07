@@ -389,6 +389,10 @@ def addargs_timesteps(parser):
                         help='First or only included timestep')
     parser.add_argument('-timestepmax', type=int, default=80,
                         help='Last included timestep')
+    parser.add_argument('-timemin', type=float,
+                        help='Time in days')
+    parser.add_argument('-timemax', type=float,
+                        help='Last included timestep time in days')
 
 
 def addargs_spectrum(parser):
