@@ -63,6 +63,10 @@ def main():
                 else:
                     radfielddata.append(radfielddata_thisfile, ignore_index=True)
 
+        if len(radfielddata) == 0:
+            print("No radfield data found")
+            return
+
         if not args.timestep or args.timestep < 0:
             timestepmin = max(radfielddata['timestep'])
         else:
