@@ -26,7 +26,7 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS radiation field.')
     parser.add_argument('-path', action='store', default='./',
-                        help='Path to radfield.out file')
+                        help='Path to radfield_nnnn.out files')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
     parser.add_argument('-timestep', type=int, default=-1,
@@ -35,6 +35,8 @@ def main():
                         help='Make plots for all timesteps up to this timestep')
     parser.add_argument('-modelgridindex', type=int, default=0,
                         help='Modelgridindex to plot')
+    parser.add_argument('--nospec', action='store_true', default=False,
+                        help='Don\'t plot the emergent specrum')
     parser.add_argument('-xmin', type=int, default=1000,
                         help='Plot range: minimum wavelength in Angstroms')
     parser.add_argument('-xmax', type=int, default=20000,
@@ -100,7 +102,8 @@ def make_plot(radfielddata, timestep, outputfile, args):
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5,
                     color='red', label='', zorder=-1, alpha=0.4)
 
-    plot_specout(axis, ymax, timestep)
+    if not args.nospec:
+        plot_specout(axis, ymax, timestep)
 
     axis.annotate(f'Timestep {timestep:d}\nCell {args.modelgridindex:d}',
                   xy=(0.02, 0.96), xycoords='axes fraction',
