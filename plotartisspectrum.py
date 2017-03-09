@@ -34,7 +34,7 @@ def main():
     args = parser.parse_args()
 
     if len(args.specpath) == 0:
-        args.specpath = ['**/spec.out']
+        args.specpath = ['spec.out', '*/spec.out']  # '**/spec.out'
 
     specfiles = []
     for specpath in args.specpath:
