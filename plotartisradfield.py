@@ -52,10 +52,16 @@ def main():
         radfielddata = None
         radfield_files = glob.glob('radfield_????.out', recursive=True) + \
             glob.glob('radfield-????.out', recursive=True) + glob.glob('radfield.out', recursive=True)
+
+        if not radfield_files:
+            print("No radfield files found")
+            return
+
         for radfield_file in radfield_files:
             print(f'Loading {radfield_file}...')
 
             radfielddata_thisfile = pd.read_csv(radfield_file, delim_whitespace=True)
+            # radfielddata_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
             radfielddata_thisfile.query('modelgridindex==@args.modelgridindex', inplace=True)
             if len(radfielddata_thisfile) > 0:
                 if radfielddata is None:
@@ -63,7 +69,7 @@ def main():
                 else:
                     radfielddata.append(radfielddata_thisfile, ignore_index=True)
 
-        if len(radfielddata) == 0:
+        if radfielddata is None or len(radfielddata) == 0:
             print("No radfield data found")
             return
 
