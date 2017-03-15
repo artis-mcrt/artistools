@@ -97,8 +97,10 @@ def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arr
                     linelabel += f'{af.elsymbols[elementlist.Z[element]]} {af.roman_numerals[ion_stage]} '
                 linelabel += f'{emissiontype}'
 
-                # if not linelabel.startswith('Fe I '):
+                # if linelabel.startswith('Fe ') or linelabel.endswith("-free"):
+                #     continue
                 contribution_list.append([maxyvaluethisseries, linelabel, array_flambda])
+
     return contribution_list, maxyvalueglobal
 
 
@@ -111,9 +113,11 @@ def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, scale_to_p
         for (filename, serieslabel, linecolor) in refspectra:
             specdata = np.loadtxt(os.path.join(scriptdir, 'spectra', filename))
 
-            if len(specdata[:, 1]) > 5000:
+            if len(specdata) > 5000:
                 # specdata = scipy.signal.resample(specdata, 10000)
                 specdata = specdata[::3]
+
+            specdata[specdata[:, 1] < 0] = 0
 
             specdata = specdata[(specdata[:, 0] > args.xmin) & (specdata[:, 0] < args.xmax)]
             print(f"'{serieslabel}' has {len(specdata)} points")
@@ -172,20 +176,19 @@ def make_plot(emissionfilename, args):
     for row in contribution_list[:- args.maxseriescount]:
         remainder_sum = np.add(remainder_sum, row[2])
 
-    contribution_list = contribution_list[- args.maxseriescount:]
-    contribution_list.insert(0, [0.0, 'other', remainder_sum])
+    contribution_list = list(reversed(contribution_list[- args.maxseriescount:]))
+    contribution_list.append([0.0, 'other', remainder_sum])
 
-    stackplot_emission_obj = axis.stackplot(1e10 * arraylambda, *[x[2] for x in contribution_list], linewidth=0)
-    plotobjects = list(reversed(stackplot_emission_obj))
-    plotobjectlabels = list(reversed([x[1] for x in contribution_list]))
+    plotobjects = axis.stackplot(1e10 * arraylambda, *[x[2] for x in contribution_list], linewidth=0)
+    plotobjectlabels = list([x[1] for x in contribution_list])
 
     plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, scale_to_peak=maxyvalueglobal)
 
     axis.annotate(plotlabel, xy=(0.05, 0.96), xycoords='axes fraction',
                   horizontalalignment='left', verticalalignment='top', fontsize=8)
+
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
-    #        axis.set_xlim(xmin=12000,xmax=19000)
-    # axis.set_ylim(ymin=-0.05*maxyvalueglobal,ymax=maxyvalueglobal*1.3)
+    # axis.set_ylim(ymin=-0.05 * maxyvalueglobal, ymax=maxyvalueglobal * 1.3)
     # axis.set_ylim(ymin=-0.1, ymax=1.1)
 
     axis.legend(plotobjects, plotobjectlabels, loc='upper right', handlelength=2,
