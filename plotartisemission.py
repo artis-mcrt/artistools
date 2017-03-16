@@ -50,8 +50,10 @@ def main():
         make_plot(emissionfilename, args)
 
 
-def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arraynu, args, timeindexhigh):
+def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, maxion,
+                           timearray, arraynu, args, timeindexhigh):
     emissiondata = np.loadtxt(emissionfilename)
+    absorptiondata = np.loadtxt(absorptionfilename)
     c = const.c.to('m/s').value
     arraylambda = c / arraynu
 
@@ -66,10 +68,10 @@ def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arr
             ion_stage = ion + elementlist.lowermost_ionstage[element]
             ionserieslist = []
 
-            if element == ion == 0:
-                ionserieslist.append((2 * nelements * maxion, 'free-free'))
+            ionserieslist.append((2 * nelements * maxion, 'free-free'))
 
             ionserieslist.append((element * maxion + ion, 'bound-bound'))
+
             ionserieslist.append((nelements * maxion + element * maxion + ion, 'bound-free'))
 
             for (selectedcolumn, emissiontype) in ionserieslist:
@@ -78,13 +80,26 @@ def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arr
                 for timeindex in range(args.timestepmin + 1, timeindexhigh + 1):
                     array_fnu += emissiondata[timeindex::len(timearray), selectedcolumn]
 
+                if selectedcolumn < nelements * maxion:
+                    array_fnu_absorption = absorptiondata[args.timestepmin::len(timearray), selectedcolumn]
+
+                    for timeindex in range(args.timestepmin + 1, timeindexhigh + 1):
+                        array_fnu_absorption += absorptiondata[timeindex::len(timearray), selectedcolumn]
+
+                # rough normalisation for stacked timesteps. replace with dividing by time
                 array_fnu = array_fnu / (timeindexhigh - args.timestepmin + 1)
 
                 # best to use the filter on this list (because it hopefully has
                 # regular sampling)
                 array_fnu = scipy.signal.savgol_filter(array_fnu, 5, 2)
-
                 array_flambda = array_fnu * (arraynu ** 2) / c
+
+                if selectedcolumn <= nelements * maxion:
+                    array_fnu_absorption = array_fnu_absorption / (timeindexhigh - args.timestepmin + 1)
+                    array_fnu_absorption = scipy.signal.savgol_filter(array_fnu_absorption, 5, 2)
+                    array_flambda_absorption = array_fnu_absorption * (arraynu ** 2) / c
+                else:
+                    array_flambda_absorption = np.zeros(len(array_fnu))
 
                 maxyvaluethisseries = max(
                     [array_flambda[i] if (args.xmin < (1e10 * arraylambda[i]) < args.xmax) else -99.0
@@ -99,7 +114,7 @@ def get_flux_contributions(emissionfilename, elementlist, maxion, timearray, arr
 
                 # if linelabel.startswith('Fe ') or linelabel.endswith("-free"):
                 #     continue
-                contribution_list.append([maxyvaluethisseries, linelabel, array_flambda])
+                contribution_list.append([maxyvaluethisseries, linelabel, array_flambda, array_flambda_absorption])
 
     return contribution_list, maxyvalueglobal
 
@@ -167,19 +182,23 @@ def make_plot(emissionfilename, args):
     timearray = specdata[0, 1:]
     arraynu = specdata[1:, 0]
     arraylambda = const.c.to('m/s').value / arraynu
+    absorptionfilename = os.path.join(os.path.dirname(emissionfilename), 'absorption.out')
     contribution_list, maxyvalueglobal = get_flux_contributions(
-        emissionfilename, elementlist, maxion, timearray, arraynu, args, timeindexhigh)
+        emissionfilename, absorptionfilename, elementlist, maxion, timearray, arraynu, args, timeindexhigh)
     # print("\n".join([f"{x[0]}, {x[1]}" for x in contribution_list]))
 
     contribution_list = sorted(contribution_list, key=lambda x: x[0])
     remainder_sum = np.zeros(len(arraylambda))
+    remainder_sum_absorption = np.zeros(len(arraylambda))
     for row in contribution_list[:- args.maxseriescount]:
-        remainder_sum = np.add(remainder_sum, row[2])
+        remainder_sum = np.add(remainder_sum, row[3])
+        remainder_sum_absorption = np.add(remainder_sum_absorption, row[3])
 
     contribution_list = list(reversed(contribution_list[- args.maxseriescount:]))
-    contribution_list.append([0.0, 'other', remainder_sum])
+    contribution_list.append([0.0, 'other', remainder_sum, remainder_sum_absorption])
 
-    plotobjects = axis.stackplot(1e10 * arraylambda, *[x[2] for x in contribution_list], linewidth=0)
+    plotobjects = axis.stackplot(1e10 * arraylambda, *[x[2] for x in contribution_list], linewidth=0)  # emission
+    plotobjects = axis.stackplot(1e10 * arraylambda, *[-x[3] for x in contribution_list], linewidth=0)  # absorption
     plotobjectlabels = list([x[1] for x in contribution_list])
 
     plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, scale_to_peak=maxyvalueglobal)
