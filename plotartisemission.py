@@ -23,7 +23,8 @@ warnings.filterwarnings(action="ignore", module="scipy", message="^internal gels
 colorlist = [(0.0, 0.5, 0.7), (0.9, 0.2, 0.0), (0.9, 0.6, 0.0),
              (0.0, 0.6, 0.5), (0.8, 0.5, 1.0), (0.95, 0.9, 0.25)]
 
-fluxcontributiontuple = namedtuple('fluxcontribution', 'maxyvalue linelabel array_flambda_emission array_flambda_absorption')
+fluxcontributiontuple = namedtuple(
+    'fluxcontribution', 'maxyvalue linelabel array_flambda_emission array_flambda_absorption')
 
 
 def main():
@@ -55,6 +56,8 @@ def main():
 
 def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, maxion,
                            timearray, arraynu, args, timeindexhigh):
+    # this is much slower than it could be because of the order in which these data tables are accessed
+    # TODO: change to use sequential access as much as possible
     emissiondata = np.loadtxt(emissionfilename)
     absorptiondata = np.loadtxt(absorptionfilename)
     c = const.c.to('m/s').value
@@ -213,6 +216,8 @@ def make_plot(emissionfilename, args):
 
     plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, scale_to_peak=maxyvalueglobal)
 
+    axis.axhline(color='white', lw=1.0)
+
     axis.annotate(plotlabel, xy=(0.05, 0.96), xycoords='axes fraction',
                   horizontalalignment='left', verticalalignment='top', fontsize=8)
 
@@ -235,14 +240,6 @@ def make_plot(emissionfilename, args):
     # plt.setp(plt.getp(axis, 'yticklabels'), fontsize=fsticklabel)
     # for axis in ['top', 'bottom', 'left', 'right']:
     #    axis.spines[axis].set_linewidth(framewidth)
-
-    # for (x,y,symbol) in zip(highlightedatomicnumbers,
-    #                         highlightedelementyposition,highlightedelements):
-    #    axis.annotate(symbol, xy=(x, y - 0.0 * (x % 2)), xycoords='data',
-    #                textcoords='offset points', xytext=(0,10),
-    #                horizontalalignment='center',
-    #                verticalalignment='center', weight='bold',
-    #                fontsize=fs-1.5)
 
 
 if __name__ == "__main__":
