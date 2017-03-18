@@ -31,7 +31,7 @@ def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS emission spectrum')
-    parser.add_argument('-filepath', action='store', default='**/emission.out',
+    parser.add_argument('-filepath', action='store', default='**/emission*.out',
                         help='Path to emission.out file (may include wildcards such as * and **)')
     af.addargs_timesteps(parser)
     af.addargs_spectrum(parser)
