@@ -58,7 +58,9 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
                            timearray, arraynu, args, timeindexhigh):
     # this is much slower than it could be because of the order in which these data tables are accessed
     # TODO: change to use sequential access as much as possible
+    print(f"Reading {emissionfilename}")
     emissiondata = np.loadtxt(emissionfilename)
+    print(f"Reading {absorptionfilename}")
     absorptiondata = np.loadtxt(absorptionfilename)
     c = const.c.to('m/s').value
     arraylambda = c / arraynu
