@@ -1,3 +1,5 @@
+languages:
+  python: true
 engines:
   pep8:
     enabled: true
