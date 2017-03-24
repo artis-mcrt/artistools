@@ -3,10 +3,10 @@ import collections
 import math
 import os
 
+import matplotlib.patches as mpatches
 # import scipy.signal
 import pandas as pd
 from astropy import constants as const
-import matplotlib.patches as mpatches
 
 PYDIR = os.path.dirname(os.path.abspath(__file__))
 

@@ -77,7 +77,7 @@ def make_plot(specfiles, args):
 
     filenameout = args.outputfile
     fig.savefig(filenameout, format='pdf')
-    print(f'Saved plot to {filenameout}')
+    print(f'Saved {filenameout}')
     plt.close()
 
     # plt.setp(plt.getp(ax, 'xticklabels'), fontsize=fsticklabel)
