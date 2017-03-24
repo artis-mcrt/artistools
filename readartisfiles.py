@@ -385,9 +385,9 @@ def plot_reference_spectra(axis, args, flambdafilterfunc=None):
 def addargs_timesteps(parser):
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
-    parser.add_argument('-timestepmin', type=int, default=70,
+    parser.add_argument('-timestepmin', type=int, default=20,
                         help='First or only included timestep')
-    parser.add_argument('-timestepmax', type=int, default=80,
+    parser.add_argument('-timestepmax', type=int,
                         help='Last included timestep')
     parser.add_argument('-timemin', type=float,
                         help='Time in days')
@@ -400,8 +400,30 @@ def addargs_spectrum(parser):
                         help='Plot range: minimum wavelength in Angstroms')
     parser.add_argument('-xmax', type=int, default=7000,
                         help='Plot range: maximum wavelength in Angstroms')
+    parser.add_argument('--normalised', default=False, action='store_true',
+                        help='Normalise the spectra to their peak values')
     parser.add_argument('-obsspec', action='append', dest='refspecfiles',
                         help='Also plot reference spectrum from this file')
+
+
+def get_minmax_timesteps(specfilename, args):
+    if args.timemin:
+        timesteptimes = get_timestep_times(specfilename)
+        oldtime = -1
+        for timestep, time in enumerate(timesteptimes):
+            timefloat = float(time.strip('d'))
+            if (timefloat > args.timemin) and (oldtime <= args.timemin):
+                timestepmin = timestep
+            if timefloat < args.timemax:
+                timestepmax = timestep
+            oldtime = timefloat
+    else:
+        timestepmin = args.timestepmin
+        if args.timestepmax:
+            timestepmax = args.timestepmax
+        else:
+            timestepmax = args.timestepmin
+    return timestepmin, timestepmax
 
 
 if __name__ == "__main__":
