@@ -384,8 +384,8 @@ def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafil
                 specdata['f_lambda'] = specdata['f_lambda'].apply(flambdafilterfunc)
 
             if args.normalised:
-                specdata['f_lambda_scaled'] = (specdata['f_lambda'] / specdata['f_lambda'].max()
-                                               * (scale_to_peak if scale_to_peak else 1.0))
+                specdata['f_lambda_scaled'] = (specdata['f_lambda'] / specdata['f_lambda'].max() *
+                                               (scale_to_peak if scale_to_peak else 1.0))
                 ycolumnname = 'f_lambda_scaled'
             else:
                 ycolumnname = 'f_lambda'
