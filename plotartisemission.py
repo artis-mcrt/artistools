@@ -186,10 +186,10 @@ def make_plot(emissionfilename, args):
     if timestepmax > timestepmin:
         time_in_days_upper = math.floor(float(af.get_timestep_time(specfilename, timestepmax)))
         plotlabel += f' to {time_in_days_upper}d'
-        print(f'Plotting {specfilename} timesteps {timestepmin} to {timestepmax} (t={time_in_days_lower}d'
+        print(f'Plotting {emissionfilename} timesteps {timestepmin} to {timestepmax} (t={time_in_days_lower}d'
               f' to {time_in_days_upper}d)')
     else:
-        print(f'Plotting {specfilename} timestep {timestepmin} (t={time_in_days_lower}d)')
+        print(f'Plotting {emissionfilename} timestep {timestepmin} (t={time_in_days_lower}d)')
 
 
     timearray = specdata[0, 1:]
