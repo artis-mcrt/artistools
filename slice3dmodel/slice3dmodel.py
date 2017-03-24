@@ -92,7 +92,8 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
 
 
 def convert_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid):
-    with open(os.path.join(inputfolder, 'abundances.txt'), 'r') as fabundancesin, open(os.path.join(outputfolder, 'abundances.txt'), 'w') as fabundancesout:
+    with open(os.path.join(inputfolder, 'abundances.txt'), 'r') as fabundancesin, \
+            open(os.path.join(outputfolder, 'abundances.txt'), 'w') as fabundancesout:
         currentblock = []
         keepcurrentblock = False
         for line in fabundancesin:
@@ -123,7 +124,9 @@ def append_cell_to_output(cell, outcellid, t_model, listout, xlist, ylists):
         float(cell['posz']) ** 2)
     velocity = float(dist) / float(t_model) / 86400. / 1.e5
 
-    listout.append(f"{outcellid:6d}  {velocity:8.2f}  {math.log10(max(float(cell['rho']), 1e-100)):8.5f}  {cell['ffe']:.5f}  {cell['f56ni']:.5f}  {cell['fco']:.5f}  {cell['f52fe']:.5f}  {cell['f48cr']:.5f}")
+    listout.append(
+        f"{outcellid:6d}  {velocity:8.2f}  {math.log10(max(float(cell['rho']), 1e-100)):8.5f}  "
+        f"{cell['ffe']:.5f}  {cell['f56ni']:.5f}  {cell['fco']:.5f}  {cell['f52fe']:.5f}  {cell['f48cr']:.5f}")
 
     xlist.append(velocity)
     ylists[0].append(cell['rho'])
