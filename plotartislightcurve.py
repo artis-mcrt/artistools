@@ -58,7 +58,7 @@ def make_lightcurve_plot(lcfiles, filenameout):
     axis.set_ylabel(r'$\propto$ Flux')
 
     fig.savefig(filenameout, format='pdf')
-    print(f'Saved plot to {filenameout}')
+    print(f'Saved {filenameout}')
     plt.close()
 
 

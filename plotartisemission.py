@@ -30,8 +30,8 @@ def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS emission spectrum')
-    parser.add_argument('-filepath', action='store', default='**/emission*.out',
-                        help='Path to emission.out file (may include wildcards such as * and **)')
+    parser.add_argument('-filepath', action='store',
+                        help='Path to emission.out file ')
     af.addargs_timesteps(parser)
     af.addargs_spectrum(parser)
     parser.add_argument('-maxseriescount', type=int, default=9,
@@ -41,12 +41,15 @@ def main():
                         help='path/filename for PDF file')
     args = parser.parse_args()
 
-    emissionfiles = glob.glob(args.filepath, recursive=True)
+    if args.filepath:
+        emissionfilename = args.filepath
+    else:
+        emissionfiles = glob.glob('**/emission*.out', recursive=True)
+        if not emissionfiles:
+            print('no emission.out files found')
+            sys.exit()
+        emissionfilename = emissionfiles[0]
 
-    if not emissionfiles:
-        print('no emission.out files found')
-        sys.exit()
-    emissionfilename = emissionfiles[0]
     if args.listtimesteps:
         af.showtimesteptimes(os.path.join(os.path.dirname(emissionfilename), 'spec.out'))
     else:
@@ -200,7 +203,7 @@ def make_plot(emissionfilename, args):
     axis.set_ylabel(r'F$_\lambda$')
 
     fig.savefig(args.outputfile, format='pdf')
-    print(f'Saved plot to {args.outputfile}')
+    print(f'Saved {args.outputfile}')
     plt.close()
 
     # plt.setp(plt.getp(axis, 'xticklabels'), fontsize=fsticklabel)
