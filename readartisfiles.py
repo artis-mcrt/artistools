@@ -137,16 +137,15 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False, f
         delta_t_alltimesteps += delta_t
         array_fnu += specdata[specdata.columns[timestep + 1]] * delta_t
 
+    array_fnu = array_fnu / delta_t_alltimesteps
+
     # best to use the filter on this list because it
     # has regular sampling
     if fnufilterfunc:
         print("Applying filter")
         array_fnu = fnufilterfunc(array_fnu)
 
-    array_fnu = array_fnu / delta_t_alltimesteps
-
-    dfspectrum = pd.DataFrame({'nu': arraynu,
-                               'f_nu': array_fnu})
+    dfspectrum = pd.DataFrame({'nu': arraynu, 'f_nu': array_fnu})
 
     dfspectrum['lambda_angstroms'] = const.c.value / dfspectrum['nu'] * 1e10
     dfspectrum['f_lambda'] = dfspectrum['f_nu'] * dfspectrum['nu'] / dfspectrum['lambda_angstroms']
