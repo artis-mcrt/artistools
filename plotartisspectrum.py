@@ -52,8 +52,8 @@ def make_plot(specfiles, args):
         Set up a matplotlib figure and plot observational and ARTIS spectra
     """
     import matplotlib.ticker as ticker
-    fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
-        "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    fig, axis = plt.subplots(
+        1, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     # import scipy.signal
     #
@@ -67,8 +67,7 @@ def make_plot(specfiles, args):
     if args.normalised:
         axis.set_ylim(ymin=-0.1, ymax=1.25)
 
-    axis.legend(loc='best', handlelength=2, frameon=False,
-                numpoints=1, prop={'size': args.legendfontsize})
+    axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': args.legendfontsize})
     axis.set_xlabel(r'Wavelength ($\AA$)')
     axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
@@ -86,11 +85,6 @@ def make_plot(specfiles, args):
     # plt.setp(plt.getp(ax, 'yticklabels'), fontsize=fsticklabel)
     # for axis in ['top','bottom','left','right']:
     #    ax.spines[axis].set_linewidth(framewidth)
-
-    # ax.annotate(symbol, xy=(x, y - 0.0 * (x % 2)), xycoords='data',
-    #             textcoords='offset points', xytext=(0, 10),
-    #             horizontalalignment='center', verticalalignment='center',
-    #             weight='bold', fontsize=15)
 
 
 def plot_artis_spectra(axis, args, specfiles):
@@ -130,10 +124,7 @@ def plot_artis_spectra(axis, args, specfiles):
             from scipy.signal import savgol_filter
             return savgol_filter(arrayfnu, 5, 2)
 
-        spectrum = af.get_spectrum(specfilename,
-                                   timestepmin,
-                                   timestepmax,
-                                   normalised=False,)
+        spectrum = af.get_spectrum(specfilename, timestepmin, timestepmax, normalised=False,)
         #                          fnufilterfunc=filterfunc)
 
         maxyvaluethisseries = spectrum.query(
