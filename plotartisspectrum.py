@@ -25,8 +25,6 @@ def main():
                         help='Path to spec.out file (may include wildcards such as * and **)')
     af.addargs_timesteps(parser)
     af.addargs_spectrum(parser)
-    parser.add_argument('--normalised', default=False, action='store_true',
-                        help='Normalise the spectra to their peak values')
     parser.add_argument('-legendfontsize', type=int, default=8,
                         help='Font size of legend text')
     parser.add_argument('-o', action='store', dest='outputfile', default='plotspec.pdf',
@@ -114,19 +112,7 @@ def plot_artis_spectra(axis, args, specfiles):
                 # use the current directory name
                 modelname = os.path.split(os.path.dirname(os.path.abspath(specfilename)))[1]
 
-        if args.timemin:
-            timesteptimes = af.get_timestep_times(specfilename)
-            oldtime = -1
-            for timestep, time in enumerate(timesteptimes):
-                timefloat = float(time.strip('d'))
-                if (timefloat > args.timemin) and (oldtime <= args.timemin):
-                    timestepmin = timestep
-                if timefloat < args.timemax:
-                    timestepmax = timestep
-                oldtime = timefloat
-        else:
-            timestepmin = args.timestepmin
-            timestepmax = args.timestepmax
+        timestepmin, timestepmax = af.get_minmax_timesteps(specfilename, args)
 
         time_in_days_lower = math.floor(float(af.get_timestep_time(specfilename, timestepmin)))
         linelabel = f'{modelname} at t={time_in_days_lower:d}d'
