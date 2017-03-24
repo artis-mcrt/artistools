@@ -149,7 +149,7 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False, f
                                'f_nu': array_fnu})
 
     dfspectrum['lambda_angstroms'] = const.c.value / dfspectrum['nu'] * 1e10
-    dfspectrum['f_lambda'] = dfspectrum['f_nu'] * dfspectrum['nu'] / dfspectrum['lambda_angstroms'] * math.pi * 4
+    dfspectrum['f_lambda'] = dfspectrum['f_nu'] * dfspectrum['nu'] / dfspectrum['lambda_angstroms']
 
     if normalised:
         dfspectrum['f_nu'] /= dfspectrum['f_nu'].max()
