@@ -111,6 +111,7 @@ def plot_artis_spectra(axis, args, specfiles):
             if not modelname:
                 # use the current directory name
                 modelname = os.path.split(os.path.dirname(os.path.abspath(specfilename)))[1]
+        print(f"Plotting {modelname}")
 
         timestepmin, timestepmax = af.get_minmax_timesteps(specfilename, args)
 
