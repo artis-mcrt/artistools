@@ -413,9 +413,9 @@ def addargs_timesteps(parser):
 
 
 def addargs_spectrum(parser):
-    parser.add_argument('-xmin', type=int, default=3500,
+    parser.add_argument('-xmin', type=int, default=1000,
                         help='Plot range: minimum wavelength in Angstroms')
-    parser.add_argument('-xmax', type=int, default=7000,
+    parser.add_argument('-xmax', type=int, default=11000,
                         help='Plot range: maximum wavelength in Angstroms')
     parser.add_argument('--normalised', default=False, action='store_true',
                         help='Normalise the spectra to their peak values')
