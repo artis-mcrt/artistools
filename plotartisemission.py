@@ -55,7 +55,7 @@ def main():
 
 
 def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, maxion,
-                           timearray, arraynu, args, timeindexhigh):
+                           timearray, arraynu, args, timestepmin, timestepmax):
     # this is much slower than it could be because of the order in which these data tables are accessed
     # TODO: change to use sequential access as much as possible
     print(f"Reading {emissionfilename}")
@@ -83,19 +83,19 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
             ionserieslist.append((nelements * maxion + element * maxion + ion, 'bound-free'))
 
             for (selectedcolumn, emissiontype) in ionserieslist:
-                array_fnu_emission = emissiondata[args.timestepmin::len(timearray), selectedcolumn]
+                array_fnu_emission = emissiondata[timestepmin::len(timearray), selectedcolumn]
 
-                for timeindex in range(args.timestepmin + 1, timeindexhigh + 1):
+                for timeindex in range(timestepmin + 1, timestepmax + 1):
                     array_fnu_emission += emissiondata[timeindex::len(timearray), selectedcolumn]
 
                 if selectedcolumn < nelements * maxion:
-                    array_fnu_absorption = absorptiondata[args.timestepmin::len(timearray), selectedcolumn]
+                    array_fnu_absorption = absorptiondata[timestepmin::len(timearray), selectedcolumn]
 
-                    for timeindex in range(args.timestepmin + 1, timeindexhigh + 1):
+                    for timeindex in range(timestepmin + 1, timestepmax + 1):
                         array_fnu_absorption += absorptiondata[timeindex::len(timearray), selectedcolumn]
 
                 # rough normalisation for stacked timesteps. replace with dividing by time
-                array_fnu_emission = array_fnu_emission / (timeindexhigh - args.timestepmin + 1)
+                array_fnu_emission = array_fnu_emission / (timestepmax - timestepmin + 1)
 
                 # best to use the filter on this list (because it hopefully has
                 # regular sampling)
@@ -103,7 +103,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
                 array_flambda_emission = array_fnu_emission * (arraynu ** 2) / c
 
                 if selectedcolumn <= nelements * maxion:
-                    array_fnu_absorption = array_fnu_absorption / (timeindexhigh - args.timestepmin + 1)
+                    array_fnu_absorption = array_fnu_absorption / (timestepmax - timestepmin + 1)
                     array_fnu_absorption = scipy.signal.savgol_filter(array_fnu_absorption, 5, 2)
                     array_flambda_absorption = array_fnu_absorption * (arraynu ** 2) / c
                 else:
@@ -166,16 +166,8 @@ def make_plot(emissionfilename, args):
 
     fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    # in the spec.out file, the column index is one more than the timestep
-    # (because column 0 is wavelength row headers, not flux at a timestep)
-    if args.timestepmax:
-        timeindexhigh = args.timestepmax
-        print(f'Plotting timesteps {args.timestepmin} to {args.timestepmax}')
-    else:
-        print(f'Plotting timestep {args.timestepmin}')
-        timeindexhigh = args.timestepmin
-
-    specdata = np.loadtxt(os.path.join(os.path.dirname(emissionfilename), 'spec.out'))
+    specfilename = os.path.join(os.path.dirname(emissionfilename), 'spec.out')
+    specdata = np.loadtxt(specfilename)
 
     try:
         plotlabelfile = os.path.join(os.path.dirname(emissionfilename), 'plotlabel.txt')
@@ -186,16 +178,26 @@ def make_plot(emissionfilename, args):
             # use the current directory name
             modelname = os.path.split(os.path.dirname(os.path.abspath(emissionfilename)))[1]
 
-    plotlabel = f'{modelname}\nt={math.floor(specdata[0, args.timestepmin + 1]):d}d'
-    if timeindexhigh > args.timestepmin:
-        plotlabel += f' to {math.floor(specdata[0, timeindexhigh + 1]):d}d'
+    timestepmin, timestepmax = af.get_minmax_timesteps(specfilename, args)
+
+    time_in_days_lower = math.floor(float(af.get_timestep_time(specfilename, timestepmin)))
+    plotlabel = f'{modelname}\nt={time_in_days_lower}d'
+
+    if timestepmax > timestepmin:
+        time_in_days_upper = math.floor(float(af.get_timestep_time(specfilename, timestepmax)))
+        plotlabel += f' to {time_in_days_upper}d'
+        print(f'Plotting {specfilename} timesteps {timestepmin} to {timestepmax} (t={time_in_days_lower}d'
+              f' to {time_in_days_upper}d)')
+    else:
+        print(f'Plotting {specfilename} timestep {timestepmin} (t={time_in_days_lower}d)')
+
 
     timearray = specdata[0, 1:]
     arraynu = specdata[1:, 0]
     arraylambda = const.c.to('m/s').value / arraynu
     absorptionfilename = os.path.join(os.path.dirname(emissionfilename), 'absorption.out')
     contribution_list, maxyvalueglobal = get_flux_contributions(
-        emissionfilename, absorptionfilename, elementlist, maxion, timearray, arraynu, args, timeindexhigh)
+        emissionfilename, absorptionfilename, elementlist, maxion, timearray, arraynu, args, timestepmin, timestepmax)
     # print("\n".join([f"{x[0]}, {x[1]}" for x in contribution_list]))
 
     contribution_list = sorted(contribution_list, key=lambda x: x.maxyvalue)
@@ -216,7 +218,8 @@ def make_plot(emissionfilename, args):
                                  linewidth=0)
     plotobjectlabels = list([x.linelabel for x in contribution_list])
 
-    plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, scale_to_peak=maxyvalueglobal)
+    plot_reference_spectra(axis, plotobjects, plotobjectlabels, args,
+                           scale_to_peak=(maxyvalueglobal if args.normalised else None))
 
     axis.axhline(color='white', lw=1.0)
 
