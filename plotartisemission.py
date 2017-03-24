@@ -6,7 +6,6 @@ import os
 import sys
 import warnings
 
-import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
@@ -130,38 +129,10 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
     return contribution_list, maxyvalueglobal
 
 
-def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, scale_to_peak=None):
-    if args.refspecfiles is not None:
-        scriptdir = os.path.dirname(os.path.abspath(__file__))
-        refspeccolorlist = ['0.0', '0.8']
-        refspectra = [(fn, af.refspectralabels.get(fn, fn), c) for fn, c in zip(args.refspecfiles, refspeccolorlist)]
-
-        for (filename, serieslabel, linecolor) in refspectra:
-            specdata = np.loadtxt(os.path.join(scriptdir, 'spectra', filename))
-
-            if len(specdata) > 5000:
-                # specdata = scipy.signal.resample(specdata, 10000)
-                specdata = specdata[::3]
-
-            specdata[specdata[:, 1] < 0] = 0
-
-            specdata = specdata[(specdata[:, 0] > args.xmin) & (specdata[:, 0] < args.xmax)]
-            print(f"'{serieslabel}' has {len(specdata)} points")
-            obsxvalues = specdata[:, 0]
-            obsyvalues = specdata[:, 1]
-            if scale_to_peak:
-                obsyvalues *= scale_to_peak / max(obsyvalues)
-
-            # obsyvalues = scipy.signal.savgol_filter(obsyvalues, 5, 3)
-            axis.plot(obsxvalues, obsyvalues, lw=0.5, zorder=-1, color=linecolor)
-            plotobjects.append(mpatches.Patch(color=linecolor))
-            plotobjectlabels.append(serieslabel)
-
-
 def make_plot(emissionfilename, args):
     elementlist = af.get_composition_data(os.path.join(os.path.dirname(emissionfilename), 'compositiondata.txt'))
 
-    print(f'nelements {len(elementlist)}')
+    # print(f'nelements {len(elementlist)}')
     maxion = 5  # must match sn3d.h value
 
     fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
@@ -169,14 +140,7 @@ def make_plot(emissionfilename, args):
     specfilename = os.path.join(os.path.dirname(emissionfilename), 'spec.out')
     specdata = np.loadtxt(specfilename)
 
-    try:
-        plotlabelfile = os.path.join(os.path.dirname(emissionfilename), 'plotlabel.txt')
-        modelname = open(plotlabelfile, mode='r').readline().strip()
-    except FileNotFoundError:
-        modelname = os.path.dirname(emissionfilename)
-        if not modelname:
-            # use the current directory name
-            modelname = os.path.split(os.path.dirname(os.path.abspath(emissionfilename)))[1]
+    modelname = af.get_model_name(emissionfilename)
 
     timestepmin, timestepmax = af.get_minmax_timesteps(specfilename, args)
 
@@ -186,11 +150,10 @@ def make_plot(emissionfilename, args):
     if timestepmax > timestepmin:
         time_in_days_upper = math.floor(float(af.get_timestep_time(specfilename, timestepmax)))
         plotlabel += f' to {time_in_days_upper}d'
-        print(f'Plotting {emissionfilename} timesteps {timestepmin} to {timestepmax} (t={time_in_days_lower}d'
+        print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} (t={time_in_days_lower}d'
               f' to {time_in_days_upper}d)')
     else:
-        print(f'Plotting {emissionfilename} timestep {timestepmin} (t={time_in_days_lower}d)')
-
+        print(f'Plotting {modelname} timestep {timestepmin} (t={time_in_days_lower}d)')
 
     timearray = specdata[0, 1:]
     arraynu = specdata[1:, 0]
@@ -218,8 +181,8 @@ def make_plot(emissionfilename, args):
                                  linewidth=0)
     plotobjectlabels = list([x.linelabel for x in contribution_list])
 
-    plot_reference_spectra(axis, plotobjects, plotobjectlabels, args,
-                           scale_to_peak=(maxyvalueglobal if args.normalised else None))
+    af.plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=None,
+                              scale_to_peak=(maxyvalueglobal if args.normalised else None), lw=0.5)
 
     axis.axhline(color='white', lw=1.0)
 

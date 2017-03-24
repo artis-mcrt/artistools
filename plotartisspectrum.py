@@ -60,7 +60,7 @@ def make_plot(specfiles, args):
     # def filterfunc(flambda):
     #     return scipy.signal.savgol_filter(flambda, 5, 3)
     filterfunc = None
-    af.plot_reference_spectra(axis, args, filterfunc)
+    af.plot_reference_spectra(axis, [], [], args, flambdafilterfunc=filterfunc)
     plot_artis_spectra(axis, args, specfiles)
 
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
@@ -97,15 +97,7 @@ def plot_artis_spectra(axis, args, specfiles):
     # colorlist = [(0, .8*158./255, 0.6*115./255), (204./255, 121./255, 167./255), (213./255, 94./255, 0.0)]
 
     for index, specfilename in enumerate(specfiles):
-        try:
-            plotlabelfile = os.path.join(os.path.dirname(specfilename), 'plotlabel.txt')
-            modelname = open(plotlabelfile, mode='r').readline().strip()
-        except FileNotFoundError:
-            modelname = os.path.dirname(specfilename)
-            if not modelname:
-                # use the current directory name
-                modelname = os.path.split(os.path.dirname(os.path.abspath(specfilename)))[1]
-        print(f"Plotting {modelname}")
+        modelname = af.get_model_name(specfilename)
 
         timestepmin, timestepmax = af.get_minmax_timesteps(specfilename, args)
 
@@ -115,10 +107,10 @@ def plot_artis_spectra(axis, args, specfiles):
         if timestepmax > timestepmin:
             time_in_days_upper = math.floor(float(af.get_timestep_time(specfilename, timestepmax)))
             linelabel += f' to {time_in_days_upper:d}d'
-            print(f'Plotting {specfilename} timesteps {timestepmin} to {timestepmax} (t={time_in_days_lower}d'
+            print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} (t={time_in_days_lower}d'
                   f' to {time_in_days_upper}d)')
         else:
-            print(f'Plotting {specfilename} timestep {timestepmin} (t={time_in_days_lower}d)')
+            print(f'Plotting {modelname} timestep {timestepmin} (t={time_in_days_lower}d)')
 
         def filterfunc(arrayfnu):
             from scipy.signal import savgol_filter

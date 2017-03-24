@@ -6,6 +6,7 @@ import os
 # import scipy.signal
 import pandas as pd
 from astropy import constants as const
+import matplotlib.patches as mpatches
 
 PYDIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -352,7 +353,8 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
     return pd.DataFrame(data=[newrow], columns=levelpoptuple._fields)
 
 
-def plot_reference_spectra(axis, args, flambdafilterfunc=None):
+def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=None, scale_to_peak=None,
+                           **plotkwargs):
     """
         Plot reference spectra listed in args.refspecfiles
     """
@@ -365,23 +367,36 @@ def plot_reference_spectra(axis, args, flambdafilterfunc=None):
             specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
                                    names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
 
-            specdata.query('lambda_angstroms > @args.xmin and lambda_angstroms < @args.xmax', inplace=True)
-
-            print(f"'{serieslabel}' has {len(specdata)} points")
-
-            if args.normalised:
-                specdata['f_lambda'] = (specdata['f_lambda'] / specdata['f_lambda'].max())
-
-            if flambdafilterfunc:
-                specdata['f_lambda'] = flambdafilterfunc(specdata['f_lambda'])
-
             if len(specdata) > 5000:
                 # specdata = scipy.signal.resample(specdata, 10000)
                 print(f"downsamping {filename}")
                 specdata = specdata.iloc[::3, :]
 
-            specdata.plot(x='lambda_angstroms', y='f_lambda', lw=1.5, ax=axis,
-                          label=serieslabel, zorder=-1, color=linecolor)
+            # clamp negative values to zero
+            specdata['f_lambda'] = specdata['f_lambda'].apply(lambda x: max(0, x))
+            print(specdata.f_lambda.max())
+
+            specdata.query('lambda_angstroms > @args.xmin and lambda_angstroms < @args.xmax', inplace=True)
+
+            print(f"'{serieslabel}' has {len(specdata)} points")
+
+            if flambdafilterfunc:
+                specdata['f_lambda'] = flambdafilterfunc(specdata['f_lambda'])
+
+            if args.normalised:
+                specdata['f_lambda_scaled'] = (specdata['f_lambda'] / specdata['f_lambda'].max()
+                                               * (scale_to_peak if scale_to_peak else 1.0))
+                ycolumnname = 'f_lambda_scaled'
+            else:
+                ycolumnname = 'f_lambda'
+
+            if 'lw' not in plotkwargs:
+                plotkwargs['lw'] = 1.5
+
+            specdata.plot(x='lambda_angstroms', y=ycolumnname, ax=axis,
+                          label=serieslabel, zorder=-1, color=linecolor, **plotkwargs)
+            plotobjects.append(mpatches.Patch(color=linecolor))
+            plotobjectlabels.append(serieslabel)
 
 
 def addargs_timesteps(parser):
@@ -426,6 +441,26 @@ def get_minmax_timesteps(specfilename, args):
         else:
             timestepmax = args.timestepmin
     return timestepmin, timestepmax
+
+
+def get_parent_folder_name(path):
+    """
+        Return the name of the parent folder of a file or folder without no separators
+        e.g. get_parent_folder_name('folder1/folder2/file.txt') returns 'folder2'
+    """
+    return os.path.split(os.path.dirname(os.path.abspath(path)))[1]
+
+
+def get_model_name(path):
+    """
+        Get the name of an ARTIS model from the path to any file inside it
+        either from the parent directory or a special plotlabel.txt file
+    """
+    try:
+        plotlabelfile = os.path.join(os.path.dirname(path), 'plotlabel.txt')
+        return (open(plotlabelfile, mode='r').readline().strip())
+    except FileNotFoundError:
+        return get_parent_folder_name(path)
 
 
 if __name__ == "__main__":
