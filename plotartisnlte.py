@@ -98,8 +98,7 @@ def make_plot(dfpop, atomic_number, exc_temperature, args):
             plotlabel += f' at timestep {args.timestep:d}'
 
         axis.annotate(plotlabel, xy=(0.5, 0.96), xycoords='axes fraction',
-                      horizontalalignment='center', verticalalignment='top',
-                      fontsize=12)
+                      horizontalalignment='center', verticalalignment='top', fontsize=12)
         axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
 
     for axis in axes:

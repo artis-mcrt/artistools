@@ -448,7 +448,7 @@ def get_parent_folder_name(path):
         Return the name of the parent folder of a file or folder without no separators
         e.g. get_parent_folder_name('folder1/folder2/file.txt') returns 'folder2'
     """
-    return os.path.split(os.path.dirname(os.path.abspath(path)))[1]
+    return os.path.basename(os.path.dirname(os.path.abspath(path)))
 
 
 def get_model_name(path):
