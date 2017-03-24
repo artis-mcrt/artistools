@@ -2,7 +2,6 @@
 import argparse
 import glob
 import math
-import os
 import sys
 import warnings
 
@@ -112,9 +111,9 @@ def plot_artis_spectra(axis, args, specfiles):
         else:
             print(f'Plotting {modelname} timestep {timestepmin} (t={time_in_days_lower}d)')
 
-        def filterfunc(arrayfnu):
-            from scipy.signal import savgol_filter
-            return savgol_filter(arrayfnu, 5, 2)
+        # def filterfunc(arrayfnu):
+        #     from scipy.signal import savgol_filter
+        #     return savgol_filter(arrayfnu, 5, 2)
 
         spectrum = af.get_spectrum(specfilename, timestepmin, timestepmax, normalised=False,)
         #                          fnufilterfunc=filterfunc)
