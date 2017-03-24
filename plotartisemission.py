@@ -238,7 +238,7 @@ def make_plot(emissionfilename, args):
     axis.set_ylabel(r'F$_\lambda$')
 
     fig.savefig(args.outputfile, format='pdf')
-    print(f'Saving {args.outputfile}')
+    print(f'Saved plot to {args.outputfile}')
     plt.close()
 
     # plt.setp(plt.getp(axis, 'xticklabels'), fontsize=fsticklabel)
