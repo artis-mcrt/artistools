@@ -25,11 +25,14 @@ refspectralabels = {
     '2003du_20031213_3219_8822_00.txt':
         'SN2003du +221.3d (Stanishev et al. 2007)',
 
+    'FranssonJerkstrand2015_W7_330d_1Mpc':
+        'Fransson & Jerkstrand (2015) W7 Iwamoto+1999 1Mpc +330d',
+
     'nero-nebspec.txt':
         'NERO +300d one-zone',
 
-    'maurer2011_RTJ_W7_338d.txt':
-        'RTJ W7 +338d (Maurer et al. 2011)'
+    'maurer2011_RTJ_W7_338d_1Mpc.txt':
+        'RTJ W7 Nomoto+1984 1Mpc +338d (Maurer et al. 2011)'
 }
 
 
