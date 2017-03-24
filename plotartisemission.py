@@ -157,15 +157,15 @@ def make_plot(emissionfilename, args):
 
     timearray = specdata[0, 1:]
     arraynu = specdata[1:, 0]
-    arraylambda = const.c.to('m/s').value / arraynu
+    arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
     absorptionfilename = os.path.join(os.path.dirname(emissionfilename), 'absorption.out')
     contribution_list, maxyvalueglobal = get_flux_contributions(
         emissionfilename, absorptionfilename, elementlist, maxion, timearray, arraynu, args, timestepmin, timestepmax)
     # print("\n".join([f"{x[0]}, {x[1]}" for x in contribution_list]))
 
     contribution_list = sorted(contribution_list, key=lambda x: x.maxyvalue)
-    remainder_sum = np.zeros(len(arraylambda))
-    remainder_sum_absorption = np.zeros(len(arraylambda))
+    remainder_sum = np.zeros(len(arraylambda_angstroms))
+    remainder_sum_absorption = np.zeros(len(arraylambda_angstroms))
     for row in contribution_list[:- args.maxseriescount]:
         remainder_sum = np.add(remainder_sum, row[3])
         remainder_sum_absorption = np.add(remainder_sum_absorption, row[3])
@@ -175,10 +175,9 @@ def make_plot(emissionfilename, args):
                                                    array_flambda_emission=remainder_sum,
                                                    array_flambda_absorption=remainder_sum_absorption))
 
-    plotobjects = axis.stackplot(1e10 * arraylambda, *[x.array_flambda_emission for x in contribution_list],
+    plotobjects = axis.stackplot(arraylambda_angstroms, *[x.array_flambda_emission for x in contribution_list],
                                  linewidth=0)
-    plotobjects = axis.stackplot(1e10 * arraylambda, *[-x.array_flambda_absorption for x in contribution_list],
-                                 linewidth=0)
+    axis.stackplot(arraylambda_angstroms, *[-x.array_flambda_absorption for x in contribution_list], linewidth=0)
     plotobjectlabels = list([x.linelabel for x in contribution_list])
 
     af.plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=None,

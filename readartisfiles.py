@@ -151,7 +151,7 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False, f
 
     dfspectrum = pd.DataFrame({'nu': arraynu, 'f_nu': array_fnu})
 
-    dfspectrum['lambda_angstroms'] = const.c.value / dfspectrum['nu'] * 1e10
+    dfspectrum['lambda_angstroms'] = const.c.to('angstrom/s').value / dfspectrum['nu']
     dfspectrum['f_lambda'] = dfspectrum['f_nu'] * dfspectrum['nu'] / dfspectrum['lambda_angstroms']
 
     if normalised:
@@ -367,21 +367,21 @@ def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafil
             specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
                                    names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
 
+            specdata.query('lambda_angstroms > @args.xmin and lambda_angstroms < @args.xmax', inplace=True)
+
+            print(f"'{serieslabel}' has {len(specdata)} points initially in the plot range")
+
             if len(specdata) > 5000:
                 # specdata = scipy.signal.resample(specdata, 10000)
-                print(f"downsamping {filename}")
-                specdata = specdata.iloc[::3, :]
+                # specdata = specdata.iloc[::3, :].copy()
+                specdata.query('index % 3 == 0', inplace=True)
+                print(f"  downsamping to {len(specdata)} points")
 
             # clamp negative values to zero
             specdata['f_lambda'] = specdata['f_lambda'].apply(lambda x: max(0, x))
-            print(specdata.f_lambda.max())
-
-            specdata.query('lambda_angstroms > @args.xmin and lambda_angstroms < @args.xmax', inplace=True)
-
-            print(f"'{serieslabel}' has {len(specdata)} points")
 
             if flambdafilterfunc:
-                specdata['f_lambda'] = flambdafilterfunc(specdata['f_lambda'])
+                specdata['f_lambda'] = specdata['f_lambda'].apply(flambdafilterfunc)
 
             if args.normalised:
                 specdata['f_lambda_scaled'] = (specdata['f_lambda'] / specdata['f_lambda'].max()
