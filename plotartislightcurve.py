@@ -48,7 +48,7 @@ def make_lightcurve_plot(lcfiles, filenameout):
 
         linestyle = ['-', '--'][int(index / 7)]
 
-        lightcurvedata.plot(x='time', y='flux', lw=1.5, ax=axis, linestyle=linestyle, label=modelname)
+        lightcurvedata.plot(x='time', y='flux', linewidth=1.5, ax=axis, linestyle=linestyle, label=modelname)
 
     # axis.set_xlim(xmin=xminvalue,xmax=xmaxvalue)
     # axis.set_ylim(ymin=-0.1,ymax=1.3)

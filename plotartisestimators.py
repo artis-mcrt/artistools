@@ -103,28 +103,28 @@ def main():
                     # el_pop = sum(list_populations[index][elindex])
                     if thismgi == mgi:
                         ylist.append(list_populations[index][elindex][ion] / total_pop)
-            axis.plot(list_velocity, ylist, lw=1.5,
+            axis.plot(list_velocity, ylist, linewidth=1.5,
                       label=f"{af.elsymbols[elementlist['Z'][elindex]]} {af.roman_numerals[ion + 1])}")
 
     # axis.plot(list_timestep, [x[0][0] for x in list_populations],
-    #           lw=1.5, label="Fe I")
+    #           linewidth=1.5, label="Fe I")
     # axis.plot(list_timestep, [x[0][1] for x in list_populations],
-    #           lw=1.5, label="Fe II")
+    #           linewidth=1.5, label="Fe II")
     # axis.plot(list_timestep, [x[0][2] for x in list_populations],
-    #           lw=1.5, label="Fe III")
+    #           linewidth=1.5, label="Fe III")
     # axis.plot(list_timestep, [x[0][3] for x in list_populations],
-    #           lw=1.5, label="Fe IV")
+    #           linewidth=1.5, label="Fe IV")
     # axis.plot(list_timestep, [x[0][4] for x in list_populations],
-    #           lw=1.5, label="Fe V")
+    #           linewidth=1.5, label="Fe V")
     plotlabel = f't={timesteptimes[selectedtimestep]}d'
     axes[1].annotate(plotlabel, xy=(0.1, 0.96), xycoords='axes fraction',
                      horizontalalignment='left', verticalalignment='top',
                      fontsize=12)
 
     list_abund_o = [initalabundances[mgi][8] for mgi in list_modelgridindex]
-    axes[0].plot(list_velocity, list_abund_o, lw=1.5, label="O")
+    axes[0].plot(list_velocity, list_abund_o, linewidth=1.5, label="O")
     list_abund_ni = [initalabundances[mgi][28] for mgi in list_modelgridindex]
-    axes[0].plot(list_velocity, list_abund_ni, lw=1.5, label="Ni")
+    axes[0].plot(list_velocity, list_abund_ni, linewidth=1.5, label="Ni")
     axes[0].set_ylabel(r'Mass fraction')
     plotlabel = 'Initial abundances'
     axes[0].annotate(plotlabel, xy=(0.5, 0.96), xycoords='axes fraction',

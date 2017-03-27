@@ -48,9 +48,9 @@ def main():
         linestyle = ['-', '--'][int(index / 7)]
         # xvalues = range(len(stats))
         yvalues = [timestepstats['k_stat_to_r_fb'] for timestepstats in stats]
-        axes[0].plot(timesteptimes, yvalues, linestyle=linestyle, lw=1.5, label=linelabel)
+        axes[0].plot(timesteptimes, yvalues, linestyle=linestyle, linewidth=1.5, label=linelabel)
         yvalues = [timestepstats['k_stat_to_ma_collexc'] for timestepstats in stats]
-        axes[1].plot(timesteptimes, yvalues, linestyle=linestyle, lw=1.5, label=linelabel)
+        axes[1].plot(timesteptimes, yvalues, linestyle=linestyle, linewidth=1.5, label=linelabel)
 
     for axis in axes:
         axis.set_xlim(xmin=250, xmax=300)

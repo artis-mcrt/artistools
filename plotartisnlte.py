@@ -72,22 +72,22 @@ def make_plot(dfpop, atomic_number, exc_temperature, args):
         ion_stage = ion_stage_list[ion]
         dfpopion = dfpop.query('ion_stage==@ion_stage')
 
-        axis.plot(dfpopion.level.values, dfpopion.n_LTE.values, lw=1.5, label='LTE', linestyle='None', marker='+')
+        axis.plot(dfpopion.level.values, dfpopion.n_LTE.values, linewidth=1.5, label='LTE', linestyle='None', marker='+')
 
-        axis.plot(dfpopion.level.values[:-1], dfpopion.n_LTE_custom.values[:-1], lw=1.5,
+        axis.plot(dfpopion.level.values[:-1], dfpopion.n_LTE_custom.values[:-1], linewidth=1.5,
                   label=f'LTE {exc_temperature:.0f} K', linestyle='None', marker='*')
-        axis.plot(dfpopion.level.values, dfpopion.n_NLTE.values, lw=1.5,
+        axis.plot(dfpopion.level.values, dfpopion.n_NLTE.values, linewidth=1.5,
                   label='NLTE', linestyle='None', marker='x')
 
         dfpopionoddlevels = dfpopion.query('parity==1')
 
-        axis.plot(dfpopionoddlevels.level.values, dfpopionoddlevels.n_NLTE.values, lw=2, label='Odd parity',
+        axis.plot(dfpopionoddlevels.level.values, dfpopionoddlevels.n_NLTE.values, linewidth=2, label='Odd parity',
                   linestyle='None', marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
 
         # list_departure_ratio = [
         #     nlte / lte for (nlte, lte) in zip(list_nltepop[ion],
         #                                       list_ltepop[ion])]
-        # axis.plot(list_levels[ion], list_departure_ratio, lw=1.5,
+        # axis.plot(list_levels[ion], list_departure_ratio, linewidth=1.5,
         #         label='NLTE/LTE', linestyle='None', marker='x')
         # axis.set_ylabel(r'')
         plotlabel = f'{af.elsymbols[atomic_number]} {af.roman_numerals[ion_stage]}'
