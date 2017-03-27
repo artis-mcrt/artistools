@@ -439,8 +439,8 @@ def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafil
             else:
                 ycolumnname = 'f_lambda'
 
-            if 'lw' not in plotkwargs:
-                plotkwargs['lw'] = 1.5
+            if 'linewidth' not in plotkwargs and 'lw' not in plotkwargs:
+                plotkwargs['linewidth'] = 1.5
 
             specdata.plot(x='lambda_angstroms', y=ycolumnname, ax=axis,
                           label=serieslabel, zorder=-1, color=linecolor, **plotkwargs)
