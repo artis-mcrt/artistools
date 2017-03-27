@@ -2,6 +2,7 @@
 import argparse
 import glob
 import math
+import os
 import sys
 import warnings
 
@@ -20,8 +21,8 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS model spectra by finding spec.out files '
                     'in the current directory or subdirectories.')
-    parser.add_argument('-specpath', action='append', default=[],
-                        help='Path to spec.out file (may include wildcards such as * and **)')
+    parser.add_argument('-i', action='append', default=[], dest='filepaths',
+                        help='Path to spec.out or packets*.out file (may include wildcards such as * and **)')
     af.addargs_timesteps(parser)
     af.addargs_spectrum(parser)
     parser.add_argument('-legendfontsize', type=int, default=8,
@@ -30,23 +31,23 @@ def main():
                         help='path/filename for PDF file')
     args = parser.parse_args()
 
-    if len(args.specpath) == 0:
-        args.specpath = ['spec.out', '*/spec.out']  # '**/spec.out'
+    if len(args.filepaths) == 0:
+        args.filepaths = ['spec.out', '*/spec.out']  # '**/spec.out'
 
-    specfiles = []
-    for specpath in args.specpath:
-        specfiles.extend(glob.glob(specpath, recursive=True))
+    inputfiles = []
+    for filepath in args.filepaths:
+        inputfiles.extend(glob.glob(filepath, recursive=True))
 
-    if not specfiles:
+    if not inputfiles:
         print('no spec.out files found')
         sys.exit()
     if args.listtimesteps:
-        af.showtimesteptimes(specfiles[0])
+        af.showtimesteptimes(inputfiles[0])
     else:
-        make_plot(specfiles, args)
+        make_plot(inputfiles, args)
 
 
-def make_plot(specfiles, args):
+def make_plot(inputfiles, args):
     """
         Set up a matplotlib figure and plot observational and ARTIS spectra
     """
@@ -60,7 +61,7 @@ def make_plot(specfiles, args):
     #     return scipy.signal.savgol_filter(flambda, 5, 3)
     filterfunc = None
     af.plot_reference_spectra(axis, [], [], args, flambdafilterfunc=filterfunc)
-    plot_artis_spectra(axis, args, specfiles)
+    plot_artis_spectra(axis, inputfiles, args)
 
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
     if args.normalised:
@@ -86,7 +87,7 @@ def make_plot(specfiles, args):
     #    ax.spines[axis].set_linewidth(framewidth)
 
 
-def plot_artis_spectra(axis, args, specfiles):
+def plot_artis_spectra(axis, inputfiles, args):
     """
         Plot ARTIS emergent spectra
     """
@@ -94,29 +95,43 @@ def plot_artis_spectra(axis, args, specfiles):
     # dashesList = [(), (1.5, 2, 9, 2), (5, 1), (0.5, 2), (4, 2)]
     # dash_capstyleList = ['butt', 'butt', 'butt', 'round', 'butt']
     # colorlist = [(0, .8*158./255, 0.6*115./255), (204./255, 121./255, 167./255), (213./255, 94./255, 0.0)]
+    # inputfiles.sort(key=lambda x: os.path.dirname(x))
+    for index, filename in enumerate(inputfiles):
+        modelname = af.get_model_name(filename)
 
-    for index, specfilename in enumerate(specfiles):
-        modelname = af.get_model_name(specfilename)
+        from_packets = os.path.basename(filename).startswith('packets')
+
+        if from_packets:
+            specfilename = os.path.join(os.path.dirname(filename), 'spec.out')
+        else:
+            specfilename = filename
 
         timestepmin, timestepmax = af.get_minmax_timesteps(specfilename, args)
 
-        time_in_days_lower = math.floor(float(af.get_timestep_time(specfilename, timestepmin)))
-        linelabel = f'{modelname} at t={time_in_days_lower:d}d'
+        time_days_lower = float(af.get_timestep_time(specfilename, timestepmin))
+        linelabel = f'{modelname} at t={time_days_lower:.2f}d'
 
         if timestepmax > timestepmin:
-            time_in_days_upper = math.floor(float(af.get_timestep_time(specfilename, timestepmax)))
-            linelabel += f' to {time_in_days_upper:d}d'
-            print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} (t={time_in_days_lower}d'
-                  f' to {time_in_days_upper}d)')
+            time_days_upper = float(af.get_timestep_time(specfilename, timestepmax))
+            linelabel += f' to {time_days_upper:.2f}d'
+            print(f'Plotting {modelname} ({filename}) timesteps {timestepmin} to {timestepmax} (t={time_days_lower}d'
+                  f' to {time_days_upper}d)')
         else:
-            print(f'Plotting {modelname} timestep {timestepmin} (t={time_in_days_lower}d)')
+            print(f'Plotting {modelname} timestep {timestepmin} (t={time_days_lower}d)')
 
-        # def filterfunc(arrayfnu):
-        #     from scipy.signal import savgol_filter
-        #     return savgol_filter(arrayfnu, 5, 2)
+        if from_packets:
+            # find any other packets files in the same directory
+            packetsfiles_thismodel = glob.glob(os.path.join(os.path.dirname(filename), 'packets**.out'))
+            print(packetsfiles_thismodel)
+            spectrum = af.get_spectrum_from_packets(packetsfiles_thismodel, time_days_lower, time_days_upper,
+                                                    lambda_min=args.xmin, lambda_max=args.xmax)
+        else:
+            # def filterfunc(arrayfnu):
+            #     from scipy.signal import savgol_filter
+            #     return savgol_filter(arrayfnu, 5, 2)
 
-        spectrum = af.get_spectrum(specfilename, timestepmin, timestepmax, normalised=False,)
-        #                          fnufilterfunc=filterfunc)
+            spectrum = af.get_spectrum(specfilename, timestepmin, timestepmax, normalised=False,)
+            #                          fnufilterfunc=filterfunc)
 
         maxyvaluethisseries = spectrum.query(
             '@args.xmin < lambda_angstroms and '
