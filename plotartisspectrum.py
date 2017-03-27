@@ -95,10 +95,10 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
             ion_stage = ion + elementlist.lowermost_ionstage[element]
             ionserieslist = []
 
-            ionserieslist.append((2 * nelements * maxion, 'free-free'))
+            if element == ion == 0:
+                ionserieslist.append((2 * nelements * maxion, 'free-free'))
 
             ionserieslist.append((element * maxion + ion, 'bound-bound'))
-
             ionserieslist.append((nelements * maxion + element * maxion + ion, 'bound-free'))
 
             for (selectedcolumn, emissiontype) in ionserieslist:
