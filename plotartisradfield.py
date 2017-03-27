@@ -233,10 +233,11 @@ def plot_specout(axis, peak_value, timestep):
 
     print(f"Plotting {specfilename}")
 
-    spectrum = af.get_spectrum(specfilename, timestep, normalised=True)
-    spectrum['f_lambda'] = spectrum['f_lambda'] * peak_value
+    dfspectrum = af.get_spectrum(specfilename, timestep)
+    # dfspectrum['f_nu'] /= dfspectrum['f_nu'].max()
+    dfspectrum['f_lambda'] /= dfspectrum['f_lambda'].max() * peak_value
 
-    spectrum.plot(x='lambda_angstroms',
+    dfspectrum.plot(x='lambda_angstroms',
                   y='f_lambda', ax=axis,
                   linewidth=1.5, color='black',
                   alpha=0.7,

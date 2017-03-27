@@ -120,7 +120,7 @@ def get_initialabundances1d(filename):
     return abundancedata
 
 
-def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False, fnufilterfunc=None):
+def get_spectrum(specfilename, timesteplow, timestephigh=-1, fnufilterfunc=None):
     """
         Return a pandas DataFrame containing an ARTIS emergent spectrum
     """
@@ -155,10 +155,6 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False, f
     dfspectrum['lambda_angstroms'] = const.c.to('angstrom/s').value / dfspectrum['nu']
     dfspectrum['f_lambda'] = dfspectrum['f_nu'] * dfspectrum['nu'] / dfspectrum['lambda_angstroms']
 
-    if normalised:
-        dfspectrum['f_nu'] /= dfspectrum['f_nu'].max()
-        dfspectrum['f_lambda'] /= dfspectrum['f_lambda'].max()
-
     return dfspectrum
 
 
@@ -175,7 +171,7 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
                'absorptiondirz', 'stokes1', 'stokes2', 'stokes3', 'pol_dirx', 'pol_diry', 'pol_dirz']
 
     PARSEC = 3.0857e+18  # pc to cm [pc/cm]
-    CLIGHT = 2.99792458e+10  # speed of light in [cm/sec]
+    CLIGHT = 2.99792458e+10  # speed of light in [cm/sec]
     timelow = timelowdays * 86400
     timehigh = timehighdays * 86400
     nprocs = len(packetsfiles)  # hopefully this is true
@@ -204,10 +200,8 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
             array_energysum[xindex] += packet.e_rf
 
     array_flambda = array_energysum / delta_lambda / (timehigh - timelow) / 4.e12 / math.pi / PARSEC / PARSEC / nprocs
-    dfspectrum = pd.DataFrame({'lambda_angstroms': array_lambda, 'f_lambda': array_flambda})
 
-    return dfspectrum
-
+    return pd.DataFrame({'lambda_angstroms': array_lambda, 'f_lambda': array_flambda})
 
 
 def get_timestep_times(specfilename):
