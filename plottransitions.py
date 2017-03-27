@@ -229,12 +229,12 @@ def make_plot(xvalues, yvalues, elsymbol, ions, args):
                     (obsdata[:]['lambda_angstroms'] > args.xmin) &
                     (obsdata[:]['lambda_angstroms'] < args.xmax)]
                 obsdata['flux_scaled'] = obsdata['flux'] * max(yvalues_combined) / max(obsdata['flux'])
-                obsdata.plot(x='lambda_angstroms', y='flux_scaled', ax=ax[-1], lw=1,
+                obsdata.plot(x='lambda_angstroms', y='flux_scaled', ax=ax[-1], linewidth=1,
                              color='black', label=serieslabel, zorder=-1)
 
             combined_label = ' + '.join([
                 f'({ion.number_fraction:.1f} * {elsymbol} {roman_numerals[ion.ion_stage]})' for ion in ions])
-            ax[-1].plot(xvalues, yvalues_combined, lw=1.5, label=combined_label)
+            ax[-1].plot(xvalues, yvalues_combined, linewidth=1.5, label=combined_label)
             ax[-1].set_xlabel(r'Wavelength ($\AA$)')
 
         ax[ion_index].set_xlim(xmin=args.xmin, xmax=args.xmax)

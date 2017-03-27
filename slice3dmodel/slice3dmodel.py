@@ -141,7 +141,7 @@ def make_plot(xlist, ylists, pdfoutputfile):
     axis.set_ylabel(r'Density (g/cm$^3$) or mass fraction')
     ylabels = [r'$\rho$', 'fNi56', 'fCo']
     for ylist, ylabel in zip(ylists, ylabels):
-        axis.plot(xlist, ylist, lw=1.5, label=ylabel)
+        axis.plot(xlist, ylist, linewidth=1.5, label=ylabel)
     axis.set_yscale("log", nonposy='clip')
     axis.legend(loc='best', handlelength=2, frameon=False,
                 numpoints=1, prop={'size': 10})

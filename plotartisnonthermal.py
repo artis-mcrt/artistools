@@ -91,7 +91,7 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
 
     # ymax = max(nonthermaldata['y'])
 
-    # nonthermaldata.plot(x='energy_ev', y='y', lw=1.5, ax=axis, color='blue', legend=False)
+    # nonthermaldata.plot(x='energy_ev', y='y', linewidth=1.5, ax=axis, color='blue', legend=False)
     axis.plot(nonthermaldata['energy_ev'], np.log10(nonthermaldata['y']), linewidth=2.0, color='blue')
 
     axis.annotate(f'Timestep {timestep:d}\nCell {args.modelgridindex:d}',
