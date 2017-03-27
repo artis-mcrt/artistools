@@ -5,6 +5,7 @@ import os
 
 import matplotlib.patches as mpatches
 # import scipy.signal
+import numpy as np
 import pandas as pd
 from astropy import constants as const
 
@@ -159,6 +160,54 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, normalised=False, f
         dfspectrum['f_lambda'] /= dfspectrum['f_lambda'].max()
 
     return dfspectrum
+
+
+def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_min, lambda_max):
+    # delta_lambda = (lambda_max - lambda_min) / 500
+    delta_lambda = 20
+    array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
+    array_energysum = np.zeros(len(array_lambda))  # total packet energy sum of each bin
+
+    columns = ['number', 'where', 'type', 'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz', 'last_cross', 'tdecay',
+               'e_cmf', 'e_rf', 'nu_cmf', 'nu_rf', 'escape_type', 'escape_time', 'scat_count', 'next_trans',
+               'interactions', 'last_event', 'emission_type', 'true_emission_type', 'em_posx', 'em_posy', 'em_poz',
+               'absorption_type', 'absorption_freq', 'nscatterings', 'em_time', 'absorptiondirx', 'absorptiondiry',
+               'absorptiondirz', 'stokes1', 'stokes2', 'stokes3', 'pol_dirx', 'pol_diry', 'pol_dirz']
+
+    PARSEC = 3.0857e+18  # pc to cm [pc/cm]
+    CLIGHT = 2.99792458e+10  # speed of light in [cm/sec]
+    timelow = timelowdays * 86400
+    timehigh = timehighdays * 86400
+    nprocs = len(packetsfiles)  # hopefully this is true
+    TYPE_ESCAPE = 32,
+    TYPE_RPKT = 11,
+    c_ang_s = const.c.to('angstrom/s').value
+    nu_min = c_ang_s / lambda_max
+    nu_max = c_ang_s / lambda_min
+    for packetsfile in packetsfiles:
+        print(f"Loading {packetsfile}")
+        dfpackets = pd.read_csv(packetsfile, delim_whitespace=True, names=columns, header=None, usecols=[
+            'type', 'e_rf', 'nu_rf', 'escape_type', 'escape_time', 'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'])
+        # pos_dot_dir = packet.posx * packet.dirx + packet.posy * packet.diry + packet.posz * packet.dirz
+        # dfpackets['t_arrive'] = sfpackets['escape_time'] - (pos_dot_dir / 2.99792458e+10)
+        dfpackets.query('type == @TYPE_ESCAPE and escape_type == @TYPE_RPKT and'
+                        '@nu_min <= nu_rf < @nu_max and'
+                        '@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @CLIGHT) < @timehigh',
+                        inplace=True)
+        num_packets = len(dfpackets)
+        print(f"{num_packets} escaped r-packets with matching nu and arrival time")
+        for index, packet in dfpackets.iterrows():
+            lambda_rf = c_ang_s / packet.nu_rf
+            # print(f"Packet escaped at {t_arrive / 86400:.1f} days with nu={packet.nu_rf:.2e}, lambda={lambda_rf:.1f}")
+            xindex = math.floor((lambda_rf - lambda_min) / delta_lambda)
+            assert(xindex >= 0)
+            array_energysum[xindex] += packet.e_rf
+
+    array_flambda = array_energysum / delta_lambda / (timehigh - timelow) / 4.e12 / math.pi / PARSEC / PARSEC / nprocs
+    dfspectrum = pd.DataFrame({'lambda_angstroms': array_lambda, 'f_lambda': array_flambda})
+
+    return dfspectrum
+
 
 
 def get_timestep_times(specfilename):
@@ -413,7 +462,7 @@ def addargs_timesteps(parser):
 
 
 def addargs_spectrum(parser):
-    parser.add_argument('-xmin', type=int, default=1000,
+    parser.add_argument('-xmin', type=int, default=2500,
                         help='Plot range: minimum wavelength in Angstroms')
     parser.add_argument('-xmax', type=int, default=11000,
                         help='Plot range: maximum wavelength in Angstroms')
