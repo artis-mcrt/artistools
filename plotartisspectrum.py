@@ -130,7 +130,7 @@ def plot_artis_spectra(axis, inputfiles, args):
             #     from scipy.signal import savgol_filter
             #     return savgol_filter(arrayfnu, 5, 2)
 
-            spectrum = af.get_spectrum(specfilename, timestepmin, timestepmax, normalised=False,)
+            spectrum = af.get_spectrum(specfilename, timestepmin, timestepmax,)
             #                          fnufilterfunc=filterfunc)
 
         maxyvaluethisseries = spectrum.query(
