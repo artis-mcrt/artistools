@@ -131,24 +131,16 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, fnufilterfunc=None)
 
     arraynu = specdata['0']
 
-    timestep_final = len(specdata.columns) - 2  # -1 to exclude 0 column and -1 since we start counting at zero
-    if timesteplow + 1 < timestep_final:
-        delta_t = (float(get_timestep_time(specfilename, timesteplow + 1)) -
-                   float(get_timestep_time(specfilename, timesteplow)))
-    else:
-        delta_t = (float(get_timestep_time(specfilename, timesteplow)) -
-                   float(get_timestep_time(specfilename, timesteplow - 1)))
+    delta_t_sum = 0
+    array_fnu = np.zeros(len(specdata))
+    timearray = specdata.columns[1:]
 
-    delta_t_alltimesteps = delta_t
-    array_fnu = specdata[specdata.columns[timesteplow + 1]] * delta_t
-
-    for timestep in range(timesteplow + 1, timestephigh + 1):
-        delta_t = (float(get_timestep_time(specfilename, timestep + 1)) -
-                   float(get_timestep_time(specfilename, timestep)))
-        delta_t_alltimesteps += delta_t
+    for timestep in range(timesteplow, timestephigh + 1):
+        delta_t = get_timestep_time_delta(timestep, timearray)
+        delta_t_sum += delta_t
         array_fnu += specdata[specdata.columns[timestep + 1]] * delta_t
 
-    array_fnu = array_fnu / delta_t_alltimesteps
+    array_fnu = array_fnu / delta_t_sum
 
     # best to use the filter on this list because it
     # has regular sampling
@@ -227,6 +219,19 @@ def get_timestep_time(specfilename, timestep):
         return get_timestep_times(specfilename)[timestep]
     else:
         return -1
+
+
+def get_timestep_time_delta(timestep, timearray):
+    """
+        Return the time in days between timestep and timestep + 1
+    """
+    timestep_final = len(timearray) - 1  # -1 since we start counting at zero
+    if timestep + 1 < timestep_final:
+        delta_t = (float(timearray[timestep + 1]) - float(timearray[timestep]))
+    else:
+        delta_t = (float(timearray[timestep]) - float(timearray[timestep]))
+
+    return delta_t
 
 
 def get_levels(adatafilename):
