@@ -82,8 +82,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
     emissiondata = np.loadtxt(emissionfilename)
     print(f"Reading {absorptionfilename}")
     absorptiondata = np.loadtxt(absorptionfilename)
-    c = const.c.to('m/s').value
-    arraylambda = c / arraynu
+    arraylambda = const.c.to('angstrom/s').value / arraynu
 
     nelements = len(elementlist)
     maxyvalueglobal = 0.0
@@ -103,34 +102,42 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
             ionserieslist.append((nelements * maxion + element * maxion + ion, 'bound-free'))
 
             for (selectedcolumn, emissiontype) in ionserieslist:
-                array_fnu_emission = emissiondata[timestepmin::len(timearray), selectedcolumn]
+                delta_t_sum = 0
+                array_fnu_emission = np.zeros(len(emissiondata[timestepmin::len(timearray), selectedcolumn]))
 
-                for timeindex in range(timestepmin + 1, timestepmax + 1):
-                    array_fnu_emission += emissiondata[timeindex::len(timearray), selectedcolumn]
+                for timestep in range(timestepmin, timestepmax + 1):
+                    delta_t = af.get_timestep_time_delta(timestep, timearray)
+                    delta_t_sum += delta_t
+                    array_fnu_emission += emissiondata[timestep::len(timearray), selectedcolumn] * delta_t
+
+                array_fnu_emission /= delta_t_sum
 
                 if selectedcolumn < nelements * maxion:
-                    array_fnu_absorption = absorptiondata[timestepmin::len(timearray), selectedcolumn]
+                    delta_t_sum = 0
+                    array_fnu_absorption = np.zeros(len(absorptiondata[timestepmin::len(timearray), selectedcolumn]))
 
-                    for timeindex in range(timestepmin + 1, timestepmax + 1):
-                        array_fnu_absorption += absorptiondata[timeindex::len(timearray), selectedcolumn]
+                    for timestep in range(timestepmin, timestepmax + 1):
+                        delta_t = af.get_timestep_time_delta(timestep, timearray)
+                        delta_t_sum += delta_t
+                        array_fnu_absorption += absorptiondata[timestep::len(timearray), selectedcolumn] * delta_t
 
-                # rough normalisation for stacked timesteps. replace with dividing by time
-                array_fnu_emission = array_fnu_emission / (timestepmax - timestepmin + 1)
+                    array_fnu_absorption /= delta_t_sum
 
                 # best to use the filter on this list (because it hopefully has
                 # regular sampling)
-                array_fnu_emission = scipy.signal.savgol_filter(array_fnu_emission, 5, 2)
-                array_flambda_emission = array_fnu_emission * (arraynu ** 2) / c
+                # array_fnu_emission = scipy.signal.savgol_filter(array_fnu_emission, 5, 2)
+                array_flambda_emission = array_fnu_emission * arraynu / arraylambda
 
                 if selectedcolumn <= nelements * maxion:
                     array_fnu_absorption = array_fnu_absorption / (timestepmax - timestepmin + 1)
                     array_fnu_absorption = scipy.signal.savgol_filter(array_fnu_absorption, 5, 2)
-                    array_flambda_absorption = array_fnu_absorption * (arraynu ** 2) / c
+
+                    array_flambda_absorption = array_fnu_absorption * arraynu / arraylambda
                 else:
                     array_flambda_absorption = np.zeros(len(array_fnu_emission))
 
                 maxyvaluethisseries = max(
-                    [array_flambda_emission[i] if (args.xmin < (1e10 * arraylambda[i]) < args.xmax) else -99.0
+                    [array_flambda_emission[i] if (args.xmin < arraylambda[i] < args.xmax) else -99.0
                      for i in range(len(array_flambda_emission))])
 
                 maxyvalueglobal = max(maxyvalueglobal, maxyvaluethisseries)
