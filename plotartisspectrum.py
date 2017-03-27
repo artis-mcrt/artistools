@@ -64,7 +64,7 @@ def main():
             sys.exit()
         else:
             if not args.outputfile:
-                args.outputfile = "plotemission.pdf"
+                args.outputfile = "plotspecemission.pdf"
             make_plot(inputfiles, args)
     elif args.listtimesteps:
         af.showtimesteptimes(inputfiles[0])
