@@ -144,8 +144,7 @@ def plot_field_estimators(axis, radfielddata):
             xvalues.append(1e10 * C / row['nu_lower'])  # in future, avoid this and use drawstyle='steps-pre'
             xvalues.append(1e10 * C / row['nu_upper'])
             if row['T_R'] >= 0.:
-                dlambda = (C / row['nu_lower']) - \
-                    (C / row['nu_upper'])
+                dlambda = (C / row['nu_lower']) - (C / row['nu_upper'])
                 j_lambda = row['J'] / dlambda
                 if not math.isnan(j_lambda):
                     yvalues.append(j_lambda)
@@ -157,8 +156,7 @@ def plot_field_estimators(axis, radfielddata):
                 yvalues.append(0.)
                 yvalues.append(0.)
 
-    axis.plot(xvalues, yvalues, linewidth=1.5, label='Field estimators',
-              color='blue')
+    axis.plot(xvalues, yvalues, linewidth=1.5, label='Field estimators', color='blue')
     return max(yvalues)
 
 
@@ -198,8 +196,7 @@ def plot_fitted_field(axis, radfielddata, args):
             fittedyvalues += arr_j_lambda
 
     if fittedxvalues:
-        axis.plot(fittedxvalues, fittedyvalues, linewidth=1.5, color='green',
-                  label='Fitted field', alpha=0.8)
+        axis.plot(fittedxvalues, fittedyvalues, linewidth=1.5, color='green', label='Fitted field', alpha=0.8)
 
     return max(max(fittedyvalues), ymaxglobalfit)
 
@@ -228,7 +225,7 @@ def plot_specout(axis, peak_value, timestep):
         specfilename = DEFAULTSPECPATH
 
     if not os.path.isfile(specfilename):
-        print('Could not find ' + specfilename)
+        print(f'Could not find {specfilename}')
         return
 
     print(f"Plotting {specfilename}")
@@ -237,10 +234,7 @@ def plot_specout(axis, peak_value, timestep):
     # dfspectrum['f_nu'] /= dfspectrum['f_nu'].max()
     dfspectrum['f_lambda'] /= dfspectrum['f_lambda'].max() * peak_value
 
-    dfspectrum.plot(x='lambda_angstroms',
-                    y='f_lambda', ax=axis,
-                    linewidth=1.5, color='black',
-                    alpha=0.7,
+    dfspectrum.plot(x='lambda_angstroms', y='f_lambda', ax=axis, linewidth=1.5, color='black', alpha=0.7,
                     label='Emergent spectrum (normalised)')
 
 
