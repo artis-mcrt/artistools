@@ -238,10 +238,10 @@ def plot_specout(axis, peak_value, timestep):
     dfspectrum['f_lambda'] /= dfspectrum['f_lambda'].max() * peak_value
 
     dfspectrum.plot(x='lambda_angstroms',
-                  y='f_lambda', ax=axis,
-                  linewidth=1.5, color='black',
-                  alpha=0.7,
-                  label='Emergent spectrum (normalised)')
+                    y='f_lambda', ax=axis,
+                    linewidth=1.5, color='black',
+                    alpha=0.7,
+                    label='Emergent spectrum (normalised)')
 
 
 if __name__ == "__main__":
