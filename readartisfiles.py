@@ -58,6 +58,18 @@ def showtimesteptimes(specfilename, numberofcolumns=5):
         print(strline)
 
 
+def stackspectra(spectra_and_factors):
+    factor_sum = sum([factor for _, factor in spectra_and_factors])
+
+    for index, (spectrum, factor) in enumerate(spectra_and_factors):
+        if index == 0:
+            stackedspectrum = spectrum * factor / factor_sum
+        else:
+            stackedspectrum += spectrum * factor / factor_sum
+
+    return stackedspectrum
+
+
 def get_composition_data(filename):
     """
         Return a pandas DataFrame containing details of included
@@ -131,16 +143,11 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, fnufilterfunc=None)
 
     arraynu = specdata['0']
 
-    delta_t_sum = 0
-    array_fnu = np.zeros(len(specdata))
     timearray = specdata.columns[1:]
 
-    for timestep in range(timesteplow, timestephigh + 1):
-        delta_t = get_timestep_time_delta(timestep, timearray)
-        delta_t_sum += delta_t
-        array_fnu += specdata[specdata.columns[timestep + 1]] * delta_t
-
-    array_fnu = array_fnu / delta_t_sum
+    array_fnu = stackspectra([
+        (specdata[specdata.columns[timestep + 1]], get_timestep_time_delta(timestep, timearray))
+        for timestep in range(timesteplow, timestephigh + 1)])
 
     # best to use the filter on this list because it
     # has regular sampling

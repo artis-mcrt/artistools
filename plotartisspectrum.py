@@ -102,26 +102,19 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
             ionserieslist.append((nelements * maxion + element * maxion + ion, 'bound-free'))
 
             for (selectedcolumn, emissiontype) in ionserieslist:
-                delta_t_sum = 0
-                array_fnu_emission = np.zeros(len(emissiondata[timestepmin::len(timearray), selectedcolumn]))
+                array_fnu_emission = af.stackspectra(
+                    [(emissiondata[timestep::len(timearray), selectedcolumn],
+                      af.get_timestep_time_delta(timestep, timearray))
+                     for timestep in range(timestepmin, timestepmax + 1)])
 
-                for timestep in range(timestepmin, timestepmax + 1):
-                    delta_t = af.get_timestep_time_delta(timestep, timearray)
-                    delta_t_sum += delta_t
-                    array_fnu_emission += emissiondata[timestep::len(timearray), selectedcolumn] * delta_t
-
-                array_fnu_emission /= delta_t_sum
-                
-                array_fnu_absorption = np.zeros(len(array_fnu_emission))
                 if selectedcolumn < nelements * maxion:
-                    delta_t_sum = 0
+                    array_fnu_absorption = af.stackspectra(
+                        [(absorptiondata[timestep::len(timearray), selectedcolumn],
+                          af.get_timestep_time_delta(timestep, timearray))
+                         for timestep in range(timestepmin, timestepmax + 1)])
+                else:
+                    array_fnu_absorption = np.zeros(len(array_fnu_emission))
 
-                    for timestep in range(timestepmin, timestepmax + 1):
-                        delta_t = af.get_timestep_time_delta(timestep, timearray)
-                        delta_t_sum += delta_t
-                        array_fnu_absorption += absorptiondata[timestep::len(timearray), selectedcolumn] * delta_t
-
-                    array_fnu_absorption /= delta_t_sum
                 # best to use the filter on this list (because it hopefully has
                 # regular sampling)
                 # array_fnu_emission = scipy.signal.savgol_filter(array_fnu_emission, 5, 2)
