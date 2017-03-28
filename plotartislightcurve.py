@@ -16,8 +16,7 @@ def main():
         description='Plot ARTIS radiation field.')
     parser.add_argument('-lcpath', action='append', default=[],
                         help='Paths to light_curve.out files (may include wildcards such as * and **)')
-    parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plotlightcurve.pdf',
+    parser.add_argument('-o', action='store', dest='outputfile', default='plotlightcurve.pdf',
                         help='Filename for PDF file')
     args = parser.parse_args()
 
