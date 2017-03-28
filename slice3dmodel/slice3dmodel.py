@@ -10,18 +10,14 @@ import matplotlib.pyplot as plt
 def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Covert abundances.txt and model.txt from 3D to a '
-                    'one dimensional slice.')
+        description='Covert abundances.txt and model.txt from 3D to a one dimensional slice.')
     parser.add_argument('-inputfolder', action='store', default='3dmodel',
                         help='Path to folder with 3D files')
-    parser.add_argument('-axis', action='store', dest='chosenaxis',
-                        default='x', choices=['x', 'y', 'z'],
+    parser.add_argument('-axis', action='store', dest='chosenaxis', default='x', choices=['x', 'y', 'z'],
                         help='Slice axis (x, y, or z)')
     parser.add_argument('-outputfolder', action='store', default='1dslice',
-                        help='Path to folder in which to store 1D output'
-                        ' files')
-    parser.add_argument('-opdf', action='store', dest='pdfoutputfile',
-                        default='plotmodel.pdf',
+                        help='Path to folder in which to store 1D output files')
+    parser.add_argument('-opdf', action='store', dest='pdfoutputfile', default='plotmodel.pdf',
                         help='Path/filename for PDF plot.')
     args = parser.parse_args()
 
@@ -52,27 +48,22 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
             cell = {}
             blocksplit = block[0].split(), block[1].split()
             if len(blocksplit[0]) == 5:
-                (cell['cellid'], cell['posx'], cell['posy'], cell['posz'],
-                 cell['rho']) = blocksplit[0]
+                (cell['cellid'], cell['posx'], cell['posy'], cell['posz'], cell['rho']) = blocksplit[0]
             else:
                 print("Wrong line size")
                 sys.exit()
 
             if len(blocksplit[1]) == 5:
-                (cell['ffe'], cell['f56ni'], cell['fco'], cell['f52fe'],
-                 cell['f48cr']) = map(float, blocksplit[1])
+                (cell['ffe'], cell['f56ni'], cell['fco'], cell['f52fe'], cell['f48cr']) = map(float, blocksplit[1])
             else:
                 print("Wrong line size")
                 sys.exit()
 
-            if cell['posx'] != "0.0000000" and (
-                    chosenaxis != 'x' or float(cell['posx']) < 0.):
+            if cell['posx'] != "0.0000000" and (chosenaxis != 'x' or float(cell['posx']) < 0.):
                 pass
-            elif cell['posy'] != "0.0000000" and (
-                    chosenaxis != 'y' or float(cell['posy']) < 0.):
+            elif cell['posy'] != "0.0000000" and (chosenaxis != 'y' or float(cell['posy']) < 0.):
                 pass
-            elif cell['posz'] != "0.0000000" and (
-                    chosenaxis != 'z' or float(cell['posz']) < 0.):
+            elif cell['posz'] != "0.0000000" and (chosenaxis != 'z' or float(cell['posz']) < 0.):
                 pass
             else:
                 outcellid += 1
@@ -119,9 +110,7 @@ def convert_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid):
 
 
 def append_cell_to_output(cell, outcellid, t_model, listout, xlist, ylists):
-    dist = math.sqrt(
-        float(cell['posx']) ** 2 + float(cell['posy']) ** 2 +
-        float(cell['posz']) ** 2)
+    dist = math.sqrt(float(cell['posx']) ** 2 + float(cell['posy']) ** 2 + float(cell['posz']) ** 2)
     velocity = float(dist) / float(t_model) / 86400. / 1.e5
 
     listout.append(

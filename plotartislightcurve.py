@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import argparse
-import itertools
 import glob
+import itertools
 import sys
 
 import matplotlib.pyplot as plt
 import pandas as pd
+
 import readartisfiles as af
 
 
