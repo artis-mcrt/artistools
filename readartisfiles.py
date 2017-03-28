@@ -484,9 +484,8 @@ def addargs_spectrum(parser):
                         help='Also plot reference spectrum from this file')
 
 
-def get_minmax_timesteps(specfilename, args):
+def get_minmax_timesteps(timesteptimes, args):
     if args.timemin:
-        timesteptimes = get_timestep_times(specfilename)
         oldtime = -1
         for timestep, time in enumerate(timesteptimes):
             timefloat = float(time.strip('d'))
