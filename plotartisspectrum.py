@@ -79,9 +79,9 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
     # this is much slower than it could be because of the order in which these data tables are accessed
     # TODO: change to use sequential access as much as possible
     print(f"Reading {emissionfilename}")
-    emissiondata = np.loadtxt(emissionfilename)
+    emissiondata = pd.read_csv(emissionfilename, delim_whitespace=True)
     print(f"Reading {absorptionfilename}")
-    absorptiondata = np.loadtxt(absorptionfilename)
+    absorptiondata = pd.read_csv(absorptionfilename, delim_whitespace=True)
     arraylambda = const.c.to('angstrom/s').value / arraynu
 
     nelements = len(elementlist)
@@ -102,13 +102,13 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
                 # if linelabel.startswith('Fe ') or linelabel.endswith("-free"):
                 #     continue
                 array_fnu_emission = af.stackspectra(
-                    [(emissiondata[timestep::len(timearray), selectedcolumn],
+                    [(emissiondata.iloc[timestep::len(timearray), selectedcolumn].values,
                       af.get_timestep_time_delta(timestep, timearray))
                      for timestep in range(timestepmin, timestepmax + 1)])
 
                 if selectedcolumn < nelements * maxion:  # bound-bound process
                     array_fnu_absorption = af.stackspectra(
-                        [(absorptiondata[timestep::len(timearray), selectedcolumn],
+                        [(absorptiondata.iloc[timestep::len(timearray), selectedcolumn].values,
                           af.get_timestep_time_delta(timestep, timearray))
                          for timestep in range(timestepmin, timestepmax + 1)])
                 else:
