@@ -79,9 +79,9 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
     # this is much slower than it could be because of the order in which these data tables are accessed
     # TODO: change to use sequential access as much as possible
     print(f"Reading {emissionfilename}")
-    emissiondata = pd.read_csv(emissionfilename, delim_whitespace=True)
+    emissiondata = pd.read_csv(emissionfilename, sep=' ')
     print(f"Reading {absorptionfilename}")
-    absorptiondata = pd.read_csv(absorptionfilename, delim_whitespace=True)
+    absorptiondata = pd.read_csv(absorptionfilename, sep=' ')
     arraylambda = const.c.to('angstrom/s').value / arraynu
 
     nelements = len(elementlist)
