@@ -226,8 +226,8 @@ def make_emission_plot(emissionfilename, axis, filterfunc, args):
     remainder_sum = np.zeros(len(arraylambda_angstroms))
     remainder_sum_absorption = np.zeros(len(arraylambda_angstroms))
     for row in contribution_list[:- args.maxseriescount]:
-        remainder_sum = np.add(remainder_sum, row[3])
-        remainder_sum_absorption = np.add(remainder_sum_absorption, row[3])
+        remainder_sum = np.add(remainder_sum, row.array_flambda_emission)
+        remainder_sum_absorption = np.add(remainder_sum_absorption, row.array_flambda_absorption)
 
     contribution_list = list(reversed(contribution_list[- args.maxseriescount:]))
     contribution_list.append(fluxcontributiontuple(maxyvalue=0.0, linelabel='other',
