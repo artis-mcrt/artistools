@@ -36,8 +36,24 @@ def main():
                         help='Show an emission/absorption plot')
     parser.add_argument('-maxseriescount', type=int, default=9,
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')
-    af.addargs_timesteps(parser)
-    af.addargs_spectrum(parser)
+    parser.add_argument('-listtimesteps', action='store_true', default=False,
+                        help='Show the times at each timestep')
+    parser.add_argument('-timestepmin', type=int, default=20,
+                        help='First or only included timestep')
+    parser.add_argument('-timestepmax', type=int,
+                        help='Last included timestep')
+    parser.add_argument('-timemin', type=float,
+                        help='Time in days')
+    parser.add_argument('-timemax', type=float,
+                        help='Last included timestep time in days')
+    parser.add_argument('-xmin', type=int, default=2500,
+                        help='Plot range: minimum wavelength in Angstroms')
+    parser.add_argument('-xmax', type=int, default=11000,
+                        help='Plot range: maximum wavelength in Angstroms')
+    parser.add_argument('--normalised', default=False, action='store_true',
+                        help='Normalise the spectra to their peak values')
+    parser.add_argument('-obsspec', action='append', dest='refspecfiles',
+                        help='Also plot reference spectrum from this file')
     parser.add_argument('-legendfontsize', type=int, default=8,
                         help='Font size of legend text')
     parser.add_argument('-o', action='store', dest='outputfile',
@@ -210,7 +226,7 @@ def make_emission_plot(emissionfilename, axis, filterfunc, args):
     specfilename = os.path.join(os.path.dirname(emissionfilename), 'spec.out')
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     timearray = specdata.columns.values[1:]
-    arraynu = specdata.iloc[:, 0].values
+    arraynu = specdata.loc[:, '0'].values
 
     (modelname, timestepmin, timestepmax,
      time_days_lower, time_days_upper) = get_model_name_times(specfilename, timearray, args)

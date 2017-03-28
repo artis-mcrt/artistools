@@ -141,9 +141,8 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, fnufilterfunc=None)
 
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
 
-    arraynu = specdata['0']
-
-    timearray = specdata.columns[1:]
+    arraynu = specdata.loc[:, '0'].values
+    timearray = specdata.columns.values[1:]
 
     array_fnu = stackspectra([
         (specdata[specdata.columns[timestep + 1]], get_timestep_time_delta(timestep, timearray))
@@ -176,12 +175,12 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
                'absorptiondirz', 'stokes1', 'stokes2', 'stokes3', 'pol_dirx', 'pol_diry', 'pol_dirz']
 
     PARSEC = 3.0857e+18  # pc to cm [pc/cm]
-    CLIGHT = 2.99792458e+10  # speed of light in [cm/sec]
     timelow = timelowdays * 86400
     timehigh = timehighdays * 86400
     nprocs = len(packetsfiles)  # hopefully this is true
     TYPE_ESCAPE = 32,
     TYPE_RPKT = 11,
+    c_cgs = const.c.to('cm/s')
     c_ang_s = const.c.to('angstrom/s').value
     nu_min = c_ang_s / lambda_max
     nu_max = c_ang_s / lambda_min
@@ -193,7 +192,7 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
         # dfpackets['t_arrive'] = sfpackets['escape_time'] - (pos_dot_dir / 2.99792458e+10)
         dfpackets.query('type == @TYPE_ESCAPE and escape_type == @TYPE_RPKT and'
                         '@nu_min <= nu_rf < @nu_max and'
-                        '@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @CLIGHT) < @timehigh',
+                        '@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh',
                         inplace=True)
         num_packets = len(dfpackets)
         print(f"{num_packets} escaped r-packets with matching nu and arrival time")
@@ -460,30 +459,6 @@ def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafil
             plotobjectlabels.append(serieslabel)
 
 
-def addargs_timesteps(parser):
-    parser.add_argument('-listtimesteps', action='store_true', default=False,
-                        help='Show the times at each timestep')
-    parser.add_argument('-timestepmin', type=int, default=20,
-                        help='First or only included timestep')
-    parser.add_argument('-timestepmax', type=int,
-                        help='Last included timestep')
-    parser.add_argument('-timemin', type=float,
-                        help='Time in days')
-    parser.add_argument('-timemax', type=float,
-                        help='Last included timestep time in days')
-
-
-def addargs_spectrum(parser):
-    parser.add_argument('-xmin', type=int, default=2500,
-                        help='Plot range: minimum wavelength in Angstroms')
-    parser.add_argument('-xmax', type=int, default=11000,
-                        help='Plot range: maximum wavelength in Angstroms')
-    parser.add_argument('--normalised', default=False, action='store_true',
-                        help='Normalise the spectra to their peak values')
-    parser.add_argument('-obsspec', action='append', dest='refspecfiles',
-                        help='Also plot reference spectrum from this file')
-
-
 def get_minmax_timesteps(timesteptimes, args):
     if args.timemin:
         oldtime = -1
@@ -514,7 +489,8 @@ def get_parent_folder_name(path):
 def get_model_name(path):
     """
         Get the name of an ARTIS model from the path to any file inside it
-        either from the parent directory or a special plotlabel.txt file
+        either from a special plotlabel.txt file (if it exists)
+        or the enclosing directory name
     """
     try:
         plotlabelfile = os.path.join(os.path.dirname(path), 'plotlabel.txt')
