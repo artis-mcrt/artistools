@@ -16,6 +16,7 @@ DEFAULTSPECPATH = '../example_run/spec.out'
 
 C = const.c.to('m/s').value
 
+
 def main():
     """
         Plot the radiation field estimators and the fitted radiation field
