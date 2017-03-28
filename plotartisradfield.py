@@ -13,8 +13,8 @@ from astropy import constants as const
 import readartisfiles as af
 
 DEFAULTSPECPATH = '../example_run/spec.out'
-C = const.c.to('m/s').value
 
+C = const.c.to('m/s').value
 
 def main():
     """
@@ -120,7 +120,7 @@ def make_plot(radfielddata, timestep, outputfile, args):
                   horizontalalignment='left', verticalalignment='top', fontsize=8)
 
     axis.set_xlabel(r'Wavelength ($\AA$)')
-    axis.set_ylabel(r'J$_\lambda$ [erg/cm$^2$/m]')
+    axis.set_ylabel(r'J$_\lambda$ [erg/cm$^2$/$\AA$]')
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
     axis.set_ylim(ymin=0.0, ymax=ymax)
@@ -145,7 +145,7 @@ def plot_field_estimators(axis, radfielddata):
             xvalues.append(1e10 * C / row['nu_upper'])
             if row['T_R'] >= 0.:
                 dlambda = (C / row['nu_lower']) - (C / row['nu_upper'])
-                j_lambda = row['J'] / dlambda
+                j_lambda = row['J'] / dlambda / 1e10
                 if not math.isnan(j_lambda):
                     yvalues.append(j_lambda)
                     yvalues.append(j_lambda)
@@ -169,30 +169,31 @@ def plot_fitted_field(axis, radfielddata, args):
     ymaxglobalfit = -1
 
     for _, row in radfielddata.iterrows():
-        if row['bin_num'] == -1:
-            # Full-spectrum fit
-            nu_lower = C / (args.xmin * 1e-10)
-            nu_upper = C / (args.xmax * 1e-10)
+        if row['bin_num'] == -1 or row['W'] >= 0:
+            if row['bin_num'] == -1:
+                # Full-spectrum fit
+                nu_lower = const.c.to('angstrom/s').value / args.xmin
+                nu_upper = const.c.to('angstrom/s').value / args.xmax
+            else:
+                nu_lower = row['nu_lower']
+                nu_upper = row['nu_upper']
+
             arr_nu_hz = np.linspace(nu_lower, nu_upper, num=500)
+            arr_lambda = const.c.to('angstrom/s').value / arr_nu_hz
             arr_j_nu = j_nu_dbb(arr_nu_hz, row['W'], row['T_R'])
-            arr_j_lambda = [j_nu * (nu_hz ** 2) / C for (nu_hz, j_nu) in zip(arr_nu_hz, arr_j_nu)]
+            arr_j_lambda = arr_j_nu * arr_nu_hz / arr_lambda
 
-            arr_lambda_angstroms = C / arr_nu_hz * 1e10
-            ymaxglobalfit = max(arr_j_lambda)
-            axis.plot(arr_lambda_angstroms, arr_j_lambda, linewidth=1.5, color='purple',
-                      label='Full-spectrum fitted field')
-        elif row['W'] >= 0:
-            arr_nu_hz = np.linspace(row['nu_lower'], row['nu_upper'], num=500)
-            arr_j_nu = j_nu_dbb(arr_nu_hz, row['W'], row['T_R'])
-            arr_j_lambda = [j_nu * (nu_hz ** 2) / C for (nu_hz, j_nu) in zip(arr_nu_hz, arr_j_nu)]
-
-            fittedxvalues += list(C / arr_nu_hz * 1e10)
-            fittedyvalues += arr_j_lambda
+            if row['bin_num'] == -1:
+                ymaxglobalfit = max(arr_j_lambda)
+                axis.plot(arr_lambda, arr_j_lambda, linewidth=1.5, color='purple', label='Full-spectrum fitted field')
+            else:
+                fittedxvalues += list(arr_lambda)
+                fittedyvalues += list(arr_j_lambda)
         else:
             arr_nu_hz = (row['nu_lower'], row['nu_upper'])
             arr_j_lambda = [0., 0.]
 
-            fittedxvalues += [C / nu * 1e10 for nu in arr_nu_hz]
+            fittedxvalues += [const.c.to('angstrom/s').value / nu for nu in arr_nu_hz]
             fittedyvalues += arr_j_lambda
 
     if fittedxvalues:
@@ -208,11 +209,9 @@ def j_nu_dbb(arr_nu_hz, W, T):
     h = const.h.to('eV s').value
 
     if W > 0.:
-        for nu_hz in arr_nu_hz:
-            yield W * 1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(h * nu_hz / T / k_b))
+        return [W * 1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(h * nu_hz / T / k_b)) for nu_hz in arr_nu_hz]
     else:
-        for nu_hz in arr_nu_hz:
-            yield 0.
+        return [0. for _ in arr_nu_hz]
 
 
 def plot_specout(axis, peak_value, timestep):
@@ -232,7 +231,8 @@ def plot_specout(axis, peak_value, timestep):
 
     dfspectrum = af.get_spectrum(specfilename, timestep)
     # dfspectrum['f_nu'] /= dfspectrum['f_nu'].max()
-    dfspectrum['f_lambda'] /= dfspectrum['f_lambda'].max() * peak_value
+    dfspectrum['f_lambda'] = dfspectrum['f_lambda'] / dfspectrum['f_lambda'].max() * peak_value
+    print(peak_value, dfspectrum['f_lambda'].max())
 
     dfspectrum.plot(x='lambda_angstroms', y='f_lambda', ax=axis, linewidth=1.5, color='black', alpha=0.7,
                     label='Emergent spectrum (normalised)')
