@@ -111,10 +111,10 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
                     array_fnu_emission += emissiondata[timestep::len(timearray), selectedcolumn] * delta_t
 
                 array_fnu_emission /= delta_t_sum
-
+                
+                array_fnu_absorption = np.zeros(len(array_fnu_emission))
                 if selectedcolumn < nelements * maxion:
                     delta_t_sum = 0
-                    array_fnu_absorption = np.zeros(len(absorptiondata[timestepmin::len(timearray), selectedcolumn]))
 
                     for timestep in range(timestepmin, timestepmax + 1):
                         delta_t = af.get_timestep_time_delta(timestep, timearray)
@@ -122,19 +122,14 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
                         array_fnu_absorption += absorptiondata[timestep::len(timearray), selectedcolumn] * delta_t
 
                     array_fnu_absorption /= delta_t_sum
-
                 # best to use the filter on this list (because it hopefully has
                 # regular sampling)
                 # array_fnu_emission = scipy.signal.savgol_filter(array_fnu_emission, 5, 2)
                 array_flambda_emission = array_fnu_emission * arraynu / arraylambda
+                array_flambda_absorption = array_fnu_absorption * arraynu / arraylambda
 
-                if selectedcolumn <= nelements * maxion:
-                    array_fnu_absorption = array_fnu_absorption / (timestepmax - timestepmin + 1)
-                    array_fnu_absorption = scipy.signal.savgol_filter(array_fnu_absorption, 5, 2)
-
-                    array_flambda_absorption = array_fnu_absorption * arraynu / arraylambda
-                else:
-                    array_flambda_absorption = np.zeros(len(array_fnu_emission))
+                # if selectedcolumn <= nelements * maxion:
+                #   array_fnu_absorption = scipy.signal.savgol_filter(array_fnu_absorption, 5, 2)
 
                 maxyvaluethisseries = max(
                     [array_flambda_emission[i] if (args.xmin < arraylambda[i] < args.xmax) else -99.0
