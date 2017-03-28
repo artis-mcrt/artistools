@@ -65,7 +65,7 @@ def stackspectra(spectra_and_factors):
         if index == 0:
             stackedspectrum = spectrum * factor / factor_sum
         else:
-            stackedspectrum += spectrum * factor / factor_sum
+            stackedspectrum = np.add(stackedspectrum, spectrum * factor / factor_sum)
 
     return stackedspectrum
 
