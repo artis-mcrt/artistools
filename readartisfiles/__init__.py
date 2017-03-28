@@ -521,7 +521,3 @@ def get_model_name(path):
         return (open(plotlabelfile, mode='r').readline().strip())
     except FileNotFoundError:
         return get_parent_folder_name(path)
-
-
-if __name__ == "__main__":
-    print("this script is for inclusion only")
