@@ -117,13 +117,13 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
             for (selectedcolumn, emissiontype) in ionserieslist:
                 # if linelabel.startswith('Fe ') or linelabel.endswith("-free"):
                 #     continue
-                array_fnu_emission = af.stackspectra(
+                array_fnu_emission = af.spectra.stackspectra(
                     [(emissiondata.iloc[timestep::len(timearray), selectedcolumn].values,
                       af.get_timestep_time_delta(timestep, timearray))
                      for timestep in range(timestepmin, timestepmax + 1)])
 
                 if selectedcolumn < nelements * maxion:  # bound-bound process
-                    array_fnu_absorption = af.stackspectra(
+                    array_fnu_absorption = af.spectra.stackspectra(
                         [(absorptiondata.iloc[timestep::len(timearray), selectedcolumn].values,
                           af.get_timestep_time_delta(timestep, timearray))
                          for timestep in range(timestepmin, timestepmax + 1)])
@@ -198,10 +198,10 @@ def plot_artis_spectra(axis, inputfiles, args, filterfunc=None):
             # find any other packets files in the same directory
             packetsfiles_thismodel = glob.glob(os.path.join(os.path.dirname(filename), 'packets**.out'))
             print(packetsfiles_thismodel)
-            spectrum = af.get_spectrum_from_packets(packetsfiles_thismodel, time_days_lower, time_days_upper,
-                                                    lambda_min=args.xmin, lambda_max=args.xmax)
+            spectrum = af.spectra.get_spectrum_from_packets(
+                packetsfiles_thismodel, time_days_lower, time_days_upper, lambda_min=args.xmin, lambda_max=args.xmax)
         else:
-            spectrum = af.get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
+            spectrum = af.spectra.get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
 
         maxyvaluethisseries = spectrum.query(
             '@args.xmin < lambda_angstroms and '
@@ -242,8 +242,8 @@ def make_emission_plot(emissionfilename, axis, filterfunc, args):
     remainder_sum = np.zeros(len(arraylambda_angstroms))
     remainder_sum_absorption = np.zeros(len(arraylambda_angstroms))
     for row in contribution_list[:- args.maxseriescount]:
-        remainder_sum = np.add(remainder_sum, row.array_flambda_emission)
-        remainder_sum_absorption = np.add(remainder_sum_absorption, row.array_flambda_absorption)
+        remainder_sum += row.array_flambda_emission
+        remainder_sum_absorption += row.array_flambda_absorption
 
     contribution_list = list(reversed(contribution_list[- args.maxseriescount:]))
     contribution_list.append(fluxcontributiontuple(maxyvalue=0.0, linelabel='other',
@@ -255,8 +255,8 @@ def make_emission_plot(emissionfilename, axis, filterfunc, args):
     axis.stackplot(arraylambda_angstroms, *[-x.array_flambda_absorption for x in contribution_list], linewidth=0)
     plotobjectlabels = list([x.linelabel for x in contribution_list])
 
-    af.plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=None,
-                              scale_to_peak=(maxyvalueglobal if args.normalised else None), linewidth=0.5)
+    af.spectra.plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=None,
+                                      scale_to_peak=(maxyvalueglobal if args.normalised else None), linewidth=0.5)
 
     axis.axhline(color='white', linewidth=1.0)
 
@@ -273,7 +273,7 @@ def make_spectrum_plot(inputfiles, axis, filterfunc, args):
     """
         Set up a matplotlib figure and plot observational and ARTIS spectra
     """
-    af.plot_reference_spectra(axis, [], [], args, flambdafilterfunc=filterfunc)
+    af.spectra.plot_reference_spectra(axis, [], [], args, flambdafilterfunc=filterfunc)
     plot_artis_spectra(axis, inputfiles, args, filterfunc)
 
     if args.normalised:
