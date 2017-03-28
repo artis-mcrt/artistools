@@ -75,7 +75,7 @@ def main():
 
 
 def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, maxion,
-                           timearray, arraynu, args, timestepmin, timestepmax):
+                           timearray, arraynu, filterfunc, args, timestepmin, timestepmax):
     # this is much slower than it could be because of the order in which these data tables are accessed
     # TODO: change to use sequential access as much as possible
     print(f"Reading {emissionfilename}")
@@ -89,7 +89,6 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
     contribution_list = []
     for element in range(nelements):
         nions = elementlist.nions[element]
-
         # nions = elementlist.iloc[element].uppermost_ionstage - elementlist.iloc[element].lowermost_ionstage + 1
         for ion in range(nions):
             ion_stage = ion + elementlist.lowermost_ionstage[element]
@@ -102,12 +101,14 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
             ionserieslist.append((nelements * maxion + element * maxion + ion, 'bound-free'))
 
             for (selectedcolumn, emissiontype) in ionserieslist:
+                # if linelabel.startswith('Fe ') or linelabel.endswith("-free"):
+                #     continue
                 array_fnu_emission = af.stackspectra(
                     [(emissiondata[timestep::len(timearray), selectedcolumn],
                       af.get_timestep_time_delta(timestep, timearray))
                      for timestep in range(timestepmin, timestepmax + 1)])
 
-                if selectedcolumn < nelements * maxion:
+                if selectedcolumn < nelements * maxion:  # bound-bound process
                     array_fnu_absorption = af.stackspectra(
                         [(absorptiondata[timestep::len(timearray), selectedcolumn],
                           af.get_timestep_time_delta(timestep, timearray))
@@ -115,14 +116,15 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
                 else:
                     array_fnu_absorption = np.zeros(len(array_fnu_emission))
 
-                # best to use the filter on this list (because it hopefully has
-                # regular sampling)
-                # array_fnu_emission = scipy.signal.savgol_filter(array_fnu_emission, 5, 2)
+                # best to use the filter on fnu (because it hopefully has regular sampling)
+                if filterfunc:
+                    print("Applying filter")
+                    array_fnu_emission = filterfunc(array_fnu_emission)
+                    if selectedcolumn <= nelements * maxion:
+                        array_fnu_absorption = filterfunc(array_fnu_absorption)
+
                 array_flambda_emission = array_fnu_emission * arraynu / arraylambda
                 array_flambda_absorption = array_fnu_absorption * arraynu / arraylambda
-
-                # if selectedcolumn <= nelements * maxion:
-                #   array_fnu_absorption = scipy.signal.savgol_filter(array_fnu_absorption, 5, 2)
 
                 maxyvaluethisseries = max(
                     [array_flambda_emission[i] if (args.xmin < arraylambda[i] < args.xmax) else -99.0
@@ -130,14 +132,11 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
 
                 maxyvalueglobal = max(maxyvalueglobal, maxyvaluethisseries)
 
-                linelabel = ''
                 if emissiontype != 'free-free':
-                    linelabel += f'{af.elsymbols[elementlist.Z[element]]} {af.roman_numerals[ion_stage]} '
-                linelabel += f'{emissiontype}'
+                    linelabel = f'{af.elsymbols[elementlist.Z[element]]} {af.roman_numerals[ion_stage]} {emissiontype}'
+                else:
+                    linelabel = f'{emissiontype}'
 
-                # if linelabel.startswith('Fe ') or linelabel.endswith("-free"):
-                #     continue
-                # contribution_list.append([maxyvaluethisseries, linelabel, array_flambda, array_flambda_absorption])
                 contribution_list.append(fluxcontributiontuple(maxyvalue=maxyvaluethisseries, linelabel=linelabel,
                                                                array_flambda_emission=array_flambda_emission,
                                                                array_flambda_absorption=array_flambda_absorption))
@@ -204,10 +203,11 @@ def plot_artis_spectra(axis, inputfiles, args):
         spectrum.plot(x='lambda_angstroms', y=ycolumnname, ax=axis,
                       linestyle=linestyle, linewidth=2.5 - (0.2 * index),
                       label=linelabel, alpha=0.95, color=None)  # colorlist[index % len(colorlist)]
+
         # dashes=dashesList[index], dash_capstyle=dash_capstyleList[index])
 
 
-def make_emission_plot(emissionfilename, axis, args):
+def make_emission_plot(emissionfilename, axis, filterfunc, args):
     elementlist = af.get_composition_data(os.path.join(os.path.dirname(emissionfilename), 'compositiondata.txt'))
 
     # print(f'nelements {len(elementlist)}')
@@ -224,7 +224,8 @@ def make_emission_plot(emissionfilename, axis, args):
     arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
     absorptionfilename = os.path.join(os.path.dirname(emissionfilename), 'absorption.out')
     contribution_list, maxyvalueglobal = get_flux_contributions(
-        emissionfilename, absorptionfilename, elementlist, maxion, timearray, arraynu, args, timestepmin, timestepmax)
+        emissionfilename, absorptionfilename, elementlist, maxion, timearray, arraynu,
+        filterfunc, args, timestepmin, timestepmax)
     # print("\n".join([f"{x[0]}, {x[1]}" for x in contribution_list]))
 
     contribution_list = sorted(contribution_list, key=lambda x: x.maxyvalue)
@@ -253,50 +254,42 @@ def make_emission_plot(emissionfilename, axis, args):
     axis.annotate(plotlabel, xy=(0.05, 0.96), xycoords='axes fraction',
                   horizontalalignment='left', verticalalignment='top', fontsize=8)
 
-    axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
     # axis.set_ylim(ymin=-0.05 * maxyvalueglobal, ymax=maxyvalueglobal * 1.3)
-    # axis.set_ylim(ymin=-0.1, ymax=1.1)
 
-    axis.legend(plotobjects, plotobjectlabels, loc='upper right', handlelength=2,
-                frameon=False, numpoints=1, prop={'size': 9})
-
-    axis.set_ylabel(r'F$_\lambda$')
+    return plotobjects, plotobjectlabels
 
 
-def make_spectrum_plot(inputfiles, axis, args):
+def make_spectrum_plot(inputfiles, axis, filterfunc, args):
     """
         Set up a matplotlib figure and plot observational and ARTIS spectra
     """
-
-    # import scipy.signal
-    #
-    # def filterfunc(flambda):
-    #     return scipy.signal.savgol_filter(flambda, 5, 3)
-    filterfunc = None
     af.plot_reference_spectra(axis, [], [], args, flambdafilterfunc=filterfunc)
     plot_artis_spectra(axis, inputfiles, args)
 
-    axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
     if args.normalised:
         axis.set_ylim(ymin=-0.1, ymax=1.25)
-
-    axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': args.legendfontsize})
-
-    if args.normalised:
         axis.set_ylabel(r'Scaled F$_\lambda$')
-    else:
-        axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
 
 
 def make_plot(inputfiles, args):
     import matplotlib.ticker as ticker
 
     fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
 
+    # import scipy.signal
+    #
+    # def filterfunc(flambda):
+    #     return scipy.signal.savgol_filter(flambda, 5, 3)
+    filterfunc = None
     if args.emissionabsorption:
-        make_emission_plot(inputfiles[0], axis, args)
+        plotobjects, plotobjectlabels = make_emission_plot(inputfiles[0], axis, filterfunc, args)
     else:
-        make_spectrum_plot(inputfiles, axis, args)
+        make_spectrum_plot(inputfiles, axis, filterfunc, args)
+        plotobjects, plotobjectlabels = axis.get_legend_handles_labels()
+
+    axis.legend(plotobjects, plotobjectlabels, loc='best', handlelength=2,
+                frameon=False, numpoints=1, prop={'size': args.legendfontsize})
 
     # plt.setp(plt.getp(axis, 'xticklabels'), fontsize=fsticklabel)
     # plt.setp(plt.getp(axis, 'yticklabels'), fontsize=fsticklabel)
@@ -304,6 +297,7 @@ def make_plot(inputfiles, args):
     #    axis.spines[axis].set_linewidth(framewidth)
 
     axis.set_xlabel(r'Wavelength ($\AA$)')
+    axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
     axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
 
