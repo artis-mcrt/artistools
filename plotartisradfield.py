@@ -121,7 +121,7 @@ def make_plot(radfielddata, timestep, outputfile, args):
                   horizontalalignment='left', verticalalignment='top', fontsize=8)
 
     axis.set_xlabel(r'Wavelength ($\AA$)')
-    axis.set_ylabel(r'J$_\lambda$ [erg/cm$^2$/$\AA$]')
+    axis.set_ylabel(r'J$_\lambda$ [erg/s/cm$^2$/$\AA$]')
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
     axis.set_ylim(ymin=0.0, ymax=ymax)
