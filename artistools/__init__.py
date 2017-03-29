@@ -71,19 +71,19 @@ def get_modeldata(filename):
     """
         Return a list containing named tuples for all model grid cells
     """
-    modeldata = []
+    modeldata = pd.DataFrame()
     gridcelltuple = collections.namedtuple('gridcell', 'cellid velocity logrho ffe fni fco f52fe f48cr')
-    modeldata.append(gridcelltuple._make([-1, 0., 0., 0., 0., 0., 0., 0.]))
+
     with open(filename, 'r') as fmodel:
-        line = fmodel.readline()
-        # gridcellcount = int(line)
-        line = fmodel.readline()
-        # t_model_init = float(line)
+        gridcellcount = int(fmodel.readline())
+        t_model_init = float(fmodel.readline())
         for line in fmodel:
             row = line.split()
-            modeldata.append(gridcelltuple._make([int(row[0])] + list(map(float, row[1:]))))
+            rowdf = pd.DataFrame([gridcelltuple._make([int(row[0])-1] + list(map(float, row[1:])))], columns=gridcelltuple._fields)
+            modeldata = modeldata.append(rowdf)
+    assert(len(modeldata) == gridcellcount)
 
-    return modeldata
+    return modeldata, t_model_init
 
 
 def get_initialabundances1d(filename):
