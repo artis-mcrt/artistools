@@ -9,8 +9,9 @@ import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 from astropy import constants as const
+from astropy import units as u
 
-import artistools as af
+import artistools as at
 
 DEFAULTSPECPATH = '../example_run/spec.out'
 
@@ -48,7 +49,7 @@ def main():
     args = parser.parse_args()
 
     if args.listtimesteps:
-        af.showtimesteptimes('spec.out')
+        at.showtimesteptimes('spec.out')
     else:
         radfielddata = None
         radfield_files = glob.glob('radfield_????.out', recursive=True) + \
@@ -84,21 +85,33 @@ def main():
         else:
             timestepmax = args.timestepmax
 
+        specfilename = 'spec.out'
+
+        if not os.path.isfile(specfilename):
+            specfilename = DEFAULTSPECPATH
+
+        if not os.path.isfile(specfilename):
+            print(f'Could not find {specfilename}')
+            return
+
         for timestep in range(timestepmin, timestepmax):
             radfielddata_currenttimestep = radfielddata.query('timestep==@timestep')
 
             if len(radfielddata_currenttimestep) > 0:
-                print(f'Plotting timestep {timestep:d}')
+                time_days = at.get_timestep_time(specfilename, timestep)
+                print(f'Plotting timestep {timestep:d} (t={time_days})')
                 outputfile = args.outputfile.format(timestep)
-                make_plot(radfielddata_currenttimestep, timestep, outputfile, args)
+                make_plot(radfielddata_currenttimestep, specfilename, timestep, outputfile, args)
             else:
                 print(f'No data for timestep {timestep:d}')
 
 
-def make_plot(radfielddata, timestep, outputfile, args):
+def make_plot(radfielddata, specfilename, timestep, outputfile, args):
     """
         Draw the bin edges, fitted field, and emergent spectrum
     """
+    time_days = at.get_timestep_time(specfilename, timestep)
+
     fig, axis = plt.subplots(1, 1, sharex=True, figsize=(8, 4),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
@@ -114,9 +127,15 @@ def make_plot(radfielddata, timestep, outputfile, args):
                     color='red', label='', zorder=-1, alpha=0.4)
 
     if not args.nospec:
-        plot_specout(axis, ymax, timestep)
+        modeldata, t_model_init = at.get_modeldata('model.txt')
+        v_surface = modeldata.loc[int(radfielddata.modelgridindex.max())].velocity * u.km / u.s  # outer velocity
+        r_surface = (327.773 * u.day * v_surface).to('km')
+        r_observer = u.megaparsec.to('km')
+        scale_factor = (r_observer / r_surface) ** 2 / (2 * math.pi)
+        print(f'Scaling emergent spectrum flux at 1 Mpc to specific intensity at surface (v={v_surface:.3e}, r={r_surface:.3e})')
+        plot_specout(axis, specfilename, timestep, scale_factor=scale_factor)  # peak_value=ymax)
 
-    axis.annotate(f'Timestep {timestep:d}\nCell {args.modelgridindex:d}',
+    axis.annotate(f'Timestep {timestep:d} (t={time_days})\nCell {args.modelgridindex:d}',
                   xy=(0.02, 0.96), xycoords='axes fraction',
                   horizontalalignment='left', verticalalignment='top', fontsize=8)
 
@@ -215,24 +234,18 @@ def j_nu_dbb(arr_nu_hz, W, T):
         return [0. for _ in arr_nu_hz]
 
 
-def plot_specout(axis, peak_value, timestep):
+def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=None):
     """
         Plot the ARTIS spectrum
     """
-    specfilename = 'spec.out'
-
-    if not os.path.isfile(specfilename):
-        specfilename = DEFAULTSPECPATH
-
-    if not os.path.isfile(specfilename):
-        print(f'Could not find {specfilename}')
-        return
 
     print(f"Plotting {specfilename}")
 
-    dfspectrum = af.spectra.get_spectrum(specfilename, timestep)
-    # dfspectrum['f_nu'] /= dfspectrum['f_nu'].max()
-    dfspectrum['f_lambda'] = dfspectrum['f_lambda'] / dfspectrum['f_lambda'].max() * peak_value
+    dfspectrum = at.spectra.get_spectrum(specfilename, timestep)
+    if scale_factor:
+        dfspectrum['f_lambda'] = dfspectrum['f_lambda'] * scale_factor
+    if peak_value:
+        dfspectrum['f_lambda'] = dfspectrum['f_lambda'] / dfspectrum['f_lambda'].max() * peak_value
 
     dfspectrum.plot(x='lambda_angstroms', y='f_lambda', ax=axis, linewidth=1.5, color='black', alpha=0.7,
                     label='Emergent spectrum (normalised)')
