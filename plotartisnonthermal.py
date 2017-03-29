@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 
-import readartisfiles as af
+import artistools as af
 
 C = const.c.to('m/s').value
 DEFAULTSPECPATH = '../example_run/spec.out'

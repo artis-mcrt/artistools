@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 
-import readartisfiles as af
+import artistools as af
 
 DEFAULTSPECPATH = '../example_run/spec.out'
 

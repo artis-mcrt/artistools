@@ -7,7 +7,7 @@ import sys
 import matplotlib.pyplot as plt
 import pandas as pd
 
-import readartisfiles as af
+import artistools as af
 
 
 def main():

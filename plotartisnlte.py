@@ -6,7 +6,7 @@ import sys
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-import readartisfiles as af
+import artistools as af
 
 
 # from astropy import constants as const

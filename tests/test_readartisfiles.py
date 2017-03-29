@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import readartisfiles as af
+import artistools as af
 import numpy as np
 
 specfile = 'tests/data/spec.out'
