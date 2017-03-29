@@ -4,7 +4,7 @@ import math
 import matplotlib.pyplot as plt
 
 # import numpy as np
-import artistools as af
+import artistools as at
 
 # from astropy import constants as const
 
@@ -20,9 +20,9 @@ def main():
         for line in lcfile:
             timesteptimes.append(line.split()[0])
 
-    elementlist = af.get_composition_data('compositiondata.txt')
-    modeldata = af.get_modeldata('model.txt')
-    initalabundances = af.get_initialabundances1d('abundances.txt')
+    elementlist = at.get_composition_data('compositiondata.txt')
+    modeldata = at.get_modeldata('model.txt')
+    initalabundances = at.get_initialabundances1d('abundances.txt')
 
     list_timestep = []
     list_modelgridindex = []
@@ -104,7 +104,7 @@ def main():
                     if thismgi == mgi:
                         ylist.append(list_populations[index][elindex][ion] / total_pop)
             axis.plot(list_velocity, ylist, linewidth=1.5,
-                      label=f"{af.elsymbols[elementlist['Z'][elindex]]} {af.roman_numerals[ion + 1])}")
+                      label=f"{at.elsymbols[elementlist['Z'][elindex]]} {at.roman_numerals[ion + 1])}")
 
     # axis.plot(list_timestep, [x[0][0] for x in list_populations],
     #           linewidth=1.5, label="Fe I")

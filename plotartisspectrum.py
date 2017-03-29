@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 
-import artistools as af
+import artistools as at
 
 warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
 
@@ -83,7 +83,7 @@ def main():
                 args.outputfile = "plotspecemission.pdf"
             make_plot(inputfiles, args)
     elif args.listtimesteps:
-        af.showtimesteptimes(inputfiles[0])
+        at.showtimesteptimes(inputfiles[0])
     else:
         if not args.outputfile:
             args.outputfile = "plotspec.pdf"
@@ -117,15 +117,15 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
             for (selectedcolumn, emissiontype) in ionserieslist:
                 # if linelabel.startswith('Fe ') or linelabel.endswith("-free"):
                 #     continue
-                array_fnu_emission = af.spectra.stackspectra(
+                array_fnu_emission = at.spectra.stackspectra(
                     [(emissiondata.iloc[timestep::len(timearray), selectedcolumn].values,
-                      af.get_timestep_time_delta(timestep, timearray))
+                      at.get_timestep_time_delta(timestep, timearray))
                      for timestep in range(timestepmin, timestepmax + 1)])
 
                 if selectedcolumn < nelements * maxion:  # bound-bound process
-                    array_fnu_absorption = af.spectra.stackspectra(
+                    array_fnu_absorption = at.spectra.stackspectra(
                         [(absorptiondata.iloc[timestep::len(timearray), selectedcolumn].values,
-                          af.get_timestep_time_delta(timestep, timearray))
+                          at.get_timestep_time_delta(timestep, timearray))
                          for timestep in range(timestepmin, timestepmax + 1)])
                 else:
                     array_fnu_absorption = np.zeros(len(array_fnu_emission))
@@ -147,7 +147,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
                 maxyvalueglobal = max(maxyvalueglobal, maxyvaluethisseries)
 
                 if emissiontype != 'free-free':
-                    linelabel = f'{af.elsymbols[elementlist.Z[element]]} {af.roman_numerals[ion_stage]} {emissiontype}'
+                    linelabel = f'{at.elsymbols[elementlist.Z[element]]} {at.roman_numerals[ion_stage]} {emissiontype}'
                 else:
                     linelabel = f'{emissiontype}'
 
@@ -160,8 +160,8 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
 
 
 def get_model_name_times(filename, timearray, args):
-    timestepmin, timestepmax = af.get_minmax_timesteps(timearray, args)
-    modelname = af.get_model_name(filename)
+    timestepmin, timestepmax = at.get_minmax_timesteps(timearray, args)
+    modelname = at.get_model_name(filename)
 
     time_days_lower = float(timearray[timestepmin])
     time_days_upper = float(timearray[timestepmax])
@@ -190,7 +190,7 @@ def plot_artis_spectra(axis, inputfiles, args, filterfunc=None):
             specfilename = filename
 
         (modelname, timestepmin, timestepmax,
-         time_days_lower, time_days_upper) = get_model_name_times(filename, af.get_timestep_times(filename), args)
+         time_days_lower, time_days_upper) = get_model_name_times(filename, at.get_timestep_times(filename), args)
 
         linelabel = f'{modelname} at t={time_days_lower:.2f}d to {time_days_upper:.2f}d'
 
@@ -198,10 +198,10 @@ def plot_artis_spectra(axis, inputfiles, args, filterfunc=None):
             # find any other packets files in the same directory
             packetsfiles_thismodel = glob.glob(os.path.join(os.path.dirname(filename), 'packets**.out'))
             print(packetsfiles_thismodel)
-            spectrum = af.spectra.get_spectrum_from_packets(
+            spectrum = at.spectra.get_spectrum_from_packets(
                 packetsfiles_thismodel, time_days_lower, time_days_upper, lambda_min=args.xmin, lambda_max=args.xmax)
         else:
-            spectrum = af.spectra.get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
+            spectrum = at.spectra.get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
 
         maxyvaluethisseries = spectrum.query(
             '@args.xmin < lambda_angstroms and '
@@ -218,7 +218,7 @@ def plot_artis_spectra(axis, inputfiles, args, filterfunc=None):
 
 
 def make_emission_plot(emissionfilename, axis, filterfunc, args):
-    elementlist = af.get_composition_data(os.path.join(os.path.dirname(emissionfilename), 'compositiondata.txt'))
+    elementlist = at.get_composition_data(os.path.join(os.path.dirname(emissionfilename), 'compositiondata.txt'))
 
     # print(f'nelements {len(elementlist)}')
     maxion = 5  # must match sn3d.h value
@@ -255,7 +255,7 @@ def make_emission_plot(emissionfilename, axis, filterfunc, args):
     axis.stackplot(arraylambda_angstroms, *[-x.array_flambda_absorption for x in contribution_list], linewidth=0)
     plotobjectlabels = list([x.linelabel for x in contribution_list])
 
-    af.spectra.plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=None,
+    at.spectra.plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=None,
                                       scale_to_peak=(maxyvalueglobal if args.normalised else None), linewidth=0.5)
 
     axis.axhline(color='white', linewidth=1.0)
@@ -273,7 +273,7 @@ def make_spectrum_plot(inputfiles, axis, filterfunc, args):
     """
         Set up a matplotlib figure and plot observational and ARTIS spectra
     """
-    af.spectra.plot_reference_spectra(axis, [], [], args, flambdafilterfunc=filterfunc)
+    at.spectra.plot_reference_spectra(axis, [], [], args, flambdafilterfunc=filterfunc)
     plot_artis_spectra(axis, inputfiles, args, filterfunc)
 
     if args.normalised:

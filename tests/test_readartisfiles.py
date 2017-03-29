@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 
-import artistools as af
+import artistools as at
 import numpy as np
 
 specfile = 'tests/data/spec.out'
 
 def test_timestep_times():
-    timearray = af.get_timestep_times(specfile)
+    timearray = at.get_timestep_times(specfile)
     assert(len(timearray) == 100)
     assert(timearray[0] == '250.421')
     assert(timearray[-1] == '349.412')
 
 
 def test_get_spectrum():
-    dfspectrum = af.spectra.get_spectrum(specfile, 55, 65, fnufilterfunc=None)
+    dfspectrum = at.spectra.get_spectrum(specfile, 55, 65, fnufilterfunc=None)
     assert(len(dfspectrum['lambda_angstroms']) == 1000)
     assert(abs(dfspectrum['lambda_angstroms'][0] - 29920.601421214415) < 1e-5)
     assert(abs(dfspectrum['lambda_angstroms'].values[-1] - 600.75759482509852) < 1e-5)

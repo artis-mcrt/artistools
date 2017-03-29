@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 
-import artistools as af
+import artistools as at
 
 refspectralabels = {
     '2010lp_20110928_fors2.txt':
@@ -56,7 +56,7 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, fnufilterfunc=None)
     timearray = specdata.columns.values[1:]
 
     array_fnu = stackspectra([
-        (specdata[specdata.columns[timestep + 1]], af.get_timestep_time_delta(timestep, timearray))
+        (specdata[specdata.columns[timestep + 1]], at.get_timestep_time_delta(timestep, timearray))
         for timestep in range(timesteplow, timestephigh + 1)])
 
     # best to use the filter on this list because it
