@@ -7,7 +7,7 @@ import os
 import pandas as pd
 from astropy import constants as const
 
-import readartisfiles.spectra
+import artistools.spectra
 
 PYDIR = os.path.dirname(os.path.abspath(__file__))
 

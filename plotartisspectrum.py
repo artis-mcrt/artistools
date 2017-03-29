@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 
-import readartisfiles as af
+import artistools as af
 
 warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
 

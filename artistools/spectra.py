@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 
-import readartisfiles as af
+import artistools as af
 
 refspectralabels = {
     '2010lp_20110928_fors2.txt':

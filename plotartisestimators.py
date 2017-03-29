@@ -4,7 +4,7 @@ import math
 import matplotlib.pyplot as plt
 
 # import numpy as np
-import readartisfiles as af
+import artistools as af
 
 # from astropy import constants as const
 
