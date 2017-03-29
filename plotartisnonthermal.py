@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 
-import artistools as af
+import artistools as at
 
 C = const.c.to('m/s').value
 DEFAULTSPECPATH = '../example_run/spec.out'
@@ -43,7 +43,7 @@ def main():
     args = parser.parse_args()
 
     if args.listtimesteps:
-        af.showtimesteptimes('spec.out')
+        at.showtimesteptimes('spec.out')
     else:
         nonthermaldata = None
         nonthermal_files = glob.glob('nonthermalspec_????.out', recursive=True) + \

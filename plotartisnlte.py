@@ -6,7 +6,7 @@ import sys
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-import artistools as af
+import artistools as at
 
 
 # from astropy import constants as const
@@ -34,11 +34,11 @@ def main():
     args = parser.parse_args()
 
     if args.listtimesteps:
-        af.showtimesteptimes('spec.out')
+        at.showtimesteptimes('spec.out')
     else:
         exc_temperature = 6000.
         try:
-            atomic_number = next(Z for Z, elsymb in enumerate(af.elsymbols) if elsymb.lower() == args.element.lower())
+            atomic_number = next(Z for Z, elsymb in enumerate(at.elsymbols) if elsymb.lower() == args.element.lower())
         except StopIteration:
             print(f"Could not find element '{args.element}'")
             return
@@ -47,10 +47,10 @@ def main():
               f'timestep {args.timestep} element {args.element}')
 
         if not args.oldformat:
-            dfpop = af.get_nlte_populations(args.nltefile, args.modelgridindex, args.timestep,
+            dfpop = at.get_nlte_populations(args.nltefile, args.modelgridindex, args.timestep,
                                             atomic_number, exc_temperature)
         else:
-            dfpop = af.get_nlte_populations_oldformat(args.nltefile, args.modelgridindex, args.timestep,
+            dfpop = at.get_nlte_populations_oldformat(args.nltefile, args.modelgridindex, args.timestep,
                                                       atomic_number, exc_temperature)
 
         if dfpop.empty:
@@ -90,8 +90,8 @@ def make_plot(dfpop, atomic_number, exc_temperature, args):
         # axis.plot(list_levels[ion], list_departure_ratio, linewidth=1.5,
         #         label='NLTE/LTE', linestyle='None', marker='x')
         # axis.set_ylabel(r'')
-        plotlabel = f'{af.elsymbols[atomic_number]} {af.roman_numerals[ion_stage]}'
-        time_days = af.get_timestep_time('spec.out', args.timestep)
+        plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
+        time_days = at.get_timestep_time('spec.out', args.timestep)
         if time_days != -1:
             plotlabel += f' at t={time_days} days'
         else:
@@ -108,7 +108,7 @@ def make_plot(dfpop, atomic_number, exc_temperature, args):
         axis.set_yscale('log')
     axes[-1].set_xlabel(r'Level index')
 
-    outputfilename = args.outputfile.format(af.elsymbols[atomic_number], args.timestep)
+    outputfilename = args.outputfile.format(at.elsymbols[atomic_number], args.timestep)
     print(f"Saving {outputfilename}")
     fig.savefig(outputfilename, format='pdf')
     plt.close()

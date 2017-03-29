@@ -7,7 +7,7 @@ import sys
 import matplotlib.pyplot as plt
 import pandas as pd
 
-import artistools as af
+import artistools as at
 
 
 def main():
@@ -43,7 +43,7 @@ def make_lightcurve_plot(lcfiles, filenameout):
         # the light_curve.dat file repeats x values, so keep the first half only
         lightcurvedata = lightcurvedata.iloc[:len(lightcurvedata) // 2]
 
-        modelname = af.get_model_name(lcfilename)
+        modelname = at.get_model_name(lcfilename)
         print(f"Plotting {modelname}")
 
         linestyle = ['-', '--'][int(index / 7)]
