@@ -155,7 +155,7 @@ def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
     specdata.query('lambda_angstroms > @xmin and lambda_angstroms < @xmax', inplace=True)
 
     print(f"'{serieslabel}' has {len(specdata)} points in the plot range")
-        print(f"  Bolometric flux: {boloflux:.3e}")
+    print(f"  Bolometric flux: {boloflux:.3e}")
 
     if len(specdata) > 5000:
         # specdata = scipy.signal.resample(specdata, 10000)
