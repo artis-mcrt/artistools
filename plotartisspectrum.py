@@ -160,7 +160,22 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
 
 
 def get_model_name_times(filename, timearray, args):
-    timestepmin, timestepmax = at.get_minmax_timesteps(timearray, args)
+    if args.timemin:
+        oldtime = -1
+        for timestep, time in enumerate(timearray):
+            timefloat = float(time.strip('d'))
+            if (timefloat > args.timemin) and (oldtime <= args.timemin):
+                timestepmin = timestep
+            if timefloat < args.timemax:
+                timestepmax = timestep
+            oldtime = timefloat
+    else:
+        timestepmin = args.timestepmin
+        if args.timestepmax:
+            timestepmax = args.timestepmax
+        else:
+            timestepmax = args.timestepmin
+
     modelname = at.get_model_name(filename)
 
     time_days_lower = float(timearray[timestepmin])
@@ -204,9 +219,10 @@ def plot_artis_spectra(axis, inputfiles, args, filterfunc=None):
             spectrum = at.spectra.get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
 
         maxyvaluethisseries = spectrum.query(
-            '@args.xmin < lambda_angstroms and '
-            'lambda_angstroms < @args.xmax')['f_lambda'].max()
+            '@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax')['f_lambda'].max()
 
+        boloflux = at.spectra.bolometric_flux(spectrum.f_lambda, spectrum.lambda_angstroms)
+        print(f'{modelname} bolometric flux: {boloflux} ergs/s')
         linestyle = ['-', '--'][int(index / 7) % 2]
         spectrum['f_lambda_scaled'] = (spectrum['f_lambda'] / maxyvaluethisseries)
         ycolumnname = 'f_lambda_scaled' if args.normalised else 'f_lambda'
