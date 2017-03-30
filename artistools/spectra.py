@@ -66,6 +66,7 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, fnufilterfunc=None)
         array_fnu = fnufilterfunc(array_fnu)
 
     dfspectrum = pd.DataFrame({'nu': arraynu, 'f_nu': array_fnu})
+    dfspectrum.sort_values(by='nu', ascending=False, inplace=True)
 
     dfspectrum['lambda_angstroms'] = const.c.to('angstrom/s').value / dfspectrum['nu']
     dfspectrum['f_lambda'] = dfspectrum['f_nu'] * dfspectrum['nu'] / dfspectrum['lambda_angstroms']
@@ -125,41 +126,62 @@ def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafil
         Plot reference spectra listed in args.refspecfiles
     """
     if args.refspecfiles is not None:
-        scriptdir = os.path.dirname(os.path.abspath(__file__))
         colorlist = ['black', '0.4']
-        refspectra = [(fn, refspectralabels.get(fn, fn), c) for fn, c in zip(args.refspecfiles, colorlist)]
-        for (filename, serieslabel, linecolor) in refspectra:
-            filepath = os.path.join(scriptdir, 'refspectra', filename)
-            specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
-                                   names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
+        for index, filename in enumerate(args.refspecfiles):
+            serieslabel = refspectralabels.get(filename, filename)
 
-            specdata.query('lambda_angstroms > @args.xmin and lambda_angstroms < @args.xmax', inplace=True)
+            if index < len(colorlist):
+                plotkwargs['color'] = colorlist[index]
 
-            print(f"'{serieslabel}' has {len(specdata)} points initially in the plot range")
+            plotobjects.append(
+                plot_reference_spectrum(
+                    filename, serieslabel, axis, args.xmin, args.xmax, args.normalised,
+                    flambdafilterfunc, scale_to_peak, **plotkwargs))
 
-            if len(specdata) > 5000:
-                # specdata = scipy.signal.resample(specdata, 10000)
-                # specdata = specdata.iloc[::3, :].copy()
-                specdata.query('index % 3 == 0', inplace=True)
-                print(f"  downsamping to {len(specdata)} points")
-
-            # clamp negative values to zero
-            specdata['f_lambda'] = specdata['f_lambda'].apply(lambda x: max(0, x))
-
-            if flambdafilterfunc:
-                specdata['f_lambda'] = specdata['f_lambda'].apply(flambdafilterfunc)
-
-            if args.normalised:
-                specdata['f_lambda_scaled'] = (specdata['f_lambda'] / specdata['f_lambda'].max() *
-                                               (scale_to_peak if scale_to_peak else 1.0))
-                ycolumnname = 'f_lambda_scaled'
-            else:
-                ycolumnname = 'f_lambda'
-
-            if 'linewidth' not in plotkwargs and 'lw' not in plotkwargs:
-                plotkwargs['linewidth'] = 1.5
-
-            specdata.plot(x='lambda_angstroms', y=ycolumnname, ax=axis,
-                          label=serieslabel, zorder=-1, color=linecolor, **plotkwargs)
-            plotobjects.append(mpatches.Patch(color=linecolor))
             plotobjectlabels.append(serieslabel)
+
+
+
+def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
+                            flambdafilterfunc=None, scale_to_peak=None, **plotkwargs):
+    scriptdir = os.path.dirname(os.path.abspath(__file__))
+    filepath = os.path.join(scriptdir, 'refspectra', filename)
+    specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
+                           names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
+
+    boloflux = at.spectra.bolometric_flux(specdata.f_lambda, specdata.lambda_angstroms)
+
+    specdata.query('lambda_angstroms > @xmin and lambda_angstroms < @xmax', inplace=True)
+
+    print(f"'{serieslabel}' has {len(specdata)} points in the plot range and "
+          f"a bolometric flux of {boloflux:.3e} ergs/s/cm^2")
+
+    if len(specdata) > 5000:
+        # specdata = scipy.signal.resample(specdata, 10000)
+        # specdata = specdata.iloc[::3, :].copy()
+        specdata.query('index % 3 == 0', inplace=True)
+        print(f"  downsamping to {len(specdata)} points")
+
+    # clamp negative values to zero
+    specdata['f_lambda'] = specdata['f_lambda'].apply(lambda x: max(0, x))
+
+    if flambdafilterfunc:
+        specdata['f_lambda'] = specdata['f_lambda'].apply(flambdafilterfunc)
+
+    if normalised:
+        specdata['f_lambda_scaled'] = (specdata['f_lambda'] / specdata['f_lambda'].max() *
+                                       (scale_to_peak if scale_to_peak else 1.0))
+        ycolumnname = 'f_lambda_scaled'
+    else:
+        ycolumnname = 'f_lambda'
+
+    if 'linewidth' not in plotkwargs and 'lw' not in plotkwargs:
+        plotkwargs['linewidth'] = 1.5
+
+    lineplot = specdata.plot(x='lambda_angstroms', y=ycolumnname, ax=axis, label=serieslabel, zorder=-1, **plotkwargs)
+    return mpatches.Patch(color=lineplot.get_lines()[0].get_color())
+
+
+def bolometric_flux(arr_f_lambda, arr_lambda):
+    delta_lambda = np.diff(arr_lambda)
+    return np.dot(arr_f_lambda[:-1], delta_lambda)

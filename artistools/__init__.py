@@ -305,25 +305,6 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
     return pd.DataFrame(data=[newrow], columns=levelpoptuple._fields)
 
 
-def get_minmax_timesteps(timesteptimes, args):
-    if args.timemin:
-        oldtime = -1
-        for timestep, time in enumerate(timesteptimes):
-            timefloat = float(time.strip('d'))
-            if (timefloat > args.timemin) and (oldtime <= args.timemin):
-                timestepmin = timestep
-            if timefloat < args.timemax:
-                timestepmax = timestep
-            oldtime = timefloat
-    else:
-        timestepmin = args.timestepmin
-        if args.timestepmax:
-            timestepmax = args.timestepmax
-        else:
-            timestepmax = args.timestepmin
-    return timestepmin, timestepmax
-
-
 def get_parent_folder_name(path):
     """
         Return the name of the parent folder of a file or folder without no separators
