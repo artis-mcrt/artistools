@@ -7,6 +7,7 @@ import matplotlib.patches as mpatches
 import numpy as np
 import pandas as pd
 from astropy import constants as const
+from astropy import units as u
 
 import artistools as at
 
@@ -153,8 +154,8 @@ def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
 
     specdata.query('lambda_angstroms > @xmin and lambda_angstroms < @xmax', inplace=True)
 
-    print(f"'{serieslabel}' has {len(specdata)} points in the plot range and "
-          f"a bolometric flux of {boloflux:.3e} ergs/s/cm^2")
+    print(f"'{serieslabel}' has {len(specdata)} points in the plot range")
+        print(f"  Bolometric flux: {boloflux:.3e}")
 
     if len(specdata) > 5000:
         # specdata = scipy.signal.resample(specdata, 10000)
@@ -182,6 +183,6 @@ def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
     return mpatches.Patch(color=lineplot.get_lines()[0].get_color())
 
 
-def bolometric_flux(arr_f_lambda, arr_lambda):
-    delta_lambda = np.diff(arr_lambda)
-    return np.dot(arr_f_lambda[:-1], delta_lambda)
+def bolometric_flux(arr_dflux_by_dx, arr_x):
+    arr_dx = np.diff(arr_x)
+    return np.dot(arr_dflux_by_dx[:-1], arr_dx) * u.erg / u.s / (u.cm ** 2)

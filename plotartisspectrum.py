@@ -222,7 +222,7 @@ def plot_artis_spectra(axis, inputfiles, args, filterfunc=None):
             '@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax')['f_lambda'].max()
 
         boloflux = at.spectra.bolometric_flux(spectrum.f_lambda, spectrum.lambda_angstroms)
-        print(f'{modelname} bolometric flux: {boloflux} ergs/s')
+        print(f'  Bolometric flux: {boloflux:.3e}')
         linestyle = ['-', '--'][int(index / 7) % 2]
         spectrum['f_lambda_scaled'] = (spectrum['f_lambda'] / maxyvaluethisseries)
         ycolumnname = 'f_lambda_scaled' if args.normalised else 'f_lambda'
