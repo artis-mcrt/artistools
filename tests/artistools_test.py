@@ -15,8 +15,8 @@ def test_timestep_times():
 def test_get_spectrum():
     dfspectrum = at.spectra.get_spectrum(specfile, 55, 65, fnufilterfunc=None)
     assert(len(dfspectrum['lambda_angstroms']) == 1000)
-    assert(abs(dfspectrum['lambda_angstroms'][0] - 29920.601421214415) < 1e-5)
-    assert(abs(dfspectrum['lambda_angstroms'].values[-1] - 600.75759482509852) < 1e-5)
+    assert(abs(dfspectrum['lambda_angstroms'].values[-1] - 29920.601421214415) < 1e-5)
+    assert(abs(dfspectrum['lambda_angstroms'].values[0] - 600.75759482509852) < 1e-5)
 
     assert(len(dfspectrum['f_lambda']) == 1000)
     assert(abs(max(dfspectrum['f_lambda']) - 2.548532804918824e-13) < 1e-5)
