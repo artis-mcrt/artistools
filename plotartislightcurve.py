@@ -38,24 +38,25 @@ def make_lightcurve_plot(lcfiles, filenameout):
         "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     for index, lcfilename in enumerate(lcfiles):
-        lightcurvedata = pd.read_csv(lcfilename, delim_whitespace=True, header=None, names=['time', 'flux', 'flux_cmf'])
+        lcdata = pd.read_csv(lcfilename, delim_whitespace=True, header=None, names=['time', 'lum', 'lum_cmf'])
 
         # the light_curve.dat file repeats x values, so keep the first half only
-        lightcurvedata = lightcurvedata.iloc[:len(lightcurvedata) // 2]
+        lcdata = lcdata.iloc[:len(lcdata) // 2]
 
         modelname = at.get_model_name(lcfilename)
         print(f"Plotting {modelname}")
 
         linestyle = ['-', '--'][int(index / 7)]
 
-        lightcurvedata.plot(x='time', y='flux', linewidth=1.5, ax=axis, linestyle=linestyle, label=modelname)
+        axis.plot(lcdata.time, lcdata.lum, linewidth=2, linestyle=linestyle, label=modelname)
+        axis.plot(lcdata.time, lcdata.lum_cmf, linewidth=2, linestyle=linestyle, label=f'{modelname} (cmf)')
 
     # axis.set_xlim(xmin=xminvalue,xmax=xmaxvalue)
     # axis.set_ylim(ymin=-0.1,ymax=1.3)
 
     axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
     axis.set_xlabel(r'Time (days)')
-    axis.set_ylabel(r'$\propto$ Flux')
+    axis.set_ylabel(r'$\mathrm{L} / \mathrm{L}_\odot$')
 
     fig.savefig(filenameout, format='pdf')
     print(f'Saved {filenameout}')
