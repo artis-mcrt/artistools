@@ -143,8 +143,11 @@ def make_emission_plot(emissionfilename, axis, filterfunc, args):
     plotobjects = axis.stackplot(
         arraylambda_angstroms, [x.array_flambda_emission for x in contributions_sorted_reduced], linewidth=0)
 
-    axis.stackplot(
-        arraylambda_angstroms, [-x.array_flambda_absorption for x in contributions_sorted_reduced], linewidth=0)
+    facecolors = [p.get_facecolor()[0] for p in plotobjects]
+
+    plotobjects.extend(axis.stackplot(
+        arraylambda_angstroms, [-x.array_flambda_absorption for x in contributions_sorted_reduced],
+        colors=facecolors, linewidth=0))
 
     plotobjectlabels = list([x.linelabel for x in contributions_sorted_reduced])
 
