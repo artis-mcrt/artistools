@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
-import artistools as at
 import numpy as np
 import pandas as pd
 from astropy import constants as const
+
+import artistools as at
 
 specfilename = 'tests/data/spec.out'
 emissionfilename = 'tests/data/emissiontrue.out'
