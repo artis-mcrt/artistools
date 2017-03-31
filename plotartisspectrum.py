@@ -153,9 +153,9 @@ def make_emission_plot(emissionfilename, axis, filterfunc, args):
 
     axis.axhline(color='white', linewidth=0.5)
 
-    plotlabel = f'{modelname}\nt={time_days_lower:.2f}d to {time_days_upper:.2f}d'
-    axis.annotate(plotlabel, xy=(0.05, 0.96), xycoords='axes fraction',
-                  horizontalalignment='left', verticalalignment='top', fontsize=8)
+    plotlabel = f't={time_days_lower:.2f}d to {time_days_upper:.2f}d\n{modelname}'
+    axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
+                  horizontalalignment='right', verticalalignment='bottom', fontsize=9)
 
     # axis.set_ylim(ymin=-0.05 * maxyvalueglobal, ymax=maxyvalueglobal * 1.3)
 
