@@ -5,6 +5,7 @@ import itertools
 import os
 import sys
 
+from astropy import units as u
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -52,7 +53,9 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets):
                 dfpackets = at.packets.readfiles(packetsfiles, [
                     'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time', 'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'])
                 timearray = lcdata['time'].values
-                lcdata = at.get_lightcurve_from_packets(dfpackets, timearray, nprocs)
+                model, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
+                vmax = model.iloc[-1].velocity * u.km / u.s
+                lcdata = at.get_lightcurve_from_packets(dfpackets, timearray, nprocs, vmax)
 
         modelname = at.get_model_name(modelpath)
         print(f"Plotting {modelname}")
