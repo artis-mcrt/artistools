@@ -48,12 +48,12 @@ def stackspectra(spectra_and_factors):
     return stackedspectrum
 
 
-def get_spectrum(specfilename, timesteplow, timestephigh=-1, fnufilterfunc=None):
+def get_spectrum(specfilename, timestepmin, timestepmax=-1, fnufilterfunc=None):
     """
         Return a pandas DataFrame containing an ARTIS emergent spectrum
     """
-    if timestephigh < 0:
-        timestephigh = timesteplow
+    if timestepmax < 0:
+        timestepmax = timestepmin
 
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
 
@@ -62,7 +62,7 @@ def get_spectrum(specfilename, timesteplow, timestephigh=-1, fnufilterfunc=None)
 
     array_fnu = stackspectra([
         (specdata[specdata.columns[timestep + 1]], at.get_timestep_time_delta(timestep, timearray))
-        for timestep in range(timesteplow, timestephigh + 1)])
+        for timestep in range(timestepmin, timestepmax + 1)])
 
     # best to use the filter on this list because it
     # has regular sampling
@@ -126,7 +126,7 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
 
 
 def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
-                           timearray, arraynu, filterfunc, xmin, xmax, timestepmin, timestepmax):
+                           timearray, arraynu, filterfunc=None, xmin=-1, xmax=math.inf, timestepmin=0, timestepmax=-1):
     # this is much slower than it could be because of the order in which these data tables are accessed
     # TODO: change to use sequential access as much as possible
     print(f"  Reading {emissionfilename} and {absorptionfilename}")
