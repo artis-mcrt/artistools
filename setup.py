@@ -20,5 +20,5 @@ setup(name="artistools",
       install_requires=open(os.path.join(os.path.dirname(__file__), "requirements.txt")).read(),
       python_requires='>==3.6',
       # test_suite='tests',
-      setup_requires=['pytest-runner'],
+      setup_requires=['pytest-runner', 'pytest-cov'],
       tests_require=['pytest', 'pytest-runner', 'pytest-cov'],)
