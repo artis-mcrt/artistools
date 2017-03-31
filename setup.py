@@ -21,4 +21,4 @@ setup(name="artistools",
       python_requires='>==3.6',
       # test_suite='tests',
       setup_requires=['pytest-runner'],
-      tests_require=['pytest', 'pytest-runner'],)
+      tests_require=['pytest', 'pytest-runner', 'pytest-cov'],)
