@@ -3,14 +3,15 @@
 import glob
 import math
 import os
+from collections import namedtuple
 
-import artistools as at
 import matplotlib.patches as mpatches
 import numpy as np
 import pandas as pd
 from astropy import constants as const
 from astropy import units as u
-from collections import namedtuple
+
+import artistools as at
 
 refspectralabels = {
     '2010lp_20110928_fors2.txt':

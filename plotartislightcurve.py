@@ -5,9 +5,9 @@ import itertools
 import os
 import sys
 
-from astropy import units as u
 import matplotlib.pyplot as plt
 import pandas as pd
+from astropy import units as u
 
 import artistools as at
 
@@ -51,7 +51,8 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets):
                 print(packetsfiles)
                 nprocs = len(packetsfiles)  # hopefully this is true
                 dfpackets = at.packets.readfiles(packetsfiles, [
-                    'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time', 'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'])
+                    'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
+                    'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'])
                 timearray = lcdata['time'].values
                 model, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
                 vmax = model.iloc[-1].velocity * u.km / u.s
