@@ -4,12 +4,14 @@
 Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code.
 """
 
+import datetime
 import os
 
 from setuptools import find_packages, setup
 
+print(datetime.datetime.now().isoformat())
 setup(name="artistools",
-      version=0.1,
+      version=datetime.datetime.now().isoformat(),
       author="Luke Shingles",
       author_email="luke.shingles@gmail.com",
       packages=find_packages(),
