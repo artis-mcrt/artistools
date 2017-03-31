@@ -199,20 +199,24 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
     return contribution_list, maxyvalueglobal, array_flambda_emission_total
 
 
-def sort_and_reduce_flux_contribution_list(contribution_list, maxseriescount, arraylambda_angstroms):
-    contribution_list = sorted(contribution_list, key=lambda x: x.fluxemissioncontrib)
+def sort_and_reduce_flux_contribution_list(contribution_list_in, maxseriescount, arraylambda_angstroms):
+    # sort descending by flux contribution
+    contribution_list = sorted(contribution_list_in, key=lambda x: -x.fluxemissioncontrib)
+
+    # combine the items past maxseriescount into a single item
     remainder_flambda_emission = np.zeros(len(arraylambda_angstroms))
     remainder_flambda_absorption = np.zeros(len(arraylambda_angstroms))
     remainder_fluxcontrib = 0
-    for row in contribution_list[:- maxseriescount]:
+    for row in contribution_list[maxseriescount:]:
         remainder_fluxcontrib += row.fluxemissioncontrib
         remainder_flambda_emission += row.array_flambda_emission
         remainder_flambda_absorption += row.array_flambda_absorption
 
-    contribution_list_out = list(reversed(contribution_list[- maxseriescount:]))
-    contribution_list_out.append(at.spectra.fluxcontributiontuple(
-        fluxemissioncontrib=remainder_fluxcontrib, linelabel='other',
-        array_flambda_emission=remainder_flambda_emission, array_flambda_absorption=remainder_flambda_absorption))
+    contribution_list_out = contribution_list[:maxseriescount]
+    if remainder_fluxcontrib > 0.:
+        contribution_list_out.append(at.spectra.fluxcontributiontuple(
+            fluxemissioncontrib=remainder_fluxcontrib, linelabel='other',
+            array_flambda_emission=remainder_flambda_emission, array_flambda_absorption=remainder_flambda_absorption))
     return contribution_list_out
 
 
@@ -239,12 +243,11 @@ def plot_artis_spectrum(axis, filename, xmin, xmax, args, filterfunc=None, **plo
     else:
         spectrum = get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
 
-    print_integrated_flux(spectrum.f_lambda, spectrum.lambda_angstroms)
+    spectrum.query('@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax', inplace=True)
 
-    maxyvaluethisseries = spectrum.query(
-        '@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax')['f_lambda'].max()
+    print_integrated_flux(spectrum['f_lambda'], spectrum['lambda_angstroms'])
 
-    spectrum['f_lambda_scaled'] = spectrum['f_lambda'] / maxyvaluethisseries
+    spectrum['f_lambda_scaled'] = spectrum['f_lambda'] / spectrum['f_lambda'].max()
     ycolumnname = 'f_lambda_scaled' if args.normalised else 'f_lambda'
     spectrum.plot(x='lambda_angstroms', y=ycolumnname, ax=axis,
                   label=linelabel, alpha=0.95, color=None, **plotkwargs)
@@ -280,9 +283,9 @@ def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
 
     print(f"Reference spectrum '{serieslabel}' has {len(specdata)} points in the plot range")
 
-    at.spectra.print_integrated_flux(specdata.f_lambda, specdata.lambda_angstroms)
-
     specdata.query('lambda_angstroms > @xmin and lambda_angstroms < @xmax', inplace=True)
+
+    at.spectra.print_integrated_flux(specdata.f_lambda, specdata.lambda_angstroms)
 
     if len(specdata) > 5000:
         # specdata = scipy.signal.resample(specdata, 10000)
