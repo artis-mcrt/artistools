@@ -151,7 +151,7 @@ def make_emission_plot(emissionfilename, axis, filterfunc, args):
     at.spectra.plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=None,
                                       scale_to_peak=(maxyvalueglobal if args.normalised else None), linewidth=0.5)
 
-    axis.axhline(color='white', linewidth=1.0)
+    axis.axhline(color='white', linewidth=0.5)
 
     plotlabel = f'{modelname}\nt={time_days_lower:.2f}d to {time_days_upper:.2f}d'
     axis.annotate(plotlabel, xy=(0.05, 0.96), xycoords='axes fraction',
