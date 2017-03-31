@@ -82,7 +82,8 @@ def get_modeldata(filename):
         t_model_init = float(fmodel.readline())
         for line in fmodel:
             row = line.split()
-            rowdf = pd.DataFrame([gridcelltuple._make([int(row[0])-1] + list(map(float, row[1:])))], columns=gridcelltuple._fields)
+            rowdf = pd.DataFrame([gridcelltuple._make([int(row[0])-1] + list(map(float, row[1:])))],
+                                 columns=gridcelltuple._fields)
             modeldata = modeldata.append(rowdf)
     assert(len(modeldata) == gridcellcount)
 
@@ -353,13 +354,12 @@ def get_model_name_times(filename, timearray, timestepmin, timestepmax, timemin,
     return modelname, timestepmin, timestepmax, time_days_lower, time_days_upper
 
 
-def get_lightcurve_from_packets(dfpackets, timearray, nprocs):
+def get_lightcurve_from_packets(dfpackets, timearray, nprocs, vmax):
     dfpackets.query('type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT" ', inplace=True)
     num_packets = len(dfpackets)
     print(f"{num_packets} escaped r-packets")
     arr_lum = np.zeros(len(timearray))
     arr_lum_cmf = np.zeros(len(timearray))
-    vmax = 8000 * u.km / u.s
     for index, packet in dfpackets.iterrows():
         # lambda_rf = const.c.to('angstrom/s').value / packet.nu_rf
         t_arrive = packets.t_arrive(packet)
