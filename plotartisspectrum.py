@@ -122,12 +122,12 @@ def make_emission_plot(emissionfilename, axis, filterfunc, args):
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     timearray = specdata.columns.values[1:]
     arraynu = specdata.loc[:, '0'].values
+    arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
 
     (modelname, timestepmin, timestepmax,
      time_days_lower, time_days_upper) = at.get_model_name_times(
          specfilename, timearray, args.timestepmin, args.timestepmax, args.timemin, args.timemax)
 
-    arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
     absorptionfilename = os.path.join(os.path.dirname(emissionfilename), 'absorption.out')
     contribution_list, maxyvalueglobal, array_flambda_emission_total = at.spectra.get_flux_contributions(
         emissionfilename, absorptionfilename, maxion, timearray, arraynu,
