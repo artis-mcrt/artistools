@@ -33,7 +33,7 @@ refspectralabels = {
 }
 
 fluxcontributiontuple = namedtuple(
-    'fluxcontribution', 'fluxcontrib linelabel array_flambda_emission array_flambda_absorption')
+    'fluxcontribution', 'fluxemissioncontrib linelabel array_flambda_emission array_flambda_absorption')
 
 
 def stackspectra(spectra_and_factors):
@@ -125,18 +125,21 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
     return pd.DataFrame({'lambda_angstroms': array_lambda, 'f_lambda': array_flambda})
 
 
-def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, maxion,
+def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
                            timearray, arraynu, filterfunc, xmin, xmax, timestepmin, timestepmax):
     # this is much slower than it could be because of the order in which these data tables are accessed
     # TODO: change to use sequential access as much as possible
     print(f"  Reading {emissionfilename} and {absorptionfilename}")
     emissiondata = pd.read_csv(emissionfilename, sep=' ', header=None)
     absorptiondata = pd.read_csv(absorptionfilename, sep=' ', header=None)
+
+    elementlist = at.get_composition_data(os.path.join(os.path.dirname(emissionfilename), 'compositiondata.txt'))
+
     arraylambda = const.c.to('angstrom/s').value / arraynu
 
     nelements = len(elementlist)
     maxyvalueglobal = 0.
-    fluxcontribtotal = 0.
+    fluxemissiontotal = 0.
     contribution_list = []
     for element in range(nelements):
         nions = elementlist.nions[element]
@@ -175,8 +178,8 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
                 array_flambda_emission = array_fnu_emission * arraynu / arraylambda
                 array_flambda_absorption = array_fnu_absorption * arraynu / arraylambda
 
-                fluxcontribthisseries = at.spectra.integrated_flux(array_fnu_emission, arraynu)
-                fluxcontribtotal += fluxcontribthisseries
+                fluxemissioncontribthisseries = at.spectra.integrated_flux(array_fnu_emission, arraynu)
+                fluxemissiontotal += fluxemissioncontribthisseries
                 maxyvaluethisseries = max(
                     [array_flambda_emission[i] if (xmin < arraylambda[i] < xmax) else -99.0
                      for i in range(len(array_flambda_emission))])
@@ -189,11 +192,28 @@ def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, ma
                     linelabel = f'{emissiontype}'
 
                 contribution_list.append(
-                    fluxcontributiontuple(fluxcontrib=fluxcontribthisseries, linelabel=linelabel,
+                    fluxcontributiontuple(fluxemissioncontrib=fluxemissioncontribthisseries, linelabel=linelabel,
                                           array_flambda_emission=array_flambda_emission,
                                           array_flambda_absorption=array_flambda_absorption))
 
-    return contribution_list, maxyvalueglobal, fluxcontribtotal
+    return contribution_list, maxyvalueglobal, fluxemissiontotal
+
+
+def sort_and_reduce_flux_contribution_list(contribution_list, maxseriescount, arraylambda_angstroms):
+    contribution_list = sorted(contribution_list, key=lambda x: x.fluxemissioncontrib)
+    remainder_flambda_emission = np.zeros(len(arraylambda_angstroms))
+    remainder_flambda_absorption = np.zeros(len(arraylambda_angstroms))
+    remainder_fluxcontrib = 0
+    for row in contribution_list[:- maxseriescount]:
+        remainder_fluxcontrib += row.fluxemissioncontrib
+        remainder_flambda_emission += row.array_flambda_emission
+        remainder_flambda_absorption += row.array_flambda_absorption
+
+    contribution_list_out = list(reversed(contribution_list[- maxseriescount:]))
+    contribution_list_out.append(at.spectra.fluxcontributiontuple(
+        fluxemissioncontrib=remainder_fluxcontrib, linelabel='other',
+        array_flambda_emission=remainder_flambda_emission, array_flambda_absorption=remainder_flambda_absorption))
+    return contribution_list_out
 
 
 def plot_artis_spectrum(axis, filename, xmin, xmax, args, filterfunc=None, **plotkwargs):
