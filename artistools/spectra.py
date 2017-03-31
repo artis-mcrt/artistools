@@ -85,29 +85,21 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
     array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
     array_energysum = np.zeros(len(array_lambda))  # total packet energy sum of each bin
 
-    columns = ['number', 'where', 'type', 'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz', 'last_cross', 'tdecay',
-               'e_cmf', 'e_rf', 'nu_cmf', 'nu_rf', 'escape_type', 'escape_time', 'scat_count', 'next_trans',
-               'interactions', 'last_event', 'emission_type', 'true_emission_type', 'em_posx', 'em_posy', 'em_poz',
-               'absorption_type', 'absorption_freq', 'nscatterings', 'em_time', 'absorptiondirx', 'absorptiondiry',
-               'absorptiondirz', 'stokes1', 'stokes2', 'stokes3', 'pol_dirx', 'pol_diry', 'pol_dirz']
-
     PARSEC = 3.0857e+18  # pc to cm [pc/cm]
     timelow = timelowdays * 86400
     timehigh = timehighdays * 86400
     nprocs = len(packetsfiles)  # hopefully this is true
-    TYPE_ESCAPE = 32,
-    TYPE_RPKT = 11,
     c_cgs = const.c.to('cm/s')
     c_ang_s = const.c.to('angstrom/s').value
     nu_min = c_ang_s / lambda_max
     nu_max = c_ang_s / lambda_min
     for packetsfile in packetsfiles:
         print(f"Loading {packetsfile}")
-        dfpackets = pd.read_csv(packetsfile, delim_whitespace=True, names=columns, header=None, usecols=[
-            'type', 'e_rf', 'nu_rf', 'escape_type', 'escape_time', 'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'])
+        dfpackets = at.packet.readfile(packetsfile, usecols=[
+            'type_id', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time', 'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'])
         # pos_dot_dir = packet.posx * packet.dirx + packet.posy * packet.diry + packet.posz * packet.dirz
         # dfpackets['t_arrive'] = sfpackets['escape_time'] - (pos_dot_dir / 2.99792458e+10)
-        dfpackets.query('type == @TYPE_ESCAPE and escape_type == @TYPE_RPKT and'
+        dfpackets.query('type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT" and'
                         '@nu_min <= nu_rf < @nu_max and'
                         '@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh',
                         inplace=True)

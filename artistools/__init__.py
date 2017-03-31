@@ -4,10 +4,13 @@ import math
 import os
 
 # import scipy.signal
+import numpy as np
 import pandas as pd
 from astropy import constants as const
+from astropy import units as u
 
 import artistools.spectra
+import artistools.packets
 
 PYDIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -305,25 +308,21 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
     return pd.DataFrame(data=[newrow], columns=levelpoptuple._fields)
 
 
-def get_parent_folder_name(path):
-    """
-        Return the name of the parent folder of a file or folder without no separators
-        e.g. get_parent_folder_name('folder1/folder2/file.txt') returns 'folder2'
-    """
-    return os.path.basename(os.path.dirname(os.path.abspath(path)))
-
-
 def get_model_name(path):
     """
         Get the name of an ARTIS model from the path to any file inside it
         either from a special plotlabel.txt file (if it exists)
         or the enclosing directory name
     """
+    abspath = os.path.abspath(path)
+
+    folderpath = abspath if os.path.isdir(abspath) else os.path.basename(os.path.dirname(os.path.abspath(path)))
+
     try:
-        plotlabelfile = os.path.join(os.path.dirname(path), 'plotlabel.txt')
+        plotlabelfile = os.path.join(folderpath, 'plotlabel.txt')
         return (open(plotlabelfile, mode='r').readline().strip())
     except FileNotFoundError:
-        return get_parent_folder_name(path)
+        return os.path.basename(folderpath)
 
 
 def get_model_name_times(filename, timearray, timestepmin, timestepmax, timemin, timemax):
@@ -352,3 +351,27 @@ def get_model_name_times(filename, timearray, timestepmin, timestepmax, timemin,
           f'(t={time_days_lower}d to {time_days_upper}d)')
 
     return modelname, timestepmin, timestepmax, time_days_lower, time_days_upper
+
+
+def get_lightcurve_from_packets(dfpackets, timearray, nprocs):
+    dfpackets.query('type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT" ', inplace=True)
+    num_packets = len(dfpackets)
+    print(f"{num_packets} escaped r-packets")
+    arr_lum = np.zeros(len(timearray))
+    arr_lum_cmf = np.zeros(len(timearray))
+    vmax = 8000 * u.km / u.s
+    for index, packet in dfpackets.iterrows():
+        # lambda_rf = const.c.to('angstrom/s').value / packet.nu_rf
+        t_arrive = packets.t_arrive(packet)
+        t_arrive_cmf = (packet['escape_time'] * math.sqrt(1 - ((vmax / const.c) ** 2))) * u.s.to('day')
+        # print(f"Packet escaped at {t_arrive:.1f} days with nu={packet.nu_rf:.2e}, lambda={lambda_rf:.1f}")
+        for timestep, time in enumerate(timearray[:-1]):
+            if time < t_arrive < timearray[timestep + 1]:
+                arr_lum[timestep] += (packet.e_rf * u.erg / (get_timestep_time_delta(timestep, timearray) * u.day) /
+                                      nprocs).to('solLum').value
+            if time < t_arrive_cmf < timearray[timestep + 1]:
+                arr_lum_cmf[timestep] += (packet.e_cmf * u.erg / (get_timestep_time_delta(timestep, timearray) * u.day) /
+                                          nprocs / math.sqrt(1 - ((vmax / const.c) ** 2))).to('solLum').value
+
+    lcdata = pd.DataFrame({'time': timearray, 'lum': arr_lum, 'lum_cmf': arr_lum_cmf})
+    return lcdata
