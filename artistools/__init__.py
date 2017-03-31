@@ -348,7 +348,7 @@ def get_model_name_times(filename, timearray, timestepmin, timestepmax, timemin,
     time_days_lower = float(timearray[timestepmin])
     time_days_upper = float(timearray[timestepmax])
 
-    print(f'Plotting {modelname} ({filename}) timesteps {timestepmin} to {timestepmax} '
+    print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
           f'(t={time_days_lower}d to {time_days_upper}d)')
 
     return modelname, timestepmin, timestepmax, time_days_lower, time_days_upper
