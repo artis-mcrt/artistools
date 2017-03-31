@@ -139,7 +139,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
 
     nelements = len(elementlist)
     maxyvalueglobal = 0.
-    fluxemissiontotal = 0.
+    array_flambda_emission_total = np.zeros(len(arraylambda))
     contribution_list = []
     for element in range(nelements):
         nions = elementlist.nions[element]
@@ -178,8 +178,8 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
                 array_flambda_emission = array_fnu_emission * arraynu / arraylambda
                 array_flambda_absorption = array_fnu_absorption * arraynu / arraylambda
 
+                array_flambda_emission_total += array_flambda_emission
                 fluxemissioncontribthisseries = at.spectra.integrated_flux(array_fnu_emission, arraynu)
-                fluxemissiontotal += fluxemissioncontribthisseries
                 maxyvaluethisseries = max(
                     [array_flambda_emission[i] if (xmin < arraylambda[i] < xmax) else -99.0
                      for i in range(len(array_flambda_emission))])
@@ -196,7 +196,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
                                           array_flambda_emission=array_flambda_emission,
                                           array_flambda_absorption=array_flambda_absorption))
 
-    return contribution_list, maxyvalueglobal, fluxemissiontotal
+    return contribution_list, maxyvalueglobal, array_flambda_emission_total
 
 
 def sort_and_reduce_flux_contribution_list(contribution_list, maxseriescount, arraylambda_angstroms):
@@ -239,13 +239,10 @@ def plot_artis_spectrum(axis, filename, xmin, xmax, args, filterfunc=None, **plo
     else:
         spectrum = get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
 
-    integratedflux = integrated_flux(spectrum.f_lambda, spectrum.lambda_angstroms)
+    print_integrated_flux(spectrum.f_lambda, spectrum.lambda_angstroms)
 
     maxyvaluethisseries = spectrum.query(
         '@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax')['f_lambda'].max()
-
-    print(f'  integrated flux ({spectrum.lambda_angstroms.min():.1f} A to '
-          f'{spectrum.lambda_angstroms.max():.1f} A): {integratedflux:.3e}')
 
     spectrum['f_lambda_scaled'] = spectrum['f_lambda'] / maxyvaluethisseries
     ycolumnname = 'f_lambda_scaled' if args.normalised else 'f_lambda'
@@ -281,13 +278,11 @@ def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
     specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
                            names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
 
-    integratedflux = at.spectra.integrated_flux(specdata.f_lambda, specdata.lambda_angstroms)
+    print(f"Reference spectrum '{serieslabel}' has {len(specdata)} points in the plot range")
+
+    at.spectra.print_integrated_flux(specdata.f_lambda, specdata.lambda_angstroms)
 
     specdata.query('lambda_angstroms > @xmin and lambda_angstroms < @xmax', inplace=True)
-
-    print(f"Reference spectrum '{serieslabel}' has {len(specdata)} points in the plot range")
-    print(f'  integrated flux ({specdata.lambda_angstroms.min():.1f} A to '
-          f'{specdata.lambda_angstroms.max():.1f} A): {integratedflux:.3e}')
 
     if len(specdata) > 5000:
         # specdata = scipy.signal.resample(specdata, 10000)
@@ -316,5 +311,13 @@ def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
 
 
 def integrated_flux(arr_dflux_by_dx, arr_x):
+    # use abs in case arr_x is decreasing
     arr_dx = np.abs(np.diff(arr_x))
     return np.dot(arr_dflux_by_dx[:-1], arr_dx) * u.erg / u.s / (u.cm ** 2)
+
+
+def print_integrated_flux(arr_f_lambda, arr_lambda_angstroms):
+    integrated_flux = at.spectra.integrated_flux(arr_f_lambda, arr_lambda_angstroms)
+    luminosity = integrated_flux * 4 * math.pi * (u.megaparsec ** 2)
+    print(f'  integrated flux ({arr_lambda_angstroms.min():.1f} A to '
+          f'{arr_lambda_angstroms.max():.1f} A): {integrated_flux:.3e}, (L={luminosity.to("Lsun"):.3e})')

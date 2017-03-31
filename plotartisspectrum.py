@@ -4,11 +4,9 @@ import glob
 import os
 import sys
 import warnings
-from collections import namedtuple
 
 import matplotlib.pyplot as plt
 # import matplotlib.ticker as ticker
-import numpy as np
 import pandas as pd
 from astropy import constants as const
 
@@ -131,19 +129,23 @@ def make_emission_plot(emissionfilename, axis, filterfunc, args):
 
     arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
     absorptionfilename = os.path.join(os.path.dirname(emissionfilename), 'absorption.out')
-    contribution_list, maxyvalueglobal, totalemissionflux = at.spectra.get_flux_contributions(
+    contribution_list, maxyvalueglobal, array_flambda_emission_total = at.spectra.get_flux_contributions(
         emissionfilename, absorptionfilename, maxion, timearray, arraynu,
         filterfunc, args.xmin, args.xmax, timestepmin, timestepmax)
 
-    print(f'  integrated flux ({arraylambda_angstroms.min():.1f} A to '
-          f'{arraylambda_angstroms.max():.1f} A): {totalemissionflux:.3e}')
+    at.spectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
+
     # print("\n".join([f"{x[0]}, {x[1]}" for x in contribution_list]))
 
-    contributions_sorted_reduced = at.spectra.sort_and_reduce_flux_contribution_list(contribution_list, args.maxseriescount, arraylambda_angstroms)
+    contributions_sorted_reduced = at.spectra.sort_and_reduce_flux_contribution_list(
+        contribution_list, args.maxseriescount, arraylambda_angstroms)
 
-    plotobjects = axis.stackplot(arraylambda_angstroms, *[x.array_flambda_emission for x in contributions_sorted_reduced],
-                                 linewidth=0)
-    axis.stackplot(arraylambda_angstroms, *[-x.array_flambda_absorption for x in contributions_sorted_reduced], linewidth=0)
+    plotobjects = axis.stackplot(
+        arraylambda_angstroms, [x.array_flambda_emission for x in contributions_sorted_reduced], linewidth=0)
+
+    axis.stackplot(
+        arraylambda_angstroms, [-x.array_flambda_absorption for x in contributions_sorted_reduced], linewidth=0)
+
     plotobjectlabels = list([x.linelabel for x in contributions_sorted_reduced])
 
     at.spectra.plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=None,
