@@ -43,9 +43,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets):
         if not os.path.exists(lcfilename):
             continue
         else:
-            lcdata = pd.read_csv(lcfilename, delim_whitespace=True, header=None, names=['time', 'lum', 'lum_cmf'])
-            # the light_curve.dat file repeats x values, so keep the first half only
-            lcdata = lcdata.iloc[:len(lcdata) // 2]
+            lcdata = at.lightcurves.readfile(lcfilename)
             if frompackets:
                 packetsfiles = glob.glob(os.path.join(modelpath, 'packets00_????.out'))
                 print(packetsfiles)
@@ -56,7 +54,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets):
                 timearray = lcdata['time'].values
                 model, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
                 vmax = model.iloc[-1].velocity * u.km / u.s
-                lcdata = at.get_lightcurve_from_packets(dfpackets, timearray, nprocs, vmax)
+                lcdata = at.lightcurves.read_from_packets(dfpackets, timearray, nprocs, vmax)
 
         modelname = at.get_model_name(modelpath)
         print(f"Plotting {modelname}")

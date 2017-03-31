@@ -36,15 +36,15 @@ def readfiles(packetsfiles, usecols):
     return dfpackets_all
 
 
-def t_arrive(packet):
-    return (packet['escape_time'] - (
-        packet['posx'] * packet['dirx'] + packet['posy'] * packet['diry'] + packet['posz'] * packet['dirz']) /
-        const.c.to('cm/s').value) * u.s.to('day')
-
-
 def readfile(packetsfile, usecols):
     dfpackets = pd.read_csv(packetsfile, delim_whitespace=True, names=columns, header=None, usecols=usecols)
     dfpackets['type'] = dfpackets['type_id'].map(lambda x: types.get(x, x))
     dfpackets['escape_type'] = dfpackets['escape_type_id'].map(lambda x: types.get(x, x))
 
     return dfpackets
+
+def t_arrive(packet):
+    return (packet['escape_time'] - (
+        packet['posx'] * packet['dirx'] + packet['posy'] * packet['diry'] + packet['posz'] * packet['dirz']) /
+        const.c.to('cm/s').value) * u.s.to('day')
+
