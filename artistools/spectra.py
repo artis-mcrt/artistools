@@ -97,7 +97,8 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
     for packetsfile in packetsfiles:
         print(f"Loading {packetsfile}")
         dfpackets = at.packet.readfile(packetsfile, usecols=[
-            'type_id', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time', 'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'])
+            'type_id', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
+            'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'])
         # pos_dot_dir = packet.posx * packet.dirx + packet.posy * packet.diry + packet.posz * packet.dirz
         # dfpackets['t_arrive'] = sfpackets['escape_time'] - (pos_dot_dir / 2.99792458e+10)
         dfpackets.query('type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT" and'
@@ -307,7 +308,7 @@ def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
 
 
 def integrated_flux(arr_dflux_by_dx, arr_x):
-    # use abs in case arr_x is decreasing
+    #  use abs in case arr_x is decreasing
     arr_dx = np.abs(np.diff(arr_x))
     return np.dot(arr_dflux_by_dx[:-1], arr_dx) * u.erg / u.s / (u.cm ** 2)
 
