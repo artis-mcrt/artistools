@@ -324,3 +324,31 @@ def get_model_name(path):
         return (open(plotlabelfile, mode='r').readline().strip())
     except FileNotFoundError:
         return get_parent_folder_name(path)
+
+
+def get_model_name_times(filename, timearray, timestepmin, timestepmax, timemin, timemax):
+    if timemin:
+        oldtime = -1
+        for timestep, time in enumerate(timearray):
+            timefloat = float(time.strip('d'))
+            if (timefloat > timemin) and (oldtime <= timemin):
+                timestepmin = timestep
+            if timefloat < timemax:
+                timestepmax = timestep
+            oldtime = timefloat
+    else:
+        timestepmin = timestepmin
+        if timestepmax:
+            timestepmax = timestepmax
+        else:
+            timestepmax = timestepmin
+
+    modelname = get_model_name(filename)
+
+    time_days_lower = float(timearray[timestepmin])
+    time_days_upper = float(timearray[timestepmax])
+
+    print(f'Plotting {modelname} ({filename}) timesteps {timestepmin} to {timestepmax} '
+          f'(t={time_days_lower}d to {time_days_upper}d)')
+
+    return modelname, timestepmin, timestepmax, time_days_lower, time_days_upper
