@@ -16,9 +16,6 @@ import artistools as at
 
 warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
 
-fluxcontributiontuple = namedtuple(
-    'fluxcontribution', 'maxyvalue linelabel array_flambda_emission array_flambda_absorption')
-
 # TODO: input one or more ARTIS folders instead of file names
 
 
@@ -90,103 +87,6 @@ def main():
         make_plot(inputfiles, args)
 
 
-def get_flux_contributions(emissionfilename, absorptionfilename, elementlist, maxion,
-                           timearray, arraynu, filterfunc, xmin, xmax, timestepmin, timestepmax):
-    # this is much slower than it could be because of the order in which these data tables are accessed
-    # TODO: change to use sequential access as much as possible
-    print(f"Reading {emissionfilename}")
-    emissiondata = pd.read_csv(emissionfilename, sep=' ', header=None)
-    print(f"Reading {absorptionfilename}")
-    absorptiondata = pd.read_csv(absorptionfilename, sep=' ', header=None)
-    arraylambda = const.c.to('angstrom/s').value / arraynu
-
-    nelements = len(elementlist)
-    maxyvalueglobal = 0.0
-    contribution_list = []
-    for element in range(nelements):
-        nions = elementlist.nions[element]
-        # nions = elementlist.iloc[element].uppermost_ionstage - elementlist.iloc[element].lowermost_ionstage + 1
-        for ion in range(nions):
-            ion_stage = ion + elementlist.lowermost_ionstage[element]
-            ionserieslist = [(element * maxion + ion, 'bound-bound'),
-                             (nelements * maxion + element * maxion + ion, 'bound-free')]
-
-            if element == ion == 0:
-                ionserieslist.append((2 * nelements * maxion, 'free-free'))
-
-            for (selectedcolumn, emissiontype) in ionserieslist:
-                # if linelabel.startswith('Fe ') or linelabel.endswith("-free"):
-                #     continue
-                array_fnu_emission = at.spectra.stackspectra(
-                    [(emissiondata.iloc[timestep::len(timearray), selectedcolumn].values,
-                      at.get_timestep_time_delta(timestep, timearray))
-                     for timestep in range(timestepmin, timestepmax + 1)])
-
-                if selectedcolumn < nelements * maxion:  # bound-bound process
-                    array_fnu_absorption = at.spectra.stackspectra(
-                        [(absorptiondata.iloc[timestep::len(timearray), selectedcolumn].values,
-                          at.get_timestep_time_delta(timestep, timearray))
-                         for timestep in range(timestepmin, timestepmax + 1)])
-                else:
-                    array_fnu_absorption = np.zeros(len(array_fnu_emission))
-
-                # best to use the filter on fnu (because it hopefully has regular sampling)
-                if filterfunc:
-                    print("Applying filter")
-                    array_fnu_emission = filterfunc(array_fnu_emission)
-                    if selectedcolumn <= nelements * maxion:
-                        array_fnu_absorption = filterfunc(array_fnu_absorption)
-
-                array_flambda_emission = array_fnu_emission * arraynu / arraylambda
-                array_flambda_absorption = array_fnu_absorption * arraynu / arraylambda
-
-                maxyvaluethisseries = max(
-                    [array_flambda_emission[i] if (xmin < arraylambda[i] < xmax) else -99.0
-                     for i in range(len(array_flambda_emission))])
-
-                maxyvalueglobal = max(maxyvalueglobal, maxyvaluethisseries)
-
-                if emissiontype != 'free-free':
-                    linelabel = f'{at.elsymbols[elementlist.Z[element]]} {at.roman_numerals[ion_stage]} {emissiontype}'
-                else:
-                    linelabel = f'{emissiontype}'
-
-                contribution_list.append(
-                    fluxcontributiontuple(maxyvalue=maxyvaluethisseries, linelabel=linelabel,
-                                          array_flambda_emission=array_flambda_emission,
-                                          array_flambda_absorption=array_flambda_absorption))
-
-    return contribution_list, maxyvalueglobal
-
-
-def get_model_name_times(filename, timearray, args):
-    if args.timemin:
-        oldtime = -1
-        for timestep, time in enumerate(timearray):
-            timefloat = float(time.strip('d'))
-            if (timefloat > args.timemin) and (oldtime <= args.timemin):
-                timestepmin = timestep
-            if timefloat < args.timemax:
-                timestepmax = timestep
-            oldtime = timefloat
-    else:
-        timestepmin = args.timestepmin
-        if args.timestepmax:
-            timestepmax = args.timestepmax
-        else:
-            timestepmax = args.timestepmin
-
-    modelname = at.get_model_name(filename)
-
-    time_days_lower = float(timearray[timestepmin])
-    time_days_upper = float(timearray[timestepmax])
-
-    print(f'Plotting {modelname} ({filename}) timesteps {timestepmin} to {timestepmax} '
-          f'(t={time_days_lower}d to {time_days_upper}d)')
-
-    return modelname, timestepmin, timestepmax, time_days_lower, time_days_upper
-
-
 def plot_artis_spectra(axis, inputfiles, args, filterfunc=None):
     """
         Plot ARTIS emergent spectra
@@ -197,40 +97,12 @@ def plot_artis_spectra(axis, inputfiles, args, filterfunc=None):
     # colorlist = [(0, .8*158./255, 0.6*115./255), (204./255, 121./255, 167./255), (213./255, 94./255, 0.0)]
     # inputfiles.sort(key=lambda x: os.path.dirname(x))
     for index, filename in enumerate(inputfiles):
-        from_packets = os.path.basename(filename).startswith('packets')
-
-        if from_packets:
-            specfilename = os.path.join(os.path.dirname(filename), 'spec.out')
-        else:
-            specfilename = filename
-
-        (modelname, timestepmin, timestepmax,
-         time_days_lower, time_days_upper) = get_model_name_times(filename, at.get_timestep_times(filename), args)
-
-        linelabel = f'{modelname} at t={time_days_lower:.2f}d to {time_days_upper:.2f}d'
-
-        if from_packets:
-            # find any other packets files in the same directory
-            packetsfiles_thismodel = glob.glob(os.path.join(os.path.dirname(filename), 'packets**.out'))
-            print(packetsfiles_thismodel)
-            spectrum = at.spectra.get_spectrum_from_packets(
-                packetsfiles_thismodel, time_days_lower, time_days_upper, lambda_min=args.xmin, lambda_max=args.xmax)
-        else:
-            spectrum = at.spectra.get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
-
-        maxyvaluethisseries = spectrum.query(
-            '@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax')['f_lambda'].max()
-
-        boloflux = at.spectra.bolometric_flux(spectrum.f_lambda, spectrum.lambda_angstroms)
-        print(f'  Bolometric flux: {boloflux:.3e}')
-        linestyle = ['-', '--'][int(index / 7) % 2]
-        spectrum['f_lambda_scaled'] = (spectrum['f_lambda'] / maxyvaluethisseries)
-        ycolumnname = 'f_lambda_scaled' if args.normalised else 'f_lambda'
-        spectrum.plot(x='lambda_angstroms', y=ycolumnname, ax=axis,
-                      linestyle=linestyle, linewidth=2.5 - (0.2 * index),
-                      label=linelabel, alpha=0.95, color=None)  # colorlist[index % len(colorlist)]
-
-        # dashes=dashesList[index], dash_capstyle=dash_capstyleList[index])
+        plotkwargs = {}
+        # plotkwargs['dashes'] = dashesList[index]
+        # plotkwargs['dash_capstyle'] = dash_capstyleList[index]
+        plotkwargs['linestyle'] = ['-', '--'][int(index / 7) % 2]
+        plotkwargs['linewidth'] = 2.5 - (0.2 * index)
+        at.spectra.plot_artis_spectrum(axis, filename, xmin=args.xmin, xmax=args.xmax, args=args, **plotkwargs)
 
 
 def make_emission_plot(emissionfilename, axis, filterfunc, args):
@@ -245,26 +117,32 @@ def make_emission_plot(emissionfilename, axis, filterfunc, args):
     arraynu = specdata.loc[:, '0'].values
 
     (modelname, timestepmin, timestepmax,
-     time_days_lower, time_days_upper) = get_model_name_times(specfilename, timearray, args)
+     time_days_lower, time_days_upper) = at.get_model_name_times(
+         specfilename, timearray, args.timestepmin, args.timestepmax, args.timemin, args.timemax)
 
     arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
     absorptionfilename = os.path.join(os.path.dirname(emissionfilename), 'absorption.out')
-    contribution_list, maxyvalueglobal = get_flux_contributions(
+    contribution_list, maxyvalueglobal, fluxcontribtotal = at.spectra.get_flux_contributions(
         emissionfilename, absorptionfilename, elementlist, maxion, timearray, arraynu,
         filterfunc, args.xmin, args.xmax, timestepmin, timestepmax)
+
+    print(f'  integrated flux ({arraylambda_angstroms.min():.1f} A to '
+          f'{arraylambda_angstroms.max():.1f} A): {fluxcontribtotal:.3e}')
     # print("\n".join([f"{x[0]}, {x[1]}" for x in contribution_list]))
 
-    contribution_list = sorted(contribution_list, key=lambda x: x.maxyvalue)
-    remainder_sum = np.zeros(len(arraylambda_angstroms))
-    remainder_sum_absorption = np.zeros(len(arraylambda_angstroms))
+    contribution_list = sorted(contribution_list, key=lambda x: x.fluxcontrib)
+    remainder_flambda_emission = np.zeros(len(arraylambda_angstroms))
+    remainder_flambda_absorption = np.zeros(len(arraylambda_angstroms))
+    remainder_fluxcontrib = 0
     for row in contribution_list[:- args.maxseriescount]:
-        remainder_sum += row.array_flambda_emission
-        remainder_sum_absorption += row.array_flambda_absorption
+        remainder_fluxcontrib += row.fluxcontrib
+        remainder_flambda_emission += row.array_flambda_emission
+        remainder_flambda_absorption += row.array_flambda_absorption
 
     contribution_list = list(reversed(contribution_list[- args.maxseriescount:]))
-    contribution_list.append(fluxcontributiontuple(maxyvalue=0.0, linelabel='other',
-                                                   array_flambda_emission=remainder_sum,
-                                                   array_flambda_absorption=remainder_sum_absorption))
+    contribution_list.append(at.spectra.fluxcontributiontuple(
+        fluxcontrib=remainder_fluxcontrib, linelabel='other',
+        array_flambda_emission=remainder_flambda_emission, array_flambda_absorption=remainder_flambda_absorption))
 
     plotobjects = axis.stackplot(arraylambda_angstroms, *[x.array_flambda_emission for x in contribution_list],
                                  linewidth=0)
