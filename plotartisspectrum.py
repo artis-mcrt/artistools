@@ -105,10 +105,19 @@ def plot_artis_spectra(axis, inputfiles, args, filterfunc=None):
         at.spectra.plot_artis_spectrum(axis, filename, xmin=args.xmin, xmax=args.xmax, args=args, **plotkwargs)
 
 
-def make_emission_plot(emissionfilename, axis, filterfunc, args):
-    elementlist = at.get_composition_data(os.path.join(os.path.dirname(emissionfilename), 'compositiondata.txt'))
+def make_spectrum_plot(inputfiles, axis, filterfunc, args):
+    """
+        Set up a matplotlib figure and plot observational and ARTIS spectra
+    """
+    at.spectra.plot_reference_spectra(axis, [], [], args, flambdafilterfunc=filterfunc)
+    plot_artis_spectra(axis, inputfiles, args, filterfunc)
 
-    # print(f'nelements {len(elementlist)}')
+    if args.normalised:
+        axis.set_ylim(ymin=-0.1, ymax=1.25)
+        axis.set_ylabel(r'Scaled F$_\lambda$')
+
+
+def make_emission_plot(emissionfilename, axis, filterfunc, args):
     maxion = 5  # must match sn3d.h value
 
     specfilename = os.path.join(os.path.dirname(emissionfilename), 'spec.out')
@@ -122,32 +131,20 @@ def make_emission_plot(emissionfilename, axis, filterfunc, args):
 
     arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
     absorptionfilename = os.path.join(os.path.dirname(emissionfilename), 'absorption.out')
-    contribution_list, maxyvalueglobal, fluxcontribtotal = at.spectra.get_flux_contributions(
-        emissionfilename, absorptionfilename, elementlist, maxion, timearray, arraynu,
+    contribution_list, maxyvalueglobal, totalemissionflux = at.spectra.get_flux_contributions(
+        emissionfilename, absorptionfilename, maxion, timearray, arraynu,
         filterfunc, args.xmin, args.xmax, timestepmin, timestepmax)
 
     print(f'  integrated flux ({arraylambda_angstroms.min():.1f} A to '
-          f'{arraylambda_angstroms.max():.1f} A): {fluxcontribtotal:.3e}')
+          f'{arraylambda_angstroms.max():.1f} A): {totalemissionflux:.3e}')
     # print("\n".join([f"{x[0]}, {x[1]}" for x in contribution_list]))
 
-    contribution_list = sorted(contribution_list, key=lambda x: x.fluxcontrib)
-    remainder_flambda_emission = np.zeros(len(arraylambda_angstroms))
-    remainder_flambda_absorption = np.zeros(len(arraylambda_angstroms))
-    remainder_fluxcontrib = 0
-    for row in contribution_list[:- args.maxseriescount]:
-        remainder_fluxcontrib += row.fluxcontrib
-        remainder_flambda_emission += row.array_flambda_emission
-        remainder_flambda_absorption += row.array_flambda_absorption
+    contributions_sorted_reduced = at.spectra.sort_and_reduce_flux_contribution_list(contribution_list, args.maxseriescount, arraylambda_angstroms)
 
-    contribution_list = list(reversed(contribution_list[- args.maxseriescount:]))
-    contribution_list.append(at.spectra.fluxcontributiontuple(
-        fluxcontrib=remainder_fluxcontrib, linelabel='other',
-        array_flambda_emission=remainder_flambda_emission, array_flambda_absorption=remainder_flambda_absorption))
-
-    plotobjects = axis.stackplot(arraylambda_angstroms, *[x.array_flambda_emission for x in contribution_list],
+    plotobjects = axis.stackplot(arraylambda_angstroms, *[x.array_flambda_emission for x in contributions_sorted_reduced],
                                  linewidth=0)
-    axis.stackplot(arraylambda_angstroms, *[-x.array_flambda_absorption for x in contribution_list], linewidth=0)
-    plotobjectlabels = list([x.linelabel for x in contribution_list])
+    axis.stackplot(arraylambda_angstroms, *[-x.array_flambda_absorption for x in contributions_sorted_reduced], linewidth=0)
+    plotobjectlabels = list([x.linelabel for x in contributions_sorted_reduced])
 
     at.spectra.plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=None,
                                       scale_to_peak=(maxyvalueglobal if args.normalised else None), linewidth=0.5)
@@ -161,18 +158,6 @@ def make_emission_plot(emissionfilename, axis, filterfunc, args):
     # axis.set_ylim(ymin=-0.05 * maxyvalueglobal, ymax=maxyvalueglobal * 1.3)
 
     return plotobjects, plotobjectlabels
-
-
-def make_spectrum_plot(inputfiles, axis, filterfunc, args):
-    """
-        Set up a matplotlib figure and plot observational and ARTIS spectra
-    """
-    at.spectra.plot_reference_spectra(axis, [], [], args, flambdafilterfunc=filterfunc)
-    plot_artis_spectra(axis, inputfiles, args, filterfunc)
-
-    if args.normalised:
-        axis.set_ylim(ymin=-0.1, ymax=1.25)
-        axis.set_ylabel(r'Scaled F$_\lambda$')
 
 
 def make_plot(inputfiles, args):
