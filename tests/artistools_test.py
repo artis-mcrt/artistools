@@ -34,7 +34,7 @@ def test_get_flux_contributions():
     timestepmax = 80
     dfspectrum = at.spectra.get_spectrum(
         specfilename, timestepmin=timestepmin, timestepmax=timestepmax, fnufilterfunc=None)
-    
+
     integrated_flux_specout = at.spectra.integrated_flux(dfspectrum['f_lambda'], dfspectrum['lambda_angstroms'])
 
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
@@ -57,4 +57,3 @@ def test_get_flux_contributions():
     diff = [abs(x - y) for x, y in zip(array_flambda_emission_total, dfspectrum['f_lambda'].values)]
     print(f'Max f_lambda difference {max(diff) / integrated_flux_specout.value}')
     assert(max(diff) / integrated_flux_specout.value < 2e-3)
-
