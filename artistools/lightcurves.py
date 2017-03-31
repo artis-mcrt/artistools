@@ -23,14 +23,13 @@ def read_from_packets(dfpackets, timearray, nprocs, vmax):
     dfpackets.query('type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT" ', inplace=True)
     num_packets = len(dfpackets)
     print(f"{num_packets} escaped r-packets")
-    dlogtlc = (math.log(350.) - math.log(250.)) / 200.
     arr_lum = np.zeros(len(timearray))
     arr_lum_cmf = np.zeros(len(timearray))
     beta = (vmax / const.c).decompose().value
     for index, packet in dfpackets.iterrows():
         # lambda_rf = const.c.to('angstrom/s').value / packet.nu_rf
         t_arrive = at.packets.t_arrive(packet)
-        t_arrive_cmf = packet['escape_time'] * math.sqrt(1 - beta ** 2) / 86400
+        t_arrive_cmf = packet['escape_time'] * math.sqrt(1 - beta ** 2) * u.s.to('day')
         # print(f"Packet escaped at {t_arrive:.1f} days with nu={packet.nu_rf:.2e}, lambda={lambda_rf:.1f}")
         for timestep, time in enumerate(timearray[:-1]):
             if time < t_arrive < timearray[timestep + 1]:

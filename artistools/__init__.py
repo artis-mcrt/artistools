@@ -4,10 +4,10 @@ import math
 import os
 
 # import scipy.signal
-import numpy as np
+# import numpy as np
 import pandas as pd
 from astropy import constants as const
-from astropy import units as u
+# from astropy import units as u
 
 import artistools.lightcurves
 import artistools.packets

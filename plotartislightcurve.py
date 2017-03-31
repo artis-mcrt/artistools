@@ -3,10 +3,10 @@ import argparse
 import glob
 import itertools
 import os
-import sys
+# import sys
 
 import matplotlib.pyplot as plt
-import pandas as pd
+# import pandas as pd
 from astropy import units as u
 
 import artistools as at
