@@ -9,8 +9,8 @@ import pandas as pd
 from astropy import constants as const
 from astropy import units as u
 
-import artistools.spectra
 import artistools.packets
+import artistools.spectra
 
 PYDIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -82,7 +82,7 @@ def get_modeldata(filename):
         t_model_init = float(fmodel.readline())
         for line in fmodel:
             row = line.split()
-            rowdf = pd.DataFrame([gridcelltuple._make([int(row[0])-1] + list(map(float, row[1:])))],
+            rowdf = pd.DataFrame([gridcelltuple._make([int(row[0]) - 1] + list(map(float, row[1:])))],
                                  columns=gridcelltuple._fields)
             modeldata = modeldata.append(rowdf)
     assert(len(modeldata) == gridcellcount)
