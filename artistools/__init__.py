@@ -127,11 +127,11 @@ def get_timestep_time_delta(timestep, timearray):
     """
         Return the time in days between timestep and timestep + 1
     """
-    timestep_final = len(timearray) - 1  # -1 since we start counting at zero
-    if timestep + 1 < timestep_final:
+
+    if timestep < len(timearray) - 1:
         delta_t = (float(timearray[timestep + 1]) - float(timearray[timestep]))
     else:
-        delta_t = (float(timearray[timestep]) - float(timearray[timestep]))
+        delta_t = (float(timearray[timestep]) - float(timearray[timestep - 1]))
 
     return delta_t
 
