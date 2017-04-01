@@ -45,10 +45,13 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets):
         else:
             lcdata = at.lightcurves.readfile(lcfilename)
             if frompackets:
-                packetsfiles = glob.glob(os.path.join(modelpath, 'packets00_????.out'))
-                print(packetsfiles)
-                nprocs = len(packetsfiles)  # hopefully this is true
-                dfpackets = at.packets.readfiles(packetsfiles, [
+                foundpacketsfiles = glob.glob(os.path.join(modelpath, 'packets00_????.out'))
+                ranks = [int(os.path.basename(filename)[10:10 + 4]) for filename in foundpacketsfiles]
+                nprocs = max(ranks) + 1
+                print(f'Reading packets from {nprocs} processes')
+                packetsfilepaths = [os.path.join(modelpath, f'packets00_{rank:04d}.out') for rank in range(nprocs)]
+
+                dfpackets = at.packets.readfiles(packetsfilepaths, [
                     'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
                     'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'])
                 timearray = lcdata['time'].values
