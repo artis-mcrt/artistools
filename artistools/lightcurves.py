@@ -21,7 +21,7 @@ def readfile(filename):
     return lcdata
 
 
-def get_from_packets(packetsfiles, timearray, nprocs, vmax):
+def get_from_packets(packetsfiles, timearray, nprocs, vmax, escape_type='TYPE_RPKT'):
     arr_lum = np.zeros(len(timearray))
     arr_lum_cmf = np.zeros(len(timearray))
     beta = (vmax / const.c).decompose().value
@@ -31,9 +31,9 @@ def get_from_packets(packetsfiles, timearray, nprocs, vmax):
             'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
             'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'])
 
-        dfpackets.query('type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT"', inplace=True)
+        dfpackets.query('type == "TYPE_ESCAPE" and escape_type == @escape_type', inplace=True)
         num_packets = len(dfpackets)
-        print(f"{num_packets} escaped r-packets")
+        print(f"{num_packets} escaped {escape_type} packets")
 
         for index, packet in dfpackets.iterrows():
             # lambda_rf = const.c.to('angstrom/s').value / packet.nu_rf
