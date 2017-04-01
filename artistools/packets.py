@@ -32,17 +32,6 @@ types = {
 }
 
 
-def readfiles(packetsfiles, usecols):
-    for index, packetsfile in enumerate(packetsfiles):
-        dfpackets = readfile(packetsfile, usecols)
-        if index == 0:
-            dfpackets_all = dfpackets
-        else:
-            dfpackets_all = dfpackets_all.append(dfpackets, ignore_index=True)
-
-    return dfpackets_all
-
-
 def readfile(packetsfile, usecols):
     print(f'Reading from {packetsfile} ({os.path.getsize(packetsfile) / 1024 / 1024:.3f} MiB)')
     dfpackets = pd.read_csv(
@@ -52,8 +41,7 @@ def readfile(packetsfile, usecols):
         header=None,
         usecols=usecols)
     dfpackets['type'] = dfpackets['type_id'].map(lambda x: types.get(x, x))
-    dfpackets['escape_type'] = dfpackets['escape_type_id'].map(
-        lambda x: types.get(x, x))
+    dfpackets['escape_type'] = dfpackets['escape_type_id'].map(lambda x: types.get(x, x))
 
     return dfpackets
 
