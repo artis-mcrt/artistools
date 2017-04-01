@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
 # import math
-# import os
-# from collections import namedtuple
+import os
 
 # import matplotlib.patches as mpatches
 # import numpy as np
@@ -11,6 +10,10 @@ from astropy import constants as const
 from astropy import units as u
 
 import artistools as at
+
+# from collections import namedtuple
+
+
 
 columns = [
     'number', 'where', 'type_id', 'posx', 'posy', 'posz', 'dirx', 'diry',
@@ -35,12 +38,13 @@ def readfiles(packetsfiles, usecols):
         if index == 0:
             dfpackets_all = dfpackets
         else:
-            dfpackets_all.append(dfpackets, ignore_index=True)
+            dfpackets_all = dfpackets_all.append(dfpackets, ignore_index=True)
 
     return dfpackets_all
 
 
 def readfile(packetsfile, usecols):
+    print(f'Reading from {packetsfile} ({os.path.getsize(packetsfile) / 1024 / 1024:.3f} MiB)')
     dfpackets = pd.read_csv(
         packetsfile,
         delim_whitespace=True,
