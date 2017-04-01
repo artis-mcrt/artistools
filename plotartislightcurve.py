@@ -51,13 +51,10 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets):
                 print(f'Reading packets from {nprocs} processes')
                 packetsfilepaths = [os.path.join(modelpath, f'packets00_{rank:04d}.out') for rank in range(nprocs)]
 
-                dfpackets = at.packets.readfiles(packetsfilepaths, [
-                    'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
-                    'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'])
                 timearray = lcdata['time'].values
                 model, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
                 vmax = model.iloc[-1].velocity * u.km / u.s
-                lcdata = at.lightcurves.read_from_packets(dfpackets, timearray, nprocs, vmax)
+                lcdata = at.lightcurves.get_from_packets(packetsfilepaths, timearray, nprocs, vmax)
 
         modelname = at.get_model_name(modelpath)
         print(f"Plotting {modelname}")
