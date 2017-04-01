@@ -21,7 +21,9 @@ def main():
                         ' (may include wildcards such as * and **)')
     parser.add_argument('--frompackets', default=False, action='store_true',
                         help='Read packets files instead of light_curve.out')
-    parser.add_argument('-o', action='store', dest='outputfile', default='plotlightcurve.pdf',
+    parser.add_argument('--gamma', default=False, action='store_true',
+                        help='Make light curve from gamma rays instead of R-packets')
+    parser.add_argument('-o', action='store', dest='outputfile',
                         help='Filename for PDF file')
     args = parser.parse_args()
 
@@ -31,19 +33,22 @@ def main():
     # combined the results of applying wildcards on each input
     modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in args.modelpath if os.path.isdir(x)]))
 
-    make_lightcurve_plot(modelpaths, args.outputfile, args.frompackets)
+    if not args.outputfile:
+        args.outputfile = 'plotlightcurve_gamma.pdf' if args.gamma else 'plotlightcurve.pdf'
+
+    make_lightcurve_plot(modelpaths, args.outputfile, args.frompackets, args.gamma)
 
 
-def make_lightcurve_plot(modelpaths, filenameout, frompackets):
+def make_lightcurve_plot(modelpaths, filenameout, frompackets, gammalc):
     fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
         "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     for index, modelpath in enumerate(modelpaths):
-        lcfilename = os.path.join(modelpath, 'light_curve.out')
-        if not os.path.exists(lcfilename):
+        lcpath = os.path.join(modelpath, 'gamma_light_curve.out' if gammalc else 'light_curve.out')
+        if not os.path.exists(lcpath):
             continue
         else:
-            lcdata = at.lightcurves.readfile(lcfilename)
+            lcdata = at.lightcurves.readfile(lcpath)
             if frompackets:
                 foundpacketsfiles = glob.glob(os.path.join(modelpath, 'packets00_????.out'))
                 ranks = [int(os.path.basename(filename)[10:10 + 4]) for filename in foundpacketsfiles]
@@ -54,14 +59,15 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets):
                 timearray = lcdata['time'].values
                 model, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
                 vmax = model.iloc[-1].velocity * u.km / u.s
-                lcdata = at.lightcurves.get_from_packets(packetsfilepaths, timearray, nprocs, vmax)
+                lcdata = at.lightcurves.get_from_packets(packetsfilepaths, timearray, nprocs, vmax,
+                                                         escape_type='TYPE_GAMMA' if gammalc else 'TYPE_RPKT')
 
         modelname = at.get_model_name(modelpath)
         print(f"Plotting {modelname}")
 
         linestyle = ['-', '--'][int(index / 7)]
 
-        axis.plot(lcdata.time, lcdata['lum'], linewidth=2, linestyle=linestyle, label=modelname)
+        axis.plot(lcdata.time, lcdata['lum'], linewidth=2, linestyle=linestyle, label=f'{modelname}')
         axis.plot(lcdata.time, lcdata['lum_cmf'], linewidth=2, linestyle=linestyle, label=f'{modelname} (cmf)')
 
     # axis.set_xlim(xmin=xminvalue,xmax=xmaxvalue)
@@ -69,7 +75,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets):
 
     axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
     axis.set_xlabel(r'Time (days)')
-    axis.set_ylabel(r'$\mathrm{L} / \mathrm{L}_\odot$')
+    axis.set_ylabel(r'$\mathrm{L} ' + ('_\gamma' if gammalc else '') + r'/ \mathrm{L}_\odot$')
 
     fig.savefig(filenameout, format='pdf')
     print(f'Saved {filenameout}')

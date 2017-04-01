@@ -29,6 +29,7 @@ columns = [
 types = {
     32: 'TYPE_ESCAPE',
     11: 'TYPE_RPKT',
+    10: 'TYPE_GAMMA',
 }
 
 
