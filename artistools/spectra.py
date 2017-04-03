@@ -80,36 +80,35 @@ def get_spectrum(specfilename, timestepmin, timestepmax=-1, fnufilterfunc=None):
     return dfspectrum
 
 
-def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_min, lambda_max):
-    # delta_lambda = (lambda_max - lambda_min) / 500
-    delta_lambda = 20
+def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_min, lambda_max, delta_lambda=30):
     array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
-    array_energysum = np.zeros_like(array_lambda)  # total packet energy sum of each bin
+    array_energysum = np.zeros_like(array_lambda, dtype=np.float)  # total packet energy sum of each bin
 
-    PARSEC = 3.0857e+18  # pc to cm [pc/cm]
-    timelow = timelowdays * 86400
-    timehigh = timehighdays * 86400
+    PARSEC = u.parsec.to('cm')
+    timelow = timelowdays * u.day.to('s')
+    timehigh = timehighdays * u.day.to('s')
     nprocs = len(packetsfiles)  # hopefully this is true
-    c_cgs = const.c.to('cm/s')
+    c_cgs = const.c.to('cm/s').value
     c_ang_s = const.c.to('angstrom/s').value
     nu_min = c_ang_s / lambda_max
     nu_max = c_ang_s / lambda_min
     for packetsfile in packetsfiles:
         print(f"Loading {packetsfile}")
-        dfpackets = at.packet.readfile(packetsfile, usecols=[
+        dfpackets = at.packets.readfile(packetsfile, usecols=[
             'type_id', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
             'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'])
-        # pos_dot_dir = packet.posx * packet.dirx + packet.posy * packet.diry + packet.posz * packet.dirz
-        # dfpackets['t_arrive'] = sfpackets['escape_time'] - (pos_dot_dir / 2.99792458e+10)
+
         dfpackets.query('type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT" and'
                         '@nu_min <= nu_rf < @nu_max and'
                         '@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh',
                         inplace=True)
-        num_packets = len(dfpackets)
-        print(f"{num_packets} escaped r-packets with matching nu and arrival time")
+
+        print(f"{len(dfpackets)} escaped r-packets with matching nu and arrival time")
         for index, packet in dfpackets.iterrows():
             lambda_rf = c_ang_s / packet.nu_rf
-            # print(f"Packet escaped at {t_arrive / 86400:.1f} days with nu={packet.nu_rf:.2e}, lambda={lambda_rf:.1f}")
+            # pos_dot_dir = packet.posx * packet.dirx + packet.posy * packet.diry + packet.posz * packet.dirz
+            # t_arrive = packet['escape_time'] - (pos_dot_dir / c_cgs)
+            # print(f"Packet escaped at {t_arrive / u.day.to('s'):.1f} days with nu={packet.nu_rf:.2e}, lambda={lambda_rf:.1f}")
             xindex = math.floor((lambda_rf - lambda_min) / delta_lambda)
             assert(xindex >= 0)
             array_energysum[xindex] += packet.e_rf
@@ -224,7 +223,7 @@ def plot_artis_spectrum(axis, filename, xmin, xmax, args, filterfunc=None, **plo
 
     (modelname, timestepmin, timestepmax,
      time_days_lower, time_days_upper) = at.get_model_name_times(
-         filename, at.get_timestep_times(filename), args.timestepmin, args.timestepmax, args.timemin, args.timemax)
+         filename, at.get_timestep_times(specfilename), args.timestepmin, args.timestepmax, args.timemin, args.timemax)
 
     linelabel = f'{modelname} at t={time_days_lower:.2f}d to {time_days_upper:.2f}d'
 

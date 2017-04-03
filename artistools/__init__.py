@@ -328,21 +328,21 @@ def get_model_name(path):
 
 
 def get_model_name_times(filename, timearray, timestepmin, timestepmax, timemin, timemax):
-    if timemin:
-        oldtime = -1
+    print(timemin, timemax, timestepmin, timestepmax)
+    if timemin:  # set the timestep ourselves
+        timestepmin = 0
         for timestep, time in enumerate(timearray):
             timefloat = float(time.strip('d'))
-            if (timefloat > timemin) and (oldtime <= timemin):
+            if (timefloat >= timemin):
                 timestepmin = timestep
-            if timefloat < timemax:
-                timestepmax = timestep
-            oldtime = timefloat
-    else:
-        timestepmin = timestepmin
-        if timestepmax:
-            timestepmax = timestepmax
-        else:
-            timestepmax = timestepmin
+                break
+    if timemax:
+        timestepmax = 99999999
+        for timestep, time in enumerate(timearray):
+            timefloat = float(time.strip('d'))
+            if (timefloat > timemax):
+                timestepmax = timestep - 1
+                break
 
     modelname = get_model_name(filename)
 
