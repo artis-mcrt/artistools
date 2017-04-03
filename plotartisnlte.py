@@ -72,7 +72,8 @@ def make_plot(dfpop, atomic_number, exc_temperature, args):
         ion_stage = ion_stage_list[ion]
         dfpopion = dfpop.query('ion_stage==@ion_stage')
 
-        axis.plot(dfpopion.level.values, dfpopion.n_LTE.values, linewidth=1.5, label='LTE', linestyle='None', marker='+')
+        axis.plot(dfpopion.level.values, dfpopion.n_LTE.values, linewidth=1.5,
+                  label='LTE', linestyle='None', marker='+')
 
         axis.plot(dfpopion.level.values[:-1], dfpopion.n_LTE_custom.values[:-1], linewidth=1.5,
                   label=f'LTE {exc_temperature:.0f} K', linestyle='None', marker='*')

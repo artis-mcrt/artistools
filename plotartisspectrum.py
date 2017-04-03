@@ -26,7 +26,7 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS model spectra by finding spec.out files '
                     'in the current directory or subdirectories.')
-    parser.add_argument('-modelpath', action='append', default=[],
+    parser.add_argument('modelpath', default=[], nargs='*',
                         help='Paths to ARTIS folders with spec.out or packets files'
                         ' (may include wildcards such as * and **)')
     parser.add_argument('--frompackets', default=False, action='store_true',

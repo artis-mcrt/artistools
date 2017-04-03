@@ -13,13 +13,11 @@ import artistools as at
 # import sys
 
 
-
-
 def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS radiation field.')
-    parser.add_argument('-modelpath', action='append', default=[],
+    parser.add_argument('modelpath', default=[], nargs='*',
                         help='Paths to ARTIS folders with light_curve.out or packets files'
                         ' (may include wildcards such as * and **)')
     parser.add_argument('--frompackets', default=False, action='store_true',
