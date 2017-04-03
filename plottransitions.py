@@ -198,7 +198,7 @@ def make_plot(xvalues, yvalues, elsymbol, ions, args):
         len(ions) + 1, 1, sharex=True, figsize=(6, 6),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    yvalues_combined = np.zeros(len(xvalues))
+    yvalues_combined = np.zeros_like(xvalues)
     for ion_index in range(len(ions) + 1):
         if ion_index < len(ions):
             # an ion subplot

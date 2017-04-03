@@ -22,9 +22,11 @@ def readfile(filename):
 
 
 def get_from_packets(packetsfiles, timearray, nprocs, vmax, escape_type='TYPE_RPKT'):
-    arr_lum = np.zeros(len(timearray))
-    arr_lum_cmf = np.zeros(len(timearray))
-    beta = (vmax / const.c).decompose().value
+    arr_lum_raw = np.zeros_like(timearray)
+    arr_lum_cmf_raw = np.zeros_like(timearray)
+    betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
+    timearrayplusend = np.append(timearray, 2 * timearray[-1] - timearray[-2])
+    arr_timedelta = [at.get_timestep_time_delta(timestep, timearray) for timestep in range(len(timearray))]
 
     for packetsfile in packetsfiles:
         dfpackets = at.packets.readfile(packetsfile, usecols=[
@@ -33,25 +35,26 @@ def get_from_packets(packetsfiles, timearray, nprocs, vmax, escape_type='TYPE_RP
 
         dfpackets.query('type == "TYPE_ESCAPE" and escape_type == @escape_type', inplace=True)
         num_packets = len(dfpackets)
-        print(f"{num_packets} escaped {escape_type} packets")
+        print(f"{num_packets} {escape_type} packets escaped")
 
-        for index, packet in dfpackets.iterrows():
-            # lambda_rf = const.c.to('angstrom/s').value / packet.nu_rf
-            t_arrive = at.packets.t_arrive(packet)
-            t_arrive_cmf = packet['escape_time'] * math.sqrt(1 - beta ** 2) * u.s.to('day')
-            # print(f"Packet escaped at {t_arrive:.1f} days with nu={packet.nu_rf:.2e}, lambda={lambda_rf:.1f}")
+        # the bin is usually a timestep, but could also be -1 or timestep + 1
+        dfpackets['t_arrive_bin'] = np.subtract(
+            np.digitize([at.packets.t_arrive(packet) * u.s.to('day') for _, packet in dfpackets.iterrows()],
+                        timearrayplusend),
+            np.ones(num_packets, dtype=np.int))
 
-            for timestep, time in enumerate(timearray[:-1]):
+        dfpackets['t_arrive_cmf_bin'] = np.subtract(
+            np.digitize(dfpackets['escape_time'].values * betafactor * u.s.to('day'), timearrayplusend),
+            np.ones(num_packets, dtype=np.int))
 
-                if time < t_arrive < timearray[timestep + 1]:
-                    arr_lum[timestep] += (packet.e_rf * u.erg / (
-                        at.get_timestep_time_delta(timestep, timearray) * u.day) /
-                                          nprocs).to('solLum').value
+        arr_lum_raw += np.fromiter(
+            (dfpackets.query('t_arrive_bin == @timestep')['e_rf'].sum() for timestep in range(len(timearray))),
+            dtype=np.float)
+        arr_lum_cmf_raw += np.fromiter(
+            (dfpackets.query('t_arrive_cmf_bin == @timestep')['e_cmf'].sum() for timestep in range(len(timearray))),
+            dtype=np.float)
 
-                if time < t_arrive_cmf < timearray[timestep + 1]:
-                    arr_lum_cmf[timestep] += (packet.e_cmf * u.erg / (
-                            at.get_timestep_time_delta(timestep, timearray) * u.day) /
-                                              nprocs / math.sqrt(1 - beta ** 2)).to('solLum').value
-
+    arr_lum = np.divide(arr_lum_raw / nprocs * (u.erg / u.day).to('solLum'), arr_timedelta)
+    arr_lum_cmf = np.divide(arr_lum_cmf_raw / nprocs / betafactor * (u.erg / u.day).to('solLum'), arr_timedelta)
     lcdata = pd.DataFrame({'time': timearray, 'lum': arr_lum, 'lum_cmf': arr_lum_cmf})
     return lcdata

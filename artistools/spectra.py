@@ -84,7 +84,7 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
     # delta_lambda = (lambda_max - lambda_min) / 500
     delta_lambda = 20
     array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
-    array_energysum = np.zeros(len(array_lambda))  # total packet energy sum of each bin
+    array_energysum = np.zeros_like(array_lambda)  # total packet energy sum of each bin
 
     PARSEC = 3.0857e+18  # pc to cm [pc/cm]
     timelow = timelowdays * 86400
@@ -133,7 +133,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
 
     nelements = len(elementlist)
     maxyvalueglobal = 0.
-    array_flambda_emission_total = np.zeros(len(arraylambda))
+    array_flambda_emission_total = np.zeros_like(arraylambda)
     contribution_list = []
     for element in range(nelements):
         nions = elementlist.nions[element]
@@ -160,7 +160,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
                           at.get_timestep_time_delta(timestep, timearray))
                          for timestep in range(timestepmin, timestepmax + 1)])
                 else:
-                    array_fnu_absorption = np.zeros(len(array_fnu_emission))
+                    array_fnu_absorption = np.zeros_like(array_fnu_emission)
 
                 # best to use the filter on fnu (because it hopefully has regular sampling)
                 if filterfunc:
@@ -198,8 +198,8 @@ def sort_and_reduce_flux_contribution_list(contribution_list_in, maxseriescount,
     contribution_list = sorted(contribution_list_in, key=lambda x: -x.fluxemissioncontrib)
 
     # combine the items past maxseriescount into a single item
-    remainder_flambda_emission = np.zeros(len(arraylambda_angstroms))
-    remainder_flambda_absorption = np.zeros(len(arraylambda_angstroms))
+    remainder_flambda_emission = np.zeros_like(arraylambda_angstroms)
+    remainder_flambda_absorption = np.zeros_like(arraylambda_angstroms)
     remainder_fluxcontrib = 0
     for row in contribution_list[maxseriescount:]:
         remainder_fluxcontrib += row.fluxemissioncontrib
