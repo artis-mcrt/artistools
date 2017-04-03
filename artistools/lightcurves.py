@@ -24,8 +24,8 @@ def readfile(filename):
 def get_from_packets(packetsfiles, timearray, nprocs, vmax, escape_type='TYPE_RPKT'):
     betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
-    timearrayplusend = np.append(timearray, 2 * timearray[-1] - timearray[-2])
     arr_timedelta = [at.get_timestep_time_delta(timestep, timearray) for timestep in range(len(timearray))]
+    timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
 
     arr_lum_raw = np.zeros_like(timearray, dtype=np.float)
     arr_lum_cmf_raw = np.zeros_like(timearray, dtype=np.float)
@@ -36,25 +36,19 @@ def get_from_packets(packetsfiles, timearray, nprocs, vmax, escape_type='TYPE_RP
             'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'])
 
         dfpackets.query('type == "TYPE_ESCAPE" and escape_type == @escape_type', inplace=True)
-        num_packets = len(dfpackets)
-        print(f"{num_packets} {escape_type} packets escaped")
+        print(f"{len(dfpackets)} {escape_type} packets escaped")
 
-        # the bin is usually a timestep, but could also be -1 or timestep + 1
-        dfpackets['t_arrive_bin'] = np.subtract(
-            np.digitize([at.packets.t_arrive(packet) * u.s.to('day') for _, packet in dfpackets.iterrows()],
-                        timearrayplusend),
-            np.ones(num_packets, dtype=np.int))
+        dfpackets['t_arrive_d'] = dfpackets.apply(lambda packet: at.packets.t_arrive(packet) * u.s.to('day'), axis=1)
 
-        dfpackets['t_arrive_cmf_bin'] = np.subtract(
-            np.digitize(dfpackets['escape_time'].values * betafactor * u.s.to('day'), timearrayplusend),
-            np.ones(num_packets, dtype=np.int))
+        binned = pd.cut(dfpackets['t_arrive_d'], timearrayplusend, labels=False, include_lowest=True)
+        for binindex, e_rf_sum in dfpackets.groupby(binned)['e_rf'].sum().iteritems():
+            arr_lum_raw[int(binindex)] += e_rf_sum
 
-        arr_lum_raw += np.fromiter(
-            (dfpackets.query('t_arrive_bin == @timestep')['e_rf'].sum() for timestep in range(len(timearray))),
-            dtype=np.float)
-        arr_lum_cmf_raw += np.fromiter(
-            (dfpackets.query('t_arrive_cmf_bin == @timestep')['e_cmf'].sum() for timestep in range(len(timearray))),
-            dtype=np.float)
+        dfpackets['t_arrive_cmf_d'] = dfpackets['escape_time'] * betafactor * u.s.to('day')
+
+        binned_cmf = pd.cut(dfpackets['t_arrive_cmf_d'], timearrayplusend, labels=False, include_lowest=True)
+        for binindex, e_cmf_sum in dfpackets.groupby(binned_cmf)['e_cmf'].sum().iteritems():
+            arr_lum_cmf_raw[int(binindex)] += e_cmf_sum
 
     arr_lum = np.divide(arr_lum_raw / nprocs * (u.erg / u.day).to('solLum'), arr_timedelta)
     arr_lum_cmf = np.divide(arr_lum_cmf_raw / nprocs / betafactor * (u.erg / u.day).to('solLum'), arr_timedelta)
