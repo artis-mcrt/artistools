@@ -22,11 +22,13 @@ def readfile(filename):
 
 
 def get_from_packets(packetsfiles, timearray, nprocs, vmax, escape_type='TYPE_RPKT'):
-    arr_lum_raw = np.zeros_like(timearray)
-    arr_lum_cmf_raw = np.zeros_like(timearray)
     betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
+
     timearrayplusend = np.append(timearray, 2 * timearray[-1] - timearray[-2])
     arr_timedelta = [at.get_timestep_time_delta(timestep, timearray) for timestep in range(len(timearray))]
+
+    arr_lum_raw = np.zeros_like(timearray, dtype=np.float)
+    arr_lum_cmf_raw = np.zeros_like(timearray, dtype=np.float)
 
     for packetsfile in packetsfiles:
         dfpackets = at.packets.readfile(packetsfile, usecols=[
