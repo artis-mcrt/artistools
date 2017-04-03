@@ -3,13 +3,16 @@ import argparse
 import glob
 import itertools
 import os
-# import sys
 
 import matplotlib.pyplot as plt
-# import pandas as pd
 from astropy import units as u
 
 import artistools as at
+
+
+# import sys
+
+
 
 
 def main():
@@ -44,6 +47,8 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets, gammalc):
         "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     for index, modelpath in enumerate(modelpaths):
+        modelname = at.get_model_name(modelpath)
+        print(f"===> {modelname}")
         lcpath = os.path.join(modelpath, 'gamma_light_curve.out' if gammalc else 'light_curve.out')
         if not os.path.exists(lcpath):
             continue
@@ -57,13 +62,13 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets, gammalc):
                 packetsfilepaths = [os.path.join(modelpath, f'packets00_{rank:04d}.out') for rank in range(nprocs)]
 
                 timearray = lcdata['time'].values
+                # timearray = np.arange(250, 350, 0.1)
                 model, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
                 vmax = model.iloc[-1].velocity * u.km / u.s
                 lcdata = at.lightcurves.get_from_packets(packetsfilepaths, timearray, nprocs, vmax,
                                                          escape_type='TYPE_GAMMA' if gammalc else 'TYPE_RPKT')
 
-        modelname = at.get_model_name(modelpath)
-        print(f"Plotting {modelname}")
+        print(f"Plotting...")
 
         linestyle = ['-', '--'][int(index / 7)]
 
