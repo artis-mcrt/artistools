@@ -84,7 +84,6 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
     array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
     array_energysum = np.zeros_like(array_lambda, dtype=np.float)  # total packet energy sum of each bin
 
-    PARSEC = u.parsec.to('cm')
     timelow = timelowdays * u.day.to('s')
     timehigh = timehighdays * u.day.to('s')
     nprocs = len(packetsfiles)  # hopefully this is true
@@ -108,12 +107,13 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
             lambda_rf = c_ang_s / packet.nu_rf
             # pos_dot_dir = packet.posx * packet.dirx + packet.posy * packet.diry + packet.posz * packet.dirz
             # t_arrive = packet['escape_time'] - (pos_dot_dir / c_cgs)
-            # print(f"Packet escaped at {t_arrive / u.day.to('s'):.1f} days with nu={packet.nu_rf:.2e}, lambda={lambda_rf:.1f}")
+            # print(f"Packet escaped at {t_arrive / u.day.to('s'):.1f} days with "
+            #       f"nu={packet.nu_rf:.2e}, lambda={lambda_rf:.1f}")
             xindex = math.floor((lambda_rf - lambda_min) / delta_lambda)
             assert(xindex >= 0)
             array_energysum[xindex] += packet.e_rf
 
-    array_flambda = array_energysum / delta_lambda / (timehigh - timelow) / 4.e12 / math.pi / PARSEC / PARSEC / nprocs
+    array_flambda = array_energysum / delta_lambda / (timehigh - timelow) / 4.e12 / math.pi / (u.parsec.to('cm') ** 2) / nprocs
 
     return pd.DataFrame({'lambda_angstroms': array_lambda, 'f_lambda': array_flambda})
 

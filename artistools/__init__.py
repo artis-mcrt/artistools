@@ -328,7 +328,6 @@ def get_model_name(path):
 
 
 def get_model_name_times(filename, timearray, timestepmin, timestepmax, timemin, timemax):
-    print(timemin, timemax, timestepmin, timestepmax)
     if timemin:  # set the timestep ourselves
         timestepmin = 0
         for timestep, time in enumerate(timearray):
