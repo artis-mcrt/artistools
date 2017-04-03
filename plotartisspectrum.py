@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import glob
+import itertools
 import os
 import sys
 import warnings
@@ -25,8 +26,11 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS model spectra by finding spec.out files '
                     'in the current directory or subdirectories.')
-    parser.add_argument('-i', action='append', default=[], dest='filepaths',
-                        help='Path to spec.out or packets*.out file (may include wildcards such as * and **)')
+    parser.add_argument('-modelpath', action='append', default=[],
+                        help='Paths to ARTIS folders with spec.out or packets files'
+                        ' (may include wildcards such as * and **)')
+    parser.add_argument('--frompackets', default=False, action='store_true',
+                        help='Read packets files directly instead of exspec results')
     parser.add_argument('--emissionabsorption', default=False, action='store_true',
                         help='Show an emission/absorption plot')
     parser.add_argument('-maxseriescount', type=int, default=9,
@@ -55,37 +59,29 @@ def main():
                         help='path/filename for PDF file')
     args = parser.parse_args()
 
-    if not args.filepaths:
-        if args.emissionabsorption:
-            args.filepaths = ['emission*.out', '*/emission*.out']
-        else:
-            args.filepaths = ['spec.out', '*/spec.out']  # '**/spec.out'
+    if len(args.modelpath) == 0:
+        args.modelpath = ['.', '*']
 
-    inputfiles = []
-    for filepath in args.filepaths:
-        inputfiles.extend(glob.glob(filepath, recursive=True))
-
-    if not inputfiles:
-        print('no input files found')
-        sys.exit()
+    # combined the results of applying wildcards on each input
+    modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in args.modelpath if os.path.isdir(x)]))
 
     if args.emissionabsorption:
-        if len(inputfiles) > 1:
+        if len(modelpaths) > 1:
             print("ERROR: emission/absorption plot can only take one input model")
             sys.exit()
         else:
             if not args.outputfile:
                 args.outputfile = "plotspecemission.pdf"
-            make_plot(inputfiles, args)
+            make_plot(modelpaths, args)
     elif args.listtimesteps:
-        at.showtimesteptimes(inputfiles[0])
+        at.showtimesteptimes(modelpaths[0])
     else:
         if not args.outputfile:
             args.outputfile = "plotspec.pdf"
-        make_plot(inputfiles, args)
+        make_plot(modelpaths, args)
 
 
-def plot_artis_spectra(axis, inputfiles, args, filterfunc=None):
+def plot_artis_spectra(axis, modelpaths, args, filterfunc=None):
     """
         Plot ARTIS emergent spectra
     """
@@ -94,31 +90,37 @@ def plot_artis_spectra(axis, inputfiles, args, filterfunc=None):
     # dash_capstyleList = ['butt', 'butt', 'butt', 'round', 'butt']
     # colorlist = [(0, .8*158./255, 0.6*115./255), (204./255, 121./255, 167./255), (213./255, 94./255, 0.0)]
     # inputfiles.sort(key=lambda x: os.path.dirname(x))
-    for index, filename in enumerate(inputfiles):
+    for index, modelpath in enumerate(modelpaths):
+        modelname = at.get_model_name(modelpath)
+        print(f"====> {modelname}")
         plotkwargs = {}
         # plotkwargs['dashes'] = dashesList[index]
         # plotkwargs['dash_capstyle'] = dash_capstyleList[index]
         plotkwargs['linestyle'] = ['-', '--'][int(index / 7) % 2]
         plotkwargs['linewidth'] = 2.5 - (0.2 * index)
-        at.spectra.plot_artis_spectrum(axis, filename, xmin=args.xmin, xmax=args.xmax, args=args, **plotkwargs)
+        at.spectra.plot_artis_spectrum(axis, modelpath, xmin=args.xmin, xmax=args.xmax, args=args, **plotkwargs)
 
 
-def make_spectrum_plot(inputfiles, axis, filterfunc, args):
+def make_spectrum_plot(modelpaths, axis, filterfunc, args):
     """
         Set up a matplotlib figure and plot observational and ARTIS spectra
     """
     at.spectra.plot_reference_spectra(axis, [], [], args, flambdafilterfunc=filterfunc)
-    plot_artis_spectra(axis, inputfiles, args, filterfunc)
+    plot_artis_spectra(axis, modelpaths, args, filterfunc)
 
     if args.normalised:
         axis.set_ylim(ymin=-0.1, ymax=1.25)
         axis.set_ylabel(r'Scaled F$_\lambda$')
 
 
-def make_emission_plot(emissionfilename, axis, filterfunc, args):
+def make_emission_plot(modelpath, axis, filterfunc, args):
     maxion = 5  # must match sn3d.h value
 
-    specfilename = os.path.join(os.path.dirname(emissionfilename), 'spec.out')
+    emissionfilename = os.path.join(modelpath, 'emissiontrue.out')
+    if not os.path.exists(emissionfilename):
+        emissionfilename = os.path.join(modelpath, 'emission.out')
+
+    specfilename = os.path.join(modelpath, 'spec.out')
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     timearray = specdata.columns.values[1:]
     arraynu = specdata.loc[:, '0'].values
@@ -165,7 +167,7 @@ def make_emission_plot(emissionfilename, axis, filterfunc, args):
     return plotobjects, plotobjectlabels
 
 
-def make_plot(inputfiles, args):
+def make_plot(modelpaths, args):
     import matplotlib.ticker as ticker
 
     fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
@@ -177,9 +179,9 @@ def make_plot(inputfiles, args):
     #     return scipy.signal.savgol_filter(flambda, 5, 3)
     filterfunc = None
     if args.emissionabsorption:
-        plotobjects, plotobjectlabels = make_emission_plot(inputfiles[0], axis, filterfunc, args)
+        plotobjects, plotobjectlabels = make_emission_plot(modelpaths[0], axis, filterfunc, args)
     else:
-        make_spectrum_plot(inputfiles, axis, filterfunc, args)
+        make_spectrum_plot(modelpaths, axis, filterfunc, args)
         plotobjects, plotobjectlabels = axis.get_legend_handles_labels()
 
     axis.legend(plotobjects, plotobjectlabels, loc='best', handlelength=2,
