@@ -213,23 +213,18 @@ def sort_and_reduce_flux_contribution_list(contribution_list_in, maxseriescount,
     return contribution_list_out
 
 
-def plot_artis_spectrum(axis, filename, xmin, xmax, args, filterfunc=None, **plotkwargs):
-    from_packets = os.path.basename(filename).startswith('packets')
-
-    if from_packets:
-        specfilename = os.path.join(os.path.dirname(filename), 'spec.out')
-    else:
-        specfilename = filename
+def plot_artis_spectrum(axis, modelpath, xmin, xmax, args, from_packets=False, filterfunc=None, **plotkwargs):
+    specfilename = os.path.join(modelpath, 'spec.out')
 
     (modelname, timestepmin, timestepmax,
      time_days_lower, time_days_upper) = at.get_model_name_times(
-         filename, at.get_timestep_times(specfilename), args.timestepmin, args.timestepmax, args.timemin, args.timemax)
+         specfilename, at.get_timestep_times(specfilename), args.timestepmin, args.timestepmax, args.timemin, args.timemax)
 
     linelabel = f'{modelname} at t={time_days_lower:.2f}d to {time_days_upper:.2f}d'
 
     if from_packets:
         # find any other packets files in the same directory
-        packetsfiles_thismodel = glob.glob(os.path.join(os.path.dirname(filename), 'packets**.out'))
+        packetsfiles_thismodel = glob.glob(os.path.join(modelpath, 'packets**.out'))
         print(packetsfiles_thismodel)
         spectrum = get_spectrum_from_packets(
             packetsfiles_thismodel, time_days_lower, time_days_upper, lambda_min=xmin, lambda_max=xmax)

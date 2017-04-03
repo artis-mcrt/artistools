@@ -20,7 +20,7 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS radiation field.')
     parser.add_argument('-modelpath', action='append', default=[],
-                        help='Paths to artis folders with light_curve.out or packets files'
+                        help='Paths to ARTIS folders with light_curve.out or packets files'
                         ' (may include wildcards such as * and **)')
     parser.add_argument('--frompackets', default=False, action='store_true',
                         help='Read packets files instead of light_curve.out')
@@ -48,7 +48,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets, gammalc):
 
     for index, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
-        print(f"===> {modelname}")
+        print(f"====> {modelname}")
         lcpath = os.path.join(modelpath, 'gamma_light_curve.out' if gammalc else 'light_curve.out')
         if not os.path.exists(lcpath):
             continue
