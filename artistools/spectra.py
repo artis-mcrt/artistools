@@ -149,13 +149,13 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
             for (selectedcolumn, emissiontype) in ionserieslist:
                 # if linelabel.startswith('Fe ') or linelabel.endswith("-free"):
                 #     continue
-                array_fnu_emission = at.spectra.stackspectra(
+                array_fnu_emission = stackspectra(
                     [(emissiondata.iloc[timestep::len(timearray), selectedcolumn].values,
                       at.get_timestep_time_delta(timestep, timearray))
                      for timestep in range(timestepmin, timestepmax + 1)])
 
                 if selectedcolumn < nelements * maxion:  # bound-bound process
-                    array_fnu_absorption = at.spectra.stackspectra(
+                    array_fnu_absorption = stackspectra(
                         [(absorptiondata.iloc[timestep::len(timearray), selectedcolumn].values,
                           at.get_timestep_time_delta(timestep, timearray))
                          for timestep in range(timestepmin, timestepmax + 1)])
@@ -173,7 +173,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
                 array_flambda_absorption = array_fnu_absorption * arraynu / arraylambda
 
                 array_flambda_emission_total += array_flambda_emission
-                fluxemissioncontribthisseries = at.spectra.integrated_flux(array_fnu_emission, arraynu)
+                fluxemissioncontribthisseries = integrate_flux(array_fnu_emission, arraynu)
                 maxyvaluethisseries = max(
                     [array_flambda_emission[i] if (xmin < arraylambda[i] < xmax) else -99.0
                      for i in range(len(array_flambda_emission))])
@@ -208,7 +208,7 @@ def sort_and_reduce_flux_contribution_list(contribution_list_in, maxseriescount,
 
     contribution_list_out = contribution_list[:maxseriescount]
     if remainder_fluxcontrib > 0.:
-        contribution_list_out.append(at.spectra.fluxcontributiontuple(
+        contribution_list_out.append(fluxcontributiontuple(
             fluxemissioncontrib=remainder_fluxcontrib, linelabel='other',
             array_flambda_emission=remainder_flambda_emission, array_flambda_absorption=remainder_flambda_absorption))
     return contribution_list_out
@@ -275,7 +275,7 @@ def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
 
     specdata.query('lambda_angstroms > @xmin and lambda_angstroms < @xmax', inplace=True)
 
-    at.spectra.print_integrated_flux(specdata.f_lambda, specdata.lambda_angstroms)
+    print_integrated_flux(specdata.f_lambda, specdata.lambda_angstroms)
 
     if len(specdata) > 5000:
         # specdata = scipy.signal.resample(specdata, 10000)
@@ -303,14 +303,14 @@ def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
     return mpatches.Patch(color=lineplot.get_lines()[0].get_color())
 
 
-def integrated_flux(arr_dflux_by_dx, arr_x):
+def integrate_flux(arr_dflux_by_dx, arr_x):
     #  use abs in case arr_x is decreasing
     arr_dx = np.abs(np.diff(arr_x))
     return np.dot(arr_dflux_by_dx[:-1], arr_dx) * u.erg / u.s / (u.cm ** 2)
 
 
 def print_integrated_flux(arr_f_lambda, arr_lambda_angstroms):
-    integrated_flux = at.spectra.integrated_flux(arr_f_lambda, arr_lambda_angstroms)
+    integrated_flux = integrate_flux(arr_f_lambda, arr_lambda_angstroms)
     luminosity = integrated_flux * 4 * math.pi * (u.megaparsec ** 2)
     print(f'  integrated flux ({arr_lambda_angstroms.min():.1f} A to '
           f'{arr_lambda_angstroms.max():.1f} A): {integrated_flux:.3e}, (L={luminosity.to("Lsun"):.3e})')

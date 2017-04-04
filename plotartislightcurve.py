@@ -56,7 +56,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets, gammalc):
                 foundpacketsfiles = glob.glob(os.path.join(modelpath, 'packets00_????.out'))
                 ranks = [int(os.path.basename(filename)[10:10 + 4]) for filename in foundpacketsfiles]
                 nprocs = max(ranks) + 1
-                print(f'Reading packets from {nprocs} processes')
+                print(f'Reading packets for {nprocs} processes')
                 packetsfilepaths = [os.path.join(modelpath, f'packets00_{rank:04d}.out') for rank in range(nprocs)]
 
                 timearray = lcdata['time'].values
