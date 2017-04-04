@@ -36,7 +36,7 @@ def test_get_flux_contributions():
     dfspectrum = at.spectra.get_spectrum(
         specfilename, timestepmin=timestepmin, timestepmax=timestepmax, fnufilterfunc=None)
 
-    integrated_flux_specout = at.spectra.integrated_flux(dfspectrum['f_lambda'], dfspectrum['lambda_angstroms'])
+    integrated_flux_specout = at.spectra.integrate_flux(dfspectrum['f_lambda'], dfspectrum['lambda_angstroms'])
 
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     timearray = specdata.columns.values[1:]
@@ -47,7 +47,7 @@ def test_get_flux_contributions():
         emissionfilename, absorptionfilename, 5, timearray, arraynu,
         xmin=-1, xmax=np.inf, timestepmin=timestepmin, timestepmax=timestepmax)
 
-    integrated_flux_emission = at.spectra.integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
+    integrated_flux_emission = at.spectra.integrate_flux(array_flambda_emission_total, arraylambda_angstroms)
 
     # total spectrum should be equal to the sum of all emission processes
     print(f'Integrated flux from spec.out:     {integrated_flux_specout}')

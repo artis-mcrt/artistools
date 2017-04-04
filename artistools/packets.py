@@ -9,8 +9,6 @@ import pandas as pd
 from astropy import constants as const
 # from astropy import units as u
 
-import artistools as at
-
 # from collections import namedtuple
 
 
@@ -34,7 +32,7 @@ types = {
 
 
 def readfile(packetsfile, usecols):
-    print(f'Reading from {packetsfile} ({os.path.getsize(packetsfile) / 1024 / 1024:.3f} MiB)')
+    print(f'Reading {packetsfile} ({os.path.getsize(packetsfile) / 1024 / 1024:.3f} MiB)')
     dfpackets = pd.read_csv(
         packetsfile,
         delim_whitespace=True,

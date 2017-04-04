@@ -11,6 +11,7 @@ from astropy import constants as const
 
 import artistools.lightcurves
 import artistools.packets
+import artistools.radfield
 import artistools.spectra
 
 PYDIR = os.path.dirname(os.path.abspath(__file__))
