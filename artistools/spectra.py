@@ -113,7 +113,8 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
             assert(xindex >= 0)
             array_energysum[xindex] += packet.e_rf
 
-    array_flambda = array_energysum / delta_lambda / (timehigh - timelow) / 4.e12 / math.pi / (u.parsec.to('cm') ** 2) / nprocs
+    array_flambda = (array_energysum / delta_lambda / (timehigh - timelow) /
+                     4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs)
 
     return pd.DataFrame({'lambda_angstroms': array_lambda, 'f_lambda': array_flambda})
 

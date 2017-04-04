@@ -19,7 +19,7 @@ columns = [
     'number', 'where', 'type_id', 'posx', 'posy', 'posz', 'dirx', 'diry',
     'dirz', 'last_cross', 'tdecay', 'e_cmf', 'e_rf', 'nu_cmf', 'nu_rf',
     'escape_type_id', 'escape_time', 'scat_count', 'next_trans',
-    'interactions', 'last_event', 'emission_type', #'true_emission_type',
+    'interactions', 'last_event', 'emission_type', 'true_emission_type',
     'em_posx', 'em_posy', 'em_poz', 'absorption_type', 'absorption_freq',
     'nscatterings', 'em_time', 'absorptiondirx', 'absorptiondiry',
     'absorptiondirz', 'stokes1', 'stokes2', 'stokes3', 'pol_dirx', 'pol_diry',
