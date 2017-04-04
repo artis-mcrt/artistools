@@ -12,7 +12,6 @@ from astropy import constants as const
 # from collections import namedtuple
 
 
-
 columns = [
     'number', 'where', 'type_id', 'posx', 'posy', 'posz', 'dirx', 'diry',
     'dirz', 'last_cross', 'tdecay', 'e_cmf', 'e_rf', 'nu_cmf', 'nu_rf',

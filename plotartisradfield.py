@@ -40,7 +40,7 @@ def main():
     parser.add_argument('-xmax', type=int, default=20000,
                         help='Plot range: maximum wavelength in Angstroms')
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plotartisradfield_{0:03d}.pdf',
+                        default='plotradfield_{0:03d}.pdf',
                         help='Filename for PDF file')
     args = parser.parse_args()
 

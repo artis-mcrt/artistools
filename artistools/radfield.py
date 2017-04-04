@@ -111,4 +111,3 @@ def j_nu_dbb(arr_nu_hz, W, T):
         return [W * 1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(h * nu_hz / T / k_b)) for nu_hz in arr_nu_hz]
     else:
         return [0. for _ in arr_nu_hz]
-
