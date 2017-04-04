@@ -98,7 +98,8 @@ def plot_artis_spectra(axis, modelpaths, args, filterfunc=None):
         # plotkwargs['dash_capstyle'] = dash_capstyleList[index]
         plotkwargs['linestyle'] = ['-', '--'][int(index / 7) % 2]
         plotkwargs['linewidth'] = 2.5 - (0.2 * index)
-        at.spectra.plot_artis_spectrum(axis, modelpath, xmin=args.xmin, xmax=args.xmax, args=args, **plotkwargs)
+        at.spectra.plot_artis_spectrum(axis, modelpath, xmin=args.xmin, xmax=args.xmax, args=args,
+                                       from_packets=args.frompackets, **plotkwargs)
 
 
 def make_spectrum_plot(modelpaths, axis, filterfunc, args):
