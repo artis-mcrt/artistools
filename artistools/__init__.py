@@ -88,7 +88,7 @@ def get_modeldata(filename):
                                  columns=gridcelltuple._fields)
             modeldata = modeldata.append(rowdf)
     assert(len(modeldata) == gridcellcount)
-
+    modeldata = modeldata.set_index(['cellid'])
     return modeldata, t_model_init
 
 
@@ -343,6 +343,9 @@ def get_model_name_times(filename, timearray, timestepmin, timestepmax, timemin,
             if (timefloat > timemax):
                 timestepmax = timestep - 1
                 break
+
+    if not timestepmax:
+        timestepmax = timestepmin
 
     modelname = get_model_name(filename)
 
