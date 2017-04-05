@@ -39,6 +39,8 @@ def main():
                         help='Plot range: minimum wavelength in Angstroms')
     parser.add_argument('-xmax', type=int, default=20000,
                         help='Plot range: maximum wavelength in Angstroms')
+    parser.add_argument('--normalised', default=False, action='store_true',
+                        help='Normalise the spectra to their peak values')
     parser.add_argument('-o', action='store', dest='outputfile',
                         default='plotradfield_{0:03d}.pdf',
                         help='Filename for PDF file')
@@ -47,8 +49,9 @@ def main():
     if args.listtimesteps:
         at.showtimesteptimes('spec.out')
     else:
-        radfield_files = glob.glob('radfield_????.out', recursive=True) + \
-            glob.glob('radfield-????.out', recursive=True) + glob.glob('radfield.out', recursive=True)
+        radfield_files = (glob.glob('radfield_????.out', recursive=True) +
+            glob.glob('*/radfield_????.out', recursive=True) +
+            glob.glob('radfield-????.out', recursive=True) + glob.glob('radfield.out', recursive=True))
 
         if not radfield_files:
             print("No radfield files found")
@@ -81,12 +84,13 @@ def main():
             if len(radfielddata_currenttimestep) > 0:
                 outputfile = args.outputfile.format(timestep)
                 make_plot(radfielddata_currenttimestep, specfilename, timestep, outputfile,
-                          xmin=args.xmin, xmax=args.xmax, modelgridindex=args.modelgridindex, nospec=args.nospec)
+                          xmin=args.xmin, xmax=args.xmax, modelgridindex=args.modelgridindex, nospec=args.nospec,
+                          normalised=args.normalised)
             else:
                 print(f'No data for timestep {timestep:d}')
 
 
-def make_plot(radfielddata, specfilename, timestep, outputfile, xmin, xmax, modelgridindex, nospec=False):
+def make_plot(radfielddata, specfilename, timestep, outputfile, xmin, xmax, modelgridindex, nospec=False, normalised=False):
     """
         Draw the bin edges, fitted field, and emergent spectrum
     """
@@ -107,16 +111,18 @@ def make_plot(radfielddata, specfilename, timestep, outputfile, xmin, xmax, mode
             list(const.c.to('angstrom/s').value / radfielddata['nu_upper'][1:])
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5,
                     color='red', label='', zorder=-1, alpha=0.4)
-
     if not nospec:
-        modeldata, t_model_init = at.get_modeldata('model.txt')
-        v_surface = modeldata.loc[int(radfielddata.modelgridindex.max())].velocity * u.km / u.s  # outer velocity
-        r_surface = (327.773 * u.day * v_surface).to('km')
-        r_observer = u.megaparsec.to('km')
-        scale_factor = (r_observer / r_surface) ** 2 / (2 * math.pi)
-        print(f'Scaling emergent spectrum flux at 1 Mpc to specific intensity '
-              f'at surface (v={v_surface:.3e}, r={r_surface:.3e})')
-        plot_specout(axis, specfilename, timestep, scale_factor=scale_factor)  # peak_value=ymax)
+        if not normalised:
+            modeldata, t_model_init = at.get_modeldata('model.txt')
+            v_surface = modeldata.loc[int(radfielddata.modelgridindex.max())].velocity * u.km / u.s  # outer velocity
+            r_surface = (327.773 * u.day * v_surface).to('km')
+            r_observer = u.megaparsec.to('km')
+            scale_factor = (r_observer / r_surface) ** 2 / (2 * math.pi)
+            print(f'Scaling emergent spectrum flux at 1 Mpc to specific intensity '
+                  f'at surface (v={v_surface:.3e}, r={r_surface:.3e})')
+            plot_specout(axis, specfilename, timestep, scale_factor=scale_factor)  # peak_value=ymax)
+        else:
+            plot_specout(axis, specfilename, timestep, peak_value=ymax)
 
     axis.annotate(f'Timestep {timestep:d} (t={time_days})\nCell {modelgridindex:d}',
                   xy=(0.02, 0.96), xycoords='axes fraction',

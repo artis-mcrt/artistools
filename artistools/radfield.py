@@ -24,10 +24,12 @@ def read_files(radfield_files, modelgridindex=None):
             # radfielddata_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
             if modelgridindex:
                 radfielddata_thisfile.query('modelgridindex==@modelgridindex', inplace=True)
-            if index == 0:
-                radfielddata = radfielddata_thisfile.copy()
-            else:
-                radfielddata.append(radfielddata_thisfile, ignore_index=True)
+            if radfielddata_thisfile is not None:
+                if len(radfielddata_thisfile) > 0:
+                    if radfielddata is None:
+                        radfielddata = radfielddata_thisfile.copy()
+                    else:
+                        radfielddata = radfielddata.append(radfielddata_thisfile.copy(), ignore_index=True)
 
         if radfielddata is None or len(radfielddata) == 0:
             print("No radfield data found")
