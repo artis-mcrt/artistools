@@ -220,7 +220,7 @@ def plot_artis_spectrum(axis, modelpath, xmin, xmax, args, from_packets=False, f
     (modelname, timestepmin, timestepmax,
      time_days_lower, time_days_upper) = at.get_model_name_times(
          specfilename, at.get_timestep_times(specfilename),
-         args.timestepmin, args.timestepmax, args.timemin, args.timemax)
+         args.timestep, args.timemin, args.timemax)
 
     linelabel = f'{modelname} at t={time_days_lower:.2f}d to {time_days_upper:.2f}d'
 

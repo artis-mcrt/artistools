@@ -37,14 +37,12 @@ def main():
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
-    parser.add_argument('-timestepmin', type=int, default=20,
-                        help='First or only included timestep')
-    parser.add_argument('-timestepmax', type=int,
-                        help='Last included timestep')
+    parser.add_argument('-timestep', nargs='?',
+                        help='First timestep or a range e.g. 45-65')
     parser.add_argument('-timemin', type=float,
-                        help='Time in days')
+                        help='Lower time in days to integrate spectrum')
     parser.add_argument('-timemax', type=float,
-                        help='Last included timestep time in days')
+                        help='Upper time in days to integrate spectrum')
     parser.add_argument('-xmin', type=int, default=2500,
                         help='Plot range: minimum wavelength in Angstroms')
     parser.add_argument('-xmax', type=int, default=11000,
@@ -129,7 +127,7 @@ def make_emission_plot(modelpath, axis, filterfunc, args):
 
     (modelname, timestepmin, timestepmax,
      time_days_lower, time_days_upper) = at.get_model_name_times(
-         specfilename, timearray, args.timestepmin, args.timestepmax, args.timemin, args.timemax)
+         specfilename, timearray, args.timestep, args.timemin, args.timemax)
 
     absorptionfilename = os.path.join(os.path.dirname(emissionfilename), 'absorption.out')
     contribution_list, maxyvalueglobal, array_flambda_emission_total = at.spectra.get_flux_contributions(
@@ -200,6 +198,7 @@ def make_plot(modelpaths, args):
 
     filenameout = args.outputfile
     fig.savefig(filenameout, format='pdf')
+    # plt.show()
     print(f'Saved {filenameout}')
     plt.close()
 

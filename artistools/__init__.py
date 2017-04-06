@@ -328,32 +328,35 @@ def get_model_name(path):
         return os.path.basename(folderpath)
 
 
-def get_model_name_times(filename, timearray, timestepmin, timestepmax, timemin, timemax):
-    if timemin:  # set the timestep ourselves
-        timestepmin = 0
+def get_model_name_times(filename, timearray, timestep_range_str, timemin, timemax):
+    if timestep_range_str:
+        if '-' in timestep_range_str:
+            timestepmin, timestepmax = [int(nts) for nts in timestep_range_str.split('-')]
+        else:
+            timestepmin = int(timestep_range_str)
+            timestepmax = timestepmin
+    else:
+        if not timemin:
+            timemin = 0.
         for timestep, time in enumerate(timearray):
             timefloat = float(time.strip('d'))
             if (timefloat >= timemin):
                 timestepmin = timestep
                 break
-    if timemax:
-        timestepmax = 99999999
+
+        if not timemax:
+            timemax = float(timearray[-1].strip('d'))
         for timestep, time in enumerate(timearray):
             timefloat = float(time.strip('d'))
-            if (timefloat > timemax):
-                timestepmax = timestep - 1
-                break
-
-    if not timestepmax:
-        timestepmax = timestepmin
+            if (timefloat + get_timestep_time_delta(timestep, timearray) <= timemax):
+                timestepmax = timestep
 
     modelname = get_model_name(filename)
 
     time_days_lower = float(timearray[timestepmin])
-    time_days_upper = float(timearray[timestepmax + 1]) + get_timestep_time_delta(timestepmax, timearray)
+    time_days_upper = float(timearray[timestepmax]) + get_timestep_time_delta(timestepmax, timearray)
 
     print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
           f'(t={time_days_lower:.3f}d to {time_days_upper:.3f}d)')
 
     return modelname, timestepmin, timestepmax, time_days_lower, time_days_upper
-
