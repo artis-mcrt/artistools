@@ -96,8 +96,7 @@ def plot_artis_spectra(axis, modelpaths, args, filterfunc=None):
         # plotkwargs['dash_capstyle'] = dash_capstyleList[index]
         plotkwargs['linestyle'] = ['-', '--'][int(index / 7) % 2]
         plotkwargs['linewidth'] = 2.5 - (0.2 * index)
-        at.spectra.plot_artis_spectrum(axis, modelpath, xmin=args.xmin, xmax=args.xmax, args=args,
-                                       from_packets=args.frompackets, **plotkwargs)
+        at.spectra.plot_artis_spectrum(axis, modelpath, args=args, from_packets=args.frompackets, **plotkwargs)
 
 
 def make_spectrum_plot(modelpaths, axis, filterfunc, args):
@@ -129,7 +128,7 @@ def make_emission_plot(modelpath, axis, filterfunc, args):
      time_days_lower, time_days_upper) = at.get_model_name_times(
          specfilename, timearray, args.timestep, args.timemin, args.timemax)
 
-    absorptionfilename = os.path.join(os.path.dirname(emissionfilename), 'absorption.out')
+    absorptionfilename = os.path.join(modelpath, 'absorption.out')
     contribution_list, maxyvalueglobal, array_flambda_emission_total = at.spectra.get_flux_contributions(
         emissionfilename, absorptionfilename, maxion, timearray, arraynu,
         filterfunc, args.xmin, args.xmax, timestepmin, timestepmax)
