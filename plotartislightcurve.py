@@ -49,6 +49,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets, gammalc):
         print(f"====> {modelname}")
         lcpath = os.path.join(modelpath, 'gamma_light_curve.out' if gammalc else 'light_curve.out')
         if not os.path.exists(lcpath):
+            print(f"Skipping {modelname} because {lcpath} does not exist")
             continue
         else:
             lcdata = at.lightcurves.readfile(lcpath)
@@ -66,7 +67,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets, gammalc):
                 lcdata = at.lightcurves.get_from_packets(packetsfilepaths, timearray, nprocs, vmax,
                                                          escape_type='TYPE_GAMMA' if gammalc else 'TYPE_RPKT')
 
-        print(f"Plotting...")
+        print("Plotting...")
 
         linestyle = ['-', '--'][int(index / 7)]
 
