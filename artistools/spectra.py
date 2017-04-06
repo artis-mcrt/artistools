@@ -214,7 +214,7 @@ def sort_and_reduce_flux_contribution_list(contribution_list_in, maxseriescount,
     return contribution_list_out
 
 
-def plot_artis_spectrum(axis, modelpath, xmin, xmax, args, from_packets=False, filterfunc=None, **plotkwargs):
+def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=None, **plotkwargs):
     specfilename = os.path.join(modelpath, 'spec.out')
 
     (modelname, timestepmin, timestepmax,
