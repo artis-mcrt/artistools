@@ -42,7 +42,7 @@ def main():
     parser.add_argument('--normalised', default=False, action='store_true',
                         help='Normalise the spectra to their peak values')
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plotradfield_{0:03d}.pdf',
+                        default='plotradfield_cell{0:03d}_{1:03d}.pdf',
                         help='Filename for PDF file')
     args = parser.parse_args()
 
@@ -82,7 +82,7 @@ def main():
             radfielddata_currenttimestep = radfielddata.query('timestep==@timestep')
 
             if len(radfielddata_currenttimestep) > 0:
-                outputfile = args.outputfile.format(timestep)
+                outputfile = args.outputfile.format(args.modelgridindex, timestep)
                 make_plot(radfielddata_currenttimestep, specfilename, timestep, outputfile,
                           xmin=args.xmin, xmax=args.xmax, modelgridindex=args.modelgridindex, nospec=args.nospec,
                           normalised=args.normalised)
