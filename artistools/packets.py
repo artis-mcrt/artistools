@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # import math
-import os
+import os.path
 
 # import matplotlib.patches as mpatches
 # import numpy as np

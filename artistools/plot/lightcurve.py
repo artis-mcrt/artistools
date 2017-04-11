@@ -2,7 +2,7 @@
 import argparse
 import glob
 import itertools
-import os
+import os.path
 
 import matplotlib.pyplot as plt
 

@@ -2,7 +2,7 @@
 
 import glob
 import math
-import os
+import os.path
 from collections import namedtuple
 
 import matplotlib.patches as mpatches
