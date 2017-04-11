@@ -24,7 +24,7 @@ setup(name="artistools",
           'console_scripts': [
               'plotartislightcurve = artistools.plot.lightcurve:main',
               'plotartisnlte = artistools.plot.nltepops:main',
-              'plotartisnonthermal = artistools.plot.nonthermal:main',
+              'plotartisnonthermal = artistools.plot.nonthermalspec:main',
               'plotartisradfield = artistools.plot.radfield:main',
               'plotartisspectrum = artistools.plot.spectrum:main',
           ]},
