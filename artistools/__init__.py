@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-import collections
 import math
-import os
+import os.path
 
 # import scipy.signal
 # import numpy as np
 import pandas as pd
 from astropy import constants as const
 # from astropy import units as u
+from collections import namedtuple
 
 import artistools.lightcurves
 import artistools.packets
@@ -77,7 +77,7 @@ def get_modeldata(filename):
         Return a list containing named tuples for all model grid cells
     """
     modeldata = pd.DataFrame()
-    gridcelltuple = collections.namedtuple('gridcell', 'cellid velocity logrho ffe fni fco f52fe f48cr')
+    gridcelltuple = namedtuple('gridcell', 'cellid velocity logrho ffe fni fco f52fe f48cr')
 
     with open(filename, 'r') as fmodel:
         gridcellcount = int(fmodel.readline())
@@ -143,8 +143,8 @@ def get_levels(adatafilename):
         Return a list of lists of levels
     """
     level_lists = []
-    iontuple = collections.namedtuple('ion', 'Z ion_stage level_count ion_pot level_list')
-    leveltuple = collections.namedtuple('level', 'number energy_ev g transition_count levelname')
+    iontuple = namedtuple('ion', 'Z ion_stage level_count ion_pot level_list')
+    leveltuple = namedtuple('level', 'number energy_ev g transition_count levelname')
 
     with open(adatafilename, 'r') as fadata:
         for line in fadata:
@@ -258,7 +258,7 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
     """
         Read a line from the NLTE output file and return a Pandas DataFrame
     """
-    levelpoptuple = collections.namedtuple(
+    levelpoptuple = namedtuple(
         'ionpoptuple', 'timestep Z ion_stage level energy_ev parity n_LTE n_NLTE n_LTE_custom')
 
     elementindex = elementdata.index[0]

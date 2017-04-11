@@ -2,7 +2,7 @@
 import argparse
 import glob
 import math
-import os
+import os.path
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
