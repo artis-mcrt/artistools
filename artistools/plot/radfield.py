@@ -14,9 +14,9 @@ import artistools as at
 
 def main():
     """
-        Plot the radiation field estimators and the fitted radiation field
-        based on the fitted field parameters (temperature and scale factor W
-        for a diluted blackbody)
+    Plot the radiation field estimators and the fitted radiation field
+    based on the fitted field parameters (temperature and scale factor W
+    for a diluted blackbody)
     """
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -92,7 +92,7 @@ def main():
 def make_plot(radfielddata, specfilename, timestep, outputfile, xmin, xmax, modelgridindex, nospec=False,
               normalised=False):
     """
-        Draw the bin edges, fitted field, and emergent spectrum
+    Draw the bin edges, fitted field, and emergent spectrum
     """
     time_days = at.get_timestep_time(specfilename, timestep)
 
@@ -144,7 +144,7 @@ def make_plot(radfielddata, specfilename, timestep, outputfile, xmin, xmax, mode
 
 def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=None):
     """
-        Plot the ARTIS spectrum
+    Plot the ARTIS spectrum
     """
 
     print(f"Plotting {specfilename}")
