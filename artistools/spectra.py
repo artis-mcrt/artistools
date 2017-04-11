@@ -229,7 +229,7 @@ def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=No
         packetsfiles_thismodel = glob.glob(os.path.join(modelpath, 'packets**.out'))
         print(packetsfiles_thismodel)
         spectrum = get_spectrum_from_packets(
-            packetsfiles_thismodel, time_days_lower, time_days_upper, lambda_min=xmin, lambda_max=xmax)
+            packetsfiles_thismodel, time_days_lower, time_days_upper, lambda_min=args.xmin, lambda_max=args.xmax)
     else:
         spectrum = get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
 
