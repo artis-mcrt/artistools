@@ -5,7 +5,6 @@ import itertools
 import os
 
 import matplotlib.pyplot as plt
-from astropy import units as u
 
 import artistools as at
 
@@ -41,6 +40,7 @@ def main():
 
 
 def make_lightcurve_plot(modelpaths, filenameout, frompackets, gammalc):
+    from astropy import units as u
     fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
         "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 

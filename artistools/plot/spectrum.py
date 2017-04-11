@@ -7,15 +7,13 @@ import sys
 import warnings
 
 import matplotlib.pyplot as plt
-# import matplotlib.ticker as ticker
-import pandas as pd
-from astropy import constants as const
 
 import artistools as at
 
-warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
+# import matplotlib.ticker as ticker
 
-# TODO: input one or more ARTIS folders instead of file names
+
+warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
 
 
 def main():
@@ -112,6 +110,8 @@ def make_spectrum_plot(modelpaths, axis, filterfunc, args):
 
 
 def make_emission_plot(modelpath, axis, filterfunc, args):
+    from astropy import constants as const
+    import pandas as pd
     maxion = 5  # must match sn3d.h value
 
     emissionfilename = os.path.join(modelpath, 'emissiontrue.out')
