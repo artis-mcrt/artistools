@@ -1,8 +1,6 @@
 # coding: utf-8
 
-"""
-Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code.
-"""
+"""Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code."""
 
 import datetime
 import os
@@ -31,4 +29,5 @@ setup(name="artistools",
       python_requires='>==3.6',
       # test_suite='tests',
       setup_requires=['pytest-runner', 'pytest-cov'],
-      tests_require=['pytest', 'pytest-runner', 'pytest-cov'],)
+      tests_require=['pytest', 'pytest-runner', 'pytest-cov'],
+      include_package_data=True)
