@@ -6,8 +6,8 @@ import os
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-import numpy as np
-import pandas as pd
+# import numpy as np
+# import pandas as pd
 from astropy import constants as const
 from astropy import units as u
 
@@ -49,7 +49,8 @@ def main():
     if args.listtimesteps:
         at.showtimesteptimes('spec.out')
     else:
-        radfield_files = (glob.glob('radfield_????.out', recursive=True) +
+        radfield_files = (
+            glob.glob('radfield_????.out', recursive=True) +
             glob.glob('*/radfield_????.out', recursive=True) +
             glob.glob('radfield-????.out', recursive=True) + glob.glob('radfield.out', recursive=True))
 
@@ -90,7 +91,8 @@ def main():
                 print(f'No data for timestep {timestep:d}')
 
 
-def make_plot(radfielddata, specfilename, timestep, outputfile, xmin, xmax, modelgridindex, nospec=False, normalised=False):
+def make_plot(radfielddata, specfilename, timestep, outputfile, xmin, xmax, modelgridindex, nospec=False,
+              normalised=False):
     """
         Draw the bin edges, fitted field, and emergent spectrum
     """
