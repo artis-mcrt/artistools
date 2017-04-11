@@ -6,13 +6,10 @@ import glob
 
 import matplotlib.pyplot as plt
 # import matplotlib.ticker as ticker
-import numpy as np
 import pandas as pd
-from astropy import constants as const
 
 import artistools as at
 
-C = const.c.to('m/s').value
 DEFAULTSPECPATH = '../example_run/spec.out'
 
 
@@ -86,6 +83,7 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
     """
         Draw the bin edges, fitted field, and emergent spectrum
     """
+    import numpy as np
     fig, axis = plt.subplots(1, 1, sharex=True, figsize=(6, 4),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
