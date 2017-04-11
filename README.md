@@ -13,5 +13,5 @@ ARTIS (Sim et al. 2007; Kromer & Sim 2009) is a 3D radiative transfer code for T
 [![Code Climate](https://codeclimate.com/github/lukeshingles/artistools/badges/gpa.svg)](https://codeclimate.com/github/lukeshingles/artistools)
 [![Issue Count](https://codeclimate.com/github/lukeshingles/artistools/badges/issue_count.svg)](https://codeclimate.com/github/lukeshingles/artistools)
 [![CodeFactor](https://www.codefactor.io/repository/github/lukeshingles/artistools/badge)](https://www.codefactor.io/repository/github/lukeshingles/artistools)
-[![codebeat badge](https://codebeat.co/badges/15bb2261-abc6-4cab-adf5-b8f7a6cc49c7)](https://codebeat.co/projects/github-com-lukeshingles-artis-tools-master)
+[![codebeat badge](https://codebeat.co/badges/ace84544-8781-4e3f-b86b-b21fb3f9fc87)](https://codebeat.co/projects/github-com-lukeshingles-artistools-master)
 [![Build Status](https://travis-ci.org/lukeshingles/artistools.svg?branch=master)](https://travis-ci.org/lukeshingles/artistools)
