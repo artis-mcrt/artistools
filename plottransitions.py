@@ -248,4 +248,5 @@ def make_plot(xvalues, yvalues, elsymbol, ions, args):
     plt.close()
 
 
-main()
+if __name__ == "__main__":
+    main()
