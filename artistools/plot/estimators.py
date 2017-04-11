@@ -104,7 +104,7 @@ def main():
                     if thismgi == mgi:
                         ylist.append(list_populations[index][elindex][ion] / total_pop)
             axis.plot(list_velocity, ylist, linewidth=1.5,
-                      label=f"{at.elsymbols[elementlist['Z'][elindex]]} {at.roman_numerals[ion + 1])}")
+                      label=f"{at.elsymbols[elementlist['Z'][elindex]]} {at.roman_numerals[ion + 1]}")
 
     # axis.plot(list_timestep, [x[0][0] for x in list_populations],
     #           linewidth=1.5, label="Fe I")
