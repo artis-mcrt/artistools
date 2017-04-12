@@ -11,6 +11,7 @@ from collections import namedtuple
 
 import artistools.lightcurves
 import artistools.packets
+import artistools.plot
 import artistools.radfield
 import artistools.spectra
 
