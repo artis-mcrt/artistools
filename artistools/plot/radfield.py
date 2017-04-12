@@ -21,8 +21,6 @@ def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS radiation field.')
-    parser.add_argument('-path', action='store', default='./',
-                        help='Path to radfield_nnnn.out files')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
     parser.add_argument('-timestep', type=int, default=-1,
@@ -50,7 +48,8 @@ def main():
         radfield_files = (
             glob.glob('radfield_????.out', recursive=True) +
             glob.glob('*/radfield_????.out', recursive=True) +
-            glob.glob('radfield-????.out', recursive=True) + glob.glob('radfield.out', recursive=True))
+            glob.glob('radfield-????.out', recursive=True) +
+            glob.glob('radfield.out', recursive=True))
 
         if not radfield_files:
             print("No radfield files found")

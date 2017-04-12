@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 import argparse
+import glob
+import os
+import re
 # import math
 import sys
 
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
+import pandas as pd
 
 import artistools as at
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 
 # from astropy import constants as const
@@ -15,9 +19,6 @@ import artistools as at
 def main():
     parser = argparse.ArgumentParser(
         description='Plot ARTIS non-LTE corrections.')
-    parser.add_argument('-in', action='store', dest='nltefile',
-                        default='nlte_0000.out',
-                        help='Path to nlte_*.out file.')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
     parser.add_argument('-timestep', type=int, default=70,
@@ -43,20 +44,40 @@ def main():
             print(f"Could not find element '{args.element}'")
             return
 
-        print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
-              f'timestep {args.timestep} element {args.element}')
+        nlte_files = (
+            glob.glob('nlte_????.out', recursive=True) +
+            glob.glob('*/nlte_????.out', recursive=True))
 
-        if not args.oldformat:
-            dfpop = at.get_nlte_populations(args.nltefile, args.modelgridindex, args.timestep,
-                                            atomic_number, exc_temperature)
+        if not nlte_files:
+            print("No NLTE files found")
+            return
         else:
-            dfpop = at.get_nlte_populations_oldformat(args.nltefile, args.modelgridindex, args.timestep,
-                                                      atomic_number, exc_temperature)
+            print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
+                  f'timestep {args.timestep} element {args.element}')
 
-        if dfpop.empty:
-            print(f'No data for modelgrid cell {args.modelgridindex} timestep {args.timestep}')
-        else:
-            make_plot(dfpop, atomic_number, exc_temperature, args)
+            dfpop = pd.DataFrame()
+            for nltefilepath in nlte_files:
+                filerank = int(re.search('[0-9]+', os.path.basename(nltefilepath)).group(0))
+
+                if filerank > args.modelgridindex:
+                    continue
+
+                print(f'Loading {nltefilepath}')
+
+                if not args.oldformat:
+                    dfpop_thisfile = at.get_nlte_populations(
+                        nltefilepath, args.modelgridindex, args.timestep, atomic_number, exc_temperature)
+                else:
+                    dfpop_thisfile = at.get_nlte_populations_oldformat(
+                        nltefilepath, args.modelgridindex, args.timestep, atomic_number, exc_temperature)
+                if not dfpop_thisfile.empty:
+                    dfpop = dfpop_thisfile
+                    break
+
+            if dfpop.empty:
+                print(f'No data for modelgrid cell {args.modelgridindex} timestep {args.timestep}')
+            else:
+                make_plot(dfpop, atomic_number, exc_temperature, args)
 
 
 def make_plot(dfpop, atomic_number, exc_temperature, args):
@@ -97,6 +118,8 @@ def make_plot(dfpop, atomic_number, exc_temperature, args):
             plotlabel += f' at t={time_days} days'
         else:
             plotlabel += f' at timestep {args.timestep:d}'
+
+        plotlabel += f' in cell {args.modelgridindex}'
 
         axis.annotate(plotlabel, xy=(0.5, 0.96), xycoords='axes fraction',
                       horizontalalignment='center', verticalalignment='top', fontsize=12)
