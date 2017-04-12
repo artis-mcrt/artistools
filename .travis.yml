@@ -9,11 +9,12 @@ install:
 # command to run tests
 script:
 #  - flake8 .
-  - pytest --cov=artistools
+#  - pytest --cov=artistools
+  - coverage run --source artistools setup.py test
 
 after_success:
+#  - codecov
   - coveralls
-  - codecov
 
 addons:
     code_climate:
