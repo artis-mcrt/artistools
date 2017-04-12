@@ -4,7 +4,7 @@ python: 3.6
 cache: pip
 
 install:
-  - "pip install coveralls"
+  - "pip install coveralls codeclimate-test-reporter"
   - "pip install -r requirements.txt"
 
 # command to run tests
@@ -16,7 +16,4 @@ script:
 after_success:
 #  - codecov
   - coveralls
-
-addons:
-    code_climate:
-        repo_token: 1d49324f07c7d1411fa0794856af70f66cd81cfe774fe275dd5f9627733dee0c
+  - codeclimate-test-reporter
