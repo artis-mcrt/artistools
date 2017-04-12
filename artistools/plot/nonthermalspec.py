@@ -24,7 +24,7 @@ def main():
                         help='Path to nonthermalspec.out file')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
-    parser.add_argument('-timestep', type=int, default=1,
+    parser.add_argument('-timestep', type=int, default=-1,
                         help='Timestep number to plot')
     parser.add_argument('-timestepmax', type=int, default=-1,
                         help='Make plots for all timesteps up to this timestep')
