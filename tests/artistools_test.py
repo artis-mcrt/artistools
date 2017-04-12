@@ -70,5 +70,7 @@ def test_plotters():
     os.chdir('tests/data/')
     sys.argv.append('')
     at.plot.lightcurve.main()
+    at.plot.nonthermalspec.main()
+    at.plot.radfield.main()
     at.plot.spectrum.main()
     os.chdir(oldpath)
