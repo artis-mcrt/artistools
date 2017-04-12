@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+
+import os
+
 import numpy as np
 import pandas as pd
 from astropy import constants as const
@@ -58,3 +61,14 @@ def test_get_flux_contributions():
     diff = [abs(x - y) for x, y in zip(array_flambda_emission_total, dfspectrum['f_lambda'].values)]
     print(f'Max f_lambda difference {max(diff) / integrated_flux_specout.value}')
     assert(max(diff) / integrated_flux_specout.value < 2e-3)
+
+
+def test_plotters():
+    import sys
+    sys.argv = []
+    oldpath = os.getcwd()
+    os.chdir('tests/data/')
+    sys.argv.append('')
+    at.plot.lightcurve.main()
+    at.plot.spectrum.main()
+    os.chdir(oldpath)

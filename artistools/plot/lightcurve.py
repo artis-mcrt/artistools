@@ -4,9 +4,8 @@ import glob
 import itertools
 import os.path
 
-import matplotlib.pyplot as plt
-
 import artistools as at
+import matplotlib.pyplot as plt
 
 
 # import sys
