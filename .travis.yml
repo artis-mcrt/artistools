@@ -12,7 +12,8 @@ script:
   - pytest --cov=artistools
 
 after_success:
-  codecov
+  - coveralls
+  - codecov
 
 addons:
     code_climate:
