@@ -16,10 +16,11 @@ import artistools as at
 warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
 
 
-def main():
+def main(argsraw=None):
     """
         Plot ARTIS spectra and (optionally) reference spectra
     """
+    
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS model spectra by finding spec.out files '
@@ -53,7 +54,7 @@ def main():
                         help='Font size of legend text')
     parser.add_argument('-o', action='store', dest='outputfile',
                         help='path/filename for PDF file')
-    args = parser.parse_args()
+    args = parser.parse_args(argsraw)
 
     if len(args.modelpath) == 0:
         args.modelpath = ['.', '*']
@@ -61,19 +62,22 @@ def main():
     # combined the results of applying wildcards on each input
     modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in args.modelpath if os.path.isdir(x)]))
 
-    if args.emissionabsorption:
-        if len(modelpaths) > 1:
-            print("ERROR: emission/absorption plot can only take one input model")
-            sys.exit()
-        else:
-            if not args.outputfile:
-                args.outputfile = "plotspecemission.pdf"
-            make_plot(modelpaths, args)
-    elif args.listtimesteps:
+    if args.listtimesteps:
         at.showtimesteptimes(modelpaths[0])
     else:
+        if args.emissionabsorption:
+            if len(modelpaths) > 1:
+                print("ERROR: emission/absorption plot can only take one input model")
+                sys.exit()
+            defaultoutputfile = "plotspecemission.pdf"
+        else:
+            defaultoutputfile = "plotspec.pdf"
+
         if not args.outputfile:
-            args.outputfile = "plotspec.pdf"
+            args.outputfile = defaultoutputfile
+        elif os.path.isdir(args.outputfile):
+            args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+
         make_plot(modelpaths, args)
 
 

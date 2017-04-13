@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 # import math
-# import os
+import os
 import glob
 
 import matplotlib.pyplot as plt
@@ -13,15 +13,16 @@ import artistools as at
 DEFAULTSPECPATH = '../example_run/spec.out'
 
 
-def main():
+def main(argsraw=None):
     """
         Plot the electron energy distribution
     """
+    defaultoutputfile = 'plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf'
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS radiation field.')
-    parser.add_argument('-path', action='store', default='./',
-                        help='Path to nonthermalspec.out file')
+    parser.add_argument('modelpath', nargs='?', default='',
+                        help='Path to ARTIS folder')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
     parser.add_argument('-timestep', type=int, default=-1,
@@ -34,19 +35,21 @@ def main():
                         help='Plot range: minimum energy in eV')
     parser.add_argument('-xmax', type=int, default=10000,
                         help='Plot range: maximum energy in eV')
-    parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf',
+    parser.add_argument('-o', action='store', dest='outputfile', default=defaultoutputfile,
                         help='Filename for PDF file')
-    args = parser.parse_args()
+    args = parser.parse_args(argsraw)
+
+    if os.path.isdir(args.outputfile):
+        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     if args.listtimesteps:
         at.showtimesteptimes('spec.out')
     else:
         nonthermaldata = None
         nonthermal_files = (
-            glob.glob('nonthermalspec_????.out', recursive=True) +
-            glob.glob('nonthermalspec-*.out', recursive=True) +
-            glob.glob('nonthermalspec.out', recursive=True))
+            glob.glob(os.path.join(args.modelpath, 'nonthermalspec_????.out'), recursive=True) +
+            glob.glob(os.path.join(args.modelpath, 'nonthermalspec-*.out'), recursive=True) +
+            glob.glob(os.path.join(args.modelpath, 'nonthermalspec.out'), recursive=True))
 
         for nonthermal_file in nonthermal_files:
             print(f'Loading {nonthermal_file}...')

@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
 
-
-import os
-
 import numpy as np
 import pandas as pd
 from astropy import constants as const
@@ -64,13 +61,10 @@ def test_get_flux_contributions():
 
 
 def test_plotters():
-    import sys
-    sys.argv = []
-    oldpath = os.getcwd()
-    os.chdir('tests/data/')
-    sys.argv.append('')
-    at.plot.lightcurve.main()
-    at.plot.nonthermalspec.main()
-    at.plot.radfield.main()
-    at.plot.spectrum.main()
-    os.chdir(oldpath)
+    arglist = ['tests/data/', '-o', 'tests/data/']
+    at.plot.nltepops.main(arglist)
+    at.plot.lightcurve.main(arglist)
+    at.plot.spectrum.main(arglist)
+    at.plot.spectrum.main(arglist + ['--emissionabsorption'])
+    at.plot.nonthermalspec.main(arglist)
+    assert(at.plot.radfield.main(arglist) == 0)

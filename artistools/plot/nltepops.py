@@ -16,9 +16,13 @@ import matplotlib.ticker as ticker
 # from astropy import constants as const
 
 
-def main():
+def main(argsraw=None):
+    defaultoutputfile = 'plotnlte_{0}_cell{1:03d}_{2:03d}.pdf'
+
     parser = argparse.ArgumentParser(
         description='Plot ARTIS non-LTE corrections.')
+    parser.add_argument('modelpath', nargs='?', default='',
+                        help='Path to ARTIS folder')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
     parser.add_argument('-timestep', type=int, default=70,
@@ -30,9 +34,12 @@ def main():
     parser.add_argument('--oldformat', default=False, action='store_true',
                         help='Use the old file format')
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plotnlte_{0}_cell{1:03d}_{2:03d}.pdf',
-                        help='path/filename for PDF file .format(elsymbol, timestep)')
-    args = parser.parse_args()
+                        default=defaultoutputfile,
+                        help='path/filename for PDF file .format(elsymbol, cell, timestep)')
+    args = parser.parse_args(argsraw)
+
+    if os.path.isdir(args.outputfile):
+        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     if args.listtimesteps:
         at.showtimesteptimes('spec.out')
@@ -45,8 +52,8 @@ def main():
             return
 
         nlte_files = (
-            glob.glob('nlte_????.out', recursive=True) +
-            glob.glob('*/nlte_????.out', recursive=True))
+            glob.glob(os.path.join(args.modelpath, 'nlte_????.out'), recursive=True) +
+            glob.glob(os.path.join(args.modelpath, '*/nlte_????.out'), recursive=True))
 
         if not nlte_files:
             print("No NLTE files found")
@@ -66,10 +73,12 @@ def main():
 
                 if not args.oldformat:
                     dfpop_thisfile = at.get_nlte_populations(
-                        nltefilepath, args.modelgridindex, args.timestep, atomic_number, exc_temperature)
+                        args.modelpath, nltefilepath, args.modelgridindex,
+                        args.timestep, atomic_number, exc_temperature)
                 else:
                     dfpop_thisfile = at.get_nlte_populations_oldformat(
-                        nltefilepath, args.modelgridindex, args.timestep, atomic_number, exc_temperature)
+                        args.modelpath, nltefilepath, args.modelgridindex,
+                        args.timestep, atomic_number, exc_temperature)
                 if not dfpop_thisfile.empty:
                     dfpop = dfpop_thisfile
                     break
