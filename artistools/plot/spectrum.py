@@ -20,7 +20,7 @@ def main(argsraw=None):
     """
         Plot ARTIS spectra and (optionally) reference spectra
     """
-    
+
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS model spectra by finding spec.out files '
@@ -81,15 +81,12 @@ def main(argsraw=None):
         make_plot(modelpaths, args)
 
 
-def plot_artis_spectra(axis, modelpaths, args, filterfunc=None):
+def make_spectrum_plot(modelpaths, axis, filterfunc, args):
     """
-        Plot ARTIS emergent spectra
+        Set up a matplotlib figure and plot observational and ARTIS spectra
     """
+    at.spectra.plot_reference_spectra(axis, [], [], args, flambdafilterfunc=filterfunc)
 
-    # dashesList = [(), (1.5, 2, 9, 2), (5, 1), (0.5, 2), (4, 2)]
-    # dash_capstyleList = ['butt', 'butt', 'butt', 'round', 'butt']
-    # colorlist = [(0, .8*158./255, 0.6*115./255), (204./255, 121./255, 167./255), (213./255, 94./255, 0.0)]
-    # inputfiles.sort(key=lambda x: os.path.dirname(x))
     for index, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
         print(f"====> {modelname}")
@@ -98,15 +95,8 @@ def plot_artis_spectra(axis, modelpaths, args, filterfunc=None):
         # plotkwargs['dash_capstyle'] = dash_capstyleList[index]
         plotkwargs['linestyle'] = ['-', '--'][int(index / 7) % 2]
         plotkwargs['linewidth'] = 2.5 - (0.2 * index)
-        at.spectra.plot_artis_spectrum(axis, modelpath, args=args, from_packets=args.frompackets, **plotkwargs)
-
-
-def make_spectrum_plot(modelpaths, axis, filterfunc, args):
-    """
-        Set up a matplotlib figure and plot observational and ARTIS spectra
-    """
-    at.spectra.plot_reference_spectra(axis, [], [], args, flambdafilterfunc=filterfunc)
-    plot_artis_spectra(axis, modelpaths, args, filterfunc)
+        at.spectra.plot_artis_spectrum(axis, modelpath, args=args, from_packets=args.frompackets,
+                                       filterfunc=filterfunc, **plotkwargs)
 
     if args.normalised:
         axis.set_ylim(ymin=-0.1, ymax=1.25)
