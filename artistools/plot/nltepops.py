@@ -30,7 +30,7 @@ def main():
     parser.add_argument('--oldformat', default=False, action='store_true',
                         help='Use the old file format')
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plotnlte_{0}_{1:03d}.pdf',
+                        default='plotnlte_{0}_cell{1:03d}_{2:03d}.pdf',
                         help='path/filename for PDF file .format(elsymbol, timestep)')
     args = parser.parse_args()
 
@@ -132,7 +132,7 @@ def make_plot(dfpop, atomic_number, exc_temperature, args):
         axis.set_yscale('log')
     axes[-1].set_xlabel(r'Level index')
 
-    outputfilename = args.outputfile.format(at.elsymbols[atomic_number], args.timestep)
+    outputfilename = args.outputfile.format(at.elsymbols[atomic_number], args.modelgridindex, args.timestep)
     print(f"Saving {outputfilename}")
     fig.savefig(outputfilename, format='pdf')
     plt.close()
