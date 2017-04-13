@@ -52,7 +52,7 @@ def main(argsraw=None):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     if args.listtimesteps:
-        at.showtimesteptimes('spec.out')
+        at.showtimesteptimes(os.path.join(args.modelpath, 'spec.out'))
     else:
         radfield_files = (
             glob.glob(os.path.join(args.modelpath, 'radfield_????.out'), recursive=True) +
@@ -74,10 +74,10 @@ def main(argsraw=None):
         else:
             timestepmax = args.timestepmax
 
-        specfilename = 'spec.out'
+        specfilename = os.path.join(args.modelpath, 'spec.out')
 
         if not os.path.isfile(specfilename):
-            specfilename = '../example_run/spec.out'
+            specfilename = os.path.join(args.modelpath, '../example_run/spec.out')
 
         if not os.path.isfile(specfilename):
             print(f'Could not find {specfilename}')
@@ -88,7 +88,7 @@ def main(argsraw=None):
 
             if len(radfielddata_currenttimestep) > 0:
                 outputfile = args.outputfile.format(args.modelgridindex, timestep)
-                make_plot(radfielddata_currenttimestep, specfilename, timestep, outputfile,
+                make_plot(radfielddata_currenttimestep, args.modelpath, specfilename, timestep, outputfile,
                           xmin=args.xmin, xmax=args.xmax, modelgridindex=args.modelgridindex, nospec=args.nospec,
                           normalised=args.normalised)
             else:
@@ -97,7 +97,7 @@ def main(argsraw=None):
     return 0
 
 
-def make_plot(radfielddata, specfilename, timestep, outputfile, xmin, xmax, modelgridindex, nospec=False,
+def make_plot(radfielddata, modelpath, specfilename, timestep, outputfile, xmin, xmax, modelgridindex, nospec=False,
               normalised=False):
     """
     Draw the bin edges, fitted field, and emergent spectrum
@@ -121,7 +121,7 @@ def make_plot(radfielddata, specfilename, timestep, outputfile, xmin, xmax, mode
                     color='red', label='', zorder=-1, alpha=0.4)
     if not nospec:
         if not normalised:
-            modeldata, t_model_init = at.get_modeldata('model.txt')
+            modeldata, t_model_init = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
             v_surface = modeldata.loc[int(radfielddata.modelgridindex.max())].velocity * u.km / u.s  # outer velocity
             r_surface = (327.773 * u.day * v_surface).to('km')
             r_observer = u.megaparsec.to('km')
