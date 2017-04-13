@@ -3,24 +3,30 @@ import argparse
 import glob
 import math
 import os.path
+import sys
 
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 from astropy import constants as const
 from astropy import units as u
 
 import artistools as at
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 
-def main():
+def main(argsraw=None):
     """
     Plot the radiation field estimators and the fitted radiation field
     based on the fitted field parameters (temperature and scale factor W
     for a diluted blackbody)
     """
+
+    defaultoutputfile = 'plotradfield_cell{0:03d}_{1:03d}.pdf'
+
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS radiation field.')
+    parser.add_argument('modelpath', nargs='?', default='',
+                        help='Path to ARTIS folder')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
     parser.add_argument('-timestep', type=int, default=-1,
@@ -38,22 +44,23 @@ def main():
     parser.add_argument('--normalised', default=False, action='store_true',
                         help='Normalise the spectra to their peak values')
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plotradfield_cell{0:03d}_{1:03d}.pdf',
+                        default=defaultoutputfile,
                         help='Filename for PDF file')
-    args = parser.parse_args()
+    args = parser.parse_args(argsraw)
+
+    if os.path.isdir(args.outputfile):
+        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     if args.listtimesteps:
         at.showtimesteptimes('spec.out')
     else:
         radfield_files = (
-            glob.glob('radfield_????.out', recursive=True) +
-            glob.glob('*/radfield_????.out', recursive=True) +
-            glob.glob('radfield-????.out', recursive=True) +
-            glob.glob('radfield.out', recursive=True))
+            glob.glob(os.path.join(args.modelpath, 'radfield_????.out'), recursive=True) +
+            glob.glob(os.path.join(args.modelpath, '*/radfield_????.out'), recursive=True))
 
         if not radfield_files:
             print("No radfield files found")
-            return
+            return 1
         else:
             radfielddata = at.radfield.read_files(radfield_files, args.modelgridindex)
 
@@ -74,7 +81,7 @@ def main():
 
         if not os.path.isfile(specfilename):
             print(f'Could not find {specfilename}')
-            return
+            return 1
 
         for timestep in range(timestepmin, timestepmax):
             radfielddata_currenttimestep = radfielddata.query('timestep==@timestep')
@@ -86,6 +93,8 @@ def main():
                           normalised=args.normalised)
             else:
                 print(f'No data for timestep {timestep:d}')
+
+    return 0
 
 
 def make_plot(radfielddata, specfilename, timestep, outputfile, xmin, xmax, modelgridindex, nospec=False,
@@ -159,4 +168,4 @@ def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=Non
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

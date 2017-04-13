@@ -166,8 +166,8 @@ def get_levels(adatafilename):
     return level_lists
 
 
-def get_nlte_populations(nltefile, modelgridindex, timestep, atomic_number, temperature_exc):
-    all_levels = get_levels('adata.txt')
+def get_nlte_populations(modelpath, nltefile, modelgridindex, timestep, atomic_number, temperature_exc):
+    all_levels = get_levels(os.path.join(modelpath, 'adata.txt'))
 
     dfpop = pd.read_csv(nltefile, delim_whitespace=True)
     dfpop.query('(modelgridindex==@modelgridindex) & (timestep==@timestep) & (Z==@atomic_number)',
@@ -216,7 +216,7 @@ def get_nlte_populations(nltefile, modelgridindex, timestep, atomic_number, temp
     return dfpop
 
 
-def get_nlte_populations_oldformat(nltefile, modelgridindex, timestep, atomic_number, temperature_exc):
+def get_nlte_populations_oldformat(modelpath, nltefile, modelgridindex, timestep, atomic_number, temperature_exc):
     compositiondata = get_composition_data('compositiondata.txt')
     elementdata = compositiondata.query('Z==@atomic_number')
 
@@ -224,7 +224,7 @@ def get_nlte_populations_oldformat(nltefile, modelgridindex, timestep, atomic_nu
         print(f'Error: element Z={atomic_number} not in composition file')
         return None
 
-    all_levels = get_levels('adata.txt')
+    all_levels = get_levels(os.path.join(modelpath, 'adata.txt'))
 
     skip_block = False
     dfpop = pd.DataFrame().to_sparse()

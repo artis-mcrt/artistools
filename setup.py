@@ -34,8 +34,7 @@ setup(
     packages=find_packages(),
     url="https://www.github.com/lukeshingles/artis-tools/",
     license="MIT",
-    description=
-    "Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code.",
+    description="Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code.",
     long_description=open(
         os.path.join(os.path.dirname(__file__), "README.md")).read(),
     install_requires=open(

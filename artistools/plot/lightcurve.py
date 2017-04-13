@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 # import sys
 
 
-def main():
+def main(argsraw=None):
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS radiation field.')
@@ -24,7 +24,7 @@ def main():
                         help='Make light curve from gamma rays instead of R-packets')
     parser.add_argument('-o', action='store', dest='outputfile',
                         help='Filename for PDF file')
-    args = parser.parse_args()
+    args = parser.parse_args(argsraw)
 
     if len(args.modelpath) == 0:
         args.modelpath = ['.', '*']
@@ -32,8 +32,12 @@ def main():
     # combined the results of applying wildcards on each input
     modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in args.modelpath if os.path.isdir(x)]))
 
+    defaultoutputfile = 'plotlightcurve_gamma.pdf' if args.gamma else 'plotlightcurve.pdf'
+
     if not args.outputfile:
-        args.outputfile = 'plotlightcurve_gamma.pdf' if args.gamma else 'plotlightcurve.pdf'
+        args.outputfile = defaultoutputfile
+    elif os.path.isdir(args.outputfile):
+        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     make_lightcurve_plot(modelpaths, args.outputfile, args.frompackets, args.gamma)
 
