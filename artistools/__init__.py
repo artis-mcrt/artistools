@@ -320,7 +320,7 @@ def get_model_name(path):
     """
     abspath = os.path.abspath(path)
 
-    folderpath = abspath if os.path.isdir(abspath) else os.path.basename(os.path.dirname(os.path.abspath(path)))
+    folderpath = abspath if os.path.isdir(abspath) else os.path.dirname(os.path.abspath(path))
 
     try:
         plotlabelfile = os.path.join(folderpath, 'plotlabel.txt')
