@@ -93,7 +93,7 @@ def make_spectrum_plot(modelpaths, axis, filterfunc, args):
         plotkwargs = {}
         # plotkwargs['dashes'] = dashesList[index]
         # plotkwargs['dash_capstyle'] = dash_capstyleList[index]
-        plotkwargs['linestyle'] = ['-', '--'][int(index / 7) % 2]
+        plotkwargs['linestyle'] = '--' if (int(index / 7) % 2) else '-'
         plotkwargs['linewidth'] = 2.5 - (0.2 * index)
         at.spectra.plot_artis_spectrum(axis, modelpath, args=args, from_packets=args.frompackets,
                                        filterfunc=filterfunc, **plotkwargs)
@@ -165,11 +165,12 @@ def make_plot(modelpaths, args):
     fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
     axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
 
-    # import scipy.signal
-    #
-    # def filterfunc(flambda):
-    #     return scipy.signal.savgol_filter(flambda, 5, 3)
-    filterfunc = None
+    import scipy.signal
+
+    def filterfunc(flambda):
+        return scipy.signal.savgol_filter(flambda, 5, 3)
+
+    # filterfunc = None
     if args.emissionabsorption:
         plotobjects, plotobjectlabels = make_emission_plot(modelpaths[0], axis, filterfunc, args)
     else:
