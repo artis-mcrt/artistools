@@ -287,7 +287,7 @@ def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
     specdata['f_lambda'] = specdata['f_lambda'].apply(lambda x: max(0, x))
 
     if flambdafilterfunc:
-        specdata['f_lambda'] = specdata['f_lambda'].apply(flambdafilterfunc)
+        specdata['f_lambda'] = flambdafilterfunc(specdata['f_lambda'])
 
     if normalised:
         specdata['f_lambda_scaled'] = (specdata['f_lambda'] / specdata['f_lambda'].max() *
