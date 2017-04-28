@@ -43,6 +43,7 @@ setup(
         'console_scripts': [
             'plotartislightcurve = artistools.plot.lightcurve:main',
             'plotartisnltepops = artistools.plot.nltepops:main',
+            'plotartismacroatom = artistools.plot.macroatom:main',
             'plotartisnonthermal = artistools.plot.nonthermalspec:main',
             'plotartisradfield = artistools.plot.radfield:main',
             'plotartisspectrum = artistools.plot.spectrum:main',
