@@ -15,7 +15,7 @@ K_B = const.k_B.to('eV / K').value
 c = const.c.to('km / s').value
 
 PYDIR = os.path.dirname(os.path.abspath(__file__))
-elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, 'elements.csv'))['symbol'].values)
+elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, '..', 'elements.csv'))['symbol'].values)
 
 
 iontuple = namedtuple('ion', 'ion_stage number_fraction')
@@ -108,11 +108,11 @@ def main():
 
         print(f'{len(transitions):d} matching lines of {elsymbol}')
 
-        if len(transitions) > 0 and not args.no_plot:
+        if len(transitions) > 0:
             print('Generating spectra...')
             xvalues, yvalues = generate_spectra(transitions, atomic_number, ions, plot_xmin_wide, plot_xmax_wide, args)
-
-            make_plot(xvalues, yvalues, elsymbol, ions, args)
+            if not args.no_plot:
+                make_plot(xvalues, yvalues, elsymbol, ions, args)
 
 
 def load_transitions(transition_file):
@@ -134,8 +134,7 @@ def load_transitions(transition_file):
     return transitions
 
 
-def generate_spectra(transitions, atomic_number, ions, plot_xmin_wide,
-                     plot_xmax_wide, args):
+def generate_spectra(transitions, atomic_number, ions, plot_xmin_wide, plot_xmax_wide, args):
     # resolution of the plot in Angstroms
     plot_resolution = int((args.xmax - args.xmin) / 1000)
 
