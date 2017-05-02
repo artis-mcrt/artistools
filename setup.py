@@ -47,6 +47,7 @@ setup(
             'plotartisnonthermal = artistools.plot.nonthermalspec:main',
             'plotartisradfield = artistools.plot.radfield:main',
             'plotartisspectrum = artistools.plot.spectrum:main',
+            'plotartistransitions = artistools.plot.transitions:main',
         ]
     },
     python_requires='>==3.6',
