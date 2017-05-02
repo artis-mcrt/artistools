@@ -7,6 +7,7 @@ import sys
 import warnings
 
 import artistools as at
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -155,14 +156,14 @@ def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=No
         # find any other packets files in the same directory
         packetsfiles_thismodel = glob.glob(os.path.join(modelpath, 'packets**.out'))
         print(packetsfiles_thismodel)
-        spectrum = get_spectrum_from_packets(
+        spectrum = at.spectra.get_spectrum_from_packets(
             packetsfiles_thismodel, time_days_lower, time_days_upper, lambda_min=args.xmin, lambda_max=args.xmax)
     else:
-        spectrum = get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
+        spectrum = at.spectra.get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
 
     spectrum.query('@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax', inplace=True)
 
-    print_integrated_flux(spectrum['f_lambda'], spectrum['lambda_angstroms'])
+    at.spectra.print_integrated_flux(spectrum['f_lambda'], spectrum['lambda_angstroms'])
 
     spectrum['f_lambda_scaled'] = spectrum['f_lambda'] / spectrum['f_lambda'].max()
     ycolumnname = 'f_lambda_scaled' if args.normalised else 'f_lambda'
@@ -194,7 +195,6 @@ def make_spectrum_plot(modelpaths, axis, filterfunc, args):
 
 def make_emission_plot(modelpath, axis, filterfunc, args):
     from astropy import constants as const
-    import pandas as pd
     maxion = 5  # must match sn3d.h value
 
     emissionfilename = os.path.join(modelpath, 'emissiontrue.out')

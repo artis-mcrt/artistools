@@ -5,7 +5,6 @@ import math
 import os.path
 from collections import namedtuple
 
-import matplotlib.patches as mpatches
 import numpy as np
 import pandas as pd
 from astropy import constants as const
