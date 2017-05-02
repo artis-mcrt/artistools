@@ -6,9 +6,9 @@ import os.path
 import sys
 import warnings
 
-import matplotlib.pyplot as plt
-
 import artistools as at
+import matplotlib.pyplot as plt
+import pandas as pd
 
 # import matplotlib.ticker as ticker
 
@@ -81,11 +81,100 @@ def main(argsraw=None):
         make_plot(modelpaths, args)
 
 
+def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=None, scale_to_peak=None,
+                           **plotkwargs):
+    """
+        Plot reference spectra listed in args.refspecfiles
+    """
+    if args.refspecfiles is not None:
+        colorlist = ['black', '0.4']
+        for index, filename in enumerate(args.refspecfiles):
+            serieslabel = at.spectra.refspectralabels.get(filename, filename)
+
+            if index < len(colorlist):
+                plotkwargs['color'] = colorlist[index]
+
+            plotobjects.append(
+                plot_reference_spectrum(
+                    filename, serieslabel, axis, args.xmin, args.xmax, args.normalised,
+                    flambdafilterfunc, scale_to_peak, **plotkwargs))
+
+            plotobjectlabels.append(serieslabel)
+
+
+def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
+                            flambdafilterfunc=None, scale_to_peak=None, **plotkwargs):
+    scriptdir = os.path.dirname(os.path.abspath(__file__))
+    filepath = os.path.join(scriptdir, 'refspectra', filename)
+    specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
+                           names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
+
+    print(f"Reference spectrum '{serieslabel}' has {len(specdata)} points in the plot range")
+
+    specdata.query('lambda_angstroms > @xmin and lambda_angstroms < @xmax', inplace=True)
+
+    print_integrated_flux(specdata.f_lambda, specdata.lambda_angstroms)
+
+    if len(specdata) > 5000:
+        # specdata = scipy.signal.resample(specdata, 10000)
+        # specdata = specdata.iloc[::3, :].copy()
+        specdata.query('index % 3 == 0', inplace=True)
+        print(f"  downsamping to {len(specdata)} points")
+
+    # clamp negative values to zero
+    specdata['f_lambda'] = specdata['f_lambda'].apply(lambda x: max(0, x))
+
+    if flambdafilterfunc:
+        specdata['f_lambda'] = flambdafilterfunc(specdata['f_lambda'])
+
+    if normalised:
+        specdata['f_lambda_scaled'] = (specdata['f_lambda'] / specdata['f_lambda'].max() *
+                                       (scale_to_peak if scale_to_peak else 1.0))
+        ycolumnname = 'f_lambda_scaled'
+    else:
+        ycolumnname = 'f_lambda'
+
+    if 'linewidth' not in plotkwargs and 'lw' not in plotkwargs:
+        plotkwargs['linewidth'] = 1.5
+
+    lineplot = specdata.plot(x='lambda_angstroms', y=ycolumnname, ax=axis, label=serieslabel, zorder=-1, **plotkwargs)
+    return mpatches.Patch(color=lineplot.get_lines()[0].get_color())
+
+
+def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=None, **plotkwargs):
+    specfilename = os.path.join(modelpath, 'spec.out')
+
+    (modelname, timestepmin, timestepmax,
+     time_days_lower, time_days_upper) = at.get_model_name_times(
+         specfilename, at.get_timestep_times(specfilename),
+         args.timestep, args.timemin, args.timemax)
+
+    linelabel = f'{modelname} at t={time_days_lower:.2f}d to {time_days_upper:.2f}d'
+
+    if from_packets:
+        # find any other packets files in the same directory
+        packetsfiles_thismodel = glob.glob(os.path.join(modelpath, 'packets**.out'))
+        print(packetsfiles_thismodel)
+        spectrum = get_spectrum_from_packets(
+            packetsfiles_thismodel, time_days_lower, time_days_upper, lambda_min=args.xmin, lambda_max=args.xmax)
+    else:
+        spectrum = get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
+
+    spectrum.query('@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax', inplace=True)
+
+    print_integrated_flux(spectrum['f_lambda'], spectrum['lambda_angstroms'])
+
+    spectrum['f_lambda_scaled'] = spectrum['f_lambda'] / spectrum['f_lambda'].max()
+    ycolumnname = 'f_lambda_scaled' if args.normalised else 'f_lambda'
+    spectrum.plot(x='lambda_angstroms', y=ycolumnname, ax=axis,
+                  label=linelabel, alpha=0.95, **plotkwargs)
+
+
 def make_spectrum_plot(modelpaths, axis, filterfunc, args):
     """
         Set up a matplotlib figure and plot observational and ARTIS spectra
     """
-    at.spectra.plot_reference_spectra(axis, [], [], args, flambdafilterfunc=filterfunc)
+    plot_reference_spectra(axis, [], [], args, flambdafilterfunc=filterfunc)
 
     for index, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
@@ -95,8 +184,8 @@ def make_spectrum_plot(modelpaths, axis, filterfunc, args):
         # plotkwargs['dash_capstyle'] = dash_capstyleList[index]
         plotkwargs['linestyle'] = '--' if (int(index / 7) % 2) else '-'
         plotkwargs['linewidth'] = 2.5 - (0.2 * index)
-        at.spectra.plot_artis_spectrum(axis, modelpath, args=args, from_packets=args.frompackets,
-                                       filterfunc=filterfunc, **plotkwargs)
+        plot_artis_spectrum(axis, modelpath, args=args, from_packets=args.frompackets,
+                            filterfunc=filterfunc, **plotkwargs)
 
     if args.normalised:
         axis.set_ylim(ymin=-0.1, ymax=1.25)
@@ -145,8 +234,8 @@ def make_emission_plot(modelpath, axis, filterfunc, args):
 
     plotobjectlabels = list([x.linelabel for x in contributions_sorted_reduced])
 
-    at.spectra.plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=None,
-                                      scale_to_peak=(maxyvalueglobal if args.normalised else None), linewidth=0.5)
+    plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=None,
+                           scale_to_peak=(maxyvalueglobal if args.normalised else None), linewidth=0.5)
 
     axis.axhline(color='white', linewidth=0.5)
 
