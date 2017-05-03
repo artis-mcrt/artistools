@@ -57,7 +57,7 @@ def main(argsraw=None):
                         help='path/filename for PDF file')
     args = parser.parse_args(argsraw)
 
-    if len(args.modelpath) == 0:
+    if not args.modelpath:
         args.modelpath = ['.', '*']
 
     # combined the results of applying wildcards on each input
