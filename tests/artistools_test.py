@@ -5,6 +5,11 @@ import pandas as pd
 from astropy import constants as const
 
 import artistools as at
+import artistools.lightcurve
+import artistools.nltepops
+import artistools.nonthermalspec
+import artistools.radfield
+import artistools.spectra
 
 specfilename = 'tests/data/spec.out'
 emissionfilename = 'tests/data/emissiontrue.out'

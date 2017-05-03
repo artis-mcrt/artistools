@@ -3,7 +3,6 @@
 import argparse
 import glob
 import itertools
-# import glob
 import math
 import os.path
 

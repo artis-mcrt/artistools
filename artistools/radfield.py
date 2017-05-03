@@ -17,13 +17,6 @@ from astropy import units as u
 import artistools as at
 
 
-# import os
-
-# from astropy import units as u
-
-# from collections import namedtuple
-
-
 def read_files(radfield_files, modelgridindex=None):
     radfielddata = None
     if not radfield_files:
