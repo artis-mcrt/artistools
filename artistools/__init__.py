@@ -9,16 +9,6 @@ from collections import namedtuple
 import pandas as pd
 from astropy import constants as const
 
-import artistools.lightcurve
-import artistools.macroatom
-import artistools.nltepops
-import artistools.nonthermalspec
-import artistools.packets
-import artistools.radfield
-import artistools.spectra
-import artistools.stats
-# import artistools.transitions
-
 PYDIR = os.path.dirname(os.path.abspath(__file__))
 
 elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, 'elements.csv'))['symbol'].values)

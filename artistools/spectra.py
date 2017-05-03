@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-# import matplotlib.ticker as ticker
 import glob
 import itertools
 import math
@@ -9,6 +8,7 @@ import sys
 import warnings
 from collections import namedtuple
 
+# import matplotlib.ticker as ticker
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
