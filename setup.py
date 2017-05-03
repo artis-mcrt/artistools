@@ -41,13 +41,13 @@ setup(
         os.path.join(os.path.dirname(__file__), "requirements.txt")).read(),
     entry_points={
         'console_scripts': [
-            'plotartislightcurve = artistools.plot.lightcurve:main',
-            'plotartisnltepops = artistools.plot.nltepops:main',
-            'plotartismacroatom = artistools.plot.macroatom:main',
-            'plotartisnonthermal = artistools.plot.nonthermalspec:main',
-            'plotartisradfield = artistools.plot.radfield:main',
-            'plotartisspectrum = artistools.plot.spectrum:main',
-            'plotartistransitions = artistools.plot.transitions:main',
+            'plotartislightcurve = artistools.lightcurve:main',
+            'plotartisnltepops = artistools.nltepops:main',
+            'plotartismacroatom = artistools.macroatom:main',
+            'plotartisnonthermal = artistools.nonthermalspec:main',
+            'plotartisradfield = artistools.radfield:main',
+            'plotartisspectrum = artistools.spectra:main',
+            'plotartistransitions = artistools.transitions:main',
         ]
     },
     python_requires='>==3.6',
