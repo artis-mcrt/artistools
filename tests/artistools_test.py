@@ -62,9 +62,9 @@ def test_get_flux_contributions():
 
 def test_plotters():
     arglist = ['tests/data/', '-o', 'tests/data/']
-    at.plot.nltepops.main(arglist)
-    at.plot.lightcurve.main(arglist)
-    at.plot.spectrum.main(arglist)
-    at.plot.spectrum.main(arglist + ['--emissionabsorption'])
-    at.plot.nonthermalspec.main(arglist)
-    assert(at.plot.radfield.main(arglist) == 0)
+    at.nltepops.main(arglist)
+    at.lightcurve.main(arglist)
+    at.spectra.main(arglist)
+    at.spectra.main(arglist + ['--emissionabsorption'])
+    at.nonthermalspec.main(arglist)
+    assert(at.radfield.main(arglist) == 0)

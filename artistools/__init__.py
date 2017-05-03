@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 import math
 import os.path
+# from astropy import units as u
+from collections import namedtuple
 
 # import scipy.signal
 # import numpy as np
 import pandas as pd
 from astropy import constants as const
-# from astropy import units as u
-from collections import namedtuple
 
-import artistools.lightcurves
+import artistools.lightcurve
+import artistools.macroatom
+import artistools.nltepops
+import artistools.nonthermalspec
 import artistools.packets
-import artistools.plot
 import artistools.radfield
 import artistools.spectra
+import artistools.stats
+# import artistools.transitions
 
 PYDIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -122,8 +126,7 @@ def get_timestep_time(specfilename, timestep):
     """
     if os.path.isfile(specfilename):
         return get_timestep_times(specfilename)[timestep]
-    else:
-        return -1
+    return -1
 
 
 def get_timestep_time_delta(timestep, timearray):
