@@ -7,6 +7,7 @@ import os.path
 import sys
 import warnings
 from collections import namedtuple
+from contracts import contract
 
 # import matplotlib.ticker as ticker
 import matplotlib.patches as mpatches
@@ -54,7 +55,8 @@ def stackspectra(spectra_and_factors):
     return stackedspectrum
 
 
-def get_spectrum(specfilename, timestepmin, timestepmax=-1, fnufilterfunc=None):
+@contract
+def get_spectrum(specfilename: str, timestepmin: int, timestepmax=-1, fnufilterfunc=None):
     """
         Return a pandas DataFrame containing an ARTIS emergent spectrum
     """
@@ -319,6 +321,7 @@ def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafil
             plotobjectlabels.append(serieslabel)
 
 
+@contract(filename=str, serieslabel=str, xmin=float, xmax='float,>0')
 def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
                             flambdafilterfunc=None, scale_to_peak=None, **plotkwargs):
     scriptdir = os.path.dirname(os.path.abspath(__file__))
