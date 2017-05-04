@@ -18,21 +18,21 @@ absorptionfilename = 'tests/data/absorption.out'
 
 def test_timestep_times():
     timearray = at.get_timestep_times(specfilename)
-    assert(len(timearray) == 100)
-    assert(timearray[0] == '250.421')
-    assert(timearray[-1] == '349.412')
+    assert len(timearray) == 100
+    assert timearray[0] == '250.421'
+    assert timearray[-1] == '349.412'
 
 
 def test_get_spectrum():
     dfspectrum = at.spectra.get_spectrum(specfilename, 55, 65, fnufilterfunc=None)
-    assert(len(dfspectrum['lambda_angstroms']) == 1000)
-    assert(abs(dfspectrum['lambda_angstroms'].values[-1] - 29920.601421214415) < 1e-5)
-    assert(abs(dfspectrum['lambda_angstroms'].values[0] - 600.75759482509852) < 1e-5)
+    assert len(dfspectrum['lambda_angstroms']) == 1000
+    assert abs(dfspectrum['lambda_angstroms'].values[-1] - 29920.601421214415) < 1e-5
+    assert abs(dfspectrum['lambda_angstroms'].values[0] - 600.75759482509852) < 1e-5
 
-    assert(len(dfspectrum['f_lambda']) == 1000)
-    assert(abs(max(dfspectrum['f_lambda']) - 2.548532804918824e-13) < 1e-5)
-    assert(min(dfspectrum['f_lambda']) < 1e-9)
-    assert(abs(np.mean(dfspectrum['f_lambda']) - 1.0314682640070206e-14) < 1e-5)
+    assert len(dfspectrum['f_lambda']) == 1000
+    assert abs(max(dfspectrum['f_lambda']) - 2.548532804918824e-13) < 1e-5
+    assert min(dfspectrum['f_lambda']) < 1e-9
+    assert abs(np.mean(dfspectrum['f_lambda']) - 1.0314682640070206e-14) < 1e-5
 
 
 def test_get_flux_contributions():
@@ -57,12 +57,12 @@ def test_get_flux_contributions():
     # total spectrum should be equal to the sum of all emission processes
     print(f'Integrated flux from spec.out:     {integrated_flux_specout}')
     print(f'Integrated flux from emission sum: {integrated_flux_emission}')
-    assert(abs((integrated_flux_specout / integrated_flux_emission) - 1) < 4e-3)
+    assert abs((integrated_flux_specout / integrated_flux_emission) - 1) < 4e-3
 
     # check each bin is not out by a large fraction
     diff = [abs(x - y) for x, y in zip(array_flambda_emission_total, dfspectrum['f_lambda'].values)]
     print(f'Max f_lambda difference {max(diff) / integrated_flux_specout.value}')
-    assert(max(diff) / integrated_flux_specout.value < 2e-3)
+    assert max(diff) / integrated_flux_specout.value < 2e-3
 
 
 def test_plotters():
@@ -72,4 +72,4 @@ def test_plotters():
     at.spectra.main(arglist)
     at.spectra.main(arglist + ['--emissionabsorption'])
     at.nonthermalspec.main(arglist)
-    assert(at.radfield.main(arglist) == 0)
+    assert at.radfield.main(arglist) == 0
