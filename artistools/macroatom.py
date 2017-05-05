@@ -100,14 +100,15 @@ def make_plot(dfmacroatom, modelpath, specfilename, timestepmin, timestepmax, ou
     fig, axis = plt.subplots(1, 1, sharex=True, figsize=(6, 6),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    axis.annotate(f'Timestep {timestepmin:d} to {timestepmax:d} (t={time_days_min} to {time_days_max})\nCell {modelgridindex:d}',
+    axis.annotate(f'Timestep {timestepmin:d} to {timestepmax:d} (t={time_days_min} to '
+                  f'{time_days_max})\nCell {modelgridindex:d}',
                   xy=(0.02, 0.96), xycoords='axes fraction',
                   horizontalalignment='left', verticalalignment='top', fontsize=8)
 
     lambda_cmf_in = const.c.to('angstrom/s').value / dfmacroatom['nu_cmf_in'].values
     lambda_cmf_out = const.c.to('angstrom/s').value / dfmacroatom['nu_cmf_out'].values
     # axis.scatter(lambda_cmf_in, lambda_cmf_out, s=1, alpha=0.5, edgecolor='none')
-    axis.plot(lambda_cmf_in, lambda_cmf_out, linestyle='none', marker='o', # alpha=0.5, 
+    axis.plot(lambda_cmf_in, lambda_cmf_out, linestyle='none', marker='o',  # alpha=0.5,
               markersize=2, markerfacecolor='red', markeredgewidth=0)
     axis.set_xlabel(r'Wavelength in ($\AA$)')
     axis.set_ylabel(r'Wavelength out ($\AA$)')
