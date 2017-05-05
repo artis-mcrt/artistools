@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # coding: utf-8
 """Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code."""
 
