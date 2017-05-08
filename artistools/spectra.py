@@ -322,7 +322,7 @@ def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafil
             plotobjectlabels.append(serieslabel)
 
 
-@contract(filename=str, serieslabel=str, xmin=float, xmax='float,>0')
+@contract(filename=str, serieslabel=str, xmin='float|int', xmax='float|int,>0')
 def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
                             flambdafilterfunc=None, scale_to_peak=None, **plotkwargs):
     scriptdir = os.path.dirname(os.path.abspath(__file__))
