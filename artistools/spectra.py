@@ -142,6 +142,8 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
     maxyvalueglobal = 0.
     array_flambda_emission_total = np.zeros_like(arraylambda)
     contribution_list = []
+    if filterfunc:
+        print("Applying filter")
     for element in range(nelements):
         nions = elementlist.nions[element]
         # nions = elementlist.iloc[element].uppermost_ionstage - elementlist.iloc[element].lowermost_ionstage + 1
@@ -171,7 +173,6 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
 
                 # best to use the filter on fnu (because it hopefully has regular sampling)
                 if filterfunc:
-                    print("Applying filter")
                     array_fnu_emission = filterfunc(array_fnu_emission)
                     if selectedcolumn <= nelements * maxion:
                         array_fnu_absorption = filterfunc(array_fnu_absorption)
