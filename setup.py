@@ -43,6 +43,7 @@ setup(
         os.path.join(os.path.dirname(__file__), "requirements.txt")).read(),
     entry_points={
         'console_scripts': [
+            'plotartisestimators = artistools.estimators:main',
             'plotartislightcurve = artistools.lightcurve:main',
             'plotartisnltepops = artistools.nltepops:main',
             'plotartismacroatom = artistools.macroatom:main',
