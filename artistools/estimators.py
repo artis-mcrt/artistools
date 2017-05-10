@@ -1,12 +1,28 @@
 #!/usr/bin/env python3
-import math
+# import math
 
 import matplotlib.pyplot as plt
 
 # import numpy as np
 import artistools as at
 
+
 # from astropy import constants as const
+
+
+def parse_pop_row(row, popdict):
+    atomic_number = int(row[1].split('=')[1])
+    for index, token in list(enumerate(row))[2::2]:
+        ion_stage = int(token.rstrip(':'))
+        nionpopulation = float(row[index + 1])
+
+        popdict[(atomic_number, ion_stage)] = nionpopulation
+
+        elpop = popdict.get(atomic_number, 0)
+        popdict[atomic_number] = elpop + nionpopulation
+
+        totalpop = popdict.get('total', 0)
+        popdict['total'] = totalpop + nionpopulation
 
 
 def get_estimators(estimfiles):
@@ -30,19 +46,14 @@ def get_estimators(estimfiles):
                     estimators[(timestep, modelgridindex)]['TJ'] = float(row[11])
                     estimators[(timestep, modelgridindex)]['nne'] = float(row[15])
                     estimators[(timestep, modelgridindex)]['populations'] = {}
+
                 elif row[0] == 'populations':
-                    atomic_number = int(row[1].split('=')[1])
-                    for index, token in list(enumerate(row))[2::2]:
-                        ion_stage = int(token.rstrip(':'))
-                        nionpopulation = float(row[index + 1])
-                        estimators[(timestep, modelgridindex)]['populations'][(atomic_number, ion_stage)] = nionpopulation
-                        elpop = estimators[(timestep, modelgridindex)]['populations'].get(atomic_number, 0)
-                        estimators[(timestep, modelgridindex)]['populations'][atomic_number] = elpop + nionpopulation
-                        totalpop = estimators[(timestep, modelgridindex)]['populations'].get('total', 0)
-                        estimators[(timestep, modelgridindex)]['populations']['total'] = totalpop + nionpopulation
+                    parse_pop_row(row, estimators[(timestep, modelgridindex)]['populations'])
+
                 elif row[0] == 'heating:':
                     for index, token in list(enumerate(row))[1::2]:
                         estimators[(timestep, modelgridindex)][f'heating_{token}'] = float(row[index + 1])
+
                 elif row[0] == 'cooling:':
                     for index, token in list(enumerate(row))[1::2]:
                         estimators[(timestep, modelgridindex)][f'cooling_{token}'] = float(row[index + 1])
@@ -58,10 +69,6 @@ def main():
         'nne': 'e-/cm3',
         'heating_gamma': 'erg/s/cm3',
     }
-    # timesteptimes = []
-    # with open('light_curve.out', 'r') as lcfile:
-    #     for line in lcfile:
-    #         timesteptimes.append(line.split()[0])
 
     # elementlist = at.get_composition_data('compositiondata.txt')
     modeldata, _ = at.get_modeldata('model.txt')
@@ -74,8 +81,9 @@ def main():
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     timestep = 40
-    xlist = modeldata['velocity']
     axes[-1].set_xlabel(r'Velocity [km/s]')
+    # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
+
     for axis, subplotseries in zip(axes, series):
         if subplotseries[0].startswith('Fe'):
             axis.set_ylabel('X$_{ion}$/X$_{tot}$')
@@ -88,7 +96,7 @@ def main():
                     ylist.append(nionpop / totalpop)
 
                 plotlabel = f'Fe {at.roman_numerals[ion_stage]}'
-                axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel)
+                axis.plot(modeldata['velocity'], ylist, linewidth=1.5, label=plotlabel)
         else:
             if subplotseries[0].startswith('heating'):
                 axis.set_yscale('log')
@@ -104,20 +112,16 @@ def main():
                 for modelgridindex in modeldata.index:
                     ylist.append(estimators[(timestep, modelgridindex)][variablename])
 
-                axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel)
+                axis.plot(modeldata['velocity'], ylist, linewidth=1.5, label=plotlabel)
 
         if len(subplotseries) != 1:
-            axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
+            axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 10})
 
-    plotlabel = f'timestep {timestep}'
-    axes[0].annotate(plotlabel, xy=(0.5, 0.04), xycoords='axes fraction',
-                     horizontalalignment='center', verticalalignment='bottom', fontsize=12)
-
-    # for axis in axes:
-    #     # axis.set_xlim(xmin=270,xmax=300)
-    #     # axis.set_ylim(ymin=-0.1,ymax=1.3)
-
-    # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
+    plotlabel = f'Timestep {timestep}'
+    time_days = float(at.get_timestep_time('spec.out', timestep))
+    if time_days >= 0:
+        plotlabel += f' (t={time_days:.2f})'
+    fig.suptitle(plotlabel, fontsize=12)
 
     fig.savefig('plotestimators.pdf', format='pdf')
     plt.close()
