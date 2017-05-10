@@ -252,6 +252,8 @@ def main(argsraw=None):
                         help='Read packets files directly instead of exspec results')
     parser.add_argument('--emissionabsorption', default=False, action='store_true',
                         help='Show an emission/absorption plot')
+    parser.add_argument('--nostack', default=False, action='store_true',
+                        help="Don't stack contributions")
     parser.add_argument('-maxseriescount', type=int, default=9,
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
@@ -443,14 +445,26 @@ def make_emission_plot(modelpath, axis, filterfunc, args):
     contributions_sorted_reduced = at.spectra.sort_and_reduce_flux_contribution_list(
         contribution_list, args.maxseriescount, arraylambda_angstroms)
 
-    plotobjects = axis.stackplot(
-        arraylambda_angstroms, [x.array_flambda_emission for x in contributions_sorted_reduced], linewidth=0)
+    if args.nostack:
+        plotobjects = []
+        for x in contributions_sorted_reduced:
+            line = axis.plot(arraylambda_angstroms, x.array_flambda_emission, linewidth=1)
+            plotobjects.append(mpatches.Patch(color=line[0].get_color()))
 
-    facecolors = [p.get_facecolor()[0] for p in plotobjects]
+        # facecolors = [p.get_facecolor()[0] for p in plotobjects]
+        #
+        # axis.plot(
+        #     arraylambda_angstroms, [-x.array_flambda_absorption for x in contributions_sorted_reduced],
+        #     colors=facecolors, linewidth=0)
+    else:
+        plotobjects = axis.stackplot(
+            arraylambda_angstroms, [x.array_flambda_emission for x in contributions_sorted_reduced], linewidth=0)
 
-    axis.stackplot(
-        arraylambda_angstroms, [-x.array_flambda_absorption for x in contributions_sorted_reduced],
-        colors=facecolors, linewidth=0)
+        facecolors = [p.get_facecolor()[0] for p in plotobjects]
+
+        axis.stackplot(
+            arraylambda_angstroms, [-x.array_flambda_absorption for x in contributions_sorted_reduced],
+            colors=facecolors, linewidth=0)
 
     plotobjectlabels = list([x.linelabel for x in contributions_sorted_reduced])
 
