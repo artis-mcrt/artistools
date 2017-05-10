@@ -120,7 +120,7 @@ def main():
     plotlabel = f'Timestep {timestep}'
     time_days = float(at.get_timestep_time('spec.out', timestep))
     if time_days >= 0:
-        plotlabel += f' (t={time_days:.2f})'
+        plotlabel += f' (t={time_days:.2f}d)'
     fig.suptitle(plotlabel, fontsize=12)
 
     fig.savefig('plotestimators.pdf', format='pdf')
