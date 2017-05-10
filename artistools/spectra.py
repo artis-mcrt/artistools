@@ -283,7 +283,8 @@ def main(argsraw=None):
     modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in args.modelpath if os.path.isdir(x)]))
 
     if args.listtimesteps:
-        at.showtimesteptimes(modelpaths[0])
+        print(modelpaths)
+        at.showtimesteptimes(os.path.join(modelpaths[0], 'spec.out'))
     else:
         if args.emissionabsorption:
             if len(modelpaths) > 1:
