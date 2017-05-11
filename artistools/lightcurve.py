@@ -14,6 +14,7 @@ from astropy import units as u
 import artistools as at
 import matplotlib.pyplot as plt
 
+
 def readfile(filename):
     lcdata = pd.read_csv(filename, delim_whitespace=True, header=None, names=['time', 'lum', 'lum_cmf'])
     # the light_curve.dat file repeats x values, so keep the first half only
