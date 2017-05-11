@@ -354,3 +354,15 @@ def get_model_name_times(filename, timearray, timestep_range_str, timemin, timem
           f'(t={time_days_lower:.3f}d to {time_days_upper:.3f}d)')
 
     return modelname, timestepmin, timestepmax, time_days_lower, time_days_upper
+
+
+def get_atomic_number(elsymbol):
+    if elsymbol.title() in elsymbols:
+        return elsymbols.index(elsymbol.title())
+    return -1
+
+
+def decode_roman_numeral(strin):
+    if strin.upper() in roman_numerals:
+        return roman_numerals.index(strin.upper())
+    return -1
