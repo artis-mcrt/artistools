@@ -14,7 +14,7 @@ python setup.py develop
 ```
 
 ## Usage
-First cd into an ARTIS folder then run one of the command-line tools:
+First cd into an ARTIS simulation folder and then run one of the command-line tools:
 - plotartislightcurve
 - plotartisestimators
 - plotartisnltepops
