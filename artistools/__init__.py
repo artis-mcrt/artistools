@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import math
 import os.path
+import sys
 # from astropy import units as u
 from collections import namedtuple
 
@@ -8,6 +9,8 @@ from collections import namedtuple
 # import numpy as np
 import pandas as pd
 from astropy import constants as const
+
+from artistools import spectra
 
 PYDIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -330,13 +333,18 @@ def get_model_name_times(filename, timearray, timestep_range_str, timemin, timem
             timestepmin = int(timestep_range_str)
             timestepmax = timestepmin
     else:
+        timestepmin = None
         if not timemin:
             timemin = 0.
         for timestep, time in enumerate(timearray):
             timefloat = float(time.strip('d'))
-            if (timefloat >= timemin):
+            if (timemin <= timefloat):
                 timestepmin = timestep
                 break
+
+        if not timestepmin:
+            print("Time min is greater than all timesteps")
+            sys.exit()
 
         if not timemax:
             timemax = float(timearray[-1].strip('d'))
