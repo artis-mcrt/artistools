@@ -5,7 +5,7 @@ import argparse
 
 import matplotlib.pyplot as plt
 
-# import numpy as np
+import numpy as np
 import artistools as at
 
 
@@ -71,7 +71,10 @@ def plotion(atomic_number, ion_stage, timestep, axis, modeldata, estimators):
         ylist.append(nionpop / totalpop)
 
     plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
-    axis.plot(modeldata['velocity'], ylist, linewidth=1.5, label=plotlabel)
+
+    arr_velocity = np.insert(modeldata['velocity'].values, 0, 0.)
+    ylist.insert(0, ylist[0])
+    axis.step(arr_velocity, ylist, where='pre', linewidth=1.5, label=plotlabel)
 
 
 def plot_timestep(timestep, modeldata, estimators, units, series, outfilename):
@@ -104,7 +107,9 @@ def plot_timestep(timestep, modeldata, estimators, units, series, outfilename):
             for modelgridindex in modeldata.index:
                 ylist.append(estimators[(timestep, modelgridindex)][variablename])
 
-            axis.plot(modeldata['velocity'], ylist, linewidth=1.5, label=plotlabel)
+            arr_velocity = np.insert(modeldata['velocity'].values, 0, 0.)
+            ylist.insert(0, ylist[0])
+            axis.step(arr_velocity, ylist, where='pre', linewidth=1.5, label=plotlabel)
 
         if len(subplotseries) != 1:
             axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 10})
@@ -157,7 +162,7 @@ def main(argsraw=None):
 
     estimators = read_estimators(['estimators_0000.out'])
 
-    series = [['heating_gamma'], ['TR'], ['Te'], ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Co II', 'Co III']]
+    series = [['heating_gamma'], ['TR'], ['Te'], ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V']]
 
     for timestep in range(timestepmin, timestepmax + 1):
         plot_timestep(timestep, modeldata, estimators, units, series, args.outputfile.format(timestep))
