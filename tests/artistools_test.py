@@ -69,7 +69,7 @@ def test_plotters():
     arglist = ['tests/data/', '-o', 'tests/data/']
     at.nltepops.main(arglist)
     at.lightcurve.main(arglist)
-    at.spectra.main(arglist)
-    at.spectra.main(arglist + ['--emissionabsorption'])
+    at.spectra.main(arglist + ['-timemin', '290', '-timemax', '320'])
+    at.spectra.main(arglist + ['-timemin', '290', '-timemax', '320', '--emissionabsorption'])
     at.nonthermalspec.main(arglist)
     assert at.radfield.main(arglist) == 0
