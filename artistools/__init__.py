@@ -343,7 +343,7 @@ def get_model_name_times(filename, timearray, timestep_range_str, timemin, timem
                 break
 
         if not timestepmin:
-            print("Time min is greater than all timesteps")
+            print(f"Time min {timemin} is greater than all timesteps ({timearray[0]} to {timearray[-1]})")
             sys.exit()
 
         if not timemax:

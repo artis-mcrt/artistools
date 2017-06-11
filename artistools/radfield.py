@@ -17,7 +17,7 @@ from astropy import units as u
 import artistools as at
 
 
-def read_files(radfield_files, modelgridindex=None):
+def read_files(radfield_files, modelgridindex=-1):
     radfielddata = None
     if not radfield_files:
         print("No radfield files")
@@ -27,8 +27,10 @@ def read_files(radfield_files, modelgridindex=None):
 
             radfielddata_thisfile = pd.read_csv(radfield_file, delim_whitespace=True)
             # radfielddata_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
-            if modelgridindex:
+
+            if modelgridindex >= 0:
                 radfielddata_thisfile.query('modelgridindex==@modelgridindex', inplace=True)
+
             if radfielddata_thisfile is not None:
                 if len(radfielddata_thisfile) > 0:
                     if radfielddata is None:
@@ -92,6 +94,7 @@ def plot_fitted_field(axis, radfielddata, xmin, xmax):
             if row['bin_num'] == -1:
                 ymaxglobalfit = max(arr_j_lambda)
                 axis.plot(arr_lambda, arr_j_lambda, linewidth=1.5, color='purple', label='Full-spectrum fitted field')
+                print(row)
             else:
                 fittedxvalues += list(arr_lambda)
                 fittedyvalues += list(arr_j_lambda)
@@ -207,7 +210,7 @@ def main(argsraw=None):
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
     parser.add_argument('-timestep', type=int, default=-1,
-                        help='Timestep number to plot, or -1 for last')
+                        help='Timestep number to plot')
     parser.add_argument('-timestepmax', type=int, default=-1,
                         help='Make plots for all timesteps up to this timestep')
     parser.add_argument('-modelgridindex', type=int, default=0,

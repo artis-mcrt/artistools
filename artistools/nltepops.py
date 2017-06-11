@@ -90,8 +90,9 @@ def main(argsraw=None):
 
 
 def make_plot(dfpop, atomic_number, exc_temperature, args):
-    top_ion = -1 if args.oldformat else -2
-    ion_stage_list = dfpop.ion_stage.unique()[:top_ion]  # skip top ion, which is probably ground state only
+    top_ion = -1 if args.oldformat else -2  # skip top ion, which is probably ground state only
+    top_ion = 9999
+    ion_stage_list = dfpop.ion_stage.unique()[:top_ion]
     fig, axes = plt.subplots(len(ion_stage_list), 1, sharex=False, figsize=(8, 7),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
