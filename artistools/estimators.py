@@ -67,7 +67,7 @@ def plotion(atomic_number, ion_stage, timestep, axis, modeldata, estimators):
     ylist = []
     for modelgridindex in modeldata.index:
         totalpop = estimators[(timestep, modelgridindex)]['populations']['total']
-        nionpop = estimators[(timestep, modelgridindex)]['populations'][(atomic_number, ion_stage)]
+        nionpop = estimators[(timestep, modelgridindex)]['populations'].get((atomic_number, ion_stage), 0.)
         ylist.append(nionpop / totalpop)
 
     plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
