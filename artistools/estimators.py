@@ -84,6 +84,7 @@ def plot_timestep(timestep, modeldata, estimators, units, series, outfilename):
     # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
 
     for axis, subplotseries in zip(axes, series):
+        axis.set_xlim(xmin=0., xmax=modeldata['velocity'].max())
         if subplotseries[0].startswith('heating'):
             axis.set_yscale('log')
         for variablename in subplotseries:
