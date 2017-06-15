@@ -1,33 +1,52 @@
 #!/usr/bin/env python3
 # import math
-
 import argparse
+import sys
 
 import matplotlib.pyplot as plt
-
+import matplotlib.ticker as ticker
 import numpy as np
-import artistools as at
 
+import artistools as at
 
 # from astropy import constants as const
 
 
-def parse_pop_row(row, popdict):
+def get_units(variable):
+    units = {
+        'TR': 'K',
+        'Te': 'K',
+        'TJ': 'K',
+        'nne': 'e-/cm3',
+        'heating_gamma': 'erg/s/cm3',
+        'velocity': 'km/s',
+    }
+
+    return units.get(variable, "?")
+
+
+def parse_ion_row(row, outdict):
+    variablename = row[0]
     atomic_number = int(row[1].split('=')[1])
+
+    if variablename not in outdict:
+        outdict[variablename] = {}
+
     for index, token in list(enumerate(row))[2::2]:
         ion_stage = int(token.rstrip(':'))
-        nionpopulation = float(row[index + 1])
+        value_thision = float(row[index + 1])
 
-        popdict[(atomic_number, ion_stage)] = nionpopulation
+        outdict[variablename][(atomic_number, ion_stage)] = value_thision
 
-        elpop = popdict.get(atomic_number, 0)
-        popdict[atomic_number] = elpop + nionpopulation
+        if variablename == 'populations':
+            elpop = outdict.get(atomic_number, 0)
+            outdict[variablename][atomic_number] = elpop + value_thision
 
-        totalpop = popdict.get('total', 0)
-        popdict['total'] = totalpop + nionpopulation
+            totalpop = outdict[variablename].get('total', 0)
+            outdict[variablename]['total'] = totalpop + value_thision
 
 
-def read_estimators(estimfiles):
+def read_estimators(estimfiles, modeldata):
     estimators = {}
     for estfile in estimfiles:
         with open(estfile, 'r') as estfile:
@@ -42,15 +61,15 @@ def read_estimators(estimfiles):
                     timestep = int(row[1])
                     modelgridindex = int(row[3])
                     estimators[(timestep, modelgridindex)] = {}
+                    estimators[(timestep, modelgridindex)]['velocity'] = modeldata['velocity'][modelgridindex]
                     estimators[(timestep, modelgridindex)]['TR'] = float(row[5])
                     estimators[(timestep, modelgridindex)]['Te'] = float(row[7])
                     estimators[(timestep, modelgridindex)]['W'] = float(row[9])
                     estimators[(timestep, modelgridindex)]['TJ'] = float(row[11])
                     estimators[(timestep, modelgridindex)]['nne'] = float(row[15])
-                    estimators[(timestep, modelgridindex)]['populations'] = {}
 
-                elif row[0] == 'populations':
-                    parse_pop_row(row, estimators[(timestep, modelgridindex)]['populations'])
+                elif row[1].startswith('Z='):
+                    parse_ion_row(row, estimators[(timestep, modelgridindex)])
 
                 elif row[0] == 'heating:':
                     for index, token in list(enumerate(row))[1::2]:
@@ -63,58 +82,104 @@ def read_estimators(estimfiles):
     return estimators
 
 
-def plotion(atomic_number, ion_stage, timestep, axis, modeldata, estimators):
+def plotionseries(seriestype, atomic_number, ion_stage, timestep, axis, mgilist, estimators, xlist, **plotkwargs):
+    if seriestype == 'populations':
+        axis.yaxis.set_major_locator(ticker.MultipleLocator(base=0.05))
+
     ylist = []
-    for modelgridindex in modeldata.index:
-        totalpop = estimators[(timestep, modelgridindex)]['populations']['total']
-        nionpop = estimators[(timestep, modelgridindex)]['populations'].get((atomic_number, ion_stage), 0.)
-        ylist.append(nionpop / totalpop)
+    for modelgridindex in mgilist:
+        if seriestype == 'populations':
+            totalpop = estimators[(timestep, modelgridindex)]['populations']['total']
+            nionpop = estimators[(timestep, modelgridindex)]['populations'].get((atomic_number, ion_stage), 0.)
+            ylist.append(nionpop / totalpop)
+        else:
+            ylist.append(estimators[(timestep, modelgridindex)][seriestype].get((atomic_number, ion_stage), 0.))
 
     plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
 
-    arr_velocity = np.insert(modeldata['velocity'].values, 0, 0.)
     ylist.insert(0, ylist[0])
-    axis.step(arr_velocity, ylist, where='pre', linewidth=1.5, label=plotlabel)
+    color = ['blue', 'green', 'red', 'cyan', 'purple'][ion_stage - 1]
+    # or axis.step(where='pre', )
+    axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel, color=color, **plotkwargs)
 
 
-def plot_timestep(timestep, modeldata, estimators, units, series, outfilename):
-    fig, axes = plt.subplots(len(series), 1, sharex=True, figsize=(6, 8),
+def plot_multiseries(axis, xlist, serieslist, timestep, mgilist, estimators, **plotkwargs):
+    seriestype, ionlist = serieslist
+    for ionstr in ionlist:
+        splitvariablename = ionstr.split(' ')
+        atomic_number = at.get_atomic_number(splitvariablename[0])
+        ionstage = at.decode_roman_numeral(splitvariablename[1])
+        if seriestype == 'populations':
+            axis.set_ylabel('X$_{ion}$/X$_{tot}$')
+        else:
+            axis.set_ylabel(seriestype)
+
+        plotionseries(seriestype, atomic_number, ionstage, timestep, axis, mgilist, estimators, xlist, **plotkwargs)
+
+
+def plot_singleseries(axis, xlist, variablename, singlevariableplot, timestep, mgilist, estimators, **plotkwargs):
+    serieslabel = f'{variablename} [{get_units(variablename)}]'
+    if singlevariableplot:
+        axis.set_ylabel(serieslabel)
+        plotlabel = None
+        showlegend = False
+    else:
+        plotlabel = serieslabel
+        showlegend = True
+
+    ylist = []
+    for modelgridindex in mgilist:
+        ylist.append(estimators[(timestep, modelgridindex)][variablename])
+
+    ylist.insert(0, ylist[0])
+    dictcolors = {'Te': 'red', 'heating_gamma': 'blue'}
+    axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel, color=dictcolors.get(variablename, None), **plotkwargs)
+
+    return showlegend
+
+
+def plot_timestep(timestep, mgilist, estimators, series, outfilename, **plotkwargs):
+
+    fig, axes = plt.subplots(len(series), 1, sharex=True, figsize=(5, 8),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
-    axes[-1].set_xlabel(r'Velocity [km/s]')
     # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
+    lastxvariable = ""
+    for index, (axis, (xvariable, yvariables)) in enumerate(zip(axes, series)):
+        showlegend = False
 
-    for axis, subplotseries in zip(axes, series):
-        axis.set_xlim(xmin=0., xmax=modeldata['velocity'].max())
-        if subplotseries[0].startswith('heating'):
-            axis.set_yscale('log')
-        for variablename in subplotseries:
-            splitvariablename = variablename.split(' ')
-            if len(splitvariablename) == 2:
-                atomic_number = at.get_atomic_number(splitvariablename[0])
-                ionstage = at.decode_roman_numeral(splitvariablename[1])
-                if atomic_number > 0 and ionstage > 0:
-                    axis.set_ylabel('X$_{ion}$/X$_{tot}$')
-                    plotion(atomic_number, ionstage, timestep, axis, modeldata, estimators)
-                    continue
+        if (lastxvariable != xvariable and lastxvariable != "") or index == len(axes) - 1:
+            axis.set_xlabel(f'{xvariable} [{get_units(xvariable)}]')
 
-            serieslabel = f'{variablename} [{units[variablename]}]'
-            if len(subplotseries) == 1:
-                axis.set_ylabel(serieslabel)
-                plotlabel = None
+        try:
+            xlist = []
+            for modelgridindex in mgilist:
+                xlist.append(estimators[(timestep, modelgridindex)][xvariable])
+        except KeyError:
+            print("Unknown x variable")
+            sys.exit()
+
+        xlist = np.insert(xlist, 0, 0.)
+        axis.set_xlim(xmin=0., xmax=xlist.max())
+
+        try:
+            if yvariables[0].startswith('heating'):
+                axis.set_yscale('log')
+        except AttributeError:
+            pass
+
+        for variablename in yvariables:
+            if not hasattr(variablename, 'lower'):  # if it's a list, not a string
+                showlegend = True
+                plot_multiseries(axis, xlist, variablename, timestep, mgilist, estimators, **plotkwargs)
             else:
-                plotlabel = serieslabel
+                showlegend = plot_singleseries(
+                    axis, xlist, variablename, len(yvariables) == 1, timestep, mgilist, estimators, **plotkwargs)
 
-            ylist = []
-            for modelgridindex in modeldata.index:
-                ylist.append(estimators[(timestep, modelgridindex)][variablename])
-
-            arr_velocity = np.insert(modeldata['velocity'].values, 0, 0.)
-            ylist.insert(0, ylist[0])
-            axis.step(arr_velocity, ylist, where='pre', linewidth=1.5, label=plotlabel)
-
-        if len(subplotseries) != 1:
+        if showlegend:
             axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 10})
+        lastxvariable = xvariable
 
+    # modelname = at.get_model_name(".")
     plotlabel = f'Timestep {timestep}'
     time_days = float(at.get_timestep_time('spec.out', timestep))
     if time_days >= 0:
@@ -141,32 +206,26 @@ def main(argsraw=None):
                         help='Filename for PDF file')
     args = parser.parse_args(argsraw)
 
-    units = {
-        'TR': 'K',
-        'Te': 'K',
-        'TJ': 'K',
-        'nne': 'e-/cm3',
-        'heating_gamma': 'erg/s/cm3',
-    }
-
     if '-' in args.timestep:
         timestepmin, timestepmax = [int(nts) for nts in args.timestep.split('-')]
     else:
         timestepmin = int(args.timestep)
         timestepmax = timestepmin
 
-    modelname = at.get_model_name(".")
-
     # elementlist = at.get_composition_data('compositiondata.txt')
     modeldata, _ = at.get_modeldata('model.txt')
     # initalabundances = at.get_initialabundances1d('abundances.txt')
 
-    estimators = read_estimators(['estimators_0000.out'])
+    estimators = read_estimators(['estimators_0000.out'], modeldata)
 
-    series = [['heating_gamma'], ['TR'], ['Te'], ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V']]
+    series = [['velocity', ['heating_gamma']],
+              ['velocity', ['Te']],
+              ['velocity', [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V']]]],
+            #   ['Te', [['recomb_coeff_R', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V']]]],
+              ['velocity', ['TR']]]
 
     for timestep in range(timestepmin, timestepmax + 1):
-        plot_timestep(timestep, modeldata, estimators, units, series, args.outputfile.format(timestep))
+        plot_timestep(timestep, modeldata.index, estimators, series, args.outputfile.format(timestep))
 
 
 if __name__ == "__main__":
