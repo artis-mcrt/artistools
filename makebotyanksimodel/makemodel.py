@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 import math
+
 import numpy as np
-from astropy import units as u
 from astropy import constants as c
+from astropy import units as u
 
 
 def min_dist(list, number):
@@ -15,9 +16,10 @@ def min_dist(list, number):
 
     return min_dist
 
+
 def main():
     e_k = 1.2  # in units of 10^51 erg
-    m_ej = 1.4  # in solar masses
+    m_ej = 1.4  # in solar masses
     x_stb = 0.05  # mass fraction of stable Fe54 and Ni58 in Ni56 zone
     t200 = 0.0002 / 200
 
@@ -26,7 +28,7 @@ def main():
 
     # density transition
     v_transition = 10943 * e_k ** 0.5 * m_ej ** -0.5  # km/s
-    rho_0 = 4.9e-17 * (e_k ** -1.5) * (m_ej ** 2.5) * (t200 ** -3) # g cm^-3
+    rho_0 = 4.9e-17 * (e_k ** -1.5) * (m_ej ** 2.5) * (t200 ** -3)  # g cm^-3
 
     print(f'v_transition = {v_transition:.3f}')
 
@@ -36,13 +38,12 @@ def main():
     rni56 = (3 / 4 / math.pi * volni56) ** (1/3.)
     v_ni56 = ((3 / 4 / math.pi * volni56) ** (1/3.) / (200 * t200 * u.day)).to('km/s').value
 
-
     r = (v_ni56 * (u.km / u.s) * 200 * t200 * u.day).to('cm')
     m = (4 * math.pi / 3 * (r ** 3) * (rho_0 * u.g * u.cm ** -3)).to('solMass')
     print(f'Ni56 region outer velocity = {v_ni56:.3f}, M={m:.3f}')
 
     with open('model.txt', 'w') as fmodel:
-        with open ('abundances.txt', 'w') as fabundances:
+        with open('abundances.txt', 'w') as fabundances:
 
             fixed_points = [v_transition, v_ni56]
             regular_points = [v for v in np.arange(0, 14500, 1000)[1:] if min_dist(fixed_points, v) > 200]
@@ -53,7 +54,7 @@ def main():
 
             v_inner = 0.  # velocity at inner boundary of cell
             m_tot = 0.
-            for index, v in enumerate(vlist, 1): # km / s
+            for index, v in enumerate(vlist, 1):  # km / s
                 rho = rho_0 * (0.5 * (v_inner + v) / v_transition) ** -(delta if v <= v_transition else n)
                 if v <= v_ni56:
                     radioabundances = "1.0   0.95  0.0   0.0   0.0"
