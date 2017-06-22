@@ -11,20 +11,25 @@ def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Covert abundances.txt and model.txt from 3D to a one dimensional slice.')
-    parser.add_argument('-inputfolder', action='store', default='3dmodel',
+    parser.add_argument('-inputfolder', action='store', default='.',
                         help='Path to folder with 3D files')
     parser.add_argument('-axis', action='store', dest='chosenaxis', default='x', choices=['x', 'y', 'z'],
                         help='Slice axis (x, y, or z)')
     parser.add_argument('-outputfolder', action='store', default='1dslice',
                         help='Path to folder in which to store 1D output files')
-    parser.add_argument('-opdf', action='store', dest='pdfoutputfile', default='plotmodel.pdf',
+    parser.add_argument('-opdf', action='store', dest='pdfoutputfile', default=False,
                         help='Path/filename for PDF plot.')
     args = parser.parse_args()
 
-    dict3dcellidto1dcellid, xlist, ylists = slice_3dmodel(args.inputfolder, args.outputfolder, args.chosenaxis)
-    convert_abundance_file(args.inputfolder, args.outputfolder, dict3dcellidto1dcellid)
+    if not os.path.exists(args.outputfolder):
+        os.makedirs(args.outputfolder)
 
-    make_plot(xlist, ylists, args.pdfoutputfile)
+    dict3dcellidto1dcellid, xlist, ylists = slice_3dmodel(args.inputfolder, args.outputfolder, args.chosenaxis)
+
+    slice_abundance_file(args.inputfolder, args.outputfolder, dict3dcellidto1dcellid)
+
+    if args.pdfoutputfile:
+        make_plot(xlist, ylists, args.pdfoutputfile)
 
 
 def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
@@ -82,7 +87,7 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
     return dict3dcellidto1dcellid, xlist, ylists
 
 
-def convert_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid):
+def slice_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid):
     with open(os.path.join(inputfolder, 'abundances.txt'), 'r') as fabundancesin, \
             open(os.path.join(outputfolder, 'abundances.txt'), 'w') as fabundancesout:
         currentblock = []
@@ -135,6 +140,7 @@ def make_plot(xlist, ylists, pdfoutputfile):
     axis.legend(loc='best', handlelength=2, frameon=False,
                 numpoints=1, prop={'size': 10})
     fig.savefig(pdfoutputfile, format='pdf')
+    print(f'Saved {pdfoutputfile}')
     plt.close()
 
 
