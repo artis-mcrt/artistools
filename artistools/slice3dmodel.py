@@ -23,6 +23,13 @@ def main():
 
     if not os.path.exists(args.outputfolder):
         os.makedirs(args.outputfolder)
+    else:
+        if os.path.exists(os.path.join(args.outputfolder, 'model.txt')):
+            print('ABORT: model.txt already exists')
+            sys.exit()
+        elif os.path.exists(os.path.join(args.outputfolder, 'abundances.txt')):
+            print('ABORT: abundances.txt already exists')
+            sys.exit()
 
     dict3dcellidto1dcellid, xlist, ylists = slice_3dmodel(args.inputfolder, args.outputfolder, args.chosenaxis)
 
