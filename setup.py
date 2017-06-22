@@ -53,6 +53,7 @@ setup(
             'plotartistransitions = artistools.transitions:main',
             'getartismodeldeposition = artistools.deposition:main',
             'sliceartis3dmodel = artistools.slice3dmodel:main',
+            'makeartismodelbotyanski = artistools.makebotyanskimodel:main',
         ]
     },
     python_requires='>==3.6',
