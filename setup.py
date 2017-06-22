@@ -51,6 +51,7 @@ setup(
             'plotartisradfield = artistools.radfield:main',
             'plotartisspectrum = artistools.spectra:main',
             'plotartistransitions = artistools.transitions:main',
+            'getartismodeldeposition = artistools.deposition:main',
         ]
     },
     python_requires='>==3.6',
