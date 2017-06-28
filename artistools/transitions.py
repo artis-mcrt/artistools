@@ -15,7 +15,7 @@ K_B = const.k_B.to('eV / K').value
 c = const.c.to('km / s').value
 
 PYDIR = os.path.dirname(os.path.abspath(__file__))
-elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, 'elements.csv'))['symbol'].values)
+elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, 'data', 'elements.csv'))['symbol'].values)
 
 
 iontuple = namedtuple('ion', 'ion_stage number_fraction')
