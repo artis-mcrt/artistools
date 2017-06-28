@@ -17,8 +17,22 @@ PYDIR = os.path.dirname(os.path.abspath(__file__))
 elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, 'elements.csv'))['symbol'].values)
 
 roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
-                  'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII',
-                  'XVIII', 'XIX', 'XX')
+                  'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
+
+console_scripts = [
+    'artistools = artistools:show_help',
+    'getartismodeldeposition = artistools.deposition:main',
+    'makeartismodel1dslicefrom3d = artistools.slice3dmodel:main',
+    'makeartismodelbotyanski = artistools.makemodelbotyanski:main',
+    'plotartisestimators = artistools.estimators:main',
+    'plotartislightcurve = artistools.lightcurve:main',
+    'plotartisnltepops = artistools.nltepops:main',
+    'plotartismacroatom = artistools.macroatom:main',
+    'plotartisnonthermal = artistools.nonthermalspec:main',
+    'plotartisradfield = artistools.radfield:main',
+    'plotartisspectrum = artistools.spectra:main',
+    'plotartistransitions = artistools.transitions:main',
+]
 
 
 def showtimesteptimes(specfilename, numberofcolumns=5):
@@ -375,3 +389,10 @@ def decode_roman_numeral(strin):
     if strin.upper() in roman_numerals:
         return roman_numerals.index(strin.upper())
     return -1
+
+
+def show_help():
+    print("artistools commands:")
+    for script in sorted(console_scripts):
+        command = script.split('=')[0].strip()
+        print(f'  {command}')
