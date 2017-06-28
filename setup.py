@@ -9,6 +9,7 @@ import sys
 
 from setuptools import find_packages, setup
 from setuptools.command.test import test as TestCommand
+from artistools import console_scripts
 
 
 class PyTest(TestCommand):
@@ -42,19 +43,7 @@ setup(
     install_requires=open(
         os.path.join(os.path.dirname(__file__), "requirements.txt")).read(),
     entry_points={
-        'console_scripts': [
-            'plotartisestimators = artistools.estimators:main',
-            'plotartislightcurve = artistools.lightcurve:main',
-            'plotartisnltepops = artistools.nltepops:main',
-            'plotartismacroatom = artistools.macroatom:main',
-            'plotartisnonthermal = artistools.nonthermalspec:main',
-            'plotartisradfield = artistools.radfield:main',
-            'plotartisspectrum = artistools.spectra:main',
-            'plotartistransitions = artistools.transitions:main',
-            'getartismodeldeposition = artistools.deposition:main',
-            'sliceartis3dmodel = artistools.slice3dmodel:main',
-            'makeartismodelbotyanski = artistools.makebotyanskimodel:main',
-        ]
+        'console_scripts': console_scripts
     },
     python_requires='>==3.6',
     # test_suite='tests',
