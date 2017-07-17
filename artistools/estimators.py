@@ -3,6 +3,7 @@
 import argparse
 import glob
 import math
+import os
 import sys
 
 from collections import namedtuple
@@ -72,12 +73,17 @@ def get_units(variable):
 
 def parse_ion_row(row, outdict):
     variablename = row[0]
-    atomic_number = int(row[1].split('=')[1])
+    if row[1].endswith('='):
+        atomic_number = int(row[2])
+        startindex = 3
+    else:
+        atomic_number = int(row[1].split('=')[1])
+        startindex = 2
 
     if variablename not in outdict:
         outdict[variablename] = {}
 
-    for index, token in list(enumerate(row))[2::2]:
+    for index, token in list(enumerate(row))[startindex::2]:
         ion_stage = int(token.rstrip(':'))
         value_thision = float(row[index + 1])
 
@@ -105,13 +111,17 @@ def read_estimators(estimfiles, modeldata):
                 if row[0] == 'timestep':
                     timestep = int(row[1])
                     modelgridindex = int(row[3])
+                    # print(f'Timestep {timestep} cell {modelgridindex}')
                     estimators[(timestep, modelgridindex)] = {}
                     estimators[(timestep, modelgridindex)]['velocity'] = modeldata['velocity'][modelgridindex]
-                    estimators[(timestep, modelgridindex)]['TR'] = float(row[5])
-                    estimators[(timestep, modelgridindex)]['Te'] = float(row[7])
-                    estimators[(timestep, modelgridindex)]['W'] = float(row[9])
-                    estimators[(timestep, modelgridindex)]['TJ'] = float(row[11])
-                    estimators[(timestep, modelgridindex)]['nne'] = float(row[15])
+                    emptycell = (row[4] == 'EMPTYCELL')
+                    estimators[(timestep, modelgridindex)]['emptycell'] = emptycell
+                    if not emptycell:
+                        estimators[(timestep, modelgridindex)]['TR'] = float(row[5])
+                        estimators[(timestep, modelgridindex)]['Te'] = float(row[7])
+                        estimators[(timestep, modelgridindex)]['W'] = float(row[9])
+                        estimators[(timestep, modelgridindex)]['TJ'] = float(row[11])
+                        estimators[(timestep, modelgridindex)]['nne'] = float(row[15])
 
                 elif row[1].startswith('Z='):
                     parse_ion_row(row, estimators[(timestep, modelgridindex)])
@@ -144,6 +154,8 @@ def plot_ionmultiseries(axis, xlist, serieslist, timestep, mgilist, estimators, 
 
         ylist = []
         for modelgridindex in mgilist:
+            if estimators[(timestep, modelgridindex)]['emptycell']:
+                continue
             if seriestype == 'populations':
                 totalpop = estimators[(timestep, modelgridindex)]['populations']['total']
                 nionpop = estimators[(timestep, modelgridindex)]['populations'].get((atomic_number, ion_stage), 0.)
@@ -171,7 +183,15 @@ def plot_singleseries(axis, xlist, variablename, singlevariableplot, timestep, m
 
     ylist = []
     for modelgridindex in mgilist:
-        ylist.append(estimators[(timestep, modelgridindex)][variablename])
+        try:
+            ylist.append(estimators[(timestep, modelgridindex)][variablename])
+        except KeyError:
+            if (timestep, modelgridindex) in estimators:
+                print(f"Undefined variable: {variablename} for timestep {timestep} in cell {modelgridindex}")
+            else:
+                print(f'No data for cell {modelgridindex} at timestep {timestep}')
+            print(estimators[(timestep, modelgridindex)])
+            sys.exit()
 
     ylist.insert(0, ylist[0])
     dictcolors = {'Te': 'red', 'heating_gamma': 'blue'}
@@ -196,7 +216,11 @@ def plot_timestep(timestep, mgilist, estimators, series, outfilename, **plotkwar
             for modelgridindex in mgilist:
                 xlist.append(estimators[(timestep, modelgridindex)][xvariable])
         except KeyError:
-            print("Unknown x variable")
+            if (timestep, modelgridindex) in estimators:
+                print(f"Unknown x variable: {xvariable} for timestep {timestep} in cell {modelgridindex}")
+            else:
+                print(f'No data for cell {modelgridindex} at timestep {timestep}')
+            print(estimators[(timestep, modelgridindex)])
             sys.exit()
 
         xlist = np.insert(xlist, 0, 0.)
@@ -299,10 +323,20 @@ def main(argsraw=None):
                         help='Filename for PDF file')
     args = parser.parse_args(argsraw)
 
-    modeldata, _ = at.get_modeldata('model.txt')
+    modelpath = "."
+
+    modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
     # initalabundances = at.get_initialabundances1d('abundances.txt')
 
-    estimators = read_estimators(['estimators_0000.out'], modeldata)
+    input_files = (
+        glob.glob(os.path.join(modelpath, 'estimators_????.out'), recursive=True) +
+        glob.glob(os.path.join(modelpath, '*/estimators_????.out'), recursive=True))
+
+    if not input_files:
+        print("No estimator files found")
+        return 1
+
+    estimators = read_estimators(input_files, modeldata)
 
     series = [['velocity', ['heating_gamma']],
               ['velocity', ['Te']],
@@ -318,7 +352,8 @@ def main(argsraw=None):
             timestepmin = int(args.timestep)
             timestepmax = timestepmin
         for timestep in range(timestepmin, timestepmax + 1):
-            plot_timestep(timestep, modeldata.index, estimators, series, args.outputfile.format(timestep))
+            nonemptymgilist = [modelgridindex for modelgridindex in modeldata.index if not estimators[(timestep, modelgridindex)]['emptycell']]
+            plot_timestep(timestep, nonemptymgilist, estimators, series, args.outputfile.format(timestep))
 
 
 if __name__ == "__main__":
