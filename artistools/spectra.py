@@ -75,7 +75,7 @@ def get_spectrum(specfilename: str, timestepmin: int, timestepmax=-1, fnufilterf
     # best to use the filter on this list because it
     # has regular sampling
     if fnufilterfunc:
-        print("Applying filter")
+        print("Applying filter to ARTIS spectrum")
         array_fnu = fnufilterfunc(array_fnu)
 
     dfspectrum = pd.DataFrame({'nu': arraynu, 'f_nu': array_fnu})
@@ -143,7 +143,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
     array_flambda_emission_total = np.zeros_like(arraylambda)
     contribution_list = []
     if filterfunc:
-        print("Applying filter")
+        print("Applying filter to reference spectrum")
     for element in range(nelements):
         nions = elementlist.nions[element]
         # nions = elementlist.iloc[element].uppermost_ionstage - elementlist.iloc[element].lowermost_ionstage + 1
