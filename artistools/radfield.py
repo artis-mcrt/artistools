@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 from astropy import units as u
+import re
 
 import artistools as at
 
@@ -23,6 +24,11 @@ def read_files(radfield_files, modelgridindex=-1):
         print("No radfield files")
     else:
         for index, radfield_file in enumerate(radfield_files):
+            filerank = int(re.search('[0-9]+', os.path.basename(radfield_file)).group(0))
+
+            if filerank > args.modelgridindex:
+                continue
+
             print(f'Loading {radfield_file}...')
 
             radfielddata_thisfile = pd.read_csv(radfield_file, delim_whitespace=True)
