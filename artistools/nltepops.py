@@ -1,25 +1,24 @@
 #!/usr/bin/env python3
 import argparse
 import glob
+import math
 import os
 import re
-import math
 import sys
-
-import pandas as pd
-
-import artistools as at
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-
-from astropy import constants as const
 from collections import namedtuple
 
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+import pandas as pd
+from astropy import constants as const
 
-def get_nlte_populations(modelpath, nltefile, modelgridindex, timestep, atomic_number, temperature_exc):
+import artistools as at
+
+
+def get_nlte_populations(modelpath, nltefilename, modelgridindex, timestep, atomic_number, temperature_exc):
     all_levels = at.get_levels(os.path.join(modelpath, 'adata.txt'))
 
-    dfpop = pd.read_csv(nltefile, delim_whitespace=True)
+    dfpop = pd.read_csv(nltefilename, delim_whitespace=True)
     dfpop.query('(modelgridindex==@modelgridindex) & (timestep==@timestep) & (Z==@atomic_number)',
                 inplace=True)
 
@@ -66,7 +65,7 @@ def get_nlte_populations(modelpath, nltefile, modelgridindex, timestep, atomic_n
     return dfpop
 
 
-def get_nlte_populations_oldformat(modelpath, nltefile, modelgridindex, timestep, atomic_number, temperature_exc):
+def get_nlte_populations_oldformat(modelpath, nltefilename, modelgridindex, timestep, atomic_number, temperature_exc):
     compositiondata = at.get_composition_data('compositiondata.txt')
     elementdata = compositiondata.query('Z==@atomic_number')
 
@@ -78,7 +77,7 @@ def get_nlte_populations_oldformat(modelpath, nltefile, modelgridindex, timestep
 
     skip_block = False
     dfpop = pd.DataFrame().to_sparse()
-    with open(nltefile, 'r') as nltefile:
+    with open(nltefilename, 'r') as nltefile:
         for line in nltefile:
             row = line.split()
 
@@ -251,21 +250,31 @@ def make_plot(dfpop, atomic_number, exc_temperature, args):
     if len(dfpop) == 0:
         print('Error, no data for selected timestep and element')
         sys.exit()
+
     for ion, axis in enumerate(axes):
         ion_stage = ion_stage_list[ion]
-        dfpopion = dfpop.query('ion_stage==@ion_stage')
+        dfpopthision = dfpop.query('ion_stage==@ion_stage').copy()
+        ionpopulation = dfpopthision['n_NLTE'].sum()
+        print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a population of {ionpopulation:.1f}')
 
-        axis.plot(dfpopion.level.values, dfpopion.n_LTE.values, linewidth=1.5,
+        lte_scalefactor = float(ionpopulation / dfpopthision['n_LTE'].sum())
+        dfpopthision['n_LTE_normed'] = dfpopthision['n_LTE'].apply(lambda pop: pop * lte_scalefactor)
+        lte_custom_scalefactor = float(ionpopulation / dfpopthision['n_LTE_custom'].sum())
+        dfpopthision['n_LTE_custom_normed'] = dfpopthision['n_LTE_custom'].apply(
+            lambda pop: pop * lte_custom_scalefactor)
+
+        axis.plot(dfpopthision.level.values, dfpopthision.n_LTE_normed.values, linewidth=1.5,
                   label='LTE', linestyle='None', marker='+')
 
-        axis.plot(dfpopion.level.values[:-1], dfpopion.n_LTE_custom.values[:-1], linewidth=1.5,
+        axis.plot(dfpopthision.level.values[:-1], dfpopthision.n_LTE_custom_normed.values[:-1], linewidth=1.5,
                   label=f'LTE {exc_temperature:.0f} K', linestyle='None', marker='*')
-        axis.plot(dfpopion.level.values, dfpopion.n_NLTE.values, linewidth=1.5,
+
+        axis.plot(dfpopthision.level.values, dfpopthision.n_NLTE.values, linewidth=1.5,
                   label='NLTE', linestyle='None', marker='x')
 
-        dfpopionoddlevels = dfpopion.query('parity==1')
+        dfpopthisionoddlevels = dfpopthision.query('parity==1')
 
-        axis.plot(dfpopionoddlevels.level.values, dfpopionoddlevels.n_NLTE.values, linewidth=2, label='Odd parity',
+        axis.plot(dfpopthisionoddlevels.level.values, dfpopthisionoddlevels.n_NLTE.values, linewidth=2, label='Odd parity',
                   linestyle='None', marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
 
         # list_departure_ratio = [
