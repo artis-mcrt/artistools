@@ -4,6 +4,7 @@ import argparse
 import glob
 import math
 import os.path
+import re
 import sys
 
 import matplotlib.pyplot as plt
@@ -13,7 +14,6 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 from astropy import units as u
-import re
 
 import artistools as at
 
@@ -26,7 +26,7 @@ def read_files(radfield_files, modelgridindex=-1):
         for index, radfield_file in enumerate(radfield_files):
             filerank = int(re.search('[0-9]+', os.path.basename(radfield_file)).group(0))
 
-            if filerank > args.modelgridindex:
+            if filerank > modelgridindex and modelgridindex >= 0:
                 continue
 
             print(f'Loading {radfield_file}...')
