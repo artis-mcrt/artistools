@@ -21,7 +21,7 @@ def main(argsraw=None):
 
     parser = argparse.ArgumentParser(
         description='Plot ARTIS non-LTE corrections.')
-    parser.add_argument('modelpath', nargs='?', default='',
+    parser.add_argument('modelpath', nargs='?', default='.',
                         help='Path to ARTIS folder')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
@@ -31,6 +31,8 @@ def main(argsraw=None):
                         help='Plotted modelgrid cell')
     parser.add_argument('element', nargs='?', default='Fe',
                         help='Plotted element')
+    parser.add_argument('-exc_temperature', type=float, default=6000.,
+                        help='Comparison plot')
     parser.add_argument('--oldformat', default=False, action='store_true',
                         help='Use the old file format')
     parser.add_argument('-o', action='store', dest='outputfile',
@@ -44,7 +46,10 @@ def main(argsraw=None):
     if args.listtimesteps:
         at.showtimesteptimes('spec.out')
     else:
-        exc_temperature = 6000.
+        if args.modelpath.title() in at.elsymbols:
+            args.element = args.modelpath
+            args.modelpath = '.'
+
         try:
             atomic_number = next(Z for Z, elsymb in enumerate(at.elsymbols) if elsymb.lower() == args.element.lower())
         except StopIteration:
@@ -74,11 +79,11 @@ def main(argsraw=None):
                 if not args.oldformat:
                     dfpop_thisfile = at.get_nlte_populations(
                         args.modelpath, nltefilepath, args.modelgridindex,
-                        args.timestep, atomic_number, exc_temperature)
+                        args.timestep, atomic_number, args.exc_temperature)
                 else:
                     dfpop_thisfile = at.get_nlte_populations_oldformat(
                         args.modelpath, nltefilepath, args.modelgridindex,
-                        args.timestep, atomic_number, exc_temperature)
+                        args.timestep, atomic_number, args.exc_temperature)
                 if not dfpop_thisfile.empty:
                     dfpop = dfpop_thisfile
                     break
@@ -86,7 +91,7 @@ def main(argsraw=None):
             if dfpop.empty:
                 print(f'No data for modelgrid cell {args.modelgridindex} timestep {args.timestep}')
             else:
-                make_plot(dfpop, atomic_number, exc_temperature, args)
+                make_plot(dfpop, atomic_number, args.exc_temperature, args)
 
 
 def make_plot(dfpop, atomic_number, exc_temperature, args):
