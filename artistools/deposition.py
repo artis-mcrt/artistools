@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import math
 # import numpy as np
 from astropy import units as u
@@ -6,7 +7,14 @@ from astropy import units as u
 import artistools as at
 
 
-def main():
+def main(argsraw=None):
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description='Plot deposition rate of a model at time t (days).')
+    parser.add_argument('-t', default=330, type=float,
+                        help='Timestep number to plot')
+    args = parser.parse_args(argsraw)
+
     dfmodel, t_model_init = at.get_modeldata('model.txt')
 
     t_init = t_model_init * u.day
@@ -18,7 +26,7 @@ def main():
     # define T52FE   (0.497429*DAY)
     # define T52MN   (0.0211395*DAY)
 
-    t_now = 200 * u.day
+    t_now = args.t * u.day
     print(f't_now = {t_now.to("d")}')
     print('The following assumes that all 56Ni has decayed to 56Co and all energy comes from emitted positrons')
 
@@ -29,6 +37,8 @@ def main():
         volume_init = ((4 * math.pi / 3) * ((v_outer * t_init) ** 3 - (v_inner * t_init) ** 3)).to('cm3')
 
         volume_now = ((4 * math.pi / 3) * ((v_outer * t_now) ** 3 - (v_inner * t_now) ** 3)).to('cm3')
+
+        # volume_now2 = (volume_init * (t_now / t_init) ** 3).to('cm3')
 
         rho_init = (10 ** row['logrho']) * u.g / u.cm ** 3
         mco56_init = (row['f56ni'] + row['f56co']) * (volume_init * rho_init).to('solMass')
@@ -41,7 +51,7 @@ def main():
         power_now = co56_positron_dep + v48_positron_dep
 
         epsilon = power_now / volume_now
-        print(f'zone {i:3d}, velocity = {v_outer:8.2f}, epsilon = {epsilon:.3e}')
+        print(f'zone {i:3d}, velocity = [{v_inner:8.2f}, {v_outer:8.2f}], epsilon = {epsilon:.3e}')
         # print(f'  epsilon = {epsilon.to("eV/(cm3s)"):.2f}')
 
         v_inner = v_outer
