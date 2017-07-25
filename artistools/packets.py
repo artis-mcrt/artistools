@@ -31,7 +31,7 @@ types = {
 
 
 def readfile(packetsfile, usecols):
-    print(f'Reading {packetsfile} ({os.path.getsize(packetsfile) / 1024 / 1024:.3f} MiB)')
+    print(f'Reading {packetsfile} ({os.path.getsize(packetsfile) / 1024 / 1024:.3f} MiB)', end='')
     dfpackets = pd.read_csv(
         packetsfile,
         delim_whitespace=True,
@@ -40,6 +40,7 @@ def readfile(packetsfile, usecols):
         usecols=usecols)
     dfpackets['type'] = dfpackets['type_id'].map(lambda x: types.get(x, x))
     dfpackets['escape_type'] = dfpackets['escape_type_id'].map(lambda x: types.get(x, x))
+    print(f' ({len(dfpackets):.1e} packets)')
 
     return dfpackets
 
