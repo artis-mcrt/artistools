@@ -26,7 +26,7 @@ def main():
     for i, row in dfmodel.iterrows():
         v_outer = row['velocity'] * u.km / u.s
 
-        volume_init = ((4 * math.pi / 3) * (v_outer * t_init) ** 3 - (v_inner * t_init) ** 3).to('cm3')
+        volume_init = ((4 * math.pi / 3) * ((v_outer * t_init) ** 3 - (v_inner * t_init) ** 3)).to('cm3')
 
         volume_now = ((4 * math.pi / 3) * ((v_outer * t_now) ** 3 - (v_inner * t_now) ** 3)).to('cm3')
 
