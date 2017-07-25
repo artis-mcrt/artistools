@@ -85,7 +85,7 @@ def parse_ion_row(row, outdict):
 
     for index, token in list(enumerate(row))[startindex::2]:
         ion_stage = int(token.rstrip(':'))
-        value_thision = float(row[index + 1])
+        value_thision = float(row[index + 1].rstrip(','))
 
         outdict[variablename][(atomic_number, ion_stage)] = value_thision
 
