@@ -88,6 +88,7 @@ def get_spectrum(specfilename: str, timestepmin: int, timestepmax=-1, fnufilterf
 
 
 def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_min, lambda_max, delta_lambda=30):
+    import artistools.packets
     array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
     array_energysum = np.zeros_like(array_lambda, dtype=np.float)  # total packet energy sum of each bin
 
@@ -99,7 +100,6 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
     nu_min = c_ang_s / lambda_max
     nu_max = c_ang_s / lambda_min
     for packetsfile in packetsfiles:
-        print(f"Loading {packetsfile}")
         dfpackets = at.packets.readfile(packetsfile, usecols=[
             'type_id', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
             'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'])
