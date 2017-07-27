@@ -111,14 +111,18 @@ def read_estimators(estimfiles, modeldata):
                 if row[0] == 'timestep':
                     timestep = int(row[1])
                     modelgridindex = int(row[3])
+                    T_e = float(row[7])
                     # print(f'Timestep {timestep} cell {modelgridindex}')
+                    if (timestep, modelgridindex) in estimators:
+                        print(f'WARNING: duplicate estimator data for timestep {timestep} cell {modelgridindex}.')
+                        print(f'Old T_e {estimators[(timestep, modelgridindex)]["Te"]}, new T_e {T_e}')
                     estimators[(timestep, modelgridindex)] = {}
                     estimators[(timestep, modelgridindex)]['velocity'] = modeldata['velocity'][modelgridindex]
                     emptycell = (row[4] == 'EMPTYCELL')
                     estimators[(timestep, modelgridindex)]['emptycell'] = emptycell
                     if not emptycell:
                         estimators[(timestep, modelgridindex)]['TR'] = float(row[5])
-                        estimators[(timestep, modelgridindex)]['Te'] = float(row[7])
+                        estimators[(timestep, modelgridindex)]['Te'] = T_e
                         estimators[(timestep, modelgridindex)]['W'] = float(row[9])
                         estimators[(timestep, modelgridindex)]['TJ'] = float(row[11])
                         estimators[(timestep, modelgridindex)]['nne'] = float(row[15])
