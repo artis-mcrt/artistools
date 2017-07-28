@@ -13,12 +13,16 @@ def main():
         description='Covert abundances.txt and model.txt from 3D to a one dimensional slice.')
     parser.add_argument('-inputfolder', action='store', default='.',
                         help='Path to folder with 3D files')
+
     parser.add_argument('-axis', action='store', dest='chosenaxis', default='x', choices=['x', 'y', 'z'],
                         help='Slice axis (x, y, or z)')
+
     parser.add_argument('-outputfolder', action='store', default='1dslice',
                         help='Path to folder in which to store 1D output files')
+
     parser.add_argument('-opdf', action='store', dest='pdfoutputfile', default=False,
                         help='Path/filename for PDF plot.')
+
     args = parser.parse_args()
 
     if not os.path.exists(args.outputfolder):

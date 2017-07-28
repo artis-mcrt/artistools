@@ -311,20 +311,22 @@ def plot_recombrates(estimators, outfilename, **plotkwargs):
 
 
 def main(argsraw=None):
-    defaultoutputfile = 'plotestimators_{0:02d}.pdf'
-
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS estimators.')
     # parser.add_argument('modelpath', nargs='?', default='',
     #                     help='Path to ARTIS folder')
+
     parser.add_argument('--recombrates', default=False, action='store_true',
-                        help='Show an recombination rate plot')
+                        help='Make a recombination rate plot')
+
     parser.add_argument('-timestep', '-ts',
                         help='Timestep number to plot')
+
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default=defaultoutputfile,
+                        default='plotestimators_{timestep:02d}.pdf',
                         help='Filename for PDF file')
+
     args = parser.parse_args(argsraw)
 
     modelpath = "."
@@ -361,7 +363,7 @@ def main(argsraw=None):
                 modelgridindex for modelgridindex in modeldata.index
                 if not estimators[(timestep, modelgridindex)]['emptycell']]
 
-            plot_timestep(timestep, nonemptymgilist, estimators, series, args.outputfile.format(timestep))
+            plot_timestep(timestep, nonemptymgilist, estimators, series, args.outputfile.format(timestep=timestep))
 
 
 if __name__ == "__main__":
