@@ -20,6 +20,20 @@ def ar_xs(energy_ev, ionpot_ev, A, B, C, D):
     return 1e-14 * (A * (1 - 1/u) + B * pow((1 - 1/u), 2) + C * np.log(u) + D * np.log(u) / u) / (u * pow(ionpot_ev, 2))
 
 
+def xs_fe1(energy):
+    shell_a = ar_xs(energy, 16.18, 17.4, -3.27, 0.16, -10.2)
+    shell_b = ar_xs(energy, 24.83, 30.1, -38.8, 18.6, -45.7)
+    shell_c = ar_xs(energy, 83.37, 115, -72.4, 9.57, -107)
+    return shell_a + shell_b + shell_c
+
+
+def xs_fe1_old(energy):
+    shell_a = ar_xs(energy, 16.2, 90.0, -60.0, 0.2, -86)
+    shell_b = ar_xs(energy, 17.5, 18.6, -5.9, 0.6, -9)
+    shell_c = ar_xs(energy, 81, 69.9, -23.7, 9.5, -51.7)
+    return shell_a + shell_b + shell_c
+
+
 def main(argsraw=None):
     """
         Plot the electron energy distribution
