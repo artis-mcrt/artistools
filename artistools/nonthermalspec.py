@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 import argparse
+import glob
 # import math
 import os
-import glob
 
 import matplotlib.pyplot as plt
+import numpy as np
 # import matplotlib.ticker as ticker
 import pandas as pd
-import numpy as np
+
 import artistools as at
 
 DEFAULTSPECPATH = '../example_run/spec.out'
@@ -17,7 +18,7 @@ def ar_xs(energy_ev, ionpot_ev, A, B, C, D):
     u = energy_ev / ionpot_ev
     if u <= 1:
         return 0
-    return 1e-14 * (A * (1 - 1/u) + B * pow((1 - 1/u), 2) + C * np.log(u) + D * np.log(u) / u) / (u * pow(ionpot_ev, 2))
+    return 1e-14 * (A * (1 - 1 / u) + B * pow((1 - 1 / u), 2) + C * np.log(u) + D * np.log(u) / u) / (u * pow(ionpot_ev, 2))
 
 
 def xs_fe1(energy):
@@ -119,9 +120,9 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
     # nonthermaldata.plot(x='energy_ev', y='y', linewidth=1.5, ax=axis, color='blue', legend=False)
     axis.plot(nonthermaldata['energy_ev'], np.log10(nonthermaldata['y']), linewidth=2.0, color='blue')
 
-    arr_xs = [xs_fe1(en) for en in nonthermaldata['energy_ev']]
+    # arr_xs = [xs_fe1(en) for en in nonthermaldata['energy_ev']]
     # arr_xs_old = [xs_fe1_old(en) for en in nonthermaldata['energy_ev']]
-    arr_xs_times_y = [xs_fe1(en) * y for en, y in zip(nonthermaldata['energy_ev'], nonthermaldata['y'])]
+    # arr_xs_times_y = [xs_fe1(en) * y for en, y in zip(nonthermaldata['energy_ev'], nonthermaldata['y'])]
 
     # axis.plot(nonthermaldata['energy_ev'], arr_xs_times_y, linewidth=2.0, color='blue')
 
