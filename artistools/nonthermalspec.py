@@ -27,7 +27,7 @@ def main(argsraw=None):
     defaultoutputfile = 'plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf'
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot ARTIS radiation field.')
+        description='Plot ARTIS non-thermal electron energy spectrum.')
     parser.add_argument('modelpath', nargs='?', default='',
                         help='Path to ARTIS folder')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
