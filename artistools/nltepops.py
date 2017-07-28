@@ -170,9 +170,9 @@ def main(argsraw=None):
                         help='Path to ARTIS folder')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
-    parser.add_argument('-timestep', type=int, default=70,
+    parser.add_argument('-timestep', '-ts', type=int, default=70,
                         help='Plotted timestep')
-    parser.add_argument('-modelgridindex', type=int, default=0,
+    parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Plotted modelgrid cell')
     parser.add_argument('element', nargs='?', default='Fe',
                         help='Plotted element')
