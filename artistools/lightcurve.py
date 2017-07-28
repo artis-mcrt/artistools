@@ -104,10 +104,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
     plt.close()
 
 
-def main(argsraw=None):
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot ARTIS radiation field.')
+def addargs(parser):
     parser.add_argument('modelpath', default=[], nargs='*',
                         help='Paths to ARTIS folders with light_curve.out or packets files'
                         ' (may include wildcards such as * and **)')
@@ -117,6 +114,13 @@ def main(argsraw=None):
                         help='Make light curve from gamma rays instead of R-packets')
     parser.add_argument('-o', action='store', dest='outputfile',
                         help='Filename for PDF file')
+
+
+def main(argsraw=None):
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description='Plot ARTIS radiation field.')
+    addargs(parser)
     args = parser.parse_args(argsraw)
 
     if not args.modelpath:
