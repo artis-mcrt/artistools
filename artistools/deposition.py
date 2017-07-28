@@ -11,8 +11,8 @@ def main(argsraw=None):
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot deposition rate of a model at time t (days).')
-    parser.add_argument('-t', default=330, type=float,
-                        help='Timestep number to plot')
+    parser.add_argument('-time', '-t', default=330, type=float,
+                        help='Time in days')
     args = parser.parse_args(argsraw)
 
     dfmodel, t_model_init = at.get_modeldata('model.txt')

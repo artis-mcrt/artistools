@@ -25,11 +25,11 @@ def main(argsraw=None):
                         help='Path to ARTIS folder')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
-    parser.add_argument('-timestep', type=int, default=-1,
+    parser.add_argument('-timestep', '-ts', type=int, default=-1,
                         help='Timestep number to plot')
     parser.add_argument('-timestepmax', type=int, default=-1,
                         help='Make plots for all timesteps up to this timestep')
-    parser.add_argument('-modelgridindex', type=int, default=0,
+    parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Modelgridindex to plot')
     parser.add_argument('-xmin', type=int, default=40,
                         help='Plot range: minimum energy in eV')

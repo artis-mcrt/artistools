@@ -31,7 +31,7 @@ def main(argsraw=None):
                         help='Timestep number to plot, or -1 for last')
     parser.add_argument('-timestepmax', type=int, default=-1,
                         help='Make plots for all timesteps up to this timestep')
-    parser.add_argument('-modelgridindex', type=int, default=0,
+    parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Modelgridindex to plot')
     parser.add_argument('element', nargs='?', default='Fe',
                         help='Plotted element')

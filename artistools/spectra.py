@@ -258,7 +258,7 @@ def main(argsraw=None):
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
-    parser.add_argument('-timestep', nargs='?',
+    parser.add_argument('-timestep', '-ts', nargs='?',
                         help='First timestep or a range e.g. 45-65')
     parser.add_argument('-timemin', type=float,
                         help='Lower time in days to integrate spectrum')
