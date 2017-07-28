@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 # import math
+import argcomplete
 import argparse
 import glob
 import math
@@ -310,10 +312,7 @@ def plot_recombrates(estimators, outfilename, **plotkwargs):
     plt.close()
 
 
-def main(argsraw=None):
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot ARTIS estimators.')
+def addargs(parser):
     # parser.add_argument('modelpath', nargs='?', default='',
     #                     help='Path to ARTIS folder')
 
@@ -327,6 +326,14 @@ def main(argsraw=None):
                         default='plotestimators_{timestep:02d}.pdf',
                         help='Filename for PDF file')
 
+
+def main(argsraw=None):
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description='Plot ARTIS estimators.')
+
+    addargs(parser)
+    argcomplete.autocomplete(parser)
     args = parser.parse_args(argsraw)
 
     modelpath = "."
@@ -364,7 +371,6 @@ def main(argsraw=None):
                 if not estimators[(timestep, modelgridindex)]['emptycell']]
 
             plot_timestep(timestep, nonemptymgilist, estimators, series, args.outputfile.format(timestep=timestep))
-
 
 if __name__ == "__main__":
     main()

@@ -19,8 +19,7 @@ def get_nlte_populations(modelpath, nltefilename, modelgridindex, timestep, atom
     all_levels = at.get_levels(os.path.join(modelpath, 'adata.txt'))
 
     dfpop = pd.read_csv(nltefilename, delim_whitespace=True)
-    dfpop.query('(modelgridindex==@modelgridindex) & (timestep==@timestep) & (Z==@atomic_number)',
-                inplace=True)
+    dfpop.query('(modelgridindex==@modelgridindex) & (timestep==@timestep) & (Z==@atomic_number)', inplace=True)
 
     k_b = const.k_B.to('eV / K').value
     list_indicies = []
@@ -161,11 +160,32 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
     return pd.DataFrame(data=[newrow], columns=levelpoptuple._fields)
 
 
-def main(argsraw=None):
-    defaultoutputfile = 'plotnlte_{elsymbol}_cell{cell:03d}_{timestep:03d}.pdf'
+def read_files(nlte_files, atomic_number, args):
+    for nltefilepath in nlte_files:
+        filerank = int(re.search('[0-9]+', os.path.basename(nltefilepath)).group(0))
 
-    parser = argparse.ArgumentParser(
-        description='Plot ARTIS non-LTE corrections.')
+        if filerank > args.modelgridindex:
+            continue
+
+        print(f'Loading {nltefilepath}')
+
+        if not args.oldformat:
+            dfpop_thisfile = get_nlte_populations(
+                args.modelpath, nltefilepath, args.modelgridindex,
+                args.timestep, atomic_number, args.exc_temperature)
+        else:
+            dfpop_thisfile = get_nlte_populations_oldformat(
+                args.modelpath, nltefilepath, args.modelgridindex,
+                args.timestep, atomic_number, args.exc_temperature)
+
+        # found our data!
+        if not dfpop_thisfile.empty:
+            return dfpop_thisfile
+
+    return pd.DataFrame()
+
+
+def addargs(parser, defaultoutputfile):
     parser.add_argument('modelpath', nargs='?', default='.',
                         help='Path to ARTIS folder')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
@@ -183,6 +203,14 @@ def main(argsraw=None):
     parser.add_argument('-o', action='store', dest='outputfile',
                         default=defaultoutputfile,
                         help='path/filename for PDF file')
+
+
+def main(argsraw=None):
+    defaultoutputfile = 'plotnlte_{elsymbol}_cell{cell:03d}_{timestep:03d}.pdf'
+
+    parser = argparse.ArgumentParser(
+        description='Plot ARTIS non-LTE corrections.')
+    addargs(parser, defaultoutputfile)
     args = parser.parse_args(argsraw)
 
     if os.path.isdir(args.outputfile):
@@ -206,33 +234,12 @@ def main(argsraw=None):
             glob.glob(os.path.join(args.modelpath, '*/nlte_????.out'), recursive=True))
 
         if not nlte_files:
-            print("No NLTE files found")
+            print("No NLTE files found.")
             return
         else:
             print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
                   f'timestep {args.timestep} element {args.element}')
-
-            dfpop = pd.DataFrame()
-            for nltefilepath in nlte_files:
-                filerank = int(re.search('[0-9]+', os.path.basename(nltefilepath)).group(0))
-
-                if filerank > args.modelgridindex:
-                    continue
-
-                print(f'Loading {nltefilepath}')
-
-                if not args.oldformat:
-                    dfpop_thisfile = get_nlte_populations(
-                        args.modelpath, nltefilepath, args.modelgridindex,
-                        args.timestep, atomic_number, args.exc_temperature)
-                else:
-                    dfpop_thisfile = get_nlte_populations_oldformat(
-                        args.modelpath, nltefilepath, args.modelgridindex,
-                        args.timestep, atomic_number, args.exc_temperature)
-
-                if not dfpop_thisfile.empty:
-                    dfpop = dfpop_thisfile
-                    break
+            dfpop = read_files(nlte_files, atomic_number, args)
 
             if dfpop.empty:
                 print(f'No data for modelgrid cell {args.modelgridindex} timestep {args.timestep}')
@@ -274,8 +281,9 @@ def make_plot(dfpop, atomic_number, exc_temperature, args):
 
         dfpopthisionoddlevels = dfpopthision.query('parity==1')
 
-        axis.plot(dfpopthisionoddlevels.level.values, dfpopthisionoddlevels.n_NLTE.values, linewidth=2, label='Odd parity',
-                  linestyle='None', marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
+        axis.plot(dfpopthisionoddlevels.level.values, dfpopthisionoddlevels.n_NLTE.values, linewidth=2,
+                  label='Odd parity', linestyle='None',
+                  marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
 
         # list_departure_ratio = [
         #     nlte / lte for (nlte, lte) in zip(list_nltepop[ion],

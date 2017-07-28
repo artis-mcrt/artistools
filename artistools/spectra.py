@@ -235,16 +235,7 @@ def print_integrated_flux(arr_f_lambda, arr_lambda_angstroms):
           f'{arr_lambda_angstroms.max():.1f} A): {integrated_flux:.3e}, (L={luminosity.to("Lsun"):.3e})')
 
 
-def main(argsraw=None):
-    warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
-    """
-        Plot ARTIS spectra and (optionally) reference spectra
-    """
-
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot ARTIS model spectra by finding spec.out files '
-                    'in the current directory or subdirectories.')
+def addargs(parser):
     parser.add_argument('modelpath', default=[], nargs='*',
                         help='Paths to ARTIS folders with spec.out or packets files'
                         ' (may include wildcards such as * and **)')
@@ -276,6 +267,19 @@ def main(argsraw=None):
                         help='Font size of legend text')
     parser.add_argument('-o', action='store', dest='outputfile',
                         help='path/filename for PDF file')
+
+
+def main(argsraw=None):
+    warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
+    """
+        Plot ARTIS spectra and (optionally) reference spectra
+    """
+
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description='Plot ARTIS model spectra by finding spec.out files '
+                    'in the current directory or subdirectories.')
+    addargs(parser)
     args = parser.parse_args(argsraw)
 
     if not args.modelpath:

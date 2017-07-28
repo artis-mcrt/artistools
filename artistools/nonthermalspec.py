@@ -35,15 +35,45 @@ def xs_fe1_old(energy):
     return shell_a + shell_b + shell_c
 
 
-def main(argsraw=None):
+def make_plot(nonthermaldata, timestep, outputfile, args):
     """
-        Plot the electron energy distribution
+        Draw the bin edges, fitted field, and emergent spectrum
     """
-    defaultoutputfile = 'plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf'
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot ARTIS non-thermal electron energy spectrum.')
+    import numpy as np
+    fig, axis = plt.subplots(1, 1, sharex=True, figsize=(6, 4),
+                             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
+    # ymax = max(nonthermaldata['y'])
+
+    # nonthermaldata.plot(x='energy_ev', y='y', linewidth=1.5, ax=axis, color='blue', legend=False)
+    axis.plot(nonthermaldata['energy_ev'], np.log10(nonthermaldata['y']), linewidth=2.0, color='blue')
+
+    # arr_xs = [xs_fe1(en) for en in nonthermaldata['energy_ev']]
+    # arr_xs_old = [xs_fe1_old(en) for en in nonthermaldata['energy_ev']]
+    # arr_xs_times_y = [xs_fe1(en) * y for en, y in zip(nonthermaldata['energy_ev'], nonthermaldata['y'])]
+
+    # axis.plot(nonthermaldata['energy_ev'], arr_xs_times_y, linewidth=2.0, color='blue')
+
+    axis.annotate(f'Timestep {timestep:d}\nCell {args.modelgridindex:d}',
+                  xy=(0.02, 0.96), xycoords='axes fraction',
+                  horizontalalignment='left', verticalalignment='top', fontsize=8)
+
+    axis.set_xlabel(r'Energy (eV)')
+    axis.set_ylabel(r'log [y (e$^-$ / cm$^2$ / s / eV)]')
+    # axis.yaxis.set_minor_locator(ticker.MultipleLocator(base=0.1))
+    # axis.set_yscale("log", nonposy='clip')
+    # axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
+    # axis.set_ylim(ymin=0.0, ymax=ymax)
+
+    # axis.legend(loc='upper center', handlelength=2,
+    #             frameon=False, numpoints=1, prop={'size': 13})
+
+    print(f'Saving to {outputfile:s}')
+    fig.savefig(outputfile, format='pdf')
+    plt.close()
+
+
+def addargs(parser, defaultoutputfile):
     parser.add_argument('modelpath', nargs='?', default='',
                         help='Path to ARTIS folder')
 
@@ -67,6 +97,18 @@ def main(argsraw=None):
 
     parser.add_argument('-o', action='store', dest='outputfile', default=defaultoutputfile,
                         help='Filename for PDF file')
+
+
+def main(argsraw=None):
+    """
+        Plot the electron energy distribution
+    """
+    defaultoutputfile = 'plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf'
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description='Plot ARTIS non-thermal electron energy spectrum.')
+
+    addargs(parser, defaultoutputfile)
 
     args = parser.parse_args(argsraw)
 
@@ -114,44 +156,6 @@ def main(argsraw=None):
                 make_plot(nonthermaldata_currenttimestep, timestep, outputfile, args)
             else:
                 print(f'No data for timestep {timestep:d}')
-
-
-def make_plot(nonthermaldata, timestep, outputfile, args):
-    """
-        Draw the bin edges, fitted field, and emergent spectrum
-    """
-    import numpy as np
-    fig, axis = plt.subplots(1, 1, sharex=True, figsize=(6, 4),
-                             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
-
-    # ymax = max(nonthermaldata['y'])
-
-    # nonthermaldata.plot(x='energy_ev', y='y', linewidth=1.5, ax=axis, color='blue', legend=False)
-    axis.plot(nonthermaldata['energy_ev'], np.log10(nonthermaldata['y']), linewidth=2.0, color='blue')
-
-    # arr_xs = [xs_fe1(en) for en in nonthermaldata['energy_ev']]
-    # arr_xs_old = [xs_fe1_old(en) for en in nonthermaldata['energy_ev']]
-    # arr_xs_times_y = [xs_fe1(en) * y for en, y in zip(nonthermaldata['energy_ev'], nonthermaldata['y'])]
-
-    # axis.plot(nonthermaldata['energy_ev'], arr_xs_times_y, linewidth=2.0, color='blue')
-
-    axis.annotate(f'Timestep {timestep:d}\nCell {args.modelgridindex:d}',
-                  xy=(0.02, 0.96), xycoords='axes fraction',
-                  horizontalalignment='left', verticalalignment='top', fontsize=8)
-
-    axis.set_xlabel(r'Energy (eV)')
-    axis.set_ylabel(r'log [y (e$^-$ / cm$^2$ / s / eV)]')
-    # axis.yaxis.set_minor_locator(ticker.MultipleLocator(base=0.1))
-    # axis.set_yscale("log", nonposy='clip')
-    # axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
-    # axis.set_ylim(ymin=0.0, ymax=ymax)
-
-    # axis.legend(loc='upper center', handlelength=2,
-    #             frameon=False, numpoints=1, prop={'size': 13})
-
-    print(f'Saving to {outputfile:s}')
-    fig.savefig(outputfile, format='pdf')
-    plt.close()
 
 
 if __name__ == "__main__":

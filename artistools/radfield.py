@@ -211,27 +211,38 @@ def main(argsraw=None):
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS internal radiation field.')
+
     parser.add_argument('modelpath', nargs='?', default='',
                         help='Path to ARTIS folder')
+
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
+
     parser.add_argument('-timestep', '-ts', type=int, default=-1,
                         help='Timestep number to plot')
+
     parser.add_argument('-timestepmax', type=int, default=-1,
                         help='Make plots for all timesteps up to this timestep')
+
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Modelgridindex to plot')
+
     parser.add_argument('--nospec', action='store_true', default=False,
                         help='Don\'t plot the emergent specrum')
+
     parser.add_argument('-xmin', type=int, default=1000,
                         help='Plot range: minimum wavelength in Angstroms')
+
     parser.add_argument('-xmax', type=int, default=20000,
                         help='Plot range: maximum wavelength in Angstroms')
+
     parser.add_argument('--normalised', default=False, action='store_true',
                         help='Normalise the spectra to their peak values')
+
     parser.add_argument('-o', action='store', dest='outputfile',
                         default=defaultoutputfile,
                         help='Filename for PDF file')
+
     args = parser.parse_args(argsraw)
 
     if os.path.isdir(args.outputfile):
