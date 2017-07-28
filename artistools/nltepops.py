@@ -162,7 +162,7 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
 
 
 def main(argsraw=None):
-    defaultoutputfile = 'plotnlte_{0}_cell{1:03d}_{2:03d}.pdf'
+    defaultoutputfile = 'plotnlte_{elsymbol}_cell{cell:03d}_{timestep:03d}.pdf'
 
     parser = argparse.ArgumentParser(
         description='Plot ARTIS non-LTE corrections.')
@@ -182,7 +182,7 @@ def main(argsraw=None):
                         help='Use the old file format')
     parser.add_argument('-o', action='store', dest='outputfile',
                         default=defaultoutputfile,
-                        help='path/filename for PDF file .format(elsymbol, cell, timestep)')
+                        help='path/filename for PDF file')
     args = parser.parse_args(argsraw)
 
     if os.path.isdir(args.outputfile):
@@ -303,7 +303,7 @@ def make_plot(dfpop, atomic_number, exc_temperature, args):
         axis.set_yscale('log')
     axes[-1].set_xlabel(r'Level index')
 
-    outputfilename = args.outputfile.format(at.elsymbols[atomic_number], args.modelgridindex, args.timestep)
+    outputfilename = args.outputfile.format(elsymbol=at.elsymbols[atomic_number], cell=args.modelgridindex, timestep=args.timestep)
     print(f"Saving {outputfilename}")
     fig.savefig(outputfilename, format='pdf')
     plt.close()
