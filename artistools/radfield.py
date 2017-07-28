@@ -210,7 +210,7 @@ def main(argsraw=None):
 
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot ARTIS radiation field.')
+        description='Plot ARTIS internal radiation field.')
     parser.add_argument('modelpath', nargs='?', default='',
                         help='Path to ARTIS folder')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
