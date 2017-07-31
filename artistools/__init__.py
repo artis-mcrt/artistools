@@ -6,7 +6,7 @@ import sys
 from collections import namedtuple
 
 # import scipy.signal
-# import numpy as np
+import numpy as np
 import pandas as pd
 from astropy import constants as const
 
@@ -126,6 +126,17 @@ def get_timestep_times(specfilename):
     time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
 
     return time_columns.columns[1:]
+
+
+def get_timestep_times_float(specfilename):
+    """
+        Return a list of the time in days of each timestep using a spec.out file
+    """
+    return np.array([float(t.rstrip('d')) for t in get_timestep_times(specfilename)])
+
+
+def get_closest_timestep(specfilename, timedays):
+    return np.abs(get_timestep_times_float(specfilename) - float(timedays)).argmin()
 
 
 def get_timestep_time(specfilename, timestep):

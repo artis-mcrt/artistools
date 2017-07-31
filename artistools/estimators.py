@@ -105,6 +105,7 @@ def read_estimators(estimfiles, modeldata):
         with open(estfile, 'r') as estfile:
             timestep = 0
             modelgridindex = 0
+            skip_block = False
             for line in estfile:
                 row = line.split()
                 if not row:
@@ -113,30 +114,32 @@ def read_estimators(estimfiles, modeldata):
                 if row[0] == 'timestep':
                     timestep = int(row[1])
                     modelgridindex = int(row[3])
-                    T_e = float(row[7])
                     # print(f'Timestep {timestep} cell {modelgridindex}')
-                    if (timestep, modelgridindex) in estimators:
+                    if (timestep, modelgridindex) in estimators and not estimators[(timestep, modelgridindex)]['emptycell']:
                         print(f'WARNING: duplicate estimator data for timestep {timestep} cell {modelgridindex}.')
-                        print(f'Old T_e {estimators[(timestep, modelgridindex)]["Te"]}, new T_e {T_e}')
-                    estimators[(timestep, modelgridindex)] = {}
-                    estimators[(timestep, modelgridindex)]['velocity'] = modeldata['velocity'][modelgridindex]
-                    emptycell = (row[4] == 'EMPTYCELL')
-                    estimators[(timestep, modelgridindex)]['emptycell'] = emptycell
-                    if not emptycell:
-                        estimators[(timestep, modelgridindex)]['TR'] = float(row[5])
-                        estimators[(timestep, modelgridindex)]['Te'] = T_e
-                        estimators[(timestep, modelgridindex)]['W'] = float(row[9])
-                        estimators[(timestep, modelgridindex)]['TJ'] = float(row[11])
-                        estimators[(timestep, modelgridindex)]['nne'] = float(row[15])
+                        print(f'Kept old (T_e {estimators[(timestep, modelgridindex)]["Te"]}), instead of new (T_e {float(row[7])})')
+                        skip_block = True
+                    else:
+                        skip_block = False
+                        estimators[(timestep, modelgridindex)] = {}
+                        estimators[(timestep, modelgridindex)]['velocity'] = modeldata['velocity'][modelgridindex]
+                        emptycell = (row[4] == 'EMPTYCELL')
+                        estimators[(timestep, modelgridindex)]['emptycell'] = emptycell
+                        if not emptycell:
+                            estimators[(timestep, modelgridindex)]['TR'] = float(row[5])
+                            estimators[(timestep, modelgridindex)]['Te'] = float(row[7])
+                            estimators[(timestep, modelgridindex)]['W'] = float(row[9])
+                            estimators[(timestep, modelgridindex)]['TJ'] = float(row[11])
+                            estimators[(timestep, modelgridindex)]['nne'] = float(row[15])
 
-                elif row[1].startswith('Z='):
+                elif row[1].startswith('Z=') and not skip_block:
                     parse_ion_row(row, estimators[(timestep, modelgridindex)])
 
-                elif row[0] == 'heating:':
+                elif row[0] == 'heating:' and not skip_block:
                     for index, token in list(enumerate(row))[1::2]:
                         estimators[(timestep, modelgridindex)][f'heating_{token}'] = float(row[index + 1])
 
-                elif row[0] == 'cooling:':
+                elif row[0] == 'cooling:' and not skip_block:
                     for index, token in list(enumerate(row))[1::2]:
                         estimators[(timestep, modelgridindex)][f'cooling_{token}'] = float(row[index + 1])
 
@@ -319,6 +322,9 @@ def addargs(parser):
     parser.add_argument('--recombrates', default=False, action='store_true',
                         help='Make a recombination rate plot')
 
+    parser.add_argument('-timedays', '-time', '-t',
+                        help='Time in days to plot')
+
     parser.add_argument('-timestep', '-ts',
                         help='Timestep number to plot')
 
@@ -359,11 +365,17 @@ def main(argsraw=None):
     if args.recombrates:
         plot_recombrates(estimators, "plotestimators_recombrates.pdf")
     else:
-        if '-' in args.timestep:
-            timestepmin, timestepmax = [int(nts) for nts in args.timestep.split('-')]
+        if args.timedays:
+            timestep = at.get_closest_timestep(os.path.join(modelpath, "spec.out"), args.timedays)
+            timestepmin = timestep
+            timestepmax = timestep
         else:
-            timestepmin = int(args.timestep)
-            timestepmax = timestepmin
+            if '-' in args.timestep:
+                timestepmin, timestepmax = [int(nts) for nts in args.timestep.split('-')]
+            else:
+                timestepmin = int(args.timestep)
+                timestepmax = timestepmin
+
         for timestep in range(timestepmin, timestepmax + 1):
 
             nonemptymgilist = [
