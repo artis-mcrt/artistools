@@ -2,12 +2,12 @@
 # PYTHON_ARGCOMPLETE_OK
 # import math
 import argparse
-import argcomplete
 import glob
 import math
 import os
 import sys
 
+import argcomplete
 from collections import namedtuple
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -209,7 +209,7 @@ def plot_singleseries(axis, xlist, variablename, singlevariableplot, timestep, m
     return showlegend
 
 
-def plot_timestep(timestep, mgilist, estimators, series, outfilename, **plotkwargs):
+def plot_timestep(modelname, timestep, mgilist, estimators, series, outfilename, **plotkwargs):
     fig, axes = plt.subplots(len(series), 1, sharex=True, figsize=(5, 8),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
     # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
@@ -254,11 +254,11 @@ def plot_timestep(timestep, mgilist, estimators, series, outfilename, **plotkwar
         lastxvariable = xvariable
 
     # modelname = at.get_model_name(".")
-    plotlabel = f'Timestep {timestep}'
+    figure_title = f'{modelname}\nTimestep {timestep}'
     time_days = float(at.get_timestep_time('spec.out', timestep))
     if time_days >= 0:
-        plotlabel += f' (t={time_days:.2f}d)'
-    fig.suptitle(plotlabel, fontsize=12)
+        figure_title += f' (t={time_days:.2f}d)'
+    plt.set_title(figure_title, fontsize=11)
 
     fig.savefig(outfilename, format='pdf')
     print(f'Saved {outfilename}')
@@ -346,6 +346,7 @@ def main(argsraw=None):
 
     modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
     # initalabundances = at.get_initialabundances1d('abundances.txt')
+    modelname = at.get_model_name(modelpath)
 
     input_files = (
         glob.glob(os.path.join(modelpath, 'estimators_????.out'), recursive=True) +
@@ -382,7 +383,7 @@ def main(argsraw=None):
                 modelgridindex for modelgridindex in modeldata.index
                 if not estimators[(timestep, modelgridindex)]['emptycell']]
 
-            plot_timestep(timestep, nonemptymgilist, estimators, series, args.outputfile.format(timestep=timestep))
+            plot_timestep(modelname, timestep, nonemptymgilist, estimators, series, args.outputfile.format(timestep=timestep))
 
 
 if __name__ == "__main__":
