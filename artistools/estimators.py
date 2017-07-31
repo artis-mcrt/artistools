@@ -258,7 +258,8 @@ def plot_timestep(modelname, timestep, mgilist, estimators, series, outfilename,
     time_days = float(at.get_timestep_time('spec.out', timestep))
     if time_days >= 0:
         figure_title += f' (t={time_days:.2f}d)'
-    plt.set_title(figure_title, fontsize=11)
+    axes[0].set_title(figure_title, fontsize=11)
+    # plt.suptitle(figure_title, fontsize=11, verticalalignment='top')
 
     fig.savefig(outfilename, format='pdf')
     print(f'Saved {outfilename}')
