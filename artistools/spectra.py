@@ -9,7 +9,7 @@ import warnings
 from collections import namedtuple
 from contracts import contract
 
-# import matplotlib.ticker as ticker
+import matplotlib.ticker as ticker
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
@@ -91,6 +91,8 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
     import artistools.packets
     array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
     array_energysum = np.zeros_like(array_lambda, dtype=np.float)  # total packet energy sum of each bin
+    array_pktcount = np.zeros_like(array_lambda, dtype=np.int)  # number of packets in each bin
+    array_velocitysum = np.zeros_like(array_lambda, dtype=np.float)  # sum of packet radii
 
     timelow = timelowdays * u.day.to('s')
     timehigh = timehighdays * u.day.to('s')
@@ -102,7 +104,8 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
     for packetsfile in packetsfiles:
         dfpackets = at.packets.readfile(packetsfile, usecols=[
             'type_id', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
-            'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'])
+            'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz',
+            'em_posx', 'em_posy', 'em_posz', 'em_time'])
 
         dfpackets.query('type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT" and'
                         '@nu_min <= nu_rf < @nu_max and'
@@ -119,11 +122,21 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
             xindex = math.floor((lambda_rf - lambda_min) / delta_lambda)
             assert(xindex >= 0)
             array_energysum[xindex] += packet.e_rf
+            array_pktcount[xindex] += 1
+
+            # convert cm/s to km/s
+            array_velocitysum[xindex] += packet.e_rf * (
+                math.sqrt(packet.em_posx ** 2 + packet.em_posy ** 2 + packet.em_posz ** 2) / packet.em_time) / 1e5
 
     array_flambda = (array_energysum / delta_lambda / (timehigh - timelow) /
                      4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs)
 
-    return pd.DataFrame({'lambda_angstroms': array_lambda, 'f_lambda': array_flambda})
+    array_averagevelocity = np.divide(array_velocitysum, array_energysum)
+
+    return pd.DataFrame({'lambda_angstroms': array_lambda,
+                         'f_lambda': array_flambda,
+                         'pktcount': array_pktcount,
+                         'averagevelocity': array_averagevelocity})
 
 
 def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
@@ -368,6 +381,26 @@ def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
     return mpatches.Patch(color=lineplot.get_lines()[0].get_color())
 
 
+def make_spectrum_radius_plot(spectrum, args):
+    fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+
+    spectrum.query('@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax', inplace=True)
+
+    spectrum.plot(x='lambda_angstroms', y='averagevelocity', ax=axis)
+
+    axis.set_xlabel(r'Wavelength ($\AA$)')
+    axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
+    axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
+    axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
+
+    axis.set_ylabel('Energy-weighted average velocity [km/s]')
+
+    filenameout = "plotspecradius.pdf"
+    fig.savefig(filenameout, format='pdf')
+    print(f'Saved {filenameout}')
+    plt.close()
+
+
 def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=None, **plotkwargs):
     specfilename = os.path.join(modelpath, 'spec.out')
 
@@ -380,10 +413,11 @@ def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=No
 
     if from_packets:
         # find any other packets files in the same directory
-        packetsfiles_thismodel = glob.glob(os.path.join(modelpath, 'packets**.out'))
+        packetsfiles_thismodel = glob.glob(os.path.join(modelpath, 'packets00_**.out'))
         print(packetsfiles_thismodel)
         spectrum = at.spectra.get_spectrum_from_packets(
             packetsfiles_thismodel, time_days_lower, time_days_upper, lambda_min=args.xmin, lambda_max=args.xmax)
+        make_spectrum_radius_plot(spectrum, args)
     else:
         spectrum = at.spectra.get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
 
@@ -487,8 +521,6 @@ def make_emission_plot(modelpath, axis, filterfunc, args):
 
 
 def make_plot(modelpaths, args):
-    import matplotlib.ticker as ticker
-
     fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
     axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
 
