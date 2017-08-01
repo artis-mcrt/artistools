@@ -158,15 +158,16 @@ def plot_abundances(axis, xlist, specieslist, mgilist, modeldata, abundancedata,
             if speciesstr.lower() in ['ni_56', 'ni56', '56ni']:
                 yvalue = modeldata.loc[modelgridindex]['f56ni']
             elif speciesstr.lower() in ['ni_stb', 'ni_stable']:
-                yvalue = abundancedata[modelgridindex][atomic_number] - modeldata.loc[modelgridindex]['f56ni']
+                yvalue = abundancedata.loc[modelgridindex][atomic_number] - modeldata.loc[modelgridindex]['f56ni']
             elif speciesstr.lower() in ['co_56', 'co56', '56co']:
                 yvalue = modeldata.loc[modelgridindex]['f56co']
             elif speciesstr.lower() in ['fegrp', 'ffegroup']:
                 yvalue = modeldata.loc[modelgridindex]['ffegroup']
             else:
-                yvalue = abundancedata[modelgridindex][atomic_number]
+                yvalue = abundancedata.loc[modelgridindex][atomic_number]
             ylist.append(yvalue)
 
+        xlist.insert(0, 0.)
         ylist.insert(0, ylist[0])
         # or axis.step(where='pre', )
         axis.plot(xlist, ylist, linewidth=1.5, label=f'{speciesstr}', **plotkwargs)
@@ -201,6 +202,7 @@ def plot_ionmultiseries(axis, xlist, serieslist, timestep, mgilist, estimators, 
 
         plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
 
+        xlist.insert(0, 0.)
         ylist.insert(0, ylist[0])
         color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][linecount]
         # or axis.step(where='pre', )
@@ -230,6 +232,7 @@ def plot_singleseries(axis, xlist, variablename, singlevariableplot, timestep, m
             print(estimators[(timestep, modelgridindex)])
             sys.exit()
 
+    xlist.insert(0, 0.)
     ylist.insert(0, ylist[0])
     dictcolors = {'Te': 'red', 'heating_gamma': 'blue'}
     axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel, color=dictcolors.get(variablename, None), **plotkwargs)
@@ -266,8 +269,6 @@ def plot_timestep(modelname, timestep, mgilist, estimators, series, modeldata, a
                     print(f'No data for cell {modelgridindex} at timestep {timestep}')
                 print(estimators[(timestep, modelgridindex)])
                 sys.exit()
-
-        xlist = np.insert(xlist, 0, 0.)
 
         axis.set_xlim(xmin=min(xlist), xmax=max(xlist))
 
