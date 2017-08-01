@@ -89,7 +89,7 @@ def get_modeldata(filename):
         Return a list containing named tuples for all model grid cells
     """
     modeldata = pd.DataFrame()
-    gridcelltuple = namedtuple('gridcell', 'cellid velocity logrho ffegroup f56ni f56co f52fe f48cr')
+    gridcelltuple = namedtuple('gridcell', 'cellid velocity logrho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48')
 
     with open(filename, 'r') as fmodel:
         gridcellcount = int(fmodel.readline())
