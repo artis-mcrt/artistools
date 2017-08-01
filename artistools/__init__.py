@@ -110,7 +110,6 @@ def get_initialabundances1d(filename):
         Returns a list of mass fractions
     """
     abundancedata = []
-    abundancedata.append([])
     with open(filename, 'r') as fabund:
         for line in fabund:
             row = line.split()
