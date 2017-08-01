@@ -398,14 +398,14 @@ def main(argsraw=None):
 
     estimators = read_estimators(input_files, modeldata)
 
-    series = [['cellid', ['heating_gamma']],
-            # ['cellid', ['heating_gamma/gamma_dep']],
-              ['cellid', ['Te']],
-              ['cellid', ['nne']],
-              ['cellid', [['abundances', ['Fe', 'Ni', 'Ni_56', 'Ni_stable']]]],
-              ['cellid', [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II', 'Ni III']]]],
-              ['cellid', [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II', 'Ni III']]]],
-              ['cellid', ['TR']]]
+    series = [['velocity', ['heating_gamma']],
+              ['velocity', ['heating_gamma/gamma_dep']],
+              ['velocity', ['Te']],
+              ['velocity', ['nne']],
+              ['velocity', [['abundances', ['Fe', 'Ni', 'Ni_56', 'Ni_stable']]]],
+              ['velocity', [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]]],
+              ['velocity', [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]]],
+              ['velocity', ['TR']]]
 
     if args.recombrates:
         plot_recombrates(estimators, "plotestimators_recombrates.pdf")
