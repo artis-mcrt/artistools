@@ -105,16 +105,14 @@ def get_modeldata(filename):
     return modeldata, t_model_init
 
 
-def get_initialabundances1d(filename):
+def get_initialabundances1d(abundancefilename):
     """
         Returns a list of mass fractions
     """
-    abundancedata = []
-    with open(filename, 'r') as fabund:
-        for line in fabund:
-            row = line.split()
-            abundancedata.append([int(row[0])] + list(map(float, row[1:])))
-
+    columns = ['inputcellid']
+    columns.extend(['X_' + elsymbols[x] for x in range(1, 31)])
+    abundancedata = pd.read_csv(abundancefilename, delim_whitespace=True, header=None, names=columns)
+    abundancedata.index.name = 'modelgridindex'
     return abundancedata
 
 
