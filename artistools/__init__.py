@@ -158,7 +158,7 @@ def get_timestep_time_delta(timestep, timearray):
     return delta_t
 
 
-def get_levels(adatafilename, transition_filename=None, atomic_numbers=None):
+def get_levels(adatafilename, transition_filename=None, ionlist=None):
     """
         Return a list of lists of levels
     """
@@ -180,7 +180,7 @@ def get_levels(adatafilename, transition_filename=None, atomic_numbers=None):
                 ion_stage = int(ionheader[1])
                 transition_count = int(ionheader[2])
 
-                if not atomic_numbers or Z in atomic_numbers:
+                if not ionlist or (Z, ion_stage) in ionlist:
                     translist = []
                     for _ in range(transition_count):
                         line = ftransitions.readline()
@@ -203,7 +203,7 @@ def get_levels(adatafilename, transition_filename=None, atomic_numbers=None):
             ion_stage = int(ionheader[1])
             level_count = int(ionheader[2])
 
-            if not atomic_numbers or Z in atomic_numbers:
+            if not ionlist or (Z, ion_stage) in ionlist:
                 level_list = []
                 for _ in range(level_count):
                     line = fadata.readline()
