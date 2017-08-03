@@ -46,8 +46,8 @@ def get_nlte_populations(modelpath, nltefilename, modelgridindex, timestep, atom
         else:
             for _, ion_data in enumerate(all_levels):
                 if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
-                    level = ion_data.level_list[levelnumber]
-                    gslevel = ion_data.level_list[0]
+                    level = ion_data.levels.iloc[levelnumber]
+                    gslevel = ion_data.levels.iloc[0]
 
             ltepopcustom = gspop[(row.Z, row.ion_stage)] * level.g / gslevel.g * math.exp(
                 - (level.energy_ev - gslevel.energy_ev) / k_b / temperature_exc)
@@ -128,8 +128,8 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
 
     for _, ion_data in enumerate(all_levels):
         if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
-            level = ion_data.level_list[levelnumber]
-            gslevel = ion_data.level_list[0]
+            level = ion_data.levels.iloc[levelnumber]
+            gslevel = ion_data.levels.iloc[0]
 
     ltepop = float(row[row.index('nnlevel_LTE') + 1])
 

@@ -4,12 +4,16 @@ import math
 import os
 from collections import namedtuple
 
+import matplotlib
+import matplotlib.pyplot as plt
+
 # import numexpr as ne
 import numpy as np
 import pandas as pd
 from astropy import constants as const
 
-# from astropy import units as u
+from astropy import units as u
+import artistools as at
 
 K_B = const.k_B.to('eV / K').value
 c = const.c.to('km / s').value
@@ -29,105 +33,25 @@ default_ions = [
 roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X',
                   'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
-TRANSITION_FILES_DIR = os.path.join('..', 'artis-atomic', 'transition_guide')
-SPECTRA_DIR = os.path.join(PYDIR, 'spectra')
+SPECTRA_DIR = os.path.join(PYDIR, 'data', 'refspectra')
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot estimated spectra from bound-bound transitions.')
-    parser.add_argument('-xmin', type=int, default=2000,
-                        help='Plot range: minimum wavelength in Angstroms')
-    parser.add_argument('-xmax', type=int, default=30000,
-                        help='Plot range: maximum wavelength in Angstroms')
-    parser.add_argument('-T', type=float, dest='T', default=8000.,
-                        help='Temperature in Kelvin')
-    parser.add_argument('-sigma_v', type=float, default=5500.,
-                        help='Gaussian width in km/s')
-    # parser.add_argument('-gaussian_window', type=float, default=4,
-    #                     help='Truncate Gaussian line profiles n sigmas from the centre')
-    parser.add_argument('--include-permitted', action='store_true', default=False,
-                        help='Also consider permitted lines')
-    parser.add_argument('--print-lines', action='store_true', default=False,
-                        help='Output details of matching line details to standard out')
-    parser.add_argument('--no-plot', action='store_true', default=False,
-                        help="Don't save a plot file")
-    parser.add_argument('-elements', '--item', action='store', dest='elements',
-                        type=str, nargs='*', default=['Fe'],
-                        help="Examples: -elements Fe Co")
-    args = parser.parse_args()
-    print(args)
-    args.gaussian_window = 4
-
-    elementslist = []
-    for elcode in args.elements:
-        atomic_number = elsymbols.index(elcode.title())
-        if atomic_number == 26:
-            Fe3overFe2 = 2.7  # number ratio
-            ionlist = [
-                iontuple(1, 0.2),
-                iontuple(2, 1 / (1 + Fe3overFe2)),
-                iontuple(3, Fe3overFe2 / (1 + Fe3overFe2)),
-                # iontuple(4, 0.1)
-            ]
-        elif atomic_number == 27:
-            ionlist = [iontuple(2, 0.5), iontuple(3, 0.5)]
-        else:
-            ionlist = default_ions
-        elementslist.append((atomic_number, ionlist))
-
-    # also calculate wavelengths outside the plot range to include lines whose
-    # edges pass through the plot range
-    plot_xmin_wide = args.xmin * (1 - args.gaussian_window * args.sigma_v / c)
-    plot_xmax_wide = args.xmax * (1 + args.gaussian_window * args.sigma_v / c)
-
-    for (atomic_number, ions) in elementslist:
-        elsymbol = elsymbols[atomic_number]
-        transition_filename = f'transitions_{elsymbol}.txt'
-        transitions = load_transitions(transition_filename)
-
-        if transitions is None:
-            transition_file = os.path.join(TRANSITION_FILES_DIR, transition_filename)
-            transitions = load_transitions(transition_file)
-
-        if transitions is None:
-            print(f"ERROR: could not find transitions file for {elsymbol}")
-            return
-
-        ion_stage_list = [ion.ion_stage for ion in ions]
-        # filter the line list
-        transitions = transitions[
-            (transitions[:]['lambda_angstroms'] >= plot_xmin_wide) &
-            (transitions[:]['lambda_angstroms'] <= plot_xmax_wide) &
-            (transitions['ion_stage'].isin(ion_stage_list))
-            # (transitions[:]['upper_has_permitted'] == 0)
-        ]
-        if not args.include_permitted:
-            transitions = transitions[transitions[:]['forbidden'] == 1]
-
-        print(f'{len(transitions):d} matching lines of {elsymbol}')
-
-        if len(transitions) > 0:
-            print('Generating spectra...')
-            xvalues, yvalues = generate_spectra(transitions, atomic_number, ions, plot_xmin_wide, plot_xmax_wide, args)
-            if not args.no_plot:
-                make_plot(xvalues, yvalues, elsymbol, ions, args)
-
-
-def load_transitions(transition_file):
+def load_transitions_artisatomic(transition_file):
     if os.path.isfile(transition_file + '.tmp'):
         print(f"Loading '{transition_file}.tmp'...")
         # read the sorted binary file (fast)
         transitions = pd.read_pickle(transition_file + '.tmp')
+
     elif os.path.isfile(transition_file):
         print(f"Loading '{transition_file}'...")
+
         # read the text file (slower)
         transitions = pd.read_csv(transition_file, delim_whitespace=True)
         transitions.sort_values(by='lambda_angstroms', inplace=True)
 
         # save the dataframe in binary format for next time
         transitions.to_pickle(transition_file + '.tmp')
+
     else:
         transitions = None
 
@@ -189,15 +113,11 @@ def print_line_details(line, T_K):
 
 
 def make_plot(xvalues, yvalues, elsymbol, ions, args):
-    import matplotlib
-    matplotlib.use('PDF')
-    import matplotlib.pyplot as plt
-
     fig, ax = plt.subplots(
         len(ions) + 1, 1, sharex=True, figsize=(6, 6),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    yvalues_combined = np.zeros_like(xvalues)
+    yvalues_combined = np.zeros_like(xvalues, dtype=np.float)
     for ion_index in range(len(ions) + 1):
         if ion_index < len(ions):
             # an ion subplot
@@ -245,6 +165,131 @@ def make_plot(xvalues, yvalues, elsymbol, ions, args):
     print(f"Saving '{outfilename}'")
     fig.savefig(outfilename, format='pdf')
     plt.close()
+
+
+def get_artistransitions_allelements(modelpath):
+    adata = at.get_levels(
+        os.path.join(modelpath, 'adata.txt'), os.path.join(modelpath, 'transitiondata.txt'))
+
+    fulltransitiontuple = namedtuple(
+        'fulltransition',
+        'lambda_angstroms A Z ion_stage lower_energy_Ev lower_statweight '
+        'forbidden lower_level upper_level upper_statweight upper_energy_Ev upper_has_permitted')
+
+    fulltranslist_all = []
+    for ion in adata:
+        if ion.Z not in [26, 27, 28]:
+            continue
+        print(ion.Z, ion.ion_stage)
+        for index, transition in ion.transitions.iterrows():
+            upperlevel = ion.levels[ion.levels.number == transition.upper].iloc[0]
+            lowerlevel = ion.levels[ion.levels.number == transition.upper].iloc[0]
+            lambda_angstroms = (const.h * const.c).to('eV Angstrom') / (upperlevel.energy_ev - lowerlevel.energy_ev)
+            fulltranslist_all.append(fulltransitiontuple(
+                lambda_angstroms=lambda_angstroms,
+                A=transition.A,
+                Z=ion.Z,
+                ion_stage=ion.ion_stage,
+                lower_energy_Ev=lowerlevel.energy_ev,
+                lower_statweight=lowerlevel.g,
+                forbidden=1 if transition.forbidden else 0,
+                lower_level=lowerlevel.levelname,
+                upper_level=upperlevel.levelname,
+                upper_statweight=upperlevel.g,
+                upper_energy_Ev=upperlevel.energy_ev,
+                upper_has_permitted='?'))
+
+    dftransitions = pd.DataFrame(fulltranslist_all)
+    return dftransitions
+
+
+def addargs(parser):
+    parser.add_argument('--fromartisatomic', default=False, action='store_true',
+                        help='Read transitions from the artisatomic output instead of an ARTIS model folder.')
+    parser.add_argument('-xmin', type=int, default=2000,
+                        help='Plot range: minimum wavelength in Angstroms')
+    parser.add_argument('-xmax', type=int, default=30000,
+                        help='Plot range: maximum wavelength in Angstroms')
+    parser.add_argument('-T', type=float, dest='T', default=6000.,
+                        help='Temperature in Kelvin')
+    parser.add_argument('-sigma_v', type=float, default=5500.,
+                        help='Gaussian width in km/s')
+    parser.add_argument('-gaussian_window', type=float, default=4,
+                        help='Truncate Gaussian line profiles n sigmas from the centre')
+    parser.add_argument('--include-permitted', action='store_true', default=False,
+                        help='Also consider permitted lines')
+    parser.add_argument('--print-lines', action='store_true', default=False,
+                        help='Output details of matching line details to standard out')
+    parser.add_argument('--no-plot', action='store_true', default=False,
+                        help="Don't save a plot file")
+    parser.add_argument('-elements', '--item', action='store', dest='elements',
+                        type=str, nargs='*', default=['Fe'],
+                        help="Examples: -elements Fe Co")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description='Plot estimated spectra from bound-bound transitions.')
+    addargs(parser)
+    args = parser.parse_args()
+
+    # also calculate wavelengths outside the plot range to include lines whose
+    # edges pass through the plot range
+    plot_xmin_wide = args.xmin * (1 - args.gaussian_window * args.sigma_v / c)
+    plot_xmax_wide = args.xmax * (1 + args.gaussian_window * args.sigma_v / c)
+
+    elementslist = []
+    for elcode in args.elements:
+        atomic_number = elsymbols.index(elcode.title())
+        if atomic_number == 26:
+            Fe3overFe2 = 2.7  # number ratio
+            ionlist = [
+                iontuple(1, 0.2),
+                iontuple(2, 1 / (1 + Fe3overFe2)),
+                iontuple(3, Fe3overFe2 / (1 + Fe3overFe2)),
+                # iontuple(4, 0.1)
+            ]
+        elif atomic_number == 27:
+            ionlist = [iontuple(2, 0.5), iontuple(3, 0.5)]
+        else:
+            ionlist = default_ions
+        elementslist.append((atomic_number, ionlist))
+
+    if not args.fromartisatomic:
+        artistransitions_allelements = get_artistransitions_allelements('.')
+
+    for (atomic_number, ions) in elementslist:
+        elsymbol = elsymbols[atomic_number]
+        if args.fromartisatomic:
+            transition_filepath = os.path.join(
+                PYDIR, '..', '..', 'artis-atomic', 'transition_guide', f'transitions_{elsymbol}.txt')
+            transitions = load_transitions_artisatomic(transition_filepath)
+
+            if transitions is None:
+                print(f"ERROR: could not find transitions file for {elsymbol} at {transition_filepath}")
+                return
+        else:
+            transitions = artistransitions_allelements.query('Z=@atomic_number')
+
+        ion_stage_list = [ion.ion_stage for ion in ions]
+        # filter the line list
+        transitions = transitions[
+            (transitions[:]['lambda_angstroms'] >= plot_xmin_wide) &
+            (transitions[:]['lambda_angstroms'] <= plot_xmax_wide) &
+            (transitions['ion_stage'].isin(ion_stage_list))
+            # (transitions[:]['upper_has_permitted'] == 0)
+        ]
+        if not args.include_permitted:
+            transitions = transitions[transitions[:]['forbidden'] == 1]
+
+        print(f'{len(transitions):d} matching lines of {elsymbol}')
+
+        if len(transitions) > 0:
+            print('Generating spectra...')
+            xvalues, yvalues = generate_spectra(transitions, atomic_number, ions, plot_xmin_wide, plot_xmax_wide, args)
+            if not args.no_plot:
+                make_plot(xvalues, yvalues, elsymbol, ions, args)
 
 
 if __name__ == "__main__":
