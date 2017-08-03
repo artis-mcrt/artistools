@@ -268,7 +268,10 @@ def plot_timestep(modelname, timestep, mgilist, estimators, series, modeldata, a
                 sys.exit()
 
         xlist = np.insert(xlist, 0, 0.)
-        axis.set_xlim(xmin=min(xlist), xmax=max(xlist))
+
+        xmin = args.xmin if args.xmin > 0 else min(xlist)
+        xmax = args.xmax if args.xmax > 0 else max(xlist)
+        axis.set_xlim(xmin=xmin, xmax=xmax)
 
         try:
             if yvariables[0].startswith('heating'):
@@ -367,6 +370,12 @@ def addargs(parser):
 
     parser.add_argument('-timestep', '-ts',
                         help='Timestep number to plot')
+
+    parser.add_argument('-xmin', type=int, default=-1,
+                        help='Plot range: minimum x value')
+
+    parser.add_argument('-xmax', type=int, default=-1,
+                        help='Plot range: maximum x value')
 
     parser.add_argument('-o', action='store', dest='outputfile',
                         default='plotestimators_{timestep:02d}.pdf',
