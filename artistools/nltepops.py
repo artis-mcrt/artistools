@@ -44,7 +44,7 @@ def get_nlte_populations(modelpath, nltefilename, modelgridindex, timestep, atom
             parity = 0
             print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a superlevel at level {levelnumber}')
         else:
-            for _, ion_data in enumerate(all_levels):
+            for _, ion_data in all_levels.iterrows():
                 if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
                     level = ion_data.levels.iloc[levelnumber]
                     gslevel = ion_data.levels.iloc[0]

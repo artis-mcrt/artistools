@@ -180,10 +180,13 @@ def get_artis_transitions(modelpath, lambdamin, lambdamax, include_permitted, at
     hc = (const.h * const.c).to('eV Angstrom').value
 
     fulltranslist_all = []
-    for ion in adata:
-        if ion.Z not in atomic_numbers:
+    for _, ion in adata.iterrows():
+        if atomic_numbers and ion.Z not in atomic_numbers:
             continue
-        print(f'{ion.Z} {ion.ion_stage} levels: {ion.level_count} transitions: {len(ion.transitions)}')
+
+        print(f'{at.elsymbols[ion.atomic_number]} {at.roman_numerals[ion.ion_stage]}'
+              f'levels: {ion.level_count} transitions: {len(ion.transitions)}')
+
         dftransitions = ion.transitions
         if not include_permitted and not ion.transitions.empty:
             dftransitions.query('forbidden == True', inplace=True)
@@ -295,7 +298,8 @@ def main():
             if not args.include_permitted:
                 transitions = transitions[transitions[:]['forbidden'] == 1]
         else:
-            transitions = artistransitions_allelements.copy().query('Z==@atomic_number and ion_stage in @ion_stage_list')
+            transitions = artistransitions_allelements.copy().query(
+                'Z==@atomic_number and ion_stage in @ion_stage_list')
 
         transitions.sort_values(by='lambda_angstroms', inplace=True)
 
