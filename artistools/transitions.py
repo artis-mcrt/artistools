@@ -36,28 +36,6 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X
 SPECTRA_DIR = os.path.join(PYDIR, 'data', 'refspectra')
 
 
-def load_transitions_artisatomic(transition_file):
-    if os.path.isfile(transition_file + '.tmp'):
-        print(f"Loading '{transition_file}.tmp'...")
-        # read the sorted binary file (fast)
-        transitions = pd.read_pickle(transition_file + '.tmp')
-
-    elif os.path.isfile(transition_file):
-        print(f"Loading '{transition_file}'...")
-
-        # read the text file (slower)
-        transitions = pd.read_csv(transition_file, delim_whitespace=True)
-        transitions.sort_values(by='lambda_angstroms', inplace=True)
-
-        # save the dataframe in binary format for next time
-        transitions.to_pickle(transition_file + '.tmp')
-
-    else:
-        transitions = None
-
-    return transitions
-
-
 def generate_spectra(transitions, atomic_number, ions, plot_xmin_wide, plot_xmax_wide, args):
     # resolution of the plot in Angstroms
     plot_resolution = int((args.xmax - args.xmin) / 1000)
@@ -167,24 +145,60 @@ def make_plot(xvalues, yvalues, elsymbol, ions, args):
     plt.close()
 
 
-def get_artistransitions_allelements(modelpath):
+def get_artisatomic_transitions(transition_file):
+    if os.path.isfile(transition_file + '.tmp'):
+        print(f"Loading '{transition_file}.tmp'...")
+        # read the sorted binary file (fast)
+        transitions = pd.read_pickle(transition_file + '.tmp')
+
+    elif os.path.isfile(transition_file):
+        print(f"Loading '{transition_file}'...")
+
+        # read the text file (slower)
+        transitions = pd.read_csv(transition_file, delim_whitespace=True)
+
+        # save the dataframe in binary format for next time
+        transitions.to_pickle(transition_file + '.tmp')
+
+    else:
+        transitions = None
+
+    return transitions
+
+
+def get_artis_transitions(modelpath, lambdamin, lambdamax, include_permitted, atomic_numbers=None):
     adata = at.get_levels(
-        os.path.join(modelpath, 'adata.txt'), os.path.join(modelpath, 'transitiondata.txt'))
+        os.path.join(modelpath, 'adata.txt'), os.path.join(modelpath, 'transitiondata.txt'),
+        atomic_numbers)
 
     fulltransitiontuple = namedtuple(
         'fulltransition',
         'lambda_angstroms A Z ion_stage lower_energy_Ev lower_statweight '
-        'forbidden lower_level upper_level upper_statweight upper_energy_Ev upper_has_permitted')
+        'forbidden upper_statweight upper_energy_Ev upper_has_permitted')
+        # 'lower_level upper_level '
+
+    hc = (const.h * const.c).to('eV Angstrom').value
 
     fulltranslist_all = []
     for ion in adata:
-        if ion.Z not in [26, 27, 28]:
+        if ion.Z not in atomic_numbers:
             continue
-        print(ion.Z, ion.ion_stage)
-        for index, transition in ion.transitions.iterrows():
+        print(f'{ion.Z} {ion.ion_stage} levels: {ion.level_count} transitions: {len(ion.transitions)}')
+        dftransitions = ion.transitions
+        if not include_permitted and not ion.transitions.empty:
+            dftransitions.query('forbidden == True', inplace=True)
+
+        for index, transition in dftransitions.iterrows():
             upperlevel = ion.levels[ion.levels.number == transition.upper].iloc[0]
-            lowerlevel = ion.levels[ion.levels.number == transition.upper].iloc[0]
-            lambda_angstroms = (const.h * const.c).to('eV Angstrom') / (upperlevel.energy_ev - lowerlevel.energy_ev)
+            lowerlevel = ion.levels[ion.levels.number == transition.lower].iloc[0]
+            epsilon_trans_ev = upperlevel.energy_ev - lowerlevel.energy_ev
+            if epsilon_trans_ev > 0:
+                lambda_angstroms = hc / (epsilon_trans_ev)
+            else:
+                continue
+            if lambda_angstroms < lambdamin or lambda_angstroms > lambdamax:
+                continue
+
             fulltranslist_all.append(fulltransitiontuple(
                 lambda_angstroms=lambda_angstroms,
                 A=transition.A,
@@ -193,14 +207,13 @@ def get_artistransitions_allelements(modelpath):
                 lower_energy_Ev=lowerlevel.energy_ev,
                 lower_statweight=lowerlevel.g,
                 forbidden=1 if transition.forbidden else 0,
-                lower_level=lowerlevel.levelname,
-                upper_level=upperlevel.levelname,
+                # lower_level=lowerlevel.levelname,
+                # upper_level=upperlevel.levelname,
                 upper_statweight=upperlevel.g,
                 upper_energy_Ev=upperlevel.energy_ev,
                 upper_has_permitted='?'))
 
-    dftransitions = pd.DataFrame(fulltranslist_all)
-    return dftransitions
+    return pd.DataFrame(fulltranslist_all)
 
 
 def addargs(parser):
@@ -257,37 +270,41 @@ def main():
         elementslist.append((atomic_number, ionlist))
 
     if not args.fromartisatomic:
-        artistransitions_allelements = get_artistransitions_allelements('.')
+        artistransitions_allelements = get_artis_transitions(
+            '.', plot_xmin_wide, plot_xmax_wide, args.include_permitted, [x[0] for x in elementslist])
 
     for (atomic_number, ions) in elementslist:
         elsymbol = elsymbols[atomic_number]
+        ion_stage_list = [ion.ion_stage for ion in ions]
+
         if args.fromartisatomic:
             transition_filepath = os.path.join(
                 PYDIR, '..', '..', 'artis-atomic', 'transition_guide', f'transitions_{elsymbol}.txt')
-            transitions = load_transitions_artisatomic(transition_filepath)
+            transitions = get_artisatomic_transitions(transition_filepath)
 
             if transitions is None:
                 print(f"ERROR: could not find transitions file for {elsymbol} at {transition_filepath}")
                 return
-        else:
-            transitions = artistransitions_allelements.query('Z=@atomic_number')
 
-        ion_stage_list = [ion.ion_stage for ion in ions]
-        # filter the line list
-        transitions = transitions[
-            (transitions[:]['lambda_angstroms'] >= plot_xmin_wide) &
-            (transitions[:]['lambda_angstroms'] <= plot_xmax_wide) &
-            (transitions['ion_stage'].isin(ion_stage_list))
-            # (transitions[:]['upper_has_permitted'] == 0)
-        ]
-        if not args.include_permitted:
-            transitions = transitions[transitions[:]['forbidden'] == 1]
+            transitions = transitions[
+                (transitions[:]['lambda_angstroms'] >= plot_xmin_wide) &
+                (transitions[:]['lambda_angstroms'] <= plot_xmax_wide) &
+                (transitions['ion_stage'].isin(ion_stage_list))
+                # (transitions[:]['upper_has_permitted'] == 0)
+            ]
+            if not args.include_permitted:
+                transitions = transitions[transitions[:]['forbidden'] == 1]
+        else:
+            transitions = artistransitions_allelements.copy().query('Z==@atomic_number and ion_stage in @ion_stage_list')
+
+        transitions.sort_values(by='lambda_angstroms', inplace=True)
 
         print(f'{len(transitions):d} matching lines of {elsymbol}')
 
         if len(transitions) > 0:
             print('Generating spectra...')
-            xvalues, yvalues = generate_spectra(transitions, atomic_number, ions, plot_xmin_wide, plot_xmax_wide, args)
+            xvalues, yvalues = generate_spectra(
+                transitions.copy(), atomic_number, ions, plot_xmin_wide, plot_xmax_wide, args)
             if not args.no_plot:
                 make_plot(xvalues, yvalues, elsymbol, ions, args)
 

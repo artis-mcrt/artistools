@@ -158,7 +158,7 @@ def get_timestep_time_delta(timestep, timearray):
     return delta_t
 
 
-def get_levels(adatafilename, transition_filename=None):
+def get_levels(adatafilename, transition_filename=None, atomic_numbers=None):
     """
         Return a list of lists of levels
     """
@@ -180,14 +180,17 @@ def get_levels(adatafilename, transition_filename=None):
                 ion_stage = int(ionheader[1])
                 transition_count = int(ionheader[2])
 
-                translist = []
-                for _ in range(transition_count):
-                    line = ftransitions.readline()
-                    row = line.split()
-                    levelname = row[4].strip('\'')
-                    translist.append(
-                        transitiontuple(int(row[0]), int(row[1]), float(row[2]), float(row[3]), int(row[4]) == 1))
-                transitionsdict[(Z, ion_stage)] = pd.DataFrame(translist)
+                if atomic_numbers and Z in atomic_numbers:
+                    translist = []
+                    for _ in range(transition_count):
+                        line = ftransitions.readline()
+                        row = line.split()
+                        translist.append(
+                            transitiontuple(int(row[0]), int(row[1]), float(row[2]), float(row[3]), int(row[4]) == 1))
+                    transitionsdict[(Z, ion_stage)] = pd.DataFrame(translist, columns=transitiontuple._fields)
+                else:
+                    for _ in range(transition_count):
+                        ftransitions.readline()
 
     with open(adatafilename, 'r') as fadata:
         print(f'Reading {adatafilename}')
@@ -200,16 +203,20 @@ def get_levels(adatafilename, transition_filename=None):
             ion_stage = int(ionheader[1])
             level_count = int(ionheader[2])
 
-            level_list = []
-            for _ in range(level_count):
-                line = fadata.readline()
-                row = line.split()
-                levelname = row[4].strip('\'')
-                level_list.append(leveltuple(int(row[0]), float(row[1]), float(row[2]), int(row[3]), levelname))
-            dflevels = pd.DataFrame(level_list)
+            if atomic_numbers and Z in atomic_numbers:
+                level_list = []
+                for _ in range(level_count):
+                    line = fadata.readline()
+                    row = line.split()
+                    levelname = row[4].strip('\'')
+                    level_list.append(leveltuple(int(row[0]), float(row[1]), float(row[2]), int(row[3]), levelname))
+                dflevels = pd.DataFrame(level_list)
 
-            translist = transitionsdict.get((Z, ion_stage), pd.DataFrame())
-            level_lists.append(iontuple(Z, ion_stage, level_count, float(ionheader[3]), dflevels, translist))
+                translist = transitionsdict.get((Z, ion_stage), pd.DataFrame(columns=transitiontuple._fields))
+                level_lists.append(iontuple(Z, ion_stage, level_count, float(ionheader[3]), dflevels, translist))
+            else:
+                for _ in range(level_count):
+                    fadata.readline()
 
     return level_lists
 
