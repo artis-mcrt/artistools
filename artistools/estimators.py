@@ -117,8 +117,8 @@ def read_estimators(estimfiles, modeldata):
                     modelgridindex = int(row[3])
                     # print(f'Timestep {timestep} cell {modelgridindex}')
                     if (timestep, modelgridindex) in estimators and not estimators[(timestep, modelgridindex)]['emptycell']:
-                        print(f'WARNING: duplicate estimator data for timestep {timestep} cell {modelgridindex}. '
-                              f'Kept old (T_e {estimators[(timestep, modelgridindex)]["Te"]}), instead of new (T_e {float(row[7])})')
+                        # print(f'WARNING: duplicate estimator data for timestep {timestep} cell {modelgridindex}. '
+                        #       f'Kept old (T_e {estimators[(timestep, modelgridindex)]["Te"]}), instead of new (T_e {float(row[7])})')
                         skip_block = True
                     else:
                         skip_block = False
@@ -238,7 +238,7 @@ def plot_singleseries(axis, xlist, variablename, singlevariableplot, timestep, m
 
 
 def plot_timestep(modelname, timestep, mgilist, estimators, series, modeldata, abundancedata,
-                  outfilename, **plotkwargs):
+                  args, outfilename, **plotkwargs):
 
     fig, axes = plt.subplots(len(series), 1, sharex=True, figsize=(6, 2.1 * len(series)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
@@ -267,6 +267,7 @@ def plot_timestep(modelname, timestep, mgilist, estimators, series, modeldata, a
                 print(estimators[(timestep, modelgridindex)])
                 sys.exit()
 
+        xlist, mgilist = zip(*[(x, y) for (x, y) in zip(xlist, mgilist) if x >= args.xmin and x <= args.xmax])
         xlist = np.insert(xlist, 0, 0.)
 
         xmin = args.xmin if args.xmin > 0 else min(xlist)
@@ -374,7 +375,7 @@ def addargs(parser):
     parser.add_argument('-xmin', type=int, default=-1,
                         help='Plot range: minimum x value')
 
-    parser.add_argument('-xmax', type=int, default=-1,
+    parser.add_argument('-xmax', type=int, default=99999999999,
                         help='Plot range: maximum x value')
 
     parser.add_argument('-o', action='store', dest='outputfile',
@@ -437,7 +438,7 @@ def main(argsraw=None):
                 if not estimators[(timestep, modelgridindex)]['emptycell']]
 
             plot_timestep(modelname, timestep, nonemptymgilist, estimators, series, modeldata, abundancedata,
-                          args.outputfile.format(timestep=timestep))
+                          args, args.outputfile.format(timestep=timestep))
 
 
 if __name__ == "__main__":
