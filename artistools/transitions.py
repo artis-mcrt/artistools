@@ -111,11 +111,7 @@ def print_line_details(line, T_K):
           f"lower: {line['lower_level']:29s} upper: {line['upper_level']}")
 
 
-def make_plot(xvalues, yvalues, ions, args):
-    fig, ax = plt.subplots(
-        len(ions) + 1, 1, sharex=True, figsize=(6, 6),
-        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
-
+def make_plot(xvalues, yvalues, ax, ions, args):
     yvalues_combined = np.zeros_like(xvalues, dtype=np.float)
     for ion_index in range(len(ions) + 1):
         if ion_index < len(ions):
@@ -155,12 +151,6 @@ def make_plot(xvalues, yvalues, ions, args):
         ax[ion_index].set_xlim(xmin=args.xmin, xmax=args.xmax)
         ax[ion_index].legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 10})
         ax[ion_index].set_ylabel(r'$\propto$ F$_\lambda$')
-
-    # ax.set_ylim(ymin=-0.05,ymax=1.1)
-    outfilename = f'transitions.pdf'
-    print(f"Saving '{outfilename}'")
-    fig.savefig(outfilename, format='pdf')
-    plt.close()
 
 
 def get_artis_transitions(modelpath, lambdamin, lambdamax, include_permitted, ionlist=None):
@@ -224,33 +214,52 @@ def get_artis_transitions(modelpath, lambdamin, lambdamax, include_permitted, io
 def addargs(parser):
     parser.add_argument('-xmin', type=int, default=3500,
                         help='Plot range: minimum wavelength in Angstroms')
+
     parser.add_argument('-xmax', type=int, default=8000,
                         help='Plot range: maximum wavelength in Angstroms')
+
     parser.add_argument('-T', type=float, dest='T', default=6000.,
                         help='Temperature in Kelvin')
+
     parser.add_argument('-sigma_v', type=float, default=5500.,
                         help='Gaussian width in km/s')
-    parser.add_argument('-gaussian_window', type=float, default=4,
+
+    parser.add_argument('-gaussian_window', type=float, default=3,
                         help='Truncate Gaussian line profiles n sigmas from the centre')
+
     parser.add_argument('--include-permitted', action='store_true', default=False,
                         help='Also consider permitted lines')
+
+    parser.add_argument('-timedays', '-time', '-t',
+                        help='Time in days to plot')
+
+    parser.add_argument('-timestep', '-ts', type=int, default=70,
+                        help='Timestep number to plot')
+
+    parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
+                        help='Modelgridindex to plot')
+
     parser.add_argument('--print-lines', action='store_true', default=False,
                         help='Output details of matching line details to standard out')
-    parser.add_argument('--no-plot', action='store_true', default=False,
-                        help="Don't save a plot file")
+
     # parser.add_argument('-elements', '--item', action='store', dest='elements',
     #                     type=str, nargs='*', default=['Fe'],
     #                     help="Examples: -elements Fe Co")
 
 
-def main():
+def main(argsraw=None):
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot estimated spectra from bound-bound transitions.')
     addargs(parser)
-    args = parser.parse_args()
+    args = parser.parse_args(argsraw)
 
     modelpath = '.'
+
+    if args.timedays:
+        timestep = at.get_closest_timestep(os.path.join(modelpath, "spec.out"), args.timedays)
+    else:
+        timestep = args.timestep
 
     # also calculate wavelengths outside the plot range to include lines whose
     # edges pass through the plot range
@@ -259,17 +268,34 @@ def main():
 
     iontuple = namedtuple('ion', 'atomic_number ion_stage number_fraction')
 
-
     Fe3overFe2 = 11  # number ratio
     ionlist = [
         iontuple(26, 2, 1 / (1 + Fe3overFe2)),
         iontuple(26, 3, Fe3overFe2 / (1 + Fe3overFe2)),
+        iontuple(27, 2, 1.0),
+        iontuple(27, 3, 1.0),
+        iontuple(28, 2, 1.0),
     ]
+
+    fig, axes = plt.subplots(
+        len(ionlist) + 1, 1, sharex=True, figsize=(6, 2 * (len(ionlist) + 1)),
+        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+
+    modelname = at.get_model_name(modelpath)
+    modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
+    velocity = modeldata['velocity'][args.modelgridindex]
+    figure_title = f'{modelname}\nTimestep {timestep}'
+    time_days = float(at.get_timestep_time('spec.out', timestep))
+    if time_days >= 0:
+        figure_title += f' (t={time_days:.2f}d)'
+    figure_title += f' cell {args.modelgridindex} ({velocity} km/s)'
+    print(figure_title)
+    axes[0].set_title(figure_title, fontsize=9)
 
     artistransitions_allelements = get_artis_transitions(
         modelpath, plot_xmin_wide, plot_xmax_wide, args.include_permitted, [(x.atomic_number, x.ion_stage) for x in ionlist])
 
-    dfnltepops = get_nltepops(modelpath, modelgridindex=0, timestep=70)
+    dfnltepops = get_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=timestep)
     # dfnltepops = get_nltepops(modelpath, modelgridindex=26, timestep=26)
 
     # resolution of the plot in Angstroms
@@ -288,21 +314,25 @@ def main():
         if len(transitions_thision) > 0:
             dfnltepops_thision = dfnltepops.copy().query('Z==@ion.atomic_number and ion_stage==@ion.ion_stage')
 
-            transitions_thision['upper_lte_pop_custom'] = transitions_thision.apply(
-                boltzmann_factor, axis=1, args=(args.T, ion.number_fraction))
-            popcolumn = 'upper_lte_pop_custom'
-
-            # transitions_thision['upper_nlte_pop'] = transitions_thision.apply(get_upper_nlte_pop, axis=1, args=(dfnltepops_thision,))
-            # popcolumn = 'upper_nlte_pop'
+            # transitions_thision['upper_lte_pop_custom'] = transitions_thision.apply(
+            #     boltzmann_factor, axis=1, args=(args.T, ion.number_fraction))
+            # popcolumn = 'upper_lte_pop_custom'
 
             # transitions_thision['upper_lte_pop'] = transitions_thision.apply(get_upper_lte_pop, axis=1, args=(dfnltepops_thision,))
             # popcolumn = 'upper_lte_pop'
 
+            transitions_thision['upper_nlte_pop'] = transitions_thision.apply(get_upper_nlte_pop, axis=1, args=(dfnltepops_thision,))
+            popcolumn = 'upper_nlte_pop'
+
             yvalues[ionindex] = generate_ion_spectra(
                 transitions_thision, xvalues, plot_resolution, popcolumn, args)
 
-    if not args.no_plot:
-        make_plot(xvalues, yvalues, ionlist, args)
+    make_plot(xvalues, yvalues, axes, ionlist, args)
+
+    outfilename = f'plottransitions.pdf'
+    print(f"Saving '{outfilename}'")
+    fig.savefig(outfilename, format='pdf')
+    plt.close()
 
 
 if __name__ == "__main__":
