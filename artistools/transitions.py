@@ -53,6 +53,8 @@ def generate_ion_spectra(transitions, xvalues, plot_resolution, popcolumn, args)
 
     transitions['flux_factor'] = transitions.apply(f_flux_factor, axis=1, args=(popcolumn,))
 
+    print(transitions.loc[transitions['flux_factor'] == transitions['flux_factor'].max()])
+
     # iterate over lines
     for _, line in transitions.iterrows():
         flux_factor = line['flux_factor']
@@ -111,7 +113,7 @@ def print_line_details(line, T_K):
           f"lower: {line['lower_level']:29s} upper: {line['upper_level']}")
 
 
-def make_plot(xvalues, yvalues, ax, ions, args):
+def make_plot(xvalues, yvalues, ax, ions, ionpops, args):
     yvalues_combined = np.zeros_like(xvalues, dtype=np.float)
     for ion_index in range(len(ions) + 1):
         if ion_index < len(ions):
@@ -120,7 +122,8 @@ def make_plot(xvalues, yvalues, ax, ions, args):
             yvalues_combined += yvalues[ion_index]
 
             ax[ion_index].plot(xvalues, yvalues[ion_index], linewidth=1.5,
-                               label=f'{at.elsymbols[ion.atomic_number]} {at.roman_numerals[ion.ion_stage]}')
+                               label=f'{at.elsymbols[ion.atomic_number]} {at.roman_numerals[ion.ion_stage]}'
+                               f' (pop={ionpops[ion_index]:.1e})')
 
         else:
             # the subplot showing combined spectrum of multiple ions
@@ -183,9 +186,8 @@ def get_artis_transitions(modelpath, lambdamin, lambdamax, include_permitted, io
             print()
 
         for index, transition in dftransitions.iterrows():
-            upperlevelindex = ion.levels[ion.levels.number == transition.upper].index[0]
-            upperlevel = ion.levels[ion.levels.number == transition.upper].iloc[0]
-            lowerlevel = ion.levels[ion.levels.number == transition.lower].iloc[0]
+            upperlevel = ion.levels.loc[transition.upper]
+            lowerlevel = ion.levels.loc[transition.lower]
             epsilon_trans_ev = upperlevel.energy_ev - lowerlevel.energy_ev
             if epsilon_trans_ev > 0:
                 lambda_angstroms = hc / (epsilon_trans_ev)
@@ -200,10 +202,10 @@ def get_artis_transitions(modelpath, lambdamin, lambdamax, include_permitted, io
                 Z=ion.Z,
                 ion_stage=ion.ion_stage,
                 lower_energy_Ev=lowerlevel.energy_ev,
-                forbidden=1 if transition.forbidden else 0,
+                forbidden=transition.forbidden,
                 # lower_level=lowerlevel.levelname,
                 # upper_level=upperlevel.levelname,
-                upper_levelindex=upperlevelindex,
+                upper_levelindex=transition.upper,
                 upper_statweight=upperlevel.g,
                 upper_energy_Ev=upperlevel.energy_ev,
                 upper_has_permitted='?'))
@@ -266,14 +268,14 @@ def main(argsraw=None):
     plot_xmin_wide = args.xmin * (1 - args.gaussian_window * args.sigma_v / c)
     plot_xmax_wide = args.xmax * (1 + args.gaussian_window * args.sigma_v / c)
 
-    iontuple = namedtuple('ion', 'atomic_number ion_stage number_fraction')
+    iontuple = namedtuple('ion', 'atomic_number ion_stage ion_pop')
 
     Fe3overFe2 = 11  # number ratio
     ionlist = [
         iontuple(26, 2, 1 / (1 + Fe3overFe2)),
         iontuple(26, 3, Fe3overFe2 / (1 + Fe3overFe2)),
-        iontuple(27, 2, 1.0),
-        iontuple(27, 3, 1.0),
+        # iontuple(27, 2, 1.0),
+        # iontuple(27, 3, 1.0),
         iontuple(28, 2, 1.0),
     ]
 
@@ -296,38 +298,40 @@ def main(argsraw=None):
         modelpath, plot_xmin_wide, plot_xmax_wide, args.include_permitted, [(x.atomic_number, x.ion_stage) for x in ionlist])
 
     dfnltepops = get_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=timestep)
-    # dfnltepops = get_nltepops(modelpath, modelgridindex=26, timestep=26)
 
     # resolution of the plot in Angstroms
     plot_resolution = int((args.xmax - args.xmin) / 1000)
 
     xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
     yvalues = np.zeros((len(ionlist), len(xvalues)))
+    ionpops = np.zeros(len(ionlist))
 
     for ionindex, ion in enumerate(ionlist):
         transitions_thision = artistransitions_allelements.copy().query('Z==@ion.atomic_number and ion_stage==@ion.ion_stage')
         # transitions_thision.sort_values(by='lambda_angstroms', inplace=True)
 
-        print(f'{len(transitions_thision):d} matching lines of '
-              f'{at.elsymbols[ion.atomic_number]} {at.roman_numerals[ion.ion_stage]:3s}')
+        print(f'{at.elsymbols[ion.atomic_number]} {at.roman_numerals[ion.ion_stage]:3s} '
+              f'has {len(transitions_thision):d} plottable transitions')
 
         if len(transitions_thision) > 0:
             dfnltepops_thision = dfnltepops.copy().query('Z==@ion.atomic_number and ion_stage==@ion.ion_stage')
+            ionpops[ionindex] = ionlist[ionindex].ion_pop
 
-            # transitions_thision['upper_lte_pop_custom'] = transitions_thision.apply(
-            #     boltzmann_factor, axis=1, args=(args.T, ion.number_fraction))
-            # popcolumn = 'upper_lte_pop_custom'
+            transitions_thision['upper_lte_pop_custom'] = transitions_thision.apply(
+                boltzmann_factor, axis=1, args=(args.T, ion.ion_pop))
+            popcolumn = 'upper_lte_pop_custom'
 
             # transitions_thision['upper_lte_pop'] = transitions_thision.apply(get_upper_lte_pop, axis=1, args=(dfnltepops_thision,))
             # popcolumn = 'upper_lte_pop'
 
-            transitions_thision['upper_nlte_pop'] = transitions_thision.apply(get_upper_nlte_pop, axis=1, args=(dfnltepops_thision,))
-            popcolumn = 'upper_nlte_pop'
+            # transitions_thision['upper_nlte_pop'] = transitions_thision.apply(get_upper_nlte_pop, axis=1, args=(dfnltepops_thision,))
+            # popcolumn = 'upper_nlte_pop'
+            # ionpops[ionindex] = dfnltepops_thision['n_NLTE'].sum()
 
             yvalues[ionindex] = generate_ion_spectra(
                 transitions_thision, xvalues, plot_resolution, popcolumn, args)
 
-    make_plot(xvalues, yvalues, axes, ionlist, args)
+    make_plot(xvalues, yvalues, axes, ionlist, ionpops, args)
 
     outfilename = f'plottransitions.pdf'
     print(f"Saving '{outfilename}'")
