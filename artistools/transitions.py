@@ -51,7 +51,7 @@ def get_nltepops(modelpath, timestep, modelgridindex):
 def generate_ion_spectra(transitions, xvalues, plot_resolution, popcolumn, args):
     yvalues = np.zeros(len(xvalues))
 
-    transitions['flux_factor'] = transitions.apply(f_flux_factor, axis=1, args=(popcolumn,))
+    transitions['flux_factor'] = transitions.apply(f_flux_factor, axis=1, args=(popcolumn, ))
 
     print(transitions.loc[transitions['flux_factor'] == transitions['flux_factor'].max()])
 
@@ -77,31 +77,27 @@ def generate_ion_spectra(transitions, xvalues, plot_resolution, popcolumn, args)
     return yvalues
 
 
-def boltzmann_factor(line, T_K, ionpopfactor=1.0):
-    return ionpopfactor * line['upper_statweight'] * math.exp(-line['upper_energy_Ev'] / K_B / T_K)
+def boltzmann_factor(line, T_K, levels, ionpopfactor=1.0):
+    # return ionpopfactor * line['upper_statweight'] * math.exp(-line['upper_energy_Ev'] / K_B / T_K)
+    level = levels.loc[line['upper_levelindex']]
+    return ionpopfactor * level_boltzmann_factor(level, T_K)
 
 
-def get_upper_nlte_pop(line, dfnltepops):
+def level_boltzmann_factor(level, T_K):
+    return level.g * math.exp(-level.energy_ev / K_B / T_K)
+
+
+def get_upper_nltepop(line, dfnltepops):
     upperlevelindex = line['upper_levelindex']
-    matched_rows = dfnltepops.query('level==@upperlevelindex')
+    matched_rows = dfnltepops.query('Z==@line.Z & ion_stage==@line.ion_stage & level==@upperlevelindex')
     if not matched_rows.empty:
         return matched_rows.iloc[0]['n_NLTE']
     else:
         return 0.0
 
 
-def get_upper_lte_pop(line, dfnltepops):
-    upperlevelindex = line['upper_levelindex']
-    matched_rows = dfnltepops.query('level==@upperlevelindex')
-    if not matched_rows.empty:
-        return matched_rows.iloc[0]['n_LTE']
-    else:
-        return 0.0
-
-
 def f_flux_factor(line, population_column):
-    return ((
-        line['upper_energy_Ev'] - line['lower_energy_Ev']) * line['A'] * line.loc[population_column])
+    return (line['upper_energy_Ev'] - line['lower_energy_Ev']) * line['A'] * line.loc[population_column]
 
 
 def print_line_details(line, T_K):
@@ -113,7 +109,7 @@ def print_line_details(line, T_K):
           f"lower: {line['lower_level']:29s} upper: {line['upper_level']}")
 
 
-def make_plot(xvalues, yvalues, ax, ions, ionpops, args):
+def make_plot(xvalues, yvalues, ax, ions, ionpopdict, args):
     yvalues_combined = np.zeros_like(xvalues, dtype=np.float)
     for ion_index in range(len(ions) + 1):
         if ion_index < len(ions):
@@ -123,7 +119,7 @@ def make_plot(xvalues, yvalues, ax, ions, ionpops, args):
 
             ax[ion_index].plot(xvalues, yvalues[ion_index], linewidth=1.5,
                                label=f'{at.elsymbols[ion.atomic_number]} {at.roman_numerals[ion.ion_stage]}'
-                               f' (pop={ionpops[ion_index]:.1e})')
+                               f' (pop={ionpopdict[(ion.atomic_number, ion.ion_stage)]:.1e})')
 
         else:
             # the subplot showing combined spectrum of multiple ions
@@ -156,11 +152,7 @@ def make_plot(xvalues, yvalues, ax, ions, ionpops, args):
         ax[ion_index].set_ylabel(r'$\propto$ F$_\lambda$')
 
 
-def get_artis_transitions(modelpath, lambdamin, lambdamax, include_permitted, ionlist=None):
-    adata = at.get_levels(
-        os.path.join(modelpath, 'adata.txt'), os.path.join(modelpath, 'transitiondata.txt'),
-        ionlist)
-
+def get_artis_transitions(adata, dflevelpops, lambdamin, lambdamax, include_permitted, ionpopdict, args, ionlist=None):
     fulltransitiontuple = namedtuple(
         'fulltransition',
         'lambda_angstroms A Z ion_stage lower_energy_Ev '
@@ -170,9 +162,10 @@ def get_artis_transitions(modelpath, lambdamin, lambdamax, include_permitted, io
 
     hc = (const.h * const.c).to('eV Angstrom').value
 
-    fulltranslist_all = []
+    transitions_dict = {}
     for _, ion in adata.iterrows():
-        if not ionlist or (ion.Z, ion.ion_stage) not in ionlist:
+        ionid = (ion.Z, ion.ion_stage)
+        if not ionlist or ionid not in ionlist:
             continue
 
         print(f'{at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]:3s} '
@@ -185,6 +178,7 @@ def get_artis_transitions(modelpath, lambdamin, lambdamax, include_permitted, io
         else:
             print()
 
+        translist_ion = []
         for index, transition in dftransitions.iterrows():
             upperlevel = ion.levels.loc[transition.upper]
             lowerlevel = ion.levels.loc[transition.lower]
@@ -196,7 +190,7 @@ def get_artis_transitions(modelpath, lambdamin, lambdamax, include_permitted, io
             if lambda_angstroms < lambdamin or lambda_angstroms > lambdamax:
                 continue
 
-            fulltranslist_all.append(fulltransitiontuple(
+            translist_ion.append(fulltransitiontuple(
                 lambda_angstroms=lambda_angstroms,
                 A=transition.A,
                 Z=ion.Z,
@@ -210,10 +204,22 @@ def get_artis_transitions(modelpath, lambdamin, lambdamax, include_permitted, io
                 upper_energy_Ev=upperlevel.energy_ev,
                 upper_has_permitted='?'))
 
-    return pd.DataFrame(fulltranslist_all)
+        dftranslist_ion = pd.DataFrame(translist_ion)
+
+        dftranslist_ion['upper_nlte_pop'] = dftranslist_ion.apply(
+            get_upper_nltepop, axis=1, args=(dflevelpops, ))
+
+        ltepartfunc = ion.levels.apply(level_boltzmann_factor, axis=1, args=(args.T,)).sum()
+
+        dftranslist_ion['upper_lte_pop'] = dftranslist_ion.apply(
+            boltzmann_factor, axis=1, args=(args.T, ion.levels, ionpopdict[ionid] / ltepartfunc))
+
+        transitions_dict[ionid] = dftranslist_ion
+
+    return transitions_dict
 
 
-def addargs(parser):
+def addargs(parser, defaultoutputfile):
     parser.add_argument('-xmin', type=int, default=3500,
                         help='Plot range: minimum wavelength in Angstroms')
 
@@ -244,17 +250,21 @@ def addargs(parser):
     parser.add_argument('--print-lines', action='store_true', default=False,
                         help='Output details of matching line details to standard out')
 
-    # parser.add_argument('-elements', '--item', action='store', dest='elements',
-    #                     type=str, nargs='*', default=['Fe'],
-    #                     help="Examples: -elements Fe Co")
+    parser.add_argument('-o', action='store', dest='outputfile',
+                        default=defaultoutputfile,
+                        help='path/filename for PDF file')
 
 
 def main(argsraw=None):
+    defaultoutputfile = 'plottransitions_cell{cell:03d}_{timestep:03d}.pdf'
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot estimated spectra from bound-bound transitions.')
-    addargs(parser)
+    addargs(parser, defaultoutputfile)
     args = parser.parse_args(argsraw)
+
+    if os.path.isdir(args.outputfile):
+        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     modelpath = '.'
 
@@ -270,13 +280,13 @@ def main(argsraw=None):
 
     iontuple = namedtuple('ion', 'atomic_number ion_stage ion_pop')
 
-    Fe3overFe2 = 11  # number ratio
+    Fe3overFe2 = 8  # number ratio
     ionlist = [
         iontuple(26, 2, 1 / (1 + Fe3overFe2)),
         iontuple(26, 3, Fe3overFe2 / (1 + Fe3overFe2)),
         # iontuple(27, 2, 1.0),
         # iontuple(27, 3, 1.0),
-        iontuple(28, 2, 1.0),
+        iontuple(28, 2, 1.0e-2),
     ]
 
     fig, axes = plt.subplots(
@@ -286,56 +296,58 @@ def main(argsraw=None):
     modelname = at.get_model_name(modelpath)
     modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
     velocity = modeldata['velocity'][args.modelgridindex]
-    figure_title = f'{modelname}\nTimestep {timestep}'
-    time_days = float(at.get_timestep_time('spec.out', timestep))
-    if time_days >= 0:
-        figure_title += f' (t={time_days:.2f}d)'
-    figure_title += f' cell {args.modelgridindex} ({velocity} km/s)'
-    print(figure_title)
-    axes[0].set_title(figure_title, fontsize=9)
-
-    artistransitions_allelements = get_artis_transitions(
-        modelpath, plot_xmin_wide, plot_xmax_wide, args.include_permitted, [(x.atomic_number, x.ion_stage) for x in ionlist])
-
-    dfnltepops = get_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=timestep)
 
     # resolution of the plot in Angstroms
     plot_resolution = int((args.xmax - args.xmin) / 1000)
 
     xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
     yvalues = np.zeros((len(ionlist), len(xvalues)))
-    ionpops = np.zeros(len(ionlist))
+
+    iontuples = [(x.atomic_number, x.ion_stage) for x in ionlist]
+
+    adata = at.get_levels(
+        os.path.join(modelpath, 'adata.txt'), os.path.join(modelpath, 'transitiondata.txt'),
+        iontuples)
+
+    dflevelpops = get_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=timestep)
+
+    popcolumn = 'upper_lte_pop'
+    # ionpopdict = {(ion.atomic_number, ion.ion_stage): ion.ion_pop for ion in ionlist}
+
+    # popcolumn = 'upper_nlte_pop'
+    ionpopdict = {(ion.atomic_number, ion.ion_stage): dflevelpops.query(
+        'Z==@ion.atomic_number and ion_stage==@ion.ion_stage')['n_NLTE'].sum() for ion in ionlist}
+
+    figure_title = f'{modelname}\nTimestep {timestep}'
+    time_days = float(at.get_timestep_time('spec.out', timestep))
+    if time_days >= 0:
+        figure_title += f' (t={time_days:.2f}d)'
+    figure_title += f' cell {args.modelgridindex} ({velocity} km/s) {popcolumn}'
+    print(figure_title)
+    axes[0].set_title(figure_title, fontsize=9)
+
+    artistransitions_allelements = get_artis_transitions(
+        adata, dflevelpops, plot_xmin_wide, plot_xmax_wide, args.include_permitted, ionpopdict, args, iontuples)
 
     for ionindex, ion in enumerate(ionlist):
-        transitions_thision = artistransitions_allelements.copy().query('Z==@ion.atomic_number and ion_stage==@ion.ion_stage')
-        # transitions_thision.sort_values(by='lambda_angstroms', inplace=True)
+        # transitions_thision = artistransitions_allelements.copy().query(
+        #     'Z==@ion.atomic_number and ion_stage==@ion.ion_stage')
+        ionid = (ion.atomic_number, ion.ion_stage)
+        dftransitions_thision = artistransitions_allelements[ionid]
+        # dftransitions_thision.sort_values(by='lambda_angstroms', inplace=True)
 
         print(f'{at.elsymbols[ion.atomic_number]} {at.roman_numerals[ion.ion_stage]:3s} '
-              f'has {len(transitions_thision):d} plottable transitions')
+              f'has {len(dftransitions_thision):d} plottable transitions')
 
-        if len(transitions_thision) > 0:
-            dfnltepops_thision = dfnltepops.copy().query('Z==@ion.atomic_number and ion_stage==@ion.ion_stage')
-            ionpops[ionindex] = ionlist[ionindex].ion_pop
-
-            transitions_thision['upper_lte_pop_custom'] = transitions_thision.apply(
-                boltzmann_factor, axis=1, args=(args.T, ion.ion_pop))
-            popcolumn = 'upper_lte_pop_custom'
-
-            # transitions_thision['upper_lte_pop'] = transitions_thision.apply(get_upper_lte_pop, axis=1, args=(dfnltepops_thision,))
-            # popcolumn = 'upper_lte_pop'
-
-            # transitions_thision['upper_nlte_pop'] = transitions_thision.apply(get_upper_nlte_pop, axis=1, args=(dfnltepops_thision,))
-            # popcolumn = 'upper_nlte_pop'
-            # ionpops[ionindex] = dfnltepops_thision['n_NLTE'].sum()
-
+        if not dftransitions_thision.empty:
             yvalues[ionindex] = generate_ion_spectra(
-                transitions_thision, xvalues, plot_resolution, popcolumn, args)
+                dftransitions_thision, xvalues, plot_resolution, popcolumn, args)
 
-    make_plot(xvalues, yvalues, axes, ionlist, ionpops, args)
+    make_plot(xvalues, yvalues, axes, ionlist, ionpopdict, args)
 
-    outfilename = f'plottransitions.pdf'
-    print(f"Saving '{outfilename}'")
-    fig.savefig(outfilename, format='pdf')
+    outputfilename = args.outputfile.format(cell=args.modelgridindex, timestep=timestep)
+    print(f"Saving '{outputfilename}'")
+    fig.savefig(outputfilename, format='pdf')
     plt.close()
 
 
