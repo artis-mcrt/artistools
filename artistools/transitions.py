@@ -116,8 +116,8 @@ def make_plot(xvalues, yvalues, ax, ions, ionpopdict, args):
             yvalues_combined += yvalues[ion_index]
 
             ax[ion_index].plot(xvalues, yvalues[ion_index], linewidth=1.5,
-                               label=f'{at.elsymbols[ion.atomic_number]} {at.roman_numerals[ion.ion_stage]}'
-                               f' (pop={ionpopdict[(ion.atomic_number, ion.ion_stage)]:.1e})')
+                               label=f'{at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]}'
+                               f' (pop={ionpopdict[(ion.Z, ion.ion_stage)]:.1e})')
 
         else:
             # the subplot showing combined spectrum of multiple ions
@@ -209,7 +209,7 @@ def main(argsraw=None):
     plot_xmin_wide = args.xmin * (1 - args.gaussian_window * args.sigma_v / c)
     plot_xmax_wide = args.xmax * (1 + args.gaussian_window * args.sigma_v / c)
 
-    iontuple = namedtuple('ion', 'atomic_number ion_stage ion_pop')
+    iontuple = namedtuple('ion', 'Z ion_stage ion_pop')
 
     Fe3overFe2 = 8  # number ratio
     ionlist = [
@@ -224,17 +224,13 @@ def main(argsraw=None):
         len(ionlist) + 1, 1, sharex=True, figsize=(6, 2 * (len(ionlist) + 1)),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    modelname = at.get_model_name(modelpath)
-    modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
-    velocity = modeldata['velocity'][args.modelgridindex]
-
     # resolution of the plot in Angstroms
     plot_resolution = int((args.xmax - args.xmin) / 1000)
 
     xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
     yvalues = np.zeros((len(ionlist), len(xvalues)))
 
-    iontuples = [(x.atomic_number, x.ion_stage) for x in ionlist]
+    iontuples = [(x.Z, x.ion_stage) for x in ionlist]
 
     adata = at.get_levels(
         os.path.join(modelpath, 'adata.txt'), os.path.join(modelpath, 'transitiondata.txt'),
@@ -242,12 +238,16 @@ def main(argsraw=None):
 
     dfnltepops = get_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=timestep)
 
-    popcolumn = 'upper_lte_pop'
-    # ionpopdict = {(ion.atomic_number, ion.ion_stage): ion.ion_pop for ion in ionlist}
+    # popcolumn = 'upper_lte_pop'
+    # ionpopdict = {(ion.Z, ion.ion_stage): ion.ion_pop for ion in ionlist}
 
-    # popcolumn = 'upper_nlte_pop'
-    ionpopdict = {(ion.atomic_number, ion.ion_stage): dfnltepops.query(
-        'Z==@ion.atomic_number and ion_stage==@ion.ion_stage')['n_NLTE'].sum() for ion in ionlist}
+    popcolumn = 'upper_nlte_pop'
+    ionpopdict = {(ion.Z, ion.ion_stage): dfnltepops.query(
+        'Z==@ion.Z and ion_stage==@ion.ion_stage')['n_NLTE'].sum() for ion in ionlist}
+
+    modelname = at.get_model_name(modelpath)
+    modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
+    velocity = modeldata['velocity'][args.modelgridindex]
 
     figure_title = f'{modelname}\nTimestep {timestep}'
     time_days = float(at.get_timestep_time('spec.out', timestep))
@@ -280,7 +280,7 @@ def main(argsraw=None):
               f'{ion.level_count:5d} levels, {len(ion.transitions):6d} transitions', end='')
 
         dftransitions = ion.transitions
-        if not args.include_permitted and not ion.transitions.empty:
+        if not args.include_permitted and not dftransitions.empty:
             dftransitions.query('forbidden == True', inplace=True)
             print(f' ({len(ion.transitions):6d} forbidden)')
         else:
