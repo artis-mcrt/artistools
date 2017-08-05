@@ -226,7 +226,7 @@ def addargs(parser, defaultoutputfile):
     parser.add_argument('-xmax', type=int, default=8000,
                         help='Plot range: maximum wavelength in Angstroms')
 
-    parser.add_argument('-T', type=float, dest='T', default=6000.,
+    parser.add_argument('-T', type=float, dest='T', default=5795.82,
                         help='Temperature in Kelvin')
 
     parser.add_argument('-sigma_v', type=float, default=5500.,
