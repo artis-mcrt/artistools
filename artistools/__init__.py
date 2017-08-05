@@ -162,7 +162,7 @@ def get_levels(adatafilename, transition_filename=None, ionlist=None):
     """
         Return a list of lists of levels
     """
-    transitiontuple = namedtuple('transition', 'lower upper A collstr forbidden')
+    transitiontuple = namedtuple('transition', 'lower_levelindex upper_levelindex A collstr forbidden')
 
     firstlevelnumber = 1
 
