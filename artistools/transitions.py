@@ -48,7 +48,7 @@ def get_nltepops(modelpath, timestep, modelgridindex):
                 return dfpop
 
 
-def generate_ion_spectra(transitions, xvalues, plot_resolution, popcolumn, args):
+def generate_ion_spectrum(transitions, xvalues, plot_resolution, popcolumn, args):
     yvalues = np.zeros(len(xvalues))
 
     transitions['flux_factor'] = transitions.apply(f_flux_factor, axis=1, args=(popcolumn, ))
@@ -150,73 +150,6 @@ def make_plot(xvalues, yvalues, ax, ions, ionpopdict, args):
         ax[ion_index].set_xlim(xmin=args.xmin, xmax=args.xmax)
         ax[ion_index].legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 10})
         ax[ion_index].set_ylabel(r'$\propto$ F$_\lambda$')
-
-
-def get_artis_transitions(adata, dflevelpops, lambdamin, lambdamax, include_permitted, ionpopdict, args, ionlist=None):
-    fulltransitiontuple = namedtuple(
-        'fulltransition',
-        'lambda_angstroms A Z ion_stage lower_energy_Ev '
-        'forbidden upper_levelindex upper_statweight upper_energy_Ev upper_has_permitted'
-        # 'lower_level upper_level '
-    )
-
-    hc = (const.h * const.c).to('eV Angstrom').value
-
-    transitions_dict = {}
-    for _, ion in adata.iterrows():
-        ionid = (ion.Z, ion.ion_stage)
-        if not ionlist or ionid not in ionlist:
-            continue
-
-        print(f'{at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]:3s} '
-              f'{ion.level_count:5d} levels, {len(ion.transitions):6d} transitions', end='')
-
-        dftransitions = ion.transitions
-        if not include_permitted and not ion.transitions.empty:
-            dftransitions.query('forbidden == True', inplace=True)
-            print(f' ({len(ion.transitions):6d} forbidden)')
-        else:
-            print()
-
-        translist_ion = []
-        for index, transition in dftransitions.iterrows():
-            upperlevel = ion.levels.loc[transition.upper]
-            lowerlevel = ion.levels.loc[transition.lower]
-            epsilon_trans_ev = upperlevel.energy_ev - lowerlevel.energy_ev
-            if epsilon_trans_ev > 0:
-                lambda_angstroms = hc / (epsilon_trans_ev)
-            else:
-                continue
-            if lambda_angstroms < lambdamin or lambda_angstroms > lambdamax:
-                continue
-
-            translist_ion.append(fulltransitiontuple(
-                lambda_angstroms=lambda_angstroms,
-                A=transition.A,
-                Z=ion.Z,
-                ion_stage=ion.ion_stage,
-                lower_energy_Ev=lowerlevel.energy_ev,
-                forbidden=transition.forbidden,
-                # lower_level=lowerlevel.levelname,
-                # upper_level=upperlevel.levelname,
-                upper_levelindex=transition.upper,
-                upper_statweight=upperlevel.g,
-                upper_energy_Ev=upperlevel.energy_ev,
-                upper_has_permitted='?'))
-
-        dftranslist_ion = pd.DataFrame(translist_ion)
-
-        dftranslist_ion['upper_nlte_pop'] = dftranslist_ion.apply(
-            get_upper_nltepop, axis=1, args=(dflevelpops, ))
-
-        ltepartfunc = ion.levels.apply(level_boltzmann_factor, axis=1, args=(args.T,)).sum()
-
-        dftranslist_ion['upper_lte_pop'] = dftranslist_ion.apply(
-            boltzmann_factor, axis=1, args=(args.T, ion.levels, ionpopdict[ionid] / ltepartfunc))
-
-        transitions_dict[ionid] = dftranslist_ion
-
-    return transitions_dict
 
 
 def addargs(parser, defaultoutputfile):
@@ -326,22 +259,79 @@ def main(argsraw=None):
     print(figure_title)
     axes[0].set_title(figure_title, fontsize=9)
 
-    artistransitions_allelements = get_artis_transitions(
-        adata, dflevelpops, plot_xmin_wide, plot_xmax_wide, args.include_permitted, ionpopdict, args, iontuples)
+    # artistransitions_allelements = get_artis_transitions(
+    #     adata, dflevelpops, plot_xmin_wide, plot_xmax_wide, args.include_permitted, ionpopdict, args, iontuples)
+    fulltransitiontuple = namedtuple(
+        'fulltransition',
+        'lambda_angstroms A Z ion_stage lower_energy_Ev '
+        'forbidden upper_levelindex upper_statweight upper_energy_Ev upper_has_permitted'
+        # 'lower_level upper_level '
+    )
 
-    for ionindex, ion in enumerate(ionlist):
-        # transitions_thision = artistransitions_allelements.copy().query(
-        #     'Z==@ion.atomic_number and ion_stage==@ion.ion_stage')
-        ionid = (ion.atomic_number, ion.ion_stage)
-        dftransitions_thision = artistransitions_allelements[ionid]
-        # dftransitions_thision.sort_values(by='lambda_angstroms', inplace=True)
+    hc = (const.h * const.c).to('eV Angstrom').value
 
-        print(f'{at.elsymbols[ion.atomic_number]} {at.roman_numerals[ion.ion_stage]:3s} '
-              f'has {len(dftransitions_thision):d} plottable transitions')
+    transitions_dict = {}
+    for _, ion in adata.iterrows():
+        ionid = (ion.Z, ion.ion_stage)
+        if ionid not in iontuples:
+            continue
+        else:
+            ionindex = iontuples.index(ionid)
 
-        if not dftransitions_thision.empty:
-            yvalues[ionindex] = generate_ion_spectra(
-                dftransitions_thision, xvalues, plot_resolution, popcolumn, args)
+        print(f'{at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]:3s} '
+              f'{ion.level_count:5d} levels, {len(ion.transitions):6d} transitions', end='')
+
+        dftransitions = ion.transitions
+        if not args.include_permitted and not ion.transitions.empty:
+            dftransitions.query('forbidden == True', inplace=True)
+            print(f' ({len(ion.transitions):6d} forbidden)')
+        else:
+            print()
+
+        translist_ion = []
+        for index, transition in dftransitions.iterrows():
+            upperlevel = ion.levels.loc[transition.upper]
+            lowerlevel = ion.levels.loc[transition.lower]
+            epsilon_trans_ev = upperlevel.energy_ev - lowerlevel.energy_ev
+            if epsilon_trans_ev > 0:
+                lambda_angstroms = hc / (epsilon_trans_ev)
+            else:
+                continue
+            if lambda_angstroms < args.xmin or lambda_angstroms > args.xmax:
+                continue
+
+            translist_ion.append(fulltransitiontuple(
+                lambda_angstroms=lambda_angstroms,
+                A=transition.A,
+                Z=ion.Z,
+                ion_stage=ion.ion_stage,
+                lower_energy_Ev=lowerlevel.energy_ev,
+                forbidden=transition.forbidden,
+                # lower_level=lowerlevel.levelname,
+                # upper_level=upperlevel.levelname,
+                upper_levelindex=transition.upper,
+                upper_statweight=upperlevel.g,
+                upper_energy_Ev=upperlevel.energy_ev,
+                upper_has_permitted='?'))
+
+        dftranslist_ion = pd.DataFrame(translist_ion)
+
+        # dftranslist_ion.sort_values(by='lambda_angstroms', inplace=True)
+
+        dftranslist_ion['upper_nlte_pop'] = dftranslist_ion.apply(
+            get_upper_nltepop, axis=1, args=(dflevelpops, ))
+
+        ltepartfunc = ion.levels.apply(level_boltzmann_factor, axis=1, args=(args.T,)).sum()
+
+        dftranslist_ion['upper_lte_pop'] = dftranslist_ion.apply(
+            boltzmann_factor, axis=1, args=(args.T, ion.levels, ionpopdict[ionid] / ltepartfunc))
+
+        print(f'{at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]:3s} '
+              f'has {len(dftranslist_ion):d} plottable transitions')
+
+        if not dftranslist_ion.empty:
+            yvalues[ionindex] = generate_ion_spectrum(
+                dftranslist_ion, xvalues, plot_resolution, popcolumn, args)
 
     make_plot(xvalues, yvalues, axes, ionlist, ionpopdict, args)
 
