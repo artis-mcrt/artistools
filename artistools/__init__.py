@@ -182,8 +182,7 @@ def get_levels(adatafilename, transition_filename=None, ionlist=None):
                 if not ionlist or (Z, ion_stage) in ionlist:
                     translist = []
                     for _ in range(transition_count):
-                        line = ftransitions.readline()
-                        row = line.split()
+                        row = ftransitions.readline().split()
                         translist.append(
                             transitiontuple(int(row[0]) - firstlevelnumber, int(row[1]) - firstlevelnumber,
                                             float(row[2]), float(row[3]), int(row[4]) == 1))
