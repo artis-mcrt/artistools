@@ -51,8 +51,6 @@ def get_nltepops(modelpath, timestep, modelgridindex):
 def generate_ion_spectrum(transitions, xvalues, plot_resolution, popcolumn, args):
     yvalues = np.zeros(len(xvalues))
 
-    transitions['flux_factor'] = transitions.apply(f_flux_factor, axis=1, args=(popcolumn, ))
-
     print(transitions.loc[transitions['flux_factor'] == transitions['flux_factor'].max()])
 
     # iterate over lines
@@ -75,18 +73,6 @@ def generate_ion_spectrum(transitions, xvalues, plot_resolution, popcolumn, args
                 -((x - centre_index) * plot_resolution / sigma_angstroms) ** 2) / sigma_angstroms
 
     return yvalues
-
-
-def boltzmann_factor(line, T_K, levels, ionpopfactor=1.0):
-    return ionpopfactor * level_boltzmann_factor(levels.loc[line['upper_levelindex']], T_K)
-
-
-def level_boltzmann_factor(level, T_K):
-    return level.g * math.exp(-level.energy_ev / K_B / T_K)
-
-
-def f_flux_factor(line, population_column):
-    return (line['upper_energy_Ev'] - line['lower_energy_Ev']) * line['A'] * line.loc[population_column]
 
 
 def print_line_details(line, T_K):
@@ -229,12 +215,12 @@ def main(argsraw=None):
 
     dfnltepops = get_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=timestep)
 
-    # popcolumn = 'upper_lte_pop'
-    # ionpopdict = {(ion.Z, ion.ion_stage): ion.ion_pop for ion in ionlist}
+    popcolumn = 'upper_lte_pop'
+    ionpopdict = {(ion.Z, ion.ion_stage): ion.ion_pop for ion in ionlist}
 
-    popcolumn = 'upper_nlte_pop'
-    ionpopdict = {(ion.Z, ion.ion_stage): dfnltepops.query(
-        'Z==@ion.Z and ion_stage==@ion.ion_stage')['n_NLTE'].sum() for ion in ionlist}
+    # popcolumn = 'upper_nlte_pop'
+    # ionpopdict = {(ion.Z, ion.ion_stage): dfnltepops.query(
+    #     'Z==@ion.Z and ion_stage==@ion.ion_stage')['n_NLTE'].sum() for ion in ionlist}
 
     modelname = at.get_model_name(modelpath)
     modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
@@ -247,15 +233,6 @@ def main(argsraw=None):
     figure_title += f' cell {args.modelgridindex} ({velocity} km/s) {popcolumn}'
     print(figure_title)
     axes[0].set_title(figure_title, fontsize=9)
-
-    # artistransitions_allelements = get_artis_transitions(
-    #     adata, dflevelpops, plot_xmin_wide, plot_xmax_wide, args.include_permitted, ionpopdict, args, iontuples)
-    fulltransitiontuple = namedtuple(
-        'fulltransition',
-        'lambda_angstroms A Z ion_stage lower_energy_Ev '
-        'forbidden upper_levelindex upper_statweight upper_energy_Ev upper_has_permitted'
-        # 'lower_level upper_level '
-    )
 
     hc = (const.h * const.c).to('eV Angstrom').value
 
@@ -279,14 +256,12 @@ def main(argsraw=None):
 
         if not dftransitions.empty:
             print('Calculating wavelengths and filtering')
-            dftransitions['upper_energy_Ev'] = dftransitions.apply(
-                lambda transition: ion.levels.loc[transition.upper_levelindex].energy_ev, axis=1)
 
-            dftransitions['lower_energy_Ev'] = dftransitions.apply(
-                lambda transition: ion.levels.loc[transition.lower_levelindex].energy_ev, axis=1)
+            dftransitions.eval('upper_energy_ev = @ion.levels.loc[upper_levelindex].energy_ev.values', inplace=True)
 
-            dftransitions['lambda_angstroms'] = dftransitions.apply(
-                lambda transition: hc / (transition['upper_energy_Ev'] - transition['lower_energy_Ev']), axis=1)
+            dftransitions.eval('lower_energy_ev = @ion.levels.loc[lower_levelindex].energy_ev.values', inplace=True)
+
+            dftransitions.eval('lambda_angstroms = @hc / (upper_energy_ev - lower_energy_ev)', inplace=True)
 
             dftransitions.query('lambda_angstroms >= @args.xmin & lambda_angstroms <= @args.xmax', inplace=True)
 
@@ -294,8 +269,7 @@ def main(argsraw=None):
 
             print(f'  {len(dftransitions):d} plottable transitions')
 
-            dftransitions['upper_statweight'] = dftransitions.apply(
-                lambda transition: ion.levels.loc[transition.upper_levelindex].g, axis=1)
+            dftransitions.eval('upper_statweight = @ion.levels.loc[upper_levelindex].g.values', inplace=True)
 
             print(f'  Getting NLTE populations')
             dfnltepops_thision = dfnltepops.query('Z==@ion.Z & ion_stage==@ion.ion_stage')
@@ -307,12 +281,15 @@ def main(argsraw=None):
 
             print(f'  Getting LTE populations')
 
-            ltepartfunc = ion.levels.apply(level_boltzmann_factor, axis=1, args=(args.T,)).sum()
+            ltepartfunc = ion.levels.eval('g * exp(-energy_ev / @K_B / @args.T)').sum()
 
-            dftransitions['upper_lte_pop'] = dftransitions.apply(
-                boltzmann_factor, axis=1, args=(args.T, ion.levels, ionpopdict[ionid] / ltepartfunc))
+            scalefactor = ionpopdict[ionid] / ltepartfunc
+            dftransitions.eval(
+                'upper_lte_pop = @scalefactor * upper_statweight * exp(-upper_energy_ev / @K_B / @args.T)', inplace=True)
 
             print(f'  Generating ion spectrum')
+
+            dftransitions.eval(f'flux_factor = (upper_energy_ev - lower_energy_ev) * A * {popcolumn}', inplace=True)
 
             yvalues[ionindex] = generate_ion_spectrum(
                 dftransitions, xvalues, plot_resolution, popcolumn, args)
