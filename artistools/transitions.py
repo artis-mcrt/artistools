@@ -48,10 +48,8 @@ def get_nltepops(modelpath, timestep, modelgridindex):
                 return dfpop
 
 
-def generate_ion_spectrum(transitions, xvalues, plot_resolution, popcolumn, args):
+def generate_ion_spectrum(transitions, xvalues, plot_resolution, args):
     yvalues = np.zeros(len(xvalues))
-
-    print(transitions.loc[transitions['flux_factor'] == transitions['flux_factor'].max()])
 
     # iterate over lines
     for _, line in transitions.iterrows():
@@ -215,12 +213,12 @@ def main(argsraw=None):
 
     dfnltepops = get_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=timestep)
 
-    popcolumn = 'upper_lte_pop'
-    ionpopdict = {(ion.Z, ion.ion_stage): ion.ion_pop for ion in ionlist}
+    # popcolumn = 'upper_lte_pop'
+    # ionpopdict = {(ion.Z, ion.ion_stage): ion.ion_pop for ion in ionlist}
 
-    # popcolumn = 'upper_nlte_pop'
-    # ionpopdict = {(ion.Z, ion.ion_stage): dfnltepops.query(
-    #     'Z==@ion.Z and ion_stage==@ion.ion_stage')['n_NLTE'].sum() for ion in ionlist}
+    popcolumn = 'upper_nlte_pop'
+    ionpopdict = {(ion.Z, ion.ion_stage): dfnltepops.query(
+        'Z==@ion.Z and ion_stage==@ion.ion_stage')['n_NLTE'].sum() for ion in ionlist}
 
     modelname = at.get_model_name(modelpath)
     modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
@@ -255,8 +253,6 @@ def main(argsraw=None):
             print()
 
         if not dftransitions.empty:
-            print('Calculating wavelengths and filtering')
-
             dftransitions.eval('upper_energy_ev = @ion.levels.loc[upper_levelindex].energy_ev.values', inplace=True)
 
             dftransitions.eval('lower_energy_ev = @ion.levels.loc[lower_levelindex].energy_ev.values', inplace=True)
@@ -271,7 +267,6 @@ def main(argsraw=None):
 
             dftransitions.eval('upper_statweight = @ion.levels.loc[upper_levelindex].g.values', inplace=True)
 
-            print(f'  Getting NLTE populations')
             dfnltepops_thision = dfnltepops.query('Z==@ion.Z & ion_stage==@ion.ion_stage')
 
             nltepopdict = {x.level: x['n_NLTE'] for _, x in dfnltepops_thision.iterrows()}
@@ -279,20 +274,18 @@ def main(argsraw=None):
             dftransitions['upper_nlte_pop'] = dftransitions.apply(
                 lambda x: nltepopdict.get(x.upper_levelindex, 0.), axis=1)
 
-            print(f'  Getting LTE populations')
-
             ltepartfunc = ion.levels.eval('g * exp(-energy_ev / @K_B / @args.T)').sum()
 
             scalefactor = ionpopdict[ionid] / ltepartfunc
             dftransitions.eval(
                 'upper_lte_pop = @scalefactor * upper_statweight * exp(-upper_energy_ev / @K_B / @args.T)', inplace=True)
 
-            print(f'  Generating ion spectrum')
-
             dftransitions.eval(f'flux_factor = (upper_energy_ev - lower_energy_ev) * A * {popcolumn}', inplace=True)
 
+            print(dftransitions.nlargest(5, 'flux_factor'))
+
             yvalues[ionindex] = generate_ion_spectrum(
-                dftransitions, xvalues, plot_resolution, popcolumn, args)
+                dftransitions, xvalues, plot_resolution, args)
 
     make_plot(xvalues, yvalues, axes, ionlist, ionpopdict, args)
 
