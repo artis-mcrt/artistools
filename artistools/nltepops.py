@@ -15,9 +15,7 @@ from astropy import constants as const
 import artistools as at
 
 
-def get_nlte_populations(modelpath, nltefilename, modelgridindex, timestep, atomic_number, temperature_exc):
-    all_levels = at.get_levels(os.path.join(modelpath, 'adata.txt'))
-
+def get_nlte_populations(all_levels, nltefilename, modelgridindex, timestep, atomic_number, temperature_exc):
     dfpop = pd.read_csv(nltefilename, delim_whitespace=True)
     dfpop.query('(modelgridindex==@modelgridindex) & (timestep==@timestep) & (Z==@atomic_number)', inplace=True)
 
@@ -64,15 +62,13 @@ def get_nlte_populations(modelpath, nltefilename, modelgridindex, timestep, atom
     return dfpop
 
 
-def get_nlte_populations_oldformat(modelpath, nltefilename, modelgridindex, timestep, atomic_number, temperature_exc):
+def get_nlte_populations_oldformat(all_levels, nltefilename, modelgridindex, timestep, atomic_number, temperature_exc):
     compositiondata = at.get_composition_data('compositiondata.txt')
     elementdata = compositiondata.query('Z==@atomic_number')
 
     if len(elementdata) < 1:
         print(f'Error: element Z={atomic_number} not in composition file')
         return None
-
-    all_levels = at.get_levels(os.path.join(modelpath, 'adata.txt'))
 
     skip_block = False
     dfpop = pd.DataFrame().to_sparse()
@@ -161,6 +157,8 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
 
 
 def read_files(nlte_files, atomic_number, args):
+    adata = at.get_levels(os.path.join(args.modelpath, 'adata.txt'))
+
     for nltefilepath in nlte_files:
         filerank = int(re.search('[0-9]+', os.path.basename(nltefilepath)).group(0))
 
@@ -171,11 +169,11 @@ def read_files(nlte_files, atomic_number, args):
 
         if not args.oldformat:
             dfpop_thisfile = get_nlte_populations(
-                args.modelpath, nltefilepath, args.modelgridindex,
+                adata, nltefilepath, args.modelgridindex,
                 args.timestep, atomic_number, args.exc_temperature)
         else:
             dfpop_thisfile = get_nlte_populations_oldformat(
-                args.modelpath, nltefilepath, args.modelgridindex,
+                adata, nltefilepath, args.modelgridindex,
                 args.timestep, atomic_number, args.exc_temperature)
 
         # found our data!
