@@ -357,8 +357,8 @@ def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
     if len(specdata) > 5000:
         # specdata = scipy.signal.resample(specdata, 10000)
         # specdata = specdata.iloc[::3, :].copy()
+        print(f"  downsampling to {len(specdata)} points")
         specdata.query('index % 3 == 0', inplace=True)
-        print(f"  downsamping to {len(specdata)} points")
 
     # clamp negative values to zero
     specdata['f_lambda'] = specdata['f_lambda'].apply(lambda x: max(0, x))
