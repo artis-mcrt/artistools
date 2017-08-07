@@ -46,11 +46,9 @@ fluxcontributiontuple = namedtuple(
 def stackspectra(spectra_and_factors):
     factor_sum = sum([factor for _, factor in spectra_and_factors])
 
-    for index, (spectrum, factor) in enumerate(spectra_and_factors):
-        if index == 0:
-            stackedspectrum = spectrum * factor / factor_sum
-        else:
-            stackedspectrum = stackedspectrum + (spectrum * factor / factor_sum)
+    stackedspectrum = np.zeros_like(spectra_and_factors[0][0])
+    for spectrum, factor in spectra_and_factors:
+        stackedspectrum += spectrum * factor / factor_sum
 
     return stackedspectrum
 
@@ -65,10 +63,10 @@ def get_spectrum(specfilename: str, timestepmin: int, timestepmax=-1, fnufilterf
 
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
 
-    arraynu = specdata.loc[:, '0'].values
+    nu = specdata.loc[:, '0'].values
     timearray = specdata.columns.values[1:]
 
-    array_fnu = stackspectra([
+    f_nu = stackspectra([
         (specdata[specdata.columns[timestep + 1]], at.get_timestep_time_delta(timestep, timearray))
         for timestep in range(timestepmin, timestepmax + 1)])
 
@@ -76,13 +74,14 @@ def get_spectrum(specfilename: str, timestepmin: int, timestepmax=-1, fnufilterf
     # has regular sampling
     if fnufilterfunc:
         print("Applying filter to ARTIS spectrum")
-        array_fnu = fnufilterfunc(array_fnu)
+        f_nu = fnufilterfunc(f_nu)
 
-    dfspectrum = pd.DataFrame({'nu': arraynu, 'f_nu': array_fnu})
+    dfspectrum = pd.DataFrame({'nu': nu, 'f_nu': f_nu})
     dfspectrum.sort_values(by='nu', ascending=False, inplace=True)
 
-    dfspectrum['lambda_angstroms'] = const.c.to('angstrom/s').value / dfspectrum['nu']
-    dfspectrum['f_lambda'] = dfspectrum['f_nu'] * dfspectrum['nu'] / dfspectrum['lambda_angstroms']
+    c = const.c.to('angstrom/s').value
+    dfspectrum.eval('lambda_angstroms = @c / nu', inplace=True)
+    dfspectrum.eval('f_lambda = f_nu * nu / lambda_angstroms', inplace=True)
 
     return dfspectrum
 
