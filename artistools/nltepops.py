@@ -239,16 +239,17 @@ def main(argsraw=None):
 
         modeldata, _ = at.get_modeldata(os.path.join(args.modelpath, 'model.txt'))
         estimators = at.estimators.read_estimators(args.modelpath, modeldata)
-        T_exc = estimators[(timestep, args.modelgridindex)]['Te']
+        if estimators:
+            T_exc = estimators[(timestep, args.modelgridindex)]['Te']
 
-        print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
-              f'timestep {timestep} element {args.element}')
-        dfpop = read_files(args.modelpath, atomic_number, T_exc, args.timestep, args.modelgridindex, args.oldformat)
+            print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
+                  f'timestep {timestep} element {args.element}')
+            dfpop = read_files(args.modelpath, atomic_number, T_exc, args.timestep, args.modelgridindex, args.oldformat)
 
-        if dfpop.empty:
-            print(f'No data for modelgrid cell {args.modelgridindex} timestep {timestep}')
-        else:
-            make_plot(modeldata, estimators, dfpop, atomic_number, T_exc, timestep, args)
+            if dfpop.empty:
+                print(f'No data for modelgrid cell {args.modelgridindex} timestep {timestep}')
+            else:
+                make_plot(modeldata, estimators, dfpop, atomic_number, T_exc, timestep, args)
 
 
 def make_plot(modeldata, estimators, dfpop, atomic_number, exc_temperature, timestep, args):

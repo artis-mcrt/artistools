@@ -107,7 +107,7 @@ def read_estimators(modelpath, modeldata):
 
     if not estimfiles:
         print("No estimator files found")
-        return -1
+        return False
     else:
         print(f'Reading {len(estimfiles)} estimator files...')
 
