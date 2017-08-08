@@ -120,6 +120,9 @@ def get_timestep_times(specfilename):
     """
         Return a list of the time in days of each timestep using a spec.out file
     """
+    if os.path.isdir(specfilename):
+        specfilename = os.path.join(specfilename, 'spec.out')
+
     time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
 
     return time_columns.columns[1:]
@@ -140,6 +143,9 @@ def get_timestep_time(specfilename, timestep):
     """
         Return the time in days of a timestep number using a spec.out file
     """
+    if os.path.isdir(specfilename):
+        specfilename = os.path.join(specfilename, 'spec.out')
+
     if os.path.isfile(specfilename):
         return get_timestep_times(specfilename)[timestep]
     return -1
@@ -162,6 +168,10 @@ def get_levels(adatafilename, transition_filename=None, ionlist=None):
     """
         Return a list of lists of levels
     """
+
+    if os.path.isdir(adatafilename):
+        adatafilename = os.path.join(adatafilename, 'adata.txt')
+
     transitiontuple = namedtuple('transition', 'lower_levelindex upper_levelindex A collstr forbidden')
 
     firstlevelnumber = 1
