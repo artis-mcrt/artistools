@@ -247,7 +247,7 @@ def plot_singleseries(axis, xlist, variablename, singlevariableplot, timestep, m
     return showlegend
 
 
-def plot_timestep(modelname, timestep, mgilist, estimators, series, modeldata, abundancedata,
+def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, modeldata, abundancedata,
                   args, outfilename, **plotkwargs):
 
     fig, axes = plt.subplots(len(series), 1, sharex=True, figsize=(6, 2.1 * len(series)),
@@ -255,33 +255,31 @@ def plot_timestep(modelname, timestep, mgilist, estimators, series, modeldata, a
     if len(series) == 1:
         axes = [axes]
     # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
-    lastxvariable = ""
-    for index, (axis, (xvariable, yvariables)) in enumerate(zip(axes, series)):
+
+    axes[-1].set_xlabel(f'{xvariable}{get_units_string(xvariable)}')
+    if xvariable in ['cellid', 'modelgridindex']:
+        xlist = mgilist
+    else:
+        try:
+            xlist = []
+            for modelgridindex in mgilist:
+                xlist.append(estimators[(timestep, modelgridindex)][xvariable])
+        except KeyError:
+            if (timestep, modelgridindex) in estimators:
+                print(f"Unknown x variable: {xvariable} for timestep {timestep} in cell {modelgridindex}")
+            else:
+                print(f'No data for cell {modelgridindex} at timestep {timestep}')
+            print(estimators[(timestep, modelgridindex)])
+            sys.exit()
+
+    xmin = args.xmin if args.xmin > 0 else min(xlist)
+    xmax = args.xmax if args.xmax > 0 else max(xlist)
+
+    xlist, mgilist = zip(*[(x, y) for (x, y) in zip(xlist, mgilist) if x >= xmin and x <= xmax])
+    xlist = np.insert(xlist, 0, 0.)
+
+    for axis, yvariables in zip(axes, series):
         showlegend = False
-
-        if (lastxvariable != xvariable and lastxvariable != "") or index == len(axes) - 1:
-            axis.set_xlabel(f'{xvariable}{get_units_string(xvariable)}')
-
-        if xvariable in ['cellid', 'modelgridindex']:
-            xlist = mgilist
-        else:
-            try:
-                xlist = []
-                for modelgridindex in mgilist:
-                    xlist.append(estimators[(timestep, modelgridindex)][xvariable])
-            except KeyError:
-                if (timestep, modelgridindex) in estimators:
-                    print(f"Unknown x variable: {xvariable} for timestep {timestep} in cell {modelgridindex}")
-                else:
-                    print(f'No data for cell {modelgridindex} at timestep {timestep}')
-                print(estimators[(timestep, modelgridindex)])
-                sys.exit()
-
-        xmin = args.xmin if args.xmin > 0 else min(xlist)
-        xmax = args.xmax if args.xmax > 0 else max(xlist)
-
-        xlist, mgilist = zip(*[(x, y) for (x, y) in zip(xlist, mgilist) if x >= xmin and x <= xmax])
-        xlist = np.insert(xlist, 0, 0.)
 
         axis.set_xlim(xmin=xmin, xmax=xmax)
 
@@ -304,7 +302,6 @@ def plot_timestep(modelname, timestep, mgilist, estimators, series, modeldata, a
 
         if showlegend:
             axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
-        lastxvariable = xvariable
 
     # modelname = at.get_model_name(".")
     figure_title = f'{modelname}\nTimestep {timestep}'
@@ -411,14 +408,16 @@ def main(argsraw=None):
 
     estimators = read_estimators(modelpath, modeldata)
 
-    series = [['velocity', ['heating_gamma']],
-              ['velocity', ['heating_gamma/gamma_dep']],
-              ['velocity', ['Te']],
-            #   ['velocity', ['nne']],
-              ['velocity', [['abundances', ['Fe', 'Ni', 'Ni_56', 'Ni_stable']]]],
-              ['velocity', [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]]],
-            #   ['velocity', [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]]],
-              ['velocity', ['TR']]
+    xvariable = 'velocity'
+    serieslist = [
+        ['heating_gamma'],
+        ['heating_gamma/gamma_dep'],
+        ['Te'],
+        ['nne'],
+        [['abundances', ['Fe', 'Ni', 'Ni_56', 'Ni_stable']]],
+        [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
+        # [['velocity', [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]]],
+        ['TR']
     ]
 
     if args.recombrates:
@@ -441,7 +440,7 @@ def main(argsraw=None):
                 modelgridindex for modelgridindex in modeldata.index
                 if not estimators[(timestep, modelgridindex)]['emptycell']]
 
-            plot_timestep(modelname, timestep, nonemptymgilist, estimators, series, modeldata, abundancedata,
+            plot_timestep(modelname, timestep, nonemptymgilist, estimators, xvariable, serieslist, modeldata, abundancedata,
                           args, args.outputfile.format(timestep=timestep))
 
 
