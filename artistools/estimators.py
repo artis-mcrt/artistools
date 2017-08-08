@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# PYTHON_ARGCOMPLETE_OK
 # import math
 import argparse
 import glob
@@ -8,7 +7,6 @@ import os
 import sys
 from collections import namedtuple
 
-import argcomplete
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
@@ -402,7 +400,6 @@ def main(argsraw=None):
         description='Plot ARTIS estimators.')
 
     addargs(parser)
-    argcomplete.autocomplete(parser)
     args = parser.parse_args(argsraw)
 
     modelpath = "."
