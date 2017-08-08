@@ -8,14 +8,15 @@ from collections import namedtuple
 
 import matplotlib
 import matplotlib.pyplot as plt
-
 # import numexpr as ne
 import numpy as np
 import pandas as pd
 from astropy import constants as const
-
 from astropy import units as u
+
 import artistools as at
+import artistools.estimators
+import artistools.spectra
 
 K_B = const.k_B.to('eV / K').value
 c = const.c.to('km / s').value
@@ -48,15 +49,12 @@ def get_nltepops(modelpath, timestep, modelgridindex):
                 return dfpop
 
 
-def generate_ion_spectrum(transitions, xvalues, plot_resolution, args):
+def generate_ion_spectrum(transitions, xvalues, popcolumn, plot_resolution, args):
     yvalues = np.zeros(len(xvalues))
 
     # iterate over lines
     for _, line in transitions.iterrows():
-        flux_factor = line['flux_factor']
-
-        if args.print_lines and flux_factor > 0.0:  # some lines have zero A value, so ignore these
-            print_line_details(line, args.T)
+        flux = line['flux_factor'] * line[popcolumn]
 
         # contribute the Gaussian line profile to the discrete flux bins
 
@@ -67,62 +65,47 @@ def generate_ion_spectrum(transitions, xvalues, plot_resolution, args):
         window_right_index = min(int(centre_index + args.gaussian_window * sigma_gridpoints), len(xvalues))
 
         for x in range(max(0, window_left_index), min(len(xvalues), window_right_index)):
-            yvalues[x] += flux_factor * math.exp(
+            yvalues[x] += flux * math.exp(
                 -((x - centre_index) * plot_resolution / sigma_angstroms) ** 2) / sigma_angstroms
 
     return yvalues
 
 
-def print_line_details(line, T_K):
-    forbidden_status = 'forbidden' if line['forbidden'] else 'permitted'
-    metastable_status = 'upper not metastable' if line['upper_has_permitted'] else ' upper is metastable'
-    ion_name = f"{at.elsymbols[line['Z']]} {at.roman_numerals[line['ion_stage']]}"
-    print(f"{line['lambda_angstroms']:7.1f} Å flux: {line['flux_factor']:9.3E} "
-          f"{ion_name:6} {forbidden_status}, {metastable_status}, "
-          f"lower: {line['lower_level']:29s} upper: {line['upper_level']}")
-
-
-def make_plot(xvalues, yvalues, ax, ions, ionpopdict, args):
-    yvalues_combined = np.zeros_like(xvalues, dtype=np.float)
-    for ion_index in range(len(ions) + 1):
-        if ion_index < len(ions):
+def make_plot(xvalues, yvalues, axes, temperature_list, ions, ionpopdict, xmin, xmax):
+    peak_y_value = -1
+    yvalues_combined = np.zeros((len(temperature_list), len(xvalues)))
+    for seriesindex, T_exc in enumerate(temperature_list):
+        serieslabel = 'NLTE' if T_exc < 0 else f'LTE {T_exc} K'
+        for ion_index, (ion, axis) in enumerate(zip(ions, axes)):
             ion = ions[ion_index]
             # an ion subplot
-            yvalues_combined += yvalues[ion_index]
+            yvalues_combined[seriesindex] += yvalues[seriesindex][ion_index]
 
-            ax[ion_index].plot(xvalues, yvalues[ion_index], linewidth=1.5,
-                               label=f'{at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]}'
-                               f' (pop={ionpopdict[(ion.Z, ion.ion_stage)]:.1e})')
+            axis.plot(xvalues, yvalues[seriesindex][ion_index], linewidth=1.5, label=serieslabel)
 
-        else:
-            # the subplot showing combined spectrum of multiple ions
-            # and observational data
-            obsspectra = [
-                # ('dop_dered_SN2013aa_20140208_fc_final.txt',
-                #  'SN2013aa +360d (Maguire)','0.3'),
-                # ('2010lp_20110928_fors2.txt',
-                #  'SN2010lp +264d (Taubenberger et al. 2013)','0.1'),
-                ('2003du_20031213_3219_8822_00.txt',
-                 'SN2003du +221.3d (Stanishev et al. 2007)', '0.0'),
-            ]
+        axes[-1].plot(xvalues, yvalues_combined[seriesindex], linewidth=1.5, label=serieslabel)
+        peak_y_value = max(peak_y_value, max(yvalues_combined[seriesindex]))
 
-            for (filename, serieslabel, linecolor) in obsspectra:
-                obsfile = os.path.join(SPECTRA_DIR, filename)
-                obsdata = pd.read_csv(obsfile, delim_whitespace=True, header=None, names=['lambda_angstroms', 'flux'])
-                obsdata = obsdata[
-                    (obsdata[:]['lambda_angstroms'] > args.xmin) &
-                    (obsdata[:]['lambda_angstroms'] < args.xmax)]
-                obsdata['flux_scaled'] = obsdata['flux'] * max(yvalues_combined) / max(obsdata['flux'])
-                obsdata.plot(x='lambda_angstroms', y='flux_scaled', ax=ax[-1], linewidth=1,
-                             color='black', label=serieslabel, zorder=-1)
+    axislabels = [
+        f'{at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]}\n(pop={ionpopdict[(ion.Z, ion.ion_stage)]:.1e})'
+        for ion in ions] + ['Total']
 
-            combined_label = 'All ions'
-            ax[-1].plot(xvalues, yvalues_combined, linewidth=1.5, label=combined_label)
-            ax[-1].set_xlabel(r'Wavelength ($\AA$)')
+    for axis, axislabel in zip(axes, axislabels):
+        axis.annotate(
+            axislabel, xy=(0.99, 0.96), xycoords='axes fraction',
+            horizontalalignment='right', verticalalignment='top', fontsize=10)
 
-        ax[ion_index].set_xlim(xmin=args.xmin, xmax=args.xmax)
-        ax[ion_index].legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 10})
-        ax[ion_index].set_ylabel(r'$\propto$ F$_\lambda$')
+    at.spectra.plot_reference_spectrum(
+        '2003du_20031213_3219_8822_00.txt', axes[-1], xmin, xmax, True,
+        scale_to_peak=peak_y_value, zorder=-1, linewidth=1, color='black')
+
+    axes[-1].set_xlabel(r'Wavelength ($\AA$)')
+
+    for axis in axes:
+        axis.set_xlim(xmin=xmin, xmax=xmax)
+        axis.set_ylabel(r'$\propto$ F$_\lambda$')
+
+    axes[-1].legend(loc='upper right', handlelength=1, frameon=False, numpoints=1, prop={'size': 9})
 
 
 def addargs(parser, defaultoutputfile):
@@ -132,8 +115,8 @@ def addargs(parser, defaultoutputfile):
     parser.add_argument('-xmax', type=int, default=8000,
                         help='Plot range: maximum wavelength in Angstroms')
 
-    parser.add_argument('-T', type=float, dest='T', default=5795.82,
-                        help='Temperature in Kelvin')
+    # parser.add_argument('-T', type=float, dest='T', default=2000,
+    #                     help='Temperature in Kelvin')
 
     parser.add_argument('-sigma_v', type=float, default=5500.,
                         help='Gaussian width in km/s')
@@ -179,6 +162,9 @@ def main(argsraw=None):
     else:
         timestep = args.timestep
 
+    modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
+    estimators = at.estimators.read_estimators(modelpath, modeldata)
+
     # also calculate wavelengths outside the plot range to include lines whose
     # edges pass through the plot range
     plot_xmin_wide = args.xmin * (1 - args.gaussian_window * args.sigma_v / c)
@@ -202,9 +188,6 @@ def main(argsraw=None):
     # resolution of the plot in Angstroms
     plot_resolution = int((args.xmax - args.xmin) / 1000)
 
-    xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
-    yvalues = np.zeros((len(ionlist), len(xvalues)))
-
     iontuples = [(x.Z, x.ion_stage) for x in ionlist]
 
     adata = at.get_levels(
@@ -213,28 +196,31 @@ def main(argsraw=None):
 
     dfnltepops = get_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=timestep)
 
-    # popcolumn = 'upper_lte_pop'
     # ionpopdict = {(ion.Z, ion.ion_stage): ion.ion_pop for ion in ionlist}
 
-    popcolumn = 'upper_nlte_pop'
     ionpopdict = {(ion.Z, ion.ion_stage): dfnltepops.query(
         'Z==@ion.Z and ion_stage==@ion.ion_stage')['n_NLTE'].sum() for ion in ionlist}
 
     modelname = at.get_model_name(modelpath)
-    modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
     velocity = modeldata['velocity'][args.modelgridindex]
 
-    figure_title = f'{modelname}\nTimestep {timestep}'
-    time_days = float(at.get_timestep_time('spec.out', timestep))
-    if time_days >= 0:
-        figure_title += f' (t={time_days:.2f}d)'
-    figure_title += f' cell {args.modelgridindex} ({velocity} km/s) {popcolumn}'
+    Te = estimators[(timestep, args.modelgridindex)]['Te']
+    figure_title = f'{modelname}\n'
+    figure_title += f'Cell {args.modelgridindex} (v={velocity} km/s) with Te = {Te:.1f} K at timestep {timestep}'
+    time_days = float(at.get_timestep_time(modelpath, timestep))
+    if time_days != -1:
+        figure_title += f' ({time_days:.1f}d)'
     print(figure_title)
-    axes[0].set_title(figure_title, fontsize=9)
+    axes[0].set_title(figure_title, fontsize=10)
 
     hc = (const.h * const.c).to('eV Angstrom').value
 
-    transitions_dict = {}
+    # -1 means use NLTE populations
+    temperature_list = [0.5 * Te, Te, 2 * Te, -1]
+
+    xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
+    yvalues = np.zeros((len(temperature_list) + 1, len(ionlist), len(xvalues)))
+
     for _, ion in adata.iterrows():
         ionid = (ion.Z, ion.ion_stage)
         if ionid not in iontuples:
@@ -254,16 +240,14 @@ def main(argsraw=None):
 
         if not dftransitions.empty:
             dftransitions.eval('upper_energy_ev = @ion.levels.loc[upper_levelindex].energy_ev.values', inplace=True)
-
             dftransitions.eval('lower_energy_ev = @ion.levels.loc[lower_levelindex].energy_ev.values', inplace=True)
-
             dftransitions.eval('lambda_angstroms = @hc / (upper_energy_ev - lower_energy_ev)', inplace=True)
 
             dftransitions.query('lambda_angstroms >= @args.xmin & lambda_angstroms <= @args.xmax', inplace=True)
 
             # dftransitions.sort_values(by='lambda_angstroms', inplace=True)
 
-            print(f'  {len(dftransitions):d} plottable transitions')
+            print(f'  {len(dftransitions)} plottable transitions')
 
             dftransitions.eval('upper_statweight = @ion.levels.loc[upper_levelindex].g.values', inplace=True)
 
@@ -271,23 +255,28 @@ def main(argsraw=None):
 
             nltepopdict = {x.level: x['n_NLTE'] for _, x in dfnltepops_thision.iterrows()}
 
-            dftransitions['upper_nlte_pop'] = dftransitions.apply(
+            dftransitions['upper_pop_nlte'] = dftransitions.apply(
                 lambda x: nltepopdict.get(x.upper_levelindex, 0.), axis=1)
 
-            ltepartfunc = ion.levels.eval('g * exp(-energy_ev / @K_B / @args.T)').sum()
+            dftransitions.eval(f'flux_factor = (upper_energy_ev - lower_energy_ev) * A', inplace=True)
 
-            scalefactor = ionpopdict[ionid] / ltepartfunc
-            dftransitions.eval(
-                'upper_lte_pop = @scalefactor * upper_statweight * exp(-upper_energy_ev / @K_B / @args.T)', inplace=True)
+            for seriesindex, T_exc in enumerate(temperature_list):
+                if T_exc < 0:
+                    popcolumnname = 'upper_pop_nlte'
+                else:
+                    ltepartfunc = ion.levels.eval('g * exp(-energy_ev / @K_B / @T_exc)').sum()
+                    scalefactor = ionpopdict[ionid] / ltepartfunc
+                    popcolumnname = f'upper_lte_pop_{T_exc:.0f}'
+                    dftransitions.eval(
+                        f'{popcolumnname} = @scalefactor * upper_statweight * exp(-upper_energy_ev / @K_B / @T_exc)',
+                        inplace=True)
 
-            dftransitions.eval(f'flux_factor = (upper_energy_ev - lower_energy_ev) * A * {popcolumn}', inplace=True)
+                yvalues[seriesindex][ionindex] = generate_ion_spectrum(dftransitions, xvalues,
+                                                                       popcolumnname, plot_resolution, args)
 
             print(dftransitions.nlargest(5, 'flux_factor'))
 
-            yvalues[ionindex] = generate_ion_spectrum(
-                dftransitions, xvalues, plot_resolution, args)
-
-    make_plot(xvalues, yvalues, axes, ionlist, ionpopdict, args)
+    make_plot(xvalues, yvalues, axes, temperature_list, ionlist, ionpopdict, args.xmin, args.xmax)
 
     outputfilename = args.outputfile.format(cell=args.modelgridindex, timestep=timestep)
     print(f"Saving '{outputfilename}'")

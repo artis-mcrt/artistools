@@ -13,6 +13,7 @@ import pandas as pd
 from astropy import constants as const
 
 import artistools as at
+import artistools.estimators
 
 
 def get_nlte_populations(all_levels, nltefilename, modelgridindex, timestep, atomic_number, temperature_exc):
@@ -156,25 +157,32 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
     return pd.DataFrame(data=[newrow], columns=levelpoptuple._fields)
 
 
-def read_files(nlte_files, atomic_number, args):
-    adata = at.get_levels(os.path.join(args.modelpath, 'adata.txt'))
+def read_files(modelpath, atomic_number, T_exc, timestep, modelgridindex, oldformat=False):
+    nlte_files = (
+        glob.glob(os.path.join(modelpath, 'nlte_????.out'), recursive=True) +
+        glob.glob(os.path.join(modelpath, '*/nlte_????.out'), recursive=True))
 
+    if not nlte_files:
+        print("No NLTE files found.")
+        return -1
+
+    adata = at.get_levels(os.path.join(modelpath, 'adata.txt'))
+
+    print(f'Reading {len(nlte_files)} estimator files...')
     for nltefilepath in nlte_files:
         filerank = int(re.search('[0-9]+', os.path.basename(nltefilepath)).group(0))
 
-        if filerank > args.modelgridindex:
+        if filerank > modelgridindex:
             continue
 
-        print(f'Loading {nltefilepath}')
-
-        if not args.oldformat:
+        if not oldformat:
             dfpop_thisfile = get_nlte_populations(
-                adata, nltefilepath, args.modelgridindex,
-                args.timestep, atomic_number, args.exc_temperature)
+                adata, nltefilepath, modelgridindex,
+                timestep, atomic_number, T_exc)
         else:
             dfpop_thisfile = get_nlte_populations_oldformat(
-                adata, nltefilepath, args.modelgridindex,
-                args.timestep, atomic_number, args.exc_temperature)
+                adata, nltefilepath, modelgridindex,
+                timestep, atomic_number, T_exc)
 
         # found our data!
         if not dfpop_thisfile.empty:
@@ -211,6 +219,8 @@ def main(argsraw=None):
     addargs(parser, defaultoutputfile)
     args = parser.parse_args(argsraw)
 
+    timestep = args.timestep
+
     if os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
@@ -227,33 +237,29 @@ def main(argsraw=None):
             print(f"Could not find element '{args.element}'")
             return
 
-        nlte_files = (
-            glob.glob(os.path.join(args.modelpath, 'nlte_????.out'), recursive=True) +
-            glob.glob(os.path.join(args.modelpath, '*/nlte_????.out'), recursive=True))
+        modeldata, _ = at.get_modeldata(os.path.join(args.modelpath, 'model.txt'))
+        estimators = at.estimators.read_estimators(args.modelpath, modeldata)
+        T_exc = estimators[(timestep, args.modelgridindex)]['Te']
 
-        if not nlte_files:
-            print("No NLTE files found.")
-            return
+        print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
+              f'timestep {timestep} element {args.element}')
+        dfpop = read_files(args.modelpath, atomic_number, T_exc, args.timestep, args.modelgridindex, args.oldformat)
+
+        if dfpop.empty:
+            print(f'No data for modelgrid cell {args.modelgridindex} timestep {timestep}')
         else:
-            print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
-                  f'timestep {args.timestep} element {args.element}')
-            dfpop = read_files(nlte_files, atomic_number, args)
-
-            if dfpop.empty:
-                print(f'No data for modelgrid cell {args.modelgridindex} timestep {args.timestep}')
-            else:
-                make_plot(dfpop, atomic_number, args.exc_temperature, args)
+            make_plot(modeldata, estimators, dfpop, atomic_number, T_exc, timestep, args)
 
 
-def make_plot(dfpop, atomic_number, exc_temperature, args):
+def make_plot(modeldata, estimators, dfpop, atomic_number, exc_temperature, timestep, args):
     top_ion = -1 if args.oldformat else -2  # skip top ion, which is probably ground state only
     top_ion = 9999
     ion_stage_list = dfpop.ion_stage.unique()[:top_ion]
-    fig, axes = plt.subplots(len(ion_stage_list), 1, sharex=False, figsize=(8, 7),
+    fig, axes = plt.subplots(len(ion_stage_list), 1, sharex=False, figsize=(9, 3 * len(ion_stage_list)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if len(dfpop) == 0:
-        print('Error, no data for selected timestep and element')
+        print('Error: No data for selected timestep and element')
         sys.exit()
 
     for ion, axis in enumerate(axes):
@@ -262,14 +268,9 @@ def make_plot(dfpop, atomic_number, exc_temperature, args):
         ionpopulation = dfpopthision['n_NLTE'].sum()
         print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a population of {ionpopulation:.1f}')
 
-        lte_scalefactor = float(ionpopulation / dfpopthision['n_LTE'].sum())
-        dfpopthision['n_LTE_normed'] = dfpopthision['n_LTE'].apply(lambda pop: pop * lte_scalefactor)
         lte_custom_scalefactor = float(ionpopulation / dfpopthision['n_LTE_custom'].sum())
         dfpopthision['n_LTE_custom_normed'] = dfpopthision['n_LTE_custom'].apply(
             lambda pop: pop * lte_custom_scalefactor)
-
-        axis.plot(dfpopthision.level.values, dfpopthision.n_LTE_normed.values, linewidth=1.5,
-                  label='LTE', linestyle='None', marker='+')
 
         axis.plot(dfpopthision.level.values[:-1], dfpopthision.n_LTE_custom_normed.values[:-1], linewidth=1.5,
                   label=f'LTE {exc_temperature:.0f} K', linestyle='None', marker='*')
@@ -289,16 +290,9 @@ def make_plot(dfpop, atomic_number, exc_temperature, args):
         # axis.plot(list_levels[ion], list_departure_ratio, linewidth=1.5,
         #         label='NLTE/LTE', linestyle='None', marker='x')
         # axis.set_ylabel(r'')
-        plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
-        time_days = at.get_timestep_time('spec.out', args.timestep)
-        if time_days != -1:
-            plotlabel += f' at t={time_days} days'
-        else:
-            plotlabel += f' at timestep {args.timestep:d}'
+        subplotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
 
-        plotlabel += f' in cell {args.modelgridindex}'
-
-        axis.annotate(plotlabel, xy=(0.5, 0.96), xycoords='axes fraction',
+        axis.annotate(subplotlabel, xy=(0.75, 0.96), xycoords='axes fraction',
                       horizontalalignment='center', verticalalignment='top', fontsize=12)
         axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
 
@@ -308,6 +302,17 @@ def make_plot(dfpop, atomic_number, exc_temperature, args):
         axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
         axis.set_yscale('log')
     axes[-1].set_xlabel(r'Level index')
+
+    Te = estimators[(timestep, args.modelgridindex)]['Te']
+    modelname = at.get_model_name(args.modelpath)
+    velocity = modeldata['velocity'][args.modelgridindex]
+    figure_title = (f'{modelname}\n'
+        f'Cell {args.modelgridindex} (v={velocity} km/s) with Te = {Te:.1f} K at timestep {args.timestep:d}')
+    time_days = float(at.get_timestep_time(args.modelpath, args.timestep))
+    if time_days != -1:
+        figure_title += f' ({time_days:.1f}d)'
+
+    axes[0].set_title(figure_title, fontsize=11)
 
     outputfilename = args.outputfile.format(elsymbol=at.elsymbols[atomic_number], cell=args.modelgridindex, timestep=args.timestep)
     print(f"Saving {outputfilename}")
