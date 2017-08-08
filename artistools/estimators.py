@@ -100,7 +100,17 @@ def parse_ion_row(row, outdict):
             outdict[variablename]['total'] = totalpop + value_thision
 
 
-def read_estimators(estimfiles, modeldata):
+def read_estimators(modelpath, modeldata):
+    estimfiles = (
+        glob.glob(os.path.join(modelpath, 'estimators_????.out'), recursive=True) +
+        glob.glob(os.path.join(modelpath, '*/estimators_????.out'), recursive=True))
+
+    if not estimfiles:
+        print("No estimator files found")
+        return -1
+    else:
+        print(f'Reading {len(estimfiles)} estimator files...')
+
     estimators = {}
     for estfile in estimfiles:
         with open(estfile, 'r') as estfile:
@@ -267,11 +277,12 @@ def plot_timestep(modelname, timestep, mgilist, estimators, series, modeldata, a
                 print(estimators[(timestep, modelgridindex)])
                 sys.exit()
 
-        xlist, mgilist = zip(*[(x, y) for (x, y) in zip(xlist, mgilist) if x >= args.xmin and x <= args.xmax])
-        xlist = np.insert(xlist, 0, 0.)
-
         xmin = args.xmin if args.xmin > 0 else min(xlist)
         xmax = args.xmax if args.xmax > 0 else max(xlist)
+
+        xlist, mgilist = zip(*[(x, y) for (x, y) in zip(xlist, mgilist) if x >= xmin and x <= xmax])
+        xlist = np.insert(xlist, 0, 0.)
+
         axis.set_xlim(xmin=xmin, xmax=xmax)
 
         try:
@@ -375,7 +386,7 @@ def addargs(parser):
     parser.add_argument('-xmin', type=int, default=-1,
                         help='Plot range: minimum x value')
 
-    parser.add_argument('-xmax', type=int, default=99999999999,
+    parser.add_argument('-xmax', type=int, default=-1,
                         help='Plot range: maximum x value')
 
     parser.add_argument('-o', action='store', dest='outputfile',
@@ -398,24 +409,17 @@ def main(argsraw=None):
     abundancedata = at.get_initialabundances1d('abundances.txt')
     modelname = at.get_model_name(modelpath)
 
-    input_files = (
-        glob.glob(os.path.join(modelpath, 'estimators_????.out'), recursive=True) +
-        glob.glob(os.path.join(modelpath, '*/estimators_????.out'), recursive=True))
-
-    if not input_files:
-        print("No estimator files found")
-        return 1
-
-    estimators = read_estimators(input_files, modeldata)
+    estimators = read_estimators(modelpath, modeldata)
 
     series = [['velocity', ['heating_gamma']],
               ['velocity', ['heating_gamma/gamma_dep']],
               ['velocity', ['Te']],
-              ['velocity', ['nne']],
+            #   ['velocity', ['nne']],
               ['velocity', [['abundances', ['Fe', 'Ni', 'Ni_56', 'Ni_stable']]]],
               ['velocity', [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]]],
-              ['velocity', [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]]],
-              ['velocity', ['TR']]]
+            #   ['velocity', [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]]],
+              ['velocity', ['TR']]
+    ]
 
     if args.recombrates:
         plot_recombrates(estimators, "plotestimators_recombrates.pdf")

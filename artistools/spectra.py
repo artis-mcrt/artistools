@@ -327,26 +327,28 @@ def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafil
     if args.refspecfiles is not None:
         colorlist = ['black', '0.4']
         for index, filename in enumerate(args.refspecfiles):
-            serieslabel = at.spectra.refspectralabels.get(filename, filename)
-
             if index < len(colorlist):
                 plotkwargs['color'] = colorlist[index]
 
-            plotobjects.append(
-                plot_reference_spectrum(
-                    filename, serieslabel, axis, args.xmin, args.xmax, args.normalised,
-                    flambdafilterfunc, scale_to_peak, **plotkwargs))
+            plotobj, serieslabel = plot_reference_spectrum(
+                filename, axis, args.xmin, args.xmax, args.normalised,
+                flambdafilterfunc, scale_to_peak, zorder=-1, **plotkwargs)
 
+            plotobjects.append(plotobj)
             plotobjectlabels.append(serieslabel)
 
 
-@contract(filename=str, serieslabel=str, xmin='float|int', xmax='float|int,>0')
-def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
+def plot_reference_spectrum(filename, axis, xmin, xmax, normalised,
                             flambdafilterfunc=None, scale_to_peak=None, **plotkwargs):
     scriptdir = os.path.dirname(os.path.abspath(__file__))
     filepath = os.path.join(scriptdir, 'data', 'refspectra', filename)
     specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
                            names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
+
+    if 'label' not in plotkwargs:
+        plotkwargs['label'] = refspectralabels.get(filename, filename)
+
+    serieslabel = plotkwargs['label']
 
     print(f"Reference spectrum '{serieslabel}' has {len(specdata)} points in the plot range")
 
@@ -361,7 +363,7 @@ def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
         specdata.query('index % 3 == 0', inplace=True)
 
     # clamp negative values to zero
-    specdata['f_lambda'] = specdata['f_lambda'].apply(lambda x: max(0, x))
+    # specdata['f_lambda'] = specdata['f_lambda'].apply(lambda x: max(0, x))
 
     if flambdafilterfunc:
         specdata['f_lambda'] = flambdafilterfunc(specdata['f_lambda'])
@@ -376,8 +378,8 @@ def plot_reference_spectrum(filename, serieslabel, axis, xmin, xmax, normalised,
     if 'linewidth' not in plotkwargs and 'lw' not in plotkwargs:
         plotkwargs['linewidth'] = 1.5
 
-    lineplot = specdata.plot(x='lambda_angstroms', y=ycolumnname, ax=axis, label=serieslabel, zorder=-1, **plotkwargs)
-    return mpatches.Patch(color=lineplot.get_lines()[0].get_color())
+    lineplot = specdata.plot(x='lambda_angstroms', y=ycolumnname, ax=axis, **plotkwargs)
+    return mpatches.Patch(color=lineplot.get_lines()[0].get_color()), plotkwargs['label']
 
 
 def make_spectrum_radius_plot(spectrum, args):
