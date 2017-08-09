@@ -250,7 +250,7 @@ def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estima
 
 
 def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, modeldata, abundancedata,
-                  args, outfilename, **plotkwargs):
+                  args, **plotkwargs):
 
     fig, axes = plt.subplots(len(series), 1, sharex=True, figsize=(6, 2.1 * len(series)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
@@ -314,6 +314,7 @@ def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, m
     axes[0].set_title(figure_title, fontsize=11)
     # plt.suptitle(figure_title, fontsize=11, verticalalignment='top')
 
+    outfilename = args.outputfile.format(timestep=timestep, time_days=time_days)
     fig.savefig(outfilename, format='pdf')
     print(f'Saved {outfilename}')
     plt.close()
@@ -390,7 +391,7 @@ def addargs(parser):
                         help='Plot range: maximum x value')
 
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plotestimators_{timestep:02d}.pdf',
+                        default='plotestimators_ts{timestep:02d}_{time_days:.0f}d.pdf',
                         help='Filename for PDF file')
 
 
@@ -412,9 +413,9 @@ def main(argsraw=None):
 
     xvariable = 'velocity'
     serieslist = [
-        # ['heating_gamma', 'heating_coll', 'heating_bf', 'heating_ff'],
-        # ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff'],
-        # ['heating_gamma/gamma_dep'],
+        ['heating_gamma', 'heating_coll', 'heating_bf', 'heating_ff'],
+        ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff'],
+        ['heating_gamma/gamma_dep'],
         ['Te', 'TR'],
         ['nne'],
         [['initabundances', ['Fe', 'Ni', 'Ni_56', 'Ni_stable']]],
@@ -442,8 +443,8 @@ def main(argsraw=None):
             nonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
                                if not estimators[(timestep, modelgridindex)]['emptycell']]
 
-            plot_timestep(modelname, timestep, nonemptymgilist, estimators, xvariable, serieslist, modeldata, abundancedata,
-                          args, args.outputfile.format(timestep=timestep))
+            plot_timestep(modelname, timestep, nonemptymgilist, estimators, xvariable, serieslist,
+                          modeldata, abundancedata, args)
 
 
 if __name__ == "__main__":
