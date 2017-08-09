@@ -66,8 +66,9 @@ def test_get_flux_contributions():
 
 
 def test_plotters():
-    arglist = ['tests/data/', '-o', 'tests/data/']
+    arglist = ['-modelpath', 'tests/data/', '-o', 'tests/data/']
     at.nltepops.main(arglist)
+    arglist = ['tests/data/', '-o', 'tests/data/']
     at.lightcurve.main(arglist)
     at.spectra.main(arglist + ['-timemin', '290', '-timemax', '320'])
     at.spectra.main(arglist + ['-timemin', '290', '-timemax', '320', '--emissionabsorption'])

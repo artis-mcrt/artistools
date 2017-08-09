@@ -192,18 +192,28 @@ def read_files(modelpath, adata, atomic_number, T_exc, timestep, modelgridindex,
 def addargs(parser, defaultoutputfile):
     parser.add_argument('elements', nargs='*', default=['Fe'],
                         help='List of elements to plot')
+
     parser.add_argument('-modelpath', default='.',
                         help='Path to ARTIS folder')
+
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
-    parser.add_argument('-timestep', '-ts', type=int, default=70,
-                        help='Plotted timestep')
+
+    parser.add_argument('-timedays', '-time', '-t',
+                        help='Time in days to plot')
+
+    parser.add_argument('-timestep', '-ts',
+                        help='Timestep number to plot')
+
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Plotted modelgrid cell')
+
     parser.add_argument('-exc_temperature', type=float, default=6000.,
                         help='Comparison plot')
+
     parser.add_argument('--oldformat', default=False, action='store_true',
                         help='Use the old file format')
+
     parser.add_argument('-o', action='store', dest='outputfile',
                         default=defaultoutputfile,
                         help='path/filename for PDF file')
@@ -217,7 +227,10 @@ def main(argsraw=None):
     addargs(parser, defaultoutputfile)
     args = parser.parse_args(argsraw)
 
-    timestep = args.timestep
+    if args.timedays:
+        timestep = at.get_closest_timestep(os.path.join(args.modelpath, 'spec.out'), args.timedays)
+    else:
+        timestep = int(args.timestep)
 
     if os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
@@ -239,18 +252,23 @@ def main(argsraw=None):
             print('Setting T_exc to default value of 6000 K')
             T_exc = 6000
 
-        for elsymbol in args.elements:
+        for el_in in args.elements:
             try:
-                atomic_number = next(Z for Z, elsymb in enumerate(at.elsymbols) if elsymb.lower() == elsymbol.lower())
-            except StopIteration:
-                print(f"Could not find element '{elsymbol}'")
-                continue
+                atomic_number = int(el_in)
+                elsymbol = at.elsymbols[atomic_number]
+            except ValueError:
+                try:
+                    elsymbol = el_in
+                    atomic_number = next(Z for Z, elsymb in enumerate(at.elsymbols) if elsymb.lower() == elsymbol.lower())
+                except StopIteration:
+                    print(f"Could not find element '{elsymbol}'")
+                    continue
 
             print(elsymbol, atomic_number)
 
             print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
                   f'timestep {timestep} element {elsymbol}')
-            dfpop = read_files(args.modelpath, adata, atomic_number, T_exc, args.timestep, args.modelgridindex, args.oldformat)
+            dfpop = read_files(args.modelpath, adata, atomic_number, T_exc, timestep, args.modelgridindex, args.oldformat)
 
             if dfpop.empty:
                 print(f'No data for modelgrid cell {args.modelgridindex} timestep {timestep}')
@@ -314,15 +332,15 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, exc_temperature, time
     modelname = at.get_model_name(args.modelpath)
     velocity = modeldata['velocity'][args.modelgridindex]
     figure_title = (f'{modelname}\n'
-        f'Cell {args.modelgridindex} (v={velocity} km/s) with Te = {Te:.1f} K at timestep {args.timestep:d}')
-    time_days = float(at.get_timestep_time(args.modelpath, args.timestep))
+        f'Cell {args.modelgridindex} (v={velocity} km/s) with Te = {Te:.1f} K at timestep {timestep:d}')
+    time_days = float(at.get_timestep_time(args.modelpath, timestep))
     if time_days != -1:
         figure_title += f' ({time_days:.1f}d)'
 
     axes[0].set_title(figure_title, fontsize=11)
 
     outputfilename = args.outputfile.format(elsymbol=at.elsymbols[atomic_number], cell=args.modelgridindex,
-                                            timestep=args.timestep, time_days=time_days)
+                                            timestep=timestep, time_days=time_days)
     print(f"Saving {outputfilename}")
     fig.savefig(outputfilename, format='pdf')
     plt.close()
