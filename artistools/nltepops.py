@@ -209,7 +209,7 @@ def addargs(parser, defaultoutputfile):
     parser.add_argument('-timedays', '-time', '-t',
                         help='Time in days to plot')
 
-    parser.add_argument('-timestep', '-ts',
+    parser.add_argument('-timestep', '-ts', default=26,
                         help='Timestep number to plot')
 
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
