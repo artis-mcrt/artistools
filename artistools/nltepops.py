@@ -16,13 +16,14 @@ import artistools as at
 import artistools.estimators
 
 
-def get_nlte_populations(all_levels, nltefilename, modelgridindex, timestep, atomic_number, temperature_exc):
+def get_nlte_populations(all_levels, nltefilename, modelgridindex, timestep, atomic_number, T_e, T_R):
     dfpop = pd.read_csv(nltefilename, delim_whitespace=True)
     dfpop.query('(modelgridindex==@modelgridindex) & (timestep==@timestep) & (Z==@atomic_number)', inplace=True)
 
     k_b = const.k_B.to('eV / K').value
     list_indicies = []
-    list_ltepopcustom = []
+    list_ltepop_T_e = []
+    list_ltepop_T_R = []
     list_parity = []
     gspop = {}
     for index, row in dfpop.iterrows():
@@ -34,12 +35,13 @@ def get_nlte_populations(all_levels, nltefilename, modelgridindex, timestep, ato
             gspop[(row.Z, row.ion_stage)] = dfpop.query(
                 'timestep==@timestep and Z==@atomic_number and ion_stage==@ion_stage and level==0').iloc[0].n_NLTE
 
+        ltepop_T_e = 0.0
+        ltepop_T_R = 0.0
         levelnumber = int(row.level)
         if levelnumber == -1:  # superlevel
             levelnumber = dfpop.query(
                 'timestep==@timestep and Z==@atomic_number and ion_stage==@ion_stage').level.max()
             dfpop.loc[index, 'level'] = levelnumber + 2
-            ltepopcustom = 0.0
             parity = 0
             print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a superlevel at level {levelnumber}')
         else:
@@ -48,16 +50,21 @@ def get_nlte_populations(all_levels, nltefilename, modelgridindex, timestep, ato
                     level = ion_data.levels.iloc[levelnumber]
                     gslevel = ion_data.levels.iloc[0]
 
-            ltepopcustom = gspop[(row.Z, row.ion_stage)] * level.g / gslevel.g * math.exp(
-                - (level.energy_ev - gslevel.energy_ev) / k_b / temperature_exc)
+            gspopthision = gspop[(row.Z, row.ion_stage)]
+            exc_energy = level.energy_ev - gslevel.energy_ev
+
+            ltepop_T_e = gspopthision * level.g / gslevel.g * math.exp(- exc_energy / k_b / T_e)
+            ltepop_T_R = gspopthision * level.g / gslevel.g * math.exp(- exc_energy / k_b / T_R)
 
             levelname = level.levelname.split('[')[0]
             parity = 1 if levelname[-1] == 'o' else 0
 
-        list_ltepopcustom.append(ltepopcustom)
+        list_ltepop_T_e.append(ltepop_T_e)
+        list_ltepop_T_R.append(ltepop_T_R)
         list_parity.append(parity)
 
-    dfpop['n_LTE_custom'] = pd.Series(list_ltepopcustom, index=list_indicies)
+    dfpop['n_LTE_T_e'] = pd.Series(list_ltepop_T_e, index=list_indicies)
+    dfpop['n_LTE_T_R'] = pd.Series(list_ltepop_T_R, index=list_indicies)
     dfpop['parity'] = pd.Series(list_parity, index=list_indicies)
 
     return dfpop
@@ -157,7 +164,7 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
     return pd.DataFrame(data=[newrow], columns=levelpoptuple._fields)
 
 
-def read_files(modelpath, adata, atomic_number, T_exc, timestep, modelgridindex, oldformat=False):
+def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridindex, oldformat=False):
     nlte_files = (
         glob.glob(os.path.join(modelpath, 'nlte_????.out'), recursive=True) +
         glob.glob(os.path.join(modelpath, '*/nlte_????.out'), recursive=True))
@@ -176,11 +183,11 @@ def read_files(modelpath, adata, atomic_number, T_exc, timestep, modelgridindex,
         if not oldformat:
             dfpop_thisfile = get_nlte_populations(
                 adata, nltefilepath, modelgridindex,
-                timestep, atomic_number, T_exc)
+                timestep, atomic_number, T_e, T_R)
         else:
             dfpop_thisfile = get_nlte_populations_oldformat(
                 adata, nltefilepath, modelgridindex,
-                timestep, atomic_number, T_exc)
+                timestep, atomic_number, T_e, T_R)
 
         # found our data!
         if not dfpop_thisfile.empty:
@@ -244,13 +251,16 @@ def main(argsraw=None):
         estimators = at.estimators.read_estimators(args.modelpath, modeldata)
         if estimators:
             if not estimators[(timestep, args.modelgridindex)]['emptycell']:
-                T_exc = estimators[(timestep, args.modelgridindex)]['Te']
+                T_e = estimators[(timestep, args.modelgridindex)]['Te']
+                T_R = estimators[(timestep, args.modelgridindex)]['TR']
             else:
-                print(f'ERROR: cell {args.modelgridindex} is empty. Setting T_exc to 6000 K')
-                T_exc = 6000
+                print(f'ERROR: cell {args.modelgridindex} is empty. Setting T_e = T_R =  6000 K')
+                T_e = 6000
+                T_R = 6000
         else:
-            print('Setting T_exc to default value of 6000 K')
-            T_exc = 6000
+            print('Setting T_e = T_R =  6000 K')
+            T_e = 6000
+            T_R = 6000
 
         for el_in in args.elements:
             try:
@@ -268,22 +278,26 @@ def main(argsraw=None):
 
             print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
                   f'timestep {timestep} element {elsymbol}')
-            dfpop = read_files(args.modelpath, adata, atomic_number, T_exc, timestep, args.modelgridindex, args.oldformat)
+            dfpop = read_files(args.modelpath, adata, atomic_number, T_e, T_R, timestep, args.modelgridindex, args.oldformat)
 
             if dfpop.empty:
                 print(f'No data for modelgrid cell {args.modelgridindex} timestep {timestep}')
             else:
-                make_plot(modeldata, estimators, dfpop, atomic_number, T_exc, timestep, args)
+                make_plot(modeldata, estimators, dfpop, atomic_number, T_e, T_R, timestep, args)
 
 
-def make_plot(modeldata, estimators, dfpop, atomic_number, exc_temperature, timestep, args):
+def make_plot(modeldata, estimators, dfpop, atomic_number, T_e, T_R, timestep, args):
     top_ion = -1 if args.oldformat else -2  # skip top ion, which is probably ground state only
-    top_ion = 9999
-    ion_stage_list = dfpop.ion_stage.unique()[:top_ion]
+    # top_ion = 9999
+    max_ion_stage = dfpop.ion_stage.max()
+    if len(dfpop.query('ion_stage == @max_ion_stage') == 1):
+        max_ion_stage -= 1
+
+    ion_stage_list = sorted([i for i in dfpop.ion_stage.unique() if i <= max_ion_stage])
     fig, axes = plt.subplots(len(ion_stage_list), 1, sharex=False, figsize=(9, 3 * len(ion_stage_list)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    if len(dfpop) == 0:
+    if dfpop.empty:
         print('Error: No data for selected timestep and element')
         sys.exit()
 
@@ -293,12 +307,17 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, exc_temperature, time
         ionpopulation = dfpopthision['n_NLTE'].sum()
         print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a population of {ionpopulation:.1f}')
 
-        lte_custom_scalefactor = float(ionpopulation / dfpopthision['n_LTE_custom'].sum())
-        dfpopthision['n_LTE_custom_normed'] = dfpopthision['n_LTE_custom'].apply(
-            lambda pop: pop * lte_custom_scalefactor)
+        lte_scalefactor = float(ionpopulation / dfpopthision['n_LTE_T_e'].sum())
+        dfpopthision['n_LTE_T_e_normed'] = dfpopthision['n_LTE_T_e'] * lte_scalefactor
 
-        axis.plot(dfpopthision.level.values[:-1], dfpopthision.n_LTE_custom_normed.values[:-1], linewidth=1.5,
-                  label=f'LTE {exc_temperature:.0f} K', linestyle='None', marker='*')
+        axis.plot(dfpopthision.level.values[:-1], dfpopthision['n_LTE_T_e_normed'].values[:-1], linewidth=1.5,
+                  label=f'LTE T_e = {T_e:.0f} K', linestyle='None', marker='*')
+
+        lte_scalefactor = float(ionpopulation / dfpopthision['n_LTE_T_R'].sum())
+        dfpopthision['n_LTE_T_R_normed'] = dfpopthision['n_LTE_T_R'] * lte_scalefactor
+
+        axis.plot(dfpopthision.level.values[:-1], dfpopthision['n_LTE_T_R_normed'].values[:-1], linewidth=1.5,
+                  label=f'LTE T_R = {T_R:.0f} K', linestyle='None', marker='*')
 
         axis.plot(dfpopthision.level.values, dfpopthision.n_NLTE.values, linewidth=1.5,
                   label='NLTE', linestyle='None', marker='x')
