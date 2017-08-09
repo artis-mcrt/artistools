@@ -66,7 +66,7 @@ def test_get_flux_contributions():
 
 
 def test_plotters():
-    arglist = ['-modelpath', 'tests/data/', '-o', 'tests/data/']
+    arglist = ['-modelpath', 'tests/data/', 'tests/data/', '-o', 'tests/data/']
     at.nltepops.main(arglist)
     arglist = ['tests/data/', '-o', 'tests/data/']
     at.lightcurve.main(arglist)
