@@ -307,9 +307,9 @@ def main(argsraw=None):
             if len(modelpaths) > 1:
                 print("ERROR: emission/absorption plot can only take one input model")
                 sys.exit()
-            defaultoutputfile = "plotspecemission.pdf"
+            defaultoutputfile = "plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf"
         else:
-            defaultoutputfile = "plotspec.pdf"
+            defaultoutputfile = "plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf"
 
         if not args.outputfile:
             args.outputfile = defaultoutputfile
@@ -406,18 +406,18 @@ def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=No
     specfilename = os.path.join(modelpath, 'spec.out')
 
     (modelname, timestepmin, timestepmax,
-     time_days_lower, time_days_upper) = at.get_model_name_times(
+     args.timemin, args.timemax) = at.get_model_name_times(
          specfilename, at.get_timestep_times(specfilename),
          args.timestep, args.timemin, args.timemax)
 
-    linelabel = f'{modelname} at t={time_days_lower:.2f}d to {time_days_upper:.2f}d'
+    linelabel = f'{modelname} at t={args.timemin:.2f}d to {args.timemax:.2f}d'
 
     if from_packets:
         # find any other packets files in the same directory
         packetsfiles_thismodel = glob.glob(os.path.join(modelpath, 'packets00_**.out'))
         print(packetsfiles_thismodel)
         spectrum = at.spectra.get_spectrum_from_packets(
-            packetsfiles_thismodel, time_days_lower, time_days_upper, lambda_min=args.xmin, lambda_max=args.xmax)
+            packetsfiles_thismodel, args.timemin, args.timemax, lambda_min=args.xmin, lambda_max=args.xmax)
         make_spectrum_radius_plot(spectrum, args)
     else:
         spectrum = at.spectra.get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
@@ -469,7 +469,7 @@ def make_emission_plot(modelpath, axis, filterfunc, args):
     arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
 
     (modelname, timestepmin, timestepmax,
-     time_days_lower, time_days_upper) = at.get_model_name_times(
+     args.timemin, args.timemax) = at.get_model_name_times(
          specfilename, timearray, args.timestep, args.timemin, args.timemax)
 
     absorptionfilename = os.path.join(modelpath, 'absorption.out')
@@ -512,7 +512,7 @@ def make_emission_plot(modelpath, axis, filterfunc, args):
 
     axis.axhline(color='white', linewidth=0.5)
 
-    plotlabel = f't={time_days_lower:.2f}d to {time_days_upper:.2f}d\n{modelname}'
+    plotlabel = f't={args.timemin:.2f}d to {args.timemax:.2f}d\n{modelname}'
     axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
                   horizontalalignment='right', verticalalignment='bottom', fontsize=9)
 
@@ -550,7 +550,7 @@ def make_plot(modelpaths, args):
     axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
 
-    filenameout = args.outputfile
+    filenameout = args.outputfile.format(time_days_min=args.timemin, time_days_max=args.timemax)
     fig.savefig(filenameout, format='pdf')
     # plt.show()
     print(f'Saved {filenameout}')
