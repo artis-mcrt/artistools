@@ -102,6 +102,9 @@ def parse_ion_row(row, outdict):
             totalpop = outdict[variablename].get('total', 0)
             outdict[variablename]['total'] = totalpop + value_thision
 
+        elif variablename == 'Alpha_R*nne':
+            outdict['Alpha_R'] = value_thision / outdict['nne']
+
 
 def read_estimators(modelpath, modeldata):
     estimfiles = (glob.glob(os.path.join(modelpath, 'estimators_????.out'), recursive=True) +
@@ -151,6 +154,8 @@ def read_estimators(modelpath, modeldata):
                 elif row[0] == 'heating:' and not skip_block:
                     for index, token in list(enumerate(row))[1::2]:
                         estimators[(timestep, modelgridindex)][f'heating_{token}'] = float(row[index + 1])
+                    estimators[(timestep, modelgridindex)]['gamma_dep'] = (
+                        estimators[(timestep, modelgridindex)]['heating_gamma'] / estimators[(timestep, modelgridindex)]['heating_gamma/gamma_dep'])
 
                 elif row[0] == 'cooling:' and not skip_block:
                     for index, token in list(enumerate(row))[1::2]:
@@ -201,6 +206,7 @@ def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, e
         ylist = []
         for modelgridindex in mgilist:
             estim = estimators[(timestep, modelgridindex)]
+
             if estim['emptycell']:
                 continue
 
@@ -208,10 +214,22 @@ def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, e
                 totalpop = estim['populations']['total']
                 nionpop = estim['populations'].get((atomic_number, ion_stage), 0.)
                 ylist.append(nionpop / totalpop)
-            elif seriestype == 'Alpha_R':
-                ylist.append(estim['Alpha_R*nne'].get((atomic_number, ion_stage), 0.) / estim['nne'])
+            # elif seriestype == 'Alpha_R':
+            #     ylist.append(estim['Alpha_R*nne'].get((atomic_number, ion_stage), 0.) / estim['nne'])
+            # else:
+            #     ylist.append(estim[seriestype].get((atomic_number, ion_stage), 0.))
             else:
-                ylist.append(estim[seriestype].get((atomic_number, ion_stage), 0.))
+                dictvars = {}
+                for k, v in estim.items():
+                    if 'items' in dir(v):
+                        dictvars[k] = v.get((atomic_number, ion_stage), 0.)
+                    else:
+                        dictvars[k] = v
+                try:
+                    yvalue = eval(seriestype, {"__builtins__": math}, dictvars)
+                except ZeroDivisionError:
+                    yvalue = float('NaN')
+                ylist.append(yvalue)
 
         plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
 
@@ -233,7 +251,7 @@ def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estima
     ylist = []
     for modelgridindex in mgilist:
         try:
-            ylist.append(estimators[(timestep, modelgridindex)][variablename])
+            ylist.append(eval(variablename, {"__builtins__": math}, estimators[(timestep, modelgridindex)]))
         except KeyError:
             if (timestep, modelgridindex) in estimators:
                 print(f"Undefined variable: {variablename} for timestep {timestep} in cell {modelgridindex}")
@@ -243,6 +261,10 @@ def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estima
             sys.exit()
 
     ylist.insert(0, ylist[0])
+
+    if math.log10(max(ylist) / min(ylist)) > 2:
+        axis.set_yscale('log')
+
     dictcolors = {'Te': 'red',
                   'heating_gamma': 'blue',
                   'cooling_adiabatic': 'blue'}
@@ -252,7 +274,7 @@ def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estima
 def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, modeldata, abundancedata,
                   args, **plotkwargs):
 
-    fig, axes = plt.subplots(len(series), 1, sharex=True, figsize=(6, 2.1 * len(series)),
+    fig, axes = plt.subplots(len(series), 1, sharex=True, figsize=(6, 2.3 * len(series)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
     if len(series) == 1:
         axes = [axes]
@@ -285,12 +307,6 @@ def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, m
 
         axis.set_xlim(xmin=xmin, xmax=xmax)
 
-        try:
-            if yvariables[0].split('_')[0] in ['heating', 'cooling']:
-                axis.set_yscale('log')
-        except AttributeError:
-            pass
-
         for variablename in yvariables:
             if not hasattr(variablename, 'lower'):  # if it's not a string, it's a list
                 showlegend = True
@@ -300,13 +316,12 @@ def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, m
                     seriestype, ionlist = variablename
                     plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, estimators, **plotkwargs)
             else:
-                showlegend = len(yvariables) > 1
+                showlegend = len(yvariables) > 1 or len(variablename) > 20
                 plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estimators, **plotkwargs)
 
         if showlegend:
             axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
 
-    # modelname = at.get_model_name(".")
     figure_title = f'{modelname}\nTimestep {timestep}'
     time_days = float(at.get_timestep_time('spec.out', timestep))
     if time_days >= 0:
@@ -390,6 +405,9 @@ def addargs(parser):
     parser.add_argument('-xmax', type=int, default=-1,
                         help='Plot range: maximum x value')
 
+    parser.add_argument('-x', default='cellid',
+                        help='Horizontal axis variable (cellid or velocity)')
+
     parser.add_argument('-o', action='store', dest='outputfile',
                         default='plotestimators_ts{timestep:02d}_{time_days:.0f}d.pdf',
                         help='Filename for PDF file')
@@ -411,7 +429,6 @@ def main(argsraw=None):
 
     estimators = read_estimators(modelpath, modeldata)
 
-    xvariable = 'velocity'
     serieslist = [
         ['heating_gamma', 'heating_coll', 'heating_bf', 'heating_ff'],
         ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff'],
@@ -420,8 +437,7 @@ def main(argsraw=None):
         ['nne'],
         [['initabundances', ['Fe', 'Ni', 'Ni_56', 'Ni_stable']]],
         [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
-        [['RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni III']]],
-        [['Alpha_R', ['Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni III']]],
+        [['Alpha_R / RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni III']]],
         # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
     ]
 
@@ -429,8 +445,12 @@ def main(argsraw=None):
         plot_recombrates(estimators, "plotestimators_recombrates.pdf")
     else:
         if args.timedays:
-            timestep = at.get_closest_timestep(os.path.join(modelpath, "spec.out"), args.timedays)
-            timestepmin, timestepmax = timestep, timestep
+            if '-' in args.timedays:
+                timestepmin, timestepmax = [
+                    at.get_closest_timestep(os.path.join(modelpath, "spec.out"), float(timedays)) for timedays in args.timedays.split('-')]
+            else:
+                timestep = at.get_closest_timestep(os.path.join(modelpath, "spec.out"), args.timedays)
+                timestepmin, timestepmax = timestep, timestep
         else:
             if '-' in args.timestep:
                 timestepmin, timestepmax = [int(nts) for nts in args.timestep.split('-')]
@@ -443,7 +463,7 @@ def main(argsraw=None):
             nonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
                                if not estimators[(timestep, modelgridindex)]['emptycell']]
 
-            plot_timestep(modelname, timestep, nonemptymgilist, estimators, xvariable, serieslist,
+            plot_timestep(modelname, timestep, nonemptymgilist, estimators, args.x, serieslist,
                           modeldata, abundancedata, args)
 
 
