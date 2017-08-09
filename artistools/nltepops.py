@@ -157,7 +157,7 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
     return pd.DataFrame(data=[newrow], columns=levelpoptuple._fields)
 
 
-def read_files(modelpath, atomic_number, T_exc, timestep, modelgridindex, oldformat=False):
+def read_files(modelpath, adata, atomic_number, T_exc, timestep, modelgridindex, oldformat=False):
     nlte_files = (
         glob.glob(os.path.join(modelpath, 'nlte_????.out'), recursive=True) +
         glob.glob(os.path.join(modelpath, '*/nlte_????.out'), recursive=True))
@@ -165,8 +165,6 @@ def read_files(modelpath, atomic_number, T_exc, timestep, modelgridindex, oldfor
     if not nlte_files:
         print("No NLTE files found.")
         return -1
-
-    adata = at.get_levels(os.path.join(modelpath, 'adata.txt'))
 
     print(f'Reading {len(nlte_files)} estimator files...')
     for nltefilepath in nlte_files:
@@ -192,7 +190,9 @@ def read_files(modelpath, atomic_number, T_exc, timestep, modelgridindex, oldfor
 
 
 def addargs(parser, defaultoutputfile):
-    parser.add_argument('modelpath', nargs='?', default='.',
+    parser.add_argument('elements', nargs='*', default=['Fe'],
+                        help='List of elements to plot')
+    parser.add_argument('-modelpath', default='.',
                         help='Path to ARTIS folder')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
@@ -200,8 +200,6 @@ def addargs(parser, defaultoutputfile):
                         help='Plotted timestep')
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Plotted modelgrid cell')
-    parser.add_argument('element', nargs='?', default='Fe',
-                        help='Plotted element')
     parser.add_argument('-exc_temperature', type=float, default=6000.,
                         help='Comparison plot')
     parser.add_argument('--oldformat', default=False, action='store_true',
@@ -212,7 +210,7 @@ def addargs(parser, defaultoutputfile):
 
 
 def main(argsraw=None):
-    defaultoutputfile = 'plotnlte_{elsymbol}_cell{cell:03d}_{timestep:03d}.pdf'
+    defaultoutputfile = 'plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
 
     parser = argparse.ArgumentParser(
         description='Plot ARTIS non-LTE corrections.')
@@ -227,24 +225,32 @@ def main(argsraw=None):
     if args.listtimesteps:
         at.showtimesteptimes('spec.out')
     else:
-        if args.modelpath.title() in at.elsymbols:
-            args.element = args.modelpath
-            args.modelpath = '.'
-
-        try:
-            atomic_number = next(Z for Z, elsymb in enumerate(at.elsymbols) if elsymb.lower() == args.element.lower())
-        except StopIteration:
-            print(f"Could not find element '{args.element}'")
-            return
+        adata = at.get_levels(os.path.join(args.modelpath, 'adata.txt'))
 
         modeldata, _ = at.get_modeldata(os.path.join(args.modelpath, 'model.txt'))
         estimators = at.estimators.read_estimators(args.modelpath, modeldata)
         if estimators:
-            T_exc = estimators[(timestep, args.modelgridindex)]['Te']
+            if not estimators[(timestep, args.modelgridindex)]['emptycell']:
+                T_exc = estimators[(timestep, args.modelgridindex)]['Te']
+            else:
+                print(f'ERROR: cell {args.modelgridindex} is empty. Setting T_exc to 6000 K')
+                T_exc = 6000
+        else:
+            print('Setting T_exc to default value of 6000 K')
+            T_exc = 6000
+
+        for elsymbol in args.elements:
+            try:
+                atomic_number = next(Z for Z, elsymb in enumerate(at.elsymbols) if elsymb.lower() == elsymbol.lower())
+            except StopIteration:
+                print(f"Could not find element '{elsymbol}'")
+                continue
+
+            print(elsymbol, atomic_number)
 
             print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
-                  f'timestep {timestep} element {args.element}')
-            dfpop = read_files(args.modelpath, atomic_number, T_exc, args.timestep, args.modelgridindex, args.oldformat)
+                  f'timestep {timestep} element {elsymbol}')
+            dfpop = read_files(args.modelpath, adata, atomic_number, T_exc, args.timestep, args.modelgridindex, args.oldformat)
 
             if dfpop.empty:
                 print(f'No data for modelgrid cell {args.modelgridindex} timestep {timestep}')
@@ -315,7 +321,8 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, exc_temperature, time
 
     axes[0].set_title(figure_title, fontsize=11)
 
-    outputfilename = args.outputfile.format(elsymbol=at.elsymbols[atomic_number], cell=args.modelgridindex, timestep=args.timestep)
+    outputfilename = args.outputfile.format(elsymbol=at.elsymbols[atomic_number], cell=args.modelgridindex,
+                                            timestep=args.timestep, time_days=time_days)
     print(f"Saving {outputfilename}")
     fig.savefig(outputfilename, format='pdf')
     plt.close()
