@@ -20,7 +20,7 @@ columns = (
     'em_posx', 'em_posy', 'em_posz', 'absorption_type', 'absorption_freq',
     'nscatterings', 'em_time', 'absorptiondirx', 'absorptiondiry',
     'absorptiondirz', 'stokes1', 'stokes2', 'stokes3', 'pol_dirx', 'pol_diry',
-    'pol_dirz', 'originated_from_positron'
+    'pol_dirz', 'originated_from_positron', 'true_emission_velocity'
 )
 
 types = {
@@ -32,10 +32,11 @@ types = {
 
 def readfile(packetsfile, usecols):
     print(f'Reading {packetsfile} ({os.path.getsize(packetsfile) / 1024 / 1024:.3f} MiB)', end='')
+    inputcolumncount = len(pd.read_csv('packets00_0000.out', nrows=1, delim_whitespace=True, header=None).columns)
     dfpackets = pd.read_csv(
         packetsfile,
         delim_whitespace=True,
-        names=columns,
+        names=columns[:inputcolumncount],
         header=None,
         usecols=usecols)
     dfpackets['type'] = dfpackets['type_id'].map(lambda x: types.get(x, x))
