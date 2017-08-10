@@ -85,13 +85,24 @@ def get_spectrum(specfilename: str, timestepmin: int, timestepmax=-1, fnufilterf
 
     return dfspectrum
 
+def set_min_sum_max(array, xindex, e_rf, value):
+    if value < array[0][xindex] or array[0][xindex] == 0:
+        array[0][xindex] = value
+
+    array[1][xindex] += e_rf * value
+
+    if value > array[2][xindex] or array[2][xindex] == 0:
+        array[2][xindex] = value
+
 
 def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_min, lambda_max, delta_lambda=30):
     import artistools.packets
     array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
     array_energysum = np.zeros_like(array_lambda, dtype=np.float)  # total packet energy sum of each bin
+    array_energysum_positron = np.zeros_like(array_lambda, dtype=np.float)  # total packet energy sum of each bin
     array_pktcount = np.zeros_like(array_lambda, dtype=np.int)  # number of packets in each bin
-    array_velocitysum = np.zeros_like(array_lambda, dtype=np.float)  # sum of packet radii
+    array_emvelocity = np.zeros((3, len(array_lambda)), dtype=np.float)
+    array_trueemvelocity = np.zeros((3, len(array_lambda)), dtype=np.float)
 
     timelow = timelowdays * u.day.to('s')
     timehigh = timehighdays * u.day.to('s')
@@ -104,7 +115,8 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
         dfpackets = at.packets.readfile(packetsfile, usecols=[
             'type_id', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
             'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz',
-            'em_posx', 'em_posy', 'em_posz', 'em_time'])
+            'em_posx', 'em_posy', 'em_posz', 'em_time',
+            'true_emission_velocity', 'originated_from_positron'])
 
         dfpackets.query('type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT" and'
                         '@nu_min <= nu_rf < @nu_max and'
@@ -121,21 +133,42 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
             xindex = math.floor((lambda_rf - lambda_min) / delta_lambda)
             assert(xindex >= 0)
             array_energysum[xindex] += packet.e_rf
+            if packet.originated_from_positron:
+                array_energysum_positron[xindex] += packet.e_rf
             array_pktcount[xindex] += 1
 
             # convert cm/s to km/s
-            array_velocitysum[xindex] += packet.e_rf * (
+            emission_velocity = (
                 math.sqrt(packet.em_posx ** 2 + packet.em_posy ** 2 + packet.em_posz ** 2) / packet.em_time) / 1e5
+            set_min_sum_max(array_emvelocity, xindex, packet.e_rf, emission_velocity)
+
+            true_emission_velocity = packet.true_emission_velocity / 1e5
+            set_min_sum_max(array_trueemvelocity, xindex, packet.e_rf, true_emission_velocity)
 
     array_flambda = (array_energysum / delta_lambda / (timehigh - timelow) /
                      4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs)
 
-    array_averagevelocity = np.divide(array_velocitysum, array_energysum)
+    array_flambda_positron = (array_energysum_positron / delta_lambda / (timehigh - timelow) /
+                              4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs)
 
-    return pd.DataFrame({'lambda_angstroms': array_lambda,
-                         'f_lambda': array_flambda,
-                         'pktcount': array_pktcount,
-                         'averagevelocity': array_averagevelocity})
+    array_emvelocity[1] = np.divide(array_emvelocity[1], array_energysum)
+    array_trueemvelocity[1] = np.divide(array_trueemvelocity[1], array_energysum)
+
+    dfspectrum = pd.DataFrame({
+        'lambda_angstroms': array_lambda,
+        'f_lambda': array_flambda,
+        'f_lambda_originated_from_positron': array_flambda_positron,
+        'packetcount': array_pktcount,
+        'energy_sum': array_energysum,
+        'emission_velocity_min': array_emvelocity[0],
+        'emission_velocity_avg': array_emvelocity[1],
+        'emission_velocity_max': array_emvelocity[2],
+        'trueemission_velocity_min': array_trueemvelocity[0],
+        'trueemission_velocity_avg': array_trueemvelocity[1],
+        'trueemission_velocity_max': array_trueemvelocity[2],
+    })
+
+    return dfspectrum
 
 
 def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
@@ -382,21 +415,56 @@ def plot_reference_spectrum(filename, axis, xmin, xmax, normalised,
     return mpatches.Patch(color=lineplot.get_lines()[0].get_color()), plotkwargs['label']
 
 
-def make_spectrum_radius_plot(spectrum, args):
-    fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+def make_spectrum_stat_plot(spectrum, args):
+    fig, axes = plt.subplots(4, 1, sharex=True, figsize=(8, 16), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     spectrum.query('@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax', inplace=True)
 
-    spectrum.plot(x='lambda_angstroms', y='averagevelocity', ax=axis)
+    axis = axes[0]
+    axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
+    spectrum.eval('f_lambda_not_from_positron = f_lambda - f_lambda_originated_from_positron', inplace=True)
+    plotobjects = axis.stackplot(spectrum['lambda_angstroms'], [spectrum['f_lambda_originated_from_positron'], spectrum['f_lambda_not_from_positron']], linewidth=0)
+    plotobjectlabels = ['f_lambda_originated_from_positron', 'f_lambda_not_from_positron']
+    axis.legend(plotobjects, plotobjectlabels, loc='best', handlelength=2,
+                frameon=False, numpoints=1, prop={'size': args.legendfontsize})
+
+    axis = axes[1]
+    axis.set_ylabel('Energy-weighted average velocity [km/s]')
+    # axis.plot(spectrum['lambda_angstroms'], spectrum['emission_velocity_min'], color='#FF9848')
+    # axis.plot(spectrum['lambda_angstroms'], spectrum['emission_velocity_max'], color='#FF9848')
+    axis.fill_between(spectrum['lambda_angstroms'],
+                      spectrum['emission_velocity_min'],
+                      spectrum['emission_velocity_max'],
+                      alpha=0.5, edgecolor='#CC4F1B', facecolor='#FF9848')
+    axis.plot(spectrum['lambda_angstroms'], spectrum['emission_velocity_avg'], color='#CC4F1B',
+              label='True emission velocity [km/s]')
+    axis.legend(loc='best', handlelength=2,
+                frameon=False, numpoints=1, prop={'size': args.legendfontsize})
+
+    axis = axes[1]
+    axis.set_ylabel('Energy-weighted average velocity [km/s]')
+    # axis.plot(spectrum['lambda_angstroms'], spectrum['trueemission_velocity_min'], color='#089FFF')
+    # axis.plot(spectrum['lambda_angstroms'], spectrum['trueemission_velocity_max'], color='#089FFF')
+    axis.fill_between(spectrum['lambda_angstroms'],
+                      spectrum['trueemission_velocity_min'],
+                      spectrum['trueemission_velocity_max'],
+                      alpha=0.5, edgecolor='#1B2ACC', facecolor='#089FFF')
+    axis.plot(spectrum['lambda_angstroms'], spectrum['trueemission_velocity_avg'], color='#1B2ACC',
+              label='True emission velocity [km/s]')
+    axis.legend(loc='best', handlelength=2,
+                frameon=False, numpoints=1, prop={'size': args.legendfontsize})
+
+    axis = axes[2]
+    axis.set_ylabel('Number of packets per bin')
+    spectrum.plot(x='lambda_angstroms', y='packetcount', ax=axis)
+
 
     axis.set_xlabel(r'Wavelength ($\AA$)')
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
     axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
 
-    axis.set_ylabel('Energy-weighted average velocity [km/s]')
-
-    filenameout = "plotspecradius.pdf"
+    filenameout = "plotspecstats.pdf"
     fig.savefig(filenameout, format='pdf')
     print(f'Saved {filenameout}')
     plt.close()
@@ -414,11 +482,10 @@ def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=No
 
     if from_packets:
         # find any other packets files in the same directory
-        packetsfiles_thismodel = glob.glob(os.path.join(modelpath, 'packets00_**.out'))
-        print(packetsfiles_thismodel)
+        packetsfiles_thismodel = glob.glob(os.path.join(modelpath, 'packets00_*.out'))
         spectrum = at.spectra.get_spectrum_from_packets(
             packetsfiles_thismodel, args.timemin, args.timemax, lambda_min=args.xmin, lambda_max=args.xmax)
-        make_spectrum_radius_plot(spectrum, args)
+        make_spectrum_stat_plot(spectrum, args)
     else:
         spectrum = at.spectra.get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
 
@@ -527,10 +594,10 @@ def make_plot(modelpaths, args):
 
     import scipy.signal
 
-    def filterfunc(flambda):
-        return scipy.signal.savgol_filter(flambda, 5, 3)
+    # def filterfunc(flambda):
+    #     return scipy.signal.savgol_filter(flambda, 5, 3)
 
-    # filterfunc = None
+    filterfunc = None
     if args.emissionabsorption:
         plotobjects, plotobjectlabels = make_emission_plot(modelpaths[0], axis, filterfunc, args)
     else:
