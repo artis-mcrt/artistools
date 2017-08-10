@@ -133,7 +133,8 @@ def read_estimators(modelpath, modeldata):
                     # print(f'Timestep {timestep} cell {modelgridindex}')
                     if (timestep, modelgridindex) in estimators and not estimators[(timestep, modelgridindex)]['emptycell']:
                         # print(f'WARNING: duplicate estimator data for timestep {timestep} cell {modelgridindex}. '
-                        #       f'Kept old (T_e {estimators[(timestep, modelgridindex)]["Te"]}), instead of new (T_e {float(row[7])})')
+                        #       f'Kept old (T_e {estimators[(timestep, modelgridindex)]["Te"]}), '
+                        #       f'instead of new (T_e {float(row[7])})')
                         skip_block = True
                     else:
                         skip_block = False
@@ -155,7 +156,8 @@ def read_estimators(modelpath, modeldata):
                     for index, token in list(enumerate(row))[1::2]:
                         estimators[(timestep, modelgridindex)][f'heating_{token}'] = float(row[index + 1])
                     estimators[(timestep, modelgridindex)]['gamma_dep'] = (
-                        estimators[(timestep, modelgridindex)]['heating_gamma'] / estimators[(timestep, modelgridindex)]['heating_gamma/gamma_dep'])
+                        estimators[(timestep, modelgridindex)]['heating_gamma'] /
+                        estimators[(timestep, modelgridindex)]['heating_gamma/gamma_dep'])
 
                 elif row[0] == 'cooling:' and not skip_block:
                     for index, token in list(enumerate(row))[1::2]:
@@ -271,16 +273,7 @@ def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estima
     axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel, color=dictcolors.get(variablename, None), **plotkwargs)
 
 
-def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, modeldata, abundancedata,
-                  args, **plotkwargs):
-
-    fig, axes = plt.subplots(len(series), 1, sharex=True, figsize=(6, 2.3 * len(series)),
-                             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
-    if len(series) == 1:
-        axes = [axes]
-    # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
-
-    axes[-1].set_xlabel(f'{xvariable}{get_units_string(xvariable)}')
+def get_xlist(xvariable, mgilist, estimators, timestep):
     if xvariable in ['cellid', 'modelgridindex']:
         xlist = mgilist
     else:
@@ -296,6 +289,41 @@ def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, m
             print(estimators[(timestep, modelgridindex)])
             sys.exit()
 
+    return xlist
+
+
+def plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata, abundancedata, estimators,
+                          **plotkwargs):
+    showlegend = False
+
+    for variablename in yvariables:
+        if not hasattr(variablename, 'lower'):  # if it's not a string, it's a list
+            showlegend = True
+            if variablename[0] == 'initabundances':
+                plot_init_abundances(axis, xlist, variablename[1], mgilist, modeldata, abundancedata)
+            else:
+                seriestype, ionlist = variablename
+                plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, estimators, **plotkwargs)
+        else:
+            showlegend = len(yvariables) > 1 or len(variablename) > 20
+            plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estimators, **plotkwargs)
+
+    if showlegend:
+        axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
+
+
+def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, modeldata, abundancedata,
+                  args, **plotkwargs):
+
+    fig, axes = plt.subplots(len(series), 1, sharex=True, figsize=(6, 2.3 * len(series)),
+                             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    if len(series) == 1:
+        axes = [axes]
+    # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
+
+    axes[-1].set_xlabel(f'{xvariable}{get_units_string(xvariable)}')
+    xlist = get_xlist(xvariable, mgilist, estimators, timestep)
+
     xmin = args.xmin if args.xmin > 0 else min(xlist)
     xmax = args.xmax if args.xmax > 0 else max(xlist)
 
@@ -303,24 +331,9 @@ def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, m
     xlist = np.insert(xlist, 0, 0.)
 
     for axis, yvariables in zip(axes, series):
-        showlegend = False
-
         axis.set_xlim(xmin=xmin, xmax=xmax)
-
-        for variablename in yvariables:
-            if not hasattr(variablename, 'lower'):  # if it's not a string, it's a list
-                showlegend = True
-                if variablename[0] == 'initabundances':
-                    plot_init_abundances(axis, xlist, variablename[1], mgilist, modeldata, abundancedata)
-                else:
-                    seriestype, ionlist = variablename
-                    plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, estimators, **plotkwargs)
-            else:
-                showlegend = len(yvariables) > 1 or len(variablename) > 20
-                plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estimators, **plotkwargs)
-
-        if showlegend:
-            axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
+        plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata, abundancedata,
+                              estimators, **plotkwargs)
 
     figure_title = f'{modelname}\nTimestep {timestep}'
     time_days = float(at.get_timestep_time('spec.out', timestep))
@@ -405,7 +418,7 @@ def addargs(parser):
     parser.add_argument('-xmax', type=int, default=-1,
                         help='Plot range: maximum x value')
 
-    parser.add_argument('-x', default='cellid',
+    parser.add_argument('-x', default='velocity',
                         help='Horizontal axis variable (cellid or velocity)')
 
     parser.add_argument('-o', action='store', dest='outputfile',
