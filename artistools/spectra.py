@@ -85,6 +85,7 @@ def get_spectrum(specfilename: str, timestepmin: int, timestepmax=-1, fnufilterf
 
     return dfspectrum
 
+
 def set_min_sum_max(array, xindex, e_rf, value):
     if value < array[0][xindex] or array[0][xindex] == 0:
         array[0][xindex] = value
@@ -434,7 +435,8 @@ def plot_reference_spectrum(filename, axis, xmin, xmax, normalised,
 
 def make_spectrum_stat_plot(spectrum, figure_title, args):
     nsubplots = 2
-    fig, axes = plt.subplots(nsubplots, 1, sharex=True, figsize=(8, 4 * nsubplots), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    fig, axes = plt.subplots(nsubplots, 1, sharex=True, figsize=(8, 4 * nsubplots),
+                             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     spectrum.query('@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax', inplace=True)
 
@@ -443,7 +445,10 @@ def make_spectrum_stat_plot(spectrum, figure_title, args):
     axis = axes[0]
     axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
     spectrum.eval('f_lambda_not_from_positron = f_lambda - f_lambda_originated_from_positron', inplace=True)
-    plotobjects = axis.stackplot(spectrum['lambda_angstroms'], [spectrum['f_lambda_originated_from_positron'], spectrum['f_lambda_not_from_positron']], linewidth=0)
+    plotobjects = axis.stackplot(
+        spectrum['lambda_angstroms'],
+        [spectrum['f_lambda_originated_from_positron'], spectrum['f_lambda_not_from_positron']], linewidth=0)
+
     plotobjectlabels = ['f_lambda_originated_from_positron', 'f_lambda_not_from_positron']
 
     # axis.plot(spectrum['lambda_angstroms'], spectrum['f_lambda'], color='black', linewidth=0.5)
@@ -478,7 +483,6 @@ def make_spectrum_stat_plot(spectrum, figure_title, args):
     # axis = axes[2]
     # axis.set_ylabel('Number of packets per bin')
     # spectrum.plot(x='lambda_angstroms', y='packetcount', ax=axis)
-
 
     axis.set_xlabel(r'Wavelength ($\AA$)')
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
