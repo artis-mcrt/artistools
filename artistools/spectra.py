@@ -284,32 +284,49 @@ def addargs(parser):
     parser.add_argument('modelpath', default=[], nargs='*',
                         help='Paths to ARTIS folders with spec.out or packets files'
                         ' (may include wildcards such as * and **)')
+
     parser.add_argument('--frompackets', default=False, action='store_true',
                         help='Read packets files directly instead of exspec results')
+
+    parser.add_argument('-maxpacketfiles', type=int, default=-1,
+                        help='Limit the number of packet files read')
+
     parser.add_argument('--emissionabsorption', default=False, action='store_true',
                         help='Show an emission/absorption plot')
+
     parser.add_argument('--nostack', default=False, action='store_true',
                         help="Don't stack contributions")
+
     parser.add_argument('-maxseriescount', type=int, default=9,
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')
+
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
+
     parser.add_argument('-timestep', '-ts', nargs='?',
                         help='First timestep or a range e.g. 45-65')
+
     parser.add_argument('-timemin', type=float,
                         help='Lower time in days to integrate spectrum')
+
     parser.add_argument('-timemax', type=float,
                         help='Upper time in days to integrate spectrum')
+
     parser.add_argument('-xmin', type=int, default=2500,
                         help='Plot range: minimum wavelength in Angstroms')
+
     parser.add_argument('-xmax', type=int, default=11000,
                         help='Plot range: maximum wavelength in Angstroms')
+
     parser.add_argument('--normalised', default=False, action='store_true',
                         help='Normalise the spectra to their peak values')
+
     parser.add_argument('-obsspec', action='append', dest='refspecfiles',
                         help='Also plot reference spectrum from this file')
+
     parser.add_argument('-legendfontsize', type=int, default=8,
                         help='Font size of legend text')
+
     parser.add_argument('-o', action='store', dest='outputfile',
                         help='path/filename for PDF file')
 
@@ -415,48 +432,52 @@ def plot_reference_spectrum(filename, axis, xmin, xmax, normalised,
     return mpatches.Patch(color=lineplot.get_lines()[0].get_color()), plotkwargs['label']
 
 
-def make_spectrum_stat_plot(spectrum, args):
-    fig, axes = plt.subplots(4, 1, sharex=True, figsize=(8, 16), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+def make_spectrum_stat_plot(spectrum, figure_title, args):
+    nsubplots = 2
+    fig, axes = plt.subplots(nsubplots, 1, sharex=True, figsize=(8, 4 * nsubplots), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     spectrum.query('@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax', inplace=True)
+
+    axes[0].set_title(figure_title, fontsize=11)
 
     axis = axes[0]
     axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
     spectrum.eval('f_lambda_not_from_positron = f_lambda - f_lambda_originated_from_positron', inplace=True)
     plotobjects = axis.stackplot(spectrum['lambda_angstroms'], [spectrum['f_lambda_originated_from_positron'], spectrum['f_lambda_not_from_positron']], linewidth=0)
     plotobjectlabels = ['f_lambda_originated_from_positron', 'f_lambda_not_from_positron']
+
+    # axis.plot(spectrum['lambda_angstroms'], spectrum['f_lambda'], color='black', linewidth=0.5)
+
     axis.legend(plotobjects, plotobjectlabels, loc='best', handlelength=2,
                 frameon=False, numpoints=1, prop={'size': args.legendfontsize})
 
     axis = axes[1]
-    axis.set_ylabel('Energy-weighted average velocity [km/s]')
-    # axis.plot(spectrum['lambda_angstroms'], spectrum['emission_velocity_min'], color='#FF9848')
-    # axis.plot(spectrum['lambda_angstroms'], spectrum['emission_velocity_max'], color='#FF9848')
-    axis.fill_between(spectrum['lambda_angstroms'],
-                      spectrum['emission_velocity_min'],
-                      spectrum['emission_velocity_max'],
-                      alpha=0.5, edgecolor='#CC4F1B', facecolor='#FF9848')
-    axis.plot(spectrum['lambda_angstroms'], spectrum['emission_velocity_avg'], color='#CC4F1B',
-              label='True emission velocity [km/s]')
-    axis.legend(loc='best', handlelength=2,
-                frameon=False, numpoints=1, prop={'size': args.legendfontsize})
-
-    axis = axes[1]
-    axis.set_ylabel('Energy-weighted average velocity [km/s]')
     # axis.plot(spectrum['lambda_angstroms'], spectrum['trueemission_velocity_min'], color='#089FFF')
     # axis.plot(spectrum['lambda_angstroms'], spectrum['trueemission_velocity_max'], color='#089FFF')
     axis.fill_between(spectrum['lambda_angstroms'],
                       spectrum['trueemission_velocity_min'],
                       spectrum['trueemission_velocity_max'],
-                      alpha=0.5, edgecolor='#1B2ACC', facecolor='#089FFF')
-    axis.plot(spectrum['lambda_angstroms'], spectrum['trueemission_velocity_avg'], color='#1B2ACC',
-              label='True emission velocity [km/s]')
-    axis.legend(loc='best', handlelength=2,
-                frameon=False, numpoints=1, prop={'size': args.legendfontsize})
+                      alpha=0.5, facecolor='#089FFF')
 
-    axis = axes[2]
-    axis.set_ylabel('Number of packets per bin')
-    spectrum.plot(x='lambda_angstroms', y='packetcount', ax=axis)
+    # axis.plot(spectrum['lambda_angstroms'], spectrum['emission_velocity_min'], color='#FF9848')
+    # axis.plot(spectrum['lambda_angstroms'], spectrum['emission_velocity_max'], color='#FF9848')
+    axis.fill_between(spectrum['lambda_angstroms'],
+                      spectrum['emission_velocity_min'],
+                      spectrum['emission_velocity_max'],
+                      alpha=0.5, facecolor='#FF9848')
+
+    axis.plot(spectrum['lambda_angstroms'], spectrum['trueemission_velocity_avg'], color='#1B2ACC',
+              label='Average true emission velocity [km/s]')
+
+    axis.plot(spectrum['lambda_angstroms'], spectrum['emission_velocity_avg'], color='#CC4F1B',
+              label='Average emission velocity [km/s]')
+
+    axis.set_ylabel('Velocity [km/s]')
+    axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': args.legendfontsize})
+
+    # axis = axes[2]
+    # axis.set_ylabel('Number of packets per bin')
+    # spectrum.plot(x='lambda_angstroms', y='packetcount', ax=axis)
 
 
     axis.set_xlabel(r'Wavelength ($\AA$)')
@@ -483,9 +504,12 @@ def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=No
     if from_packets:
         # find any other packets files in the same directory
         packetsfiles_thismodel = glob.glob(os.path.join(modelpath, 'packets00_*.out'))
+        if args.maxpacketfiles >= 0 and len(packetsfiles_thismodel) > args.maxpacketfiles:
+            print(f'Using on the first {args.maxpacketfiles} packet files out of {len(packetsfiles_thismodel)}')
+            packetsfiles_thismodel = packetsfiles_thismodel[:args.maxpacketfiles]
         spectrum = at.spectra.get_spectrum_from_packets(
             packetsfiles_thismodel, args.timemin, args.timemax, lambda_min=args.xmin, lambda_max=args.xmax)
-        make_spectrum_stat_plot(spectrum, args)
+        make_spectrum_stat_plot(spectrum, linelabel, args)
     else:
         spectrum = at.spectra.get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
 
