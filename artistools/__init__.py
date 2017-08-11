@@ -10,8 +10,6 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 
-from artistools import spectra
-
 PYDIR = os.path.dirname(os.path.abspath(__file__))
 
 elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, 'data', 'elements.csv'))['symbol'].values)

@@ -125,7 +125,7 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
                         inplace=True)
 
         print(f"{len(dfpackets)} escaped r-packets with matching nu and arrival time")
-        for index, packet in dfpackets.iterrows():
+        for _, packet in dfpackets.iterrows():
             lambda_rf = c_ang_s / packet.nu_rf
             # pos_dot_dir = packet.posx * packet.dirx + packet.posy * packet.diry + packet.posz * packet.dirz
             # t_arrive = packet['escape_time'] - (pos_dot_dir / c_cgs)
