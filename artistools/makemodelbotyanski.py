@@ -7,14 +7,14 @@ from astropy import units as u
 
 
 def min_dist(listin, number):
-    min_dist = -1
+    min_dist_found = -1
 
     for x in listin:
         dist = abs(x - number)
-        if dist < min_dist or min_dist < 0:
-            min_dist = dist
+        if dist < min_dist_found or min_dist_found < 0:
+            min_dist_found = dist
 
-    return min_dist
+    return min_dist_found
 
 
 def main():
