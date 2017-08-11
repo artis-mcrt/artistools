@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Artistools - spectra related functions."""
 import argparse
 import glob
 import itertools
@@ -55,9 +56,7 @@ def stackspectra(spectra_and_factors):
 
 @contract
 def get_spectrum(specfilename: str, timestepmin: int, timestepmax=-1, fnufilterfunc=None):
-    """
-        Return a pandas DataFrame containing an ARTIS emergent spectrum
-    """
+    """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax < 0:
         timestepmax = timestepmin
 
@@ -86,17 +85,17 @@ def get_spectrum(specfilename: str, timestepmin: int, timestepmax=-1, fnufilterf
     return dfspectrum
 
 
-def set_min_sum_max(array, xindex, e_rf, value):
-    if value < array[0][xindex] or array[0][xindex] == 0:
-        array[0][xindex] = value
-
-    array[1][xindex] += e_rf * value
-
-    if value > array[2][xindex] or array[2][xindex] == 0:
-        array[2][xindex] = value
-
-
 def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_min, lambda_max, delta_lambda=30):
+    def set_min_sum_max(array, xindex, e_rf, value):
+        if value < array[0][xindex] or array[0][xindex] == 0:
+            array[0][xindex] = value
+
+        array[1][xindex] += e_rf * value
+
+        if value > array[2][xindex] or array[2][xindex] == 0:
+            array[2][xindex] = value
+
+
     import artistools.packets
     array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
     array_energysum = np.zeros_like(array_lambda, dtype=np.float)  # total packet energy sum of each bin
@@ -281,100 +280,9 @@ def print_integrated_flux(arr_f_lambda, arr_lambda_angstroms):
           f'{arr_lambda_angstroms.max():.1f} A): {integrated_flux:.3e}, (L={luminosity.to("Lsun"):.3e})')
 
 
-def addargs(parser):
-    parser.add_argument('modelpath', default=[], nargs='*',
-                        help='Paths to ARTIS folders with spec.out or packets files'
-                        ' (may include wildcards such as * and **)')
-
-    parser.add_argument('--frompackets', default=False, action='store_true',
-                        help='Read packets files directly instead of exspec results')
-
-    parser.add_argument('-maxpacketfiles', type=int, default=-1,
-                        help='Limit the number of packet files read')
-
-    parser.add_argument('--emissionabsorption', default=False, action='store_true',
-                        help='Show an emission/absorption plot')
-
-    parser.add_argument('--nostack', default=False, action='store_true',
-                        help="Don't stack contributions")
-
-    parser.add_argument('-maxseriescount', type=int, default=9,
-                        help='Maximum number of plot series (ions/processes) for emission/absorption plot')
-
-    parser.add_argument('-listtimesteps', action='store_true', default=False,
-                        help='Show the times at each timestep')
-
-    parser.add_argument('-timestep', '-ts', nargs='?',
-                        help='First timestep or a range e.g. 45-65')
-
-    parser.add_argument('-timemin', type=float,
-                        help='Lower time in days to integrate spectrum')
-
-    parser.add_argument('-timemax', type=float,
-                        help='Upper time in days to integrate spectrum')
-
-    parser.add_argument('-xmin', type=int, default=2500,
-                        help='Plot range: minimum wavelength in Angstroms')
-
-    parser.add_argument('-xmax', type=int, default=11000,
-                        help='Plot range: maximum wavelength in Angstroms')
-
-    parser.add_argument('--normalised', default=False, action='store_true',
-                        help='Normalise the spectra to their peak values')
-
-    parser.add_argument('-obsspec', action='append', dest='refspecfiles',
-                        help='Also plot reference spectrum from this file')
-
-    parser.add_argument('-legendfontsize', type=int, default=8,
-                        help='Font size of legend text')
-
-    parser.add_argument('-o', action='store', dest='outputfile',
-                        help='path/filename for PDF file')
-
-
-def main(argsraw=None):
-    warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
-    """
-        Plot ARTIS spectra and (optionally) reference spectra
-    """
-
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot ARTIS model spectra by finding spec.out files '
-                    'in the current directory or subdirectories.')
-    addargs(parser)
-    args = parser.parse_args(argsraw)
-
-    if not args.modelpath:
-        args.modelpath = ['.', '*']
-
-    # combined the results of applying wildcards on each input
-    modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in args.modelpath if os.path.isdir(x)]))
-
-    if args.listtimesteps:
-        at.showtimesteptimes(os.path.join(modelpaths[0], 'spec.out'))
-    else:
-        if args.emissionabsorption:
-            if len(modelpaths) > 1:
-                print("ERROR: emission/absorption plot can only take one input model")
-                sys.exit()
-            defaultoutputfile = "plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf"
-        else:
-            defaultoutputfile = "plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf"
-
-        if not args.outputfile:
-            args.outputfile = defaultoutputfile
-        elif os.path.isdir(args.outputfile):
-            args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
-
-        make_plot(modelpaths, args)
-
-
 def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=None, scale_to_peak=None,
                            **plotkwargs):
-    """
-        Plot reference spectra listed in args.refspecfiles
-    """
+    """Plot reference spectra listed in args.refspecfiles."""
     if args.refspecfiles is not None:
         colorlist = ['black', '0.4']
         for index, filename in enumerate(args.refspecfiles):
@@ -528,9 +436,7 @@ def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=No
 
 
 def make_spectrum_plot(modelpaths, axis, filterfunc, args):
-    """
-        Set up a matplotlib figure and plot observational and ARTIS spectra
-    """
+    """Set up a matplotlib figure and plot observational and ARTIS spectra."""
     plot_reference_spectra(axis, [], [], args, flambdafilterfunc=filterfunc)
 
     for index, modelpath in enumerate(modelpaths):
@@ -622,10 +528,10 @@ def make_plot(modelpaths, args):
 
     import scipy.signal
 
-    # def filterfunc(flambda):
-    #     return scipy.signal.savgol_filter(flambda, 5, 3)
+    def filterfunc(flambda):
+        return scipy.signal.savgol_filter(flambda, 5, 3)
 
-    filterfunc = None
+    # filterfunc = None
     if args.emissionabsorption:
         plotobjects, plotobjectlabels = make_emission_plot(modelpaths[0], axis, filterfunc, args)
     else:
@@ -650,6 +556,95 @@ def make_plot(modelpaths, args):
     # plt.show()
     print(f'Saved {filenameout}')
     plt.close()
+
+
+def addargs(parser):
+    parser.add_argument('modelpath', default=[], nargs='*',
+                        help='Paths to ARTIS folders with spec.out or packets files'
+                        ' (may include wildcards such as * and **)')
+
+    parser.add_argument('--frompackets', default=False, action='store_true',
+                        help='Read packets files directly instead of exspec results')
+
+    parser.add_argument('-maxpacketfiles', type=int, default=-1,
+                        help='Limit the number of packet files read')
+
+    parser.add_argument('--emissionabsorption', default=False, action='store_true',
+                        help='Show an emission/absorption plot')
+
+    parser.add_argument('--nostack', default=False, action='store_true',
+                        help="Don't stack contributions")
+
+    parser.add_argument('-maxseriescount', type=int, default=9,
+                        help='Maximum number of plot series (ions/processes) for emission/absorption plot')
+
+    parser.add_argument('-listtimesteps', action='store_true', default=False,
+                        help='Show the times at each timestep')
+
+    parser.add_argument('-timestep', '-ts', nargs='?',
+                        help='First timestep or a range e.g. 45-65')
+
+    parser.add_argument('-timemin', type=float,
+                        help='Lower time in days to integrate spectrum')
+
+    parser.add_argument('-timemax', type=float,
+                        help='Upper time in days to integrate spectrum')
+
+    parser.add_argument('-xmin', type=int, default=2500,
+                        help='Plot range: minimum wavelength in Angstroms')
+
+    parser.add_argument('-xmax', type=int, default=11000,
+                        help='Plot range: maximum wavelength in Angstroms')
+
+    parser.add_argument('--normalised', default=False, action='store_true',
+                        help='Normalise the spectra to their peak values')
+
+    parser.add_argument('-obsspec', action='append', dest='refspecfiles',
+                        help='Also plot reference spectrum from this file')
+
+    parser.add_argument('-legendfontsize', type=int, default=8,
+                        help='Font size of legend text')
+
+    parser.add_argument('-o', action='store', dest='outputfile',
+                        help='path/filename for PDF file')
+
+
+def main(argsraw=None):
+    warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
+    """
+        Plot ARTIS spectra and (optionally) reference spectra
+    """
+
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description='Plot ARTIS model spectra by finding spec.out files '
+                    'in the current directory or subdirectories.')
+    addargs(parser)
+    args = parser.parse_args(argsraw)
+
+    if not args.modelpath:
+        args.modelpath = ['.', '*']
+
+    # combined the results of applying wildcards on each input
+    modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in args.modelpath if os.path.isdir(x)]))
+
+    if args.listtimesteps:
+        at.showtimesteptimes(os.path.join(modelpaths[0], 'spec.out'))
+    else:
+        if args.emissionabsorption:
+            if len(modelpaths) > 1:
+                print("ERROR: emission/absorption plot can only take one input model")
+                sys.exit()
+            defaultoutputfile = "plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf"
+        else:
+            defaultoutputfile = "plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf"
+
+        if not args.outputfile:
+            args.outputfile = defaultoutputfile
+        elif os.path.isdir(args.outputfile):
+            args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+
+        make_plot(modelpaths, args)
 
 
 if __name__ == "__main__":
