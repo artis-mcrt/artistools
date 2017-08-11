@@ -267,9 +267,11 @@ def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estima
     if math.log10(max(ylist) / min(ylist)) > 2:
         axis.set_yscale('log')
 
-    dictcolors = {'Te': 'red',
-                  'heating_gamma': 'blue',
-                  'cooling_adiabatic': 'blue'}
+    dictcolors = {
+        'Te': 'red',
+        # 'heating_gamma': 'blue',
+        # 'cooling_adiabatic': 'blue'
+    }
     axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel, color=dictcolors.get(variablename, None), **plotkwargs)
 
 
@@ -324,11 +326,12 @@ def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, m
     axes[-1].set_xlabel(f'{xvariable}{get_units_string(xvariable)}')
     xlist = get_xlist(xvariable, mgilist, estimators, timestep)
 
+    xlist = np.insert(xlist, 0, 0.)
+
     xmin = args.xmin if args.xmin > 0 else min(xlist)
     xmax = args.xmax if args.xmax > 0 else max(xlist)
 
-    xlist, mgilist = zip(*[(x, y) for (x, y) in zip(xlist, mgilist) if x >= xmin and x <= xmax])
-    xlist = np.insert(xlist, 0, 0.)
+    # xlist, mgilist = zip(*[(x, y) for (x, y) in zip(xlist, mgilist) if x >= xmin and x <= xmax])
 
     for axis, yvariables in zip(axes, series):
         axis.set_xlim(xmin=xmin, xmax=xmax)
@@ -442,6 +445,9 @@ def main(argsraw=None):
 
     estimators = read_estimators(modelpath, modeldata)
 
+    if not estimators:
+        return -1
+
     serieslist = [
         ['heating_gamma', 'heating_coll', 'heating_bf', 'heating_ff'],
         ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff'],
@@ -460,7 +466,8 @@ def main(argsraw=None):
         if args.timedays:
             if '-' in args.timedays:
                 timestepmin, timestepmax = [
-                    at.get_closest_timestep(os.path.join(modelpath, "spec.out"), float(timedays)) for timedays in args.timedays.split('-')]
+                    at.get_closest_timestep(os.path.join(modelpath, "spec.out"), float(timedays))
+                    for timedays in args.timedays.split('-')]
             else:
                 timestep = at.get_closest_timestep(os.path.join(modelpath, "spec.out"), args.timedays)
                 timestepmin, timestepmax = timestep, timestep

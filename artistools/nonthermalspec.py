@@ -39,7 +39,6 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
     """
         Draw the bin edges, fitted field, and emergent spectrum
     """
-    import numpy as np
     fig, axis = plt.subplots(1, 1, sharex=True, figsize=(6, 4),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
