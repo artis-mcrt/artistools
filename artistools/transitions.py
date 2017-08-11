@@ -6,7 +6,6 @@ import os
 import re
 from collections import namedtuple
 
-import matplotlib
 import matplotlib.pyplot as plt
 # import numexpr as ne
 import numpy as np
@@ -15,7 +14,7 @@ from astropy import constants as const
 # from astropy import units as u
 
 import artistools as at
-import artistools.estimators
+from artistools import estimators
 
 K_B = const.k_B.to('eV / K').value
 c = const.c.to('km / s').value
@@ -78,7 +77,7 @@ def make_plot(xvalues, yvalues, axes, temperature_list, vardict, ions, ionpopdic
     for seriesindex, temperature in enumerate(temperature_list):
         T_exc = eval(temperature, vardict)
         serieslabel = 'NLTE' if T_exc < 0 else f'LTE {temperature} = {T_exc:.0f} K'
-        for ion_index, axis in enumerate(axes):
+        for ion_index, axis in enumerate(axes[:-1]):
             # an ion subplot
             yvalues_combined[seriesindex] += yvalues[seriesindex][ion_index]
 
