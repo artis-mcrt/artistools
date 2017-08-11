@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
+
 import math
 
 import numpy as np
-# from astropy import constants as const
 from astropy import units as u
 
 
-def min_dist(list, number):
+def min_dist(listin, number):
     min_dist = -1
 
-    for x in list:
+    for x in listin:
         dist = abs(x - number)
         if dist < min_dist or min_dist < 0:
             min_dist = dist
@@ -55,8 +55,8 @@ def main():
             v_inner = 0.  # velocity at inner boundary of cell
             m_tot = 0.
             for index, v_outer in enumerate(vlist, 1):  # km / s
-                rho = rho_0 * (0.5 * (v_inner + v_outer) / v_transition) ** -(delta if v <= v_transition else n)
-                if v <= v_ni56:
+                rho = rho_0 * (0.5 * (v_inner + v_outer) / v_transition) ** -(delta if v_outer <= v_transition else n)
+                if v_outer <= v_ni56:
                     # Ni56-rich zone
                     radioabundances = "1.0   0.95  0.0   0.0   0.0"
                     abundances = "0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.025   0.0   0.975   0.0   0.0"
