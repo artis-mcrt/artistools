@@ -12,11 +12,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from astropy import constants as const
-from astropy import units as u
+# from astropy import units as u
 
 import artistools as at
 import artistools.estimators
-import artistools.spectra
 
 K_B = const.k_B.to('eV / K').value
 c = const.c.to('km / s').value
@@ -48,6 +47,8 @@ def get_nltepops(modelpath, timestep, modelgridindex):
             if not dfpop.empty:
                 return dfpop
 
+    return pd.DataFrame()
+
 
 def generate_ion_spectrum(transitions, xvalues, popcolumn, plot_resolution, args):
     yvalues = np.zeros(len(xvalues))
@@ -71,13 +72,13 @@ def generate_ion_spectrum(transitions, xvalues, popcolumn, plot_resolution, args
     return yvalues
 
 
-def make_plot(xvalues, yvalues, axes, temperature_list, ions, ionpopdict, xmin, xmax):
+def make_plot(xvalues, yvalues, axes, temperature_list, vardict, ions, ionpopdict, xmin, xmax):
     peak_y_value = -1
     yvalues_combined = np.zeros((len(temperature_list), len(xvalues)))
-    for seriesindex, T_exc in enumerate(temperature_list):
-        serieslabel = 'NLTE' if T_exc < 0 else f'LTE {T_exc} K'
-        for ion_index, (ion, axis) in enumerate(zip(ions, axes)):
-            ion = ions[ion_index]
+    for seriesindex, temperature in enumerate(temperature_list):
+        T_exc = eval(temperature, vardict)
+        serieslabel = 'NLTE' if T_exc < 0 else f'LTE {temperature} = {T_exc:.0f} K'
+        for ion_index, axis in enumerate(axes):
             # an ion subplot
             yvalues_combined[seriesindex] += yvalues[seriesindex][ion_index]
 
@@ -105,7 +106,7 @@ def make_plot(xvalues, yvalues, axes, temperature_list, ions, ionpopdict, xmin, 
         axis.set_xlim(xmin=xmin, xmax=xmax)
         axis.set_ylabel(r'$\propto$ F$_\lambda$')
 
-    axes[-1].legend(loc='upper right', handlelength=1, frameon=False, numpoints=1, prop={'size': 9})
+    axes[-1].legend(loc='upper right', handlelength=1, frameon=False, numpoints=1, prop={'size': 8})
 
 
 def addargs(parser, defaultoutputfile):
@@ -145,7 +146,7 @@ def addargs(parser, defaultoutputfile):
 
 
 def main(argsraw=None):
-    defaultoutputfile = 'plottransitions_cell{cell:03d}_{timestep:03d}.pdf'
+    defaultoutputfile = 'plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot estimated spectra from bound-bound transitions.')
@@ -156,6 +157,7 @@ def main(argsraw=None):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     modelpath = '.'
+    modelgridindex = args.modelgridindex
 
     if args.timedays:
         timestep = at.get_closest_timestep(os.path.join(modelpath, "spec.out"), args.timedays)
@@ -163,7 +165,12 @@ def main(argsraw=None):
         timestep = args.timestep
 
     modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
-    estimators = at.estimators.read_estimators(modelpath, modeldata)
+    estimators_all = at.estimators.read_estimators(modelpath, modeldata)
+
+    estimators = estimators_all[(timestep, modelgridindex)]
+    if estimators['emptycell']:
+        print(f'ERROR: cell {modelgridindex} is marked as empty')
+        return -1
 
     # also calculate wavelengths outside the plot range to include lines whose
     # edges pass through the plot range
@@ -182,7 +189,7 @@ def main(argsraw=None):
     ]
 
     fig, axes = plt.subplots(
-        len(ionlist) + 1, 1, sharex=True, figsize=(6, 2 * (len(ionlist) + 1)),
+        len(ionlist) + 1, 1, sharex=True, sharey=True, figsize=(6, 2 * (len(ionlist) + 1)),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     # resolution of the plot in Angstroms
@@ -194,19 +201,26 @@ def main(argsraw=None):
         os.path.join(modelpath, 'adata.txt'), os.path.join(modelpath, 'transitiondata.txt'),
         iontuples)
 
-    dfnltepops = get_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=timestep)
+    dfnltepops = get_nltepops(modelpath, modelgridindex=modelgridindex, timestep=timestep)
+
+    if dfnltepops.empty:
+        print(f'ERROR: no NLTE populations for cell {modelgridindex} at timestep {timestep}')
+        return -1
 
     # ionpopdict = {(ion.Z, ion.ion_stage): ion.ion_pop for ion in ionlist}
 
     ionpopdict = {(ion.Z, ion.ion_stage): dfnltepops.query(
         'Z==@ion.Z and ion_stage==@ion.ion_stage')['n_NLTE'].sum() for ion in ionlist}
 
-    modelname = at.get_model_name(modelpath)
-    velocity = modeldata['velocity'][args.modelgridindex]
+    # ionpopdict[(28, 2)] = 0.5 * ionpopdict[(26, 2)]
 
-    Te = estimators[(timestep, args.modelgridindex)]['Te']
+    modelname = at.get_model_name(modelpath)
+    velocity = modeldata['velocity'][modelgridindex]
+
+    Te = estimators['Te']
+    TR = estimators['TR']
     figure_title = f'{modelname}\n'
-    figure_title += f'Cell {args.modelgridindex} (v={velocity} km/s) with Te = {Te:.1f} K at timestep {timestep}'
+    figure_title += f'Cell {modelgridindex} (v={velocity} km/s) with Te = {Te:.1f} K at timestep {timestep}'
     time_days = float(at.get_timestep_time(modelpath, timestep))
     if time_days != -1:
         figure_title += f' ({time_days:.1f}d)'
@@ -216,7 +230,9 @@ def main(argsraw=None):
     hc = (const.h * const.c).to('eV Angstrom').value
 
     # -1 means use NLTE populations
-    temperature_list = [0.5 * Te, Te, 2 * Te, -1]
+    temperature_list = ['Te', 'TR', '-1']
+    temperature_list = ['-1']
+    vardict = {'Te': Te, 'TR': TR}
 
     xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
     yvalues = np.zeros((len(temperature_list) + 1, len(ionlist), len(xvalues)))
@@ -243,7 +259,7 @@ def main(argsraw=None):
             dftransitions.eval('lower_energy_ev = @ion.levels.loc[lower_levelindex].energy_ev.values', inplace=True)
             dftransitions.eval('lambda_angstroms = @hc / (upper_energy_ev - lower_energy_ev)', inplace=True)
 
-            dftransitions.query('lambda_angstroms >= @args.xmin & lambda_angstroms <= @args.xmax', inplace=True)
+            dftransitions.query('lambda_angstroms >= @plot_xmin_wide & lambda_angstroms <= @plot_xmax_wide', inplace=True)
 
             # dftransitions.sort_values(by='lambda_angstroms', inplace=True)
 
@@ -260,13 +276,16 @@ def main(argsraw=None):
 
             dftransitions.eval(f'flux_factor = (upper_energy_ev - lower_energy_ev) * A', inplace=True)
 
-            for seriesindex, T_exc in enumerate(temperature_list):
+            for seriesindex, temperature in enumerate(temperature_list):
+                T_exc = eval(temperature, vardict)
                 if T_exc < 0:
                     popcolumnname = 'upper_pop_nlte'
+                    dftransitions.eval(f'flux_factor_nlte = flux_factor * {popcolumnname}', inplace=True)
+                    print(dftransitions.nlargest(5, 'flux_factor_nlte'))
                 else:
                     ltepartfunc = ion.levels.eval('g * exp(-energy_ev / @K_B / @T_exc)').sum()
                     scalefactor = ionpopdict[ionid] / ltepartfunc
-                    popcolumnname = f'upper_lte_pop_{T_exc:.0f}'
+                    popcolumnname = f'upper_pop_lte_{T_exc:.0f}K'
                     dftransitions.eval(
                         f'{popcolumnname} = @scalefactor * upper_statweight * exp(-upper_energy_ev / @K_B / @T_exc)',
                         inplace=True)
@@ -274,11 +293,9 @@ def main(argsraw=None):
                 yvalues[seriesindex][ionindex] = generate_ion_spectrum(dftransitions, xvalues,
                                                                        popcolumnname, plot_resolution, args)
 
-            print(dftransitions.nlargest(5, 'flux_factor'))
+    make_plot(xvalues, yvalues, axes, temperature_list, vardict, ionlist, ionpopdict, args.xmin, args.xmax)
 
-    make_plot(xvalues, yvalues, axes, temperature_list, ionlist, ionpopdict, args.xmin, args.xmax)
-
-    outputfilename = args.outputfile.format(cell=args.modelgridindex, timestep=timestep)
+    outputfilename = args.outputfile.format(cell=modelgridindex, timestep=timestep, time_days=time_days)
     print(f"Saving '{outputfilename}'")
     fig.savefig(outputfilename, format='pdf')
     plt.close()

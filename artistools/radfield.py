@@ -23,7 +23,7 @@ def read_files(radfield_files, modelgridindex=-1):
     if not radfield_files:
         print("No radfield files")
     else:
-        for index, radfield_file in enumerate(radfield_files):
+        for _, radfield_file in enumerate(radfield_files):
             filerank = int(re.search('[0-9]+', os.path.basename(radfield_file)).group(0))
 
             if filerank > modelgridindex and modelgridindex >= 0:
