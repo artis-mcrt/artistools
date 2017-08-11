@@ -16,13 +16,6 @@ from astropy import constants as const
 import artistools as at
 from artistools import estimators
 
-K_B = const.k_B.to('eV / K').value
-c = const.c.to('km / s').value
-
-PYDIR = os.path.dirname(os.path.abspath(__file__))
-
-SPECTRA_DIR = os.path.join(PYDIR, 'data', 'refspectra')
-
 
 def get_nltepops(modelpath, timestep, modelgridindex):
     nlte_files = (
@@ -173,8 +166,8 @@ def main(argsraw=None):
 
     # also calculate wavelengths outside the plot range to include lines whose
     # edges pass through the plot range
-    plot_xmin_wide = args.xmin * (1 - args.gaussian_window * args.sigma_v / c)
-    plot_xmax_wide = args.xmax * (1 + args.gaussian_window * args.sigma_v / c)
+    plot_xmin_wide = args.xmin * (1 - args.gaussian_window * args.sigma_v / const.c.to('km / s').value)
+    plot_xmax_wide = args.xmax * (1 + args.gaussian_window * args.sigma_v / const.c.to('km / s').value)
 
     iontuple = namedtuple('ion', 'Z ion_stage ion_pop')
 
@@ -282,6 +275,7 @@ def main(argsraw=None):
                     dftransitions.eval(f'flux_factor_nlte = flux_factor * {popcolumnname}', inplace=True)
                     print(dftransitions.nlargest(5, 'flux_factor_nlte'))
                 else:
+                    K_B = const.k_B.to('eV / K').value
                     ltepartfunc = ion.levels.eval('g * exp(-energy_ev / @K_B / @T_exc)').sum()
                     scalefactor = ionpopdict[ionid] / ltepartfunc
                     popcolumnname = f'upper_pop_lte_{T_exc:.0f}K'
