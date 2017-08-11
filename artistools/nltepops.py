@@ -43,7 +43,8 @@ def get_nlte_populations(all_levels, nltefilename, modelgridindex, timestep, ato
                 'timestep==@timestep and Z==@atomic_number and ion_stage==@ion_stage').level.max()
             dfpop.loc[index, 'level'] = levelnumber + 2
             parity = 0
-            print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a superlevel at level {levelnumber}')
+            print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} '
+                  f'has a superlevel at level {levelnumber}')
         else:
             for _, ion_data in all_levels.iterrows():
                 if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
@@ -269,7 +270,8 @@ def main(argsraw=None):
             except ValueError:
                 try:
                     elsymbol = el_in
-                    atomic_number = next(Z for Z, elsymb in enumerate(at.elsymbols) if elsymb.lower() == elsymbol.lower())
+                    atomic_number = next(
+                        Z for Z, elsymb in enumerate(at.elsymbols) if elsymb.lower() == elsymbol.lower())
                 except StopIteration:
                     print(f"Could not find element '{elsymbol}'")
                     continue
@@ -278,19 +280,19 @@ def main(argsraw=None):
 
             print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
                   f'timestep {timestep} element {elsymbol}')
-            dfpop = read_files(args.modelpath, adata, atomic_number, T_e, T_R, timestep, args.modelgridindex, args.oldformat)
+            dfpop = read_files(args.modelpath, adata, atomic_number, T_e, T_R,
+                               timestep, args.modelgridindex, args.oldformat)
 
             if dfpop.empty:
-                print(f'No data for modelgrid cell {args.modelgridindex} timestep {timestep}')
+                print(f'No NLTE population data for modelgrid cell {args.modelgridindex} timestep {timestep}')
             else:
                 make_plot(modeldata, estimators, dfpop, atomic_number, T_e, T_R, timestep, args)
 
 
 def make_plot(modeldata, estimators, dfpop, atomic_number, T_e, T_R, timestep, args):
-    top_ion = -1 if args.oldformat else -2  # skip top ion, which is probably ground state only
     # top_ion = 9999
     max_ion_stage = dfpop.ion_stage.max()
-    if len(dfpop.query('ion_stage == @max_ion_stage') == 1):
+    if len(dfpop.query('ion_stage == @max_ion_stage') == 1):  # single-level ion, so skip it
         max_ion_stage -= 1
 
     ion_stage_list = sorted([i for i in dfpop.ion_stage.unique() if i <= max_ion_stage])
@@ -341,6 +343,7 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, T_e, T_R, timestep, a
         axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
 
     for axis in axes:
+        axis.set_xlim(xmin=-1)
         # axis.set_xlim(xmin=270,xmax=300)
         # axis.set_ylim(ymin=-0.1,ymax=1.3)
         axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
