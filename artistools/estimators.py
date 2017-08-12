@@ -440,7 +440,7 @@ def main(argsraw=None):
     modelpath = "."
 
     modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
-    abundancedata = at.get_initialabundances1d('abundances.txt')
+    abundancedata = at.get_initialabundances('abundances.txt')
     modelname = at.get_model_name(modelpath)
 
     estimators = read_estimators(modelpath, modeldata)
