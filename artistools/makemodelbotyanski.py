@@ -59,7 +59,7 @@ def main():
 
     v_inner = 0.  # velocity at inner boundary of cell
     m_tot = 0.
-    for index, v_outer in enumerate(vlist):  # km / s
+    for cellid, v_outer in enumerate(vlist):  # km / s
         rho = rho_0 * (0.5 * (v_inner + v_outer) / v_transition) ** -(delta if v_outer <= v_transition else n)
         abundances = [0. for _ in range(31)]
         if v_outer <= v_ni56:
@@ -74,10 +74,10 @@ def main():
             abundances[16] = 0.29
             abundances[20] = 0.01
 
-        dfmodel.loc[index] = [index + 1, v_outer, math.log10(rho), *radioabundances]
-        dfabundances.loc[index] = [index + 1, *abundances[1:31]]
-        r_inner = (v_inner * u.km / u.s * t200 * 200 * u.day).to('cm').value
-        r_outer = (v_outer * u.km / u.s * t200 * 200 * u.day).to('cm').value
+        dfmodel.loc[cellid] = [cellid + 1, v_outer, math.log10(rho), *radioabundances]
+        dfabundances.loc[cellid] = [cellid + 1, *abundances[1:31]]
+        r_inner, r_outer = [(v * u.km / u.s * t200 * 200 * u.day).to('cm').value for v in [v_inner, v_outer]]
+
         vol_shell = 4 * math.pi / 3 * (r_outer ** 3 - r_inner ** 3)
         m_shell = rho * vol_shell / u.solMass.to('g')
         m_tot += m_shell
