@@ -405,6 +405,9 @@ def make_spectrum_stat_plot(spectrum, figure_title, args):
 
 def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=None, **plotkwargs):
     specfilename = os.path.join(modelpath, 'spec.out')
+    if not os.path.isfile(specfilename):
+        print(f'No spec.out file found at {specfilename}')
+        return
 
     (modelname, timestepmin, timestepmax,
      args.timemin, args.timemax) = at.get_model_name_times(
