@@ -14,7 +14,7 @@ from astropy import constants as const
 # from astropy import units as u
 
 import artistools as at
-from artistools import estimators
+from artistools import estimators, spectra
 
 
 def get_nltepops(modelpath, timestep, modelgridindex):
