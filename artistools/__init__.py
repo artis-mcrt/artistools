@@ -87,37 +87,46 @@ def get_modeldata(filename):
         Return a list containing named tuples for all model grid cells
     """
     modeldata = pd.DataFrame()
-    gridcelltuple = namedtuple('gridcell', 'cellid velocity logrho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48')
+    gridcelltuple = namedtuple('gridcell', 'inputcellid velocity logrho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48')
 
     with open(filename, 'r') as fmodel:
         gridcellcount = int(fmodel.readline())
-        t_model_init = float(fmodel.readline())
+        t_model_init_days = float(fmodel.readline())
         for line in fmodel:
             row = line.split()
-            rowdf = pd.DataFrame([gridcelltuple._make([int(row[0]) - 1] + list(map(float, row[1:])))],
+            rowdf = pd.DataFrame([gridcelltuple._make([int(row[0])] + list(map(float, row[1:])))],
                                  columns=gridcelltuple._fields)
             modeldata = modeldata.append(rowdf, ignore_index=True)
 
     assert(len(modeldata) == gridcellcount)
-    modeldata = modeldata.set_index(['cellid'])
-    return modeldata, t_model_init
+    modeldata.index.name = 'cellid'
+    return modeldata, t_model_init_days
 
 
-def get_initialabundances1d(abundancefilename):
-    """
-        Returns a list of mass fractions
-    """
-    columns = ['inputcellid']
-    columns.extend(['X_' + elsymbols[x] for x in range(1, 31)])
+def save_modeldata(dfmodeldata, t_model_init_days, filename):
+    with open(filename, 'w') as fmodel:
+        fmodel.write(f'{len(dfmodeldata)}\n{t_model_init_days:f}\n')
+        for _, cell in dfmodeldata.iterrows():
+            fmodel.write(f'{cell.inputcellid:6.0f}   {cell.velocity:9.2f}   {cell.logrho:10.8f} '
+                         f'{cell.X_Fegroup:5.2f} {cell.X_Ni56:5.2f} {cell.X_Co56:5.2f} '
+                         f'{cell.X_Fe52:5.2f} {cell.X_Cr48:5.2f}\n')
+
+
+def get_initialabundances(abundancefilename):
+    """Return a list of mass fractions."""
+    columns = ['inputcellid', *['X_' + elsymbols[x] for x in range(1, 31)]]
     abundancedata = pd.read_csv(abundancefilename, delim_whitespace=True, header=None, names=columns)
     abundancedata.index.name = 'modelgridindex'
     return abundancedata
 
 
+def save_initialabundances(dfabundances, abundancefilename):
+    dfabundances['inputcellid'] = dfabundances['inputcellid'].astype(np.int)
+    dfabundances.to_csv(abundancefilename, header=False, sep=' ', index=False)
+
+
 def get_timestep_times(specfilename):
-    """
-        Return a list of the time in days of each timestep using a spec.out file
-    """
+    """Return a list of the time in days of each timestep using a spec.out file."""
     if os.path.isdir(specfilename):
         specfilename = os.path.join(specfilename, 'spec.out')
 
@@ -127,9 +136,7 @@ def get_timestep_times(specfilename):
 
 
 def get_timestep_times_float(specfilename):
-    """
-        Return a list of the time in days of each timestep using a spec.out file
-    """
+    """Return a list of the time in days of each timestep using a spec.out file."""
     return np.array([float(t.rstrip('d')) for t in get_timestep_times(specfilename)])
 
 
@@ -138,9 +145,7 @@ def get_closest_timestep(specfilename, timedays):
 
 
 def get_timestep_time(specfilename, timestep):
-    """
-        Return the time in days of a timestep number using a spec.out file
-    """
+    """Return the time in days of a timestep number using a spec.out file."""
     if os.path.isdir(specfilename):
         specfilename = os.path.join(specfilename, 'spec.out')
 
@@ -150,9 +155,7 @@ def get_timestep_time(specfilename, timestep):
 
 
 def get_timestep_time_delta(timestep, timearray):
-    """
-        Return the time in days between timestep and timestep + 1
-    """
+    """Return the time in days between timestep and timestep + 1."""
 
     if timestep < len(timearray) - 1:
         delta_t = (float(timearray[timestep + 1]) - float(timearray[timestep]))
@@ -163,10 +166,7 @@ def get_timestep_time_delta(timestep, timearray):
 
 
 def get_levels(adatafilename, transition_filename=None, ionlist=None):
-    """
-        Return a list of lists of levels
-    """
-
+    """Return a list of lists of levels."""
     if os.path.isdir(adatafilename):
         adatafilename = os.path.join(adatafilename, 'adata.txt')
 
