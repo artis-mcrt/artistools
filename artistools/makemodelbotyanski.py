@@ -7,6 +7,7 @@ from astropy import units as u
 
 
 def min_dist(listin, number):
+    """Return the minimum distance between number and any item in listin."""
     min_dist_found = -1
 
     for x in listin:
