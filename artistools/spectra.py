@@ -560,7 +560,7 @@ def make_plot(modelpaths, args):
 
 
 def addargs(parser):
-    parser.add_argument('modelpath', default=[], nargs='*',
+    parser.add_argument('-modelpath', default=[], nargs='*',
                         help='Paths to ARTIS folders with spec.out or packets files'
                         ' (may include wildcards such as * and **)')
 
