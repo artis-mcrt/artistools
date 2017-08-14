@@ -101,7 +101,7 @@ def make_plot(xvalues, yvalues, axes, temperature_list, vardict, ions, ionpopdic
     axes[-1].legend(loc='upper right', handlelength=1, frameon=False, numpoints=1, prop={'size': 8})
 
 
-def addargs(parser, defaultoutputfile):
+def addargs(parser):
     parser.add_argument('-xmin', type=int, default=3500,
                         help='Plot range: minimum wavelength in Angstroms')
 
@@ -133,20 +133,19 @@ def addargs(parser, defaultoutputfile):
                         help='Output details of matching line details to standard out')
 
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default=defaultoutputfile,
+                        default='plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf',
                         help='path/filename for PDF file')
 
 
 def main(argsraw=None):
-    defaultoutputfile = 'plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot estimated spectra from bound-bound transitions.')
-    addargs(parser, defaultoutputfile)
+    addargs(parser)
     args = parser.parse_args(argsraw)
 
     if os.path.isdir(args.outputfile):
-        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+        args.outputfile = os.path.join(args.outputfile, parser.get_default('outputfile'))
 
     modelpath = '.'
     modelgridindex = args.modelgridindex

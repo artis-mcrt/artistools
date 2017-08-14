@@ -6,11 +6,7 @@ import sys
 
 import matplotlib.pyplot as plt
 
-
-def main():
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Covert abundances.txt and model.txt from 3D to a one dimensional slice.')
+def addargs(parser):
     parser.add_argument('-inputfolder', action='store', default='.',
                         help='Path to folder with 3D files')
 
@@ -23,7 +19,14 @@ def main():
     parser.add_argument('-opdf', action='store', dest='pdfoutputfile', default=False,
                         help='Path/filename for PDF plot.')
 
-    args = parser.parse_args()
+
+def main(args=None, argsraw=None):
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            description='Covert abundances.txt and model.txt from 3D to a one dimensional slice.')
+        addargs(parser)
+        args = parser.parse_args()
 
     if not os.path.exists(args.outputfolder):
         os.makedirs(args.outputfolder)

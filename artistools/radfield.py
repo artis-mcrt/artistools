@@ -199,19 +199,7 @@ def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=Non
                     label='Emergent spectrum (normalised)')
 
 
-def main(argsraw=None):
-    """
-    Plot the radiation field estimators and the fitted radiation field
-    based on the fitted field parameters (temperature and scale factor W
-    for a diluted blackbody)
-    """
-
-    defaultoutputfile = 'plotradfield_cell{0:03d}_{1:03d}.pdf'
-
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot ARTIS internal radiation field.')
-
+def addargs(parser):
     parser.add_argument('modelpath', nargs='?', default='',
                         help='Path to ARTIS folder')
 
@@ -240,13 +228,25 @@ def main(argsraw=None):
                         help='Normalise the spectra to their peak values')
 
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default=defaultoutputfile,
+                        default='plotradfield_cell{0:03d}_{1:03d}.pdf',
                         help='Filename for PDF file')
 
+
+def main(argsraw=None):
+    """
+    Plot the radiation field estimators and the fitted radiation field
+    based on the fitted field parameters (temperature and scale factor W
+    for a diluted blackbody)
+    """
+
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description='Plot ARTIS internal radiation field.')
+    addargs(parser)
     args = parser.parse_args(argsraw)
 
     if os.path.isdir(args.outputfile):
-        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+        args.outputfile = os.path.join(args.outputfile, parser.get_default('outputfile'))
 
     if args.listtimesteps:
         at.showtimesteptimes(os.path.join(args.modelpath, 'spec.out'))

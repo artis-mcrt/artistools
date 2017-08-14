@@ -8,7 +8,7 @@ from collections import namedtuple
 # import scipy.signal
 import numpy as np
 import pandas as pd
-from astropy import constants as const
+# from astropy import constants as const
 
 PYDIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -18,7 +18,7 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
 console_scripts = [
-    'artistools = artistools:show_help',
+    'artistools = artistools:main',
     'getartismodeldeposition = artistools.deposition:main',
     'makeartismodel1dslicefrom3d = artistools.slice3dmodel:main',
     'makeartismodelbotyanski = artistools.makemodelbotyanski:main',
@@ -103,7 +103,7 @@ def get_modeldata(filename):
     return modeldata, t_model_init_days
 
 
-def save_modeldata(dfmodeldata, t_model_init_days, filename):
+def save_modeldata(dfmodeldata, t_model_init_days, filename) -> None:
     with open(filename, 'w') as fmodel:
         fmodel.write(f'{len(dfmodeldata)}\n{t_model_init_days:f}\n')
         for _, cell in dfmodeldata.iterrows():
@@ -120,7 +120,7 @@ def get_initialabundances(abundancefilename):
     return abundancedata
 
 
-def save_initialabundances(dfabundances, abundancefilename):
+def save_initialabundances(dfabundances, abundancefilename) -> None:
     dfabundances['inputcellid'] = dfabundances['inputcellid'].astype(np.int)
     dfabundances.to_csv(abundancefilename, header=False, sep=' ', index=False)
 
@@ -302,8 +302,45 @@ def decode_roman_numeral(strin):
     return -1
 
 
-def show_help():
+def main(argsraw=None):
+    import argparse
+    import importlib
+
+    parser = argparse.ArgumentParser()
+    parser.set_defaults(func=parser.print_help)
+
+    subparsers = parser.add_subparsers()
+    commandlist = [
+        ('getmodeldeposition', 'deposition'),
+        ('makemodel1dslicefrom3d', 'slice3dmodel'),
+        ('makemodelbotyanski', 'makemodelbotyanski'),
+        ('plotestimators', 'estimators'),
+        ('plotlightcurve', 'lightcurve'),
+        ('plotnltepops', 'nltepops'),
+        ('plotmacroatom', 'macroatom'),
+        ('plotnonthermal', 'nonthermalspec'),
+        ('plotradfield', 'radfield'),
+        ('plotspectrum', 'spectra'),
+        ('plottransitions', 'transitions'),
+    ]
+
+    for command, submodulename in commandlist:
+        submodule = importlib.import_module('artistools.' + submodulename)
+        subparser = subparsers.add_parser(command)
+        submodule.addargs(subparser)
+        subparser.set_defaults(func=submodule.main)
+
+    # parser_nltepops = subparsers.add_parser('plotartisnltepops')
+    # artistools.nltepops.addargs(parser_nltepops)
+    # parser_foo.set_defaults(func=artistools.nltepops.main)
+
+    args = parser.parse_args()
+    args.func(args=args)
+
+
+def list_commands():
     print("artistools commands:")
     for script in sorted(console_scripts):
         command = script.split('=')[0].strip()
         print(f'  {command}')
+

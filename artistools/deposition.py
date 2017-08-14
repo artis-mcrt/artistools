@@ -7,14 +7,18 @@ from astropy import units as u
 import artistools as at
 
 
-def main(argsraw=None):
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot deposition rate of a model at time t (days).')
-    parser.add_argument('-time', '-t', default=330, type=float,
+def addargs(parser):
+    parser.add_argument('-timedays', '-t', default=330, type=float,
                         help='Time in days')
-    args = parser.parse_args(argsraw)
 
+
+def main(args=None, argsraw=None):
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            description='Plot deposition rate of a model at time t (days).')
+        addargs(parser)
+        args = parser.parse_args(argsraw)
     dfmodel, t_model_init = at.get_modeldata('model.txt')
 
     t_init = t_model_init * u.day
@@ -26,7 +30,7 @@ def main(argsraw=None):
     # define T52FE   (0.497429*DAY)
     # define T52MN   (0.0211395*DAY)
 
-    t_now = args.t * u.day
+    t_now = args.timedays * u.day
     print(f't_now = {t_now.to("d")}')
     print('The following assumes that all 56Ni has decayed to 56Co and all energy comes from emitted positrons')
 
@@ -41,7 +45,7 @@ def main(argsraw=None):
         # volume_now2 = (volume_init * (t_now / t_init) ** 3).to('cm3')
 
         rho_init = (10 ** row['logrho']) * u.g / u.cm ** 3
-        mco56_init = (row['f56ni'] + row['f56co']) * (volume_init * rho_init).to('solMass')
+        mco56_init = (row['X_Ni56'] + row['X_Co56']) * (volume_init * rho_init).to('solMass')
         mco56_now = mco56_init * math.exp(- t_now / meanlife_co56)
 
         co56_positron_dep = (0.19 * 0.610 * u.MeV * (mco56_now / (55.9398393 * u.u)) / meanlife_co56).to('erg/s')
@@ -58,4 +62,4 @@ def main(argsraw=None):
 
 
 if __name__ == "__main__":
-    main()
+    main(args)
