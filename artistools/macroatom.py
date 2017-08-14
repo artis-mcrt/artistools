@@ -13,16 +13,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 
-def main(argsraw=None):
-    """
-    Plot the macroatom transitions
-    """
-
-    defaultoutputfile = 'plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf'
-
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot ARTIS macroatom transitions.')
+def addargs(parser):
     parser.add_argument('--modelpath', nargs='?', default='',
                         help='Path to ARTIS folder')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
@@ -40,12 +31,24 @@ def main(argsraw=None):
     parser.add_argument('-xmax', type=int, default=15000,
                         help='Plot range: maximum wavelength in Angstroms')
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default=defaultoutputfile,
+                        default='plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf',
                         help='Filename for PDF file')
-    args = parser.parse_args(argsraw)
+
+
+def main(args=None, argsraw=None):
+    """
+    Plot the macroatom transitions
+    """
+
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            description='Plot ARTIS macroatom transitions.')
+        addargs(parser)
+        args = parser.parse_args(argsraw)
 
     if os.path.isdir(args.outputfile):
-        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+        args.outputfile = os.path.join(args.outputfile, parser.get_default('outputfile'))
 
     if args.listtimesteps:
         at.showtimesteptimes(os.path.join(args.modelpath, 'spec.out'))

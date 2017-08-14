@@ -21,7 +21,11 @@ def min_dist(listin, number):
     return min_dist_found
 
 
-def main():
+def addargs(parser):
+    pass
+
+
+def main() -> None:
     e_k = 1.2  # in units of 10^51 erg
     m_ej = 1.4  # in solar masses
     x_stb = 0.05  # mass fraction of stable Fe54 and Ni58 in Ni56 zone

@@ -72,7 +72,7 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
     plt.close()
 
 
-def addargs(parser, defaultoutputfile):
+def addargs(parser):
     parser.add_argument('modelpath', nargs='?', default='',
                         help='Path to ARTIS folder')
 
@@ -94,25 +94,22 @@ def addargs(parser, defaultoutputfile):
     parser.add_argument('-xmax', type=int, default=10000,
                         help='Plot range: maximum energy in eV')
 
-    parser.add_argument('-o', action='store', dest='outputfile', default=defaultoutputfile,
+    parser.add_argument('-o', action='store', dest='outputfile',
+                        default='plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf',
                         help='Filename for PDF file')
 
 
 def main(argsraw=None):
-    """
-        Plot the electron energy distribution
-    """
-    defaultoutputfile = 'plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf'
+    """Plot the electron energy distribution."""
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Plot ARTIS non-thermal electron energy spectrum.')
 
-    addargs(parser, defaultoutputfile)
-
+    addargs(parser)
     args = parser.parse_args(argsraw)
 
     if os.path.isdir(args.outputfile):
-        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+        args.outputfile = os.path.join(args.outputfile, parser.get_default('outputfile'))
 
     if args.listtimesteps:
         at.showtimesteptimes('spec.out')

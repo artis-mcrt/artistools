@@ -8,7 +8,6 @@ import os.path
 import sys
 import warnings
 from collections import namedtuple
-from contracts import contract
 
 import matplotlib.ticker as ticker
 import matplotlib.patches as mpatches
@@ -54,7 +53,6 @@ def stackspectra(spectra_and_factors):
     return stackedspectrum
 
 
-@contract
 def get_spectrum(specfilename: str, timestepmin: int, timestepmax=-1, fnufilterfunc=None):
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax < 0:
@@ -612,18 +610,19 @@ def addargs(parser):
                         help='path/filename for PDF file')
 
 
-def main(argsraw=None):
+def main(args=None, argsraw=None):
     warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
     """
         Plot ARTIS spectra and (optionally) reference spectra
     """
 
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot ARTIS model spectra by finding spec.out files '
-                    'in the current directory or subdirectories.')
-    addargs(parser)
-    args = parser.parse_args(argsraw)
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            description='Plot ARTIS model spectra by finding spec.out files '
+                        'in the current directory or subdirectories.')
+        addargs(parser)
+        args = parser.parse_args(argsraw)
 
     if not args.modelpath:
         args.modelpath = ['.', '*']

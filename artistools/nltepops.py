@@ -15,6 +15,8 @@ from astropy import constants as const
 import artistools as at
 import artistools.estimators
 
+defaultoutputfile = 'plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
+
 
 def get_nlte_populations(all_levels, nltefilename, modelgridindex, timestep, atomic_number, T_e, T_R):
     dfpop = pd.read_csv(nltefilename, delim_whitespace=True)
@@ -197,7 +199,7 @@ def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridind
     return pd.DataFrame()
 
 
-def addargs(parser, defaultoutputfile):
+def addargs(parser):
     parser.add_argument('elements', nargs='*', default=['Fe'],
                         help='List of elements to plot')
 
@@ -227,14 +229,13 @@ def addargs(parser, defaultoutputfile):
                         help='path/filename for PDF file')
 
 
-def main(argsraw=None, **kwargs):
-    defaultoutputfile = 'plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
-
-    parser = argparse.ArgumentParser(
-        description='Plot ARTIS non-LTE corrections.')
-    addargs(parser, defaultoutputfile)
-    parser.set_defaults(**kwargs)
-    args = parser.parse_args(argsraw)
+def main(args=None, argsraw=None, **kwargs):
+    if args is None:
+        parser = argparse.ArgumentParser(
+            description='Plot ARTIS non-LTE corrections.')
+        addargs(parser)
+        parser.set_defaults(**kwargs)
+        args = parser.parse_args(argsraw)
 
     if args.timedays:
         timestep = at.get_closest_timestep(os.path.join(args.modelpath, 'spec.out'), args.timedays)
