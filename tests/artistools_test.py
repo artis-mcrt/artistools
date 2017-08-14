@@ -10,6 +10,7 @@ import artistools.nltepops
 import artistools.nonthermalspec
 import artistools.radfield
 import artistools.spectra
+import artistools.transitions
 
 specfilename = 'tests/data/spec.out'
 emissionfilename = 'tests/data/emissiontrue.out'
@@ -66,11 +67,12 @@ def test_get_flux_contributions():
 
 
 def test_plotters():
-    outputfile='tests/output'
-    at.nltepops.main(modelpath='tests/data/', timedays='300', outputfile=outputfile)
+    outputfile = 'tests/output'
+    at.nltepops.main(modelpath='tests/data/', outputfile=outputfile, timedays=300)
     at.lightcurve.main(modelpath='tests/data/', outputfile=outputfile)
     at.spectra.main(modelpath='tests/data/', outputfile=outputfile, timemin=290, timemax=320)
     at.spectra.main(modelpath='tests/data/', outputfile=outputfile, timemin=290, timemax=320, emissionabsorption=True)
-    at.nonthermalspec.main(modelpath='tests/data/', outputfile=outputfile)
+    at.nonthermalspec.main(modelpath='tests/data/', outputfile=outputfile, timedays=300)
+    at.transitions.main(modelpath='tests/data/', outputfile=outputfile, timedays=300)
     assert at.radfield.main(modelpath='tests/data/', outputfile=outputfile) == 0
 
