@@ -16,6 +16,8 @@ from astropy import constants as const
 import artistools as at
 from artistools import estimators, spectra
 
+defaultoutputfile = 'plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
+
 
 def get_nltepops(modelpath, timestep, modelgridindex):
     nlte_files = (
@@ -102,6 +104,9 @@ def make_plot(xvalues, yvalues, axes, temperature_list, vardict, ions, ionpopdic
 
 
 def addargs(parser):
+    parser.add_argument('-modelpath', default='.',
+                        help='Path to ARTIS folder')
+
     parser.add_argument('-xmin', type=int, default=3500,
                         help='Plot range: minimum wavelength in Angstroms')
 
@@ -133,7 +138,7 @@ def addargs(parser):
                         help='Output details of matching line details to standard out')
 
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf',
+                        default=defaultoutputfile,
                         help='path/filename for PDF file')
 
 
@@ -147,9 +152,9 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     if os.path.isdir(args.outputfile):
-        args.outputfile = os.path.join(args.outputfile, parser.get_default('outputfile'))
+        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
-    modelpath = '.'
+    modelpath = args.modelpath
     modelgridindex = args.modelgridindex
 
     if args.timedays:
