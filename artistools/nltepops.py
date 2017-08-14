@@ -222,17 +222,18 @@ def addargs(parser, defaultoutputfile):
     parser.add_argument('--oldformat', default=False, action='store_true',
                         help='Use the old file format')
 
-    parser.add_argument('-o', action='store', dest='outputfile',
+    parser.add_argument('-outputfile', '-o',
                         default=defaultoutputfile,
                         help='path/filename for PDF file')
 
 
-def main(argsraw=None):
+def main(argsraw=None, **kwargs):
     defaultoutputfile = 'plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
 
     parser = argparse.ArgumentParser(
         description='Plot ARTIS non-LTE corrections.')
     addargs(parser, defaultoutputfile)
+    parser.set_defaults(**kwargs)
     args = parser.parse_args(argsraw)
 
     if args.timedays:
