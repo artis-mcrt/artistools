@@ -18,6 +18,7 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
 console_scripts = [
+    'at = artistools:main',
     'artistools = artistools:main',
     'getartismodeldeposition = artistools.deposition:main',
     'makeartismodel1dslicefrom3d = artistools.slice3dmodel:main',

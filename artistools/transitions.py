@@ -137,12 +137,14 @@ def addargs(parser):
                         help='path/filename for PDF file')
 
 
-def main(argsraw=None):
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot estimated spectra from bound-bound transitions.')
-    addargs(parser)
-    args = parser.parse_args(argsraw)
+def main(args=None, argsraw=None, **kwargs):
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            description='Plot estimated spectra from bound-bound transitions.')
+        addargs(parser)
+        parser.set_defaults(**kwargs)
+        args = parser.parse_args(argsraw)
 
     if os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, parser.get_default('outputfile'))

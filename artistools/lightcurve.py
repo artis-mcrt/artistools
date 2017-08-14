@@ -116,15 +116,19 @@ def addargs(parser):
                         help='Filename for PDF file')
 
 
-def main(argsraw=None):
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot ARTIS radiation field.')
-    addargs(parser)
-    args = parser.parse_args(argsraw)
+def main(args=None, argsraw=None, **kwargs):
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            description='Plot ARTIS radiation field.')
+        addargs(parser)
+        parser.set_defaults(**kwargs)
+        args = parser.parse_args(argsraw)
 
     if not args.modelpath:
         args.modelpath = ['.', '*']
+    elif isinstance(args.modelpath, str):
+        args.modelpath = [args.modelpath]
 
     # combined the results of applying wildcards on each input
     modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in args.modelpath if os.path.isdir(x)]))

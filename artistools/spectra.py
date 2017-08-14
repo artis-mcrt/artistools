@@ -610,7 +610,7 @@ def addargs(parser):
                         help='path/filename for PDF file')
 
 
-def main(args=None, argsraw=None):
+def main(args=None, argsraw=None, **kwargs):
     warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
     """
         Plot ARTIS spectra and (optionally) reference spectra
@@ -622,10 +622,13 @@ def main(args=None, argsraw=None):
             description='Plot ARTIS model spectra by finding spec.out files '
                         'in the current directory or subdirectories.')
         addargs(parser)
+        parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
     if not args.modelpath:
         args.modelpath = ['.', '*']
+    elif isinstance(args.modelpath, str):
+        args.modelpath = [args.modelpath]
 
     # combined the results of applying wildcards on each input
     modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in args.modelpath if os.path.isdir(x)]))
@@ -635,7 +638,7 @@ def main(args=None, argsraw=None):
     else:
         if args.emissionabsorption:
             if len(modelpaths) > 1:
-                print("ERROR: emission/absorption plot can only take one input model")
+                print("ERROR: emission/absorption plot can only take one input model", modelpaths)
                 sys.exit()
             defaultoutputfile = "plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf"
         else:

@@ -35,16 +35,15 @@ def addargs(parser):
                         help='Filename for PDF file')
 
 
-def main(args=None, argsraw=None):
-    """
-    Plot the macroatom transitions
-    """
+def main(args=None, argsraw=None, **kwargs):
+    """Plot the macroatom transitions."""
 
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             description='Plot ARTIS macroatom transitions.')
         addargs(parser)
+        parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
     if os.path.isdir(args.outputfile):

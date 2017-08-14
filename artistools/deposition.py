@@ -12,12 +12,13 @@ def addargs(parser):
                         help='Time in days')
 
 
-def main(args=None, argsraw=None):
+def main(args=None, argsraw=None, **kwargs):
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             description='Plot deposition rate of a model at time t (days).')
         addargs(parser)
+        parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
     dfmodel, t_model_init = at.get_modeldata('model.txt')
 
