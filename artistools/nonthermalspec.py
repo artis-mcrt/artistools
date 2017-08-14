@@ -12,7 +12,7 @@ import pandas as pd
 import artistools as at
 
 DEFAULTSPECPATH = '../example_run/spec.out'
-
+defaultoutputfile = 'plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf'
 
 def ar_xs(energy_ev, ionpot_ev, A, B, C, D):
     u = energy_ev / ionpot_ev
@@ -73,7 +73,7 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
 
 
 def addargs(parser):
-    parser.add_argument('modelpath', nargs='?', default='',
+    parser.add_argument('-modelpath', default='.',
                         help='Path to ARTIS folder')
 
     parser.add_argument('-listtimesteps', action='store_true', default=False,
@@ -95,21 +95,23 @@ def addargs(parser):
                         help='Plot range: maximum energy in eV')
 
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf',
+                        default=defaultoutputfile,
                         help='Filename for PDF file')
 
 
-def main(argsraw=None):
+def main(args=None, argsraw=None, **kwargs):
     """Plot the electron energy distribution."""
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot ARTIS non-thermal electron energy spectrum.')
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            description='Plot ARTIS non-thermal electron energy spectrum.')
 
-    addargs(parser)
-    args = parser.parse_args(argsraw)
+        addargs(parser)
+        parser.set_defaults(**kwargs)
+        args = parser.parse_args(argsraw)
 
     if os.path.isdir(args.outputfile):
-        args.outputfile = os.path.join(args.outputfile, parser.get_default('outputfile'))
+        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     if args.listtimesteps:
         at.showtimesteptimes('spec.out')

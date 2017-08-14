@@ -20,12 +20,13 @@ def addargs(parser):
                         help='Path/filename for PDF plot.')
 
 
-def main(args=None, argsraw=None):
+def main(args=None, argsraw=None, **kwargs):
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             description='Covert abundances.txt and model.txt from 3D to a one dimensional slice.')
         addargs(parser)
+        parser.set_defaults(**kwargs)
         args = parser.parse_args()
 
     if not os.path.exists(args.outputfolder):
