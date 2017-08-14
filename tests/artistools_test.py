@@ -66,11 +66,11 @@ def test_get_flux_contributions():
 
 
 def test_plotters():
-    arglist = ['-modelpath', 'tests/data/', 'tests/data/', '-o', 'tests/data/']
-    at.nltepops.main(arglist)
+    at.nltepops.main(modelpath='tests/data/', timedays='300', outputfile='tests/data')
     arglist = ['tests/data/', '-o', 'tests/data/']
     at.lightcurve.main(arglist)
     at.spectra.main(arglist + ['-timemin', '290', '-timemax', '320'])
     at.spectra.main(arglist + ['-timemin', '290', '-timemax', '320', '--emissionabsorption'])
     at.nonthermalspec.main(arglist)
     assert at.radfield.main(arglist) == 0
+
