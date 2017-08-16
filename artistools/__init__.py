@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 import math
 import os.path
 import sys
@@ -304,11 +305,12 @@ def decode_roman_numeral(strin):
 
 
 def main(argsraw=None):
+    import argcomplete
     import argparse
     import importlib
 
     parser = argparse.ArgumentParser()
-    parser.set_defaults(func=parser.print_help)
+    parser.set_defaults(func=None)
 
     subparsers = parser.add_subparsers()
     commandlist = [
@@ -331,12 +333,12 @@ def main(argsraw=None):
         submodule.addargs(subparser)
         subparser.set_defaults(func=submodule.main)
 
-    # parser_nltepops = subparsers.add_parser('plotartisnltepops')
-    # artistools.nltepops.addargs(parser_nltepops)
-    # parser_foo.set_defaults(func=artistools.nltepops.main)
-
+    argcomplete.autocomplete(parser)
     args = parser.parse_args()
-    args.func(args=args)
+    if args.func is not None:
+        args.func(args=args)
+    else:
+        parser.print_help()
 
 
 def list_commands():
