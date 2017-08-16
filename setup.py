@@ -31,7 +31,7 @@ class PyTest(TestCommand):
 print(datetime.datetime.now().isoformat())
 setup(
     name="artistools",
-    version="0.1dev",
+    version="0.1dev0",
     # version=datetime.datetime.now().isoformat(),
     author="Luke Shingles",
     author_email="luke.shingles@gmail.com",
