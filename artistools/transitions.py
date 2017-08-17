@@ -191,7 +191,7 @@ def main(args=None, argsraw=None, **kwargs):
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     # resolution of the plot in Angstroms
-    plot_resolution = int((args.xmax - args.xmin) / 1000)
+    plot_resolution = max(1, int((args.xmax - args.xmin) / 1000))
 
     iontuples = [(x.Z, x.ion_stage) for x in ionlist]
 
