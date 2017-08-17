@@ -74,5 +74,6 @@ def test_plotters():
     at.spectra.main(modelpath='tests/data/', outputfile=outputfile, timemin=290, timemax=320, emissionabsorption=True)
     at.nonthermalspec.main(modelpath='tests/data/', outputfile=outputfile, timedays=300)
     at.transitions.main(modelpath='tests/data/', outputfile=outputfile, timedays=300)
+    at.estimators.main(modelpath='tests/data/', outputfile=outputfile, timedays=300)
     assert at.radfield.main(modelpath='tests/data/', outputfile=outputfile) == 0
 
