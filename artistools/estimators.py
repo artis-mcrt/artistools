@@ -403,8 +403,8 @@ def plot_recombrates(estimators, outfilename, **plotkwargs):
 
 
 def addargs(parser):
-    # parser.add_argument('modelpath', nargs='?', default='',
-    #                     help='Path to ARTIS folder')
+    parser.add_argument('-modelpath', default='.',
+                        help='Path to ARTIS folder')
 
     parser.add_argument('--recombrates', default=False, action='store_true',
                         help='Make a recombination rate plot')
@@ -438,7 +438,7 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    modelpath = "."
+    modelpath = args.modelpath
 
     modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
     abundancedata = at.get_initialabundances('abundances.txt')
