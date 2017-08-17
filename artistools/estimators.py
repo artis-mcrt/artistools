@@ -16,6 +16,8 @@ import artistools as at
 
 # from astropy import constants as const
 
+defaultoutputfile = 'plotestimators_ts{timestep:02d}_{time_days:.0f}d.pdf'
+
 
 def get_ionrecombrates_fromfile(filename):
     """
@@ -425,7 +427,7 @@ def addargs(parser):
                         help='Horizontal axis variable (cellid or velocity)')
 
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plotestimators_ts{timestep:02d}_{time_days:.0f}d.pdf',
+                        default=defaultoutputfile,
                         help='Filename for PDF file')
 
 
@@ -437,6 +439,9 @@ def main(args=None, argsraw=None, **kwargs):
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
+
+    if os.path.isdir(args.outputfile):
+        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     modelpath = args.modelpath
 
@@ -465,7 +470,7 @@ def main(args=None, argsraw=None, **kwargs):
         plot_recombrates(estimators, "plotestimators_recombrates.pdf")
     else:
         if args.timedays:
-            if '-' in args.timedays:
+            if isinstance(args.timedays, str) and '-' in args.timedays:
                 timestepmin, timestepmax = [
                     at.get_closest_timestep(os.path.join(modelpath, "spec.out"), float(timedays))
                     for timedays in args.timedays.split('-')]
