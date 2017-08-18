@@ -167,19 +167,17 @@ def get_timestep_time_delta(timestep, timearray):
     return delta_t
 
 
-def get_levels(adatafilename, transition_filename=None, ionlist=None):
+def get_levels(modelpath, ionlist=None, get_transitions=False):
     """Return a list of lists of levels."""
-    if os.path.isdir(adatafilename):
-        adatafilename = os.path.join(adatafilename, 'adata.txt')
+    adatafilename = os.path.join(modelpath, 'adata.txt')
 
     transitiontuple = namedtuple('transition', 'lower_levelindex upper_levelindex A collstr forbidden')
 
     firstlevelnumber = 1
 
     transitionsdict = {}
-    if transition_filename:
-        if os.path.isdir(transition_filename):
-            transition_filename = os.path.join(transition_filename, 'transitiondata.txt')
+    if get_transitions:
+        transition_filename = os.path.join(modelpath, 'transitiondata.txt')
 
         print(f'Reading {transition_filename}')
         with open(transition_filename, 'r') as ftransitions:
