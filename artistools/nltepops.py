@@ -248,7 +248,7 @@ def main(args=None, argsraw=None, **kwargs):
     if args.listtimesteps:
         at.showtimesteptimes('spec.out')
     else:
-        adata = at.get_levels(os.path.join(args.modelpath, 'adata.txt'))
+        adata = at.get_levels(args.modelpath)
 
         modeldata, _ = at.get_modeldata(os.path.join(args.modelpath, 'model.txt'))
         estimators = at.estimators.read_estimators(args.modelpath, modeldata)
