@@ -339,7 +339,7 @@ def plot_reference_spectrum(filename, axis, xmin, xmax, normalised,
     return mpatches.Patch(color=lineplot.get_lines()[0].get_color()), plotkwargs['label']
 
 
-def make_spectrum_stat_plot(spectrum, figure_title, args):
+def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
     nsubplots = 2
     fig, axes = plt.subplots(nsubplots, 1, sharex=True, figsize=(8, 4 * nsubplots),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
@@ -395,7 +395,7 @@ def make_spectrum_stat_plot(spectrum, figure_title, args):
     axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
 
-    filenameout = "plotspecstats.pdf"
+    filenameout = os.path.join(outputpath, 'plotspecstats.pdf')
     fig.savefig(filenameout, format='pdf')
     print(f'Saved {filenameout}')
     plt.close()
@@ -422,7 +422,7 @@ def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=No
             packetsfiles_thismodel = packetsfiles_thismodel[:args.maxpacketfiles]
         spectrum = at.spectra.get_spectrum_from_packets(
             packetsfiles_thismodel, args.timemin, args.timemax, lambda_min=args.xmin, lambda_max=args.xmax)
-        make_spectrum_stat_plot(spectrum, linelabel, args)
+        make_spectrum_stat_plot(spectrum, linelabel, os.path.dirname(args.outputfile), args)
     else:
         spectrum = at.spectra.get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
 
@@ -553,6 +553,8 @@ def make_plot(modelpaths, args):
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
 
     filenameout = args.outputfile.format(time_days_min=args.timemin, time_days_max=args.timemax)
+    if args.frompackets:
+        filenameout = filenameout.replace('.pdf', '_frompackets.pdf')
     fig.savefig(filenameout, format='pdf')
     # plt.show()
     print(f'Saved {filenameout}')
