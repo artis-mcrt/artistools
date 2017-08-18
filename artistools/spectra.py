@@ -93,7 +93,6 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
         if value > array[2][xindex] or array[2][xindex] == 0:
             array[2][xindex] = value
 
-
     import artistools.packets
     array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
     array_energysum = np.zeros_like(array_lambda, dtype=np.float)  # total packet energy sum of each bin
