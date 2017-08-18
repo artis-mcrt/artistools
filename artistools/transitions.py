@@ -195,7 +195,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     iontuples = [(x.Z, x.ion_stage) for x in ionlist]
 
-    adata = at.get_levels(modelpath, modelpath, iontuples)
+    adata = at.get_levels(modelpath, iontuples, get_transitions=True)
 
     dfnltepops = get_nltepops(modelpath, modelgridindex=modelgridindex, timestep=timestep)
 
@@ -289,6 +289,7 @@ def main(args=None, argsraw=None, **kwargs):
 
                 yvalues[seriesindex][ionindex] = generate_ion_spectrum(dftransitions, xvalues,
                                                                        popcolumnname, plot_resolution, args)
+
 
     make_plot(xvalues, yvalues, axes, temperature_list, vardict, ionlist, ionpopdict, args.xmin, args.xmax)
 
