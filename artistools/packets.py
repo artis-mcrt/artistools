@@ -34,7 +34,7 @@ def readfile(packetsfile, usecols):
     print(f'Reading {packetsfile} ({os.path.getsize(packetsfile) / 1024 / 1024:.3f} MiB)', end='')
     inputcolumncount = len(pd.read_csv(packetsfile, nrows=1, delim_whitespace=True, header=None).columns)
     if inputcolumncount < 3:
-        print("WARNING: packets file has no columns!")
+        print("\nWARNING: packets file has no columns!")
         print(open(packetsfile, "r").readlines())
 
     usecols_nodata = [n for n in usecols if columns.index(n) >= inputcolumncount]
