@@ -14,13 +14,20 @@ python setup.py develop
 ```
 
 ## Usage
-First cd into an ARTIS simulation folder and then run one of the command-line tools:
-- plotartislightcurve
-- plotartisestimators
-- plotartisnltepops
-- plotartisnonthermal
-- plotartisradfield
-- plotartisspectrum
+First cd into an ARTIS simulation folder and then run artistools with one of the subcommands:
+usage: artistools <command>, where <command> is one of:
+
+  getmodeldeposition
+  makemodel1dslicefrom3d
+  makemodelbotyanski
+  plotestimators
+  plotlightcurve
+  plotnltepops
+  plotmacroatom
+  plotnonthermal
+  plotradfield
+  plotspectrum
+  plottransitions
 
 Using the -h option will give a list of command-line arguments.
 
