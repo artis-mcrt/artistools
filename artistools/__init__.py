@@ -338,7 +338,11 @@ def main(argsraw=None):
     if args.func is not None:
         args.func(args=args)
     else:
-        parser.print_help()
+        # parser.print_help()
+        print('usage: artistools <command>, where <command> is one of:\n')
+        for command, _ in commandlist:
+            print(f'  {command}')
+
 
 
 def list_commands():
