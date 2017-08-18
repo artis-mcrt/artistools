@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
 
 import numpy as np
+import os.path
 import pandas as pd
 from astropy import constants as const
 
 import artistools as at
 import artistools.lightcurve
+import artistools.macroatom
+import artistools.makemodelbotyanski
 import artistools.nltepops
 import artistools.nonthermalspec
 import artistools.radfield
 import artistools.spectra
 import artistools.transitions
 
+modelpath = os.path.join('tests', 'data')
+outputpath = 'tests/output'
 specfilename = 'tests/data/spec.out'
 emissionfilename = 'tests/data/emissiontrue.out'
 absorptionfilename = 'tests/data/absorption.out'
@@ -24,16 +29,24 @@ def test_timestep_times():
     assert timearray[-1] == '349.412'
 
 
-def test_get_spectrum():
-    dfspectrum = at.spectra.get_spectrum(specfilename, 55, 65, fnufilterfunc=None)
-    assert len(dfspectrum['lambda_angstroms']) == 1000
-    assert abs(dfspectrum['lambda_angstroms'].values[-1] - 29920.601421214415) < 1e-5
-    assert abs(dfspectrum['lambda_angstroms'].values[0] - 600.75759482509852) < 1e-5
-
-    assert len(dfspectrum['f_lambda']) == 1000
+def check_spectrum(dfspectrum):
     assert abs(max(dfspectrum['f_lambda']) - 2.548532804918824e-13) < 1e-5
     assert min(dfspectrum['f_lambda']) < 1e-9
     assert abs(np.mean(dfspectrum['f_lambda']) - 1.0314682640070206e-14) < 1e-5
+
+
+def test_get_spectrum():
+    dfspectrum = at.spectra.get_spectrum(specfilename, 55, 65, fnufilterfunc=None)
+    assert len(dfspectrum['lambda_angstroms']) == 1000
+    assert len(dfspectrum['f_lambda']) == 1000
+    assert abs(dfspectrum['lambda_angstroms'].values[-1] - 29920.601421214415) < 1e-5
+    assert abs(dfspectrum['lambda_angstroms'].values[0] - 600.75759482509852) < 1e-5
+    check_spectrum(dfspectrum)
+    lambda_min = dfspectrum['lambda_angstroms'].values[0]
+    lambda_max = dfspectrum['lambda_angstroms'].values[-1]
+    dfspectrumpkts = at.spectra.get_spectrum_from_packets(
+        [os.path.join(modelpath, 'packets00_0000.out')], 55, 65, lambda_min=lambda_min, lambda_max=lambda_max)
+    check_spectrum(dfspectrumpkts)
 
 
 def test_get_flux_contributions():
@@ -67,13 +80,17 @@ def test_get_flux_contributions():
 
 
 def test_plotters():
-    outputfile = 'tests/output'
-    at.nltepops.main(modelpath='tests/data/', outputfile=outputfile, timedays=300)
-    at.lightcurve.main(modelpath='tests/data/', outputfile=outputfile)
-    at.spectra.main(modelpath='tests/data/', outputfile=outputfile, timemin=290, timemax=320)
-    at.spectra.main(modelpath='tests/data/', outputfile=outputfile, timemin=290, timemax=320, emissionabsorption=True)
-    at.nonthermalspec.main(modelpath='tests/data/', outputfile=outputfile, timedays=300)
-    at.transitions.main(modelpath='tests/data/', outputfile=outputfile, timedays=300)
-    at.estimators.main(modelpath='tests/data/', outputfile=outputfile, timedays=300)
-    assert at.radfield.main(modelpath='tests/data/', outputfile=outputfile) == 0
+    at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
+    at.lightcurve.main(modelpath=modelpath, outputfile=outputpath)
+    at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320)
+    at.spectra.main(modelpath=modelpath, outputfile=os.path.join(outputpath, 'spectrum_from_packets.pdf'), timemin=290, timemax=320, frompackets=True)
+    at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320, emissionabsorption=True)
+    at.nonthermalspec.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
+    at.transitions.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
+    at.estimators.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
+    at.macroatom.main(modelpath=modelpath, outputfile=outputpath, timestep=10)
+    assert at.radfield.main(modelpath=modelpath, outputfile=outputpath) == 0
 
+
+def test_makemodel():
+    at.makemodelbotyanski.main(outputpath=outputpath)
