@@ -32,16 +32,22 @@ types = {
 
 def readfile(packetsfile, usecols):
     print(f'Reading {packetsfile} ({os.path.getsize(packetsfile) / 1024 / 1024:.3f} MiB)', end='')
-    inputcolumncount = len(pd.read_csv('packets00_0000.out', nrows=1, delim_whitespace=True, header=None).columns)
+    inputcolumncount = len(pd.read_csv(packetsfile, nrows=1, delim_whitespace=True, header=None).columns)
+    usecols_nodata = [n for n in usecols if columns.index(n) >= inputcolumncount]
+    usecols_actual = [n for n in usecols if columns.index(n) < inputcolumncount]
     dfpackets = pd.read_csv(
         packetsfile,
         delim_whitespace=True,
         names=columns[:inputcolumncount],
         header=None,
-        usecols=usecols)
+        usecols=usecols_actual)
     dfpackets['type'] = dfpackets['type_id'].map(lambda x: types.get(x, x))
     dfpackets['escape_type'] = dfpackets['escape_type_id'].map(lambda x: types.get(x, x))
     print(f' ({len(dfpackets):.1e} packets)')
+    if usecols_nodata:
+        print(f'WARNING: no data in packets file for columns: {usecols_nodata}')
+        for col in usecols_nodata:
+            dfpackets[col] = float('NaN')
 
     return dfpackets
 
