@@ -44,9 +44,9 @@ def test_get_spectrum():
     check_spectrum(dfspectrum)
     lambda_min = dfspectrum['lambda_angstroms'].values[0]
     lambda_max = dfspectrum['lambda_angstroms'].values[-1]
-    # dfspectrumpkts = at.spectra.get_spectrum_from_packets(
-    #     [os.path.join(modelpath, 'packets00_0000.out')], 55, 65, lambda_min=lambda_min, lambda_max=lambda_max)
-    # check_spectrum(dfspectrumpkts)
+    dfspectrumpkts = at.spectra.get_spectrum_from_packets(
+        [os.path.join(modelpath, 'packets00_0000.out')], 55, 65, lambda_min=lambda_min, lambda_max=lambda_max)
+    check_spectrum(dfspectrumpkts)
 
 
 def test_get_flux_contributions():
@@ -83,8 +83,8 @@ def test_plotters():
     at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
     at.lightcurve.main(modelpath=modelpath, outputfile=outputpath)
     at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320)
-    # at.spectra.main(modelpath=modelpath, outputfile=os.path.join(outputpath, 'spectrum_from_packets.pdf'),
-                    # timemin=290, timemax=320, frompackets=True)
+    at.spectra.main(modelpath=modelpath, outputfile=os.path.join(outputpath, 'spectrum_from_packets.pdf'),
+                    timemin=290, timemax=320, frompackets=True)
     at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320, emissionabsorption=True)
     at.nonthermalspec.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
     at.transitions.main(modelpath=modelpath, outputfile=outputpath, timedays=300)

@@ -1,2 +1,0 @@
-packets*.out filter=lfs diff=lfs merge=lfs -text
-tests/data/packets00_0000.out filter=lfs diff=lfs merge=lfs -text
