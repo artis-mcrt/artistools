@@ -346,4 +346,3 @@ def list_commands():
     for script in sorted(console_scripts):
         command = script.split('=')[0].strip()
         print(f'  {command}')
-
