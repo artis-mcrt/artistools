@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
+import argparse
 import math
+import os.path
 
 import numpy as np
 import pandas as pd
@@ -22,10 +24,21 @@ def min_dist(listin, number):
 
 
 def addargs(parser):
-    pass
+    parser.add_argument('-outputpath', '-o',
+                        default='.',
+                        help='Path for output files')
 
 
 def main(args=None, argsraw=None, **kwargs) -> None:
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            description='Plot ARTIS non-thermal electron energy spectrum.')
+
+        addargs(parser)
+        parser.set_defaults(**kwargs)
+        args = parser.parse_args(argsraw)
+
     e_k = 1.2  # in units of 10^51 erg
     m_ej = 1.4  # in solar masses
     x_stb = 0.05  # mass fraction of stable Fe54 and Ni58 in Ni56 zone
@@ -89,8 +102,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         v_inner = v_outer
     print(f'M_tot = {m_tot:.3f} solMass')
 
-    at.save_modeldata(dfmodel, t_model_init_days, 'model.txt')
-    at.save_initialabundances(dfabundances, 'abundances.txt')
+    at.save_modeldata(dfmodel, t_model_init_days, os.path.join(args.outputpath, 'model.txt'))
+    at.save_initialabundances(dfabundances, os.path.join(args.outputpath, 'abundances.txt'))
 
 
 if __name__ == "__main__":
