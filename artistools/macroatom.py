@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 # import matplotlib.ticker as ticker
 import pandas as pd
 
+defaultoutputfile = 'plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf'
 
 def addargs(parser):
     parser.add_argument('--modelpath', nargs='?', default='',
@@ -31,7 +32,7 @@ def addargs(parser):
     parser.add_argument('-xmax', type=int, default=15000,
                         help='Plot range: maximum wavelength in Angstroms')
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default='plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf',
+                        default=defaultoutputfile,
                         help='Filename for PDF file')
 
 
@@ -47,7 +48,7 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     if os.path.isdir(args.outputfile):
-        args.outputfile = os.path.join(args.outputfile, parser.get_default('outputfile'))
+        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     if args.listtimesteps:
         at.showtimesteptimes(os.path.join(args.modelpath, 'spec.out'))
