@@ -178,6 +178,9 @@ def get_levels(adatafilename, transition_filename=None, ionlist=None):
 
     transitionsdict = {}
     if transition_filename:
+        if os.path.isdir(transition_filename):
+            transition_filename = os.path.join(transition_filename, 'transitiondata.txt')
+
         print(f'Reading {transition_filename}')
         with open(transition_filename, 'r') as ftransitions:
             for line in ftransitions:

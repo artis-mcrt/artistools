@@ -195,9 +195,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     iontuples = [(x.Z, x.ion_stage) for x in ionlist]
 
-    adata = at.get_levels(
-        os.path.join(modelpath, 'adata.txt'), os.path.join(modelpath, 'transitiondata.txt'),
-        iontuples)
+    adata = at.get_levels(modelpath, modelpath, iontuples)
 
     dfnltepops = get_nltepops(modelpath, modelgridindex=modelgridindex, timestep=timestep)
 
