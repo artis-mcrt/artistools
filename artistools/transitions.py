@@ -82,7 +82,7 @@ def make_plot(xvalues, yvalues, axes, temperature_list, vardict, ions, ionpopdic
         peak_y_value = max(peak_y_value, max(yvalues_combined[seriesindex]))
 
     axislabels = [
-        f'{at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]}\n(pop={ionpopdict[(ion.Z, ion.ion_stage)]:.1e})'
+        f'{at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]}\n(pop={ionpopdict[(ion.Z, ion.ion_stage)]:.1e}/cm3)'
         for ion in ions] + ['Total']
 
     for axis, axislabel in zip(axes, axislabels):
@@ -101,6 +101,17 @@ def make_plot(xvalues, yvalues, axes, temperature_list, vardict, ions, ionpopdic
         axis.set_ylabel(r'$\propto$ F$_\lambda$')
 
     axes[-1].legend(loc='upper right', handlelength=1, frameon=False, numpoints=1, prop={'size': 8})
+
+
+def add_upper_lte_pop(dftransitions, T_exc, ion, ionpop, columnname=None):
+    K_B = const.k_B.to('eV / K').value
+    ltepartfunc = ion.levels.eval('g * exp(-energy_ev / @K_B / @T_exc)').sum()
+    scalefactor = ionpop / ltepartfunc
+    if columnname is None:
+        columnname = f'upper_pop_lte_{T_exc:.0f}K'
+    dftransitions.eval(
+        f'{columnname} = @scalefactor * upper_statweight * exp(-upper_energy_ev / @K_B / @T_exc)',
+        inplace=True)
 
 
 def addargs(parser):
@@ -240,7 +251,7 @@ def main(args=None, argsraw=None, **kwargs):
         else:
             ionindex = iontuples.index(ionid)
 
-        print(f'{at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]:3s} '
+        print(f'\n{at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]:3s} pop={ionpopdict[ionid]:.2e} / cm3,'
               f'{ion.level_count:5d} levels, {len(ion.transitions):6d} transitions', end='')
 
         dftransitions = ion.transitions
@@ -270,6 +281,9 @@ def main(args=None, argsraw=None, **kwargs):
             dftransitions['upper_pop_nlte'] = dftransitions.apply(
                 lambda x: nltepopdict.get(x.upper_levelindex, 0.), axis=1)
 
+            # dftransitions['lower_pop_nlte'] = dftransitions.apply(
+            #     lambda x: nltepopdict.get(x.lower_levelindex, 0.), axis=1)
+
             dftransitions.eval(f'flux_factor = (upper_energy_ev - lower_energy_ev) * A', inplace=True)
 
             for seriesindex, temperature in enumerate(temperature_list):
@@ -279,13 +293,7 @@ def main(args=None, argsraw=None, **kwargs):
                     dftransitions.eval(f'flux_factor_nlte = flux_factor * {popcolumnname}', inplace=True)
                     print(dftransitions.nlargest(5, 'flux_factor_nlte'))
                 else:
-                    K_B = const.k_B.to('eV / K').value
-                    ltepartfunc = ion.levels.eval('g * exp(-energy_ev / @K_B / @T_exc)').sum()
-                    scalefactor = ionpopdict[ionid] / ltepartfunc
-                    popcolumnname = f'upper_pop_lte_{T_exc:.0f}K'
-                    dftransitions.eval(
-                        f'{popcolumnname} = @scalefactor * upper_statweight * exp(-upper_energy_ev / @K_B / @T_exc)',
-                        inplace=True)
+                    add_upper_lte_pop(dftransitions, T_exc, ion, ionpopdict)
 
                 yvalues[seriesindex][ionindex] = generate_ion_spectrum(dftransitions, xvalues,
                                                                        popcolumnname, plot_resolution, args)
