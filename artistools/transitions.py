@@ -90,6 +90,10 @@ def make_plot(xvalues, yvalues, axes, temperature_list, vardict, ions, ionpopdic
             axislabel, xy=(0.99, 0.96), xycoords='axes fraction',
             horizontalalignment='right', verticalalignment='top', fontsize=10)
 
+    # at.spectra.plot_reference_spectrum(
+    #     'dop_dered_SN2013aa_20140208_fc_final.txt', axes[-1], xmin, xmax, True,
+    #     scale_to_peak=peak_y_value, zorder=-1, linewidth=1, color='black')
+
     at.spectra.plot_reference_spectrum(
         '2003du_20031213_3219_8822_00.txt', axes[-1], xmin, xmax, True,
         scale_to_peak=peak_y_value, zorder=-1, linewidth=1, color='black')
@@ -110,7 +114,7 @@ def add_upper_lte_pop(dftransitions, T_exc, ion, ionpop, columnname=None):
     if columnname is None:
         columnname = f'upper_pop_lte_{T_exc:.0f}K'
     dftransitions.eval(
-        f'{columnname} = @scalefactor * upper_statweight * exp(-upper_energy_ev / @K_B / @T_exc)',
+        f'{columnname} = @scalefactor * upper_g * exp(-upper_energy_ev / @K_B / @T_exc)',
         inplace=True)
 
 
@@ -174,7 +178,7 @@ def main(args=None, argsraw=None, **kwargs):
         timestep = args.timestep
 
     modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
-    estimators_all = at.estimators.read_estimators(modelpath, modeldata)
+    estimators_all = at.estimators.read_estimators(modelpath, modeldata, keymatch=(timestep, modelgridindex))
 
     estimators = estimators_all[(timestep, modelgridindex)]
     if estimators['emptycell']:
@@ -251,8 +255,8 @@ def main(args=None, argsraw=None, **kwargs):
         else:
             ionindex = iontuples.index(ionid)
 
-        print(f'\n{at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]:3s} pop={ionpopdict[ionid]:.2e} / cm3,'
-              f'{ion.level_count:5d} levels, {len(ion.transitions):6d} transitions', end='')
+        print(f'\n======> ({at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]:3s} pop={ionpopdict[ionid]:.2e} / cm3,'
+              f'{ion.level_count:5d} levels, {len(ion.transitions):6d} transitions)', end='')
 
         dftransitions = ion.transitions
         if not args.include_permitted and not dftransitions.empty:
@@ -262,8 +266,8 @@ def main(args=None, argsraw=None, **kwargs):
             print()
 
         if not dftransitions.empty:
-            dftransitions.eval('upper_energy_ev = @ion.levels.loc[upper_levelindex].energy_ev.values', inplace=True)
-            dftransitions.eval('lower_energy_ev = @ion.levels.loc[lower_levelindex].energy_ev.values', inplace=True)
+            dftransitions.eval('upper_energy_ev = @ion.levels.loc[upper].energy_ev.values', inplace=True)
+            dftransitions.eval('lower_energy_ev = @ion.levels.loc[lower].energy_ev.values', inplace=True)
             dftransitions.eval('lambda_angstroms = @hc / (upper_energy_ev - lower_energy_ev)', inplace=True)
 
             dftransitions.query('lambda_angstroms >= @plot_xmin_wide & lambda_angstroms <= @plot_xmax_wide', inplace=True)
@@ -272,26 +276,32 @@ def main(args=None, argsraw=None, **kwargs):
 
             print(f'  {len(dftransitions)} plottable transitions')
 
-            dftransitions.eval('upper_statweight = @ion.levels.loc[upper_levelindex].g.values', inplace=True)
+            dftransitions.eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
 
             dfnltepops_thision = dfnltepops.query('Z==@ion.Z & ion_stage==@ion.ion_stage')
 
             nltepopdict = {x.level: x['n_NLTE'] for _, x in dfnltepops_thision.iterrows()}
 
             dftransitions['upper_pop_nlte'] = dftransitions.apply(
-                lambda x: nltepopdict.get(x.upper_levelindex, 0.), axis=1)
+                lambda x: nltepopdict.get(x.upper, 0.), axis=1)
 
             # dftransitions['lower_pop_nlte'] = dftransitions.apply(
-            #     lambda x: nltepopdict.get(x.lower_levelindex, 0.), axis=1)
+            #     lambda x: nltepopdict.get(x.lower, 0.), axis=1)
 
             dftransitions.eval(f'flux_factor = (upper_energy_ev - lower_energy_ev) * A', inplace=True)
+
+            add_upper_lte_pop(dftransitions, vardict['Te'], ion, ionpopdict[ionid], columnname='upper_pop_Te')
 
             for seriesindex, temperature in enumerate(temperature_list):
                 T_exc = eval(temperature, vardict)
                 if T_exc < 0:
                     popcolumnname = 'upper_pop_nlte'
                     dftransitions.eval(f'flux_factor_nlte = flux_factor * {popcolumnname}', inplace=True)
-                    print(dftransitions.nlargest(5, 'flux_factor_nlte'))
+                    dftransitions.eval(f'upper_departure = upper_pop_nlte / upper_pop_Te', inplace=True)
+                    ionpop = ionpopdict[ionid]
+                    # dftransitions.eval('upper_pop_nlte_per_ion_pop = upper_pop_nlte / @ionpop', inplace=True)
+                    with pd.option_context('display.width', 200):
+                        print(dftransitions.nlargest(1, 'flux_factor_nlte'))
                 else:
                     add_upper_lte_pop(dftransitions, T_exc, ion, ionpopdict)
 
@@ -299,6 +309,7 @@ def main(args=None, argsraw=None, **kwargs):
                                                                        popcolumnname, plot_resolution, args)
 
 
+    print()
     make_plot(xvalues, yvalues, axes, temperature_list, vardict, ionlist, ionpopdict, args.xmin, args.xmax)
 
     outputfilename = args.outputfile.format(cell=modelgridindex, timestep=timestep, time_days=time_days)

@@ -171,7 +171,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False):
     """Return a list of lists of levels."""
     adatafilename = os.path.join(modelpath, 'adata.txt')
 
-    transitiontuple = namedtuple('transition', 'lower_levelindex upper_levelindex A collstr forbidden')
+    transitiontuple = namedtuple('transition', 'lower upper A collstr forbidden')
 
     firstlevelnumber = 1
 
