@@ -98,7 +98,7 @@ def parse_ion_row(row, outdict):
         outdict[variablename][(atomic_number, ion_stage)] = value_thision
 
         if variablename == 'populations':
-            elpop = outdict.get(atomic_number, 0)
+            elpop = outdict[variablename].get(atomic_number, 0)
             outdict[variablename][atomic_number] = elpop + value_thision
 
             totalpop = outdict[variablename].get('total', 0)
