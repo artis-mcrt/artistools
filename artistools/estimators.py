@@ -4,6 +4,7 @@ import argparse
 import glob
 import math
 import os
+import re
 import sys
 from collections import namedtuple
 
@@ -108,7 +109,8 @@ def parse_ion_row(row, outdict):
             outdict['Alpha_R'] = value_thision / outdict['nne']
 
 
-def read_estimators(modelpath, modeldata):
+def read_estimators(modelpath, modeldata, keymatch=None):
+    """keymatch should be a tuple (timestep, modelgridindex)."""
     estimfiles = (glob.glob(os.path.join(modelpath, 'estimators_????.out'), recursive=True) +
                   glob.glob(os.path.join(modelpath, '*/estimators_????.out'), recursive=True))
 
@@ -120,6 +122,11 @@ def read_estimators(modelpath, modeldata):
 
     estimators = {}
     for estfile in estimfiles:
+        filerank = int(re.findall('[0-9]+', os.path.basename(estfile))[-1])
+
+        if keymatch is not None and filerank > keymatch[1]:
+            continue
+
         with open(estfile, 'r') as estfile:
             timestep = 0
             modelgridindex = 0
@@ -130,6 +137,10 @@ def read_estimators(modelpath, modeldata):
                     continue
 
                 if row[0] == 'timestep':
+                    if keymatch is not None and keymatch in estimators:
+                        # found our key, so exit now!
+                        return estimators
+
                     timestep = int(row[1])
                     modelgridindex = int(row[3])
                     # print(f'Timestep {timestep} cell {modelgridindex}')
