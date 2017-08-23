@@ -294,12 +294,17 @@ def main(args=None, argsraw=None, **kwargs):
 def make_plot(modeldata, estimators, dfpop, atomic_number, T_e, T_R, timestep, args):
     # top_ion = 9999
     max_ion_stage = dfpop.ion_stage.max()
-    if len(dfpop.query('ion_stage == @max_ion_stage') == 1):  # single-level ion, so skip it
+
+    if len(dfpop.query('ion_stage == @max_ion_stage')) == 1:  # single-level ion, so skip it
         max_ion_stage -= 1
 
     ion_stage_list = sorted([i for i in dfpop.ion_stage.unique() if i <= max_ion_stage])
+
     fig, axes = plt.subplots(len(ion_stage_list), 1, sharex=False, figsize=(9, 3 * len(ion_stage_list)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+
+    if len(ion_stage_list) == 1:
+        axes = [axes]
 
     if dfpop.empty:
         print('Error: No data for selected timestep and element')
