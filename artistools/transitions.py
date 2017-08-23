@@ -248,6 +248,18 @@ def main(args=None, argsraw=None, **kwargs):
     xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
     yvalues = np.zeros((len(temperature_list) + 1, len(ionlist), len(xvalues)))
 
+    est_fe_ionfracs = [estimators['populations'][(26, ionstage)] / estimators['populations'][26] for ionstage in [1, 2, 3]]
+    est_fe_ionfracs_str = ['{:6.2f}'.format(pop) for pop in est_fe_ionfracs]
+
+    est_ni_ionfracs = [estimators['populations'][(28, ionstage)] / estimators['populations'][28] for ionstage in [2, 3]]
+    est_ni_ionfracs_str = ['{:6.2f}'.format(pop) for pop in est_ni_ionfracs]
+
+    print('FeI  FeII  FeIII  /  NiII  NiIII')
+    print(f'{" ".join(est_fe_ionfracs_str)}  /  {" ".join(est_ni_ionfracs_str)}')
+
+    print('Fe III/II  /  Ni III/NiII')
+    print(f"{estimators['populations'][(26, 3)] / estimators['populations'][(26, 2)]:.2f}  /  {estimators['populations'][(28, 3)] / estimators['populations'][(28, 2)]:.2f}")
+
     for _, ion in adata.iterrows():
         ionid = (ion.Z, ion.ion_stage)
         if ionid not in iontuples:
@@ -255,7 +267,7 @@ def main(args=None, argsraw=None, **kwargs):
         else:
             ionindex = iontuples.index(ionid)
 
-        print(f'\n======> ({at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]:3s} pop={ionpopdict[ionid]:.2e} / cm3,'
+        print(f'\n======> {at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]:3s} (pop={ionpopdict[ionid]:.2e} / cm3,'
               f'{ion.level_count:5d} levels, {len(ion.transitions):6d} transitions)', end='')
 
         dftransitions = ion.transitions
