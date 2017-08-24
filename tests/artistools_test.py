@@ -6,6 +6,7 @@ import pandas as pd
 from astropy import constants as const
 
 import artistools as at
+import artistools.deposition
 import artistools.lightcurve
 import artistools.macroatom
 import artistools.makemodelbotyanski
@@ -95,3 +96,13 @@ def test_plotters():
 
 def test_makemodel():
     at.makemodelbotyanski.main(outputpath=outputpath)
+
+
+def test_deposition():
+    at.deposition.main(modelpath=modelpath)
+
+
+def test_menu():
+    at.main()
+    at.showtimesteptimes('', modelpath=modelpath)
+    at.showtimesteptimes(os.path.join(modelpath, 'spec.out'))
