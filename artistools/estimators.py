@@ -491,6 +491,10 @@ def main(args=None, argsraw=None, **kwargs):
                 timestep = at.get_closest_timestep(os.path.join(modelpath, "spec.out"), args.timedays)
                 timestepmin, timestepmax = timestep, timestep
         else:
+            if not args.timestep:
+                print('ERROR: A time or timestep must be specified')
+                return -1
+
             if '-' in args.timestep:
                 timestepmin, timestepmax = [int(nts) for nts in args.timestep.split('-')]
             else:
