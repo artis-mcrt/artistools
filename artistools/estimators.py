@@ -106,7 +106,9 @@ def parse_ion_row(row, outdict):
             outdict[variablename]['total'] = totalpop + value_thision
 
         elif variablename == 'Alpha_R*nne':
-            outdict['Alpha_R'] = value_thision / outdict['nne']
+            if 'Alpha_R' not in outdict:
+                outdict['Alpha_R'] = {}
+            outdict['Alpha_R'][(atomic_number, ion_stage)] = value_thision / outdict['nne']
 
 
 def read_estimators(modelpath, modeldata, keymatch=None):
