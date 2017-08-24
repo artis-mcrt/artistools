@@ -143,7 +143,11 @@ def get_timestep_times_float(specfilename):
 
 
 def get_closest_timestep(specfilename, timedays):
-    return np.abs(get_timestep_times_float(specfilename) - float(timedays.rstrip('d'))).argmin()
+    try:
+        timedays_float = float(timedays.rstrip('d'))
+    except AttributeError:
+        timedays_float = float(timedays)
+    return np.abs(get_timestep_times_float(specfilename) - timedays_float).argmin()
 
 
 def get_timestep_time(specfilename, timestep):
