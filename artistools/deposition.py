@@ -8,6 +8,9 @@ import artistools as at
 
 
 def addargs(parser):
+    parser.add_argument('-modelpath', default='.',
+                        help='Path to ARTIS folder')
+
     parser.add_argument('-timedays', '-t', default=330, type=float,
                         help='Time in days')
 
@@ -20,7 +23,7 @@ def main(args=None, argsraw=None, **kwargs):
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
-    dfmodel, t_model_init = at.get_modeldata('model.txt')
+    dfmodel, t_model_init = at.get_modeldata(args.modelpath)
 
     t_init = t_model_init * u.day
 

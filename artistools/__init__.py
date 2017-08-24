@@ -35,10 +35,12 @@ console_scripts = [
 ]
 
 
-def showtimesteptimes(specfilename, numberofcolumns=5):
+def showtimesteptimes(specfilename, modelpath=None, numberofcolumns=5):
     """
         Print a table showing the timeteps and their corresponding times
     """
+    if modelpath is not None:
+        specfilename = os.path.join(modelpath, 'spec.out')
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     print('Time steps and corresponding times in days:\n')
 
@@ -88,6 +90,8 @@ def get_modeldata(filename):
     """
         Return a list containing named tuples for all model grid cells
     """
+    if os.path.isdir(filename):
+        filename = os.path.join(filename, 'model.txt')
     modeldata = pd.DataFrame()
     gridcelltuple = namedtuple('gridcell', 'inputcellid velocity logrho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48')
 
