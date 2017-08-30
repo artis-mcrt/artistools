@@ -43,7 +43,7 @@ def get_arxs_array(arr_enev, dfcollion, Z, ionstage):
 def read_colliondata():
     collionrow = namedtuple('collionrow', ['Z', 'nelec', 'n', 'l', 'ionpot_ev', 'A', 'B', 'C', 'D'])
     with open(os.path.join(at.PYDIR, 'data', 'collion.txt'), 'r') as collionfile:
-        print(f'Collionfile: expecting {collionfile.readline()} rows')
+        print(f'Collionfile: expecting {collionfile.readline().strip()} rows')
         dfcollion = pd.read_csv(
             collionfile, delim_whitespace=True, header=None, names=collionrow._fields)
     dfcollion.eval('ionstage = Z - nelec + 1', inplace=True)
