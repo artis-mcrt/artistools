@@ -354,6 +354,10 @@ def main(argsraw=None):
             print(f'  {command}')
 
 
+def get_ionstring(atomic_number, ionstage):
+    return f'{elsymbols[atomic_number]} {roman_numerals[ionstage]}'
+
+
 def list_commands():
     print("artistools commands:")
     for script in sorted(console_scripts):

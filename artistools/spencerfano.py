@@ -54,8 +54,8 @@ def main(args=None, argsraw=None, **kwargs):
 
     fs = 13
 
-    npts = 2000
-    engrid = np.linspace(1, 3000, num=npts, endpoint=False)
+    npts = 2048
+    engrid = np.linspace(1, 1000, num=npts, endpoint=False)
     source = np.zeros(engrid.shape)
 
     sfmatrix = np.zeros((npts, npts))
@@ -71,8 +71,12 @@ def main(args=None, argsraw=None, **kwargs):
     modelgridindex = 48
     estim = estimators[(timestep, modelgridindex)]
     nne = estim['nne']
+    deposition_density_ev = estim['gamma_dep'] * 6.242e+11
+
     print(f'timestep {timestep} cell {modelgridindex}')
-    print(f'nntot {estim["populations"]["total"]} nne {nne}')
+    print(f'nntot:      {estim["populations"]["total"]:.1e} /cm3')
+    print(f'nne:        {nne:.1e} /cm3')
+    print(f'deposition: {deposition_density_ev:.2f} eV/s/cm3')
 
     ions = [
       (26, 1), (26, 2), (26, 3), (26, 4), (26, 5),
@@ -80,9 +84,12 @@ def main(args=None, argsraw=None, **kwargs):
       (28, 2), (28, 3), (28, 4), (28, 5),
     ]
 
+    ions = [
+      (26, 2), (26, 3)
+    ]
+
     ionpopdict = estim['populations']
 
-    enmax = engrid[-1]
     deltaen = engrid[1] - engrid[0]
 
     source_spread_pts = math.ceil(npts * 0.03333)
@@ -93,9 +100,8 @@ def main(args=None, argsraw=None, **kwargs):
         elif (s < npts):
             source[s] = 1. / (deltaen * source_spread_pts)
 
-    E_init_ev = 0
-    for j in range(npts):
-        E_init_ev += source[j] * deltaen
+    E_init_ev = np.dot(engrid, source) * deltaen
+    print(f'E_init:     {E_init_ev:.2f} eV/s/cm3')
 
     for i in range(npts):
         for j in range(i, npts):
@@ -115,10 +121,12 @@ def main(args=None, argsraw=None, **kwargs):
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage')
+        print(f'\n====> {at.get_ionstring(Z, ionstage)} (density {nnion} /cm3)')
         print(dfcollion_thision)
 
         for index, row in dfcollion_thision.iterrows():
-            ar_xs_array = np.array([at.nonthermal.ar_xs(energy_ev, row.ionpot_ev, row.A, row.B, row.C, row.D) for energy_ev in engrid])
+            ar_xs_array = np.array([
+                at.nonthermal.ar_xs(energy_ev, row.ionpot_ev, row.A, row.B, row.C, row.D) for energy_ev in engrid])
 
             ionpot_ev = row.ionpot_ev
             J = get_J(row.Z, row.ionstage, ionpot_ev)
@@ -140,9 +148,10 @@ def main(args=None, argsraw=None, **kwargs):
 
                     sfmatrix[i, j] += ij_contribution
 
+    print(f'\nSolving Spencer-Fano with {npts} energy points...')
     lu_and_piv = linalg.lu_factor(sfmatrix, overwrite_a=False)
-    yvec = linalg.lu_solve(lu_and_piv, constvec, trans=0)
-    yvec *= 1e10
+    yvec_reference = linalg.lu_solve(lu_and_piv, constvec, trans=0)
+    yvec = yvec_reference #* deposition_density_ev / E_init_ev
 
     # print("\n".join(["{:} {:11.5e}".format(i, y) for i, y in enumerate(yvec)]))
 
@@ -157,12 +166,39 @@ def main(args=None, argsraw=None, **kwargs):
     #    ax.annotate(modellabel, xy=(0.97, 0.95), xycoords='axes fraction', horizontalalignment='right', verticalalignment='top', fontsize=fs)
     # ax.set_yscale('log')
     ax.set_xlim(xmin=engrid[0], xmax=engrid[-1] * 1.0)
-    ax.set_ylim(ymin=14, ymax=16.5)
+    # ax.set_ylim(ymin=14, ymax=16.5)
     ax.set_xlabel(r'Electron energy [eV]', fontsize=fs)
     ax.set_ylabel(r'y(E)', fontsize=fs)
 
-    fig.savefig(__file__ + '.pdf', format='pdf')
+    fig.savefig('spencerfano.pdf', format='pdf')
     plt.close()
+
+    frac_ionization = 0.
+    for Z, ionstage in ions:
+        nnion = ionpopdict[(Z, ionstage)]
+        dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage')
+        valence_ionpot = dfcollion_thision.ionpot_ev.min()
+
+        print(f'\n====> {at.get_ionstring(Z, ionstage)} (valence potential {valence_ionpot:.1f} eV)')
+
+        frac_ionization_ion = 0.
+
+        for index, row in dfcollion_thision.iterrows():
+            ar_xs_array = np.array([
+                at.nonthermal.ar_xs(energy_ev, row.ionpot_ev, row.A, row.B, row.C, row.D) for energy_ev in engrid])
+
+            frac_ionization_shell = nnion * row.ionpot_ev * np.dot(yvec_reference, ar_xs_array) * deltaen / E_init_ev
+            print(f'Shell {row.ionpot_ev} frac: {frac_ionization_shell:.4f}')
+
+            frac_ionization_ion += frac_ionization_shell
+
+        frac_ionization += frac_ionization_ion
+
+        print(f'  frac_ionization_ion {frac_ionization_ion:.4f}')
+        print(f'  Gamma {frac_ionization * deposition_density_ev / valence_ionpot:.2e}')
+
+    print(f'For all ions, frac_ionization {frac_ionization:.2f}')
+
 
 if __name__ == "__main__":
     main()
