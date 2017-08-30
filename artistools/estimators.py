@@ -290,14 +290,20 @@ def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estima
     axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel, color=dictcolors.get(variablename, None), **plotkwargs)
 
 
-def get_xlist(xvariable, mgilist, estimators, timestep):
+def get_xlist(xvariable, mgilist, estimators, timestep, args):
+    mgilist_out = []
     if xvariable in ['cellid', 'modelgridindex']:
         xlist = mgilist
+        if args.xmax:
+            xlist, mgilist_out = zip(*[(x, mgi) for x, mgi in zip(xlist, mgi) if x <= args.xmax])
     else:
         try:
             xlist = []
             for modelgridindex in mgilist:
-                xlist.append(estimators[(timestep, modelgridindex)][xvariable])
+                xvalue = estimators[(timestep, modelgridindex)][xvariable]
+                if not args.xmax or xvalue <= args.xmax:
+                    xlist.append(xvalue)
+                    mgilist_out.append(modelgridindex)
         except KeyError:
             if (timestep, modelgridindex) in estimators:
                 print(f'Unknown x variable: {xvariable} for timestep {timestep} in cell {modelgridindex}')
@@ -306,7 +312,7 @@ def get_xlist(xvariable, mgilist, estimators, timestep):
             print(estimators[(timestep, modelgridindex)])
             sys.exit()
 
-    return xlist
+    return xlist, mgilist_out
 
 
 def plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata, abundancedata, estimators,
@@ -339,8 +345,7 @@ def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, m
     # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
 
     axes[-1].set_xlabel(f'{xvariable}{get_units_string(xvariable)}')
-    xlist = get_xlist(xvariable, mgilist, estimators, timestep)
-
+    xlist, mgilist = get_xlist(xvariable, mgilist, estimators, timestep, args)
     xlist = np.insert(xlist, 0, 0.)
 
     xmin = args.xmin if args.xmin > 0 else min(xlist)
