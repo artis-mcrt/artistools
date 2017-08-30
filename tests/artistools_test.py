@@ -11,7 +11,7 @@ import artistools.lightcurve
 import artistools.macroatom
 import artistools.makemodelbotyanski
 import artistools.nltepops
-import artistools.nonthermalspec
+import artistools.nonthermal
 import artistools.radfield
 import artistools.spectra
 import artistools.transitions
@@ -87,7 +87,7 @@ def test_plotters():
     at.spectra.main(modelpath=modelpath, outputfile=os.path.join(outputpath, 'spectrum_from_packets.pdf'),
                     timemin=290, timemax=320, frompackets=True)
     at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320, emissionabsorption=True)
-    at.nonthermalspec.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
+    at.nonthermal.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
     at.transitions.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
     at.estimators.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
     at.macroatom.main(modelpath=modelpath, outputfile=outputpath, timestep=10)

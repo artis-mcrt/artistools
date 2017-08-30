@@ -28,7 +28,7 @@ console_scripts = [
     'plotartislightcurve = artistools.lightcurve:main',
     'plotartisnltepops = artistools.nltepops:main',
     'plotartismacroatom = artistools.macroatom:main',
-    'plotartisnonthermal = artistools.nonthermalspec:main',
+    'plotartisnonthermal = artistools.nonthermal:main',
     'plotartisradfield = artistools.radfield:main',
     'plotartisspectrum = artistools.spectra:main',
     'plotartistransitions = artistools.transitions:main',
@@ -330,10 +330,11 @@ def main(argsraw=None):
         ('plotlightcurve', 'lightcurve'),
         ('plotnltepops', 'nltepops'),
         ('plotmacroatom', 'macroatom'),
-        ('plotnonthermal', 'nonthermalspec'),
+        ('plotnonthermal', 'nonthermal'),
         ('plotradfield', 'radfield'),
         ('plotspectrum', 'spectra'),
         ('plottransitions', 'transitions'),
+        ('spencerfano', 'spencerfano'),
     ]
 
     for command, submodulename in commandlist:
@@ -351,7 +352,6 @@ def main(argsraw=None):
         print('usage: artistools <command>, where <command> is one of:\n')
         for command, _ in commandlist:
             print(f'  {command}')
-
 
 
 def list_commands():
