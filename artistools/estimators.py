@@ -294,14 +294,14 @@ def get_xlist(xvariable, mgilist, estimators, timestep, args):
     mgilist_out = []
     if xvariable in ['cellid', 'modelgridindex']:
         xlist = mgilist
-        if args.xmax:
+        if args.xmax >= 0:
             xlist, mgilist_out = zip(*[(x, mgi) for x, mgi in zip(xlist, mgi) if x <= args.xmax])
     else:
         try:
             xlist = []
             for modelgridindex in mgilist:
                 xvalue = estimators[(timestep, modelgridindex)][xvariable]
-                if not args.xmax or xvalue <= args.xmax:
+                if args.xmax < 0 or xvalue <= args.xmax:
                     xlist.append(xvalue)
                     mgilist_out.append(modelgridindex)
         except KeyError:
