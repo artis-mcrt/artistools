@@ -5,7 +5,9 @@ import numpy as np
 from scipy import linalg
 
 import artistools as at
-import artistools.nonthermalspec
+import artistools.estimators
+import artistools.nonthermal
+
 
 def lossfunction(energy, nne):
     h = 4.1356e-15   # Planck's constant in eV * s
@@ -41,8 +43,14 @@ def get_J(Z, ionstage, ionpot_ev):
     return 0.6 * ionpot_ev
 
 
-def main():
-    # estimators = read_estimators(modelpath, modeldata)
+def addargs(parser):
+    pass
+
+
+def main(args=None, argsraw=None, **kwargs):
+    modelpath = '.'
+    modeldata, _ = at.get_modeldata(modelpath)
+    estimators = at.estimators.read_estimators(modelpath, modeldata)
 
     fs = 13
 
@@ -53,8 +61,26 @@ def main():
     sfmatrix = np.zeros((npts, npts))
     constvec = np.zeros(npts)
 
-    nntot = 1e10
-    nne = 1e8   # density of electrons in number per cm^3
+    # nntot = 1e10
+    # nne = 1e8   # density of electrons in number per cm^3
+    # composition = [(26, 2, 0.2 * 0.8 * nntot),
+    #                (26, 2, 0.8 * 0.8 * nntot),
+    #                (28, 2, 0.2 * nntot)]
+
+    timestep = 30
+    modelgridindex = 48
+    estim = estimators[(timestep, modelgridindex)]
+    nne = estim['nne']
+    print(f'timestep {timestep} cell {modelgridindex}')
+    print(f'nntot {estim["populations"]["total"]} nne {nne}')
+
+    ions = [
+      (26, 1), (26, 2), (26, 3), (26, 4), (26, 5),
+      (27, 2), (27, 3), (27, 4),
+      (28, 2), (28, 3), (28, 4), (28, 5),
+    ]
+
+    ionpopdict = estim['populations']
 
     enmax = engrid[-1]
     deltaen = engrid[1] - engrid[0]
@@ -79,22 +105,20 @@ def main():
         en = engrid[i]
         sfmatrix[i, i] += lossfunction(en, nne)
 
-    dfcollion = at.nonthermalspec.read_colliondata()
-
-    composition = [(26, 2, 0.2 * 0.8 * nntot),
-                   (26, 2, 0.8 * 0.8 * nntot),
-                   (28, 2, 0.2 * nntot)]
+    dfcollion = at.nonthermal.read_colliondata()
 
     # composition = [
     #     (8, 1, 0.99 * nntot),
     #     (8, 2, 0.01 * nntot)
     # ]
 
-    for Z, ionstage, nnion in composition:
+    for Z, ionstage in ions:
+        nnion = ionpopdict[(Z, ionstage)]
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage')
         print(dfcollion_thision)
+
         for index, row in dfcollion_thision.iterrows():
-            ar_xs_array = np.array([at.nonthermalspec.ar_xs(energy_ev, row.ionpot_ev, row.A, row.B, row.C, row.D) for energy_ev in engrid])
+            ar_xs_array = np.array([at.nonthermal.ar_xs(energy_ev, row.ionpot_ev, row.A, row.B, row.C, row.D) for energy_ev in engrid])
 
             ionpot_ev = row.ionpot_ev
             J = get_J(row.Z, row.ionstage, ionpot_ev)
@@ -115,7 +139,6 @@ def main():
                         ij_contribution -= prefactor * J * (math.atan((epsilonb - ionpot_ev) / J) - math.atan((epsilona - ionpot_ev) / J)) * deltaen
 
                     sfmatrix[i, j] += ij_contribution
-
 
     lu_and_piv = linalg.lu_factor(sfmatrix, overwrite_a=False)
     yvec = linalg.lu_solve(lu_and_piv, constvec, trans=0)
