@@ -16,6 +16,7 @@ import artistools as at
 DEFAULTSPECPATH = '../example_run/spec.out'
 defaultoutputfile = 'plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf'
 
+
 def ar_xs(energy_ev, ionpot_ev, A, B, C, D):
     u = energy_ev / ionpot_ev
     if u <= 1:
@@ -29,6 +30,20 @@ def xs_fe2_old(energy):
     shell_b = ar_xs(energy, 17.5, 18.6, -5.9, 0.6, -9)
     shell_c = ar_xs(energy, 81, 69.9, -23.7, 9.5, -51.7)
     return shell_a + shell_b + shell_c
+
+
+def get_arxs_array_shell(arr_enev, row):
+    ar_xs_array = np.zeros(len(arr_enev))
+
+    ionpot_ev, A, B, C, D = row.ionpot_ev, row.A, row.B, row.C, row.D
+    for index, energy_ev in enumerate(arr_enev):
+        u = energy_ev / ionpot_ev
+        if u <= 1:
+            ar_xs_array[index] = 0.
+        else:
+            ar_xs_array[index] = 1e-14 * (A * (1 - 1 / u) + B * pow((1 - 1 / u), 2) + C * np.log(u) + D * np.log(u) / u) / (u * pow(ionpot_ev, 2))
+
+    return ar_xs_array
 
 
 def get_arxs_array(arr_enev, dfcollion, Z, ionstage):
@@ -172,7 +187,7 @@ def main(args=None, argsraw=None, **kwargs):
                 continue
             print(f'Loading {nonthermal_file}...')
 
-            nonthermaldata_thisfile = pd.read_csv(nonthermal_file, delim_whitespace=True)
+            nonthermaldata_thisfile = pd.read_csv(nonthermal_file, delim_whitespace=True, error_bad_lines=False)
             nonthermaldata_thisfile.query('modelgridindex==@args.modelgridindex', inplace=True)
             if len(nonthermaldata_thisfile) > 0:
                 if nonthermaldata is None:
