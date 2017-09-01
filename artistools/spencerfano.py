@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import math
 import os.path
 import matplotlib.pyplot as plt
@@ -15,37 +16,59 @@ minionfraction = 1.e-4  # minimum number fraction of the total population to inc
 defaultoutputfile = 'spencerfano_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
 
 
-def lossfunction2(energy_ev, nne):
-    h = 6.6260755e-27
-    me = 9.1093897e-28
-    e = 4.80325E-10
+def lossfunction_ergs(energy, nne):
+    H = 6.6260755e-27
+    ME = 9.1093897e-28
     EV = 1.6021772e-12
+    PI = 3.1415926535987
+    QE = 4.80325E-10
 
-    energy = energy_ev * EV
     eulergamma = 0.577215664901532
 
-    zetae = h / (2 * math.pi) * math.sqrt((4 * math.pi * nne * (e ** 2)) / me)
-    omegap = 2 * math.pi * zetae / h
-    v = math.sqrt(2 * energy / me)
-    if energy > 14:
-        return (nne * 2 * math.pi * (e ** 4) / energy * math.log(2 * energy / zetae)) * EV
+    omegap = math.sqrt(4 * math.pi * nne * pow(QE, 2) / ME)
+    zetae = H * omegap / 2 / PI
+    v = math.sqrt(2 * energy / ME)
+    # print(f'omegap {omegap:.2e} s^-1')
+    # print(f'zetae {zetae:.2e} erg = {zetae / EV:.2e} eV')
+    # print(f'v {v:.2e}  cm/s')
+    if energy > 14 * EV:
+        return nne * 2 * PI * pow(QE, 4) / energy * math.log(2 * energy / zetae)
     else:
-        return (nne * 2 * math.pi * (e ** 4) / energy * math.log(me * (v ** 3) / (eulergamma * (e ** 2) * omegap))) * EV
+        return nne * 2 * PI * pow(QE, 4) / energy * math.log(ME * pow(v, 3) / (eulergamma * pow(QE, 2) * omegap))
 
 
-def lossfunction(energy, nne):
-    h = 4.1356e-15   # Planck's constant in eV * s
-    e = 1.609e-19    # elementary charge in Coulombs
-    me = 0.510998e6  # mass of electron in eV/c^2
+def lossfunction(energy_ev, nne_cgs):
+    nne = nne_cgs * 1e6   # convert from cm^-3 to m^-3
+    energy = energy_ev * 1.60218e-19  # convert eV to J
+    qe = 1.609e-19  # elementary charge in Coulombs
+    me = 9.10938e-31  # kg
+    h = 6.62606e-34  # J s
+    eps0 = 8.854187817e-12  # F / m
+
+    # h = 4.1356e-15   # Planck's constant in eV * s
+    # me = 0.510998e6  # mass of electron in eV/c^2
+    # c = 29979245800.  # c in cm/s
+
     eulergamma = 0.577215664901532
 
-    zetae = h / (2 * math.pi) * math.sqrt((4 * math.pi * nne * (e ** 2)) / me)
-    omegap = 2 * math.pi * zetae / h
-    v = math.sqrt(2 * energy / me)
+    # zetae = h / (2 * math.pi) * math.sqrt((4 * math.pi * nne * (qe ** 2)) / me)
+    # omegap = 2 * math.pi * zetae / h
+
+    omegap = math.sqrt(nne * pow(qe, 2) / me / eps0)
+    zetae = h * omegap / 2 / math.pi
+
+    v = math.sqrt(2 * energy / me)  # velocity in m/s
+    # print(f'omegap {omegap:.2e} s^-1')
+    # print(f'zetae {zetae:.2e} J = {zetae / 1.602e-19:.2e} eV')
+    # print(f'v {v:.2e} m/s')
     if energy > 14:
-        return nne * 2 * math.pi * (e ** 4) / energy * math.log(2 * energy / zetae)
+        lossfunc = nne * 2 * math.pi * (qe ** 4 / (4 * math.pi * eps0) ** 2) / energy * math.log(2 * energy / zetae)
     else:
-        return nne * 2 * math.pi * (e ** 4) / energy * math.log(me * (v ** 3) / (eulergamma * (e ** 2) * omegap))
+        lossfunc = (nne * 2 * math.pi * (qe ** 4 / (4 * math.pi * eps0) ** 2) / energy * math.log(me * (v ** 3) /
+                    (eulergamma * (qe ** 2) * omegap / (4 * math.pi * eps0))))
+
+    # lossfunc is now in J / m
+    return lossfunc / 1.60218e-19 / 100  # eV / cm
 
 
 def Psecondary(epsilon, e_p, I, J):
@@ -184,7 +207,10 @@ def main(args=None, argsraw=None, **kwargs):
 
     for i in range(npts):
         en = engrid[i]
-        sfmatrix[i, i] += lossfunction2(en, nne)
+        sfmatrix[i, i] += lossfunction(en, nne)
+        # EV = 1.6021772e-12  # in erg
+        # print(f"electron loss rate nne={nne:.3e} and {i:d} {en:.2e} eV is {lossfunction(en, nne):.2e} or '
+        #       f'{lossfunction_ergs(en * EV, nne) / EV:.2e}")
 
     dfcollion = at.nonthermal.read_colliondata()
 
@@ -226,14 +252,11 @@ def main(args=None, argsraw=None, **kwargs):
     yvec_reference = linalg.lu_solve(lu_and_piv, constvec, trans=0)
     yvec = yvec_reference * deposition_density_ev / E_init_ev
 
-    for s in range(npts):
-        print(s, engrid[s], source[s], yvec[s])
-
     # print("\n".join(["{:} {:11.5e}".format(i, y) for i, y in enumerate(yvec)]))
 
     fig, ax = plt.subplots(1, 1, sharey=True, figsize=(6, 4), tight_layout={"pad": 0.3, "w_pad": 0.0, "h_pad": 0.0})
 
-    ax.plot(engrid[10:], np.log10(yvec[10:]), marker="None", lw=1.5, color='black')
+    ax.plot(engrid[1:], np.log10(yvec[1:]), marker="None", lw=1.5, color='black')
 
     #    plt.setp(plt.getp(ax, 'xticklabels'), fontsize=fsticklabel)
     #    plt.setp(plt.getp(ax, 'yticklabels'), fontsize=fsticklabel)
@@ -243,7 +266,7 @@ def main(args=None, argsraw=None, **kwargs):
     #                verticalalignment='top', fontsize=fs)
     # ax.set_yscale('log')
     ax.set_xlim(xmin=engrid[0], xmax=engrid[-1] * 1.0)
-    ax.set_ylim(ymin=5, ymax=14)
+    # ax.set_ylim(ymin=5, ymax=14)
     ax.set_xlabel(r'Electron energy [eV]', fontsize=fs)
     ax.set_ylabel(r'y(E)', fontsize=fs)
 
@@ -275,8 +298,7 @@ def main(args=None, argsraw=None, **kwargs):
             print(f'      frac_ionization_shell(n {int(row.n):d} l {int(row.l):d}): '
                   f'{frac_ionization_shell:.4f} (ionpot {row.ionpot_ev:.2f} eV)')
 
-            integralgamma += (nnion * row.ionpot_ev * np.dot(yvec, ar_xs_array) * deltaen /
-                              deposition_density_ev / ionpot_valence)
+            integralgamma += (nnion * row.ionpot_ev * np.dot(yvec, ar_xs_array) * deltaen / ionpot_valence)
 
             if frac_ionization_shell > 1:
                 frac_ionization_shell = 0.
