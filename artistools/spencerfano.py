@@ -73,7 +73,7 @@ def lossfunction(energy_ev, nne_cgs):
 
 def Psecondary(epsilon, e_p, I, J):
     e_s = epsilon - I
-    return 1 / (J * math.atan((e_p - I) / (2 * J)) * (1 + ((e_s / J) ** 2)))
+    return 1 / (J * np.arctan((e_p - I) / (2 * J)) * (1 + ((e_s / J) ** 2)))
 
 
 def get_J(Z, ionstage, ionpot_ev):
@@ -91,31 +91,30 @@ def get_J(Z, ionstage, ionpot_ev):
 
 
 def sfmatrix_add_ionization_shell(engrid, nnion, row, sfmatrix):
+    # this code has been optimised and is now an almost unreadable form of the Spencer-Fano equation
     ar_xs_array = at.nonthermal.get_arxs_array_shell(engrid, row)
     deltaen = engrid[1] - engrid[0]
     ionpot_ev = row.ionpot_ev
     J = get_J(row.Z, row.ionstage, ionpot_ev)
     npts = len(engrid)
+
+    arctanenoverj = np.arctan(engrid / J)
+    arctanexpb = np.arctan((engrid - engrid[0] - ionpot_ev) / J)
+    arctanexpc = np.arctan((engrid - ionpot_ev) / 2 / J)
+    prefactor = deltaen * nnion * ar_xs_array / arctanexpc
+
     for i, en in enumerate(engrid):
 
-        for j in range(i, npts):
-            endash = engrid[j]
+        secondintegralrange = np.argwhere(engrid >= 2 * engrid[i] + ionpot_ev)
+        if len(secondintegralrange) > 0:
+            startindex = secondintegralrange[0][0]
+        else:
+            startindex = npts
 
-            prefactor = nnion * ar_xs_array[j] / (J * math.atan((endash - ionpot_ev) / (2 * J)))
+        sfmatrix[i, i:startindex] += prefactor[i:startindex] * (arctanexpc[i:startindex] - arctanexpb[:startindex - i])
 
-            epsilonb = (endash + ionpot_ev) / 2
-            epsilona = endash - en
-            ij_contribution = (
-                prefactor * J * (math.atan((epsilonb - ionpot_ev) / J) - math.atan((epsilona - ionpot_ev) / J))
-                * deltaen)
-
-            if endash >= 2 * en + ionpot_ev:
-                epsilona = en + ionpot_ev
-                ij_contribution -= (
-                    prefactor * J * (math.atan((epsilonb - ionpot_ev) / J) - math.atan((epsilona - ionpot_ev) / J))
-                    * deltaen)
-
-            sfmatrix[i, j] += ij_contribution
+        if startindex < npts:
+            sfmatrix[i, startindex:] += prefactor[startindex:] * (arctanenoverj[i] - arctanexpb[startindex - i: npts - i])
 
 
 def addargs(parser):
