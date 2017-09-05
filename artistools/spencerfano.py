@@ -96,8 +96,7 @@ def sfmatrix_add_ionization_shell(engrid, nnion, row, sfmatrix):
     ionpot_ev = row.ionpot_ev
     J = get_J(row.Z, row.ionstage, ionpot_ev)
     npts = len(engrid)
-    for i in range(npts):
-        en = engrid[i]
+    for i, en in enumerate(engrid):
 
         for j in range(i, npts):
             endash = engrid[j]
