@@ -298,7 +298,7 @@ def main(args=None, argsraw=None, **kwargs):
             print(f'      frac_ionization_shell(n {int(row.n):d} l {int(row.l):d}): '
                   f'{frac_ionization_shell:.4f} (ionpot {row.ionpot_ev:.2f} eV)')
 
-            integralgamma += (nnion * row.ionpot_ev * np.dot(yvec, ar_xs_array) * deltaen / ionpot_valence)
+            integralgamma += np.dot(yvec, ar_xs_array) * deltaen * row.ionpot_ev / ionpot_valence
 
             if frac_ionization_shell > 1:
                 frac_ionization_shell = 0.
