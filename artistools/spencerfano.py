@@ -228,6 +228,8 @@ def main(args=None, argsraw=None, **kwargs):
         if isinstance(key, tuple) and len(key) == 2:
             ions.append(key)
 
+    ions.sort()
+
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
         if nnion / nntot >= minionfraction:
