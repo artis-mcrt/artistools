@@ -271,7 +271,7 @@ def main(args=None, argsraw=None, **kwargs):
     frac_ionization = 0.
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
-        if nnion <= minionfraction:
+        if nnion / nntot <= minionfraction:
             continue
         X_ion = nnion / nntot
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage')
