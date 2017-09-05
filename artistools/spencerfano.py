@@ -177,10 +177,9 @@ def main(args=None, argsraw=None, **kwargs):
     time_days = float(at.get_timestep_time(modelpath, timestep))
 
     ionpopdict = estim['populations']
-
     nne = estim['nne']
     nntot = estim['populations']['total']
-    deposition_density_ev = estim['gamma_dep'] / 1.6021772e-12
+    deposition_density_ev = estim['gamma_dep'] / 1.6021772e-12  # convert erg to eV
 
     print(f'timestep {timestep} cell {modelgridindex}')
     print(f'nntot:      {estim["populations"]["total"]:.1e} /cm3')
@@ -225,16 +224,9 @@ def main(args=None, argsraw=None, **kwargs):
 
     ions = []
     for key in ionpopdict.keys():
-        # try:
-        #     if len(key) != 2:
-        #         continue
-        # except TypeError:
-        #     continue
-        if not isinstance(key, tuple) or len(key) != 2:
-            continue
-
-        # print(key)
-        ions.append(key)
+        # keep only the single populations, not element or total population
+        if isinstance(key, tuple) and len(key) == 2:
+            ions.append(key)
 
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
