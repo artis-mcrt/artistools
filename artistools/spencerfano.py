@@ -193,6 +193,7 @@ def sfmatrix_add_ionization_shell(engrid, nnion, row, sfmatrix):
 
 
 def make_plot(engrid, yvec, outputfilename):
+    fs = 13
     fig, ax = plt.subplots(1, 1, sharey=True, figsize=(6, 4), tight_layout={"pad": 0.3, "w_pad": 0.0, "h_pad": 0.0})
 
     ax.plot(engrid[1:], np.log10(yvec[1:]), marker="None", lw=1.5, color='black')
@@ -252,7 +253,6 @@ def main(args=None, argsraw=None, **kwargs):
     modelpath = args.modelpath
     modeldata, _ = at.get_modeldata(modelpath)
     estimators = at.estimators.read_estimators(modelpath, modeldata)
-    fs = 13
 
     npts = 2048
     engrid = np.linspace(1, 1000, num=npts, endpoint=True)
@@ -404,15 +404,15 @@ def main(args=None, argsraw=None, **kwargs):
         except ZeroDivisionError:
             eff_ionpot = float('inf')
 
-        print(f'   frac_ionization:  {frac_ionization_ion:.4f}')
+        print(f'   frac_ionization: {frac_ionization_ion:.4f}')
         if not args.noexcitation:
             frac_excitation_ion = calculate_nt_frac_excitation(engrid, dftransitions, nnion,
                                                                yvec, deposition_density_ev)
             frac_excitation += frac_excitation_ion
-            print(f'   frac_excitation:  {frac_excitation_ion:.4f}')
-        print(f'        eff_ionpot:  {eff_ionpot:.2f} eV')
-        print(f'Spencer-Fano Gamma:  {deposition_density_ev / nntot / eff_ionpot:.2e}')
-        # print(f'Alternative Gamma:  {integralgamma:.2e}')
+            print(f'   frac_excitation: {frac_excitation_ion:.4f}')
+        print(f'        eff_ionpot: {eff_ionpot:.2f} eV')
+        print(f'Spencer-Fano Gamma: {deposition_density_ev / nntot / eff_ionpot:.2e}')
+        # print(f'Alternative Gamma: {integralgamma:.2e}')
 
     print(f'\nfrac_ionization_tot: {frac_ionization:.2f}')
     print(f'frac_excitation_tot: {frac_excitation:.2f}')
