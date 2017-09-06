@@ -192,6 +192,27 @@ def sfmatrix_add_ionization_shell(engrid, nnion, row, sfmatrix):
                 arctanenoverj[i] - arctanexpb[startindex - i: npts - i])
 
 
+def make_plot(engrid, yvec, outputfilename):
+    fig, ax = plt.subplots(1, 1, sharey=True, figsize=(6, 4), tight_layout={"pad": 0.3, "w_pad": 0.0, "h_pad": 0.0})
+
+    ax.plot(engrid[1:], np.log10(yvec[1:]), marker="None", lw=1.5, color='black')
+
+    #    plt.setp(plt.getp(ax, 'xticklabels'), fontsize=fsticklabel)
+    #    plt.setp(plt.getp(ax, 'yticklabels'), fontsize=fsticklabel)
+    #    for axis in ['top','bottom','left','right']:
+    #        ax.spines[axis].set_linewidth(framewidth)
+    #    ax.annotate(modellabel, xy=(0.97, 0.95), xycoords='axes fraction', horizontalalignment='right',
+    #                verticalalignment='top', fontsize=fs)
+    # ax.set_yscale('log')
+    ax.set_xlim(xmin=engrid[0], xmax=engrid[-1] * 1.0)
+    # ax.set_ylim(ymin=5, ymax=14)
+    ax.set_xlabel(r'Electron energy [eV]', fontsize=fs)
+    ax.set_ylabel(r'y(E)', fontsize=fs)
+    print(f"Saving '{outputfilename}'")
+    fig.savefig(outputfilename, format='pdf')
+    plt.close()
+
+
 def addargs(parser):
     parser.add_argument('-modelpath', default='.',
                         help='Path to ARTIS folder')
@@ -330,7 +351,6 @@ def main(args=None, argsraw=None, **kwargs):
                 dftransitions.eval('lower_g = @ion.levels.loc[lower].g.values', inplace=True)
                 dftransitions.eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
                 sfmatrix_add_excitation(engrid, dftransitions, nnion, sfmatrix)
-        print('done.')
 
     print(f'\nSolving Spencer-Fano with {npts} energy points...')
     lu_and_piv = linalg.lu_factor(sfmatrix, overwrite_a=False)
@@ -339,26 +359,8 @@ def main(args=None, argsraw=None, **kwargs):
 
     # print("\n".join(["{:} {:11.5e}".format(i, y) for i, y in enumerate(yvec)]))
 
-    fig, ax = plt.subplots(1, 1, sharey=True, figsize=(6, 4), tight_layout={"pad": 0.3, "w_pad": 0.0, "h_pad": 0.0})
-
-    ax.plot(engrid[1:], np.log10(yvec[1:]), marker="None", lw=1.5, color='black')
-
-    #    plt.setp(plt.getp(ax, 'xticklabels'), fontsize=fsticklabel)
-    #    plt.setp(plt.getp(ax, 'yticklabels'), fontsize=fsticklabel)
-    #    for axis in ['top','bottom','left','right']:
-    #        ax.spines[axis].set_linewidth(framewidth)
-    #    ax.annotate(modellabel, xy=(0.97, 0.95), xycoords='axes fraction', horizontalalignment='right',
-    #                verticalalignment='top', fontsize=fs)
-    # ax.set_yscale('log')
-    ax.set_xlim(xmin=engrid[0], xmax=engrid[-1] * 1.0)
-    # ax.set_ylim(ymin=5, ymax=14)
-    ax.set_xlabel(r'Electron energy [eV]', fontsize=fs)
-    ax.set_ylabel(r'y(E)', fontsize=fs)
-
     outputfilename = args.outputfile.format(cell=modelgridindex, timestep=timestep, time_days=time_days)
-    print(f"Saving '{outputfilename}'")
-    fig.savefig(outputfilename, format='pdf')
-    plt.close()
+    make_plot(engrid, yvec, outputfilename)
 
     frac_ionization = 0.
     frac_excitation = 0.
@@ -372,8 +374,8 @@ def main(args=None, argsraw=None, **kwargs):
 
         print(f'\n====> Z={Z:2d} {at.get_ionstring(Z, ionstage)} (valence potential {ionpot_valence:.1f} eV)')
 
-        print(f'   nnion: {nnion:.4f} /cm3')
-        print(f'   nnion/nntot: {X_ion:.4f}')
+        print(f'             nnion: {nnion:.2e} /cm3')
+        print(f'       nnion/nntot: {X_ion:.4f}')
 
         frac_ionization_ion = 0.
         # integralgamma = 0.
@@ -401,17 +403,17 @@ def main(args=None, argsraw=None, **kwargs):
         except ZeroDivisionError:
             eff_ionpot = float('inf')
 
-        print(f'  frac_ionization:  {frac_ionization_ion:.4f}')
+        print(f'   frac_ionization:  {frac_ionization_ion:.4f}')
         if not args.noexcitation:
             frac_excitation_ion = calculate_nt_frac_excitation(engrid, dftransitions, nnion, yvec, deposition_density_ev)
             frac_excitation += frac_excitation_ion
-            print(f'  frac_excitation:  {frac_excitation_ion:.4f}')
-        print(f'       eff_ionpot:  {eff_ionpot:.2f} eV')
-        print(f'            Gamma:  {deposition_density_ev / nntot / eff_ionpot:.2e}')
+            print(f'   frac_excitation:  {frac_excitation_ion:.4f}')
+        print(f'        eff_ionpot:  {eff_ionpot:.2f} eV')
+        print(f'Spencer-Fano Gamma:  {deposition_density_ev / nntot / eff_ionpot:.2e}')
         # print(f'Alternative Gamma:  {integralgamma:.2e}')
 
     print(f'\nfrac_ionization_tot: {frac_ionization:.2f}')
-    print(f'\nfrac_excitation_tot: {frac_excitation:.2f}')
+    print(f'frac_excitation_tot: {frac_excitation:.2f}')
 
 
 if __name__ == "__main__":
