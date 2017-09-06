@@ -248,18 +248,6 @@ def main(args=None, argsraw=None, **kwargs):
     xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
     yvalues = np.zeros((len(temperature_list) + 1, len(ionlist), len(xvalues)))
 
-    est_fe_ionfracs = [estimators['populations'][(26, ionstage)] / estimators['populations'][26] for ionstage in [1, 2, 3]]
-    est_fe_ionfracs_str = ['{:6.2f}'.format(pop) for pop in est_fe_ionfracs]
-
-    est_ni_ionfracs = [estimators['populations'][(28, ionstage)] / estimators['populations'][28] for ionstage in [2, 3]]
-    est_ni_ionfracs_str = ['{:6.2f}'.format(pop) for pop in est_ni_ionfracs]
-
-    print('FeI  FeII  FeIII  /  NiII  NiIII')
-    print(f'{" ".join(est_fe_ionfracs_str)}  /  {" ".join(est_ni_ionfracs_str)}')
-
-    print('Fe III/II  /  Ni III/NiII')
-    print(f"{estimators['populations'][(26, 3)] / estimators['populations'][(26, 2)]:.2f}  /  {estimators['populations'][(28, 3)] / estimators['populations'][(28, 2)]:.2f}")
-
     for _, ion in adata.iterrows():
         ionid = (ion.Z, ion.ion_stage)
         if ionid not in iontuples:
@@ -310,8 +298,11 @@ def main(args=None, argsraw=None, **kwargs):
                     popcolumnname = 'upper_pop_nlte'
                     dftransitions.eval(f'flux_factor_nlte = flux_factor * {popcolumnname}', inplace=True)
                     dftransitions.eval(f'upper_departure = upper_pop_nlte / upper_pop_Te', inplace=True)
-                    ionpop = ionpopdict[ionid]
-                    # dftransitions.eval('upper_pop_nlte_per_ion_pop = upper_pop_nlte / @ionpop', inplace=True)
+                    if ionid == (26, 2):
+                        fe2depcoeff = dftransitions.query('upper == 16 and lower == 5').iloc[0].upper_departure
+                    elif ionid == (28, 2):
+                        ni2depcoeff = dftransitions.query('upper == 6 and lower == 0').iloc[0].upper_departure
+
                     with pd.option_context('display.width', 200):
                         print(dftransitions.nlargest(1, 'flux_factor_nlte'))
                 else:
@@ -322,6 +313,20 @@ def main(args=None, argsraw=None, **kwargs):
 
 
     print()
+
+    est_fe_ionfracs = [estimators['populations'][(26, ionstage)] / estimators['populations'][26] for ionstage in [1, 2, 3]]
+    est_fe_ionfracs_str = ['{:5.2f}'.format(pop) for pop in est_fe_ionfracs]
+
+    est_ni_ionfracs = [estimators['populations'][(28, ionstage)] / estimators['populations'][28] for ionstage in [2, 3]]
+    est_ni_ionfracs_str = ['{:5.2f}'.format(pop) for pop in est_ni_ionfracs]
+
+    print('                     Fe II 7155             Ni II 7378       FeI   FeII  FeIII  /    NiII  NiIII      T_e    Fe III/II       Ni III/II')
+    print(f'{velocity:5.0f} km/s({modelgridindex})       {fe2depcoeff:.2f}                   {ni2depcoeff:.2f}            ', end='')
+
+    print(f'{" ".join(est_fe_ionfracs_str)}   /   {" ".join(est_ni_ionfracs_str)}       {Te:.0f}   ', end='')
+
+    print(f"{estimators['populations'][(26, 3)] / estimators['populations'][(26, 2)]:.2f}            {estimators['populations'][(28, 3)] / estimators['populations'][(28, 2)]:.2f}")
+
     make_plot(xvalues, yvalues, axes, temperature_list, vardict, ionlist, ionpopdict, args.xmin, args.xmax)
 
     outputfilename = args.outputfile.format(cell=modelgridindex, timestep=timestep, time_days=time_days)
