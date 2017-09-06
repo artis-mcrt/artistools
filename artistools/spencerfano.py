@@ -105,11 +105,7 @@ def sfmatrix_add_ionization_shell(engrid, nnion, row, sfmatrix):
 
     for i, en in enumerate(engrid):
 
-        secondintegralrange = np.argwhere(engrid >= 2 * engrid[i] + ionpot_ev)
-        if len(secondintegralrange) > 0:
-            startindex = secondintegralrange[0][0]
-        else:
-            startindex = npts
+        startindex = min(2 * i + math.ceil(ionpot_ev / deltaen), npts)
 
         sfmatrix[i, i:startindex] += prefactor[i:startindex] * (arctanexpc[i:startindex] - arctanexpb[:startindex - i])
 
