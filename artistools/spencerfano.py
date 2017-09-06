@@ -346,7 +346,8 @@ def main(args=None, argsraw=None, **kwargs):
             dftransitions = ion.transitions.query('lower == 0', inplace=False).copy()
             if not dftransitions.empty:
                 dftransitions.eval(
-                    'epsilon_trans_ev = @ion.levels.loc[upper].energy_ev.values - @ion.levels.loc[lower].energy_ev.values',
+                    'epsilon_trans_ev = '
+                    '@ion.levels.loc[upper].energy_ev.values - @ion.levels.loc[lower].energy_ev.values',
                     inplace=True)
                 dftransitions.eval('lower_g = @ion.levels.loc[lower].g.values', inplace=True)
                 dftransitions.eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
@@ -405,7 +406,8 @@ def main(args=None, argsraw=None, **kwargs):
 
         print(f'   frac_ionization:  {frac_ionization_ion:.4f}')
         if not args.noexcitation:
-            frac_excitation_ion = calculate_nt_frac_excitation(engrid, dftransitions, nnion, yvec, deposition_density_ev)
+            frac_excitation_ion = calculate_nt_frac_excitation(engrid, dftransitions, nnion,
+                                                               yvec, deposition_density_ev)
             frac_excitation += frac_excitation_ion
             print(f'   frac_excitation:  {frac_excitation_ion:.4f}')
         print(f'        eff_ionpot:  {eff_ionpot:.2f} eV')
