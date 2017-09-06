@@ -157,8 +157,7 @@ def sfmatrix_add_excitation(engrid, dftransitions, nnion, sfmatrix):
     deltaen = engrid[1] - engrid[0]
     npts = len(engrid)
     for _, row in dftransitions.iterrows():
-        vec_xs_excitation_nnion_deltae = (
-            nnion * deltaen * get_xs_excitation_vector(engrid, row))
+        vec_xs_excitation_nnion_deltae = nnion * deltaen * get_xs_excitation_vector(engrid, row)
 
         for i, en in enumerate(engrid):
             stopindex = i + math.ceil(row.epsilon_trans_ev / deltaen)
@@ -278,10 +277,23 @@ def main(args=None, argsraw=None, **kwargs):
     deposition_density_ev = estim['gamma_dep'] / 1.6021772e-12  # convert erg to eV
     ionpopdict = estim['populations']
 
+    # deposition_density_ev = 327
+    # nne = 6.7e5
+    # ionpopdict[(26, 1)] = ionpopdict[26] * 1e-4
+    # ionpopdict[(26, 2)] = ionpopdict[26] * 0.20
+    # ionpopdict[(26, 3)] = ionpopdict[26] * 0.80
+    # ionpopdict[(26, 4)] = ionpopdict[26] * 0.
+    # ionpopdict[(26, 5)] = ionpopdict[26] * 0.
+    # ionpopdict[(28, 1)] = ionpopdict[28] * 6e-3
+    # ionpopdict[(28, 2)] = ionpopdict[28] * 0.18
+    # ionpopdict[(28, 3)] = ionpopdict[28] * 0.82
+    # ionpopdict[(28, 4)] = ionpopdict[28] * 0.
+    # ionpopdict[(28, 5)] = ionpopdict[28] * 0.
+
     print(f'timestep {timestep} cell {modelgridindex}')
-    print(f'nntot:      {estim["populations"]["total"]:.1e} /cm3')
-    print(f'nne:        {nne:.1e} /cm3')
-    print(f'deposition: {deposition_density_ev:.2f} eV/s/cm3')
+    print(f'     nntot: {estim["populations"]["total"]:.2e} /cm3')
+    print(f'       nne: {nne:.2e} /cm3')
+    print(f'deposition: {deposition_density_ev:7.2f} eV/s/cm3')
 
     deltaen = engrid[1] - engrid[0]
 
@@ -294,7 +306,7 @@ def main(args=None, argsraw=None, **kwargs):
             source[s] = 1. / (deltaen * source_spread_pts)
 
     E_init_ev = np.dot(engrid, source) * deltaen
-    print(f'E_init:     {E_init_ev:.2f} eV/s/cm3')
+    print(f'    E_init: {E_init_ev:7.2f} eV/s/cm3')
 
     for i in range(npts):
         for j in range(i, npts):
@@ -329,6 +341,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     if not args.noexcitation:
         adata = at.get_levels(modelpath, get_transitions=True, ionlist=ions)
+        dftransitions = {}
 
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
@@ -343,17 +356,19 @@ def main(args=None, argsraw=None, **kwargs):
         if not args.noexcitation:
             print('excitation...')
             ion = adata.query('Z == @Z and ion_stage == @ionstage').iloc[0]
-            dftransitions = ion.transitions.query('lower == 0', inplace=False).copy()
-            if not dftransitions.empty:
-                dftransitions.eval(
+            dftransitions[(Z, ionstage)] = ion.transitions.query('lower == 0', inplace=False).copy()
+            if not dftransitions[(Z, ionstage)].empty:
+                dftransitions[(Z, ionstage)].eval(
                     'epsilon_trans_ev = '
                     '@ion.levels.loc[upper].energy_ev.values - @ion.levels.loc[lower].energy_ev.values',
                     inplace=True)
-                dftransitions.eval('lower_g = @ion.levels.loc[lower].g.values', inplace=True)
-                dftransitions.eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
-                sfmatrix_add_excitation(engrid, dftransitions, nnion, sfmatrix)
+                dftransitions[(Z, ionstage)].eval('lower_g = @ion.levels.loc[lower].g.values', inplace=True)
+                dftransitions[(Z, ionstage)].eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
+                sfmatrix_add_excitation(engrid, dftransitions[(Z, ionstage)], nnion, sfmatrix)
+            else:
+                print('NO TRANSITIONS!')
 
-    print(f'\nSolving Spencer-Fano with {npts} energy points...')
+    print(f'\nSolving Spencer-Fano with {npts} energy points...\n')
     lu_and_piv = linalg.lu_factor(sfmatrix, overwrite_a=False)
     yvec_reference = linalg.lu_solve(lu_and_piv, constvec, trans=0)
     yvec = yvec_reference * deposition_density_ev / E_init_ev
@@ -367,16 +382,14 @@ def main(args=None, argsraw=None, **kwargs):
     frac_excitation = 0.
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
-        if nnion / nntot <= minionfraction:
-            continue
         X_ion = nnion / nntot
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage')
         ionpot_valence = dfcollion_thision.ionpot_ev.min()
 
-        print(f'\n====> Z={Z:2d} {at.get_ionstring(Z, ionstage)} (valence potential {ionpot_valence:.1f} eV)')
+        print(f'====> Z={Z:2d} {at.get_ionstring(Z, ionstage)} (valence potential {ionpot_valence:.1f} eV)')
 
-        print(f'             nnion: {nnion:.2e} /cm3')
-        print(f'       nnion/nntot: {X_ion:.4f}')
+        print(f'              nnion: {nnion:.2e} /cm3')
+        print(f'        nnion/nntot: {X_ion:.4f}')
 
         frac_ionization_ion = 0.
         # integralgamma = 0.
@@ -384,7 +397,7 @@ def main(args=None, argsraw=None, **kwargs):
             ar_xs_array = at.nonthermal.get_arxs_array_shell(engrid, row)
 
             frac_ionization_shell = nnion * row.ionpot_ev * np.dot(yvec, ar_xs_array) * deltaen / deposition_density_ev
-            print(f'      frac_ionization_shell(n {int(row.n):d} l {int(row.l):d}): '
+            print(f'frac_ionization_shell(n {int(row.n):d} l {int(row.l):d}): '
                   f'{frac_ionization_shell:.4f} (ionpot {row.ionpot_ev:.2f} eV)')
 
             # integralgamma += np.dot(yvec, ar_xs_array) * deltaen * row.ionpot_ev / ionpot_valence
@@ -404,18 +417,19 @@ def main(args=None, argsraw=None, **kwargs):
         except ZeroDivisionError:
             eff_ionpot = float('inf')
 
-        print(f'   frac_ionization: {frac_ionization_ion:.4f}')
+        print(f'     frac_ionization: {frac_ionization_ion:.4f}')
         if not args.noexcitation:
-            frac_excitation_ion = calculate_nt_frac_excitation(engrid, dftransitions, nnion,
+            frac_excitation_ion = calculate_nt_frac_excitation(engrid, dftransitions[(Z, ionstage)], nnion,
                                                                yvec, deposition_density_ev)
             frac_excitation += frac_excitation_ion
-            print(f'   frac_excitation: {frac_excitation_ion:.4f}')
-        print(f'        eff_ionpot: {eff_ionpot:.2f} eV')
-        print(f'Spencer-Fano Gamma: {deposition_density_ev / nntot / eff_ionpot:.2e}')
+            print(f'     frac_excitation: {frac_excitation_ion:.4f}')
+        print(f'          eff_ionpot: {eff_ionpot:.2f} eV')
+        print(f'  Spencer-Fano Gamma: {deposition_density_ev / nntot / eff_ionpot:.2e}')
         # print(f'Alternative Gamma: {integralgamma:.2e}')
+        print('')
 
-    print(f'\nfrac_ionization_tot: {frac_ionization:.2f}')
-    print(f'frac_excitation_tot: {frac_excitation:.2f}')
+    print(f'  frac_excitation_tot: {frac_excitation:.5f}')
+    print(f'  frac_ionization_tot: {frac_ionization:.5f}')
 
 
 if __name__ == "__main__":
