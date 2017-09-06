@@ -118,7 +118,7 @@ def get_xs_excitation_vector(engrid, row):
     elif not row.forbidden:
 
         nu_trans = epsilon_trans / H
-        g = row.lower_g / row.upper_g
+        g = row.upper_g / row.lower_g
         fij = g * ME * pow(CLIGHT, 3) / (8 * pow(QE * nu_trans * math.pi, 2)) * row.A
         # permitted E1 electric dipole transitions
 
