@@ -15,6 +15,7 @@ python setup.py develop
 
 ## Usage
 First cd into an ARTIS simulation folder and then run artistools with one of the subcommands:
+
 usage: artistools &lt;command&gt;, where &lt;command&gt; is one of:
 
   - getmodeldeposition
