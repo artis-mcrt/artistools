@@ -302,7 +302,8 @@ def main(args=None, argsraw=None, **kwargs):
     # ionpopdict[(28, 4)] = ionpopdict[28] * 0.
     # ionpopdict[(28, 5)] = ionpopdict[28] * 0.
 
-    print(f'timestep {timestep} cell {modelgridindex}')
+    velocity = modeldata['velocity'][args.modelgridindex]
+    print(f'timestep {timestep} cell {modelgridindex} (v={velocity} km/s)')
     print(f'     nntot: {estim["populations"]["total"]:.2e} /cm3')
     print(f'       nne: {nne:.2e} /cm3')
     print(f'deposition: {deposition_density_ev:7.2f} eV/s/cm3')
