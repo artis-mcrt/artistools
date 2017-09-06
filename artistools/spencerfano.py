@@ -95,25 +95,26 @@ def get_xs_excitation_vector(engrid, row):
     H = 6.6260755e-27
     ME = 9.1093897e-28
     EV = 1.6021772e-12
-    PI = 3.1415926535987
     QE = 4.80325E-10
     H_ionpot = 13.5979996 * EV
     CLIGHT = 2.99792458e+10
 
+    deltaen = engrid[1] - engrid[0]
     npts = len(engrid)
     xs_excitation_vec = np.zeros(npts)
 
     coll_str = row.collstr
     epsilon_trans = row.epsilon_trans_ev * EV
+    epsilon_trans_ev = row.epsilon_trans_ev
+
+    startindex = math.ceil((epsilon_trans_ev - engrid[0]) / deltaen)
 
     if (coll_str >= 0):
         # collision strength is available, so use it
         # Li et al. 2012 equation 11
         constantfactor = pow(H_ionpot, 2) / row.lower_g * coll_str * math.pi * A_naught_squared
-        for j, energy_ev in enumerate(engrid):
-            energy = energy_ev * EV
-            if (energy >= epsilon_trans):
-                xs_excitation_vec[j] = constantfactor * pow(energy, -2)
+
+        xs_excitation_vec[startindex:] = constantfactor * (engrid[startindex:] * EV) ** -2
 
     elif not row.forbidden:
 
@@ -123,18 +124,23 @@ def get_xs_excitation_vector(engrid, row):
         # permitted E1 electric dipole transitions
 
         g_bar = 0.2
+
         A = 0.28
         B = 0.15
 
         prefactor = 45.585750051
         # Eq 4 of Mewe 1972, possibly from Seaton 1962?
         constantfactor = prefactor * A_naught_squared * pow(H_ionpot / epsilon_trans, 2) * fij
-        for j, energy_ev in enumerate(engrid):
-            energy = energy_ev * EV
-            if (energy >= epsilon_trans):
-                U = energy / epsilon_trans
-                g_bar = A * math.log(U) + B
-                xs_excitation_vec[j] = constantfactor * g_bar / U
+
+        U = engrid[startindex:] / epsilon_trans_ev
+        g_bar = A * np.log(U) + B
+        xs_excitation_vec[startindex:] = constantfactor * g_bar / U
+        # for j, energy_ev in enumerate(engrid):
+        #     energy = energy_ev * EV
+        #     if (energy >= epsilon_trans):
+        #         U = energy / epsilon_trans
+        #         g_bar = A * math.log(U) + B
+        #         xs_excitation_vec[j] = constantfactor * g_bar / U
 
     return xs_excitation_vec
 
@@ -347,7 +353,7 @@ def main(args=None, argsraw=None, **kwargs):
         nnion = ionpopdict[(Z, ionstage)]
         print(f'including Z={Z:2} ion_stage {ionstage:3} ({at.get_ionstring(Z, ionstage)})')
         print('ionization...')
-        dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage')
+        dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
         # print(dfcollion_thision)
 
         for index, row in dfcollion_thision.iterrows():
@@ -383,13 +389,15 @@ def main(args=None, argsraw=None, **kwargs):
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
         X_ion = nnion / nntot
-        dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage')
+        dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
+        # if dfcollion.empty:
+        #     continue
         ionpot_valence = dfcollion_thision.ionpot_ev.min()
 
         print(f'====> Z={Z:2d} {at.get_ionstring(Z, ionstage)} (valence potential {ionpot_valence:.1f} eV)')
 
-        print(f'              nnion: {nnion:.2e} /cm3')
-        print(f'        nnion/nntot: {X_ion:.4f}')
+        print(f'               nnion: {nnion:.2e} /cm3')
+        print(f'         nnion/nntot: {X_ion:.4f}')
 
         frac_ionization_ion = 0.
         # integralgamma = 0.
