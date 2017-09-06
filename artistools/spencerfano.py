@@ -232,6 +232,12 @@ def addargs(parser):
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Modelgridindex to plot')
 
+    parser.add_argument('-npts', type=int, default=2048,
+                        help='Number of points in the energy grid')
+
+    parser.add_argument('-emax', type=float, default=1000,
+                        help='Maximum energy in eV of Spencer-Fano solution (approx where energy is injected)')
+
     parser.add_argument('--print-lines', action='store_true', default=False,
                         help='Output details of matching line details to standard out')
 
@@ -259,8 +265,8 @@ def main(args=None, argsraw=None, **kwargs):
     modeldata, _ = at.get_modeldata(modelpath)
     estimators = at.estimators.read_estimators(modelpath, modeldata)
 
-    npts = 2048
-    engrid = np.linspace(1, 1000, num=npts, endpoint=True)
+    npts = args.npts
+    engrid = np.linspace(1, args.emax, num=npts, endpoint=True)
     source = np.zeros(engrid.shape)
 
     sfmatrix = np.zeros((npts, npts))
@@ -327,6 +333,12 @@ def main(args=None, argsraw=None, **kwargs):
 
     dfcollion = at.nonthermal.read_colliondata()
 
+    ions = []
+    for key in ionpopdict.keys():
+        # keep only the single populations, not element or total population
+        if isinstance(key, tuple) and len(key) == 2 and ionpopdict[key] / nntot >= minionfraction:
+            ions.append(key)
+
     # ions = [
     #   (26, 1), (26, 2), (26, 3), (26, 4), (26, 5),
     #   (27, 2), (27, 3), (27, 4),
@@ -336,12 +348,6 @@ def main(args=None, argsraw=None, **kwargs):
     # ions = [
     #   (26, 2), (26, 3)
     # ]
-
-    ions = []
-    for key in ionpopdict.keys():
-        # keep only the single populations, not element or total population
-        if isinstance(key, tuple) and len(key) == 2 and ionpopdict[key] / nntot >= minionfraction:
-            ions.append(key)
 
     ions.sort()
 
