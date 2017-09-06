@@ -90,6 +90,83 @@ def get_J(Z, ionstage, ionpot_ev):
     return 0.6 * ionpot_ev
 
 
+def get_xs_excitation_vector(engrid, row):
+    A_naught_squared = 2.800285203e-17  # Bohr radius squared in cm^2
+    H = 6.6260755e-27
+    ME = 9.1093897e-28
+    EV = 1.6021772e-12
+    PI = 3.1415926535987
+    QE = 4.80325E-10
+    H_ionpot = 13.5979996 * EV
+    CLIGHT = 2.99792458e+10
+
+    npts = len(engrid)
+    xs_excitation_vec = np.zeros(npts)
+
+    coll_str = row.collstr
+    epsilon_trans = row.epsilon_trans_ev * EV
+
+    if (coll_str >= 0):
+        # collision strength is available, so use it
+        # Li et al. 2012 equation 11
+        constantfactor = pow(H_ionpot, 2) / row.lower_g * coll_str * math.pi * A_naught_squared
+        for j, energy_ev in enumerate(engrid):
+            energy = energy_ev * EV
+            if (energy >= epsilon_trans):
+                xs_excitation_vec[j] = constantfactor * pow(energy, -2)
+
+    elif not row.forbidden:
+
+        nu_trans = epsilon_trans / H
+        g = row.lower_g / row.upper_g
+        fij = g * ME * pow(CLIGHT, 3) / (8 * pow(QE * nu_trans * math.pi, 2)) * row.A
+        # permitted E1 electric dipole transitions
+
+        g_bar = 0.2
+        A = 0.28
+        B = 0.15
+
+        prefactor = 45.585750051
+        # Eq 4 of Mewe 1972, possibly from Seaton 1962?
+        constantfactor = prefactor * A_naught_squared * pow(H_ionpot / epsilon_trans, 2) * fij
+        for j, energy_ev in enumerate(engrid):
+            energy = energy_ev * EV
+            if (energy >= epsilon_trans):
+                U = energy / epsilon_trans
+                g_bar = A * math.log(U) + B
+                xs_excitation_vec[j] = constantfactor * g_bar / U
+
+    return xs_excitation_vec
+
+
+def calculate_nt_frac_excitation(engrid, dftransitions, nnion, yvec, deposition_density_ev):
+    # Kozma & Fransson equation 4, but summed over all transitions for given ion
+    # integral in Kozma & Fransson equation 9
+    deltaen = engrid[1] - engrid[0]
+    npts = len(engrid)
+
+    xs_excitation_vec_sum_alltrans = np.zeros(npts)
+
+    for _, row in dftransitions.iterrows():
+        xs_excitation_vec_sum_alltrans += row.epsilon_trans_ev * get_xs_excitation_vector(engrid, row)
+
+    return nnion * np.dot(xs_excitation_vec_sum_alltrans, yvec) * deltaen / deposition_density_ev
+
+
+def sfmatrix_add_excitation(engrid, dftransitions, nnion, sfmatrix):
+    deltaen = engrid[1] - engrid[0]
+    npts = len(engrid)
+    for _, row in dftransitions.iterrows():
+        vec_xs_excitation_nnion_deltae = (
+            nnion * deltaen * get_xs_excitation_vector(engrid, row))
+
+        for i, en in enumerate(engrid):
+            stopindex = i + math.ceil(row.epsilon_trans_ev / deltaen)
+
+            if (stopindex < npts - 1):
+                sfmatrix[i, i: stopindex - i + 1] += vec_xs_excitation_nnion_deltae[i: stopindex - i + 1]
+
+
 def sfmatrix_add_ionization_shell(engrid, nnion, row, sfmatrix):
     # this code has been optimised and is now an almost unreadable form of the Spencer-Fano equation
     ar_xs_array = at.nonthermal.get_arxs_array_shell(engrid, row)
@@ -107,10 +184,12 @@ def sfmatrix_add_ionization_shell(engrid, nnion, row, sfmatrix):
 
         startindex = min(2 * i + math.ceil(ionpot_ev / deltaen), npts)
 
-        sfmatrix[i, i:startindex] += prefactor[i:startindex] * (arctanexpc[i:startindex] - arctanexpb[:startindex - i])
+        sfmatrix[i, i:startindex] += prefactor[i:startindex] * (
+            arctanexpc[i:startindex] - arctanexpb[:startindex - i])
 
         if startindex < npts:
-            sfmatrix[i, startindex:] += prefactor[startindex:] * (arctanenoverj[i] - arctanexpb[startindex - i: npts - i])
+            sfmatrix[i, startindex:] += prefactor[startindex:] * (
+                arctanenoverj[i] - arctanexpb[startindex - i: npts - i])
 
 
 def addargs(parser):
@@ -128,6 +207,9 @@ def addargs(parser):
 
     parser.add_argument('--print-lines', action='store_true', default=False,
                         help='Output details of matching line details to standard out')
+
+    parser.add_argument('--noexcitation', action='store_true', default=False,
+                        help='Inlude collisional excitation transitions')
 
     parser.add_argument('-o', action='store', dest='outputfile',
                         default=defaultoutputfile,
@@ -149,7 +231,6 @@ def main(args=None, argsraw=None, **kwargs):
     modelpath = args.modelpath
     modeldata, _ = at.get_modeldata(modelpath)
     estimators = at.estimators.read_estimators(modelpath, modeldata)
-
     fs = 13
 
     npts = 2048
@@ -171,10 +252,10 @@ def main(args=None, argsraw=None, **kwargs):
 
     time_days = float(at.get_timestep_time(modelpath, timestep))
 
-    ionpopdict = estim['populations']
-    nne = estim['nne']
     nntot = estim['populations']['total']
+    nne = estim['nne']
     deposition_density_ev = estim['gamma_dep'] / 1.6021772e-12  # convert erg to eV
+    ionpopdict = estim['populations']
 
     print(f'timestep {timestep} cell {modelgridindex}')
     print(f'nntot:      {estim["populations"]["total"]:.1e} /cm3')
@@ -220,20 +301,35 @@ def main(args=None, argsraw=None, **kwargs):
     ions = []
     for key in ionpopdict.keys():
         # keep only the single populations, not element or total population
-        if isinstance(key, tuple) and len(key) == 2:
+        if isinstance(key, tuple) and len(key) == 2 and ionpopdict[key] / nntot >= minionfraction:
             ions.append(key)
 
     ions.sort()
 
+    if not args.noexcitation:
+        adata = at.get_levels(modelpath, get_transitions=True, ionlist=ions)
+
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
-        if nnion / nntot >= minionfraction:
-            print(f'including Z={Z:2} ion_stage {ionstage:3} ({at.get_ionstring(Z, ionstage)})')
-            dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage')
-            # print(dfcollion_thision)
+        print(f'including Z={Z:2} ion_stage {ionstage:3} ({at.get_ionstring(Z, ionstage)})')
+        print('ionization...')
+        dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage')
+        # print(dfcollion_thision)
 
-            for index, row in dfcollion_thision.iterrows():
-                sfmatrix_add_ionization_shell(engrid, nnion, row, sfmatrix)
+        for index, row in dfcollion_thision.iterrows():
+            sfmatrix_add_ionization_shell(engrid, nnion, row, sfmatrix)
+
+        if not args.noexcitation:
+            print('excitation...')
+            ion = adata.query('Z == @Z and ion_stage == @ionstage').iloc[0]
+            dftransitions = ion.transitions.query('lower == 0', inplace=False).copy()
+            dftransitions.eval(
+                'epsilon_trans_ev = @ion.levels.loc[upper].energy_ev.values - @ion.levels.loc[lower].energy_ev.values',
+                inplace=True)
+            dftransitions.eval('lower_g = @ion.levels.loc[lower].g.values', inplace=True)
+            dftransitions.eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
+            sfmatrix_add_excitation(engrid, dftransitions, nnion, sfmatrix)
+        print('done.')
 
     print(f'\nSolving Spencer-Fano with {npts} energy points...')
     lu_and_piv = linalg.lu_factor(sfmatrix, overwrite_a=False)
@@ -304,6 +400,9 @@ def main(args=None, argsraw=None, **kwargs):
             eff_ionpot = float('inf')
 
         print(f'  frac_ionization:  {frac_ionization_ion:.4f}')
+        if not args.noexcitation:
+            frac_excitation = calculate_nt_frac_excitation(engrid, dftransitions, nnion, yvec, deposition_density_ev)
+            print(f'  frac_excitation:  {frac_excitation:.4f}')
         print(f'       eff_ionpot:  {eff_ionpot:.2f} eV')
         print(f'            Gamma:  {deposition_density_ev / nntot / eff_ionpot:.2e}')
         print(f'Alternative Gamma:  {integralgamma:.2e}')
