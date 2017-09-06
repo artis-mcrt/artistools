@@ -323,12 +323,13 @@ def main(args=None, argsraw=None, **kwargs):
             print('excitation...')
             ion = adata.query('Z == @Z and ion_stage == @ionstage').iloc[0]
             dftransitions = ion.transitions.query('lower == 0', inplace=False).copy()
-            dftransitions.eval(
-                'epsilon_trans_ev = @ion.levels.loc[upper].energy_ev.values - @ion.levels.loc[lower].energy_ev.values',
-                inplace=True)
-            dftransitions.eval('lower_g = @ion.levels.loc[lower].g.values', inplace=True)
-            dftransitions.eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
-            sfmatrix_add_excitation(engrid, dftransitions, nnion, sfmatrix)
+            if not dftransitions.empty:
+                dftransitions.eval(
+                    'epsilon_trans_ev = @ion.levels.loc[upper].energy_ev.values - @ion.levels.loc[lower].energy_ev.values',
+                    inplace=True)
+                dftransitions.eval('lower_g = @ion.levels.loc[lower].g.values', inplace=True)
+                dftransitions.eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
+                sfmatrix_add_excitation(engrid, dftransitions, nnion, sfmatrix)
         print('done.')
 
     print(f'\nSolving Spencer-Fano with {npts} energy points...')
@@ -360,6 +361,7 @@ def main(args=None, argsraw=None, **kwargs):
     plt.close()
 
     frac_ionization = 0.
+    frac_excitation = 0.
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
         if nnion / nntot <= minionfraction:
@@ -374,7 +376,7 @@ def main(args=None, argsraw=None, **kwargs):
         print(f'   nnion/nntot: {X_ion:.4f}')
 
         frac_ionization_ion = 0.
-        integralgamma = 0.
+        # integralgamma = 0.
         for index, row in dfcollion_thision.iterrows():
             ar_xs_array = at.nonthermal.get_arxs_array_shell(engrid, row)
 
@@ -382,7 +384,7 @@ def main(args=None, argsraw=None, **kwargs):
             print(f'      frac_ionization_shell(n {int(row.n):d} l {int(row.l):d}): '
                   f'{frac_ionization_shell:.4f} (ionpot {row.ionpot_ev:.2f} eV)')
 
-            integralgamma += np.dot(yvec, ar_xs_array) * deltaen * row.ionpot_ev / ionpot_valence
+            # integralgamma += np.dot(yvec, ar_xs_array) * deltaen * row.ionpot_ev / ionpot_valence
 
             if frac_ionization_shell > 1:
                 frac_ionization_shell = 0.
@@ -401,13 +403,15 @@ def main(args=None, argsraw=None, **kwargs):
 
         print(f'  frac_ionization:  {frac_ionization_ion:.4f}')
         if not args.noexcitation:
-            frac_excitation = calculate_nt_frac_excitation(engrid, dftransitions, nnion, yvec, deposition_density_ev)
-            print(f'  frac_excitation:  {frac_excitation:.4f}')
+            frac_excitation_ion = calculate_nt_frac_excitation(engrid, dftransitions, nnion, yvec, deposition_density_ev)
+            frac_excitation += frac_excitation_ion
+            print(f'  frac_excitation:  {frac_excitation_ion:.4f}')
         print(f'       eff_ionpot:  {eff_ionpot:.2f} eV')
         print(f'            Gamma:  {deposition_density_ev / nntot / eff_ionpot:.2e}')
-        print(f'Alternative Gamma:  {integralgamma:.2e}')
+        # print(f'Alternative Gamma:  {integralgamma:.2e}')
 
     print(f'\nfrac_ionization_tot: {frac_ionization:.2f}')
+    print(f'\nfrac_excitation_tot: {frac_excitation:.2f}')
 
 
 if __name__ == "__main__":
