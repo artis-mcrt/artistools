@@ -235,6 +235,9 @@ def addargs(parser):
     parser.add_argument('-npts', type=int, default=2048,
                         help='Number of points in the energy grid')
 
+    parser.add_argument('-emin', type=float, default=1,
+                        help='Minimum energy in eV of Spencer-Fano solution')
+
     parser.add_argument('-emax', type=float, default=1000,
                         help='Maximum energy in eV of Spencer-Fano solution (approx where energy is injected)')
 
@@ -266,7 +269,7 @@ def main(args=None, argsraw=None, **kwargs):
     estimators = at.estimators.read_estimators(modelpath, modeldata)
 
     npts = args.npts
-    engrid = np.linspace(1, args.emax, num=npts, endpoint=True)
+    engrid = np.linspace(args.emin, args.emax, num=npts, endpoint=True)
     source = np.zeros(engrid.shape)
 
     sfmatrix = np.zeros((npts, npts))
@@ -303,7 +306,8 @@ def main(args=None, argsraw=None, **kwargs):
     # ionpopdict[(28, 5)] = ionpopdict[28] * 0.
 
     velocity = modeldata['velocity'][args.modelgridindex]
-    print(f'timestep {timestep} cell {modelgridindex} (v={velocity} km/s)')
+    time_days = float(at.get_timestep_time(modelpath, timestep))
+    print(f'timestep {timestep} cell {modelgridindex} (v={velocity} km/s at {time_days:.1f}d)')
     print(f'     nntot: {estim["populations"]["total"]:.2e} /cm3')
     print(f'       nne: {nne:.2e} /cm3')
     print(f'deposition: {deposition_density_ev:7.2f} eV/s/cm3')
@@ -381,7 +385,7 @@ def main(args=None, argsraw=None, **kwargs):
             else:
                 print('NO TRANSITIONS!')
 
-    print(f'\nSolving Spencer-Fano with {npts} energy points...\n')
+    print(f'\nSolving Spencer-Fano with {npts} energy points from {engrid[0]} to {engrid[-1]} eV...\n')
     lu_and_piv = linalg.lu_factor(sfmatrix, overwrite_a=False)
     yvec_reference = linalg.lu_solve(lu_and_piv, constvec, trans=0)
     yvec = yvec_reference * deposition_density_ev / E_init_ev
