@@ -362,8 +362,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
-        print(f'including Z={Z:2} ion_stage {ionstage:3} ({at.get_ionstring(Z, ionstage)})')
-        print('ionization...')
+        print(f'including Z={Z:2} ion_stage {ionstage:3} ({at.get_ionstring(Z, ionstage)}). ionization...', end='')
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
         # print(dfcollion_thision)
 
@@ -371,7 +370,7 @@ def main(args=None, argsraw=None, **kwargs):
             sfmatrix_add_ionization_shell(engrid, nnion, row, sfmatrix)
 
         if not args.noexcitation:
-            print('excitation...')
+            print('excitation...', end='')
             ion = adata.query('Z == @Z and ion_stage == @ionstage').iloc[0]
             dftransitions[(Z, ionstage)] = ion.transitions.query('lower == 0', inplace=False).copy()
             if not dftransitions[(Z, ionstage)].empty:
@@ -383,7 +382,8 @@ def main(args=None, argsraw=None, **kwargs):
                 dftransitions[(Z, ionstage)].eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
                 sfmatrix_add_excitation(engrid, dftransitions[(Z, ionstage)], nnion, sfmatrix)
             else:
-                print('NO TRANSITIONS!')
+                print('(no excitation transitions)!', end='')
+        print()
 
     print(f'\nSolving Spencer-Fano with {npts} energy points from {engrid[0]} to {engrid[-1]} eV...\n')
     lu_and_piv = linalg.lu_factor(sfmatrix, overwrite_a=False)
@@ -445,7 +445,7 @@ def main(args=None, argsraw=None, **kwargs):
         print(f'          eff_ionpot: {eff_ionpot:.2f} eV')
         print(f'  Spencer-Fano Gamma: {deposition_density_ev / nntot / eff_ionpot:.2e}')
         # print(f'Alternative Gamma: {integralgamma:.2e}')
-        print('')
+        print()
 
     print(f'  frac_excitation_tot: {frac_excitation:.5f}')
     print(f'  frac_ionization_tot: {frac_ionization:.5f}')
