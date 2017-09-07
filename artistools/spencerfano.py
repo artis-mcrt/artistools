@@ -222,101 +222,16 @@ def make_plot(engrid, yvec, outputfilename):
     plt.close()
 
 
-def addargs(parser):
-    parser.add_argument('-modelpath', default='.',
-                        help='Path to ARTIS folder')
-
-    parser.add_argument('-timedays', '-time', '-t',
-                        help='Time in days to plot')
-
-    parser.add_argument('-timestep', '-ts', type=int, default=70,
-                        help='Timestep number to plot')
-
-    parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
-                        help='Modelgridindex to plot')
-
-    parser.add_argument('-npts', type=int, default=2048,
-                        help='Number of points in the energy grid')
-
-    parser.add_argument('-emin', type=float, default=1,
-                        help='Minimum energy in eV of Spencer-Fano solution')
-
-    parser.add_argument('-emax', type=float, default=1000,
-                        help='Maximum energy in eV of Spencer-Fano solution (approx where energy is injected)')
-
-    parser.add_argument('--print-lines', action='store_true', default=False,
-                        help='Output details of matching line details to standard out')
-
-    parser.add_argument('--noexcitation', action='store_true', default=False,
-                        help='Inlude collisional excitation transitions')
-
-    parser.add_argument('-o', action='store', dest='outputfile',
-                        default=defaultoutputfile,
-                        help='path/filename for PDF file')
-
-
-def main(args=None, argsraw=None, **kwargs):
-    if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-            description='Plot estimated spectra from bound-bound transitions.')
-        addargs(parser)
-        parser.set_defaults(**kwargs)
-        args = parser.parse_args(argsraw)
-
-    if os.path.isdir(args.outputfile):
-        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
-
-    modelpath = args.modelpath
-    modeldata, _ = at.get_modeldata(modelpath)
-    estimators = at.estimators.read_estimators(modelpath, modeldata)
-
-    npts = args.npts
-    engrid = np.linspace(args.emin, args.emax, num=npts, endpoint=True)
-    source = np.zeros(engrid.shape)
-
-    sfmatrix = np.zeros((npts, npts))
-    constvec = np.zeros(npts)
-
-    # timestep = 30
-    # modelgridindex = 48
-
-    if args.timedays:
-        timestep = at.get_closest_timestep(os.path.join(modelpath, "spec.out"), args.timedays)
-    else:
-        timestep = args.timestep
-    modelgridindex = args.modelgridindex
-    estim = estimators[(timestep, modelgridindex)]
-
-    time_days = float(at.get_timestep_time(modelpath, timestep))
-
-    nntot = estim['populations']['total']
-    nne = estim['nne']
-    deposition_density_ev = estim['gamma_dep'] / 1.6021772e-12  # convert erg to eV
-    ionpopdict = estim['populations']
-
-    # deposition_density_ev = 327
-    # nne = 6.7e5
-    # ionpopdict[(26, 1)] = ionpopdict[26] * 1e-4
-    # ionpopdict[(26, 2)] = ionpopdict[26] * 0.20
-    # ionpopdict[(26, 3)] = ionpopdict[26] * 0.80
-    # ionpopdict[(26, 4)] = ionpopdict[26] * 0.
-    # ionpopdict[(26, 5)] = ionpopdict[26] * 0.
-    # ionpopdict[(28, 1)] = ionpopdict[28] * 6e-3
-    # ionpopdict[(28, 2)] = ionpopdict[28] * 0.18
-    # ionpopdict[(28, 3)] = ionpopdict[28] * 0.82
-    # ionpopdict[(28, 4)] = ionpopdict[28] * 0.
-    # ionpopdict[(28, 5)] = ionpopdict[28] * 0.
-
-    velocity = modeldata['velocity'][args.modelgridindex]
-    time_days = float(at.get_timestep_time(modelpath, timestep))
-    print(f'timestep {timestep} cell {modelgridindex} (v={velocity} km/s at {time_days:.1f}d)')
-    print(f'     nntot: {estim["populations"]["total"]:.2e} /cm3')
+def solve_spencerfano(ions, ionpopdict, nne, nntot, deposition_density_ev, npts, emin, emax, args, adata=None):
+    print(f'     nntot: {nntot:.2e} /cm3')
     print(f'       nne: {nne:.2e} /cm3')
     print(f'deposition: {deposition_density_ev:7.2f} eV/s/cm3')
 
+    engrid = np.linspace(emin, emax, num=npts, endpoint=True)
+
     deltaen = engrid[1] - engrid[0]
 
+    source = np.zeros(engrid.shape)
     source_spread_pts = math.ceil(npts * 0.03333)
     for s in range(npts):
         # spread the source over some energy width
@@ -328,10 +243,12 @@ def main(args=None, argsraw=None, **kwargs):
     E_init_ev = np.dot(engrid, source) * deltaen
     print(f'    E_init: {E_init_ev:7.2f} eV/s/cm3')
 
+    constvec = np.zeros(npts)
     for i in range(npts):
         for j in range(i, npts):
             constvec[i] += source[j] * deltaen
 
+    sfmatrix = np.zeros((npts, npts))
     for i in range(npts):
         en = engrid[i]
         sfmatrix[i, i] += lossfunction(en, nne)
@@ -341,26 +258,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     dfcollion = at.nonthermal.read_colliondata()
 
-    ions = []
-    for key in ionpopdict.keys():
-        # keep only the single populations, not element or total population
-        if isinstance(key, tuple) and len(key) == 2 and ionpopdict[key] / nntot >= minionfraction:
-            ions.append(key)
-
-    # ions = [
-    #   (26, 1), (26, 2), (26, 3), (26, 4), (26, 5),
-    #   (27, 2), (27, 3), (27, 4),
-    #   (28, 2), (28, 3), (28, 4), (28, 5),
-    # ]
-    #
-    # ions = [
-    #   (26, 2), (26, 3)
-    # ]
-
-    ions.sort()
-
     if not args.noexcitation:
-        adata = at.get_levels(modelpath, get_transitions=True, ionlist=ions)
         dftransitions = {}
 
     for Z, ionstage in ions:
@@ -380,11 +278,12 @@ def main(args=None, argsraw=None, **kwargs):
             # topgmlevel = float('inf')
             # topgmlevel = 0
             dftransitions[(Z, ionstage)] = ion.transitions.query(
-                'lower <= @topgmlevel and (collstr >= 0 or not forbidden)', inplace=False).copy()
+                'lower <= @topgmlevel', inplace=False).copy()
 
             print(f'with {len(dftransitions[(Z, ionstage)])} transitions from lower <= {topgmlevel}...')
 
             if not dftransitions[(Z, ionstage)].empty:
+                dftransitions[(Z, ionstage)].query('collstr >= 0 or forbidden == False', inplace=True)
                 dftransitions[(Z, ionstage)].eval(
                     'epsilon_trans_ev = '
                     '@ion.levels.loc[upper].energy_ev.values - @ion.levels.loc[lower].energy_ev.values',
@@ -392,17 +291,13 @@ def main(args=None, argsraw=None, **kwargs):
                 dftransitions[(Z, ionstage)].eval('lower_g = @ion.levels.loc[lower].g.values', inplace=True)
                 dftransitions[(Z, ionstage)].eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
                 sfmatrix_add_excitation(engrid, dftransitions[(Z, ionstage)], nnion, sfmatrix)
-            else:
-                print('(no excitation transitions)!')
 
     print(f'\nSolving Spencer-Fano with {npts} energy points from {engrid[0]} to {engrid[-1]} eV...\n')
     lu_and_piv = linalg.lu_factor(sfmatrix, overwrite_a=False)
     yvec_reference = linalg.lu_solve(lu_and_piv, constvec, trans=0)
     yvec = yvec_reference * deposition_density_ev / E_init_ev
 
-    # print("\n".join(["{:} {:11.5e}".format(i, y) for i, y in enumerate(yvec)]))
-
-    outputfilename = args.outputfile.format(cell=modelgridindex, timestep=timestep, time_days=time_days)
+    outputfilename = args.outputfile.format(cell=args.modelgridindex, timestep=args.timestep, time_days=args.time_days)
     make_plot(engrid, yvec, outputfilename)
 
     frac_ionization = 0.
@@ -459,6 +354,107 @@ def main(args=None, argsraw=None, **kwargs):
 
     print(f'  frac_excitation_tot: {frac_excitation:.5f}')
     print(f'  frac_ionization_tot: {frac_ionization:.5f}')
+
+
+def addargs(parser):
+    parser.add_argument('-modelpath', default='.',
+                        help='Path to ARTIS folder')
+
+    parser.add_argument('-timedays', '-time', '-t',
+                        help='Time in days to plot')
+
+    parser.add_argument('-timestep', '-ts', type=int, default=70,
+                        help='Timestep number to plot')
+
+    parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
+                        help='Modelgridindex to plot')
+
+    parser.add_argument('-npts', type=int, default=2048,
+                        help='Number of points in the energy grid')
+
+    parser.add_argument('-emin', type=float, default=1,
+                        help='Minimum energy in eV of Spencer-Fano solution')
+
+    parser.add_argument('-emax', type=float, default=1000,
+                        help='Maximum energy in eV of Spencer-Fano solution (approx where energy is injected)')
+
+    parser.add_argument('--print-lines', action='store_true', default=False,
+                        help='Output details of matching line details to standard out')
+
+    parser.add_argument('--noexcitation', action='store_true', default=False,
+                        help='Inlude collisional excitation transitions')
+
+    parser.add_argument('-o', action='store', dest='outputfile',
+                        default=defaultoutputfile,
+                        help='path/filename for PDF file')
+
+
+def main(args=None, argsraw=None, **kwargs):
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            description='Plot estimated spectra from bound-bound transitions.')
+        addargs(parser)
+        parser.set_defaults(**kwargs)
+        args = parser.parse_args(argsraw)
+
+    if os.path.isdir(args.outputfile):
+        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+
+    modelpath = args.modelpath
+    modeldata, _ = at.get_modeldata(modelpath)
+    estimators = at.estimators.read_estimators(modelpath, modeldata)
+
+    if args.timedays:
+        args.timestep = at.get_closest_timestep(os.path.join(modelpath, "spec.out"), args.timedays)
+
+    modelgridindex = args.modelgridindex
+    estim = estimators[(args.timestep, modelgridindex)]
+
+    nntot = estim['populations']['total']
+    nne = estim['nne']
+    deposition_density_ev = estim['gamma_dep'] / 1.6021772e-12  # convert erg to eV
+    ionpopdict = estim['populations']
+
+    # deposition_density_ev = 327
+    # nne = 6.7e5
+    # ionpopdict[(26, 1)] = ionpopdict[26] * 1e-4
+    # ionpopdict[(26, 2)] = ionpopdict[26] * 0.20
+    # ionpopdict[(26, 3)] = ionpopdict[26] * 0.80
+    # ionpopdict[(26, 4)] = ionpopdict[26] * 0.
+    # ionpopdict[(26, 5)] = ionpopdict[26] * 0.
+    # ionpopdict[(28, 1)] = ionpopdict[28] * 6e-3
+    # ionpopdict[(28, 2)] = ionpopdict[28] * 0.18
+    # ionpopdict[(28, 3)] = ionpopdict[28] * 0.82
+    # ionpopdict[(28, 4)] = ionpopdict[28] * 0.
+    # ionpopdict[(28, 5)] = ionpopdict[28] * 0.
+
+    # ions = [
+    #   (26, 1), (26, 2), (26, 3), (26, 4), (26, 5),
+    #   (27, 2), (27, 3), (27, 4),
+    #   (28, 2), (28, 3), (28, 4), (28, 5),
+    # ]
+    #
+    # ions = [
+    #   (26, 2), (26, 3)
+    # ]
+
+    velocity = modeldata['velocity'][args.modelgridindex]
+    args.time_days = float(at.get_timestep_time(modelpath, args.timestep))
+    print(f'timestep {args.timestep} cell {modelgridindex} (v={velocity} km/s at {args.time_days:.1f}d)')
+
+    ions = []
+    for key in ionpopdict.keys():
+        # keep only the single populations, not element or total population
+        if isinstance(key, tuple) and len(key) == 2 and ionpopdict[key] / nntot >= minionfraction:
+            ions.append(key)
+
+    ions.sort()
+
+    adata = None if args.noexcitation else at.get_levels(modelpath, get_transitions=True, ionlist=ions)
+
+    solve_spencerfano(ions, ionpopdict, nne, nntot, deposition_density_ev,
+                      args.npts, args.emin, args.emax, args, adata=adata)
 
 
 if __name__ == "__main__":
