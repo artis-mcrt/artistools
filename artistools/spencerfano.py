@@ -101,13 +101,14 @@ def get_xs_excitation_vector(engrid, row):
 
     deltaen = engrid[1] - engrid[0]
     npts = len(engrid)
-    xs_excitation_vec = np.zeros(npts)
+    xs_excitation_vec = np.empty(npts)
 
     coll_str = row.collstr
     epsilon_trans = row.epsilon_trans_ev * EV
     epsilon_trans_ev = row.epsilon_trans_ev
 
     startindex = math.ceil((epsilon_trans_ev - engrid[0]) / deltaen)
+    xs_excitation_vec[:startindex] = 0.
 
     if (coll_str >= 0):
         # collision strength is available, so use it
@@ -141,6 +142,8 @@ def get_xs_excitation_vector(engrid, row):
         #         U = energy / epsilon_trans
         #         g_bar = A * math.log(U) + B
         #         xs_excitation_vec[j] = constantfactor * g_bar / U
+    else:
+        xs_excitation_vec[startindex:] = 0.
 
     return xs_excitation_vec
 
@@ -164,9 +167,9 @@ def sfmatrix_add_excitation(engrid, dftransitions, nnion, sfmatrix):
     npts = len(engrid)
     for _, row in dftransitions.iterrows():
         vec_xs_excitation_nnion_deltae = nnion * deltaen * get_xs_excitation_vector(engrid, row)
-
+        epsilon_trans_ev = row.epsilon_trans_ev
         for i, en in enumerate(engrid):
-            stopindex = i + math.ceil(row.epsilon_trans_ev / deltaen)
+            stopindex = i + math.ceil(epsilon_trans_ev / deltaen)
 
             if (stopindex < npts - 1):
                 sfmatrix[i, i: stopindex - i + 1] += vec_xs_excitation_nnion_deltae[i: stopindex - i + 1]
@@ -362,7 +365,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
-        print(f'including Z={Z:2} ion_stage {ionstage:3} ({at.get_ionstring(Z, ionstage)}). ionization...', end='')
+        print(f'including Z={Z:2} ion_stage {ionstage:3} ({at.get_ionstring(Z, ionstage)}). ionization...')
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
         # print(dfcollion_thision)
 
@@ -370,9 +373,17 @@ def main(args=None, argsraw=None, **kwargs):
             sfmatrix_add_ionization_shell(engrid, nnion, row, sfmatrix)
 
         if not args.noexcitation:
-            print('excitation...', end='')
+            print('   excitation ', end='')
             ion = adata.query('Z == @Z and ion_stage == @ionstage').iloc[0]
-            dftransitions[(Z, ionstage)] = ion.transitions.query('lower == 0', inplace=False).copy()
+            groundlevelnoj = ion.levels.iloc[0].levelname.split('[')[0]
+            topgmlevel = ion.levels[ion.levels.levelname.str.startswith(groundlevelnoj)].index.max()
+            # topgmlevel = float('inf')
+            # topgmlevel = 0
+            dftransitions[(Z, ionstage)] = ion.transitions.query(
+                'lower <= @topgmlevel and (collstr >= 0 or not forbidden)', inplace=False).copy()
+
+            print(f'with {len(dftransitions[(Z, ionstage)])} transitions from lower <= {topgmlevel}...')
+
             if not dftransitions[(Z, ionstage)].empty:
                 dftransitions[(Z, ionstage)].eval(
                     'epsilon_trans_ev = '
@@ -382,8 +393,7 @@ def main(args=None, argsraw=None, **kwargs):
                 dftransitions[(Z, ionstage)].eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
                 sfmatrix_add_excitation(engrid, dftransitions[(Z, ionstage)], nnion, sfmatrix)
             else:
-                print('(no excitation transitions)!', end='')
-        print()
+                print('(no excitation transitions)!')
 
     print(f'\nSolving Spencer-Fano with {npts} energy points from {engrid[0]} to {engrid[-1]} eV...\n')
     lu_and_piv = linalg.lu_factor(sfmatrix, overwrite_a=False)

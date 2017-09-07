@@ -195,17 +195,17 @@ def get_levels(modelpath, ionlist=None, get_transitions=False):
 
                 ionheader = line.split()
                 Z = int(ionheader[0])
-                ion_stage = int(ionheader[1])
+                ionstage = int(ionheader[1])
                 transition_count = int(ionheader[2])
 
-                if not ionlist or (Z, ion_stage) in ionlist:
+                if not ionlist or (Z, ionstage) in ionlist:
                     translist = []
                     for _ in range(transition_count):
                         row = ftransitions.readline().split()
                         translist.append(
                             transitiontuple(int(row[0]) - firstlevelnumber, int(row[1]) - firstlevelnumber,
                                             float(row[2]), float(row[3]), int(row[4]) == 1))
-                    transitionsdict[(Z, ion_stage)] = pd.DataFrame(translist, columns=transitiontuple._fields)
+                    transitionsdict[(Z, ionstage)] = pd.DataFrame(translist, columns=transitiontuple._fields)
                 else:
                     for _ in range(transition_count):
                         ftransitions.readline()
@@ -221,10 +221,10 @@ def get_levels(modelpath, ionlist=None, get_transitions=False):
 
             ionheader = line.split()
             Z = int(ionheader[0])
-            ion_stage = int(ionheader[1])
+            ionstage = int(ionheader[1])
             level_count = int(ionheader[2])
 
-            if not ionlist or (Z, ion_stage) in ionlist:
+            if not ionlist or (Z, ionstage) in ionlist:
                 level_list = []
                 for levelindex in range(level_count):
                     line = fadata.readline()
@@ -235,8 +235,8 @@ def get_levels(modelpath, ionlist=None, get_transitions=False):
                     level_list.append(leveltuple(float(row[1]), float(row[2]), int(row[3]), levelname))
                 dflevels = pd.DataFrame(level_list)
 
-                translist = transitionsdict.get((Z, ion_stage), pd.DataFrame(columns=transitiontuple._fields))
-                level_lists.append(iontuple(Z, ion_stage, level_count, float(ionheader[3]), dflevels, translist))
+                translist = transitionsdict.get((Z, ionstage), pd.DataFrame(columns=transitiontuple._fields))
+                level_lists.append(iontuple(Z, ionstage, level_count, float(ionheader[3]), dflevels, translist))
             else:
                 for _ in range(level_count):
                     fadata.readline()
