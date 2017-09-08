@@ -218,7 +218,7 @@ def main(args=None, argsraw=None, **kwargs):
             return -1
 
         ionpopdict = {(Z, ion_stage): dfnltepops.query(
-            'Z==@Z and ion_stage==@ion_stage')['n_NLTE'].sum() for Z, ions_tage in ionlist}
+            'Z==@Z and ion_stage==@ion_stage')['n_NLTE'].sum() for Z, ion_stage in ionlist}
 
         modelname = at.get_model_name(modelpath)
         velocity = modeldata['velocity'][modelgridindex]
