@@ -245,7 +245,7 @@ def main(args=None, argsraw=None, **kwargs):
         }
         temperature_list = ['Te']
         vardict = {'Te': Te}
-        figure_title = 'Te = {Te:.1f}'
+        figure_title = f'Te = {Te:.1f}'
 
     print(figure_title)
     axes[0].set_title(figure_title, fontsize=10)
