@@ -223,7 +223,7 @@ def make_plot(engrid, yvec, outputfilename):
 
 
 def solve_spencerfano(
-        ions, ionpopdict, nne, nntot, deposition_density_ev, npts, emin, emax, args, adata=None, noexcitation=False):
+        ions, ionpopdict, nne, nntot, deposition_density_ev, npts, emin, emax, dfcollion, args, adata=None, noexcitation=False):
 
     engrid = np.linspace(emin, emax, num=npts, endpoint=True)
 
@@ -253,8 +253,6 @@ def solve_spencerfano(
         # EV = 1.6021772e-12  # in erg
         # print(f"electron loss rate nne={nne:.3e} and {i:d} {en:.2e} eV is {lossfunction(en, nne):.2e} or '
         #       f'{lossfunction_ergs(en * EV, nne) / EV:.2e}")
-
-    dfcollion = at.nonthermal.read_colliondata()
 
     if not noexcitation:
         dftransitions = {}
@@ -295,7 +293,7 @@ def solve_spencerfano(
     yvec_reference = linalg.lu_solve(lu_and_piv, constvec, trans=0)
     yvec = yvec_reference * deposition_density_ev / E_init_ev
 
-    return engrid, yvec, dfcollion, dftransitions
+    return engrid, yvec, dftransitions
 
 
 def analyse_ntspectrum(
@@ -431,16 +429,6 @@ def main(args=None, argsraw=None, **kwargs):
     ionpopdict[(28, 4)] = ionpopdict[28] * 0.
     ionpopdict[(28, 5)] = ionpopdict[28] * 0.
 
-    # ions = [
-    #   (26, 1), (26, 2), (26, 3), (26, 4), (26, 5),
-    #   (27, 2), (27, 3), (27, 4),
-    #   (28, 2), (28, 3), (28, 4), (28, 5),
-    # ]
-    #
-    # ions = [
-    #   (26, 2), (26, 3)
-    # ]
-
     velocity = modeldata['velocity'][args.modelgridindex]
     args.time_days = float(at.get_timestep_time(modelpath, args.timestep))
     print(f'timestep {args.timestep} cell {args.modelgridindex} (v={velocity} km/s at {args.time_days:.1f}d)')
@@ -459,8 +447,10 @@ def main(args=None, argsraw=None, **kwargs):
     print(f'       nne: {nne:.2e} /cm3')
     print(f'deposition: {deposition_density_ev:7.2f} eV/s/cm3')
 
-    engrid, yvec, dfcollion, dftransitions = solve_spencerfano(
-        ions, ionpopdict, nne, nntot, deposition_density_ev, args.npts, args.emin, args.emax, args,
+    dfcollion = at.nonthermal.read_colliondata()
+
+    engrid, yvec, dftransitions = solve_spencerfano(
+        ions, ionpopdict, nne, nntot, deposition_density_ev, args.npts, args.emin, args.emax, dfcollion, args,
         adata=adata, noexcitation=args.noexcitation)
 
     if args.makeplot:
