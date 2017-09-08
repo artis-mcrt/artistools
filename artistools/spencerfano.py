@@ -385,15 +385,15 @@ def addargs(parser):
     parser.add_argument('-emax', type=float, default=1000,
                         help='Maximum energy in eV of Spencer-Fano solution (approx where energy is injected)')
 
-    parser.add_argument('--print-lines', action='store_true', default=False,
-                        help='Output details of matching line details to standard out')
+    parser.add_argument('--makeplot', action='store_true', default=False,
+                        help='Save a plot of the non-thermal spectrum')
 
     parser.add_argument('--noexcitation', action='store_true', default=False,
-                        help='Inlude collisional excitation transitions')
+                        help='Include collisional excitation transitions')
 
     parser.add_argument('-o', action='store', dest='outputfile',
                         default=defaultoutputfile,
-                        help='path/filename for PDF file')
+                        help='Path/filename for PDF file if --makeplot is enabled')
 
 
 def main(args=None, argsraw=None, **kwargs):
@@ -464,8 +464,9 @@ def main(args=None, argsraw=None, **kwargs):
         ions, ionpopdict, nne, nntot, deposition_density_ev, args.npts, args.emin, args.emax, args,
         adata=adata, noexcitation=args.noexcitation)
 
-    outputfilename = args.outputfile.format(cell=args.modelgridindex, timestep=args.timestep, time_days=args.time_days)
-    make_plot(engrid, yvec, outputfilename)
+    if args.makeplot:
+        outputfilename = args.outputfile.format(cell=args.modelgridindex, timestep=args.timestep, time_days=args.time_days)
+        make_plot(engrid, yvec, outputfilename)
 
     analyse_ntspectrum(
         engrid, yvec, ions, ionpopdict, nntot, deposition_density_ev, dfcollion, dftransitions, args.noexcitation)
