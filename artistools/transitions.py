@@ -311,7 +311,6 @@ def main(args=None, argsraw=None, **kwargs):
                 yvalues[seriesindex][ionindex] = generate_ion_spectrum(dftransitions, xvalues,
                                                                        popcolumnname, plot_resolution, args)
 
-
     print()
 
     est_fe_ionfracs = [estimators['populations'][(26, ionstage)] / estimators['populations'][26] for ionstage in [1, 2, 3]]
