@@ -223,11 +223,7 @@ def make_plot(engrid, yvec, outputfilename):
 
 
 def solve_spencerfano(
-    ions, ionpopdict, nne, nntot, deposition_density_ev, npts, emin, emax, args, adata=None, noexcitation=False):
-
-    print(f'     nntot: {nntot:.2e} /cm3')
-    print(f'       nne: {nne:.2e} /cm3')
-    print(f'deposition: {deposition_density_ev:7.2f} eV/s/cm3')
+        ions, ionpopdict, nne, nntot, deposition_density_ev, npts, emin, emax, args, adata=None, noexcitation=False):
 
     engrid = np.linspace(emin, emax, num=npts, endpoint=True)
 
@@ -303,7 +299,7 @@ def solve_spencerfano(
 
 
 def analyse_ntspectrum(
-    engrid, yvec, ions, ionpopdict, nntot, deposition_density_ev, dfcollion, dftransitions, noexcitation=False):
+        engrid, yvec, ions, ionpopdict, nntot, deposition_density_ev, dfcollion, dftransitions, noexcitation=False):
 
     deltaen = engrid[1] - engrid[0]
 
@@ -415,8 +411,7 @@ def main(args=None, argsraw=None, **kwargs):
     if args.timedays:
         args.timestep = at.get_closest_timestep(os.path.join(modelpath, "spec.out"), args.timedays)
 
-    modelgridindex = args.modelgridindex
-    estim = estimators[(args.timestep, modelgridindex)]
+    estim = estimators[(args.timestep, args.modelgridindex)]
 
     nntot = estim['populations']['total']
     nne = estim['nne']
@@ -448,11 +443,11 @@ def main(args=None, argsraw=None, **kwargs):
 
     velocity = modeldata['velocity'][args.modelgridindex]
     args.time_days = float(at.get_timestep_time(modelpath, args.timestep))
-    print(f'timestep {args.timestep} cell {modelgridindex} (v={velocity} km/s at {args.time_days:.1f}d)')
+    print(f'timestep {args.timestep} cell {args.modelgridindex} (v={velocity} km/s at {args.time_days:.1f}d)')
 
     ions = []
     for key in ionpopdict.keys():
-        # keep only the single populations, not element or total population
+        # keep only the ion populations, not element or total populations
         if isinstance(key, tuple) and len(key) == 2 and ionpopdict[key] / nntot >= minionfraction:
             ions.append(key)
 
@@ -460,12 +455,17 @@ def main(args=None, argsraw=None, **kwargs):
 
     adata = None if args.noexcitation else at.get_levels(modelpath, get_transitions=True, ionlist=ions)
 
+    print(f'     nntot: {nntot:.2e} /cm3')
+    print(f'       nne: {nne:.2e} /cm3')
+    print(f'deposition: {deposition_density_ev:7.2f} eV/s/cm3')
+
     engrid, yvec, dfcollion, dftransitions = solve_spencerfano(
         ions, ionpopdict, nne, nntot, deposition_density_ev, args.npts, args.emin, args.emax, args,
         adata=adata, noexcitation=args.noexcitation)
 
     if args.makeplot:
-        outputfilename = args.outputfile.format(cell=args.modelgridindex, timestep=args.timestep, time_days=args.time_days)
+        outputfilename = args.outputfile.format(cell=args.modelgridindex, timestep=args.timestep,
+                                                time_days=args.time_days)
         make_plot(engrid, yvec, outputfilename)
 
     analyse_ntspectrum(
