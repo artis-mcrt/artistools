@@ -222,7 +222,9 @@ def make_plot(engrid, yvec, outputfilename):
     plt.close()
 
 
-def solve_spencerfano(ions, ionpopdict, nne, nntot, deposition_density_ev, npts, emin, emax, args, adata=None):
+def solve_spencerfano(
+    ions, ionpopdict, nne, nntot, deposition_density_ev, npts, emin, emax, args, adata=None, noexcitation=False):
+
     print(f'     nntot: {nntot:.2e} /cm3')
     print(f'       nne: {nne:.2e} /cm3')
     print(f'deposition: {deposition_density_ev:7.2f} eV/s/cm3')
@@ -258,7 +260,7 @@ def solve_spencerfano(ions, ionpopdict, nne, nntot, deposition_density_ev, npts,
 
     dfcollion = at.nonthermal.read_colliondata()
 
-    if not args.noexcitation:
+    if not noexcitation:
         dftransitions = {}
 
     for Z, ionstage in ions:
@@ -270,7 +272,7 @@ def solve_spencerfano(ions, ionpopdict, nne, nntot, deposition_density_ev, npts,
         for index, row in dfcollion_thision.iterrows():
             sfmatrix_add_ionization_shell(engrid, nnion, row, sfmatrix)
 
-        if not args.noexcitation:
+        if not noexcitation:
             print('   excitation ', end='')
             ion = adata.query('Z == @Z and ion_stage == @ionstage').iloc[0]
             groundlevelnoj = ion.levels.iloc[0].levelname.split('[')[0]
@@ -297,8 +299,13 @@ def solve_spencerfano(ions, ionpopdict, nne, nntot, deposition_density_ev, npts,
     yvec_reference = linalg.lu_solve(lu_and_piv, constvec, trans=0)
     yvec = yvec_reference * deposition_density_ev / E_init_ev
 
-    outputfilename = args.outputfile.format(cell=args.modelgridindex, timestep=args.timestep, time_days=args.time_days)
-    make_plot(engrid, yvec, outputfilename)
+    return engrid, yvec, dfcollion, dftransitions
+
+
+def analyse_ntspectrum(
+    engrid, yvec, ions, ionpopdict, nntot, deposition_density_ev, dfcollion, dftransitions, noexcitation=False):
+
+    deltaen = engrid[1] - engrid[0]
 
     frac_ionization = 0.
     frac_excitation = 0.
@@ -342,7 +349,7 @@ def solve_spencerfano(ions, ionpopdict, nne, nntot, deposition_density_ev, npts,
             eff_ionpot = float('inf')
 
         print(f'     frac_ionization: {frac_ionization_ion:.4f}')
-        if not args.noexcitation:
+        if not noexcitation:
             frac_excitation_ion = calculate_nt_frac_excitation(engrid, dftransitions[(Z, ionstage)], nnion,
                                                                yvec, deposition_density_ev)
             frac_excitation += frac_excitation_ion
@@ -416,18 +423,18 @@ def main(args=None, argsraw=None, **kwargs):
     deposition_density_ev = estim['gamma_dep'] / 1.6021772e-12  # convert erg to eV
     ionpopdict = estim['populations']
 
-    # deposition_density_ev = 327
-    # nne = 6.7e5
-    # ionpopdict[(26, 1)] = ionpopdict[26] * 1e-4
-    # ionpopdict[(26, 2)] = ionpopdict[26] * 0.20
-    # ionpopdict[(26, 3)] = ionpopdict[26] * 0.80
-    # ionpopdict[(26, 4)] = ionpopdict[26] * 0.
-    # ionpopdict[(26, 5)] = ionpopdict[26] * 0.
+    deposition_density_ev = 327
+    nne = 6.7e5
+    ionpopdict[(26, 1)] = ionpopdict[26] * 1e-4
+    ionpopdict[(26, 2)] = ionpopdict[26] * 0.20
+    ionpopdict[(26, 3)] = ionpopdict[26] * 0.80
+    ionpopdict[(26, 4)] = ionpopdict[26] * 0.
+    ionpopdict[(26, 5)] = ionpopdict[26] * 0.
     # ionpopdict[(28, 1)] = ionpopdict[28] * 6e-3
-    # ionpopdict[(28, 2)] = ionpopdict[28] * 0.18
-    # ionpopdict[(28, 3)] = ionpopdict[28] * 0.82
-    # ionpopdict[(28, 4)] = ionpopdict[28] * 0.
-    # ionpopdict[(28, 5)] = ionpopdict[28] * 0.
+    ionpopdict[(28, 2)] = ionpopdict[28] * 0.18
+    ionpopdict[(28, 3)] = ionpopdict[28] * 0.82
+    ionpopdict[(28, 4)] = ionpopdict[28] * 0.
+    ionpopdict[(28, 5)] = ionpopdict[28] * 0.
 
     # ions = [
     #   (26, 1), (26, 2), (26, 3), (26, 4), (26, 5),
@@ -453,8 +460,15 @@ def main(args=None, argsraw=None, **kwargs):
 
     adata = None if args.noexcitation else at.get_levels(modelpath, get_transitions=True, ionlist=ions)
 
-    solve_spencerfano(ions, ionpopdict, nne, nntot, deposition_density_ev,
-                      args.npts, args.emin, args.emax, args, adata=adata)
+    engrid, yvec, dfcollion, dftransitions = solve_spencerfano(
+        ions, ionpopdict, nne, nntot, deposition_density_ev, args.npts, args.emin, args.emax, args,
+        adata=adata, noexcitation=args.noexcitation)
+
+    outputfilename = args.outputfile.format(cell=args.modelgridindex, timestep=args.timestep, time_days=args.time_days)
+    make_plot(engrid, yvec, outputfilename)
+
+    analyse_ntspectrum(
+        engrid, yvec, ions, ionpopdict, nntot, deposition_density_ev, dfcollion, dftransitions, args.noexcitation)
 
 
 if __name__ == "__main__":
