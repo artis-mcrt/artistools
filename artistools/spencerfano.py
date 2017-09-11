@@ -135,13 +135,14 @@ def get_xs_excitation_vector(engrid, row):
 
         U = engrid[startindex:] / epsilon_trans_ev
         g_bar = A * np.log(U) + B
+
         xs_excitation_vec[startindex:] = constantfactor * g_bar / U
-        # for j, energy_ev in enumerate(engrid):
-        #     energy = energy_ev * EV
-        #     if (energy >= epsilon_trans):
-        #         U = energy / epsilon_trans
-        #         g_bar = A * math.log(U) + B
-        #         xs_excitation_vec[j] = constantfactor * g_bar / U
+        for j, energy_ev in enumerate(engrid):
+            energy = energy_ev * EV
+            if (energy >= epsilon_trans):
+                U = energy / epsilon_trans
+                g_bar = A * math.log(U) + B
+                xs_excitation_vec[j] = constantfactor * g_bar / U
     else:
         xs_excitation_vec[startindex:] = 0.
 
@@ -176,13 +177,14 @@ def sfmatrix_add_excitation(engrid, dftransitions, nnion, sfmatrix):
 
 
 def sfmatrix_add_ionization_shell(engrid, nnion, row, sfmatrix):
-    # this code has been optimised and is now an almost unreadable form of the Spencer-Fano equation
-    ar_xs_array = at.nonthermal.get_arxs_array_shell(engrid, row)
+    # this code has been optimised and is now an almost unreadable form, but it is the contains the terms
+    # related to ionisation cross sections
     deltaen = engrid[1] - engrid[0]
     ionpot_ev = row.ionpot_ev
     J = get_J(row.Z, row.ionstage, ionpot_ev)
     npts = len(engrid)
 
+    ar_xs_array = at.nonthermal.get_arxs_array_shell(engrid, row)
     arctanenoverj = np.arctan(engrid / J)
     arctanexpb = np.arctan((engrid - engrid[0] - ionpot_ev) / J)
     arctanexpc = np.arctan((engrid - ionpot_ev) / 2 / J)
@@ -223,28 +225,19 @@ def make_plot(engrid, yvec, outputfilename):
 
 
 def solve_spencerfano(
-        ions, ionpopdict, nne, nntot, deposition_density_ev, npts, emin, emax, dfcollion, args, adata=None, noexcitation=False):
-
-    engrid = np.linspace(emin, emax, num=npts, endpoint=True)
+        ions, ionpopdict, nne, deposition_density_ev, engrid, sourcevec, dfcollion, args,
+        adata=None, noexcitation=False):
 
     deltaen = engrid[1] - engrid[0]
+    npts = len(engrid)
 
-    source = np.zeros(engrid.shape)
-    source_spread_pts = math.ceil(npts * 0.03333)
-    for s in range(npts):
-        # spread the source over some energy width
-        if (s < npts - source_spread_pts):
-            source[s] = 0.
-        elif (s < npts):
-            source[s] = 1. / (deltaen * source_spread_pts)
-
-    E_init_ev = np.dot(engrid, source) * deltaen
+    E_init_ev = np.dot(engrid, sourcevec) * deltaen
     print(f'    E_init: {E_init_ev:7.2f} eV/s/cm3')
 
     constvec = np.zeros(npts)
     for i in range(npts):
         for j in range(i, npts):
-            constvec[i] += source[j] * deltaen
+            constvec[i] += sourcevec[j] * deltaen
 
     sfmatrix = np.zeros((npts, npts))
     for i in range(npts):
@@ -286,6 +279,7 @@ def solve_spencerfano(
                     inplace=True)
                 dftransitions[(Z, ionstage)].eval('lower_g = @ion.levels.loc[lower].g.values', inplace=True)
                 dftransitions[(Z, ionstage)].eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
+
                 sfmatrix_add_excitation(engrid, dftransitions[(Z, ionstage)], nnion, sfmatrix)
 
     print(f'\nSolving Spencer-Fano with {npts} energy points from {engrid[0]} to {engrid[-1]} eV...\n')
@@ -293,7 +287,7 @@ def solve_spencerfano(
     yvec_reference = linalg.lu_solve(lu_and_piv, constvec, trans=0)
     yvec = yvec_reference * deposition_density_ev / E_init_ev
 
-    return engrid, yvec, dftransitions
+    return yvec, dftransitions
 
 
 def analyse_ntspectrum(
@@ -423,6 +417,9 @@ def main(args=None, argsraw=None, **kwargs):
     ionpopdict[(26, 3)] = ionpopdict[26] * 0.80
     ionpopdict[(26, 4)] = ionpopdict[26] * 0.
     ionpopdict[(26, 5)] = ionpopdict[26] * 0.
+    ionpopdict[(27, 2)] = ionpopdict[27] * 0.20
+    ionpopdict[(27, 3)] = ionpopdict[27] * 0.80
+    ionpopdict[(27, 4)] = 0.
     # ionpopdict[(28, 1)] = ionpopdict[28] * 6e-3
     ionpopdict[(28, 2)] = ionpopdict[28] * 0.18
     ionpopdict[(28, 3)] = ionpopdict[28] * 0.82
@@ -449,8 +446,22 @@ def main(args=None, argsraw=None, **kwargs):
 
     dfcollion = at.nonthermal.read_colliondata()
 
-    engrid, yvec, dftransitions = solve_spencerfano(
-        ions, ionpopdict, nne, nntot, deposition_density_ev, args.npts, args.emin, args.emax, dfcollion, args,
+    engrid = np.linspace(args.emin, args.emax, num=args.npts, endpoint=True)
+    deltaen = engrid[1] - engrid[0]
+
+    npts = len(engrid)
+    sourcevec = np.zeros(engrid.shape)
+    source_spread_pts = math.ceil(npts / 30.)
+    for s in range(npts):
+        # spread the source over some energy width
+        if (s < npts - source_spread_pts):
+            sourcevec[s] = 0.
+        elif (s < npts):
+            sourcevec[s] = 1. / (deltaen * source_spread_pts)
+    # sourcevec[-1] = 1.
+
+    yvec, dftransitions = solve_spencerfano(
+        ions, ionpopdict, nne, deposition_density_ev, engrid, sourcevec, dfcollion, args,
         adata=adata, noexcitation=args.noexcitation)
 
     if args.makeplot:
