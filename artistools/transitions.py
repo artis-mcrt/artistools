@@ -18,6 +18,60 @@ from artistools import estimators, spectra
 
 defaultoutputfile = 'plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
 
+iontuple = namedtuple('iontuple', 'Z ion_stage')
+
+
+def get_kurucz_transitions():
+    hc_evcm = (const.h * const.c).to('eV cm').value
+    transitiontuple = namedtuple('transition', 'Z ionstage lambda_angstroms A lower_energy_ev upper_energy_ev lower_g upper_g')
+    translist = []
+    ionlist = []
+    with open('gfall.dat', 'r') as fnist:
+        for line in fnist:
+            row = line.split()
+            if len(row) >= 24:
+                Z, ionstage = int(row[2].split('.')[0]), int(row[2].split('.')[1]) + 1
+                if Z < 44 or ionstage >= 2:  # and Z not in [26, 27]
+                    continue
+                lambda_angstroms = float(line[:12]) * 10
+                loggf = float(line[11:18])
+                lower_energy_ev, upper_energy_ev = hc_evcm * float(line[24:36]), hc_evcm * float(line[52:64])
+                lower_g, upper_g = 2 * float(line[36:42]) + 1, 2 * float(line[64:70]) + 1
+                fij = (10 ** loggf) / lower_g
+                A = fij / (1.49919e-16 * upper_g / lower_g * lambda_angstroms ** 2)
+                translist.append(transitiontuple(Z, ionstage, lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_g, upper_g))
+                if iontuple(Z, ionstage) not in ionlist:
+                    ionlist.append(iontuple(Z, ionstage))
+
+    dftransitions = pd.DataFrame(translist, columns=transitiontuple._fields)
+    return dftransitions, ionlist
+
+
+def get_nist_transitions(filename):
+    transitiontuple = namedtuple('transition', 'lambda_angstroms A lower_energy_ev upper_energy_ev lower_g upper_g')
+    translist = []
+    with open(filename, 'r') as fnist:
+        for line in fnist:
+            row = line.split('|')
+            if len(row) == 17 and '-' in row[5]:
+                if len(row[0].strip()) > 0:
+                    lambda_angstroms = float(row[0])
+                elif len(row[1].strip()) > 0:
+                    lambda_angstroms = float(row[1])
+                else:
+                    continue
+                if len(row[3].strip()) > 0:
+                    A = float(row[3])
+                else:
+                    # continue
+                    A = 1e8
+                lower_energy_ev, upper_energy_ev = [float(x.strip(' []')) for x in row[5].split('-')]
+                lower_g, upper_g = [float(x.strip()) for x in row[12].split('-')]
+                translist.append(transitiontuple(lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_g, upper_g))
+
+    dftransitions = pd.DataFrame(translist, columns=transitiontuple._fields)
+    return dftransitions
+
 
 def get_nltepops(modelpath, timestep, modelgridindex):
     nlte_files = (
@@ -78,6 +132,21 @@ def make_plot(xvalues, yvalues, axes, temperature_list, vardict, ions, ionpopdic
 
             axis.plot(xvalues, yvalues[seriesindex][ion_index], linewidth=1.5, label=serieslabel)
 
+            peak_y_value = max(yvalues[seriesindex][ion_index])
+
+            # if seriesindex == 0:
+            #     at.spectra.plot_reference_spectrum(
+            #         'NTT_20170818_cal.txt', axis, xmin, xmax, True, scale_to_peak=peak_y_value,
+            #         zorder=-1, linewidth=1, flambdafilterfunc=filterfunc)
+            #
+            #     at.spectra.plot_reference_spectrum(
+            #         'XS_20170819_cal.txt', axis, xmin, xmax, True, scale_to_peak=peak_y_value,
+            #         zorder=-1, linewidth=1, flambdafilterfunc=filterfunc)
+            #
+            #     at.spectra.plot_reference_spectrum(
+            #         'XS_20170821_cal.txt', axis, xmin, xmax, True, scale_to_peak=peak_y_value,
+            #         zorder=-1, linewidth=1, flambdafilterfunc=filterfunc)
+
         axes[-1].plot(xvalues, yvalues_combined[seriesindex], linewidth=1.5, label=serieslabel)
         peak_y_value = max(peak_y_value, max(yvalues_combined[seriesindex]))
 
@@ -107,9 +176,8 @@ def make_plot(xvalues, yvalues, axes, temperature_list, vardict, ions, ionpopdic
     axes[-1].legend(loc='upper right', handlelength=1, frameon=False, numpoints=1, prop={'size': 8})
 
 
-def add_upper_lte_pop(dftransitions, T_exc, ion, ionpop, columnname=None):
+def add_upper_lte_pop(dftransitions, T_exc, ionpop, ltepartfunc, columnname=None):
     K_B = const.k_B.to('eV / K').value
-    ltepartfunc = ion.levels.eval('g * exp(-energy_ev / @K_B / @T_exc)').sum()
     scalefactor = ionpop / ltepartfunc
     if columnname is None:
         columnname = f'upper_pop_lte_{T_exc:.0f}K'
@@ -151,6 +219,9 @@ def addargs(parser):
 
     parser.add_argument('--print-lines', action='store_true', default=False,
                         help='Output details of matching line details to standard out')
+
+    parser.add_argument('--atomicdatabase', default='artis', choices=['artis', 'kurucz', 'nist'],
+                        help='Source of atomic data for excitation transitions')
 
     parser.add_argument('-o', action='store', dest='outputfile',
                         default=defaultoutputfile,
@@ -199,16 +270,34 @@ def main(args=None, argsraw=None, **kwargs):
 
     ionlist = [
         (26, 2), (26, 3), (28, 2),
+        # iontuple(45, 1),
+        # iontuple(54, 1),
+        # iontuple(54, 2),
+        # iontuple(55, 1),
+        # iontuple(55, 2),
+        # iontuple(58, 1),
+        # iontuple(79, 1),
+        # iontuple(83, 1),
+        # iontuple(26, 2),
+        # iontuple(26, 3),
     ]
 
+    if args.atomicdatabase == 'kurucz':
+        dftransgfall, ionlist = get_kurucz_transitions()
+
+    ionlist.sort()
     fig, axes = plt.subplots(
         len(ionlist) + 1, 1, sharex=True, sharey=True, figsize=(6, 2 * (len(ionlist) + 1)),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
+    if len(ionlist) == 1:
+        axes = [axes]
+
     # resolution of the plot in Angstroms
     plot_resolution = max(1, int((args.xmax - args.xmin) / 1000))
 
-    adata = at.get_levels(modelpath, ionlist, get_transitions=True)
+    if args.atomicdatabase == 'artis':
+        adata = at.get_levels(modelpath, ionlist, get_transitions=True)
 
     if from_model:
         dfnltepops = get_nltepops(modelpath, modelgridindex=modelgridindex, timestep=timestep)
@@ -238,11 +327,12 @@ def main(args=None, argsraw=None, **kwargs):
     else:
         Te = args.T
         Fe3overFe2 = 8  # number ratio
-        ionpopdict = {
-            (26, 2): 1 / (1 + Fe3overFe2),
-            (26, 3): Fe3overFe2 / (1 + Fe3overFe2),
-            (28, 2): 1.0e-2,
-        }
+        # ionpopdict = {
+        #     (26, 2): 1 / (1 + Fe3overFe2),
+        #     (26, 3): Fe3overFe2 / (1 + Fe3overFe2),
+        #     (28, 2): 1.0e-2,
+        # }
+        ionpopdict = {ion: 1 for ion in ionlist}
         temperature_list = ['Te']
         vardict = {'Te': Te}
         figure_title = f'Te = {Te:.1f}'
@@ -255,39 +345,49 @@ def main(args=None, argsraw=None, **kwargs):
     xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
     yvalues = np.zeros((len(temperature_list) + 1, len(ionlist), len(xvalues)))
 
-    for _, ion in adata.iterrows():
+    for _, ion in adata.iterrows() if args.atomicdatabase == 'artis' else enumerate(ionlist):
         ionid = (ion.Z, ion.ion_stage)
         if ionid not in ionlist:
             continue
         else:
             ionindex = ionlist.index(ionid)
 
-        print(f'\n======> {at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]:3s} (pop={ionpopdict[ionid]:.2e} / cm3,'
-              f'{ion.level_count:5d} levels, {len(ion.transitions):6d} transitions)', end='')
+        if args.atomicdatabase == 'kurucz':
+            dftransitions = dftransgfall.query('Z == @ion.Z and ionstage == @ion.ion_stage', inplace=False).copy()
+        elif args.atomicdatabase == 'nist':
+            dftransitions = get_nist_transitions(f'nist/nist-{ion.Z:02d}-{ion.ion_stage:02d}.txt')
+        else:
+            dftransitions = ion.transitions
 
-        dftransitions = ion.transitions
+        print(f'\n======> {at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]:3s} '
+              f'(pop={ionpopdict[ionid]:.2e} / cm3, {len(dftransitions):6d} transitions)')
+
         if not args.include_permitted and not dftransitions.empty:
             dftransitions.query('forbidden == True', inplace=True)
             print(f' ({len(ion.transitions):6d} forbidden)')
-        else:
-            print()
 
         if not dftransitions.empty:
-            dftransitions.eval('upper_energy_ev = @ion.levels.loc[upper].energy_ev.values', inplace=True)
-            dftransitions.eval('lower_energy_ev = @ion.levels.loc[lower].energy_ev.values', inplace=True)
-            dftransitions.eval('lambda_angstroms = @hc / (upper_energy_ev - lower_energy_ev)', inplace=True)
+            if args.atomicdatabase == 'artis':
+                dftransitions.eval('upper_energy_ev = @ion.levels.loc[upper].energy_ev.values', inplace=True)
+                dftransitions.eval('lower_energy_ev = @ion.levels.loc[lower].energy_ev.values', inplace=True)
+                dftransitions.eval('lambda_angstroms = @hc / (upper_energy_ev - lower_energy_ev)', inplace=True)
 
             dftransitions.query('lambda_angstroms >= @plot_xmin_wide & lambda_angstroms <= @plot_xmax_wide', inplace=True)
 
-            # dftransitions.sort_values(by='lambda_angstroms', inplace=True)
+            dftransitions.sort_values(by='lambda_angstroms', inplace=True)
 
             print(f'  {len(dftransitions)} plottable transitions')
 
-            dftransitions.eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
+            if args.atomicdatabase == 'artis':
+                dftransitions.eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
+                K_B = const.k_B.to('eV / K').value
+                T_exc = vardict['Te']
+                ltepartfunc = ion.levels.eval('g * exp(-energy_ev / @K_B / @T_exc)').sum()
+            else:
+                ltepartfunc = 1.0
 
             dftransitions.eval(f'flux_factor = (upper_energy_ev - lower_energy_ev) * A', inplace=True)
-
-            add_upper_lte_pop(dftransitions, vardict['Te'], ion, ionpopdict[ionid], columnname='upper_pop_Te')
+            add_upper_lte_pop(dftransitions, vardict['Te'], ionpopdict[ionid], ltepartfunc, columnname='upper_pop_Te')
 
             for seriesindex, temperature in enumerate(temperature_list):
                 T_exc = eval(temperature, vardict)
