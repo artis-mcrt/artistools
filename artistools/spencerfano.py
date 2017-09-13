@@ -247,8 +247,7 @@ def solve_spencerfano(
         # print(f"electron loss rate nne={nne:.3e} and {i:d} {en:.2e} eV is {lossfunction(en, nne):.2e} or '
         #       f'{lossfunction_ergs(en * EV, nne) / EV:.2e}")
 
-    if not noexcitation:
-        dftransitions = {}
+    dftransitions = {}
 
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
