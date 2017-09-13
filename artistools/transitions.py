@@ -39,7 +39,9 @@ def get_kurucz_transitions():
                 lower_g, upper_g = 2 * float(line[36:42]) + 1, 2 * float(line[64:70]) + 1
                 fij = (10 ** loggf) / lower_g
                 A = fij / (1.49919e-16 * upper_g / lower_g * lambda_angstroms ** 2)
-                translist.append(transitiontuple(Z, ionstage, lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_g, upper_g))
+                translist.append(transitiontuple(
+                    Z, ionstage, lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_g, upper_g))
+
                 if iontuple(Z, ionstage) not in ionlist:
                     ionlist.append(iontuple(Z, ionstage))
 
@@ -67,7 +69,8 @@ def get_nist_transitions(filename):
                     A = 1e8
                 lower_energy_ev, upper_energy_ev = [float(x.strip(' []')) for x in row[5].split('-')]
                 lower_g, upper_g = [float(x.strip()) for x in row[12].split('-')]
-                translist.append(transitiontuple(lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_g, upper_g))
+                translist.append(transitiontuple(
+                    lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_g, upper_g))
 
     dftransitions = pd.DataFrame(translist, columns=transitiontuple._fields)
     return dftransitions
@@ -364,7 +367,7 @@ def main(args=None, argsraw=None, **kwargs):
 
         if not args.include_permitted and not dftransitions.empty:
             dftransitions.query('forbidden == True', inplace=True)
-            print(f' ({len(ion.transitions):6d} forbidden)')
+            print(f'  ({len(ion.transitions):6d} forbidden)')
 
         if not dftransitions.empty:
             if args.atomicdatabase == 'artis':
