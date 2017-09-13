@@ -296,6 +296,10 @@ def analyse_ntspectrum(
 
     frac_ionization = 0.
     frac_excitation = 0.
+    frac_ionization_ion = {}
+    frac_excitation_ion = {}
+    gamma_nt = {}
+
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
         X_ion = nnion / nntot
@@ -309,7 +313,7 @@ def analyse_ntspectrum(
         print(f'               nnion: {nnion:.2e} /cm3')
         print(f'         nnion/nntot: {X_ion:.4f}')
 
-        frac_ionization_ion = 0.
+        frac_ionization_ion[(Z, ionstage)] = 0.
         # integralgamma = 0.
         for index, row in dfcollion_thision.iterrows():
             ar_xs_array = at.nonthermal.get_arxs_array_shell(engrid, row)
@@ -326,28 +330,31 @@ def analyse_ntspectrum(
                 # for k in range(10):
                 #     print(nnion * row.ionpot_ev * yvec_reference[k] * ar_xs_array[k] * deltaen / E_init_ev)
 
-            frac_ionization_ion += frac_ionization_shell
+            frac_ionization_ion[(Z, ionstage)] += frac_ionization_shell
 
-        frac_ionization += frac_ionization_ion
+        frac_ionization += frac_ionization_ion[(Z, ionstage)]
 
         try:
-            eff_ionpot = ionpot_valence * X_ion / frac_ionization_ion
+            eff_ionpot = ionpot_valence * X_ion / frac_ionization_ion[(Z, ionstage)]
         except ZeroDivisionError:
             eff_ionpot = float('inf')
 
-        print(f'     frac_ionization: {frac_ionization_ion:.4f}')
+        print(f'     frac_ionization: {frac_ionization_ion[(Z, ionstage)]:.4f}')
         if not noexcitation:
-            frac_excitation_ion = calculate_nt_frac_excitation(engrid, dftransitions[(Z, ionstage)], nnion,
-                                                               yvec, deposition_density_ev)
-            frac_excitation += frac_excitation_ion
-            print(f'     frac_excitation: {frac_excitation_ion:.4f}')
+            frac_excitation_ion[(Z, ionstage)] = calculate_nt_frac_excitation(
+                engrid, dftransitions[(Z, ionstage)], nnion, yvec, deposition_density_ev)
+            frac_excitation += frac_excitation_ion[(Z, ionstage)]
+            print(f'     frac_excitation: {frac_excitation_ion[(Z, ionstage)]:.4f}')
         print(f'          eff_ionpot: {eff_ionpot:.2f} eV')
-        print(f'  Spencer-Fano Gamma: {deposition_density_ev / nntot / eff_ionpot:.2e}')
+        gamma_nt[(Z, ionstage)] = deposition_density_ev / nntot / eff_ionpot
+        print(f'  Spencer-Fano Gamma: {gamma_nt[(Z, ionstage)]:.2e}')
         # print(f'Alternative Gamma: {integralgamma:.2e}')
         print()
 
     print(f'  frac_excitation_tot: {frac_excitation:.5f}')
     print(f'  frac_ionization_tot: {frac_ionization:.5f}')
+
+    return frac_excitation, frac_ionization, frac_excitation_ion, frac_ionization_ion, gamma_nt
 
 
 def addargs(parser):
@@ -445,10 +452,10 @@ def main(args=None, argsraw=None, **kwargs):
 
     dfcollion = at.nonthermal.read_colliondata()
 
-    engrid = np.linspace(args.emin, args.emax, num=args.npts, endpoint=True)
+    npts = args.npts
+    engrid = np.linspace(args.emin, args.emax, num=npts, endpoint=True)
     deltaen = engrid[1] - engrid[0]
 
-    npts = len(engrid)
     sourcevec = np.zeros(engrid.shape)
     source_spread_pts = math.ceil(npts / 30.)
     for s in range(npts):
@@ -468,7 +475,7 @@ def main(args=None, argsraw=None, **kwargs):
                                                 time_days=args.time_days)
         make_plot(engrid, yvec, outputfilename)
 
-    analyse_ntspectrum(
+    (frac_excitation, frac_ionization, frac_excitation_ion, frac_ionization_ion, gamma_nt) = analyse_ntspectrum(
         engrid, yvec, ions, ionpopdict, nntot, deposition_density_ev, dfcollion, dftransitions, args.noexcitation)
 
 
