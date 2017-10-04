@@ -83,8 +83,14 @@ def get_spectrum(specfilename: str, timestepmin: int, timestepmax=-1, fnufilterf
     return dfspectrum
 
 
-def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_min, lambda_max, delta_lambda=30):
-    def set_min_sum_max(array, xindex, e_rf, value):
+def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_min, lambda_max, delta_lambda=30,
+                              use_comovingframe=None):
+    if use_comovingframe:
+        modeldata, _ = at.get_modeldata(os.path.dirname(packetsfiles[0]))
+        vmax = modeldata.iloc[-1].velocity * u.km / u.s
+        betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
+
+    def update_min_sum_max(array, xindex, e_rf, value):
         if value < array[0][xindex] or array[0][xindex] == 0:
             array[0][xindex] = value
 
@@ -110,15 +116,18 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
     nu_max = c_ang_s / lambda_min
     for packetsfile in packetsfiles:
         dfpackets = at.packets.readfile(packetsfile, usecols=[
-            'type_id', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
+            'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
             'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz',
             'em_posx', 'em_posy', 'em_posz', 'em_time',
             'true_emission_velocity', 'originated_from_positron'])
 
-        dfpackets.query('type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT" and'
-                        '@nu_min <= nu_rf < @nu_max and'
-                        '@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh',
-                        inplace=True)
+        querystr = 'type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT" and @nu_min <= nu_rf < @nu_max and'
+        if not use_comovingframe:
+            querystr += '@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh'
+        else:
+            querystr += '@timelow < escape_time * @betafactor < @timehigh'
+
+        dfpackets.query(querystr, inplace=True)
 
         print(f"{len(dfpackets)} escaped r-packets with matching nu and arrival time")
         for _, packet in dfpackets.iterrows():
@@ -129,18 +138,21 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
             #       f"nu={packet.nu_rf:.2e}, lambda={lambda_rf:.1f}")
             xindex = math.floor((lambda_rf - lambda_min) / delta_lambda)
             assert(xindex >= 0)
-            array_energysum[xindex] += packet.e_rf
+
+            pkt_en = packet.e_cmf / betafactor if use_comovingframe else packet.e_rf
+
+            array_energysum[xindex] += pkt_en
             if packet.originated_from_positron:
-                array_energysum_positron[xindex] += packet.e_rf
+                array_energysum_positron[xindex] += pkt_en
             array_pktcount[xindex] += 1
 
             # convert cm/s to km/s
             emission_velocity = (
                 math.sqrt(packet.em_posx ** 2 + packet.em_posy ** 2 + packet.em_posz ** 2) / packet.em_time) / 1e5
-            set_min_sum_max(array_emvelocity, xindex, packet.e_rf, emission_velocity)
+            update_min_sum_max(array_emvelocity, xindex, pkt_en, emission_velocity)
 
             true_emission_velocity = packet.true_emission_velocity / 1e5
-            set_min_sum_max(array_trueemvelocity, xindex, packet.e_rf, true_emission_velocity)
+            update_min_sum_max(array_trueemvelocity, xindex, pkt_en, true_emission_velocity)
 
     array_flambda = (array_energysum / delta_lambda / (timehigh - timelow) /
                      4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs)
@@ -419,12 +431,13 @@ def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=No
 
     if from_packets:
         # find any other packets files in the same directory
-        packetsfiles_thismodel = glob.glob(os.path.join(modelpath, 'packets00_*.out'))
+        packetsfiles_thismodel = sorted(glob.glob(os.path.join(modelpath, 'packets00_*.out')))
         if args.maxpacketfiles >= 0 and len(packetsfiles_thismodel) > args.maxpacketfiles:
             print(f'Using on the first {args.maxpacketfiles} packet files out of {len(packetsfiles_thismodel)}')
             packetsfiles_thismodel = packetsfiles_thismodel[:args.maxpacketfiles]
         spectrum = at.spectra.get_spectrum_from_packets(
-            packetsfiles_thismodel, args.timemin, args.timemax, lambda_min=args.xmin, lambda_max=args.xmax)
+            packetsfiles_thismodel, args.timemin, args.timemax, lambda_min=args.xmin, lambda_max=args.xmax,
+            use_comovingframe=args.use_comovingframe)
         make_spectrum_stat_plot(spectrum, linelabel, os.path.dirname(args.outputfile), args)
     else:
         spectrum = at.spectra.get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
@@ -604,6 +617,9 @@ def addargs(parser):
 
     parser.add_argument('--normalised', default=False, action='store_true',
                         help='Normalise the spectra to their peak values')
+
+    parser.add_argument('--use_comovingframe', default=False, action='store_true',
+                        help='Use the time of packet escape to the surface (instead of a plane toward the observer)')
 
     parser.add_argument('-obsspec', action='append', dest='refspecfiles',
                         help='Also plot reference spectrum from this file')
