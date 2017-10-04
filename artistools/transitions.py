@@ -23,7 +23,8 @@ iontuple = namedtuple('iontuple', 'Z ion_stage')
 
 def get_kurucz_transitions():
     hc_evcm = (const.h * const.c).to('eV cm').value
-    transitiontuple = namedtuple('transition', 'Z ionstage lambda_angstroms A lower_energy_ev upper_energy_ev lower_g upper_g')
+    transitiontuple = namedtuple('transition',
+                                 'Z ionstage lambda_angstroms A lower_energy_ev upper_energy_ev lower_g upper_g')
     translist = []
     ionlist = []
     with open('gfall.dat', 'r') as fnist:
@@ -417,7 +418,14 @@ def main(args=None, argsraw=None, **kwargs):
                         print(dftransitions.nlargest(1, 'flux_factor_nlte'))
                 else:
                     popcolumnname = f'upper_pop_lte_{T_exc:.0f}K'
-                    add_upper_lte_pop(dftransitions, T_exc, ion, ionpopdict[ionid], columnname=popcolumnname)
+                    if args.atomicdatabase == 'artis':
+                        dftransitions.eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
+                        K_B = const.k_B.to('eV / K').value
+                        ltepartfunc = ion.levels.eval('g * exp(-energy_ev / @K_B / @T_exc)').sum()
+                    else:
+                        ltepartfunc = 1.0
+                    add_upper_lte_pop(dftransitions, T_exc, ionpopdict[ionid], ltepartfunc, columnname=popcolumnname)
+
 
                 yvalues[seriesindex][ionindex] = generate_ion_spectrum(dftransitions, xvalues,
                                                                        popcolumnname, plot_resolution, args)
