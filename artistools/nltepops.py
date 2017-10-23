@@ -176,7 +176,7 @@ def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridind
         print("No NLTE files found.")
         return -1
 
-    print(f'Reading {len(nlte_files)} estimator files...')
+    print(f'Reading {len(nlte_files)} NLTE population files...')
     for nltefilepath in nlte_files:
         filerank = int(re.search('[0-9]+', os.path.basename(nltefilepath)).group(0))
 
