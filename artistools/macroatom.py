@@ -12,17 +12,9 @@ import matplotlib.pyplot as plt
 # import matplotlib.ticker as ticker
 import pandas as pd
 
+defaultoutputfile = 'plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf'
 
-def main(argsraw=None):
-    """
-    Plot the macroatom transitions
-    """
-
-    defaultoutputfile = 'plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf'
-
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot ARTIS macroatom transitions.')
+def addargs(parser):
     parser.add_argument('--modelpath', nargs='?', default='',
                         help='Path to ARTIS folder')
     parser.add_argument('-listtimesteps', action='store_true', default=False,
@@ -31,7 +23,7 @@ def main(argsraw=None):
                         help='Timestep number to plot, or -1 for last')
     parser.add_argument('-timestepmax', type=int, default=-1,
                         help='Make plots for all timesteps up to this timestep')
-    parser.add_argument('-modelgridindex', type=int, default=0,
+    parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Modelgridindex to plot')
     parser.add_argument('element', nargs='?', default='Fe',
                         help='Plotted element')
@@ -42,7 +34,18 @@ def main(argsraw=None):
     parser.add_argument('-o', action='store', dest='outputfile',
                         default=defaultoutputfile,
                         help='Filename for PDF file')
-    args = parser.parse_args(argsraw)
+
+
+def main(args=None, argsraw=None, **kwargs):
+    """Plot the macroatom transitions."""
+
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            description='Plot ARTIS macroatom transitions.')
+        addargs(parser)
+        parser.set_defaults(**kwargs)
+        args = parser.parse_args(argsraw)
 
     if os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
@@ -100,14 +103,15 @@ def make_plot(dfmacroatom, modelpath, specfilename, timestepmin, timestepmax, ou
     fig, axis = plt.subplots(1, 1, sharex=True, figsize=(6, 6),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    axis.annotate(f'Timestep {timestepmin:d} to {timestepmax:d} (t={time_days_min} to {time_days_max})\nCell {modelgridindex:d}',
+    axis.annotate(f'Timestep {timestepmin:d} to {timestepmax:d} (t={time_days_min} to '
+                  f'{time_days_max})\nCell {modelgridindex:d}',
                   xy=(0.02, 0.96), xycoords='axes fraction',
                   horizontalalignment='left', verticalalignment='top', fontsize=8)
 
     lambda_cmf_in = const.c.to('angstrom/s').value / dfmacroatom['nu_cmf_in'].values
     lambda_cmf_out = const.c.to('angstrom/s').value / dfmacroatom['nu_cmf_out'].values
     # axis.scatter(lambda_cmf_in, lambda_cmf_out, s=1, alpha=0.5, edgecolor='none')
-    axis.plot(lambda_cmf_in, lambda_cmf_out, linestyle='none', marker='o', # alpha=0.5, 
+    axis.plot(lambda_cmf_in, lambda_cmf_out, linestyle='none', marker='o',  # alpha=0.5,
               markersize=2, markerfacecolor='red', markeredgewidth=0)
     axis.set_xlabel(r'Wavelength in ($\AA$)')
     axis.set_ylabel(r'Wavelength out ($\AA$)')

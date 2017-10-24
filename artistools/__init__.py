@@ -1,27 +1,47 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 import math
 import os.path
+import sys
 # from astropy import units as u
 from collections import namedtuple
+from itertools import chain
 
 # import scipy.signal
-# import numpy as np
+import numpy as np
 import pandas as pd
-from astropy import constants as const
+# from astropy import constants as const
 
 PYDIR = os.path.dirname(os.path.abspath(__file__))
 
-elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, 'elements.csv'))['symbol'].values)
+elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, 'data', 'elements.csv'))['symbol'].values)
 
 roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
-                  'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII',
-                  'XVIII', 'XIX', 'XX')
+                  'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
+
+console_scripts = [
+    'at = artistools:main',
+    'artistools = artistools:main',
+    'getartismodeldeposition = artistools.deposition:main',
+    'makeartismodel1dslicefrom3d = artistools.slice3dmodel:main',
+    'makeartismodelbotyanski = artistools.makemodelbotyanski:main',
+    'plotartisestimators = artistools.estimators:main',
+    'plotartislightcurve = artistools.lightcurve:main',
+    'plotartisnltepops = artistools.nltepops:main',
+    'plotartismacroatom = artistools.macroatom:main',
+    'plotartisnonthermal = artistools.nonthermal:main',
+    'plotartisradfield = artistools.radfield:main',
+    'plotartisspectrum = artistools.spectra:main',
+    'plotartistransitions = artistools.transitions:main',
+]
 
 
-def showtimesteptimes(specfilename, numberofcolumns=5):
+def showtimesteptimes(specfilename, modelpath=None, numberofcolumns=5):
     """
         Print a table showing the timeteps and their corresponding times
     """
+    if modelpath is not None:
+        specfilename = os.path.join(modelpath, 'spec.out')
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     print('Time steps and corresponding times in days:\n')
 
@@ -71,58 +91,82 @@ def get_modeldata(filename):
     """
         Return a list containing named tuples for all model grid cells
     """
+    if os.path.isdir(filename):
+        filename = os.path.join(filename, 'model.txt')
     modeldata = pd.DataFrame()
-    gridcelltuple = namedtuple('gridcell', 'cellid velocity logrho ffe fni fco f52fe f48cr')
+    gridcelltuple = namedtuple('gridcell', 'inputcellid velocity logrho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48')
 
     with open(filename, 'r') as fmodel:
         gridcellcount = int(fmodel.readline())
-        t_model_init = float(fmodel.readline())
+        t_model_init_days = float(fmodel.readline())
         for line in fmodel:
             row = line.split()
-            rowdf = pd.DataFrame([gridcelltuple._make([int(row[0]) - 1] + list(map(float, row[1:])))],
+            rowdf = pd.DataFrame([gridcelltuple._make([int(row[0])] + list(map(float, row[1:])))],
                                  columns=gridcelltuple._fields)
-            modeldata = modeldata.append(rowdf)
+            modeldata = modeldata.append(rowdf, ignore_index=True)
+
     assert(len(modeldata) == gridcellcount)
-    modeldata = modeldata.set_index(['cellid'])
-    return modeldata, t_model_init
+    modeldata.index.name = 'cellid'
+    return modeldata, t_model_init_days
 
 
-def get_initialabundances1d(filename):
-    """
-        Returns a list of mass fractions
-    """
-    abundancedata = []
-    abundancedata.append([])
-    with open(filename, 'r') as fabund:
-        for line in fabund:
-            row = line.split()
-            abundancedata.append([int(row[0])] + list(map(float, row[1:])))
+def save_modeldata(dfmodeldata, t_model_init_days, filename) -> None:
+    with open(filename, 'w') as fmodel:
+        fmodel.write(f'{len(dfmodeldata)}\n{t_model_init_days:f}\n')
+        for _, cell in dfmodeldata.iterrows():
+            fmodel.write(f'{cell.inputcellid:6.0f}   {cell.velocity:9.2f}   {cell.logrho:10.8f} '
+                         f'{cell.X_Fegroup:5.2f} {cell.X_Ni56:5.2f} {cell.X_Co56:5.2f} '
+                         f'{cell.X_Fe52:5.2f} {cell.X_Cr48:5.2f}\n')
 
+
+def get_initialabundances(abundancefilename):
+    """Return a list of mass fractions."""
+    columns = ['inputcellid', *['X_' + elsymbols[x] for x in range(1, 31)]]
+    abundancedata = pd.read_csv(abundancefilename, delim_whitespace=True, header=None, names=columns)
+    abundancedata.index.name = 'modelgridindex'
     return abundancedata
 
 
+def save_initialabundances(dfabundances, abundancefilename) -> None:
+    dfabundances['inputcellid'] = dfabundances['inputcellid'].astype(np.int)
+    dfabundances.to_csv(abundancefilename, header=False, sep=' ', index=False)
+
+
 def get_timestep_times(specfilename):
-    """
-        Return a list of the time in days of each timestep using a spec.out file
-    """
+    """Return a list of the time in days of each timestep using a spec.out file."""
+    if os.path.isdir(specfilename):
+        specfilename = os.path.join(specfilename, 'spec.out')
+
     time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
 
     return time_columns.columns[1:]
 
 
+def get_timestep_times_float(specfilename):
+    """Return a list of the time in days of each timestep using a spec.out file."""
+    return np.array([float(t.rstrip('d')) for t in get_timestep_times(specfilename)])
+
+
+def get_closest_timestep(specfilename, timedays):
+    try:
+        timedays_float = float(timedays.rstrip('d'))
+    except AttributeError:
+        timedays_float = float(timedays)
+    return np.abs(get_timestep_times_float(specfilename) - timedays_float).argmin()
+
+
 def get_timestep_time(specfilename, timestep):
-    """
-        Return the time in days of a timestep number using a spec.out file
-    """
+    """Return the time in days of a timestep number using a spec.out file."""
+    if os.path.isdir(specfilename):
+        specfilename = os.path.join(specfilename, 'spec.out')
+
     if os.path.isfile(specfilename):
         return get_timestep_times(specfilename)[timestep]
     return -1
 
 
 def get_timestep_time_delta(timestep, timearray):
-    """
-        Return the time in days between timestep and timestep + 1
-    """
+    """Return the time in days between timestep and timestep + 1."""
 
     if timestep < len(timearray) - 1:
         delta_t = (float(timearray[timestep + 1]) - float(timearray[timestep]))
@@ -132,177 +176,74 @@ def get_timestep_time_delta(timestep, timearray):
     return delta_t
 
 
-def get_levels(adatafilename):
-    """
-        Return a list of lists of levels
-    """
-    level_lists = []
-    iontuple = namedtuple('ion', 'Z ion_stage level_count ion_pot level_list')
-    leveltuple = namedtuple('level', 'number energy_ev g transition_count levelname')
+def get_levels(modelpath, ionlist=None, get_transitions=False):
+    """Return a list of lists of levels."""
+    adatafilename = os.path.join(modelpath, 'adata.txt')
 
-    with open(adatafilename, 'r') as fadata:
-        for line in fadata:
-            if len(line.strip()) > 0:
+    transitiontuple = namedtuple('transition', 'lower upper A collstr forbidden')
+
+    firstlevelnumber = 1
+
+    transitionsdict = {}
+    if get_transitions:
+        transition_filename = os.path.join(modelpath, 'transitiondata.txt')
+
+        print(f'Reading {transition_filename}')
+        with open(transition_filename, 'r') as ftransitions:
+            for line in ftransitions:
+                if not line.strip():
+                    continue
+
                 ionheader = line.split()
-                level_count = int(ionheader[2])
+                Z = int(ionheader[0])
+                ionstage = int(ionheader[1])
+                transition_count = int(ionheader[2])
 
+                if not ionlist or (Z, ionstage) in ionlist:
+                    translist = []
+                    for _ in range(transition_count):
+                        row = ftransitions.readline().split()
+                        translist.append(
+                            transitiontuple(int(row[0]) - firstlevelnumber, int(row[1]) - firstlevelnumber,
+                                            float(row[2]), float(row[3]), int(row[4]) == 1))
+                    transitionsdict[(Z, ionstage)] = pd.DataFrame(translist, columns=transitiontuple._fields)
+                else:
+                    for _ in range(transition_count):
+                        ftransitions.readline()
+
+    level_lists = []
+    iontuple = namedtuple('ion', 'Z ion_stage level_count ion_pot levels transitions')
+    leveltuple = namedtuple('level', 'energy_ev g transition_count levelname')
+    with open(adatafilename, 'r') as fadata:
+        print(f'Reading {adatafilename}')
+        for line in fadata:
+            if not line.strip():
+                continue
+
+            ionheader = line.split()
+            Z = int(ionheader[0])
+            ionstage = int(ionheader[1])
+            level_count = int(ionheader[2])
+
+            if not ionlist or (Z, ionstage) in ionlist:
                 level_list = []
-                for _ in range(level_count):
+                for levelindex in range(level_count):
                     line = fadata.readline()
                     row = line.split()
                     levelname = row[4].strip('\'')
-                    level_list.append(leveltuple(int(row[0]), float(row[1]), float(row[2]), int(row[3]), levelname))
+                    numberin = int(row[0])
+                    assert(levelindex == numberin - firstlevelnumber)
+                    level_list.append(leveltuple(float(row[1]), float(row[2]), int(row[3]), levelname))
+                dflevels = pd.DataFrame(level_list)
 
-                level_lists.append(iontuple(int(ionheader[0]), int(ionheader[1]), level_count,
-                                            float(ionheader[3]), list(level_list)))
-
-    return level_lists
-
-
-def get_nlte_populations(modelpath, nltefile, modelgridindex, timestep, atomic_number, temperature_exc):
-    all_levels = get_levels(os.path.join(modelpath, 'adata.txt'))
-
-    dfpop = pd.read_csv(nltefile, delim_whitespace=True)
-    dfpop.query('(modelgridindex==@modelgridindex) & (timestep==@timestep) & (Z==@atomic_number)',
-                inplace=True)
-
-    k_b = const.k_B.to('eV / K').value
-    list_indicies = []
-    list_ltepopcustom = []
-    list_parity = []
-    gspop = {}
-    for index, row in dfpop.iterrows():
-        list_indicies.append(index)
-
-        atomic_number = int(row.Z)
-        ion_stage = int(row.ion_stage)
-        if (row.Z, row.ion_stage) not in gspop:
-            gspop[(row.Z, row.ion_stage)] = dfpop.query(
-                'timestep==@timestep and Z==@atomic_number and ion_stage==@ion_stage and level==0').iloc[0].n_NLTE
-
-        levelnumber = int(row.level)
-        if levelnumber == -1:  # superlevel
-            levelnumber = dfpop.query(
-                'timestep==@timestep and Z==@atomic_number and ion_stage==@ion_stage').level.max()
-            dfpop.loc[index, 'level'] = levelnumber + 2
-            ltepopcustom = 0.0
-            parity = 0
-            print(f'{elsymbols[atomic_number]} {roman_numerals[ion_stage]} has a superlevel at level {levelnumber}')
-        else:
-            for _, ion_data in enumerate(all_levels):
-                if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
-                    level = ion_data.level_list[levelnumber]
-                    gslevel = ion_data.level_list[0]
-
-            ltepopcustom = gspop[(row.Z, row.ion_stage)] * level.g / gslevel.g * math.exp(
-                - (level.energy_ev - gslevel.energy_ev) / k_b / temperature_exc)
-
-            levelname = level.levelname.split('[')[0]
-            parity = 1 if levelname[-1] == 'o' else 0
-
-        list_ltepopcustom.append(ltepopcustom)
-        list_parity.append(parity)
-
-    dfpop['n_LTE_custom'] = pd.Series(list_ltepopcustom, index=list_indicies)
-    dfpop['parity'] = pd.Series(list_parity, index=list_indicies)
-
-    return dfpop
-
-
-def get_nlte_populations_oldformat(modelpath, nltefile, modelgridindex, timestep, atomic_number, temperature_exc):
-    compositiondata = get_composition_data('compositiondata.txt')
-    elementdata = compositiondata.query('Z==@atomic_number')
-
-    if len(elementdata) < 1:
-        print(f'Error: element Z={atomic_number} not in composition file')
-        return None
-
-    all_levels = get_levels(os.path.join(modelpath, 'adata.txt'))
-
-    skip_block = False
-    dfpop = pd.DataFrame().to_sparse()
-    with open(nltefile, 'r') as nltefile:
-        for line in nltefile:
-            row = line.split()
-
-            if row and row[0] == 'timestep':
-                skip_block = int(row[1]) != timestep
-                if row[2] == 'modelgridindex' and int(row[3]) != modelgridindex:
-                    skip_block = True
-
-            if skip_block:
-                continue
-            elif len(row) > 2 and row[0] == 'nlte_index' and row[1] != '-':  # level row
-                matchedgroundstateline = False
-            elif len(row) > 1 and row[1] == '-':  # ground state
-                matchedgroundstateline = True
+                translist = transitionsdict.get((Z, ionstage), pd.DataFrame(columns=transitiontuple._fields))
+                level_lists.append(iontuple(Z, ionstage, level_count, float(ionheader[3]), dflevels, translist))
             else:
-                continue
+                for _ in range(level_count):
+                    fadata.readline()
 
-            dfrow = parse_nlte_row(row, dfpop, elementdata, all_levels, timestep,
-                                   temperature_exc, matchedgroundstateline)
-
-            if dfrow is not None:
-                dfpop = dfpop.append(dfrow, ignore_index=True)
-
-    return dfpop
-
-
-def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_exc, matchedgroundstateline):
-    """
-        Read a line from the NLTE output file and return a Pandas DataFrame
-    """
-    levelpoptuple = namedtuple(
-        'ionpoptuple', 'timestep Z ion_stage level energy_ev parity n_LTE n_NLTE n_LTE_custom')
-
-    elementindex = elementdata.index[0]
-    atomic_number = int(elementdata.iloc[0].Z)
-    element = int(row[row.index('element') + 1])
-    if element != elementindex:
-        return None
-    ion = int(row[row.index('ion') + 1])
-    ion_stage = int(elementdata.iloc[0].lowermost_ionstage) + ion
-
-    if row[row.index('level') + 1] != 'SL':
-        levelnumber = int(row[row.index('level') + 1])
-        superlevel = False
-    else:
-        levelnumber = dfpop.query('timestep==@timestep and ion_stage==@ion_stage').level.max() + 3
-        print(f'{elsymbols[atomic_number]} {roman_numerals[ion_stage]} has a superlevel at level {levelnumber}')
-        superlevel = True
-
-    for _, ion_data in enumerate(all_levels):
-        if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
-            level = ion_data.level_list[levelnumber]
-            gslevel = ion_data.level_list[0]
-
-    ltepop = float(row[row.index('nnlevel_LTE') + 1])
-
-    if matchedgroundstateline:
-        nltepop = ltepop_custom = ltepop
-
-        levelname = gslevel.levelname.split('[')[0]
-        energy_ev = gslevel.energy_ev
-    else:
-        nltepop = float(row[row.index('nnlevel_NLTE') + 1])
-
-        k_b = const.k_B.to('eV / K').value
-        gspop = dfpop.query('timestep==@timestep and ion_stage==@ion_stage and level==0').iloc[0].n_NLTE
-        levelname = level.levelname.split('[')[0]
-        energy_ev = (level.energy_ev - gslevel.energy_ev)
-
-        ltepop_custom = gspop * level.g / gslevel.g * math.exp(
-            -energy_ev / k_b / temperature_exc)
-
-    parity = 1 if levelname[-1] == 'o' else 0
-    if superlevel:
-        parity = 0
-
-    newrow = levelpoptuple(timestep=timestep, Z=int(elementdata.iloc[0].Z), ion_stage=ion_stage,
-                           level=levelnumber, energy_ev=energy_ev, parity=parity,
-                           n_LTE=ltepop, n_NLTE=nltepop, n_LTE_custom=ltepop_custom)
-
-    return pd.DataFrame(data=[newrow], columns=levelpoptuple._fields)
+    dfadata = pd.DataFrame(level_lists)
+    return dfadata
 
 
 def get_model_name(path):
@@ -330,13 +271,18 @@ def get_model_name_times(filename, timearray, timestep_range_str, timemin, timem
             timestepmin = int(timestep_range_str)
             timestepmax = timestepmin
     else:
+        timestepmin = None
         if not timemin:
             timemin = 0.
         for timestep, time in enumerate(timearray):
             timefloat = float(time.strip('d'))
-            if (timefloat >= timemin):
+            if (timemin <= timefloat):
                 timestepmin = timestep
                 break
+
+        if not timestepmin:
+            print(f"Time min {timemin} is greater than all timesteps ({timearray[0]} to {timearray[-1]})")
+            sys.exit()
 
         if not timemax:
             timemax = float(timearray[-1].strip('d'))
@@ -354,3 +300,85 @@ def get_model_name_times(filename, timearray, timestep_range_str, timemin, timem
           f'(t={time_days_lower:.3f}d to {time_days_upper:.3f}d)')
 
     return modelname, timestepmin, timestepmax, time_days_lower, time_days_upper
+
+
+def get_atomic_number(elsymbol):
+    if elsymbol.title() in elsymbols:
+        return elsymbols.index(elsymbol.title())
+    return -1
+
+
+def decode_roman_numeral(strin):
+    if strin.upper() in roman_numerals:
+        return roman_numerals.index(strin.upper())
+    return -1
+
+
+def main(argsraw=None):
+    import argcomplete
+    import argparse
+    import importlib
+
+    parser = argparse.ArgumentParser()
+    parser.set_defaults(func=None)
+
+    subparsers = parser.add_subparsers()
+    commandlist = [
+        ('getmodeldeposition', 'deposition'),
+        ('makemodel1dslicefrom3d', 'slice3dmodel'),
+        ('makemodelbotyanski', 'makemodelbotyanski'),
+        ('plotestimators', 'estimators'),
+        ('plotlightcurve', 'lightcurve'),
+        ('plotnltepops', 'nltepops'),
+        ('plotmacroatom', 'macroatom'),
+        ('plotnonthermal', 'nonthermal'),
+        ('plotradfield', 'radfield'),
+        ('plotspectrum', 'spectra'),
+        ('plottransitions', 'transitions'),
+        ('spencerfano', 'spencerfano'),
+    ]
+
+    for command, submodulename in commandlist:
+        submodule = importlib.import_module('artistools.' + submodulename)
+        subparser = subparsers.add_parser(command)
+        submodule.addargs(subparser)
+        subparser.set_defaults(func=submodule.main)
+
+    argcomplete.autocomplete(parser)
+    args = parser.parse_args()
+    if args.func is not None:
+        args.func(args=args)
+    else:
+        # parser.print_help()
+        print('usage: artistools <command>, where <command> is one of:\n')
+        for command, _ in commandlist:
+            print(f'  {command}')
+
+
+def get_ionstring(atomic_number, ionstage):
+    return f'{elsymbols[atomic_number]} {roman_numerals[ionstage]}'
+
+
+def list_commands():
+    print("artistools commands:")
+    for script in sorted(console_scripts):
+        command = script.split('=')[0].strip()
+        print(f'  {command}')
+
+
+# from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
+def parse_range(rng):
+    parts = rng.split('-')
+    if 1 > len(parts) > 2:
+        raise ValueError("Bad range: '%s'" % (rng,))
+    parts = [int(i) for i in parts]
+    start = parts[0]
+    end = start if len(parts) == 1 else parts[1]
+    if start > end:
+        end, start = start, end
+    return range(start, end + 1)
+
+
+# from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
+def parse_range_list(rngs):
+    return sorted(set(chain(*[parse_range(rng) for rng in rngs.split(',')])))

@@ -14,6 +14,7 @@ from astropy import units as u
 import artistools as at
 import matplotlib.pyplot as plt
 
+
 def readfile(filename):
     lcdata = pd.read_csv(filename, delim_whitespace=True, header=None, names=['time', 'lum', 'lum_cmf'])
     # the light_curve.dat file repeats x values, so keep the first half only
@@ -103,10 +104,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
     plt.close()
 
 
-def main(argsraw=None):
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot ARTIS radiation field.')
+def addargs(parser):
     parser.add_argument('modelpath', default=[], nargs='*',
                         help='Paths to ARTIS folders with light_curve.out or packets files'
                         ' (may include wildcards such as * and **)')
@@ -116,10 +114,21 @@ def main(argsraw=None):
                         help='Make light curve from gamma rays instead of R-packets')
     parser.add_argument('-o', action='store', dest='outputfile',
                         help='Filename for PDF file')
-    args = parser.parse_args(argsraw)
+
+
+def main(args=None, argsraw=None, **kwargs):
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            description='Plot ARTIS radiation field.')
+        addargs(parser)
+        parser.set_defaults(**kwargs)
+        args = parser.parse_args(argsraw)
 
     if not args.modelpath:
         args.modelpath = ['.', '*']
+    elif isinstance(args.modelpath, str):
+        args.modelpath = [args.modelpath]
 
     # combined the results of applying wildcards on each input
     modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in args.modelpath if os.path.isdir(x)]))

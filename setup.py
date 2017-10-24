@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # coding: utf-8
 """Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code."""
 
@@ -7,6 +9,7 @@ import sys
 
 from setuptools import find_packages, setup
 from setuptools.command.test import test as TestCommand
+from artistools import console_scripts
 
 
 class PyTest(TestCommand):
@@ -28,7 +31,8 @@ class PyTest(TestCommand):
 print(datetime.datetime.now().isoformat())
 setup(
     name="artistools",
-    version=datetime.datetime.now().isoformat(),
+    version="0.1.dev0",
+    # version=datetime.datetime.now().isoformat(),
     author="Luke Shingles",
     author_email="luke.shingles@gmail.com",
     packages=find_packages(),
@@ -40,15 +44,7 @@ setup(
     install_requires=open(
         os.path.join(os.path.dirname(__file__), "requirements.txt")).read(),
     entry_points={
-        'console_scripts': [
-            'plotartislightcurve = artistools.lightcurve:main',
-            'plotartisnltepops = artistools.nltepops:main',
-            'plotartismacroatom = artistools.macroatom:main',
-            'plotartisnonthermal = artistools.nonthermalspec:main',
-            'plotartisradfield = artistools.radfield:main',
-            'plotartisspectrum = artistools.spectra:main',
-            'plotartistransitions = artistools.transitions:main',
-        ]
+        'console_scripts': console_scripts
     },
     python_requires='>==3.6',
     # test_suite='tests',

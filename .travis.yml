@@ -21,3 +21,6 @@ after_success:
 #  - codecov
   - coveralls
   - codeclimate-test-reporter
+
+git:
+  lfs_skip_smudge: false

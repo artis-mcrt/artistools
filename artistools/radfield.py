@@ -4,6 +4,7 @@ import argparse
 import glob
 import math
 import os.path
+import re
 import sys
 
 import matplotlib.pyplot as plt
@@ -16,19 +17,28 @@ from astropy import units as u
 
 import artistools as at
 
+defaultoutputfile = 'plotradfield_cell{0:03d}_{1:03d}.pdf'
 
-def read_files(radfield_files, modelgridindex=None):
+
+def read_files(radfield_files, modelgridindex=-1):
     radfielddata = None
     if not radfield_files:
         print("No radfield files")
     else:
-        for index, radfield_file in enumerate(radfield_files):
+        for _, radfield_file in enumerate(radfield_files):
+            filerank = int(re.search('[0-9]+', os.path.basename(radfield_file)).group(0))
+
+            if filerank > modelgridindex and modelgridindex >= 0:
+                continue
+
             print(f'Loading {radfield_file}...')
 
             radfielddata_thisfile = pd.read_csv(radfield_file, delim_whitespace=True)
             # radfielddata_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
-            if modelgridindex:
+
+            if modelgridindex >= 0:
                 radfielddata_thisfile.query('modelgridindex==@modelgridindex', inplace=True)
+
             if radfielddata_thisfile is not None:
                 if len(radfielddata_thisfile) > 0:
                     if radfielddata is None:
@@ -92,6 +102,7 @@ def plot_fitted_field(axis, radfielddata, xmin, xmax):
             if row['bin_num'] == -1:
                 ymaxglobalfit = max(arr_j_lambda)
                 axis.plot(arr_lambda, arr_j_lambda, linewidth=1.5, color='purple', label='Full-spectrum fitted field')
+                print(row)
             else:
                 fittedxvalues += list(arr_lambda)
                 fittedyvalues += list(arr_j_lambda)
@@ -190,40 +201,53 @@ def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=Non
                     label='Emergent spectrum (normalised)')
 
 
-def main(argsraw=None):
+def addargs(parser):
+    parser.add_argument('-modelpath', default='',
+                        help='Path to ARTIS folder')
+
+    parser.add_argument('-listtimesteps', action='store_true', default=False,
+                        help='Show the times at each timestep')
+
+    parser.add_argument('-timestep', '-ts', type=int, default=-1,
+                        help='Timestep number to plot')
+
+    parser.add_argument('-timestepmax', type=int, default=-1,
+                        help='Make plots for all timesteps up to this timestep')
+
+    parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
+                        help='Modelgridindex to plot')
+
+    parser.add_argument('--nospec', action='store_true', default=False,
+                        help='Don\'t plot the emergent specrum')
+
+    parser.add_argument('-xmin', type=int, default=1000,
+                        help='Plot range: minimum wavelength in Angstroms')
+
+    parser.add_argument('-xmax', type=int, default=20000,
+                        help='Plot range: maximum wavelength in Angstroms')
+
+    parser.add_argument('--normalised', default=False, action='store_true',
+                        help='Normalise the spectra to their peak values')
+
+    parser.add_argument('-o', action='store', dest='outputfile',
+                        default=defaultoutputfile,
+                        help='Filename for PDF file')
+
+
+def main(args=None, argsraw=None, **kwargs):
     """
     Plot the radiation field estimators and the fitted radiation field
     based on the fitted field parameters (temperature and scale factor W
     for a diluted blackbody)
     """
 
-    defaultoutputfile = 'plotradfield_cell{0:03d}_{1:03d}.pdf'
-
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='Plot ARTIS radiation field.')
-    parser.add_argument('modelpath', nargs='?', default='',
-                        help='Path to ARTIS folder')
-    parser.add_argument('-listtimesteps', action='store_true', default=False,
-                        help='Show the times at each timestep')
-    parser.add_argument('-timestep', type=int, default=-1,
-                        help='Timestep number to plot, or -1 for last')
-    parser.add_argument('-timestepmax', type=int, default=-1,
-                        help='Make plots for all timesteps up to this timestep')
-    parser.add_argument('-modelgridindex', type=int, default=0,
-                        help='Modelgridindex to plot')
-    parser.add_argument('--nospec', action='store_true', default=False,
-                        help='Don\'t plot the emergent specrum')
-    parser.add_argument('-xmin', type=int, default=1000,
-                        help='Plot range: minimum wavelength in Angstroms')
-    parser.add_argument('-xmax', type=int, default=20000,
-                        help='Plot range: maximum wavelength in Angstroms')
-    parser.add_argument('--normalised', default=False, action='store_true',
-                        help='Normalise the spectra to their peak values')
-    parser.add_argument('-o', action='store', dest='outputfile',
-                        default=defaultoutputfile,
-                        help='Filename for PDF file')
-    args = parser.parse_args(argsraw)
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            description='Plot ARTIS internal radiation field.')
+        addargs(parser)
+        parser.set_defaults(**kwargs)
+        args = parser.parse_args(argsraw)
 
     if os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
