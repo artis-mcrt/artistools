@@ -5,6 +5,7 @@ import os.path
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import linalg
+import sys
 
 import artistools as at
 import artistools.estimators
@@ -382,7 +383,7 @@ def addargs(parser):
     parser.add_argument('-timedays', '-time', '-t',
                         help='Time in days to plot')
 
-    parser.add_argument('-timestep', '-ts', type=int, default=70,
+    parser.add_argument('-timestep', '-ts', type=int,
                         help='Timestep number to plot')
 
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
@@ -406,6 +407,9 @@ def addargs(parser):
     parser.add_argument('--noexcitation', action='store_true', default=False,
                         help='Include collisional excitation transitions')
 
+    parser.add_argument('--ar1985', action='store_true', default=False,
+                        help='Use Arnaud & Rothenflug (1985, A&AS, 60, 425) for Fe ionization cross sections')
+
     parser.add_argument('-o', action='store', dest='outputfile',
                         default=defaultoutputfile,
                         help='Path/filename for PDF file if --makeplot is enabled')
@@ -427,18 +431,21 @@ def main(args=None, argsraw=None, **kwargs):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     modelpath = args.modelpath
-    modeldata, _ = at.get_modeldata(modelpath)
-    estimators = at.estimators.read_estimators(modelpath, modeldata)
 
     if args.timedays:
         args.timestep = at.get_closest_timestep(os.path.join(modelpath, "spec.out"), args.timedays)
+    elif args.timestep is None:
+        print("A time or timestep must be specified.")
+        sys.exit()
 
+    modeldata, _ = at.get_modeldata(modelpath)
+    estimators = at.estimators.read_estimators(modelpath, modeldata)
     estim = estimators[(args.timestep, args.modelgridindex)]
 
-    # nntot = estim['populations']['total']
-    # nne = estim['nne']
-    # deposition_density_ev = estim['gamma_dep'] / 1.6021772e-12  # convert erg to eV
-    # ionpopdict = estim['populations']
+    nntot = estim['populations']['total']
+    nne = estim['nne']
+    deposition_density_ev = estim['gamma_dep'] / 1.6021772e-12  # convert erg to eV
+    ionpopdict = estim['populations']
 
     # deposition_density_ev = 327
     # nne = 6.7e5
@@ -457,18 +464,18 @@ def main(args=None, argsraw=None, **kwargs):
     # ionpopdict[(28, 4)] = ionpopdict[28] * 0.
     # ionpopdict[(28, 5)] = ionpopdict[28] * 0.
 
-    x_e = 1e-2
-    deposition_density_ev = 1e-4
-    nntot = 1.0
-    ionpopdict = {}
-    nne = nntot * x_e
+    # x_e = 1e-2
+    # deposition_density_ev = 1e-4
+    # nntot = 1.0
+    # ionpopdict = {}
+    # nne = nntot * x_e
 
     # KF1992 D. The Oxygen-Carbon Zone
-    ionpopdict[(at.get_atomic_number('C'), 1)] = 0.16 * nntot
-    ionpopdict[(at.get_atomic_number('C'), 2)] = 0.16 * nntot * x_e
-    ionpopdict[(at.get_atomic_number('O'), 1)] = 0.86 * nntot
-    ionpopdict[(at.get_atomic_number('O'), 2)] = 0.86 * nntot * x_e
-    ionpopdict[(at.get_atomic_number('Ne'), 1)] = 0.016 * nntot
+    # ionpopdict[(at.get_atomic_number('C'), 1)] = 0.16 * nntot
+    # ionpopdict[(at.get_atomic_number('C'), 2)] = 0.16 * nntot * x_e
+    # ionpopdict[(at.get_atomic_number('O'), 1)] = 0.86 * nntot
+    # ionpopdict[(at.get_atomic_number('O'), 2)] = 0.86 * nntot * x_e
+    # ionpopdict[(at.get_atomic_number('Ne'), 1)] = 0.016 * nntot
 
     # # KF1992 G. The Silicon-Calcium Zone
     # ionpopdict[(at.get_atomic_number('C'), 1)] = 0.38e-5 * nntot
@@ -499,7 +506,8 @@ def main(args=None, argsraw=None, **kwargs):
     print(f'       nne: {nne:.2e} /cm3')
     print(f'deposition: {deposition_density_ev:7.2f} eV/s/cm3')
 
-    dfcollion = at.nonthermal.read_colliondata()
+    dfcollion = at.nonthermal.read_colliondata(
+        collionfilename=('collion-AR1985.txt' if args.ar1985 else 'collion.txt'))
 
     if args.ostat:
         with open(args.ostat, 'w') as fstat:

@@ -55,9 +55,9 @@ def get_arxs_array(arr_enev, dfcollion, Z, ionstage):
     return ar_xs_array
 
 
-def read_colliondata():
+def read_colliondata(collionfilename='collion.txt'):
     collionrow = namedtuple('collionrow', ['Z', 'nelec', 'n', 'l', 'ionpot_ev', 'A', 'B', 'C', 'D'])
-    with open(os.path.join(at.PYDIR, 'data', 'collion.txt'), 'r') as collionfile:
+    with open(os.path.join(at.PYDIR, 'data', collionfilename), 'r') as collionfile:
         print(f'Collionfile: expecting {collionfile.readline().strip()} rows')
         dfcollion = pd.read_csv(
             collionfile, delim_whitespace=True, header=None, names=collionrow._fields)
