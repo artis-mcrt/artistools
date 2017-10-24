@@ -5,6 +5,7 @@ import os.path
 import sys
 # from astropy import units as u
 from collections import namedtuple
+from itertools import chain
 
 # import scipy.signal
 import numpy as np
@@ -363,3 +364,21 @@ def list_commands():
     for script in sorted(console_scripts):
         command = script.split('=')[0].strip()
         print(f'  {command}')
+
+
+# from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
+def parse_range(rng):
+    parts = rng.split('-')
+    if 1 > len(parts) > 2:
+        raise ValueError("Bad range: '%s'" % (rng,))
+    parts = [int(i) for i in parts]
+    start = parts[0]
+    end = start if len(parts) == 1 else parts[1]
+    if start > end:
+        end, start = start, end
+    return range(start, end + 1)
+
+
+# from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
+def parse_range_list(rngs):
+    return sorted(set(chain(*[parse_range(rng) for rng in rngs.split(',')])))
