@@ -221,6 +221,9 @@ def addargs(parser):
     parser.add_argument('-exc_temperature', type=float, default=6000.,
                         help='Comparison plot')
 
+    parser.add_argument('-ionstages',
+                        help='Ion stage range, 1 is neutral, 2 is 1+')
+
     parser.add_argument('--oldformat', default=False, action='store_true',
                         help='Use the old file format')
 
@@ -248,6 +251,7 @@ def main(args=None, argsraw=None, **kwargs):
     if args.listtimesteps:
         at.showtimesteptimes('spec.out')
     else:
+        ionstages_permitted = at.parse_range_list(args.ionstages) if args.ionstages else None
         adata = at.get_levels(args.modelpath)
 
         modeldata, _ = at.get_modeldata(os.path.join(args.modelpath, 'model.txt'))
@@ -288,17 +292,19 @@ def main(args=None, argsraw=None, **kwargs):
             if dfpop.empty:
                 print(f'No NLTE population data for modelgrid cell {args.modelgridindex} timestep {timestep}')
             else:
-                make_plot(modeldata, estimators, dfpop, atomic_number, T_e, T_R, timestep, args)
+                make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R, timestep, args)
 
 
-def make_plot(modeldata, estimators, dfpop, atomic_number, T_e, T_R, timestep, args):
+def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R, timestep, args):
     # top_ion = 9999
     max_ion_stage = dfpop.ion_stage.max()
 
     if len(dfpop.query('ion_stage == @max_ion_stage')) == 1:  # single-level ion, so skip it
         max_ion_stage -= 1
 
-    ion_stage_list = sorted([i for i in dfpop.ion_stage.unique() if i <= max_ion_stage])
+    ion_stage_list = sorted(
+        [i for i in dfpop.ion_stage.unique()
+         if i <= max_ion_stage and (ionstages_permitted is None or i in ionstages_permitted)])
 
     fig, axes = plt.subplots(len(ion_stage_list), 1, sharex=False, figsize=(9, 3 * len(ion_stage_list)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
@@ -360,7 +366,8 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, T_e, T_R, timestep, a
     Te = estimators[(timestep, args.modelgridindex)]['Te']
     modelname = at.get_model_name(args.modelpath)
     velocity = modeldata['velocity'][args.modelgridindex]
-    figure_title = (f'{modelname}\n'
+    figure_title = (
+        f'{modelname}\n'
         f'Cell {args.modelgridindex} (v={velocity} km/s) with Te = {Te:.1f} K at timestep {timestep:d}')
     time_days = float(at.get_timestep_time(args.modelpath, timestep))
     if time_days != -1:
