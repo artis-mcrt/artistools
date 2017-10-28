@@ -395,7 +395,7 @@ def addargs(parser):
     parser.add_argument('-emin', type=float, default=1,
                         help='Minimum energy in eV of Spencer-Fano solution')
 
-    parser.add_argument('-emax', type=float, default=1000,
+    parser.add_argument('-emax', type=float, default=5000,
                         help='Maximum energy in eV of Spencer-Fano solution (approx where energy is injected)')
 
     parser.add_argument('-vary', action='store', choices=['emin', 'emax', 'npts', 'emax,npts'],
