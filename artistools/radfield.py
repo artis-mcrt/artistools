@@ -16,6 +16,7 @@ from astropy import constants as const
 from astropy import units as u
 
 import artistools as at
+import artistools.spectra
 
 defaultoutputfile = 'plotradfield_cell{0:03d}_{1:03d}.pdf'
 
