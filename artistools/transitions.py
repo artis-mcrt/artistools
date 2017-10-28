@@ -306,7 +306,7 @@ def main(args=None, argsraw=None, **kwargs):
     if from_model:
         dfnltepops = get_nltepops(modelpath, modelgridindex=modelgridindex, timestep=timestep)
 
-        if dfnltepops.empty:
+        if dfnltepops is None or dfnltepops.empty:
             print(f'ERROR: no NLTE populations for cell {modelgridindex} at timestep {timestep}')
             return -1
 
@@ -319,7 +319,8 @@ def main(args=None, argsraw=None, **kwargs):
         Te = estimators['Te']
         TR = estimators['TR']
         figure_title = f'{modelname}\n'
-        figure_title += f'Cell {modelgridindex} (v={velocity} km/s) with Te = {Te:.1f} K, TR = {TR:.1f} K at timestep {timestep}'
+        figure_title += (f'Cell {modelgridindex} (v={velocity} km/s) with '
+                         f'Te = {Te:.1f} K, TR = {TR:.1f} K at timestep {timestep}')
         time_days = float(at.get_timestep_time(modelpath, timestep))
         if time_days != -1:
             figure_title += f' ({time_days:.1f}d)'
