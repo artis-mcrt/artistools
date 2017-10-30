@@ -209,6 +209,9 @@ def addargs(parser):
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
 
+    parser.add_argument('-timedays', '-time', '-t',
+                        help='Time in days to plot')
+
     parser.add_argument('-timestep', '-ts', type=int, default=-1,
                         help='Timestep number to plot')
 
@@ -266,16 +269,6 @@ def main(args=None, argsraw=None, **kwargs):
         else:
             radfielddata = at.radfield.read_files(radfield_files, args.modelgridindex)
 
-        if not args.timestep or args.timestep < 0:
-            timestepmin = max(radfielddata['timestep'])
-        else:
-            timestepmin = args.timestep
-
-        if not args.timestepmax or args.timestepmax < 0:
-            timestepmax = timestepmin + 1
-        else:
-            timestepmax = args.timestepmax
-
         specfilename = os.path.join(args.modelpath, 'spec.out')
 
         if not os.path.isfile(specfilename):
@@ -284,6 +277,20 @@ def main(args=None, argsraw=None, **kwargs):
         if not os.path.isfile(specfilename):
             print(f'Could not find {specfilename}')
             return 1
+
+        if args.timedays:
+            timestepmin = at.get_closest_timestep(specfilename, args.timedays)
+            timestepmax = timestepmin + 1
+        else:
+            if not args.timestep or args.timestep < 0:
+                timestepmin = max(radfielddata['timestep'])
+            else:
+                timestepmin = args.timestep
+
+            if not args.timestepmax or args.timestepmax < 0:
+                timestepmax = timestepmin + 1
+            else:
+                timestepmax = args.timestepmax
 
         for timestep in range(timestepmin, timestepmax):
             radfielddata_currenttimestep = radfielddata.query('timestep==@timestep')
