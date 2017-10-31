@@ -176,7 +176,7 @@ def get_timestep_time_delta(timestep, timearray):
     return delta_t
 
 
-def get_levels(modelpath, ionlist=None, get_transitions=False):
+def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisations=False):
     """Return a list of lists of levels."""
     adatafilename = os.path.join(modelpath, 'adata.txt')
 
@@ -211,9 +211,52 @@ def get_levels(modelpath, ionlist=None, get_transitions=False):
                     for _ in range(transition_count):
                         ftransitions.readline()
 
+    phixsdict = {}
+    if get_photoionisations:
+        phixs_filename = os.path.join(modelpath, 'phixsdata_v2.txt')
+
+        print(f'Reading {phixs_filename}')
+        with open(phixs_filename, 'r') as fphixs:
+            nphixspoints = int(fphixs.readline())
+            phixsnuincrement = float(fphixs.readline())
+
+            xgrid = np.linspace(1.0, 1.0 + phixsnuincrement * (nphixspoints + 1), num=nphixspoints + 1, endpoint=False)
+
+            for line in fphixs:
+                if not line.strip():
+                    continue
+
+                ionheader = line.split()
+                Z = int(ionheader[0])
+                upperionstage = int(ionheader[1])
+                upperionlevel = int(ionheader[2])
+                lowerionstage = int(ionheader[3])
+                lowerionlevel = int(ionheader[4])
+                # threshold_ev = float(ionheader[5])
+
+                assert upperionstage == lowerionstage + 1
+
+                if upperionlevel >= 0:
+                    targetlist = [(upperionlevel, 1.0)]
+                else:
+                    targetlist = []
+                    ntargets = int(fphixs.readline())
+                    for _ in range(ntargets):
+                        level, fraction = fphixs.readline().split()
+                        targetlist.append((int(level), float(fraction)))
+
+                if not ionlist or (Z, lowerionstage) in ionlist:
+                    phixslist = []
+                    for _ in range(nphixspoints):
+                        phixslist.append(float(fphixs.readline()))
+                    phixsdict[(Z, lowerionstage, lowerionlevel)] = np.array(list(zip(xgrid, phixslist)))
+                else:
+                    for _ in range(nphixspoints):
+                        fphixs.readline()
+
     level_lists = []
     iontuple = namedtuple('ion', 'Z ion_stage level_count ion_pot levels transitions')
-    leveltuple = namedtuple('level', 'energy_ev g transition_count levelname')
+    leveltuple = namedtuple('level', 'energy_ev g transition_count levelname phixstable')
     with open(adatafilename, 'r') as fadata:
         print(f'Reading {adatafilename}')
         for line in fadata:
@@ -233,7 +276,8 @@ def get_levels(modelpath, ionlist=None, get_transitions=False):
                     levelname = row[4].strip('\'')
                     numberin = int(row[0])
                     assert(levelindex == numberin - firstlevelnumber)
-                    level_list.append(leveltuple(float(row[1]), float(row[2]), int(row[3]), levelname))
+                    phixstable = phixsdict.get((Z, ionstage, numberin), [])
+                    level_list.append(leveltuple(float(row[1]), float(row[2]), int(row[3]), levelname, phixstable))
                 dflevels = pd.DataFrame(level_list)
 
                 translist = transitionsdict.get((Z, ionstage), pd.DataFrame(columns=transitiontuple._fields))
