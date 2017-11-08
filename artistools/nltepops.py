@@ -18,9 +18,11 @@ import artistools.estimators
 defaultoutputfile = 'plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
 
 
-def get_nlte_populations(all_levels, nltefilename, modelgridindex, timestep, atomic_number, T_e, T_R):
+def get_nlte_populations(all_levels, nltefilename, modelgridindex, timestep, atomic_number, T_e, T_R, noprint=False):
     dfpop = pd.read_csv(nltefilename, delim_whitespace=True)
-    dfpop.query('(modelgridindex==@modelgridindex) & (timestep==@timestep) & (Z==@atomic_number)', inplace=True)
+    dfpop.query('(timestep==@timestep) & (Z==@atomic_number)', inplace=True)
+    if modelgridindex >= 0:
+        dfpop.query('modelgridindex==@modelgridindex', inplace=True)
 
     k_b = const.k_B.to('eV / K').value
     list_indicies = []
@@ -40,20 +42,32 @@ def get_nlte_populations(all_levels, nltefilename, modelgridindex, timestep, ato
         ltepop_T_e = 0.0
         ltepop_T_R = 0.0
         levelnumber = int(row.level)
+        gspopthision = gspop[(row.Z, row.ion_stage)]
         if levelnumber == -1:  # superlevel
-            levelnumber = dfpop.query(
+            levelnumbersl = dfpop.query(
                 'timestep==@timestep and Z==@atomic_number and ion_stage==@ion_stage').level.max()
-            dfpop.loc[index, 'level'] = levelnumber + 2
+            dfpop.loc[index, 'level'] = levelnumbersl + 2
             parity = 0
-            print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} '
-                  f'has a superlevel at level {levelnumber}')
+            if not noprint:
+                print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} '
+                      f'has a superlevel at level {levelnumbersl}')
+
+            for _, ion_data in all_levels.iterrows():
+                if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
+                    gslevel = ion_data.levels.iloc[0]
+                    for levelnumber in range(levelnumbersl, len(ion_data.levels)):
+                        level = ion_data.levels.iloc[levelnumber]
+                        exc_energy = level.energy_ev - gslevel.energy_ev
+                        ltepop_T_e += gspopthision * level.g / gslevel.g * math.exp(- exc_energy / k_b / T_e)
+                        ltepop_T_R += gspopthision * level.g / gslevel.g * math.exp(- exc_energy / k_b / T_R)
+                    break
         else:
             for _, ion_data in all_levels.iterrows():
                 if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
                     level = ion_data.levels.iloc[levelnumber]
                     gslevel = ion_data.levels.iloc[0]
+                    break
 
-            gspopthision = gspop[(row.Z, row.ion_stage)]
             exc_energy = level.energy_ev - gslevel.energy_ev
 
             ltepop_T_e = gspopthision * level.g / gslevel.g * math.exp(- exc_energy / k_b / T_e)
@@ -167,7 +181,7 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
     return pd.DataFrame(data=[newrow], columns=levelpoptuple._fields)
 
 
-def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridindex, oldformat=False):
+def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridindex=-1, noprint=False, oldformat=False):
     nlte_files = (
         glob.glob(os.path.join(modelpath, 'nlte_????.out'), recursive=True) +
         glob.glob(os.path.join(modelpath, '*/nlte_????.out'), recursive=True))
@@ -176,17 +190,19 @@ def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridind
         print("No NLTE files found.")
         return -1
 
+    dfpop = pd.DataFrame()
+
     print(f'Reading {len(nlte_files)} NLTE population files...')
     for nltefilepath in nlte_files:
         filerank = int(re.search('[0-9]+', os.path.basename(nltefilepath)).group(0))
 
-        if filerank > modelgridindex:
+        if filerank > modelgridindex and modelgridindex >= 0:
             continue
 
         if not oldformat:
             dfpop_thisfile = get_nlte_populations(
                 adata, nltefilepath, modelgridindex,
-                timestep, atomic_number, T_e, T_R)
+                timestep, atomic_number, T_e, T_R, noprint=noprint)
         else:
             dfpop_thisfile = get_nlte_populations_oldformat(
                 adata, nltefilepath, modelgridindex,
@@ -194,9 +210,15 @@ def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridind
 
         # found our data!
         if not dfpop_thisfile.empty:
-            return dfpop_thisfile
+            if modelgridindex >= 0:
+                return dfpop_thisfile
+            else:
+                if dfpop.empty:
+                    dfpop = dfpop_thisfile.copy()
+                else:
+                    dfpop = dfpop.append(dfpop_thisfile.copy(), ignore_index=True)
 
-    return pd.DataFrame()
+    return dfpop
 
 
 def addargs(parser):
@@ -325,13 +347,13 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
         lte_scalefactor = float(ionpopulation / dfpopthision['n_LTE_T_e'].sum())
         dfpopthision['n_LTE_T_e_normed'] = dfpopthision['n_LTE_T_e'] * lte_scalefactor
 
-        axis.plot(dfpopthision.level.values[:-1], dfpopthision['n_LTE_T_e_normed'].values[:-1], linewidth=1.5,
+        axis.plot(dfpopthision.level.values, dfpopthision['n_LTE_T_e_normed'].values, linewidth=1.5,
                   label=f'LTE T_e = {T_e:.0f} K', linestyle='None', marker='*')
 
         lte_scalefactor = float(ionpopulation / dfpopthision['n_LTE_T_R'].sum())
         dfpopthision['n_LTE_T_R_normed'] = dfpopthision['n_LTE_T_R'] * lte_scalefactor
 
-        axis.plot(dfpopthision.level.values[:-1], dfpopthision['n_LTE_T_R_normed'].values[:-1], linewidth=1.5,
+        axis.plot(dfpopthision.level.values, dfpopthision['n_LTE_T_R_normed'].values, linewidth=1.5,
                   label=f'LTE T_R = {T_R:.0f} K', linestyle='None', marker='*')
 
         axis.plot(dfpopthision.level.values, dfpopthision.n_NLTE.values, linewidth=1.5,
