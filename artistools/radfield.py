@@ -276,7 +276,7 @@ def main(args=None, argsraw=None, **kwargs):
 
         if not os.path.isfile(specfilename):
             print(f'Could not find {specfilename}')
-            return 1
+            args.nospec = True
 
         if args.timedays:
             timestepmin = at.get_closest_timestep(specfilename, args.timedays)
