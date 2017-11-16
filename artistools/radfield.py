@@ -214,11 +214,8 @@ def addargs(parser):
     parser.add_argument('-timedays', '-time', '-t',
                         help='Time in days to plot')
 
-    parser.add_argument('-timestep', '-ts', type=int, default=-1,
+    parser.add_argument('-timestep', '-ts', action='append',
                         help='Timestep number to plot')
-
-    parser.add_argument('-timestepmax', type=int, default=-1,
-                        help='Make plots for all timesteps up to this timestep')
 
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Modelgridindex to plot')
@@ -258,6 +255,7 @@ def main(args=None, argsraw=None, **kwargs):
     if os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
+
     if args.listtimesteps:
         at.showtimesteptimes(os.path.join(args.modelpath, 'spec.out'))
     else:
@@ -280,21 +278,16 @@ def main(args=None, argsraw=None, **kwargs):
             print(f'Could not find {specfilename}')
             args.nospec = True
 
+        timesteplast = max(radfielddata['timestep'])
         if args.timedays:
-            timestepmin = at.get_closest_timestep(specfilename, args.timedays)
-            timestepmax = timestepmin + 1
+            timesteplist = [at.get_closest_timestep(specfilename, args.timedays)]
+        elif args.timestep:
+            timesteplist = at.parse_range_list(args.timestep, dictvars={'last': timesteplast})
         else:
-            if not args.timestep or args.timestep < 0:
-                timestepmin = max(radfielddata['timestep'])
-            else:
-                timestepmin = args.timestep
+            print("Using last timestep.")
+            timesteplist = [timesteplast]
 
-            if not args.timestepmax or args.timestepmax < 0:
-                timestepmax = timestepmin + 1
-            else:
-                timestepmax = args.timestepmax
-
-        for timestep in range(timestepmin, timestepmax):
+        for timestep in timesteplist:
             radfielddata_currenttimestep = radfielddata.query('timestep==@timestep')
 
             if len(radfielddata_currenttimestep) > 0:
