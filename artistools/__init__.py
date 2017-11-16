@@ -410,12 +410,12 @@ def list_commands():
         print(f'  {command}')
 
 
-# from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
-def parse_range(rng):
+# based on from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
+def parse_range(rng, dictvars):
     parts = rng.split('-')
-    if 1 > len(parts) > 2:
+    if len(parts) not in [1, 2]:
         raise ValueError("Bad range: '%s'" % (rng,))
-    parts = [int(i) for i in parts]
+    parts = [int(i) if i not in dictvars else dictvars[i] for i in parts]
     start = parts[0]
     end = start if len(parts) == 1 else parts[1]
     if start > end:
@@ -423,6 +423,8 @@ def parse_range(rng):
     return range(start, end + 1)
 
 
-# from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
-def parse_range_list(rngs):
-    return sorted(set(chain(*[parse_range(rng) for rng in rngs.split(',')])))
+def parse_range_list(rngs, dictvars={}):
+    if isinstance(rngs, list):
+        rngs = ','.join(rngs)
+
+    return sorted(set(chain.from_iterable([parse_range(rng, dictvars) for rng in rngs.split(',')])))
