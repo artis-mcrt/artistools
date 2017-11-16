@@ -167,7 +167,9 @@ def make_plot(radfielddata, modelpath, specfilename, timestep, outputfile, xmin,
         else:
             plot_specout(axis, specfilename, timestep, peak_value=ymax)
 
-    axis.annotate(f'Timestep {timestep:d} (t={time_days})\nCell {modelgridindex:d}',
+    T_R = radfielddata.query('bin_num == -1').iloc[0].T_R
+
+    axis.annotate(f'Timestep {timestep:d} (t={time_days})\nCell {modelgridindex:d}\nT_R = {T_R:.0f} K',
                   xy=(0.02, 0.96), xycoords='axes fraction',
                   horizontalalignment='left', verticalalignment='top', fontsize=8)
 
