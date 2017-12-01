@@ -105,7 +105,12 @@ def get_modeldata(filename):
                                  columns=gridcelltuple._fields)
             modeldata = modeldata.append(rowdf, ignore_index=True)
 
-    assert(len(modeldata) == gridcellcount)
+            # the model.txt file may contain more shells, but we should ignore them
+            # if we have already read in the specified number of shells
+            if len(modeldata) == gridcellcount:
+                break
+
+    assert(len(modeldata) <= gridcellcount)
     modeldata.index.name = 'cellid'
     return modeldata, t_model_init_days
 
