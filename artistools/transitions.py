@@ -191,7 +191,7 @@ def add_upper_lte_pop(dftransitions, T_exc, ionpop, ltepartfunc, columnname=None
 
 
 def addargs(parser):
-    parser.add_argument('-modelpath', default='',
+    parser.add_argument('-modelpath', default='.',
                         help='Path to ARTIS folder')
 
     parser.add_argument('-xmin', type=int, default=3500,
