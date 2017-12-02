@@ -273,7 +273,7 @@ def main(args=None, argsraw=None, **kwargs):
     plot_xmax_wide = args.xmax * (1 + args.gaussian_window * args.sigma_v / const.c.to('km / s').value)
 
     ionlist = [
-        (26, 2), (26, 3), (28, 2),
+        (26, 1), (26, 2), (26, 3), (28, 2),
         # iontuple(45, 1),
         # iontuple(54, 1),
         # iontuple(54, 2),
@@ -435,17 +435,17 @@ def main(args=None, argsraw=None, **kwargs):
 
     if from_model:
         est_fe_ionfracs = [estimators['populations'][(26, ionstage)] / estimators['populations'][26] for ionstage in [1, 2, 3]]
-        est_fe_ionfracs_str = ['{:5.2f}'.format(pop) for pop in est_fe_ionfracs]
+        est_fe_ionfracs_str = ['{:4.0e}'.format(est_fe_ionfracs[0])] + ['{:5.2f}'.format(pop) for pop in est_fe_ionfracs[1:]]
 
         est_ni_ionfracs = [estimators['populations'][(28, ionstage)] / estimators['populations'][28] for ionstage in [2, 3]]
         est_ni_ionfracs_str = ['{:5.2f}'.format(pop) for pop in est_ni_ionfracs]
 
         print('                     Fe II 7155             Ni II 7378       FeI   FeII  FeIII  /    NiII  NiIII      T_e    Fe III/II       Ni III/II')
-        print(f'{velocity:5.0f} km/s({modelgridindex})       {fe2depcoeff:.2f}                   {ni2depcoeff:.2f}            ', end='')
+        print(f'{velocity:5.0f} km/s({modelgridindex})       {fe2depcoeff:5.2f}                   {ni2depcoeff:.2f}            ', end='')
 
         print(f'{" ".join(est_fe_ionfracs_str)}   /   {" ".join(est_ni_ionfracs_str)}       {Te:.0f}   ', end='')
 
-        print(f"{estimators['populations'][(26, 3)] / estimators['populations'][(26, 2)]:.2f}            {estimators['populations'][(28, 3)] / estimators['populations'][(28, 2)]:.2f}")
+        print(f"{estimators['populations'][(26, 3)] / estimators['populations'][(26, 2)]:.2f}            {estimators['populations'][(28, 3)] / estimators['populations'][(28, 2)]:5.2f}")
 
     make_plot(xvalues, yvalues, axes, temperature_list, vardict, ionlist, ionpopdict, args.xmin, args.xmax)
 
