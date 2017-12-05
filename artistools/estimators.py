@@ -175,9 +175,10 @@ def read_estimators(modelpath, modeldata, keymatch=None):
                 elif row[0] == 'heating:' and not skip_block:
                     for index, token in list(enumerate(row))[1::2]:
                         estimators[(timestep, modelgridindex)][f'heating_{token}'] = float(row[index + 1])
-                    estimators[(timestep, modelgridindex)]['gamma_dep'] = (
-                        estimators[(timestep, modelgridindex)]['heating_gamma'] /
-                        estimators[(timestep, modelgridindex)]['heating_gamma/gamma_dep'])
+                    if estimators[(timestep, modelgridindex)]['heating_gamma/gamma_dep'] > 0:
+                        estimators[(timestep, modelgridindex)]['gamma_dep'] = (
+                            estimators[(timestep, modelgridindex)]['heating_gamma'] /
+                            estimators[(timestep, modelgridindex)]['heating_gamma/gamma_dep'])
 
                 elif row[0] == 'cooling:' and not skip_block:
                     for index, token in list(enumerate(row))[1::2]:
@@ -213,7 +214,7 @@ def plot_init_abundances(axis, xlist, specieslist, mgilist, modeldata, abundance
 
 def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, estimators, **plotkwargs):
     if seriestype == 'populations':
-        axis.yaxis.set_major_locator(ticker.MultipleLocator(base=0.05))
+        axis.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
 
     linecount = 0
     for ionstr in ionlist:
@@ -343,7 +344,7 @@ def plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata,
 def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, modeldata, abundancedata,
                   args, **plotkwargs):
 
-    fig, axes = plt.subplots(len(series), 1, sharex=True, figsize=(6, 2.3 * len(series)),
+    fig, axes = plt.subplots(len(series), 1, sharex=True, figsize=(8, 2.3 * len(series)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
     if len(series) == 1:
         axes = [axes]
