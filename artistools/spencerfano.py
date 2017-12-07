@@ -9,10 +9,11 @@ import sys
 
 import artistools as at
 import artistools.estimators
+import artistools.nltepops
 import artistools.nonthermal
 
 
-minionfraction = 1.e-10  # minimum number fraction of the total population to include in SF solution
+minionfraction = 1.e-4  # minimum number fraction of the total population to include in SF solution
 
 defaultoutputfile = 'spencerfano_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
 
@@ -150,7 +151,7 @@ def get_xs_excitation_vector(engrid, row):
     return xs_excitation_vec
 
 
-def calculate_nt_frac_excitation(engrid, dftransitions, nnion, yvec, deposition_density_ev):
+def calculate_nt_frac_excitation(engrid, dftransitions, yvec, deposition_density_ev):
     # Kozma & Fransson equation 4, but summed over all transitions for given ion
     # integral in Kozma & Fransson equation 9
     deltaen = engrid[1] - engrid[0]
@@ -159,22 +160,24 @@ def calculate_nt_frac_excitation(engrid, dftransitions, nnion, yvec, deposition_
     xs_excitation_vec_sum_alltrans = np.zeros(npts)
 
     for _, row in dftransitions.iterrows():
-        xs_excitation_vec_sum_alltrans += row.epsilon_trans_ev * get_xs_excitation_vector(engrid, row)
+        nnlevel = row.lower_pop
+        xs_excitation_vec_sum_alltrans += nnlevel * row.epsilon_trans_ev * get_xs_excitation_vector(engrid, row)
 
-    return nnion * np.dot(xs_excitation_vec_sum_alltrans, yvec) * deltaen / deposition_density_ev
+    return np.dot(xs_excitation_vec_sum_alltrans, yvec) * deltaen / deposition_density_ev
 
 
 def sfmatrix_add_excitation(engrid, dftransitions, nnion, sfmatrix):
     deltaen = engrid[1] - engrid[0]
     npts = len(engrid)
     for _, row in dftransitions.iterrows():
-        vec_xs_excitation_nnion_deltae = nnion * deltaen * get_xs_excitation_vector(engrid, row)
+        nnlevel = row.lower_pop
+        vec_xs_excitation_nnlevel_deltae = nnlevel * deltaen * get_xs_excitation_vector(engrid, row)
         epsilon_trans_ev = row.epsilon_trans_ev
         for i, en in enumerate(engrid):
             stopindex = i + math.ceil(epsilon_trans_ev / deltaen)
 
             if (stopindex < npts - 1):
-                sfmatrix[i, i: stopindex - i + 1] += vec_xs_excitation_nnion_deltae[i: stopindex - i + 1]
+                sfmatrix[i, i: stopindex - i + 1] += vec_xs_excitation_nnlevel_deltae[i: stopindex - i + 1]
 
 
 def sfmatrix_add_ionization_shell(engrid, nnion, row, sfmatrix):
@@ -231,7 +234,7 @@ def make_plot(engrid, yvec, outputfilename):
 
 
 def solve_spencerfano(
-        ions, ionpopdict, nne, deposition_density_ev, engrid, sourcevec, dfcollion, args,
+        ions, ionpopdict, dfnltepops, nne, deposition_density_ev, engrid, sourcevec, dfcollion, args,
         adata=None, noexcitation=False):
 
     deltaen = engrid[1] - engrid[0]
@@ -259,7 +262,7 @@ def solve_spencerfano(
 
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
-        print(f'  including Z={Z} ion_stage {ionstage} ({at.get_ionstring(Z, ionstage)}). ionization...')
+        print(f'  including Z={Z} ion_stage {ionstage} ({at.get_ionstring(Z, ionstage)}). ionization', end='')
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
         # print(dfcollion_thision)
 
@@ -267,16 +270,18 @@ def solve_spencerfano(
             sfmatrix_add_ionization_shell(engrid, nnion, row, sfmatrix)
 
         if not noexcitation:
-            print('     excitation ', end='')
+            dfnltepops_thision = dfnltepops.query('Z==@Z & ion_stage==@ionstage')
+            nltepopdict = {x.level: x['n_NLTE'] for _, x in dfnltepops_thision.iterrows()}
+
+            print(' and excitation ', end='')
             ion = adata.query('Z == @Z and ion_stage == @ionstage').iloc[0]
             groundlevelnoj = ion.levels.iloc[0].levelname.split('[')[0]
             topgmlevel = ion.levels[ion.levels.levelname.str.startswith(groundlevelnoj)].index.max()
             # topgmlevel = float('inf')
-            # topgmlevel = 0
-            dftransitions[(Z, ionstage)] = ion.transitions.query(
-                'lower <= @topgmlevel', inplace=False).copy()
+            topgmlevel = 1
+            dftransitions[(Z, ionstage)] = ion.transitions.query('lower <= @topgmlevel', inplace=False).copy()
 
-            print(f'with {len(dftransitions[(Z, ionstage)])} transitions from lower <= {topgmlevel}...')
+            print(f'with {len(dftransitions[(Z, ionstage)])} transitions from lower <= {topgmlevel}', end='')
 
             if not dftransitions[(Z, ionstage)].empty:
                 dftransitions[(Z, ionstage)].query('collstr >= 0 or forbidden == False', inplace=True)
@@ -286,8 +291,12 @@ def solve_spencerfano(
                     inplace=True)
                 dftransitions[(Z, ionstage)].eval('lower_g = @ion.levels.loc[lower].g.values', inplace=True)
                 dftransitions[(Z, ionstage)].eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
+                dftransitions[(Z, ionstage)]['lower_pop'] = dftransitions[(Z, ionstage)].apply(
+                    lambda x: nltepopdict.get(x.lower, 0.), axis=1)
 
                 sfmatrix_add_excitation(engrid, dftransitions[(Z, ionstage)], nnion, sfmatrix)
+
+        print()
 
     print()
     lu_and_piv = linalg.lu_factor(sfmatrix, overwrite_a=False)
@@ -319,7 +328,7 @@ def analyse_ntspectrum(
         print(f'====> Z={Z:2d} {at.get_ionstring(Z, ionstage)} (valence potential {ionpot_valence:.1f} eV)')
 
         print(f'               nnion: {nnion:.2e} /cm3')
-        print(f'         nnion/nntot: {X_ion:.4f}')
+        print(f'         nnion/nntot: {X_ion:.5f}')
 
         frac_ionization_ion[(Z, ionstage)] = 0.
         # integralgamma = 0.
@@ -354,7 +363,7 @@ def analyse_ntspectrum(
         print(f'     frac_ionization: {frac_ionization_ion[(Z, ionstage)]:.4f}')
         if not noexcitation:
             frac_excitation_ion[(Z, ionstage)] = calculate_nt_frac_excitation(
-                engrid, dftransitions[(Z, ionstage)], nnion, yvec, deposition_density_ev)
+                engrid, dftransitions[(Z, ionstage)], yvec, deposition_density_ev)
             if frac_excitation_ion[(Z, ionstage)] > 1:
                 frac_excitation_ion[(Z, ionstage)] = 0.
                 print('Ignoring frac_excitation_ion of {frac_excitation_ion[(Z, ionstage)]}.')
@@ -389,13 +398,13 @@ def addargs(parser):
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Modelgridindex to plot')
 
-    parser.add_argument('-npts', type=int, default=2048,
+    parser.add_argument('-npts', type=int, default=8192,
                         help='Number of points in the energy grid')
 
-    parser.add_argument('-emin', type=float, default=1,
+    parser.add_argument('-emin', type=float, default=0.1,
                         help='Minimum energy in eV of Spencer-Fano solution')
 
-    parser.add_argument('-emax', type=float, default=5000,
+    parser.add_argument('-emax', type=float, default=16000,
                         help='Maximum energy in eV of Spencer-Fano solution (approx where energy is injected)')
 
     parser.add_argument('-vary', action='store', choices=['emin', 'emax', 'npts', 'emax,npts'],
@@ -405,7 +414,7 @@ def addargs(parser):
                         help='Save a plot of the non-thermal spectrum')
 
     parser.add_argument('--noexcitation', action='store_true', default=False,
-                        help='Include collisional excitation transitions')
+                        help='Do not include collisional excitation transitions')
 
     parser.add_argument('--ar1985', action='store_true', default=False,
                         help='Use Arnaud & Rothenflug (1985, A&AS, 60, 425) for Fe ionization cross sections')
@@ -441,6 +450,12 @@ def main(args=None, argsraw=None, **kwargs):
     modeldata, _ = at.get_modeldata(modelpath)
     estimators = at.estimators.read_estimators(modelpath, modeldata)
     estim = estimators[(args.timestep, args.modelgridindex)]
+
+    dfnltepops = at.nltepops.get_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
+
+    if dfnltepops is None or dfnltepops.empty:
+        print(f'ERROR: no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}')
+        return -1
 
     nntot = estim['populations']['total']
     nne = estim['nne']
@@ -532,7 +547,8 @@ def main(args=None, argsraw=None, **kwargs):
         deltaen = engrid[1] - engrid[0]
 
         sourcevec = np.zeros(engrid.shape)
-        source_spread_pts = math.ceil(npts / 30.)
+        # source_spread_pts = math.ceil(npts / 30.)
+        source_spread_pts = math.ceil(npts * 0.03333)
         for s in range(npts):
             # spread the source over some energy width
             if (s < npts - source_spread_pts):
@@ -542,7 +558,7 @@ def main(args=None, argsraw=None, **kwargs):
         # sourcevec[-1] = 1.
 
         yvec, dftransitions = solve_spencerfano(
-            ions, ionpopdict, nne, deposition_density_ev, engrid, sourcevec, dfcollion, args,
+            ions, ionpopdict, dfnltepops, nne, deposition_density_ev, engrid, sourcevec, dfcollion, args,
             adata=adata, noexcitation=args.noexcitation)
 
         if args.makeplot:
