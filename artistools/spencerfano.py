@@ -278,7 +278,7 @@ def solve_spencerfano(
             groundlevelnoj = ion.levels.iloc[0].levelname.split('[')[0]
             topgmlevel = ion.levels[ion.levels.levelname.str.startswith(groundlevelnoj)].index.max()
             # topgmlevel = float('inf')
-            topgmlevel = 1
+            topgmlevel = 4
             dftransitions[(Z, ionstage)] = ion.transitions.query('lower <= @topgmlevel', inplace=False).copy()
 
             print(f'with {len(dftransitions[(Z, ionstage)])} transitions from lower <= {topgmlevel}', end='')
