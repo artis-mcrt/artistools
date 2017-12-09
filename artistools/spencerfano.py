@@ -13,7 +13,7 @@ import artistools.nltepops
 import artistools.nonthermal
 
 
-minionfraction = 1.e-4  # minimum number fraction of the total population to include in SF solution
+minionfraction = 1.e-8  # minimum number fraction of the total population to include in SF solution
 
 defaultoutputfile = 'spencerfano_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
 
