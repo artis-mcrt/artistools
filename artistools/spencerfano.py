@@ -353,7 +353,7 @@ def analyse_ntspectrum(
 
         frac_ionization += frac_ionization_ion[(Z, ionstage)]
 
-        eff_ionpot_2 = X_ion / eta_over_ionpot_sum
+        eff_ionpot_2 = X_ion / eta_over_ionpot_sum if eta_over_ionpot_sum else float('inf')
 
         try:
             eff_ionpot = ionpot_valence * X_ion / frac_ionization_ion[(Z, ionstage)]
