@@ -176,9 +176,9 @@ def main(args=None, argsraw=None, **kwargs):
         nonthermaldata = None
         nonthermal_files = (
             glob.glob(os.path.join(args.modelpath, 'nonthermalspec_????.out'), recursive=True) +
+            glob.glob(os.path.join(args.modelpath, 'nonthermalspec_????.out.gz'), recursive=True) +
             glob.glob(os.path.join(args.modelpath, '*/nonthermalspec_????.out'), recursive=True) +
-            glob.glob(os.path.join(args.modelpath, 'nonthermalspec-*.out'), recursive=True) +
-            glob.glob(os.path.join(args.modelpath, 'nonthermalspec.out'), recursive=True))
+            glob.glob(os.path.join(args.modelpath, '*/nonthermalspec_????.out.gz'), recursive=True))
 
         for nonthermal_file in nonthermal_files:
             filerank = int(re.findall('[0-9]+', os.path.basename(nonthermal_file))[-1])
