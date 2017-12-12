@@ -14,7 +14,7 @@ from astropy import constants as const
 # from astropy import units as u
 
 import artistools as at
-from artistools import estimators, spectra
+from artistools import estimators, nltepops, spectra
 
 defaultoutputfile = 'plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
 
@@ -75,31 +75,6 @@ def get_nist_transitions(filename):
 
     dftransitions = pd.DataFrame(translist, columns=transitiontuple._fields)
     return dftransitions
-
-
-def get_nltepops(modelpath, timestep, modelgridindex):
-    nlte_files = (
-        glob.glob(os.path.join(modelpath, 'nlte_????.out'), recursive=True) +
-        glob.glob(os.path.join(modelpath, '*/nlte_????.out'), recursive=True))
-
-    if not nlte_files:
-        print("No NLTE files found.")
-        return
-    else:
-        print(f'Loading {len(nlte_files)} NLTE files')
-        for nltefilepath in nlte_files:
-            filerank = int(re.search('[0-9]+', os.path.basename(nltefilepath)).group(0))
-
-            if filerank > modelgridindex:
-                continue
-
-            dfpop = pd.read_csv(nltefilepath, delim_whitespace=True)
-
-            dfpop.query('(modelgridindex==@modelgridindex) & (timestep==@timestep)', inplace=True)
-            if not dfpop.empty:
-                return dfpop
-
-    return pd.DataFrame()
 
 
 def generate_ion_spectrum(transitions, xvalues, popcolumn, plot_resolution, args):
@@ -304,7 +279,7 @@ def main(args=None, argsraw=None, **kwargs):
         adata = at.get_levels(modelpath, ionlist, get_transitions=True)
 
     if from_model:
-        dfnltepops = get_nltepops(modelpath, modelgridindex=modelgridindex, timestep=timestep)
+        dfnltepops = at.nltepops.get_nltepops(modelpath, modelgridindex=modelgridindex, timestep=timestep)
 
         if dfnltepops is None or dfnltepops.empty:
             print(f'ERROR: no NLTE populations for cell {modelgridindex} at timestep {timestep}')
