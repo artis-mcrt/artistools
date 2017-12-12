@@ -72,17 +72,18 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
         else:
             lcdata = at.lightcurve.readfile(lcpath)
             if frompackets:
-                foundpacketsfiles = glob.glob(os.path.join(modelpath, 'packets00_????.out'))
+                foundpacketsfiles = (glob.glob(os.path.join(modelpath, 'packets00_????.out')) +
+                                     glob.glob(os.path.join(modelpath, 'packets00_????.out.gz')))
                 ranks = [int(os.path.basename(filename)[10:10 + 4]) for filename in foundpacketsfiles]
                 nprocs = max(ranks) + 1
                 print(f'Reading packets for {nprocs} processes')
-                packetsfilepaths = [os.path.join(modelpath, f'packets00_{rank:04d}.out') for rank in range(nprocs)]
+                assert len(foundpacketsfiles) == nprocs
 
                 timearray = lcdata['time'].values
                 # timearray = np.arange(250, 350, 0.1)
                 model, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
                 vmax = model.iloc[-1].velocity * u.km / u.s
-                lcdata = at.lightcurve.get_from_packets(packetsfilepaths, timearray, nprocs, vmax,
+                lcdata = at.lightcurve.get_from_packets(foundpacketsfiles, timearray, nprocs, vmax,
                                                         escape_type='TYPE_GAMMA' if gammalc else 'TYPE_RPKT')
 
         print("Plotting...")

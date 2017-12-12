@@ -431,7 +431,9 @@ def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=No
 
     if from_packets:
         # find any other packets files in the same directory
-        packetsfiles_thismodel = sorted(glob.glob(os.path.join(modelpath, 'packets00_*.out')))
+        packetsfiles_thismodel = sorted(
+            glob.glob(os.path.join(modelpath, 'packets00_*.out')) +
+            glob.glob(os.path.join(modelpath, 'packets00_*.out.gz')))
         if args.maxpacketfiles >= 0 and len(packetsfiles_thismodel) > args.maxpacketfiles:
             print(f'Using on the first {args.maxpacketfiles} packet files out of {len(packetsfiles_thismodel)}')
             packetsfiles_thismodel = packetsfiles_thismodel[:args.maxpacketfiles]
