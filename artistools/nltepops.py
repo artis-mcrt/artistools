@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import glob
+import gzip
 import math
 import os
 import re
@@ -124,6 +125,33 @@ def get_nlte_populations_oldformat(all_levels, nltefilename, modelgridindex, tim
     return dfpop
 
 
+def get_nltepops(modelpath, timestep, modelgridindex):
+    nlte_files = (
+        glob.glob(os.path.join(modelpath, 'nlte_????.out'), recursive=True) +
+        glob.glob(os.path.join(modelpath, 'nlte_????.out.gz'), recursive=True) +
+        glob.glob(os.path.join(modelpath, '*/nlte_????.out'), recursive=True) +
+        glob.glob(os.path.join(modelpath, '*/nlte_????.out.gz'), recursive=True))
+
+    if not nlte_files:
+        print("No NLTE files found.")
+        return
+    else:
+        print(f'Loading {len(nlte_files)} NLTE files')
+        for nltefilepath in nlte_files:
+            filerank = int(re.search('[0-9]+', os.path.basename(nltefilepath)).group(0))
+
+            if filerank > modelgridindex:
+                continue
+
+            dfpop = pd.read_csv(nltefilepath, delim_whitespace=True)
+
+            dfpop.query('(modelgridindex==@modelgridindex) & (timestep==@timestep)', inplace=True)
+            if not dfpop.empty:
+                return dfpop
+
+    return pd.DataFrame()
+
+
 def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_exc, matchedgroundstateline):
     """
         Read a line from the NLTE output file and return a Pandas DataFrame
@@ -184,7 +212,9 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
 def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridindex=-1, noprint=False, oldformat=False):
     nlte_files = (
         glob.glob(os.path.join(modelpath, 'nlte_????.out'), recursive=True) +
-        glob.glob(os.path.join(modelpath, '*/nlte_????.out'), recursive=True))
+        glob.glob(os.path.join(modelpath, 'nlte_????.out.gz'), recursive=True) +
+        glob.glob(os.path.join(modelpath, '*/nlte_????.out'), recursive=True) +
+        glob.glob(os.path.join(modelpath, '*/nlte_????.out.gz'), recursive=True))
 
     if not nlte_files:
         print("No NLTE files found.")
