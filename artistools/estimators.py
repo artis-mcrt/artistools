@@ -2,6 +2,7 @@
 # import math
 import argparse
 import glob
+import gzip
 import math
 import os
 import re
@@ -119,7 +120,9 @@ def parse_ion_row(row, outdict):
 def read_estimators(modelpath, modeldata, keymatch=None):
     """keymatch should be a tuple (timestep, modelgridindex)."""
     estimfiles = (glob.glob(os.path.join(modelpath, 'estimators_????.out'), recursive=True) +
-                  glob.glob(os.path.join(modelpath, '*/estimators_????.out'), recursive=True))
+                  glob.glob(os.path.join(modelpath, 'estimators_????.out.gz'), recursive=True) +
+                  glob.glob(os.path.join(modelpath, '*/estimators_????.out'), recursive=True) +
+                  glob.glob(os.path.join(modelpath, '*/estimators_????.out.gz'), recursive=True))
 
     if not estimfiles:
         print("No estimator files found")
@@ -134,7 +137,8 @@ def read_estimators(modelpath, modeldata, keymatch=None):
         if keymatch is not None and filerank > keymatch[1]:
             continue
 
-        with open(estfile, 'r') as estfile:
+        opener = gzip.open if estfile.endswith('.gz') else open
+        with opener(estfile, 'rt') as estfile:
             timestep = 0
             modelgridindex = 0
             skip_block = False
