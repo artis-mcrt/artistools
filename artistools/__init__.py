@@ -433,3 +433,10 @@ def parse_range_list(rngs, dictvars={}):
         rngs = ','.join(rngs)
 
     return sorted(set(chain.from_iterable([parse_range(rng, dictvars) for rng in rngs.split(',')])))
+
+
+def firstexisting(filelist, path='.'):
+    for filename in filelist:
+        if os.path.exists(os.path.join(path, filename)):
+            return os.path.join(path, filename)
+    return os.path.join(path, filelist[-1])
