@@ -369,7 +369,7 @@ def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, m
                               estimators, **plotkwargs)
 
     figure_title = f'{modelname}\nTimestep {timestep}'
-    time_days = float(at.get_timestep_time('spec.out', timestep))
+    time_days = float(at.get_timestep_time('.', timestep))
     if time_days >= 0:
         figure_title += f' ({time_days:.2f}d)'
     axes[0].set_title(figure_title, fontsize=11)
@@ -488,9 +488,10 @@ def main(args=None, argsraw=None, **kwargs):
         ['heating_gamma/gamma_dep'],
         ['Te', 'TR'],
         ['nne'],
-        [['initabundances', ['Fe', 'Ni', 'Ni_56', 'Ni_stable']]],
-        [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
-        [['Alpha_R / RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni III']]],
+        [['initabundances', ['Fe', 'Ni', 'Ni_56', 'Ni_stable', 'Ar']]],
+        [['populations', ['Fe I', 'Fe II', 'Fe III', 'Ni II', 'Ni III', 'Ar I']]],
+        # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
+        # [['Alpha_R / RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni III']]],
         # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
     ]
 
@@ -500,10 +501,10 @@ def main(args=None, argsraw=None, **kwargs):
         if args.timedays:
             if isinstance(args.timedays, str) and '-' in args.timedays:
                 timestepmin, timestepmax = [
-                    at.get_closest_timestep(os.path.join(modelpath, "spec.out"), float(timedays))
+                    at.get_closest_timestep(modelpath, float(timedays))
                     for timedays in args.timedays.split('-')]
             else:
-                timestep = at.get_closest_timestep(os.path.join(modelpath, "spec.out"), args.timedays)
+                timestep = at.get_closest_timestep(modelpath, args.timedays)
                 timestepmin, timestepmax = timestep, timestep
         else:
             if not args.timestep:
