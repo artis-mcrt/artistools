@@ -53,11 +53,13 @@ def stackspectra(spectra_and_factors):
     return stackedspectrum
 
 
-def get_spectrum(specfilename: str, timestepmin: int, timestepmax=-1, fnufilterfunc=None):
+def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None):
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax < 0:
         timestepmax = timestepmin
 
+    if os.path.isdir(modelpath):
+        specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
 
     nu = specdata.loc[:, '0'].values
@@ -182,8 +184,6 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
 
 def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
                            timearray, arraynu, filterfunc=None, xmin=-1, xmax=math.inf, timestepmin=0, timestepmax=-1):
-    # this is much slower than it could be because of the order in which these data tables are accessed
-    # TODO: change to use sequential access as much as possible
     print(f"  Reading {emissionfilename} and {absorptionfilename}")
     emissiondata = pd.read_csv(emissionfilename, sep=' ', header=None)
     absorptiondata = pd.read_csv(absorptionfilename, sep=' ', header=None)
@@ -417,14 +417,9 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
 
 
 def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=None, **plotkwargs):
-    specfilename = os.path.join(modelpath, 'spec.out')
-    if not os.path.isfile(specfilename):
-        print(f'No spec.out file found at {specfilename}')
-        return
-
     (modelname, timestepmin, timestepmax,
      args.timemin, args.timemax) = at.get_model_name_times(
-         specfilename, at.get_timestep_times(specfilename),
+         modelpath, at.get_timestep_times(modelpath),
          args.timestep, args.timemin, args.timemax)
 
     linelabel = f'{modelname} at t={args.timemin:.2f}d to {args.timemax:.2f}d'
@@ -437,12 +432,12 @@ def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=No
         if args.maxpacketfiles >= 0 and len(packetsfiles_thismodel) > args.maxpacketfiles:
             print(f'Using on the first {args.maxpacketfiles} packet files out of {len(packetsfiles_thismodel)}')
             packetsfiles_thismodel = packetsfiles_thismodel[:args.maxpacketfiles]
-        spectrum = at.spectra.get_spectrum_from_packets(
+        spectrum = get_spectrum_from_packets(
             packetsfiles_thismodel, args.timemin, args.timemax, lambda_min=args.xmin, lambda_max=args.xmax,
             use_comovingframe=args.use_comovingframe)
         make_spectrum_stat_plot(spectrum, linelabel, os.path.dirname(args.outputfile), args)
     else:
-        spectrum = at.spectra.get_spectrum(specfilename, timestepmin, timestepmax, fnufilterfunc=filterfunc)
+        spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc)
 
     spectrum.query('@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax', inplace=True)
 
@@ -481,7 +476,7 @@ def make_emission_plot(modelpath, axis, filterfunc, args):
     emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out', 'emission.out', 'emission.out']
     emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
 
-    specfilename = os.path.join(modelpath, 'spec.out')
+    specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     timearray = specdata.columns.values[1:]
     arraynu = specdata.loc[:, '0'].values
@@ -656,7 +651,8 @@ def main(args=None, argsraw=None, **kwargs):
     modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in args.modelpath if os.path.isdir(x)]))
 
     if args.listtimesteps:
-        at.showtimesteptimes(os.path.join(modelpaths[0], 'spec.out'))
+        specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
+        at.showtimesteptimes(specfilename)
     else:
         if args.emissionabsorption:
             if len(modelpaths) > 1:

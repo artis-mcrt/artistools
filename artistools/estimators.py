@@ -473,8 +473,8 @@ def main(args=None, argsraw=None, **kwargs):
 
     modelpath = args.modelpath
 
-    modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
-    abundancedata = at.get_initialabundances(os.path.join(modelpath, 'abundances.txt'))
+    modeldata, _ = at.get_modeldata(modelpath)
+    abundancedata = at.get_initialabundances(modelpath)
     modelname = at.get_model_name(modelpath)
 
     estimators = read_estimators(modelpath, modeldata)
