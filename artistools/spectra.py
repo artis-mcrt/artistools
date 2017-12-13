@@ -478,9 +478,8 @@ def make_emission_plot(modelpath, axis, filterfunc, args):
     from astropy import constants as const
     maxion = 5  # must match sn3d.h value
 
-    emissionfilename = os.path.join(modelpath, 'emissiontrue.out')
-    if not os.path.exists(emissionfilename):
-        emissionfilename = os.path.join(modelpath, 'emission.out')
+    emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out', 'emission.out', 'emission.out']
+    emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
 
     specfilename = os.path.join(modelpath, 'spec.out')
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
@@ -492,7 +491,7 @@ def make_emission_plot(modelpath, axis, filterfunc, args):
      args.timemin, args.timemax) = at.get_model_name_times(
          specfilename, timearray, args.timestep, args.timemin, args.timemax)
 
-    absorptionfilename = os.path.join(modelpath, 'absorption.out')
+    absorptionfilename = at.firstexisting(['absorption.out.gz', 'absorption.out'], path=modelpath)
     contribution_list, maxyvalueglobal, array_flambda_emission_total = at.spectra.get_flux_contributions(
         emissionfilename, absorptionfilename, maxion, timearray, arraynu,
         filterfunc, args.xmin, args.xmax, timestepmin, timestepmax)
