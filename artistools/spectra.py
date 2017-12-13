@@ -60,6 +60,8 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
 
     if os.path.isdir(modelpath):
         specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
+    else:
+        specfilename = modelpath
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
 
     nu = specdata.loc[:, '0'].values
