@@ -255,13 +255,16 @@ def main(args=None, argsraw=None, **kwargs):
     if os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
+    specfilename = os.path.join(args.modelpath, 'spec.out')
 
     if args.listtimesteps:
-        at.showtimesteptimes(os.path.join(args.modelpath, 'spec.out'))
+        at.showtimesteptimes(args.modelpath)
     else:
         radfield_files = (
             glob.glob(os.path.join(args.modelpath, 'radfield_????.out'), recursive=True) +
-            glob.glob(os.path.join(args.modelpath, '*/radfield_????.out'), recursive=True))
+            glob.glob(os.path.join(args.modelpath, 'radfield_????.out.gz'), recursive=True) +
+            glob.glob(os.path.join(args.modelpath, '*/radfield_????.out'), recursive=True) +
+            glob.glob(os.path.join(args.modelpath, '*/radfield_????.out.gz'), recursive=True))
 
         if not radfield_files:
             print("No radfield files found")
@@ -269,10 +272,6 @@ def main(args=None, argsraw=None, **kwargs):
         else:
             radfielddata = at.radfield.read_files(radfield_files, args.modelgridindex)
 
-        specfilename = os.path.join(args.modelpath, 'spec.out')
-
-        if not os.path.isfile(specfilename):
-            specfilename = os.path.join(args.modelpath, '../example_run/spec.out')
 
         if not os.path.isfile(specfilename):
             print(f'Could not find {specfilename}')
