@@ -40,7 +40,7 @@ refspectralabels = {
 }
 
 fluxcontributiontuple = namedtuple(
-    'fluxcontribution', 'fluxemissioncontrib linelabel array_flambda_emission array_flambda_absorption')
+    'fluxcontribution', 'fluxcontrib linelabel array_flambda_emission array_flambda_absorption')
 
 
 def stackspectra(spectra_and_factors):
@@ -237,7 +237,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
                 array_flambda_absorption = array_fnu_absorption * arraynu / arraylambda
 
                 array_flambda_emission_total += array_flambda_emission
-                fluxemissioncontribthisseries = integrate_flux(array_fnu_emission, arraynu)
+                fluxcontribthisseries = integrate_flux(array_fnu_emission, arraynu) + integrate_flux(array_fnu_absorption, arraynu)
                 maxyvaluethisseries = max(
                     [array_flambda_emission[i] if (xmin < arraylambda[i] < xmax) else -99.0
                      for i in range(len(array_flambda_emission))])
@@ -250,7 +250,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
                     linelabel = f'{emissiontype}'
 
                 contribution_list.append(
-                    fluxcontributiontuple(fluxemissioncontrib=fluxemissioncontribthisseries, linelabel=linelabel,
+                    fluxcontributiontuple(fluxcontrib=fluxcontribthisseries, linelabel=linelabel,
                                           array_flambda_emission=array_flambda_emission,
                                           array_flambda_absorption=array_flambda_absorption))
 
@@ -259,21 +259,21 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
 
 def sort_and_reduce_flux_contribution_list(contribution_list_in, maxseriescount, arraylambda_angstroms):
     # sort descending by flux contribution
-    contribution_list = sorted(contribution_list_in, key=lambda x: -x.fluxemissioncontrib)
+    contribution_list = sorted(contribution_list_in, key=lambda x: -x.fluxcontrib)
 
     # combine the items past maxseriescount into a single item
     remainder_flambda_emission = np.zeros_like(arraylambda_angstroms)
     remainder_flambda_absorption = np.zeros_like(arraylambda_angstroms)
     remainder_fluxcontrib = 0
     for row in contribution_list[maxseriescount:]:
-        remainder_fluxcontrib += row.fluxemissioncontrib
+        remainder_fluxcontrib += row.fluxcontrib
         remainder_flambda_emission += row.array_flambda_emission
         remainder_flambda_absorption += row.array_flambda_absorption
 
     contribution_list_out = contribution_list[:maxseriescount]
     if remainder_fluxcontrib > 0.:
         contribution_list_out.append(fluxcontributiontuple(
-            fluxemissioncontrib=remainder_fluxcontrib, linelabel='other',
+            fluxcontrib=remainder_fluxcontrib, linelabel='other',
             array_flambda_emission=remainder_flambda_emission, array_flambda_absorption=remainder_flambda_absorption))
     return contribution_list_out
 
@@ -302,7 +302,7 @@ def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafil
 
             plotobj, serieslabel = plot_reference_spectrum(
                 filename, axis, args.xmin, args.xmax, args.normalised,
-                flambdafilterfunc, scale_to_peak, zorder=-1, **plotkwargs)
+                flambdafilterfunc, scale_to_peak, zorder=1000, **plotkwargs)
 
             plotobjects.append(plotobj)
             plotobjectlabels.append(serieslabel)
@@ -472,10 +472,12 @@ def make_spectrum_plot(modelpaths, axis, filterfunc, args):
 
 
 def make_emission_plot(modelpath, axis, filterfunc, args):
-    from astropy import constants as const
+    import scipy.interpolate as interpolate
+    from cycler import cycler
     maxion = 5  # must match sn3d.h value
 
-    emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out', 'emission.out', 'emission.out']
+    # emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out', 'emission.out.gz', 'emission.out']
+    emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out']
     emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
 
     specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
@@ -497,6 +499,11 @@ def make_emission_plot(modelpath, axis, filterfunc, args):
 
     # print("\n".join([f"{x[0]}, {x[1]}" for x in contribution_list]))
 
+    # axis.set_prop_cycle(cycler('color', ))
+    # colors = [f'C{n}' for n in range(9)] + ['b' for n in range(25)]
+    cmap = plt.get_cmap('tab20')
+    colors = cmap(np.linspace(0, 1.0, 20))
+
     contributions_sorted_reduced = at.spectra.sort_and_reduce_flux_contribution_list(
         contribution_list, args.maxseriescount, arraylambda_angstroms)
 
@@ -513,7 +520,8 @@ def make_emission_plot(modelpath, axis, filterfunc, args):
         #     colors=facecolors, linewidth=0)
     else:
         plotobjects = axis.stackplot(
-            arraylambda_angstroms, [x.array_flambda_emission for x in contributions_sorted_reduced], linewidth=0)
+            arraylambda_angstroms, [x.array_flambda_emission for x in contributions_sorted_reduced],
+            colors=colors, linewidth=0)
 
         facecolors = [p.get_facecolor()[0] for p in plotobjects]
 
@@ -592,7 +600,7 @@ def addargs(parser):
     parser.add_argument('--nostack', default=False, action='store_true',
                         help="Don't stack contributions")
 
-    parser.add_argument('-maxseriescount', type=int, default=9,
+    parser.add_argument('-maxseriescount', type=int, default=12,
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')
 
     parser.add_argument('-listtimesteps', action='store_true', default=False,
