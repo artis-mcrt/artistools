@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
+import gzip
 import math
 import os.path
 import sys
@@ -188,7 +189,7 @@ def get_timestep_time_delta(timestep, timearray):
 
 def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisations=False):
     """Return a list of lists of levels."""
-    adatafilename = firstexisting(['adata.txt.gz', 'adata.txt'], path=modelpath)
+    adatafilename = os.path.join(modelpath, 'adata.txt')
 
     transitiontuple = namedtuple('transition', 'lower upper A collstr forbidden')
 
@@ -196,10 +197,10 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
 
     transitionsdict = {}
     if get_transitions:
-        transition_filename = firstexisting(['transitiondata.txt.gz', 'transitiondata.txt'], path=modelpath)
+        transition_filename = os.path.join(modelpath, 'transitiondata.txt')
 
         print(f'Reading {transition_filename}')
-        with open(transition_filename, 'r') as ftransitions:
+        with opengzip(transition_filename, 'r') as ftransitions:
             for line in ftransitions:
                 if not line.strip():
                     continue
@@ -223,10 +224,10 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
 
     phixsdict = {}
     if get_photoionisations:
-        phixs_filename = firstexisting(['phixsdata_v2.txt.gz', 'phixsdata_v2.txt'], path=modelpath)
+        phixs_filename = os.path.join(modelpath, 'phixsdata_v2.txt')
 
         print(f'Reading {phixs_filename}')
-        with open(phixs_filename, 'r') as fphixs:
+        with opengzip(phixs_filename, 'r') as fphixs:
             nphixspoints = int(fphixs.readline())
             phixsnuincrement = float(fphixs.readline())
 
@@ -267,7 +268,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
     level_lists = []
     iontuple = namedtuple('ion', 'Z ion_stage level_count ion_pot levels transitions')
     leveltuple = namedtuple('level', 'energy_ev g transition_count levelname phixstable')
-    with open(adatafilename, 'r') as fadata:
+    with opengzip(adatafilename, 'rt') as fadata:
         print(f'Reading {adatafilename}')
         for line in fadata:
             if not line.strip():
@@ -438,6 +439,14 @@ def parse_range_list(rngs, dictvars={}):
         rngs = ','.join(rngs)
 
     return sorted(set(chain.from_iterable([parse_range(rng, dictvars) for rng in rngs.split(',')])))
+
+
+def opengzip(filename, mode):
+    filenamegz = filename + '.gz'
+    if os.path.exists(filenamegz):
+        return gzip.open(filenamegz, mode)
+    else:
+        return open
 
 
 def firstexisting(filelist, path='.'):
