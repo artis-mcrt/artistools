@@ -446,7 +446,7 @@ def opengzip(filename, mode):
     if os.path.exists(filenamegz):
         return gzip.open(filenamegz, mode)
     else:
-        return open
+        return open(filename, mode)
 
 
 def firstexisting(filelist, path='.'):
