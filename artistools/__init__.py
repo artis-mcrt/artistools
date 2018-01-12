@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
+import gzip
 import math
 import os.path
 import sys
@@ -41,7 +42,7 @@ def showtimesteptimes(specfilename, modelpath=None, numberofcolumns=5):
         Print a table showing the timeteps and their corresponding times
     """
     if modelpath is not None:
-        specfilename = os.path.join(modelpath, 'spec.out')
+        specfilename = firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     print('Time steps and corresponding times in days:\n')
 
@@ -92,7 +93,8 @@ def get_modeldata(filename):
         Return a list containing named tuples for all model grid cells
     """
     if os.path.isdir(filename):
-        filename = os.path.join(filename, 'model.txt')
+        filename = firstexisting(['model.txt.gz', 'model.txt'], path=filename)
+
     modeldata = pd.DataFrame()
     gridcelltuple = namedtuple('gridcell', 'inputcellid velocity logrho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48')
 
@@ -126,6 +128,10 @@ def save_modeldata(dfmodeldata, t_model_init_days, filename) -> None:
 
 def get_initialabundances(abundancefilename):
     """Return a list of mass fractions."""
+
+    if os.path.isdir(abundancefilename):
+        abundancefilename = firstexisting(['abundances.txt.gz', 'abundances.txt'], path=abundancefilename)
+
     columns = ['inputcellid', *['X_' + elsymbols[x] for x in range(1, 31)]]
     abundancedata = pd.read_csv(abundancefilename, delim_whitespace=True, header=None, names=columns)
     abundancedata.index.name = 'modelgridindex'
@@ -140,7 +146,7 @@ def save_initialabundances(dfabundances, abundancefilename) -> None:
 def get_timestep_times(specfilename):
     """Return a list of the time in days of each timestep using a spec.out file."""
     if os.path.isdir(specfilename):
-        specfilename = os.path.join(specfilename, 'spec.out')
+        specfilename = firstexisting(['spec.out.gz', 'spec.out'], path=specfilename)
 
     time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
 
@@ -163,7 +169,7 @@ def get_closest_timestep(specfilename, timedays):
 def get_timestep_time(specfilename, timestep):
     """Return the time in days of a timestep number using a spec.out file."""
     if os.path.isdir(specfilename):
-        specfilename = os.path.join(specfilename, 'spec.out')
+        specfilename = firstexisting(['spec.out.gz', 'spec.out'], path=specfilename)
 
     if os.path.isfile(specfilename):
         return get_timestep_times(specfilename)[timestep]
@@ -194,7 +200,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
         transition_filename = os.path.join(modelpath, 'transitiondata.txt')
 
         print(f'Reading {transition_filename}')
-        with open(transition_filename, 'r') as ftransitions:
+        with opengzip(transition_filename, 'r') as ftransitions:
             for line in ftransitions:
                 if not line.strip():
                     continue
@@ -221,7 +227,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
         phixs_filename = os.path.join(modelpath, 'phixsdata_v2.txt')
 
         print(f'Reading {phixs_filename}')
-        with open(phixs_filename, 'r') as fphixs:
+        with opengzip(phixs_filename, 'r') as fphixs:
             nphixspoints = int(fphixs.readline())
             phixsnuincrement = float(fphixs.readline())
 
@@ -262,7 +268,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
     level_lists = []
     iontuple = namedtuple('ion', 'Z ion_stage level_count ion_pot levels transitions')
     leveltuple = namedtuple('level', 'energy_ev g transition_count levelname phixstable')
-    with open(adatafilename, 'r') as fadata:
+    with opengzip(adatafilename, 'rt') as fadata:
         print(f'Reading {adatafilename}')
         for line in fadata:
             if not line.strip():
@@ -312,7 +318,7 @@ def get_model_name(path):
         return os.path.basename(folderpath)
 
 
-def get_model_name_times(filename, timearray, timestep_range_str, timemin, timemax):
+def get_model_name_times(modelpath, timearray, timestep_range_str, timemin, timemax):
     if timestep_range_str:
         if '-' in timestep_range_str:
             timestepmin, timestepmax = [int(nts) for nts in timestep_range_str.split('-')]
@@ -340,7 +346,7 @@ def get_model_name_times(filename, timearray, timestep_range_str, timemin, timem
             if (timefloat + get_timestep_time_delta(timestep, timearray) <= timemax):
                 timestepmax = timestep
 
-    modelname = get_model_name(filename)
+    modelname = get_model_name(modelpath)
 
     time_days_lower = float(timearray[timestepmin])
     time_days_upper = float(timearray[timestepmax]) + get_timestep_time_delta(timestepmax, timearray)
@@ -433,3 +439,18 @@ def parse_range_list(rngs, dictvars={}):
         rngs = ','.join(rngs)
 
     return sorted(set(chain.from_iterable([parse_range(rng, dictvars) for rng in rngs.split(',')])))
+
+
+def opengzip(filename, mode):
+    filenamegz = filename + '.gz'
+    if os.path.exists(filenamegz):
+        return gzip.open(filenamegz, mode)
+    else:
+        return open
+
+
+def firstexisting(filelist, path='.'):
+    for filename in filelist:
+        if os.path.exists(os.path.join(path, filename)):
+            return os.path.join(path, filename)
+    return os.path.join(path, filelist[-1])

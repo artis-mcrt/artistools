@@ -65,24 +65,26 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
     for index, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
         print(f"====> {modelname}")
-        lcpath = os.path.join(modelpath, 'gamma_light_curve.out' if gammalc else 'light_curve.out')
+        lcname = 'gamma_light_curve.out' if gammalc else 'light_curve.out'
+        lcpath = at.firstexisting([lcname + '.gz', lcname], path=modelpath)
         if not os.path.exists(lcpath):
             print(f"Skipping {modelname} because {lcpath} does not exist")
             continue
         else:
             lcdata = at.lightcurve.readfile(lcpath)
             if frompackets:
-                foundpacketsfiles = glob.glob(os.path.join(modelpath, 'packets00_????.out'))
+                foundpacketsfiles = (glob.glob(os.path.join(modelpath, 'packets00_????.out')) +
+                                     glob.glob(os.path.join(modelpath, 'packets00_????.out.gz')))
                 ranks = [int(os.path.basename(filename)[10:10 + 4]) for filename in foundpacketsfiles]
                 nprocs = max(ranks) + 1
                 print(f'Reading packets for {nprocs} processes')
-                packetsfilepaths = [os.path.join(modelpath, f'packets00_{rank:04d}.out') for rank in range(nprocs)]
+                assert len(foundpacketsfiles) == nprocs
 
                 timearray = lcdata['time'].values
                 # timearray = np.arange(250, 350, 0.1)
-                model, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
+                model, _ = at.get_modeldata(modelpath)
                 vmax = model.iloc[-1].velocity * u.km / u.s
-                lcdata = at.lightcurve.get_from_packets(packetsfilepaths, timearray, nprocs, vmax,
+                lcdata = at.lightcurve.get_from_packets(foundpacketsfiles, timearray, nprocs, vmax,
                                                         escape_type='TYPE_GAMMA' if gammalc else 'TYPE_RPKT')
 
         print("Plotting...")
@@ -106,7 +108,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
 
 def addargs(parser):
     parser.add_argument('modelpath', default=[], nargs='*',
-                        help='Paths to ARTIS folders with light_curve.out or packets files'
+                        help='Path(s) to ARTIS folders with light_curve.out or packets files'
                         ' (may include wildcards such as * and **)')
     parser.add_argument('--frompackets', default=False, action='store_true',
                         help='Read packets files instead of light_curve.out')
