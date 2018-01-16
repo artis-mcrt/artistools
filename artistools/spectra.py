@@ -664,7 +664,7 @@ def main(args=None, argsraw=None, **kwargs):
     modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in args.modelpath if os.path.isdir(x)]))
 
     if args.listtimesteps:
-        specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
+        specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpaths[0])
         at.showtimesteptimes(specfilename)
     else:
         if args.emissionabsorption:
