@@ -8,6 +8,7 @@ import os.path
 import sys
 import warnings
 from collections import namedtuple
+from itertools import chain
 
 import matplotlib.ticker as ticker
 import matplotlib.patches as mpatches
@@ -584,7 +585,7 @@ def make_plot(modelpaths, args):
 
 
 def addargs(parser):
-    parser.add_argument('-modelpath', default=[], nargs='*',
+    parser.add_argument('-modelpath', default=[], nargs='*', action='append',
                         help='Paths to ARTIS folders with spec.out or packets files'
                         ' (may include wildcards such as * and **)')
 
@@ -656,6 +657,8 @@ def main(args=None, argsraw=None, **kwargs):
         args.modelpath = ['.', '*']
     elif isinstance(args.modelpath, str):
         args.modelpath = [args.modelpath]
+    else:
+        args.modelpath = list(chain(*args.modelpath))
 
     # combined the results of applying wildcards on each input
     modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in args.modelpath if os.path.isdir(x)]))
