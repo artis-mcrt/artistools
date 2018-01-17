@@ -657,11 +657,17 @@ def main(args=None, argsraw=None, **kwargs):
         args.modelpath = ['.', '*']
     elif isinstance(args.modelpath, str):
         args.modelpath = [args.modelpath]
-    else:
-        args.modelpath = list(chain(*args.modelpath))
 
-    # combined the results of applying wildcards on each input
-    modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in args.modelpath if os.path.isdir(x)]))
+    # flatten the list
+    modelpaths = []
+    for elem in args.modelpath:
+        if isinstance(elem, list):
+            modelpaths.extend(elem)
+        else:
+            modelpaths.append(elem)
+
+    # applying any wildcards to the modelpaths
+    modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in modelpaths if os.path.isdir(x)]))
 
     if args.listtimesteps:
         specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpaths[0])
