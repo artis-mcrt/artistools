@@ -37,7 +37,7 @@ refspectralabels = {
         'NERO +300d one-zone',
 
     'maurer2011_RTJ_W7_338d_1Mpc.txt':
-        'RTJ W7 Nomoto+1984 1Mpc +338d (Maurer et al. 2011)'
+        'RTJ W7 Nomoto+1984 1Mpc +338d (Maurer et al. 2011)',
 }
 
 fluxcontributiontuple = namedtuple(
@@ -200,7 +200,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
     array_flambda_emission_total = np.zeros_like(arraylambda)
     contribution_list = []
     if filterfunc:
-        print("Applying filter to reference spectrum")
+        print("Applying filter to ARTIS spectrum")
     for element in range(nelements):
         nions = elementlist.nions[element]
         # nions = elementlist.iloc[element].uppermost_ionstage - elementlist.iloc[element].lowermost_ionstage + 1
@@ -542,6 +542,8 @@ def make_emission_plot(modelpath, axis, filterfunc, args):
                   horizontalalignment='right', verticalalignment='bottom', fontsize=9)
 
     # axis.set_ylim(ymin=-0.05 * maxyvalueglobal, ymax=maxyvalueglobal * 1.3)
+    if args.normalised:
+        axis.set_ylabel(r'Scaled F$_\lambda$')
 
     return plotobjects, plotobjectlabels
 
