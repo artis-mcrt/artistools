@@ -405,9 +405,9 @@ def main(argsraw=None):
         args.func(args=args)
     else:
         # parser.print_help()
-        print('usage: artistools <command>, where <command> is one of:\n')
+        print('usage: artistools <command>, where <command> is one of:')
         for command, _ in commandlist:
-            print(f'  {command}')
+            print(f' - {command}')
 
 
 def get_ionstring(atomic_number, ionstage):
