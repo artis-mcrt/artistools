@@ -21,6 +21,12 @@ from astropy import units as u
 import artistools as at
 
 refspectralabels = {
+    'sn2011fe_PTF11kly_20120822_norm.txt':
+        'SN2011fe +364d (Mazzali et al. 2015)',
+
+    'sn2011fe_PTF11kly_20120822_norm_1Mpc.txt':
+        'SN2011fe (1 Mpc) +364d (Mazzali et al. 2015)',
+
     '2010lp_20110928_fors2.txt':
         'SN2010lp +264d (Taubenberger et al. 2013)',
 
