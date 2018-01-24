@@ -360,7 +360,8 @@ def plot_reference_spectrum(filename, axis, xmin, xmax, normalised,
         plotkwargs['linewidth'] = 1.5
 
     lineplot = specdata.plot(x='lambda_angstroms', y=ycolumnname, ax=axis, **plotkwargs)
-    return mpatches.Patch(color=lineplot.get_lines()[0].get_color()), plotkwargs['label']
+    # lineplot.get_lines()[0].get_color())
+    return mpatches.Patch(color=plotkwargs['color']), plotkwargs['label']
 
 
 def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
@@ -520,31 +521,31 @@ def make_emission_plot(modelpath, axis, filterfunc, args):
             line = axis.plot(arraylambda_angstroms, x.array_flambda_emission, linewidth=1)
             plotobjects.append(mpatches.Patch(color=line[0].get_color()))
 
-        # facecolors = [p.get_facecolor()[0] for p in plotobjects]
-        #
-        # axis.plot(
-        #     arraylambda_angstroms, [-x.array_flambda_absorption for x in contributions_sorted_reduced],
-        #     colors=facecolors, linewidth=0)
+        if args.showabsorption:
+            facecolors = [p.get_facecolor()[0] for p in plotobjects]
+            axis.plot(
+                arraylambda_angstroms, [-x.array_flambda_absorption for x in contributions_sorted_reduced],
+                colors=facecolors, linewidth=0)
     else:
         plotobjects = axis.stackplot(
             arraylambda_angstroms, [x.array_flambda_emission for x in contributions_sorted_reduced],
             colors=colors, linewidth=0)
 
-        facecolors = [p.get_facecolor()[0] for p in plotobjects]
-
-        axis.stackplot(
-            arraylambda_angstroms, [-x.array_flambda_absorption for x in contributions_sorted_reduced],
-            colors=facecolors, linewidth=0)
+        if args.showabsorption:
+            facecolors = [p.get_facecolor()[0] for p in plotobjects]
+            axis.stackplot(
+                arraylambda_angstroms, [-x.array_flambda_absorption for x in contributions_sorted_reduced],
+                colors=facecolors, linewidth=0)
 
     plotobjectlabels = list([x.linelabel for x in contributions_sorted_reduced])
 
-    plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=None,
+    plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=filterfunc,
                            scale_to_peak=(maxyvalueglobal if args.normalised else None), linewidth=0.5)
 
     axis.axhline(color='white', linewidth=0.5)
 
     plotlabel = f't={args.timemin:.2f}d to {args.timemax:.2f}d\n{modelname}'
-    axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
+    axis.annotate(plotlabel, xy=(0.97, 0.13), xycoords='axes fraction',
                   horizontalalignment='right', verticalalignment='bottom', fontsize=9)
 
     # axis.set_ylim(ymin=-0.05 * maxyvalueglobal, ymax=maxyvalueglobal * 1.3)
@@ -564,7 +565,7 @@ def make_plot(modelpaths, args):
         return scipy.signal.savgol_filter(flambda, 5, 3)
 
     # filterfunc = None
-    if args.emissionabsorption:
+    if args.showemission or args.showabsorption:
         plotobjects, plotobjectlabels = make_emission_plot(modelpaths[0], axis, filterfunc, args)
     else:
         make_spectrum_plot(modelpaths, axis, filterfunc, args)
@@ -605,6 +606,12 @@ def addargs(parser):
 
     parser.add_argument('--emissionabsorption', default=False, action='store_true',
                         help='Show an emission/absorption plot')
+
+    parser.add_argument('--showemission', default=False, action='store_true',
+                        help='Plot the emission spectrum')
+
+    parser.add_argument('--showabsorption', default=False, action='store_true',
+                        help='Plot the absorption spectrum')
 
     parser.add_argument('--nostack', default=False, action='store_true',
                         help="Don't stack contributions")
@@ -682,6 +689,9 @@ def main(args=None, argsraw=None, **kwargs):
         at.showtimesteptimes(specfilename)
     else:
         if args.emissionabsorption:
+            args.showemission = True
+            args.showabsorption = True
+        if args.showemission or args.showabsorption:
             if len(modelpaths) > 1:
                 print("ERROR: emission/absorption plot can only take one input model", modelpaths)
                 sys.exit()
