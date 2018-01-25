@@ -369,6 +369,52 @@ def decode_roman_numeral(strin):
     return -1
 
 
+def get_ionstring(atomic_number, ionstage):
+    return f'{elsymbols[atomic_number]} {roman_numerals[ionstage]}'
+
+
+def list_commands():
+    print("artistools commands:")
+    for script in sorted(console_scripts):
+        command = script.split('=')[0].strip()
+        print(f'  {command}')
+
+
+# based on code from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
+def parse_range(rng, dictvars):
+    parts = rng.split('-')
+    if len(parts) not in [1, 2]:
+        raise ValueError("Bad range: '%s'" % (rng,))
+    parts = [int(i) if i not in dictvars else dictvars[i] for i in parts]
+    start = parts[0]
+    end = start if len(parts) == 1 else parts[1]
+    if start > end:
+        end, start = start, end
+    return range(start, end + 1)
+
+
+def parse_range_list(rngs, dictvars={}):
+    if isinstance(rngs, list):
+        rngs = ','.join(rngs)
+
+    return sorted(set(chain.from_iterable([parse_range(rng, dictvars) for rng in rngs.split(',')])))
+
+
+def opengzip(filename, mode):
+    filenamegz = filename + '.gz'
+    if os.path.exists(filenamegz):
+        return gzip.open(filenamegz, mode)
+    else:
+        return open(filename, mode)
+
+
+def firstexisting(filelist, path='.'):
+    for filename in filelist:
+        if os.path.exists(os.path.join(path, filename)):
+            return os.path.join(path, filename)
+    return os.path.join(path, filelist[-1])
+
+
 def main(argsraw=None):
     import argcomplete
     import argparse
@@ -408,49 +454,3 @@ def main(argsraw=None):
         print('usage: artistools <command>, where <command> is one of:')
         for command, _ in commandlist:
             print(f' - {command}')
-
-
-def get_ionstring(atomic_number, ionstage):
-    return f'{elsymbols[atomic_number]} {roman_numerals[ionstage]}'
-
-
-def list_commands():
-    print("artistools commands:")
-    for script in sorted(console_scripts):
-        command = script.split('=')[0].strip()
-        print(f'  {command}')
-
-
-# based on from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
-def parse_range(rng, dictvars):
-    parts = rng.split('-')
-    if len(parts) not in [1, 2]:
-        raise ValueError("Bad range: '%s'" % (rng,))
-    parts = [int(i) if i not in dictvars else dictvars[i] for i in parts]
-    start = parts[0]
-    end = start if len(parts) == 1 else parts[1]
-    if start > end:
-        end, start = start, end
-    return range(start, end + 1)
-
-
-def parse_range_list(rngs, dictvars={}):
-    if isinstance(rngs, list):
-        rngs = ','.join(rngs)
-
-    return sorted(set(chain.from_iterable([parse_range(rng, dictvars) for rng in rngs.split(',')])))
-
-
-def opengzip(filename, mode):
-    filenamegz = filename + '.gz'
-    if os.path.exists(filenamegz):
-        return gzip.open(filenamegz, mode)
-    else:
-        return open(filename, mode)
-
-
-def firstexisting(filelist, path='.'):
-    for filename in filelist:
-        if os.path.exists(os.path.join(path, filename)):
-            return os.path.join(path, filename)
-    return os.path.join(path, filelist[-1])

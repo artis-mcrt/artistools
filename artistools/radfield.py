@@ -272,7 +272,6 @@ def main(args=None, argsraw=None, **kwargs):
         else:
             radfielddata = at.radfield.read_files(radfield_files, args.modelgridindex)
 
-
         if not os.path.isfile(specfilename):
             print(f'Could not find {specfilename}')
             args.nospec = True
