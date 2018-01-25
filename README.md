@@ -8,7 +8,7 @@
 ARTIS (Sim et al. 2007; Kromer & Sim 2009) is a 3D radiative transfer code for Type Ia supernovae using the Monte Carlo method with indivisible energy packets (Lucy 2002). The simulation code is not publicly available.
 
 ## Installation
-Clone the respository, then run:
+First clone the repository, then run:
 ```sh
 python setup.py develop
 ```
@@ -29,21 +29,24 @@ usage: artistools &lt;command&gt;, where &lt;command&gt; is one of:
   - plotradfield
   - plotspectrum
   - plottransitions
+  - spencerfano
 
-Using the -h option will give a list of command-line arguments.
+Use the -h option to get a list of command-line arguments for each subcommand.
 
 ## Meta
 
 Distributed under the MIT license. See ``LICENSE`` for more information.
 
-[https://github.com/lukeshingles/artistools](https://github.com/lukeshingles/artistools))
+[https://github.com/lukeshingles/artistools](https://github.com/lukeshingles/artistools)
 
 -----------------------
 This is also a bit of a testing ground for GitHub integrations:
 
-[![Code Climate](https://codeclimate.com/github/lukeshingles/artistools/badges/gpa.svg)](https://codeclimate.com/github/lukeshingles/artistools) [![Test Coverage](https://codeclimate.com/github/lukeshingles/artistools/badges/coverage.svg)](https://codeclimate.com/github/lukeshingles/artistools/coverage) [![Issue Count](https://codeclimate.com/github/lukeshingles/artistools/badges/issue_count.svg)](https://codeclimate.com/github/lukeshingles/artistools)
+[![Code Climate](https://codeclimate.com/github/lukeshingles/artistools/badges/gpa.svg)](https://codeclimate.com/github/lukeshingles/artistools)
 
-[![Code Issues](https://www.quantifiedcode.com/api/v1/project/be02174519b14c45bcd765b468be6ee4/badge.svg)](https://www.quantifiedcode.com/app/project/be02174519b14c45bcd765b468be6ee4)
+[![Test Coverage](https://codeclimate.com/github/lukeshingles/artistools/badges/coverage.svg)](https://codeclimate.com/github/lukeshingles/artistools/coverage)
+
+[![Issue Count](https://codeclimate.com/github/lukeshingles/artistools/badges/issue_count.svg)](https://codeclimate.com/github/lukeshingles/artistools)
 
 <!---
 [![Code Health](https://landscape.io/github/lukeshingles/artistools/master/landscape.svg?style=flat)](https://landscape.io/github/lukeshingles/artistools/master)
