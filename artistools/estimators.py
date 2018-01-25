@@ -289,7 +289,10 @@ def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estima
 
     ylist.insert(0, ylist[0])
 
-    if math.log10(max(ylist) / min(ylist)) > 2:
+    try:
+        if math.log10(max(ylist) / min(ylist)) > 2:
+            axis.set_yscale('log')
+    except ZeroDivisionError:
         axis.set_yscale('log')
 
     dictcolors = {
