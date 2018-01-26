@@ -216,11 +216,11 @@ def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridind
         glob.glob(os.path.join(modelpath, '*/nlte_????.out'), recursive=True) +
         glob.glob(os.path.join(modelpath, '*/nlte_????.out.gz'), recursive=True))
 
+    dfpop = pd.DataFrame()
+
     if not nlte_files:
         print("No NLTE files found.")
-        return -1
-
-    dfpop = pd.DataFrame()
+        return dfpop
 
     print(f'Reading {len(nlte_files)} NLTE population files...')
     for nltefilepath in nlte_files:
