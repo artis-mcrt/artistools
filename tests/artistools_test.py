@@ -18,7 +18,7 @@ import artistools.transitions
 
 modelpath = os.path.join('tests', 'data')
 outputpath = 'tests/output'
-specfilename = 'tests/data/spec.out'
+specfilename = os.path.join(modelpath, 'spec.out')
 emissionfilename = 'tests/data/emissiontrue.out.gz'
 absorptionfilename = 'tests/data/absorption.out.gz'
 
@@ -106,3 +106,7 @@ def test_menu():
     at.main()
     at.showtimesteptimes('', modelpath=modelpath)
     at.showtimesteptimes(os.path.join(modelpath, 'spec.out'))
+
+
+def test_spencerfano():
+    at.spencerfano.main(modelpath=modelpath, timedays=300, makeplot=True, npts=200, outputfile=outputpath)
