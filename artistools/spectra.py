@@ -20,30 +20,32 @@ from astropy import units as u
 
 import artistools as at
 
-refspectralabels = {
+# filename : (label, distance / Mpc)
+# use -1 for distance if unknown
+refspectra = {
     'sn2011fe_PTF11kly_20120822_norm.txt':
-        'SN2011fe +364d (Mazzali et al. 2015)',
+        ('SN2011fe +364d (Mazzali et al. 2015)', -1),
 
     'sn2011fe_PTF11kly_20120822_norm_1Mpc.txt':
-        'SN2011fe (1 Mpc) +364d (Mazzali et al. 2015)',
+        ('SN2011fe (1 Mpc) +364d (Mazzali et al. 2015)', 1),
 
     '2010lp_20110928_fors2.txt':
-        'SN2010lp +264d (Taubenberger et al. 2013)',
+        ('SN2010lp +264d (Taubenberger et al. 2013)', -1),
 
     'dop_dered_SN2013aa_20140208_fc_final.txt':
-        'SN2013aa +360d (Maguire et al. in prep)',
+        ('SN2013aa +360d (Maguire et al. in prep)', -1),
 
     '2003du_20031213_3219_8822_00.txt':
-        'SN2003du +221.3d (Stanishev et al. 2007)',
+        ('SN2003du +221.3d (Stanishev et al. 2007)', -1),
 
     'FranssonJerkstrand2015_W7_330d_1Mpc':
-        'Fransson & Jerkstrand (2015) W7 Iwamoto+1999 1Mpc +330d',
+        ('Fransson & Jerkstrand (2015) W7 Iwamoto+1999 1Mpc +330d', 1),
 
     'nero-nebspec.txt':
-        'NERO +300d one-zone',
+        ('NERO +300d one-zone', -1),
 
     'maurer2011_RTJ_W7_338d_1Mpc.txt':
-        'RTJ W7 Nomoto+1984 1Mpc +338d (Maurer et al. 2011)',
+        ('RTJ W7 Nomoto+1984 1Mpc +338d (Maurer et al. 2011)', 1),
 }
 
 fluxcontributiontuple = namedtuple(
@@ -202,7 +204,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
     arraylambda = const.c.to('angstrom/s').value / arraynu
 
     nelements = len(elementlist)
-    maxyvalueglobal = 0.
+    max_flambda_emission_contrib = 0.
     array_flambda_emission_total = np.zeros_like(arraylambda)
     contribution_list = []
     if filterfunc:
@@ -244,12 +246,15 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
                 array_flambda_absorption = array_fnu_absorption * arraynu / arraylambda
 
                 array_flambda_emission_total += array_flambda_emission
-                fluxcontribthisseries = integrate_flux(array_fnu_emission, arraynu) + integrate_flux(array_fnu_absorption, arraynu)
-                maxyvaluethisseries = max(
+                fluxcontribthisseries = (
+                    integrate_flux(array_fnu_emission, arraynu) + integrate_flux(array_fnu_absorption, arraynu))
+
+                max_flambda_emission_contrib_thisseries = max(
                     [array_flambda_emission[i] if (xmin < arraylambda[i] < xmax) else -99.0
                      for i in range(len(array_flambda_emission))])
 
-                maxyvalueglobal = max(maxyvalueglobal, maxyvaluethisseries)
+                max_flambda_emission_contrib = max(
+                    max_flambda_emission_contrib, max_flambda_emission_contrib_thisseries)
 
                 if emissiontype != 'free-free':
                     linelabel = f'{at.elsymbols[elementlist.Z[element]]} {at.roman_numerals[ion_stage]} {emissiontype}'
@@ -261,7 +266,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
                                           array_flambda_emission=array_flambda_emission,
                                           array_flambda_absorption=array_flambda_absorption))
 
-    return contribution_list, maxyvalueglobal, array_flambda_emission_total
+    return contribution_list, max_flambda_emission_contrib, array_flambda_emission_total
 
 
 def sort_and_reduce_flux_contribution_list(contribution_list_in, maxseriescount, arraylambda_angstroms):
@@ -308,15 +313,14 @@ def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafil
                 plotkwargs['color'] = colorlist[index]
 
             plotobj, serieslabel = plot_reference_spectrum(
-                filename, axis, args.xmin, args.xmax, args.normalised,
+                filename, axis, args.xmin, args.xmax,
                 flambdafilterfunc, scale_to_peak, zorder=1000, **plotkwargs)
 
             plotobjects.append(plotobj)
             plotobjectlabels.append(serieslabel)
 
 
-def plot_reference_spectrum(filename, axis, xmin, xmax, normalised,
-                            flambdafilterfunc=None, scale_to_peak=None, **plotkwargs):
+def plot_reference_spectrum(filename, axis, xmin, xmax, flambdafilterfunc=None, scale_to_peak=None, **plotkwargs):
     scriptdir = os.path.dirname(os.path.abspath(__file__))
     if os.path.isfile(filename):
         filepath = filename
@@ -327,7 +331,7 @@ def plot_reference_spectrum(filename, axis, xmin, xmax, normalised,
                            names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
 
     if 'label' not in plotkwargs:
-        plotkwargs['label'] = refspectralabels.get(filename, filename)
+        plotkwargs['label'] = refspectra.get(filename, [filename, -1])[0]
 
     serieslabel = plotkwargs['label']
 
@@ -349,9 +353,8 @@ def plot_reference_spectrum(filename, axis, xmin, xmax, normalised,
     if flambdafilterfunc:
         specdata['f_lambda'] = flambdafilterfunc(specdata['f_lambda'])
 
-    if normalised:
-        specdata['f_lambda_scaled'] = (specdata['f_lambda'] / specdata['f_lambda'].max() *
-                                       (scale_to_peak if scale_to_peak else 1.0))
+    if scale_to_peak:
+        specdata['f_lambda_scaled'] = specdata['f_lambda'] / specdata['f_lambda'].max() * scale_to_peak
         ycolumnname = 'f_lambda_scaled'
     else:
         ycolumnname = 'f_lambda'
@@ -426,7 +429,7 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
     plt.close()
 
 
-def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=None, **plotkwargs):
+def plot_artis_spectrum(axis, modelpath, args, scale_to_peak=None, from_packets=False, filterfunc=None, **plotkwargs):
     (modelname, timestepmin, timestepmax,
      args.timemin, args.timemax) = at.get_model_name_times(
          modelpath, at.get_timestep_times(modelpath),
@@ -453,15 +456,20 @@ def plot_artis_spectrum(axis, modelpath, args, from_packets=False, filterfunc=No
 
     at.spectra.print_integrated_flux(spectrum['f_lambda'], spectrum['lambda_angstroms'])
 
-    spectrum['f_lambda_scaled'] = spectrum['f_lambda'] / spectrum['f_lambda'].max()
-    ycolumnname = 'f_lambda_scaled' if args.normalised else 'f_lambda'
+    if scale_to_peak:
+        spectrum['f_lambda_scaled'] = spectrum['f_lambda'] / spectrum['f_lambda'].max() * scale_to_peak
+
+        ycolumnname = 'f_lambda_scaled'
+    else:
+        ycolumnname = 'f_lambda'
+
     spectrum.plot(x='lambda_angstroms', y=ycolumnname, ax=axis,
                   label=linelabel, alpha=0.95, **plotkwargs)
 
 
-def make_spectrum_plot(modelpaths, axis, filterfunc, args):
+def make_spectrum_plot(modelpaths, axis, filterfunc, args, scale_to_peak=None):
     """Set up a matplotlib figure and plot observational and ARTIS spectra."""
-    plot_reference_spectra(axis, [], [], args, flambdafilterfunc=filterfunc)
+    plot_reference_spectra(axis, [], [], args, scale_to_peak=scale_to_peak, flambdafilterfunc=filterfunc)
 
     for index, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
@@ -471,7 +479,7 @@ def make_spectrum_plot(modelpaths, axis, filterfunc, args):
         # plotkwargs['dash_capstyle'] = dash_capstyleList[index]
         plotkwargs['linestyle'] = '--' if (int(index / 7) % 2) else '-'
         plotkwargs['linewidth'] = 2.5 - (0.2 * index)
-        plot_artis_spectrum(axis, modelpath, args=args, from_packets=args.frompackets,
+        plot_artis_spectrum(axis, modelpath, args=args, scale_to_peak=scale_to_peak, from_packets=args.frompackets,
                             filterfunc=filterfunc, **plotkwargs)
 
     if args.normalised:
@@ -479,7 +487,7 @@ def make_spectrum_plot(modelpaths, axis, filterfunc, args):
         axis.set_ylabel(r'Scaled F$_\lambda$')
 
 
-def make_emission_plot(modelpath, axis, filterfunc, args):
+def make_emission_plot(modelpath, axis, filterfunc, args, scale_to_peak=None):
     import scipy.interpolate as interpolate
     from cycler import cycler
     maxion = 5  # must match sn3d.h value
@@ -499,7 +507,7 @@ def make_emission_plot(modelpath, axis, filterfunc, args):
          specfilename, timearray, args.timestep, args.timemin, args.timemax)
 
     absorptionfilename = at.firstexisting(['absorption.out.gz', 'absorption.out'], path=modelpath)
-    contribution_list, maxyvalueglobal, array_flambda_emission_total = at.spectra.get_flux_contributions(
+    contribution_list, max_flambda_emission_contrib, array_flambda_emission_total = at.spectra.get_flux_contributions(
         emissionfilename, absorptionfilename, maxion, timearray, arraynu,
         filterfunc, args.xmin, args.xmax, timestepmin, timestepmax)
 
@@ -516,31 +524,43 @@ def make_emission_plot(modelpath, axis, filterfunc, args):
         contribution_list, args.maxseriescount, arraylambda_angstroms)
 
     if args.nostack:
+        scalefactor = (scale_to_peak / max_flambda_emission_contrib if scale_to_peak else 1.)
+
         plotobjects = []
         for x in contributions_sorted_reduced:
-            line = axis.plot(arraylambda_angstroms, x.array_flambda_emission, linewidth=1)
-            plotobjects.append(mpatches.Patch(color=line[0].get_color()))
+            line = axis.plot(arraylambda_angstroms,
+                             x.array_flambda_emission * scalefactor,
+                             linewidth=1)
 
-        if args.showabsorption:
-            facecolors = [p.get_facecolor()[0] for p in plotobjects]
-            axis.plot(
-                arraylambda_angstroms, [-x.array_flambda_absorption for x in contributions_sorted_reduced],
-                colors=facecolors, linewidth=0)
+            color = line[0].get_color()
+            plotobjects.append(mpatches.Patch(color=color))
+
+            if args.showabsorption:
+                axis.plot(arraylambda_angstroms, -x.array_flambda_absorption * scalefactor,
+                          color=color, linewidth=1)
     else:
+        max_flambda_emission_total = max(
+            [flambda if (args.xmin < lambda_ang < args.xmax) else -99.0
+             for lambda_ang, flambda in zip(arraylambda_angstroms, array_flambda_emission_total)])
+
+        scalefactor = (scale_to_peak / max_flambda_emission_total if scale_to_peak else 1.)
+
         plotobjects = axis.stackplot(
-            arraylambda_angstroms, [x.array_flambda_emission for x in contributions_sorted_reduced],
+            arraylambda_angstroms,
+            [x.array_flambda_emission * scalefactor for x in contributions_sorted_reduced],
             colors=colors, linewidth=0)
 
         if args.showabsorption:
             facecolors = [p.get_facecolor()[0] for p in plotobjects]
             axis.stackplot(
-                arraylambda_angstroms, [-x.array_flambda_absorption for x in contributions_sorted_reduced],
+                arraylambda_angstroms,
+                [-x.array_flambda_absorption * scalefactor for x in contributions_sorted_reduced],
                 colors=facecolors, linewidth=0)
 
     plotobjectlabels = list([x.linelabel for x in contributions_sorted_reduced])
 
     plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=filterfunc,
-                           scale_to_peak=(maxyvalueglobal if args.normalised else None), linewidth=0.5)
+                           scale_to_peak=scale_to_peak, linewidth=0.5)
 
     axis.axhline(color='white', linewidth=0.5)
 
@@ -549,7 +569,7 @@ def make_emission_plot(modelpath, axis, filterfunc, args):
                   horizontalalignment='right', verticalalignment='bottom', fontsize=9)
 
     # axis.set_ylim(ymin=-0.05 * maxyvalueglobal, ymax=maxyvalueglobal * 1.3)
-    if args.normalised:
+    if scale_to_peak:
         axis.set_ylabel(r'Scaled F$_\lambda$')
 
     return plotobjects, plotobjectlabels
@@ -564,11 +584,13 @@ def make_plot(modelpaths, args):
     def filterfunc(flambda):
         return scipy.signal.savgol_filter(flambda, 5, 3)
 
+    scale_to_peak = 1.0 if args.normalised else None
+
     # filterfunc = None
     if args.showemission or args.showabsorption:
-        plotobjects, plotobjectlabels = make_emission_plot(modelpaths[0], axis, filterfunc, args)
+        plotobjects, plotobjectlabels = make_emission_plot(modelpaths[0], axis, filterfunc, args, scale_to_peak=scale_to_peak)
     else:
-        make_spectrum_plot(modelpaths, axis, filterfunc, args)
+        make_spectrum_plot(modelpaths, axis, filterfunc, args, scale_to_peak=scale_to_peak)
         plotobjects, plotobjectlabels = axis.get_legend_handles_labels()
 
     axis.legend(plotobjects, plotobjectlabels, loc='best', handlelength=2,
