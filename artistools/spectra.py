@@ -173,8 +173,9 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
     array_flambda_positron = (array_energysum_positron / delta_lambda / (timehigh - timelow) /
                               4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs)
 
-    array_emvelocity[1] = np.divide(array_emvelocity[1], array_energysum)
-    array_trueemvelocity[1] = np.divide(array_trueemvelocity[1], array_energysum)
+    with np.errstate(divide='ignore',invalid='ignore'):
+        array_emvelocity[1] = np.divide(array_emvelocity[1], array_energysum)
+        array_trueemvelocity[1] = np.divide(array_trueemvelocity[1], array_energysum)
 
     dfspectrum = pd.DataFrame({
         'lambda_angstroms': array_lambda,
