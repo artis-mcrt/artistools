@@ -143,7 +143,7 @@ def make_plot(xvalues, yvalues, axes, temperature_list, vardict, ions, ionpopdic
     #     scale_to_peak=peak_y_value, zorder=-1, linewidth=1, color='black')
 
     at.spectra.plot_reference_spectrum(
-        '2003du_20031213_3219_8822_00.txt', axes[-1], xmin, xmax, True,
+        '2003du_20031213_3219_8822_00.txt', axes[-1], xmin, xmax,
         scale_to_peak=peak_y_value, zorder=-1, linewidth=1, color='black')
 
     axes[-1].set_xlabel(r'Wavelength ($\AA$)')
