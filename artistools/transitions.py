@@ -236,6 +236,8 @@ def main(args=None, argsraw=None, **kwargs):
 
         modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
         estimators_all = at.estimators.read_estimators(modelpath, modeldata, keymatch=(timestep, modelgridindex))
+        if not estimators_all:
+            return -1
 
         estimators = estimators_all[(timestep, modelgridindex)]
         if estimators['emptycell']:
