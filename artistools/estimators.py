@@ -239,8 +239,10 @@ def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, e
 
             if seriestype == 'populations':
                 totalpop = estim['populations']['total']
+                elpop = estim['populations'][atomic_number]
                 nionpop = estim['populations'].get((atomic_number, ion_stage), 0.)
-                ylist.append(nionpop / totalpop)
+                # ylist.append(nionpop / totalpop)  # Plot as fraction of total population
+                ylist.append(nionpop / elpop)  # Plot as fraction of element population
             # elif seriestype == 'Alpha_R':
             #     ylist.append(estim['Alpha_R*nne'].get((atomic_number, ion_stage), 0.) / estim['nne'])
             # else:
