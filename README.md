@@ -14,22 +14,19 @@ python setup.py develop
 ```
 
 ## Usage
-First cd into an ARTIS simulation folder and then run artistools with one of the subcommands:
-
-usage: artistools &lt;command&gt;, where &lt;command&gt; is one of:
-
-  - getmodeldeposition
-  - makemodel1dslicefrom3d
-  - makemodelbotyanski
-  - plotestimators
-  - plotlightcurve
-  - plotnltepops
-  - plotmacroatom
-  - plotnonthermal
-  - plotradfield
-  - plotspectrum
-  - plottransitions
-  - spencerfano
+First cd into an ARTIS simulation folder. artistools provides the following commands:
+  - getartismodeldeposition
+  - getartisspencerfano
+  - makeartismodel1dslicefrom3d
+  - makeartismodelbotyanski
+  - plotartisestimators
+  - plotartislightcurve
+  - plotartisnltepops
+  - plotartismacroatom
+  - plotartisnonthermal
+  - plotartisradfield
+  - plotartisspectrum
+  - plotartistransitions
 
 Use the -h option to get a list of command-line arguments for each subcommand.
 

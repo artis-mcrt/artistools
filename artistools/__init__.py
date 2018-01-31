@@ -20,21 +20,24 @@ elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, 'data', 'elements.csv')
 roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
-console_scripts = [
-    'at = artistools:main',
-    'artistools = artistools:main',
-    'getartismodeldeposition = artistools.deposition:main',
-    'makeartismodel1dslicefrom3d = artistools.slice3dmodel:main',
-    'makeartismodelbotyanski = artistools.makemodelbotyanski:main',
-    'plotartisestimators = artistools.estimators:main',
-    'plotartislightcurve = artistools.lightcurve:main',
-    'plotartisnltepops = artistools.nltepops:main',
-    'plotartismacroatom = artistools.macroatom:main',
-    'plotartisnonthermal = artistools.nonthermal:main',
-    'plotartisradfield = artistools.radfield:main',
-    'plotartisspectrum = artistools.spectra:main',
-    'plotartistransitions = artistools.transitions:main',
+commandlist = [
+    ('getartismodeldeposition', 'deposition'),
+    ('getartisspencerfano', 'spencerfano'),
+    ('makeartismodel1dslicefrom3d', 'makemodel1dslicefrom3d'),
+    ('makeartismodelbotyanski', 'makemodelbotyanski'),
+    ('plotartisestimators', 'estimators'),
+    ('plotartislightcurve', 'lightcurve'),
+    ('plotartisnltepops', 'nltepops'),
+    ('plotartismacroatom', 'macroatom'),
+    ('plotartisnonthermal', 'nonthermal'),
+    ('plotartisradfield', 'radfield'),
+    ('plotartisspectrum', 'spectra'),
+    ('plotartistransitions', 'transitions'),
 ]
+
+console_scripts = [f'{command} = artistools.{submodulename}:main' for command, submodulename in commandlist]
+console_scripts.append('at = artistools:main')
+console_scripts.append('artistools = artistools:main')
 
 
 def showtimesteptimes(specfilename, modelpath=None, numberofcolumns=5):
@@ -373,13 +376,6 @@ def get_ionstring(atomic_number, ionstage):
     return f'{elsymbols[atomic_number]} {roman_numerals[ionstage]}'
 
 
-def list_commands():
-    print("artistools commands:")
-    for script in sorted(console_scripts):
-        command = script.split('=')[0].strip()
-        print(f'  {command}')
-
-
 # based on code from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
 def parse_range(rng, dictvars):
     parts = rng.split('-')
@@ -424,20 +420,6 @@ def main(argsraw=None):
     parser.set_defaults(func=None)
 
     subparsers = parser.add_subparsers()
-    commandlist = [
-        ('getmodeldeposition', 'deposition'),
-        ('makemodel1dslicefrom3d', 'slice3dmodel'),
-        ('makemodelbotyanski', 'makemodelbotyanski'),
-        ('plotestimators', 'estimators'),
-        ('plotlightcurve', 'lightcurve'),
-        ('plotnltepops', 'nltepops'),
-        ('plotmacroatom', 'macroatom'),
-        ('plotnonthermal', 'nonthermal'),
-        ('plotradfield', 'radfield'),
-        ('plotspectrum', 'spectra'),
-        ('plottransitions', 'transitions'),
-        ('spencerfano', 'spencerfano'),
-    ]
 
     for command, submodulename in commandlist:
         submodule = importlib.import_module('artistools.' + submodulename)
@@ -451,6 +433,11 @@ def main(argsraw=None):
         args.func(args=args)
     else:
         # parser.print_help()
-        print('usage: artistools <command>, where <command> is one of:')
+        print('artistools provides the following commands:\n')
+
+        # for script in sorted(console_scripts):
+        #     command = script.split('=')[0].strip()
+        #     print(f'  {command}')
+
         for command, _ in commandlist:
-            print(f' - {command}')
+            print(f'  {command}')
