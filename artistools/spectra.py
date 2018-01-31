@@ -38,6 +38,9 @@ refspectra = {
     '2003du_20031213_3219_8822_00.txt':
         ('SN2003du +221.3d (Stanishev et al. 2007)', -1),
 
+    '2003du_20031213_3219_8822_00_1Mpc.txt':
+        ('SN2003du +221.3d (Stanishev et al. 2007)', 1),
+
     'FranssonJerkstrand2015_W7_330d_1Mpc':
         ('Fransson & Jerkstrand (2015) W7 Iwamoto+1999 1Mpc +330d', 1),
 
