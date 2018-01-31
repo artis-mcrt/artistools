@@ -176,7 +176,7 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
     array_flambda_positron = (array_energysum_positron / delta_lambda / (timehigh - timelow) /
                               4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs)
 
-    with np.errstate(divide='ignore',invalid='ignore'):
+    with np.errstate(divide='ignore', invalid='ignore'):
         array_emvelocity[1] = np.divide(array_emvelocity[1], array_energysum)
         array_trueemvelocity[1] = np.divide(array_trueemvelocity[1], array_energysum)
 
@@ -592,7 +592,8 @@ def make_plot(modelpaths, args):
 
     # filterfunc = None
     if args.showemission or args.showabsorption:
-        plotobjects, plotobjectlabels = make_emission_plot(modelpaths[0], axis, filterfunc, args, scale_to_peak=scale_to_peak)
+        plotobjects, plotobjectlabels = make_emission_plot(modelpaths[0], axis, filterfunc,
+                                                           args, scale_to_peak=scale_to_peak)
     else:
         make_spectrum_plot(modelpaths, axis, filterfunc, args, scale_to_peak=scale_to_peak)
         plotobjects, plotobjectlabels = axis.get_legend_handles_labels()
@@ -631,7 +632,7 @@ def addargs(parser):
                         help='Limit the number of packet files read')
 
     parser.add_argument('--emissionabsorption', default=False, action='store_true',
-                        help='Show an emission/absorption plot')
+                        help='Plot emission and absorption')
 
     parser.add_argument('--showemission', default=False, action='store_true',
                         help='Plot the emission spectrum')
@@ -640,7 +641,7 @@ def addargs(parser):
                         help='Plot the absorption spectrum')
 
     parser.add_argument('--nostack', default=False, action='store_true',
-                        help="Don't stack contributions")
+                        help="Don't stack emission/absorption contributions")
 
     parser.add_argument('-maxseriescount', type=int, default=12,
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')
