@@ -216,7 +216,7 @@ def plot_init_abundances(axis, xlist, specieslist, mgilist, modeldata, abundance
         axis.plot(xlist, ylist, linewidth=1.5, label=f'{speciesstr}', **plotkwargs)
 
 
-def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, estimators, **plotkwargs):
+def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, estimators, args, **plotkwargs):
     if seriestype == 'populations':
         axis.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
 
@@ -241,11 +241,16 @@ def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, e
                 if seriestype == 'populations':
                     if (atomic_number, ion_stage) not in estim['populations']:
                         raise KeyError
+                    
                     totalpop = estim['populations']['total']
                     elpop = estim['populations'][atomic_number]
                     nionpop = estim['populations'].get((atomic_number, ion_stage), 0.)
-                    # ylist.append(nionpop / totalpop)  # Plot as fraction of total population
-                    ylist.append(nionpop / elpop)  # Plot as fraction of element population
+
+                    if args.elpop is True:
+                        ylist.append(nionpop / elpop)  # Plot as fraction of element population
+                    else:
+                        ylist.append(nionpop / totalpop)  # Plot as fraction of total population
+
                 # elif seriestype == 'Alpha_R':
                 #     ylist.append(estim['Alpha_R*nne'].get((atomic_number, ion_stage), 0.) / estim['nne'])
                 # else:
@@ -337,7 +342,7 @@ def get_xlist(xvariable, mgilist, estimators, timestep, args):
 
 
 def plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata, abundancedata, estimators,
-                          **plotkwargs):
+                          args, **plotkwargs):
     showlegend = False
 
     for variablename in yvariables:
@@ -347,7 +352,8 @@ def plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata,
                 plot_init_abundances(axis, xlist, variablename[1], mgilist, modeldata, abundancedata)
             else:
                 seriestype, ionlist = variablename
-                plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, estimators, **plotkwargs)
+                plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, estimators,
+                                      args, **plotkwargs)
         else:
             showlegend = len(yvariables) > 1 or len(variablename) > 20
             plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estimators, **plotkwargs)
@@ -377,7 +383,7 @@ def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, m
     for axis, yvariables in zip(axes, series):
         axis.set_xlim(xmin=xmin, xmax=xmax)
         plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata, abundancedata,
-                              estimators, **plotkwargs)
+                              estimators, args, **plotkwargs)
 
     figure_title = f'{modelname}\nTimestep {timestep}'
     time_days = float(at.get_timestep_time('.', timestep))
@@ -468,6 +474,9 @@ def addargs(parser):
     parser.add_argument('-o', action='store', dest='outputfile',
                         default=defaultoutputfile,
                         help='Filename for PDF file')
+
+    parser.add_argument('-elpop', action='store_true',
+                        help='Plot ionisation as fraction of element population')
 
 
 def main(args=None, argsraw=None, **kwargs):
