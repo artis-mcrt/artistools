@@ -9,7 +9,7 @@ import artistools as at
 import artistools.deposition
 import artistools.lightcurve
 import artistools.macroatom
-import artistools.makemodelbotyanski
+import artistools.makemodel.botyanski2017
 import artistools.nltepops
 import artistools.nonthermal
 import artistools.radfield
@@ -95,7 +95,7 @@ def test_plotters():
 
 
 def test_makemodel():
-    at.makemodelbotyanski.main(outputpath=outputpath)
+    at.makemodel.botyanski2017.main(outputpath=outputpath)
 
 
 def test_deposition():
