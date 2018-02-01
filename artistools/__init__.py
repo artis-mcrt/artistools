@@ -68,6 +68,9 @@ def get_composition_data(filename):
         elements and ions
     """
 
+    if os.path.isdir(filename):
+        filename = os.path.join(filename, 'compositiondata.txt')
+
     columns = ('Z,nions,lowermost_ionstage,uppermost_ionstage,nlevelsmax_readin,'
                'abundance,mass,startindex').split(',')
 
