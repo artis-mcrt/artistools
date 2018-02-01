@@ -249,12 +249,11 @@ def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, e
                 if (atomic_number, ion_stage) not in estim['populations']:
                     raise KeyError
 
-                #     ylist.append(estim[seriestype].get((atomic_number, ion_stage), 0.))
                 totalpop = estim['populations']['total']
                 elpop = estim['populations'][atomic_number]
                 nionpop = estim['populations'].get((atomic_number, ion_stage), 0.)
 
-                if args.elpop is True:
+                if args.elpop:
                     ylist.append(nionpop / elpop)  # Plot as fraction of element population
                 else:
                     ylist.append(nionpop / totalpop)  # Plot as fraction of total population
@@ -318,6 +317,10 @@ def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estima
         # 'heating_gamma': 'blue',
         # 'cooling_adiabatic': 'blue'
     }
+
+    # print out the data to stdout. Maybe want to add a CSV export option at some point?
+    # print(f'#cellidorvelocity {variablename}\n' + '\n'.join([f'{x}  {y}' for x, y in zip(xlist, ylist)]))
+
     axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel, color=dictcolors.get(variablename, None), **plotkwargs)
 
 
