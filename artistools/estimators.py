@@ -216,7 +216,7 @@ def plot_init_abundances(axis, xlist, specieslist, mgilist, modeldata, abundance
         axis.plot(xlist, ylist, linewidth=1.5, label=f'{speciesstr}', **plotkwargs)
 
 
-def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, estimators, args, **plotkwargs):
+def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, estimators, compositiondata, args, **plotkwargs):
     if seriestype == 'populations':
         axis.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
 
@@ -225,59 +225,64 @@ def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, e
         splitvariablename = ionstr.split(' ')
         atomic_number = at.get_atomic_number(splitvariablename[0])
         ion_stage = at.decode_roman_numeral(splitvariablename[1])
-        try:
-            if seriestype == 'populations':
-                axis.set_ylabel('X$_{ion}$/X$_{tot}$')
-            else:
-                axis.set_ylabel(seriestype)
 
-            ylist = []
-            for modelgridindex in mgilist:
-                estim = estimators[(timestep, modelgridindex)]
-
-                if estim['emptycell']:
-                    continue
-
-                if seriestype == 'populations':
-                    if (atomic_number, ion_stage) not in estim['populations']:
-                        raise KeyError
-
-                    totalpop = estim['populations']['total']
-                    elpop = estim['populations'][atomic_number]
-                    nionpop = estim['populations'].get((atomic_number, ion_stage), 0.)
-
-                    if args.elpop is True:
-                        ylist.append(nionpop / elpop)  # Plot as fraction of element population
-                    else:
-                        ylist.append(nionpop / totalpop)  # Plot as fraction of total population
-
-                # elif seriestype == 'Alpha_R':
-                #     ylist.append(estim['Alpha_R*nne'].get((atomic_number, ion_stage), 0.) / estim['nne'])
-                # else:
-                #     ylist.append(estim[seriestype].get((atomic_number, ion_stage), 0.))
-                else:
-                    dictvars = {}
-                    for k, v in estim.items():
-                        if 'items' in dir(v):
-                            dictvars[k] = v.get((atomic_number, ion_stage), 0.)
-                        else:
-                            dictvars[k] = v
-                    try:
-                        yvalue = eval(seriestype, {"__builtins__": math}, dictvars)
-                    except ZeroDivisionError:
-                        yvalue = float('NaN')
-                    ylist.append(yvalue)
-
-            plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
-
-            ylist.insert(0, ylist[0])
-            color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][linecount]
-            # or axis.step(where='pre', )
-            axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel, color=color, **plotkwargs)
-            linecount += 1
-
-        except KeyError:
+        if compositiondata.query('Z == @atomic_number '
+                                 '& lowermost_ionstage <= @ion_stage '
+                                 '& uppermost_ionstage >= @ion_stage').empty:
+            print(f"WARNING: Can't plot '{seriestype}' for Z={atomic_number} ion_stage {ion_stage} "
+                  f"because this ion is not in compositiondata.txt")
             continue
+
+        if seriestype == 'populations':
+            axis.set_ylabel('X$_{ion}$/X$_{tot}$')
+        else:
+            axis.set_ylabel(seriestype)
+
+        ylist = []
+        for modelgridindex in mgilist:
+            estim = estimators[(timestep, modelgridindex)]
+
+            if estim['emptycell']:
+                continue
+
+            if seriestype == 'populations':
+                if (atomic_number, ion_stage) not in estim['populations']:
+                    raise KeyError
+
+                #     ylist.append(estim[seriestype].get((atomic_number, ion_stage), 0.))
+                totalpop = estim['populations']['total']
+                elpop = estim['populations'][atomic_number]
+                nionpop = estim['populations'].get((atomic_number, ion_stage), 0.)
+
+                if args.elpop is True:
+                    ylist.append(nionpop / elpop)  # Plot as fraction of element population
+                else:
+                    ylist.append(nionpop / totalpop)  # Plot as fraction of total population
+
+            # elif seriestype == 'Alpha_R':
+            #     ylist.append(estim['Alpha_R*nne'].get((atomic_number, ion_stage), 0.) / estim['nne'])
+            # else:
+            #     ylist.append(estim[seriestype].get((atomic_number, ion_stage), 0.))
+            else:
+                dictvars = {}
+                for k, v in estim.items():
+                    if 'items' in dir(v):
+                        dictvars[k] = v.get((atomic_number, ion_stage), 0.)
+                    else:
+                        dictvars[k] = v
+                try:
+                    yvalue = eval(seriestype, {"__builtins__": math}, dictvars)
+                except ZeroDivisionError:
+                    yvalue = float('NaN')
+                ylist.append(yvalue)
+
+        plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
+
+        ylist.insert(0, ylist[0])
+        color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][linecount]
+        # or axis.step(where='pre', )
+        axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel, color=color, **plotkwargs)
+        linecount += 1
 
 
 def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estimators, **plotkwargs):
@@ -341,8 +346,8 @@ def get_xlist(xvariable, mgilist, estimators, timestep, args):
     return xlist, mgilist_out
 
 
-def plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata, abundancedata, estimators,
-                          args, **plotkwargs):
+def plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata, abundancedata, compositiondata,
+                          estimators, args, **plotkwargs):
     showlegend = False
 
     for variablename in yvariables:
@@ -353,7 +358,7 @@ def plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata,
             else:
                 seriestype, ionlist = variablename
                 plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, estimators,
-                                      args, **plotkwargs)
+                                      compositiondata, args, **plotkwargs)
         else:
             showlegend = len(yvariables) > 1 or len(variablename) > 20
             plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estimators, **plotkwargs)
@@ -363,7 +368,7 @@ def plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata,
 
 
 def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, modeldata, abundancedata,
-                  args, **plotkwargs):
+                  compositiondata, args, **plotkwargs):
 
     fig, axes = plt.subplots(len(series), 1, sharex=True, figsize=(8, 2.3 * len(series)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
@@ -383,7 +388,7 @@ def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, m
     for axis, yvariables in zip(axes, series):
         axis.set_xlim(xmin=xmin, xmax=xmax)
         plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata, abundancedata,
-                              estimators, args, **plotkwargs)
+                              compositiondata, estimators, args, **plotkwargs)
 
     figure_title = f'{modelname}\nTimestep {timestep}'
     time_days = float(at.get_timestep_time('.', timestep))
@@ -495,6 +500,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     modeldata, _ = at.get_modeldata(modelpath)
     abundancedata = at.get_initialabundances(modelpath)
+    compositiondata = at.get_composition_data(modelpath)
     modelname = at.get_model_name(modelpath)
 
     estimators = read_estimators(modelpath, modeldata)
@@ -552,7 +558,7 @@ def main(args=None, argsraw=None, **kwargs):
                                if not estimators[(timestep, modelgridindex)]['emptycell']]
 
             plot_timestep(modelname, timestep, nonemptymgilist, estimators, args.x, serieslist,
-                          modeldata, abundancedata, args)
+                          modeldata, abundancedata, compositiondata, args)
 
 
 if __name__ == "__main__":
