@@ -220,7 +220,6 @@ def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, e
     if seriestype == 'populations':
         axis.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
 
-    linecount = 0
     for ionstr in ionlist:
         splitvariablename = ionstr.split(' ')
         atomic_number = at.get_atomic_number(splitvariablename[0])
@@ -278,10 +277,9 @@ def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, e
         plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
 
         ylist.insert(0, ylist[0])
-        color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][linecount]
+        color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][ion_stage - 1]
         # or axis.step(where='pre', )
         axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel, color=color, **plotkwargs)
-        linecount += 1
 
 
 def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estimators, **plotkwargs):
@@ -512,25 +510,16 @@ def main(args=None, argsraw=None, **kwargs):
         return -1
 
     serieslist = [
-        # ['heating_gamma', 'heating_coll', 'heating_bf', 'heating_ff'],
-        # ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff'],
-        # # ['heating_gamma/gamma_dep'],
-        # ['Te', 'TR'],
-        # ['nne'],
-        # # [['initabundances', ['Fe', 'Ni', 'Ni_56', 'Ni_stable', 'Ar']]],
-        # [['populations', ['He I', 'He II']]],
-        # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
-        # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
-        # [['populations', ['Ne I', 'Ne II', 'Ne III', 'Ne IV', 'Ne V']]],
-        # [['populations', ['Si I', 'Si II', 'Si III', 'Si IV', 'Si V']]],
-        # [['populations', ['Cr I', 'Cr II', 'Cr III', 'Cr IV', 'Cr V']]],
-        [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Fe VI', 'Fe VII', 'Fe VIII']]],
-        [['populations', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
-        [['populations', ['Co II', 'Co III', 'Co IV', 'Co V', 'Co VI', 'Co VII']]],
-        # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Ni II', 'Ni III', 'Ar I']]],
-        # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
-        # [['Alpha_R / RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni III']]],
-        # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
+        ['heating_gamma', 'heating_coll', 'heating_bf', 'heating_ff'],
+        ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff'],
+        ['heating_gamma/gamma_dep'],
+        ['Te', 'TR'],
+        ['nne'],
+        [['initabundances', ['Fe', 'Ni', 'Ni_56', 'Ni_stable', 'Ar']]],
+        [['populations', ['Fe I', 'Fe II', 'Fe III', 'Ni II', 'Ni III', 'Ar I']]],
+        [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
+        [['Alpha_R / RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni III']]],
+        [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
     ]
 
     if args.recombrates:
