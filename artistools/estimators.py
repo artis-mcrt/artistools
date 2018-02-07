@@ -247,10 +247,13 @@ def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, e
 
             if seriestype == 'populations':
                 if (atomic_number, ion_stage) not in estim['populations']:
-                    raise KeyError
+                    print(f'Note: population for {(atomic_number, ion_stage)} not in estimators for '
+                          f'cell {modelgridindex} timestep {timestep}')
+                    # print(f'Keys: {estim["populations"].keys()}')
+                    # raise KeyError
 
                 totalpop = estim['populations']['total']
-                elpop = estim['populations'][atomic_number]
+                elpop = estim['populations'].get(atomic_number, 0.)
                 nionpop = estim['populations'].get((atomic_number, ion_stage), 0.)
 
                 if args.elpop:
