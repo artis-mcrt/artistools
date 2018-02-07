@@ -338,7 +338,7 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timestep, args):
         try:
             xlist = []
             mgilist_out = []
-            for modelgridindex in mgilist:
+            for modelgridindex in allnonemptymgilist:
                 xvalue = estimators[(timestep, modelgridindex)][xvariable]
                 if args.xmax < 0 or xvalue <= args.xmax:
                     xlist.append(xvalue)
