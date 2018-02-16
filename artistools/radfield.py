@@ -138,26 +138,19 @@ def plot_fitted_field(axis, radfielddata, xmin, xmax, **plotkwargs):
 
 def plot_line_estimators(axis, radfielddata, xmin, xmax, **plotkwargs):
     """
-        Plot the fitted diluted blackbody for each bin as well as the global fit
+        Plot the Jblue_lu values from the detailed line estimators
     """
     ymax = -1
 
-    for _, row in radfielddata.query('bin_num < -1').iterrows():
-        nu_trans = row['nu_upper']
-        jb_lu_dnu = row['J_nu_avg']
+    radfielddataselected = radfielddata.query('bin_num < -1')[['nu_upper', 'J_nu_avg']]
+    const_c = const.c.to('angstrom/s').value
+    radfielddataselected.eval('lambda_angstroms = @const_c / nu_upper', inplace=True)
+    radfielddataselected.eval('Jb_lambda = J_nu_avg * (nu_upper ** 2) / @const_c', inplace=True)
 
-        if jb_lu_dnu <= 0.:
-            continue
+    ymax = radfielddataselected['Jb_lambda'].max()
 
-        c = const.c.to('angstrom/s').value
-        lambda_angstroms = c / nu_trans
-        jb_lu_dlambda = jb_lu_dnu * nu_trans / lambda_angstroms
-        # print(f'Line estimator at {lambda_angstroms}Å Jb_lu = {jb_lu_dlambda} erg/s/cm^2/Å')
-
-        if jb_lu_dlambda > ymax:
-            ymax = jb_lu_dlambda
-
-        axis.vlines(x=lambda_angstroms, ymin=0., ymax=jb_lu_dlambda, **plotkwargs)
+    axis.scatter(radfielddataselected['lambda_angstroms'].values, radfielddataselected['Jb_lambda'].values,
+                 label='Line estimators', s=1, **plotkwargs)
 
     return ymax
 
@@ -170,15 +163,16 @@ def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=Non
     print(f"Plotting {specfilename}")
 
     dfspectrum = at.spectra.get_spectrum(specfilename, timestep)
-
-    if scale_factor:
+    label = 'Emergent spectrum'
+    if scale_factor is not None:
+        label += ' (scaled)'
         dfspectrum['f_lambda'] = dfspectrum['f_lambda'] * scale_factor
 
-    if peak_value:
+    if peak_value is not None:
+        label += ' (normalised)'
         dfspectrum['f_lambda'] = dfspectrum['f_lambda'] / dfspectrum['f_lambda'].max() * peak_value
 
-    dfspectrum.plot(x='lambda_angstroms', y='f_lambda', ax=axis,
-                    label='Emergent spectrum (normalised)', **plotkwargs)
+    dfspectrum.plot(x='lambda_angstroms', y='f_lambda', ax=axis, label=label, **plotkwargs)
 
 
 def plot_celltimestep(
@@ -197,7 +191,7 @@ def plot_celltimestep(
 
     ymax1 = plot_field_estimators(axis, radfielddata, color='blue', linewidth=1.5)
     ymax2 = plot_fitted_field(axis, radfielddata, xmin, xmax, alpha=0.8, color='green', linewidth=1.5)
-    ymax3 = plot_line_estimators(axis, radfielddata, xmin, xmax, zorder=-2, color='red', linewidth=1.0)
+    ymax3 = plot_line_estimators(axis, radfielddata, xmin, xmax, zorder=-2, color='red')
 
     ymax = max(ymax1, ymax2, ymax3)
 
