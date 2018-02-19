@@ -248,10 +248,13 @@ def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, e
 
             if seriestype == 'populations':
                 if (atomic_number, ion_stage) not in estim['populations']:
-                    raise KeyError
+                    print(f'Note: population for {(atomic_number, ion_stage)} not in estimators for '
+                          f'cell {modelgridindex} timestep {timestep}')
+                    # print(f'Keys: {estim["populations"].keys()}')
+                    # raise KeyError
 
                 totalpop = estim['populations']['total']
-                elpop = estim['populations'][atomic_number]
+                elpop = estim['populations'].get(atomic_number, 0.)
                 nionpop = estim['populations'].get((atomic_number, ion_stage), 0.)
 
                 if args.elpop:
@@ -325,16 +328,18 @@ def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estima
     axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel, color=dictcolors.get(variablename, None), **plotkwargs)
 
 
-def get_xlist(xvariable, mgilist, estimators, timestep, args):
-    mgilist_out = []
+def get_xlist(xvariable, allnonemptymgilist, estimators, timestep, args):
     if xvariable in ['cellid', 'modelgridindex']:
-        xlist = mgilist
         if args.xmax >= 0:
-            xlist, mgilist_out = zip(*[(x, mgi) for x, mgi in zip(xlist, mgi) if x <= args.xmax])
+            mgilist_out = [mgi for mgi in allnonemptymgilist if mgi <= args.xmax]
+        else:
+            mgilist_out = allnonemptymgilist
+        xlist = mgilist_out
     else:
         try:
             xlist = []
-            for modelgridindex in mgilist:
+            mgilist_out = []
+            for modelgridindex in allnonemptymgilist:
                 xvalue = estimators[(timestep, modelgridindex)][xvariable]
                 if args.xmax < 0 or xvalue <= args.xmax:
                     xlist.append(xvalue)
@@ -371,7 +376,7 @@ def plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata,
         axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
 
 
-def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, modeldata, abundancedata,
+def plot_timestep(modelname, timestep, allnonemptymgilist, estimators, xvariable, series, modeldata, abundancedata,
                   compositiondata, args, **plotkwargs):
 
     fig, axes = plt.subplots(len(series), 1, sharex=True, figsize=(8, 2.3 * len(series)),
@@ -381,7 +386,7 @@ def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, m
     # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
 
     axes[-1].set_xlabel(f'{xvariable}{get_units_string(xvariable)}')
-    xlist, mgilist = get_xlist(xvariable, mgilist, estimators, timestep, args)
+    xlist, mgilist = get_xlist(xvariable, allnonemptymgilist, estimators, timestep, args)
     xlist = np.insert(xlist, 0, 0.)
 
     xmin = args.xmin if args.xmin > 0 else min(xlist)
@@ -564,10 +569,10 @@ def main(args=None, argsraw=None, **kwargs):
 
         for timestep in range(timestepmin, timestepmax + 1):
 
-            nonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
-                               if not estimators[(timestep, modelgridindex)]['emptycell']]
+            allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
+                                  if not estimators[(timestep, modelgridindex)]['emptycell']]
 
-            plot_timestep(modelname, timestep, nonemptymgilist, estimators, args.x, serieslist,
+            plot_timestep(modelname, timestep, allnonemptymgilist, estimators, args.x, serieslist,
                           modeldata, abundancedata, compositiondata, args)
 
 
