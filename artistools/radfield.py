@@ -53,11 +53,12 @@ def read_files(radfield_files, modelgridindex=-1):
     return radfielddata
 
 
-def plot_field_estimators(axis, radfielddata):
+def plot_field_estimators(axis, radfielddata, **plotkwargs):
     """
-        Plot the dJ/dlambda estimators for each bin
+        Plot the dJ/dlambda constant average estimators for each bin
     """
-    bindata = radfielddata.copy().query('bin_num >= 0')  # exclude the global fit parameters
+    # exclude the global fit parameters and detailed lines with negative "bin_num"
+    bindata = radfielddata.copy().query('bin_num >= 0')
 
     arr_lambda = const.c.to('angstrom/s').value / bindata['nu_upper'].values
 
@@ -72,11 +73,24 @@ def plot_field_estimators(axis, radfielddata):
     arr_lambda = np.insert(arr_lambda, 0, const.c.to('angstrom/s').value / bindata['nu_lower'].iloc[0])
     yvalues = np.insert(yvalues, 0, 0.)
 
-    axis.step(arr_lambda, yvalues, where='pre', linewidth=1.5, label='Field estimators', color='blue')
+    axis.step(arr_lambda, yvalues, where='pre', label='Field estimators', **plotkwargs)
+
     return max(yvalues)
 
 
-def plot_fitted_field(axis, radfielddata, xmin, xmax):
+def j_nu_dbb(arr_nu_hz, W, T):
+    """# CGS units J_nu for diluted blackbody"""
+
+    k_b = const.k_B.to('eV/K').value
+    h = const.h.to('eV s').value
+
+    if W > 0.:
+        return [W * 1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(h * nu_hz / T / k_b)) for nu_hz in arr_nu_hz]
+    else:
+        return [0. for _ in arr_nu_hz]
+
+
+def plot_fitted_field(axis, radfielddata, xmin, xmax, **plotkwargs):
     """
         Plot the fitted diluted blackbody for each bin as well as the global fit
     """
@@ -84,7 +98,9 @@ def plot_fitted_field(axis, radfielddata, xmin, xmax):
     fittedyvalues = []
     ymaxglobalfit = -1
 
-    for _, row in radfielddata.iterrows():
+    radfielddata_subset = radfielddata.copy().query('bin_num >= -1')
+
+    for _, row in radfielddata_subset.iterrows():
         if row['bin_num'] == -1 or row['W'] >= 0:
             if row['bin_num'] == -1:
                 # Full-spectrum fit
@@ -115,28 +131,63 @@ def plot_fitted_field(axis, radfielddata, xmin, xmax):
             fittedyvalues += arr_j_lambda
 
     if fittedxvalues:
-        axis.plot(fittedxvalues, fittedyvalues, linewidth=1.5, color='green', label='Fitted field', alpha=0.8)
+        axis.plot(fittedxvalues, fittedyvalues, label='Fitted field', **plotkwargs)
 
     return max(max(fittedyvalues), ymaxglobalfit)
 
 
-def j_nu_dbb(arr_nu_hz, W, T):
-    """# CGS units J_nu for diluted blackbody"""
+def plot_line_estimators(axis, radfielddata, xmin, xmax, **plotkwargs):
+    """
+        Plot the fitted diluted blackbody for each bin as well as the global fit
+    """
+    ymax = -1
 
-    k_b = const.k_B.to('eV/K').value
-    h = const.h.to('eV s').value
+    for _, row in radfielddata.query('bin_num < -1').iterrows():
+        nu_trans = row['nu_upper']
+        jb_lu_dnu = row['J_nu_avg']
 
-    if W > 0.:
-        return [W * 1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(h * nu_hz / T / k_b)) for nu_hz in arr_nu_hz]
-    else:
-        return [0. for _ in arr_nu_hz]
+        if jb_lu_dnu <= 0.:
+            continue
+
+        c = const.c.to('angstrom/s').value
+        lambda_angstroms = c / nu_trans
+        jb_lu_dlambda = jb_lu_dnu * nu_trans / lambda_angstroms
+        # print(f'Line estimator at {lambda_angstroms}Å Jb_lu = {jb_lu_dlambda} erg/s/cm^2/Å')
+
+        if jb_lu_dlambda > ymax:
+            ymax = jb_lu_dlambda
+
+        axis.vlines(x=lambda_angstroms, ymin=0., ymax=jb_lu_dlambda, **plotkwargs)
+
+    return ymax
 
 
-def make_plot(radfielddata, modelpath, specfilename, timestep, outputfile, xmin, xmax, modelgridindex, nospec=False,
-              normalised=False):
+def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=None, **plotkwargs):
+    """
+    Plot the ARTIS spectrum
+    """
+
+    print(f"Plotting {specfilename}")
+
+    dfspectrum = at.spectra.get_spectrum(specfilename, timestep)
+
+    if scale_factor:
+        dfspectrum['f_lambda'] = dfspectrum['f_lambda'] * scale_factor
+
+    if peak_value:
+        dfspectrum['f_lambda'] = dfspectrum['f_lambda'] / dfspectrum['f_lambda'].max() * peak_value
+
+    dfspectrum.plot(x='lambda_angstroms', y='f_lambda', ax=axis,
+                    label='Emergent spectrum (normalised)', **plotkwargs)
+
+
+def plot_celltimestep(
+        radfielddata, modelpath, specfilename, timestep, outputfile,
+        xmin, xmax, modelgridindex, args, normalised=False):
     """
     Draw the bin edges, fitted field, and emergent spectrum
     """
+
     time_days = at.get_timestep_time(specfilename, timestep)
 
     print(f'Plotting timestep {timestep:d} (t={time_days})')
@@ -144,28 +195,35 @@ def make_plot(radfielddata, modelpath, specfilename, timestep, outputfile, xmin,
     fig, axis = plt.subplots(1, 1, sharex=True, figsize=(8, 4),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    ymax1 = at.radfield.plot_field_estimators(axis, radfielddata)
-    ymax2 = at.radfield.plot_fitted_field(axis, radfielddata, xmin, xmax)
+    ymax1 = plot_field_estimators(axis, radfielddata, color='blue', linewidth=1.5)
+    ymax2 = plot_fitted_field(axis, radfielddata, xmin, xmax, alpha=0.8, color='green', linewidth=1.5)
+    ymax3 = plot_line_estimators(axis, radfielddata, xmin, xmax, zorder=-2, color='red', linewidth=1.0)
 
-    ymax = max(ymax1, ymax2)
+    ymax = max(ymax1, ymax2, ymax3)
 
-    if len(radfielddata) < 400:
-        binedges = [const.c.to('angstrom/s').value / radfielddata['nu_lower'].iloc[1]] + \
-            list(const.c.to('angstrom/s').value / radfielddata['nu_upper'][1:])
-        axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5,
-                    color='red', label='', zorder=-1, alpha=0.4)
-    if not nospec:
+    if not args.nospec:
+        plotkwargs = {}
         if not normalised:
-            modeldata, t_model_init = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
-            v_surface = modeldata.loc[int(radfielddata.modelgridindex.max())].velocity * u.km / u.s  # outer velocity
-            r_surface = (327.773 * u.day * v_surface).to('km')
+            modeldata, t_model_init = at.get_modeldata(modelpath)
+            # outer velocity
+            v_surface = modeldata.loc[int(radfielddata.modelgridindex.max())].velocity * u.km / u.s
+            r_surface = (time_days * u.day * v_surface).to('km')
             r_observer = u.megaparsec.to('km')
             scale_factor = (r_observer / r_surface) ** 2 / (2 * math.pi)
             print(f'Scaling emergent spectrum flux at 1 Mpc to specific intensity '
                   f'at surface (v={v_surface:.3e}, r={r_surface:.3e})')
-            plot_specout(axis, specfilename, timestep, scale_factor=scale_factor)  # peak_value=ymax)
+            plotkwargs['scale_factor'] = scale_factor
         else:
-            plot_specout(axis, specfilename, timestep, peak_value=ymax)
+            plotkwargs['peak_value'] = ymax
+
+        plot_specout(axis, specfilename, timestep, zorder=-1,
+                     color='black', alpha=0.6, linewidth=1.0, **plotkwargs)
+
+    if args.showbinedges:
+        binedges = [const.c.to('angstrom/s').value / radfielddata['nu_lower'].iloc[1]] + \
+            list(const.c.to('angstrom/s').value / radfielddata['nu_upper'][1:])
+        axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5,
+                    color='red', label='', zorder=-1, alpha=0.4)
 
     T_R = radfielddata.query('bin_num == -1').iloc[0].T_R
 
@@ -179,33 +237,15 @@ def make_plot(radfielddata, modelpath, specfilename, timestep, outputfile, xmin,
     axis.set_xlim(xmin=xmin, xmax=xmax)
     axis.set_ylim(ymin=0.0, ymax=ymax)
 
-    axis.legend(loc='best', handlelength=2,
-                frameon=False, numpoints=1, prop={'size': 13})
+    axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 13})
 
     print(f'Saving to {outputfile:s}')
     fig.savefig(outputfile, format='pdf')
     plt.close()
 
 
-def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=None):
-    """
-    Plot the ARTIS spectrum
-    """
-
-    print(f"Plotting {specfilename}")
-
-    dfspectrum = at.spectra.get_spectrum(specfilename, timestep)
-    if scale_factor:
-        dfspectrum['f_lambda'] = dfspectrum['f_lambda'] * scale_factor
-    if peak_value:
-        dfspectrum['f_lambda'] = dfspectrum['f_lambda'] / dfspectrum['f_lambda'].max() * peak_value
-
-    dfspectrum.plot(x='lambda_angstroms', y='f_lambda', ax=axis, linewidth=1.5, color='black', alpha=0.7,
-                    label='Emergent spectrum (normalised)')
-
-
 def addargs(parser):
-    parser.add_argument('-modelpath', default='',
+    parser.add_argument('-modelpath', default='.',
                         help='Path to ARTIS folder')
 
     parser.add_argument('-listtimesteps', action='store_true', default=False,
@@ -222,6 +262,9 @@ def addargs(parser):
 
     parser.add_argument('--nospec', action='store_true', default=False,
                         help='Don\'t plot the emergent specrum')
+
+    parser.add_argument('--showbinedges', action='store_true', default=False,
+                        help='Plot vertical lines at the bin edges')
 
     parser.add_argument('-xmin', type=int, default=1000,
                         help='Plot range: minimum wavelength in Angstroms')
@@ -255,22 +298,22 @@ def main(args=None, argsraw=None, **kwargs):
     if os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
-    specfilename = os.path.join(args.modelpath, 'spec.out')
+    specfilename = at.firstexisting(['spec.out', 'spec.out.gz'], path=args.modelpath)
 
     if args.listtimesteps:
         at.showtimesteptimes(args.modelpath)
     else:
-        radfield_files = (
-            glob.glob(os.path.join(args.modelpath, 'radfield_????.out'), recursive=True) +
-            glob.glob(os.path.join(args.modelpath, 'radfield_????.out.gz'), recursive=True) +
-            glob.glob(os.path.join(args.modelpath, '*/radfield_????.out'), recursive=True) +
-            glob.glob(os.path.join(args.modelpath, '*/radfield_????.out.gz'), recursive=True))
+        filenames = ['radfield_????.out', 'radfield_????.out.gz', '*/radfield_????.out', '*/radfield_????.out.gz']
+
+        radfield_files = []
+        for filename in filenames:
+            radfield_files.extend(glob.glob(os.path.join(args.modelpath, filename), recursive=True))
 
         if not radfield_files:
             print("No radfield files found")
             return 1
-        else:
-            radfielddata = at.radfield.read_files(radfield_files, args.modelgridindex)
+
+        radfielddata = read_files(radfield_files, args.modelgridindex)
 
         if not os.path.isfile(specfilename):
             print(f'Could not find {specfilename}')
@@ -290,9 +333,10 @@ def main(args=None, argsraw=None, **kwargs):
 
             if len(radfielddata_currenttimestep) > 0:
                 outputfile = args.outputfile.format(args.modelgridindex, timestep)
-                make_plot(radfielddata_currenttimestep, args.modelpath, specfilename, timestep, outputfile,
-                          xmin=args.xmin, xmax=args.xmax, modelgridindex=args.modelgridindex, nospec=args.nospec,
-                          normalised=args.normalised)
+                plot_celltimestep(
+                    radfielddata_currenttimestep, args.modelpath, specfilename, timestep, outputfile,
+                    xmin=args.xmin, xmax=args.xmax, modelgridindex=args.modelgridindex,
+                    args=args, normalised=args.normalised)
             else:
                 print(f'No data for timestep {timestep:d}')
 
