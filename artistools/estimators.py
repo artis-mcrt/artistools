@@ -231,6 +231,7 @@ def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, e
                                  '& uppermost_ionstage >= @ion_stage').empty:
             print(f"WARNING: Can't plot '{seriestype}' for Z={atomic_number} ion_stage {ion_stage} "
                   f"because this ion is not in compositiondata.txt")
+            linecount += 1
             continue
 
         if seriestype == 'populations':
@@ -403,7 +404,10 @@ def plot_timestep(modelname, timestep, mgilist, estimators, xvariable, series, m
     outfilename = args.outputfile.format(timestep=timestep, time_days=time_days)
     fig.savefig(outfilename, format='pdf')
     print(f'Saved {outfilename}')
-    plt.close()
+    if args.show:
+        plt.show()
+    else:
+        plt.close()
 
 
 def plot_recombrates(estimators, outfilename, **plotkwargs):
@@ -486,6 +490,9 @@ def addargs(parser):
     parser.add_argument('-elpop', action='store_true',
                         help='Plot ionisation as fraction of element population')
 
+    parser.add_argument('-show', action='store_true',
+                        help='Show plot before quitting')
+
 
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
@@ -525,8 +532,8 @@ def main(args=None, argsraw=None, **kwargs):
         # [['populations', ['Si I', 'Si II', 'Si III', 'Si IV', 'Si V']]],
         # [['populations', ['Cr I', 'Cr II', 'Cr III', 'Cr IV', 'Cr V']]],
         [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Fe VI', 'Fe VII', 'Fe VIII']]],
+        [['populations', ['Co I', 'Co II', 'Co III', 'Co IV', 'Co V', 'Co VI', 'Co VII']]],
         [['populations', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
-        [['populations', ['Co II', 'Co III', 'Co IV', 'Co V', 'Co VI', 'Co VII']]],
         # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Ni II', 'Ni III', 'Ar I']]],
         # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
         # [['Alpha_R / RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni III']]],
