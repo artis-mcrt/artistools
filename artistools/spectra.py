@@ -491,7 +491,7 @@ def make_spectrum_plot(modelpaths, axis, filterfunc, args, scale_to_peak=None):
         axis.set_ylabel(r'Scaled F$_\lambda$')
 
 
-def make_emission_plot(modelpath, axis, filterfunc, args, scale_to_peak=None):
+def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_peak=None):
     import scipy.interpolate as interpolate
     from cycler import cycler
     maxion = 5  # must match sn3d.h value
@@ -568,9 +568,9 @@ def make_emission_plot(modelpath, axis, filterfunc, args, scale_to_peak=None):
 
     axis.axhline(color='white', linewidth=0.5)
 
-    plotlabel = f't={args.timemin:.2f}d to {args.timemax:.2f}d\n{modelname}'
-    axis.annotate(plotlabel, xy=(0.97, 0.13), xycoords='axes fraction',
-                  horizontalalignment='right', verticalalignment='bottom', fontsize=9)
+    plotlabel = f'{modelname}\nt={args.timemin:.2f}d to {args.timemax:.2f}d'
+    axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
+                  horizontalalignment='right', verticalalignment='bottom', fontsize=7)
 
     # axis.set_ylim(ymin=-0.05 * maxyvalueglobal, ymax=maxyvalueglobal * 1.3)
     if scale_to_peak:
@@ -592,8 +592,8 @@ def make_plot(modelpaths, args):
 
     # filterfunc = None
     if args.showemission or args.showabsorption:
-        plotobjects, plotobjectlabels = make_emission_plot(modelpaths[0], axis, filterfunc,
-                                                           args, scale_to_peak=scale_to_peak)
+        plotobjects, plotobjectlabels = make_emissionabsorption_plot(
+            modelpaths[0], axis, filterfunc, args, scale_to_peak=scale_to_peak)
     else:
         make_spectrum_plot(modelpaths, axis, filterfunc, args, scale_to_peak=scale_to_peak)
         plotobjects, plotobjectlabels = axis.get_legend_handles_labels()
