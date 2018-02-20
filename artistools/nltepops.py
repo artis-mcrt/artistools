@@ -143,6 +143,7 @@ def get_nltepops(modelpath, timestep, modelgridindex):
             if filerank > modelgridindex:
                 continue
 
+            # print(f'Reading {nltefilepath}')
             dfpop = pd.read_csv(nltefilepath, delim_whitespace=True)
 
             dfpop.query('(modelgridindex==@modelgridindex) & (timestep==@timestep)', inplace=True)
@@ -293,7 +294,7 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     if args.timedays:
-        timestep = at.get_closest_timestep(os.path.join(args.modelpath, 'spec.out'), args.timedays)
+        timestep = at.get_closest_timestep(args.modelpath, args.timedays)
     else:
         timestep = int(args.timestep)
 
@@ -301,7 +302,7 @@ def main(args=None, argsraw=None, **kwargs):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     if args.listtimesteps:
-        at.showtimesteptimes('spec.out')
+        at.showtimesteptimes(modelpath)
     else:
         ionstages_permitted = at.parse_range_list(args.ionstages) if args.ionstages else None
         adata = at.get_levels(args.modelpath)
