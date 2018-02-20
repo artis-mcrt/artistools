@@ -22,6 +22,7 @@ defaultoutputfile = 'plotradfield_cell{0:03d}_{1:03d}.pdf'
 
 
 def read_files(radfield_files, modelgridindex=-1):
+    """Read radiation field data from a list of file paths into a pandas DataFrame."""
     radfielddata = None
     if not radfield_files:
         print("No radfield files")
@@ -53,12 +54,13 @@ def read_files(radfield_files, modelgridindex=-1):
     return radfielddata
 
 
-def plot_field_estimators(axis, radfielddata, **plotkwargs):
-    """
-        Plot the dJ/dlambda constant average estimators for each bin
-    """
+def plot_field_estimators(axis, radfielddata, modelgridindex=None, timestep=None, **plotkwargs):
+    """Plot the dJ/dlambda constant average estimators for each bin."""
     # exclude the global fit parameters and detailed lines with negative "bin_num"
-    bindata = radfielddata.copy().query('bin_num >= 0')
+    bindata = radfielddata.copy().query(
+        'bin_num >= 0' +
+        (' & modelgridindex==@modelgridindex' if modelgridindex else '') +
+        (' & timestep==@timestep' if timestep else ''))
 
     arr_lambda = const.c.to('angstrom/s').value / bindata['nu_upper'].values
 
@@ -79,8 +81,7 @@ def plot_field_estimators(axis, radfielddata, **plotkwargs):
 
 
 def j_nu_dbb(arr_nu_hz, W, T):
-    """# CGS units J_nu for diluted blackbody"""
-
+    """# CGS units J_nu for diluted blackbody."""
     k_b = const.k_B.to('eV/K').value
     h = const.h.to('eV s').value
 
@@ -90,15 +91,16 @@ def j_nu_dbb(arr_nu_hz, W, T):
         return [0. for _ in arr_nu_hz]
 
 
-def plot_fitted_field(axis, radfielddata, xmin, xmax, **plotkwargs):
-    """
-        Plot the fitted diluted blackbody for each bin as well as the global fit
-    """
+def plot_fitted_field(axis, radfielddata, xmin, xmax, modelgridindex=None, timestep=None, **plotkwargs):
+    """Plot the fitted diluted blackbody for each bin as well as the global fit."""
     fittedxvalues = []
     fittedyvalues = []
     ymaxglobalfit = -1
 
-    radfielddata_subset = radfielddata.copy().query('bin_num >= -1')
+    radfielddata_subset = radfielddata.copy().query(
+        'bin_num >= -1' +
+        (' & modelgridindex==@modelgridindex' if modelgridindex else '') +
+        (' & timestep==@timestep' if timestep else ''))
 
     for _, row in radfielddata_subset.iterrows():
         if row['bin_num'] == -1 or row['W'] >= 0:
@@ -136,13 +138,14 @@ def plot_fitted_field(axis, radfielddata, xmin, xmax, **plotkwargs):
     return max(max(fittedyvalues), ymaxglobalfit)
 
 
-def plot_line_estimators(axis, radfielddata, xmin, xmax, **plotkwargs):
-    """
-        Plot the Jblue_lu values from the detailed line estimators
-    """
+def plot_line_estimators(axis, radfielddata, xmin, xmax, modelgridindex=None, timestep=None, **plotkwargs):
+    """Plot the Jblue_lu values from the detailed line estimators."""
     ymax = -1
 
-    radfielddataselected = radfielddata.query('bin_num < -1')[['nu_upper', 'J_nu_avg']]
+    radfielddataselected = radfielddata.query(
+        'bin_num < -1' +
+        (' & modelgridindex==@modelgridindex' if modelgridindex else '') +
+        (' & timestep==@timestep' if timestep else ''))[['nu_upper', 'J_nu_avg']]
     const_c = const.c.to('angstrom/s').value
     radfielddataselected.eval('lambda_angstroms = @const_c / nu_upper', inplace=True)
     radfielddataselected.eval('Jb_lambda = J_nu_avg * (nu_upper ** 2) / @const_c', inplace=True)
@@ -150,16 +153,13 @@ def plot_line_estimators(axis, radfielddata, xmin, xmax, **plotkwargs):
     ymax = radfielddataselected['Jb_lambda'].max()
 
     axis.scatter(radfielddataselected['lambda_angstroms'].values, radfielddataselected['Jb_lambda'].values,
-                 label='Line estimators', s=1, **plotkwargs)
+                 label='Line estimators', s=0.2, **plotkwargs)
 
     return ymax
 
 
 def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=None, **plotkwargs):
-    """
-    Plot the ARTIS spectrum
-    """
-
+    """Plot the ARTIS spectrum."""
     print(f"Plotting {specfilename}")
 
     dfspectrum = at.spectra.get_spectrum(specfilename, timestep)
@@ -178,10 +178,7 @@ def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=Non
 def plot_celltimestep(
         radfielddata, modelpath, specfilename, timestep, outputfile,
         xmin, xmax, modelgridindex, args, normalised=False):
-    """
-    Draw the bin edges, fitted field, and emergent spectrum
-    """
-
+    """Plot for a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells)."""
     time_days = at.get_timestep_time(specfilename, timestep)
 
     print(f'Plotting timestep {timestep:d} (t={time_days})')
@@ -189,9 +186,14 @@ def plot_celltimestep(
     fig, axis = plt.subplots(1, 1, sharex=True, figsize=(8, 4),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    ymax1 = plot_field_estimators(axis, radfielddata, color='blue', linewidth=1.5)
-    ymax2 = plot_fitted_field(axis, radfielddata, xmin, xmax, alpha=0.8, color='green', linewidth=1.5)
-    ymax3 = plot_line_estimators(axis, radfielddata, xmin, xmax, zorder=-2, color='red')
+    ymax1 = plot_field_estimators(axis, radfielddata, modelgridindex=modelgridindex, timestep=timestep,
+                                  color='blue', linewidth=1.5)
+
+    ymax2 = plot_fitted_field(axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep,
+                              alpha=0.8, color='green', linewidth=1.5)
+
+    ymax3 = plot_line_estimators(axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep,
+                                 zorder=-2, color='red')
 
     ymax = max(ymax1, ymax2, ymax3)
 
@@ -239,6 +241,7 @@ def plot_celltimestep(
 
 
 def addargs(parser):
+    """Add arguments to an argparse parser object."""
     parser.add_argument('-modelpath', default='.',
                         help='Path to ARTIS folder')
 
@@ -275,16 +278,11 @@ def addargs(parser):
 
 
 def main(args=None, argsraw=None, **kwargs):
-    """
-    Plot the radiation field estimators and the fitted radiation field
-    based on the fitted field parameters (temperature and scale factor W
-    for a diluted blackbody)
-    """
-
+    """Plot the radiation field estimators."""
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-            description='Plot ARTIS internal radiation field.')
+            description='Plot ARTIS internal radiation field estimators.')
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
@@ -297,7 +295,8 @@ def main(args=None, argsraw=None, **kwargs):
     if args.listtimesteps:
         at.showtimesteptimes(args.modelpath)
     else:
-        filenames = ['radfield_????.out', 'radfield_????.out.gz', '*/radfield_????.out', '*/radfield_????.out.gz']
+        filenames = ['radfield_????.out', 'radfield_????.out.gz',
+                     '*/radfield_????.out', '*/radfield_????.out.gz']
 
         radfield_files = []
         for filename in filenames:
