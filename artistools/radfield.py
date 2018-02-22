@@ -18,8 +18,6 @@ from astropy import units as u
 import artistools as at
 import artistools.spectra
 
-defaultoutputfile = 'plotradfield_cell{0:03d}_{1:03d}.pdf'
-
 
 def read_files(radfield_files, modelgridindex=-1):
     """Read radiation field data from a list of file paths into a pandas DataFrame."""
@@ -42,7 +40,7 @@ def read_files(radfield_files, modelgridindex=-1):
                 radfielddata_thisfile.query('modelgridindex==@modelgridindex', inplace=True)
 
             if radfielddata_thisfile is not None:
-                if len(radfielddata_thisfile) > 0:
+                if not radfielddata_thisfile.empty:
                     if radfielddata is None:
                         radfielddata = radfielddata_thisfile.copy()
                     else:
@@ -52,6 +50,23 @@ def read_files(radfield_files, modelgridindex=-1):
             print("No radfield data found")
 
     return radfielddata
+
+
+def select_bin(radfielddata, nu=None, lambda_angstroms=None, modelgridindex=None, timestep=None):
+    assert nu is None or lambda_angstroms is None
+
+    if lambda_angstroms is not None:
+        nu = const.c.to('angstrom/s').value / lambda_angstroms
+    else:
+        lambda_angstroms = const.c.to('angstrom/s').value / nu
+
+    dfselected = radfielddata.query(
+        ('modelgridindex == @modelgridindex and ' if modelgridindex else '') +
+        ('timestep == @timestep and ' if timestep else '') +
+        'nu_lower <= @nu and nu_upper >= @nu and bin_num > -1')
+
+    assert not dfselected.empty
+    return dfselected.iloc[0].bin_num, dfselected.iloc[0].nu_lower, dfselected.iloc[0].nu_upper
 
 
 def plot_field_estimators(axis, radfielddata, modelgridindex=None, timestep=None, **plotkwargs):
@@ -87,8 +102,8 @@ def j_nu_dbb(arr_nu_hz, W, T):
 
     if W > 0.:
         return [W * 1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(h * nu_hz / T / k_b)) for nu_hz in arr_nu_hz]
-    else:
-        return [0. for _ in arr_nu_hz]
+
+    return [0. for _ in arr_nu_hz]
 
 
 def plot_fitted_field(axis, radfielddata, xmin, xmax, modelgridindex=None, timestep=None, **plotkwargs):
@@ -105,7 +120,7 @@ def plot_fitted_field(axis, radfielddata, xmin, xmax, modelgridindex=None, times
     for _, row in radfielddata_subset.iterrows():
         if row['bin_num'] == -1 or row['W'] >= 0:
             if row['bin_num'] == -1:
-                # Full-spectrum fit
+                # Full-spectrum fitted field should be plotted for the full x range
                 nu_lower = const.c.to('angstrom/s').value / xmin
                 nu_upper = const.c.to('angstrom/s').value / xmax
             else:
@@ -139,13 +154,14 @@ def plot_fitted_field(axis, radfielddata, xmin, xmax, modelgridindex=None, times
 
 
 def plot_line_estimators(axis, radfielddata, xmin, xmax, modelgridindex=None, timestep=None, **plotkwargs):
-    """Plot the Jblue_lu values from the detailed line estimators."""
+    """Plot the Jblue_lu values from the detailed line estimators on a spectrum."""
     ymax = -1
 
     radfielddataselected = radfielddata.query(
         'bin_num < -1' +
         (' & modelgridindex==@modelgridindex' if modelgridindex else '') +
         (' & timestep==@timestep' if timestep else ''))[['nu_upper', 'J_nu_avg']]
+
     const_c = const.c.to('angstrom/s').value
     radfielddataselected.eval('lambda_angstroms = @const_c / nu_upper', inplace=True)
     radfielddataselected.eval('Jb_lambda = J_nu_avg * (nu_upper ** 2) / @const_c', inplace=True)
@@ -178,22 +194,22 @@ def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=Non
 def plot_celltimestep(
         radfielddata, modelpath, specfilename, timestep, outputfile,
         xmin, xmax, modelgridindex, args, normalised=False):
-    """Plot for a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells)."""
+    """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells)."""
     time_days = at.get_timestep_time(specfilename, timestep)
 
     print(f'Plotting timestep {timestep:d} (t={time_days})')
 
-    fig, axis = plt.subplots(1, 1, sharex=True, figsize=(8, 4),
-                             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    fig, axis = plt.subplots(1, 1, sharex=True, figsize=(8, 4), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    ymax1 = plot_field_estimators(axis, radfielddata, modelgridindex=modelgridindex, timestep=timestep,
-                                  color='blue', linewidth=1.5)
+    ymax1 = plot_field_estimators(
+        axis, radfielddata, modelgridindex=modelgridindex, timestep=timestep, color='blue', linewidth=1.5)
 
-    ymax2 = plot_fitted_field(axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep,
-                              alpha=0.8, color='green', linewidth=1.5)
+    ymax2 = plot_fitted_field(
+        axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep,
+        alpha=0.8, color='green', linewidth=1.5)
 
-    ymax3 = plot_line_estimators(axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep,
-                                 zorder=-2, color='red')
+    ymax3 = plot_line_estimators(
+        axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep, zorder=-2, color='red')
 
     ymax = max(ymax1, ymax2, ymax3)
 
@@ -240,6 +256,108 @@ def plot_celltimestep(
     plt.close()
 
 
+def plot_bin_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex, **plotkwargs):
+    bin_num, _nu_lower, _nu_upper = select_bin(radfielddata, nu=nu_line, modelgridindex=modelgridindex)
+    # print(f"Selected bin_num {bin_num} to get a binned radiation field estimator")
+
+    radfielddataselected = radfielddata.query(
+        'bin_num == @bin_num and modelgridindex == @modelgridindex'
+        ' and nu_lower <= @nu_line and nu_upper >= @nu_line').copy()
+
+    radfielddataselected['Jb_nu_at_line'] = radfielddataselected.apply(
+        lambda x: j_nu_dbb([nu_line], x.W, x.T_R)[0], axis=1)
+
+    const_c = const.c.to('angstrom/s').value
+    radfielddataselected.eval('Jb_lambda_at_line = Jb_nu_at_line * (@nu_line ** 2) / @const_c', inplace=True)
+    lambda_angstroms = const_c / nu_line
+
+    radfielddataselected.plot(x='timestep', y='Jb_lambda_at_line', ax=axis,
+                              label=f'Fitted field from bin at {lambda_angstroms:.1f} Å', **plotkwargs)
+
+
+def plot_global_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex, **plotkwargs):
+    radfielddataselected = radfielddata.query('bin_num == -1 and modelgridindex == @modelgridindex').copy()
+
+    radfielddataselected['J_nu_fullspec_at_line'] = radfielddataselected.apply(
+        lambda x: j_nu_dbb([nu_line], x.W, x.T_R)[0], axis=1)
+
+    const_c = const.c.to('angstrom/s').value
+    radfielddataselected.eval('J_lambda_fullspec_at_line = J_nu_fullspec_at_line * (@nu_line ** 2) / @const_c', inplace=True)
+    lambda_angstroms = const_c / nu_line
+
+    radfielddataselected.plot(x='timestep', y='J_lambda_fullspec_at_line', ax=axis,
+                              label=f'Full-spec fitted field at {lambda_angstroms:.1f} Å', **plotkwargs)
+
+
+def plot_line_estimator_evolution(axis, radfielddata, bin_num, modelgridindex=None,
+                                  timestep_min=None, timestep_max=None, **plotkwargs):
+    """Plot the Jblue_lu values over time for a detailed line estimators."""
+
+    radfielddataselected = radfielddata.query(
+        'bin_num == @bin_num' +
+        (' & modelgridindex == @modelgridindex' if modelgridindex else '') +
+        (' & timestep >= @timestep_min' if timestep_min else '') +
+        (' & timestep <= @timestep_max' if timestep_max else ''))[['timestep', 'nu_upper', 'J_nu_avg']]
+
+    const_c = const.c.to('angstrom/s').value
+    radfielddataselected.eval('lambda_angstroms = @const_c / nu_upper', inplace=True)
+    radfielddataselected.eval('Jb_lambda = J_nu_avg * (nu_upper ** 2) / @const_c', inplace=True)
+
+    axis.plot(radfielddataselected['timestep'].values, radfielddataselected['Jb_lambda'].values,
+              label=f'Jb_lu bin_num {bin_num}', **plotkwargs)
+
+
+def plot_timeevolution(
+        radfielddata, modelpath, outputfile, modelgridindex, args):
+    """Plot a estimator evolution over time for a cell."""
+    print(f'Plotting time evolution of cell {modelgridindex:d}')
+
+    radfielddataselected = radfielddata.query('modelgridindex == @modelgridindex')
+
+    const_c = const.c.to('angstrom/s').value
+
+    nlinesplotted = 10
+    fig, axes = plt.subplots(nlinesplotted, 1, sharex=True, figsize=(8, 1 + 3 * nlinesplotted), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+
+    time_days = 330
+    timestep = at.get_closest_timestep(modelpath, time_days)
+    time_days = float(at.get_timestep_time(modelpath, timestep))
+
+    dftopestimators = radfielddataselected.query('timestep==@timestep and bin_num < -1').copy()
+    dftopestimators.eval('lambda_angstroms = @const_c / nu_upper', inplace=True)
+    dftopestimators.eval('Jb_lambda = J_nu_avg * (nu_upper ** 2) / @const_c', inplace=True)
+    dftopestimators.sort_values(by='Jb_lambda', ascending=False, inplace=True)
+    dftopestimators = dftopestimators.iloc[0:nlinesplotted]
+
+    print(f'Top estimators at timestep {timestep} t={time_days:.1f}')
+    print(dftopestimators)
+
+    for ax, bin_num_estimator, nu_line in zip(axes, dftopestimators.bin_num.values, dftopestimators.nu_upper.values):
+        lambda_angstroms = const_c / nu_line
+        print(f"Selected line estimator with bin_num {bin_num_estimator}, lambda={lambda_angstroms:.1f}")
+        plot_line_estimator_evolution(ax, radfielddataselected, bin_num_estimator, modelgridindex=modelgridindex)
+
+        plot_bin_fitted_field_evolution(ax, radfielddata, nu_line, modelgridindex=modelgridindex)
+
+        plot_global_fitted_field_evolution(ax, radfielddata, nu_line, modelgridindex=modelgridindex)
+        ax.annotate(
+            f'$\lambda$={lambda_angstroms:.1f} Å in cell {modelgridindex:d}\n',
+            xy=(0.02, 0.96), xycoords='axes fraction',
+            horizontalalignment='left', verticalalignment='top', fontsize=10)
+
+        ax.set_ylabel(r'J$_\lambda$ [erg/s/cm$^2$/$\AA$]')
+        ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 10})
+
+    axes[-1].set_xlabel(r'Timestep')
+    # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
+    # axis.set_xlim(xmin=xmin, xmax=xmax)
+    # axis.set_ylim(ymin=0.0, ymax=ymax)
+
+    print(f'Saving to {outputfile:s}')
+    fig.savefig(outputfile, format='pdf')
+    plt.close()
+
+
 def addargs(parser):
     """Add arguments to an argparse parser object."""
     parser.add_argument('-modelpath', default='.',
@@ -247,6 +365,9 @@ def addargs(parser):
 
     parser.add_argument('-listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
+
+    parser.add_argument('-xaxis', '-x', default='lambda', choices=['lambda', 'timestep'],
+                        help='Horizontal axis variable.')
 
     parser.add_argument('-timedays', '-time', '-t',
                         help='Time in days to plot')
@@ -273,7 +394,6 @@ def addargs(parser):
                         help='Normalise the spectra to their peak values')
 
     parser.add_argument('-o', action='store', dest='outputfile',
-                        default=defaultoutputfile,
                         help='Filename for PDF file')
 
 
@@ -287,7 +407,14 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    if os.path.isdir(args.outputfile):
+    if args.xaxis == 'lambda':
+        defaultoutputfile = 'plotradfield_cell{modelgridindex:03d}_{timestep:03d}.pdf'
+    else:
+        defaultoutputfile = 'plotradfield_cell{modelgridindex:03d}_evolution.pdf'
+
+    if not args.outputfile:
+        args.outputfile = defaultoutputfile
+    elif os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     specfilename = at.firstexisting(['spec.out', 'spec.out.gz'], path=args.modelpath)
@@ -321,17 +448,24 @@ def main(args=None, argsraw=None, **kwargs):
             print("Using last timestep.")
             timesteplist = [timesteplast]
 
-        for timestep in timesteplist:
-            radfielddata_currenttimestep = radfielddata.query('timestep==@timestep')
+        if args.xaxis == 'lambda':
+            for timestep in timesteplist:
+                radfielddata_currenttimestep = radfielddata.query('timestep==@timestep')
 
-            if len(radfielddata_currenttimestep) > 0:
-                outputfile = args.outputfile.format(args.modelgridindex, timestep)
-                plot_celltimestep(
-                    radfielddata_currenttimestep, args.modelpath, specfilename, timestep, outputfile,
-                    xmin=args.xmin, xmax=args.xmax, modelgridindex=args.modelgridindex,
-                    args=args, normalised=args.normalised)
-            else:
-                print(f'No data for timestep {timestep:d}')
+                if not radfielddata_currenttimestep.empty:
+                    outputfile = args.outputfile.format(modelgridindex=args.modelgridindex, timestep=timestep)
+                    plot_celltimestep(
+                        radfielddata_currenttimestep, args.modelpath, specfilename, timestep, outputfile,
+                        xmin=args.xmin, xmax=args.xmax, modelgridindex=args.modelgridindex,
+                        args=args, normalised=args.normalised)
+                else:
+                    print(f'No data for timestep {timestep:d}')
+        elif args.xaxis == 'timestep':
+            outputfile = args.outputfile.format(modelgridindex=args.modelgridindex)
+            plot_timeevolution(radfielddata, args.modelpath, outputfile, args.modelgridindex, args)
+        else:
+            print('Unknown plot type {args.plot}')
+            return 1
 
     return 0
 
