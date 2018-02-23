@@ -8,13 +8,17 @@
 ARTIS (Sim et al. 2007; Kromer & Sim 2009) is a 3D radiative transfer code for Type Ia supernovae using the Monte Carlo method with indivisible energy packets (Lucy 2002). The simulation code is not publicly available.
 
 ## Installation
-First clone the repository, then run:
+First clone the repository, for example:
+```sh
+git clone https://github.com/lukeshingles/artistools.git
+```
+Then from the repo directory run:
 ```sh
 python setup.py develop
 ```
 
 ## Usage
-First cd into an ARTIS simulation folder. artistools provides the following commands:
+Artistools provides the following commands:
   - getartismodeldeposition
   - getartisspencerfano
   - makeartismodel1dslicefrom3d
@@ -28,7 +32,7 @@ First cd into an ARTIS simulation folder. artistools provides the following comm
   - plotartisspectrum
   - plotartistransitions
 
-Use the -h option to get a list of command-line arguments for each subcommand.
+Use the -h option to get a list of command-line arguments for each subcommand. Most of these commands would usually be run from within an ARTIS simulation folder.
 
 ## Meta
 
