@@ -620,10 +620,10 @@ def make_plot(modelpaths, args):
     plt.close()
 
 
-def write_spectrum_to_file(modelpaths):
+def write_flambda_spectra(modelpath):
     """
     Write lambda_angstroms and f_lambda to .txt file for all timesteps. Also write text file with path to files and a
-    file specifying filters. This can be used as input to https://github.com/cinserra/S3 SMS.py to plot Synthetic
+    file specifying filters. This can be used as input to https://github.com/cinserra/S3/blob/master/src/s3/SMS.py to plot Synthetic
     Magnitudes from Spectra
     """
 
@@ -634,7 +634,7 @@ def write_spectrum_to_file(modelpaths):
     open(outdirectory + 'spectra_list.txt', 'w+').close()  # clear files
     open(outdirectory + 'filter_list.txt', 'w+').close()
 
-    specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpaths)
+    specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     number_of_timesteps = len(specdata.keys()) - 1
 
@@ -645,23 +645,19 @@ def write_spectrum_to_file(modelpaths):
 
     for timestep in range(0, number_of_timesteps):
 
-        spectrum = get_spectrum(modelpaths, timestep, timestep)
+        spectrum = get_spectrum(modelpath, timestep, timestep)
 
         spec_file = open(outdirectory + 'spec_data_ts_' + str(timestep) + '.txt', 'w+')
 
         for x, y in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
-            spec_file.write(str(x))
-            spec_file.write(' ')
-            spec_file.write(str(y))
-            spec_file.write('\n')
+            spec_file.write(f'{x} {y}\n')
         spec_file.close()
 
         spectra_list.write(os.path.realpath(outdirectory + 'spec_data_ts_' + str(timestep) + '.txt'))
         spectra_list.write('\n')
 
         for i in filter_name:
-            filter_list.write(i)
-            filter_list.write('\n')
+            filter_list.write(f'{i}\n')
 
     spectra_list.close()
     filter_list.close()
@@ -767,8 +763,8 @@ def main(args=None, argsraw=None, **kwargs):
         specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpaths[0])
         at.showtimesteptimes(specfilename)
     elif args.output_spectrum:
-        write_spectrum_to_file('.')
-        return
+        for modelpath in modelpaths:
+            write_flambda_spectra(modelpath)
     else:
         if args.emissionabsorption:
             args.showemission = True
