@@ -622,9 +622,9 @@ def make_plot(modelpaths, args):
 
 def write_flambda_spectra(modelpath):
     """
-    Write lambda_angstroms and f_lambda to .txt file for all timesteps. Also write text file with path to files and a
-    file specifying filters. This can be used as input to https://github.com/cinserra/S3/blob/master/src/s3/SMS.py to plot Synthetic
-    Magnitudes from Spectra
+    Write lambda_angstroms and f_lambda to .txt files for all timesteps. Also write text file with path to files and a
+    file specifying filters. This can be used as input to https://github.com/cinserra/S3/blob/master/src/s3/SMS.py
+    to plot synthetic magnitudes from spectra
     """
 
     outdirectory = 'spectrum_data/'
