@@ -110,7 +110,7 @@ def get_modeldata(filename):
             if len(modeldata) == gridcellcount:
                 break
 
-    assert(len(modeldata) <= gridcellcount)
+    assert len(modeldata) <= gridcellcount
     modeldata.index.name = 'cellid'
     return modeldata, t_model_init_days
 
@@ -286,7 +286,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
                     row = line.split()
                     levelname = row[4].strip('\'')
                     numberin = int(row[0])
-                    assert(levelindex == numberin - firstlevelnumber)
+                    assert levelindex == numberin - firstlevelnumber
                     phixstable = phixsdict.get((Z, ionstage, numberin), [])
                     level_list.append(leveltuple(float(row[1]), float(row[2]), int(row[3]), levelname, phixstable))
                 dflevels = pd.DataFrame(level_list)
@@ -344,7 +344,7 @@ def get_model_name_times(modelpath, timearray, timestep_range_str, timemin, time
             timemax = float(timearray[-1].strip('d'))
         for timestep, time in enumerate(timearray):
             timefloat = float(time.strip('d'))
-            if (timefloat + get_timestep_time_delta(timestep, timearray) <= timemax):
+            if timefloat + get_timestep_time_delta(timestep, timearray) <= timemax:
                 timestepmax = timestep
 
     modelname = get_model_name(modelpath)
