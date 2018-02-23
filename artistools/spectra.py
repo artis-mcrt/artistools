@@ -620,7 +620,7 @@ def make_plot(modelpaths, args):
     plt.close()
 
 
-def write_flambda_spectra(modelpath):
+def write_flambda_spectra(modelpath, args):
     """
     Write lambda_angstroms and f_lambda to .txt files for all timesteps. Also write text file with path to files and a
     file specifying filters. This can be used as input to https://github.com/cinserra/S3/blob/master/src/s3/SMS.py
@@ -631,19 +631,28 @@ def write_flambda_spectra(modelpath):
 
     if not os.path.exists('spectrum_data'):
         os.makedirs('spectrum_data')
+
     open(outdirectory + 'spectra_list.txt', 'w+').close()  # clear files
     open(outdirectory + 'filter_list.txt', 'w+').close()
 
     specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
+    timearray = specdata.columns.values[1:]
     number_of_timesteps = len(specdata.keys()) - 1
+
+    if not args.timestep:
+        args.timestep = f'0-{number_of_timesteps - 1}'
+
+    (modelname, timestepmin, timestepmax,
+     args.timemin, args.timemax) = at.get_model_name_times(
+         specfilename, timearray, args.timestep, args.timemin, args.timemax)
 
     spectra_list = open(outdirectory + 'spectra_list.txt', 'a')
     filter_list = open(outdirectory + 'filter_list.txt', 'a')
 
     filter_name = ['B', 'V', 'R', 'U']
 
-    for timestep in range(0, number_of_timesteps):
+    for timestep in range(timestepmin, timestepmax + 1):
 
         spectrum = get_spectrum(modelpath, timestep, timestep)
 
@@ -691,7 +700,7 @@ def addargs(parser):
     parser.add_argument('-maxseriescount', type=int, default=12,
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')
 
-    parser.add_argument('-listtimesteps', action='store_true', default=False,
+    parser.add_argument('--listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
 
     parser.add_argument('-timestep', '-ts', nargs='?',
@@ -724,8 +733,8 @@ def addargs(parser):
     parser.add_argument('-o', action='store', dest='outputfile',
                         help='path/filename for PDF file')
 
-    parser.add_argument('-output_spectrum', action='store_true',
-                        help='Print spectrum to text file')
+    parser.add_argument('--output_spectra', action='store_true',
+                        help='Write out spectra to text files')
 
 
 def main(args=None, argsraw=None, **kwargs):
@@ -762,9 +771,9 @@ def main(args=None, argsraw=None, **kwargs):
     if args.listtimesteps:
         specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpaths[0])
         at.showtimesteptimes(specfilename)
-    elif args.output_spectrum:
+    elif args.output_spectra:
         for modelpath in modelpaths:
-            write_flambda_spectra(modelpath)
+            write_flambda_spectra(modelpath, args)
     else:
         if args.emissionabsorption:
             args.showemission = True
