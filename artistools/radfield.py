@@ -316,8 +316,9 @@ def plot_timeevolution(
 
     const_c = const.c.to('angstrom/s').value
 
-    nlinesplotted = 10
-    fig, axes = plt.subplots(nlinesplotted, 1, sharex=True, figsize=(8, 1 + 3 * nlinesplotted), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    nlinesplotted = 200
+    fig, axes = plt.subplots(nlinesplotted, 1, sharex=True, figsize=(8, 1 + 3 * nlinesplotted),
+                             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     time_days = 330
     timestep = at.get_closest_timestep(modelpath, time_days)
@@ -408,7 +409,7 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     if args.xaxis == 'lambda':
-        defaultoutputfile = 'plotradfield_cell{modelgridindex:03d}_{timestep:03d}.pdf'
+        defaultoutputfile = 'plotradfield_cell{modelgridindex:03d}_ts{timestep:03d}.pdf'
     else:
         defaultoutputfile = 'plotradfield_cell{modelgridindex:03d}_evolution.pdf'
 
