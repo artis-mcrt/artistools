@@ -317,23 +317,30 @@ def get_model_name(path):
 
     try:
         plotlabelfile = os.path.join(folderpath, 'plotlabel.txt')
-        return (open(plotlabelfile, mode='r').readline().strip())
+        return open(plotlabelfile, mode='r').readline().strip()
     except FileNotFoundError:
         return os.path.basename(folderpath)
 
 
-def get_model_name_times(modelpath, timearray, timestep_range_str, timemin, timemax):
-    """Get the model name, and handle a time range specified in either days or timesteps"""
-    if timestep_range_str:
+def get_time_range(timearray, timestep_range_str, timemin, timemax, timedays_range_str):
+    """Handle a time range specified in either days or timesteps"""
+
+    # assertions make sure time is specified either by timesteps or times in days, but not both!
+    if timestep_range_str is not None:
+        assert timemin is None and timemax is None and timedays_range_str is None
+
         if '-' in timestep_range_str:
             timestepmin, timestepmax = [int(nts) for nts in timestep_range_str.split('-')]
         else:
             timestepmin = int(timestep_range_str)
             timestepmax = timestepmin
     else:
+        assert (timemin is None and timemax is None and timedays_range_str is not None or
+                timemin is not None and timemax is not None and timedays_range_str is None)
+        if timedays_range_str is not None and '-' in timedays_range_str:
+            timemin, timemax = [float(timedays) for timedays in timedays_range_str.split('-')]
+
         timestepmin = None
-        if not timemin:
-            timemin = 0.
         for timestep, time in enumerate(timearray):
             timefloat = float(time.strip('d'))
             if float(timemin) <= timefloat:
@@ -351,15 +358,10 @@ def get_model_name_times(modelpath, timearray, timestep_range_str, timemin, time
             if timefloat + get_timestep_time_delta(timestep, timearray) <= timemax:
                 timestepmax = timestep
 
-    modelname = get_model_name(modelpath)
-
     time_days_lower = float(timearray[timestepmin])
     time_days_upper = float(timearray[timestepmax]) + get_timestep_time_delta(timestepmax, timearray)
 
-    print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
-          f'(t={time_days_lower:.3f}d to {time_days_upper:.3f}d)')
-
-    return modelname, timestepmin, timestepmax, time_days_lower, time_days_upper
+    return timestepmin, timestepmax, time_days_lower, time_days_upper
 
 
 def get_atomic_number(elsymbol):

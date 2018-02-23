@@ -434,10 +434,12 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
 
 
 def plot_artis_spectrum(axis, modelpath, args, scale_to_peak=None, from_packets=False, filterfunc=None, **plotkwargs):
-    (modelname, timestepmin, timestepmax,
-     args.timemin, args.timemax) = at.get_model_name_times(
-         modelpath, at.get_timestep_times(modelpath),
-         args.timestep, args.timemin, args.timemax)
+    (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+        at.get_timestep_times(modelpath), args.timestep, args.timemin, args.timemax, args.timedays)
+
+    modelname = at.get_model_name(modelpath)
+    print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
+          f'(t={args.timemin:.3f}d to {args.timemax:.3f}d)')
 
     linelabel = f'{modelname} at t={args.timemin:.2f}d to {args.timemax:.2f}d'
 
@@ -506,9 +508,13 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     arraynu = specdata.loc[:, '0'].values
     arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
 
-    (modelname, timestepmin, timestepmax,
-     args.timemin, args.timemax) = at.get_model_name_times(
-         specfilename, timearray, args.timestep, args.timemin, args.timemax)
+    (timestepmin, timestepmax,
+     args.timemin, args.timemax) = at.get_time_range(
+         timearray, args.timestep, args.timemin, args.timemax, args.timedays)
+
+    modelname = at.get_model_name(modelpath)
+    print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
+          f'(t={args.timemin:.3f}d to {args.timemax:.3f}d)')
 
     absorptionfilename = at.firstexisting(['absorption.out.gz', 'absorption.out'], path=modelpath)
     contribution_list, max_flambda_emission_contrib, array_flambda_emission_total = at.spectra.get_flux_contributions(
@@ -643,9 +649,8 @@ def write_flambda_spectra(modelpath, args):
     if not args.timestep:
         args.timestep = f'0-{number_of_timesteps - 1}'
 
-    (_modelname, timestepmin, timestepmax,
-     args.timemin, args.timemax) = at.get_model_name_times(
-         specfilename, timearray, args.timestep, args.timemin, args.timemax)
+    (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+        timearray, args.timestep, args.timemin, args.timemax, args.timedays)
 
     spectra_list = open(outdirectory + 'spectra_list.txt', 'a')
     filter_list = open(outdirectory + 'filter_list.txt', 'a')
@@ -704,6 +709,9 @@ def addargs(parser):
 
     parser.add_argument('-timestep', '-ts', nargs='?',
                         help='First timestep or a range e.g. 45-65')
+
+    parser.add_argument('-timedays', '-time', '-t', nargs='?',
+                        help='Range of times in days to plot (e.g. 50-100)')
 
     parser.add_argument('-timemin', type=float,
                         help='Lower time in days to integrate spectrum')
