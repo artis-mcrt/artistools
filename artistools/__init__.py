@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# PYTHON_ARGCOMPLETE_OK
 import gzip
 import math
 import os.path
