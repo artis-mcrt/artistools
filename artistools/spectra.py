@@ -624,7 +624,7 @@ def write_flambda_spectra(modelpath, args):
     """
     Write lambda_angstroms and f_lambda to .txt files for all timesteps. Also write text file with path to files and a
     file specifying filters. This can be used as input to https://github.com/cinserra/S3/blob/master/src/s3/SMS.py
-    to plot synthetic magnitudes from spectra
+    to plot synthetic magnitudes from spectra.
     """
 
     outdirectory = 'spectrum_data/'
@@ -658,8 +658,8 @@ def write_flambda_spectra(modelpath, args):
 
         spec_file = open(outdirectory + 'spec_data_ts_' + str(timestep) + '.txt', 'w+')
 
-        for x, y in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
-            spec_file.write(f'{x} {y}\n')
+        for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
+            spec_file.write(f'{wavelength} {flambda}\n')
         spec_file.close()
 
         spectra_list.write(os.path.realpath(outdirectory + 'spec_data_ts_' + str(timestep) + '.txt') + '\n')
