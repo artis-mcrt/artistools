@@ -41,9 +41,7 @@ console_scripts.append('artistools = artistools:main')
 
 
 def showtimesteptimes(specfilename, modelpath=None, numberofcolumns=5):
-    """
-        Print a table showing the timeteps and their corresponding times
-    """
+    """Print a table showing the timesteps and their corresponding times."""
     if modelpath is not None:
         specfilename = firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
@@ -58,16 +56,12 @@ def showtimesteptimes(specfilename, modelpath=None, numberofcolumns=5):
                 strline += '\t'
             newindex = rownum + colnum * indexendofcolumnone
             if newindex + 1 < len(times):
-                strline += f'{newindex:4d}: {float(times[newindex + 1]):.3f}'
+                strline += f'{newindex:4d}: {float(times[newindex + 1]):.3f}d'
         print(strline)
 
 
 def get_composition_data(filename):
-    """
-        Return a pandas DataFrame containing details of included
-        elements and ions
-    """
-
+    """Return a pandas DataFrame containing details of included elements and ions."""
     if os.path.isdir(filename):
         filename = os.path.join(filename, 'compositiondata.txt')
 
@@ -95,9 +89,7 @@ def get_composition_data(filename):
 
 
 def get_modeldata(filename):
-    """
-        Return a list containing named tuples for all model grid cells
-    """
+    """Return a list containing named tuples for all model grid cells."""
     if os.path.isdir(filename):
         filename = firstexisting(['model.txt.gz', 'model.txt'], path=filename)
 
@@ -134,7 +126,6 @@ def save_modeldata(dfmodeldata, t_model_init_days, filename) -> None:
 
 def get_initialabundances(abundancefilename):
     """Return a list of mass fractions."""
-
     if os.path.isdir(abundancefilename):
         abundancefilename = firstexisting(['abundances.txt.gz', 'abundances.txt'], path=abundancefilename)
 
@@ -144,7 +135,8 @@ def get_initialabundances(abundancefilename):
     return abundancedata
 
 
-def save_initialabundances(dfabundances, abundancefilename) -> None:
+def save_initialabundances(dfabundances, abundancefilename):
+    """Save a DataFrame (same format as get_initialabundances) to model.txt."""
     dfabundances['inputcellid'] = dfabundances['inputcellid'].astype(np.int)
     dfabundances.to_csv(abundancefilename, header=False, sep=' ', index=False)
 
@@ -165,7 +157,9 @@ def get_timestep_times_float(specfilename):
 
 
 def get_closest_timestep(specfilename, timedays):
+    """Return the timestep number whose time is closest to timedays"""
     try:
+        # could be a string like '330d'
         timedays_float = float(timedays.rstrip('d'))
     except AttributeError:
         timedays_float = float(timedays)
@@ -325,6 +319,7 @@ def get_model_name(path):
 
 
 def get_model_name_times(modelpath, timearray, timestep_range_str, timemin, timemax):
+    """Get the model name, and handle a time range specified in either days or timesteps"""
     if timestep_range_str:
         if '-' in timestep_range_str:
             timestepmin, timestepmax = [int(nts) for nts in timestep_range_str.split('-')]
@@ -381,15 +376,20 @@ def get_ionstring(atomic_number, ionstage):
 
 
 # based on code from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
-def parse_range(rng, dictvars):
+def parse_range(rng, dictvars={}):
+    """Take a string like 23-26 and return [23, 24, 25, 26], also replacing special variables in dictvars"""
     parts = rng.split('-')
+
     if len(parts) not in [1, 2]:
         raise ValueError("Bad range: '%s'" % (rng,))
+
     parts = [int(i) if i not in dictvars else dictvars[i] for i in parts]
     start = parts[0]
     end = start if len(parts) == 1 else parts[1]
+
     if start > end:
         end, start = start, end
+
     return range(start, end + 1)
 
 
@@ -401,14 +401,13 @@ def parse_range_list(rngs, dictvars={}):
 
 
 def opengzip(filename, mode):
+    """Open filename.gz or filename."""
     filenamegz = filename + '.gz'
-    if os.path.exists(filenamegz):
-        return gzip.open(filenamegz, mode)
-    else:
-        return open(filename, mode)
+    return gzip.open(filenamegz, mode) if os.path.exists(filenamegz) else open(filename, mode)
 
 
 def firstexisting(filelist, path='.'):
+    """Return the first existing file in filelist"""
     for filename in filelist:
         if os.path.exists(os.path.join(path, filename)):
             return os.path.join(path, filename)
@@ -416,6 +415,7 @@ def firstexisting(filelist, path='.'):
 
 
 def main(argsraw=None):
+    """Show a list of available artistools commands."""
     import argcomplete
     import argparse
     import importlib
