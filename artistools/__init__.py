@@ -25,21 +25,21 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
 commandlist = [
-    ('getartismodeldeposition', 'deposition'),
-    ('getartisspencerfano', 'spencerfano'),
-    ('makeartismodel1dslicefrom3d', 'makemodel.1dslicefrom3d'),
-    ('makeartismodelbotyanski2017', 'makemodel.botyanski2017'),
-    ('plotartisestimators', 'estimators'),
-    ('plotartislightcurve', 'lightcurve'),
-    ('plotartisnltepops', 'nltepops'),
-    ('plotartismacroatom', 'macroatom'),
-    ('plotartisnonthermal', 'nonthermal'),
-    ('plotartisradfield', 'radfield'),
-    ('plotartisspectrum', 'spectra'),
-    ('plotartistransitions', 'transitions'),
+    ('getartismodeldeposition', 'deposition:main'),
+    ('getartisspencerfano', 'spencerfano:main'),
+    ('makeartismodel1dslicefrom3d', 'makemodel.1dslicefrom3d:main'),
+    ('makeartismodelbotyanski2017', 'makemodel.botyanski2017:main'),
+    ('plotartisestimators', 'estimators:main'),
+    ('plotartislightcurve', 'lightcurve:main'),
+    ('plotartisnltepops', 'nltepops:main'),
+    ('plotartismacroatom', 'macroatom:main'),
+    ('plotartisnonthermal', 'nonthermal:main'),
+    ('plotartisradfield', 'radfield:main'),
+    ('plotartisspectrum', 'spectra:main'),
+    ('plotartistransitions', 'transitions:main'),
 ]
 
-console_scripts = [f'{command} = artistools.{submodulename}:main' for command, submodulename in commandlist]
+console_scripts = [f'{command} = artistools.{submodulename}' for command, submodulename in commandlist]
 console_scripts.append('at = artistools:main')
 console_scripts.append('artistools = artistools:main')
 
@@ -380,7 +380,7 @@ def get_ionstring(atomic_number, ionstage):
 
 # based on code from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
 def parse_range(rng, dictvars={}):
-    """Take a string like 23-26 and return [23, 24, 25, 26], also replacing special variables in dictvars"""
+    """Take a string with an integer range like 23-26 and return [23, 24, 25, 26], also replacing special variables in dictvars"""
     parts = rng.split('-')
 
     if len(parts) not in [1, 2]:
@@ -397,6 +397,9 @@ def parse_range(rng, dictvars={}):
 
 
 def parse_range_list(rngs, dictvars={}):
+    """Parse a string with comma-separated ranges or a list of range strings.
+
+    Return a sorted list of integers in any of the ranges."""
     if isinstance(rngs, list):
         rngs = ','.join(rngs)
 
