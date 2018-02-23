@@ -216,7 +216,7 @@ def plot_celltimestep(
     if not args.nospec:
         plotkwargs = {}
         if not normalised:
-            modeldata, t_model_init = at.get_modeldata(modelpath)
+            modeldata, _t_model_init = at.get_modeldata(modelpath)
             # outer velocity
             v_surface = modeldata.loc[int(radfielddata.modelgridindex.max())].velocity * u.km / u.s
             r_surface = (time_days * u.day * v_surface).to('km')
