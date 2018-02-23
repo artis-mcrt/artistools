@@ -337,11 +337,12 @@ def get_model_name_times(modelpath, timearray, timestep_range_str, timemin, time
             timemin = 0.
         for timestep, time in enumerate(timearray):
             timefloat = float(time.strip('d'))
-            if (timemin <= timefloat):
+            print(float(timemin), timefloat, timestep, float(timemin) <= timefloat)
+            if (float(timemin) <= timefloat):
                 timestepmin = timestep
                 break
 
-        if not timestepmin:
+        if timestepmin is None:
             print(f"Time min {timemin} is greater than all timesteps ({timearray[0]} to {timearray[-1]})")
             sys.exit()
 
