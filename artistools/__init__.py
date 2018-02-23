@@ -25,21 +25,21 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
 commandlist = [
-    ('getartismodeldeposition', 'deposition:main'),
-    ('getartisspencerfano', 'spencerfano:main'),
-    ('makeartismodel1dslicefrom3d', 'makemodel.1dslicefrom3d:main'),
-    ('makeartismodelbotyanski2017', 'makemodel.botyanski2017:main'),
-    ('plotartisestimators', 'estimators:main'),
-    ('plotartislightcurve', 'lightcurve:main'),
-    ('plotartisnltepops', 'nltepops:main'),
-    ('plotartismacroatom', 'macroatom:main'),
-    ('plotartisnonthermal', 'nonthermal:main'),
-    ('plotartisradfield', 'radfield:main'),
-    ('plotartisspectrum', 'spectra:main'),
-    ('plotartistransitions', 'transitions:main'),
+    ('getartismodeldeposition', 'deposition'),
+    ('getartisspencerfano', 'spencerfano'),
+    ('makeartismodel1dslicefrom3d', 'makemodel.1dslicefrom3d'),
+    ('makeartismodelbotyanski2017', 'makemodel.botyanski2017'),
+    ('plotartisestimators', 'estimators'),
+    ('plotartislightcurve', 'lightcurve'),
+    ('plotartisnltepops', 'nltepops'),
+    ('plotartismacroatom', 'macroatom'),
+    ('plotartisnonthermal', 'nonthermal'),
+    ('plotartisradfield', 'radfield'),
+    ('plotartisspectrum', 'spectra'),
+    ('plotartistransitions', 'transitions'),
 ]
 
-console_scripts = [f'{command} = artistools.{submodulename}' for command, submodulename in commandlist]
+console_scripts = [f'{command} = artistools.{submodulename}:main' for command, submodulename in commandlist]
 console_scripts.append('at = artistools:main')
 console_scripts.append('artistools = artistools:main')
 
