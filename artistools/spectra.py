@@ -620,6 +620,55 @@ def make_plot(modelpaths, args):
     plt.close()
 
 
+def write_spectrum_to_file(modelpaths):
+    """
+    Write lambda_angstroms and f_lambda to .txt file for all timesteps. Also write text file with path to files and a
+    file specifying filters. This can be used as input to https://github.com/cinserra/S3 SMS.py to plot Synthetic
+    Magnitudes from Spectra
+    """
+
+    outdirectory = 'spectrum_data/'
+
+    if not os.path.exists('spectrum_data'):
+        os.makedirs('spectrum_data')
+    open(outdirectory + 'spectra_list.txt', 'w+').close()  # clear files
+    open(outdirectory + 'filter_list.txt', 'w+').close()
+
+    specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpaths)
+    specdata = pd.read_csv(specfilename, delim_whitespace=True)
+    number_of_timesteps = len(specdata.keys()) - 1
+
+    spectra_list = open(outdirectory + 'spectra_list.txt', 'a')
+    filter_list = open(outdirectory + 'filter_list.txt', 'a')
+
+    filter_name = ['B', 'V', 'R', 'U']
+
+    for timestep in range(0, number_of_timesteps):
+
+        spectrum = get_spectrum(modelpaths, timestep, timestep)
+
+        spec_file = open(outdirectory + 'spec_data_ts_' + str(timestep) + '.txt', 'w+')
+
+        for x, y in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
+            spec_file.write(str(x))
+            spec_file.write(' ')
+            spec_file.write(str(y))
+            spec_file.write('\n')
+        spec_file.close()
+
+        spectra_list.write(os.path.realpath(outdirectory + 'spec_data_ts_' + str(timestep) + '.txt'))
+        spectra_list.write('\n')
+
+        for i in filter_name:
+            filter_list.write(i)
+            filter_list.write('\n')
+
+    spectra_list.close()
+    filter_list.close()
+
+    print('Saved in ' + outdirectory)
+
+
 def addargs(parser):
     parser.add_argument('-modelpath', default=[], nargs='*', action='append',
                         help='Paths to ARTIS folders with spec.out or packets files'
@@ -679,6 +728,9 @@ def addargs(parser):
     parser.add_argument('-o', action='store', dest='outputfile',
                         help='path/filename for PDF file')
 
+    parser.add_argument('-output_spectrum', action='store_true',
+                        help='Print spectrum to text file')
+
 
 def main(args=None, argsraw=None, **kwargs):
     warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
@@ -714,6 +766,9 @@ def main(args=None, argsraw=None, **kwargs):
     if args.listtimesteps:
         specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpaths[0])
         at.showtimesteptimes(specfilename)
+    elif args.output_spectrum:
+        write_spectrum_to_file('.')
+        return
     else:
         if args.emissionabsorption:
             args.showemission = True
