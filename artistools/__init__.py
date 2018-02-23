@@ -332,7 +332,6 @@ def get_model_name_times(modelpath, timearray, timestep_range_str, timemin, time
             timemin = 0.
         for timestep, time in enumerate(timearray):
             timefloat = float(time.strip('d'))
-            print(float(timemin), timefloat, timestep, float(timemin) <= timefloat)
             if float(timemin) <= timefloat:
                 timestepmin = timestep
                 break
