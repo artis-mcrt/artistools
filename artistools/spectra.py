@@ -643,7 +643,7 @@ def write_flambda_spectra(modelpath, args):
     if not args.timestep:
         args.timestep = f'0-{number_of_timesteps - 1}'
 
-    (modelname, timestepmin, timestepmax,
+    (_modelname, timestepmin, timestepmax,
      args.timemin, args.timemax) = at.get_model_name_times(
          specfilename, timearray, args.timestep, args.timemin, args.timemax)
 
@@ -662,8 +662,7 @@ def write_flambda_spectra(modelpath, args):
             spec_file.write(f'{x} {y}\n')
         spec_file.close()
 
-        spectra_list.write(os.path.realpath(outdirectory + 'spec_data_ts_' + str(timestep) + '.txt'))
-        spectra_list.write('\n')
+        spectra_list.write(os.path.realpath(outdirectory + 'spec_data_ts_' + str(timestep) + '.txt') + '\n')
 
         for i in filter_name:
             filter_list.write(f'{i}\n')
