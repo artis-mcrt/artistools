@@ -58,7 +58,10 @@ def showtimesteptimes(specfilename, modelpath=None, numberofcolumns=5):
                 strline += '\t'
             newindex = rownum + colnum * indexendofcolumnone
             if newindex < len(times):
-                strline += f'{newindex:4d}: {float(times[newindex + 1]):.3f}'
+                try:
+                    strline += f'{newindex:4d}: {float(times[newindex + 1]):.3f}'
+                except IndexError:
+                    continue
         print(strline)
 
 
