@@ -197,8 +197,8 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
     return dfspectrum
 
 
-def get_flux_contributions(emissionfilename, absorptionfilename, maxion,
-                           timearray, arraynu, filterfunc=None, xmin=-1, xmax=math.inf, timestepmin=0, timestepmax=-1):
+def get_flux_contributions(emissionfilename, absorptionfilename, maxion, timearray, arraynu,
+                           filterfunc=None, xmin=-1, xmax=math.inf, timestepmin=0, timestepmax=None):
     print(f"  Reading {emissionfilename} and {absorptionfilename}")
     emissiondata = pd.read_csv(emissionfilename, sep=' ', header=None)
     absorptiondata = pd.read_csv(absorptionfilename, sep=' ', header=None)
@@ -591,8 +591,11 @@ def make_plot(modelpaths, args):
 
     import scipy.signal
 
-    def filterfunc(flambda):
-        return scipy.signal.savgol_filter(flambda, 5, 3)
+    if args.filtersavgol:
+        window_length, poly_order = args.filtersavgol
+        def filterfunc (y): return scipy.signal.savgol_filter(y, window_length, poly_order)
+    else:
+        filterfunc = None
 
     scale_to_peak = 1.0 if args.normalised else None
 
@@ -690,7 +693,7 @@ def addargs(parser):
                         help='Limit the number of packet files read')
 
     parser.add_argument('--emissionabsorption', default=False, action='store_true',
-                        help='Plot emission and absorption')
+                        help='Implies --showemission and --showabsorption')
 
     parser.add_argument('--showemission', default=False, action='store_true',
                         help='Plot the emission spectrum')
@@ -706,6 +709,10 @@ def addargs(parser):
 
     parser.add_argument('--listtimesteps', action='store_true', default=False,
                         help='Show the times at each timestep')
+
+    parser.add_argument('-filtersavgol', nargs=2,
+                        help='Savitzky–Golay filter. Specify the window_length and poly_order.'
+                        'e.g. -filtersavgol 5 3')
 
     parser.add_argument('-timestep', '-ts', nargs='?',
                         help='First timestep or a range e.g. 45-65')
