@@ -47,7 +47,7 @@ console_scripts.append('artistools = artistools:main')
 def showtimesteptimes(specfilename, modelpath=None, numberofcolumns=5):
     """Print a table showing the timesteps and their corresponding times."""
     if modelpath is not None:
-        specfilename = firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
+        specfilename = firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     print('Time steps and corresponding times in days:\n')
 
@@ -148,7 +148,7 @@ def save_initialabundances(dfabundances, abundancefilename):
 def get_timestep_times(specfilename):
     """Return a list of the time in days of each timestep using a spec.out file."""
     if os.path.isdir(specfilename):
-        specfilename = firstexisting(['spec.out.gz', 'spec.out'], path=specfilename)
+        specfilename = firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=specfilename)
 
     time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
 
@@ -173,7 +173,7 @@ def get_closest_timestep(specfilename, timedays):
 def get_timestep_time(specfilename, timestep):
     """Return the time in days of a timestep number using a spec.out file."""
     if os.path.isdir(specfilename):
-        specfilename = firstexisting(['spec.out.gz', 'spec.out'], path=specfilename)
+        specfilename = firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=specfilename)
 
     if os.path.isfile(specfilename):
         return get_timestep_times(specfilename)[timestep]
