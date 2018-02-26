@@ -533,41 +533,46 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     contributions_sorted_reduced = at.spectra.sort_and_reduce_flux_contribution_list(
         contribution_list, args.maxseriescount, arraylambda_angstroms)
 
+    plotobjectlabels = []
+    plotobjects = []
+
+    max_flambda_emission_total = max(
+        [flambda if (args.xmin < lambda_ang < args.xmax) else -99.0
+         for lambda_ang, flambda in zip(arraylambda_angstroms, array_flambda_emission_total)])
+
+    scalefactor = (scale_to_peak / max_flambda_emission_total if scale_to_peak else 1.)
+
     if args.nostack:
-        scalefactor = (scale_to_peak / max_flambda_emission_contrib if scale_to_peak else 1.)
+        plotobjectlabels.append('Net spectrum')
+        line = axis.plot(arraylambda_angstroms, array_flambda_emission_total * scalefactor, linewidth=1, color='black')
+        linecolor = line[0].get_color()
+        plotobjects.append(mpatches.Patch(color=linecolor))
 
-        plotobjects = []
         for x in contributions_sorted_reduced:
-            line = axis.plot(arraylambda_angstroms,
-                             x.array_flambda_emission * scalefactor,
-                             linewidth=1)
+            emissioncomponentplot = axis.plot(
+                arraylambda_angstroms, x.array_flambda_emission * scalefactor, linewidth=1)
 
-            color = line[0].get_color()
-            plotobjects.append(mpatches.Patch(color=color))
+            linecolor = emissioncomponentplot[0].get_color()
+            plotobjects.append(mpatches.Patch(color=linecolor))
 
             if args.showabsorption:
                 axis.plot(arraylambda_angstroms, -x.array_flambda_absorption * scalefactor,
-                          color=color, linewidth=1)
+                          color=linecolor, linewidth=1, alpha=0.6)
     else:
-        max_flambda_emission_total = max(
-            [flambda if (args.xmin < lambda_ang < args.xmax) else -99.0
-             for lambda_ang, flambda in zip(arraylambda_angstroms, array_flambda_emission_total)])
-
-        scalefactor = (scale_to_peak / max_flambda_emission_total if scale_to_peak else 1.)
-
-        plotobjects = axis.stackplot(
+        stackplot = axis.stackplot(
             arraylambda_angstroms,
             [x.array_flambda_emission * scalefactor for x in contributions_sorted_reduced],
             colors=colors, linewidth=0)
+        plotobjects.extend(stackplot)
 
         if args.showabsorption:
-            facecolors = [p.get_facecolor()[0] for p in plotobjects]
+            facecolors = [p.get_facecolor()[0] for p in stackplot]
             axis.stackplot(
                 arraylambda_angstroms,
                 [-x.array_flambda_absorption * scalefactor for x in contributions_sorted_reduced],
                 colors=facecolors, linewidth=0)
 
-    plotobjectlabels = list([x.linelabel for x in contributions_sorted_reduced])
+    plotobjectlabels.extend(list([x.linelabel for x in contributions_sorted_reduced]))
 
     plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=filterfunc,
                            scale_to_peak=scale_to_peak, linewidth=0.5)
