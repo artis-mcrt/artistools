@@ -71,7 +71,7 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
         timestepmax = timestepmin
 
     if os.path.isdir(modelpath):
-        specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
+        specfilename = at.firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
     else:
         specfilename = modelpath
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
@@ -502,7 +502,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out']
     emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
 
-    specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
+    specfilename = at.firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     timearray = specdata.columns.values[1:]
     arraynu = specdata.loc[:, '0'].values
@@ -641,7 +641,7 @@ def write_flambda_spectra(modelpath, args):
     open(outdirectory + 'spectra_list.txt', 'w+').close()  # clear files
     open(outdirectory + 'filter_list.txt', 'w+').close()
 
-    specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
+    specfilename = at.firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     timearray = specdata.columns.values[1:]
     number_of_timesteps = len(specdata.keys()) - 1
@@ -776,7 +776,7 @@ def main(args=None, argsraw=None, **kwargs):
     modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in modelpaths if os.path.isdir(x)]))
 
     if args.listtimesteps:
-        specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpaths[0])
+        specfilename = at.firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpaths[0])
         at.showtimesteptimes(specfilename)
     elif args.output_spectra:
         for modelpath in modelpaths:
