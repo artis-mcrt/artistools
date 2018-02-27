@@ -44,9 +44,11 @@ console_scripts.append('at = artistools:main')
 console_scripts.append('artistools = artistools:main')
 
 
-def showtimesteptimes(specfilename, modelpath=None, numberofcolumns=5):
+def showtimesteptimes(specfilename=None, modelpath=None, numberofcolumns=5):
     """Print a table showing the timesteps and their corresponding times."""
-    if modelpath is not None:
+    if specfilename is None:
+        if modelpath is None:
+            modelpath = '.'
         specfilename = firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     print('Time steps and corresponding times in days:\n')
