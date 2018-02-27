@@ -306,7 +306,9 @@ def plot_multi_ion_series(
 
         ylist.insert(0, ylist[0])
         linestyle = ['-', '--', '-.', ':'][linestyleindex]
-        color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][ion_stage - 1]
+        # color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][ion_stage - 1]
+        assert ion_stage - 1 < 10
+        color = f'C{ion_stage - 1}'
         # or axis.step(where='pre', )
         axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel, color=color, linestyle=linestyle, **plotkwargs)
         prev_atomic_number = atomic_number
