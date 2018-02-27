@@ -244,7 +244,7 @@ def plot_multi_ion_series(
 
         if seriestype == 'populations':
             if args.ionpoptype == 'absolute':
-                axis.set_ylabel('X$_{ion}$')
+                axis.set_ylabel('X$_{ion}$ [/cm3]')
             elif args.ionpoptype == 'elpop':
                 # elcode = at.elsymbols[atomic_number]
                 axis.set_ylabel('X$_{ion}$/X$_{element}$')
