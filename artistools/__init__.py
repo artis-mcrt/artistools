@@ -384,7 +384,7 @@ def get_ionstring(atomic_number, ionstage):
 
 # based on code from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
 def parse_range(rng, dictvars={}):
-    """Take a string with an integer range like 23-26 and return [23, 24, 25, 26], also replacing special variables in dictvars"""
+    """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars"""
     parts = rng.split('-')
 
     if len(parts) not in [1, 2]:
