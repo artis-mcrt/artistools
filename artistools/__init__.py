@@ -44,9 +44,9 @@ console_scripts.append('at = artistools:main')
 console_scripts.append('artistools = artistools:main')
 
 
-def showtimesteptimes(specfilename=None, modelpath=None, numberofcolumns=5):
+def showtimesteptimes(specfilename, modelpath=None, numberofcolumns=5):
     """Print a table showing the timesteps and their corresponding times."""
-    if specfilename is None:
+    if not specfilename:
         if modelpath is None:
             modelpath = '.'
         specfilename = firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
