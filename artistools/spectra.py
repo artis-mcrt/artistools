@@ -208,18 +208,21 @@ def get_flux_contributions(emissionfilename, absorptionfilename, timearray, arra
     maxion_float = (emissiondata.shape[1] - 1) / 2 / nelements  # also known as MIONS in ARTIS sn3d.h
     assert maxion_float.is_integer()
     maxion = int(maxion_float)
-    print(f'  inferred MAXION = {maxion} from emission file using nlements = {nelements} from compositiondata')
+    print(f'  inferred MAXION = {maxion} from emission file using nlements = {nelements} from compositiondata.txt')
 
     # check that the row count is product of timesteps and frequency bins found in spec.out
     assert emissiondata.shape[0] == len(arraynu) * len(timearray)
 
-    print(f'  Reading {absorptionfilename}')
-    absorptiondata = pd.read_csv(absorptionfilename, delim_whitespace=True, header=None)
-    absorption_maxion_float = absorptiondata.shape[1] / nelements
-    assert absorption_maxion_float.is_integer()
-    absorption_maxion = int(absorption_maxion_float)
-    assert absorption_maxion == maxion
-    assert absorptiondata.shape[0] == len(arraynu) * len(timearray)
+    if absorptionfilename:
+        print(f'  Reading {absorptionfilename}')
+        absorptiondata = pd.read_csv(absorptionfilename, delim_whitespace=True, header=None)
+        absorption_maxion_float = absorptiondata.shape[1] / nelements
+        assert absorption_maxion_float.is_integer()
+        absorption_maxion = int(absorption_maxion_float)
+        assert absorption_maxion == maxion
+        assert absorptiondata.shape[0] == len(arraynu) * len(timearray)
+    else:
+        absorptiondata = None
 
     array_flambda_emission_total = np.zeros_like(arraylambda)
     contribution_list = []
@@ -244,7 +247,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, timearray, arra
                       at.get_timestep_time_delta(timestep, timearray))
                      for timestep in range(timestepmin, timestepmax + 1)])
 
-                if selectedcolumn < nelements * maxion:  # bound-bound process
+                if absorptiondata is not None and selectedcolumn < nelements * maxion:  # bound-bound process
                     array_fnu_absorption = stackspectra(
                         [(absorptiondata.iloc[timestep::len(timearray), selectedcolumn].values,
                           at.get_timestep_time_delta(timestep, timearray))
@@ -520,7 +523,8 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
           f'(t={args.timemin:.3f}d to {args.timemax:.3f}d)')
 
-    absorptionfilename = at.firstexisting(['absorption.out.gz', 'absorption.out'], path=modelpath)
+    absorptionfilename = (at.firstexisting(['absorption.out.gz', 'absorption.out'], path=modelpath)
+                          if args.showabsorption else None)
     contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
         emissionfilename, absorptionfilename, timearray, arraynu,
         filterfunc, args.xmin, args.xmax, timestepmin, timestepmax)
@@ -706,13 +710,13 @@ def addargs(parser):
                         help='Implies --showemission and --showabsorption')
 
     parser.add_argument('--showemission', default=False, action='store_true',
-                        help='Plot the emission spectrum')
+                        help='Plot the emission spectra by ion/process')
 
     parser.add_argument('--showabsorption', default=False, action='store_true',
-                        help='Plot the absorption spectrum')
+                        help='Plot the absorption spectra by ion/process')
 
     parser.add_argument('--nostack', default=False, action='store_true',
-                        help="Don't stack emission/absorption contributions")
+                        help="Plot each emission/absorption contribution separately instead of a stackplot")
 
     parser.add_argument('-maxseriescount', type=int, default=12,
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')
