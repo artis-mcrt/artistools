@@ -63,7 +63,7 @@ def test_get_flux_contributions():
     arraynu = specdata.loc[:, '0'].values
     arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
 
-    contribution_list, maxyvalueglobal, array_flambda_emission_total = at.spectra.get_flux_contributions(
+    contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
         emissionfilename, absorptionfilename, 5, timearray, arraynu,
         xmin=-1, xmax=np.inf, timestepmin=timestepmin, timestepmax=timestepmax)
 
