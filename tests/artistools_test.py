@@ -106,7 +106,6 @@ def test_menu():
     at.main()
     at.showtimesteptimes(modelpath=modelpath)
     at.showtimesteptimes(specfilename=os.path.join(modelpath, 'spec.out'))
-    at.showtimesteptimes(specfilename='spec.out', modelpath=modelpath)
 
 
 def test_spencerfano():
