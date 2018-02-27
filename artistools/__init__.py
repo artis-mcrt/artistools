@@ -51,6 +51,8 @@ def showtimesteptimes(specfilename=None, modelpath=None, numberofcolumns=5):
         if modelpath is None:
             modelpath = '.'
         specfilename = firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
+    elif modelpath:
+        specfilename = os.path.join(modelpath, specfilename)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     print('Time steps and corresponding times in days:\n')
 
