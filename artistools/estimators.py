@@ -155,7 +155,8 @@ def read_estimators(modelpath, modeldata, keymatch=None):
                     timestep = int(row[1])
                     modelgridindex = int(row[3])
                     # print(f'Timestep {timestep} cell {modelgridindex}')
-                    if (timestep, modelgridindex) in estimators and not estimators[(timestep, modelgridindex)]['emptycell']:
+                    if ((timestep, modelgridindex) in estimators and
+                            not estimators[(timestep, modelgridindex)]['emptycell']):
                         # print(f'WARNING: duplicate estimator data for timestep {timestep} cell {modelgridindex}. '
                         #       f'Kept old (T_e {estimators[(timestep, modelgridindex)]["Te"]}), '
                         #       f'instead of new (T_e {float(row[7])})')
@@ -216,16 +217,17 @@ def plot_init_abundances(axis, xlist, specieslist, mgilist, modeldata, abundance
         axis.plot(xlist, ylist, linewidth=1.5, label=f'{speciesstr}', **plotkwargs)
 
 
-def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, estimators, compositiondata, args, **plotkwargs):
-    if seriestype == 'populations':
-        axis.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
+def plot_multi_ion_series(
+        axis, xlist, seriestype, ionlist, timestep, mgilist, estimators, compositiondata, args, **plotkwargs):
+    # if seriestype == 'populations':
+    #     axis.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
 
     # decoded into numeric form, e.g., [(26, 1), (26, 2)]
     iontuplelist = [
         (at.get_atomic_number(ionstr.split(' ')[0]), at.decode_roman_numeral(ionstr.split(' ')[1]))
         for ionstr in ionlist]
     iontuplelist.sort()
-    print(f'Plotting ions: {iontuplelist}')
+    print(f'Subplot with ions: {iontuplelist}')
 
     prev_atomic_number = iontuplelist[0][0]
     linestyleindex = 0
@@ -241,7 +243,14 @@ def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, e
             continue
 
         if seriestype == 'populations':
-            axis.set_ylabel('X$_{ion}$/X$_{tot}$')
+            if args.ionpoptype == 'absolute':
+                axis.set_ylabel('X$_{ion}$')
+            elif args.ionpoptype == 'elpop':
+                # elcode = at.elsymbols[atomic_number]
+                axis.set_ylabel('X$_{ion}$/X$_{element}$')
+            elif args.ionpoptype == 'totalpop':
+                axis.set_ylabel('X$_{ion}$/X$_{tot}$')
+                assert False
         else:
             axis.set_ylabel(seriestype)
 
@@ -259,14 +268,18 @@ def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, e
                     # print(f'Keys: {estim["populations"].keys()}')
                     # raise KeyError
 
-                totalpop = estim['populations']['total']
-                elpop = estim['populations'].get(atomic_number, 0.)
                 nionpop = estim['populations'].get((atomic_number, ion_stage), 0.)
 
-                if args.elpop:
+                if args.ionpoptype == 'absolute':
+                    ylist.append(nionpop)  # Plot as fraction of element population
+                elif args.ionpoptype == 'elpop':
+                    elpop = estim['populations'].get(atomic_number, 0.)
                     ylist.append(nionpop / elpop)  # Plot as fraction of element population
-                else:
+                elif args.ionpoptype == 'totalpop':
+                    totalpop = estim['populations']['total']
                     ylist.append(nionpop / totalpop)  # Plot as fraction of total population
+                else:
+                    assert False
 
             # elif seriestype == 'Alpha_R':
             #     ylist.append(estim['Alpha_R*nne'].get((atomic_number, ion_stage), 0.) / estim['nne'])
@@ -499,8 +512,10 @@ def addargs(parser):
                         default=defaultoutputfile,
                         help='Filename for PDF file')
 
-    parser.add_argument('-elpop', action='store_true',
-                        help='Plot ionisation as fraction of element population')
+    parser.add_argument('-ionpoptype', default='elpop', choices=['absolute', 'totalpop', 'elpop'],
+                        help=(
+                            'Plot absolutely ion populations, or ion populations as a'
+                            ' fraction of total or element population'))
 
     parser.add_argument('-show', action='store_true',
                         help='Show plot before quitting')
