@@ -197,17 +197,27 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
     return dfspectrum
 
 
-def get_flux_contributions(emissionfilename, absorptionfilename, maxion, timearray, arraynu,
+def get_flux_contributions(emissionfilename, absorptionfilename, timearray, arraynu,
                            filterfunc=None, xmin=-1, xmax=math.inf, timestepmin=0, timestepmax=None):
-    print(f"  Reading {emissionfilename} and {absorptionfilename}")
-    emissiondata = pd.read_csv(emissionfilename, sep=' ', header=None)
-    absorptiondata = pd.read_csv(absorptionfilename, sep=' ', header=None)
-
-    elementlist = at.get_composition_data(os.path.join(os.path.dirname(emissionfilename), 'compositiondata.txt'))
-
     arraylambda = const.c.to('angstrom/s').value / arraynu
-
+    elementlist = at.get_composition_data(os.path.dirname(emissionfilename))
     nelements = len(elementlist)
+
+    print(f'  Reading {emissionfilename}')
+    emissiondata = pd.read_csv(emissionfilename, delim_whitespace=True, header=None)
+    maxion_float = (emissiondata.shape[1] - 1) / 2 / nelements  # also known as MIONS in ARTIS sn3d.h
+    assert maxion_float.is_integer()
+    maxion = int(maxion_float)
+    print(f'  inferred MAXION = {maxion} from emission file using nlements = {nelements} from compositiondata')
+
+
+    print(f'  Reading {absorptionfilename}')
+    absorptiondata = pd.read_csv(absorptionfilename, delim_whitespace=True, header=None)
+    absorption_maxion_float = absorptiondata.shape[1] / nelements
+    assert absorption_maxion_float.is_integer()
+    absorption_maxion = int(absorption_maxion_float)
+    assert absorption_maxion == maxion
+
     max_flambda_emission_contrib = 0.
     array_flambda_emission_total = np.zeros_like(arraylambda)
     contribution_list = []
@@ -496,7 +506,6 @@ def make_spectrum_plot(modelpaths, axis, filterfunc, args, scale_to_peak=None):
 def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_peak=None):
     import scipy.interpolate as interpolate
     from cycler import cycler
-    maxion = 5  # must match sn3d.h value
 
     # emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out', 'emission.out.gz', 'emission.out']
     emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out']
@@ -518,7 +527,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
 
     absorptionfilename = at.firstexisting(['absorption.out.gz', 'absorption.out'], path=modelpath)
     contribution_list, max_flambda_emission_contrib, array_flambda_emission_total = at.spectra.get_flux_contributions(
-        emissionfilename, absorptionfilename, maxion, timearray, arraynu,
+        emissionfilename, absorptionfilename, timearray, arraynu,
         filterfunc, args.xmin, args.xmax, timestepmin, timestepmax)
 
     at.spectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
@@ -598,7 +607,8 @@ def make_plot(modelpaths, args):
 
     if args.filtersavgol:
         window_length, poly_order = args.filtersavgol
-        def filterfunc (y): return scipy.signal.savgol_filter(y, window_length, poly_order)
+
+        def filterfunc(y): return scipy.signal.savgol_filter(y, window_length, poly_order)
     else:
         filterfunc = None
 
