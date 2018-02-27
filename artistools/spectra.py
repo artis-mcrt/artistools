@@ -210,6 +210,8 @@ def get_flux_contributions(emissionfilename, absorptionfilename, timearray, arra
     maxion = int(maxion_float)
     print(f'  inferred MAXION = {maxion} from emission file using nlements = {nelements} from compositiondata')
 
+    # check that the row count is product of timesteps and frequency bins found in spec.out
+    assert emissiondata.shape[0] == len(arraynu) * len(timearray)
 
     print(f'  Reading {absorptionfilename}')
     absorptiondata = pd.read_csv(absorptionfilename, delim_whitespace=True, header=None)
@@ -217,6 +219,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, timearray, arra
     assert absorption_maxion_float.is_integer()
     absorption_maxion = int(absorption_maxion_float)
     assert absorption_maxion == maxion
+    assert absorptiondata.shape[0] == len(arraynu) * len(timearray)
 
     max_flambda_emission_contrib = 0.
     array_flambda_emission_total = np.zeros_like(arraylambda)
