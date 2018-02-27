@@ -64,7 +64,7 @@ def test_get_flux_contributions():
     arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
 
     contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
-        emissionfilename, absorptionfilename, 5, timearray, arraynu,
+        emissionfilename, absorptionfilename, timearray, arraynu,
         xmin=-1, xmax=np.inf, timestepmin=timestepmin, timestepmax=timestepmax)
 
     integrated_flux_emission = at.spectra.integrate_flux(array_flambda_emission_total, arraylambda_angstroms)
