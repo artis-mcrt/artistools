@@ -221,7 +221,6 @@ def get_flux_contributions(emissionfilename, absorptionfilename, timearray, arra
     assert absorption_maxion == maxion
     assert absorptiondata.shape[0] == len(arraynu) * len(timearray)
 
-    max_flambda_emission_contrib = 0.
     array_flambda_emission_total = np.zeros_like(arraylambda)
     contribution_list = []
     if filterfunc:
@@ -266,13 +265,6 @@ def get_flux_contributions(emissionfilename, absorptionfilename, timearray, arra
                 fluxcontribthisseries = (
                     integrate_flux(array_fnu_emission, arraynu) + integrate_flux(array_fnu_absorption, arraynu))
 
-                max_flambda_emission_contrib_thisseries = max(
-                    [array_flambda_emission[i] if (xmin < arraylambda[i] < xmax) else -99.0
-                     for i in range(len(array_flambda_emission))])
-
-                max_flambda_emission_contrib = max(
-                    max_flambda_emission_contrib, max_flambda_emission_contrib_thisseries)
-
                 if emissiontype != 'free-free':
                     linelabel = f'{at.elsymbols[elementlist.Z[element]]} {at.roman_numerals[ion_stage]} {emissiontype}'
                 else:
@@ -283,7 +275,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, timearray, arra
                                           array_flambda_emission=array_flambda_emission,
                                           array_flambda_absorption=array_flambda_absorption))
 
-    return contribution_list, max_flambda_emission_contrib, array_flambda_emission_total
+    return contribution_list, array_flambda_emission_total
 
 
 def sort_and_reduce_flux_contribution_list(contribution_list_in, maxseriescount, arraylambda_angstroms):
@@ -529,7 +521,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
           f'(t={args.timemin:.3f}d to {args.timemax:.3f}d)')
 
     absorptionfilename = at.firstexisting(['absorption.out.gz', 'absorption.out'], path=modelpath)
-    contribution_list, max_flambda_emission_contrib, array_flambda_emission_total = at.spectra.get_flux_contributions(
+    contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
         emissionfilename, absorptionfilename, timearray, arraynu,
         filterfunc, args.xmin, args.xmax, timestepmin, timestepmax)
 
