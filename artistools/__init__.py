@@ -3,7 +3,6 @@
 
 A collection of plotting, analysis, and file format conversion tools for the ARTIS radiative transfer code.
 """
-
 import gzip
 import math
 import os.path
@@ -24,27 +23,29 @@ elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, 'data', 'elements.csv')
 roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
-commandlist = [
-    ('getartismodeldeposition', 'deposition'),
-    ('getartisspencerfano', 'spencerfano'),
-    ('makeartismodel1dslicefrom3d', 'makemodel.1dslicefrom3d'),
-    ('makeartismodelbotyanski2017', 'makemodel.botyanski2017'),
-    ('plotartisestimators', 'estimators'),
-    ('plotartislightcurve', 'lightcurve'),
-    ('plotartisnltepops', 'nltepops'),
-    ('plotartismacroatom', 'macroatom'),
-    ('plotartisnonthermal', 'nonthermal'),
-    ('plotartisradfield', 'radfield'),
-    ('plotartisspectrum', 'spectra'),
-    ('plotartistransitions', 'transitions'),
-]
+commandlist = {
+    'getartismodeldeposition': ('artistools.deposition', 'main'),
+    'getartisspencerfano': ('artistools.spencerfano', 'main'),
+    'listartistimesteps': ('artistools', 'showtimesteptimes'),
+    'makeartismodel1dslicefrom3d': ('artistools.makemodel.1dslicefrom3d', 'main'),
+    'makeartismodelbotyanski2017': ('artistools.makemodel.botyanski2017', 'main'),
+    'plotartisestimators': ('artistools.estimators', 'main'),
+    'plotartislightcurve': ('artistools.lightcurve', 'main'),
+    'plotartisnltepops': ('artistools.nltepops', 'main'),
+    'plotartismacroatom': ('artistools.macroatom', 'main'),
+    'plotartisnonthermal': ('artistools.nonthermal', 'main'),
+    'plotartisradfield': ('artistools.radfield', 'main'),
+    'plotartisspectrum': ('artistools.spectra', 'main'),
+    'plotartistransitions': ('artistools.transitions', 'main'),
+}
 
-console_scripts = [f'{command} = artistools.{submodulename}:main' for command, submodulename in commandlist]
+console_scripts = [f'{command} = {submodulename}:{funcname}'
+                   for command, (submodulename, funcname) in commandlist.items()]
 console_scripts.append('at = artistools:main')
 console_scripts.append('artistools = artistools:main')
 
 
-def showtimesteptimes(specfilename, modelpath=None, numberofcolumns=5):
+def showtimesteptimes(specfilename=None, modelpath=None, numberofcolumns=5):
     """Print a table showing the timesteps and their corresponding times."""
     if not specfilename:
         if modelpath is None:
@@ -424,6 +425,10 @@ def firstexisting(filelist, path='.'):
     return os.path.join(path, filelist[-1])
 
 
+def addargs(parser):
+    pass
+
+
 def main(argsraw=None):
     """Show a list of available artistools commands."""
     import argcomplete
@@ -435,11 +440,11 @@ def main(argsraw=None):
 
     subparsers = parser.add_subparsers()
 
-    for command, submodulename in commandlist:
-        submodule = importlib.import_module('artistools.' + submodulename)
+    for command, (submodulename, funcname) in sorted(commandlist.items()):
+        submodule = importlib.import_module(submodulename, package='artistools')
         subparser = subparsers.add_parser(command)
         submodule.addargs(subparser)
-        subparser.set_defaults(func=submodule.main)
+        subparser.set_defaults(func=getattr(submodule, funcname))
 
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
@@ -453,5 +458,5 @@ def main(argsraw=None):
         #     command = script.split('=')[0].strip()
         #     print(f'  {command}')
 
-        for command, _ in commandlist:
+        for command in commandlist:
             print(f'  {command}')

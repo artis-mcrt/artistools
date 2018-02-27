@@ -797,8 +797,7 @@ def main(args=None, argsraw=None, **kwargs):
     modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in modelpaths if os.path.isdir(x)]))
 
     if args.listtimesteps:
-        specfilename = at.firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpaths[0])
-        at.showtimesteptimes(specfilename)
+        at.showtimesteptimes(modelpath=modelpaths[0])
     elif args.output_spectra:
         for modelpath in modelpaths:
             write_flambda_spectra(modelpath, args)
@@ -806,6 +805,7 @@ def main(args=None, argsraw=None, **kwargs):
         if args.emissionabsorption:
             args.showemission = True
             args.showabsorption = True
+
         if args.showemission or args.showabsorption:
             if len(modelpaths) > 1:
                 print("ERROR: emission/absorption plot can only take one input model", modelpaths)

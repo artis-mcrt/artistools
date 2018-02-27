@@ -421,7 +421,7 @@ def main(args=None, argsraw=None, **kwargs):
     specfilename = at.firstexisting(['spec.out', 'spec.out.gz'], path=args.modelpath)
 
     if args.listtimesteps:
-        at.showtimesteptimes(args.modelpath)
+        at.showtimesteptimes(modelpath=args.modelpath)
     else:
         filenames = ['radfield_????.out', 'radfield_????.out.gz',
                      '*/radfield_????.out', '*/radfield_????.out.gz']

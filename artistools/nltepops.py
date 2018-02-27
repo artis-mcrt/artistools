@@ -302,7 +302,7 @@ def main(args=None, argsraw=None, **kwargs):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     if args.listtimesteps:
-        at.showtimesteptimes(modelpath)
+        at.showtimesteptimes(modelpath=modelpath)
     else:
         ionstages_permitted = at.parse_range_list(args.ionstages) if args.ionstages else None
         adata = at.get_levels(args.modelpath)
