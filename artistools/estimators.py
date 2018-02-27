@@ -220,18 +220,24 @@ def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, e
     if seriestype == 'populations':
         axis.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
 
-    linecount = 0
-    for ionstr in ionlist:
-        splitvariablename = ionstr.split(' ')
-        atomic_number = at.get_atomic_number(splitvariablename[0])
-        ion_stage = at.decode_roman_numeral(splitvariablename[1])
+    # decoded into numeric form, e.g., [(26, 1), (26, 2)]
+    iontuplelist = [
+        (at.get_atomic_number(ionstr.split(' ')[0]), at.decode_roman_numeral(ionstr.split(' ')[1]))
+        for ionstr in ionlist]
+    iontuplelist.sort()
+    print(f'Plotting ions: {iontuplelist}')
+
+    prev_atomic_number = iontuplelist[0][0]
+    linestyleindex = 0
+    for atomic_number, ion_stage in iontuplelist:
+        if atomic_number != prev_atomic_number:
+            linestyleindex += 1
 
         if compositiondata.query('Z == @atomic_number '
                                  '& lowermost_ionstage <= @ion_stage '
                                  '& uppermost_ionstage >= @ion_stage').empty:
             print(f"WARNING: Can't plot '{seriestype}' for Z={atomic_number} ion_stage {ion_stage} "
                   f"because this ion is not in compositiondata.txt")
-            linecount += 1
             continue
 
         if seriestype == 'populations':
@@ -282,10 +288,11 @@ def plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, e
         plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
 
         ylist.insert(0, ylist[0])
-        color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][linecount]
+        linestyle = ['-', '--', '-.', ':'][linestyleindex]
+        color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][ion_stage - 1]
         # or axis.step(where='pre', )
-        axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel, color=color, **plotkwargs)
-        linecount += 1
+        axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel, color=color, linestyle=linestyle, **plotkwargs)
+        prev_atomic_number = atomic_number
 
 
 def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estimators, **plotkwargs):
