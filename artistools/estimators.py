@@ -149,7 +149,7 @@ def read_estimators(modelpath, modeldata, keymatch=None):
 
                 if row[0] == 'timestep':
                     if keymatch is not None and keymatch in estimators:
-                        # found our key, so exit now!
+                        # found our key, so exit now!
                         return estimators
 
                     timestep = int(row[1])
@@ -485,8 +485,8 @@ def addargs(parser):
     parser.add_argument('-xmax', type=int, default=-1,
                         help='Plot range: maximum x value')
 
-    parser.add_argument('-x', default='velocity',
-                        help='Horizontal axis variable (cellid or velocity)')
+    parser.add_argument('-x', default='velocity', choices=['cellid', 'velocity'],
+                        help='Horizontal axis variable')
 
     parser.add_argument('-o', action='store', dest='outputfile',
                         default=defaultoutputfile,
