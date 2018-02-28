@@ -721,6 +721,12 @@ def write_flambda_spectra(modelpath, args):
         time_list.write(f'{str(time)} \n')
     time_list.close()
 
+    time_list = open(outdirectory + 'time_list.txt', 'w+')
+
+    for time in timearray:
+        time_list.write(f'{str(time)} \n')
+    time_list.close()
+
     print(f'Saved in {outdirectory}')
 
 
