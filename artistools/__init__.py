@@ -201,7 +201,6 @@ def get_timestep_time(specfilename, timestep):
 
 def get_timestep_time_delta(timestep, timearray):
     """Return the time in days between timestep and timestep + 1."""
-
     if timestep < len(timearray) - 1:
         delta_t = (float(timearray[timestep + 1]) - float(timearray[timestep]))
     else:
@@ -325,10 +324,9 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
 
 
 def get_model_name(path):
-    """
-        Get the name of an ARTIS model from the path to any file inside it
-        either from a special plotlabel.txt file (if it exists)
-        or the enclosing directory name
+    """Get the name of an ARTIS model from the path to any file inside it.
+
+    Name will be either from a special plotlabel.txt file if it exists or the enclosing directory name
     """
     abspath = os.path.abspath(path)
 
@@ -342,8 +340,7 @@ def get_model_name(path):
 
 
 def get_time_range(timearray, timestep_range_str, timemin, timemax, timedays_range_str):
-    """Handle a time range specified in either days or timesteps"""
-
+    """Handle a time range specified in either days or timesteps."""
     # assertions make sure time is specified either by timesteps or times in days, but not both!
     if timestep_range_str is not None:
         assert timemin is None and timemax is None and timedays_range_str is None
@@ -401,7 +398,7 @@ def get_ionstring(atomic_number, ionstage):
 
 # based on code from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
 def parse_range(rng, dictvars={}):
-    """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars"""
+    """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars."""
     parts = rng.split('-')
 
     if len(parts) not in [1, 2]:
@@ -420,7 +417,8 @@ def parse_range(rng, dictvars={}):
 def parse_range_list(rngs, dictvars={}):
     """Parse a string with comma-separated ranges or a list of range strings.
 
-    Return a sorted list of integers in any of the ranges."""
+    Return a sorted list of integers in any of the ranges.
+    """
     if isinstance(rngs, list):
         rngs = ','.join(rngs)
 
@@ -434,7 +432,7 @@ def opengzip(filename, mode):
 
 
 def firstexisting(filelist, path='.'):
-    """Return the first existing file in filelist"""
+    """Return the first existing file in file list."""
     for filename in filelist:
         if os.path.exists(os.path.join(path, filename)):
             return os.path.join(path, filename)
