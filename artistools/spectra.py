@@ -605,7 +605,6 @@ def make_plot(modelpaths, args):
     axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
 
     import scipy.signal
-
     if args.filtersavgol:
         window_length, poly_order = args.filtersavgol
 
@@ -796,7 +795,8 @@ def main(args=None, argsraw=None, **kwargs):
             modelpaths.append(elem)
 
     # applying any wildcards to the modelpaths
-    modelpaths = list(itertools.chain.from_iterable([list(Path().glob(pattern=str(x)))if not x.samefile(Path('.')) else [Path('.')] for x in modelpaths]))
+    modelpaths = list(itertools.chain.from_iterable([
+        list(Path().glob(pattern=str(x)))if not x.samefile(Path('.')) else [Path('.')] for x in modelpaths]))
 
     if args.listtimesteps:
         at.showtimesteptimes(modelpath=modelpaths[0])

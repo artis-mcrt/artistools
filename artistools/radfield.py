@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 from astropy import units as u
+from pathlib import Path
 
 import artistools as at
 import artistools.spectra
@@ -251,8 +252,8 @@ def plot_celltimestep(
 
     axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 13})
 
-    print(f'Saving to {outputfile:s}')
-    fig.savefig(outputfile, format='pdf')
+    print(f'Saving to {outputfile}')
+    fig.savefig(str(outputfile), format='pdf')
     plt.close()
 
 
@@ -354,14 +355,14 @@ def plot_timeevolution(
     # axis.set_xlim(xmin=xmin, xmax=xmax)
     # axis.set_ylim(ymin=0.0, ymax=ymax)
 
-    print(f'Saving to {outputfile:s}')
-    fig.savefig(outputfile, format='pdf')
+    print(f'Saving to {outputfile}')
+    fig.savefig(str(outputfile), format='pdf')
     plt.close()
 
 
 def addargs(parser):
     """Add arguments to an argparse parser object."""
-    parser.add_argument('-modelpath', default='.',
+    parser.add_argument('-modelpath', default='.', type=Path,
                         help='Path to ARTIS folder')
 
     parser.add_argument('-listtimesteps', action='store_true', default=False,
@@ -394,7 +395,7 @@ def addargs(parser):
     parser.add_argument('--normalised', default=False, action='store_true',
                         help='Normalise the spectra to their peak values')
 
-    parser.add_argument('-o', action='store', dest='outputfile',
+    parser.add_argument('-o', action='store', dest='outputfile', type=Path,
                         help='Filename for PDF file')
 
 
@@ -409,26 +410,28 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     if args.xaxis == 'lambda':
-        defaultoutputfile = 'plotradfield_cell{modelgridindex:03d}_ts{timestep:03d}.pdf'
+        defaultoutputfile = Path('plotradfield_cell{modelgridindex:03d}_ts{timestep:03d}.pdf')
     else:
-        defaultoutputfile = 'plotradfield_cell{modelgridindex:03d}_evolution.pdf'
+        defaultoutputfile = Path('plotradfield_cell{modelgridindex:03d}_evolution.pdf')
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
-    elif os.path.isdir(args.outputfile):
-        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+    elif args.outputfile.is_dir():
+        args.outputfile = args.outputfile / defaultoutputfile
 
     specfilename = at.firstexisting(['spec.out', 'spec.out.gz'], path=args.modelpath)
 
     if args.listtimesteps:
         at.showtimesteptimes(modelpath=args.modelpath)
     else:
-        filenames = ['radfield_????.out', 'radfield_????.out.gz',
-                     '*/radfield_????.out', '*/radfield_????.out.gz']
+        filenames = [Path('radfield_????.out'),
+                     Path('radfield_????.out.gz'),
+                     Path('*/radfield_????.out'),
+                     Path('*/radfield_????.out.gz')]
 
         radfield_files = []
         for filename in filenames:
-            radfield_files.extend(glob.glob(os.path.join(args.modelpath, filename), recursive=True))
+            radfield_files.extend(glob.glob(str(args.modelpath / filename), recursive=True))
 
         if not radfield_files:
             print("No radfield files found")
@@ -454,7 +457,7 @@ def main(args=None, argsraw=None, **kwargs):
                 radfielddata_currenttimestep = radfielddata.query('timestep==@timestep')
 
                 if not radfielddata_currenttimestep.empty:
-                    outputfile = args.outputfile.format(modelgridindex=args.modelgridindex, timestep=timestep)
+                    outputfile = str(args.outputfile).format(modelgridindex=args.modelgridindex, timestep=timestep)
                     plot_celltimestep(
                         radfielddata_currenttimestep, args.modelpath, specfilename, timestep, outputfile,
                         xmin=args.xmin, xmax=args.xmax, modelgridindex=args.modelgridindex,
