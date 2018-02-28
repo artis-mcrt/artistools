@@ -122,7 +122,10 @@ def parse_ion_row(row, outdict):
 
 
 def read_estimators(modelpath, modeldata, keymatch=None):
-    """keymatch should be a tuple (timestep, modelgridindex)."""
+    """Read estimator files into a nested dictionary structure.
+
+    keymatch should be a tuple (timestep, modelgridindex).
+    """
     estimfiles = (glob.glob(os.path.join(modelpath, 'estimators_????.out'), recursive=True) +
                   glob.glob(os.path.join(modelpath, 'estimators_????.out.gz'), recursive=True) +
                   glob.glob(os.path.join(modelpath, '*/estimators_????.out'), recursive=True) +
