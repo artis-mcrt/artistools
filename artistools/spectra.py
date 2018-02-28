@@ -673,7 +673,7 @@ def write_flambda_spectra(modelpath, args):
     spectra_list = open(outdirectory + 'spectra_list.txt', 'a')
     filter_list = open(outdirectory + 'filter_list.txt', 'a')
 
-    filter_name = ['B', 'V', 'R', 'U']
+    filter_name = ['U', 'B', 'V', 'R', 'I']
 
     for timestep in range(timestepmin, timestepmax + 1):
 
@@ -692,6 +692,12 @@ def write_flambda_spectra(modelpath, args):
 
     spectra_list.close()
     filter_list.close()
+
+    time_list = open(outdirectory + 'time_list.txt', 'w+')
+
+    for time in timearray:
+        time_list.write(f'{str(time)} \n')
+    time_list.close()
 
     print('Saved in ' + outdirectory)
 
