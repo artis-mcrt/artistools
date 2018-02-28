@@ -5,6 +5,7 @@ import glob
 import itertools
 import math
 import os.path
+from pathlib import Path
 from typing import Iterable
 
 import numpy as np
@@ -108,14 +109,14 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
 
 
 def addargs(parser):
-    parser.add_argument('modelpath', default=[], nargs='*',
+    parser.add_argument('modelpath', default=[], nargs='*', action=at.AppendPath,
                         help='Path(s) to ARTIS folders with light_curve.out or packets files'
                         ' (may include wildcards such as * and **)')
     parser.add_argument('--frompackets', default=False, action='store_true',
                         help='Read packets files instead of light_curve.out')
     parser.add_argument('--gamma', default=False, action='store_true',
                         help='Make light curve from gamma rays instead of R-packets')
-    parser.add_argument('-o', action='store', dest='outputfile',
+    parser.add_argument('-o', action='store', dest='outputfile', type=Path,
                         help='Filename for PDF file')
 
 
@@ -134,7 +135,7 @@ def main(args=None, argsraw=None, **kwargs):
         args.modelpath = [args.modelpath]
 
     # combined the results of applying wildcards on each input
-    modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in args.modelpath if os.path.isdir(x)]))
+    modelpaths = list(itertools.chain.from_iterable([Path().glob(str(x)) for x in args.modelpath]))
 
     defaultoutputfile = 'plotlightcurve_gamma.pdf' if args.gamma else 'plotlightcurve.pdf'
 

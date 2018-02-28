@@ -51,7 +51,7 @@ def main(args=None, argsraw=None, **kwargs):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     if args.listtimesteps:
-        at.showtimesteptimes(os.path.join(args.modelpath, 'spec.out'))
+        at.showtimesteptimes(modelpath=args.modelpath)
     else:
         try:
             atomic_number = next(Z for Z, elsymb in enumerate(at.elsymbols) if elsymb.lower() == args.element.lower())
