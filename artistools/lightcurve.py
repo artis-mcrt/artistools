@@ -5,6 +5,7 @@ import glob
 import itertools
 import math
 import os.path
+from typing import Iterable
 
 import numpy as np
 import pandas as pd
@@ -129,7 +130,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     if not args.modelpath:
         args.modelpath = ['.', '*']
-    elif isinstance(args.modelpath, str):
+    elif not isinstance(args.modelpath, Iterable):
         args.modelpath = [args.modelpath]
 
     # combined the results of applying wildcards on each input

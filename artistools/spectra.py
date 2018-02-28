@@ -9,6 +9,7 @@ import sys
 import warnings
 from collections import namedtuple
 from itertools import chain
+from typing import Iterable
 
 import matplotlib.ticker as ticker
 import matplotlib.patches as mpatches
@@ -782,7 +783,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     if not args.modelpath:
         args.modelpath = ['.', '*']
-    elif isinstance(args.modelpath, str):
+    elif not isinstance(args.modelpath, Iterable):
         args.modelpath = [args.modelpath]
 
     # flatten the list
