@@ -783,7 +783,7 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     if not args.modelpath:
-        args.modelpath = ['.', '*']
+        args.modelpath = [Path('.')]
     elif not isinstance(args.modelpath, Iterable):
         args.modelpath = [args.modelpath]
 
@@ -796,7 +796,7 @@ def main(args=None, argsraw=None, **kwargs):
             modelpaths.append(elem)
 
     # applying any wildcards to the modelpaths
-    modelpaths = list(itertools.chain.from_iterable([Path().glob(str(x)) for x in modelpaths]))
+    modelpaths = list(itertools.chain.from_iterable([list(Path().glob(pattern=str(x)))if not x.samefile(Path('.')) else [Path('.')] for x in modelpaths]))
 
     if args.listtimesteps:
         at.showtimesteptimes(modelpath=modelpaths[0])
