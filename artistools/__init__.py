@@ -3,6 +3,7 @@
 
 A collection of plotting, analysis, and file format conversion tools for the ARTIS radiative transfer code.
 """
+import argparse
 import gzip
 import math
 import os.path
@@ -10,6 +11,8 @@ import sys
 # from astropy import units as u
 from collections import namedtuple
 from itertools import chain
+from pathlib import Path
+from typing import Iterable
 
 # import scipy.signal
 import numpy as np
@@ -43,6 +46,17 @@ console_scripts = [f'{command} = {submodulename}:{funcname}'
                    for command, (submodulename, funcname) in commandlist.items()]
 console_scripts.append('at = artistools:main')
 console_scripts.append('artistools = artistools:main')
+
+
+class AppendPath(argparse.Action):
+    def __call__(self, parser, args, values, option_string=None):
+        # if getattr(args, self.dest) is None:
+        #     setattr(args, self.dest, [])
+        if isinstance(values, Iterable):
+            for pathstr in values:
+                getattr(args, self.dest).append(Path(pathstr))
+        else:
+            setattr(args, self.dest, Path(values))
 
 
 def showtimesteptimes(specfilename=None, modelpath=None, numberofcolumns=5):

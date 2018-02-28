@@ -4,6 +4,7 @@ import numpy as np
 import os.path
 import pandas as pd
 from astropy import constants as const
+from pathlib import Path
 
 import artistools as at
 import artistools.deposition
@@ -16,11 +17,11 @@ import artistools.radfield
 import artistools.spectra
 import artistools.transitions
 
-modelpath = os.path.join('tests', 'data')
-outputpath = 'tests/output'
-specfilename = os.path.join(modelpath, 'spec.out')
-emissionfilename = 'tests/data/emissiontrue.out.gz'
-absorptionfilename = 'tests/data/absorption.out.gz'
+modelpath = Path('tests', 'data')
+outputpath = Path('tests', 'output')
+specfilename = modelpath / 'spec.out'
+emissionfilename = modelpath / 'emissiontrue.out.gz'
+absorptionfilename = modelpath / 'absorption.out.gz'
 
 
 def test_timestep_times():
@@ -105,7 +106,7 @@ def test_deposition():
 def test_menu():
     at.main()
     at.showtimesteptimes(modelpath=modelpath)
-    at.showtimesteptimes(specfilename=os.path.join(modelpath, 'spec.out'))
+    at.showtimesteptimes(specfilename=(modelpath / 'spec.out'))
 
 
 def test_spencerfano():

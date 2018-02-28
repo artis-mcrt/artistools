@@ -9,6 +9,7 @@ import sys
 import warnings
 from collections import namedtuple
 from itertools import chain
+from pathlib import Path
 from typing import Iterable
 
 import matplotlib.ticker as ticker
@@ -635,7 +636,7 @@ def make_plot(modelpaths, args):
     axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
 
-    filenameout = args.outputfile.format(time_days_min=args.timemin, time_days_max=args.timemax)
+    filenameout = str(args.outputfile).format(time_days_min=args.timemin, time_days_max=args.timemax)
     if args.frompackets:
         filenameout = filenameout.replace('.pdf', '_frompackets.pdf')
     fig.savefig(filenameout, format='pdf')
@@ -697,7 +698,7 @@ def write_flambda_spectra(modelpath, args):
 
 
 def addargs(parser):
-    parser.add_argument('-modelpath', default=[], nargs='*', action='append',
+    parser.add_argument('-modelpath', default=[], nargs='*', action=at.AppendPath,
                         help='Paths to ARTIS folders with spec.out or packets files'
                         ' (may include wildcards such as * and **)')
 
@@ -759,7 +760,7 @@ def addargs(parser):
     parser.add_argument('-legendfontsize', type=int, default=8,
                         help='Font size of legend text')
 
-    parser.add_argument('-o', action='store', dest='outputfile',
+    parser.add_argument('-o', action='store', dest='outputfile', type=Path,
                         help='path/filename for PDF file')
 
     parser.add_argument('--output_spectra', action='store_true',
@@ -795,7 +796,7 @@ def main(args=None, argsraw=None, **kwargs):
             modelpaths.append(elem)
 
     # applying any wildcards to the modelpaths
-    modelpaths = list(itertools.chain.from_iterable([glob.glob(x) for x in modelpaths if os.path.isdir(x)]))
+    modelpaths = list(itertools.chain.from_iterable([Path().glob(str(x)) for x in modelpaths]))
 
     if args.listtimesteps:
         at.showtimesteptimes(modelpath=modelpaths[0])
@@ -811,9 +812,9 @@ def main(args=None, argsraw=None, **kwargs):
             if len(modelpaths) > 1:
                 print("ERROR: emission/absorption plot can only take one input model", modelpaths)
                 sys.exit()
-            defaultoutputfile = "plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf"
+            defaultoutputfile = Path("plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
         else:
-            defaultoutputfile = "plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf"
+            defaultoutputfile = Path("plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
         if not args.outputfile:
             args.outputfile = defaultoutputfile
