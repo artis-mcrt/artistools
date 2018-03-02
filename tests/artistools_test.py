@@ -81,13 +81,19 @@ def test_get_flux_contributions():
     assert max(diff) / integrated_flux_specout.value < 2e-3
 
 
-def test_plotters():
-    at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
-    at.lightcurve.main(modelpath=modelpath, outputfile=outputpath)
+def test_spectraplot():
     at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320)
     at.spectra.main(modelpath=modelpath, outputfile=os.path.join(outputpath, 'spectrum_from_packets.pdf'),
                     timemin=290, timemax=320, frompackets=True)
+    at.spectra.main(modelpath=modelpath, output_spectra=True)
     at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320, emissionabsorption=True)
+    at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320, emissionabsorption=True,
+                    nostack=True)
+
+
+def test_plotters():
+    at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
+    at.lightcurve.main(modelpath=modelpath, outputfile=outputpath)
     at.nonthermal.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
     at.transitions.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
     at.estimators.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
