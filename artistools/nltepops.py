@@ -259,9 +259,6 @@ def addargs(parser):
     parser.add_argument('-modelpath', default='.',
                         help='Path to ARTIS folder')
 
-    parser.add_argument('-listtimesteps', action='store_true',
-                        help='Show the times at each timestep')
-
     parser.add_argument('-timedays', '-time', '-t',
                         help='Time in days to plot')
 
@@ -301,51 +298,48 @@ def main(args=None, argsraw=None, **kwargs):
     if os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
-    if args.listtimesteps:
-        at.showtimesteptimes(modelpath=modelpath)
-    else:
-        ionstages_permitted = at.parse_range_list(args.ionstages) if args.ionstages else None
-        adata = at.get_levels(args.modelpath)
+    ionstages_permitted = at.parse_range_list(args.ionstages) if args.ionstages else None
+    adata = at.get_levels(args.modelpath)
 
-        modeldata, _ = at.get_modeldata(os.path.join(args.modelpath, 'model.txt'))
-        estimators = at.estimators.read_estimators(args.modelpath, modeldata)
-        if estimators:
-            if not estimators[(timestep, args.modelgridindex)]['emptycell']:
-                T_e = estimators[(timestep, args.modelgridindex)]['Te']
-                T_R = estimators[(timestep, args.modelgridindex)]['TR']
-            else:
-                print(f'ERROR: cell {args.modelgridindex} is empty. Setting T_e = T_R =  6000 K')
-                T_e = 6000
-                T_R = 6000
+    modeldata, _ = at.get_modeldata(os.path.join(args.modelpath, 'model.txt'))
+    estimators = at.estimators.read_estimators(args.modelpath, modeldata)
+    if estimators:
+        if not estimators[(timestep, args.modelgridindex)]['emptycell']:
+            T_e = estimators[(timestep, args.modelgridindex)]['Te']
+            T_R = estimators[(timestep, args.modelgridindex)]['TR']
         else:
-            print('Setting T_e = T_R =  6000 K')
+            print(f'ERROR: cell {args.modelgridindex} is empty. Setting T_e = T_R =  6000 K')
             T_e = 6000
             T_R = 6000
+    else:
+        print('Setting T_e = T_R =  6000 K')
+        T_e = 6000
+        T_R = 6000
 
-        for el_in in args.elements:
+    for el_in in args.elements:
+        try:
+            atomic_number = int(el_in)
+            elsymbol = at.elsymbols[atomic_number]
+        except ValueError:
             try:
-                atomic_number = int(el_in)
-                elsymbol = at.elsymbols[atomic_number]
-            except ValueError:
-                try:
-                    elsymbol = el_in
-                    atomic_number = next(
-                        Z for Z, elsymb in enumerate(at.elsymbols) if elsymb.lower() == elsymbol.lower())
-                except StopIteration:
-                    print(f"Could not find element '{elsymbol}'")
-                    continue
+                elsymbol = el_in
+                atomic_number = next(
+                    Z for Z, elsymb in enumerate(at.elsymbols) if elsymb.lower() == elsymbol.lower())
+            except StopIteration:
+                print(f"Could not find element '{elsymbol}'")
+                continue
 
-            print(elsymbol, atomic_number)
+        print(elsymbol, atomic_number)
 
-            print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
-                  f'timestep {timestep} element {elsymbol}')
-            dfpop = read_files(args.modelpath, adata, atomic_number, T_e, T_R,
-                               timestep, args.modelgridindex, args.oldformat)
+        print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
+              f'timestep {timestep} element {elsymbol}')
+        dfpop = read_files(args.modelpath, adata, atomic_number, T_e, T_R,
+                           timestep, args.modelgridindex, args.oldformat)
 
-            if dfpop.empty:
-                print(f'No NLTE population data for modelgrid cell {args.modelgridindex} timestep {timestep}')
-            else:
-                make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R, timestep, args)
+        if dfpop.empty:
+            print(f'No NLTE population data for modelgrid cell {args.modelgridindex} timestep {timestep}')
+        else:
+            make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R, timestep, args)
 
 
 def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R, timestep, args):
