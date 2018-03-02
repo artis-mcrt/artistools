@@ -17,7 +17,7 @@ defaultoutputfile = 'plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf'
 def addargs(parser):
     parser.add_argument('--modelpath', nargs='?', default='',
                         help='Path to ARTIS folder')
-    parser.add_argument('-listtimesteps', action='store_true', default=False,
+    parser.add_argument('-listtimesteps', action='store_true',
                         help='Show the times at each timestep')
     parser.add_argument('-timestep', type=int, default=10,
                         help='Timestep number to plot, or -1 for last')

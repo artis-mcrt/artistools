@@ -500,7 +500,7 @@ def addargs(parser):
     parser.add_argument('-modelpath', default='.',
                         help='Path to ARTIS folder')
 
-    parser.add_argument('--recombrates', default=False, action='store_true',
+    parser.add_argument('--recombrates', action='store_true',
                         help='Make a recombination rate plot')
 
     parser.add_argument('-timedays', '-time', '-t',
