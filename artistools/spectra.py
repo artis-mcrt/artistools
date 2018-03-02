@@ -697,34 +697,9 @@ def write_flambda_spectra(modelpath, args):
     print('Saved in ' + outdirectory)
 
 
-def get_spectra_filepaths():
-    # Read spectra filepaths to spec_data.txt files
-    with open('spectrum_data/spectra_list.txt', 'r') as spectra_file:
-        spec_data = spectra_file.readlines()
-
-    paths_to_spec_data = []
-    for line in spec_data:
-        if line != '\n':
-            p = line.split()
-            paths_to_spec_data.append(p[0])
-
-    return paths_to_spec_data
-
-
-def get_times():
-    with open('time_list.txt', 'r') as time_file:
-        times = time_file.readlines()
-
-    time_list = []
-    for t in times:
-        if t != '\n':
-            t = t.split()
-            time_list.append(t[0])
-
-    return time_list
-
-
 def get_filter_data(filterdir, filter_name):
+    """Filter metadata taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata"""
+
     with open(filterdir + filter_name + '.txt', 'r') as filter_metadata:  # defintion of the file
         line_in_filter_metadata = filter_metadata.readlines()  # list of lines
 
@@ -732,11 +707,10 @@ def get_filter_data(filterdir, filter_name):
     # zero point in energy flux (erg/cm^2/s)
 
     wavefilter, transmission = [], []
-    for row in line_in_filter_metadata[4:len(line_in_filter_metadata)]:
+    for row in line_in_filter_metadata[4:]:
         # lines where the wave and transmission are stored
-        p = row.split()
-        wavefilter.append(float(p[0]))
-        transmission.append(float(p[1]))
+        wavefilter.append(float(row.split()[0]))
+        transmission.append(float(row.split()[1]))
 
     wavefilter = np.array(wavefilter)
     transmission = np.array(transmission)
@@ -746,17 +720,14 @@ def get_filter_data(filterdir, filter_name):
     return zeropointenergyflux, np.array(wavefilter), np.array(transmission), wavefilter_min, wavefilter_max
 
 
-def read_spectra(pathname, wavefilter_min, wavefilter_max):
-    with open(pathname, 'r') as spec_data_file:
-        spec_data_for_ts = spec_data_file.readlines()
+def get_spectrum_in_filter_range(modelpath, timestep, wavefilter_min, wavefilter_max):
+    spectrum = get_spectrum(modelpath, timestep, timestep)
 
     wave, flux = [], []
-    for line in spec_data_for_ts:
-        p = line.split()
-        if line != '\n' and float(line.split()[0]) >= wavefilter_min and float(
-                line.split()[0]) <= wavefilter_max:  # to match the spectrum wavelegnths to those of the filter
-            wave.append(float(p[0]))
-            flux.append(float(p[1]))
+    for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
+        if wavefilter_min <= wavelength <= wavefilter_max:  # to match the spectrum wavelengths to those of the filter
+            wave.append(wavelength)
+            flux.append(flambda)
 
     return np.array(wave), np.array(flux)
 
@@ -773,14 +744,13 @@ def evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux):
 
 
 def get_magnitudes(modelpath, args):
-    paths_to_spec_data = get_spectra_filepaths()
-    # timearray = get_times()
+    """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
+
     specfilename = at.firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     timearray = specdata.columns.values[1:]
 
     filters_list = ['U', 'B', 'V', 'R', 'I']
-    # filters_list = ['B', 'V']
 
     filters_dict = {}
     for filter_name in filters_list:
@@ -793,12 +763,11 @@ def get_magnitudes(modelpath, args):
 
     for filter_name in filters_list:
 
-        for timestep, pathname in enumerate(paths_to_spec_data):
+        for timestep, time in enumerate(timearray):
 
-            zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max\
-                = get_filter_data(filterdir, filter_name)
+            zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max = get_filter_data(filterdir, filter_name)
 
-            wave, flux = read_spectra(pathname, wavefilter_min, wavefilter_max)
+            wave, flux = get_spectrum_in_filter_range(modelpath, timestep, wavefilter_min, wavefilter_max)
 
             if len(wave) > len(wavefilter):
                 interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.)
@@ -844,9 +813,9 @@ def make_magnitudes_plot(modelpath, args):
     plt.show()
 
 
-def colour_evolution_plot(filter_name1, filter_name2):
+def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
 
-    filters_dict = get_magnitudes()
+    filters_dict = get_magnitudes(modelpath, args)
 
     time_dict_1 = {}
     time_dict_2 = {}
@@ -999,7 +968,8 @@ def main(args=None, argsraw=None, **kwargs):
 
         # make_plot(modelpaths, args)
     # for modelpath in modelpaths:
-    make_magnitudes_plot(modelpaths[0], args)
+    make_magnitudes_plot('.', args)
+    # colour_evolution_plot('B', 'V', '.', args)
 
 if __name__ == "__main__":
     main()
