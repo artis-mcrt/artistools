@@ -649,9 +649,8 @@ def make_plot(modelpaths, args):
 
 def write_flambda_spectra(modelpath, args):
     """
-    Write lambda_angstroms and f_lambda to .txt files for all timesteps. Also write text file with path to files and a
-    file specifying filters. This can be used as input to https://github.com/cinserra/S3/blob/master/src/s3/SMS.py
-    to plot synthetic magnitudes from spectra.
+    Write lambda_angstroms and f_lambda to .txt files for all timesteps. Also create a text file containing the time
+    in days for each timestep.
     """
 
     outdirectory = 'spectrum_data/'
@@ -712,8 +711,6 @@ def get_filter_data(filterdir, filter_name):
         wavefilter.append(float(row.split()[0]))
         transmission.append(float(row.split()[1]))
 
-    wavefilter = np.array(wavefilter)
-    transmission = np.array(transmission)
     wavefilter_min = min(wavefilter)
     wavefilter_max = int(max(wavefilter))  # integer is needed for a sharper cut-off
 
@@ -765,7 +762,8 @@ def get_magnitudes(modelpath, args):
 
         for timestep, time in enumerate(timearray):
 
-            zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max = get_filter_data(filterdir, filter_name)
+            zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max \
+                = get_filter_data(filterdir, filter_name)
 
             wave, flux = get_spectrum_in_filter_range(modelpath, timestep, wavefilter_min, wavefilter_max)
 
@@ -810,7 +808,7 @@ def make_magnitudes_plot(modelpath, args):
 
     plt.savefig('magnitude_absolute', format='pdf')
 
-    plt.show()
+    print('Saved figure: magnitude_absolute.pdf')
 
 
 def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
@@ -834,9 +832,12 @@ def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
             diff.append(time_dict_1[time]-time_dict_2[time])
 
     plt.plot(plot_times, diff, marker='o', linestyle='None')
-    plt.ylabel('B-V')
+    plt.ylabel(f'{filter_name1}-{filter_2}')
     plt.xlabel('Time in Days')
-    plt.show()
+
+    plt.savefig('magnitude_absolute', format='pdf')
+
+    print('Saved figure: magnitude_absolute.pdf')
 
 
 def addargs(parser):
