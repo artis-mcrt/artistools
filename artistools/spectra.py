@@ -716,21 +716,9 @@ def write_flambda_spectra(modelpath, args):
             for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
                 spec_file.write(f'{wavelength} {flambda}\n')
 
-        spectra_list.write(os.path.realpath(outdirectory + f'spec_data_ts_{timestep}.txt') + '\n')
+        spectra_list.write(os.path.realpath(outdirectory / f'spec_data_ts_{timestep}.txt') + '\n')
 
     spectra_list.close()
-
-    time_list = open(outdirectory + 'time_list.txt', 'w+')
-
-    for time in timearray:
-        time_list.write(f'{str(time)} \n')
-    time_list.close()
-
-    time_list = open(outdirectory + 'time_list.txt', 'w+')
-
-    for time in timearray:
-        time_list.write(f'{str(time)} \n')
-    time_list.close()
 
     time_list = open(outdirectory + 'time_list.txt', 'w+')
 
