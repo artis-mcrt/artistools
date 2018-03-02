@@ -768,6 +768,7 @@ def get_filter_data(filterdir, filter_name):
     # zero point in energy flux (erg/cm^2/s)
 
     wavefilter, transmission = [], []
+
     for row in line_in_filter_metadata[4:]:
         # lines where the wave and transmission are stored
         wavefilter.append(float(row.split()[0]))
