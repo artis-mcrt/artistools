@@ -656,8 +656,7 @@ def write_flambda_spectra(modelpath, args):
     if not os.path.exists('spectrum_data'):
         os.makedirs('spectrum_data')
 
-    open(outdirectory + 'spectra_list.txt', 'w+').close()  # clear files
-    open(outdirectory + 'filter_list.txt', 'w+').close()
+    open(outdirectory + 'spectra_list.txt', 'w+').close()  # clear file
 
     specfilename = at.firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
@@ -671,9 +670,6 @@ def write_flambda_spectra(modelpath, args):
         timearray, args.timestep, args.timemin, args.timemax, args.timedays)
 
     spectra_list = open(outdirectory + 'spectra_list.txt', 'a')
-    filter_list = open(outdirectory + 'filter_list.txt', 'a')
-
-    filter_name = ['U', 'B', 'V', 'R', 'I']
 
     for timestep in range(timestepmin, timestepmax + 1):
 
@@ -687,11 +683,7 @@ def write_flambda_spectra(modelpath, args):
 
         spectra_list.write(os.path.realpath(outdirectory + 'spec_data_ts_' + str(timestep) + '.txt') + '\n')
 
-        for i in filter_name:
-            filter_list.write(f'{i}\n')
-
     spectra_list.close()
-    filter_list.close()
 
     time_list = open(outdirectory + 'time_list.txt', 'w+')
 
@@ -806,9 +798,11 @@ def main(args=None, argsraw=None, **kwargs):
 
     if args.listtimesteps:
         at.showtimesteptimes(modelpath=modelpaths[0])
+
     elif args.output_spectra:
         for modelpath in modelpaths:
             write_flambda_spectra(modelpath, args)
+
     else:
         if args.emissionabsorption:
             args.showemission = True
