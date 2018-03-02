@@ -112,9 +112,9 @@ def addargs(parser):
     parser.add_argument('modelpath', default=[], nargs='*', action=at.AppendPath,
                         help='Path(s) to ARTIS folders with light_curve.out or packets files'
                         ' (may include wildcards such as * and **)')
-    parser.add_argument('--frompackets', default=False, action='store_true',
+    parser.add_argument('--frompackets', action='store_true',
                         help='Read packets files instead of light_curve.out')
-    parser.add_argument('--gamma', default=False, action='store_true',
+    parser.add_argument('--gamma', action='store_true',
                         help='Make light curve from gamma rays instead of R-packets')
     parser.add_argument('-o', action='store', dest='outputfile', type=Path,
                         help='Filename for PDF file')

@@ -259,7 +259,7 @@ def addargs(parser):
     parser.add_argument('-modelpath', default='.',
                         help='Path to ARTIS folder')
 
-    parser.add_argument('-listtimesteps', action='store_true', default=False,
+    parser.add_argument('-listtimesteps', action='store_true',
                         help='Show the times at each timestep')
 
     parser.add_argument('-timedays', '-time', '-t',
@@ -277,7 +277,7 @@ def addargs(parser):
     parser.add_argument('-ionstages',
                         help='Ion stage range, 1 is neutral, 2 is 1+')
 
-    parser.add_argument('--oldformat', default=False, action='store_true',
+    parser.add_argument('--oldformat', action='store_true',
                         help='Use the old file format')
 
     parser.add_argument('-outputfile', '-o',

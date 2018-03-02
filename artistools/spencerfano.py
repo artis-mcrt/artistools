@@ -410,13 +410,13 @@ def addargs(parser):
     parser.add_argument('-vary', action='store', choices=['emin', 'emax', 'npts', 'emax,npts'],
                         help='Which parameter to vary')
 
-    parser.add_argument('--makeplot', action='store_true', default=False,
+    parser.add_argument('--makeplot', action='store_true',
                         help='Save a plot of the non-thermal spectrum')
 
-    parser.add_argument('--noexcitation', action='store_true', default=False,
+    parser.add_argument('--noexcitation', action='store_true',
                         help='Do not include collisional excitation transitions')
 
-    parser.add_argument('--ar1985', action='store_true', default=False,
+    parser.add_argument('--ar1985', action='store_true',
                         help='Use Arnaud & Rothenflug (1985, A&AS, 60, 425) for Fe ionization cross sections')
 
     parser.add_argument('-o', action='store', dest='outputfile',

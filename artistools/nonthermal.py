@@ -130,10 +130,10 @@ def addargs(parser):
     parser.add_argument('-modelpath', default='.',
                         help='Path to ARTIS folder')
 
-    parser.add_argument('-listtimesteps', action='store_true', default=False,
+    parser.add_argument('-listtimesteps', action='store_true',
                         help='Show the times at each timestep')
 
-    parser.add_argument('-xsplot', action='store_true', default=False,
+    parser.add_argument('-xsplot', action='store_true',
                         help='Show the cross section plot')
 
     parser.add_argument('-timestep', '-ts', type=int, default=-1,

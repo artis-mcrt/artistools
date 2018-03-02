@@ -714,28 +714,28 @@ def addargs(parser):
                         help='Paths to ARTIS folders with spec.out or packets files'
                         ' (may include wildcards such as * and **)')
 
-    parser.add_argument('--frompackets', default=False, action='store_true',
+    parser.add_argument('--frompackets', action='store_true',
                         help='Read packets files directly instead of exspec results')
 
     parser.add_argument('-maxpacketfiles', type=int, default=-1,
                         help='Limit the number of packet files read')
 
-    parser.add_argument('--emissionabsorption', default=False, action='store_true',
+    parser.add_argument('--emissionabsorption', action='store_true',
                         help='Implies --showemission and --showabsorption')
 
-    parser.add_argument('--showemission', default=False, action='store_true',
+    parser.add_argument('--showemission', action='store_true',
                         help='Plot the emission spectra by ion/process')
 
-    parser.add_argument('--showabsorption', default=False, action='store_true',
+    parser.add_argument('--showabsorption', action='store_true',
                         help='Plot the absorption spectra by ion/process')
 
-    parser.add_argument('--nostack', default=False, action='store_true',
+    parser.add_argument('--nostack', action='store_true',
                         help="Plot each emission/absorption contribution separately instead of a stackplot")
 
     parser.add_argument('-maxseriescount', type=int, default=12,
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')
 
-    parser.add_argument('--listtimesteps', action='store_true', default=False,
+    parser.add_argument('--listtimesteps', action='store_true',
                         help='Show the times at each timestep')
 
     parser.add_argument('-filtersavgol', nargs=2,
@@ -760,10 +760,10 @@ def addargs(parser):
     parser.add_argument('-xmax', type=int, default=11000,
                         help='Plot range: maximum wavelength in Angstroms')
 
-    parser.add_argument('--normalised', default=False, action='store_true',
+    parser.add_argument('--normalised', action='store_true',
                         help='Normalise the spectra to their peak values')
 
-    parser.add_argument('--use_comovingframe', default=False, action='store_true',
+    parser.add_argument('--use_comovingframe', action='store_true',
                         help='Use the time of packet escape to the surface (instead of a plane toward the observer)')
 
     parser.add_argument('-obsspec', action='append', dest='refspecfiles',
