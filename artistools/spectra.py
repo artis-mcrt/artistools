@@ -4,7 +4,7 @@ import argparse
 import glob
 import itertools
 import math
-import os.path
+import os
 import sys
 import warnings
 from collections import namedtuple
@@ -19,6 +19,9 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 from astropy import units as u
+
+from scipy import integrate
+from scipy.interpolate import interp1d
 
 import artistools as at
 
@@ -694,6 +697,179 @@ def write_flambda_spectra(modelpath, args):
     print('Saved in ' + outdirectory)
 
 
+def get_spectra_filepaths():
+    # Read spectra filepaths to spec_data.txt files
+    with open('spectrum_data/spectra_list.txt', 'r') as spectra_file:
+        spec_data = spectra_file.readlines()
+
+    paths_to_spec_data = []
+    for line in spec_data:
+        if line != '\n':
+            p = line.split()
+            paths_to_spec_data.append(p[0])
+
+    return paths_to_spec_data
+
+
+def get_times():
+    with open('time_list.txt', 'r') as time_file:
+        times = time_file.readlines()
+
+    time_list = []
+    for t in times:
+        if t != '\n':
+            t = t.split()
+            time_list.append(t[0])
+
+    return time_list
+
+
+def get_filter_data(filterdir, filter_name):
+    with open(filterdir + filter_name + '.txt', 'r') as filter_metadata:  # defintion of the file
+        line_in_filter_metadata = filter_metadata.readlines()  # list of lines
+
+    zeropointenergyflux = float(line_in_filter_metadata[0])
+    # zero point in energy flux (erg/cm^2/s)
+
+    wavefilter, transmission = [], []
+    for row in line_in_filter_metadata[4:len(line_in_filter_metadata)]:
+        # lines where the wave and transmission are stored
+        p = row.split()
+        wavefilter.append(float(p[0]))
+        transmission.append(float(p[1]))
+
+    wavefilter = np.array(wavefilter)
+    transmission = np.array(transmission)
+    wavefilter_min = min(wavefilter)
+    wavefilter_max = int(max(wavefilter))  # integer is needed for a sharper cut-off
+
+    return zeropointenergyflux, np.array(wavefilter), np.array(transmission), wavefilter_min, wavefilter_max
+
+
+def read_spectra(pathname, wavefilter_min, wavefilter_max):
+    with open(pathname, 'r') as spec_data_file:
+        spec_data_for_ts = spec_data_file.readlines()
+
+    wave, flux = [], []
+    for line in spec_data_for_ts:
+        p = line.split()
+        if line != '\n' and float(line.split()[0]) >= wavefilter_min and float(
+                line.split()[0]) <= wavefilter_max:  # to match the spectrum wavelegnths to those of the filter
+            wave.append(float(p[0]))
+            flux.append(float(p[1]))
+
+    return np.array(wave), np.array(flux)
+
+
+def evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux):
+    cf = flux * transmission
+    flux_obs = max(integrate.cumtrapz(cf, wave))  # using trapezoidal rule to integrate
+    if flux_obs == 0.0:
+        phot_filtobs_sn = 0.0
+    else:
+        phot_filtobs_sn = -2.5 * np.log10(flux_obs / zeropointenergyflux)
+
+    return phot_filtobs_sn
+
+
+def get_magnitudes(modelpath, args):
+    paths_to_spec_data = get_spectra_filepaths()
+    # timearray = get_times()
+    specfilename = at.firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
+    specdata = pd.read_csv(specfilename, delim_whitespace=True)
+    timearray = specdata.columns.values[1:]
+
+    filters_list = ['U', 'B', 'V', 'R', 'I']
+    # filters_list = ['B', 'V']
+
+    filters_dict = {}
+    for filter_name in filters_list:
+        if filter_name not in filters_dict:
+            filters_dict[filter_name] = []
+
+    for path in sys.path:
+        if path.split('/')[-1] == 'artistools':
+            filterdir = path + '/artistools/metadata/'
+
+    for filter_name in filters_list:
+
+        for timestep, pathname in enumerate(paths_to_spec_data):
+
+            zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max\
+                = get_filter_data(filterdir, filter_name)
+
+            wave, flux = read_spectra(pathname, wavefilter_min, wavefilter_max)
+
+            if len(wave) > len(wavefilter):
+                interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.)
+                wavefilter = np.linspace(min(wave), int(max(wave)), len(wave))
+                transmission = interpolate_fn(wavefilter)
+            else:
+                interpolate_fn = interp1d(wave, flux, bounds_error=False, fill_value=0.)
+                wave = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
+                flux = interpolate_fn(wave)
+
+            phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux)
+
+            if phot_filtobs_sn != 0.0:
+                phot_filtobs_sn = phot_filtobs_sn - 25  # Absolute magnitude
+                filters_dict[filter_name].append((timearray[timestep], phot_filtobs_sn))
+
+    return filters_dict
+
+
+def make_magnitudes_plot(modelpath, args):
+
+    filters_dict = get_magnitudes(modelpath, args)
+
+    for key in filters_dict:
+        time = []
+        magnitude = []
+
+        for t, mag in filters_dict[key]:
+            time.append(float(t))
+            magnitude.append(mag)
+
+        plt.plot(time, magnitude, label=key, marker='o', linestyle='None')
+
+    plt.legend(loc='best', frameon=True)
+
+    plt.gca().invert_yaxis()
+
+    plt.xlabel('Time in Days', size=18)
+    plt.ylabel('Magnitude', size=18)
+
+    plt.savefig('magnitude_absolute', format='pdf')
+
+    plt.show()
+
+
+def colour_evolution_plot(filter_name1, filter_name2):
+
+    filters_dict = get_magnitudes()
+
+    time_dict_1 = {}
+    time_dict_2 = {}
+
+    plot_times = []
+    diff = []
+
+    for filter_1, filter_2 in zip(filters_dict[filter_name1], filters_dict[filter_name2]):
+        # Make magnitude dictionaries where time is the key
+        time_dict_1[filter_1[0]] = filter_1[1]
+        time_dict_2[filter_2[0]] = filter_2[1]
+
+    for time in time_dict_1.keys():
+        if time in time_dict_2.keys():  # Test if time has a magnitude for both filters
+            plot_times.append(float(time))
+            diff.append(time_dict_1[time]-time_dict_2[time])
+
+    plt.plot(plot_times, diff, marker='o', linestyle='None')
+    plt.ylabel('B-V')
+    plt.xlabel('Time in Days')
+    plt.show()
+
+
 def addargs(parser):
     parser.add_argument('-modelpath', default=[], nargs='*', action=at.AppendPath,
                         help='Paths to ARTIS folders with spec.out or packets files'
@@ -821,8 +997,9 @@ def main(args=None, argsraw=None, **kwargs):
         elif os.path.isdir(args.outputfile):
             args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
-        make_plot(modelpaths, args)
-
+        # make_plot(modelpaths, args)
+    # for modelpath in modelpaths:
+    make_magnitudes_plot(modelpaths[0], args)
 
 if __name__ == "__main__":
     main()
