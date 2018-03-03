@@ -442,7 +442,7 @@ def main(args=None, argsraw=None, **kwargs):
     modelpath = args.modelpath
 
     if args.timedays:
-        args.timestep = at.get_closest_timestep(os.path.join(modelpath, "spec.out"), args.timedays)
+        args.timestep = at.get_closest_timestep(modelpath, args.timedays)
     elif args.timestep is None:
         print("A time or timestep must be specified.")
         sys.exit()

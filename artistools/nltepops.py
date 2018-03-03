@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 import argparse
 import glob
-import gzip
 import math
 import os
 import re
 import sys
 from collections import namedtuple
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -262,7 +262,7 @@ def addargs(parser):
     parser.add_argument('-timedays', '-time', '-t',
                         help='Time in days to plot')
 
-    parser.add_argument('-timestep', '-ts', default=26,
+    parser.add_argument('-timestep', '-ts', type=int,
                         help='Timestep number to plot')
 
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
@@ -277,7 +277,7 @@ def addargs(parser):
     parser.add_argument('--oldformat', action='store_true',
                         help='Use the old file format')
 
-    parser.add_argument('-outputfile', '-o',
+    parser.add_argument('-outputfile', '-o', type=Path,
                         default=defaultoutputfile,
                         help='path/filename for PDF file')
 
@@ -289,11 +289,13 @@ def main(args=None, argsraw=None, **kwargs):
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
-
+    print(args)
     if args.timedays:
         timestep = at.get_closest_timestep(args.modelpath, args.timedays)
     else:
         timestep = int(args.timestep)
+
+    time_days = float(at.get_timestep_time(args.modelpath, timestep))
 
     if os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
@@ -332,7 +334,7 @@ def main(args=None, argsraw=None, **kwargs):
         print(elsymbol, atomic_number)
 
         print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
-              f'timestep {timestep} element {elsymbol}')
+              f'timestep {timestep} t={time_days}d element {elsymbol}')
         dfpop = read_files(args.modelpath, adata, atomic_number, T_e, T_R,
                            timestep, args.modelgridindex, args.oldformat)
 
@@ -422,10 +424,11 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
 
     axes[0].set_title(figure_title, fontsize=11)
 
-    outputfilename = args.outputfile.format(elsymbol=at.elsymbols[atomic_number], cell=args.modelgridindex,
-                                            timestep=timestep, time_days=time_days)
+    outputfilename = str(args.outputfile).format(
+        elsymbol=at.elsymbols[atomic_number], cell=args.modelgridindex,
+        timestep=timestep, time_days=time_days)
     print(f"Saving {outputfilename}")
-    fig.savefig(outputfilename, format='pdf')
+    fig.savefig(str(outputfilename), format='pdf')
     plt.close()
 
 

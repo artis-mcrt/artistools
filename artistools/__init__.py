@@ -85,7 +85,7 @@ def showtimesteptimes(specfilename=None, modelpath=None, numberofcolumns=5):
 
 def get_composition_data(filename):
     """Return a pandas DataFrame containing details of included elements and ions."""
-    if os.path.isdir(filename):
+    if os.path.isdir(Path(filename)):
         filename = os.path.join(filename, 'compositiondata.txt')
 
     columns = ('Z,nions,lowermost_ionstage,uppermost_ionstage,nlevelsmax_readin,'
@@ -164,38 +164,42 @@ def save_initialabundances(dfabundances, abundancefilename):
     dfabundances.to_csv(abundancefilename, header=False, sep=' ', index=False)
 
 
-def get_timestep_times(specfilename):
+def get_timestep_times(modelpath):
     """Return a list of the time in days of each timestep using a spec.out file."""
-    if os.path.isdir(specfilename):
-        specfilename = firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=specfilename)
+    specfilename = firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath, required=False)
 
-    time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
+    if specfilename:
+        time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
+        return time_columns.columns[1:]
+    else:
+        return None
 
-    return time_columns.columns[1:]
 
-
-def get_timestep_times_float(specfilename):
+def get_timestep_times_float(modelpath):
     """Return a list of the time in days of each timestep using a spec.out file."""
-    return np.array([float(t.rstrip('d')) for t in get_timestep_times(specfilename)])
+    timearray = get_timestep_times(modelpath)
+    if timearray is not None:
+        return np.array([float(t.rstrip('d')) for t in timearray])
+
+    raise FileNotFoundError
 
 
-def get_closest_timestep(specfilename, timedays):
+def get_closest_timestep(modelpath, timedays):
     """Return the timestep number whose time is closest to timedays."""
     try:
         # could be a string like '330d'
         timedays_float = float(timedays.rstrip('d'))
     except AttributeError:
         timedays_float = float(timedays)
-    return np.abs(get_timestep_times_float(specfilename) - timedays_float).argmin()
+    return np.abs(get_timestep_times_float(modelpath) - timedays_float).argmin()
 
 
-def get_timestep_time(specfilename, timestep):
+def get_timestep_time(modelpath, timestep):
     """Return the time in days of a timestep number using a spec.out file."""
-    if os.path.isdir(specfilename):
-        specfilename = firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=specfilename)
+    timearray = get_timestep_times(modelpath)
+    if timearray is not None:
+        return timearray[timestep]
 
-    if os.path.isfile(specfilename):
-        return get_timestep_times(specfilename)[timestep]
     return -1
 
 
@@ -431,14 +435,17 @@ def opengzip(filename, mode):
     return gzip.open(filenamegz, mode) if os.path.exists(filenamegz) else open(filename, mode)
 
 
-def firstexisting(filelist, path=Path('.')):
+def firstexisting(filelist, path=Path('.'), required=True):
     """Return the first existing file in file list."""
-    for filename in filelist:
-        joinedpath = Path(path) / filename
-        if joinedpath.exists():
-            return joinedpath
+    fullpaths = [Path(path) / filename for filename in filelist]
+    for fullpath in fullpaths:
+        if fullpath.exists():
+            return fullpath
 
-    raise FileNotFoundError(f'None of these files exist: {filelist}')
+    if required:
+        raise FileNotFoundError(f'None of these files exist: {", ".join([str(x) for x in fullpaths])}')
+    else:
+        return False
 
 
 def addargs(parser):
