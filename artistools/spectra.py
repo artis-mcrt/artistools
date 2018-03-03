@@ -201,6 +201,7 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
 def get_flux_contributions(emissionfilename, absorptionfilename, timearray, arraynu,
                            filterfunc=None, xmin=-1, xmax=math.inf, timestepmin=0, timestepmax=None):
     arraylambda = const.c.to('angstrom/s').value / arraynu
+    print(emissionfilename, os.path.dirname(emissionfilename))
     elementlist = at.get_composition_data(os.path.dirname(emissionfilename))
     nelements = len(elementlist)
 
@@ -708,8 +709,7 @@ def write_flambda_spectra(modelpath, args):
 
 def addargs(parser):
     parser.add_argument('-modelpath', default=[], nargs='*', action=at.AppendPath,
-                        help='Paths to ARTIS folders with spec.out or packets files'
-                        ' (may include wildcards such as * and **)')
+                        help='Paths to ARTIS folders with spec.out or packets files')
 
     parser.add_argument('--frompackets', action='store_true',
                         help='Read packets files directly instead of exspec results')
@@ -769,7 +769,7 @@ def addargs(parser):
     parser.add_argument('-legendfontsize', type=int, default=8,
                         help='Font size of legend text')
 
-    parser.add_argument('-o', action='store', dest='outputfile', type=Path,
+    parser.add_argument('-outputfile', '-o', action='store', dest='outputfile', type=Path,
                         help='path/filename for PDF file')
 
     parser.add_argument('--output_spectra', action='store_true',
@@ -801,10 +801,6 @@ def main(args=None, argsraw=None, **kwargs):
             modelpaths.extend(elem)
         else:
             modelpaths.append(elem)
-
-    # applying any wildcards to the modelpaths
-    modelpaths = list(chain.from_iterable([
-        list(Path().glob(pattern=str(x)))if not x.samefile(Path('.')) else [Path('.')] for x in modelpaths]))
 
     if args.listtimesteps:
         at.showtimesteptimes(modelpath=modelpaths[0])

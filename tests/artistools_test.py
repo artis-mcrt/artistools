@@ -26,7 +26,7 @@ absorptionfilename = modelpath / 'absorption.out.gz'
 
 
 def test_timestep_times():
-    timearray = at.get_timestep_times(specfilename)
+    timearray = at.get_timestep_times(modelpath)
     assert len(timearray) == 100
     assert timearray[0] == '250.421'
     assert timearray[-1] == '349.412'

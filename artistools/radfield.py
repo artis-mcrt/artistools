@@ -445,7 +445,7 @@ def main(args=None, argsraw=None, **kwargs):
 
         timesteplast = max(radfielddata['timestep'])
         if args.timedays:
-            timesteplist = [at.get_closest_timestep(specfilename, args.timedays)]
+            timesteplist = [at.get_closest_timestep(args.modelpath, args.timedays)]
         elif args.timestep:
             timesteplist = at.parse_range_list(args.timestep, dictvars={'last': timesteplast})
         else:

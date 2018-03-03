@@ -230,7 +230,7 @@ def main(args=None, argsraw=None, **kwargs):
         modelgridindex = args.modelgridindex
 
         if args.timedays:
-            timestep = at.get_closest_timestep(os.path.join(modelpath, "spec.out"), args.timedays)
+            timestep = at.get_closest_timestep(modelpath, args.timedays)
         else:
             timestep = args.timestep
 
