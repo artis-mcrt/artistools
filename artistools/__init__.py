@@ -431,12 +431,14 @@ def opengzip(filename, mode):
     return gzip.open(filenamegz, mode) if os.path.exists(filenamegz) else open(filename, mode)
 
 
-def firstexisting(filelist, path='.'):
+def firstexisting(filelist, path=Path('.')):
     """Return the first existing file in file list."""
     for filename in filelist:
-        if os.path.exists(os.path.join(path, filename)):
-            return os.path.join(path, filename)
-    return os.path.join(path, filelist[-1])
+        joinedpath = Path(path) / filename
+        if joinedpath.exists():
+            return joinedpath
+
+    raise FileNotFoundError(f'None of these files exist: {filelist}')
 
 
 def addargs(parser):
