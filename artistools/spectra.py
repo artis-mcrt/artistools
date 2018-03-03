@@ -2,7 +2,6 @@
 """Artistools - spectra related functions."""
 import argparse
 import glob
-import itertools
 import math
 import os.path
 import sys
@@ -806,7 +805,7 @@ def main(args=None, argsraw=None, **kwargs):
             modelpaths.append(elem)
 
     # applying any wildcards to the modelpaths
-    modelpaths = list(itertools.chain.from_iterable([
+    modelpaths = list(chain.from_iterable([
         list(Path().glob(pattern=str(x)))if not x.samefile(Path('.')) else [Path('.')] for x in modelpaths]))
 
     if args.listtimesteps:
