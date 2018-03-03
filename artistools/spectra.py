@@ -778,9 +778,7 @@ def addargs(parser):
 
 def main(args=None, argsraw=None, **kwargs):
     warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
-    """
-        Plot ARTIS spectra and (optionally) reference spectra
-    """
+    """Plot spectra from ARTIS and reference data."""
 
     if args is None:
         parser = argparse.ArgumentParser(
