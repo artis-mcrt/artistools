@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import math
 import numpy as np
 import os.path
 import pandas as pd
@@ -32,9 +33,9 @@ def test_timestep_times():
 
 
 def check_spectrum(dfspectrum):
-    assert abs(max(dfspectrum['f_lambda']) - 2.548532804918824e-13) < 1e-5
+    assert math.isclose(max(dfspectrum['f_lambda']), 2.548532804918824e-13, abs_tol=1e-5)
     assert min(dfspectrum['f_lambda']) < 1e-9
-    assert abs(np.mean(dfspectrum['f_lambda']) - 1.0314682640070206e-14) < 1e-5
+    assert math.isclose(np.mean(dfspectrum['f_lambda']), 1.0314682640070206e-14, abs_tol=1e-5)
 
 
 def test_get_spectrum():
