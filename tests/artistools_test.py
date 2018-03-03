@@ -95,6 +95,8 @@ def test_spectraplot():
 def test_plotters():
     at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
     at.lightcurve.main(modelpath=modelpath, outputfile=outputpath)
+    at.lightcurve.main(modelpath=modelpath, frompackets=True,
+                       outputfile=os.path.join(outputpath, 'lightcurve_from_packets.pdf'))
     at.nonthermal.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
     at.transitions.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
     at.estimators.main(modelpath=modelpath, outputfile=outputpath, timedays=300)

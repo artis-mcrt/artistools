@@ -103,7 +103,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
     axis.set_xlabel(r'Time (days)')
     axis.set_ylabel(r'$\mathrm{L} ' + ('_\gamma' if gammalc else '') + r'/ \mathrm{L}_\odot$')
 
-    fig.savefig(filenameout, format='pdf')
+    fig.savefig(str(filenameout), format='pdf')
     print(f'Saved {filenameout}')
     plt.close()
 
