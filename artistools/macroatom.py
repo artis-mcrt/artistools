@@ -97,8 +97,8 @@ def main(args=None, argsraw=None, **kwargs):
 def make_plot(dfmacroatom, modelpath, specfilename, timestepmin, timestepmax, outputfile,
               xmin, xmax, modelgridindex, nospec=False, normalised=False):
 
-    time_days_min = at.get_timestep_time(specfilename, timestepmin)
-    time_days_max = at.get_timestep_time(specfilename, timestepmax)
+    time_days_min = at.get_timestep_time(modelpath, timestepmin)
+    time_days_max = at.get_timestep_time(modelpath, timestepmax)
 
     print(f'Plotting {len(dfmacroatom)} transitions')
 
