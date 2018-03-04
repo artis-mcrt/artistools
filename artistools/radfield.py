@@ -196,7 +196,7 @@ def plot_celltimestep(
         radfielddata, modelpath, specfilename, timestep, outputfile,
         xmin, xmax, modelgridindex, args, normalised=False):
     """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells)."""
-    time_days = at.get_timestep_time(specfilename, timestep)
+    time_days = at.get_timestep_time(modelpath, timestep)
 
     print(f'Plotting timestep {timestep:d} (t={time_days})')
 
