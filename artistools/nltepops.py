@@ -422,7 +422,7 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
     try:
         time_days = float(at.get_timestep_time(args.modelpath, timestep))
     except FileNotFoundError:
-        time_days = None
+        time_days = 0
     else:
         figure_title += f' ({time_days:.1f}d)'
 
