@@ -346,8 +346,15 @@ def get_model_name(path):
 def get_time_range(timearray, timestep_range_str, timemin, timemax, timedays_range_str):
     """Handle a time range specified in either days or timesteps."""
     # assertions make sure time is specified either by timesteps or times in days, but not both!
+    time_specified = (timemin is not None and timemax is not None) or timedays_range_str is not None
+
+    if timemin < float(timearray[-1].strip('d')):
+        raise ValueError(f"timemin {timemin} is after the last timestep at {timearray[-1]}")
+    elif timemax < float(timearray[0].strip('d')):
+        raise ValueError(f"timemax {timemax} is before the first timestep at {timearray[0]}")
+
     if timestep_range_str is not None:
-        assert timemin is None and timemax is None and timedays_range_str is None
+        assert not time_specified
 
         if '-' in timestep_range_str:
             timestepmin, timestepmax = [int(nts) for nts in timestep_range_str.split('-')]
@@ -355,8 +362,7 @@ def get_time_range(timearray, timestep_range_str, timemin, timemax, timedays_ran
             timestepmin = int(timestep_range_str)
             timestepmax = timestepmin
     else:
-        assert (timemin is None and timemax is None and timedays_range_str is not None or
-                timemin is not None and timemax is not None and timedays_range_str is None)
+        assert time_specified
         if timedays_range_str is not None and '-' in timedays_range_str:
             timemin, timemax = [float(timedays) for timedays in timedays_range_str.split('-')]
 
