@@ -430,8 +430,11 @@ def plot_timestep(modelname, timestep, allnonemptymgilist, estimators, xvariable
                               compositiondata, estimators, args, **plotkwargs)
 
     figure_title = f'{modelname}\nTimestep {timestep}'
-    time_days = float(at.get_timestep_time('.', timestep))
-    if time_days >= 0:
+    try:
+        time_days = float(at.get_timestep_time('.', timestep))
+    except FileNotFoundError:
+        pass
+    else:
         figure_title += f' ({time_days:.2f}d)'
     axes[0].set_title(figure_title, fontsize=11)
     # plt.suptitle(figure_title, fontsize=11, verticalalignment='top')

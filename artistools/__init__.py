@@ -166,13 +166,10 @@ def save_initialabundances(dfabundances, abundancefilename):
 
 def get_timestep_times(modelpath):
     """Return a list of the time in days of each timestep using a spec.out file."""
-    specfilename = firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath, required=False)
+    specfilename = firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
 
-    if specfilename:
-        time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
-        return time_columns.columns[1:]
-    else:
-        return None
+    time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
+    return time_columns.columns[1:]
 
 
 def get_timestep_times_float(modelpath):
@@ -346,15 +343,15 @@ def get_model_name(path):
 def get_time_range(timearray, timestep_range_str, timemin, timemax, timedays_range_str):
     """Handle a time range specified in either days or timesteps."""
     # assertions make sure time is specified either by timesteps or times in days, but not both!
-    time_specified = (timemin is not None and timemax is not None) or timedays_range_str is not None
+    time_is_specified = (timemin is not None and timemax is not None) or timedays_range_str is not None
 
-    if timemin > float(timearray[-1].strip('d')):
+    if timemin and timemin > float(timearray[-1].strip('d')):
         raise ValueError(f"timemin {timemin} is after the last timestep at {timearray[-1]}")
-    elif timemax < float(timearray[0].strip('d')):
+    elif timemax and timemax < float(timearray[0].strip('d')):
         raise ValueError(f"timemax {timemax} is before the first timestep at {timearray[0]}")
 
     if timestep_range_str is not None:
-        assert not time_specified
+        assert not time_is_specified
 
         if '-' in timestep_range_str:
             timestepmin, timestepmax = [int(nts) for nts in timestep_range_str.split('-')]
@@ -362,7 +359,7 @@ def get_time_range(timearray, timestep_range_str, timemin, timemax, timedays_ran
             timestepmin = int(timestep_range_str)
             timestepmax = timestepmin
     else:
-        assert time_specified
+        assert time_is_specified
         if timedays_range_str is not None and '-' in timedays_range_str:
             timemin, timemax = [float(timedays) for timedays in timedays_range_str.split('-')]
 
@@ -441,17 +438,14 @@ def opengzip(filename, mode):
     return gzip.open(filenamegz, mode) if os.path.exists(filenamegz) else open(filename, mode)
 
 
-def firstexisting(filelist, path=Path('.'), required=True):
+def firstexisting(filelist, path=Path('.')):
     """Return the first existing file in file list."""
     fullpaths = [Path(path) / filename for filename in filelist]
     for fullpath in fullpaths:
         if fullpath.exists():
             return fullpath
 
-    if required:
-        raise FileNotFoundError(f'None of these files exist: {", ".join([str(x) for x in fullpaths])}')
-    else:
-        return False
+    raise FileNotFoundError(f'None of these files exist: {", ".join([str(x) for x in fullpaths])}')
 
 
 def addargs(parser):

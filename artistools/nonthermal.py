@@ -107,8 +107,11 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
     make_espec_plot(axes[-1], nonthermaldata, timestep, outputfile, args)
 
     figure_title = f'Cell {args.modelgridindex} at Timestep {timestep}'
-    time_days = float(at.get_timestep_time('.', timestep))
-    if time_days >= 0:
+    try:
+        time_days = float(at.get_timestep_time('.', timestep))
+    except FileNotFoundError:
+        pass
+    else:
         figure_title += f' ({time_days:.2f}d)'
     axes[0].set_title(figure_title, fontsize=13)
 

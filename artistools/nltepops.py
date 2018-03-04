@@ -418,8 +418,12 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
     figure_title = (
         f'{modelname}\n'
         f'Cell {args.modelgridindex} (v={velocity} km/s) with Te = {Te:.1f} K at timestep {timestep:d}')
-    time_days = float(at.get_timestep_time(args.modelpath, timestep))
-    if time_days != -1:
+
+    try:
+        time_days = float(at.get_timestep_time(args.modelpath, timestep))
+    except FileNotFoundError:
+        pass
+    else:
         figure_title += f' ({time_days:.1f}d)'
 
     axes[0].set_title(figure_title, fontsize=11)
