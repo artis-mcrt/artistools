@@ -433,7 +433,7 @@ def plot_timestep(modelname, timestep, allnonemptymgilist, estimators, xvariable
     try:
         time_days = float(at.get_timestep_time('.', timestep))
     except FileNotFoundError:
-        pass
+        time_days = None
     else:
         figure_title += f' ({time_days:.2f}d)'
     axes[0].set_title(figure_title, fontsize=11)
