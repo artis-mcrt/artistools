@@ -348,7 +348,7 @@ def get_time_range(timearray, timestep_range_str, timemin, timemax, timedays_ran
     # assertions make sure time is specified either by timesteps or times in days, but not both!
     time_specified = (timemin is not None and timemax is not None) or timedays_range_str is not None
 
-    if timemin < float(timearray[-1].strip('d')):
+    if timemin > float(timearray[-1].strip('d')):
         raise ValueError(f"timemin {timemin} is after the last timestep at {timearray[-1]}")
     elif timemax < float(timearray[0].strip('d')):
         raise ValueError(f"timemax {timemax} is before the first timestep at {timearray[0]}")
