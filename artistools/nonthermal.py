@@ -107,15 +107,22 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
     make_espec_plot(axes[-1], nonthermaldata, timestep, outputfile, args)
 
     figure_title = f'Cell {args.modelgridindex} at Timestep {timestep}'
-    time_days = float(at.get_timestep_time('spec.out', timestep))
-    if time_days >= 0:
+    try:
+        time_days = float(at.get_timestep_time('.', timestep))
+    except FileNotFoundError:
+        time_days = 0
+    else:
         figure_title += f' ({time_days:.2f}d)'
     axes[0].set_title(figure_title, fontsize=13)
 
     axes[-1].set_xlabel(r'Energy (eV)')
     # axis.yaxis.set_minor_locator(ticker.MultipleLocator(base=0.1))
     # axis.set_yscale("log", nonposy='clip')
-    # axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
+    for ax in axes:
+        if args.xmin is not None:
+            ax.set_xlim(xmin=args.xmin)
+        if args.xmax:
+            ax.set_xlim(xmax=args.xmax)
     # axis.set_ylim(ymin=0.0, ymax=ymax)
 
     # axis.legend(loc='upper center', handlelength=2,
@@ -130,10 +137,10 @@ def addargs(parser):
     parser.add_argument('-modelpath', default='.',
                         help='Path to ARTIS folder')
 
-    parser.add_argument('-listtimesteps', action='store_true', default=False,
+    parser.add_argument('-listtimesteps', action='store_true',
                         help='Show the times at each timestep')
 
-    parser.add_argument('-xsplot', action='store_true', default=False,
+    parser.add_argument('-xsplot', action='store_true',
                         help='Show the cross section plot')
 
     parser.add_argument('-timestep', '-ts', type=int, default=-1,
@@ -145,10 +152,10 @@ def addargs(parser):
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Modelgridindex to plot')
 
-    parser.add_argument('-xmin', type=int, default=40,
+    parser.add_argument('-xmin', type=int,
                         help='Plot range: minimum energy in eV')
 
-    parser.add_argument('-xmax', type=int, default=10000,
+    parser.add_argument('-xmax', type=int,
                         help='Plot range: maximum energy in eV')
 
     parser.add_argument('-o', action='store', dest='outputfile',
@@ -189,7 +196,7 @@ def main(args=None, argsraw=None, **kwargs):
 
             nonthermaldata_thisfile = pd.read_csv(nonthermal_file, delim_whitespace=True, error_bad_lines=False)
             nonthermaldata_thisfile.query('modelgridindex==@args.modelgridindex', inplace=True)
-            if len(nonthermaldata_thisfile) > 0:
+            if not nonthermaldata_thisfile.empty:
                 if nonthermaldata is None:
                     nonthermaldata = nonthermaldata_thisfile.copy()
                 else:
@@ -210,7 +217,7 @@ def main(args=None, argsraw=None, **kwargs):
         for timestep in list_timesteps:
             nonthermaldata_currenttimestep = nonthermaldata.query('timestep==@timestep')
 
-            if len(nonthermaldata_currenttimestep) > 0:
+            if not nonthermaldata_currenttimestep.empty:
                 outputfile = args.outputfile.format(args.modelgridindex, timestep)
                 print(f'Plotting timestep {timestep:d}')
                 make_plot(nonthermaldata_currenttimestep, timestep, outputfile, args)

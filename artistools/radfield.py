@@ -196,7 +196,7 @@ def plot_celltimestep(
         radfielddata, modelpath, specfilename, timestep, outputfile,
         xmin, xmax, modelgridindex, args, normalised=False):
     """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells)."""
-    time_days = at.get_timestep_time(specfilename, timestep)
+    time_days = at.get_timestep_time(modelpath, timestep)
 
     print(f'Plotting timestep {timestep:d} (t={time_days})')
 
@@ -365,7 +365,7 @@ def addargs(parser):
     parser.add_argument('-modelpath', default='.', type=Path,
                         help='Path to ARTIS folder')
 
-    parser.add_argument('-listtimesteps', action='store_true', default=False,
+    parser.add_argument('-listtimesteps', action='store_true',
                         help='Show the times at each timestep')
 
     parser.add_argument('-xaxis', '-x', default='lambda', choices=['lambda', 'timestep'],
@@ -380,10 +380,10 @@ def addargs(parser):
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Modelgridindex to plot')
 
-    parser.add_argument('--nospec', action='store_true', default=False,
+    parser.add_argument('--nospec', action='store_true',
                         help='Don\'t plot the emergent specrum')
 
-    parser.add_argument('--showbinedges', action='store_true', default=False,
+    parser.add_argument('--showbinedges', action='store_true',
                         help='Plot vertical lines at the bin edges')
 
     parser.add_argument('-xmin', type=int, default=1000,
@@ -392,7 +392,7 @@ def addargs(parser):
     parser.add_argument('-xmax', type=int, default=20000,
                         help='Plot range: maximum wavelength in Angstroms')
 
-    parser.add_argument('--normalised', default=False, action='store_true',
+    parser.add_argument('--normalised', action='store_true',
                         help='Normalise the spectra to their peak values')
 
     parser.add_argument('-o', action='store', dest='outputfile', type=Path,
@@ -445,7 +445,7 @@ def main(args=None, argsraw=None, **kwargs):
 
         timesteplast = max(radfielddata['timestep'])
         if args.timedays:
-            timesteplist = [at.get_closest_timestep(specfilename, args.timedays)]
+            timesteplist = [at.get_closest_timestep(args.modelpath, args.timedays)]
         elif args.timestep:
             timesteplist = at.parse_range_list(args.timestep, dictvars={'last': timesteplast})
         else:

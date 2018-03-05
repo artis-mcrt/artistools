@@ -430,8 +430,11 @@ def plot_timestep(modelname, timestep, allnonemptymgilist, estimators, xvariable
                               compositiondata, estimators, args, **plotkwargs)
 
     figure_title = f'{modelname}\nTimestep {timestep}'
-    time_days = float(at.get_timestep_time('.', timestep))
-    if time_days >= 0:
+    try:
+        time_days = float(at.get_timestep_time('.', timestep))
+    except FileNotFoundError:
+        time_days = 0
+    else:
         figure_title += f' ({time_days:.2f}d)'
     axes[0].set_title(figure_title, fontsize=11)
     # plt.suptitle(figure_title, fontsize=11, verticalalignment='top')
@@ -500,7 +503,7 @@ def addargs(parser):
     parser.add_argument('-modelpath', default='.',
                         help='Path to ARTIS folder')
 
-    parser.add_argument('--recombrates', default=False, action='store_true',
+    parser.add_argument('--recombrates', action='store_true',
                         help='Make a recombination rate plot')
 
     parser.add_argument('-timedays', '-time', '-t',

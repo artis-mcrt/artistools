@@ -2,7 +2,6 @@
 """Artistools - spectra related functions."""
 import argparse
 import glob
-import itertools
 import math
 import os
 import sys
@@ -205,6 +204,7 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
 def get_flux_contributions(emissionfilename, absorptionfilename, timearray, arraynu,
                            filterfunc=None, xmin=-1, xmax=math.inf, timestepmin=0, timestepmax=None):
     arraylambda = const.c.to('angstrom/s').value / arraynu
+    print(emissionfilename, os.path.dirname(emissionfilename))
     elementlist = at.get_composition_data(os.path.dirname(emissionfilename))
     nelements = len(elementlist)
 
@@ -611,17 +611,24 @@ def make_plot(modelpaths, args):
     if args.filtersavgol:
         window_length, poly_order = args.filtersavgol
 
-        def filterfunc(y): return scipy.signal.savgol_filter(y, window_length, poly_order)
+        def filterfunc(y):
+            return scipy.signal.savgol_filter(y, window_length, poly_order)
     else:
         filterfunc = None
 
     scale_to_peak = 1.0 if args.normalised else None
 
-    # filterfunc = None
     if args.showemission or args.showabsorption:
+        if len(modelpaths) > 1:
+            raise ValueError("ERROR: emission/absorption plot can only take one input model", modelpaths)
+
+        defaultoutputfile = Path("plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
+
         plotobjects, plotobjectlabels = make_emissionabsorption_plot(
             modelpaths[0], axis, filterfunc, args, scale_to_peak=scale_to_peak)
     else:
+        defaultoutputfile = Path("plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
+
         make_spectrum_plot(modelpaths, axis, filterfunc, args, scale_to_peak=scale_to_peak)
         plotobjects, plotobjectlabels = axis.get_legend_handles_labels()
 
@@ -638,10 +645,15 @@ def make_plot(modelpaths, args):
     axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
 
+    if not args.outputfile:
+        args.outputfile = defaultoutputfile
+    elif not args.outputfile.suffixes:
+        args.outputfile = args.outputfile / defaultoutputfile
+
     filenameout = str(args.outputfile).format(time_days_min=args.timemin, time_days_max=args.timemax)
     if args.frompackets:
         filenameout = filenameout.replace('.pdf', '_frompackets.pdf')
-    fig.savefig(filenameout, format='pdf')
+    fig.savefig(Path(filenameout).open('wb'), format='pdf')
     # plt.show()
     print(f'Saved {filenameout}')
     plt.close()
@@ -653,10 +665,10 @@ def write_flambda_spectra(modelpath, args):
     in days for each timestep.
     """
 
-    outdirectory = 'spectrum_data/'
+    outdirectory = modelpath / 'spectrum_data/'
 
-    if not os.path.exists('spectrum_data'):
-        os.makedirs('spectrum_data')
+    if not outdirectory.is_dir():
+        outdirectory.mkdir()
 
     open(outdirectory + 'spectra_list.txt', 'w+').close()  # clear file
 
@@ -677,13 +689,12 @@ def write_flambda_spectra(modelpath, args):
 
         spectrum = get_spectrum(modelpath, timestep, timestep)
 
-        spec_file = open(outdirectory + 'spec_data_ts_' + str(timestep) + '.txt', 'w+')
+        with open(outdirectory / f'spec_data_ts_{timestep}.txt', 'w+') as spec_file:
 
-        for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
-            spec_file.write(f'{wavelength} {flambda}\n')
-        spec_file.close()
+            for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
+                spec_file.write(f'{wavelength} {flambda}\n')
 
-        spectra_list.write(os.path.realpath(outdirectory + 'spec_data_ts_' + str(timestep) + '.txt') + '\n')
+        spectra_list.write(os.path.realpath(outdirectory / f'spec_data_ts_{timestep}.txt') + '\n')
 
     spectra_list.close()
 
@@ -693,7 +704,7 @@ def write_flambda_spectra(modelpath, args):
         time_list.write(f'{str(time)} \n')
     time_list.close()
 
-    print('Saved in ' + outdirectory)
+    print(f'Saved in {outdirectory}')
 
 
 def get_magnitudes(modelpath):
@@ -850,31 +861,30 @@ def colour_evolution_plot(filter_name1, filter_name2, modelpath):
 
 def addargs(parser):
     parser.add_argument('-modelpath', default=[], nargs='*', action=at.AppendPath,
-                        help='Paths to ARTIS folders with spec.out or packets files'
-                        ' (may include wildcards such as * and **)')
+                        help='Paths to ARTIS folders with spec.out or packets files')
 
-    parser.add_argument('--frompackets', default=False, action='store_true',
+    parser.add_argument('--frompackets', action='store_true',
                         help='Read packets files directly instead of exspec results')
 
     parser.add_argument('-maxpacketfiles', type=int, default=-1,
                         help='Limit the number of packet files read')
 
-    parser.add_argument('--emissionabsorption', default=False, action='store_true',
+    parser.add_argument('--emissionabsorption', action='store_true',
                         help='Implies --showemission and --showabsorption')
 
-    parser.add_argument('--showemission', default=False, action='store_true',
+    parser.add_argument('--showemission', action='store_true',
                         help='Plot the emission spectra by ion/process')
 
-    parser.add_argument('--showabsorption', default=False, action='store_true',
+    parser.add_argument('--showabsorption', action='store_true',
                         help='Plot the absorption spectra by ion/process')
 
-    parser.add_argument('--nostack', default=False, action='store_true',
+    parser.add_argument('--nostack', action='store_true',
                         help="Plot each emission/absorption contribution separately instead of a stackplot")
 
     parser.add_argument('-maxseriescount', type=int, default=12,
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')
 
-    parser.add_argument('--listtimesteps', action='store_true', default=False,
+    parser.add_argument('--listtimesteps', action='store_true',
                         help='Show the times at each timestep')
 
     parser.add_argument('-filtersavgol', nargs=2,
@@ -899,10 +909,10 @@ def addargs(parser):
     parser.add_argument('-xmax', type=int, default=11000,
                         help='Plot range: maximum wavelength in Angstroms')
 
-    parser.add_argument('--normalised', default=False, action='store_true',
+    parser.add_argument('--normalised', action='store_true',
                         help='Normalise the spectra to their peak values')
 
-    parser.add_argument('--use_comovingframe', default=False, action='store_true',
+    parser.add_argument('--use_comovingframe', action='store_true',
                         help='Use the time of packet escape to the surface (instead of a plane toward the observer)')
 
     parser.add_argument('-obsspec', action='append', dest='refspecfiles',
@@ -911,7 +921,7 @@ def addargs(parser):
     parser.add_argument('-legendfontsize', type=int, default=8,
                         help='Font size of legend text')
 
-    parser.add_argument('-o', action='store', dest='outputfile', type=Path,
+    parser.add_argument('-outputfile', '-o', action='store', dest='outputfile', type=Path,
                         help='path/filename for PDF file')
 
     parser.add_argument('--output_spectra', action='store_true',
@@ -926,9 +936,7 @@ def addargs(parser):
 
 def main(args=None, argsraw=None, **kwargs):
     warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
-    """
-        Plot ARTIS spectra and (optionally) reference spectra
-    """
+    """Plot spectra from ARTIS and reference data."""
 
     if args is None:
         parser = argparse.ArgumentParser(
@@ -952,10 +960,6 @@ def main(args=None, argsraw=None, **kwargs):
         else:
             modelpaths.append(elem)
 
-    # applying any wildcards to the modelpaths
-    modelpaths = list(itertools.chain.from_iterable([
-        list(Path().glob(pattern=str(x)))if not x.samefile(Path('.')) else [Path('.')] for x in modelpaths]))
-
     if args.listtimesteps:
         at.showtimesteptimes(modelpath=modelpaths[0])
 
@@ -975,19 +979,6 @@ def main(args=None, argsraw=None, **kwargs):
         if args.emissionabsorption:
             args.showemission = True
             args.showabsorption = True
-
-        if args.showemission or args.showabsorption:
-            if len(modelpaths) > 1:
-                print("ERROR: emission/absorption plot can only take one input model", modelpaths)
-                sys.exit()
-            defaultoutputfile = Path("plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
-        else:
-            defaultoutputfile = Path("plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
-
-        if not args.outputfile:
-            args.outputfile = defaultoutputfile
-        elif os.path.isdir(args.outputfile):
-            args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
         make_plot(modelpaths, args)
 

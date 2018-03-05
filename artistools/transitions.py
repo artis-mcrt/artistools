@@ -184,7 +184,7 @@ def addargs(parser):
     parser.add_argument('-gaussian_window', type=float, default=3,
                         help='Truncate Gaussian line profiles n sigmas from the centre')
 
-    parser.add_argument('--include-permitted', action='store_true', default=False,
+    parser.add_argument('--include-permitted', action='store_true',
                         help='Also consider permitted lines')
 
     parser.add_argument('-timedays', '-time', '-t',
@@ -196,7 +196,7 @@ def addargs(parser):
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Modelgridindex to plot')
 
-    parser.add_argument('--print-lines', action='store_true', default=False,
+    parser.add_argument('--print-lines', action='store_true',
                         help='Output details of matching line details to standard out')
 
     parser.add_argument('--atomicdatabase', default='artis', choices=['artis', 'kurucz', 'nist'],
@@ -230,7 +230,7 @@ def main(args=None, argsraw=None, **kwargs):
         modelgridindex = args.modelgridindex
 
         if args.timedays:
-            timestep = at.get_closest_timestep(os.path.join(modelpath, "spec.out"), args.timedays)
+            timestep = at.get_closest_timestep(modelpath, args.timedays)
         else:
             timestep = args.timestep
 

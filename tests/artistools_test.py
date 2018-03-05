@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import math
 import numpy as np
 import os.path
 import pandas as pd
@@ -25,16 +26,16 @@ absorptionfilename = modelpath / 'absorption.out.gz'
 
 
 def test_timestep_times():
-    timearray = at.get_timestep_times(specfilename)
+    timearray = at.get_timestep_times(modelpath)
     assert len(timearray) == 100
     assert timearray[0] == '250.421'
     assert timearray[-1] == '349.412'
 
 
 def check_spectrum(dfspectrum):
-    assert abs(max(dfspectrum['f_lambda']) - 2.548532804918824e-13) < 1e-5
+    assert math.isclose(max(dfspectrum['f_lambda']), 2.548532804918824e-13, abs_tol=1e-5)
     assert min(dfspectrum['f_lambda']) < 1e-9
-    assert abs(np.mean(dfspectrum['f_lambda']) - 1.0314682640070206e-14) < 1e-5
+    assert math.isclose(np.mean(dfspectrum['f_lambda']), 1.0314682640070206e-14, abs_tol=1e-5)
 
 
 def test_get_spectrum():
@@ -81,13 +82,21 @@ def test_get_flux_contributions():
     assert max(diff) / integrated_flux_specout.value < 2e-3
 
 
-def test_plotters():
-    at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
-    at.lightcurve.main(modelpath=modelpath, outputfile=outputpath)
+def test_spectraplot():
     at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320)
     at.spectra.main(modelpath=modelpath, outputfile=os.path.join(outputpath, 'spectrum_from_packets.pdf'),
                     timemin=290, timemax=320, frompackets=True)
+    at.spectra.main(modelpath=modelpath, output_spectra=True)
     at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320, emissionabsorption=True)
+    at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320, emissionabsorption=True,
+                    nostack=True)
+
+
+def test_plotters():
+    at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
+    at.lightcurve.main(modelpath=modelpath, outputfile=outputpath)
+    at.lightcurve.main(modelpath=modelpath, frompackets=True,
+                       outputfile=os.path.join(outputpath, 'lightcurve_from_packets.pdf'))
     at.nonthermal.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
     at.transitions.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
     at.estimators.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
