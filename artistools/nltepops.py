@@ -289,7 +289,7 @@ def main(args=None, argsraw=None, **kwargs):
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
-    print(args)
+
     if args.timedays:
         timestep = at.get_closest_timestep(args.modelpath, args.timedays)
     else:
