@@ -696,51 +696,7 @@ def write_flambda_spectra(modelpath, args):
     print('Saved in ' + outdirectory)
 
 
-def get_filter_data(filterdir, filter_name):
-    """Filter metadata taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata"""
-
-    with open(filterdir + filter_name + '.txt', 'r') as filter_metadata:  # defintion of the file
-        line_in_filter_metadata = filter_metadata.readlines()  # list of lines
-
-    zeropointenergyflux = float(line_in_filter_metadata[0])
-    # zero point in energy flux (erg/cm^2/s)
-
-    wavefilter, transmission = [], []
-    for row in line_in_filter_metadata[4:]:
-        # lines where the wave and transmission are stored
-        wavefilter.append(float(row.split()[0]))
-        transmission.append(float(row.split()[1]))
-
-    wavefilter_min = min(wavefilter)
-    wavefilter_max = int(max(wavefilter))  # integer is needed for a sharper cut-off
-
-    return zeropointenergyflux, np.array(wavefilter), np.array(transmission), wavefilter_min, wavefilter_max
-
-
-def get_spectrum_in_filter_range(modelpath, timestep, wavefilter_min, wavefilter_max):
-    spectrum = get_spectrum(modelpath, timestep, timestep)
-
-    wave, flux = [], []
-    for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
-        if wavefilter_min <= wavelength <= wavefilter_max:  # to match the spectrum wavelengths to those of the filter
-            wave.append(wavelength)
-            flux.append(flambda)
-
-    return np.array(wave), np.array(flux)
-
-
-def evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux):
-    cf = flux * transmission
-    flux_obs = max(integrate.cumtrapz(cf, wave))  # using trapezoidal rule to integrate
-    if flux_obs == 0.0:
-        phot_filtobs_sn = 0.0
-    else:
-        phot_filtobs_sn = -2.5 * np.log10(flux_obs / zeropointenergyflux)
-
-    return phot_filtobs_sn
-
-
-def get_magnitudes(modelpath, args):
+def get_magnitudes(modelpath):
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
 
     specfilename = at.firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
@@ -785,11 +741,60 @@ def get_magnitudes(modelpath, args):
     return filters_dict
 
 
-def make_magnitudes_plot(modelpath, args):
+def get_filter_data(filterdir, filter_name):
+    """Filter metadata taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata"""
 
-    filters_dict = get_magnitudes(modelpath, args)
+    with open(filterdir + filter_name + '.txt', 'r') as filter_metadata:  # defintion of the file
+        line_in_filter_metadata = filter_metadata.readlines()  # list of lines
 
-    for key in filters_dict:
+    zeropointenergyflux = float(line_in_filter_metadata[0])
+    # zero point in energy flux (erg/cm^2/s)
+
+    wavefilter, transmission = [], []
+    for row in line_in_filter_metadata[4:]:
+        # lines where the wave and transmission are stored
+        wavefilter.append(float(row.split()[0]))
+        transmission.append(float(row.split()[1]))
+
+    wavefilter_min = min(wavefilter)
+    wavefilter_max = int(max(wavefilter))  # integer is needed for a sharper cut-off
+
+    return zeropointenergyflux, np.array(wavefilter), np.array(transmission), wavefilter_min, wavefilter_max
+
+
+def get_spectrum_in_filter_range(modelpath, timestep, wavefilter_min, wavefilter_max):
+    spectrum = get_spectrum(modelpath, timestep, timestep)
+
+    wave, flux = [], []
+    for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
+        if wavefilter_min <= wavelength <= wavefilter_max:  # to match the spectrum wavelengths to those of the filter
+            wave.append(wavelength)
+            flux.append(flambda)
+
+    return np.array(wave), np.array(flux)
+
+
+def evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux):
+    cf = flux * transmission
+    flux_obs = max(integrate.cumtrapz(cf, wave))  # using trapezoidal rule to integrate
+    if flux_obs == 0.0:
+        phot_filtobs_sn = 0.0
+    else:
+        phot_filtobs_sn = -2.5 * np.log10(flux_obs / zeropointenergyflux)
+
+    return phot_filtobs_sn
+
+
+def make_magnitudes_plot(modelpath):
+
+    filters_dict = get_magnitudes(modelpath)
+
+    f, axarr = plt.subplots(nrows=2, ncols=3, sharex='all', sharey='all', squeeze=True)
+    axarr = axarr.flatten()
+
+    colours = ['purple', 'blue', 'green', 'red', 'darkred']
+
+    for plotnumber, (key, colour) in enumerate(zip(filters_dict, colours)):
         time = []
         magnitude = []
 
@@ -797,23 +802,26 @@ def make_magnitudes_plot(modelpath, args):
             time.append(float(t))
             magnitude.append(mag)
 
-        plt.plot(time, magnitude, label=key, marker='o', linestyle='None')
+        axarr[5].invert_yaxis()
+        axarr[5].plot(time, magnitude, label=key, marker='.', linestyle='None', color=colour)
+        axarr[5].legend(loc='best', frameon=True, ncol=3, fontsize='xx-small')
+        axarr[5].set_ylabel('Absolute Magnitude')
+        axarr[5].set_xlabel('Time in Days')
 
-    plt.legend(loc='best', frameon=True)
+        axarr[plotnumber].plot(time, magnitude, label=key, marker='.', linestyle='None', color=colour)
+        axarr[plotnumber].legend(loc='best', frameon=True)
+        axarr[plotnumber].set_ylabel('Absolute Magnitude')
+        axarr[plotnumber].set_xlabel('Time in Days')
 
-    plt.gca().invert_yaxis()
-
-    plt.xlabel('Time in Days', size=18)
-    plt.ylabel('Magnitude', size=18)
-
+    plt.minorticks_on()
     plt.savefig('magnitude_absolute', format='pdf')
 
     print('Saved figure: magnitude_absolute.pdf')
 
 
-def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
+def colour_evolution_plot(filter_name1, filter_name2, modelpath):
 
-    filters_dict = get_magnitudes(modelpath, args)
+    filters_dict = get_magnitudes(modelpath)
 
     time_dict_1 = {}
     time_dict_2 = {}
@@ -831,13 +839,13 @@ def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
             plot_times.append(float(time))
             diff.append(time_dict_1[time]-time_dict_2[time])
 
-    plt.plot(plot_times, diff, marker='o', linestyle='None')
-    plt.ylabel(f'{filter_name1}-{filter_2}')
+    plt.plot(plot_times, diff, marker='.', linestyle='None')
+    plt.ylabel(f'{filter_name1}-{filter_name2}')
     plt.xlabel('Time in Days')
 
-    plt.savefig('magnitude_absolute', format='pdf')
+    plt.savefig('colour_evolution', format='pdf')
 
-    print('Saved figure: magnitude_absolute.pdf')
+    print('Saved figure: colour_evolution.pdf')
 
 
 def addargs(parser):
@@ -909,6 +917,12 @@ def addargs(parser):
     parser.add_argument('--output_spectra', action='store_true',
                         help='Write out spectra to text files')
 
+    parser.add_argument('--magnitude', action='store_true',
+                        help='Plot synthetic magnitudes')
+
+    parser.add_argument('--colour_evolution', action='store_true',
+                        help='Plot of colour evolution')
+
 
 def main(args=None, argsraw=None, **kwargs):
     warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
@@ -949,6 +963,14 @@ def main(args=None, argsraw=None, **kwargs):
         for modelpath in modelpaths:
             write_flambda_spectra(modelpath, args)
 
+    elif args.magnitude:
+        for modelpath in modelpaths:
+            make_magnitudes_plot(modelpath)
+
+    elif args.colour_evolution:
+        for modelpath in modelpaths:
+            colour_evolution_plot('B', 'V', modelpath)
+
     else:
         if args.emissionabsorption:
             args.showemission = True
@@ -967,10 +989,8 @@ def main(args=None, argsraw=None, **kwargs):
         elif os.path.isdir(args.outputfile):
             args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
-        # make_plot(modelpaths, args)
-    # for modelpath in modelpaths:
-    make_magnitudes_plot('.', args)
-    # colour_evolution_plot('B', 'V', '.', args)
+        make_plot(modelpaths, args)
+
 
 if __name__ == "__main__":
     main()
