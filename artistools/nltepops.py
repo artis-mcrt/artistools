@@ -20,7 +20,12 @@ defaultoutputfile = 'plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_d
 
 
 def get_nlte_populations(all_levels, nltefilename, modelgridindex, timestep, atomic_number, T_e, T_R, noprint=False):
-    dfpop = pd.read_csv(nltefilename, delim_whitespace=True)
+    # print(f'Reading {nltefilename}...')
+    try:
+        dfpop = pd.read_csv(nltefilename, delim_whitespace=True)
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame()
+
     dfpop.query('(timestep==@timestep) & (Z==@atomic_number)', inplace=True)
     if modelgridindex >= 0:
         dfpop.query('modelgridindex==@modelgridindex', inplace=True)
@@ -224,7 +229,7 @@ def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridind
         return dfpop
 
     print(f'Reading {len(nlte_files)} NLTE population files...')
-    for nltefilepath in nlte_files:
+    for nltefilepath in sorted(nlte_files):
         filerank = int(re.search('[0-9]+', os.path.basename(nltefilepath)).group(0))
 
         if filerank > modelgridindex and modelgridindex >= 0:
