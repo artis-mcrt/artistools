@@ -438,7 +438,7 @@ def main(args=None, argsraw=None, **kwargs):
             print("No radfield files found")
             return 1
 
-        radfielddata = read_files(radfield_files, args.modelgridindex)
+        radfielddata = read_files(sorted(radfield_files), args.modelgridindex)
 
         if not os.path.isfile(specfilename):
             print(f'Could not find {specfilename}')
