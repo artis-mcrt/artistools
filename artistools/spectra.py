@@ -848,7 +848,7 @@ def colour_evolution_plot(filter_name1, filter_name2, modelpath):
     for time in time_dict_1.keys():
         if time in time_dict_2.keys():  # Test if time has a magnitude for both filters
             plot_times.append(float(time))
-            diff.append(time_dict_1[time]-time_dict_2[time])
+            diff.append(time_dict_1[time] - time_dict_2[time])
 
     plt.plot(plot_times, diff, marker='.', linestyle='None')
     plt.ylabel(f'{filter_name1}-{filter_name2}')
