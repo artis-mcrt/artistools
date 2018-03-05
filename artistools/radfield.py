@@ -169,8 +169,9 @@ def plot_line_estimators(axis, radfielddata, xmin, xmax, modelgridindex=None, ti
 
     ymax = radfielddataselected['Jb_lambda'].max()
 
-    axis.scatter(radfielddataselected['lambda_angstroms'].values, radfielddataselected['Jb_lambda'].values,
-                 label='Line estimators', s=0.2, **plotkwargs)
+    if not radfielddataselected.empty:
+        axis.scatter(radfielddataselected['lambda_angstroms'].values, radfielddataselected['Jb_lambda'].values,
+                     label='Line estimators', s=0.2, **plotkwargs)
 
     return ymax
 
