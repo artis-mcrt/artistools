@@ -724,6 +724,9 @@ def get_magnitudes(modelpath):
     for path in sys.path:
         if path.split('/')[-1] == 'artistools':
             filterdir = path + '/artistools/metadata/'
+        else:
+            print('Artistools directory not found')
+            exit()
 
     for filter_name in filters_list:
 
