@@ -844,16 +844,16 @@ def make_magnitudes_plot(modelpath):
             time.append(float(t))
             magnitude.append(mag)
 
-        axarr[5].invert_yaxis()
-        axarr[5].plot(time, magnitude, label=key, marker='.', linestyle='None', color=colour)
-        axarr[5].legend(loc='best', frameon=True, ncol=3, fontsize='xx-small')
-        axarr[5].set_ylabel('Absolute Magnitude')
-        axarr[5].set_xlabel('Time in Days')
+        axarr[0].invert_yaxis()
+        axarr[0].plot(time, magnitude, label=key, marker='.', linestyle='None', color=colour)
+        axarr[0].legend(loc='best', frameon=True, ncol=3, fontsize='xx-small')
+        axarr[0].set_ylabel('Absolute Magnitude')
+        axarr[0].set_xlabel('Time in Days')
 
-        axarr[plotnumber].plot(time, magnitude, label=key, marker='.', linestyle='None', color=colour)
-        axarr[plotnumber].legend(loc='best', frameon=True)
-        axarr[plotnumber].set_ylabel('Absolute Magnitude')
-        axarr[plotnumber].set_xlabel('Time in Days')
+        axarr[plotnumber + 1].plot(time, magnitude, label=key, marker='.', linestyle='None', color=colour)
+        axarr[plotnumber + 1].legend(loc='best', frameon=True)
+        axarr[plotnumber + 1].set_ylabel('Absolute Magnitude')
+        axarr[plotnumber + 1].set_xlabel('Time in Days')
 
     plt.minorticks_on()
     directory = os.getcwd().split('/')[-1]

@@ -560,9 +560,9 @@ def main(args=None, argsraw=None, **kwargs):
         return -1
 
     serieslist = [
-        # ['heating_gamma', 'heating_coll', 'heating_bf', 'heating_ff'],
-        # ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff'],
-        # # ['heating_gamma/gamma_dep'],
+        ['heating_gamma', 'heating_coll', 'heating_bf', 'heating_ff'],
+        ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff'],
+        # ['heating_gamma/gamma_dep'],
         ['Te', 'TR'],
         ['nne'],
         # # [['initabundances', ['Fe', 'Ni', 'Ni_56', 'Ni_stable', 'Ar']]],
