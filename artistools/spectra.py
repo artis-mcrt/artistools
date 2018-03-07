@@ -74,7 +74,7 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
     if timestepmax < 0:
         timestepmax = timestepmin
 
-
+    master_branch = False
     if os.path.isfile('specpol.out'):
         specfilename = "specpol.out"
         master_branch = True
