@@ -74,14 +74,22 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
     if timestepmax < 0:
         timestepmax = timestepmin
 
-    if os.path.isdir(modelpath):
-        specfilename = at.firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
+
+    if os.path.isfile('specpol.out'):
+        specfilename = "specpol.out"
+        master_branch = True
+    elif os.path.isdir(modelpath):
+        specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
     else:
         specfilename = modelpath
+
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
 
     nu = specdata.loc[:, '0'].values
-    timearray = specdata.columns.values[1:]
+    if master_branch:
+        timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
+    else:
+        timearray = specdata.columns.values[1:]
 
     f_nu = stackspectra([
         (specdata[specdata.columns[timestep + 1]], at.get_timestep_time_delta(timestep, timearray))
@@ -665,17 +673,28 @@ def write_flambda_spectra(modelpath, args):
     in days for each timestep.
     """
 
-    outdirectory = modelpath / 'spectrum_data/'
+    outdirectory = 'spectrum_data/'
 
-    if not outdirectory.is_dir():
-        outdirectory.mkdir()
+    # if not outdirectory.is_dir():
+    #     outdirectory.mkdir()
+
+    if not os.path.exists('spectrum_data'):
+        os.makedirs('spectrum_data')
 
     open(outdirectory + 'spectra_list.txt', 'w+').close()  # clear file
 
-    specfilename = at.firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
-    specdata = pd.read_csv(specfilename, delim_whitespace=True)
-    timearray = specdata.columns.values[1:]
-    number_of_timesteps = len(specdata.keys()) - 1
+    if os.path.isfile('specpol.out'):
+        master_branch = True
+        specfilename = "specpol.out"
+        specdata = pd.read_csv(specfilename, delim_whitespace=True)
+        timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
+        number_of_timesteps = len(timearray)
+
+    else:
+        specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
+        specdata = pd.read_csv(specfilename, delim_whitespace=True)
+        timearray = specdata.columns.values[1:]
+        number_of_timesteps = len(specdata.keys()) - 1
 
     if not args.timestep:
         args.timestep = f'0-{number_of_timesteps - 1}'
@@ -689,12 +708,12 @@ def write_flambda_spectra(modelpath, args):
 
         spectrum = get_spectrum(modelpath, timestep, timestep)
 
-        with open(outdirectory / f'spec_data_ts_{timestep}.txt', 'w+') as spec_file:
+        with open(outdirectory + f'/spec_data_ts_{timestep}.txt', 'w+') as spec_file:
 
             for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
                 spec_file.write(f'{wavelength} {flambda}\n')
 
-        spectra_list.write(os.path.realpath(outdirectory / f'spec_data_ts_{timestep}.txt') + '\n')
+        spectra_list.write(os.path.realpath(outdirectory + f'spec_data_ts_{timestep}.txt') + '\n')
 
     spectra_list.close()
 
@@ -716,9 +735,15 @@ def write_flambda_spectra(modelpath, args):
 def get_magnitudes(modelpath):
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
 
-    specfilename = at.firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
-    specdata = pd.read_csv(specfilename, delim_whitespace=True)
-    timearray = specdata.columns.values[1:]
+    if os.path.isfile('specpol.out'):
+        # master_branch = True
+        specfilename = "specpol.out"
+        specdata = pd.read_csv(specfilename, delim_whitespace=True)
+        timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
+    else:
+        specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
+        specdata = pd.read_csv(specfilename, delim_whitespace=True)
+        timearray = specdata.columns.values[1:]
 
     filters_list = ['U', 'B', 'V', 'R', 'I']
 
@@ -831,6 +856,8 @@ def make_magnitudes_plot(modelpath):
         axarr[plotnumber].set_xlabel('Time in Days')
 
     plt.minorticks_on()
+    directory = os.getcwd().split('/')[-1]
+    f.suptitle(directory)
     plt.savefig('magnitude_absolute', format='pdf')
 
     print('Saved figure: magnitude_absolute.pdf')
@@ -859,6 +886,10 @@ def colour_evolution_plot(filter_name1, filter_name2, modelpath):
     plt.plot(plot_times, diff, marker='.', linestyle='None')
     plt.ylabel(f'{filter_name1}-{filter_name2}')
     plt.xlabel('Time in Days')
+
+    directory = os.getcwd().split('/')[-2:]
+    plt.title(directory)
+    # plt.ylim(-0.5, 3)
 
     plt.savefig('colour_evolution', format='pdf')
 
