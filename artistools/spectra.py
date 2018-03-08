@@ -601,7 +601,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
 
 
 def make_plot(modelpaths, args):
-    fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    fig, axis = plt.subplots(1, 1, sharey=True, figsize=(10, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
     axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
 
     import scipy.signal
