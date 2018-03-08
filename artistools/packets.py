@@ -30,17 +30,26 @@ types = {
 }
 
 
-def readfile(packetsfile, usecols):
-    print(f'Reading {packetsfile} ({os.path.getsize(packetsfile) / 1024 / 1024:.3f} MiB)', end='')
-    inputcolumncount = len(pd.read_csv(packetsfile, nrows=1, delim_whitespace=True, header=None).columns)
+def readfile(packetsfile, usecols, filehandle=None, filesize=-1):
+    """Read a packet file into a pandas DataFrame.
+
+    if a filehandle is passed, this will be used instead of the file path. filesize is in bytes"""
+    if filesize < 0:
+        filesize = os.path.getsize(packetsfile) / 1024 / 1024
+
+    print(f'Reading {packetsfile} ({filesize:.3f} MiB)', end='')
+    inputcolumncount = len(pd.read_csv(
+        filehandle if filehandle else packetsfile, nrows=1, delim_whitespace=True, header=None).columns)
     if inputcolumncount < 3:
         print("\nWARNING: packets file has no columns!")
         print(open(packetsfile, "r").readlines())
 
+    # the packets file may have a truncated set of columns, but we assume that they
+    # are only truncated, i.e. the columns with the same index have the same meaning
     usecols_nodata = [n for n in usecols if columns.index(n) >= inputcolumncount]
     usecols_actual = [n for n in usecols if columns.index(n) < inputcolumncount]
     dfpackets = pd.read_csv(
-        packetsfile,
+        filehandle if filehandle else packetsfile,
         delim_whitespace=True,
         names=columns[:inputcolumncount],
         header=None,

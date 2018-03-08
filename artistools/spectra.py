@@ -101,7 +101,7 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
 
 
 def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_min, lambda_max, delta_lambda=30,
-                              use_comovingframe=None):
+                              use_comovingframe=None, filehandles=None):
     if use_comovingframe:
         modeldata, _ = at.get_modeldata(os.path.dirname(packetsfiles[0]))
         vmax = modeldata.iloc[-1].velocity * u.km / u.s
@@ -131,12 +131,15 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
     c_ang_s = const.c.to('angstrom/s').value
     nu_min = c_ang_s / lambda_max
     nu_max = c_ang_s / lambda_min
-    for packetsfile in packetsfiles:
-        dfpackets = at.packets.readfile(packetsfile, usecols=[
-            'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
-            'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz',
-            'em_posx', 'em_posy', 'em_posz', 'em_time',
-            'true_emission_velocity', 'originated_from_positron'])
+    assert not filehandles or len(packetsfiles) == len(filehandles)
+    for index, packetsfile in enumerate(packetsfiles):
+        dfpackets = at.packets.readfile(
+            packetsfile if not filehandles else filehandles[index],
+            usecols=[
+                'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
+                'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz',
+                'em_posx', 'em_posy', 'em_posz', 'em_time',
+                'true_emission_velocity', 'originated_from_positron'])
 
         querystr = 'type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT" and @nu_min <= nu_rf < @nu_max and'
         if not use_comovingframe:
