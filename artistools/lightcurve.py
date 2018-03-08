@@ -17,14 +17,25 @@ import artistools as at
 import matplotlib.pyplot as plt
 
 
-def readfile(filename):
-    lcdata = pd.read_csv(filename, delim_whitespace=True, header=None, names=['time', 'lum', 'lum_cmf'])
+def readfile(filepath_or_buffer):
+    lcdata = pd.read_csv(filepath_or_buffer, delim_whitespace=True, header=None, names=['time', 'lum', 'lum_cmf'])
     # the light_curve.dat file repeats x values, so keep the first half only
     lcdata = lcdata.iloc[:len(lcdata) // 2]
     return lcdata
 
 
-def get_from_packets(packetsfiles, timearray, nprocs, vmax, escape_type='TYPE_RPKT'):
+def get_from_packets(modelpath, lcpath, escape_type='TYPE_RPKT'):
+    packetsfiles = (glob.glob(os.path.join(modelpath, 'packets00_????.out')) +
+                    glob.glob(os.path.join(modelpath, 'packets00_????.out.gz')))
+    ranks = [int(os.path.basename(filename)[10:10 + 4]) for filename in packetsfiles]
+    nprocs = max(ranks) + 1
+    print(f'Reading packets for {nprocs} processes')
+    assert len(packetsfiles) == nprocs
+
+    timearray = at.lightcurve.readfile(lcpath)['time'].values
+    # timearray = np.arange(250, 350, 0.1)
+    model, _ = at.get_modeldata(modelpath)
+    vmax = model.iloc[-1].velocity * u.km / u.s
     betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
     arr_timedelta = [at.get_timestep_time_delta(timestep, timearray) for timestep in range(len(timearray))]
@@ -72,22 +83,11 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
         if not os.path.exists(lcpath):
             print(f"Skipping {modelname} because {lcpath} does not exist")
             continue
+        elif frompackets:
+            lcdata = at.lightcurve.get_from_packets(
+                modelpath, lcpath, escape_type='TYPE_GAMMA' if gammalc else 'TYPE_RPKT')
         else:
             lcdata = at.lightcurve.readfile(lcpath)
-            if frompackets:
-                foundpacketsfiles = (glob.glob(os.path.join(modelpath, 'packets00_????.out')) +
-                                     glob.glob(os.path.join(modelpath, 'packets00_????.out.gz')))
-                ranks = [int(os.path.basename(filename)[10:10 + 4]) for filename in foundpacketsfiles]
-                nprocs = max(ranks) + 1
-                print(f'Reading packets for {nprocs} processes')
-                assert len(foundpacketsfiles) == nprocs
-
-                timearray = lcdata['time'].values
-                # timearray = np.arange(250, 350, 0.1)
-                model, _ = at.get_modeldata(modelpath)
-                vmax = model.iloc[-1].velocity * u.km / u.s
-                lcdata = at.lightcurve.get_from_packets(foundpacketsfiles, timearray, nprocs, vmax,
-                                                        escape_type='TYPE_GAMMA' if gammalc else 'TYPE_RPKT')
 
         print("Plotting...")
 
