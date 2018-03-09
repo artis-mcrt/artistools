@@ -831,19 +831,6 @@ def main(args=None, argsraw=None, **kwargs):
             args.showemission = True
             args.showabsorption = True
 
-        if args.showemission or args.showabsorption:
-            if len(modelpaths) > 1:
-                print("ERROR: emission/absorption plot can only take one input model", modelpaths)
-                sys.exit()
-            defaultoutputfile = Path("plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
-        else:
-            defaultoutputfile = Path("plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
-
-        if not args.outputfile:
-            args.outputfile = defaultoutputfile
-        elif os.path.isdir(args.outputfile):
-            args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
-
         make_plot(modelpaths, args)
 
 
