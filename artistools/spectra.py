@@ -681,9 +681,9 @@ def write_flambda_spectra(modelpath, args):
     if not os.path.exists(outdirectory):
         os.makedirs(outdirectory)
 
-    if os.path.isfile('specpol.out'):
+    if os.path.isfile(modelpath / 'specpol.out'):
         master_branch = True
-        specfilename = "specpol.out"
+        specfilename = modelpath / 'specpol.out'
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
         number_of_timesteps = len(timearray)
@@ -721,7 +721,7 @@ def write_flambda_spectra(modelpath, args):
         time_list.write(f'{str(time)} \n')
     time_list.close()
 
-    time_list = open(outdirectory + 'time_list.txt', 'w+')
+    time_list = open(outdirectory / 'time_list.txt', 'w+')
 
     for time in timearray:
         time_list.write(f'{str(time)} \n')
