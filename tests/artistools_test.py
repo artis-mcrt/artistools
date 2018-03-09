@@ -120,3 +120,7 @@ def test_menu():
 
 def test_spencerfano():
     at.spencerfano.main(modelpath=modelpath, timedays=300, makeplot=True, npts=200, outputfile=outputpath)
+
+
+def test_magnitudes_plot():
+    at.lightcurve.main(modelpath=modelpath, magnitude=True, outputfile=outputpath)
