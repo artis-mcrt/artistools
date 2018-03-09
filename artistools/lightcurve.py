@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 from scipy import integrate
 from scipy.interpolate import interp1d
 
+
 import artistools.spectra as spectra
 
 
