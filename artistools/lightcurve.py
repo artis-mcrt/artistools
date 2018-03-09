@@ -135,7 +135,7 @@ def get_magnitudes(modelpath):
 
     for path in sys.path:
         if path.split('/')[-1] == 'artistools':
-            filterdir = path + '/artistools/metadata/'
+            filterdir = path + '/artistools/data/filters/'
 
     for filter_name in filters_list:
 
@@ -165,7 +165,7 @@ def get_magnitudes(modelpath):
 
 
 def get_filter_data(filterdir, filter_name):
-    """Filter metadata taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata"""
+    """Filter data in 'data/filters' taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata"""
 
     with open(filterdir + filter_name + '.txt', 'r') as filter_metadata:  # defintion of the file
         line_in_filter_metadata = filter_metadata.readlines()  # list of lines
