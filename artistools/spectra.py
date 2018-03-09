@@ -655,7 +655,7 @@ def make_plot(modelpaths, args):
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
-    elif not args.outputfile.suffixes:
+    elif not Path(args.outputfile).suffixes:
         args.outputfile = args.outputfile / defaultoutputfile
 
     filenameout = str(args.outputfile).format(time_days_min=args.timemin, time_days_max=args.timemax)
@@ -673,15 +673,13 @@ def write_flambda_spectra(modelpath, args):
     in days for each timestep.
     """
 
-    outdirectory = 'spectrum_data/'
+    outdirectory = modelpath / Path('spectrum_data/')
 
     # if not outdirectory.is_dir():
     #     outdirectory.mkdir()
 
-    if not os.path.exists('spectrum_data'):
-        os.makedirs('spectrum_data')
-
-    open(outdirectory + 'spectra_list.txt', 'w+').close()  # clear file
+    if not os.path.exists(outdirectory):
+        os.makedirs(outdirectory)
 
     if os.path.isfile('specpol.out'):
         master_branch = True
@@ -702,13 +700,13 @@ def write_flambda_spectra(modelpath, args):
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         timearray, args.timestep, args.timemin, args.timemax, args.timedays)
 
-    spectra_list = open(outdirectory + 'spectra_list.txt', 'a')
+    spectra_list = open(outdirectory / 'spectra_list.txt', 'w+')
 
     for timestep in range(timestepmin, timestepmax + 1):
 
         spectrum = get_spectrum(modelpath, timestep, timestep)
 
-        with open(outdirectory + f'/spec_data_ts_{timestep}.txt', 'w+') as spec_file:
+        with open(outdirectory / f'spec_data_ts_{timestep}.txt', 'w+') as spec_file:
 
             for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
                 spec_file.write(f'{wavelength} {flambda}\n')
@@ -717,7 +715,7 @@ def write_flambda_spectra(modelpath, args):
 
     spectra_list.close()
 
-    time_list = open(outdirectory + 'time_list.txt', 'w+')
+    time_list = open(outdirectory / 'time_list.txt', 'w+')
 
     for time in timearray:
         time_list.write(f'{str(time)} \n')

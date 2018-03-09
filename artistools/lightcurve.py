@@ -22,6 +22,7 @@ from scipy.interpolate import interp1d
 
 import artistools.spectra as spectra
 
+
 def readfile(filepath_or_buffer):
     lcdata = pd.read_csv(filepath_or_buffer, delim_whitespace=True, header=None, names=['time', 'lum', 'lum_cmf'])
     # the light_curve.dat file repeats x values, so keep the first half only
@@ -115,10 +116,9 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
 
 def get_magnitudes(modelpath):
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
-
     if os.path.isfile('specpol.out'):
         # master_branch = True
-        specfilename = "specpol.out"
+        specfilename = os.path.join(modelpath, "specpol.out")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
     else:
@@ -208,7 +208,7 @@ def evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux):
     return phot_filtobs_sn
 
 
-def make_magnitudes_plot(modelpath):
+def make_magnitudes_plot(modelpath, args):
 
     filters_dict = get_magnitudes(modelpath)
 
@@ -239,12 +239,12 @@ def make_magnitudes_plot(modelpath):
     plt.minorticks_on()
     directory = os.getcwd().split('/')[-1]
     f.suptitle(directory)
-    plt.savefig('magnitude_absolute', format='pdf')
+    plt.savefig(args.outputfile, format='pdf')
 
-    print('Saved figure: magnitude_absolute.pdf')
+    print('Saved figure: {args.outputfile}')
 
 
-def colour_evolution_plot(filter_name1, filter_name2, modelpath):
+def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
 
     filters_dict = get_magnitudes(modelpath)
 
@@ -272,9 +272,9 @@ def colour_evolution_plot(filter_name1, filter_name2, modelpath):
     plt.title(directory)
     # plt.ylim(-0.5, 3)
 
-    plt.savefig('colour_evolution', format='pdf')
+    plt.savefig(args.outputfile, format='pdf')
 
-    print('Saved figure: colour_evolution.pdf')
+    print('Saved figure: {args.outputfile}')
 
 
 def addargs(parser):
@@ -303,7 +303,8 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     if not args.modelpath:
-        args.modelpath = ['.', '*']
+        # args.modelpath = ['.', '*']
+        args.modelpath = ['.']
     elif not isinstance(args.modelpath, Iterable):
         args.modelpath = [args.modelpath]
 
@@ -315,26 +316,30 @@ def main(args=None, argsraw=None, **kwargs):
         else:
             modelpaths.append(elem)
 
+    # combined the results of applying wildcards on each input
+    #modelpaths = list(itertools.chain.from_iterable([Path().glob(str(x)) for x in args.modelpath]))
+
     if args.magnitude:
-        for modelpath in modelpaths[:-1]:
-            make_magnitudes_plot(modelpath)
-
+        defaultoutputfile = 'magnitude_absolute.pdf'
     elif args.colour_evolution:
-        for modelpath in modelpaths[:-1]:
-            colour_evolution_plot('B', 'V', modelpath)
-
+        defaultoutputfile = 'color_evolution.pdf'
     else:
-
-        # combined the results of applying wildcards on each input
-        modelpaths = list(itertools.chain.from_iterable([Path().glob(str(x)) for x in args.modelpath]))
-
         defaultoutputfile = 'plotlightcurve_gamma.pdf' if args.gamma else 'plotlightcurve.pdf'
 
-        if not args.outputfile:
-            args.outputfile = defaultoutputfile
-        elif os.path.isdir(args.outputfile):
-            args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+    if not args.outputfile:
+        args.outputfile = defaultoutputfile
+    elif os.path.isdir(args.outputfile):
+        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
+    if args.magnitude:
+        for modelpath in modelpaths:
+            make_magnitudes_plot(modelpath, args)
+
+    elif args.colour_evolution:
+        for modelpath in modelpaths:
+            colour_evolution_plot('B', 'V', modelpath, args)
+
+    else:
         make_lightcurve_plot(modelpaths, args.outputfile, args.frompackets, args.gamma)
 
 
