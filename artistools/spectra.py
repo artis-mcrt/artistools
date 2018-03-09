@@ -3,7 +3,7 @@
 import argparse
 import glob
 import math
-import os.path
+import os
 import sys
 import warnings
 from collections import namedtuple
@@ -71,14 +71,22 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
     if timestepmax < 0:
         timestepmax = timestepmin
 
-    if os.path.isdir(modelpath):
-        specfilename = at.firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
+    master_branch = False
+    if os.path.isfile('specpol.out'):
+        specfilename = "specpol.out"
+        master_branch = True
+    elif os.path.isdir(modelpath):
+        specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
     else:
         specfilename = modelpath
+
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
 
     nu = specdata.loc[:, '0'].values
-    timearray = specdata.columns.values[1:]
+    if master_branch:
+        timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
+    else:
+        timearray = specdata.columns.values[1:]
 
     f_nu = stackspectra([
         (specdata[specdata.columns[timestep + 1]], at.get_timestep_time_delta(timestep, timearray))
@@ -647,7 +655,7 @@ def make_plot(modelpaths, args):
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
-    elif not args.outputfile.suffixes:
+    elif not Path(args.outputfile).suffixes:
         args.outputfile = args.outputfile / defaultoutputfile
 
     filenameout = str(args.outputfile).format(time_days_min=args.timemin, time_days_max=args.timemax)
@@ -661,23 +669,30 @@ def make_plot(modelpaths, args):
 
 def write_flambda_spectra(modelpath, args):
     """
-    Write lambda_angstroms and f_lambda to .txt files for all timesteps. Also write text file with path to files and a
-    file specifying filters. This can be used as input to https://github.com/cinserra/S3/blob/master/src/s3/SMS.py
-    to plot synthetic magnitudes from spectra.
+    Write lambda_angstroms and f_lambda to .txt files for all timesteps. Also create a text file containing the time
+    in days for each timestep.
     """
 
-    outdirectory = modelpath / 'spectrum_data/'
+    outdirectory = modelpath / Path('spectrum_data/')
 
-    if not outdirectory.is_dir():
-        outdirectory.mkdir()
+    # if not outdirectory.is_dir():
+    #     outdirectory.mkdir()
 
-    open(outdirectory / 'spectra_list.txt', 'w+').close()  # clear files
-    open(outdirectory / 'filter_list.txt', 'w+').close()
+    if not os.path.exists(outdirectory):
+        os.makedirs(outdirectory)
 
-    specfilename = at.firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
-    specdata = pd.read_csv(specfilename, delim_whitespace=True)
-    timearray = specdata.columns.values[1:]
-    number_of_timesteps = len(specdata.keys()) - 1
+    if os.path.isfile('specpol.out'):
+        master_branch = True
+        specfilename = "specpol.out"
+        specdata = pd.read_csv(specfilename, delim_whitespace=True)
+        timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
+        number_of_timesteps = len(timearray)
+
+    else:
+        specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
+        specdata = pd.read_csv(specfilename, delim_whitespace=True)
+        timearray = specdata.columns.values[1:]
+        number_of_timesteps = len(specdata.keys()) - 1
 
     if not args.timestep:
         args.timestep = f'0-{number_of_timesteps - 1}'
@@ -685,10 +700,7 @@ def write_flambda_spectra(modelpath, args):
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         timearray, args.timestep, args.timemin, args.timemax, args.timedays)
 
-    spectra_list = open(outdirectory / 'spectra_list.txt', 'a')
-    filter_list = open(outdirectory / 'filter_list.txt', 'a')
-
-    filter_name = ['B', 'V', 'R', 'U']
+    spectra_list = open(outdirectory / 'spectra_list.txt', 'w+')
 
     for timestep in range(timestepmin, timestepmax + 1):
 
@@ -701,11 +713,13 @@ def write_flambda_spectra(modelpath, args):
 
         spectra_list.write(os.path.realpath(outdirectory / f'spec_data_ts_{timestep}.txt') + '\n')
 
-        for i in filter_name:
-            filter_list.write(f'{i}\n')
-
     spectra_list.close()
-    filter_list.close()
+
+    time_list = open(outdirectory / 'time_list.txt', 'w+')
+
+    for time in timearray:
+        time_list.write(f'{str(time)} \n')
+    time_list.close()
 
     print(f'Saved in {outdirectory}')
 
@@ -807,13 +821,28 @@ def main(args=None, argsraw=None, **kwargs):
 
     if args.listtimesteps:
         at.showtimesteptimes(modelpath=modelpaths[0])
+
     elif args.output_spectra:
         for modelpath in modelpaths:
             write_flambda_spectra(modelpath, args)
+
     else:
         if args.emissionabsorption:
             args.showemission = True
             args.showabsorption = True
+
+        if args.showemission or args.showabsorption:
+            if len(modelpaths) > 1:
+                print("ERROR: emission/absorption plot can only take one input model", modelpaths)
+                sys.exit()
+            defaultoutputfile = Path("plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
+        else:
+            defaultoutputfile = Path("plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
+
+        if not args.outputfile:
+            args.outputfile = defaultoutputfile
+        elif os.path.isdir(args.outputfile):
+            args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
         make_plot(modelpaths, args)
 

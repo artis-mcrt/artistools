@@ -258,6 +258,7 @@ def plot_multi_ion_series(
                 axis.set_ylabel('X$_{ion}$/X$_{element}$')
             elif args.ionpoptype == 'totalpop':
                 axis.set_ylabel('X$_{ion}$/X$_{tot}$')
+            else:
                 assert False
         else:
             axis.set_ylabel(seriestype)
@@ -559,18 +560,18 @@ def main(args=None, argsraw=None, **kwargs):
         return -1
 
     serieslist = [
-        # ['heating_gamma', 'heating_coll', 'heating_bf', 'heating_ff'],
-        # ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff'],
-        # # ['heating_gamma/gamma_dep'],
-        # ['Te', 'TR'],
-        # ['nne'],
+        ['heating_gamma', 'heating_coll', 'heating_bf', 'heating_ff'],
+        ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff'],
+        # ['heating_gamma/gamma_dep'],
+        ['Te', 'TR'],
+        ['nne'],
         # # [['initabundances', ['Fe', 'Ni', 'Ni_56', 'Ni_stable', 'Ar']]],
-        # [['populations', ['He I', 'He II']]],
-        # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
-        # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
-        # [['populations', ['Ne I', 'Ne II', 'Ne III', 'Ne IV', 'Ne V']]],
-        # [['populations', ['Si I', 'Si II', 'Si III', 'Si IV', 'Si V']]],
-        # [['populations', ['Cr I', 'Cr II', 'Cr III', 'Cr IV', 'Cr V']]],
+        [['populations', ['He I', 'He II', 'He III']]],
+        [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
+        [['populations', ['O I', 'O II', 'O III', 'O IV']]],
+        [['populations', ['Ne I', 'Ne II', 'Ne III', 'Ne IV', 'Ne V']]],
+        [['populations', ['Si I', 'Si II', 'Si III', 'Si IV', 'Si V']]],
+        [['populations', ['Cr I', 'Cr II', 'Cr III', 'Cr IV', 'Cr V']]],
         [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Fe VI', 'Fe VII', 'Fe VIII']]],
         [['populations', ['Co I', 'Co II', 'Co III', 'Co IV', 'Co V', 'Co VI', 'Co VII']]],
         [['populations', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
