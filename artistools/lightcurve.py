@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 from scipy import integrate
 from scipy.interpolate import interp1d
 import artistools.spectra as spectra
-
+from collections import defaultdict, namedtuple
 
 def readfile(filepath_or_buffer):
     lcdata = pd.read_csv(filepath_or_buffer, delim_whitespace=True, header=None, names=['time', 'lum', 'lum_cmf'])
@@ -136,9 +136,7 @@ def get_magnitudes(modelpath):
         if filter_name not in filters_dict:
             filters_dict[filter_name] = []
 
-    for path in sys.path:
-        if path.split('/')[-1] == 'artistools':
-            filterdir = path + '/artistools/data/filters/'
+    filterdir = at.get_artistools_path() / Path('artistools/data/filters/')
 
     for filter_name in filters_list:
 
@@ -170,7 +168,7 @@ def get_magnitudes(modelpath):
 def get_filter_data(filterdir, filter_name):
     """Filter data in 'data/filters' taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata"""
 
-    with open(filterdir + filter_name + '.txt', 'r') as filter_metadata:  # defintion of the file
+    with open(filterdir / Path(filter_name + '.txt'), 'r') as filter_metadata:  # defintion of the file
         line_in_filter_metadata = filter_metadata.readlines()  # list of lines
 
     zeropointenergyflux = float(line_in_filter_metadata[0])
@@ -215,6 +213,9 @@ def make_magnitudes_plot(modelpath, args):
 
     filters_dict = get_magnitudes(modelpath)
 
+    if args.plot_HESMA_model:
+        HESMA_model = read_HESMA_lightcurve(args)
+
     f, axarr = plt.subplots(nrows=2, ncols=3, sharex='all', sharey='all', squeeze=True)
     axarr = axarr.flatten()
 
@@ -239,12 +240,15 @@ def make_magnitudes_plot(modelpath, args):
         axarr[plotnumber + 1].set_ylabel('Absolute Magnitude')
         axarr[plotnumber + 1].set_xlabel('Time in Days')
 
+        if args.plot_HESMA_model and key in HESMA_model.keys():
+            axarr[plotnumber + 1].plot(HESMA_model.time, HESMA_model[key], color='black')
+
     plt.minorticks_on()
     directory = os.getcwd().split('/')[-1]
     f.suptitle(directory)
     plt.savefig(args.outputfile, format='pdf')
 
-    print('Saved figure: {args.outputfile}')
+    print(f'Saved figure: {args.outputfile}')
 
 
 def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
@@ -277,7 +281,18 @@ def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
 
     plt.savefig(args.outputfile, format='pdf')
 
-    print('Saved figure: {args.outputfile}')
+    print(f'Saved figure: {args.outputfile}')
+
+
+def read_HESMA_lightcurve(args):
+    HESMA_directory = at.get_artistools_path() / Path('artistools/data/HESMA')
+    filename = args.plot_HESMA_model
+    HESMA_modelname = HESMA_directory / filename
+
+    HESMA_model = pd.read_csv(HESMA_modelname, delim_whitespace=True, header=None, comment='#', names=['time', 'U', 'B', 'V', 'R'])
+    # HESMA_model = np.loadtxt(HESMA_modelname)
+
+    return HESMA_model
 
 
 def addargs(parser):
@@ -294,6 +309,9 @@ def addargs(parser):
                         help='Plot synthetic magnitudes')
     parser.add_argument('--colour_evolution', action='store_true',
                         help='Plot of colour evolution')
+    parser.add_argument('--plot_HESMA_model', action='store', type=Path, default=False,
+                        help='Plot HESMA model on top of lightcurve plot. '
+                        'Enter model name saved in data/HESMA directory')
 
 
 def main(args=None, argsraw=None, **kwargs):

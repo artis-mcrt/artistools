@@ -448,6 +448,20 @@ def firstexisting(filelist, path=Path('.')):
     raise FileNotFoundError(f'None of these files exist: {", ".join([str(x) for x in fullpaths])}')
 
 
+def get_artistools_path():
+    for path in sys.path:
+        split_path = path.split('/')
+        if split_path[-1] == 'artistools' and split_path[-2] == 'artistools':
+            artistoolsdirectory = path[:-len('/artistools')]
+
+            return Path(artistoolsdirectory)
+
+        elif split_path[-1] == 'artistools':
+            artistoolsdirectory = path
+
+            return Path(artistoolsdirectory)
+
+
 def addargs(parser):
     pass
 
