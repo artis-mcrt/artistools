@@ -296,8 +296,10 @@ def read_hesma_lightcurve(args):
                 if i != '#' and i != ' ' and i != '\n':
                     column_names.append(i)
 
-    hesma_model = pd.read_csv(hesma_modelname, delim_whitespace=True, header=None, comment='#', names=column_names)
+            hesma_model = pd.read_csv(hesma_modelname, delim_whitespace=True, header=None, comment='#', names=column_names)
 
+        else:
+            hesma_model = pd.read_csv(hesma_modelname, delim_whitespace=True)
     return hesma_model
 
 
