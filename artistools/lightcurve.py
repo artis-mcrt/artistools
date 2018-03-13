@@ -240,7 +240,7 @@ def make_magnitudes_plot(modelpath, args):
         axarr[plotnumber + 1].set_xlabel('Time in Days')
 
         if args.plot_HESMA_model and key in HESMA_model.keys():
-            axarr[plotnumber + 1].plot(HESMA_model.time, HESMA_model[key], color='black')
+            axarr[plotnumber + 1].plot(HESMA_model.t, HESMA_model[key], color='black')
 
     plt.minorticks_on()
     directory = os.getcwd().split('/')[-1]
@@ -288,7 +288,15 @@ def read_HESMA_lightcurve(args):
     filename = args.plot_HESMA_model
     HESMA_modelname = HESMA_directory / filename
 
-    HESMA_model = pd.read_csv(HESMA_modelname, delim_whitespace=True, header=None, comment='#', names=['time', 'U', 'B', 'V', 'R'])
+    column_names = []
+    with open(HESMA_modelname) as f:
+        first_line = f.readline()
+        if '#' in first_line:
+            for i in first_line:
+                if i != '#' and i != ' ' and i != '\n':
+                    column_names.append(i)
+
+    HESMA_model = pd.read_csv(HESMA_modelname, delim_whitespace=True, header=None, comment='#', names=column_names)
 
     return HESMA_model
 
