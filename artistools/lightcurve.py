@@ -120,7 +120,6 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
 def get_magnitudes(modelpath):
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
     if os.path.isfile('specpol.out'):
-        # master_branch = True
         specfilename = os.path.join(modelpath, "specpol.out")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
@@ -290,7 +289,6 @@ def read_HESMA_lightcurve(args):
     HESMA_modelname = HESMA_directory / filename
 
     HESMA_model = pd.read_csv(HESMA_modelname, delim_whitespace=True, header=None, comment='#', names=['time', 'U', 'B', 'V', 'R'])
-    # HESMA_model = np.loadtxt(HESMA_modelname)
 
     return HESMA_model
 
@@ -324,9 +322,9 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     if not args.modelpath and not args.magnitude and not args.colour_evolution:
-        args.modelpath = ['.']
-    elif not args.modelpath:
         args.modelpath = ['.', '*']
+    elif not args.modelpath and args.magnitude or args.colour_evolution:
+        args.modelpath = ['.']
     elif not isinstance(args.modelpath, Iterable):
         args.modelpath = [args.modelpath]
 
