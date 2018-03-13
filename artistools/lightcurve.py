@@ -212,8 +212,8 @@ def make_magnitudes_plot(modelpath, args):
 
     filters_dict = get_magnitudes(modelpath)
 
-    if args.plot_HESMA_model:
-        HESMA_model = read_HESMA_lightcurve(args)
+    if args.plot_hesma_model:
+        hesma_model = read_hesma_lightcurve(args)
 
     f, axarr = plt.subplots(nrows=2, ncols=3, sharex='all', sharey='all', squeeze=True)
     axarr = axarr.flatten()
@@ -239,11 +239,11 @@ def make_magnitudes_plot(modelpath, args):
         axarr[plotnumber + 1].set_ylabel('Absolute Magnitude')
         axarr[plotnumber + 1].set_xlabel('Time in Days')
 
-        if args.plot_HESMA_model and key in HESMA_model.keys():
-            axarr[plotnumber + 1].plot(HESMA_model.t, HESMA_model[key], color='black')
+        if args.plot_hesma_model and key in hesma_model.keys():
+            axarr[plotnumber + 1].plot(hesma_model.t, hesma_model[key], color='black')
 
     plt.minorticks_on()
-    directory = os.getcwd().split('/')[-1]
+    directory = os.getcwd().split('/')[-2:]
     f.suptitle(directory)
     plt.savefig(args.outputfile, format='pdf')
 
@@ -283,22 +283,22 @@ def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
     print(f'Saved figure: {args.outputfile}')
 
 
-def read_HESMA_lightcurve(args):
-    HESMA_directory = at.get_artistools_path() / Path('artistools/data/HESMA')
-    filename = args.plot_HESMA_model
-    HESMA_modelname = HESMA_directory / filename
+def read_hesma_lightcurve(args):
+    hesma_directory = at.get_artistools_path() / Path('artistools/data/hesma')
+    filename = args.plot_hesma_model
+    hesma_modelname = hesma_directory / filename
 
     column_names = []
-    with open(HESMA_modelname) as f:
+    with open(hesma_modelname) as f:
         first_line = f.readline()
         if '#' in first_line:
             for i in first_line:
                 if i != '#' and i != ' ' and i != '\n':
                     column_names.append(i)
 
-    HESMA_model = pd.read_csv(HESMA_modelname, delim_whitespace=True, header=None, comment='#', names=column_names)
+    hesma_model = pd.read_csv(hesma_modelname, delim_whitespace=True, header=None, comment='#', names=column_names)
 
-    return HESMA_model
+    return hesma_model
 
 
 def addargs(parser):
@@ -315,9 +315,9 @@ def addargs(parser):
                         help='Plot synthetic magnitudes')
     parser.add_argument('--colour_evolution', action='store_true',
                         help='Plot of colour evolution')
-    parser.add_argument('--plot_HESMA_model', action='store', type=Path, default=False,
-                        help='Plot HESMA model on top of lightcurve plot. '
-                        'Enter model name saved in data/HESMA directory')
+    parser.add_argument('--plot_hesma_model', action='store', type=Path, default=False,
+                        help='Plot hesma model on top of lightcurve plot. '
+                        'Enter model name saved in data/hesma directory')
 
 
 def main(args=None, argsraw=None, **kwargs):
