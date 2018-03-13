@@ -19,8 +19,6 @@ import matplotlib.pyplot as plt
 
 from scipy import integrate
 from scipy.interpolate import interp1d
-
-
 import artistools.spectra as spectra
 
 
@@ -86,8 +84,12 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
         modelname = at.get_model_name(modelpath)
         print(f"====> {modelname}")
         lcname = 'gamma_light_curve.out' if gammalc else 'light_curve.out'
-        lcpath = at.firstexisting([lcname + '.gz', lcname], path=modelpath)
-        if not os.path.exists(lcpath):
+        try:
+            lcpath = at.firstexisting([lcname + '.gz', lcname], path=modelpath)
+        except FileNotFoundError:
+            print(f"Skipping {modelname} because {lcpath} does not exist")
+            continue
+        if not os.path.exists(str(lcpath)):
             print(f"Skipping {modelname} because {lcpath} does not exist")
             continue
         elif frompackets:
@@ -101,7 +103,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
         linestyle = ['-', '--'][int(index / 7)]
 
         axis.plot(lcdata.time, lcdata['lum'], linewidth=2, linestyle=linestyle, label=f'{modelname}')
-        axis.plot(lcdata.time, lcdata['lum_cmf'], linewidth=2, linestyle=linestyle, label=f'{modelname} (cmf)')
+        # axis.plot(lcdata.time, lcdata['lum_cmf'], linewidth=2, linestyle=linestyle, label=f'{modelname} (cmf)')
 
     # axis.set_xlim(xmin=xminvalue,xmax=xmaxvalue)
     # axis.set_ylim(ymin=-0.1,ymax=1.3)
@@ -303,9 +305,10 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    if not args.modelpath:
-        # args.modelpath = ['.', '*']
+    if not args.modelpath and not args.magnitude and not args.colour_evolution:
         args.modelpath = ['.']
+    elif not args.modelpath:
+        args.modelpath = ['.', '*']
     elif not isinstance(args.modelpath, Iterable):
         args.modelpath = [args.modelpath]
 
@@ -316,9 +319,6 @@ def main(args=None, argsraw=None, **kwargs):
             modelpaths.extend(elem)
         else:
             modelpaths.append(elem)
-
-    # combined the results of applying wildcards on each input
-    #modelpaths = list(itertools.chain.from_iterable([Path().glob(str(x)) for x in args.modelpath]))
 
     if args.magnitude:
         defaultoutputfile = 'magnitude_absolute.pdf'
@@ -341,6 +341,8 @@ def main(args=None, argsraw=None, **kwargs):
             colour_evolution_plot('B', 'V', modelpath, args)
 
     else:
+        # combined the results of applying wildcards on each input
+        modelpaths = list(itertools.chain.from_iterable([Path().glob(str(x)) for x in args.modelpath]))
         make_lightcurve_plot(modelpaths, args.outputfile, args.frompackets, args.gamma)
 
 
