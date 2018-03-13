@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 from scipy import integrate
 from scipy.interpolate import interp1d
 import artistools.spectra as spectra
-from collections import defaultdict, namedtuple
+
 
 def readfile(filepath_or_buffer):
     lcdata = pd.read_csv(filepath_or_buffer, delim_whitespace=True, header=None, names=['time', 'lum', 'lum_cmf'])
