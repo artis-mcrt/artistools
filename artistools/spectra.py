@@ -346,7 +346,10 @@ def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafil
 
 
 def plot_reference_spectrum(filename, axis, xmin, xmax, flambdafilterfunc=None, scale_to_peak=None, **plotkwargs):
-    scriptdir = os.path.dirname(os.path.abspath(__file__))
+    """Plot a single reference spectrum.
+
+    The filename must be in space separated text formated with the first two
+    columns being wavelength in Angstroms, and F_lambda"""
     if os.path.isfile(filename):
         filepath = filename
     else:
@@ -393,6 +396,7 @@ def plot_reference_spectrum(filename, axis, xmin, xmax, flambdafilterfunc=None, 
 
 
 def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
+    """Plot the min, max, and average velocity of emission vs wavelength."""
     nsubplots = 2
     fig, axes = plt.subplots(nsubplots, 1, sharex=True, figsize=(8, 4 * nsubplots),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
