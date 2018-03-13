@@ -214,6 +214,8 @@ def make_magnitudes_plot(modelpath, args):
 
     if args.plot_hesma_model:
         hesma_model = read_hesma_lightcurve(args)
+        linename = str(args.plot_hesma_model).split('_')[:3]
+        linename = "_".join(linename)
 
     f, axarr = plt.subplots(nrows=2, ncols=3, sharex='all', sharey='all', squeeze=True)
     axarr = axarr.flatten()
@@ -235,12 +237,12 @@ def make_magnitudes_plot(modelpath, args):
         axarr[0].set_xlabel('Time in Days')
 
         axarr[plotnumber + 1].plot(time, magnitude, label=key, marker='.', linestyle='None', color=colour)
-        axarr[plotnumber + 1].legend(loc='best', frameon=True)
+        if args.plot_hesma_model and key in hesma_model.keys():
+            axarr[plotnumber + 1].plot(hesma_model.t, hesma_model[key], color='black', label=linename)
+
+        axarr[plotnumber + 1].legend(loc='best', frameon=True, fontsize='small')
         axarr[plotnumber + 1].set_ylabel('Absolute Magnitude')
         axarr[plotnumber + 1].set_xlabel('Time in Days')
-
-        if args.plot_hesma_model and key in hesma_model.keys():
-            axarr[plotnumber + 1].plot(hesma_model.t, hesma_model[key], color='black')
 
     plt.minorticks_on()
     directory = os.getcwd().split('/')[-2:]
