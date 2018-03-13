@@ -353,7 +353,7 @@ def plot_reference_spectrum(filename, axis, xmin, xmax, flambdafilterfunc=None, 
     if os.path.isfile(filename):
         filepath = filename
     else:
-        filepath = os.path.join(scriptdir, 'data', 'refspectra', filename)
+        filepath = Path(at.PYDIR, 'data', 'refspectra', filename)
 
     specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
                            names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
