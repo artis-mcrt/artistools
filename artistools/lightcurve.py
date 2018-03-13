@@ -135,7 +135,7 @@ def get_magnitudes(modelpath):
         if filter_name not in filters_dict:
             filters_dict[filter_name] = []
 
-    filterdir = at.get_artistools_path() / Path('artistools/data/filters/')
+    filterdir = os.path.join(at.PYDIR, 'data/filters/')
 
     for filter_name in filters_list:
 
@@ -284,7 +284,7 @@ def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
 
 
 def read_hesma_lightcurve(args):
-    hesma_directory = at.get_artistools_path() / Path('artistools/data/hesma')
+    hesma_directory = os.path.join(at.PYDIR, 'data/hesma')
     filename = args.plot_hesma_model
     hesma_modelname = hesma_directory / filename
 
