@@ -380,6 +380,8 @@ def get_time_range(timearray, timestep_range_str, timemin, timemax, timedays_ran
             timefloat = float(time.strip('d'))
             if timefloat + get_timestep_time_delta(timestep, timearray) <= timemax:
                 timestepmax = timestep
+        if timestepmax < timestepmin:
+            raise ValueError("Specified time range does not include any full timesteps.")
 
     time_days_lower = float(timearray[timestepmin])
     time_days_upper = float(timearray[timestepmax]) + get_timestep_time_delta(timestepmax, timearray)
