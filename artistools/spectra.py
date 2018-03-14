@@ -19,20 +19,20 @@ from astropy import units as u
 
 import artistools as at
 
-# filename : (label, distance / Mpc)
+# dict consistint of {filename : (legend label, distance in Mpc)}
 # use -1 for distance if unknown
 refspectra = {
+    '2010lp_20110928_fors2.txt':
+        ('SN2010lp +264d (Taubenberger et al. 2013)', -1),
+
     'sn2011fe_PTF11kly_20120822_norm.txt':
         ('SN2011fe +364d (Mazzali et al. 2015)', -1),
 
     'sn2011fe_PTF11kly_20120822_norm_1Mpc.txt':
         ('SN2011fe (1 Mpc) +364d (Mazzali et al. 2015)', 1),
 
-    '2010lp_20110928_fors2.txt':
-        ('SN2010lp +264d (Taubenberger et al. 2013)', -1),
-
     'dop_dered_SN2013aa_20140208_fc_final.txt':
-        ('SN2013aa +360d (Maguire et al. in prep)', -1),
+        ('SN2013aa +360d (Maguire et al. in prep)', 13.95),
 
     '2003du_20031213_3219_8822_00.txt':
         ('SN2003du +221.3d (Stanishev et al. 2007)', -1),
@@ -40,14 +40,17 @@ refspectra = {
     '2003du_20031213_3219_8822_00_1Mpc.txt':
         ('SN2003du +221.3d (Stanishev et al. 2007)', 1),
 
-    'FranssonJerkstrand2015_W7_330d_1Mpc':
-        ('Fransson & Jerkstrand (2015) W7 Iwamoto+1999 1Mpc +330d', 1),
+    'FranssonJerkstrand2015_W7_330d_1Mpc.txt':
+        ('Fransson & Jerkstrand (2015) W7 Iwamoto+1999 +330d', 1),
+
+    'FranssonJerkstrand2015_W7_330d_10Mpc.txt':
+        ('Fransson & Jerkstrand (2015) W7 Iwamoto+1999 +330d', 10),
+
+    'maurer2011_RTJ_W7_338d_1Mpc.txt':
+        ('RTJ W7 Nomoto+1984 +338d (Maurer et al. 2011)', 1),
 
     'nero-nebspec.txt':
         ('NERO +300d one-zone', -1),
-
-    'maurer2011_RTJ_W7_338d_1Mpc.txt':
-        ('RTJ W7 Nomoto+1984 1Mpc +338d (Maurer et al. 2011)', 1),
 }
 
 fluxcontributiontuple = namedtuple(
@@ -356,11 +359,12 @@ def plot_reference_spectrum(filename, axis, xmin, xmax, flambdafilterfunc=None, 
     specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
                            names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
 
+    objectlabel, objectdist_megaparsec = refspectra.get(filename, [filename, -1])
+
     if 'label' not in plotkwargs:
-        plotkwargs['label'] = refspectra.get(filename, [filename, -1])[0]
+        plotkwargs['label'] = objectlabel
 
     serieslabel = plotkwargs['label']
-
     print(f"Reference spectrum '{serieslabel}' has {len(specdata)} points in the plot range")
 
     specdata.query('lambda_angstroms > @xmin and lambda_angstroms < @xmax', inplace=True)
@@ -378,6 +382,9 @@ def plot_reference_spectrum(filename, axis, xmin, xmax, flambdafilterfunc=None, 
 
     if flambdafilterfunc:
         specdata['f_lambda'] = flambdafilterfunc(specdata['f_lambda'])
+
+    # scale to flux at 1 Mpc
+    specdata['f_lambda'] = specdata['f_lambda'] * objectdist_megaparsec ** 2
 
     if scale_to_peak:
         specdata['f_lambda_scaled'] = specdata['f_lambda'] / specdata['f_lambda'].max() * scale_to_peak
