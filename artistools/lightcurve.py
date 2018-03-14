@@ -119,7 +119,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
 
 def get_magnitudes(modelpath):
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
-    if os.path.isfile('specpol.out'):
+    if os.path.isfile(modelpath / 'specpol.out'):
         specfilename = os.path.join(modelpath, "specpol.out")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
@@ -209,7 +209,7 @@ def evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux):
 
 
 def make_magnitudes_plot(modelpath, args):
-
+    print(f'Reading {modelpath}')
     filters_dict = get_magnitudes(modelpath)
 
     if args.plot_hesma_model:
@@ -253,8 +253,10 @@ def make_magnitudes_plot(modelpath, args):
 
 
 def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
-
+    print(f'Reading {modelpath}')
     filters_dict = get_magnitudes(modelpath)
+
+    modelname = at.get_model_name(modelpath)
 
     time_dict_1 = {}
     time_dict_2 = {}
@@ -272,17 +274,16 @@ def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
             plot_times.append(float(time))
             diff.append(time_dict_1[time] - time_dict_2[time])
 
-    plt.plot(plot_times, diff, marker='.', linestyle='None')
+    plt.plot(plot_times, diff, marker='.', linestyle='None', label=modelname)
     plt.ylabel(f'{filter_name1}-{filter_name2}')
     plt.xlabel('Time in Days')
 
     directory = os.getcwd().split('/')[-2:]
+    plt.legend(loc='best', frameon=True)
     plt.title(directory)
     # plt.ylim(-0.5, 3)
 
     plt.savefig(args.outputfile, format='pdf')
-
-    print(f'Saved figure: {args.outputfile}')
 
 
 def read_hesma_lightcurve(args):
@@ -335,7 +336,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     if not args.modelpath and not args.magnitude and not args.colour_evolution:
         args.modelpath = ['.', '*']
-    elif not args.modelpath and args.magnitude or args.colour_evolution:
+    elif not args.modelpath and (args.magnitude or args.colour_evolution):
         args.modelpath = ['.']
     elif not isinstance(args.modelpath, Iterable):
         args.modelpath = [args.modelpath]
@@ -351,7 +352,7 @@ def main(args=None, argsraw=None, **kwargs):
     if args.magnitude:
         defaultoutputfile = 'magnitude_absolute.pdf'
     elif args.colour_evolution:
-        defaultoutputfile = 'color_evolution.pdf'
+        defaultoutputfile = 'colour_evolution.pdf'
     else:
         defaultoutputfile = 'plotlightcurve_gamma.pdf' if args.gamma else 'plotlightcurve.pdf'
 
@@ -367,6 +368,7 @@ def main(args=None, argsraw=None, **kwargs):
     elif args.colour_evolution:
         for modelpath in modelpaths:
             colour_evolution_plot('B', 'V', modelpath, args)
+        print(f'Saved figure: {args.outputfile}')
 
     else:
         # combined the results of applying wildcards on each input
