@@ -676,7 +676,6 @@ def write_flambda_spectra(modelpath, args):
     outdirectory.mkdir(parents=True, exist_ok=True)
 
     if Path(modelpath, 'specpol.out').is_file():
-        master_branch = True
         specfilename = modelpath / 'specpol.out'
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
@@ -694,32 +693,22 @@ def write_flambda_spectra(modelpath, args):
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         timearray, args.timestep, args.timemin, args.timemax, args.timedays)
 
-    spectra_list = open(outdirectory / 'spectra_list.txt', 'w+')
+    with open(outdirectory / 'spectra_list.txt', 'w+') as spectra_list:
 
-    for timestep in range(timestepmin, timestepmax + 1):
+        for timestep in range(timestepmin, timestepmax + 1):
 
-        spectrum = get_spectrum(modelpath, timestep, timestep)
+            spectrum = get_spectrum(modelpath, timestep, timestep)
 
-        with open(outdirectory / f'spec_data_ts_{timestep}.txt', 'w+') as spec_file:
+            with open(outdirectory / f'spec_data_ts_{timestep}.txt', 'w+') as spec_file:
 
-            for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
-                spec_file.write(f'{wavelength} {flambda}\n')
+                for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
+                    spec_file.write(f'{wavelength} {flambda}\n')
 
-        spectra_list.write(str(Path(outdirectory, f'spec_data_ts_{timestep}.txt').absolute()) + '\n')
+            spectra_list.write(str(Path(outdirectory, f'spec_data_ts_{timestep}.txt').absolute()) + '\n')
 
-    spectra_list.close()
-
-    time_list = open(outdirectory / 'time_list.txt', 'w+')
-
-    for time in timearray:
-        time_list.write(f'{str(time)} \n')
-    time_list.close()
-
-    time_list = open(outdirectory / 'time_list.txt', 'w+')
-
-    for time in timearray:
-        time_list.write(f'{str(time)} \n')
-    time_list.close()
+    with open(outdirectory / 'time_list.txt', 'w+') as time_list:
+        for time in timearray:
+            time_list.write(f'{str(time)} \n')
 
     print(f'Saved in {outdirectory}')
 
