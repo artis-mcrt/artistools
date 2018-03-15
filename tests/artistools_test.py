@@ -58,7 +58,7 @@ def test_get_flux_contributions():
     dfspectrum = at.spectra.get_spectrum(
         specfilename, timestepmin=timestepmin, timestepmax=timestepmax, fnufilterfunc=None)
 
-    integrated_flux_specout = -np.trapz(dfspectrum['f_lambda'], x=dfspectrum['lambda_angstroms'])
+    integrated_flux_specout = np.trapz(dfspectrum['f_lambda'], x=dfspectrum['lambda_angstroms'])
 
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     timearray = specdata.columns.values[1:]
