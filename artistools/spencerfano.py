@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import argparse
 import math
-import os.path
+import sys
+
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import linalg
-import sys
+from pathlib import Path
 
 import artistools as at
 import artistools.estimators
@@ -229,7 +230,7 @@ def make_plot(engrid, yvec, outputfilename):
     ax.set_xlabel(r'Electron energy [eV]', fontsize=fs)
     ax.set_ylabel(r'y(E)', fontsize=fs)
     print(f"Saving '{outputfilename}'")
-    fig.savefig(outputfilename, format='pdf')
+    fig.savefig(str(outputfilename), format='pdf')
     plt.close()
 
 
@@ -436,8 +437,8 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    if os.path.isdir(args.outputfile):
-        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+    if Path(args.outputfile).is_dir():
+        args.outputfile = Path(args.outputfile, defaultoutputfile)
 
     modelpath = args.modelpath
 
@@ -562,8 +563,8 @@ def main(args=None, argsraw=None, **kwargs):
             adata=adata, noexcitation=args.noexcitation)
 
         if args.makeplot:
-            outputfilename = args.outputfile.format(cell=args.modelgridindex, timestep=args.timestep,
-                                                    time_days=args.time_days)
+            outputfilename = str(args.outputfile).format(
+                cell=args.modelgridindex, timestep=args.timestep, time_days=args.time_days)
             make_plot(engrid, yvec, outputfilename)
 
         (frac_excitation, frac_ionization, frac_excitation_ion, frac_ionization_ion, gamma_nt) = analyse_ntspectrum(

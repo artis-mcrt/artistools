@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # import math
-import os.path
+from pathlib import Path
 
 # import matplotlib.patches as mpatches
 # import numpy as np
@@ -35,7 +35,7 @@ def readfile(packetsfile, usecols, filehandle=None, filesize=-1):
 
     if a filehandle is passed, this will be used instead of the file path. filesize is in bytes"""
     if filesize < 0:
-        filesize = os.path.getsize(packetsfile) / 1024 / 1024
+        filesize = Path(packetsfile).stat().st_size / 1024 / 1024
 
     print(f'Reading {packetsfile} ({filesize:.3f} MiB)', end='')
     inputcolumncount = len(pd.read_csv(

@@ -3,7 +3,6 @@
 import argparse
 import glob
 import math
-import os.path
 import re
 import sys
 
@@ -27,7 +26,7 @@ def read_files(radfield_files, modelgridindex=-1):
         print("No radfield files")
     else:
         for _, radfield_file in enumerate(radfield_files):
-            filerank = int(re.search('[0-9]+', os.path.basename(radfield_file)).group(0))
+            filerank = int(re.search('[0-9]+', Path(radfield_file).name).group(0))
 
             if filerank > modelgridindex and modelgridindex >= 0:
                 continue
@@ -440,7 +439,7 @@ def main(args=None, argsraw=None, **kwargs):
 
         radfielddata = read_files(sorted(radfield_files), args.modelgridindex)
 
-        if not os.path.isfile(specfilename):
+        if not specfilename.is_file():
             print(f'Could not find {specfilename}')
             args.nospec = True
 

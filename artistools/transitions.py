@@ -2,9 +2,9 @@
 import argparse
 import glob
 import math
-import os
 import re
 from collections import namedtuple
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 # import numexpr as ne
@@ -166,7 +166,7 @@ def add_upper_lte_pop(dftransitions, T_exc, ionpop, ltepartfunc, columnname=None
 
 
 def addargs(parser):
-    parser.add_argument('-modelpath', default='.',
+    parser.add_argument('-modelpath', default=Path(), type=Path,
                         help='Path to ARTIS folder')
 
     parser.add_argument('-xmin', type=int, default=3500,
@@ -216,8 +216,8 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    if os.path.isdir(args.outputfile):
-        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+    if Path(args.outputfile).is_dir():
+        args.outputfile = Path(args.outputfile, defaultoutputfile)
 
     if args.modelpath:
         from_model = True
@@ -234,7 +234,7 @@ def main(args=None, argsraw=None, **kwargs):
         else:
             timestep = args.timestep
 
-        modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
+        modeldata, _ = at.get_modeldata(Path(modelpath, 'model.txt'))
         estimators_all = at.estimators.read_estimators(modelpath, modeldata, keymatch=(timestep, modelgridindex))
         if not estimators_all:
             return -1
