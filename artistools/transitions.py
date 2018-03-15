@@ -436,7 +436,7 @@ def main(args=None, argsraw=None, **kwargs):
     make_plot(xvalues, yvalues, axes, temperature_list, vardict, ionlist, ionpopdict, args.xmin, args.xmax)
 
     if from_model:
-        outputfilename = args.outputfile.format(cell=modelgridindex, timestep=timestep, time_days=time_days)
+        outputfilename = str(args.outputfile).format(cell=modelgridindex, timestep=timestep, time_days=time_days)
     else:
         outputfilename = 'plottransitions.pdf'
 
