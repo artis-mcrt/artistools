@@ -3,8 +3,6 @@
 import argparse
 import glob
 import math
-import os
-import warnings
 from collections import namedtuple
 from pathlib import Path
 from typing import Iterable
@@ -18,6 +16,7 @@ from astropy import constants as const
 from astropy import units as u
 
 import artistools as at
+import artistools.spectra
 
 # dict consistint of {filename : (legend label, distance in Mpc)}
 # use -1 for distance if unknown
@@ -67,7 +66,7 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
     if Path(modelpath, 'specpol.out').is_file():
         specfilename = Path(modelpath) / "specpol.out"
         master_branch = True
-    elif os.path.isdir(modelpath):
+    elif Path(modelpath).is_dir():
         specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
     else:
         specfilename = modelpath
@@ -103,7 +102,7 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
 def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_min, lambda_max, delta_lambda=30,
                               use_comovingframe=None, filehandles=None):
     if use_comovingframe:
-        modeldata, _ = at.get_modeldata(os.path.dirname(packetsfiles[0]))
+        modeldata, _ = at.get_modeldata(Path(packetsfiles[0]).parent)
         vmax = modeldata.iloc[-1].velocity * u.km / u.s
         betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
@@ -204,8 +203,8 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
 def get_flux_contributions(emissionfilename, absorptionfilename, timearray, arraynu,
                            filterfunc=None, xmin=-1, xmax=math.inf, timestepmin=0, timestepmax=None):
     arraylambda = const.c.to('angstrom/s').value / arraynu
-    print(emissionfilename, os.path.dirname(emissionfilename))
-    elementlist = at.get_composition_data(os.path.dirname(emissionfilename))
+    modelpath = Path(emissionfilename).parent
+    elementlist = at.get_composition_data(modelpath)
     nelements = len(elementlist)
 
     print(f'  Reading {emissionfilename}')
@@ -442,7 +441,7 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
     axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
 
-    filenameout = os.path.join(outputpath, 'plotspecstats.pdf')
+    filenameout = str(Path(outputpath, 'plotspecstats.pdf'))
     fig.savefig(filenameout, format='pdf')
     print(f'Saved {filenameout}')
     plt.close()
@@ -461,15 +460,15 @@ def plot_artis_spectrum(axis, modelpath, args, scale_to_peak=None, from_packets=
     if from_packets:
         # find any other packets files in the same directory
         packetsfiles_thismodel = sorted(
-            glob.glob(os.path.join(modelpath, 'packets00_*.out')) +
-            glob.glob(os.path.join(modelpath, 'packets00_*.out.gz')))
+            glob.glob(str(Path(modelpath, 'packets00_*.out'))) +
+            glob.glob(str(Path(modelpath, 'packets00_*.out.gz'))))
         if args.maxpacketfiles >= 0 and len(packetsfiles_thismodel) > args.maxpacketfiles:
             print(f'Using on the first {args.maxpacketfiles} packet files out of {len(packetsfiles_thismodel)}')
             packetsfiles_thismodel = packetsfiles_thismodel[:args.maxpacketfiles]
         spectrum = get_spectrum_from_packets(
             packetsfiles_thismodel, args.timemin, args.timemax, lambda_min=args.xmin, lambda_max=args.xmax,
             use_comovingframe=args.use_comovingframe)
-        make_spectrum_stat_plot(spectrum, linelabel, os.path.dirname(args.outputfile), args)
+        make_spectrum_stat_plot(spectrum, linelabel, Path(args.outputfile).parent, args)
     else:
         spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc)
 
@@ -669,13 +668,12 @@ def write_flambda_spectra(modelpath, args):
     in days for each timestep.
     """
 
-    outdirectory = modelpath / Path('spectrum_data/')
+    outdirectory = Path(modelpath, 'spectrum_data')
 
     # if not outdirectory.is_dir():
     #     outdirectory.mkdir()
 
-    if not os.path.exists(outdirectory):
-        os.makedirs(outdirectory)
+    outdirectory.mkdir(parents=True, exist_ok=True)
 
     if Path(modelpath, 'specpol.out').is_file():
         master_branch = True
@@ -707,7 +705,7 @@ def write_flambda_spectra(modelpath, args):
             for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
                 spec_file.write(f'{wavelength} {flambda}\n')
 
-        spectra_list.write(os.path.realpath(outdirectory / f'spec_data_ts_{timestep}.txt') + '\n')
+        spectra_list.write(str(Path(outdirectory, f'spec_data_ts_{timestep}.txt').absolute()) + '\n')
 
     spectra_list.close()
 
@@ -796,7 +794,6 @@ def addargs(parser):
 
 
 def main(args=None, argsraw=None, **kwargs):
-    warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
     """Plot spectra from ARTIS and reference data."""
 
     if args is None:
