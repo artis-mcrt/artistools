@@ -271,7 +271,7 @@ def get_flux_contributions(emissionfilename, absorptionfilename, timearray, arra
 
                 array_flambda_emission_total += array_flambda_emission
                 fluxcontribthisseries = (
-                    integrate_flux(array_fnu_emission, arraynu) + integrate_flux(array_fnu_absorption, arraynu))
+                    np.trapz(array_fnu_emission, x=arraynu) + np.trapz(array_fnu_absorption, x=arraynu))
 
                 if emissiontype != 'free-free':
                     linelabel = f'{at.elsymbols[elementlist.Z[element]]} {at.roman_numerals[ion_stage]} {emissiontype}'
@@ -307,14 +307,8 @@ def sort_and_reduce_flux_contribution_list(contribution_list_in, maxseriescount,
     return contribution_list_out
 
 
-def integrate_flux(arr_dflux_by_dx, arr_x):
-    #  use abs in case arr_x is decreasing
-    arr_dx = np.abs(np.diff(arr_x))
-    return np.dot(arr_dflux_by_dx[:-1], arr_dx) * u.erg / u.s / (u.cm ** 2)
-
-
 def print_integrated_flux(arr_f_lambda, arr_lambda_angstroms):
-    integrated_flux = integrate_flux(arr_f_lambda, arr_lambda_angstroms)
+    integrated_flux = np.trapz(arr_f_lambda, x=arr_lambda_angstroms) * u.erg / u.s / (u.cm ** 2)
     luminosity = integrated_flux * 4 * math.pi * (u.megaparsec ** 2)
     print(f'  integrated flux ({arr_lambda_angstroms.min():.1f} A to '
           f'{arr_lambda_angstroms.max():.1f} A): {integrated_flux:.3e}, (L={luminosity.to("Lsun"):.3e})')
