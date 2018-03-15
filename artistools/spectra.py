@@ -613,7 +613,7 @@ def make_plot(modelpaths, args):
 
     import scipy.signal
     if args.filtersavgol:
-        window_length, poly_order = args.filtersavgol
+        window_length, poly_order = [int(x) for x in args.filtersavgol]
 
         def filterfunc(y):
             return scipy.signal.savgol_filter(y, window_length, poly_order)
