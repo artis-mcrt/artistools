@@ -26,25 +26,16 @@ refspectra = {
         ('SN2010lp +264d (Taubenberger et al. 2013)', -1),
 
     'sn2011fe_PTF11kly_20120822_norm.txt':
-        ('SN2011fe +364d (Mazzali et al. 2015)', -1),
-
-    'sn2011fe_PTF11kly_20120822_norm_1Mpc.txt':
-        ('SN2011fe (1 Mpc) +364d (Mazzali et al. 2015)', 1),
+        ('SN2011fe +364d (Mazzali et al. 2015)', 6.40),
 
     'dop_dered_SN2013aa_20140208_fc_final.txt':
         ('SN2013aa +360d (Maguire et al. in prep)', 13.95),
 
     '2003du_20031213_3219_8822_00.txt':
-        ('SN2003du +221.3d (Stanishev et al. 2007)', -1),
-
-    '2003du_20031213_3219_8822_00_1Mpc.txt':
-        ('SN2003du +221.3d (Stanishev et al. 2007)', 1),
-
-    'FranssonJerkstrand2015_W7_330d_1Mpc.txt':
-        ('Fransson & Jerkstrand (2015) W7 Iwamoto+1999 +330d', 1),
+        ('SN2003du +221.3d (Stanishev et al. 2007)', 30.47),
 
     'FranssonJerkstrand2015_W7_330d_10Mpc.txt':
-        ('Fransson & Jerkstrand (2015) W7 Iwamoto+1999 +330d', 10),
+        ('Fransson & Jerkstrand (2015) W7 +330d', 10),  # Iwamoto+1999
 
     'maurer2011_RTJ_W7_338d_1Mpc.txt':
         ('RTJ W7 Nomoto+1984 +338d (Maurer et al. 2011)', 1),
