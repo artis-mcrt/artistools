@@ -119,7 +119,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
 
 def get_magnitudes(modelpath):
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
-    if os.path.isfile(modelpath / 'specpol.out'):
+    if os.path.isfile(Path(modelpath) / 'specpol.out'):
         specfilename = os.path.join(modelpath, "specpol.out")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
@@ -128,9 +128,16 @@ def get_magnitudes(modelpath):
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = specdata.columns.values[1:]
 
+    filters_dict = {}
+
+    filters_dict['bol'] = []
+    bolometric_magnitudes = bolometric_magnitude(modelpath, timearray)
+    for time, bol_magnitude in zip(timearray, bolometric_magnitudes):
+        if math.isfinite(bol_magnitude):
+            filters_dict['bol'].append((time, bol_magnitude))
+
     filters_list = ['U', 'B', 'V', 'R', 'I']
 
-    filters_dict = {}
     for filter_name in filters_list:
         if filter_name not in filters_dict:
             filters_dict[filter_name] = []
@@ -162,6 +169,18 @@ def get_magnitudes(modelpath):
                 filters_dict[filter_name].append((timearray[timestep], phot_filtobs_sn))
 
     return filters_dict
+
+
+def bolometric_magnitude(modelpath, timearray):
+    magnitudes = []
+    for timestep, time in enumerate(timearray):
+        spectrum = spectra.get_spectrum(modelpath, timestep, timestep)
+
+        integrated_flux = np.trapz(spectrum['f_lambda'], spectrum['lambda_angstroms'])
+        integrated_luminosity = abs(integrated_flux * -4 * np.pi * np.power(3.086e24, 2))
+        magnitude = 4.74 - (2.5 * np.log10(integrated_luminosity / 3.828e33))
+        magnitudes.append(magnitude)
+    return magnitudes
 
 
 def get_filter_data(filterdir, filter_name):
@@ -209,7 +228,8 @@ def evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux):
 
 
 def make_magnitudes_plot(modelpath, args):
-    print(f'Reading {modelpath}')
+    modelname = at.get_model_name(modelpath)
+    print(f'Reading spectra: {modelname}')
     filters_dict = get_magnitudes(modelpath)
 
     if args.plot_hesma_model:
@@ -220,8 +240,8 @@ def make_magnitudes_plot(modelpath, args):
     f, axarr = plt.subplots(nrows=2, ncols=3, sharex='all', sharey='all', squeeze=True)
     axarr = axarr.flatten()
 
-    colours = ['purple', 'blue', 'green', 'red', 'darkred']
-
+    colours = ['brown', 'purple', 'blue', 'green', 'red', 'darkred']
+    axarr[0].invert_yaxis()
     for plotnumber, (key, colour) in enumerate(zip(filters_dict, colours)):
         time = []
         magnitude = []
@@ -230,33 +250,24 @@ def make_magnitudes_plot(modelpath, args):
             time.append(float(t))
             magnitude.append(mag)
 
-        axarr[0].invert_yaxis()
-        axarr[0].plot(time, magnitude, label=key, marker='.', linestyle='None', color=colour)
-        axarr[0].legend(loc='best', frameon=True, ncol=3, fontsize='xx-small')
-        axarr[0].set_ylabel('Absolute Magnitude')
-        axarr[0].set_xlabel('Time in Days')
-
-        axarr[plotnumber + 1].plot(time, magnitude, label=key, marker='.', linestyle='None', color=colour)
+        axarr[plotnumber].plot(time, magnitude, label=key, color=colour)
         if args.plot_hesma_model and key in hesma_model.keys():
-            axarr[plotnumber + 1].plot(hesma_model.t, hesma_model[key], color='black', label=linename)
+            axarr[plotnumber].plot(hesma_model.t, hesma_model[key], color='black', label=linename)
 
-        axarr[plotnumber + 1].legend(loc='best', frameon=True, fontsize='small')
-        axarr[plotnumber + 1].set_ylabel('Absolute Magnitude')
-        axarr[plotnumber + 1].set_xlabel('Time in Days')
+        axarr[plotnumber].legend(loc='best', frameon=True, fontsize='small')
+        axarr[plotnumber].set_ylabel('Absolute Magnitude')
+        axarr[plotnumber].set_xlabel('Time in Days')
+        axarr[plotnumber].axis([0, 50, -15, -20])
 
     plt.minorticks_on()
-    directory = os.getcwd().split('/')[-2:]
-    f.suptitle(directory)
+    f.suptitle(f'{modelname}')
     plt.savefig(args.outputfile, format='pdf')
-
-    print(f'Saved figure: {args.outputfile}')
 
 
 def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
-    print(f'Reading {modelpath}')
-    filters_dict = get_magnitudes(modelpath)
-
     modelname = at.get_model_name(modelpath)
+    print(f'Reading spectra: {modelname}')
+    filters_dict = get_magnitudes(modelpath)
 
     time_dict_1 = {}
     time_dict_2 = {}
@@ -281,6 +292,7 @@ def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
     directory = os.getcwd().split('/')[-2:]
     plt.legend(loc='best', frameon=True)
     plt.title(directory)
+    plt.title('B-V Colour Evolution')
     # plt.ylim(-0.5, 3)
 
     plt.savefig(args.outputfile, format='pdf')
@@ -364,6 +376,7 @@ def main(args=None, argsraw=None, **kwargs):
     if args.magnitude:
         for modelpath in modelpaths:
             make_magnitudes_plot(modelpath, args)
+        print(f'Saved figure: {args.outputfile}')
 
     elif args.colour_evolution:
         for modelpath in modelpaths:
