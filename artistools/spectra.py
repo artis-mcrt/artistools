@@ -600,7 +600,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     # axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
     #               horizontalalignment='right', verticalalignment='bottom', fontsize=7)
 
-    # axis.set_ylim(ymin=-0.05 * maxyvalueglobal, ymax=maxyvalueglobal * 1.3)
+    axis.set_ylim(ymax=max_flambda_emission_total * 1.2)
     if scale_to_peak:
         axis.set_ylabel(r'Scaled F$_\lambda$')
 
