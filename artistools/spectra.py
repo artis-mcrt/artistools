@@ -307,9 +307,9 @@ def sort_and_reduce_flux_contribution_list(contribution_list_in, maxseriescount,
     return contribution_list_out
 
 
-def print_integrated_flux(arr_f_lambda, arr_lambda_angstroms):
+def print_integrated_flux(arr_f_lambda, arr_lambda_angstroms, distance_megaparsec=1.):
     integrated_flux = np.trapz(arr_f_lambda, x=arr_lambda_angstroms) * u.erg / u.s / (u.cm ** 2)
-    luminosity = integrated_flux * 4 * math.pi * (u.megaparsec ** 2)
+    luminosity = integrated_flux * 4 * math.pi * (distance_megaparsec * u.megaparsec ** 2)
     print(f'  integrated flux ({arr_lambda_angstroms.min():.1f} A to '
           f'{arr_lambda_angstroms.max():.1f} A): {integrated_flux:.3e}, (L={luminosity.to("Lsun"):.3e})')
 
@@ -336,15 +336,18 @@ def plot_reference_spectrum(filename, axis, xmin, xmax, flambdafilterfunc=None, 
 
     The filename must be in space separated text formated with the first two
     columns being wavelength in Angstroms, and F_lambda"""
-    if os.path.isfile(filename):
+    if Path(filename).is_file():
         filepath = filename
     else:
         filepath = Path(at.PYDIR, 'data', 'refspectra', filename)
 
+    objectlabel, objectdist_megaparsec = refspectra.get(filename, [filename, -1])
+
     specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
                            names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
 
-    objectlabel, objectdist_megaparsec = refspectra.get(filename, [filename, -1])
+    # scale to flux at 1 Mpc
+    specdata['f_lambda'] = specdata['f_lambda'] * objectdist_megaparsec ** 2
 
     if 'label' not in plotkwargs:
         plotkwargs['label'] = objectlabel
@@ -354,7 +357,7 @@ def plot_reference_spectrum(filename, axis, xmin, xmax, flambdafilterfunc=None, 
 
     specdata.query('lambda_angstroms > @xmin and lambda_angstroms < @xmax', inplace=True)
 
-    print_integrated_flux(specdata.f_lambda, specdata.lambda_angstroms)
+    print_integrated_flux(specdata.f_lambda, specdata.lambda_angstroms, distance_megaparsec=objectdist_megaparsec)
 
     if len(specdata) > 5000:
         # specdata = scipy.signal.resample(specdata, 10000)
@@ -367,9 +370,6 @@ def plot_reference_spectrum(filename, axis, xmin, xmax, flambdafilterfunc=None, 
 
     if flambdafilterfunc:
         specdata['f_lambda'] = flambdafilterfunc(specdata['f_lambda'])
-
-    # scale to flux at 1 Mpc
-    specdata['f_lambda'] = specdata['f_lambda'] * objectdist_megaparsec ** 2
 
     if scale_to_peak:
         specdata['f_lambda_scaled'] = specdata['f_lambda'] / specdata['f_lambda'].max() * scale_to_peak
