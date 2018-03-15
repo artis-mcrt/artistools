@@ -74,7 +74,7 @@ def test_get_flux_contributions():
     # total spectrum should be equal to the sum of all emission processes
     print(f'Integrated flux from spec.out:     {integrated_flux_specout}')
     print(f'Integrated flux from emission sum: {integrated_flux_emission}')
-    assert math.isclose(integrated_flux_specout, integrated_flux_emission, rel_tol = 4e-3)
+    assert math.isclose(integrated_flux_specout, integrated_flux_emission, rel_tol=4e-3)
 
     # check each bin is not out by a large fraction
     diff = [abs(x - y) for x, y in zip(array_flambda_emission_total, dfspectrum['f_lambda'].values)]
