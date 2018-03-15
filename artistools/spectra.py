@@ -494,7 +494,7 @@ def make_spectrum_plot(modelpaths, axis, filterfunc, args, scale_to_peak=None):
 
     for index, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
-        print(f"====> {modelname}")
+        print(f"\n====> {modelpath}")
         plotkwargs = {}
         # plotkwargs['dashes'] = dashesList[index]
         # plotkwargs['dash_capstyle'] = dash_capstyleList[index]
