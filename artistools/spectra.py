@@ -377,7 +377,7 @@ def plot_reference_spectrum(filename, axis, xmin, xmax, flambdafilterfunc=None, 
         ycolumnname = 'f_lambda'
 
     if 'linewidth' not in plotkwargs and 'lw' not in plotkwargs:
-        plotkwargs['linewidth'] = 1.5
+        plotkwargs['linewidth'] = 0.3
 
     lineplot = specdata.plot(x='lambda_angstroms', y=ycolumnname, ax=axis, **plotkwargs)
     # lineplot.get_lines()[0].get_color())
