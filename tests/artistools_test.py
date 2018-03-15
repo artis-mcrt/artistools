@@ -78,8 +78,8 @@ def test_get_flux_contributions():
 
     # check each bin is not out by a large fraction
     diff = [abs(x - y) for x, y in zip(array_flambda_emission_total, dfspectrum['f_lambda'].values)]
-    print(f'Max f_lambda difference {max(diff) / integrated_flux_specout.value}')
-    assert max(diff) / integrated_flux_specout.value < 2e-3
+    print(f'Max f_lambda difference {max(diff) / integrated_flux_specout}')
+    assert math.isclose(diff, integrated_flux_specout, rel_tol=2e-3)
 
 
 def test_spectraplot():
