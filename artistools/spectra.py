@@ -601,8 +601,9 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     axis.axhline(color='white', linewidth=0.5)
 
     plotlabel = f'{modelname}\nt={args.timemin:.2f}d to {args.timemax:.2f}d'
-    axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
-                  horizontalalignment='right', verticalalignment='bottom', fontsize=7)
+    axis.set_title(plotlabel, fontsize=11)
+    # axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
+    #               horizontalalignment='right', verticalalignment='bottom', fontsize=7)
 
     # axis.set_ylim(ymin=-0.05 * maxyvalueglobal, ymax=maxyvalueglobal * 1.3)
     if scale_to_peak:
