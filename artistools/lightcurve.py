@@ -15,11 +15,10 @@ from astropy import constants as const
 from astropy import units as u
 
 import artistools as at
+import artistools.spectra
 import matplotlib.pyplot as plt
 
-from scipy import integrate
 from scipy.interpolate import interp1d
-import artistools.spectra as spectra
 
 
 def readfile(filepath_or_buffer):
@@ -172,7 +171,7 @@ def get_magnitudes(modelpath):
 def bolometric_magnitude(modelpath, timearray):
     magnitudes = []
     for timestep, time in enumerate(timearray):
-        spectrum = spectra.get_spectrum(modelpath, timestep, timestep)
+        spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep)
 
         integrated_flux = np.trapz(spectrum['f_lambda'], spectrum['lambda_angstroms'])
         integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to('cm'), 2)
@@ -204,7 +203,7 @@ def get_filter_data(filterdir, filter_name):
 
 
 def get_spectrum_in_filter_range(modelpath, timestep, wavefilter_min, wavefilter_max):
-    spectrum = spectra.get_spectrum(modelpath, timestep, timestep)
+    spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep)
 
     wave, flux = [], []
     for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
@@ -217,7 +216,7 @@ def get_spectrum_in_filter_range(modelpath, timestep, wavefilter_min, wavefilter
 
 def evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux):
     cf = flux * transmission
-    flux_obs = max(integrate.cumtrapz(cf, wave))  # using trapezoidal rule to integrate
+    flux_obs = abs(np.trapz(cf, wave))  # using trapezoidal rule to integrate
     if flux_obs == 0.0:
         phot_filtobs_sn = 0.0
     else:
