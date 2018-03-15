@@ -64,7 +64,7 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
         timestepmax = timestepmin
 
     master_branch = False
-    if os.path.isfile(Path(modelpath) / 'specpol.out'):
+    if Path(modelpath, 'specpol.out').is_file():
         specfilename = Path(modelpath) / "specpol.out"
         master_branch = True
     elif os.path.isdir(modelpath):
@@ -677,7 +677,7 @@ def write_flambda_spectra(modelpath, args):
     if not os.path.exists(outdirectory):
         os.makedirs(outdirectory)
 
-    if os.path.isfile(modelpath / 'specpol.out'):
+    if Path(modelpath, 'specpol.out').is_file():
         master_branch = True
         specfilename = modelpath / 'specpol.out'
         specdata = pd.read_csv(specfilename, delim_whitespace=True)

@@ -119,7 +119,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
 
 def get_magnitudes(modelpath):
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
-    if os.path.isfile(Path(modelpath) / 'specpol.out'):
+    if Path(modelpath, 'specpol.out').is_file():
         specfilename = os.path.join(modelpath, "specpol.out")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
@@ -130,11 +130,9 @@ def get_magnitudes(modelpath):
 
     filters_dict = {}
 
-    filters_dict['bol'] = []
-    bolometric_magnitudes = bolometric_magnitude(modelpath, timearray)
-    for time, bol_magnitude in zip(timearray, bolometric_magnitudes):
-        if math.isfinite(bol_magnitude):
-            filters_dict['bol'].append((time, bol_magnitude))
+    filters_dict['bol'] = [
+        (time, bol_magnitude) for time, bol_magnitude in zip(timearray, bolometric_magnitude(modelpath, timearray))
+        if math.isfinite(bol_magnitude)]
 
     filters_list = ['U', 'B', 'V', 'R', 'I']
 
@@ -177,9 +175,10 @@ def bolometric_magnitude(modelpath, timearray):
         spectrum = spectra.get_spectrum(modelpath, timestep, timestep)
 
         integrated_flux = np.trapz(spectrum['f_lambda'], spectrum['lambda_angstroms'])
-        integrated_luminosity = abs(integrated_flux * -4 * np.pi * np.power(3.086e24, 2))
-        magnitude = 4.74 - (2.5 * np.log10(integrated_luminosity / 3.828e33))
+        integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to('cm'), 2)
+        magnitude = 4.74 - (2.5 * np.log10(integrated_luminosity / const.L_sun.to('erg/s').value))
         magnitudes.append(magnitude)
+
     return magnitudes
 
 
@@ -257,7 +256,7 @@ def make_magnitudes_plot(modelpath, args):
         axarr[plotnumber].legend(loc='best', frameon=True, fontsize='small')
         axarr[plotnumber].set_ylabel('Absolute Magnitude')
         axarr[plotnumber].set_xlabel('Time in Days')
-        axarr[plotnumber].axis([0, 50, -15, -20])
+        axarr[plotnumber].axis([0, 100, -14, -20])
 
     plt.minorticks_on()
     f.suptitle(f'{modelname}')
@@ -289,9 +288,7 @@ def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
     plt.ylabel(f'{filter_name1}-{filter_name2}')
     plt.xlabel('Time in Days')
 
-    directory = os.getcwd().split('/')[-2:]
     plt.legend(loc='best', frameon=True)
-    plt.title(directory)
     plt.title('B-V Colour Evolution')
     # plt.ylim(-0.5, 3)
 
@@ -311,7 +308,8 @@ def read_hesma_lightcurve(args):
                 if i != '#' and i != ' ' and i != '\n':
                     column_names.append(i)
 
-            hesma_model = pd.read_csv(hesma_modelname, delim_whitespace=True, header=None, comment='#', names=column_names)
+            hesma_model = pd.read_csv(hesma_modelname, delim_whitespace=True, header=None,
+                                      comment='#', names=column_names)
 
         else:
             hesma_model = pd.read_csv(hesma_modelname, delim_whitespace=True)
