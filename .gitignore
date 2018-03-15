@@ -4,6 +4,7 @@
 *.swp
 *.tmp
 transitions*.pdf
+.tags
 
 .pytest_cache
 __pycache__/
@@ -33,4 +34,3 @@ wheels/
 .DS_Store
 *.iml
 *.xml
-*.txt
