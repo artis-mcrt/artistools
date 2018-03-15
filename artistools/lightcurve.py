@@ -119,7 +119,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
 
 def get_magnitudes(modelpath):
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
-    if os.path.isfile(modelpath / 'specpol.out'):
+    if os.path.isfile(Path(modelpath) / 'specpol.out'):
         specfilename = os.path.join(modelpath, "specpol.out")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
@@ -209,7 +209,8 @@ def evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux):
 
 
 def make_magnitudes_plot(modelpath, args):
-    print(f'Reading {modelpath}')
+    modelname = at.get_model_name(modelpath)
+    print(f'Reading spectra: {modelname}')
     filters_dict = get_magnitudes(modelpath)
 
     if args.plot_hesma_model:
@@ -245,18 +246,17 @@ def make_magnitudes_plot(modelpath, args):
         axarr[plotnumber + 1].set_xlabel('Time in Days')
 
     plt.minorticks_on()
-    directory = os.getcwd().split('/')[-2:]
-    f.suptitle(directory)
+    # directory = os.getcwd().split('/')[-2:]
+    # f.suptitle(directory)
+    # f.suptitle(f'{modelname} \n {linename}')
+    f.suptitle(f'{modelname}')
     plt.savefig(args.outputfile, format='pdf')
-
-    print(f'Saved figure: {args.outputfile}')
 
 
 def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
-    print(f'Reading {modelpath}')
-    filters_dict = get_magnitudes(modelpath)
-
     modelname = at.get_model_name(modelpath)
+    print(f'Reading spectra: {modelname}')
+    filters_dict = get_magnitudes(modelpath)
 
     time_dict_1 = {}
     time_dict_2 = {}
@@ -281,6 +281,7 @@ def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
     directory = os.getcwd().split('/')[-2:]
     plt.legend(loc='best', frameon=True)
     plt.title(directory)
+    plt.title('B-V Colour Evolution')
     # plt.ylim(-0.5, 3)
 
     plt.savefig(args.outputfile, format='pdf')
@@ -364,6 +365,7 @@ def main(args=None, argsraw=None, **kwargs):
     if args.magnitude:
         for modelpath in modelpaths:
             make_magnitudes_plot(modelpath, args)
+        print(f'Saved figure: {args.outputfile}')
 
     elif args.colour_evolution:
         for modelpath in modelpaths:
