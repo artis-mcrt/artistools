@@ -503,6 +503,7 @@ def make_spectrum_plot(modelpaths, axis, filterfunc, args, scale_to_peak=None):
         plot_artis_spectrum(axis, modelpath, args=args, scale_to_peak=scale_to_peak, from_packets=args.frompackets,
                             filterfunc=filterfunc, **plotkwargs)
 
+    axis.set_ylim(ymin=0.)
     if args.normalised:
         axis.set_ylim(ymin=-0.1, ymax=1.25)
         axis.set_ylabel(r'Scaled F$_\lambda$')
