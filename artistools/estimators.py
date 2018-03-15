@@ -279,16 +279,21 @@ def plot_multi_ion_series(
 
                 nionpop = estim['populations'].get((atomic_number, ion_stage), 0.)
 
-                if args.ionpoptype == 'absolute':
-                    ylist.append(nionpop)  # Plot as fraction of element population
-                elif args.ionpoptype == 'elpop':
-                    elpop = estim['populations'].get(atomic_number, 0.)
-                    ylist.append(nionpop / elpop)  # Plot as fraction of element population
-                elif args.ionpoptype == 'totalpop':
-                    totalpop = estim['populations']['total']
-                    ylist.append(nionpop / totalpop)  # Plot as fraction of total population
-                else:
-                    assert False
+                try:
+                    if args.ionpoptype == 'absolute':
+                        yvalue = nionpop  # Plot as fraction of element population
+                    elif args.ionpoptype == 'elpop':
+                        elpop = estim['populations'].get(atomic_number, 0.)
+                        yvalue = nionpop / elpop  # Plot as fraction of element population
+                    elif args.ionpoptype == 'totalpop':
+                        totalpop = estim['populations']['total']
+                        yvalue = nionpop / totalpop  # Plot as fraction of total population
+                    else:
+                        assert False
+                except ZeroDivisionError:
+                    yvalue = 0.
+
+                ylist.append(yvalue)
 
             # elif seriestype == 'Alpha_R':
             #     ylist.append(estim['Alpha_R*nne'].get((atomic_number, ion_stage), 0.) / estim['nne'])
