@@ -19,8 +19,7 @@ script:
 #  - flake8 .
 #  - pytest --cov=artistools
   - coverage run --source artistools setup.py test
-  - find . -name ".coverage"
-  - pwd
+  - coverage xml
 
 after_script:
   - ./cc-test-reporter after-build -t coverage.py --exit-code $TRAVIS_TEST_RESULT
