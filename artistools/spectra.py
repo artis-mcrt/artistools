@@ -764,7 +764,7 @@ def addargs(parser):
                         help='Plot range: maximum wavelength in Angstroms')
 
     parser.add_argument('--normalised', action='store_true',
-                        help='Normalise the spectra to their peak values')
+                        help='Normalise all spectra to their peak values')
 
     parser.add_argument('--use_comovingframe', action='store_true',
                         help='Use the time of packet escape to the surface (instead of a plane toward the observer)')
