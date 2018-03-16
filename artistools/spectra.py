@@ -498,7 +498,7 @@ def make_spectrum_plot(modelpaths, axis, filterfunc, args, scale_to_peak=None):
         # plotkwargs['dashes'] = dashesList[index]
         # plotkwargs['dash_capstyle'] = dash_capstyleList[index]
         plotkwargs['linestyle'] = '--' if (int(index / 7) % 2) else '-'
-        plotkwargs['linewidth'] = 2.5 - (0.2 * index)
+        plotkwargs['linewidth'] = 1.5 - (0.2 * index)
         plot_artis_spectrum(axis, modelpath, args=args, scale_to_peak=scale_to_peak, from_packets=args.frompackets,
                             filterfunc=filterfunc, **plotkwargs)
 
