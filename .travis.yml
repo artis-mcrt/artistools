@@ -4,23 +4,28 @@ python: 3.6
 cache: pip
 
 install:
-  - "pip install coveralls codeclimate-test-reporter"
+  - "pip install coveralls"
   - "pip install -r requirements.txt"
 
 before_script: # configure a headless display to test plot generation
-- "export DISPLAY=:99.0"
-- "sh -e /etc/init.d/xvfb start"
-- sleep 3 # give xvfb some time to start
+  - "export DISPLAY=:99.0"
+  - "sh -e /etc/init.d/xvfb start"
+  - sleep 3 # give xvfb some time to start
+  - curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
+  - chmod +x ./cc-test-reporter
+  - ./cc-test-reporter before-build
 
 script:
 #  - flake8 .
 #  - pytest --cov=artistools
   - coverage run --source artistools setup.py test
 
+after_script:
+  - ./cc-test-reporter after-build --exit-code $TRAVIS_TEST_RESULT
+
 after_success:
 #  - codecov
   - coveralls
-  - codeclimate-test-reporter
 
 git:
   lfs_skip_smudge: false
