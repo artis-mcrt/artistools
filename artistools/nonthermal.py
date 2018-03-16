@@ -21,7 +21,8 @@ def ar_xs(energy_ev, ionpot_ev, A, B, C, D):
     u = energy_ev / ionpot_ev
     if u <= 1:
         return 0
-    return 1e-14 * (A * (1 - 1 / u) + B * pow((1 - 1 / u), 2) + C * np.log(u) + D * np.log(u) / u) / (u * pow(ionpot_ev, 2))
+    return 1e-14 * (
+        A * (1 - 1 / u) + B * pow((1 - 1 / u), 2) + C * np.log(u) + D * np.log(u) / u) / (u * pow(ionpot_ev, 2))
 
 
 def xs_fe2_old(energy):
@@ -91,9 +92,7 @@ def make_espec_plot(axis, nonthermaldata, timestep, outputfile, args):
 
 
 def make_plot(nonthermaldata, timestep, outputfile, args):
-    """
-        Draw the bin edges, fitted field, and emergent spectrum
-    """
+    """Draw the bin edges, fitted field, and emergent spectrum."""
     nplots = 1 if not args.xsplot else 2
     fig, axes = plt.subplots(nrows=nplots, ncols=1, sharex=True, figsize=(6, 4 * nplots),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
