@@ -6,6 +6,7 @@ import sys
 
 import matplotlib.pyplot as plt
 
+
 def addargs(parser):
     parser.add_argument('-inputfolder', action='store', default='.',
                         help='Path to folder with 3D files')
