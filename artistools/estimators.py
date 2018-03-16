@@ -415,7 +415,7 @@ def plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata,
 def plot_timestep(modelname, timestep, allnonemptymgilist, estimators, xvariable, series, modeldata, abundancedata,
                   compositiondata, args, **plotkwargs):
 
-    fig, axes = plt.subplots(len(series), 1, sharex=True, figsize=(8, 2.3 * len(series)),
+    fig, axes = plt.subplots(nrows=len(series), ncols=1, sharex=True, figsize=(8, 2.3 * len(series)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
     if len(series) == 1:
         axes = [axes]
@@ -457,8 +457,9 @@ def plot_timestep(modelname, timestep, allnonemptymgilist, estimators, xvariable
 def plot_recombrates(estimators, outfilename, **plotkwargs):
     atomic_number = 28
     ion_stage_list = [2, 3, 4, 5]
-    fig, axes = plt.subplots(len(ion_stage_list), 1, sharex=True, figsize=(5, 8),
-                             tight_layout={"pad": 0.5, "w_pad": 0.0, "h_pad": 0.0})
+    fig, axes = plt.subplots(
+        nrows=len(ion_stage_list), ncols=1, sharex=True, figsize=(5, 8),
+        tight_layout={"pad": 0.5, "w_pad": 0.0, "h_pad": 0.0})
     # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
 
     for axis, ion_stage in zip(axes, ion_stage_list):

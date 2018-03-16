@@ -102,8 +102,8 @@ def make_plot(dfmacroatom, modelpath, specfilename, timestepmin, timestepmax, ou
 
     print(f'Plotting {len(dfmacroatom)} transitions')
 
-    fig, axis = plt.subplots(1, 1, sharex=True, figsize=(6, 6),
-                             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    fig, axis = plt.subplots(
+        nrows=1, ncols=1, sharex=True, figsize=(6, 6), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     axis.annotate(f'Timestep {timestepmin:d} to {timestepmax:d} (t={time_days_min} to '
                   f'{time_days_max})\nCell {modelgridindex:d}',

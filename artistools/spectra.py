@@ -387,7 +387,7 @@ def plot_reference_spectrum(filename, axis, xmin, xmax, flambdafilterfunc=None, 
 def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
     """Plot the min, max, and average velocity of emission vs wavelength."""
     nsubplots = 2
-    fig, axes = plt.subplots(nsubplots, 1, sharex=True, figsize=(8, 4 * nsubplots),
+    fig, axes = plt.subplots(nrows=nsubplots, ncols=1, sharex=True, figsize=(8, 4 * nsubplots),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     spectrum.query('@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax', inplace=True)
@@ -607,7 +607,8 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
 
 
 def make_plot(modelpaths, args):
-    fig, axis = plt.subplots(1, 1, sharey=True, figsize=(10, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    fig, axis = plt.subplots(
+        nrows=1, ncols=1, sharey=True, figsize=(10, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
     axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
 
     import scipy.signal
