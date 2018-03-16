@@ -509,9 +509,7 @@ def make_spectrum_plot(modelpaths, axis, filterfunc, args, scale_to_peak=None):
 
 
 def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_peak=None):
-    import scipy.interpolate as interpolate
-    from cycler import cycler
-
+    """Plot the emission and absorption by ion for an ARTIS model."""
     # emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out', 'emission.out.gz', 'emission.out']
     emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out']
     emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
@@ -540,6 +538,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
 
     # print("\n".join([f"{x[0]}, {x[1]}" for x in contribution_list]))
 
+    # from cycler import cycler
     # axis.set_prop_cycle(cycler('color', ))
     # colors = [f'C{n}' for n in range(9)] + ['b' for n in range(25)]
     cmap = plt.get_cmap('tab20')
