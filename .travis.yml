@@ -19,14 +19,16 @@ script:
 #  - flake8 .
 #  - pytest --cov=artistools
   - coverage run --source artistools setup.py test
-  - coverage xml
-
-after_script:
-  - ./cc-test-reporter after-build -t coverage.py --exit-code $TRAVIS_TEST_RESULT
 
 after_success:
 #  - codecov
+  - coverage xml
+  - coverage report
   - coveralls
+
+after_script:
+  - ./cc-test-reporter after-build -t coverage.py --exit-code $TRAVIS_TEST_RESULT
+  - coverage report
 
 git:
   lfs_skip_smudge: false
