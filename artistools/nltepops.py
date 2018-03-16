@@ -360,7 +360,7 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
         [i for i in dfpop.ion_stage.unique()
          if i <= max_ion_stage and (ionstages_permitted is None or i in ionstages_permitted)])
 
-    fig, axes = plt.subplots(len(ion_stage_list), 1, sharex=False, figsize=(9, 3 * len(ion_stage_list)),
+    fig, axes = plt.subplots(nrows=len(ion_stage_list), ncols=1, sharex=False, figsize=(9, 3 * len(ion_stage_list)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if len(ion_stage_list) == 1:

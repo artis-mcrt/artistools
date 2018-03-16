@@ -76,8 +76,8 @@ def get_from_packets(modelpath, lcpath, escape_type='TYPE_RPKT'):
 
 
 def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=False):
-    fig, axis = plt.subplots(1, 1, sharey=True, figsize=(8, 5), tight_layout={
-        "pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    fig, axis = plt.subplots(
+        nrows=1, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     for index, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)

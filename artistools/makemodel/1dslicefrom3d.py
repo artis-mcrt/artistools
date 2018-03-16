@@ -144,8 +144,8 @@ def append_cell_to_output(cell, outcellid, t_model, listout, xlist, ylists):
 
 
 def make_plot(xlist, ylists, pdfoutputfile):
-    fig, axis = plt.subplots(1, 1, sharey=True, figsize=(6, 4),
-                             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    fig, axis = plt.subplots(
+        nrows=1, ncols=1, sharey=True, figsize=(6, 4), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
     axis.set_xlabel(r'v (km/s)')
     axis.set_ylabel(r'Density (g/cm$^3$) or mass fraction')
     ylabels = [r'$\rho$', 'fNi56', 'fCo']

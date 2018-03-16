@@ -214,7 +214,8 @@ def sfmatrix_add_ionization_shell(engrid, nnion, row, sfmatrix):
 
 def make_plot(engrid, yvec, outputfilename):
     fs = 13
-    fig, ax = plt.subplots(1, 1, sharey=True, figsize=(6, 4), tight_layout={"pad": 0.3, "w_pad": 0.0, "h_pad": 0.0})
+    fig, ax = plt.subplots(nrows=1, ncols=1, sharey=True,
+                           figsize=(6, 4), tight_layout={"pad": 0.3, "w_pad": 0.0, "h_pad": 0.0})
 
     ax.plot(engrid[1:], np.log10(yvec[1:]), marker="None", lw=1.5, color='black')
 

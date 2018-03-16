@@ -200,7 +200,7 @@ def plot_celltimestep(
 
     print(f'Plotting timestep {timestep:d} (t={time_days})')
 
-    fig, axis = plt.subplots(1, 1, sharex=True, figsize=(8, 4), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    fig, axis = plt.subplots(nrows=1, ncols=1, sharex=True, figsize=(8, 4), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     ymax1 = plot_field_estimators(
         axis, radfielddata, modelgridindex=modelgridindex, timestep=timestep, color='blue', linewidth=1.5)

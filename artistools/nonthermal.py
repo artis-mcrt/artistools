@@ -95,7 +95,7 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
         Draw the bin edges, fitted field, and emergent spectrum
     """
     nplots = 1 if not args.xsplot else 2
-    fig, axes = plt.subplots(nplots, 1, sharex=True, figsize=(6, 4 * nplots),
+    fig, axes = plt.subplots(nrows=nplots, ncols=1, sharex=True, figsize=(6, 4 * nplots),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if nplots == 1:

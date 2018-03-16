@@ -268,7 +268,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     ionlist.sort()
     fig, axes = plt.subplots(
-        len(ionlist) + 1, 1, sharex=True, sharey=True, figsize=(6, 2 * (len(ionlist) + 1)),
+        nrows=len(ionlist) + 1, ncols=1, sharex=True, sharey=True, figsize=(6, 2 * (len(ionlist) + 1)),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if len(ionlist) == 1:
