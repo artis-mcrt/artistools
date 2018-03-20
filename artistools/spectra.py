@@ -452,7 +452,7 @@ def plot_artis_spectrum(axis, modelpath, args, scale_to_peak=None, from_packets=
         at.get_timestep_times(modelpath), args.timestep, args.timemin, args.timemax, args.timedays)
 
     modelname = at.get_model_name(modelpath)
-    print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
+    print(f'  Plotting timesteps {timestepmin} to {timestepmax} '
           f'(t={args.timemin:.3f}d to {args.timemax:.3f}d)')
 
     linelabel = f'{modelname} at t={args.timemin:.2f}d to {args.timemax:.2f}d'
@@ -493,7 +493,7 @@ def make_spectrum_plot(modelpaths, axis, filterfunc, args, scale_to_peak=None):
 
     for index, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
-        print(f"\n====> {modelpath}")
+        print(f"ARTIS model '{modelname}' at path '{modelpath}'")
         plotkwargs = {}
         # plotkwargs['dashes'] = dashesList[index]
         # plotkwargs['dash_capstyle'] = dash_capstyleList[index]
