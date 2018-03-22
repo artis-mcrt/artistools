@@ -1,9 +1,13 @@
+.DS_Store
+*.iml
+.ropeproject
+
 .cache
 .coverage
+coverage.xml
 *.pyc
 *.swp
 *.tmp
-transitions*.pdf
 .tags
 .tags_swap
 
@@ -32,6 +36,3 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-.DS_Store
-*.iml
-*.xml
