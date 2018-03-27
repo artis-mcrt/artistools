@@ -135,10 +135,11 @@ def read_estimators(modelpath, modeldata, keymatch=None):
         estimfiles = chain(
             Path(modelpath).glob(pattern='*/estimators_{mpirank:04d}.out'),
             Path(modelpath).glob(pattern='*/estimators_{mpirank:04d}.out.gz'))
+            Path(modelpath).glob('**/estimators_{mpirank:04d}.out'),
     else:
         estimfiles_all = chain(
-            Path(modelpath).glob(pattern='*/estimators_????.out'),
-            Path(modelpath).glob(pattern='*/estimators_????.out.gz'))
+            Path(modelpath).glob('**/estimators_????.out'),
+            Path(modelpath).glob('**/estimators_????.out.gz'))
 
         def filerank(estfile):
             return int(re.findall('[0-9]+', os.path.basename(estfile))[-1])
