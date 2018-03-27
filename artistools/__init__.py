@@ -450,6 +450,63 @@ def firstexisting(filelist, path=Path('.')):
     raise FileNotFoundError(f'None of these files exist: {", ".join([str(x) for x in fullpaths])}')
 
 
+def get_npts_model(modelpath):
+    with Path(modelpath, 'model.txt').open('r') as modelfile:
+        npts_model = int(modelfile.readline())
+    return npts_model
+
+
+def get_nprocs(modelpath):
+    return int(Path(modelpath, 'input.txt').read_text().split('\n')[21])
+
+
+def get_cellsofmpirank(mpirank, modelpath=False, nprocs=-1, npts_model=-1):
+    if npts_model < 0:
+        npts_model = get_npts_model(modelpath)
+
+    if nprocs < 0:
+        nprocs = get_nprocs(modelpath)
+
+    assert mpirank < nprocs
+
+    nblock = npts_model // nprocs
+    n_leftover = npts_model % nprocs
+
+    if mpirank < n_leftover:
+        ndo = nblock + 1
+        nstart = mpirank * (nblock + 1)
+    else:
+        ndo = nblock
+        nstart = n_leftover + mpirank * nblock
+
+    return range(nstart, nstart + ndo)
+
+
+def get_mpirankofcell(modelgridindex, modelpath=False, nprocs=-1, npts_model=-1):
+    if npts_model < 0:
+        npts_model = get_npts_model(modelpath)
+
+    assert modelgridindex < npts_model
+
+    if nprocs < 0:
+        nprocs = get_nprocs(modelpath)
+
+    if nprocs > npts_model:
+        mpirank = modelgridindex
+    else:
+        nblock = npts_model // nprocs
+        n_leftover = npts_model % nprocs
+
+        if modelgridindex <= n_leftover * (nblock + 1):
+            mpirank = modelgridindex // (nblock + 1)
+        else:
+            mpirank = n_leftover + (modelgridindex - n_leftover * (nblock + 1)) // nblock
+
+    assert modelgridindex in get_cellsofmpirank(mpirank, nprocs=nprocs, npts_model=npts_model)
+
+    return mpirank
+
+
 def addargs(parser):
     pass
 
