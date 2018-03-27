@@ -123,19 +123,20 @@ def parse_ion_row(row, outdict):
             outdict['Alpha_R'][(atomic_number, ion_stage)] = value_thision / outdict['nne']
 
 
-def read_estimators(modelpath, modeldata, keymatch=None):
+def read_estimators(modelpath, modeldata=None, keymatch=None):
     """Read estimator files into a nested dictionary structure.
 
     keymatch should be a tuple (timestep, modelgridindex).
     """
+    if modeldata is None:
+        modeldata, _ = at.get_modeldata(modelpath)
 
     if keymatch is not None:
         mpirank = at.get_mpirankofcell(keymatch[1], modelpath=modelpath)
 
         estimfiles = chain(
-            Path(modelpath).glob(pattern='*/estimators_{mpirank:04d}.out'),
-            Path(modelpath).glob(pattern='*/estimators_{mpirank:04d}.out.gz'))
             Path(modelpath).glob('**/estimators_{mpirank:04d}.out'),
+            Path(modelpath).glob('**/estimators_{mpirank:04d}.out.gz'))
     else:
         estimfiles_all = chain(
             Path(modelpath).glob('**/estimators_????.out'),
@@ -151,11 +152,11 @@ def read_estimators(modelpath, modeldata, keymatch=None):
         print("No estimator files found")
         return False
 
-    print(f'Reading {len(estimfiles)} estimator files from {modelpath}...')
+    print(f'Reading {len(list(estimfiles))} estimator files from {modelpath}...')
 
     estimators = {}
     for estfile in estimfiles:
-        opener = gzip.open if estfile.endswith('.gz') else open
+        opener = gzip.open if str(estfile).endswith('.gz') else open
         with opener(estfile, 'rt') as estfile:
             timestep = 0
             modelgridindex = 0
