@@ -23,7 +23,7 @@ import artistools as at
 
 # from astropy import constants as const
 
-defaultoutputfile = 'plotestimators_ts{timestep:02d}_{time_days:.0f}d.pdf'
+defaultoutputfile = Path('plotestimators_ts{timestep:02d}_{time_days:.0f}d.pdf')
 
 
 def get_ionrecombrates_fromfile(filename):
@@ -412,10 +412,11 @@ def plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata,
         axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
 
 
-def plot_timestep(modelname, timestep, allnonemptymgilist, estimators, xvariable, series, modeldata, abundancedata,
+def plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, xvariable, series, modeldata, abundancedata,
                   compositiondata, args, **plotkwargs):
 
-    fig, axes = plt.subplots(nrows=len(series), ncols=1, sharex=True, figsize=(8, 2.3 * len(series)),
+    modelname = at.get_model_name(modelpath)
+    fig, axes = plt.subplots(nrows=len(series), ncols=1, sharex=True, figsize=(8, 2.8 * len(series)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
     if len(series) == 1:
         axes = [axes]
@@ -445,7 +446,7 @@ def plot_timestep(modelname, timestep, allnonemptymgilist, estimators, xvariable
     axes[0].set_title(figure_title, fontsize=11)
     # plt.suptitle(figure_title, fontsize=11, verticalalignment='top')
 
-    outfilename = args.outputfile.format(timestep=timestep, time_days=time_days)
+    outfilename = str(args.outputfile).format(timestep=timestep, time_days=time_days)
     fig.savefig(outfilename, format='pdf')
     print(f'Saved {outfilename}')
     if args.show:
@@ -528,7 +529,7 @@ def addargs(parser):
     parser.add_argument('-x', default='velocity', choices=['cellid', 'velocity'],
                         help='Horizontal axis variable')
 
-    parser.add_argument('-o', action='store', dest='outputfile',
+    parser.add_argument('-o', action='store', dest='outputfile', type=Path,
                         default=defaultoutputfile,
                         help='Filename for PDF file')
 
@@ -558,7 +559,6 @@ def main(args=None, argsraw=None, **kwargs):
     modeldata, _ = at.get_modeldata(modelpath)
     abundancedata = at.get_initialabundances(modelpath)
     compositiondata = at.get_composition_data(modelpath)
-    modelname = at.get_model_name(modelpath)
 
     estimators = read_estimators(modelpath, modeldata)
 
@@ -614,7 +614,7 @@ def main(args=None, argsraw=None, **kwargs):
             allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
                                   if not estimators[(timestep, modelgridindex)]['emptycell']]
 
-            plot_timestep(modelname, timestep, allnonemptymgilist, estimators, args.x, serieslist,
+            plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, args.x, serieslist,
                           modeldata, abundancedata, compositiondata, args)
 
 
