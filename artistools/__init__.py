@@ -436,7 +436,7 @@ def parse_range_list(rngs, dictvars={}):
 
 def opengzip(filename, mode):
     """Open filename.gz or filename."""
-    filenamegz = filename + '.gz'
+    filenamegz = str(filename) + '.gz'
     return gzip.open(filenamegz, mode) if os.path.exists(filenamegz) else open(filename, mode)
 
 
