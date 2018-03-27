@@ -13,6 +13,7 @@ import re
 import sys
 from collections import namedtuple
 from pathlib import Path
+from itertools import chain
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -127,24 +128,32 @@ def read_estimators(modelpath, modeldata, keymatch=None):
 
     keymatch should be a tuple (timestep, modelgridindex).
     """
-    estimfiles = (glob.glob(os.path.join(modelpath, 'estimators_????.out'), recursive=True) +
-                  glob.glob(os.path.join(modelpath, 'estimators_????.out.gz'), recursive=True) +
-                  glob.glob(os.path.join(modelpath, '*/estimators_????.out'), recursive=True) +
-                  glob.glob(os.path.join(modelpath, '*/estimators_????.out.gz'), recursive=True))
+
+    if keymatch is not None:
+        mpirank = at.get_mpirankofcell(keymatch[1], modelpath=modelpath)
+
+        estimfiles = chain(
+            Path(modelpath).glob(pattern='*/estimators_{mpirank:04d}.out'),
+            Path(modelpath).glob(pattern='*/estimators_{mpirank:04d}.out.gz'))
+    else:
+        estimfiles_all = chain(
+            Path(modelpath).glob(pattern='*/estimators_????.out'),
+            Path(modelpath).glob(pattern='*/estimators_????.out.gz'))
+
+        def filerank(estfile):
+            return int(re.findall('[0-9]+', os.path.basename(estfile))[-1])
+
+        npts_model = at.get_npts_model(modelpath)
+        estimfiles = [x for x in estimfiles_all if filerank(x) < npts_model]
 
     if not estimfiles:
         print("No estimator files found")
         return False
 
-    print(f'Reading {len(estimfiles)} estimator files...')
+    print(f'Reading {len(estimfiles)} estimator files from {modelpath}...')
 
     estimators = {}
     for estfile in estimfiles:
-        filerank = int(re.findall('[0-9]+', os.path.basename(estfile))[-1])
-
-        if keymatch is not None and filerank > keymatch[1]:
-            continue
-
         opener = gzip.open if estfile.endswith('.gz') else open
         with opener(estfile, 'rt') as estfile:
             timestep = 0
