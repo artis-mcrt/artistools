@@ -451,16 +451,19 @@ def firstexisting(filelist, path=Path('.')):
 
 
 def get_npts_model(modelpath):
+    """Return the number of cell in the model.txt"""
     with Path(modelpath, 'model.txt').open('r') as modelfile:
         npts_model = int(modelfile.readline())
     return npts_model
 
 
 def get_nprocs(modelpath):
+    """Return the number of MPI processes specified in input.txt."""
     return int(Path(modelpath, 'input.txt').read_text().split('\n')[21])
 
 
 def get_cellsofmpirank(mpirank, modelpath=False, nprocs=-1, npts_model=-1):
+    """Return an iterable of the cell numbers processed by a given MPI rank."""
     if npts_model < 0:
         npts_model = get_npts_model(modelpath)
 
@@ -483,6 +486,7 @@ def get_cellsofmpirank(mpirank, modelpath=False, nprocs=-1, npts_model=-1):
 
 
 def get_mpirankofcell(modelgridindex, modelpath=False, nprocs=-1, npts_model=-1):
+    """Return the rank number of the MPI process responsible for handling a specified cell's updating and output."""
     if npts_model < 0:
         npts_model = get_npts_model(modelpath)
 
