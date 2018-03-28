@@ -286,6 +286,9 @@ def addargs(parser):
     parser.add_argument('--oldformat', action='store_true',
                         help='Use the old file format')
 
+    parser.add_argument('--notitle', action='store_true',
+                        help='Suppress the top title from the plot')
+
     parser.add_argument('-outputfile', '-o', type=Path,
                         default=defaultoutputfile,
                         help='path/filename for PDF file')
@@ -436,7 +439,8 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
     else:
         figure_title += f' ({time_days:.1f}d)'
 
-    axes[0].set_title(figure_title, fontsize=11)
+    if not args.notitle:
+        axes[0].set_title(figure_title, fontsize=11)
 
     outputfilename = str(args.outputfile).format(
         elsymbol=at.elsymbols[atomic_number], cell=args.modelgridindex,
