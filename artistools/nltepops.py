@@ -7,6 +7,7 @@ import re
 import sys
 from collections import namedtuple
 from pathlib import Path
+from itertools import chain
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -131,11 +132,11 @@ def get_nlte_populations_oldformat(all_levels, nltefilename, modelgridindex, tim
 
 
 def get_nltepops(modelpath, timestep, modelgridindex):
-    nlte_files = (
-        glob.glob(os.path.join(modelpath, 'nlte_????.out'), recursive=True) +
-        glob.glob(os.path.join(modelpath, 'nlte_????.out.gz'), recursive=True) +
-        glob.glob(os.path.join(modelpath, '*/nlte_????.out'), recursive=True) +
-        glob.glob(os.path.join(modelpath, '*/nlte_????.out.gz'), recursive=True))
+    mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
+
+    nlte_files = list(chain(
+        Path(modelpath).rglob(f'nlte_{mpirank:04d}.out'),
+        Path(modelpath).rglob(f'nlte_{mpirank:04d}.out.gz')))
 
     if not nlte_files:
         print("No NLTE files found.")
@@ -143,11 +144,6 @@ def get_nltepops(modelpath, timestep, modelgridindex):
     else:
         print(f'Loading {len(nlte_files)} NLTE files')
         for nltefilepath in nlte_files:
-            filerank = int(re.search('[0-9]+', os.path.basename(nltefilepath)).group(0))
-
-            if filerank > modelgridindex:
-                continue
-
             # print(f'Reading {nltefilepath}')
             dfpop = pd.read_csv(nltefilepath, delim_whitespace=True)
 
@@ -216,11 +212,22 @@ def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_ex
 
 
 def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridindex=-1, noprint=False, oldformat=False):
-    nlte_files = (
-        glob.glob(os.path.join(modelpath, 'nlte_????.out'), recursive=True) +
-        glob.glob(os.path.join(modelpath, 'nlte_????.out.gz'), recursive=True) +
-        glob.glob(os.path.join(modelpath, '*/nlte_????.out'), recursive=True) +
-        glob.glob(os.path.join(modelpath, '*/nlte_????.out.gz'), recursive=True))
+    if modelgridindex > -1:
+        mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
+
+        nlte_files = list(chain(
+            Path(modelpath).rglob(f'nlte_{mpirank:04d}.out'),
+            Path(modelpath).rglob(f'nlte_{mpirank:04d}.out.gz')))
+    else:
+        nlte_files_all = chain(
+            Path(modelpath).rglob(f'nlte_????.out'),
+            Path(modelpath).rglob(f'nlte_????.out.gz'))
+
+        def filerank(estfile):
+            return int(re.findall('[0-9]+', os.path.basename(estfile))[-1])
+
+        npts_model = at.get_npts_model(modelpath)
+        nlte_files = [x for x in nlte_files_all if filerank(x) < npts_model]
 
     dfpop = pd.DataFrame()
 
@@ -230,11 +237,6 @@ def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridind
 
     print(f'Reading {len(nlte_files)} NLTE population files...')
     for nltefilepath in sorted(nlte_files):
-        filerank = int(re.search('[0-9]+', os.path.basename(nltefilepath)).group(0))
-
-        if filerank > modelgridindex and modelgridindex >= 0:
-            continue
-
         if not oldformat:
             dfpop_thisfile = get_nlte_populations(
                 adata, nltefilepath, modelgridindex,
@@ -309,7 +311,8 @@ def main(args=None, argsraw=None, **kwargs):
     adata = at.get_levels(args.modelpath)
 
     modeldata, _ = at.get_modeldata(os.path.join(args.modelpath, 'model.txt'))
-    estimators = at.estimators.read_estimators(args.modelpath, modeldata)
+    estimators = at.estimators.read_estimators(args.modelpath, modeldata=modeldata,
+                                               keymatch=(timestep, args.modelgridindex))
     if estimators:
         if not estimators[(timestep, args.modelgridindex)]['emptycell']:
             T_e = estimators[(timestep, args.modelgridindex)]['Te']
