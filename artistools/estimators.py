@@ -134,9 +134,9 @@ def read_estimators(modelpath, modeldata=None, keymatch=None):
     if keymatch is not None:
         mpirank = at.get_mpirankofcell(keymatch[1], modelpath=modelpath)
 
-        estimfiles = chain(
-            Path(modelpath).glob('**/estimators_{mpirank:04d}.out'),
-            Path(modelpath).glob('**/estimators_{mpirank:04d}.out.gz'))
+        estimfiles = list(chain(
+            Path(modelpath).rglob(f'estimators_{mpirank:04d}.out'),
+            Path(modelpath).rglob(f'estimators_{mpirank:04d}.out.gz')))
     else:
         estimfiles_all = chain(
             Path(modelpath).glob('**/estimators_????.out'),
