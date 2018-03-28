@@ -251,10 +251,10 @@ def plot_multi_ion_series(
     print(f'Subplot with ions: {iontuplelist}')
 
     prev_atomic_number = iontuplelist[0][0]
-    linestyleindex = 0
+    colorindex = 0
     for atomic_number, ion_stage in iontuplelist:
         if atomic_number != prev_atomic_number:
-            linestyleindex += 1
+            colorindex += 1
 
         if compositiondata.query('Z == @atomic_number '
                                  '& lowermost_ionstage <= @ion_stage '
@@ -328,12 +328,13 @@ def plot_multi_ion_series(
         plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
 
         ylist.insert(0, ylist[0])
-        linestyle = ['-', '--', '-.', ':'][linestyleindex]
+        linestyle = ['-', '--', '-.', ':', (1, 4, 1, 5)][ion_stage - 1]
+        linewidth = [1.5, 1.5, 1.0, 1.0, 1.0][ion_stage - 1]
         # color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][ion_stage - 1]
-        assert ion_stage - 1 < 10
-        color = f'C{ion_stage - 1}'
+        assert colorindex < 10
+        color = f'C{colorindex}'
         # or axis.step(where='pre', )
-        axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel, color=color, linestyle=linestyle, **plotkwargs)
+        axis.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, linestyle=linestyle, **plotkwargs)
         prev_atomic_number = atomic_number
 
 
@@ -422,7 +423,12 @@ def plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata,
             plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estimators, **plotkwargs)
 
     if showlegend:
-        axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
+        if yvariables[0][0] == 'populations':
+            axis.legend(loc='upper left', handlelength=2, ncol=3,
+                        frameon=False, numpoints=1, prop={'size': 8})
+            axis.set_ylim(ymax=1.4)
+        else:
+            axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
 
 
 def plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, xvariable, series, modeldata, abundancedata,
