@@ -105,14 +105,15 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
 
     make_espec_plot(axes[-1], nonthermaldata, timestep, outputfile, args)
 
-    figure_title = f'Cell {args.modelgridindex} at Timestep {timestep}'
-    try:
-        time_days = float(at.get_timestep_time('.', timestep))
-    except FileNotFoundError:
-        time_days = 0
-    else:
-        figure_title += f' ({time_days:.2f}d)'
-    axes[0].set_title(figure_title, fontsize=13)
+    if not args.notitle:
+        figure_title = f'Cell {args.modelgridindex} at Timestep {timestep}'
+        try:
+            time_days = float(at.get_timestep_time('.', timestep))
+        except FileNotFoundError:
+            time_days = 0
+        else:
+            figure_title += f' ({time_days:.2f}d)'
+        axes[0].set_title(figure_title, fontsize=13)
 
     axes[-1].set_xlabel(r'Energy (eV)')
     # axis.yaxis.set_minor_locator(ticker.MultipleLocator(base=0.1))
@@ -156,6 +157,9 @@ def addargs(parser):
 
     parser.add_argument('-xmax', type=int,
                         help='Plot range: maximum energy in eV')
+
+    parser.add_argument('--notitle', action='store_true',
+                        help='Suppress the top title from the plot')
 
     parser.add_argument('-o', action='store', dest='outputfile',
                         default=defaultoutputfile,
