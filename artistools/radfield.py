@@ -153,7 +153,6 @@ def plot_fitted_field(axis, radfielddata, xmin, xmax, modelgridindex=None, times
                 ymaxglobalfit = max(arr_j_lambda)
                 axis.plot(arr_lambda, arr_j_lambda, linewidth=1.5, color='purple',
                           label=f'Full-spectrum fitted field (T_R = {row["T_R"]} K)')
-                print(row)
             else:
                 fittedxvalues += list(arr_lambda)
                 fittedyvalues += list(arr_j_lambda)
