@@ -34,7 +34,7 @@ refspectra = {
         ('SN2003du +221.3d (Stanishev et al. 2007)', 30.47),
 
     'FranssonJerkstrand2015_W7_330d_10Mpc.txt':
-        ('Fransson & Jerkstrand (2015) W7 +330d', 10),  # Iwamoto+1999
+        ('W7 (Fransson & Jerkstrand 2015) +330d', 10),  # Iwamoto+1999
 
     'maurer2011_RTJ_W7_338d_1Mpc.txt':
         ('RTJ W7 Nomoto+1984 +338d (Maurer et al. 2011)', 1),
@@ -392,7 +392,8 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
 
     spectrum.query('@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax', inplace=True)
 
-    axes[0].set_title(figure_title, fontsize=11)
+    if not args.notitle:
+        axes[0].set_title(figure_title, fontsize=11)
 
     axis = axes[0]
     axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
@@ -594,7 +595,8 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     axis.axhline(color='white', linewidth=0.5)
 
     plotlabel = f'{modelname}\nt={args.timemin:.2f}d to {args.timemax:.2f}d'
-    axis.set_title(plotlabel, fontsize=11)
+    if not args.notitle:
+        axis.set_title(plotlabel, fontsize=11)
     # axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
     #               horizontalalignment='right', verticalalignment='bottom', fontsize=7)
 
@@ -774,6 +776,9 @@ def addargs(parser):
 
     parser.add_argument('-legendfontsize', type=int, default=8,
                         help='Font size of legend text')
+
+    parser.add_argument('--notitle', action='store_true',
+                        help='Suppress the top title from the plot')
 
     parser.add_argument('-outputfile', '-o', action='store', dest='outputfile', type=Path,
                         help='path/filename for PDF file')

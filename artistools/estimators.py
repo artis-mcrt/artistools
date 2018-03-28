@@ -454,7 +454,9 @@ def plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, xvariable
         time_days = 0
     else:
         figure_title += f' ({time_days:.2f}d)'
-    axes[0].set_title(figure_title, fontsize=11)
+
+    if not args.notitle:
+        axes[0].set_title(figure_title, fontsize=11)
     # plt.suptitle(figure_title, fontsize=11, verticalalignment='top')
 
     outfilename = str(args.outputfile).format(timestep=timestep, time_days=time_days)
@@ -540,9 +542,8 @@ def addargs(parser):
     parser.add_argument('-x', default='velocity', choices=['cellid', 'velocity'],
                         help='Horizontal axis variable')
 
-    parser.add_argument('-o', action='store', dest='outputfile', type=Path,
-                        default=defaultoutputfile,
-                        help='Filename for PDF file')
+    parser.add_argument('--notitle', action='store_true',
+                        help='Suppress the top title from the plot')
 
     parser.add_argument('-ionpoptype', default='elpop', choices=['absolute', 'totalpop', 'elpop'],
                         help=(
@@ -551,6 +552,10 @@ def addargs(parser):
 
     parser.add_argument('-show', action='store_true',
                         help='Show plot before quitting')
+
+    parser.add_argument('-o', action='store', dest='outputfile', type=Path,
+                        default=defaultoutputfile,
+                        help='Filename for PDF file')
 
 
 def main(args=None, argsraw=None, **kwargs):
