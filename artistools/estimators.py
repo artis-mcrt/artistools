@@ -328,7 +328,9 @@ def plot_multi_ion_series(
         plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
 
         ylist.insert(0, ylist[0])
-        linestyle = ['-', '--', '-.', ':', (1, 4), (3, 4)][ion_stage - 1]
+        dashes_list = [(4.5, 2, 3, 2, 4.5, 2), (5, 1), (2, 1), (6, 2), (6, 1)]
+        linestyle_list = ['-', '--', '-.', ':'] + [(0, x) for x in dashes_list]
+        linestyle = linestyle_list[ion_stage - 1]
         linewidth = [1.5, 1.5, 1.0, 1.0, 1.0][ion_stage - 1]
         # color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][ion_stage - 1]
         assert colorindex < 10
