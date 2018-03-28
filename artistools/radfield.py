@@ -14,24 +14,40 @@ import pandas as pd
 from astropy import constants as const
 from astropy import units as u
 from pathlib import Path
+from itertools import chain
 
 import artistools as at
 import artistools.spectra
 
 
-def read_files(radfield_files, modelgridindex=-1):
+def read_files(modelpath, modelgridindex=-1):
     """Read radiation field data from a list of file paths into a pandas DataFrame."""
     radfielddata = None
+
+    if modelgridindex > -1:
+        mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
+
+        radfield_files = list(chain(
+            Path(modelpath).rglob(f'radfield_{mpirank:04d}.out'),
+            Path(modelpath).rglob(f'radfield_{mpirank:04d}.out.gz')))
+    else:
+        estimfiles_all = chain(
+            Path(modelpath).rglob('radfield_????.out'),
+            Path(modelpath).rglob('radfield_????.out.gz'))
+
+        def filerank(estfile):
+            return int(re.findall('[0-9]+', os.path.basename(estfile))[-1])
+
+        npts_model = at.get_npts_model(modelpath)
+        radfield_files = [x for x in estimfiles_all if filerank(x) < npts_model]
+        print(f'Reading {len(radfield_file)} radfield files...')
+
     if not radfield_files:
         print("No radfield files")
     else:
-        for _, radfield_file in enumerate(radfield_files):
-            filerank = int(re.search('[0-9]+', Path(radfield_file).name).group(0))
-
-            if filerank > modelgridindex and modelgridindex >= 0:
-                continue
-
-            print(f'Loading {radfield_file}...')
+        for radfield_file in radfield_files:
+            if modelgridindex > -1:
+                print(f'Reading {radfield_file}...')
 
             radfielddata_thisfile = pd.read_csv(radfield_file, delim_whitespace=True)
             # radfielddata_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
@@ -424,20 +440,7 @@ def main(args=None, argsraw=None, **kwargs):
     if args.listtimesteps:
         at.showtimesteptimes(modelpath=args.modelpath)
     else:
-        filenames = [Path('radfield_????.out'),
-                     Path('radfield_????.out.gz'),
-                     Path('*/radfield_????.out'),
-                     Path('*/radfield_????.out.gz')]
-
-        radfield_files = []
-        for filename in filenames:
-            radfield_files.extend(glob.glob(str(args.modelpath / filename), recursive=True))
-
-        if not radfield_files:
-            print("No radfield files found")
-            return 1
-
-        radfielddata = read_files(sorted(radfield_files), args.modelgridindex)
+        radfielddata = read_files(args.modelpath, modelgridindex=args.modelgridindex)
 
         if not specfilename.is_file():
             print(f'Could not find {specfilename}')
