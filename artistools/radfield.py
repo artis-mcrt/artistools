@@ -151,7 +151,8 @@ def plot_fitted_field(axis, radfielddata, xmin, xmax, modelgridindex=None, times
 
             if row['bin_num'] == -1:
                 ymaxglobalfit = max(arr_j_lambda)
-                axis.plot(arr_lambda, arr_j_lambda, linewidth=1.5, color='purple', label='Full-spectrum fitted field')
+                axis.plot(arr_lambda, arr_j_lambda, linewidth=1.5, color='purple',
+                          label=f'Full-spectrum fitted field (T_R = {row["T_R"]} K)')
                 print(row)
             else:
                 fittedxvalues += list(arr_lambda)
@@ -254,11 +255,17 @@ def plot_celltimestep(
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5,
                     color='red', label='', zorder=-1, alpha=0.4)
 
-    T_R = radfielddata.query('bin_num == -1').iloc[0].T_R
+    # T_R = radfielddata.query('bin_num == -1').iloc[0].T_R
+    modelname = at.get_model_name(modelpath)
 
-    axis.annotate(f'Timestep {timestep:d} (t={time_days})\nCell {modelgridindex:d}\nT_R = {T_R:.0f} K',
-                  xy=(0.02, 0.96), xycoords='axes fraction',
-                  horizontalalignment='left', verticalalignment='top', fontsize=8)
+    figure_title = f'{modelname} cell {modelgridindex:d} at timestep {timestep:d} (t={time_days})'
+
+    if not args.notitle:
+        axis.set_title(figure_title, fontsize=11)
+
+    # axis.annotate(figure_title,
+    #               xy=(0.02, 0.96), xycoords='axes fraction',
+    #               horizontalalignment='left', verticalalignment='top', fontsize=8)
 
     axis.set_xlabel(r'Wavelength ($\AA$)')
     axis.set_ylabel(r'J$_\lambda$ [erg/s/cm$^2$/$\AA$]')
@@ -410,6 +417,9 @@ def addargs(parser):
 
     parser.add_argument('--normalised', action='store_true',
                         help='Normalise the spectra to their peak values')
+
+    parser.add_argument('--notitle', action='store_true',
+                        help='Suppress the top title from the plot')
 
     parser.add_argument('-o', action='store', dest='outputfile', type=Path,
                         help='Filename for PDF file')
