@@ -220,14 +220,15 @@ def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridind
             Path(modelpath).rglob(f'nlte_{mpirank:04d}.out.gz')))
     else:
         nlte_files_all = chain(
-            Path(modelpath).rglob(f'nlte_????.out'),
-            Path(modelpath).rglob(f'nlte_????.out.gz'))
+            Path(modelpath).rglob('nlte_????.out'),
+            Path(modelpath).rglob('nlte_????.out.gz'))
 
         def filerank(estfile):
             return int(re.findall('[0-9]+', os.path.basename(estfile))[-1])
 
         npts_model = at.get_npts_model(modelpath)
         nlte_files = [x for x in nlte_files_all if filerank(x) < npts_model]
+        print(f'Reading {len(nlte_files)} NLTE population files...')
 
     dfpop = pd.DataFrame()
 
@@ -235,8 +236,9 @@ def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridind
         print("No NLTE files found.")
         return dfpop
 
-    print(f'Reading {len(nlte_files)} NLTE population files...')
     for nltefilepath in sorted(nlte_files):
+        if modelgridindex > -1:
+            print(f'Reading {nltefilepath}...')
         if not oldformat:
             dfpop_thisfile = get_nlte_populations(
                 adata, nltefilepath, modelgridindex,

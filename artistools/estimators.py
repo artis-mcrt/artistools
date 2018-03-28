@@ -139,23 +139,25 @@ def read_estimators(modelpath, modeldata=None, keymatch=None):
             Path(modelpath).rglob(f'estimators_{mpirank:04d}.out.gz')))
     else:
         estimfiles_all = chain(
-            Path(modelpath).glob('**/estimators_????.out'),
-            Path(modelpath).glob('**/estimators_????.out.gz'))
+            Path(modelpath).rglob('estimators_????.out'),
+            Path(modelpath).rglob('estimators_????.out.gz'))
 
         def filerank(estfile):
             return int(re.findall('[0-9]+', os.path.basename(estfile))[-1])
 
         npts_model = at.get_npts_model(modelpath)
         estimfiles = [x for x in estimfiles_all if filerank(x) < npts_model]
+        print(f'Reading {len(list(estimfiles))} estimator files from {modelpath}...')
 
     if not estimfiles:
         print("No estimator files found")
         return False
 
-    print(f'Reading {len(list(estimfiles))} estimator files from {modelpath}...')
-
     estimators = {}
-    for estfile in estimfiles:
+    for estfile in sorted(estimfiles):
+        if keymatch is not None:
+            print(f'Reading {estfile}...')
+
         opener = gzip.open if str(estfile).endswith('.gz') else open
         with opener(estfile, 'rt') as estfile:
             timestep = 0
