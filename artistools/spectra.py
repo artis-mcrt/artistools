@@ -5,7 +5,6 @@ import glob
 import math
 from collections import namedtuple
 from pathlib import Path
-from typing import Iterable
 
 import matplotlib.ticker as ticker
 import matplotlib.patches as mpatches
@@ -801,7 +800,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     if not args.modelpath:
         args.modelpath = [Path('.')]
-    elif not isinstance(args.modelpath, Iterable):
+    elif isinstance(args.modelpath, str) or isinstance(args.modelpath, Path):
         args.modelpath = [args.modelpath]
 
     # flatten the list
