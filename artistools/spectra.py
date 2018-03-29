@@ -312,21 +312,27 @@ def print_integrated_flux(arr_f_lambda, arr_lambda_angstroms, distance_megaparse
           f'{arr_lambda_angstroms.max():.1f} A): {integrated_flux:.3e}, (L={luminosity.to("Lsun"):.3e})')
 
 
-def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=None, scale_to_peak=None,
+def plot_reference_spectra(axes, plotobjects, plotobjectlabels, args, flambdafilterfunc=None, scale_to_peak=None,
                            **plotkwargs):
     """Plot reference spectra listed in args.refspecfiles."""
     if args.refspecfiles is not None:
+        if isinstance(args.refspecfiles, str):
+            args.refspecfiles = [args.refspecfiles]
         colorlist = ['black', '0.4']
         for index, filename in enumerate(args.refspecfiles):
+            print(filename)
             if index < len(colorlist):
                 plotkwargs['color'] = colorlist[index]
 
-            plotobj, serieslabel = plot_reference_spectrum(
-                filename, axis, args.xmin, args.xmax,
-                flambdafilterfunc, scale_to_peak, zorder=1000, **plotkwargs)
+            for index, axis in enumerate(axes):
+                supxmin, supxmax = axis.get_xlim()
+                plotobj, serieslabel = plot_reference_spectrum(
+                    filename, axis, supxmin, supxmax,
+                    flambdafilterfunc, scale_to_peak, zorder=1000, **plotkwargs)
 
-            plotobjects.append(plotobj)
-            plotobjectlabels.append(serieslabel)
+                if index == 0:
+                    plotobjects.append(plotobj)
+                    plotobjectlabels.append(serieslabel)
 
 
 def plot_reference_spectrum(
@@ -381,7 +387,7 @@ def plot_reference_spectrum(
     if 'linewidth' not in plotkwargs and 'lw' not in plotkwargs:
         plotkwargs['linewidth'] = 0.5
 
-    lineplot = specdata.plot(x='lambda_angstroms', y=ycolumnname, ax=axis, **plotkwargs)
+    lineplot = specdata.plot(x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None, **plotkwargs)
     # lineplot.get_lines()[0].get_color())
     return mpatches.Patch(color=plotkwargs['color']), plotkwargs['label']
 
@@ -451,7 +457,7 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
     plt.close()
 
 
-def plot_artis_spectrum(axis, modelpath, args, scale_to_peak=None, from_packets=False, filterfunc=None, **plotkwargs):
+def plot_artis_spectrum(axes, modelpath, args, scale_to_peak=None, from_packets=False, filterfunc=None, **plotkwargs):
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         at.get_timestep_times(modelpath), args.timestep, args.timemin, args.timemax, args.timedays)
 
@@ -476,7 +482,7 @@ def plot_artis_spectrum(axis, modelpath, args, scale_to_peak=None, from_packets=
     else:
         spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc)
 
-    spectrum.query('@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax', inplace=True)
+    spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
 
     at.spectra.print_integrated_flux(spectrum['f_lambda'], spectrum['lambda_angstroms'])
 
@@ -487,13 +493,17 @@ def plot_artis_spectrum(axis, modelpath, args, scale_to_peak=None, from_packets=
     else:
         ycolumnname = 'f_lambda'
 
-    spectrum.plot(x='lambda_angstroms', y=ycolumnname, ax=axis,
-                  label=linelabel, alpha=0.95, **plotkwargs)
+    for index, axis in enumerate(axes):
+        supxmin, supxmax = axis.get_xlim()
+        spectrum.query(
+        '@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
+            x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
+            label=linelabel if index == 0 else None, alpha=0.95, **plotkwargs)
 
 
-def make_spectrum_plot(modelpaths, axis, filterfunc, args, scale_to_peak=None):
-    """Set up a matplotlib figure and plot observational and ARTIS spectra."""
-    plot_reference_spectra(axis, [], [], args, scale_to_peak=scale_to_peak, flambdafilterfunc=filterfunc)
+def make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=None):
+    """Plot reference spectra and ARTIS spectra."""
+    plot_reference_spectra(axes, [], [], args, scale_to_peak=scale_to_peak, flambdafilterfunc=filterfunc)
 
     for index, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
@@ -505,13 +515,14 @@ def make_spectrum_plot(modelpaths, axis, filterfunc, args, scale_to_peak=None):
         plotkwargs['linewidth'] = 1.5 - (0.2 * index)
         if index < 3:
             plotkwargs['color'] = ['orange', 'red', 'blue'][index]
-        plot_artis_spectrum(axis, modelpath, args=args, scale_to_peak=scale_to_peak, from_packets=args.frompackets,
+        plot_artis_spectrum(axes, modelpath, args=args, scale_to_peak=scale_to_peak, from_packets=args.frompackets,
                             filterfunc=filterfunc, **plotkwargs)
 
-    axis.set_ylim(ymin=0.)
-    if args.normalised:
-        axis.set_ylim(ymax=1.25)
-        axis.set_ylabel(r'Scaled F$_\lambda$')
+    for axis in axes:
+        axis.set_ylim(ymin=0.)
+        if args.normalised:
+            axis.set_ylim(ymax=1.25)
+            axis.set_ylabel(r'Scaled F$_\lambda$')
 
 
 def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_peak=None):
@@ -594,7 +605,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
 
     plotobjectlabels.extend(list([x.linelabel for x in contributions_sorted_reduced]))
 
-    plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafilterfunc=filterfunc,
+    plot_reference_spectra([axis], plotobjects, plotobjectlabels, args, flambdafilterfunc=filterfunc,
                            scale_to_peak=scale_to_peak, linewidth=0.5)
 
     axis.axhline(color='white', linewidth=0.5)
@@ -613,9 +624,13 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
 
 
 def make_plot(modelpaths, args):
-    fig, axis = plt.subplots(
-        nrows=1, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
-    axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
+    nrows = len(args.xsplit) + 1
+    fig, axes = plt.subplots(
+        nrows=nrows, ncols=1, sharey=False,
+        figsize=(8, 2 + nrows * 3), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+
+    if nrows == 1:
+        axes = [axes]
 
     import scipy.signal
     if args.filtersavgol:
@@ -628,6 +643,17 @@ def make_plot(modelpaths, args):
 
     scale_to_peak = 1.0 if args.normalised else None
 
+    xboundaries = [args.xmin] + args.xsplit + [args.xmax]
+    for index, axis in enumerate(axes):
+        axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
+        supxmin = xboundaries[index]
+        supxmax = xboundaries[index + 1]
+        axis.set_xlim(xmin=supxmin, xmax=supxmax)
+
+        if supxmax - supxmin < 11000:
+            axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
+            axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
+
     if args.showemission or args.showabsorption:
         if len(modelpaths) > 1:
             raise ValueError("ERROR: emission/absorption plot can only take one input model", modelpaths)
@@ -635,26 +661,26 @@ def make_plot(modelpaths, args):
         defaultoutputfile = Path("plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
         plotobjects, plotobjectlabels = make_emissionabsorption_plot(
-            modelpaths[0], axis, filterfunc, args, scale_to_peak=scale_to_peak)
+            modelpaths[0], axes[0], filterfunc, args, scale_to_peak=scale_to_peak)
     else:
         defaultoutputfile = Path("plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
-        make_spectrum_plot(modelpaths, axis, filterfunc, args, scale_to_peak=scale_to_peak)
-        plotobjects, plotobjectlabels = axis.get_legend_handles_labels()
+        make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=scale_to_peak)
+        plotobjects, plotobjectlabels = axes[0].get_legend_handles_labels()
 
-    axis.legend(plotobjects, plotobjectlabels, loc='upper right', handlelength=2,
-                frameon=False, numpoints=1, prop={'size': args.legendfontsize})
+    axes[0].legend(plotobjects, plotobjectlabels, loc='upper right', handlelength=2,
+                   frameon=False, numpoints=1, prop={'size': args.legendfontsize})
 
     # plt.setp(plt.getp(axis, 'xticklabels'), fontsize=fsticklabel)
     # plt.setp(plt.getp(axis, 'yticklabels'), fontsize=fsticklabel)
     # for axis in ['top', 'bottom', 'left', 'right']:
     #    axis.spines[axis].set_linewidth(framewidth)
 
-    axis.set_xlabel(r'Wavelength ($\AA$)')
-    axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
-    if args.xmax - args.xmin < 11000:
-        axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
-        axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
+    for axis in axes:
+        axis.set_xlabel('')
+        # axis.xaxis.set_major_formatter(plt.NullFormatter())
+
+    axes[-1].set_xlabel(r'Wavelength ($\AA$)')
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
@@ -770,6 +796,9 @@ def addargs(parser):
 
     parser.add_argument('-xmax', type=int, default=11000,
                         help='Plot range: maximum wavelength in Angstroms')
+
+    parser.add_argument('-xsplit', nargs='*', default=[],
+                        help='Split into subplots at xvalue(s)')
 
     parser.add_argument('--normalised', action='store_true',
                         help='Normalise all spectra to their peak values')
