@@ -39,7 +39,7 @@ refspectra = {
         ('RTJ W7 Nomoto+1984 +338d (Maurer et al. 2011)', 1),
 
     'nero-nebspec.txt':
-        ('NERO +300d one-zone', -1),
+        ('NERO +300d one-zone', 1),
 }
 
 fluxcontributiontuple = namedtuple(
@@ -329,7 +329,8 @@ def plot_reference_spectra(axis, plotobjects, plotobjectlabels, args, flambdafil
             plotobjectlabels.append(serieslabel)
 
 
-def plot_reference_spectrum(filename, axis, xmin, xmax, flambdafilterfunc=None, scale_to_peak=None, **plotkwargs):
+def plot_reference_spectrum(
+    filename, axis, xmin, xmax, flambdafilterfunc=None, scale_to_peak=None, scale_to_dist_mpc=1, **plotkwargs):
     """Plot a single reference spectrum.
 
     The filename must be in space separated text formated with the first two
@@ -344,8 +345,10 @@ def plot_reference_spectrum(filename, axis, xmin, xmax, flambdafilterfunc=None, 
     specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
                            names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
 
-    # scale to flux at 1 Mpc
-    specdata['f_lambda'] = specdata['f_lambda'] * objectdist_megaparsec ** 2
+    # scale to flux at required distance
+    if scale_to_dist_mpc:
+        assert objectdist_megaparsec > 0  # we must know the true distance in order to scale to some other distance
+        specdata['f_lambda'] = specdata['f_lambda'] * (objectdist_megaparsec / scale_to_dist_mpc) ** 2
 
     if 'label' not in plotkwargs:
         plotkwargs['label'] = objectlabel
@@ -636,7 +639,7 @@ def make_plot(modelpaths, args):
         make_spectrum_plot(modelpaths, axis, filterfunc, args, scale_to_peak=scale_to_peak)
         plotobjects, plotobjectlabels = axis.get_legend_handles_labels()
 
-    axis.legend(plotobjects, plotobjectlabels, loc='best', handlelength=2,
+    axis.legend(plotobjects, plotobjectlabels, loc='upper right', handlelength=2,
                 frameon=False, numpoints=1, prop={'size': args.legendfontsize})
 
     # plt.setp(plt.getp(axis, 'xticklabels'), fontsize=fsticklabel)
@@ -800,7 +803,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     if not args.modelpath:
         args.modelpath = [Path('.')]
-    elif isinstance(args.modelpath, str) or isinstance(args.modelpath, Path):
+    elif isinstance(args.modelpath, (str, Path)):
         args.modelpath = [args.modelpath]
 
     # flatten the list

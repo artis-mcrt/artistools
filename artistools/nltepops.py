@@ -331,6 +331,9 @@ def main(args=None, argsraw=None, **kwargs):
         T_e = 6000
         T_R = 6000
 
+    if isinstance(args.elements, str):
+        args.elements = [args.elements]
+
     for el_in in args.elements:
         try:
             atomic_number = int(el_in)
