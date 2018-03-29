@@ -379,7 +379,7 @@ def plot_reference_spectrum(
         ycolumnname = 'f_lambda'
 
     if 'linewidth' not in plotkwargs and 'lw' not in plotkwargs:
-        plotkwargs['linewidth'] = 0.3
+        plotkwargs['linewidth'] = 0.5
 
     lineplot = specdata.plot(x='lambda_angstroms', y=ycolumnname, ax=axis, **plotkwargs)
     # lineplot.get_lines()[0].get_color())
@@ -441,8 +441,9 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
 
     axis.set_xlabel(r'Wavelength ($\AA$)')
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
-    axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
-    axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
+    if args.xmax - args.xmin < 11000:
+        axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
+        axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
 
     filenameout = str(Path(outputpath, 'plotspecstats.pdf'))
     fig.savefig(filenameout, format='pdf')
@@ -502,12 +503,14 @@ def make_spectrum_plot(modelpaths, axis, filterfunc, args, scale_to_peak=None):
         # plotkwargs['dash_capstyle'] = dash_capstyleList[index]
         plotkwargs['linestyle'] = '--' if (int(index / 7) % 2) else '-'
         plotkwargs['linewidth'] = 1.5 - (0.2 * index)
+        if index < 3:
+            plotkwargs['color'] = ['orange', 'red', 'blue'][index]
         plot_artis_spectrum(axis, modelpath, args=args, scale_to_peak=scale_to_peak, from_packets=args.frompackets,
                             filterfunc=filterfunc, **plotkwargs)
 
     axis.set_ylim(ymin=0.)
     if args.normalised:
-        axis.set_ylim(ymin=-0.1, ymax=1.25)
+        axis.set_ylim(ymax=1.25)
         axis.set_ylabel(r'Scaled F$_\lambda$')
 
 
@@ -611,7 +614,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
 
 def make_plot(modelpaths, args):
     fig, axis = plt.subplots(
-        nrows=1, ncols=1, sharey=True, figsize=(10, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+        nrows=1, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
     axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
 
     import scipy.signal
@@ -649,8 +652,9 @@ def make_plot(modelpaths, args):
 
     axis.set_xlabel(r'Wavelength ($\AA$)')
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
-    axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
-    axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
+    if args.xmax - args.xmin < 11000:
+        axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
+        axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
