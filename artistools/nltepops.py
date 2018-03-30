@@ -317,7 +317,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     modeldata, _ = at.get_modeldata(os.path.join(args.modelpath, 'model.txt'))
     estimators = at.estimators.read_estimators(args.modelpath, modeldata=modeldata,
-                                               keymatch=(timestep, args.modelgridindex))
+                                               timestep=timestep, modelgridindex=args.modelgridindex)
     if estimators:
         if not estimators[(timestep, args.modelgridindex)]['emptycell']:
             T_e = estimators[(timestep, args.modelgridindex)]['Te']

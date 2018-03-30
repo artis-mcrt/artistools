@@ -123,7 +123,7 @@ def parse_ion_row(row, outdict):
             outdict['Alpha_R'][(atomic_number, ion_stage)] = value_thision / outdict['nne']
 
 
-def read_estimators(modelpath, modeldata=None, keymatch=None):
+def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
     """Read estimator files into a nested dictionary structure.
 
     keymatch should be a tuple (timestep, modelgridindex).
@@ -131,22 +131,20 @@ def read_estimators(modelpath, modeldata=None, keymatch=None):
     if modeldata is None:
         modeldata, _ = at.get_modeldata(modelpath)
 
-    if keymatch is not None:
-        mpirank = at.get_mpirankofcell(keymatch[1], modelpath=modelpath)
-
-        estimfiles = list(chain(
-            Path(modelpath).rglob(f'estimators_{mpirank:04d}.out'),
-            Path(modelpath).rglob(f'estimators_{mpirank:04d}.out.gz')))
+    if modelgridindex >= 0:
+        mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
+        strmpirank = f'{mpirank:04d}'
     else:
-        estimfiles_all = chain(
-            Path(modelpath).rglob('estimators_????.out'),
-            Path(modelpath).rglob('estimators_????.out.gz'))
+        strmpirank = '????'
 
-        def filerank(estfile):
-            return int(re.findall('[0-9]+', os.path.basename(estfile))[-1])
+    estimfiles = chain(
+        Path(modelpath).rglob(f'estimators_{strmpirank}.out'),
+        Path(modelpath).rglob(f'estimators_{strmpirank}.out.gz'))
 
+    if modelgridindex < 0:
         npts_model = at.get_npts_model(modelpath)
-        estimfiles = [x for x in estimfiles_all if filerank(x) < npts_model]
+        estimfiles = [x for x in estimfiles if
+                      int(re.findall('[0-9]+', os.path.basename(x))[-1]) < npts_model]
         print(f'Reading {len(list(estimfiles))} estimator files from {modelpath}...')
 
     if not estimfiles:
@@ -155,7 +153,7 @@ def read_estimators(modelpath, modeldata=None, keymatch=None):
 
     estimators = {}
     for estfile in sorted(estimfiles):
-        if keymatch is not None:
+        if modelgridindex >= 0:
             print(f'Reading {estfile}...')
 
         opener = gzip.open if str(estfile).endswith('.gz') else open
