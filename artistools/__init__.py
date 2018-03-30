@@ -8,7 +8,6 @@ import gzip
 import math
 import os.path
 import sys
-# from astropy import units as u
 from collections import namedtuple
 from itertools import chain
 from pathlib import Path
@@ -17,7 +16,8 @@ from typing import Iterable
 # import scipy.signal
 import numpy as np
 import pandas as pd
-# from astropy import constants as const
+from astropy import units as u
+from astropy import constants as const
 
 PYDIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -172,13 +172,18 @@ def get_timestep_times(modelpath):
     return time_columns.columns[1:]
 
 
-def get_timestep_times_float(modelpath):
-    """Return a list of the time in days of each timestep using a spec.out file."""
-    timearray = get_timestep_times(modelpath)
-    if timearray is not None:
-        return np.array([float(t.rstrip('d')) for t in timearray])
-
-    raise FileNotFoundError
+def get_timestep_times_float(modelpath, inputparams=None):
+    """Return a list of the time in days of each timestep."""
+    if inputparams:
+        tmin = inputparams['tmin']
+        dlogt = (math.log(inputparams['tmax']) - math.log(tmin)) / inputparams['ntstep']
+        timesteps = range(inputparams['ntstep'])
+        tstarts = [tmin * math.exp(ts * dlogt) for ts in timesteps]
+        tmids = [tmin * math.exp((ts + 0.5) * dlogt) for ts in timesteps]
+        return tmids
+    else:
+        timearray = get_timestep_times(modelpath)
+        return [float(t.rstrip('d')) for t in timearray]
 
 
 def get_closest_timestep(modelpath, timedays):
@@ -188,7 +193,7 @@ def get_closest_timestep(modelpath, timedays):
         timedays_float = float(timedays.rstrip('d'))
     except AttributeError:
         timedays_float = float(timedays)
-    return np.abs(get_timestep_times_float(modelpath) - timedays_float).argmin()
+    return np.abs(np.array(get_timestep_times_float(modelpath)) - timedays_float).argmin()
 
 
 def get_timestep_time(modelpath, timestep):
@@ -200,12 +205,22 @@ def get_timestep_time(modelpath, timestep):
     return -1
 
 
-def get_timestep_time_delta(timestep, timearray):
+def get_timestep_time_delta(timestep, timearray=None, inputparams=None):
     """Return the time in days between timestep and timestep + 1."""
-    if timestep < len(timearray) - 1:
-        delta_t = (float(timearray[timestep + 1]) - float(timearray[timestep]))
+
+    if inputparams:
+        tmin = inputparams['tmin']
+        dlogt = (math.log(inputparams['tmax']) - math.log(tmin)) / inputparams['ntstep']
+        timesteps = range(inputparams['ntstep'])
+        tstarts = [tmin * math.exp(ts * dlogt) for ts in timesteps]
+        delta_t = tmin * math.exp((timestep + 1) * dlogt) - tstarts[timestep]
+    elif timearray is not None:
+        if timestep < len(timearray) - 1:
+            delta_t = (float(timearray[timestep + 1]) - float(timearray[timestep]))
+        else:
+            delta_t = (float(timearray[timestep]) - float(timearray[timestep - 1]))
     else:
-        delta_t = (float(timearray[timestep]) - float(timearray[timestep - 1]))
+        assert timearray or inputparams
 
     return delta_t
 
