@@ -465,6 +465,26 @@ def firstexisting(filelist, path=Path('.')):
     raise FileNotFoundError(f'None of these files exist: {", ".join([str(x) for x in fullpaths])}')
 
 
+def get_linelist(modelpath):
+    """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels"""
+    with opengzip(Path(modelpath, 'linestat.out'), 'r') as linestatfile:
+        lambda_angstroms = [float(wl) * 1e-8 for wl in linestatfile.readline().split()]
+        nlines = len(lambda_angstroms)
+
+        atomic_numbers = [int(z) for z in linestatfile.readline().split()]
+        assert len(atomic_numbers) == nlines
+        ion_stages = [int(ion_stage) for ion_stage in linestatfile.readline().split()]
+        assert len(ion_stages) == nlines
+
+        # the file adds one to the levelindex, i.e. lowest level is 1
+        upper_levels = [int(levelplusone) - 1 for levelplusone in linestatfile.readline().split()]
+        assert len(upper_levels) == nlines
+        lower_levels = [int(levelplusone) - 1 for levelplusone in linestatfile.readline().split()]
+        assert len(lower_levels) == nlines
+
+    return lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
+
+
 def get_npts_model(modelpath):
     """Return the number of cell in the model.txt"""
     with Path(modelpath, 'model.txt').open('r') as modelfile:
