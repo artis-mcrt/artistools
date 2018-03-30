@@ -462,6 +462,31 @@ def get_nprocs(modelpath):
     return int(Path(modelpath, 'input.txt').read_text().split('\n')[21])
 
 
+def get_inputparams(modelpath):
+    """Return the number of MPI processes specified in input.txt."""
+    params = {}
+    with Path(modelpath, 'input.txt').open('r') as inputfile:
+        params['pre_zseed'] = int(inputfile.readline())
+
+        # number of time steps
+        params['ntstep'] = int(inputfile.readline())
+
+        # number of start and end time step
+        params['itstep'], params['ftstep'] = [int(x) for x in inputfile.readline().split()]
+
+        params['tmin'], params['tmax'] = [int(x) for x in inputfile.readline().split()]
+
+        params['nusyn_min'], params['nusyn_max'] = [
+            (float(x) * u.MeV / const.h).to('Hz') for x in inputfile.readline().split()]
+
+        # number of times for synthesis
+        params['nsyn_time'] = int(inputfile.readline())
+
+        # there are more parameters in the file that are not read yet...
+
+    return params
+
+
 def get_cellsofmpirank(mpirank, modelpath=False, nprocs=-1, npts_model=-1):
     """Return an iterable of the cell numbers processed by a given MPI rank."""
     if npts_model < 0:
