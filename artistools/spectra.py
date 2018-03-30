@@ -305,7 +305,7 @@ def sort_and_reduce_flux_contribution_list(contribution_list_in, maxseriescount,
 
 
 def print_integrated_flux(arr_f_lambda, arr_lambda_angstroms, distance_megaparsec=1.):
-    integrated_flux = np.trapz(arr_f_lambda, x=arr_lambda_angstroms) * u.erg / u.s / (u.cm ** 2)
+    integrated_flux = abs(np.trapz(arr_f_lambda, x=arr_lambda_angstroms)) * u.erg / u.s / (u.cm ** 2)
     luminosity = integrated_flux * 4 * math.pi * (distance_megaparsec * u.megaparsec ** 2)
     print(f'  integrated flux ({arr_lambda_angstroms.min():.1f} A to '
           f'{arr_lambda_angstroms.max():.1f} A): {integrated_flux:.3e}, (L={luminosity.to("Lsun"):.3e})')
