@@ -15,7 +15,6 @@ from astropy import constants as const
 from astropy import units as u
 
 import artistools as at
-import artistools.spectra
 
 # dict consistint of {filename : (legend label, distance in Mpc)}
 # use -1 for distance if unknown
