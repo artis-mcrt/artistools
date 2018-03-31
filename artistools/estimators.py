@@ -123,7 +123,7 @@ def parse_ion_row(row, outdict):
             outdict['Alpha_R'][(atomic_number, ion_stage)] = value_thision / outdict['nne']
 
 
-def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
+def read_estimators(modelpath, modeldata=None, match_modelgridindex=-1, match_timestep=-1):
     """Read estimator files into a nested dictionary structure.
 
     keymatch should be a tuple (timestep, modelgridindex).
@@ -131,8 +131,8 @@ def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
     if modeldata is None:
         modeldata, _ = at.get_modeldata(modelpath)
 
-    if modelgridindex >= 0:
-        mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
+    if match_modelgridindex >= 0:
+        mpirank = at.get_mpirankofcell(match_modelgridindex, modelpath=modelpath)
         strmpirank = f'{mpirank:04d}'
     else:
         strmpirank = '????'
@@ -141,7 +141,7 @@ def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
         Path(modelpath).rglob(f'estimators_{strmpirank}.out'),
         Path(modelpath).rglob(f'estimators_{strmpirank}.out.gz'))
 
-    if modelgridindex < 0:
+    if match_modelgridindex < 0:
         npts_model = at.get_npts_model(modelpath)
         estimfiles = [x for x in estimfiles if
                       int(re.findall('[0-9]+', os.path.basename(x))[-1]) < npts_model]
@@ -153,7 +153,7 @@ def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
 
     estimators = {}
     for estfile in sorted(estimfiles):
-        if modelgridindex >= 0:
+        if match_modelgridindex >= 0:
             print(f'Reading {estfile}...')
 
         opener = gzip.open if str(estfile).endswith('.gz') else open
@@ -167,7 +167,9 @@ def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
                     continue
 
                 if row[0] == 'timestep':
-                    if timestep >= 0 and modelgridindex >= 0 and (timestep, modelgridindex) in estimators:
+                    if (
+                            match_timestep >= 0 and match_modelgridindex >= 0 and
+                            (match_timestep, match_modelgridindex)) in estimators:
                         # found our key, so exit now!
                         return estimators
 
