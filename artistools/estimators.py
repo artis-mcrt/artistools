@@ -123,11 +123,13 @@ def parse_ion_row(row, outdict):
             outdict['Alpha_R'][(atomic_number, ion_stage)] = value_thision / outdict['nne']
 
 
-def read_estimators(modelpath, modeldata=None, match_modelgridindex=-1, match_timestep=-1):
+def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
     """Read estimator files into a nested dictionary structure.
 
     keymatch should be a tuple (timestep, modelgridindex).
     """
+    match_timestep = timestep
+    match_modelgridindex = modelgridindex
     if modeldata is None:
         modeldata, _ = at.get_modeldata(modelpath)
 
