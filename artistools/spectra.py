@@ -319,7 +319,7 @@ def sort_and_reduce_flux_contribution_list(
         contribution_list_out.append(fluxcontributiontuple(
             fluxcontrib=remainder_fluxcontrib, linelabel='Other',
             array_flambda_emission=remainder_flambda_emission, array_flambda_absorption=remainder_flambda_absorption,
-            color='black'))
+            color='grey'))
 
     return contribution_list_out
 
@@ -586,12 +586,12 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
 
     scalefactor = (scale_to_peak / max_flambda_emission_total if scale_to_peak else 1.)
 
-    if args.nostack:
-        plotobjectlabels.append('Net spectrum')
-        line = axis.plot(arraylambda_angstroms, array_flambda_emission_total * scalefactor, linewidth=1, color='black')
-        linecolor = line[0].get_color()
-        plotobjects.append(mpatches.Patch(color=linecolor))
+    plotobjectlabels.append('Net spectrum')
+    line = axis.plot(arraylambda_angstroms, array_flambda_emission_total * scalefactor, linewidth=1.5, color='black', zorder=100)
+    linecolor = line[0].get_color()
+    plotobjects.append(mpatches.Patch(color=linecolor))
 
+    if args.nostack:
         for x in contributions_sorted_reduced:
             emissioncomponentplot = axis.plot(
                 arraylambda_angstroms, x.array_flambda_emission * scalefactor, linewidth=1, color=x.color)
