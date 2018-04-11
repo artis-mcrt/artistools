@@ -319,7 +319,7 @@ def sort_and_reduce_flux_contribution_list(
         contribution_list_out.append(fluxcontributiontuple(
             fluxcontrib=remainder_fluxcontrib, linelabel='Other',
             array_flambda_emission=remainder_flambda_emission, array_flambda_absorption=remainder_flambda_absorption,
-            color='grey'))
+            color='black'))
 
     return contribution_list_out
 
@@ -824,6 +824,10 @@ def addargs(parser):
 
     parser.add_argument('-obsspec', action='append', dest='refspecfiles',
                         help='Also plot reference spectrum from this file')
+
+    parser.add_argument('-fluxdistmpc', type=float,
+                        help=('Plot flux at this distance in megaparsec. Default is the distance to '
+                              'first reference spectrum if this is known, or otherwise 1 Mpc'))
 
     parser.add_argument('-legendfontsize', type=int, default=8,
                         help='Font size of legend text')
