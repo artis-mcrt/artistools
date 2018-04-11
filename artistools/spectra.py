@@ -42,8 +42,9 @@ refspectra = {
 }
 
 fluxcontributiontuple = namedtuple(
-    'fluxcontribution', 'fluxcontrib linelabel array_flambda_emission array_flambda_absorption')
+    'fluxcontribution', 'fluxcontrib linelabel array_flambda_emission array_flambda_absorption color')
 
+color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
 
 def stackspectra(spectra_and_factors):
     factor_sum = sum([factor for _, factor in spectra_and_factors])
@@ -268,9 +269,11 @@ def get_flux_contributions(emissionfilename, absorptionfilename, timearray, arra
 
                 array_flambda_emission_total += array_flambda_emission
                 fluxcontribthisseries = (
-                    np.trapz(array_fnu_emission, x=arraynu) + np.trapz(array_fnu_absorption, x=arraynu))
+                    abs(np.trapz(array_fnu_emission, x=arraynu)) + abs(np.trapz(array_fnu_absorption, x=arraynu)))
 
-                if emissiontype != 'free-free':
+                if emissiontype == 'bound-bound':
+                    linelabel = f'{at.elsymbols[elementlist.Z[element]]} {at.roman_numerals[ion_stage]}'
+                elif emissiontype != 'free-free':
                     linelabel = f'{at.elsymbols[elementlist.Z[element]]} {at.roman_numerals[ion_stage]} {emissiontype}'
                 else:
                     linelabel = f'{emissiontype}'
@@ -278,29 +281,46 @@ def get_flux_contributions(emissionfilename, absorptionfilename, timearray, arra
                 contribution_list.append(
                     fluxcontributiontuple(fluxcontrib=fluxcontribthisseries, linelabel=linelabel,
                                           array_flambda_emission=array_flambda_emission,
-                                          array_flambda_absorption=array_flambda_absorption))
+                                          array_flambda_absorption=array_flambda_absorption,
+                                          color=None))
 
     return contribution_list, array_flambda_emission_total
 
 
-def sort_and_reduce_flux_contribution_list(contribution_list_in, maxseriescount, arraylambda_angstroms):
-    # sort descending by flux contribution
-    contribution_list = sorted(contribution_list_in, key=lambda x: -x.fluxcontrib)
+def sort_and_reduce_flux_contribution_list(
+        contribution_list_in, maxseriescount, arraylambda_angstroms, fixedionlist=[]):
 
-    # combine the items past maxseriescount into a single item
+    if fixedionlist:
+        # sort in manual order
+        contribution_list = sorted(contribution_list_in,
+                                   key=lambda x: fixedionlist.index(x.linelabel)
+                                   if x.linelabel in fixedionlist else len(fixedionlist) + 1)
+    else:
+        # sort descending by flux contribution
+        contribution_list = sorted(contribution_list_in, key=lambda x: -x.fluxcontrib)
+
+    # combine the items past maxseriescount or not in manual list into a single item
     remainder_flambda_emission = np.zeros_like(arraylambda_angstroms)
     remainder_flambda_absorption = np.zeros_like(arraylambda_angstroms)
     remainder_fluxcontrib = 0
-    for row in contribution_list[maxseriescount:]:
-        remainder_fluxcontrib += row.fluxcontrib
-        remainder_flambda_emission += row.array_flambda_emission
-        remainder_flambda_absorption += row.array_flambda_absorption
 
-    contribution_list_out = contribution_list[:maxseriescount]
+    contribution_list_out = []
+    for index, row in enumerate(contribution_list):
+        if fixedionlist and row.linelabel in fixedionlist:
+            contribution_list_out.append(row._replace(color=color_list[fixedionlist.index(row.linelabel)]))
+        elif not fixedionlist and index < maxseriescount:
+            contribution_list_out.append(row._replace(color=color_list[index]))
+        else:
+            remainder_fluxcontrib += row.fluxcontrib
+            remainder_flambda_emission += row.array_flambda_emission
+            remainder_flambda_absorption += row.array_flambda_absorption
+
     if remainder_fluxcontrib > 0.:
         contribution_list_out.append(fluxcontributiontuple(
-            fluxcontrib=remainder_fluxcontrib, linelabel='other',
-            array_flambda_emission=remainder_flambda_emission, array_flambda_absorption=remainder_flambda_absorption))
+            fluxcontrib=remainder_fluxcontrib, linelabel='Other',
+            array_flambda_emission=remainder_flambda_emission, array_flambda_absorption=remainder_flambda_absorption,
+            color='grey'))
+
     return contribution_list_out
 
 
@@ -554,14 +574,8 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
 
     # print("\n".join([f"{x[0]}, {x[1]}" for x in contribution_list]))
 
-    # from cycler import cycler
-    # axis.set_prop_cycle(cycler('color', ))
-    # colors = [f'C{n}' for n in range(9)] + ['b' for n in range(25)]
-    cmap = plt.get_cmap('tab20')
-    colors = cmap(np.linspace(0, 1.0, 20))
-
     contributions_sorted_reduced = at.spectra.sort_and_reduce_flux_contribution_list(
-        contribution_list, args.maxseriescount, arraylambda_angstroms)
+        contribution_list, args.maxseriescount, arraylambda_angstroms, fixedionlist=args.fixedionlist)
 
     plotobjectlabels = []
     plotobjects = []
@@ -580,7 +594,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
 
         for x in contributions_sorted_reduced:
             emissioncomponentplot = axis.plot(
-                arraylambda_angstroms, x.array_flambda_emission * scalefactor, linewidth=1)
+                arraylambda_angstroms, x.array_flambda_emission * scalefactor, linewidth=1, color=x.color)
 
             linecolor = emissioncomponentplot[0].get_color()
             plotobjects.append(mpatches.Patch(color=linecolor))
@@ -592,7 +606,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
         stackplot = axis.stackplot(
             arraylambda_angstroms,
             [x.array_flambda_emission * scalefactor for x in contributions_sorted_reduced],
-            colors=colors, linewidth=0)
+            colors=[x.color for x in contributions_sorted_reduced], linewidth=0)
         plotobjects.extend(stackplot)
 
         if args.showabsorption:
@@ -767,6 +781,9 @@ def addargs(parser):
 
     parser.add_argument('--nostack', action='store_true',
                         help="Plot each emission/absorption contribution separately instead of a stackplot")
+
+    parser.add_argument('-fixedionlist', type=list, nargs='+',
+                        help='Maximum number of plot series (ions/processes) for emission/absorption plot')
 
     parser.add_argument('-maxseriescount', type=int, default=12,
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')
