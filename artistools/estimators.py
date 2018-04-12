@@ -140,8 +140,8 @@ def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
         strmpirank = '????'
 
     estimfiles = chain(
-        Path(modelpath).rglob(f'estimators_{strmpirank}.out'),
-        Path(modelpath).rglob(f'estimators_{strmpirank}.out.gz'))
+        Path(modelpath).rglob(f'**/estimators_{strmpirank}.out'),
+        Path(modelpath).rglob(f'**/estimators_{strmpirank}.out.gz'))
 
     if match_modelgridindex < 0:
         npts_model = at.get_npts_model(modelpath)
