@@ -273,7 +273,7 @@ def plot_celltimestep(
     axis.set_ylim(ymin=0.0, ymax=ymax)
     axis.yaxis.set_major_formatter(at.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))
 
-    axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 13})
+    axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 11})
 
     print(f'Saving to {outputfile}')
     fig.savefig(str(outputfile), format='pdf')
