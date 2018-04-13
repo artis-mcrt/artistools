@@ -658,7 +658,7 @@ def make_plot(modelpaths, args):
 
     xboundaries = [args.xmin] + args.xsplit + [args.xmax]
     for index, axis in enumerate(axes):
-        axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
+        axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\AA$]')
         supxmin = xboundaries[index]
         supxmax = xboundaries[index + 1]
         axis.set_xlim(xmin=supxmin, xmax=supxmax)
@@ -694,6 +694,8 @@ def make_plot(modelpaths, args):
         # axis.xaxis.set_major_formatter(plt.NullFormatter())
 
     axes[-1].set_xlabel(r'Wavelength ($\AA$)')
+    for axis in axes:
+        axis.yaxis.set_major_formatter(at.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile

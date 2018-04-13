@@ -10,6 +10,7 @@ import os.path
 import sys
 from collections import namedtuple
 from itertools import chain
+import matplotlib.ticker as ticker
 from pathlib import Path
 from typing import Iterable
 
@@ -57,6 +58,32 @@ class AppendPath(argparse.Action):
                 getattr(args, self.dest).append(Path(pathstr))
         else:
             setattr(args, self.dest, Path(values))
+
+
+class ExponentLabelFormatter(ticker.ScalarFormatter):
+    """Formatter to move the 'x10^x' offset text into the axis label."""
+    def __init__(self, labeltemplate, useMathText=True):
+        assert '{' in labeltemplate
+        self.labeltemplate = labeltemplate
+        super().__init__(useOffset=True, useMathText=useMathText)
+        # ticker.ScalarFormatter.__init__(self, useOffset=useOffset, useMathText=useMathText)
+
+    def set_axis(self, axis):
+        super().set_axis(axis)
+        self.axis.set_label_text(self.labeltemplate.format(''))
+
+    def set_labeltemplate(self, labeltemplate):
+        self.labeltemplate = labeltemplate
+
+    def _set_orderOfMagnitude(self, range):
+        """Over-riding this to avoid having orderOfMagnitude reset elsewhere"""
+        super()._set_orderOfMagnitude(range)
+        # ticker.ScalarFormatter._set_orderOfMagnitude(self, range)
+        stroffset = self.axis.get_major_formatter().get_offset().replace(r'$\times', '$') + ' '
+        strnewlabel = self.labeltemplate.format(stroffset)
+        # print(f"Renaming axis {strnewlabel}")
+        self.axis.set_label_text(strnewlabel)
+        self.axis.offsetText.set_visible(False)
 
 
 def showtimesteptimes(specfilename=None, modelpath=None, numberofcolumns=5):
