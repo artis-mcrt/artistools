@@ -277,11 +277,14 @@ def addargs(parser):
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Plotted modelgrid cell')
 
-    parser.add_argument('-exc_temperature', type=float, default=6000.,
-                        help='Comparison plot')
+    parser.add_argument('-exc-temperature', type=float, default=6000.,
+                        help='Default if no estimator data')
 
     parser.add_argument('-ionstages',
                         help='Ion stage range, 1 is neutral, 2 is 1+')
+
+    parser.add_argument('--hide-lte-tr', action='store_true',
+                        help='Use the old file format')
 
     parser.add_argument('--oldformat', action='store_true',
                         help='Use the old file format')
@@ -323,13 +326,13 @@ def main(args=None, argsraw=None, **kwargs):
             T_e = estimators[(timestep, args.modelgridindex)]['Te']
             T_R = estimators[(timestep, args.modelgridindex)]['TR']
         else:
-            print(f'ERROR: cell {args.modelgridindex} is empty. Setting T_e = T_R =  6000 K')
-            T_e = 6000
-            T_R = 6000
+            print(f'ERROR: cell {args.modelgridindex} is empty. Setting T_e = T_R = {args.exc_temperature} K')
+            T_e = args.exc_temperature
+            T_R = args.exc_temperature
     else:
-        print('Setting T_e = T_R =  6000 K')
-        T_e = 6000
-        T_R = 6000
+        print('No estimator data. Setting T_e = T_R =  6000 K')
+        T_e = args.exc_temperature
+        T_R = args.exc_temperature
 
     if isinstance(args.elements, str):
         args.elements = [args.elements]
@@ -387,26 +390,51 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
         ionpopulation = dfpopthision['n_NLTE'].sum()
         print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a population of {ionpopulation:.1f}')
 
-        lte_scalefactor = float(ionpopulation / dfpopthision['n_LTE_T_e'].sum())
+        if args.departuremode:
+            lte_scalefactor = float(dfpopthision['n_NLTE'].iloc[0] / dfpopthision['n_LTE_T_e'].iloc[0])
+        else:
+            lte_scalefactor = float(ionpopulation / dfpopthision['n_LTE_T_e'].sum())
+
         dfpopthision['n_LTE_T_e_normed'] = dfpopthision['n_LTE_T_e'] * lte_scalefactor
 
-        axis.plot(dfpopthision.level.values, dfpopthision['n_LTE_T_e_normed'].values, linewidth=1.5,
-                  label=f'LTE T_e = {T_e:.0f} K', linestyle='None', marker='*')
+        dfpopthision.eval('departure_coeffs = n_NLTE / n_LTE_T_e_normed', inplace=True)
 
-        lte_scalefactor = float(ionpopulation / dfpopthision['n_LTE_T_R'].sum())
-        dfpopthision['n_LTE_T_R_normed'] = dfpopthision['n_LTE_T_R'] * lte_scalefactor
+        if not args.departuremode:
+            axis.plot(dfpopthision.level.values, dfpopthision['n_LTE_T_e_normed'].values, linewidth=1.5,
+                      label=f'LTE T_e = {T_e:.0f} K', linestyle='None', marker='*')
 
-        axis.plot(dfpopthision.level.values, dfpopthision['n_LTE_T_R_normed'].values, linewidth=1.5,
-                  label=f'LTE T_R = {T_R:.0f} K', linestyle='None', marker='*')
+            if not args.hide_lte_tr:
+                lte_scalefactor = float(ionpopulation / dfpopthision['n_LTE_T_R'].sum())
+                dfpopthision['n_LTE_T_R_normed'] = dfpopthision['n_LTE_T_R'] * lte_scalefactor
+                axis.plot(dfpopthision.level.values, dfpopthision['n_LTE_T_R_normed'].values, linewidth=1.5,
+                          label=f'LTE T_R = {T_R:.0f} K', linestyle='None', marker='*')
 
-        axis.plot(dfpopthision.level.values, dfpopthision.n_NLTE.values, linewidth=1.5,
-                  label='NLTE', linestyle='None', marker='x')
+        # comparison to Andeas Floers
+        # if atomic_number == 26 and ion_stage in [2, 3]:
+        #     floersfilename = 'andreas_level_populations_fe2.txt' if ion_stage == 2 else 'andreas_level_populations_fe3.txt'
+        #     floers_levelpops = pd.read_csv(floersfilename, comment='#', delim_whitespace = True)
+        #     floers_levelpops.sort_values(by='energypercm', inplace=True)
+        #     levelnums = list(range(len(floers_levelpops)))
+        #     floers_levelpop_values = floers_levelpops['frac_ionpop'].values * dfpopthision['n_NLTE'].sum()
+        #     axis.plot(levelnums, floers_levelpop_values, linewidth=1.5,
+        #               label=f'Floers NLTE', linestyle='None', marker='*')
 
         dfpopthisionoddlevels = dfpopthision.query('parity==1')
 
-        axis.plot(dfpopthisionoddlevels.level.values, dfpopthisionoddlevels.n_NLTE.values, linewidth=2,
-                  label='Odd parity', linestyle='None',
-                  marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
+        if args.departuremode:
+            axis.plot(dfpopthision.level.values, dfpopthision.departure_coeffs.values, linewidth=1.5,
+                      label='Departure coeff', linestyle='None', marker='x')
+
+            axis.plot(dfpopthisionoddlevels.level.values, dfpopthisionoddlevels.departure_coeffs.values, linewidth=2,
+                      label='Odd parity', linestyle='None',
+                      marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
+        else:
+            axis.plot(dfpopthision.level.values, dfpopthision.n_NLTE.values, linewidth=1.5,
+                      label='NLTE', linestyle='None', marker='x')
+
+            axis.plot(dfpopthisionoddlevels.level.values, dfpopthisionoddlevels.n_NLTE.values, linewidth=2,
+                      label='Odd parity', linestyle='None',
+                      marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
 
         # list_departure_ratio = [
         #     nlte / lte for (nlte, lte) in zip(list_nltepop[ion],
