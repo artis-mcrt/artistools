@@ -484,7 +484,9 @@ def plot_artis_spectrum(axes, modelpath, args, scale_to_peak=None, from_packets=
     print(f'  Plotting timesteps {timestepmin} to {timestepmax} '
           f'(t={args.timemin:.3f}d to {args.timemax:.3f}d)')
 
-    linelabel = f'{modelname} at t={args.timemin:.2f}d to {args.timemax:.2f}d'
+    linelabel = f'{modelname}'
+    if not args.hidemodeltimerange:
+        linelabel += f' at t={args.timemin:.2f}d to {args.timemax:.2f}d'
 
     if from_packets:
         # find any other packets files in the same directory
@@ -817,6 +819,9 @@ def addargs(parser):
 
     parser.add_argument('-xsplit', nargs='*', default=[],
                         help='Split into subplots at xvalue(s)')
+
+    parser.add_argument('--hidemodeltimerange', action='store_true',
+                        help='Hide the "at t=x to yd" from the line labels')
 
     parser.add_argument('--normalised', action='store_true',
                         help='Normalise all spectra to their peak values')
