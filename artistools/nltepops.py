@@ -283,8 +283,11 @@ def addargs(parser):
     parser.add_argument('-ionstages',
                         help='Ion stage range, 1 is neutral, 2 is 1+')
 
+    parser.add_argument('--departuremode', action='store_true',
+                        help='Show departure coefficients instead of populations')
+
     parser.add_argument('--hide-lte-tr', action='store_true',
-                        help='Use the old file format')
+                        help='Hide LTE populations at T=T_R')
 
     parser.add_argument('--oldformat', action='store_true',
                         help='Use the old file format')
