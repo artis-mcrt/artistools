@@ -458,7 +458,6 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
               label='Average emission velocity [km/s]')
 
     axis.set_ylabel('Velocity [km/s]')
-    axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': args.legendfontsize})
 
     # axis = axes[2]
     # axis.set_ylabel('Number of packets per bin')
