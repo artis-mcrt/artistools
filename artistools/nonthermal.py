@@ -5,6 +5,7 @@ import glob
 import re
 import os
 from collections import namedtuple
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -83,18 +84,10 @@ def make_xs_plot(axis, nonthermaldata, timestep, outputfile, args):
     axis.legend(loc='upper center', handlelength=2, frameon=False, numpoints=1, prop={'size': 13})
 
 
-def make_espec_plot(axis, nonthermaldata, timestep, outputfile, args):
-    # ymax = max(nonthermaldata['y'])
-
-    # nonthermaldata.plot(x='energy_ev', y='y', linewidth=1.5, ax=axis, color='blue', legend=False)
-    axis.plot(nonthermaldata['energy_ev'], np.log10(nonthermaldata['y']), linewidth=2.0, color='blue')
-    axis.set_ylabel(r'log [y (e$^-$ / cm$^2$ / s / eV)]')
-
-
 def make_plot(nonthermaldata, timestep, outputfile, args):
     """Draw the bin edges, fitted field, and emergent spectrum."""
     nplots = 1 if not args.xsplot else 2
-    fig, axes = plt.subplots(nrows=nplots, ncols=1, sharex=True, figsize=(6, 4 * nplots),
+    fig, axes = plt.subplots(nrows=nplots, ncols=1, sharex=True, figsize=(5, 3.5 * nplots),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if nplots == 1:
@@ -103,7 +96,13 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
     if args.xsplot:
         make_xs_plot(axes[0], nonthermaldata, timestep, outputfile, args)
 
-    make_espec_plot(axes[-1], nonthermaldata, timestep, outputfile, args)
+    modelname = at.get_model_name(args.modelpath)
+    # ymax = max(nonthermaldata['y'])
+
+    # nonthermaldata.plot(x='energy_ev', y='y', linewidth=1.5, ax=axis, color='blue', legend=False)
+    axis.plot(nonthermaldata['energy_ev'], np.log10(nonthermaldata['y']),
+              linewidth=2.0, color='black', label=modelname)
+    axis.set_ylabel(r'log [y (e$^-$ / cm$^2$ / s / eV)]')
 
     if not args.notitle:
         figure_title = f'Cell {args.modelgridindex} at Timestep {timestep}'
