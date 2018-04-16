@@ -100,9 +100,12 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
     # ymax = max(nonthermaldata['y'])
 
     # nonthermaldata.plot(x='energy_ev', y='y', linewidth=1.5, ax=axis, color='blue', legend=False)
-    axis.plot(nonthermaldata['energy_ev'], np.log10(nonthermaldata['y']),
+    axes[0].plot(nonthermaldata['energy_ev'], np.log10(nonthermaldata['y']),
               linewidth=2.0, color='black', label=modelname)
-    axis.set_ylabel(r'log [y (e$^-$ / cm$^2$ / s / eV)]')
+    axes[0].set_ylabel(r'log [y (e$^-$ / cm$^2$ / s / eV)]')
+
+    if args.xsplot:
+        make_xs_plot(axes[1], nonthermaldata, timestep, outputfile, args)
 
     if not args.notitle:
         figure_title = f'Cell {args.modelgridindex} at Timestep {timestep}'
