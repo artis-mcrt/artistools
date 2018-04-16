@@ -434,7 +434,7 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
     # axis.plot(spectrum['lambda_angstroms'], spectrum['f_lambda'], color='black', linewidth=0.5)
 
     axis.legend(plotobjects, plotobjectlabels, loc='best', handlelength=2,
-                frameon=False, numpoints=1, prop={'size': args.legendfontsize})
+                frameon=False, numpoints=1)
 
     axis = axes[1]
     # axis.plot(spectrum['lambda_angstroms'], spectrum['trueemission_velocity_min'], color='#089FFF')
@@ -684,7 +684,7 @@ def make_plot(modelpaths, args):
         plotobjects, plotobjectlabels = axes[0].get_legend_handles_labels()
 
     axes[0].legend(plotobjects, plotobjectlabels, loc='upper right', handlelength=2,
-                   frameon=False, numpoints=1, prop={'size': args.legendfontsize})
+                   frameon=False, numpoints=1)  # , prop={'size': args.legendfontsize}
 
     # plt.setp(plt.getp(axis, 'xticklabels'), fontsize=fsticklabel)
     # plt.setp(plt.getp(axis, 'yticklabels'), fontsize=fsticklabel)
@@ -835,9 +835,6 @@ def addargs(parser):
     parser.add_argument('-fluxdistmpc', type=float,
                         help=('Plot flux at this distance in megaparsec. Default is the distance to '
                               'first reference spectrum if this is known, or otherwise 1 Mpc'))
-
-    parser.add_argument('-legendfontsize', type=int, default=8,
-                        help='Font size of legend text')
 
     parser.add_argument('--notitle', action='store_true',
                         help='Suppress the top title from the plot')
