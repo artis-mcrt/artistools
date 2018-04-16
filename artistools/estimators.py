@@ -222,13 +222,17 @@ def plot_init_abundances(axis, xlist, specieslist, mgilist, modeldata, abundance
         axis.set_ylabel('Initial mass fraction')
 
         ylist = []
+        linelabel = speciesstr
         for modelgridindex in mgilist:
             if speciesstr.lower() in ['ni_56', 'ni56', '56ni']:
                 yvalue = modeldata.loc[modelgridindex]['X_Ni56']
+                linelabel = '$^{56}$Ni'
             elif speciesstr.lower() in ['ni_stb', 'ni_stable']:
                 yvalue = abundancedata.loc[modelgridindex][atomic_number] - modeldata.loc[modelgridindex]['X_Ni56']
+                linelabel = 'Stable Ni'
             elif speciesstr.lower() in ['co_56', 'co56', '56co']:
                 yvalue = modeldata.loc[modelgridindex]['X_Co56']
+                linelabel = '$^{56}$Co'
             elif speciesstr.lower() in ['fegrp', 'ffegroup']:
                 yvalue = modeldata.loc[modelgridindex]['X_Fegroup']
             else:
@@ -237,7 +241,7 @@ def plot_init_abundances(axis, xlist, specieslist, mgilist, modeldata, abundance
 
         ylist.insert(0, ylist[0])
         # or axis.step(where='pre', )
-        axis.plot(xlist, ylist, linewidth=1.5, label=f'{speciesstr}', **plotkwargs)
+        axis.plot(xlist, ylist, linewidth=1.5, label=linelabel, **plotkwargs)
 
 
 def plot_multi_ion_series(
