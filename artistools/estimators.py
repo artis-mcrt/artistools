@@ -439,13 +439,13 @@ def plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata,
             axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
 
 
-def plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, xvariable, series, modeldata, abundancedata,
+def plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, xvariable, serieslist, modeldata, abundancedata,
                   compositiondata, args, **plotkwargs):
 
     modelname = at.get_model_name(modelpath)
-    fig, axes = plt.subplots(nrows=len(series), ncols=1, sharex=True, figsize=(8, 2.8 * len(series)),
+    fig, axes = plt.subplots(nrows=len(serieslist), ncols=1, sharex=True, figsize=(7.2, 2.4 * len(serieslist)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
-    if len(series) == 1:
+    if len(serieslist) == 1:
         axes = [axes]
     # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
 
@@ -458,7 +458,7 @@ def plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, xvariable
 
     # xlist, mgilist = zip(*[(x, y) for (x, y) in zip(xlist, mgilist) if x >= xmin and x <= xmax])
 
-    for axis, yvariables in zip(axes, series):
+    for axis, yvariables in zip(axes, serieslist):
         axis.set_xlim(xmin=xmin, xmax=xmax)
         plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata, abundancedata,
                               compositiondata, estimators, args, **plotkwargs)
