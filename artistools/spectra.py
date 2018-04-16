@@ -641,7 +641,7 @@ def make_plot(modelpaths, args):
     nrows = len(args.xsplit) + 1
     fig, axes = plt.subplots(
         nrows=nrows, ncols=1, sharey=False,
-        figsize=(8, 2 + nrows * 3), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+        figsize=(6.4, 1.6 + nrows * 2.4), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if nrows == 1:
         axes = [axes]
@@ -671,19 +671,21 @@ def make_plot(modelpaths, args):
     if args.showemission or args.showabsorption:
         if len(modelpaths) > 1:
             raise ValueError("ERROR: emission/absorption plot can only take one input model", modelpaths)
-
+        legendncol = 3
         defaultoutputfile = Path("plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
         plotobjects, plotobjectlabels = make_emissionabsorption_plot(
             modelpaths[0], axes[0], filterfunc, args, scale_to_peak=scale_to_peak)
     else:
+        legendncol = 1
         defaultoutputfile = Path("plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
         make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=scale_to_peak)
         plotobjects, plotobjectlabels = axes[0].get_legend_handles_labels()
 
-    axes[0].legend(plotobjects, plotobjectlabels, loc='upper right', handlelength=2,
-                   frameon=False, numpoints=1)  # , prop={'size': args.legendfontsize}
+    axes[0].legend(plotobjects, plotobjectlabels, loc='upper right', handlelength=2, ncol=legendncol,
+                   frameon=False, numpoints=1)
+    # prop={'size': args.legendfontsize}
 
     # plt.setp(plt.getp(axis, 'xticklabels'), fontsize=fsticklabel)
     # plt.setp(plt.getp(axis, 'yticklabels'), fontsize=fsticklabel)
