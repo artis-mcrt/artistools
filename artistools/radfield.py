@@ -122,26 +122,42 @@ def j_nu_dbb(arr_nu_hz, W, T):
     return [0. for _ in arr_nu_hz]
 
 
+def plot_fullspecfittedfield(axis, radfielddata, xmin, xmax, modelgridindex=None, timestep=None, **plotkwargs):
+    row = radfielddata.query(
+        'bin_num == -1' +
+        (' & modelgridindex==@modelgridindex' if modelgridindex else '') +
+        (' & timestep==@timestep' if timestep else '')).copy().iloc[0]
+    nu_lower = const.c.to('angstrom/s').value / xmin
+    nu_upper = const.c.to('angstrom/s').value / xmax
+    arr_nu_hz = np.linspace(nu_lower, nu_upper, num=500)
+    arr_j_nu = j_nu_dbb(arr_nu_hz, row['W'], row['T_R'])
+
+    arr_lambda = const.c.to('angstrom/s').value / arr_nu_hz
+    arr_j_lambda = arr_j_nu * arr_nu_hz / arr_lambda
+
+    label = (
+        r'Full-spectrum fitted field (T$_{\mathrm{R}}$ '
+        f'= {row["T_R"]} K)')
+    axis.plot(arr_lambda, arr_j_lambda,
+              label=label, **plotkwargs)
+
+    return max(arr_j_lambda)
+
+
 def plot_fitted_field(axis, radfielddata, xmin, xmax, modelgridindex=None, timestep=None, **plotkwargs):
     """Plot the fitted diluted blackbody for each bin as well as the global fit."""
     fittedxvalues = []
     fittedyvalues = []
-    ymaxglobalfit = -1
 
     radfielddata_subset = radfielddata.copy().query(
-        'bin_num >= -1' +
+        'bin_num >= 0' +
         (' & modelgridindex==@modelgridindex' if modelgridindex else '') +
         (' & timestep==@timestep' if timestep else ''))
 
     for _, row in radfielddata_subset.iterrows():
-        if row['bin_num'] == -1 or row['W'] >= 0:
-            if row['bin_num'] == -1:
-                # Full-spectrum fitted field should be plotted for the full x range
-                nu_lower = const.c.to('angstrom/s').value / xmin
-                nu_upper = const.c.to('angstrom/s').value / xmax
-            else:
-                nu_lower = row['nu_lower']
-                nu_upper = row['nu_upper']
+        if row['W'] >= 0:
+            nu_lower = row['nu_lower']
+            nu_upper = row['nu_upper']
 
             arr_nu_hz = np.linspace(nu_lower, nu_upper, num=500)
             arr_j_nu = j_nu_dbb(arr_nu_hz, row['W'], row['T_R'])
@@ -149,13 +165,8 @@ def plot_fitted_field(axis, radfielddata, xmin, xmax, modelgridindex=None, times
             arr_lambda = const.c.to('angstrom/s').value / arr_nu_hz
             arr_j_lambda = arr_j_nu * arr_nu_hz / arr_lambda
 
-            if row['bin_num'] == -1:
-                ymaxglobalfit = max(arr_j_lambda)
-                axis.plot(arr_lambda, arr_j_lambda, linewidth=1.5, color='purple',
-                          label=f'Full-spectrum fitted field (T_R = {row["T_R"]} K)')
-            else:
-                fittedxvalues += list(arr_lambda)
-                fittedyvalues += list(arr_j_lambda)
+            fittedxvalues += list(arr_lambda)
+            fittedyvalues += list(arr_j_lambda)
         else:
             arr_nu_hz = (row['nu_lower'], row['nu_upper'])
             arr_j_lambda = [0., 0.]
@@ -166,7 +177,7 @@ def plot_fitted_field(axis, radfielddata, xmin, xmax, modelgridindex=None, times
     if fittedxvalues:
         axis.plot(fittedxvalues, fittedyvalues, label='Fitted field', **plotkwargs)
 
-    return max(max(fittedyvalues), ymaxglobalfit)
+    return max(fittedyvalues)
 
 
 def plot_line_estimators(axis, radfielddata, xmin, xmax, modelgridindex=None, timestep=None, **plotkwargs):
@@ -218,17 +229,21 @@ def plot_celltimestep(
 
     fig, axis = plt.subplots(nrows=1, ncols=1, sharex=True, figsize=(8, 4), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    ymax1 = plot_field_estimators(
+    ymax1 = plot_fullspecfittedfield(
+        axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep,
+        color='purple', linewidth=1.5)
+
+    ymax2 = plot_field_estimators(
         axis, radfielddata, modelgridindex=modelgridindex, timestep=timestep, color='blue', linewidth=1.5)
 
-    ymax2 = plot_fitted_field(
+    ymax3 = plot_fitted_field(
         axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep,
         alpha=0.8, color='green', linewidth=1.5)
 
-    ymax3 = plot_line_estimators(
+    ymax4 = plot_line_estimators(
         axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep, zorder=-2, color='red')
 
-    ymax = max(ymax1, ymax2, ymax3)
+    ymax = max(ymax1, ymax2, ymax3, ymax4)
 
     if not args.nospec:
         plotkwargs = {}
