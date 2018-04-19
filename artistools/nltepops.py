@@ -404,13 +404,13 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
 
         if not args.departuremode:
             axis.plot(dfpopthision.level.values, dfpopthision['n_LTE_T_e_normed'].values, linewidth=1.5,
-                      label=f'LTE T_e = {T_e:.0f} K', linestyle='None', marker='*')
+                      label=f'LTE T$_e$ = {T_e:.0f} K', linestyle='None', marker='*')
 
             if not args.hide_lte_tr:
                 lte_scalefactor = float(ionpopulation / dfpopthision['n_LTE_T_R'].sum())
                 dfpopthision['n_LTE_T_R_normed'] = dfpopthision['n_LTE_T_R'] * lte_scalefactor
                 axis.plot(dfpopthision.level.values, dfpopthision['n_LTE_T_R_normed'].values, linewidth=1.5,
-                          label=f'LTE T_R = {T_R:.0f} K', linestyle='None', marker='*')
+                          label=f'LTE T$_R$ = {T_R:.0f} K', linestyle='None', marker='*')
 
         # comparison to Andeas Floers
         # if atomic_number == 26 and ion_stage in [2, 3]:
@@ -426,7 +426,8 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
 
         if args.departuremode:
             axis.plot(dfpopthision.level.values, dfpopthision.departure_coeffs.values, linewidth=1.5,
-                      label='Departure coeff', linestyle='None', marker='x')
+                      linestyle='None', marker='x')
+            axis.set_ylabel('Departure coefficient')
 
             axis.plot(dfpopthisionoddlevels.level.values, dfpopthisionoddlevels.departure_coeffs.values, linewidth=2,
                       label='Odd parity', linestyle='None',
@@ -464,7 +465,7 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
     velocity = modeldata['velocity'][args.modelgridindex]
     figure_title = (
         f'{modelname}\n'
-        f'Cell {args.modelgridindex} (v={velocity} km/s) with Te = {Te:.1f} K at timestep {timestep:d}')
+        f'Cell {args.modelgridindex} (v={velocity} km/s) with T$_e$ = {Te:.1f} K at timestep {timestep:d}')
 
     try:
         time_days = float(at.get_timestep_time(args.modelpath, timestep))
