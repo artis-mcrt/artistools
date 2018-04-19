@@ -26,6 +26,24 @@ import artistools as at
 
 defaultoutputfile = Path('plotestimators_ts{timestep:02d}_{time_days:.0f}d.pdf')
 
+colors_tab10 = list(plt.get_cmap('tab10')(np.linspace(0, 1.0, 10)))
+elementcolors = {
+    'Fe': colors_tab10[0],
+    'Ni': colors_tab10[1],
+    'Co': colors_tab10[2],
+}
+
+
+def get_elemcolor(atomic_number=None, elsymbol=None):
+    assert (atomic_number is None) != (elsymbol is None)
+    if atomic_number is not None:
+        elsymbol = at.elsymbols[atomic_number]
+
+    if elsymbol not in elementcolors:
+        elementcolors[elsymbol] = colors_tab10[len(elementcolors)]
+
+    return elementcolors[elsymbol]
+
 
 def get_ionrecombrates_fromfile(filename):
     """
@@ -216,6 +234,8 @@ def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
 
 
 def plot_init_abundances(axis, xlist, specieslist, mgilist, modeldata, abundancedata, **plotkwargs):
+    axis.set_ylim(ymin=0.)
+    axis.set_ylim(ymax=1.0)
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split('_')
         atomic_number = at.get_atomic_number(splitvariablename[0].strip('0123456789'))
@@ -223,10 +243,12 @@ def plot_init_abundances(axis, xlist, specieslist, mgilist, modeldata, abundance
 
         ylist = []
         linelabel = speciesstr
+        linestyle = '-'
         for modelgridindex in mgilist:
             if speciesstr.lower() in ['ni_56', 'ni56', '56ni']:
                 yvalue = modeldata.loc[modelgridindex]['X_Ni56']
                 linelabel = '$^{56}$Ni'
+                linestyle = '--'
             elif speciesstr.lower() in ['ni_stb', 'ni_stable']:
                 yvalue = abundancedata.loc[modelgridindex][atomic_number] - modeldata.loc[modelgridindex]['X_Ni56']
                 linelabel = 'Stable Ni'
@@ -241,11 +263,14 @@ def plot_init_abundances(axis, xlist, specieslist, mgilist, modeldata, abundance
 
         ylist.insert(0, ylist[0])
         # or axis.step(where='pre', )
-        axis.plot(xlist, ylist, linewidth=1.5, label=linelabel, **plotkwargs)
+        color = get_elemcolor(atomic_number=atomic_number)
+        axis.plot(xlist, ylist, linewidth=1.5, label=linelabel,
+                  linestyle=linestyle, color=color, **plotkwargs)
 
 
 def plot_multi_ion_series(
         axis, xlist, seriestype, ionlist, timestep, mgilist, estimators, compositiondata, args, **plotkwargs):
+    axis.set_yscale('log')
     # if seriestype == 'populations':
     #     axis.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
 
@@ -339,11 +364,15 @@ def plot_multi_ion_series(
         linestyle = linestyle_list[ion_stage - 1]
         linewidth = [1.5, 1.5, 1.0, 1.0, 1.0][ion_stage - 1]
         # color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][ion_stage - 1]
-        assert colorindex < 10
-        color = f'C{colorindex}'
+        # assert colorindex < 10
+        # color = f'C{colorindex}'
+        color = get_elemcolor(atomic_number=atomic_number)
         # or axis.step(where='pre', )
         axis.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, linestyle=linestyle, **plotkwargs)
         prev_atomic_number = atomic_number
+
+    ymin, ymax = axis.get_ylim()
+    axis.set_ylim(ymin=ymin, ymax=3 * ymax)
 
 
 def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estimators, **plotkwargs):
@@ -434,7 +463,6 @@ def plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata,
         if yvariables[0][0] == 'populations':
             axis.legend(loc='upper left', handlelength=2, ncol=3,
                         frameon=False, numpoints=1, prop={'size': 8})
-            axis.set_ylim(ymax=1.4)
         else:
             axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
 
@@ -443,7 +471,7 @@ def plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, xvariable
                   compositiondata, args, **plotkwargs):
 
     modelname = at.get_model_name(modelpath)
-    fig, axes = plt.subplots(nrows=len(serieslist), ncols=1, sharex=True, figsize=(7.2, 2.4 * len(serieslist)),
+    fig, axes = plt.subplots(nrows=len(serieslist), ncols=1, sharex=True, figsize=(6.4, 2.5 * len(serieslist)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
     if len(serieslist) == 1:
         axes = [axes]
