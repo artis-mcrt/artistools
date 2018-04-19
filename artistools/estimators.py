@@ -376,7 +376,12 @@ def plot_multi_ion_series(
 
 
 def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estimators, **plotkwargs):
-    serieslabel = f'{variablename}{get_units_string(variablename)}'
+    dictlabelreplacements = {
+        'Te': 'T$_e$',
+        'TR': 'T$_R$'
+    }
+    formattedvariablename = dictlabelreplacements.get(variablename, variablename)
+    serieslabel = f'{formattedvariablename}{get_units_string(variablename)}'
     if showlegend:
         plotlabel = serieslabel
     else:
