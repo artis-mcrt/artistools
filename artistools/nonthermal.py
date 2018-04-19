@@ -93,8 +93,13 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
     if nplots == 1:
         axes = [axes]
 
-    if args.xsplot:
-        make_xs_plot(axes[0], nonthermaldata, timestep, outputfile, args)
+    kf92spec = pd.read_csv(
+        Path(args.modelpath, 'KF1992spec-fig1.txt'),
+        header=None, names=['e_kev', 'log10_y'])
+    kf92spec['energy_ev'] = kf92spec['e_kev'] * 1000.
+    kf92spec.eval('y = 10 ** log10_y', inplace=True)
+    axes[0].plot(kf92spec['energy_ev'], kf92spec['log10_y'],
+                 linewidth=2.0, color='red', label='Kozma & Fransson (1992)')
 
     modelname = at.get_model_name(args.modelpath)
     # ymax = max(nonthermaldata['y'])
@@ -116,6 +121,8 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
         else:
             figure_title += f' ({time_days:.2f}d)'
         axes[0].set_title(figure_title, fontsize=13)
+
+    axes[0].legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
 
     axes[-1].set_xlabel(r'Energy (eV)')
     # axis.yaxis.set_minor_locator(ticker.MultipleLocator(base=0.1))
