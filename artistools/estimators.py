@@ -33,6 +33,22 @@ elementcolors = {
     'Co': colors_tab10[2],
 }
 
+variableunits = {
+    'TR': 'K',
+    'Te': 'K',
+    'TJ': 'K',
+    'nne': 'e-/cm3',
+    'heating': 'erg/s/cm3',
+    'cooling': 'erg/s/cm3',
+    'velocity': 'km/s',
+}
+
+variablelongunits = {
+    'TR': 'Temperature in kelvin',
+    'Te': 'Temperature in kelvin',
+    'TJ': 'Temperature in kelvin',
+}
+
 
 def get_elemcolor(atomic_number=None, elsymbol=None):
     assert (atomic_number is None) != (elsymbol is None)
@@ -88,20 +104,20 @@ def get_ionrecombrates_fromfile(filename):
 
 
 def get_units_string(variable):
-    units = {
-        'TR': 'K',
-        'Te': 'K',
-        'TJ': 'K',
-        'nne': 'e-/cm3',
-        'heating': 'erg/s/cm3',
-        'cooling': 'erg/s/cm3',
-        'velocity': 'km/s',
-    }
+    if variable in variableunits:
+        return f' [{variableunits[variable]}]'
+    elif variable.split('_')[0] in variableunits:
+        return f' [{variableunits[variable.split("_")[0]]}]'
+    return ''
 
-    if variable in units:
-        return f' [{units[variable]}]'
-    elif variable.split('_')[0] in units:
-        return f' [{units[variable.split("_")[0]]}]'
+
+def get_ylabel(variable):
+    if variable in variablelongunits:
+        return variablelongunits[variable]
+    elif variable in variableunits:
+        return f'[{variableunits[variable]}]'
+    elif variable.split('_')[0] in variableunits:
+        return f'[{variableunits[variable.split("_")[0]]}]'
     return ''
 
 
@@ -233,13 +249,13 @@ def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
     return estimators
 
 
-def plot_init_abundances(axis, xlist, specieslist, mgilist, modeldata, abundancedata, **plotkwargs):
-    axis.set_ylim(ymin=0.)
-    axis.set_ylim(ymax=1.0)
+def plot_init_abundances(ax, xlist, specieslist, mgilist, modeldata, abundancedata, **plotkwargs):
+    ax.set_ylim(ymin=0.)
+    ax.set_ylim(ymax=1.0)
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split('_')
         atomic_number = at.get_atomic_number(splitvariablename[0].strip('0123456789'))
-        axis.set_ylabel('Initial mass fraction')
+        ax.set_ylabel('Initial mass fraction')
 
         ylist = []
         linelabel = speciesstr
@@ -262,17 +278,17 @@ def plot_init_abundances(axis, xlist, specieslist, mgilist, modeldata, abundance
             ylist.append(yvalue)
 
         ylist.insert(0, ylist[0])
-        # or axis.step(where='pre', )
+        # or ax.step(where='pre', )
         color = get_elemcolor(atomic_number=atomic_number)
-        axis.plot(xlist, ylist, linewidth=1.5, label=linelabel,
+        ax.plot(xlist, ylist, linewidth=1.5, label=linelabel,
                   linestyle=linestyle, color=color, **plotkwargs)
 
 
 def plot_multi_ion_series(
-        axis, xlist, seriestype, ionlist, timestep, mgilist, estimators, compositiondata, args, **plotkwargs):
-    axis.set_yscale('log')
+        ax, xlist, seriestype, ionlist, timestep, mgilist, estimators, compositiondata, args, **plotkwargs):
+    ax.set_yscale('log')
     # if seriestype == 'populations':
-    #     axis.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
+    #     ax.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
 
     # decoded into numeric form, e.g., [(26, 1), (26, 2)]
     iontuplelist = [
@@ -296,16 +312,16 @@ def plot_multi_ion_series(
 
         if seriestype == 'populations':
             if args.ionpoptype == 'absolute':
-                axis.set_ylabel('X$_{ion}$ [/cm3]')
+                ax.set_ylabel('X$_{ion}$ [/cm3]')
             elif args.ionpoptype == 'elpop':
                 # elcode = at.elsymbols[atomic_number]
-                axis.set_ylabel('X$_{ion}$/X$_{element}$')
+                ax.set_ylabel('X$_{ion}$/X$_{element}$')
             elif args.ionpoptype == 'totalpop':
-                axis.set_ylabel('X$_{ion}$/X$_{tot}$')
+                ax.set_ylabel('X$_{ion}$/X$_{tot}$')
             else:
                 assert False
         else:
-            axis.set_ylabel(seriestype)
+            ax.set_ylabel(seriestype)
 
         ylist = []
         for modelgridindex in mgilist:
@@ -367,26 +383,29 @@ def plot_multi_ion_series(
         # assert colorindex < 10
         # color = f'C{colorindex}'
         color = get_elemcolor(atomic_number=atomic_number)
-        # or axis.step(where='pre', )
-        axis.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, linestyle=linestyle, **plotkwargs)
+        # or ax.step(where='pre', )
+        ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, linestyle=linestyle, **plotkwargs)
         prev_atomic_number = atomic_number
 
-    ymin, ymax = axis.get_ylim()
-    axis.set_ylim(ymin=ymin, ymax=3 * ymax)
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin=ymin, ymax=3 * ymax)
 
 
-def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estimators, **plotkwargs):
+def plot_series(ax, xlist, variablename, showlegend, timestep, mgilist, estimators, nounits=False, **plotkwargs):
     dictlabelreplacements = {
         'Te': 'T$_e$',
         'TR': 'T$_R$'
     }
     formattedvariablename = dictlabelreplacements.get(variablename, variablename)
-    serieslabel = f'{formattedvariablename}{get_units_string(variablename)}'
+    serieslabel = f'{formattedvariablename}'
+    if not nounits:
+        serieslabel += get_units_string(variablename)
+
     if showlegend:
-        plotlabel = serieslabel
+        linelabel = serieslabel
     else:
-        axis.set_ylabel(serieslabel)
-        plotlabel = None
+        ax.set_ylabel(serieslabel)
+        linelabel = None
 
     ylist = []
     for modelgridindex in mgilist:
@@ -404,9 +423,9 @@ def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estima
 
     try:
         if math.log10(max(ylist) / min(ylist)) > 2:
-            axis.set_yscale('log')
+            ax.set_yscale('log')
     except ZeroDivisionError:
-        axis.set_yscale('log')
+        ax.set_yscale('log')
 
     dictcolors = {
         'Te': 'red',
@@ -417,7 +436,7 @@ def plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estima
     # print out the data to stdout. Maybe want to add a CSV export option at some point?
     # print(f'#cellidorvelocity {variablename}\n' + '\n'.join([f'{x}  {y}' for x, y in zip(xlist, ylist)]))
 
-    axis.plot(xlist, ylist, linewidth=1.5, label=plotlabel, color=dictcolors.get(variablename, None), **plotkwargs)
+    ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename, None), **plotkwargs)
 
 
 def get_xlist(xvariable, allnonemptymgilist, estimators, timestep, args):
@@ -447,29 +466,43 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timestep, args):
     return xlist, mgilist_out
 
 
-def plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata, abundancedata, compositiondata,
+def plot_timestep_subplot(ax, timestep, xlist, yvariables, mgilist, modeldata, abundancedata, compositiondata,
                           estimators, args, **plotkwargs):
     showlegend = False
+
+    ylabel = 'UNDEFINED'
+    sameylabel = True
+    for variablename in yvariables:
+        if not hasattr(variablename, 'lower'):
+            pass
+        elif ylabel == 'UNDEFINED':
+            ylabel = get_ylabel(variablename)
+        elif ylabel != get_ylabel(variablename):
+            sameylabel = False
+            break
 
     for variablename in yvariables:
         if not hasattr(variablename, 'lower'):  # if it's not a string, it's a list
             showlegend = True
             if variablename[0] == 'initabundances':
-                plot_init_abundances(axis, xlist, variablename[1], mgilist, modeldata, abundancedata)
+                plot_init_abundances(ax, xlist, variablename[1], mgilist, modeldata, abundancedata)
             else:
                 seriestype, ionlist = variablename
-                plot_multi_ion_series(axis, xlist, seriestype, ionlist, timestep, mgilist, estimators,
+                plot_multi_ion_series(ax, xlist, seriestype, ionlist, timestep, mgilist, estimators,
                                       compositiondata, args, **plotkwargs)
         else:
             showlegend = len(yvariables) > 1 or len(variablename) > 20
-            plot_series(axis, xlist, variablename, showlegend, timestep, mgilist, estimators, **plotkwargs)
+            plot_series(ax, xlist, variablename, showlegend, timestep, mgilist, estimators,
+                        nounits=sameylabel, **plotkwargs)
+            if showlegend and sameylabel:
+                ax.set_ylabel(ylabel)
 
     if showlegend:
         if yvariables[0][0] == 'populations':
-            axis.legend(loc='upper left', handlelength=2, ncol=3,
-                        frameon=False, numpoints=1, prop={'size': 8})
+            ax.legend(loc='upper left', handlelength=2, ncol=3,
+                      frameon=False, numpoints=1, prop={'size': 8})
         else:
-            axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
+            ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
 
 
 def plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, xvariable, serieslist, modeldata, abundancedata,
@@ -480,7 +513,8 @@ def plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, xvariable
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
     if len(serieslist) == 1:
         axes = [axes]
-    # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
+
+    # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
 
     axes[-1].set_xlabel(f'{xvariable}{get_units_string(xvariable)}')
     xlist, mgilist = get_xlist(xvariable, allnonemptymgilist, estimators, timestep, args)
@@ -491,9 +525,9 @@ def plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, xvariable
 
     # xlist, mgilist = zip(*[(x, y) for (x, y) in zip(xlist, mgilist) if x >= xmin and x <= xmax])
 
-    for axis, yvariables in zip(axes, serieslist):
-        axis.set_xlim(xmin=xmin, xmax=xmax)
-        plot_timestep_subplot(axis, timestep, xlist, yvariables, mgilist, modeldata, abundancedata,
+    for ax, yvariables in zip(axes, serieslist):
+        ax.set_xlim(xmin=xmin, xmax=xmax)
+        plot_timestep_subplot(ax, timestep, xlist, yvariables, mgilist, modeldata, abundancedata,
                               compositiondata, estimators, args, **plotkwargs)
 
     figure_title = f'{modelname}\nTimestep {timestep}'
@@ -523,9 +557,9 @@ def plot_recombrates(estimators, outfilename, **plotkwargs):
     fig, axes = plt.subplots(
         nrows=len(ion_stage_list), ncols=1, sharex=True, figsize=(5, 8),
         tight_layout={"pad": 0.5, "w_pad": 0.0, "h_pad": 0.0})
-    # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
+    # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
 
-    for axis, ion_stage in zip(axes, ion_stage_list):
+    for ax, ion_stage in zip(axes, ion_stage_list):
 
         ionstr = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} to {at.roman_numerals[ion_stage - 1]}'
 
@@ -550,12 +584,12 @@ def plot_recombrates(estimators, outfilename, **plotkwargs):
             dfrecombrates.query("logT > @logT_e_min & logT < @logT_e_max", inplace=True)
 
             listT_e_Nahar = [10 ** x for x in dfrecombrates['logT'].values]
-            axis.plot(listT_e_Nahar, dfrecombrates['RRC_total'], linewidth=2,
+            ax.plot(listT_e_Nahar, dfrecombrates['RRC_total'], linewidth=2,
                       label=ionstr + " (Nahar)", markersize=6, marker='s', **plotkwargs)
 
-        axis.plot(listT_e, list_rrc, linewidth=2, label=ionstr, markersize=6, marker='s', **plotkwargs)
+        ax.plot(listT_e, list_rrc, linewidth=2, label=ionstr, markersize=6, marker='s', **plotkwargs)
 
-        axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 10})
+        ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 10})
 
     # modelname = at.get_model_name(".")
     # plotlabel = f'Timestep {timestep}'
