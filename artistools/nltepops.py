@@ -20,7 +20,32 @@ import artistools.estimators
 defaultoutputfile = 'plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
 
 
-def get_nlte_populations(all_levels, nltefilename, modelgridindex, timestep, atomic_number, T_e, T_R, noprint=False):
+def get_nltepops(modelpath, timestep, modelgridindex):
+    """Read in NLTE populations from a model for a particular timestep and grid cell"""
+    mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
+
+    nlte_files = list(chain(
+        Path(modelpath).rglob(f'nlte_{mpirank:04d}.out'),
+        Path(modelpath).rglob(f'nlte_{mpirank:04d}.out.gz')))
+
+    if not nlte_files:
+        print("No NLTE files found.")
+        return
+    else:
+        print(f'Loading {len(nlte_files)} NLTE files')
+        for nltefilepath in nlte_files:
+            # print(f'Reading {nltefilepath}')
+            dfpop = pd.read_csv(nltefilepath, delim_whitespace=True)
+
+            dfpop.query('(modelgridindex==@modelgridindex) & (timestep==@timestep)', inplace=True)
+            if not dfpop.empty:
+                return dfpop
+
+    return pd.DataFrame()
+
+
+def read_file(all_levels, nltefilename, modelgridindex, timestep, atomic_number, T_e, T_R, noprint=False):
+    """Read NLTE populations from one file, adding in the LTE at T_E and T_R populations."""
     # print(f'Reading {nltefilename}...')
     try:
         dfpop = pd.read_csv(nltefilename, delim_whitespace=True)
@@ -94,124 +119,8 @@ def get_nlte_populations(all_levels, nltefilename, modelgridindex, timestep, ato
     return dfpop
 
 
-def get_nlte_populations_oldformat(all_levels, nltefilename, modelgridindex, timestep, atomic_number, temperature_exc):
-    compositiondata = at.get_composition_data('compositiondata.txt')
-    elementdata = compositiondata.query('Z==@atomic_number')
-
-    if len(elementdata) < 1:
-        print(f'Error: element Z={atomic_number} not in composition file')
-        return None
-
-    skip_block = False
-    dfpop = pd.DataFrame().to_sparse()
-    with open(nltefilename, 'r') as nltefile:
-        for line in nltefile:
-            row = line.split()
-
-            if row and row[0] == 'timestep':
-                skip_block = int(row[1]) != timestep
-                if row[2] == 'modelgridindex' and int(row[3]) != modelgridindex:
-                    skip_block = True
-
-            if skip_block:
-                continue
-            elif len(row) > 2 and row[0] == 'nlte_index' and row[1] != '-':  # level row
-                matchedgroundstateline = False
-            elif len(row) > 1 and row[1] == '-':  # ground state
-                matchedgroundstateline = True
-            else:
-                continue
-
-            dfrow = parse_nlte_row(row, dfpop, elementdata, all_levels, timestep,
-                                   temperature_exc, matchedgroundstateline)
-
-            if dfrow is not None:
-                dfpop = dfpop.append(dfrow, ignore_index=True)
-
-    return dfpop
-
-
-def get_nltepops(modelpath, timestep, modelgridindex):
-    mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
-
-    nlte_files = list(chain(
-        Path(modelpath).rglob(f'nlte_{mpirank:04d}.out'),
-        Path(modelpath).rglob(f'nlte_{mpirank:04d}.out.gz')))
-
-    if not nlte_files:
-        print("No NLTE files found.")
-        return
-    else:
-        print(f'Loading {len(nlte_files)} NLTE files')
-        for nltefilepath in nlte_files:
-            # print(f'Reading {nltefilepath}')
-            dfpop = pd.read_csv(nltefilepath, delim_whitespace=True)
-
-            dfpop.query('(modelgridindex==@modelgridindex) & (timestep==@timestep)', inplace=True)
-            if not dfpop.empty:
-                return dfpop
-
-    return pd.DataFrame()
-
-
-def parse_nlte_row(row, dfpop, elementdata, all_levels, timestep, temperature_exc, matchedgroundstateline):
-    """
-        Read a line from the NLTE output file and return a Pandas DataFrame
-    """
-    levelpoptuple = namedtuple(
-        'ionpoptuple', 'timestep Z ion_stage level energy_ev parity n_LTE n_NLTE n_LTE_custom')
-
-    elementindex = elementdata.index[0]
-    atomic_number = int(elementdata.iloc[0].Z)
-    element = int(row[row.index('element') + 1])
-    if element != elementindex:
-        return None
-    ion = int(row[row.index('ion') + 1])
-    ion_stage = int(elementdata.iloc[0].lowermost_ionstage) + ion
-
-    if row[row.index('level') + 1] != 'SL':
-        levelnumber = int(row[row.index('level') + 1])
-        superlevel = False
-    else:
-        levelnumber = dfpop.query('timestep==@timestep and ion_stage==@ion_stage').level.max() + 3
-        print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a superlevel at level {levelnumber}')
-        superlevel = True
-
-    for _, ion_data in enumerate(all_levels):
-        if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
-            level = ion_data.levels.iloc[levelnumber]
-            gslevel = ion_data.levels.iloc[0]
-
-    ltepop = float(row[row.index('nnlevel_LTE') + 1])
-
-    if matchedgroundstateline:
-        nltepop = ltepop_custom = ltepop
-
-        levelname = gslevel.levelname.split('[')[0]
-        energy_ev = gslevel.energy_ev
-    else:
-        nltepop = float(row[row.index('nnlevel_NLTE') + 1])
-
-        k_b = const.k_B.to('eV / K').value
-        gspop = dfpop.query('timestep==@timestep and ion_stage==@ion_stage and level==0').iloc[0].n_NLTE
-        levelname = level.levelname.split('[')[0]
-        energy_ev = (level.energy_ev - gslevel.energy_ev)
-
-        ltepop_custom = gspop * level.g / gslevel.g * math.exp(
-            -energy_ev / k_b / temperature_exc)
-
-    parity = 1 if levelname[-1] == 'o' else 0
-    if superlevel:
-        parity = 0
-
-    newrow = levelpoptuple(timestep=timestep, Z=int(elementdata.iloc[0].Z), ion_stage=ion_stage,
-                           level=levelnumber, energy_ev=energy_ev, parity=parity,
-                           n_LTE=ltepop, n_NLTE=nltepop, n_LTE_custom=ltepop_custom)
-
-    return pd.DataFrame(data=[newrow], columns=levelpoptuple._fields)
-
-
-def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridindex=-1, noprint=False, oldformat=False):
+def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridindex=-1, noprint=False):
+    """Read in NLTE populations from a model for a particular timestep and grid cell"""
     if modelgridindex > -1:
         mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
 
@@ -239,14 +148,8 @@ def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridind
     for nltefilepath in sorted(nlte_files):
         if modelgridindex > -1:
             print(f'Reading {nltefilepath}...')
-        if not oldformat:
-            dfpop_thisfile = get_nlte_populations(
-                adata, nltefilepath, modelgridindex,
-                timestep, atomic_number, T_e, T_R, noprint=noprint)
-        else:
-            dfpop_thisfile = get_nlte_populations_oldformat(
-                adata, nltefilepath, modelgridindex,
-                timestep, atomic_number, T_e, T_R)
+        dfpop_thisfile = read_file(
+            adata, nltefilepath, modelgridindex, timestep, atomic_number, T_e, T_R, noprint=noprint)
 
         # found our data!
         if not dfpop_thisfile.empty:
@@ -259,111 +162,6 @@ def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridind
                     dfpop = dfpop.append(dfpop_thisfile.copy(), ignore_index=True)
 
     return dfpop
-
-
-def addargs(parser):
-    parser.add_argument('elements', nargs='*', default=['Fe'],
-                        help='List of elements to plot')
-
-    parser.add_argument('-modelpath', default='.',
-                        help='Path to ARTIS folder')
-
-    parser.add_argument('-timedays', '-time', '-t',
-                        help='Time in days to plot')
-
-    parser.add_argument('-timestep', '-ts', type=int,
-                        help='Timestep number to plot')
-
-    parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
-                        help='Plotted modelgrid cell')
-
-    parser.add_argument('-exc-temperature', type=float, default=6000.,
-                        help='Default if no estimator data')
-
-    parser.add_argument('-ionstages',
-                        help='Ion stage range, 1 is neutral, 2 is 1+')
-
-    parser.add_argument('--departuremode', action='store_true',
-                        help='Show departure coefficients instead of populations')
-
-    parser.add_argument('--hide-lte-tr', action='store_true',
-                        help='Hide LTE populations at T=T_R')
-
-    parser.add_argument('--oldformat', action='store_true',
-                        help='Use the old file format')
-
-    parser.add_argument('--notitle', action='store_true',
-                        help='Suppress the top title from the plot')
-
-    parser.add_argument('-outputfile', '-o', type=Path,
-                        default=defaultoutputfile,
-                        help='path/filename for PDF file')
-
-
-def main(args=None, argsraw=None, **kwargs):
-    if args is None:
-        parser = argparse.ArgumentParser(
-            description='Plot ARTIS non-LTE corrections.')
-        addargs(parser)
-        parser.set_defaults(**kwargs)
-        args = parser.parse_args(argsraw)
-
-    if args.timedays:
-        timestep = at.get_closest_timestep(args.modelpath, args.timedays)
-    else:
-        timestep = int(args.timestep)
-
-    time_days = float(at.get_timestep_time(args.modelpath, timestep))
-
-    if os.path.isdir(args.outputfile):
-        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
-
-    ionstages_permitted = at.parse_range_list(args.ionstages) if args.ionstages else None
-    adata = at.get_levels(args.modelpath)
-
-    modeldata, _ = at.get_modeldata(os.path.join(args.modelpath, 'model.txt'))
-    estimators = at.estimators.read_estimators(args.modelpath, modeldata=modeldata,
-                                               timestep=timestep, modelgridindex=args.modelgridindex)
-    if estimators:
-        if not estimators[(timestep, args.modelgridindex)]['emptycell']:
-            T_e = estimators[(timestep, args.modelgridindex)]['Te']
-            T_R = estimators[(timestep, args.modelgridindex)]['TR']
-        else:
-            print(f'ERROR: cell {args.modelgridindex} is empty. Setting T_e = T_R = {args.exc_temperature} K')
-            T_e = args.exc_temperature
-            T_R = args.exc_temperature
-    else:
-        print('No estimator data. Setting T_e = T_R =  6000 K')
-        T_e = args.exc_temperature
-        T_R = args.exc_temperature
-
-    if isinstance(args.elements, str):
-        args.elements = [args.elements]
-
-    for el_in in args.elements:
-        try:
-            atomic_number = int(el_in)
-            elsymbol = at.elsymbols[atomic_number]
-        except ValueError:
-            try:
-                elsymbol = el_in
-                atomic_number = next(
-                    Z for Z, elsymb in enumerate(at.elsymbols) if elsymb.lower() == elsymbol.lower())
-            except StopIteration:
-                print(f"Could not find element '{elsymbol}'")
-                continue
-
-        print(elsymbol, atomic_number)
-
-        print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
-              f'timestep {timestep} t={time_days}d element {elsymbol}')
-        dfpop = read_files(args.modelpath, adata, atomic_number, T_e, T_R,
-                           timestep, args.modelgridindex, args.oldformat)
-
-        if dfpop.empty:
-            print(f'No NLTE population data for modelgrid cell {args.modelgridindex} timestep {timestep}')
-        else:
-            make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R, timestep, args)
 
 
 def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R, timestep, args):
@@ -483,6 +281,108 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
     print(f"Saving {outputfilename}")
     fig.savefig(str(outputfilename), format='pdf')
     plt.close()
+
+
+def addargs(parser):
+    parser.add_argument('elements', nargs='*', default=['Fe'],
+                        help='List of elements to plot')
+
+    parser.add_argument('-modelpath', default='.',
+                        help='Path to ARTIS folder')
+
+    parser.add_argument('-timedays', '-time', '-t',
+                        help='Time in days to plot')
+
+    parser.add_argument('-timestep', '-ts', type=int,
+                        help='Timestep number to plot')
+
+    parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
+                        help='Plotted modelgrid cell')
+
+    parser.add_argument('-exc-temperature', type=float, default=6000.,
+                        help='Default if no estimator data')
+
+    parser.add_argument('-ionstages',
+                        help='Ion stage range, 1 is neutral, 2 is 1+')
+
+    parser.add_argument('--departuremode', action='store_true',
+                        help='Show departure coefficients instead of populations')
+
+    parser.add_argument('--hide-lte-tr', action='store_true',
+                        help='Hide LTE populations at T=T_R')
+
+    parser.add_argument('--notitle', action='store_true',
+                        help='Suppress the top title from the plot')
+
+    parser.add_argument('-outputfile', '-o', type=Path,
+                        default=defaultoutputfile,
+                        help='path/filename for PDF file')
+
+
+def main(args=None, argsraw=None, **kwargs):
+    if args is None:
+        parser = argparse.ArgumentParser(
+            description='Plot ARTIS non-LTE corrections.')
+        addargs(parser)
+        parser.set_defaults(**kwargs)
+        args = parser.parse_args(argsraw)
+
+    if args.timedays:
+        timestep = at.get_closest_timestep(args.modelpath, args.timedays)
+    else:
+        timestep = int(args.timestep)
+
+    time_days = float(at.get_timestep_time(args.modelpath, timestep))
+
+    if os.path.isdir(args.outputfile):
+        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+
+    ionstages_permitted = at.parse_range_list(args.ionstages) if args.ionstages else None
+    adata = at.get_levels(args.modelpath)
+
+    modeldata, _ = at.get_modeldata(os.path.join(args.modelpath, 'model.txt'))
+    estimators = at.estimators.read_estimators(args.modelpath, modeldata=modeldata,
+                                               timestep=timestep, modelgridindex=args.modelgridindex)
+    if estimators:
+        if not estimators[(timestep, args.modelgridindex)]['emptycell']:
+            T_e = estimators[(timestep, args.modelgridindex)]['Te']
+            T_R = estimators[(timestep, args.modelgridindex)]['TR']
+        else:
+            print(f'ERROR: cell {args.modelgridindex} is empty. Setting T_e = T_R = {args.exc_temperature} K')
+            T_e = args.exc_temperature
+            T_R = args.exc_temperature
+    else:
+        print('No estimator data. Setting T_e = T_R =  6000 K')
+        T_e = args.exc_temperature
+        T_R = args.exc_temperature
+
+    if isinstance(args.elements, str):
+        args.elements = [args.elements]
+
+    for el_in in args.elements:
+        try:
+            atomic_number = int(el_in)
+            elsymbol = at.elsymbols[atomic_number]
+        except ValueError:
+            try:
+                elsymbol = el_in
+                atomic_number = next(
+                    Z for Z, elsymb in enumerate(at.elsymbols) if elsymb.lower() == elsymbol.lower())
+            except StopIteration:
+                print(f"Could not find element '{elsymbol}'")
+                continue
+
+        print(elsymbol, atomic_number)
+
+        print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
+              f'timestep {timestep} t={time_days}d element {elsymbol}')
+        dfpop = read_files(args.modelpath, adata, atomic_number, T_e, T_R,
+                           timestep=timestep, modelgridindex=args.modelgridindex)
+
+        if dfpop.empty:
+            print(f'No NLTE population data for modelgrid cell {args.modelgridindex} timestep {timestep}')
+        else:
+            make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R, timestep, args)
 
 
 if __name__ == "__main__":
