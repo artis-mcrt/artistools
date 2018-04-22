@@ -42,7 +42,7 @@ def main(args=None, argsraw=None, **kwargs):
     adata = at.get_levels(args.modelpath, get_photoionisations=True)
     timestep = at.get_closest_timestep(args.modelpath, args.timedays)
     dfnltepops = at.nltepops.read_files(
-        args.modelpath, adata, 26, 1000, 1000, timestep, -1, oldformat=False, noprint=True)
+        args.modelpath, adata, 26, 1000, 1000, timestep, -1, noprint=True)
 
     phixs = adata.query('Z==26 & ion_stage==1', inplace=False).iloc[0].levels.iloc[0].phixstable[0][1] * 1e-18
 
