@@ -505,13 +505,13 @@ def plot_timestep_subplot(ax, timestep, xlist, yvariables, mgilist, modeldata, a
             ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
 
 
-def plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, xvariable, serieslist, modeldata, abundancedata,
+def plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, xvariable, plotlist, modeldata, abundancedata,
                   compositiondata, args, **plotkwargs):
 
     modelname = at.get_model_name(modelpath)
-    fig, axes = plt.subplots(nrows=len(serieslist), ncols=1, sharex=True, figsize=(6.4, 2.5 * len(serieslist)),
+    fig, axes = plt.subplots(nrows=len(plotlist), ncols=1, sharex=True, figsize=(6.4, 2.5 * len(plotlist)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
-    if len(serieslist) == 1:
+    if len(plotlist) == 1:
         axes = [axes]
 
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
@@ -525,7 +525,7 @@ def plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, xvariable
 
     # xlist, mgilist = zip(*[(x, y) for (x, y) in zip(xlist, mgilist) if x >= xmin and x <= xmax])
 
-    for ax, yvariables in zip(axes, serieslist):
+    for ax, yvariables in zip(axes, plotlist):
         ax.set_xlim(xmin=xmin, xmax=xmax)
         plot_timestep_subplot(ax, timestep, xlist, yvariables, mgilist, modeldata, abundancedata,
                               compositiondata, estimators, args, **plotkwargs)
@@ -664,9 +664,9 @@ def main(args=None, argsraw=None, **kwargs):
     if not estimators:
         return -1
 
-    serieslist = [
         ['heating_gamma', 'heating_coll', 'heating_bf', 'heating_ff'],
         ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff'],
+    plotlist = [
         # ['heating_gamma/gamma_dep'],
         ['Te', 'TR'],
         ['nne'],
@@ -713,7 +713,7 @@ def main(args=None, argsraw=None, **kwargs):
             allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
                                   if not estimators[(timestep, modelgridindex)]['emptycell']]
 
-            plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, args.x, serieslist,
+            plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, args.x, plotlist,
                           modeldata, abundancedata, compositiondata, args)
 
 

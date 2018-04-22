@@ -5,6 +5,7 @@ import math
 from astropy import units as u
 # from astropy import constants as c
 import artistools as at
+import artistools.nltepops
 
 
 def addargs(parser):
@@ -38,6 +39,13 @@ def main(args=None, argsraw=None, **kwargs):
     print(f't_now = {t_now.to("d")}')
     print('The following assumes that all 56Ni has decayed to 56Co and all energy comes from emitted positrons')
 
+    adata = at.get_levels(args.modelpath, get_photoionisations=True)
+    timestep = at.get_closest_timestep(args.modelpath, args.timedays)
+    dfnltepops = at.nltepops.read_files(
+        args.modelpath, adata, 26, 1000, 1000, timestep, -1, oldformat=False, noprint=True)
+
+    phixs = adata.query('Z==26 & ion_stage==1', inplace=False).iloc[0].levels.iloc[0].phixstable[0][1] * 1e-18
+
     v_inner = 0 * u.km / u.s
     for i, row in dfmodel.iterrows():
         v_outer = row['velocity'] * u.km / u.s
@@ -61,6 +69,13 @@ def main(args=None, argsraw=None, **kwargs):
         epsilon = power_now / volume_now
         print(f'zone {i:3d}, velocity = [{v_inner:8.2f}, {v_outer:8.2f}], epsilon = {epsilon:.3e}')
         # print(f'  epsilon = {epsilon.to("eV/(cm3s)"):.2f}')
+
+        dfnltepops_cell = dfnltepops.query('modelgridindex == @i', inplace=False)
+        if not dfnltepops_cell.empty:
+            nnlevel = dfnltepops_cell.query('level == 0', inplace=False).iloc[0]['n_NLTE']
+            width = ((v_outer - v_inner) * t_now).to('cm').value
+            tau = width * phixs * nnlevel
+            print(f'width: {width:.3e} cm, phixs: {phixs:.3e} cm^2, nnlevel: {nnlevel:.3e} cm^-3, tau: {tau:.3e}')
 
         v_inner = v_outer
 

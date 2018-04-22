@@ -192,8 +192,10 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
         print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a population of {ionpopulation:.1f}')
 
         if args.departuremode:
+            # scale to match the ground state populations
             lte_scalefactor = float(dfpopthision['n_NLTE'].iloc[0] / dfpopthision['n_LTE_T_e'].iloc[0])
         else:
+            # scale to match the ion population
             lte_scalefactor = float(ionpopulation / dfpopthision['n_LTE_T_e'].sum())
 
         dfpopthision['n_LTE_T_e_normed'] = dfpopthision['n_LTE_T_e'] * lte_scalefactor
@@ -238,12 +240,6 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
                       label='Odd parity', linestyle='None',
                       marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
 
-        # list_departure_ratio = [
-        #     nlte / lte for (nlte, lte) in zip(list_nltepop[ion],
-        #                                       list_ltepop[ion])]
-        # axis.plot(list_levels[ion], list_departure_ratio, linewidth=1.5,
-        #         label='NLTE/LTE', linestyle='None', marker='x')
-        # axis.set_ylabel(r'')
         subplotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
 
         axis.annotate(subplotlabel, xy=(0.75, 0.96), xycoords='axes fraction',

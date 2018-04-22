@@ -92,14 +92,14 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
 
     if nplots == 1:
         axes = [axes]
-    # 
-    # kf92spec = pd.read_csv(
-    #     Path(args.modelpath, 'KF1992spec-fig1.txt'),
-    #     header=None, names=['e_kev', 'log10_y'])
-    # kf92spec['energy_ev'] = kf92spec['e_kev'] * 1000.
-    # kf92spec.eval('y = 10 ** log10_y', inplace=True)
-    # axes[0].plot(kf92spec['energy_ev'], kf92spec['log10_y'],
-    #              linewidth=2.0, color='red', label='Kozma & Fransson (1992)')
+
+    kf92spec = pd.read_csv(
+        Path(args.modelpath, 'KF1992spec-fig1.txt'),
+        header=None, names=['e_kev', 'log10_y'])
+    kf92spec['energy_ev'] = kf92spec['e_kev'] * 1000.
+    kf92spec.eval('y = 10 ** log10_y', inplace=True)
+    axes[0].plot(kf92spec['energy_ev'], kf92spec['log10_y'],
+                 linewidth=2.0, color='red', label='Kozma & Fransson (1992)')
 
     modelname = at.get_model_name(args.modelpath)
     # ymax = max(nonthermaldata['y'])
