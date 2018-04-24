@@ -587,10 +587,11 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
 
     scalefactor = (scale_to_peak / max_flambda_emission_total if scale_to_peak else 1.)
 
-    plotobjectlabels.append('Net spectrum')
-    line = axis.plot(arraylambda_angstroms, array_flambda_emission_total * scalefactor, linewidth=1.5, color='black', zorder=100)
-    linecolor = line[0].get_color()
-    plotobjects.append(mpatches.Patch(color=linecolor))
+    if args.refspecfiles is None or args.refspecfiles == []:
+        plotobjectlabels.append('Net spectrum')
+        line = axis.plot(arraylambda_angstroms, array_flambda_emission_total * scalefactor, linewidth=1.5, color='black', zorder=100)
+        linecolor = line[0].get_color()
+        plotobjects.append(mpatches.Patch(color=linecolor))
 
     if args.nostack:
         for x in contributions_sorted_reduced:
