@@ -339,16 +339,19 @@ def main(args=None, argsraw=None, **kwargs):
     modeldata, _ = at.get_modeldata(os.path.join(args.modelpath, 'model.txt'))
     estimators = at.estimators.read_estimators(args.modelpath, modeldata=modeldata,
                                                timestep=timestep, modelgridindex=args.modelgridindex)
+    print(f'modelgridindex {args.modelgridindex}, timestep {timestep} (t={time_days}d)')
     if estimators:
         if not estimators[(timestep, args.modelgridindex)]['emptycell']:
             T_e = estimators[(timestep, args.modelgridindex)]['Te']
             T_R = estimators[(timestep, args.modelgridindex)]['TR']
+            nne = estimators[(timestep, args.modelgridindex)]['nne']
+            print(f'nne = {nne} cm^-3, T_e = {T_e} K, T_R = {T_R} K')
         else:
             print(f'ERROR: cell {args.modelgridindex} is empty. Setting T_e = T_R = {args.exc_temperature} K')
             T_e = args.exc_temperature
             T_R = args.exc_temperature
     else:
-        print('No estimator data. Setting T_e = T_R =  6000 K')
+        print('WARNING: No estimator data. Setting T_e = T_R =  6000 K')
         T_e = args.exc_temperature
         T_R = args.exc_temperature
 
@@ -368,10 +371,8 @@ def main(args=None, argsraw=None, **kwargs):
                 print(f"Could not find element '{elsymbol}'")
                 continue
 
-        print(elsymbol, atomic_number)
+        print(f'Z={atomic_number} {elsymbol}')
 
-        print(f'Getting level populations for modelgrid cell {args.modelgridindex} '
-              f'timestep {timestep} t={time_days}d element {elsymbol}')
         dfpop = read_files(args.modelpath, adata, atomic_number, T_e, T_R,
                            timestep=timestep, modelgridindex=args.modelgridindex)
 
