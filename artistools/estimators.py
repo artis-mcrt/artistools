@@ -203,9 +203,8 @@ def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
                     continue
 
                 if row[0] == 'timestep':
-                    if (
-                            match_timestep >= 0 and match_modelgridindex >= 0 and
-                            (match_timestep, match_modelgridindex)) in estimators:
+                    if (match_timestep >= 0 and match_modelgridindex >= 0 and
+                            (match_timestep, match_modelgridindex) in estimators):
                         # found our key, so exit now!
                         return estimators
 
