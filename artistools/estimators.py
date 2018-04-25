@@ -24,8 +24,6 @@ import artistools as at
 
 # from astropy import constants as const
 
-defaultoutputfile = Path('plotestimators_ts{timestep:02d}_{time_days:.0f}d.pdf')
-
 colors_tab10 = list(plt.get_cmap('tab10')(np.linspace(0, 1.0, 10)))
 elementcolors = {
     'Fe': colors_tab10[0],
@@ -34,6 +32,7 @@ elementcolors = {
 }
 
 variableunits = {
+    'time': 'days',
     'TR': 'K',
     'Te': 'K',
     'TJ': 'K',
@@ -456,7 +455,7 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timesteplist, modelpath
         timesteplist_out = timesteplist
     elif xvariable == 'time':
         mgilist_out = allnonemptymgilist
-        timearray = at.get_timestep_times(modelpath)
+        timearray = at.get_timestep_times_float(modelpath)
         xlist = [timearray[ts] for ts in timesteplist]
         timesteplist_out = timesteplist
     else:
@@ -525,8 +524,8 @@ def plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modeldata, abunda
             ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
 
 
-def plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, xvariable, plotlist, modeldata, abundancedata,
-                  compositiondata, args, **plotkwargs):
+def make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, xvariable, plotlist, modeldata, abundancedata,
+              compositiondata, args, **plotkwargs):
 
     modelname = at.get_model_name(modelpath)
     fig, axes = plt.subplots(nrows=len(plotlist), ncols=1, sharex=True, figsize=(6.4, 2.5 * len(plotlist)),
@@ -535,8 +534,6 @@ def plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, xvariable
         axes = [axes]
 
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
-
-    timesteplist_unfiltered = [timestep] * len(allnonemptymgilist)  # constant timestep
 
     axes[-1].set_xlabel(f'{xvariable}{get_units_string(xvariable)}')
     xlist, mgilist, timesteplist = get_xlist(
@@ -551,19 +548,38 @@ def plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, xvariable
         plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modeldata, abundancedata,
                      compositiondata, estimators, args, **plotkwargs)
 
-    figure_title = f'{modelname}\nTimestep {timestep}'
-    try:
-        time_days = float(at.get_timestep_time(modelpath, timestep))
-    except FileNotFoundError:
-        time_days = 0
-    else:
-        figure_title += f' ({time_days:.2f}d)'
+    if len(set(timesteplist)) == 1:  # single timestep plot
+        figure_title = f'{modelname}\nTimestep {timesteplist[0]}'
+        try:
+            time_days = float(at.get_timestep_time(modelpath, timesteplist[0]))
+        except FileNotFoundError:
+            time_days = 0
+        else:
+            figure_title += f' ({time_days:.2f}d)'
+
+        defaultoutputfile = Path('plotestimators_ts{timestep:02d}_{time_days:.0f}d.pdf')
+        if os.path.isdir(args.outputfile):
+            args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+        outfilename = str(args.outputfile).format(timestep=timesteplist[0], time_days=time_days)
+    elif len(set(mgilist)) == 1:  # single grid cell plot
+        figure_title = f'{modelname}\nCell {mgilist[0]}'
+
+        defaultoutputfile = Path('plotestimators_cell{modelgridindex:03d}.pdf')
+        if os.path.isdir(args.outputfile):
+            args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+        outfilename = str(args.outputfile).format(modelgridindex=mgilist[0])
+    else:  # mix of timesteps and cells somehow?
+        figure_title = f'{modelname}'
+
+        defaultoutputfile = Path('plotestimators.pdf')
+        if os.path.isdir(args.outputfile):
+            args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+        outfilename = args.outputfile
 
     if not args.notitle:
         axes[0].set_title(figure_title, fontsize=11)
     # plt.suptitle(figure_title, fontsize=11, verticalalignment='top')
 
-    outfilename = str(args.outputfile).format(timestep=timestep, time_days=time_days)
     fig.savefig(outfilename, format='pdf')
     print(f'Saved {outfilename}')
     if args.show:
@@ -640,7 +656,7 @@ def addargs(parser):
     parser.add_argument('-timedays', '-time', '-t',
                         help='Time in days to plot for internal structure plot')
 
-    parser.add_argument('-x', default='velocity',
+    parser.add_argument('-x',
                         help='Horizontal axis variable, e.g. cellid, velocity, timestep, or time')
 
     parser.add_argument('-xmin', type=int, default=-1,
@@ -663,8 +679,7 @@ def addargs(parser):
     parser.add_argument('-show', action='store_true',
                         help='Show plot before quitting')
 
-    parser.add_argument('-o', action='store', dest='outputfile', type=Path,
-                        default=defaultoutputfile,
+    parser.add_argument('-o', action='store', dest='outputfile', type=Path, default=Path(),
                         help='Filename for PDF file')
 
 
@@ -677,16 +692,13 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    if os.path.isdir(args.outputfile):
-        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
-
     modelpath = args.modelpath
 
     modeldata, _ = at.get_modeldata(modelpath)
     abundancedata = at.get_initialabundances(modelpath)
     compositiondata = at.get_composition_data(modelpath)
 
-    estimators = read_estimators(modelpath, modeldata)
+    estimators = read_estimators(modelpath, modeldata, modelgridindex=args.modelgridindex)
 
     if not estimators:
         return -1
@@ -729,10 +741,14 @@ def main(args=None, argsraw=None, **kwargs):
                 timestepmin, timestepmax = timestep, timestep
         else:
             if not args.timestep:
-                print('ERROR: A time or timestep must be specified')
-                return -1
-
-            if '-' in args.timestep:
+                if args.modelgridindex > -1:
+                    timearray = at.get_timestep_times(modelpath)
+                    timestepmin = 0
+                    timestepmax = len(timearray) - 1
+                else:
+                    print('ERROR: A time or timestep must be specified if no cell is specified')
+                    return -1
+            elif '-' in args.timestep:
                 timestepmin, timestepmax = [int(nts) for nts in args.timestep.split('-')]
             else:
                 timestepmin = int(args.timestep)
@@ -742,11 +758,21 @@ def main(args=None, argsraw=None, **kwargs):
                               if not estimators[(timestepmin, modelgridindex)]['emptycell']]
 
         if args.modelgridindex > -1:
-            print("Time evolution plot not implemented yet")
+            # plot time evolution in specific cell
+            if not args.x:
+                args.x = 'time'
+            timesteplist_unfiltered = list(range(timestepmin, timestepmax + 1))
+            mgilist = [args.modelgridindex] * len(timesteplist_unfiltered)
+            make_plot(modelpath, timesteplist_unfiltered, mgilist, estimators, args.x, plotlist,
+                      modeldata, abundancedata, compositiondata, args)
         else:
+            # plot a snapshot at each timestep showing internal structure
+            if not args.x:
+                args.x = 'velocity'
             for timestep in range(timestepmin, timestepmax + 1):
-                plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, args.x, plotlist,
-                              modeldata, abundancedata, compositiondata, args)
+                timesteplist_unfiltered = [timestep] * len(allnonemptymgilist)  # constant timestep
+                make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist,
+                          modeldata, abundancedata, compositiondata, args)
 
 
 
