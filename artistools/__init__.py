@@ -165,6 +165,12 @@ def get_modeldata(filename):
     return modeldata, t_model_init_days
 
 
+def get_closest_cell(modelpath, velocity):
+    """Return the modelgridindex of the cell whose velocity is clostest to velocity."""
+    modeldata = get_modeldata(modelpath)
+    return (modeldata['velocity'].values - velocity).argmin()
+
+
 def save_modeldata(dfmodeldata, t_model_init_days, filename) -> None:
     with open(filename, 'w') as fmodel:
         fmodel.write(f'{len(dfmodeldata)}\n{t_model_init_days:f}\n')
