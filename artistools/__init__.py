@@ -167,8 +167,11 @@ def get_modeldata(filename):
 
 def get_closest_cell(modelpath, velocity):
     """Return the modelgridindex of the cell whose velocity is clostest to velocity."""
-    modeldata = get_modeldata(modelpath)
-    return (modeldata['velocity'].values - velocity).argmin()
+    modeldata, _ = get_modeldata(modelpath)
+    # print(modeldata['velocity'])
+    # arrvel = [float(cell['velocity']) for cell in modeldata]
+    mgi = np.abs(modeldata['velocity'].values - velocity).argmin()
+    return mgi
 
 
 def save_modeldata(dfmodeldata, t_model_init_days, filename) -> None:
