@@ -344,8 +344,9 @@ def main(args=None, argsraw=None, **kwargs):
         if not estimators[(timestep, args.modelgridindex)]['emptycell']:
             T_e = estimators[(timestep, args.modelgridindex)]['Te']
             T_R = estimators[(timestep, args.modelgridindex)]['TR']
+            W = estimators[(timestep, args.modelgridindex)]['W']
             nne = estimators[(timestep, args.modelgridindex)]['nne']
-            print(f'nne = {nne} cm^-3, T_e = {T_e} K, T_R = {T_R} K')
+            print(f'nne = {nne} cm^-3, T_e = {T_e} K, T_R = {T_R} K, W = {W}')
         else:
             print(f'ERROR: cell {args.modelgridindex} is empty. Setting T_e = T_R = {args.exc_temperature} K')
             T_e = args.exc_temperature
