@@ -175,7 +175,7 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
         [i for i in dfpop.ion_stage.unique()
          if i <= max_ion_stage and (ionstages_permitted is None or i in ionstages_permitted)])
 
-    fig, axes = plt.subplots(nrows=len(ion_stage_list), ncols=1, sharex=False, figsize=(9, 3 * len(ion_stage_list)),
+    fig, axes = plt.subplots(nrows=len(ion_stage_list), ncols=1, sharex=False, figsize=(9, 2.7 * len(ion_stage_list)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if len(ion_stage_list) == 1:
@@ -226,7 +226,7 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
 
         if args.departuremode:
             axis.plot(dfpopthision.level.values, dfpopthision.departure_coeffs.values, linewidth=1.5,
-                      linestyle='None', marker='x')
+                      linestyle='None', marker='x', label='ARTIS NLTE', color='C0')
             axis.set_ylabel('Departure coefficient')
 
             axis.plot(dfpopthisionoddlevels.level.values, dfpopthisionoddlevels.departure_coeffs.values, linewidth=2,
@@ -234,7 +234,7 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
                       marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
         else:
             axis.plot(dfpopthision.level.values, dfpopthision.n_NLTE.values, linewidth=1.5,
-                      label='NLTE', linestyle='None', marker='x')
+                      label='ARTIS NLTE', linestyle='None', marker='x')
 
             axis.plot(dfpopthisionoddlevels.level.values, dfpopthisionoddlevels.n_NLTE.values, linewidth=2,
                       label='Odd parity', linestyle='None',
