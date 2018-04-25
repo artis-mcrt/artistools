@@ -274,8 +274,8 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
     outputfilename = str(args.outputfile).format(
         elsymbol=at.elsymbols[atomic_number], cell=args.modelgridindex,
         timestep=timestep, time_days=time_days)
-    print(f"Saving {outputfilename}")
     fig.savefig(str(outputfilename), format='pdf')
+    print(f"Saved {outputfilename}")
     plt.close()
 
 
