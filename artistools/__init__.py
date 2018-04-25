@@ -509,7 +509,15 @@ def get_linelist(modelpath):
         lower_levels = [int(levelplusone) - 1 for levelplusone in linestatfile.readline().split()]
         assert len(lower_levels) == nlines
 
-    return lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
+    dflinelist = pd.DataFrame({
+        'lambda_angstroms': lambda_angstroms,
+        'atomic_number': atomic_number,
+        'ionstage': ion_stages,
+        'upperlevelindex': upper_levels,
+        'lowerlevelindex': lower_levels,
+    })
+
+    return dflinelist
 
 
 def get_npts_model(modelpath):
@@ -525,7 +533,7 @@ def get_nprocs(modelpath):
 
 
 def get_inputparams(modelpath):
-    """Return the number of MPI processes specified in input.txt."""
+    """Return parameters specified in input.txt."""
     params = {}
     with Path(modelpath, 'input.txt').open('r') as inputfile:
         params['pre_zseed'] = int(inputfile.readline())
