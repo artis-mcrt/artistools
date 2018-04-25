@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Functions for reading and plotting estimator files.
-
 Examples are temperatures, populations, heating/cooling rates.
 """
 # import math
@@ -48,6 +47,11 @@ variablelongunits = {
     'TJ': 'Temperature in kelvin',
 }
 
+dictlabelreplacements = {
+    'Te': 'T$_e$',
+    'TR': 'T$_R$'
+}
+
 
 def get_elemcolor(atomic_number=None, elsymbol=None):
     assert (atomic_number is None) != (elsymbol is None)
@@ -61,10 +65,7 @@ def get_elemcolor(atomic_number=None, elsymbol=None):
 
 
 def get_ionrecombrates_fromfile(filename):
-    """
-        WARNING: copy pasted from artis-atomic! replace with a package import soon
-        ionstage is the lower ion stage!
-    """
+    """WARNING: copy pasted from artis-atomic! replace with a package import soon ionstage is the lower ion stage!"""
     print(f'Reading {filename}')
 
     header_row = []
@@ -394,10 +395,6 @@ def plot_multi_ion_series(
 
 def plot_series(ax, xlist, variablename, showlegend, timesteplist, mgilist, estimators, nounits=False, **plotkwargs):
     assert len(xlist) - 1 == len(mgilist) == len(timesteplist)
-    dictlabelreplacements = {
-        'Te': 'T$_e$',
-        'TR': 'T$_R$'
-    }
     formattedvariablename = dictlabelreplacements.get(variablename, variablename)
     serieslabel = f'{formattedvariablename}'
     if not nounits:
