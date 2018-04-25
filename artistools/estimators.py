@@ -250,6 +250,7 @@ def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
 
 
 def plot_init_abundances(ax, xlist, specieslist, mgilist, modeldata, abundancedata, **plotkwargs):
+    assert len(xlist) - 1 == len(mgilist)
     ax.set_ylim(ymin=0.)
     ax.set_ylim(ymax=1.0)
     for speciesstr in specieslist:
@@ -281,11 +282,12 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modeldata, abundanceda
         # or ax.step(where='pre', )
         color = get_elemcolor(atomic_number=atomic_number)
         ax.plot(xlist, ylist, linewidth=1.5, label=linelabel,
-                  linestyle=linestyle, color=color, **plotkwargs)
+                linestyle=linestyle, color=color, **plotkwargs)
 
 
 def plot_multi_ion_series(
         ax, xlist, seriestype, ionlist, timesteplist, mgilist, estimators, compositiondata, args, **plotkwargs):
+    assert len(xlist) - 1 == len(mgilist) == len(timesteplist)
     ax.set_yscale('log')
     # if seriestype == 'populations':
     #     ax.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
@@ -392,6 +394,7 @@ def plot_multi_ion_series(
 
 
 def plot_series(ax, xlist, variablename, showlegend, timesteplist, mgilist, estimators, nounits=False, **plotkwargs):
+    assert len(xlist) - 1 == len(mgilist) == len(timesteplist)
     dictlabelreplacements = {
         'Te': 'T$_e$',
         'TR': 'T$_R$'
@@ -439,13 +442,22 @@ def plot_series(ax, xlist, variablename, showlegend, timesteplist, mgilist, esti
     ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename, None), **plotkwargs)
 
 
-def get_xlist(xvariable, allnonemptymgilist, estimators, timesteplist, args):
+def get_xlist(xvariable, allnonemptymgilist, estimators, timesteplist, modelpath, args):
     if xvariable in ['cellid', 'modelgridindex']:
         if args.xmax >= 0:
             mgilist_out = [mgi for mgi in allnonemptymgilist if mgi <= args.xmax]
         else:
             mgilist_out = allnonemptymgilist
         xlist = mgilist_out
+        timesteplist_out = timesteplist
+    elif xvariable == 'timestep':
+        mgilist_out = allnonemptymgilist
+        xlist = timesteplist
+        timesteplist_out = timesteplist
+    elif xvariable == 'time':
+        mgilist_out = allnonemptymgilist
+        timearray = at.get_timestep_times(modelpath)
+        xlist = [timearray[ts] for ts in timesteplist]
         timesteplist_out = timesteplist
     else:
         try:
@@ -467,13 +479,15 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timesteplist, args):
             sys.exit()
 
     xlist, mgilist_out, timesteplist_out = zip(
-        *[(xlist, mgi, timestep) for x, mgi, timestep in sorted(zip(xlist, mgilist_out, timesteplist_out))])
+        *[xmt for xmt in sorted(zip(xlist, mgilist_out, timesteplist_out))])
+    assert len(xlist) == len(mgilist_out) == len(timesteplist_out)
 
-    return xlist, mgilist_out, timesteplist_out
+    return list(xlist), list(mgilist_out), list(timesteplist_out)
 
 
 def plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modeldata, abundancedata, compositiondata,
                  estimators, args, **plotkwargs):
+    assert len(xlist) - 1 == len(mgilist) == len(timesteplist)
     showlegend = False
 
     ylabel = 'UNDEFINED'
@@ -525,7 +539,8 @@ def plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, xvariable
     timesteplist_unfiltered = [timestep] * len(allnonemptymgilist)  # constant timestep
 
     axes[-1].set_xlabel(f'{xvariable}{get_units_string(xvariable)}')
-    xlist, mgilist, timesteplist = get_xlist(xvariable, allnonemptymgilist, estimators, timesteplist_unfiltered, args)
+    xlist, mgilist, timesteplist = get_xlist(
+        xvariable, allnonemptymgilist, estimators, timesteplist_unfiltered, modelpath, args)
     xlist = np.insert(xlist, 0, 0.)
 
     xmin = args.xmin if args.xmin > 0 else min(xlist)
@@ -727,11 +742,11 @@ def main(args=None, argsraw=None, **kwargs):
                               if not estimators[(timestepmin, modelgridindex)]['emptycell']]
 
         if args.modelgridindex > -1:
+            print("Time evolution plot not implemented yet")
+        else:
             for timestep in range(timestepmin, timestepmax + 1):
                 plot_timestep(modelpath, timestep, allnonemptymgilist, estimators, args.x, plotlist,
                               modeldata, abundancedata, compositiondata, args)
-        else:
-            print("Time evolution plot not implemented yet")
 
 
 
