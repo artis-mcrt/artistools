@@ -418,6 +418,9 @@ def addargs(parser):
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Modelgridindex to plot')
 
+    parser.add_argument('-velocity', '-v', type=float, default=-1,
+                        help='Specify cell by velocity')
+
     parser.add_argument('--nospec', action='store_true',
                         help='Don\'t plot the emergent specrum')
 
@@ -460,12 +463,18 @@ def main(args=None, argsraw=None, **kwargs):
     elif args.outputfile.is_dir():
         args.outputfile = args.outputfile / defaultoutputfile
 
-    specfilename = at.firstexisting(['spec.out', 'spec.out.gz'], path=args.modelpath)
+    modelpath = args.modelpath
+    specfilename = at.firstexisting(['spec.out', 'spec.out.gz'], path=modelpath)
 
     if args.listtimesteps:
         at.showtimesteptimes(modelpath=args.modelpath)
     else:
-        radfielddata = read_files(args.modelpath, modelgridindex=args.modelgridindex)
+        if args.velocity >= 0.:
+            modelgridindex = at.get_closest_cell(modelpath, args.velocity)
+        else:
+            modelgridindex = args.modelgridindex
+
+        radfielddata = read_files(modelpath, modelgridindex=args.modelgridindex)
 
         if not specfilename.is_file():
             print(f'Could not find {specfilename}')
@@ -473,7 +482,7 @@ def main(args=None, argsraw=None, **kwargs):
 
         timesteplast = max(radfielddata['timestep'])
         if args.timedays:
-            timesteplist = [at.get_closest_timestep(args.modelpath, args.timedays)]
+            timesteplist = [at.get_closest_timestep(modelpath, args.timedays)]
         elif args.timestep:
             timesteplist = at.parse_range_list(args.timestep, dictvars={'last': timesteplast})
         else:
@@ -485,16 +494,16 @@ def main(args=None, argsraw=None, **kwargs):
                 radfielddata_currenttimestep = radfielddata.query('timestep==@timestep')
 
                 if not radfielddata_currenttimestep.empty:
-                    outputfile = str(args.outputfile).format(modelgridindex=args.modelgridindex, timestep=timestep)
+                    outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
                     plot_celltimestep(
-                        radfielddata_currenttimestep, args.modelpath, specfilename, timestep, outputfile,
-                        xmin=args.xmin, xmax=args.xmax, modelgridindex=args.modelgridindex,
+                        radfielddata_currenttimestep, modelpath, specfilename, timestep, outputfile,
+                        xmin=args.xmin, xmax=args.xmax, modelgridindex=modelgridindex,
                         args=args, normalised=args.normalised)
                 else:
                     print(f'No data for timestep {timestep:d}')
         elif args.xaxis == 'timestep':
-            outputfile = args.outputfile.format(modelgridindex=args.modelgridindex)
-            plot_timeevolution(radfielddata, args.modelpath, outputfile, args.modelgridindex, args)
+            outputfile = args.outputfile.format(modelgridindex=modelgridindex)
+            plot_timeevolution(radfielddata, modelpath, outputfile, modelgridindex, args)
         else:
             print('Unknown plot type {args.plot}')
             return 1
