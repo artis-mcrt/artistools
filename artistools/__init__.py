@@ -202,10 +202,13 @@ def save_initialabundances(dfabundances, abundancefilename):
 
 def get_timestep_times(modelpath):
     """Return a list of the time in days of each timestep using a spec.out file."""
-    specfilename = firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
-
-    time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
-    return time_columns.columns[1:]
+    try:
+        specfilename = firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
+        time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
+        return time_columns.columns[1:]
+    except FileNotFoundError:
+        inputparams = get_inputparams(modelpath)
+        return [f'{tdays:.3f}' for tdays in get_timestep_times_float(modelpath, inputparams=inputparams)]
 
 
 def get_timestep_times_float(modelpath, inputparams=None):
