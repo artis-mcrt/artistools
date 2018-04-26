@@ -11,6 +11,7 @@ from itertools import chain
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import numpy as np
 import pandas as pd
 from astropy import constants as const
 
@@ -164,12 +165,17 @@ def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridind
     return dfpop
 
 
-def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R, timestep, args):
+def make_plot(modelpath, modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R,
+              modelgridindex, timestep, args):
     # top_ion = 9999
     max_ion_stage = dfpop.ion_stage.max()
 
     if len(dfpop.query('ion_stage == @max_ion_stage')) == 1:  # single-level ion, so skip it
         max_ion_stage -= 1
+
+    # timearray = at.get_timestep_times_float(modelpath)
+    Te = estimators[(timestep, modelgridindex)]['Te']
+    nne = estimators[(timestep, modelgridindex)]['nne']
 
     ion_stage_list = sorted(
         [i for i in dfpop.ion_stage.unique()
@@ -188,6 +194,8 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
     for ion, axis in enumerate(axes):
         ion_stage = ion_stage_list[ion]
         dfpopthision = dfpop.query('ion_stage==@ion_stage').copy()
+        if args.maxlevel >= 0:
+            dfpopthision.query('level <= @args.maxlevel', inplace=True)
         ionpopulation = dfpopthision['n_NLTE'].sum()
         print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a population of {ionpopulation:.1f}')
 
@@ -200,7 +208,7 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
 
         dfpopthision['n_LTE_T_e_normed'] = dfpopthision['n_LTE_T_e'] * lte_scalefactor
 
-        dfpopthision.eval('departure_coeffs = n_NLTE / n_LTE_T_e_normed', inplace=True)
+        dfpopthision.eval('departure_coeff = n_NLTE / n_LTE_T_e_normed', inplace=True)
 
         if not args.departuremode:
             axis.plot(dfpopthision.level.values, dfpopthision['n_LTE_T_e_normed'].values, linewidth=1.5,
@@ -223,20 +231,21 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
         #               label=f'Floers NLTE', linestyle='None', marker='*')
 
         dfpopthisionoddlevels = dfpopthision.query('parity==1')
-
+        velocity = modeldata['velocity'][modelgridindex]
         if args.departuremode:
-            axis.plot(dfpopthision.level.values, dfpopthision.departure_coeffs.values, linewidth=1.5,
-                      linestyle='None', marker='x', label='ARTIS NLTE', color='C0')
+            print(dfpopthision[['level', 'departure_coeff']])
+            axis.plot(dfpopthision['level'], dfpopthision['departure_coeff'], linewidth=1.5,
+                      linestyle='None', marker='x', label=f'ARTIS NLTE', color='C0')
             axis.set_ylabel('Departure coefficient')
 
-            axis.plot(dfpopthisionoddlevels.level.values, dfpopthisionoddlevels.departure_coeffs.values, linewidth=2,
+            axis.plot(dfpopthisionoddlevels.level.values, dfpopthisionoddlevels.departure_coeff.values, linewidth=2,
                       label='Odd parity', linestyle='None',
                       marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
         else:
-            axis.plot(dfpopthision.level.values, dfpopthision.n_NLTE.values, linewidth=1.5,
+            axis.plot(dfpopthision.level, dfpopthision.n_NLTE, linewidth=1.5,
                       label='ARTIS NLTE', linestyle='None', marker='x')
 
-            axis.plot(dfpopthisionoddlevels.level.values, dfpopthisionoddlevels.n_NLTE.values, linewidth=2,
+            axis.plot(dfpopthisionoddlevels.level, dfpopthisionoddlevels.n_NLTE, linewidth=2,
                       label='Odd parity', linestyle='None',
                       marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
 
@@ -254,25 +263,24 @@ def make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, 
         axis.set_yscale('log')
     axes[-1].set_xlabel(r'Level index')
 
-    Te = estimators[(timestep, args.modelgridindex)]['Te']
-    modelname = at.get_model_name(args.modelpath)
-    velocity = modeldata['velocity'][args.modelgridindex]
+    modelname = at.get_model_name(modelpath)
     figure_title = (
-        f'{modelname}\n'
-        f'Cell {args.modelgridindex} (v={velocity} km/s) with T$_e$ = {Te:.1f} K at timestep {timestep:d}')
+        f'{modelname} {velocity:.0f} km/s at')
 
     try:
-        time_days = float(at.get_timestep_time(args.modelpath, timestep))
+        time_days = float(at.get_timestep_time(modelpath, timestep))
     except FileNotFoundError:
         time_days = 0
+        figure_title += f' timestep {timestep:d}'
     else:
-        figure_title += f' ({time_days:.1f}d)'
+        figure_title += f' {time_days:.0f}d'
+    figure_title += f' (Te = {Te:.0f} K, nne = {nne:.1e} ' + r'cm$^{-3}$)'
 
     if not args.notitle:
         axes[0].set_title(figure_title, fontsize=11)
 
     outputfilename = str(args.outputfile).format(
-        elsymbol=at.elsymbols[atomic_number], cell=args.modelgridindex,
+        elsymbol=at.elsymbols[atomic_number], cell=modelgridindex,
         timestep=timestep, time_days=time_days)
     fig.savefig(str(outputfilename), format='pdf')
     print(f"Saved {outputfilename}")
@@ -295,11 +303,17 @@ def addargs(parser):
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Plotted modelgrid cell')
 
+    parser.add_argument('-velocity', '-v', type=float, default=-1,
+                        help='Specify cell by velocity')
+
     parser.add_argument('-exc-temperature', type=float, default=6000.,
                         help='Default if no estimator data')
 
     parser.add_argument('-ionstages',
                         help='Ion stage range, 1 is neutral, 2 is 1+')
+
+    parser.add_argument('-maxlevel', default=-1,
+                        help='Maximum level to plot')
 
     parser.add_argument('--departuremode', action='store_true',
                         help='Show departure coefficients instead of populations')
@@ -328,24 +342,31 @@ def main(args=None, argsraw=None, **kwargs):
     else:
         timestep = int(args.timestep)
 
-    time_days = float(at.get_timestep_time(args.modelpath, timestep))
+    modelpath = args.modelpath
+    time_days = float(at.get_timestep_time(modelpath, timestep))
 
     if os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     ionstages_permitted = at.parse_range_list(args.ionstages) if args.ionstages else None
-    adata = at.get_levels(args.modelpath)
+    adata = at.get_levels(modelpath)
 
-    modeldata, _ = at.get_modeldata(os.path.join(args.modelpath, 'model.txt'))
-    estimators = at.estimators.read_estimators(args.modelpath, modeldata=modeldata,
-                                               timestep=timestep, modelgridindex=args.modelgridindex)
+    modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
+
+    if args.velocity >= 0.:
+        modelgridindex = at.get_closest_cell(modelpath, args.velocity)
+    else:
+        modelgridindex = args.modelgridindex
+
+    estimators = at.estimators.read_estimators(modelpath, modeldata=modeldata,
+                                               timestep=timestep, modelgridindex=modelgridindex)
     print(f'modelgridindex {args.modelgridindex}, timestep {timestep} (t={time_days}d)')
     if estimators:
-        if not estimators[(timestep, args.modelgridindex)]['emptycell']:
-            T_e = estimators[(timestep, args.modelgridindex)]['Te']
-            T_R = estimators[(timestep, args.modelgridindex)]['TR']
-            W = estimators[(timestep, args.modelgridindex)]['W']
-            nne = estimators[(timestep, args.modelgridindex)]['nne']
+        if not estimators[(timestep, modelgridindex)]['emptycell']:
+            T_e = estimators[(timestep, modelgridindex)]['Te']
+            T_R = estimators[(timestep, modelgridindex)]['TR']
+            W = estimators[(timestep, modelgridindex)]['W']
+            nne = estimators[(timestep, modelgridindex)]['nne']
             print(f'nne = {nne} cm^-3, T_e = {T_e} K, T_R = {T_R} K, W = {W}')
         else:
             print(f'ERROR: cell {args.modelgridindex} is empty. Setting T_e = T_R = {args.exc_temperature} K')
@@ -374,13 +395,14 @@ def main(args=None, argsraw=None, **kwargs):
 
         print(f'Z={atomic_number} {elsymbol}')
 
-        dfpop = read_files(args.modelpath, adata, atomic_number, T_e, T_R,
-                           timestep=timestep, modelgridindex=args.modelgridindex)
+        dfpop = read_files(modelpath, adata, atomic_number, T_e, T_R,
+                           timestep=timestep, modelgridindex=modelgridindex)
 
         if dfpop.empty:
             print(f'No NLTE population data for modelgrid cell {args.modelgridindex} timestep {timestep}')
         else:
-            make_plot(modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R, timestep, args)
+            make_plot(modelpath, modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R,
+                      modelgridindex, timestep, args)
 
 
 if __name__ == "__main__":
