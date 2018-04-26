@@ -70,7 +70,8 @@ def read_file(all_levels, nltefilename, modelgridindex, timestep, atomic_number,
         ion_stage = int(row.ion_stage)
         if (row.Z, row.ion_stage) not in gspop:
             gspop[(row.Z, row.ion_stage)] = dfpop.query(
-                'timestep==@timestep and Z==@atomic_number and ion_stage==@ion_stage and level==0').iloc[0].n_NLTE
+                'modelgridindex==@row.modelgridindex and timestep==@row.timestep '
+                'and Z==@atomic_number and ion_stage==@ion_stage and level==0').iloc[0]['n_NLTE']
 
         ltepop_T_e = 0.0
         ltepop_T_R = 0.0
@@ -78,7 +79,8 @@ def read_file(all_levels, nltefilename, modelgridindex, timestep, atomic_number,
         gspopthision = gspop[(row.Z, row.ion_stage)]
         if levelnumber == -1:  # superlevel
             levelnumbersl = dfpop.query(
-                'timestep==@timestep and Z==@atomic_number and ion_stage==@ion_stage').level.max()
+                'modelgridindex==@row.modelgridindex and timestep==@row.timestep '
+                'and Z==@atomic_number and ion_stage==@ion_stage').level.max()
             dfpop.loc[index, 'level'] = levelnumbersl + 2
             parity = 0
             if not noprint:
