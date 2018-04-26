@@ -287,7 +287,6 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modeldata, abundanceda
 def plot_multi_ion_series(
         ax, xlist, seriestype, ionlist, timesteplist, mgilist, estimators, compositiondata, args, **plotkwargs):
     assert len(xlist) - 1 == len(mgilist) == len(timesteplist)
-    ax.set_yscale('log')
     # if seriestype == 'populations':
     #     ax.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
 
@@ -388,8 +387,9 @@ def plot_multi_ion_series(
         ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, linestyle=linestyle, **plotkwargs)
         prev_atomic_number = atomic_number
 
+    ax.set_yscale('log')
     ymin, ymax = ax.get_ylim()
-    ax.set_ylim(ymin=ymin, ymax=3 * ymax)
+    ax.set_ylim(ymin=ymin, ymax=ymax * 10 ** (0.3 * math.log10(ymax / ymin)))
 
 
 def plot_series(ax, xlist, variablename, showlegend, timesteplist, mgilist, estimators, nounits=False, **plotkwargs):
