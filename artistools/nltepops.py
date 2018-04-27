@@ -196,9 +196,9 @@ def make_plot(modelpath, modeldata, estimators, dfpop, atomic_number, ionstages_
     for ion, axis in enumerate(axes):
         ion_stage = ion_stage_list[ion]
         dfpopthision = dfpop.query('ion_stage==@ion_stage').copy()
+        ionpopulation = dfpopthision['n_NLTE'].sum()
         if args.maxlevel >= 0:
             dfpopthision.query('level <= @args.maxlevel', inplace=True)
-        ionpopulation = dfpopthision['n_NLTE'].sum()
         print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a population of {ionpopulation:.1f}')
 
         if args.departuremode:
