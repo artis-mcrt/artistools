@@ -160,7 +160,7 @@ def parse_ion_row(row, outdict):
 def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
     """Read estimator files into a nested dictionary structure.
 
-    keymatch should be a tuple (timestep, modelgridindex).
+    Speed it up by only retrieving estimators for a particular timestep or modelgridindex.
     """
     match_timestep = timestep
     match_modelgridindex = modelgridindex
@@ -181,19 +181,38 @@ def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
         npts_model = at.get_npts_model(modelpath)
         estimfiles = [x for x in estimfiles if
                       int(re.findall('[0-9]+', os.path.basename(x))[-1]) < npts_model]
-        print(f'Reading {len(list(estimfiles))} estimator files from {modelpath}...')
+        # actually number of files read may be less if some files are contained within a folder
+        # that is known not to contain the required timestep
+        print(f'Reading up to {len(list(estimfiles))} estimator files from {modelpath}...')
 
     if not estimfiles:
         print("No estimator files found")
         return False
 
-    estimators = {}
-    for estfile in sorted(estimfiles):
-        if match_modelgridindex >= 0:
-            print(f'Reading {estfile}...')
+    # set of timesteps covered by files in a directory, where the key is the absolute path of the directory
+    runfolder_timesteps = {}
 
-        opener = gzip.open if str(estfile).endswith('.gz') else open
-        with opener(estfile, 'rt') as estfile:
+    # membership means that a full estimator file has been read from the folder, so all timesteps are known
+    runfolder_alltimesteps_found = set()
+
+    estimators = {}
+    skipped_files = 0
+    # sorting the paths important, because there is a duplicate estimator block (except missing heating/cooling rates)
+    # when Artis restarts and here, only the first found block for each timestep, modelgridindex is kept
+    for estfilepath in sorted(estimfiles):
+        estfilefolderpath = estfilepath.parent.absolute()
+
+        if (match_timestep >= 0 and
+                estfilefolderpath in runfolder_alltimesteps_found and
+                match_timestep not in runfolder_timesteps[estfilefolderpath]):
+            skipped_files += 1
+            continue
+
+        if match_modelgridindex >= 0:
+            print(f'Reading {estfilepath}...')
+
+        opener = gzip.open if str(estfilepath).endswith('.gz') else open
+        with opener(estfilepath, 'rt') as estfile:
             timestep = 0
             modelgridindex = 0
             skip_block = False
@@ -219,6 +238,11 @@ def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
                         skip_block = True
                     else:
                         skip_block = False
+
+                        if estfilefolderpath not in runfolder_timesteps:
+                            runfolder_timesteps[estfilefolderpath] = set()
+                        runfolder_timesteps[estfilefolderpath].add(timestep)
+
                         estimators[(timestep, modelgridindex)] = {}
                         estimators[(timestep, modelgridindex)]['velocity'] = modeldata['velocity'][modelgridindex]
                         emptycell = (row[4] == 'EMPTYCELL')
@@ -245,6 +269,7 @@ def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
                     for index, token in list(enumerate(row))[1::2]:
                         estimators[(timestep, modelgridindex)][f'cooling_{token}'] = float(row[index + 1])
 
+        runfolder_alltimesteps_found.add(estfilefolderpath)
     return estimators
 
 
@@ -694,7 +719,31 @@ def main(args=None, argsraw=None, **kwargs):
     abundancedata = at.get_initialabundances(modelpath)
     compositiondata = at.get_composition_data(modelpath)
 
-    estimators = read_estimators(modelpath, modeldata, modelgridindex=args.modelgridindex)
+    if args.timedays:
+        if isinstance(args.timedays, str) and '-' in args.timedays:
+            timestepmin, timestepmax = [
+                at.get_closest_timestep(modelpath, float(timedays))
+                for timedays in args.timedays.split('-')]
+        else:
+            timestep = at.get_closest_timestep(modelpath, args.timedays)
+            timestepmin, timestepmax = timestep, timestep
+    else:
+        if not args.timestep:
+            if args.modelgridindex > -1:
+                timearray = at.get_timestep_times(modelpath)
+                timestepmin = 0
+                timestepmax = len(timearray) - 1
+            else:
+                print('ERROR: A time or timestep must be specified if no cell is specified')
+                return -1
+        elif '-' in args.timestep:
+            timestepmin, timestepmax = [int(nts) for nts in args.timestep.split('-')]
+        else:
+            timestepmin = int(args.timestep)
+            timestepmax = timestepmin
+
+    timestepfilter = timestepmin if timestepmin == timestepmax else -1
+    estimators = read_estimators(modelpath, modeldata, modelgridindex=args.modelgridindex, timestep=timestepfilter)
 
     if not estimators:
         return -1
@@ -727,29 +776,6 @@ def main(args=None, argsraw=None, **kwargs):
     if args.recombrates:
         plot_recombrates(estimators, "plotestimators_recombrates.pdf")
     else:
-        if args.timedays:
-            if isinstance(args.timedays, str) and '-' in args.timedays:
-                timestepmin, timestepmax = [
-                    at.get_closest_timestep(modelpath, float(timedays))
-                    for timedays in args.timedays.split('-')]
-            else:
-                timestep = at.get_closest_timestep(modelpath, args.timedays)
-                timestepmin, timestepmax = timestep, timestep
-        else:
-            if not args.timestep:
-                if args.modelgridindex > -1:
-                    timearray = at.get_timestep_times(modelpath)
-                    timestepmin = 0
-                    timestepmax = len(timearray) - 1
-                else:
-                    print('ERROR: A time or timestep must be specified if no cell is specified')
-                    return -1
-            elif '-' in args.timestep:
-                timestepmin, timestepmax = [int(nts) for nts in args.timestep.split('-')]
-            else:
-                timestepmin = int(args.timestep)
-                timestepmax = timestepmin
-
         allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
                               if not estimators[(timestepmin, modelgridindex)]['emptycell']]
 
