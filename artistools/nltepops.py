@@ -63,15 +63,22 @@ def read_file(all_levels, nltefilename, modelgridindex, timestep, atomic_number,
     list_ltepop_T_R = []
     list_parity = []
     gspop = {}
+    ionlevels = {}
     for index, row in dfpop.iterrows():
         list_indicies.append(index)
 
         atomic_number = int(row.Z)
         ion_stage = int(row.ion_stage)
-        if (row.Z, row.ion_stage) not in gspop:
+        if (atomic_number, ion_stage) not in gspop:
             gspop[(row.Z, row.ion_stage)] = dfpop.query(
                 'modelgridindex==@row.modelgridindex and timestep==@row.timestep '
                 'and Z==@atomic_number and ion_stage==@ion_stage and level==0').iloc[0]['n_NLTE']
+
+        if (atomic_number, ion_stage) not in ionlevels:
+            for _, ion_data in all_levels.iterrows():
+                if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
+                    ionlevels[(atomic_number, ion_stage)] = ion_data.levels
+                    break
 
         ltepop_T_e = 0.0
         ltepop_T_R = 0.0
@@ -87,21 +94,15 @@ def read_file(all_levels, nltefilename, modelgridindex, timestep, atomic_number,
                 print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} '
                       f'has a superlevel at level {levelnumbersl}')
 
-            for _, ion_data in all_levels.iterrows():
-                if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
-                    gslevel = ion_data.levels.iloc[0]
-                    for levelnumber in range(levelnumbersl, len(ion_data.levels)):
-                        level = ion_data.levels.iloc[levelnumber]
-                        exc_energy = level.energy_ev - gslevel.energy_ev
-                        ltepop_T_e += gspopthision * level.g / gslevel.g * math.exp(- exc_energy / k_b / T_e)
-                        ltepop_T_R += gspopthision * level.g / gslevel.g * math.exp(- exc_energy / k_b / T_R)
-                    break
+            gslevel = ionlevels[(atomic_number, ion_stage)].iloc[0]
+            sl_levels = ionlevels[(atomic_number, ion_stage)].iloc[levelnumbersl:]
+            ltepop_T_e = gspopthision * sl_levels.eval(
+                'g / @gslevel.g * exp(- (energy_ev - @gslevel.energy_ev) / @k_b / @T_e)').sum()
+            ltepop_T_R = gspopthision * sl_levels.eval(
+                'g / @gslevel.g * exp(- (energy_ev - @gslevel.energy_ev) / @k_b / @T_R)').sum()
         else:
-            for _, ion_data in all_levels.iterrows():
-                if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
-                    level = ion_data.levels.iloc[levelnumber]
-                    gslevel = ion_data.levels.iloc[0]
-                    break
+            level = ionlevels[(atomic_number, ion_stage)].iloc[levelnumber]
+            gslevel = ionlevels[(atomic_number, ion_stage)].iloc[0]
 
             exc_energy = level.energy_ev - gslevel.energy_ev
 
