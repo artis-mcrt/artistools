@@ -267,6 +267,13 @@ def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
                     for index, token in list(enumerate(row))[1::2]:
                         estimators[(timestep, modelgridindex)][f'cooling_{token}'] = float(row[index + 1])
 
+        if (match_modelgridindex < 0 and
+                estfilefolderpath not in runfolder_alltimesteps_found and
+                match_timestep >= 0 and
+                match_timestep not in runfolder_timesteps[estfilefolderpath]):
+            print(f"Skipping rest of {estfilefolderpath} because "
+                  f"first file didn't contain timestep {match_timestep}")
+
         runfolder_alltimesteps_found.add(estfilefolderpath)
     return estimators
 
