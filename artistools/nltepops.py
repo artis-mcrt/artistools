@@ -197,9 +197,11 @@ def make_plot(modelpath, modeldata, estimators, dfpop, atomic_number, ionstages_
         ion_stage = ion_stage_list[ion]
         dfpopthision = dfpop.query('ion_stage==@ion_stage').copy()
         ionpopulation = dfpopthision['n_NLTE'].sum()
+        ionpopulation_fromest = estimators[(timestep, modelgridindex)]['populations'].get((atomic_number, ion_stage), 0.)
         if args.maxlevel >= 0:
             dfpopthision.query('level <= @args.maxlevel', inplace=True)
-        print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a population of {ionpopulation:.1f}')
+        print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has an summed level population of {ionpopulation:.1f}'
+              f' (from estimator file ion pop = {ionpopulation_fromest})')
 
         if args.departuremode:
             # scale to match the ground state populations
