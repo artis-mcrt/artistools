@@ -196,16 +196,14 @@ def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
     runfolder_alltimesteps_found = set()
 
     estimators = {}
-    skipped_files = 0
     # sorting the paths important, because there is a duplicate estimator block (except missing heating/cooling rates)
     # when Artis restarts and here, only the first found block for each timestep, modelgridindex is kept
     for estfilepath in sorted(estimfiles):
-        estfilefolderpath = estfilepath.parent.absolute()
+        estfilefolderpath = estfilepath.parent.resolve()
 
         if (match_timestep >= 0 and
                 estfilefolderpath in runfolder_alltimesteps_found and
                 match_timestep not in runfolder_timesteps[estfilefolderpath]):
-            skipped_files += 1
             continue
 
         if match_modelgridindex >= 0:
