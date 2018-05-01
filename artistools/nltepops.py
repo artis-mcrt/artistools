@@ -45,7 +45,7 @@ def get_nltepops(modelpath, timestep, modelgridindex):
     return pd.DataFrame()
 
 
-def read_file(all_levels, nltefilename, modelgridindex, timestep, atomic_number, T_e, T_R, noprint=False):
+def read_file(adata, nltefilename, modelgridindex, timestep, atomic_number, T_e, T_R, noprint=False):
     """Read NLTE populations from one file, adding in the LTE at T_E and T_R populations."""
     # print(f'Reading {nltefilename}...')
     try:
@@ -75,7 +75,7 @@ def read_file(all_levels, nltefilename, modelgridindex, timestep, atomic_number,
                 'and Z==@atomic_number and ion_stage==@ion_stage and level==0').iloc[0]['n_NLTE']
 
         if (atomic_number, ion_stage) not in ionlevels:
-            for _, ion_data in all_levels.iterrows():
+            for _, ion_data in adata.iterrows():
                 if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
                     ionlevels[(atomic_number, ion_stage)] = ion_data.levels
                     break
@@ -168,7 +168,22 @@ def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridind
     return dfpop
 
 
-def make_plot(modelpath, modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R,
+def getlevelnamefn(adata, atomic_number, ion_stage):
+    """Get a function appropriate for matplotlib ticker.FuncFormatter to map level indicies onto configurations."""
+    for _, ion_data in adata.iterrows():
+        if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
+            break
+
+    def format_fn(tick_val, tick_pos):
+        """Get the configuration of the level with index of tick_val."""
+        if tick_val >= 0 and tick_val < len(ion_data.levels):
+            return ion_data.levels.levelname.iloc[int(tick_val)]
+        else:
+            return ''
+    return format_fn
+
+
+def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R,
               modelgridindex, timestep, args):
     # top_ion = 9999
     max_ion_stage = dfpop.ion_stage.max()
@@ -196,6 +211,11 @@ def make_plot(modelpath, modeldata, estimators, dfpop, atomic_number, ionstages_
 
     for ion, ax in enumerate(axes):
         ion_stage = ion_stage_list[ion]
+        if args.x == 'config':
+            ax.xaxis.set_major_formatter(ticker.FuncFormatter(getlevelnamefn(adata, atomic_number, ion_stage)))
+            ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=100))
+            ax.xaxis.set_tick_params(rotation=45)
+
         dfpopthision = dfpop.query('ion_stage==@ion_stage').copy()
         ionpopulation = dfpopthision['n_NLTE'].sum()
         ionpopulation_fromest = estimators[(timestep, modelgridindex)]['populations'].get((atomic_number, ion_stage), 0.)
@@ -266,7 +286,8 @@ def make_plot(modelpath, modeldata, estimators, dfpop, atomic_number, ionstages_
         # ax.set_ylim(ymin=-0.1,ymax=1.3)
         ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
         ax.set_yscale('log')
-    axes[-1].set_xlabel(r'Level index')
+    if args.x == 'index':
+        axes[-1].set_xlabel(r'Level index')
 
     modelname = at.get_model_name(modelpath)
     figure_title = (
@@ -313,6 +334,9 @@ def addargs(parser):
 
     parser.add_argument('-exc-temperature', type=float, default=6000.,
                         help='Default if no estimator data')
+
+    parser.add_argument('-x', choices=['index', 'config'], default='index',
+                        help='Horizontal axis variable')
 
     parser.add_argument('-ionstages',
                         help='Ion stage range, 1 is neutral, 2 is 1+')
@@ -406,7 +430,7 @@ def main(args=None, argsraw=None, **kwargs):
         if dfpop.empty:
             print(f'No NLTE population data for modelgrid cell {args.modelgridindex} timestep {timestep}')
         else:
-            make_plot(modelpath, modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R,
+            make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R,
                       modelgridindex, timestep, args)
 
 
