@@ -11,7 +11,7 @@ from itertools import chain
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-import numpy as np
+# import numpy as np
 import pandas as pd
 from astropy import constants as const
 
@@ -194,7 +194,7 @@ def make_plot(modelpath, modeldata, estimators, dfpop, atomic_number, ionstages_
         print('Error: No data for selected timestep and element')
         sys.exit()
 
-    for ion, axis in enumerate(axes):
+    for ion, ax in enumerate(axes):
         ion_stage = ion_stage_list[ion]
         dfpopthision = dfpop.query('ion_stage==@ion_stage').copy()
         ionpopulation = dfpopthision['n_NLTE'].sum()
@@ -216,14 +216,14 @@ def make_plot(modelpath, modeldata, estimators, dfpop, atomic_number, ionstages_
         dfpopthision.eval('departure_coeff = n_NLTE / n_LTE_T_e_normed', inplace=True)
 
         if not args.departuremode:
-            axis.plot(dfpopthision.level.values, dfpopthision['n_LTE_T_e_normed'].values, linewidth=1.5,
-                      label=f'LTE T$_e$ = {T_e:.0f} K', linestyle='None', marker='*')
+            ax.plot(dfpopthision.level.values, dfpopthision['n_LTE_T_e_normed'].values, linewidth=1.5,
+                    label=f'LTE T$_e$ = {T_e:.0f} K', linestyle='None', marker='*')
 
             if not args.hide_lte_tr:
                 lte_scalefactor = float(ionpopulation / dfpopthision['n_LTE_T_R'].sum())
                 dfpopthision['n_LTE_T_R_normed'] = dfpopthision['n_LTE_T_R'] * lte_scalefactor
-                axis.plot(dfpopthision.level.values, dfpopthision['n_LTE_T_R_normed'].values, linewidth=1.5,
-                          label=f'LTE T$_R$ = {T_R:.0f} K', linestyle='None', marker='*')
+                ax.plot(dfpopthision.level.values, dfpopthision['n_LTE_T_R_normed'].values, linewidth=1.5,
+                        label=f'LTE T$_R$ = {T_R:.0f} K', linestyle='None', marker='*')
 
         # comparison to Andeas Floers
         # if atomic_number == 26 and ion_stage in [2, 3]:
@@ -239,33 +239,33 @@ def make_plot(modelpath, modeldata, estimators, dfpop, atomic_number, ionstages_
         velocity = modeldata['velocity'][modelgridindex]
         if args.departuremode:
             print(dfpopthision[['level', 'departure_coeff']])
-            axis.plot(dfpopthision['level'], dfpopthision['departure_coeff'], linewidth=1.5,
-                      linestyle='None', marker='x', label=f'ARTIS NLTE', color='C0')
-            axis.set_ylabel('Departure coefficient')
+            ax.plot(dfpopthision['level'], dfpopthision['departure_coeff'], linewidth=1.5,
+                    linestyle='None', marker='x', label=f'ARTIS NLTE', color='C0')
+            ax.set_ylabel('Departure coefficient')
 
-            axis.plot(dfpopthisionoddlevels.level.values, dfpopthisionoddlevels.departure_coeff.values, linewidth=2,
-                      label='Odd parity', linestyle='None',
-                      marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
+            ax.plot(dfpopthisionoddlevels.level.values, dfpopthisionoddlevels.departure_coeff.values, linewidth=2,
+                    label='Odd parity', linestyle='None',
+                    marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
         else:
-            axis.plot(dfpopthision.level, dfpopthision.n_NLTE, linewidth=1.5,
-                      label='ARTIS NLTE', linestyle='None', marker='x')
+            ax.plot(dfpopthision.level, dfpopthision.n_NLTE, linewidth=1.5,
+                    label='ARTIS NLTE', linestyle='None', marker='x')
 
-            axis.plot(dfpopthisionoddlevels.level, dfpopthisionoddlevels.n_NLTE, linewidth=2,
-                      label='Odd parity', linestyle='None',
-                      marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
+            ax.plot(dfpopthisionoddlevels.level, dfpopthisionoddlevels.n_NLTE, linewidth=2,
+                    label='Odd parity', linestyle='None',
+                    marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
 
         subplotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
 
-        axis.annotate(subplotlabel, xy=(0.75, 0.96), xycoords='axes fraction',
-                      horizontalalignment='center', verticalalignment='top', fontsize=12)
-        axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
+        ax.annotate(subplotlabel, xy=(0.75, 0.96), xycoords='axes fraction',
+                    horizontalalignment='center', verticalalignment='top', fontsize=12)
+        ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
 
-    for axis in axes:
-        axis.set_xlim(xmin=-1)
-        # axis.set_xlim(xmin=270,xmax=300)
-        # axis.set_ylim(ymin=-0.1,ymax=1.3)
-        axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
-        axis.set_yscale('log')
+    for ax in axes:
+        ax.set_xlim(xmin=-1)
+        # ax.set_xlim(xmin=270,xmax=300)
+        # ax.set_ylim(ymin=-0.1,ymax=1.3)
+        ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
+        ax.set_yscale('log')
     axes[-1].set_xlabel(r'Level index')
 
     modelname = at.get_model_name(modelpath)
@@ -279,7 +279,7 @@ def make_plot(modelpath, modeldata, estimators, dfpop, atomic_number, ionstages_
         figure_title += f' timestep {timestep:d}'
     else:
         figure_title += f' {time_days:.0f}d'
-    figure_title += f' (Te={Te:.0f} K, nne={nne:.1e} ' + r'cm$^{-3}$, T$_R$=' + f'{TR:.0f}, W={W:.1e})'
+    figure_title += f' (Te={T_e:.0f} K, nne={nne:.1e} ' + r'cm$^{-3}$, T$_R$=' + f'{T_R:.0f}, W={W:.1e})'
 
     if not args.notitle:
         axes[0].set_title(figure_title, fontsize=10)
