@@ -75,10 +75,8 @@ def read_file(adata, nltefilename, modelgridindex, timestep, atomic_number, T_e,
                 'and Z==@atomic_number and ion_stage==@ion_stage and level==0').iloc[0]['n_NLTE']
 
         if (atomic_number, ion_stage) not in ionlevels:
-            for _, ion_data in adata.iterrows():
-                if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
-                    ionlevels[(atomic_number, ion_stage)] = ion_data.levels
-                    break
+            ionlevels[(atomic_number, ion_stage)] = adata.query(
+                'Z == @atomic_number and ion_stage == @ion_stage').iloc[0].levels
 
         ltepop_T_e = 0.0
         ltepop_T_R = 0.0
@@ -168,21 +166,6 @@ def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridind
     return dfpop
 
 
-def getlevelnamefn(adata, atomic_number, ion_stage):
-    """Get a function appropriate for matplotlib ticker.FuncFormatter to map level indicies onto configurations."""
-    for _, ion_data in adata.iterrows():
-        if ion_data.Z == atomic_number and ion_data.ion_stage == ion_stage:
-            break
-
-    def format_fn(tick_val, tick_pos):
-        """Get the configuration of the level with index of tick_val."""
-        if tick_val >= 0 and tick_val < len(ion_data.levels):
-            return ion_data.levels.levelname.iloc[int(tick_val)]
-        else:
-            return ''
-    return format_fn
-
-
 def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R,
               modelgridindex, timestep, args):
     # top_ion = 9999
@@ -211,16 +194,21 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
 
     for ion, ax in enumerate(axes):
         ion_stage = ion_stage_list[ion]
-        if args.x == 'config':
-            ax.xaxis.set_major_formatter(ticker.FuncFormatter(getlevelnamefn(adata, atomic_number, ion_stage)))
-            ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=100))
-            ax.xaxis.set_tick_params(rotation=45)
 
         dfpopthision = dfpop.query('ion_stage==@ion_stage').copy()
         ionpopulation = dfpopthision['n_NLTE'].sum()
         ionpopulation_fromest = estimators[(timestep, modelgridindex)]['populations'].get((atomic_number, ion_stage), 0.)
         if args.maxlevel >= 0:
             dfpopthision.query('level <= @args.maxlevel', inplace=True)
+
+        if args.x == 'config':
+            ion_data = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0]
+            # ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=100))
+            ax.set_xticks(ion_data.levels.iloc[:max(dfpopthision.level) + 1].index)
+            ax.set_xticklabels(
+                ion_data.levels.iloc[:max(dfpopthision.level) + 1].levelname,
+                fontsize=8, rotation=55, horizontalalignment='right')
+
         print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has an summed level population of {ionpopulation:.1f}'
               f' (from estimator file ion pop = {ionpopulation_fromest})')
 
