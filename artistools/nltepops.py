@@ -207,7 +207,7 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
             ax.set_xticks(ion_data.levels.iloc[:max(dfpopthision.level) + 1].index)
             ax.set_xticklabels(
                 ion_data.levels.iloc[:max(dfpopthision.level) + 1].levelname,
-                fontsize=8, rotation=55, horizontalalignment='right')
+                fontsize=8, rotation=55, horizontalalignment='right', rotation_mode='anchor')
 
         print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has an summed level population of {ionpopulation:.1f}'
               f' (from estimator file ion pop = {ionpopulation_fromest})')
