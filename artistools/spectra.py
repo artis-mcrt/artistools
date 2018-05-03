@@ -414,7 +414,8 @@ def plot_reference_spectrum(
 def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
     """Plot the min, max, and average velocity of emission vs wavelength."""
     nsubplots = 2
-    fig, axes = plt.subplots(nrows=nsubplots, ncols=1, sharex=True, figsize=(8, 4 * nsubplots),
+    fig, axes = plt.subplots(nrows=nsubplots, ncols=1, sharex=True,
+                             figsize=(args.figscale * 8, args.figscale * 4 * nsubplots),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     spectrum.query('@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax', inplace=True)
@@ -642,7 +643,8 @@ def make_plot(modelpaths, args):
     nrows = len(args.xsplit) + 1
     fig, axes = plt.subplots(
         nrows=nrows, ncols=1, sharey=False,
-        figsize=(6.4, 1.6 + nrows * 2.4), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+        figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * (0.25 + nrows * 0.4)),
+        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if nrows == 1:
         axes = [axes]
@@ -672,7 +674,7 @@ def make_plot(modelpaths, args):
     if args.showemission or args.showabsorption:
         if len(modelpaths) > 1:
             raise ValueError("ERROR: emission/absorption plot can only take one input model", modelpaths)
-        legendncol = 3
+        legendncol = 2
         defaultoutputfile = Path("plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
         plotobjects, plotobjectlabels = make_emissionabsorption_plot(
@@ -684,9 +686,9 @@ def make_plot(modelpaths, args):
         make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=scale_to_peak)
         plotobjects, plotobjectlabels = axes[0].get_legend_handles_labels()
 
-    axes[0].legend(plotobjects, plotobjectlabels, loc='upper right', handlelength=2, ncol=legendncol,
-                   frameon=False, numpoints=1)
-    # prop={'size': args.legendfontsize}
+    if not args.nolegend:
+        axes[0].legend(plotobjects, plotobjectlabels, loc='upper right', handlelength=2, ncol=legendncol,
+                       frameon=False, numpoints=1)
 
     # plt.setp(plt.getp(axis, 'xticklabels'), fontsize=fsticklabel)
     # plt.setp(plt.getp(axis, 'yticklabels'), fontsize=fsticklabel)
@@ -838,8 +840,14 @@ def addargs(parser):
                         help=('Plot flux at this distance in megaparsec. Default is the distance to '
                               'first reference spectrum if this is known, or otherwise 1 Mpc'))
 
+    parser.add_argument('-figscale', type=float, default=1.,
+                        help='Scale factor for plot area. 1.0 is for single-column')
+
     parser.add_argument('--notitle', action='store_true',
                         help='Suppress the top title from the plot')
+
+    parser.add_argument('--nolegend', action='store_true',
+                        help='Suppress the legend from the plot')
 
     parser.add_argument('-outputfile', '-o', action='store', dest='outputfile', type=Path,
                         help='path/filename for PDF file')

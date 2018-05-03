@@ -225,10 +225,10 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
         [i for i in dfpop.ion_stage.unique()
          if i <= max_ion_stage and (ionstages_permitted is None or i in ionstages_permitted)])
 
-    subplotheight = 3.3 if args.x == 'config' else 2.7
+    subplotheight = 2.4 / 6 if args.x == 'config' else 1.8 / 6
 
     fig, axes = plt.subplots(nrows=len(ion_stage_list), ncols=1, sharex=False,
-                             figsize=(9, subplotheight * len(ion_stage_list)),
+                             figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * subplotheight * len(ion_stage_list)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if len(ion_stage_list) == 1:
@@ -256,7 +256,10 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
                 for levelname in ion_data.levels.iloc[:max(dfpopthision.level) + 1].levelname]
             ax.set_xticklabels(
                 xticklabels,
-                fontsize=8, rotation=60, horizontalalignment='right', rotation_mode='anchor')
+                # fontsize=8,
+                rotation=60,
+                horizontalalignment='right',
+                rotation_mode='anchor')
 
         print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a summed level population of {ionpopulation:.1f}'
               f' (from estimator file ion pop = {ionpopulation_fromest})')
@@ -385,6 +388,9 @@ def addargs(parser):
 
     parser.add_argument('-maxlevel', default=-1,
                         help='Maximum level to plot')
+
+    parser.add_argument('-figscale', type=float, default=1.6,
+                        help='Scale factor for plot area. 1.0 is for single-column')
 
     parser.add_argument('--departuremode', action='store_true',
                         help='Show departure coefficients instead of populations')

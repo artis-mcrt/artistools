@@ -40,7 +40,7 @@ def read_files(modelpath, modelgridindex=-1):
 
         npts_model = at.get_npts_model(modelpath)
         radfield_files = [x for x in estimfiles_all if filerank(x) < npts_model]
-        print(f'Reading {len(radfield_file)} radfield files...')
+        print(f'Reading {len(radfield_files)} radfield files...')
 
     if not radfield_files:
         print("No radfield files")
@@ -227,7 +227,10 @@ def plot_celltimestep(
 
     print(f'Plotting timestep {timestep:d} (t={time_days})')
 
-    fig, axis = plt.subplots(nrows=1, ncols=1, sharex=True, figsize=(8, 4), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    nrows = 1
+    fig, axis = plt.subplots(nrows=nrows, ncols=1, sharex=True,
+                             figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * (0.25 + nrows * 0.375)),
+                             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     ymax1 = plot_fullspecfittedfield(
         axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep,
@@ -288,7 +291,7 @@ def plot_celltimestep(
     axis.set_ylim(ymin=0.0, ymax=ymax)
     axis.yaxis.set_major_formatter(at.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))
 
-    axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 11})
+    axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1)
 
     print(f'Saving to {outputfile}')
     fig.savefig(str(outputfile), format='pdf')
@@ -438,6 +441,9 @@ def addargs(parser):
 
     parser.add_argument('--notitle', action='store_true',
                         help='Suppress the top title from the plot')
+
+    parser.add_argument('-figscale', type=float, default=1.,
+                        help='Scale factor for plot area. 1.0 is for single-column')
 
     parser.add_argument('-o', action='store', dest='outputfile', type=Path,
                         help='Filename for PDF file')
