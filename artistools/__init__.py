@@ -48,6 +48,8 @@ console_scripts = [f'{command} = {submodulename}:{funcname}'
 console_scripts.append('at = artistools:main')
 console_scripts.append('artistools = artistools:main')
 
+figwidth = 5
+
 
 class AppendPath(argparse.Action):
     def __call__(self, parser, args, values, option_string=None):

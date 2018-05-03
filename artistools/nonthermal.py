@@ -87,7 +87,8 @@ def make_xs_plot(axis, nonthermaldata, timestep, outputfile, args):
 def make_plot(nonthermaldata, timestep, outputfile, args):
     """Draw the bin edges, fitted field, and emergent spectrum."""
     nplots = 1 if not args.xsplot else 2
-    fig, axes = plt.subplots(nrows=nplots, ncols=1, sharex=True, figsize=(5, 3.5 * nplots),
+    fig, axes = plt.subplots(nrows=nplots, ncols=1, sharex=True,
+                             figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * 0.7 * nplots),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if nplots == 1:
@@ -173,6 +174,9 @@ def addargs(parser):
 
     parser.add_argument('--kf1992spec', action='store_true',
                         help='Show the pure-oxygen result form Figure 1 of Kozma & Fransson 1992')
+
+    parser.add_argument('-figscale', type=float, default=1.,
+                        help='Scale factor for plot area. 1.0 is for single-column')
 
     parser.add_argument('-o', action='store', dest='outputfile',
                         default=defaultoutputfile,
