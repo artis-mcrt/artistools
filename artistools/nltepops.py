@@ -24,32 +24,31 @@ def texifyterm(strterm):
     """Replace a term string with TeX notation equivalent."""
     strtermtex = ''
     passed_term_Schar = False
-    oddevenbit = ''
 
     for termpiece in re.split('([A-Za-z])', strterm):
         if re.match('[0-9]', termpiece) is not None and not passed_term_Schar:
             strtermtex += r'$^{' + termpiece + r'}$'
-        elif re.match('[o]', termpiece) is not None and passed_term_Schar:
+        elif re.match('[eo]', termpiece) is not None and passed_term_Schar:
             # odd flag, but don't want to confuse it with the energy index (e.g. o4Fo[2])
-            oddevenbit = r'$^{\rm ' + termpiece + r'}$'
+            strtermtex += r'$^{\rm ' + termpiece + r'}$'
         elif re.match(r'\[.*\]', termpiece) is not None:  # J value
             strtermtex += r'$_{' + termpiece.strip('[]') + r'}$'
         elif re.match('[A-Z]', termpiece) is not None:
             strtermtex += termpiece
             passed_term_Schar = True
-    strtermtex += oddevenbit
 
     return strtermtex
 
+
 def texifyconfiguration(levelname):
+    """Replace a level configuration with the formatted LaTeX equivalent."""
     # the underscore gets confused with LaTeX subscript operator, so switch it to the hash symbol
-    strout = "#".join(levelname.split('_')[:-1])
+    strout = "#".join(levelname.split('_')[:-1]) + '#'
     for strorbitalocc in re.findall(r'[0-9][a-z][0-9]?[#(]', strout):
         n, lchar, occ = re.split('([a-z])', strorbitalocc)
         lastchar = '(' if occ.endswith('(') else '#'
         occ = occ.rstrip('#(')
         strorbitalocctex = n + lchar + (r'$^{' + occ + r'}$' if occ else '') + lastchar
-        print(f'Replacing {strorbitalocc} with {strorbitalocctex}')
         strout = strout.replace(strorbitalocc, strorbitalocctex)
 
     for parentterm in re.findall(r'\([0-9][A-Z][^)]?\)', strout):
@@ -59,9 +58,9 @@ def texifyconfiguration(levelname):
     strterm = levelname.split('_')[-1]
     strout += ' ' + texifyterm(strterm)
 
-    # strout = strout.replace('$$', '$')
     strout = strout.replace('#', '')
-    print(f"Replacing levelname '{levelname}' with '{strout}'")
+    strout = strout.replace('$$', '')
+    # print(f"Replacing levelname '{levelname}' with '{strout}'")
     return strout
 
 
@@ -313,6 +312,9 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
                 ax.plot(dfpopthisionoddlevels.level, dfpopthisionoddlevels.n_NLTE, linewidth=2,
                         label='Odd parity', linestyle='None',
                         marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
+
+            ax.set_ylim(ymin=1e-2)
+            # axis.set_xlim(xmax=60)
 
         subplotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
 
