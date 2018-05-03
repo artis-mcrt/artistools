@@ -254,16 +254,18 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
                     linestyle='None', marker='x', label=f'ARTIS NLTE', color='C0')
             ax.set_ylabel('Departure coefficient')
 
-            ax.plot(dfpopthisionoddlevels.level.values, dfpopthisionoddlevels.departure_coeff.values, linewidth=2,
-                    label='Odd parity', linestyle='None',
-                    marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
+            if not dfpopthisionoddlevels.level.empty:
+                ax.plot(dfpopthisionoddlevels.level.values, dfpopthisionoddlevels.departure_coeff.values, linewidth=2,
+                        label='Odd parity', linestyle='None',
+                        marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
         else:
             ax.plot(dfpopthision.level, dfpopthision.n_NLTE, linewidth=1.5,
                     label='ARTIS NLTE', linestyle='None', marker='x')
 
-            ax.plot(dfpopthisionoddlevels.level, dfpopthisionoddlevels.n_NLTE, linewidth=2,
-                    label='Odd parity', linestyle='None',
-                    marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
+            if not dfpopthisionoddlevels.level.empty:
+                ax.plot(dfpopthisionoddlevels.level, dfpopthisionoddlevels.n_NLTE, linewidth=2,
+                        label='Odd parity', linestyle='None',
+                        marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
 
         subplotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
 
