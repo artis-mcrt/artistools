@@ -20,6 +20,50 @@ import artistools.estimators
 
 defaultoutputfile = 'plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
 
+def texifyterm(strterm):
+    """Replace a term string with TeX notation equivalent."""
+    strtermtex = ''
+    passed_term_Schar = False
+    oddevenbit = ''
+
+    for termpiece in re.split('([A-Za-z])', strterm):
+        if re.match('[0-9]', termpiece) is not None and not passed_term_Schar:
+            strtermtex += r'$^{' + termpiece + r'}$'
+        elif re.match('[o]', termpiece) is not None and passed_term_Schar:
+            # odd flag, but don't want to confuse it with the energy index (e.g. o4Fo[2])
+            oddevenbit = r'$^{\rm ' + termpiece + r'}$'
+        elif re.match(r'\[.*\]', termpiece) is not None:  # J value
+            strtermtex += r'$_{' + termpiece.strip('[]') + r'}$'
+        elif re.match('[A-Z]', termpiece) is not None:
+            strtermtex += termpiece
+            passed_term_Schar = True
+    strtermtex += oddevenbit
+
+    return strtermtex
+
+def texifyconfiguration(levelname):
+    # the underscore gets confused with LaTeX subscript operator, so switch it to the hash symbol
+    strout = "#".join(levelname.split('_')[:-1])
+    for strorbitalocc in re.findall(r'[0-9][a-z][0-9]?[#(]', strout):
+        n, lchar, occ = re.split('([a-z])', strorbitalocc)
+        lastchar = '(' if occ.endswith('(') else '#'
+        occ = occ.rstrip('#(')
+        strorbitalocctex = n + lchar + (r'$^{' + occ + r'}$' if occ else '') + lastchar
+        print(f'Replacing {strorbitalocc} with {strorbitalocctex}')
+        strout = strout.replace(strorbitalocc, strorbitalocctex)
+
+    for parentterm in re.findall(r'\([0-9][A-Z][^)]?\)', strout):
+        parentermtex = f'({texifyterm(parentterm.strip("()"))})'
+        strout = strout.replace(parentterm, parentermtex)
+
+    strterm = levelname.split('_')[-1]
+    strout += ' ' + texifyterm(strterm)
+
+    # strout = strout.replace('$$', '$')
+    strout = strout.replace('#', '')
+    print(f"Replacing levelname '{levelname}' with '{strout}'")
+    return strout
+
 
 def get_nltepops(modelpath, timestep, modelgridindex):
     """Read in NLTE populations from a model for a particular timestep and grid cell"""
@@ -208,11 +252,14 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
             ion_data = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0]
             # ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=100))
             ax.set_xticks(ion_data.levels.iloc[:max(dfpopthision.level) + 1].index)
+            xticklabels = [
+                texifyconfiguration(levelname)
+                for levelname in ion_data.levels.iloc[:max(dfpopthision.level) + 1].levelname]
             ax.set_xticklabels(
-                ion_data.levels.iloc[:max(dfpopthision.level) + 1].levelname,
+                xticklabels,
                 fontsize=8, rotation=60, horizontalalignment='right', rotation_mode='anchor')
 
-        print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has an summed level population of {ionpopulation:.1f}'
+        print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a summed level population of {ionpopulation:.1f}'
               f' (from estimator file ion pop = {ionpopulation_fromest})')
 
         if args.departuremode:
