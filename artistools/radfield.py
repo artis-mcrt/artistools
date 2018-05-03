@@ -229,7 +229,7 @@ def plot_celltimestep(
 
     nrows = 1
     fig, axis = plt.subplots(nrows=nrows, ncols=1, sharex=True,
-                             figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * (0.25 + nrows * 0.375)),
+                             figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * (0.25 + nrows * 0.4)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     ymax1 = plot_fullspecfittedfield(
@@ -359,7 +359,8 @@ def plot_timeevolution(
     const_c = const.c.to('angstrom/s').value
 
     nlinesplotted = 200
-    fig, axes = plt.subplots(nlinesplotted, 1, sharex=True, figsize=(8, 1 + 3 * nlinesplotted),
+    fig, axes = plt.subplots(nlinesplotted, 1, sharex=True,
+                             figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * (0.25 + nrows * 0.35)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     time_days = 330
