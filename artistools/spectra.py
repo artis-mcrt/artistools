@@ -32,7 +32,7 @@ refspectra = {
         ('SN2003du +221.3d (Stanishev et al. 2007)', 30.47),
 
     'FranssonJerkstrand2015_W7_330d_10Mpc.txt':
-        ('W7 (Fransson & Jerkstrand 2015) +330d', 10),  # Iwamoto+1999
+        ('SUMO W7 (Fransson & Jerkstrand 2015) +330d', 10),  # Iwamoto+1999
 
     'maurer2011_RTJ_W7_338d_1Mpc.txt':
         ('RTJ W7 Nomoto+1984 +338d (Maurer et al. 2011)', 1),
