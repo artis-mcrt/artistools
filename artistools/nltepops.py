@@ -182,7 +182,10 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
         [i for i in dfpop.ion_stage.unique()
          if i <= max_ion_stage and (ionstages_permitted is None or i in ionstages_permitted)])
 
-    fig, axes = plt.subplots(nrows=len(ion_stage_list), ncols=1, sharex=False, figsize=(9, 2.7 * len(ion_stage_list)),
+    subplotheight = 3.3 if args.x == 'config' else 2.7
+
+    fig, axes = plt.subplots(nrows=len(ion_stage_list), ncols=1, sharex=False,
+                             figsize=(9, subplotheight * len(ion_stage_list)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if len(ion_stage_list) == 1:
@@ -207,7 +210,7 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
             ax.set_xticks(ion_data.levels.iloc[:max(dfpopthision.level) + 1].index)
             ax.set_xticklabels(
                 ion_data.levels.iloc[:max(dfpopthision.level) + 1].levelname,
-                fontsize=8, rotation=55, horizontalalignment='right', rotation_mode='anchor')
+                fontsize=8, rotation=60, horizontalalignment='right', rotation_mode='anchor')
 
         print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has an summed level population of {ionpopulation:.1f}'
               f' (from estimator file ion pop = {ionpopulation_fromest})')
