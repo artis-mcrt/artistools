@@ -481,7 +481,7 @@ def main(args=None, argsraw=None, **kwargs):
         else:
             modelgridindex = args.modelgridindex
 
-        radfielddata = read_files(modelpath, modelgridindex=args.modelgridindex)
+        radfielddata = read_files(modelpath, modelgridindex=modelgridindex)
 
         if not specfilename.is_file():
             print(f'Could not find {specfilename}')
