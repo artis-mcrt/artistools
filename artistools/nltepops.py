@@ -354,7 +354,7 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
         figure_title += f' timestep {timestep:d}'
     else:
         figure_title += f' {time_days:.0f}d'
-    figure_title += f' (Te={T_e:.0f} K, nne={nne:.1e} ' + r'cm$^{-3}$, T$_R$=' + f'{T_R:.0f}, W={W:.1e})'
+    figure_title += f' (Te={T_e:.0f} K, nne={nne:.1e} ' + r'cm$^{-3}$, T$_R$=' + f'{T_R:.0f} K, W={W:.1e})'
 
     if not args.notitle:
         axes[0].set_title(figure_title, fontsize=10)
