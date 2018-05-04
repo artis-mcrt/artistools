@@ -11,8 +11,9 @@ import os
 import re
 import sys
 from collections import namedtuple
-from pathlib import Path
+from functools import lru_cache
 from itertools import chain
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -157,15 +158,15 @@ def parse_ion_row(row, outdict):
             outdict['Alpha_R'][(atomic_number, ion_stage)] = value_thision / outdict['nne']
 
 
-def read_estimators(modelpath, modeldata=None, modelgridindex=-1, timestep=-1):
+# @lru_cache(maxsize=8)
+def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
     """Read estimator files into a nested dictionary structure.
 
     Speed it up by only retrieving estimators for a particular timestep or modelgridindex.
     """
     match_timestep = timestep
     match_modelgridindex = modelgridindex
-    if modeldata is None:
-        modeldata, _ = at.get_modeldata(modelpath)
+    modeldata, _ = at.get_modeldata(modelpath)
 
     if match_modelgridindex >= 0:
         mpirank = at.get_mpirankofcell(match_modelgridindex, modelpath=modelpath)
@@ -752,7 +753,7 @@ def main(args=None, argsraw=None, **kwargs):
             timestepmax = timestepmin
 
     timestepfilter = timestepmin if timestepmin == timestepmax else -1
-    estimators = read_estimators(modelpath, modeldata, modelgridindex=args.modelgridindex, timestep=timestepfilter)
+    estimators = read_estimators(modelpath, modelgridindex=args.modelgridindex, timestep=timestepfilter)
 
     if not estimators:
         return -1

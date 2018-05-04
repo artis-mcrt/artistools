@@ -4,6 +4,7 @@
 A collection of plotting, analysis, and file format conversion tools for the ARTIS radiative transfer code.
 """
 import argparse
+from functools import lru_cache
 import gzip
 import math
 import os.path
@@ -112,6 +113,7 @@ def showtimesteptimes(specfilename=None, modelpath=None, numberofcolumns=5):
         print(strline)
 
 
+@lru_cache(maxsize=8)
 def get_composition_data(filename):
     """Return a pandas DataFrame containing details of included elements and ions."""
     if os.path.isdir(Path(filename)):
@@ -140,6 +142,7 @@ def get_composition_data(filename):
     return compdf
 
 
+@lru_cache(maxsize=8)
 def get_modeldata(filename):
     """Return a list containing named tuples for all model grid cells."""
     if os.path.isdir(filename):
@@ -185,6 +188,7 @@ def save_modeldata(dfmodeldata, t_model_init_days, filename) -> None:
                          f'{cell.X_Fe52:5.2f} {cell.X_Cr48:5.2f}\n')
 
 
+@lru_cache(maxsize=8)
 def get_initialabundances(abundancefilename):
     """Return a list of mass fractions."""
     if os.path.isdir(abundancefilename):
@@ -202,6 +206,7 @@ def save_initialabundances(dfabundances, abundancefilename):
     dfabundances.to_csv(abundancefilename, header=False, sep=' ', index=False)
 
 
+@lru_cache(maxsize=16)
 def get_timestep_times(modelpath):
     """Return a list of the time in days of each timestep using a spec.out file."""
     try:
@@ -380,6 +385,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
     return dfadata
 
 
+@lru_cache(maxsize=8)
 def get_model_name(path):
     """Get the name of an ARTIS model from the path to any file inside it.
 
@@ -534,6 +540,7 @@ def get_linelist(modelpath):
     return dflinelist
 
 
+@lru_cache(maxsize=8)
 def get_npts_model(modelpath):
     """Return the number of cell in the model.txt"""
     with Path(modelpath, 'model.txt').open('r') as modelfile:
@@ -541,11 +548,13 @@ def get_npts_model(modelpath):
     return npts_model
 
 
+@lru_cache(maxsize=8)
 def get_nprocs(modelpath):
     """Return the number of MPI processes specified in input.txt."""
     return int(Path(modelpath, 'input.txt').read_text().split('\n')[21])
 
 
+@lru_cache(maxsize=8)
 def get_inputparams(modelpath):
     """Return parameters specified in input.txt."""
     params = {}

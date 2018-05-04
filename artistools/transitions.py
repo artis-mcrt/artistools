@@ -235,8 +235,7 @@ def main(args=None, argsraw=None, **kwargs):
             timestep = args.timestep
 
         modeldata, _ = at.get_modeldata(Path(modelpath, 'model.txt'))
-        estimators_all = at.estimators.read_estimators(modelpath, modeldata,
-                                                       timestep=timestep, modelgridindex=modelgridindex)
+        estimators_all = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
         if not estimators_all:
             return -1
 

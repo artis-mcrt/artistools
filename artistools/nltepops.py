@@ -475,7 +475,7 @@ def main(args=None, argsraw=None, **kwargs):
     else:
         modelgridindex = args.modelgridindex
 
-    estimators = at.estimators.read_estimators(modelpath, modeldata=modeldata,
+    estimators = at.estimators.read_estimators(modelpath,
                                                timestep=timestep, modelgridindex=modelgridindex)
     print(f'modelgridindex {args.modelgridindex}, timestep {timestep} (t={time_days}d)')
     if estimators:
