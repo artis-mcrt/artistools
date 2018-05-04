@@ -256,23 +256,27 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
         if args.maxlevel >= 0:
             dfpopthision.query('level <= @args.maxlevel', inplace=True)
 
+        ion_data = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0]
+        configlist = ion_data.levels.iloc[:max(dfpopthision.level) + 1].levelname
+
+        configtexlist = [texifyconfiguration(configlist[0])]
+        for i in range(1, len(configlist)):
+            prevconfignoterm = configlist[i - 1].rsplit('_', maxsplit=1)[0]
+            confignoterm = configlist[i].rsplit('_', maxsplit=1)[0]
+            if confignoterm == prevconfignoterm:
+                configtexlist.append('" ' + texifyterm(configlist[i].rsplit('_', maxsplit=1)[1]))
+            else:
+                configtexlist.append(texifyconfiguration(configlist[i]))
+
+        dfpopthision['config'] = [configlist[level] for level in dfpopthision.level]
+        dfpopthision['texname'] = [configtexlist[level] for level in dfpopthision.level]
+
         if args.x == 'config':
-            ion_data = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0]
             # ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=100))
             ax.set_xticks(ion_data.levels.iloc[:max(dfpopthision.level) + 1].index)
-            configlist = ion_data.levels.iloc[:max(dfpopthision.level) + 1].levelname
-
-            xticklabels = [texifyconfiguration(configlist[0])]
-            for i in range(1, len(configlist)):
-                prevconfignoterm = configlist[i - 1].rsplit('_', maxsplit=1)[0]
-                confignoterm = configlist[i].rsplit('_', maxsplit=1)[0]
-                if confignoterm == prevconfignoterm:
-                    xticklabels.append('" ' + texifyterm(configlist[i].rsplit('_', maxsplit=1)[1]))
-                else:
-                    xticklabels.append(texifyconfiguration(configlist[i]))
 
             ax.set_xticklabels(
-                xticklabels,
+                configtexlist,
                 # fontsize=8,
                 rotation=60,
                 horizontalalignment='right',
@@ -290,7 +294,6 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
 
         dfpopthision.eval('n_LTE_T_e_normed = n_LTE_T_e * @x',
                           local_dict={'x': lte_scalefactor}, inplace=True)
-        dfpopthision['texname'] = [xticklabels[level] for level in dfpopthision.level]
 
         dfpopthision.eval('departure_coeff = n_NLTE / n_LTE_T_e_normed', inplace=True)
 
@@ -314,10 +317,12 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
         #     axis.plot(levelnums, floers_levelpop_values, linewidth=1.5,
         #               label=f'Floers NLTE', linestyle='None', marker='*')
 
+        pd.set_option('display.max_columns', 150)
+        print(dfpopthision[['level', 'config', 'departure_coeff', 'texname']].to_string(index=False))
+
         dfpopthisionoddlevels = dfpopthision.query('parity==1')
         velocity = modeldata['velocity'][modelgridindex]
         if args.departuremode:
-            print(dfpopthision[['level', 'texname', 'departure_coeff']])
             ax.plot(dfpopthision['level'], dfpopthision['departure_coeff'], linewidth=1.5,
                     linestyle='None', marker='x', label=f'{ionstr} ARTIS NLTE', color='C0')
             ax.set_ylabel('Departure coefficient')
