@@ -700,8 +700,9 @@ def make_plot(modelpaths, args):
         # axis.xaxis.set_major_formatter(plt.NullFormatter())
 
     axes[-1].set_xlabel(r'Wavelength ($\AA$)')
-    for axis in axes:
-        axis.yaxis.set_major_formatter(at.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))
+    for ax in axes:
+        if '{' in ax.get_ylabel():
+            ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
