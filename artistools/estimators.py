@@ -158,7 +158,7 @@ def parse_ion_row(row, outdict):
             outdict['Alpha_R'][(atomic_number, ion_stage)] = value_thision / outdict['nne']
 
 
-# @lru_cache(maxsize=8)
+@lru_cache(maxsize=16)
 def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
     """Read estimator files into a nested dictionary structure.
 
@@ -279,8 +279,10 @@ def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
     return estimators
 
 
-def plot_init_abundances(ax, xlist, specieslist, mgilist, modeldata, abundancedata, **plotkwargs):
+def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, **plotkwargs):
     assert len(xlist) - 1 == len(mgilist)
+    modeldata, _ = at.get_modeldata(modelpath)
+    abundancedata = at.get_initialabundances(modelpath)
     ax.set_ylim(ymin=0.)
     ax.set_ylim(ymax=1.0)
     for speciesstr in specieslist:
@@ -316,10 +318,12 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modeldata, abundanceda
 
 
 def plot_multi_ion_series(
-        ax, xlist, seriestype, ionlist, timesteplist, mgilist, estimators, compositiondata, args, **plotkwargs):
+        ax, xlist, seriestype, ionlist, timesteplist, mgilist, estimators, modelpath, args, **plotkwargs):
     assert len(xlist) - 1 == len(mgilist) == len(timesteplist)
     # if seriestype == 'populations':
     #     ax.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
+
+    compositiondata = at.get_composition_data(modelpath)
 
     # decoded into numeric form, e.g., [(26, 1), (26, 2)]
     iontuplelist = [
@@ -511,8 +515,7 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timesteplist, modelpath
     return list(xlist), list(mgilist_out), list(timesteplist_out)
 
 
-def plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modeldata, abundancedata, compositiondata,
-                 estimators, args, **plotkwargs):
+def plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modelpath, estimators, args, **plotkwargs):
     assert len(xlist) - 1 == len(mgilist) == len(timesteplist)
     showlegend = False
 
@@ -531,11 +534,11 @@ def plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modeldata, abunda
         if not hasattr(variablename, 'lower'):  # if it's not a string, it's a list
             showlegend = True
             if variablename[0] == 'initabundances':
-                plot_init_abundances(ax, xlist, variablename[1], mgilist, modeldata, abundancedata)
+                plot_init_abundances(ax, xlist, variablename[1], mgilist, modelpath)
             else:
                 seriestype, ionlist = variablename
                 plot_multi_ion_series(ax, xlist, seriestype, ionlist, timesteplist, mgilist, estimators,
-                                      compositiondata, args, **plotkwargs)
+                                      modelpath, args, **plotkwargs)
         else:
             showlegend = len(yvariables) > 1 or len(variablename) > 20
             plot_series(ax, xlist, variablename, showlegend, timesteplist, mgilist, estimators,
@@ -551,9 +554,8 @@ def plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modeldata, abunda
             ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
 
 
-def make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, xvariable, plotlist, modeldata, abundancedata,
-              compositiondata, args, **plotkwargs):
-
+def make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, xvariable, plotlist,
+              args, **plotkwargs):
     modelname = at.get_model_name(modelpath)
     fig, axes = plt.subplots(nrows=len(plotlist), ncols=1, sharex=True,
                              figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * 0.5 * len(plotlist)),
@@ -564,8 +566,7 @@ def make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
 
     axes[-1].set_xlabel(f'{xvariable}{get_units_string(xvariable)}')
-    xlist, mgilist, timesteplist = get_xlist(
-        xvariable, allnonemptymgilist, estimators, timesteplist_unfiltered, modelpath, args)
+    xlist, mgilist, timesteplist = get_xlist(xvariable, allnonemptymgilist, estimators, timesteplist_unfiltered, modelpath, args)
     xlist = np.insert(xlist, 0, 0.)
 
     xmin = args.xmin if args.xmin > 0 else min(xlist)
@@ -573,8 +574,7 @@ def make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators
 
     for ax, yvariables in zip(axes, plotlist):
         ax.set_xlim(xmin=xmin, xmax=xmax)
-        plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modeldata, abundancedata,
-                     compositiondata, estimators, args, **plotkwargs)
+        plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modelpath, estimators, args, **plotkwargs)
 
     if len(set(timesteplist)) == 1:  # single timestep plot
         figure_title = f'{modelname}\nTimestep {timesteplist[0]}'
@@ -589,7 +589,7 @@ def make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators
         if os.path.isdir(args.outputfile):
             args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
         outfilename = str(args.outputfile).format(timestep=timesteplist[0], time_days=time_days)
-    elif len(set(mgilist)) == 1:  # single grid cell plot
+    elif len(set(mgilist)) == 1:  # single grid cell plot
         figure_title = f'{modelname}\nCell {mgilist[0]}'
 
         defaultoutputfile = Path('plotestimators_cell{modelgridindex:03d}.pdf')
@@ -725,10 +725,6 @@ def main(args=None, argsraw=None, **kwargs):
 
     modelpath = args.modelpath
 
-    modeldata, _ = at.get_modeldata(modelpath)
-    abundancedata = at.get_initialabundances(modelpath)
-    compositiondata = at.get_composition_data(modelpath)
-
     if args.timedays:
         if isinstance(args.timedays, str) and '-' in args.timedays:
             timestepmin, timestepmax = [
@@ -786,6 +782,7 @@ def main(args=None, argsraw=None, **kwargs):
     if args.recombrates:
         plot_recombrates(estimators, "plotestimators_recombrates.pdf")
     else:
+        modeldata, _ = at.get_modeldata(modelpath)
         allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
                               if not estimators[(timestepmin, modelgridindex)]['emptycell']]
 
@@ -795,16 +792,14 @@ def main(args=None, argsraw=None, **kwargs):
                 args.x = 'time'
             timesteplist_unfiltered = list(range(timestepmin, timestepmax + 1))
             mgilist = [args.modelgridindex] * len(timesteplist_unfiltered)
-            make_plot(modelpath, timesteplist_unfiltered, mgilist, estimators, args.x, plotlist,
-                      modeldata, abundancedata, compositiondata, args)
+            make_plot(modelpath, timesteplist_unfiltered, estimators, mgilist, args.x, plotlist, args)
         else:
             # plot a snapshot at each timestep showing internal structure
             if not args.x:
                 args.x = 'velocity'
             for timestep in range(timestepmin, timestepmax + 1):
                 timesteplist_unfiltered = [timestep] * len(allnonemptymgilist)  # constant timestep
-                make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist,
-                          modeldata, abundancedata, compositiondata, args)
+                make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist, args)
 
 
 

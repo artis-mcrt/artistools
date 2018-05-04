@@ -6,6 +6,7 @@ import os
 import re
 import sys
 from collections import namedtuple
+from functools import lru_cache
 from pathlib import Path
 from itertools import chain
 
@@ -71,6 +72,7 @@ def texifyconfiguration(levelname):
     return strout
 
 
+@lru_cache(maxsize=32)
 def get_nltepops(modelpath, timestep, modelgridindex):
     """Read in NLTE populations from a model for a particular timestep and grid cell"""
     mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
@@ -171,8 +173,9 @@ def read_file(adata, nltefilename, modelgridindex, timestep, atomic_number, T_e,
     return dfpop
 
 
-def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridindex=-1, noprint=False):
+def read_files(modelpath, atomic_number, T_e, T_R, timestep, modelgridindex=-1, noprint=False):
     """Read in NLTE populations from a model for a particular timestep and grid cell"""
+    adata = at.get_levels(modelpath)
     if modelgridindex > -1:
         mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
 
@@ -216,8 +219,11 @@ def read_files(modelpath, adata, atomic_number, T_e, T_R, timestep, modelgridind
     return dfpop
 
 
-def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R,
+def make_plot(modelpath, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R,
               modelgridindex, timestep, args):
+    adata = at.get_levels(modelpath)
+    modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
+
     # top_ion = 9999
     max_ion_stage = dfpop.ion_stage.max()
 
@@ -466,9 +472,6 @@ def main(args=None, argsraw=None, **kwargs):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     ionstages_permitted = at.parse_range_list(args.ionstages) if args.ionstages else None
-    adata = at.get_levels(modelpath)
-
-    modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
 
     if args.velocity >= 0.:
         modelgridindex = at.get_closest_cell(modelpath, args.velocity)
@@ -512,13 +515,13 @@ def main(args=None, argsraw=None, **kwargs):
 
         print(f'Z={atomic_number} {elsymbol}')
 
-        dfpop = read_files(modelpath, adata, atomic_number, T_e, T_R,
+        dfpop = read_files(modelpath, atomic_number, T_e, T_R,
                            timestep=timestep, modelgridindex=modelgridindex)
 
         if dfpop.empty:
             print(f'No NLTE population data for modelgrid cell {args.modelgridindex} timestep {timestep}')
         else:
-            make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R,
+            make_plot(modelpath, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R,
                       modelgridindex, timestep, args)
 
 
