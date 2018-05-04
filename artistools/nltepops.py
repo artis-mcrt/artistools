@@ -23,26 +23,27 @@ defaultoutputfile = 'plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_d
 def texifyterm(strterm):
     """Replace a term string with TeX notation equivalent."""
     strtermtex = ''
-    passed_term_Schar = False
+    passed_term_Lchar = False
 
     for termpiece in re.split('([_A-Za-z])', strterm):
-        if re.match('[0-9]', termpiece) is not None and not passed_term_Schar:
-            # L number
+        if re.match('[0-9]', termpiece) is not None and not passed_term_Lchar:
+            # 2S + 1 number
             strtermtex += r'$^{' + termpiece + r'}$'
         elif re.match('[A-Z]', termpiece) is not None:
-            # S character - SPDFGH...
+            # L character - SPDFGH...
             strtermtex += termpiece
-            passed_term_Schar = True
-        elif re.match('[eo]', termpiece) is not None and passed_term_Schar:
+            passed_term_Lchar = True
+        elif re.match('[eo]', termpiece) is not None and passed_term_Lchar:
             # odd flag, but don't want to confuse it with the energy index (e.g. o4Fo[2])
             strtermtex += r'$^{\rm ' + termpiece + r'}$'
         elif re.match(r'[0-9]?.*\]', termpiece) is not None:
             # J value
             strtermtex += termpiece.split('[')[0] + r'$_{' + termpiece.lstrip('0123456789').strip('[]') + r'}$'
-        elif re.match('[0-9]', termpiece) is not None and passed_term_Schar:
+        elif re.match('[0-9]', termpiece) is not None and passed_term_Lchar:
             # extra number after S char
             strtermtex += termpiece
 
+    strtermtex = strtermtex.replace('$$', '')
     return strtermtex
 
 
@@ -247,6 +248,8 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
     for ion, ax in enumerate(axes):
         ion_stage = ion_stage_list[ion]
 
+        ionstr = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
+
         dfpopthision = dfpop.query('ion_stage==@ion_stage').copy()
         ionpopulation = dfpopthision['n_NLTE'].sum()
         ionpopulation_fromest = estimators[(timestep, modelgridindex)]['populations'].get((atomic_number, ion_stage), 0.)
@@ -292,13 +295,13 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
 
         if not args.departuremode:
             ax.plot(dfpopthision.level.values, dfpopthision['n_LTE_T_e_normed'].values, linewidth=1.5,
-                    label=f'LTE T$_e$ = {T_e:.0f} K', linestyle='None', marker='*')
+                    label=f'{ionstr} LTE T$_e$ = {T_e:.0f} K', linestyle='None', marker='*')
 
             if not args.hide_lte_tr:
                 lte_scalefactor = float(ionpopulation / dfpopthision['n_LTE_T_R'].sum())
                 dfpopthision['n_LTE_T_R_normed'] = dfpopthision['n_LTE_T_R'] * lte_scalefactor
                 ax.plot(dfpopthision.level.values, dfpopthision['n_LTE_T_R_normed'].values, linewidth=1.5,
-                        label=f'LTE T$_R$ = {T_R:.0f} K', linestyle='None', marker='*')
+                        label=f'{ionstr} LTE T$_R$ = {T_R:.0f} K', linestyle='None', marker='*')
 
         # comparison to Andeas Floers
         # if atomic_number == 26 and ion_stage in [2, 3]:
@@ -315,7 +318,7 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
         if args.departuremode:
             print(dfpopthision[['level', 'departure_coeff']])
             ax.plot(dfpopthision['level'], dfpopthision['departure_coeff'], linewidth=1.5,
-                    linestyle='None', marker='x', label=f'ARTIS NLTE', color='C0')
+                    linestyle='None', marker='x', label=f'{ionstr} ARTIS NLTE', color='C0')
             ax.set_ylabel('Departure coefficient')
 
             if not dfpopthisionoddlevels.level.empty:
@@ -324,7 +327,7 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
                         marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
         else:
             ax.plot(dfpopthision.level, dfpopthision.n_NLTE, linewidth=1.5,
-                    label='ARTIS NLTE', linestyle='None', marker='x')
+                    label='{ionstr} ARTIS NLTE', linestyle='None', marker='x')
 
             if not dfpopthisionoddlevels.level.empty:
                 ax.plot(dfpopthisionoddlevels.level, dfpopthisionoddlevels.n_NLTE, linewidth=2,
@@ -334,10 +337,8 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
             ax.set_ylim(ymin=1e-2)
             # axis.set_xlim(xmax=60)
 
-        subplotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
-
-        ax.annotate(subplotlabel, xy=(0.75, 0.96), xycoords='axes fraction',
-                    horizontalalignment='center', verticalalignment='top', fontsize=12)
+        # ax.annotate(ionstr, xy=(0.95, 0.96), xycoords='axes fraction',
+        #             horizontalalignment='right', verticalalignment='top', fontsize=12)
         ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
 
     for ax in axes:
