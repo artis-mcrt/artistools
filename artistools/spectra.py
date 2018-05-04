@@ -841,7 +841,7 @@ def addargs(parser):
                         help=('Plot flux at this distance in megaparsec. Default is the distance to '
                               'first reference spectrum if this is known, or otherwise 1 Mpc'))
 
-    parser.add_argument('-figscale', type=float, default=1.,
+    parser.add_argument('-figscale', type=float, default=1.8,
                         help='Scale factor for plot area. 1.0 is for single-column')
 
     parser.add_argument('--notitle', action='store_true',

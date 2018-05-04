@@ -344,8 +344,10 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
         axes[-1].set_xlabel(r'Level index')
 
     modelname = at.get_model_name(modelpath)
-    figure_title = (
-        f'{modelname} {velocity:.0f} km/s at')
+    figure_title = f'{modelname}'
+    if len(modelname) > 10:
+        figure_title += '\n'
+    figure_title += f' {velocity:.0f} km/s at'
 
     try:
         time_days = float(at.get_timestep_time(modelpath, timestep))
