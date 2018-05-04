@@ -251,9 +251,18 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
             ion_data = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0]
             # ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=100))
             ax.set_xticks(ion_data.levels.iloc[:max(dfpopthision.level) + 1].index)
-            xticklabels = [
-                texifyconfiguration(levelname)
-                for levelname in ion_data.levels.iloc[:max(dfpopthision.level) + 1].levelname]
+            configlist = ion_data.levels.iloc[:max(dfpopthision.level) + 1].levelname
+
+            xticklabels = [texifyconfiguration(configlist[0])]
+            for i in range(1, len(configlist)):
+                prevconfignoterm = configlist[i - 1].rsplit('_', maxsplit=1)[0]
+                confignoterm = configlist[i].rsplit('_', maxsplit=1)[0]
+                if confignoterm == prevconfignoterm:
+                    xticklabels.append('" ' + texifyterm(configlist[i].rsplit('_', maxsplit=1)[1]))
+                else:
+                    xticklabels.append(texifyconfiguration(configlist[i]))
+
+
             ax.set_xticklabels(
                 xticklabels,
                 # fontsize=8,
