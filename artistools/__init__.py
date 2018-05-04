@@ -218,6 +218,7 @@ def get_timestep_times(modelpath):
         return [f'{tdays:.3f}' for tdays in get_timestep_times_float(modelpath, inputparams=inputparams)]
 
 
+@lru_cache(maxsize=16)
 def get_timestep_times_float(modelpath, inputparams=None):
     """Return a list of the time in days of each timestep."""
     if inputparams:
@@ -580,13 +581,11 @@ def get_inputparams(modelpath):
     return params
 
 
-def get_cellsofmpirank(mpirank, modelpath=False, nprocs=-1, npts_model=-1):
+@lru_cache(maxsize=8)
+def get_cellsofmpirank(mpirank, modelpath):
     """Return an iterable of the cell numbers processed by a given MPI rank."""
-    if npts_model < 0:
-        npts_model = get_npts_model(modelpath)
-
-    if nprocs < 0:
-        nprocs = get_nprocs(modelpath)
+    npts_model = get_npts_model(modelpath)
+    nprocs = get_nprocs(modelpath)
 
     assert mpirank < nprocs
 
@@ -603,15 +602,13 @@ def get_cellsofmpirank(mpirank, modelpath=False, nprocs=-1, npts_model=-1):
     return range(nstart, nstart + ndo)
 
 
-def get_mpirankofcell(modelgridindex, modelpath=False, nprocs=-1, npts_model=-1):
+@lru_cache(maxsize=128)
+def get_mpirankofcell(modelgridindex, modelpath):
     """Return the rank number of the MPI process responsible for handling a specified cell's updating and output."""
-    if npts_model < 0:
-        npts_model = get_npts_model(modelpath)
-
+    npts_model = get_npts_model(modelpath)
     assert modelgridindex < npts_model
 
-    if nprocs < 0:
-        nprocs = get_nprocs(modelpath)
+    nprocs = get_nprocs(modelpath)
 
     if nprocs > npts_model:
         mpirank = modelgridindex
@@ -624,7 +621,7 @@ def get_mpirankofcell(modelgridindex, modelpath=False, nprocs=-1, npts_model=-1)
         else:
             mpirank = n_leftover + (modelgridindex - n_leftover * (nblock + 1)) // nblock
 
-    assert modelgridindex in get_cellsofmpirank(mpirank, nprocs=nprocs, npts_model=npts_model)
+    assert modelgridindex in get_cellsofmpirank(mpirank, modelpath)
 
     return mpirank
 
