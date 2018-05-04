@@ -46,6 +46,7 @@ fluxcontributiontuple = namedtuple(
 
 color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
 
+
 def stackspectra(spectra_and_factors):
     factor_sum = sum([factor for _, factor in spectra_and_factors])
 
