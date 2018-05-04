@@ -25,17 +25,23 @@ def texifyterm(strterm):
     strtermtex = ''
     passed_term_Schar = False
 
-    for termpiece in re.split('([A-Za-z])', strterm):
+    for termpiece in re.split('([_A-Za-z])', strterm):
         if re.match('[0-9]', termpiece) is not None and not passed_term_Schar:
+            # L number
             strtermtex += r'$^{' + termpiece + r'}$'
+        elif re.match('[A-Z]', termpiece) is not None:
+            # S character - SPDFGH...
+            strtermtex += termpiece
+            passed_term_Schar = True
         elif re.match('[eo]', termpiece) is not None and passed_term_Schar:
             # odd flag, but don't want to confuse it with the energy index (e.g. o4Fo[2])
             strtermtex += r'$^{\rm ' + termpiece + r'}$'
-        elif re.match(r'\[.*\]', termpiece) is not None:  # J value
-            strtermtex += r'$_{' + termpiece.strip('[]') + r'}$'
-        elif re.match('[A-Z]', termpiece) is not None:
+        elif re.match(r'[0-9]?.*\]', termpiece) is not None:
+            # J value
+            strtermtex += termpiece.split('[')[0] + r'$_{' + termpiece.lstrip('0123456789').strip('[]') + r'}$'
+        elif re.match('[0-9]', termpiece) is not None and passed_term_Schar:
+            # extra number after S char
             strtermtex += termpiece
-            passed_term_Schar = True
 
     return strtermtex
 
@@ -370,51 +376,67 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
 
 
 def addargs(parser):
-    parser.add_argument('elements', nargs='*', default=['Fe'],
-                        help='List of elements to plot')
+    parser.add_argument(
+        'elements', nargs='*', default=['Fe'],
+        help='List of elements to plot')
 
-    parser.add_argument('-modelpath', default='.',
-                        help='Path to ARTIS folder')
+    parser.add_argument(
+        '-modelpath', default='.',
+        help='Path to ARTIS folder')
 
-    parser.add_argument('-timedays', '-time', '-t',
-                        help='Time in days to plot')
+    timegroup = parser.add_mutually_exclusive_group()
+    timegroup.add_argument(
+        '-timedays', '-time', '-t',
+        help='Time in days to plot')
 
-    parser.add_argument('-timestep', '-ts', type=int,
-                        help='Timestep number to plot')
+    timegroup.add_argument(
+        '-timestep', '-ts', type=int,
+        help='Timestep number to plot')
 
-    parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
-                        help='Plotted modelgrid cell')
+    cellgroup = parser.add_mutually_exclusive_group()
+    cellgroup.add_argument(
+        '-modelgridindex', '-cell', type=int, default=0,
+        help='Plotted modelgrid cell')
 
-    parser.add_argument('-velocity', '-v', type=float, default=-1,
-                        help='Specify cell by velocity')
+    cellgroup.add_argument(
+        '-velocity', '-v', type=float, default=-1,
+        help='Specify cell by velocity')
 
-    parser.add_argument('-exc-temperature', type=float, default=6000.,
-                        help='Default if no estimator data')
+    parser.add_argument(
+        '-exc-temperature', type=float, default=6000.,
+        help='Default if no estimator data')
 
-    parser.add_argument('-x', choices=['index', 'config'], default='index',
-                        help='Horizontal axis variable')
+    parser.add_argument(
+        '-x', choices=['index', 'config'], default='index',
+        help='Horizontal axis variable')
 
-    parser.add_argument('-ionstages',
-                        help='Ion stage range, 1 is neutral, 2 is 1+')
+    parser.add_argument(
+        '-ionstages',
+        help='Ion stage range, 1 is neutral, 2 is 1+')
 
-    parser.add_argument('-maxlevel', default=-1,
-                        help='Maximum level to plot')
+    parser.add_argument(
+        '-maxlevel', default=-1,
+        help='Maximum level to plot')
 
-    parser.add_argument('-figscale', type=float, default=1.6,
-                        help='Scale factor for plot area. 1.0 is for single-column')
+    parser.add_argument(
+        '-figscale', type=float, default=1.6,
+        help='Scale factor for plot area. 1.0 is for single-column')
 
-    parser.add_argument('--departuremode', action='store_true',
-                        help='Show departure coefficients instead of populations')
+    parser.add_argument(
+        '--departuremode', action='store_true',
+        help='Show departure coefficients instead of populations')
 
-    parser.add_argument('--hide-lte-tr', action='store_true',
-                        help='Hide LTE populations at T=T_R')
+    parser.add_argument(
+        '--hide-lte-tr', action='store_true',
+        help='Hide LTE populations at T=T_R')
 
-    parser.add_argument('--notitle', action='store_true',
-                        help='Suppress the top title from the plot')
+    parser.add_argument(
+        '--notitle', action='store_true',
+        help='Suppress the top title from the plot')
 
-    parser.add_argument('-outputfile', '-o', type=Path,
-                        default=defaultoutputfile,
-                        help='path/filename for PDF file')
+    parser.add_argument(
+        '-outputfile', '-o', type=Path, default=defaultoutputfile,
+        help='path/filename for PDF file')
 
 
 def main(args=None, argsraw=None, **kwargs):
