@@ -566,7 +566,8 @@ def make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
 
     axes[-1].set_xlabel(f'{xvariable}{get_units_string(xvariable)}')
-    xlist, mgilist, timesteplist = get_xlist(xvariable, allnonemptymgilist, estimators, timesteplist_unfiltered, modelpath, args)
+    xlist, mgilist, timesteplist = get_xlist(
+        xvariable, allnonemptymgilist, estimators, timesteplist_unfiltered, modelpath, args)
     xlist = np.insert(xlist, 0, 0.)
 
     xmin = args.xmin if args.xmin > 0 else min(xlist)
