@@ -271,7 +271,6 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
                 else:
                     xticklabels.append(texifyconfiguration(configlist[i]))
 
-
             ax.set_xticklabels(
                 xticklabels,
                 # fontsize=8,
@@ -289,7 +288,9 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
             # scale to match the ion population
             lte_scalefactor = float(ionpopulation / dfpopthision['n_LTE_T_e'].sum())
 
-        dfpopthision['n_LTE_T_e_normed'] = dfpopthision['n_LTE_T_e'] * lte_scalefactor
+        dfpopthision.eval('n_LTE_T_e_normed = n_LTE_T_e * @x',
+                          local_dict={'x': lte_scalefactor}, inplace=True)
+        dfpopthision['texname'] = [xticklabels[level] for level in dfpopthision.level]
 
         dfpopthision.eval('departure_coeff = n_NLTE / n_LTE_T_e_normed', inplace=True)
 
@@ -299,7 +300,7 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
 
             if not args.hide_lte_tr:
                 lte_scalefactor = float(ionpopulation / dfpopthision['n_LTE_T_R'].sum())
-                dfpopthision['n_LTE_T_R_normed'] = dfpopthision['n_LTE_T_R'] * lte_scalefactor
+                dfpopthision.eval('n_LTE_T_R_normed = n_LTE_T_R * @lte_scalefactor', inplace=True)
                 ax.plot(dfpopthision.level.values, dfpopthision['n_LTE_T_R_normed'].values, linewidth=1.5,
                         label=f'{ionstr} LTE T$_R$ = {T_R:.0f} K', linestyle='None', marker='*')
 
@@ -316,7 +317,7 @@ def make_plot(modelpath, adata, modeldata, estimators, dfpop, atomic_number, ion
         dfpopthisionoddlevels = dfpopthision.query('parity==1')
         velocity = modeldata['velocity'][modelgridindex]
         if args.departuremode:
-            print(dfpopthision[['level', 'departure_coeff']])
+            print(dfpopthision[['level', 'texname', 'departure_coeff']])
             ax.plot(dfpopthision['level'], dfpopthision['departure_coeff'], linewidth=1.5,
                     linestyle='None', marker='x', label=f'{ionstr} ARTIS NLTE', color='C0')
             ax.set_ylabel('Departure coefficient')
