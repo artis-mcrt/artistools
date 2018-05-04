@@ -525,7 +525,7 @@ def get_linelist(modelpath):
 
     dflinelist = pd.DataFrame({
         'lambda_angstroms': lambda_angstroms,
-        'atomic_number': atomic_number,
+        'atomic_number': atomic_numbers,
         'ionstage': ion_stages,
         'upperlevelindex': upper_levels,
         'lowerlevelindex': lower_levels,
