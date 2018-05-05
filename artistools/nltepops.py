@@ -217,10 +217,16 @@ def read_files(modelpath, atomic_number, T_e, T_R, timestep, modelgridindex=-1, 
     return dfpop
 
 
-def make_plot(modelpath, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R,
+def make_plot(modelpath, estimators, atomic_number, ionstages_permitted, T_e, T_R,
               modelgridindex, timestep, args):
+    dfpop = read_files(modelpath, atomic_number, T_e, T_R,
+                       timestep=timestep, modelgridindex=modelgridindex)
+
+    if dfpop.empty:
+        print(f'No NLTE population data for modelgrid cell {args.modelgridindex} timestep {timestep}')
+        return
+
     adata = at.get_levels(modelpath)
-    modeldata, _ = at.get_modeldata(os.path.join(modelpath, 'model.txt'))
 
     # top_ion = 9999
     max_ion_stage = dfpop.ion_stage.max()
@@ -245,10 +251,6 @@ def make_plot(modelpath, estimators, dfpop, atomic_number, ionstages_permitted, 
 
     if len(ion_stage_list) == 1:
         axes = [axes]
-
-    if dfpop.empty:
-        print('Error: No data for selected timestep and element')
-        sys.exit()
 
     for ion, ax in enumerate(axes):
         ion_stage = ion_stage_list[ion]
@@ -330,7 +332,7 @@ def make_plot(modelpath, estimators, dfpop, atomic_number, ionstages_permitted, 
             print(dfpopthision[['level', 'config', 'departure_coeff', 'texname']].to_string(index=False))
 
         dfpopthisionoddlevels = dfpopthision.query('parity==1')
-        velocity = modeldata['velocity'][modelgridindex]
+        velocity = at.get_modeldata(modelpath)[0]['velocity'][modelgridindex]
         if args.departuremode:
             ax.plot(dfpopthision['level'], dfpopthision['departure_coeff'], linewidth=1.5,
                     linestyle='None', marker='x', label=f'{ionstr} ARTIS NLTE', color='C0')
@@ -349,6 +351,14 @@ def make_plot(modelpath, estimators, dfpop, atomic_number, ionstages_permitted, 
                         label='Odd parity', linestyle='None',
                         marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
 
+            compfile = Path('data', 'chianti-tests-Stuart', 'fe_2-test-reducedDensity.txt').open('r')
+            for line in compfile:
+                row = line.split()
+                try:
+                    levelnum = levelnumofconfigterm[(row[1], row[2])]
+                    if levelnum in dfpopthision.level.values:
+                        levelnums.append(levelnum)
+                        if firstdep < 0:
             ax.set_ylim(ymin=1e-2)
             # axis.set_xlim(xmax=60)
 
@@ -518,14 +528,8 @@ def main(args=None, argsraw=None, **kwargs):
 
         print(f'Z={atomic_number} {elsymbol}')
 
-        dfpop = read_files(modelpath, atomic_number, T_e, T_R,
-                           timestep=timestep, modelgridindex=modelgridindex)
-
-        if dfpop.empty:
-            print(f'No NLTE population data for modelgrid cell {args.modelgridindex} timestep {timestep}')
-        else:
-            make_plot(modelpath, estimators, dfpop, atomic_number, ionstages_permitted, T_e, T_R,
-                      modelgridindex, timestep, args)
+        make_plot(modelpath, estimators, atomic_number, ionstages_permitted, T_e, T_R,
+                  modelgridindex, timestep, args)
 
 
 if __name__ == "__main__":
