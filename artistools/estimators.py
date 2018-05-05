@@ -283,11 +283,14 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, **plotkwarg
     assert len(xlist) - 1 == len(mgilist)
     modeldata, _ = at.get_modeldata(modelpath)
     abundancedata = at.get_initialabundances(modelpath)
+    print(abundancedata)
+    print(type(abundancedata))
     ax.set_ylim(ymin=0.)
     ax.set_ylim(ymax=1.0)
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split('_')
-        atomic_number = at.get_atomic_number(splitvariablename[0].strip('0123456789'))
+        elsymbol = splitvariablename[0].strip('0123456789')
+        atomic_number = at.get_atomic_number(elsymbol)
         ax.set_ylabel('Initial mass fraction')
 
         ylist = []
@@ -299,7 +302,7 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, **plotkwarg
                 linelabel = '$^{56}$Ni'
                 linestyle = '--'
             elif speciesstr.lower() in ['ni_stb', 'ni_stable']:
-                yvalue = abundancedata.loc[modelgridindex][atomic_number] - modeldata.loc[modelgridindex]['X_Ni56']
+                yvalue = abundancedata.loc[modelgridindex][f'X_{elsymbol}'] - modeldata.loc[modelgridindex]['X_Ni56']
                 linelabel = 'Stable Ni'
             elif speciesstr.lower() in ['co_56', 'co56', '56co']:
                 yvalue = modeldata.loc[modelgridindex]['X_Co56']
@@ -307,7 +310,7 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, **plotkwarg
             elif speciesstr.lower() in ['fegrp', 'ffegroup']:
                 yvalue = modeldata.loc[modelgridindex]['X_Fegroup']
             else:
-                yvalue = abundancedata.loc[modelgridindex][atomic_number]
+                yvalue = abundancedata.loc[modelgridindex][f'X_{elsymbol}']
             ylist.append(yvalue)
 
         ylist.insert(0, ylist[0])
@@ -597,7 +600,7 @@ def make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators
         if os.path.isdir(args.outputfile):
             args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
         outfilename = str(args.outputfile).format(modelgridindex=mgilist[0])
-    else:  # mix of timesteps and cells somehow?
+    else:  # mix of timesteps and cells somehow?
         figure_title = f'{modelname}'
 
         defaultoutputfile = Path('plotestimators.pdf')
@@ -793,7 +796,7 @@ def main(args=None, argsraw=None, **kwargs):
                 args.x = 'time'
             timesteplist_unfiltered = list(range(timestepmin, timestepmax + 1))
             mgilist = [args.modelgridindex] * len(timesteplist_unfiltered)
-            make_plot(modelpath, timesteplist_unfiltered, estimators, mgilist, args.x, plotlist, args)
+            make_plot(modelpath, timesteplist_unfiltered, mgilist, estimators, args.x, plotlist, args)
         else:
             # plot a snapshot at each timestep showing internal structure
             if not args.x:
