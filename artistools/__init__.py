@@ -179,7 +179,7 @@ def get_closest_cell(modelpath, velocity):
     return mgi
 
 
-def save_modeldata(dfmodeldata, t_model_init_days, filename) -> None:
+def save_modeldata(dfmodeldata, t_model_init_days, filename):
     with open(filename, 'w') as fmodel:
         fmodel.write(f'{len(dfmodeldata)}\n{t_model_init_days:f}\n')
         for _, cell in dfmodeldata.iterrows():
