@@ -359,6 +359,20 @@ def make_plot(modelpath, estimators, atomic_number, ionstages_permitted, T_e, T_
                     if levelnum in dfpopthision.level.values:
                         levelnums.append(levelnum)
                         if firstdep < 0:
+            # compfile = Path('data', 'chianti-tests-Stuart', 'fe_2-test-reducedDensity.txt').open('r')
+            # for line in compfile:
+            #     row = line.split()
+            #     try:
+            #         levelnum = levelnumofconfigterm[(row[1], row[2])]
+            #         if levelnum in dfpopthision.level.values:
+            #             levelnums.append(levelnum)
+            #             if firstdep < 0:
+            #                 firstdep = float(row[0])
+            #             depcoeffs.append(float(row[0]) / firstdep)
+            #     except (KeyError, IndexError, ValueError):
+            #         pass
+            # ax.plot(levelnums, depcoeffs, linewidth=1.5, color='C3',
+            #         label=f'{ionstr} Chianti NLTE DiluteBB lowD', linestyle='None', marker='*', zorder=-1)
             ax.set_ylim(ymin=1e-2)
             # axis.set_xlim(xmax=60)
 
