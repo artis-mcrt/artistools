@@ -218,7 +218,7 @@ def read_files(modelpath, atomic_number, T_e, T_R, timestep, modelgridindex=-1, 
 
 
 def make_ionsubplot(modelpath, ax, atomic_number, ion_stage, dfpop, adata, estimators,
-                    nne, T_e, modelgridindex, timestep, args):
+                    nne, T_e, T_R, modelgridindex, timestep, args):
     ionstr = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
 
     dfpopthision = dfpop.query('ion_stage==@ion_stage').copy()
@@ -346,7 +346,7 @@ def make_plot(modelpath, atomic_number, ionstages_permitted, T_e, T_R,
     for ion, ax in enumerate(axes):
         ion_stage = ion_stage_list[ion]
         make_ionsubplot(modelpath, ax, atomic_number, ion_stage, dfpop, adata, estimators,
-                        nne, T_e, modelgridindex, timestep, args)
+                        nne, T_e, T_R, modelgridindex, timestep, args)
 
         # ax.annotate(ionstr, xy=(0.95, 0.96), xycoords='axes fraction',
         #             horizontalalignment='right', verticalalignment='top', fontsize=12)
