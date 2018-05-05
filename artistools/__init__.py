@@ -171,7 +171,7 @@ def get_modeldata(filename):
 
 
 def get_closest_cell(modelpath, velocity):
-    """Return the modelgridindex of the cell whose velocity is clostest to velocity."""
+    """Return the modelgridindex of the cell whose velocity is closest to velocity."""
     modeldata, _ = get_modeldata(modelpath)
     # print(modeldata['velocity'])
     # arrvel = [float(cell['velocity']) for cell in modeldata]
