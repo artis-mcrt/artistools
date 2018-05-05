@@ -324,7 +324,8 @@ def make_plot(modelpath, estimators, dfpop, atomic_number, ionstages_permitted, 
         #               label=f'Floers NLTE', linestyle='None', marker='*')
 
         pd.set_option('display.max_columns', 150)
-        print(dfpopthision[['level', 'config', 'departure_coeff', 'texname']].to_string(index=False))
+        if len(dfpopthision) < 30:
+            print(dfpopthision[['level', 'config', 'departure_coeff', 'texname']].to_string(index=False))
 
         dfpopthisionoddlevels = dfpopthision.query('parity==1')
         velocity = modeldata['velocity'][modelgridindex]
