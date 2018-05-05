@@ -21,8 +21,6 @@ import artistools.transitions
 modelpath = Path('tests', 'data')
 outputpath = Path('tests', 'output')
 specfilename = modelpath / 'spec.out'
-emissionfilename = modelpath / 'emissiontrue.out.gz'
-absorptionfilename = modelpath / 'absorption.out.gz'
 
 
 def test_timestep_times():
@@ -66,8 +64,7 @@ def test_get_flux_contributions():
     arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
 
     contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
-        emissionfilename, absorptionfilename, timearray, arraynu,
-        xmin=-1, xmax=np.inf, timestepmin=timestepmin, timestepmax=timestepmax)
+        modelpath, timestepmin=timestepmin, timestepmax=timestepmax)
 
     integrated_flux_emission = -np.trapz(array_flambda_emission_total, x=arraylambda_angstroms)
 

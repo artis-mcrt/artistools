@@ -207,6 +207,13 @@ def save_initialabundances(dfabundances, abundancefilename):
 
 
 @lru_cache(maxsize=16)
+def get_nu_grid(modelpath):
+    """Get an array of frequencies at which the ARTIS spectra are binned by exspec"""
+    specfilename = firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
+    specdata = pd.read_csv(specfilename, delim_whitespace=True)
+    return specdata.loc[:, '0'].values
+
+@lru_cache(maxsize=16)
 def get_timestep_times(modelpath):
     """Return a list of the time in days of each timestep using a spec.out file."""
     try:
