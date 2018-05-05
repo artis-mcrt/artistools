@@ -4,6 +4,7 @@ import argparse
 import glob
 import math
 from collections import namedtuple
+from functools import lru_cache
 from pathlib import Path
 
 import matplotlib.ticker as ticker
@@ -200,8 +201,17 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
     return dfspectrum
 
 
-def get_flux_contributions(emissionfilename, absorptionfilename, timearray, arraynu,
-                           filterfunc=None, xmin=-1, xmax=math.inf, timestepmin=0, timestepmax=None):
+@lru_cache(maxsize=4)
+def get_flux_contributions(
+        modelpath, filterfunc=None, timestepmin=0, timestepmax=None, getabsorption=True):
+    # emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out', 'emission.out.gz', 'emission.out']
+    emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out']
+    emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
+    absorptionfilename = (at.firstexisting(['absorption.out.gz', 'absorption.out'], path=modelpath)
+                          if getabsorption else None)
+
+    timearray = at.get_timestep_times(modelpath)
+    arraynu = at.get_nu_grid(modelpath)
     arraylambda = const.c.to('angstrom/s').value / arraynu
     modelpath = Path(emissionfilename).parent
     elementlist = at.get_composition_data(modelpath)
@@ -549,14 +559,9 @@ def make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=None):
 
 def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_peak=None):
     """Plot the emission and absorption by ion for an ARTIS model."""
-    # emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out', 'emission.out.gz', 'emission.out']
-    emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out']
-    emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
 
-    specfilename = at.firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
-    specdata = pd.read_csv(specfilename, delim_whitespace=True)
-    timearray = specdata.columns.values[1:]
-    arraynu = specdata.loc[:, '0'].values
+    timearray = at.get_timestep_times(modelpath)
+    arraynu = at.get_nu_grid(modelpath)
     arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
 
     (timestepmin, timestepmax,
@@ -567,11 +572,8 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
           f'(t={args.timemin:.3f}d to {args.timemax:.3f}d)')
 
-    absorptionfilename = (at.firstexisting(['absorption.out.gz', 'absorption.out'], path=modelpath)
-                          if args.showabsorption else None)
     contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
-        emissionfilename, absorptionfilename, timearray, arraynu,
-        filterfunc, args.xmin, args.xmax, timestepmin, timestepmax)
+        modelpath, filterfunc, timestepmin, timestepmax, getabsorption=args.showabsorption)
 
     at.spectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
 
@@ -591,7 +593,8 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
 
     if args.refspecfiles is None or args.refspecfiles == []:
         plotobjectlabels.append('Net spectrum')
-        line = axis.plot(arraylambda_angstroms, array_flambda_emission_total * scalefactor, linewidth=1.5, color='black', zorder=100)
+        line = axis.plot(arraylambda_angstroms, array_flambda_emission_total * scalefactor,
+                         linewidth=1.5, color='black', zorder=100)
         linecolor = line[0].get_color()
         plotobjects.append(mpatches.Patch(color=linecolor))
 
