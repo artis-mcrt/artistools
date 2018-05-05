@@ -240,7 +240,8 @@ def make_plot(modelpath, estimators, dfpop, atomic_number, ionstages_permitted, 
     subplotheight = 2.4 / 6 if args.x == 'config' else 1.8 / 6
 
     fig, axes = plt.subplots(nrows=len(ion_stage_list), ncols=1, sharex=False,
-                             figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * subplotheight * len(ion_stage_list)),
+                             figsize=(args.figscale * at.figwidth,
+                                      args.figscale * at.figwidth * subplotheight * len(ion_stage_list)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if len(ion_stage_list) == 1:
@@ -257,7 +258,9 @@ def make_plot(modelpath, estimators, dfpop, atomic_number, ionstages_permitted, 
 
         dfpopthision = dfpop.query('ion_stage==@ion_stage').copy()
         ionpopulation = dfpopthision['n_NLTE'].sum()
-        ionpopulation_fromest = estimators[(timestep, modelgridindex)]['populations'].get((atomic_number, ion_stage), 0.)
+        ionpopulation_fromest = estimators[(timestep, modelgridindex)][
+            'populations'].get((atomic_number, ion_stage), 0.)
+
         if args.maxlevel >= 0:
             dfpopthision.query('level <= @args.maxlevel', inplace=True)
 
@@ -287,8 +290,8 @@ def make_plot(modelpath, estimators, dfpop, atomic_number, ionstages_permitted, 
                 horizontalalignment='right',
                 rotation_mode='anchor')
 
-        print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a summed level population of {ionpopulation:.1f}'
-              f' (from estimator file ion pop = {ionpopulation_fromest})')
+        print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a summed '
+              f'level population of {ionpopulation:.1f} (from estimator file ion pop = {ionpopulation_fromest})')
 
         if args.departuremode:
             # scale to match the ground state populations
@@ -314,7 +317,8 @@ def make_plot(modelpath, estimators, dfpop, atomic_number, ionstages_permitted, 
 
         # comparison to Andeas Floers
         # if atomic_number == 26 and ion_stage in [2, 3]:
-        #     floersfilename = 'andreas_level_populations_fe2.txt' if ion_stage == 2 else 'andreas_level_populations_fe3.txt'
+        #     floersfilename = (
+        #         'andreas_level_populations_fe2.txt' if ion_stage == 2 else 'andreas_level_populations_fe3.txt')
         #     floers_levelpops = pd.read_csv(floersfilename, comment='#', delim_whitespace = True)
         #     floers_levelpops.sort_values(by='energypercm', inplace=True)
         #     levelnums = list(range(len(floers_levelpops)))
