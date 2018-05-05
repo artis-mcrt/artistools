@@ -220,9 +220,15 @@ def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=Non
 
 
 def plot_celltimestep(
-        radfielddata, modelpath, specfilename, timestep, outputfile,
+        modelpath, specfilename, timestep, outputfile,
         xmin, xmax, modelgridindex, args, normalised=False):
     """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells)."""
+
+    radfielddata = read_files(modelpath, modelgridindex=modelgridindex).query('timestep==@timestep')
+    if radfielddata.empty:
+        print(f'No data for timestep {timestep:d}')
+        return
+
     time_days = at.get_timestep_time(modelpath, timestep)
 
     print(f'Plotting timestep {timestep:d} (t={time_days})')
@@ -349,18 +355,19 @@ def plot_line_estimator_evolution(axis, radfielddata, bin_num, modelgridindex=No
               label=f'Jb_lu bin_num {bin_num}', **plotkwargs)
 
 
-def plot_timeevolution(
-        radfielddata, modelpath, outputfile, modelgridindex, args):
+def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
     """Plot a estimator evolution over time for a cell."""
     print(f'Plotting time evolution of cell {modelgridindex:d}')
 
+    radfielddata = read_files(modelpath, modelgridindex=modelgridindex)
     radfielddataselected = radfielddata.query('modelgridindex == @modelgridindex')
 
     const_c = const.c.to('angstrom/s').value
 
     nlinesplotted = 200
     fig, axes = plt.subplots(nlinesplotted, 1, sharex=True,
-                             figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * (0.25 + nrows * 0.35)),
+                             figsize=(args.figscale * at.figwidth,
+                                      args.figscale * at.figwidth * (0.25 + nlinesplotted * 0.35)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     time_days = 330
@@ -498,19 +505,14 @@ def main(args=None, argsraw=None, **kwargs):
 
         if args.xaxis == 'lambda':
             for timestep in timesteplist:
-                radfielddata_currenttimestep = radfielddata.query('timestep==@timestep')
-
-                if not radfielddata_currenttimestep.empty:
-                    outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
-                    plot_celltimestep(
-                        radfielddata_currenttimestep, modelpath, specfilename, timestep, outputfile,
-                        xmin=args.xmin, xmax=args.xmax, modelgridindex=modelgridindex,
-                        args=args, normalised=args.normalised)
-                else:
-                    print(f'No data for timestep {timestep:d}')
+                outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
+                plot_celltimestep(
+                    modelpath, specfilename, timestep, outputfile,
+                    xmin=args.xmin, xmax=args.xmax, modelgridindex=modelgridindex,
+                    args=args, normalised=args.normalised)
         elif args.xaxis == 'timestep':
             outputfile = args.outputfile.format(modelgridindex=modelgridindex)
-            plot_timeevolution(radfielddata, modelpath, outputfile, modelgridindex, args)
+            plot_timeevolution(modelpath, outputfile, modelgridindex, args)
         else:
             print('Unknown plot type {args.plot}')
             return 1

@@ -50,7 +50,7 @@ def texifyterm(strterm):
 def texifyconfiguration(levelname):
     """Replace a level configuration with the formatted LaTeX equivalent."""
     # the underscore gets confused with LaTeX subscript operator, so switch it to the hash symbol
-    strout = "#".join(levelname.split('_')[:-1]) + '#'
+    strout = '#'.join(levelname.split('_')[:-1]) + '#'
     for strorbitalocc in re.findall(r'[0-9][a-z][0-9]?[#(]', strout):
         n, lchar, occ = re.split('([a-z])', strorbitalocc)
         lastchar = '(' if occ.endswith('(') else '#'
@@ -61,7 +61,6 @@ def texifyconfiguration(levelname):
     for parentterm in re.findall(r'\([0-9][A-Z][^)]?\)', strout):
         parentermtex = f'({texifyterm(parentterm.strip("()"))})'
         strout = strout.replace(parentterm, parentermtex)
-
     strterm = levelname.split('_')[-1]
     strout += ' ' + texifyterm(strterm)
 
@@ -73,7 +72,7 @@ def texifyconfiguration(levelname):
 
 @lru_cache(maxsize=32)
 def get_nltepops(modelpath, timestep, modelgridindex):
-    """Read in NLTE populations from a model for a particular timestep and grid cell"""
+    """Read in NLTE populations from a model for a particular timestep and grid cell."""
     mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
 
     nlte_files = list(chain(
@@ -173,7 +172,7 @@ def read_file(adata, nltefilename, modelgridindex, timestep, atomic_number, T_e,
 
 
 def read_files(modelpath, atomic_number, T_e, T_R, timestep, modelgridindex=-1, noprint=False):
-    """Read in NLTE populations from a model for a particular timestep and grid cell"""
+    """Read in NLTE populations from a model for a particular timestep and grid cell."""
     adata = at.get_levels(modelpath)
     if modelgridindex > -1:
         mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
