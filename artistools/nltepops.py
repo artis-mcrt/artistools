@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 import argparse
-import glob
 import math
 import os
 import re
 import sys
-from collections import namedtuple
 from functools import lru_cache
 from pathlib import Path
 from itertools import chain
@@ -20,6 +18,7 @@ import artistools as at
 import artistools.estimators
 
 defaultoutputfile = 'plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
+
 
 def texifyterm(strterm):
     """Replace a term string with TeX notation equivalent."""
