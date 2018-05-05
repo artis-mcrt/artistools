@@ -517,7 +517,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     ions.sort()
 
-    adata = None if args.noexcitation else at.get_levels(modelpath, get_transitions=True, ionlist=ions)
+    adata = None if args.noexcitation else at.get_levels(modelpath, get_transitions=True, ionlist=tuple(ions))
 
     print(f'     nntot: {nntot:.2e} /cm3')
     print(f'       nne: {nne:.2e} /cm3')

@@ -217,7 +217,7 @@ def read_files(modelpath, atomic_number, T_e, T_R, timestep, modelgridindex=-1, 
     return dfpop
 
 
-def make_ionsubplot(modelpath, ax, atomic_number, ion_stage, dfpop, adata, estimators,
+def make_ionsubplot(modelpath, ax, atomic_number, ion_stage, dfpop, ion_data, estimators,
                     nne, T_e, T_R, modelgridindex, timestep, args):
     ionstr = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
 
@@ -229,7 +229,6 @@ def make_ionsubplot(modelpath, ax, atomic_number, ion_stage, dfpop, adata, estim
     if args.maxlevel >= 0:
         dfpopthision.query('level <= @args.maxlevel', inplace=True)
 
-    ion_data = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0]
     configlist = ion_data.levels.iloc[:max(dfpopthision.level) + 1].levelname
 
     configtexlist = [texifyconfiguration(configlist[0])]
@@ -345,7 +344,8 @@ def make_plot(modelpath, atomic_number, ionstages_permitted, T_e, T_R,
 
     for ion, ax in enumerate(axes):
         ion_stage = ion_stage_list[ion]
-        make_ionsubplot(modelpath, ax, atomic_number, ion_stage, dfpop, adata, estimators,
+        ion_data = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0]
+        make_ionsubplot(modelpath, ax, atomic_number, ion_stage, dfpop, ion_data, estimators,
                         nne, T_e, T_R, modelgridindex, timestep, args)
 
         # ax.annotate(ionstr, xy=(0.95, 0.96), xycoords='axes fraction',
