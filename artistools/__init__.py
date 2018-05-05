@@ -279,6 +279,7 @@ def get_timestep_time_delta(timestep, timearray=None, inputparams=None):
     return delta_t
 
 
+@lru_cache(maxsize=8)
 def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisations=False):
     """Return a list of lists of levels."""
     adatafilename = os.path.join(modelpath, 'adata.txt')
