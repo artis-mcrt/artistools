@@ -93,7 +93,7 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
     dfspectrum = pd.DataFrame({'nu': nu, 'f_nu': f_nu})
     dfspectrum.sort_values(by='nu', ascending=False, inplace=True)
 
-    dfspectrum.eval('lambda_angstroms = @c / nu', local_dict={'c': const.c.to('angstrom/s').valu}, inplace=True)
+    dfspectrum.eval('lambda_angstroms = @c / nu', local_dict={'c': const.c.to('angstrom/s').value}, inplace=True)
     dfspectrum.eval('f_lambda = f_nu * nu / lambda_angstroms', inplace=True)
 
     return dfspectrum
