@@ -301,7 +301,7 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, **plotkwarg
                 linelabel = '$^{56}$Ni'
                 linestyle = '--'
             elif speciesstr.lower() in ['ni_stb', 'ni_stable']:
-                yvalue = abundancedata[modelgridindex][f'X_{elsymbol}'] - modeldata.loc[modelgridindex]['X_Ni56']
+                yvalue = abundancedata.loc[modelgridindex][f'X_{elsymbol}'] - modeldata.loc[modelgridindex]['X_Ni56']
                 linelabel = 'Stable Ni'
             elif speciesstr.lower() in ['co_56', 'co56', '56co']:
                 yvalue = modeldata.loc[modelgridindex]['X_Co56']
@@ -309,7 +309,7 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, **plotkwarg
             elif speciesstr.lower() in ['fegrp', 'ffegroup']:
                 yvalue = modeldata.loc[modelgridindex]['X_Fegroup']
             else:
-                yvalue = abundancedata[modelgridindex][f'X_{elsymbol}']
+                yvalue = abundancedata.loc[modelgridindex][f'X_{elsymbol}']
             ylist.append(yvalue)
 
         ylist.insert(0, ylist[0])
