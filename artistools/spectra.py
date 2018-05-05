@@ -93,8 +93,7 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
     dfspectrum = pd.DataFrame({'nu': nu, 'f_nu': f_nu})
     dfspectrum.sort_values(by='nu', ascending=False, inplace=True)
 
-    c = const.c.to('angstrom/s').value
-    dfspectrum.eval('lambda_angstroms = @c / nu', inplace=True)
+    dfspectrum.eval('lambda_angstroms = @c / nu', local_dict={'c': const.c.to('angstrom/s').valu}, inplace=True)
     dfspectrum.eval('f_lambda = f_nu * nu / lambda_angstroms', inplace=True)
 
     return dfspectrum
@@ -366,7 +365,7 @@ def plot_reference_spectra(axes, plotobjects, plotobjectlabels, args, flambdafil
 
 
 def plot_reference_spectrum(
-    filename, axis, xmin, xmax, flambdafilterfunc=None, scale_to_peak=None, scale_to_dist_mpc=1, **plotkwargs):
+        filename, axis, xmin, xmax, flambdafilterfunc=None, scale_to_peak=None, scale_to_dist_mpc=1, **plotkwargs):
     """Plot a single reference spectrum.
 
     The filename must be in space separated text formated with the first two
