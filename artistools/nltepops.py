@@ -81,7 +81,7 @@ def get_nltepops(modelpath, timestep, modelgridindex):
 
     if not nlte_files:
         print("No NLTE files found.")
-        return
+        return False
     else:
         print(f'Loading {len(nlte_files)} NLTE files')
         for nltefilepath in nlte_files:
@@ -97,7 +97,10 @@ def get_nltepops(modelpath, timestep, modelgridindex):
 
 def read_file(adata, nltefilename, modelgridindex, timestep, atomic_number, T_e, T_R, noprint=False):
     """Read NLTE populations from one file, adding in the LTE at T_E and T_R populations."""
-    # print(f'Reading {nltefilename}...')
+
+    if modelgridindex > -1:
+        print(f'Reading {nltefilename}...')
+
     try:
         dfpop = pd.read_csv(nltefilename, delim_whitespace=True)
     except pd.errors.EmptyDataError:
@@ -128,41 +131,39 @@ def read_file(adata, nltefilename, modelgridindex, timestep, atomic_number, T_e,
             ionlevels[(atomic_number, ion_stage)] = adata.query(
                 'Z == @atomic_number and ion_stage == @ion_stage').iloc[0].levels
 
-        ltepop_T_e = 0.0
-        ltepop_T_R = 0.0
         levelnumber = int(row.level)
         gspopthision = gspop[(row.Z, row.ion_stage)]
+
         if levelnumber == -1:  # superlevel
             levelnumbersl = dfpop.query(
                 'modelgridindex==@row.modelgridindex and timestep==@row.timestep '
                 'and Z==@atomic_number and ion_stage==@ion_stage').level.max()
             dfpop.loc[index, 'level'] = levelnumbersl + 2
-            parity = 0
+
             if not noprint:
                 print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} '
                       f'has a superlevel at level {levelnumbersl}')
 
             gslevel = ionlevels[(atomic_number, ion_stage)].iloc[0]
             sl_levels = ionlevels[(atomic_number, ion_stage)].iloc[levelnumbersl:]
-            ltepop_T_e = gspopthision * sl_levels.eval(
-                'g / @gslevel.g * exp(- (energy_ev - @gslevel.energy_ev) / @k_b / @T_e)').sum()
-            ltepop_T_R = gspopthision * sl_levels.eval(
-                'g / @gslevel.g * exp(- (energy_ev - @gslevel.energy_ev) / @k_b / @T_R)').sum()
+            list_ltepop_T_e.append(gspopthision * sl_levels.eval(
+                'g / @gslevel.g * exp(- (energy_ev - @gslevel.energy_ev) / @k_b / @T_e)').sum())
+            list_ltepop_T_R.append(gspopthision * sl_levels.eval(
+                'g / @gslevel.g * exp(- (energy_ev - @gslevel.energy_ev) / @k_b / @T_R)').sum())
+            list_parity.append(0)
+
         else:
+
             level = ionlevels[(atomic_number, ion_stage)].iloc[levelnumber]
             gslevel = ionlevels[(atomic_number, ion_stage)].iloc[0]
 
             exc_energy = level.energy_ev - gslevel.energy_ev
 
-            ltepop_T_e = gspopthision * level.g / gslevel.g * math.exp(- exc_energy / k_b / T_e)
-            ltepop_T_R = gspopthision * level.g / gslevel.g * math.exp(- exc_energy / k_b / T_R)
+            list_ltepop_T_e.append(gspopthision * level.g / gslevel.g * math.exp(- exc_energy / k_b / T_e))
+            list_ltepop_T_R.append(gspopthision * level.g / gslevel.g * math.exp(- exc_energy / k_b / T_R))
 
             levelname = level.levelname.split('[')[0]
-            parity = 1 if levelname[-1] == 'o' else 0
-
-        list_ltepop_T_e.append(ltepop_T_e)
-        list_ltepop_T_R.append(ltepop_T_R)
-        list_parity.append(parity)
+            list_parity.append(1 if levelname[-1] == 'o' else 0)
 
     dfpop['n_LTE_T_e'] = pd.Series(list_ltepop_T_e, index=list_indicies)
     dfpop['n_LTE_T_R'] = pd.Series(list_ltepop_T_R, index=list_indicies)
@@ -199,8 +200,6 @@ def read_files(modelpath, atomic_number, T_e, T_R, timestep, modelgridindex=-1, 
         return dfpop
 
     for nltefilepath in sorted(nlte_files):
-        if modelgridindex > -1:
-            print(f'Reading {nltefilepath}...')
         dfpop_thisfile = read_file(
             adata, nltefilepath, modelgridindex, timestep, atomic_number, T_e, T_R, noprint=noprint)
 
@@ -306,6 +305,8 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
                     label='Odd parity', linestyle='None',
                     marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
 
+
+def make_plot(modelpath, atomic_number, ionstages_permitted, modelgridindex, timestep, args):
     adata = at.get_levels(modelpath)
 
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
