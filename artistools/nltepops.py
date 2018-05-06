@@ -95,20 +95,8 @@ def get_nltepops(modelpath, timestep, modelgridindex):
     return pd.DataFrame()
 
 
-def read_file(adata, nltefilename, modelgridindex, timestep, atomic_number, T_e, T_R, noprint=False):
-    """Read NLTE populations from one file, adding in the LTE at T_E and T_R populations."""
-
-    if modelgridindex > -1:
-        print(f'Reading {nltefilename}...')
-
-    try:
-        dfpop = pd.read_csv(nltefilename, delim_whitespace=True)
-    except pd.errors.EmptyDataError:
-        return pd.DataFrame()
-
-    dfpop.query('(timestep==@timestep) & (Z==@atomic_number)', inplace=True)
-    if modelgridindex >= 0:
-        dfpop.query('modelgridindex==@modelgridindex', inplace=True)
+def add_lte_pops_parity(modelpath, dfpop, T_e, T_R, noprint=False):
+    adata = at.get_levels(modelpath)
 
     k_b = const.k_B.to('eV / K').value
     list_indicies = []
@@ -169,12 +157,29 @@ def read_file(adata, nltefilename, modelgridindex, timestep, atomic_number, T_e,
     dfpop['n_LTE_T_R'] = pd.Series(list_ltepop_T_R, index=list_indicies)
     dfpop['parity'] = pd.Series(list_parity, index=list_indicies)
 
+
+def read_file(nltefilename, modelpath, modelgridindex, timestep, atomic_number, T_e, T_R, noprint=False):
+    """Read NLTE populations from one file, adding in the LTE at T_E and T_R populations."""
+    if modelgridindex > -1:
+        filesize = Path(nltefilename).stat().st_size / 1024 / 1024
+        print(f'Reading {nltefilename} ({filesize:.3f} MiB)')
+
+    try:
+        dfpop = pd.read_csv(nltefilename, delim_whitespace=True)
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame()
+
+    dfpop.query('(timestep==@timestep) & (Z==@atomic_number)', inplace=True)
+    if modelgridindex >= 0:
+        dfpop.query('modelgridindex==@modelgridindex', inplace=True)
+
+    add_lte_pops_parity(modelpath, dfpop, T_e, T_R, noprint)
+
     return dfpop
 
 
 def read_files(modelpath, atomic_number, T_e, T_R, timestep, modelgridindex=-1, noprint=False):
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
-    adata = at.get_levels(modelpath)
     if modelgridindex > -1:
         mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
 
@@ -201,7 +206,7 @@ def read_files(modelpath, atomic_number, T_e, T_R, timestep, modelgridindex=-1, 
 
     for nltefilepath in sorted(nlte_files):
         dfpop_thisfile = read_file(
-            adata, nltefilepath, modelgridindex, timestep, atomic_number, T_e, T_R, noprint=noprint)
+            nltefilepath, modelpath, modelgridindex, timestep, atomic_number, T_e, T_R, noprint=noprint)
 
         # found our data!
         if not dfpop_thisfile.empty:
