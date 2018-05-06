@@ -244,31 +244,35 @@ def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
                             runfolder_timesteps[estfilefolderpath] = set()
                         runfolder_timesteps[estfilefolderpath].add(timestep)
 
-                        estimators[(timestep, modelgridindex)] = {}
-                        estimators[(timestep, modelgridindex)]['velocity'] = modeldata['velocity'][modelgridindex]
+                        estimcelltimestep = {}
+                        estimators[(timestep, modelgridindex)] = estimcelltimestep
+
+                        estimcelltimestep['velocity'] = modeldata['velocity'][modelgridindex]
                         emptycell = (row[4] == 'EMPTYCELL')
-                        estimators[(timestep, modelgridindex)]['emptycell'] = emptycell
+                        estimcelltimestep['emptycell'] = emptycell
+
                         if not emptycell:
-                            estimators[(timestep, modelgridindex)]['TR'] = float(row[5])
-                            estimators[(timestep, modelgridindex)]['Te'] = float(row[7])
-                            estimators[(timestep, modelgridindex)]['W'] = float(row[9])
-                            estimators[(timestep, modelgridindex)]['TJ'] = float(row[11])
-                            estimators[(timestep, modelgridindex)]['nne'] = float(row[15])
+                            estimcelltimestep['TR'] = float(row[5])
+                            estimcelltimestep['Te'] = float(row[7])
+                            estimcelltimestep['W'] = float(row[9])
+                            estimcelltimestep['TJ'] = float(row[11])
+                            estimcelltimestep['nne'] = float(row[15])
 
-                elif row[1].startswith('Z=') and not skip_block:
-                    parse_ion_row(row, estimators[(timestep, modelgridindex)])
+                elif not skip_block:
+                    if row[1].startswith('Z='):
+                        parse_ion_row(row, estimcelltimestep)
 
-                elif row[0] == 'heating:' and not skip_block:
-                    for index, token in list(enumerate(row))[1::2]:
-                        estimators[(timestep, modelgridindex)][f'heating_{token}'] = float(row[index + 1])
-                    if estimators[(timestep, modelgridindex)]['heating_gamma/gamma_dep'] > 0:
-                        estimators[(timestep, modelgridindex)]['gamma_dep'] = (
-                            estimators[(timestep, modelgridindex)]['heating_gamma'] /
-                            estimators[(timestep, modelgridindex)]['heating_gamma/gamma_dep'])
+                    elif row[0] == 'heating:':
+                        for index, token in list(enumerate(row))[1::2]:
+                            estimcelltimestep[f'heating_{token}'] = float(row[index + 1])
+                        if estimcelltimestep['heating_gamma/gamma_dep'] > 0:
+                            estimcelltimestep['gamma_dep'] = (
+                                estimcelltimestep['heating_gamma'] /
+                                estimcelltimestep['heating_gamma/gamma_dep'])
 
-                elif row[0] == 'cooling:' and not skip_block:
-                    for index, token in list(enumerate(row))[1::2]:
-                        estimators[(timestep, modelgridindex)][f'cooling_{token}'] = float(row[index + 1])
+                    elif row[0] == 'cooling:':
+                        for index, token in list(enumerate(row))[1::2]:
+                            estimcelltimestep[f'cooling_{token}'] = float(row[index + 1])
 
         if (match_modelgridindex < 0 and
                 estfilefolderpath not in runfolder_alltimesteps_found and
