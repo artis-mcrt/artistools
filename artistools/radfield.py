@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
 
 import argparse
-import glob
 import math
 import re
 import sys
 
+from astropy import constants as const
+from astropy import units as u
+from functools import lru_cache
+from pathlib import Path
+from itertools import chain
+
+import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 # import matplotlib.patches as mpatches
-import numpy as np
-import pandas as pd
-from astropy import constants as const
-from astropy import units as u
-from pathlib import Path
-from itertools import chain
 
 import artistools as at
 import artistools.spectra
 
 
+@lru_cache(maxsize=16)
 def read_files(modelpath, modelgridindex=-1):
     """Read radiation field data from a list of file paths into a pandas DataFrame."""
     radfielddata = None
