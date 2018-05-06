@@ -3,7 +3,7 @@ import argparse
 import math
 import os
 import re
-import sys
+# import sys
 from functools import lru_cache
 from pathlib import Path
 from itertools import chain
@@ -95,14 +95,13 @@ def get_nltepops(modelpath, timestep, modelgridindex):
     return pd.DataFrame()
 
 
-def add_lte_pops_parity(modelpath, dfpop, T_e, T_R, noprint=False):
+def add_lte_pops(modelpath, dfpop, T_e, T_R, noprint=False):
     adata = at.get_levels(modelpath)
 
     k_b = const.k_B.to('eV / K').value
     list_indicies = []
     list_ltepop_T_e = []
     list_ltepop_T_R = []
-    list_parity = []
     gspop = {}
     ionlevels = {}
     for index, row in dfpop.iterrows():
@@ -112,8 +111,8 @@ def add_lte_pops_parity(modelpath, dfpop, T_e, T_R, noprint=False):
         ion_stage = int(row.ion_stage)
         if (atomic_number, ion_stage) not in gspop:
             gspop[(row.Z, row.ion_stage)] = dfpop.query(
-                'modelgridindex==@row.modelgridindex and timestep==@row.timestep '
-                'and Z==@atomic_number and ion_stage==@ion_stage and level==0').iloc[0]['n_NLTE']
+                'modelgridindex == @row.modelgridindex and timestep == @row.timestep '
+                'and Z == @atomic_number and ion_stage == @ion_stage and level == 0').iloc[0]['n_NLTE']
 
         if (atomic_number, ion_stage) not in ionlevels:
             ionlevels[(atomic_number, ion_stage)] = adata.query(
@@ -124,8 +123,8 @@ def add_lte_pops_parity(modelpath, dfpop, T_e, T_R, noprint=False):
 
         if levelnumber == -1:  # superlevel
             levelnumbersl = dfpop.query(
-                'modelgridindex==@row.modelgridindex and timestep==@row.timestep '
-                'and Z==@atomic_number and ion_stage==@ion_stage').level.max()
+                'modelgridindex == @row.modelgridindex and timestep == @row.timestep '
+                'and Z == @atomic_number and ion_stage == @ion_stage').level.max()
             dfpop.loc[index, 'level'] = levelnumbersl + 2
 
             if not noprint:
@@ -138,7 +137,6 @@ def add_lte_pops_parity(modelpath, dfpop, T_e, T_R, noprint=False):
                 'g / @gslevel.g * exp(- (energy_ev - @gslevel.energy_ev) / @k_b / @T_e)').sum())
             list_ltepop_T_R.append(gspopthision * sl_levels.eval(
                 'g / @gslevel.g * exp(- (energy_ev - @gslevel.energy_ev) / @k_b / @T_R)').sum())
-            list_parity.append(0)
 
         else:
 
@@ -150,12 +148,10 @@ def add_lte_pops_parity(modelpath, dfpop, T_e, T_R, noprint=False):
             list_ltepop_T_e.append(gspopthision * level.g / gslevel.g * math.exp(- exc_energy / k_b / T_e))
             list_ltepop_T_R.append(gspopthision * level.g / gslevel.g * math.exp(- exc_energy / k_b / T_R))
 
-            levelname = level.levelname.split('[')[0]
-            list_parity.append(1 if levelname[-1] == 'o' else 0)
-
     dfpop['n_LTE_T_e'] = pd.Series(list_ltepop_T_e, index=list_indicies)
     dfpop['n_LTE_T_R'] = pd.Series(list_ltepop_T_R, index=list_indicies)
-    dfpop['parity'] = pd.Series(list_parity, index=list_indicies)
+
+    # print(dfpop[['level', 'n_LTE_T_e', 'n_LTE_T_e2']])
 
 
 @lru_cache(maxsize=8)
@@ -177,7 +173,7 @@ def read_file(nltefilename, modelpath, modelgridindex, timestep):
     return dfpop
 
 
-def read_files(modelpath, atomic_number, T_e, T_R, timestep, modelgridindex=-1, noprint=False):
+def read_files(modelpath, timestep, modelgridindex=-1, noprint=False):
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
     if modelgridindex > -1:
         mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
@@ -206,9 +202,7 @@ def read_files(modelpath, atomic_number, T_e, T_R, timestep, modelgridindex=-1, 
     for nltefilepath in sorted(nlte_files):
 
         dfpop_thisfile = read_file(
-            nltefilepath, modelpath, modelgridindex, timestep).query('Z==@atomic_number').copy()
-
-        add_lte_pops_parity(modelpath, dfpop_thisfile, T_e, T_R, noprint)
+            nltefilepath, modelpath, modelgridindex, timestep).copy()
 
         # found our data!
         if not dfpop_thisfile.empty:
@@ -230,13 +224,21 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
 
     nne = estimators[(timestep, modelgridindex)]['nne']
 
-    dfpopthision = dfpop.query('ion_stage==@ion_stage').copy()
+    dfpopthision = dfpop.query(
+        'modelgridindex == @modelgridindex and timestep==@timestep'
+        'and Z == @atomic_number and ion_stage == @ion_stage').copy()
     ionpopulation = dfpopthision['n_NLTE'].sum()
     ionpopulation_fromest = estimators[(timestep, modelgridindex)][
         'populations'].get((atomic_number, ion_stage), 0.)
 
     if args.maxlevel >= 0:
         dfpopthision.query('level <= @args.maxlevel', inplace=True)
+
+    dfpopthision['parity'] = [
+        1 if (row.level != -1 and
+              ion_data.levels.iloc[
+                  int(row.level)].levelname.split('[')[0][-1] == "o")
+        else 0 for _, row in dfpopthision.iterrows()]
 
     configlist = ion_data.levels.iloc[:max(dfpopthision.level) + 1].levelname
 
@@ -334,8 +336,9 @@ def make_plot(modelpath, atomic_number, ionstages_permitted, modelgridindex, tim
         T_e = args.exc_temperature
         T_R = args.exc_temperature
 
-    dfpop = read_files(modelpath, atomic_number, T_e, T_R,
-                       timestep=timestep, modelgridindex=modelgridindex)
+    dfpop = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex).query('Z == @atomic_number')
+
+    add_lte_pops(modelpath, dfpop, T_e, T_R)
 
     if dfpop.empty:
         print(f'No NLTE population data for modelgrid cell {args.modelgridindex} timestep {timestep}')
