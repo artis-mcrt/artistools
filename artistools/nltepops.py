@@ -158,8 +158,9 @@ def add_lte_pops_parity(modelpath, dfpop, T_e, T_R, noprint=False):
     dfpop['parity'] = pd.Series(list_parity, index=list_indicies)
 
 
-def read_file(nltefilename, modelpath, modelgridindex, timestep, atomic_number, T_e, T_R, noprint=False):
-    """Read NLTE populations from one file, adding in the LTE at T_E and T_R populations."""
+@lru_cache(maxsize=8)
+def read_file(nltefilename, modelpath, modelgridindex, timestep):
+    """Read NLTE populations from one file."""
     if modelgridindex > -1:
         filesize = Path(nltefilename).stat().st_size / 1024 / 1024
         print(f'Reading {nltefilename} ({filesize:.3f} MiB)')
@@ -169,11 +170,9 @@ def read_file(nltefilename, modelpath, modelgridindex, timestep, atomic_number, 
     except pd.errors.EmptyDataError:
         return pd.DataFrame()
 
-    dfpop.query('(timestep==@timestep) & (Z==@atomic_number)', inplace=True)
+    dfpop.query('timestep==@timestep', inplace=True)
     if modelgridindex >= 0:
         dfpop.query('modelgridindex==@modelgridindex', inplace=True)
-
-    add_lte_pops_parity(modelpath, dfpop, T_e, T_R, noprint)
 
     return dfpop
 
@@ -205,8 +204,12 @@ def read_files(modelpath, atomic_number, T_e, T_R, timestep, modelgridindex=-1, 
         return dfpop
 
     for nltefilepath in sorted(nlte_files):
+
         dfpop_thisfile = read_file(
-            nltefilepath, modelpath, modelgridindex, timestep, atomic_number, T_e, T_R, noprint=noprint)
+            nltefilepath, modelpath, modelgridindex, timestep)
+
+        dfpop_thisfile.query('Z==@atomic_number', inplace=True)
+        add_lte_pops_parity(modelpath, dfpop_thisfile, T_e, T_R, noprint)
 
         # found our data!
         if not dfpop_thisfile.empty:
