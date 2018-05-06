@@ -216,7 +216,8 @@ def get_flux_contributions(
     elementlist = at.get_composition_data(modelpath)
     nelements = len(elementlist)
 
-    print(f'  Reading {emissionfilename}')
+    emissionfilesize = Path(emissionfilename).stat().st_size / 1024 / 1024
+    print(f'  Reading {emissionfilename} ({emissionfilesize:.3f} MiB)')
     emissiondata = pd.read_csv(emissionfilename, delim_whitespace=True, header=None)
     maxion_float = (emissiondata.shape[1] - 1) / 2 / nelements  # also known as MIONS in ARTIS sn3d.h
     assert maxion_float.is_integer()
@@ -227,7 +228,8 @@ def get_flux_contributions(
     assert emissiondata.shape[0] == len(arraynu) * len(timearray)
 
     if absorptionfilename:
-        print(f'  Reading {absorptionfilename}')
+        absorptionfilesize = Path(absorptionfilename).stat().st_size / 1024 / 1024
+        print(f'  Reading {absorptionfilename} ({absorptionfilesize:.3f} MiB)')
         absorptiondata = pd.read_csv(absorptionfilename, delim_whitespace=True, header=None)
         absorption_maxion_float = absorptiondata.shape[1] / nelements
         assert absorption_maxion_float.is_integer()

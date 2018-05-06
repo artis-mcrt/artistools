@@ -209,7 +209,8 @@ def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
             continue
 
         if match_modelgridindex >= 0:
-            print(f'Reading {estfilepath}...')
+            filesize = Path(estfilepath).stat().st_size / 1024 / 1024
+            print(f'Reading {estfilepath} ({filesize:.3f} MiB)')
 
         opener = gzip.open if str(estfilepath).endswith('.gz') else open
         with opener(estfilepath, 'rt') as estfile:
