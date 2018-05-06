@@ -206,9 +206,8 @@ def read_files(modelpath, atomic_number, T_e, T_R, timestep, modelgridindex=-1, 
     for nltefilepath in sorted(nlte_files):
 
         dfpop_thisfile = read_file(
-            nltefilepath, modelpath, modelgridindex, timestep)
+            nltefilepath, modelpath, modelgridindex, timestep).query('Z==@atomic_number').copy()
 
-        dfpop_thisfile.query('Z==@atomic_number', inplace=True)
         add_lte_pops_parity(modelpath, dfpop_thisfile, T_e, T_R, noprint)
 
         # found our data!
@@ -217,9 +216,9 @@ def read_files(modelpath, atomic_number, T_e, T_R, timestep, modelgridindex=-1, 
                 return dfpop_thisfile
             else:
                 if dfpop.empty:
-                    dfpop = dfpop_thisfile.copy()
+                    dfpop = dfpop_thisfile
                 else:
-                    dfpop = dfpop.append(dfpop_thisfile.copy(), ignore_index=True)
+                    dfpop = dfpop.append(dfpop_thisfile, ignore_index=True)
 
     return dfpop
 

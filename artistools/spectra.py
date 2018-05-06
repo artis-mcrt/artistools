@@ -351,17 +351,16 @@ def plot_reference_spectra(axes, plotobjects, plotobjectlabels, args, flambdafil
             args.refspecfiles = [args.refspecfiles]
         colorlist = ['black', '0.4']
         for index, filename in enumerate(args.refspecfiles):
-            print(filename)
             if index < len(colorlist):
                 plotkwargs['color'] = colorlist[index]
 
-            for index, axis in enumerate(axes):
+            for axindex, axis in enumerate(axes):
                 supxmin, supxmax = axis.get_xlim()
                 plotobj, serieslabel = plot_reference_spectrum(
                     filename, axis, supxmin, supxmax,
                     flambdafilterfunc, scale_to_peak, zorder=1000, **plotkwargs)
 
-                if index == 0:
+                if axindex == 0:
                     plotobjects.append(plotobj)
                     plotobjectlabels.append(serieslabel)
 
@@ -392,6 +391,7 @@ def plot_reference_spectrum(
 
     serieslabel = plotkwargs['label']
     print(f"Reference spectrum '{serieslabel}' has {len(specdata)} points in the plot range")
+    print(f"  File: {filename}")
 
     specdata.query('lambda_angstroms > @xmin and lambda_angstroms < @xmax', inplace=True)
 
@@ -517,7 +517,7 @@ def plot_artis_spectrum(axes, modelpath, args, scale_to_peak=None, from_packets=
 
     spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
 
-    at.spectra.print_integrated_flux(spectrum['f_lambda'], spectrum['lambda_angstroms'])
+    print_integrated_flux(spectrum['f_lambda'], spectrum['lambda_angstroms'])
 
     if scale_to_peak:
         spectrum['f_lambda_scaled'] = spectrum['f_lambda'] / spectrum['f_lambda'].max() * scale_to_peak
@@ -540,7 +540,8 @@ def make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=None):
 
     for index, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
-        print(f"ARTIS model '{modelname}' at path '{modelpath}'")
+        print(f"ARTIS model '{modelname}'")
+        print(f"  Path: {modelpath}")
         plotkwargs = {}
         # plotkwargs['dashes'] = dashesList[index]
         # plotkwargs['dash_capstyle'] = dash_capstyleList[index]
