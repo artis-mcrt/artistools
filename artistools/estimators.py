@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Functions for reading and plotting estimator files.
+
 Examples are temperatures, populations, heating/cooling rates.
 """
 # import math
@@ -66,7 +67,7 @@ def get_elemcolor(atomic_number=None, elsymbol=None):
 
 
 def get_ionrecombrates_fromfile(filename):
-    """WARNING: copy pasted from artis-atomic! replace with a package import soon ionstage is the lower ion stage!"""
+    """WARNING: copy pasted from artis-atomic! replace with a package import soon ionstage is the lower ion stage."""
     print(f'Reading {filename}')
 
     header_row = []
