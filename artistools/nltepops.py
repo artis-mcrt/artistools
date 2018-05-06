@@ -217,9 +217,12 @@ def read_files(modelpath, atomic_number, T_e, T_R, timestep, modelgridindex=-1, 
     return dfpop
 
 
-def make_ionsubplot(modelpath, ax, atomic_number, ion_stage, dfpop, ion_data, estimators,
-                    nne, T_e, T_R, modelgridindex, timestep, args):
+def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, estimators,
+                    T_e, T_R, modelgridindex, timestep, args):
+    """Plot the level populations the specified ion, cell, and timestep."""
     ionstr = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
+
+    nne = estimators[(timestep, modelgridindex)]['nne']
 
     dfpopthision = dfpop.query('ion_stage==@ion_stage').copy()
     ionpopulation = dfpopthision['n_NLTE'].sum()
@@ -303,13 +306,25 @@ def make_ionsubplot(modelpath, ax, atomic_number, ion_stage, dfpop, ion_data, es
                     label='Odd parity', linestyle='None',
                     marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
 
-
-
-
-def make_plot(modelpath, atomic_number, ionstages_permitted, T_e, T_R,
-              modelgridindex, timestep, args):
     adata = at.get_levels(modelpath)
+
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
+
+    if estimators:
+        if not estimators[(timestep, modelgridindex)]['emptycell']:
+            T_e = estimators[(timestep, modelgridindex)]['Te']
+            T_R = estimators[(timestep, modelgridindex)]['TR']
+            W = estimators[(timestep, modelgridindex)]['W']
+            nne = estimators[(timestep, modelgridindex)]['nne']
+            print(f'nne = {nne} cm^-3, T_e = {T_e} K, T_R = {T_R} K, W = {W}')
+        else:
+            print(f'ERROR: cell {args.modelgridindex} is empty. Setting T_e = T_R = {args.exc_temperature} K')
+            T_e = args.exc_temperature
+            T_R = args.exc_temperature
+    else:
+        print('WARNING: No estimator data. Setting T_e = T_R =  6000 K')
+        T_e = args.exc_temperature
+        T_R = args.exc_temperature
 
     dfpop = read_files(modelpath, atomic_number, T_e, T_R,
                        timestep=timestep, modelgridindex=modelgridindex)
@@ -342,11 +357,11 @@ def make_plot(modelpath, atomic_number, ionstages_permitted, T_e, T_R,
     if len(ion_stage_list) == 1:
         axes = [axes]
 
-    for ion, ax in enumerate(axes):
-        ion_stage = ion_stage_list[ion]
+    for index, ax in enumerate(axes):
+        ion_stage = ion_stage_list[index]
         ion_data = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0]
-        make_ionsubplot(modelpath, ax, atomic_number, ion_stage, dfpop, ion_data, estimators,
-                        nne, T_e, T_R, modelgridindex, timestep, args)
+        make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, estimators,
+                        T_e, T_R, modelgridindex, timestep, args)
 
         # ax.annotate(ionstr, xy=(0.95, 0.96), xycoords='axes fraction',
         #             horizontalalignment='right', verticalalignment='top', fontsize=12)
@@ -358,6 +373,7 @@ def make_plot(modelpath, atomic_number, ionstages_permitted, T_e, T_R,
         # ax.set_ylim(ymin=-0.1,ymax=1.3)
         ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
         ax.set_yscale('log')
+
     if args.x == 'index':
         axes[-1].set_xlabel(r'Level index')
 
@@ -478,24 +494,7 @@ def main(args=None, argsraw=None, **kwargs):
     else:
         modelgridindex = args.modelgridindex
 
-    estimators = at.estimators.read_estimators(modelpath,
-                                               timestep=timestep, modelgridindex=modelgridindex)
     print(f'modelgridindex {args.modelgridindex}, timestep {timestep} (t={time_days}d)')
-    if estimators:
-        if not estimators[(timestep, modelgridindex)]['emptycell']:
-            T_e = estimators[(timestep, modelgridindex)]['Te']
-            T_R = estimators[(timestep, modelgridindex)]['TR']
-            W = estimators[(timestep, modelgridindex)]['W']
-            nne = estimators[(timestep, modelgridindex)]['nne']
-            print(f'nne = {nne} cm^-3, T_e = {T_e} K, T_R = {T_R} K, W = {W}')
-        else:
-            print(f'ERROR: cell {args.modelgridindex} is empty. Setting T_e = T_R = {args.exc_temperature} K')
-            T_e = args.exc_temperature
-            T_R = args.exc_temperature
-    else:
-        print('WARNING: No estimator data. Setting T_e = T_R =  6000 K')
-        T_e = args.exc_temperature
-        T_R = args.exc_temperature
 
     if isinstance(args.elements, str):
         args.elements = [args.elements]
@@ -515,7 +514,7 @@ def main(args=None, argsraw=None, **kwargs):
 
         print(f'Z={atomic_number} {elsymbol}')
 
-        make_plot(modelpath, atomic_number, ionstages_permitted, T_e, T_R,
+        make_plot(modelpath, atomic_number, ionstages_permitted,
                   modelgridindex, timestep, args)
 
 
