@@ -225,8 +225,10 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
     nne = estimators[(timestep, modelgridindex)]['nne']
 
     dfpopthision = dfpop.query(
-        'modelgridindex == @modelgridindex and timestep==@timestep'
-        'and Z == @atomic_number and ion_stage == @ion_stage').copy()
+        'modelgridindex == @modelgridindex and timestep == @timestep and Z == @atomic_number and ion_stage == @ion_stage', inplace=False).copy()
+
+    add_lte_pops(modelpath, dfpopthision, T_e, T_R)
+
     ionpopulation = dfpopthision['n_NLTE'].sum()
     ionpopulation_fromest = estimators[(timestep, modelgridindex)][
         'populations'].get((atomic_number, ion_stage), 0.)
@@ -293,7 +295,7 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
 
     pd.set_option('display.max_columns', 150)
     if len(dfpopthision) < 30:
-        print(dfpopthision[['level', 'config', 'departure_coeff', 'texname']].to_string(index=False))
+        print(dfpopthision[['Z', 'ion_stage', 'level', 'config', 'departure_coeff', 'texname']].to_string(index=False))
 
     dfpopthisionoddlevels = dfpopthision.query('parity==1')
     if args.departuremode:
@@ -337,8 +339,6 @@ def make_plot(modelpath, atomic_number, ionstages_permitted, modelgridindex, tim
         T_R = args.exc_temperature
 
     dfpop = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex).query('Z == @atomic_number')
-
-    add_lte_pops(modelpath, dfpop, T_e, T_R)
 
     if dfpop.empty:
         print(f'No NLTE population data for modelgrid cell {args.modelgridindex} timestep {timestep}')
