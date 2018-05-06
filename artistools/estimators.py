@@ -274,7 +274,7 @@ def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
                 estfilefolderpath not in runfolder_alltimesteps_found and
                 match_timestep >= 0 and
                 match_timestep not in runfolder_timesteps[estfilefolderpath]):
-            print(f"Skipping rest of folder {estfilepath.parent.relative_to(modelpath)} because "
+            print(f"  Skipping rest of folder {estfilepath.parent.relative_to(modelpath)} because "
                   f"the first file didn't contain timestep {match_timestep}")
 
         runfolder_alltimesteps_found.add(estfilefolderpath)
