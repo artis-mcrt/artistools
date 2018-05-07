@@ -206,6 +206,7 @@ def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
         if (match_timestep >= 0 and
                 estfilefolderpath in runfolder_alltimesteps_found and
                 match_timestep not in runfolder_timesteps[estfilefolderpath]):
+            # already found every the timesteps in the first file in this folder and it wasn't a match
             continue
 
         if match_modelgridindex >= 0:
