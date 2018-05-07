@@ -97,8 +97,8 @@ def get_nltepops(modelpath, timestep, modelgridindex):
 
 def add_lte_pops(modelpath, dfpop, T_e, T_R, noprint=False):
     adata = at.get_levels(modelpath)
-
     k_b = const.k_B.to('eV / K').value
+
     list_indicies = []
     list_ltepop_T_e = []
     list_ltepop_T_R = []
