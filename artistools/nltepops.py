@@ -309,7 +309,7 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
                     marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
     else:
         ax.plot(dfpopthision.level, dfpopthision.n_NLTE, linewidth=1.5,
-                label='{ionstr} ARTIS NLTE', linestyle='None', marker='x')
+                label=f'{ionstr} ARTIS NLTE', linestyle='None', marker='x')
 
         if not dfpopthisionoddlevels.level.empty:
             ax.plot(dfpopthisionoddlevels.level, dfpopthisionoddlevels.n_NLTE, linewidth=2,
