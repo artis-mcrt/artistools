@@ -401,7 +401,7 @@ def plot_multi_ion_series(
             else:
                 dictvars = {}
                 for k, v in estim.items():
-                    if 'items' in dir(v):
+                    if type(v) is dict:
                         dictvars[k] = v.get((atomic_number, ion_stage), 0.)
                     else:
                         dictvars[k] = v
@@ -526,7 +526,7 @@ def plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modelpath, estima
     ylabel = 'UNDEFINED'
     sameylabel = True
     for variablename in yvariables:
-        if not hasattr(variablename, 'lower'):
+        if type(variablename) is not str:
             pass
         elif ylabel == 'UNDEFINED':
             ylabel = get_ylabel(variablename)
@@ -535,10 +535,14 @@ def plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modelpath, estima
             break
 
     for variablename in yvariables:
-        if not hasattr(variablename, 'lower'):  # if it's not a string, it's a list
+        if type(variablename) is not str:  # if it's not a string, it's a list
             showlegend = True
             if variablename[0] == 'initabundances':
                 plot_init_abundances(ax, xlist, variablename[1], mgilist, modelpath)
+            elif variablename[0] == '_ymin':
+                ax.set_ylim(ymin=variablename[1])
+            elif variablename[0] == '_ymax':
+                ax.set_ylim(ymax=variablename[1])
             else:
                 seriestype, ionlist = variablename
                 plot_multi_ion_series(ax, xlist, seriestype, ionlist, timesteplist, mgilist, estimators,
