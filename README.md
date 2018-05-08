@@ -2,7 +2,7 @@
 
 > Artistools is collection of plotting, analysis, and file format conversion tools for the ARTIS radiative transfer code.
 
-[![Build Status](https://travis-ci.org/lukeshingles/artistools.svg?branch=master)](https://travis-ci.org/lukeshingles/artistools)
+[![Build Status](https://travis-ci.com/lukeshingles/artistools.svg?branch=master)](https://travis-ci.com/lukeshingles/artistools)
 [![Coverage Status](https://coveralls.io/repos/github/lukeshingles/artistools/badge.svg?branch=master)](https://coveralls.io/github/lukeshingles/artistools?branch=master)
 
 ARTIS (Sim et al. 2007; Kromer & Sim 2009) is a 3D radiative transfer code for Type Ia supernovae using the Monte Carlo method with indivisible energy packets (Lucy 2002). The simulation code is not publicly available.
