@@ -222,7 +222,7 @@ def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=Non
 
 
 def plot_celltimestep(
-        modelpath, specfilename, timestep, outputfile,
+        modelpath, timestep, outputfile,
         xmin, xmax, modelgridindex, args, normalised=False):
     """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells)."""
 
@@ -231,9 +231,9 @@ def plot_celltimestep(
         print(f'No data for timestep {timestep:d}')
         return
 
+    modelname = at.get_model_name(modelpath)
     time_days = at.get_timestep_time(modelpath, timestep)
-
-    print(f'Plotting timestep {timestep:d} (t={time_days})')
+    print(f'Plotting {modelname} timestep {timestep:d} (t={time_days})')
 
     nrows = 1
     fig, axis = plt.subplots(nrows=nrows, ncols=1, sharex=True,
@@ -255,6 +255,12 @@ def plot_celltimestep(
         axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep, zorder=-2, color='red')
 
     ymax = max(ymax1, ymax2, ymax3, ymax4)
+
+    try:
+        specfilename = at.firstexisting(['spec.out', 'spec.out.gz'], path=modelpath)
+    except FileNotFoundError:
+        print(f'Could not find spec.out')
+        args.nospec = True
 
     if not args.nospec:
         plotkwargs = {}
@@ -372,7 +378,6 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
                                       args.figscale * at.figwidth * (0.25 + nlinesplotted * 0.35)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    time_days = 330
     timestep = at.get_closest_timestep(modelpath, time_days)
     time_days = float(at.get_timestep_time(modelpath, timestep))
 
@@ -480,7 +485,6 @@ def main(args=None, argsraw=None, **kwargs):
         args.outputfile = args.outputfile / defaultoutputfile
 
     modelpath = args.modelpath
-    specfilename = at.firstexisting(['spec.out', 'spec.out.gz'], path=modelpath)
 
     if args.listtimesteps:
         at.showtimesteptimes(modelpath=args.modelpath)
@@ -492,9 +496,6 @@ def main(args=None, argsraw=None, **kwargs):
 
         radfielddata = read_files(modelpath, modelgridindex=modelgridindex)
 
-        if not specfilename.is_file():
-            print(f'Could not find {specfilename}')
-            args.nospec = True
 
         timesteplast = max(radfielddata['timestep'])
         if args.timedays:
@@ -509,7 +510,7 @@ def main(args=None, argsraw=None, **kwargs):
             for timestep in timesteplist:
                 outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
                 plot_celltimestep(
-                    modelpath, specfilename, timestep, outputfile,
+                    modelpath, timestep, outputfile,
                     xmin=args.xmin, xmax=args.xmax, modelgridindex=modelgridindex,
                     args=args, normalised=args.normalised)
         elif args.xaxis == 'timestep':
