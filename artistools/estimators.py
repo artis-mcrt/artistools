@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Functions for reading and plotting estimator files.
-
 Examples are temperatures, populations, heating/cooling rates.
 """
 # import math
@@ -17,7 +16,7 @@ from itertools import chain
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
+# import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 
@@ -650,9 +649,10 @@ def plot_recombrates(estimators, outfilename, **plotkwargs):
             f'/Users/lshingles/Library/Mobile Documents/com~apple~CloudDocs/GitHub/artis-atomic/atomic-data-nahar/{at.elsymbols[atomic_number].lower()}{ion_stage - 1}.rrc*.txt')
         if rrcfiles:
             dfrecombrates = get_ionrecombrates_fromfile(rrcfiles[0])
-            logT_e_min = math.log10(min(listT_e))
-            logT_e_max = math.log10(max(listT_e))
-            dfrecombrates.query("logT > @logT_e_min & logT < @logT_e_max", inplace=True)
+
+            dfrecombrates.query("logT > @logT_e_min & logT < @logT_e_max",
+                                local_dict={'logT_e_min': math.log10(min(listT_e)),
+                                            'logT_e_max': math.log10(max(listT_e))}, inplace=True)
 
             listT_e_Nahar = [10 ** x for x in dfrecombrates['logT'].values]
             ax.plot(listT_e_Nahar, dfrecombrates['RRC_total'], linewidth=2,
