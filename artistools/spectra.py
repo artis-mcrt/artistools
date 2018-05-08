@@ -446,7 +446,7 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
 
     # axis.plot(spectrum['lambda_angstroms'], spectrum['f_lambda'], color='black', linewidth=0.5)
 
-    axis.legend(plotobjects, plotobjectlabels, loc='best', handlelength=2,
+    axis.legend(plotobjects, plotobjectlabels, loc='best', handlelength=1,
                 frameon=False, numpoints=1)
 
     axis = axes[1]
@@ -493,7 +493,7 @@ def plot_artis_spectrum(axes, modelpath, args, scale_to_peak=None, from_packets=
         at.get_timestep_times(modelpath), args.timestep, args.timemin, args.timemax, args.timedays)
 
     modelname = at.get_model_name(modelpath)
-    print(f'  Plotting timesteps {timestepmin} to {timestepmax} '
+    print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
           f'(t={args.timemin:.3f}d to {args.timemax:.3f}d)')
 
     linelabel = f'{modelname}'
@@ -539,9 +539,6 @@ def make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=None):
     plot_reference_spectra(axes, [], [], args, scale_to_peak=scale_to_peak, flambdafilterfunc=filterfunc)
 
     for index, modelpath in enumerate(modelpaths):
-        modelname = at.get_model_name(modelpath)
-        print(f"ARTIS model '{modelname}'")
-        print(f"  Path: {modelpath}")
         plotkwargs = {}
         # plotkwargs['dashes'] = dashesList[index]
         # plotkwargs['dash_capstyle'] = dash_capstyleList[index]
