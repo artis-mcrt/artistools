@@ -4,7 +4,7 @@ python: 3.6
 cache: pip
 
 install:
-  - "pip install coveralls==1.2.0"
+  - "pip install coveralls"
   - "pip install -r requirements.txt"
 
 before_script: # configure a headless display to test plot generation
