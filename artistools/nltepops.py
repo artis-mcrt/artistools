@@ -319,6 +319,13 @@ def make_plot(modelpath, atomic_number, ionstages_permitted, modelgridindex, tim
     adata = at.get_levels(modelpath)
 
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
+    time_days = float(at.get_timestep_time(modelpath, timestep))
+    modelname = at.get_model_name(modelpath)
+
+    elsymbol = at.elsymbols[atomic_number]
+    print(f'Plotting NLTE pops for {modelname} modelgridindex {args.modelgridindex}, '
+          f'timestep {timestep} (t={time_days}d)')
+    print(f'Z={atomic_number} {elsymbol}')
 
     if estimators:
         if not estimators[(timestep, modelgridindex)]['emptycell']:
@@ -491,7 +498,6 @@ def main(args=None, argsraw=None, **kwargs):
         timestep = int(args.timestep)
 
     modelpath = args.modelpath
-    time_days = float(at.get_timestep_time(modelpath, timestep))
 
     if os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
@@ -502,8 +508,6 @@ def main(args=None, argsraw=None, **kwargs):
         modelgridindex = at.get_closest_cell(modelpath, args.velocity)
     else:
         modelgridindex = args.modelgridindex
-
-    print(f'modelgridindex {args.modelgridindex}, timestep {timestep} (t={time_days}d)')
 
     if isinstance(args.elements, str):
         args.elements = [args.elements]
@@ -520,8 +524,6 @@ def main(args=None, argsraw=None, **kwargs):
             except StopIteration:
                 print(f"Could not find element '{elsymbol}'")
                 continue
-
-        print(f'Z={atomic_number} {elsymbol}')
 
         make_plot(modelpath, atomic_number, ionstages_permitted,
                   modelgridindex, timestep, args)

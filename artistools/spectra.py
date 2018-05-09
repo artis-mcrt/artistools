@@ -156,7 +156,7 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
             # print(f"Packet escaped at {t_arrive / u.day.to('s'):.1f} days with "
             #       f"nu={packet.nu_rf:.2e}, lambda={lambda_rf:.1f}")
             xindex = math.floor((lambda_rf - lambda_min) / delta_lambda)
-            assert(xindex >= 0)
+            assert xindex >= 0
 
             pkt_en = packet.e_cmf / betafactor if use_comovingframe else packet.e_rf
 
@@ -222,14 +222,14 @@ def get_flux_contributions(
     maxion_float = (emissiondata.shape[1] - 1) / 2 / nelements  # also known as MIONS in ARTIS sn3d.h
     assert maxion_float.is_integer()
     maxion = int(maxion_float)
-    print(f'  inferred MAXION = {maxion} from emission file using nlements = {nelements} from compositiondata.txt')
+    print(f' inferred MAXION = {maxion} from emission file using nlements = {nelements} from compositiondata.txt')
 
     # check that the row count is product of timesteps and frequency bins found in spec.out
     assert emissiondata.shape[0] == len(arraynu) * len(timearray)
 
     if absorptionfilename:
         absorptionfilesize = Path(absorptionfilename).stat().st_size / 1024 / 1024
-        print(f'  Reading {absorptionfilename} ({absorptionfilesize:.3f} MiB)')
+        print(f' Reading {absorptionfilename} ({absorptionfilesize:.3f} MiB)')
         absorptiondata = pd.read_csv(absorptionfilename, delim_whitespace=True, header=None)
         absorption_maxion_float = absorptiondata.shape[1] / nelements
         assert absorption_maxion_float.is_integer()
@@ -338,9 +338,10 @@ def sort_and_reduce_flux_contribution_list(
 
 def print_integrated_flux(arr_f_lambda, arr_lambda_angstroms, distance_megaparsec=1.):
     integrated_flux = abs(np.trapz(arr_f_lambda, x=arr_lambda_angstroms)) * u.erg / u.s / (u.cm ** 2)
-    luminosity = integrated_flux * 4 * math.pi * (distance_megaparsec * u.megaparsec ** 2)
-    print(f'  integrated flux ({arr_lambda_angstroms.min():.1f} A to '
-          f'{arr_lambda_angstroms.max():.1f} A): {integrated_flux:.3e}, (L={luminosity.to("Lsun"):.3e})')
+    print(f' integrated flux ({arr_lambda_angstroms.min():.1f} to '
+          f'{arr_lambda_angstroms.max():.1f} A): {integrated_flux:.3e}')
+    # luminosity = integrated_flux * 4 * math.pi * (distance_megaparsec * u.megaparsec ** 2)
+    # print(f'(L={luminosity.to("Lsun"):.3e})')
 
 
 def plot_reference_spectra(axes, plotobjects, plotobjectlabels, args, flambdafilterfunc=None, scale_to_peak=None,
@@ -391,7 +392,7 @@ def plot_reference_spectrum(
 
     serieslabel = plotkwargs['label']
     print(f"Reference spectrum '{serieslabel}' has {len(specdata)} points in the plot range")
-    print(f"  File: {filename}")
+    print(f" file: {filename}")
 
     specdata.query('lambda_angstroms > @xmin and lambda_angstroms < @xmax', inplace=True)
 
@@ -400,7 +401,7 @@ def plot_reference_spectrum(
     if len(specdata) > 5000:
         # specdata = scipy.signal.resample(specdata, 10000)
         # specdata = specdata.iloc[::3, :].copy()
-        print(f"  downsampling to {len(specdata)} points")
+        print(f" downsampling to {len(specdata)} points")
         specdata.query('index % 3 == 0', inplace=True)
 
     # clamp negative values to zero
@@ -493,8 +494,6 @@ def plot_artis_spectrum(axes, modelpath, args, scale_to_peak=None, from_packets=
         at.get_timestep_times(modelpath), args.timestep, args.timemin, args.timemax, args.timedays)
 
     modelname = at.get_model_name(modelpath)
-    print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
-          f'(t={args.timemin:.3f}d to {args.timemax:.3f}d)')
 
     linelabel = f'{modelname}'
     if not args.hidemodeltimerange:
@@ -517,6 +516,8 @@ def plot_artis_spectrum(axes, modelpath, args, scale_to_peak=None, from_packets=
 
     spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
 
+    print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
+          f'(t={args.timemin:.3f} to {args.timemax:.3f}d)', end='')
     print_integrated_flux(spectrum['f_lambda'], spectrum['lambda_angstroms'])
 
     if scale_to_peak:
@@ -528,8 +529,7 @@ def plot_artis_spectrum(axes, modelpath, args, scale_to_peak=None, from_packets=
 
     for index, axis in enumerate(axes):
         supxmin, supxmax = axis.get_xlim()
-        spectrum.query(
-        '@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
+        spectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
             x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
             label=linelabel if index == 0 else None, alpha=0.95, **plotkwargs)
 
