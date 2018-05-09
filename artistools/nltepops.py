@@ -95,7 +95,7 @@ def get_nltepops(modelpath, timestep, modelgridindex):
     return pd.DataFrame()
 
 
-def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxlevel):
+def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxlevel=-1):
     """Add columns to dfpop with LTE populations.
     columntemperature_tuples is a sequence of tuples of column name and temperature, e.g., ('mycolumn', 3000)"""
     k_b = const.k_B.to('eV / K').value
@@ -124,7 +124,7 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
                 'modelgridindex == @modelgridindex and timestep == @timestep '
                 'and Z == @Z and ion_stage == @ion_stage').level.max()
 
-            if levelnumber_sl <= args.maxlevel:
+            if maxlevel >= 0 and levelnumber_sl <= maxlevel:
                 if not noprint:
                     print(f'{at.elsymbols[Z]} {at.roman_numerals[ion_stage]} '
                           f'has a superlevel at level {levelnumber_sl}')
@@ -133,7 +133,7 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
                     dfpop.loc[masksuperlevel, columnname] = gs_pop * ionlevels.iloc[levelnumber_sl:].eval(
                         'g / @gs_g * exp(- (energy_ev - @gs_energy) / @k_b / @T_exc)').sum()
 
-                dfpop.loc[masksuperlevel, 'level'] = levelnumber_sl + 2
+            dfpop.loc[masksuperlevel, 'level'] = levelnumber_sl + 2
 
         masknotsuperlevel = (
             (dfpop['modelgridindex'] == modelgridindex) & (dfpop['timestep'] == timestep)
@@ -225,7 +225,7 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
     coltemp = [('n_LTE_T_e', T_e)]
     if not args.hide_lte_tr:
         coltemp.append(('n_LTE_T_R', T_R))
-    add_lte_pops(modelpath, dfpopthision, coltemp. args.maxlevel)
+    add_lte_pops(modelpath, dfpopthision, coltemp, args.maxlevel)
 
     if args.maxlevel >= 0:
         dfpopthision.query('level <= @args.maxlevel', inplace=True)
