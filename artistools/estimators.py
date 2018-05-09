@@ -526,7 +526,7 @@ def plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modelpath, estima
     ylabel = 'UNDEFINED'
     sameylabel = True
     for variablename in yvariables:
-        if type(variablename) is not str:
+        if not isinstance(variablename, str):
             pass
         elif ylabel == 'UNDEFINED':
             ylabel = get_ylabel(variablename)
@@ -535,7 +535,7 @@ def plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modelpath, estima
             break
 
     for variablename in yvariables:
-        if type(variablename) is not str:  # if it's not a string, it's a list
+        if not isinstance(variablename, str):  # it's a sequence of values
             showlegend = True
             if variablename[0] == 'initabundances':
                 plot_init_abundances(ax, xlist, variablename[1], mgilist, modelpath)
