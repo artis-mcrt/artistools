@@ -4,7 +4,7 @@ python: 3.6
 cache: pip
 
 install:
-  - "pip install coveralls"
+  - "pip install coveralls==1.2.0"
   - "pip install -r requirements.txt"
 
 before_script: # configure a headless display to test plot generation
@@ -18,7 +18,7 @@ before_script: # configure a headless display to test plot generation
 script:
 #  - flake8 .
 #  - pytest --cov=artistools
-  - coverage run --source artistools setup.py test
+  - coverage run --source=artistools setup.py test
 
 after_script:
   - ./cc-test-reporter after-build -t coverage.py --exit-code $TRAVIS_TEST_RESULT
