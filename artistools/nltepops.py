@@ -99,60 +99,57 @@ def add_lte_pops(modelpath, dfpop, T_e, T_R, noprint=False):
     adata = at.get_levels(modelpath)
     k_b = const.k_B.to('eV / K').value
 
-    list_indicies = []
-    list_ltepop_T_e = []
-    list_ltepop_T_R = []
-    gspop = {}
-    ionlevels = {}
-    for index, row in dfpop.iterrows():
-        list_indicies.append(index)
-
-        atomic_number = int(row.Z)
+    for index, row in dfpop.drop_duplicates(['modelgridindex', 'timestep', 'Z', 'ion_stage']).iterrows():
+        modelgridindex = int(row.modelgridindex)
+        timestep = int(row.timestep)
+        Z = int(row.Z)
         ion_stage = int(row.ion_stage)
-        if (atomic_number, ion_stage) not in gspop:
-            gspop[(row.Z, row.ion_stage)] = dfpop.query(
+
+        ionlevels = adata.query('Z == @Z and ion_stage == @ion_stage').iloc[0].levels
+
+        gslevel = ionlevels.iloc[0]
+
+        gspop = dfpop.query(
+            'modelgridindex == @row.modelgridindex and timestep == @row.timestep '
+            'and Z == @row.Z and ion_stage == @row.ion_stage and level == 0').iloc[0]['n_NLTE']
+
+        masksuperlevel = (
+            (dfpop['modelgridindex'] == modelgridindex) & (dfpop['timestep'] == timestep)
+            & (dfpop['Z'] == Z) & (dfpop['ion_stage'] == ion_stage) & (dfpop['level'] == -1))
+
+        if not dfpop[masksuperlevel].empty:
+            levelnumber_sl = dfpop.query(
                 'modelgridindex == @row.modelgridindex and timestep == @row.timestep '
-                'and Z == @atomic_number and ion_stage == @ion_stage and level == 0').iloc[0]['n_NLTE']
-
-        if (atomic_number, ion_stage) not in ionlevels:
-            ionlevels[(atomic_number, ion_stage)] = adata.query(
-                'Z == @atomic_number and ion_stage == @ion_stage').iloc[0].levels
-
-        levelnumber = int(row.level)
-        gspopthision = gspop[(row.Z, row.ion_stage)]
-
-        if levelnumber == -1:  # superlevel
-            levelnumbersl = dfpop.query(
-                'modelgridindex == @row.modelgridindex and timestep == @row.timestep '
-                'and Z == @atomic_number and ion_stage == @ion_stage').level.max()
-            dfpop.loc[index, 'level'] = levelnumbersl + 2
+                'and Z == @Z and ion_stage == @ion_stage').level.max()
 
             if not noprint:
-                print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} '
-                      f'has a superlevel at level {levelnumbersl}')
+                print(f'{at.elsymbols[Z]} {at.roman_numerals[ion_stage]} '
+                      f'has a superlevel at level {levelnumber_sl}')
 
-            gslevel = ionlevels[(atomic_number, ion_stage)].iloc[0]
-            sl_levels = ionlevels[(atomic_number, ion_stage)].iloc[levelnumbersl:]
-            list_ltepop_T_e.append(gspopthision * sl_levels.eval(
-                'g / @gslevel.g * exp(- (energy_ev - @gslevel.energy_ev) / @k_b / @T_e)').sum())
-            list_ltepop_T_R.append(gspopthision * sl_levels.eval(
-                'g / @gslevel.g * exp(- (energy_ev - @gslevel.energy_ev) / @k_b / @T_R)').sum())
+            sl_levels = ionlevels.iloc[levelnumber_sl:]
 
-        else:
+            dfpop.loc[masksuperlevel, 'n_LTE_T_e'] = gspop * sl_levels.eval(
+                'g / @gslevel.g * exp(- (energy_ev - @gslevel.energy_ev) / @k_b / @T_e)').sum()
 
-            level = ionlevels[(atomic_number, ion_stage)].iloc[levelnumber]
-            gslevel = ionlevels[(atomic_number, ion_stage)].iloc[0]
+            dfpop.loc[masksuperlevel, 'n_LTE_T_R'] = gspop * sl_levels.eval(
+                'g / @gslevel.g * exp(- (energy_ev - @gslevel.energy_ev) / @k_b / @T_R)').sum()
 
-            exc_energy = level.energy_ev - gslevel.energy_ev
+            dfpop.loc[masksuperlevel, 'level'] = levelnumber_sl + 2
 
-            list_ltepop_T_e.append(gspopthision * level.g / gslevel.g * math.exp(- exc_energy / k_b / T_e))
-            list_ltepop_T_R.append(gspopthision * level.g / gslevel.g * math.exp(- exc_energy / k_b / T_R))
+        masknotsuperlevel = (
+            (dfpop['modelgridindex'] == modelgridindex) & (dfpop['timestep'] == timestep)
+            & (dfpop['Z'] == Z) & (dfpop['ion_stage'] == ion_stage) & (dfpop['level'] != -1))
 
-    dfpop['n_LTE_T_e'] = pd.Series(list_ltepop_T_e, index=list_indicies)
-    dfpop['n_LTE_T_R'] = pd.Series(list_ltepop_T_R, index=list_indicies)
+        def f_ltepop(x, T_exc):
+            gsg, gse = gslevel.g, gslevel.energy_ev
+            return (gspop * ionlevels.iloc[int(x.level)].g / gsg
+                    * math.exp(- (ionlevels.iloc[int(x.level)].energy_ev - gse) / k_b / T_exc))
 
-    # print(dfpop[['level', 'n_LTE_T_e', 'n_LTE_T_e2']])
+        dfpop.loc[masknotsuperlevel, 'n_LTE_T_e'] = dfpop.loc[masknotsuperlevel].apply(
+            f_ltepop, args=(T_e,), axis=1)
 
+        dfpop.loc[masknotsuperlevel, 'n_LTE_T_R'] = dfpop.loc[masknotsuperlevel].apply(
+            f_ltepop, args=(T_R,), axis=1)
 
 @lru_cache(maxsize=8)
 def read_file(nltefilename, modelpath, modelgridindex, timestep):
@@ -225,16 +222,17 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
     nne = estimators[(timestep, modelgridindex)]['nne']
 
     dfpopthision = dfpop.query(
-        'modelgridindex == @modelgridindex and timestep == @timestep and Z == @atomic_number and ion_stage == @ion_stage', inplace=False).copy()
+        'modelgridindex == @modelgridindex and timestep == @timestep '
+        'and Z == @atomic_number and ion_stage == @ion_stage', inplace=False).copy()
+
+    if args.maxlevel >= 0:
+        dfpopthision.query('level <= @args.maxlevel', inplace=True)
 
     add_lte_pops(modelpath, dfpopthision, T_e, T_R)
 
     ionpopulation = dfpopthision['n_NLTE'].sum()
     ionpopulation_fromest = estimators[(timestep, modelgridindex)][
         'populations'].get((atomic_number, ion_stage), 0.)
-
-    if args.maxlevel >= 0:
-        dfpopthision.query('level <= @args.maxlevel', inplace=True)
 
     dfpopthision['parity'] = [
         1 if (row.level != -1 and
