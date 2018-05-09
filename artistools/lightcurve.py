@@ -29,6 +29,7 @@ def readfile(filepath_or_buffer):
 
 
 def get_from_packets(modelpath, lcpath, escape_type='TYPE_RPKT'):
+    import artistools.packets
     packetsfiles = (glob.glob(os.path.join(modelpath, 'packets00_????.out')) +
                     glob.glob(os.path.join(modelpath, 'packets00_????.out.gz')))
     ranks = [int(os.path.basename(filename)[10:10 + 4]) for filename in packetsfiles]
