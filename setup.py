@@ -36,7 +36,7 @@ setup(
     author="Luke Shingles",
     author_email="luke.shingles@gmail.com",
     packages=find_packages(),
-    url="https://www.github.com/lukeshingles/artis-tools/",
+    url="https://www.github.com/lukeshingles/artistools/",
     license="MIT",
     description="Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code.",
     long_description=open(
