@@ -95,11 +95,13 @@ def get_nltepops(modelpath, timestep, modelgridindex):
     return pd.DataFrame()
 
 
-def add_lte_pops(modelpath, dfpop, T_e, T_R, noprint=False):
+def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False):
+    """Population columns of dfpop with LTE populations.
+    columntemperature_tuples is a sequence of tuples of column name and temperature, e.g., ('mycolumn', 3000)"""
     adata = at.get_levels(modelpath)
     k_b = const.k_B.to('eV / K').value
 
-    for index, row in dfpop.drop_duplicates(['modelgridindex', 'timestep', 'Z', 'ion_stage']).iterrows():
+    for _, row in dfpop.drop_duplicates(['modelgridindex', 'timestep', 'Z', 'ion_stage']).iterrows():
         modelgridindex = int(row.modelgridindex)
         timestep = int(row.timestep)
         Z = int(row.Z)
@@ -126,13 +128,9 @@ def add_lte_pops(modelpath, dfpop, T_e, T_R, noprint=False):
                 print(f'{at.elsymbols[Z]} {at.roman_numerals[ion_stage]} '
                       f'has a superlevel at level {levelnumber_sl}')
 
-            sl_levels = ionlevels.iloc[levelnumber_sl:]
-
-            dfpop.loc[masksuperlevel, 'n_LTE_T_e'] = gspop * sl_levels.eval(
-                'g / @gslevel.g * exp(- (energy_ev - @gslevel.energy_ev) / @k_b / @T_e)').sum()
-
-            dfpop.loc[masksuperlevel, 'n_LTE_T_R'] = gspop * sl_levels.eval(
-                'g / @gslevel.g * exp(- (energy_ev - @gslevel.energy_ev) / @k_b / @T_R)').sum()
+            for columnname, T_exc in columntemperature_tuples:
+                dfpop.loc[masksuperlevel, columnname] = gspop * ionlevels.iloc[levelnumber_sl:].eval(
+                    'g / @gslevel.g * exp(- (energy_ev - @gslevel.energy_ev) / @k_b / @T_exc)').sum()
 
             dfpop.loc[masksuperlevel, 'level'] = levelnumber_sl + 2
 
@@ -140,16 +138,14 @@ def add_lte_pops(modelpath, dfpop, T_e, T_R, noprint=False):
             (dfpop['modelgridindex'] == modelgridindex) & (dfpop['timestep'] == timestep)
             & (dfpop['Z'] == Z) & (dfpop['ion_stage'] == ion_stage) & (dfpop['level'] != -1))
 
-        def f_ltepop(x, T_exc):
-            gsg, gse = gslevel.g, gslevel.energy_ev
-            return (gspop * ionlevels.iloc[int(x.level)].g / gsg
+        def f_ltepop(x, T_exc, gspop, gsg, gse, ionlevels):
+            return (ionlevels.iloc[int(x.level)].g / gsg
                     * math.exp(- (ionlevels.iloc[int(x.level)].energy_ev - gse) / k_b / T_exc))
 
-        dfpop.loc[masknotsuperlevel, 'n_LTE_T_e'] = dfpop.loc[masknotsuperlevel].apply(
-            f_ltepop, args=(T_e,), axis=1)
+        for columnname, T_exc in columntemperature_tuples:
+            dfpop.loc[masknotsuperlevel, columnname] = dfpop.loc[masknotsuperlevel].apply(
+                f_ltepop, args=(T_exc, gspop, gslevel.g, gslevel.energy_ev, ionlevels), axis=1)
 
-        dfpop.loc[masknotsuperlevel, 'n_LTE_T_R'] = dfpop.loc[masknotsuperlevel].apply(
-            f_ltepop, args=(T_R,), axis=1)
 
 @lru_cache(maxsize=8)
 def read_file(nltefilename, modelpath, modelgridindex, timestep):
@@ -228,7 +224,10 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
     if args.maxlevel >= 0:
         dfpopthision.query('level <= @args.maxlevel', inplace=True)
 
-    add_lte_pops(modelpath, dfpopthision, T_e, T_R)
+    coltemp = [('n_LTE_T_e', T_e)]
+    if not args.hide_lte_tr:
+        coltemp.append(('n_LTE_T_R', T_R))
+    add_lte_pops(modelpath, dfpopthision, coltemp)
 
     ionpopulation = dfpopthision['n_NLTE'].sum()
     ionpopulation_fromest = estimators[(timestep, modelgridindex)][
