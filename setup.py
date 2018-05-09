@@ -48,6 +48,6 @@ setup(
     },
     python_requires='>==3.6',
     # test_suite='tests',
-    setup_requires=['coveralls', 'pytest-runner', 'pytest-cov'],
-    tests_require=['pytest', 'pytest-runner', 'pytest-cov'],
+    setup_requires=['coveralls', 'pytest', 'pytest-runner', 'pytest-cov'],
+    tests_require=['coveralls', 'pytest', 'pytest-runner', 'pytest-cov'],
     include_package_data=True)
