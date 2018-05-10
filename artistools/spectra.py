@@ -27,7 +27,7 @@ refspectra = {
         ('SN2011fe +364d (Mazzali et al. 2015)', 6.40),
 
     'dop_dered_SN2013aa_20140208_fc_final.txt':
-        ('SN2013aa +360d (Maguire et al. in prep)', 13.95),
+        ('SN2013aa +360d (Maguire et al. 2016)', 13.95),
 
     '2003du_20031213_3219_8822_00.txt':
         ('SN2003du +221.3d (Stanishev et al. 2007)', 30.47),
@@ -350,7 +350,9 @@ def plot_reference_spectra(axes, plotobjects, plotobjectlabels, args, flambdafil
     if args.refspecfiles is not None:
         if isinstance(args.refspecfiles, str):
             args.refspecfiles = [args.refspecfiles]
-        colorlist = ['black', '0.4']
+        colorlist = ['0.0', '0.3']
+        if args.refspecaboveartis:
+            plotkwargs['zorder'] = 1000
         for index, filename in enumerate(args.refspecfiles):
             if index < len(colorlist):
                 plotkwargs['color'] = colorlist[index]
@@ -359,7 +361,7 @@ def plot_reference_spectra(axes, plotobjects, plotobjectlabels, args, flambdafil
                 supxmin, supxmax = axis.get_xlim()
                 plotobj, serieslabel = plot_reference_spectrum(
                     filename, axis, supxmin, supxmax,
-                    flambdafilterfunc, scale_to_peak, zorder=1000, **plotkwargs)
+                    flambdafilterfunc, scale_to_peak, **plotkwargs)
 
                 if axindex == 0:
                     plotobjects.append(plotobj)
@@ -536,16 +538,18 @@ def plot_artis_spectrum(axes, modelpath, args, scale_to_peak=None, from_packets=
 
 def make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=None):
     """Plot reference spectra and ARTIS spectra."""
-    plot_reference_spectra(axes, [], [], args, scale_to_peak=scale_to_peak, flambdafilterfunc=filterfunc)
+    plot_reference_spectra(axes, [], [], args, scale_to_peak=scale_to_peak, flambdafilterfunc=filterfunc, lw=0.3)
 
     for index, modelpath in enumerate(modelpaths):
         plotkwargs = {}
         # plotkwargs['dashes'] = dashesList[index]
         # plotkwargs['dash_capstyle'] = dash_capstyleList[index]
         plotkwargs['linestyle'] = '--' if (int(index / 7) % 2) else '-'
-        plotkwargs['linewidth'] = 1.5 - (0.2 * index)
+        plotkwargs['linewidth'] = 1.5  # - (0.1 * index)
         if index < 3:
             plotkwargs['color'] = ['orange', 'red', 'blue'][index]
+        # if index < 10:
+        #     plotkwargs['color'] = f'C{index}'
         plot_artis_spectrum(axes, modelpath, args=args, scale_to_peak=scale_to_peak, from_packets=args.frompackets,
                             filterfunc=filterfunc, **plotkwargs)
 
@@ -690,8 +694,23 @@ def make_plot(modelpaths, args):
         plotobjects, plotobjectlabels = axes[0].get_legend_handles_labels()
 
     if not args.nolegend:
-        axes[0].legend(plotobjects, plotobjectlabels, loc='upper right', handlelength=2, ncol=legendncol,
-                       frameon=False, numpoints=1)
+        leg = axes[0].legend(
+            plotobjects, plotobjectlabels, loc='upper right', frameon=False,
+            handlelength=1, ncol=legendncol, numpoints=1)
+
+        for artist, text in zip(leg.legendHandles, leg.get_texts()):
+            if hasattr(artist, 'get_color'):
+                col = artist.get_color()
+                artist.set_linewidth(2.0)
+                # artist.set_visible(False)  # hide line next to text
+            elif hasattr(artist, 'get_facecolor'):
+                col = artist.get_facecolor()
+            else:
+                continue
+
+            if isinstance(col, np.ndarray):
+                col = col[0]
+            text.set_color(col)
 
     # plt.setp(plt.getp(axis, 'xticklabels'), fontsize=fsticklabel)
     # plt.setp(plt.getp(axis, 'yticklabels'), fontsize=fsticklabel)
@@ -852,6 +871,9 @@ def addargs(parser):
 
     parser.add_argument('--nolegend', action='store_true',
                         help='Suppress the legend from the plot')
+
+    parser.add_argument('--refspecaboveartis', action='store_true',
+                        help='Change the z order so that refererence spectra are plottted over ARTIS spectra.')
 
     parser.add_argument('-outputfile', '-o', action='store', dest='outputfile', type=Path,
                         help='path/filename for PDF file')
