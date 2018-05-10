@@ -108,7 +108,7 @@ def plot_field_estimators(axis, radfielddata, modelgridindex=None, timestep=None
     arr_lambda = np.insert(arr_lambda, 0, const.c.to('angstrom/s').value / bindata['nu_lower'].iloc[0])
     yvalues = np.insert(yvalues, 0, 0.)
 
-    axis.step(arr_lambda, yvalues, where='pre', label='Field estimators', **plotkwargs)
+    axis.step(arr_lambda, yvalues, where='pre', label='Band-average field', **plotkwargs)
 
     return max(yvalues)
 
@@ -177,7 +177,7 @@ def plot_fitted_field(axis, radfielddata, xmin, xmax, modelgridindex=None, times
             fittedyvalues += arr_j_lambda
 
     if fittedxvalues:
-        axis.plot(fittedxvalues, fittedyvalues, label='Fitted field', **plotkwargs)
+        axis.plot(fittedxvalues, fittedyvalues, label='Band-fitted field', **plotkwargs)
 
     return max(fittedyvalues)
 
@@ -232,8 +232,8 @@ def plot_celltimestep(
         return
 
     modelname = at.get_model_name(modelpath)
-    time_days = at.get_timestep_time(modelpath, timestep)
-    print(f'Plotting {modelname} timestep {timestep:d} (t={time_days})')
+    time_days = at.get_timestep_times_float(modelpath)[timestep]
+    print(f'Plotting {modelname} timestep {timestep:d} (t={time_days:.3f}d)')
 
     nrows = 1
     fig, axis = plt.subplots(nrows=nrows, ncols=1, sharex=True,
@@ -288,8 +288,10 @@ def plot_celltimestep(
 
     # T_R = radfielddata.query('bin_num == -1').iloc[0].T_R
     modelname = at.get_model_name(modelpath)
+    velocity = at.get_modeldata(modelpath)[0]['velocity'][modelgridindex]
 
-    figure_title = f'{modelname} cell {modelgridindex:d} at timestep {timestep:d} (t={time_days})'
+    figure_title = f'{modelname} {velocity:.0f} km/s at {time_days:.0f}d'
+    # figure_title += '\ncell {modelgridindex} timestep {timestep}'
 
     if not args.notitle:
         axis.set_title(figure_title, fontsize=11)
@@ -404,7 +406,7 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
             horizontalalignment='left', verticalalignment='top', fontsize=10)
 
         ax.set_ylabel(r'J$_\lambda$ [erg/s/cm$^2$/$\AA$]')
-        ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 10})
+        ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1)
 
     axes[-1].set_xlabel(r'Timestep')
     # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
