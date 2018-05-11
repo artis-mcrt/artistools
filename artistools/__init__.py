@@ -216,6 +216,7 @@ def get_nu_grid(modelpath):
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     return specdata.loc[:, '0'].values
 
+
 @lru_cache(maxsize=16)
 def get_timestep_times(modelpath):
     """Return a list of the time in days of each timestep using a spec.out file."""
@@ -432,8 +433,7 @@ def get_time_range(timearray, timestep_range_str, timemin, timemax, timedays_ran
         else:
             timestepmin = int(timestep_range_str)
             timestepmax = timestepmin
-    else:
-        assert time_is_specified
+    elif time_is_specified:
         if timedays_range_str is not None and '-' in timedays_range_str:
             timemin, timemax = [float(timedays) for timedays in timedays_range_str.split('-')]
 
@@ -456,6 +456,8 @@ def get_time_range(timearray, timestep_range_str, timemin, timemax, timedays_ran
                 timestepmax = timestep
         if timestepmax < timestepmin:
             raise ValueError("Specified time range does not include any full timesteps.")
+    else:
+        raise ValueError("Either time or timesteps must be specified.")
 
     time_days_lower = float(timearray[timestepmin])
     time_days_upper = float(timearray[timestepmax]) + get_timestep_time_delta(timestepmax, timearray)
