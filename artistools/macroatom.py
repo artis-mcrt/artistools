@@ -14,6 +14,7 @@ import pandas as pd
 
 defaultoutputfile = 'plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf'
 
+
 def addargs(parser):
     parser.add_argument('--modelpath', nargs='?', default='',
                         help='Path to ARTIS folder')
@@ -38,7 +39,6 @@ def addargs(parser):
 
 def main(args=None, argsraw=None, **kwargs):
     """Plot the macroatom transitions."""
-
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
