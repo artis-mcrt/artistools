@@ -316,7 +316,7 @@ def plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision):
 def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, estimators,
                     T_e, T_R, modelgridindex, timestep, args):
     """Plot the level populations the specified ion, cell, and timestep."""
-    ionstr = at.get_ionstring(atomic_num, ion_stage)
+    ionstr = at.get_ionstring(atomic_number, ion_stage)
 
     nne = estimators[(timestep, modelgridindex)]['nne']
 
