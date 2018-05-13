@@ -211,10 +211,112 @@ def read_files(modelpath, timestep, modelgridindex=-1, noprint=False):
     return dfpop
 
 
+def plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision):
+    ionstr = at.get_ionstring(atomic_num, ion_stage)
+
+    # comparison to Chianti file from Stuart Sim
+    if atomic_number == 28 and ion_stage == 2 and Path('data', 'ni_2-levelmap.txt').exists():
+        levelmapfile = Path('data', 'ni_2-levelmap.txt').open('r')
+        levelnumofconfigterm = {}
+        for line in levelmapfile:
+            row = line.split()
+            levelnum = int(row[2]) - 1
+            levelnumofconfigterm[(row[0], row[1])] = levelnum
+
+        # ax.set_ylim(ymin=5e-4)
+        for depfilepath in Path('data', 'chianti-tests-Stuart').rglob('ni_2*.txt'):
+            with depfilepath.open('r') as depfile:
+                firstline = depfile.readline()
+                file_nne = float(firstline[firstline.find('ne = ') + 5:].split(',')[0])
+                file_Te = float(firstline[firstline.find('Te = ') + 5:].split()[0])
+                if (firstline.startswith('Ni II departure coefficients for ') and
+                        math.isclose(file_nne, nne, rel_tol=0.1) and
+                        math.isclose(file_Te, T_e, abs_tol=1000)):
+                    print(f'Plotting reference data from {depfilepath},')
+                    print(f'nne = {file_nne} (ARTIS {nne}) cm^-3, Te = {file_Te} (ARTIS {T_e}) K')
+                    levelnums = []
+                    depcoeffs = []
+                    firstdep = -1
+                    for line in depfile:
+                        row = line.split()
+                        try:
+                            levelnum = levelnumofconfigterm[(row[1], row[2])]
+                            if levelnum in dfpopthision.level.values:
+                                levelnums.append(levelnum)
+                                if firstdep < 0:
+                                    firstdep = float(row[0])
+                                depcoeffs.append(float(row[0]) / firstdep)
+                        except (IndexError, ValueError):
+                            pass
+
+                    ax.plot(levelnums, depcoeffs, linewidth=1.5, color='C1',
+                            label=f'{ionstr} Chianti NLTE', linestyle='None', marker='*', zorder=-1)
+
+    elif atomic_number == 26 and ion_stage == 2 and Path('data', 'chianti-tests-Stuart', 'fe_2-test.txt').exists():
+        levelnums = []
+        depcoeffs = []
+        firstdep = -1
+        levelnumofconfigterm = {}
+        compfile = Path('data', 'chianti-tests-Stuart', 'fe_2-test.txt').open('r')
+        for line in compfile:
+            row = line.split()
+            try:
+                levelnum = int(row[1]) - 1
+                if levelnum in dfpopthision.level.values:
+                    levelnums.append(levelnum)
+                    if firstdep < 0:
+                        firstdep = float(row[0])
+                    depcoeffs.append(float(row[0]) / firstdep)
+                    levelnumofconfigterm[(row[2], row[3])] = levelnum
+            except (IndexError, ValueError):
+                pass
+        ax.plot(levelnums, depcoeffs, linewidth=1.5, color='C1',
+                label=f'{ionstr} Chianti NLTE', linestyle='None', marker='*', zorder=-1)
+
+        levelnums = []
+        depcoeffs = []
+        firstdep = -1
+        compfile = Path('data', 'chianti-tests-Stuart', 'fe_2-test-withDiluteRad.txt').open('r')
+        for line in compfile:
+            row = line.split()
+            try:
+                levelnum = levelnumofconfigterm[(row[1], row[2])]
+                if levelnum in dfpopthision.level.values:
+                    levelnums.append(levelnum)
+                    if firstdep < 0:
+                        firstdep = float(row[0])
+                    depcoeffs.append(float(row[0]) / firstdep)
+            except (KeyError, IndexError, ValueError):
+                pass
+        ax.plot(levelnums, depcoeffs, linewidth=1.5, color='C2',
+                label=f'{ionstr} Chianti NLTE DiluteBB', linestyle='None', marker='*', zorder=-1)
+
+        levelnums = []
+        depcoeffs = []
+        firstdep = -1
+        compfile = Path('data', 'chianti-tests-Stuart', 'fe_2-test-reducedDensity.txt').open('r')
+        for line in compfile:
+            row = line.split()
+            try:
+                levelnum = levelnumofconfigterm[(row[1], row[2])]
+                if levelnum in dfpopthision.level.values:
+                    levelnums.append(levelnum)
+                    if firstdep < 0:
+                        firstdep = float(row[0])
+                    depcoeffs.append(float(row[0]) / firstdep)
+            except (KeyError, IndexError, ValueError):
+                pass
+        ax.plot(levelnums, depcoeffs, linewidth=1.5, color='C3',
+                label=f'{ionstr} Chianti NLTE DiluteBB lowD', linestyle='None', marker='*', zorder=-1)
+
+        ax.set_ylim(ymin=1e-2)
+        # axis.set_xlim(xmax=60)
+
+
 def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, estimators,
                     T_e, T_R, modelgridindex, timestep, args):
     """Plot the level populations the specified ion, cell, and timestep."""
-    ionstr = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
+    ionstr = at.get_ionstring(atomic_num, ion_stage)
 
     nne = estimators[(timestep, modelgridindex)]['nne']
 
@@ -290,6 +392,16 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
             ax.plot(dfpopthision.level.values, dfpopthision['n_LTE_T_R_normed'].values, linewidth=1.5,
                     label=f'{ionstr} LTE T$_R$ = {T_R:.0f} K', linestyle='None', marker='*')
 
+    # comparison to Andeas Floers
+    # if atomic_number == 26 and ion_stage in [2, 3]:
+    #     floersfilename = (
+    #         'andreas_level_populations_fe2.txt' if ion_stage == 2 else 'andreas_level_populations_fe3.txt')
+    #     floers_levelpops = pd.read_csv(floersfilename, comment='#', delim_whitespace = True)
+    #     floers_levelpops.sort_values(by='energypercm', inplace=True)
+    #     levelnums = list(range(len(floers_levelpops)))
+    #     floers_levelpop_values = floers_levelpops['frac_ionpop'].values * dfpopthision['n_NLTE'].sum()
+    #     axis.plot(levelnums, floers_levelpop_values, linewidth=1.5,
+    #               label=f'Floers NLTE', linestyle='None', marker='*')
 
     pd.set_option('display.max_columns', 150)
     if len(dfpopthision) < 30:
@@ -313,6 +425,9 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
             ax.plot(dfpopthisionoddlevels.level, dfpopthisionoddlevels.n_NLTE, linewidth=2,
                     label='Odd parity', linestyle='None',
                     marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
+
+    if args.plotrefdata:
+        plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision)
 
 
 def make_plot(modelpath, atomic_number, ionstages_permitted, modelgridindex, timestep, args):
@@ -470,6 +585,10 @@ def addargs(parser):
     parser.add_argument(
         '--departuremode', action='store_true',
         help='Show departure coefficients instead of populations')
+
+    parser.add_argument(
+        '--plotrefdata', action='store_true',
+        help='Show reference data')
 
     parser.add_argument(
         '--hide-lte-tr', action='store_true',

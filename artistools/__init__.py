@@ -225,14 +225,14 @@ def get_timestep_times(modelpath):
         time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
         return time_columns.columns[1:]
     except FileNotFoundError:
-        inputparams = get_inputparams(modelpath)
-        return [f'{tdays:.3f}' for tdays in get_timestep_times_float(modelpath, inputparams=inputparams)]
+        return [f'{tdays:.3f}' for tdays in get_timestep_times_float(modelpath, inputparamson=True)]
 
 
 @lru_cache(maxsize=16)
-def get_timestep_times_float(modelpath, inputparams=None):
+def get_timestep_times_float(modelpath, inputparamson=None):
     """Return a list of the time in days of each timestep."""
-    if inputparams:
+    if inputparamson:
+        inputparams = get_inputparams(modelpath)
         tmin = inputparams['tmin']
         dlogt = (math.log(inputparams['tmax']) - math.log(tmin)) / inputparams['ntstep']
         timesteps = range(inputparams['ntstep'])
@@ -478,6 +478,7 @@ def decode_roman_numeral(strin):
     return -1
 
 
+@lru_cache(maxsize=16)
 def get_ionstring(atomic_number, ionstage):
     return f'{elsymbols[atomic_number]} {roman_numerals[ionstage]}'
 
