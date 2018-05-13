@@ -212,7 +212,7 @@ def read_files(modelpath, timestep, modelgridindex=-1, noprint=False):
 
 
 def plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision):
-    ionstr = at.get_ionstring(atomic_num, ion_stage)
+    ionstr = at.get_ionstring(atomic_number, ion_stage)
 
     # comparison to Chianti file from Stuart Sim
     if atomic_number == 28 and ion_stage == 2 and Path('data', 'ni_2-levelmap.txt').exists():
@@ -220,8 +220,7 @@ def plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision):
         levelnumofconfigterm = {}
         for line in levelmapfile:
             row = line.split()
-            levelnum = int(row[2]) - 1
-            levelnumofconfigterm[(row[0], row[1])] = levelnum
+            levelnumofconfigterm[(row[0], row[1])] = int(row[2]) - 1
 
         # ax.set_ylim(ymin=5e-4)
         for depfilepath in Path('data', 'chianti-tests-Stuart').rglob('ni_2*.txt'):
@@ -229,7 +228,7 @@ def plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision):
                 firstline = depfile.readline()
                 file_nne = float(firstline[firstline.find('ne = ') + 5:].split(',')[0])
                 file_Te = float(firstline[firstline.find('Te = ') + 5:].split()[0])
-                if (firstline.startswith('Ni II departure coefficients for ') and
+                if (firstline.startswith(f'{ionstr} departure coefficients for ') and
                         math.isclose(file_nne, nne, rel_tol=0.1) and
                         math.isclose(file_Te, T_e, abs_tol=1000)):
                     print(f'Plotting reference data from {depfilepath},')
