@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Artistools - NLTE population related functions."""
 import argparse
 import math
 import os
@@ -97,7 +98,9 @@ def get_nltepops(modelpath, timestep, modelgridindex):
 
 def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxlevel=-1):
     """Add columns to dfpop with LTE populations.
-    columntemperature_tuples is a sequence of tuples of column name and temperature, e.g., ('mycolumn', 3000)"""
+
+    columntemperature_tuples is a sequence of tuples of column name and temperature, e.g., ('mycolumn', 3000)
+    """
     k_b = const.k_B.to('eV / K').value
 
     for _, row in dfpop.drop_duplicates(['modelgridindex', 'timestep', 'Z', 'ion_stage']).iterrows():
@@ -181,6 +184,7 @@ def read_files(modelpath, timestep, modelgridindex=-1, noprint=False):
             Path(modelpath).rglob('nlte_????.out.gz'))
 
         def filerank(estfile):
+            """Get the MPI process rank of an estimator file name."""
             return int(re.findall('[0-9]+', os.path.basename(estfile))[-1])
 
         npts_model = at.get_npts_model(modelpath)
@@ -317,8 +321,6 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
     """Plot the level populations the specified ion, cell, and timestep."""
     ionstr = at.get_ionstring(atomic_number, ion_stage)
 
-    nne = estimators[(timestep, modelgridindex)]['nne']
-
     dfpopthision = dfpop.query(
         'modelgridindex == @modelgridindex and timestep == @timestep '
         'and Z == @atomic_number and ion_stage == @ion_stage', inplace=False).copy()
@@ -426,10 +428,12 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
                     marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
 
     if args.plotrefdata:
+        nne = estimators[(timestep, modelgridindex)]['nne']
         plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision)
 
 
 def make_plot(modelpath, atomic_number, ionstages_permitted, modelgridindex, timestep, args):
+    """Plot level populations for chosens ions of an element in a cell and timestep of an ARTIS model."""
     adata = at.get_levels(modelpath)
 
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
