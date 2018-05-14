@@ -497,9 +497,16 @@ def plot_artis_spectrum(axes, modelpath, args, scale_to_peak=None, from_packets=
 
     modelname = at.get_model_name(modelpath)
 
-    linelabel = f'{modelname}'
+    if len(modelname) < 70:
+        linelabel = f'{modelname}'
+    else:
+        linelabel = f'...{modelname[-67:]}'
+
+    timeavg = (args.timemin + args.timemax) / 2.
+    linelabel += f' +{timeavg:.0f}d'
     if not args.hidemodeltimerange:
-        linelabel += f' at t={args.timemin:.2f}d to {args.timemax:.2f}d'
+        timedelta = (args.timemax - args.timemin) / 2
+        linelabel += r' ($\pm$ ' + f'{timedelta:.0f}d)'
 
     if from_packets:
         # find any other packets files in the same directory
