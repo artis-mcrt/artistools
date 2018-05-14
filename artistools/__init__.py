@@ -398,6 +398,30 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
     return dfadata
 
 
+@lru_cache(maxsize=4)
+def get_ionrecombratecalibration(modelpath):
+    """Read recombrates file."""
+    recombdata = {}
+    with open(Path(modelpath, 'recombrates.txt'), 'r') as frecomb:
+        for line in frecomb:
+            Z, upper_ionstage, t_count = [int(x) for x in line.split()]
+            arr_log10t = []
+            arr_rrc_low_n = []
+            arr_rrc_total = []
+            for _ in range(int(t_count)):
+                log10t, rrc_low_n, rrc_total = [float(x) for x in frecomb.readline().split()]
+
+                arr_log10t.append(log10t)
+                arr_rrc_low_n.append(rrc_low_n)
+                arr_rrc_total.append(rrc_total)
+
+            recombdata[(Z, upper_ionstage)] = pd.DataFrame(
+                {'log10T_e': arr_log10t, 'rrc_low_n': arr_rrc_low_n, 'rrc_total': arr_rrc_total})
+            recombdata[(Z, upper_ionstage)].eval('T_e = 10 ** log10T_e', inplace=True)
+
+    return recombdata
+
+
 @lru_cache(maxsize=8)
 def get_model_name(path):
     """Get the name of an ARTIS model from the path to any file inside it.
