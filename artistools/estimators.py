@@ -401,7 +401,7 @@ def plot_multi_ion_series(
             else:
                 dictvars = {}
                 for k, v in estim.items():
-                    if type(v) is dict:
+                    if isinstance(v, dict):
                         dictvars[k] = v.get((atomic_number, ion_stage), 0.)
                     else:
                         dictvars[k] = v
@@ -625,13 +625,15 @@ def make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators
         plt.close()
 
 
-def plot_recombrates(estimators, outfilename, **plotkwargs):
+def plot_recombrates(modelpath, estimators, outfilename, **plotkwargs):
     atomic_number = 28
     ion_stage_list = [2, 3, 4, 5]
     fig, axes = plt.subplots(
         nrows=len(ion_stage_list), ncols=1, sharex=True, figsize=(5, 8),
         tight_layout={"pad": 0.5, "w_pad": 0.0, "h_pad": 0.0})
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
+
+    recombcalibrationdata = at.get_ionrecombratecalibration(modelpath)
 
     for ax, ion_stage in zip(axes, ion_stage_list):
 
@@ -640,29 +642,42 @@ def plot_recombrates(estimators, outfilename, **plotkwargs):
         listT_e = []
         list_rrc = []
         for _, dicttimestepmodelgrid in estimators.items():
-            if (atomic_number, ion_stage) in dicttimestepmodelgrid['RRC_LTE_Nahar']:
+            if (not dicttimestepmodelgrid['emptycell']
+                and (atomic_number, ion_stage) in dicttimestepmodelgrid['RRC_LTE_Nahar']):
                 listT_e.append(dicttimestepmodelgrid['Te'])
                 list_rrc.append(dicttimestepmodelgrid['RRC_LTE_Nahar'][(atomic_number, ion_stage)])
 
         if not list_rrc:
             continue
 
+        # sort the pairs by temperature ascending
         listT_e, list_rrc = zip(*sorted(zip(listT_e, list_rrc), key=lambda x: x[0]))
 
-        rrcfiles = glob.glob(
-            f'/Users/lshingles/Library/Mobile Documents/com~apple~CloudDocs/GitHub/artis-atomic/atomic-data-nahar/{at.elsymbols[atomic_number].lower()}{ion_stage - 1}.rrc*.txt')
-        if rrcfiles:
-            dfrecombrates = get_ionrecombrates_fromfile(rrcfiles[0])
+        try:
+            dfrates = recombcalibrationdata[(atomic_number, ion_stage)].query(
+                "T_e > @T_e_min & T_e < @T_e_max",
+                local_dict={'T_e_min': min(listT_e), 'T_e_max': max(listT_e)})
 
-            dfrecombrates.query("logT > @logT_e_min & logT < @logT_e_max",
-                                local_dict={'logT_e_min': math.log10(min(listT_e)),
-                                            'logT_e_max': math.log10(max(listT_e))}, inplace=True)
+            ax.plot(dfrates.T_e, dfrates.rrc_total, linewidth=2,
+                    label=ionstr + " (calibration)", markersize=6, marker='s', **plotkwargs)
+        except KeyError:
+            pass
 
-            listT_e_Nahar = [10 ** x for x in dfrecombrates['logT'].values]
-            ax.plot(listT_e_Nahar, dfrecombrates['RRC_total'], linewidth=2,
-                      label=ionstr + " (Nahar)", markersize=6, marker='s', **plotkwargs)
+        # rrcfiles = glob.glob(
+        #     f'/Users/lshingles/Library/Mobile Documents/com~apple~CloudDocs/GitHub/'
+        #     f'artis-atomic/atomic-data-nahar/{at.elsymbols[atomic_number].lower()}{ion_stage - 1}.rrc*.txt')
+        # if rrcfiles:
+        #     dfrecombrates = get_ionrecombrates_fromfile(rrcfiles[0])
+        #
+        #     dfrecombrates.query("logT > @logT_e_min & logT < @logT_e_max",
+        #                         local_dict={'logT_e_min': math.log10(min(listT_e)),
+        #                                     'logT_e_max': math.log10(max(listT_e))}, inplace=True)
+        #
+        #     listT_e_Nahar = [10 ** x for x in dfrecombrates['logT'].values]
+        #     ax.plot(listT_e_Nahar, dfrecombrates['RRC_total'], linewidth=2,
+        #             label=ionstr + " (Nahar)", markersize=6, marker='s', **plotkwargs)
 
-        ax.plot(listT_e, list_rrc, linewidth=2, label=ionstr, markersize=6, marker='s', **plotkwargs)
+        ax.plot(listT_e, list_rrc, linewidth=2, label=f'{ionstr} ARTIS', markersize=4, marker='s', **plotkwargs)
 
         ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 10})
 
@@ -790,7 +805,7 @@ def main(args=None, argsraw=None, **kwargs):
         ]
 
     if args.recombrates:
-        plot_recombrates(estimators, "plotestimators_recombrates.pdf")
+        plot_recombrates(modelpath, estimators, "plotestimators_recombrates.pdf")
     else:
         modeldata, _ = at.get_modeldata(modelpath)
         allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
