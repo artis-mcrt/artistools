@@ -62,7 +62,6 @@ def test_makemodel():
 def test_menu():
     at.main()
     at.showtimesteptimes(modelpath=modelpath)
-    at.showtimesteptimes(specfilename=(modelpath / 'spec.out'))
 
 
 def test_nltepops(benchmark):

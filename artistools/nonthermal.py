@@ -198,7 +198,7 @@ def main(args=None, argsraw=None, **kwargs):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     if args.listtimesteps:
-        at.showtimesteptimes(specfilename='spec.out')
+        at.showtimesteptimes()
     else:
         nonthermaldata = None
         nonthermal_files = (

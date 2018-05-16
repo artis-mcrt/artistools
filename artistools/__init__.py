@@ -92,18 +92,15 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         self.axis.offsetText.set_visible(False)
 
 
-def showtimesteptimes(specfilename=None, modelpath=None, numberofcolumns=5):
+def showtimesteptimes(modelpath=None, numberofcolumns=5):
     """Print a table showing the timesteps and their corresponding times."""
-    if not specfilename:
-        if modelpath is None:
-            modelpath = '.'
-        specfilename = firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
-    elif modelpath:
-        specfilename = os.path.join(modelpath, specfilename)
-    specdata = pd.read_csv(specfilename, delim_whitespace=True)
+
+    if modelpath is None:
+        modelpath = Path()
+
     print('Time steps and corresponding times in days:\n')
 
-    times = specdata.columns
+    times = get_timestep_times(modelpath)
     indexendofcolumnone = math.ceil((len(times) - 1) / numberofcolumns)
     for rownum in range(0, indexendofcolumnone):
         strline = ""
