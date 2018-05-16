@@ -625,13 +625,12 @@ def make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators
         plt.close()
 
 
-def plot_recombrates(modelpath, estimators, outfilename, **plotkwargs):
-    atomic_number = 28
-    ion_stage_list = [2, 3, 4, 5]
+def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plotkwargs):
     fig, axes = plt.subplots(
         nrows=len(ion_stage_list), ncols=1, sharex=True, figsize=(5, 8),
         tight_layout={"pad": 0.5, "w_pad": 0.0, "h_pad": 0.0})
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
+    axes[-1].set_xlabel(f'T_e in kelvin')
 
     recombcalibrationdata = at.get_ionrecombratecalibration(modelpath)
 
@@ -641,17 +640,22 @@ def plot_recombrates(modelpath, estimators, outfilename, **plotkwargs):
 
         listT_e = []
         list_rrc = []
+        list_rrc2 = []
         for _, dicttimestepmodelgrid in estimators.items():
             if (not dicttimestepmodelgrid['emptycell']
-                and (atomic_number, ion_stage) in dicttimestepmodelgrid['RRC_LTE_Nahar']):
+                    and (atomic_number, ion_stage) in dicttimestepmodelgrid['RRC_LTE_Nahar']):
                 listT_e.append(dicttimestepmodelgrid['Te'])
                 list_rrc.append(dicttimestepmodelgrid['RRC_LTE_Nahar'][(atomic_number, ion_stage)])
+                list_rrc2.append(dicttimestepmodelgrid['Alpha_R'][(atomic_number, ion_stage)])
 
         if not list_rrc:
             continue
 
         # sort the pairs by temperature ascending
-        listT_e, list_rrc = zip(*sorted(zip(listT_e, list_rrc), key=lambda x: x[0]))
+        listT_e, list_rrc, list_rrc2 = zip(*sorted(zip(listT_e, list_rrc, list_rrc2), key=lambda x: x[0]))
+
+        ax.plot(listT_e, list_rrc, linewidth=2, label=f'{ionstr} ARTIS RRC_LTE_Nahar', **plotkwargs)  # markersize=4, marker='s',
+        ax.plot(listT_e, list_rrc2, linewidth=2, label=f'{ionstr} ARTIS Alpha_R', **plotkwargs)
 
         try:
             dfrates = recombcalibrationdata[(atomic_number, ion_stage)].query(
@@ -677,8 +681,6 @@ def plot_recombrates(modelpath, estimators, outfilename, **plotkwargs):
         #     ax.plot(listT_e_Nahar, dfrecombrates['RRC_total'], linewidth=2,
         #             label=ionstr + " (Nahar)", markersize=6, marker='s', **plotkwargs)
 
-        ax.plot(listT_e, list_rrc, linewidth=2, label=f'{ionstr} ARTIS', markersize=4, marker='s', **plotkwargs)
-
         ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 10})
 
     # modelname = at.get_model_name(".")
@@ -687,7 +689,8 @@ def plot_recombrates(modelpath, estimators, outfilename, **plotkwargs):
     # if time_days >= 0:
     #     plotlabel += f' (t={time_days:.2f}d)'
     # fig.suptitle(plotlabel, fontsize=12)
-
+    elsymbol = at.elsymbols[atomic_number]
+    outfilename = f"plotestimators_recombrates_{elsymbol}.pdf"
     fig.savefig(outfilename, format='pdf')
     print(f'Saved {outfilename}')
     plt.close()
@@ -805,7 +808,9 @@ def main(args=None, argsraw=None, **kwargs):
         ]
 
     if args.recombrates:
-        plot_recombrates(modelpath, estimators, "plotestimators_recombrates.pdf")
+        plot_recombrates(modelpath, estimators, 26, [2, 3, 4, 5])
+        plot_recombrates(modelpath, estimators, 27, [3, 4])
+        plot_recombrates(modelpath, estimators, 28, [3, 4, 5])
     else:
         modeldata, _ = at.get_modeldata(modelpath)
         allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
