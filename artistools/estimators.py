@@ -554,6 +554,7 @@ def plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modelpath, estima
             if showlegend and sameylabel:
                 ax.set_ylabel(ylabel)
 
+    ax.tick_params(right=True)
     if showlegend:
         if yvariables[0][0] == 'populations':
             ax.legend(loc='upper left', handlelength=2, ncol=3,
