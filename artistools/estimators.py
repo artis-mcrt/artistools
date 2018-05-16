@@ -25,6 +25,8 @@ import artistools as at
 # from astropy import constants as const
 
 colors_tab10 = list(plt.get_cmap('tab10')(np.linspace(0, 1.0, 10)))
+
+# reserve colours for these elements
 elementcolors = {
     'Fe': colors_tab10[0],
     'Ni': colors_tab10[1],
@@ -59,6 +61,7 @@ def get_elemcolor(atomic_number=None, elsymbol=None):
     if atomic_number is not None:
         elsymbol = at.elsymbols[atomic_number]
 
+    # assign a new colour to this element
     if elsymbol not in elementcolors:
         elementcolors[elsymbol] = colors_tab10[len(elementcolors)]
 
@@ -317,8 +320,31 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, **plotkwarg
         ylist.insert(0, ylist[0])
         # or ax.step(where='pre', )
         color = get_elemcolor(atomic_number=atomic_number)
-        ax.plot(xlist, ylist, linewidth=1.5, label=linelabel,
-                linestyle=linestyle, color=color, **plotkwargs)
+        ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, linestyle=linestyle, color=color, **plotkwargs)
+
+
+def get_averageionisation(populations, atomic_number):
+    free_electron_weighted_pop_sum = 0.
+    for key in populations.keys():
+        if isinstance(key, tuple) and key[0] == atomic_number:
+            ion_stage = key[1]
+            free_electron_weighted_pop_sum = populations[key] * (ion_stage - 1)
+
+    return free_electron_weighted_pop_sum / populations[atomic_number]
+
+
+
+def plot_averageionisation(ax, xlist, elementlist, timesteplist, mgilist, estimators, modelpath, **plotkwargs):
+    ax.set_ylabel('Average ionisation')
+    for elsymb in elementlist:
+        atomic_number = at.get_atomic_number(elsymb)
+        ylist = []
+        for modelgridindex, timestep in zip(mgilist, timesteplist):
+            ylist.append(get_averageionisation(estimators[(timestep, modelgridindex)]['populations'], atomic_number))
+
+        color = get_elemcolor(atomic_number=atomic_number)
+        ylist.insert(0, ylist[0])
+        ax.plot(xlist, ylist, label=elsymb, color=color, **plotkwargs)
 
 
 def plot_multi_ion_series(
@@ -345,7 +371,7 @@ def plot_multi_ion_series(
         if compositiondata.query('Z == @atomic_number '
                                  '& lowermost_ionstage <= @ion_stage '
                                  '& uppermost_ionstage >= @ion_stage').empty:
-            print(f"WARNING: Can't plot '{seriestype}' for Z={atomic_number} ion_stage {ion_stage} "
+            print(f"Warning: Can't plot {seriestype} for Z={atomic_number} ion_stage {ion_stage} "
                   f"because this ion is not in compositiondata.txt")
             continue
 
@@ -365,9 +391,6 @@ def plot_multi_ion_series(
         ylist = []
         for modelgridindex, timestep in zip(mgilist, timesteplist):
             estim = estimators[(timestep, modelgridindex)]
-
-            if estim['emptycell']:
-                continue
 
             if seriestype == 'populations':
                 if (atomic_number, ion_stage) not in estim['populations']:
@@ -539,6 +562,8 @@ def plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modelpath, estima
             showlegend = True
             if variablename[0] == 'initabundances':
                 plot_init_abundances(ax, xlist, variablename[1], mgilist, modelpath)
+            elif variablename[0] == 'averageionisation':
+                plot_averageionisation(ax, xlist, variablename[1], timesteplist, mgilist, estimators, modelpath)
             elif variablename[0] == '_ymin':
                 ax.set_ylim(ymin=variablename[1])
             elif variablename[0] == '_ymax':
