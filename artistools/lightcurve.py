@@ -345,7 +345,7 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     if not args.modelpath and not args.magnitude and not args.colour_evolution:
-        args.modelpath = ['.', '*']
+        args.modelpath = ['.']
     elif not args.modelpath and (args.magnitude or args.colour_evolution):
         args.modelpath = ['.']
     elif not isinstance(args.modelpath, Iterable):
@@ -383,7 +383,9 @@ def main(args=None, argsraw=None, **kwargs):
 
     else:
         # combined the results of applying wildcards on each input
-        modelpaths = list(itertools.chain.from_iterable([Path().glob(str(x)) for x in args.modelpath]))
+        # print(args.modelpath)
+        # modelpaths = list(itertools.chain.from_iterable([Path().glob(pattern=str(x)) for x in args.modelpath]))
+        modelpaths = args.modelpath
         make_lightcurve_plot(modelpaths, args.outputfile, args.frompackets, args.gamma)
 
 
