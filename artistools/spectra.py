@@ -724,14 +724,19 @@ def make_plot(modelpaths, args):
     # for axis in ['top', 'bottom', 'left', 'right']:
     #    axis.spines[axis].set_linewidth(framewidth)
 
-    for axis in axes:
-        axis.set_xlabel('')
-        # axis.xaxis.set_major_formatter(plt.NullFormatter())
+    for ax in axes:
+        ax.set_xlabel('')
+        # ax.xaxis.set_major_formatter(plt.NullFormatter())
+        if args.ymin is not None:
+            ax.set_ylim(ymin=args.ymin)
+        if args.ymax is not None:
+            ax.set_ylim(ymax=args.ymax)
 
     axes[-1].set_xlabel(r'Wavelength ($\AA$)')
     for ax in axes:
         if '{' in ax.get_ylabel():
             ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))
+
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
@@ -853,6 +858,12 @@ def addargs(parser):
 
     parser.add_argument('-xsplit', nargs='*', default=[],
                         help='Split into subplots at xvalue(s)')
+
+    parser.add_argument('-ymin', type=float, default=None,
+                        help='Plot range: y-axis')
+
+    parser.add_argument('-ymax', type=float, default=None,
+                        help='Plot range: y-axis')
 
     parser.add_argument('--hidemodeltimerange', action='store_true',
                         help='Hide the "at t=x to yd" from the line labels')
