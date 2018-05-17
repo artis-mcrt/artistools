@@ -215,6 +215,16 @@ def read_files(modelpath, timestep, modelgridindex=-1, noprint=False):
     return dfpop
 
 
+def annotate_emission_line(ax, y, upperlevel, lowerlevel, label):
+    ax.annotate('', xy=(lowerlevel, y), xycoords=('data', 'axes fraction'),
+                xytext=(upperlevel, y), textcoords=('data', 'axes fraction'),
+                arrowprops=dict(
+                    facecolor='black', width=0.1, headwidth=3,))
+
+    ax.annotate(label, xy=((upperlevel + lowerlevel) / 2, y), xycoords=('data', 'axes fraction'),
+                size=10, va="bottom", ha="center",)
+
+
 def plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision):
     ionstr = at.get_ionstring(atomic_number, ion_stage)
 
@@ -254,6 +264,10 @@ def plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision):
 
                     ax.plot(levelnums, depcoeffs, linewidth=1.5, color='C1',
                             label=f'{ionstr} Chianti NLTE', linestyle='None', marker='*', zorder=-1)
+
+        annotate_emission_line(ax=ax, y=0.04, upperlevel=6, lowerlevel=0, label=r'$\lambda$7378')
+        annotate_emission_line(ax=ax, y=0.15, upperlevel=7, lowerlevel=1, label=r'$\lambda$7412')
+        annotate_emission_line(ax=ax, y=0.26, upperlevel=6, lowerlevel=2, label=r'1.939 $\mu$m')
 
     elif atomic_number == 26 and ion_stage == 2 and Path('data', 'chianti-tests-Stuart', 'fe_2-test.txt').exists():
         levelnums = []
