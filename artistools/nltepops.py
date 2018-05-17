@@ -11,7 +11,7 @@ from itertools import chain
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-# import numpy as np
+import numpy as np
 import pandas as pd
 from astropy import constants as const
 
@@ -325,10 +325,11 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
         'modelgridindex == @modelgridindex and timestep == @timestep '
         'and Z == @atomic_number and ion_stage == @ion_stage', inplace=False).copy()
 
-    coltemp = [('n_LTE_T_e', T_e)]
+    lte_columns = [('n_LTE_T_e', T_e)]
     if not args.hide_lte_tr:
-        coltemp.append(('n_LTE_T_R', T_R))
-    add_lte_pops(modelpath, dfpopthision, coltemp, args.maxlevel)
+        lte_columns.append(('n_LTE_T_R', T_R))
+
+    add_lte_pops(modelpath, dfpopthision, lte_columns, args.maxlevel)
 
     if args.maxlevel >= 0:
         dfpopthision.query('level <= @args.maxlevel', inplace=True)
@@ -406,7 +407,27 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
 
     pd.set_option('display.max_columns', 150)
     if len(dfpopthision) < 30:
-        print(dfpopthision[['Z', 'ion_stage', 'level', 'config', 'departure_coeff', 'texname']].to_string(index=False))
+        print(dfpopthision[
+            ['Z', 'ion_stage', 'level', 'config', 'departure_coeff', 'texname']].to_string(index=False))
+
+    if not ion_data.transitions.empty:
+        maxlevel = max(dfpopthision.level)
+        dftrans = ion_data.transitions.query('upper <= @maxlevel').copy()
+        dftrans['energy_trans'] = [(
+            ion_data.levels.iloc[int(trans.upper)].energy_ev - ion_data.levels.iloc[int(trans.lower)].energy_ev)
+            for _, trans in dftrans.iterrows()]
+
+        dftrans['emissionstrength'] = [
+            dfpopthision.query('level == @trans.upper').iloc[0].n_NLTE * trans.A * trans.energy_trans
+            for _, trans in dftrans.iterrows()]
+
+        dftrans['wavelength'] = [
+            round((const.h * const.c).to('eV angstrom').value / trans.energy_trans)
+            for _, trans in dftrans.iterrows()]
+
+        dftrans.sort_values("emissionstrength", ascending=False, inplace=True)
+        print("\nTop radiative decays")
+        print(dftrans[:10].to_string(index=False))
 
     dfpopthisionoddlevels = dfpopthision.query('parity==1')
     if args.departuremode:
@@ -434,7 +455,7 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
 
 def make_plot(modelpath, atomic_number, ionstages_permitted, modelgridindex, timestep, args):
     """Plot level populations for chosens ions of an element in a cell and timestep of an ARTIS model."""
-    adata = at.get_levels(modelpath)
+    adata = at.get_levels(modelpath, get_transitions=args.gettransitions)
 
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     time_days = float(at.get_timestep_time(modelpath, timestep))
@@ -588,6 +609,10 @@ def addargs(parser):
     parser.add_argument(
         '--departuremode', action='store_true',
         help='Show departure coefficients instead of populations')
+
+    parser.add_argument(
+        '--gettransitions', action='store_true',
+        help='Show the most significant transitions')
 
     parser.add_argument(
         '--plotrefdata', action='store_true',
