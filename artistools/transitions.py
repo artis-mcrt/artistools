@@ -404,7 +404,6 @@ def main(args=None, argsraw=None, **kwargs):
                         ltepartfunc = 1.0
                     add_upper_lte_pop(dftransitions, T_exc, ionpopdict[ionid], ltepartfunc, columnname=popcolumnname)
 
-
                 yvalues[seriesindex][ionindex] = generate_ion_spectrum(dftransitions, xvalues,
                                                                        popcolumnname, plot_resolution, args)
 
