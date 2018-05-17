@@ -81,6 +81,10 @@ def test_radfield():
     at.radfield.main(modelpath=modelpath, outputfile=outputpath)
 
 
+def test_get_ionrecombratecalibration():
+    at.get_ionrecombratecalibration(modelpath=modelpath)
+
+
 def test_spectraplot():
     at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320)
     at.spectra.main(modelpath=modelpath, outputfile=os.path.join(outputpath, 'spectrum_from_packets.pdf'),
