@@ -4,7 +4,6 @@ Examples are temperatures, populations, heating/cooling rates.
 """
 # import math
 import argparse
-import glob
 import gzip
 import math
 import os
@@ -437,16 +436,16 @@ def plot_multi_ion_series(
         plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
 
         ylist.insert(0, ylist[0])
-        dashes_list = [(5, 1), (2, 1), (6, 2), (6, 1)]
-        linestyle_list = ['-.', '-', '--', (0, (4, 1, 1, 1)), ':'] + [(0, x) for x in dashes_list]
-        linestyle = linestyle_list[ion_stage - 1]
-        linewidth = [1.5, 1.5, 1.0, 1.0, 1.0][ion_stage - 1]
+        # linestyle = ['-.', '-', '--', (0, (4, 1, 1, 1)), ':'] + [(0, x) for x in dashes_list][ion_stage - 1]
+        dashes = [(3, 1, 1, 1), (), (1.5, 1.5), (6, 3), (1, 3)][ion_stage - 1]
+
+        linewidth = [1.0, 1.0, 1.0, 0.7, 0.7][ion_stage - 1]
         # color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][ion_stage - 1]
         # assert colorindex < 10
         # color = f'C{colorindex}'
         color = get_elemcolor(atomic_number=atomic_number)
         # or ax.step(where='pre', )
-        ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, linestyle=linestyle, **plotkwargs)
+        ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, dashes=dashes, **plotkwargs)
         prev_atomic_number = atomic_number
 
     ax.set_yscale('log')
@@ -824,11 +823,14 @@ def main(args=None, argsraw=None, **kwargs):
             # [['populations', ['Ne I', 'Ne II', 'Ne III', 'Ne IV', 'Ne V']]],
             # [['populations', ['Si I', 'Si II', 'Si III', 'Si IV', 'Si V']]],
             # [['populations', ['Cr I', 'Cr II', 'Cr III', 'Cr IV', 'Cr V']]],
-            # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Fe VI', 'Fe VII', 'Fe VIII']]],
-            # [['populations', ['Co I', 'Co II', 'Co III', 'Co IV', 'Co V', 'Co VI', 'Co VII']]],
-            # [['populations', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
-            [['populations', ['Fe II', 'Fe III', 'Co II', 'Co III', 'Ni II', 'Ni III']]],
+            [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Fe VI', 'Fe VII', 'Fe VIII']]],
+            [['populations', ['Co I', 'Co II', 'Co III', 'Co IV', 'Co V', 'Co VI', 'Co VII']]],
+            [['populations', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
+            # [['populations', ['Fe II', 'Fe III', 'Co II', 'Co III', 'Ni II', 'Ni III']]],
             # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
+            [['RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V']]],
+            [['RRC_LTE_Nahar', ['Co II', 'Co III', 'Co IV', 'Co V']]],
+            [['RRC_LTE_Nahar', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
             # [['Alpha_R / RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni III']]],
             # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
         ]
