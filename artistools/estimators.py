@@ -125,7 +125,7 @@ def get_ylabel(variable):
     return ''
 
 
-def parse_ion_row(row, outdict):
+def parse_estimfile_ionrow(row, outdict):
     variablename = row[0]
     if row[1].endswith('='):
         atomic_number = int(row[2])
@@ -159,6 +159,58 @@ def parse_ion_row(row, outdict):
             if 'Alpha_R' not in outdict:
                 outdict['Alpha_R'] = {}
             outdict['Alpha_R'][(atomic_number, ion_stage)] = value_thision / outdict['nne']
+
+
+def parse_estimfile(estfilepath, modeldata):
+    """Generator for blocks (modelgrid and timestep) of estimators."""
+    opener = gzip.open if str(estfilepath).endswith('.gz') else open
+    with opener(estfilepath, 'rt') as estimfile:
+        timestep = -1
+        modelgridindex = -1
+        estimblock = {}
+        for line in estimfile:
+            row = line.split()
+            if not row:
+                continue
+
+            if row[0] == 'timestep':
+                # yield the previous block before starting a new one
+                if timestep >= 0 and modelgridindex >= 0:
+                    yield timestep, modelgridindex, estimblock
+
+                timestep = int(row[1])
+                modelgridindex = int(row[3])
+                # print(f'Timestep {timestep} cell {modelgridindex}')
+
+                estimblock = {}
+                estimblock['velocity'] = modeldata['velocity'][modelgridindex]
+                emptycell = (row[4] == 'EMPTYCELL')
+                estimblock['emptycell'] = emptycell
+                if not emptycell:
+                    estimblock['TR'] = float(row[5])
+                    estimblock['Te'] = float(row[7])
+                    estimblock['W'] = float(row[9])
+                    estimblock['TJ'] = float(row[11])
+                    estimblock['nne'] = float(row[15])
+
+            elif row[1].startswith('Z='):
+                parse_estimfile_ionrow(row, estimblock)
+
+            elif row[0] == 'heating:':
+                for index, token in list(enumerate(row))[1::2]:
+                    estimblock[f'heating_{token}'] = float(row[index + 1])
+                if estimblock['heating_gamma/gamma_dep'] > 0:
+                    estimblock['gamma_dep'] = (
+                        estimblock['heating_gamma'] /
+                        estimblock['heating_gamma/gamma_dep'])
+
+            elif row[0] == 'cooling:':
+                for index, token in list(enumerate(row))[1::2]:
+                    estimblock[f'cooling_{token}'] = float(row[index + 1])
+
+    # reached the end of file
+    if timestep >= 0 and modelgridindex >= 0:
+        yield timestep, modelgridindex, estimblock
 
 
 @lru_cache(maxsize=16)
@@ -197,7 +249,7 @@ def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
     runfolder_timesteps = {}
 
     # membership means that a full estimator file has been read from the folder, so all timesteps are known
-    runfolder_alltimesteps_found = set()
+    runfolder_timesteps_are_known = set()
 
     estimators = {}
     # sorting the paths important, because there is a duplicate estimator block (except missing heating/cooling rates)
@@ -206,81 +258,51 @@ def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
         estfilefolderpath = estfilepath.parent.resolve()
 
         if (match_timestep >= 0 and
-                estfilefolderpath in runfolder_alltimesteps_found and
+                estfilefolderpath in runfolder_timesteps_are_known and
                 match_timestep not in runfolder_timesteps[estfilefolderpath]):
-            # already found every the timesteps in the first file in this folder and it wasn't a match
+            # already found every timestep in the first file in this folder and it wasn't a match
             continue
 
+        # this won't lead to too many print outs if we're looking for one particular cell
         if match_modelgridindex >= 0:
             filesize = Path(estfilepath).stat().st_size / 1024 / 1024
             print(f'Reading {estfilepath} ({filesize:.3f} MiB)')
 
-        opener = gzip.open if str(estfilepath).endswith('.gz') else open
-        with opener(estfilepath, 'rt') as estfile:
-            timestep = 0
-            modelgridindex = 0
-            skip_block = False
-            for line in estfile:
-                row = line.split()
-                if not row:
-                    continue
+        for timestep, modelgridindex, estimblock in parse_estimfile(estfilepath, modeldata):
+            if estfilefolderpath not in runfolder_timesteps:
+                runfolder_timesteps[estfilefolderpath] = set()
 
-                if row[0] == 'timestep':
-                    if (match_timestep >= 0 and match_modelgridindex >= 0 and
-                            (match_timestep, match_modelgridindex) in estimators):
-                        # found our key, so exit now!
-                        return estimators
+            if (match_timestep >= 0 and
+                    match_timestep not in runfolder_timesteps[estfilefolderpath] and
+                    match_timestep == timestep):
+                print(f" Found timestep {match_timestep} in {estfilepath.relative_to(modelpath)} so reading "
+                      f"rest of {Path(estfilepath.parent.relative_to(modelpath), '*')}")
 
-                    timestep = int(row[1])
-                    modelgridindex = int(row[3])
-                    # print(f'Timestep {timestep} cell {modelgridindex}')
-                    if ((timestep, modelgridindex) in estimators and
-                            not estimators[(timestep, modelgridindex)]['emptycell']):
-                        # print(f'WARNING: duplicate estimator data for timestep {timestep} cell {modelgridindex}. '
-                        #       f'Kept old (T_e {estimators[(timestep, modelgridindex)]["Te"]}), '
-                        #       f'instead of new (T_e {float(row[7])})')
-                        skip_block = True
-                    else:
-                        skip_block = False
+            runfolder_timesteps[estfilefolderpath].add(timestep)
 
-                        if estfilefolderpath not in runfolder_timesteps:
-                            runfolder_timesteps[estfilefolderpath] = set()
-                        runfolder_timesteps[estfilefolderpath].add(timestep)
+            # when the model restarts, it writes out a duplicate block with the estimators loaded from gridsave.dat
+            # However, it doesn't have the heating/cooling rates, so these are zero (they are also zero in LTE mode)
+            # here we keep the block only if it hasn't already been set with the real block (before the restart)
+            # and replace with the real block if it is found afterwards
+            if (match_timestep < 0 or timestep == match_timestep) and (
+                match_modelgridindex < 0 or modelgridindex == match_modelgridindex) and (
+                    estimblock['emptycell'] or (
+                        estimblock['cooling_adiabatic'] >= 0. or (timestep, modelgridindex) not in estimators)):
+                estimators[(timestep, modelgridindex)] = estimblock
 
-                        estimators[(timestep, modelgridindex)] = {}
-                        estimators[(timestep, modelgridindex)]['velocity'] = modeldata['velocity'][modelgridindex]
-                        emptycell = (row[4] == 'EMPTYCELL')
-                        estimators[(timestep, modelgridindex)]['emptycell'] = emptycell
-                        if not emptycell:
-                            estimators[(timestep, modelgridindex)]['TR'] = float(row[5])
-                            estimators[(timestep, modelgridindex)]['Te'] = float(row[7])
-                            estimators[(timestep, modelgridindex)]['W'] = float(row[9])
-                            estimators[(timestep, modelgridindex)]['TJ'] = float(row[11])
-                            estimators[(timestep, modelgridindex)]['nne'] = float(row[15])
-
-                elif row[1].startswith('Z=') and not skip_block:
-                    parse_ion_row(row, estimators[(timestep, modelgridindex)])
-
-                elif row[0] == 'heating:' and not skip_block:
-                    for index, token in list(enumerate(row))[1::2]:
-                        estimators[(timestep, modelgridindex)][f'heating_{token}'] = float(row[index + 1])
-                    if estimators[(timestep, modelgridindex)]['heating_gamma/gamma_dep'] > 0:
-                        estimators[(timestep, modelgridindex)]['gamma_dep'] = (
-                            estimators[(timestep, modelgridindex)]['heating_gamma'] /
-                            estimators[(timestep, modelgridindex)]['heating_gamma/gamma_dep'])
-
-                elif row[0] == 'cooling:' and not skip_block:
-                    for index, token in list(enumerate(row))[1::2]:
-                        estimators[(timestep, modelgridindex)][f'cooling_{token}'] = float(row[index + 1])
+                # this won't match in the default case of match_timestep == -1, and match_modelgridindex == -1
+                if (match_timestep == timestep and match_modelgridindex == modelgridindex):
+                    # found our key, so exit now!
+                    return estimators
 
         if (match_modelgridindex < 0 and
-                estfilefolderpath not in runfolder_alltimesteps_found and
+                estfilefolderpath not in runfolder_timesteps_are_known and
                 match_timestep >= 0 and
                 match_timestep not in runfolder_timesteps[estfilefolderpath]):
             print(f" Skipping rest of {Path(estfilepath.parent.relative_to(modelpath), '*')} because "
                   f"the {estfilepath.relative_to(modelpath)} didn't contain timestep {match_timestep}")
 
-        runfolder_alltimesteps_found.add(estfilefolderpath)
+        runfolder_timesteps_are_known.add(estfilefolderpath)
     return estimators
 
 
