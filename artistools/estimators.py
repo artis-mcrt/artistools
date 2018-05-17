@@ -388,18 +388,25 @@ def plot_multi_ion_series(
     iontuplelist.sort()
     print(f'Subplot with ions: {iontuplelist}')
 
-    prev_atomic_number = iontuplelist[0][0]
-    colorindex = 0
+    missingions = set()
     for atomic_number, ion_stage in iontuplelist:
-        if atomic_number != prev_atomic_number:
-            colorindex += 1
-
         if compositiondata.query('Z == @atomic_number '
                                  '& lowermost_ionstage <= @ion_stage '
                                  '& uppermost_ionstage >= @ion_stage').empty:
-            print(f"Warning: Can't plot {seriestype} for Z={atomic_number} ion_stage {ion_stage} "
-                  f"because this ion is not in compositiondata.txt")
+            missingions.add((atomic_number, ion_stage))
+
+    if missingions:
+        print(f" Warning: Can't plot {seriestype} for {missingions} "
+              f"because these ions are not in compositiondata.txt")
+
+    prev_atomic_number = iontuplelist[0][0]
+    colorindex = 0
+    for atomic_number, ion_stage in iontuplelist:
+        if (atomic_number, ion_stage) in missingions:
             continue
+
+        if atomic_number != prev_atomic_number:
+            colorindex += 1
 
         if seriestype == 'populations':
             if args.ionpoptype == 'absolute':
