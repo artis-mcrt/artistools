@@ -677,7 +677,7 @@ def main(argsraw=None):
     parser = argparse.ArgumentParser()
     parser.set_defaults(func=None)
 
-    subparsers = parser.add_subparsers()
+    subparsers = parser.add_subparsers(dest='subcommand')
 
     for command, (submodulename, funcname) in sorted(commandlist.items()):
         submodule = importlib.import_module(submodulename, package='artistools')
