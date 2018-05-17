@@ -68,6 +68,7 @@ class AppendPath(argparse.Action):
 
 class ExponentLabelFormatter(ticker.ScalarFormatter):
     """Formatter to move the 'x10^x' offset text into the axis label."""
+
     def __init__(self, labeltemplate, useMathText=True):
         assert '{' in labeltemplate
         self.labeltemplate = labeltemplate
@@ -372,6 +373,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
             Z = int(ionheader[0])
             ionstage = int(ionheader[1])
             level_count = int(ionheader[2])
+            ionisation_energy_ev = float(ionheader[3])
 
             if not ionlist or (Z, ionstage) in ionlist:
                 level_list = []
@@ -386,7 +388,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
                 dflevels = pd.DataFrame(level_list)
 
                 translist = transitionsdict.get((Z, ionstage), pd.DataFrame(columns=transitiontuple._fields))
-                level_lists.append(iontuple(Z, ionstage, level_count, float(ionheader[3]), dflevels, translist))
+                level_lists.append(iontuple(Z, ionstage, level_count, ionisation_energy_ev, dflevels, translist))
             else:
                 for _ in range(level_count):
                     fadata.readline()
