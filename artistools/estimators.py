@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Functions for reading and plotting estimator files.
+
 Examples are temperatures, populations, heating/cooling rates.
 """
 # import math
@@ -335,7 +336,6 @@ def get_averageionisation(populations, atomic_number):
 
     assert(found)
     return free_electron_weighted_pop_sum / populations[atomic_number]
-
 
 
 def plot_averageionisation(ax, xlist, elementlist, timesteplist, mgilist, estimators, modelpath, **plotkwargs):
@@ -684,7 +684,8 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
         # sort the pairs by temperature ascending
         listT_e, list_rrc, list_rrc2 = zip(*sorted(zip(listT_e, list_rrc, list_rrc2), key=lambda x: x[0]))
 
-        ax.plot(listT_e, list_rrc, linewidth=2, label=f'{ionstr} ARTIS RRC_LTE_Nahar', **plotkwargs)  # markersize=4, marker='s',
+        # markersize=4, marker='s',
+        ax.plot(listT_e, list_rrc, linewidth=2, label=f'{ionstr} ARTIS RRC_LTE_Nahar', **plotkwargs)
         ax.plot(listT_e, list_rrc2, linewidth=2, label=f'{ionstr} ARTIS Alpha_R', **plotkwargs)
 
         try:
@@ -863,7 +864,6 @@ def main(args=None, argsraw=None, **kwargs):
             for timestep in range(timestepmin, timestepmax + 1):
                 timesteplist_unfiltered = [timestep] * len(allnonemptymgilist)  # constant timestep
                 make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist, args)
-
 
 
 if __name__ == "__main__":
