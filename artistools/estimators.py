@@ -324,11 +324,16 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, **plotkwarg
 
 def get_averageionisation(populations, atomic_number):
     free_electron_weighted_pop_sum = 0.
+    found = False
+    popsum = 0
     for key in populations.keys():
         if isinstance(key, tuple) and key[0] == atomic_number:
+            found = True
             ion_stage = key[1]
-            free_electron_weighted_pop_sum = populations[key] * (ion_stage - 1)
+            free_electron_weighted_pop_sum += populations[key] * (ion_stage - 1)
+            popsum += populations[key]
 
+    assert(found)
     return free_electron_weighted_pop_sum / populations[atomic_number]
 
 
