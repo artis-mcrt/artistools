@@ -198,7 +198,7 @@ def plot_line_estimators(axis, radfielddata, xmin, xmax, modelgridindex=None, ti
     ymax = radfielddataselected['Jb_lambda'].max()
 
     if not radfielddataselected.empty:
-        axis.scatter(radfielddataselected['lambda_angstroms'].values, radfielddataselected['Jb_lambda'].values,
+        axis.scatter(radfielddataselected['lambda_angstroms'], radfielddataselected['Jb_lambda'],
                      label='Line estimators', s=0.2, **plotkwargs)
 
     return ymax
@@ -361,7 +361,7 @@ def plot_line_estimator_evolution(axis, radfielddata, bin_num, modelgridindex=No
     radfielddataselected.eval('lambda_angstroms = @const_c / nu_upper', inplace=True)
     radfielddataselected.eval('Jb_lambda = J_nu_avg * (nu_upper ** 2) / @const_c', inplace=True)
 
-    axis.plot(radfielddataselected['timestep'].values, radfielddataselected['Jb_lambda'].values,
+    axis.plot(radfielddataselected['timestep'], radfielddataselected['Jb_lambda'],
               label=f'Jb_lu bin_num {bin_num}', **plotkwargs)
 
 
