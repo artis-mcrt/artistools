@@ -125,42 +125,6 @@ def get_ylabel(variable):
     return ''
 
 
-def parse_estimfile_ionrow(row, outdict):
-    variablename = row[0]
-    if row[1].endswith('='):
-        atomic_number = int(row[2])
-        startindex = 3
-    else:
-        atomic_number = int(row[1].split('=')[1])
-        startindex = 2
-
-    if variablename not in outdict:
-        outdict[variablename] = {}
-
-    for index, token in list(enumerate(row))[startindex::2]:
-        try:
-            ion_stage = int(token.rstrip(':'))
-        except ValueError:
-            print(f'Cannot parse row: {row}')
-            return
-
-        value_thision = float(row[index + 1].rstrip(','))
-
-        outdict[variablename][(atomic_number, ion_stage)] = value_thision
-
-        if variablename == 'populations':
-            elpop = outdict[variablename].get(atomic_number, 0)
-            outdict[variablename][atomic_number] = elpop + value_thision
-
-            totalpop = outdict[variablename].get('total', 0)
-            outdict[variablename]['total'] = totalpop + value_thision
-
-        elif variablename == 'Alpha_R*nne':
-            if 'Alpha_R' not in outdict:
-                outdict['Alpha_R'] = {}
-            outdict['Alpha_R'][(atomic_number, ion_stage)] = value_thision / outdict['nne']
-
-
 def parse_estimfile(estfilepath, modeldata):
     """Generator for blocks (modelgrid and timestep) of estimators."""
     opener = gzip.open if str(estfilepath).endswith('.gz') else open
@@ -194,7 +158,44 @@ def parse_estimfile(estfilepath, modeldata):
                     estimblock['nne'] = float(row[15])
 
             elif row[1].startswith('Z='):
-                parse_estimfile_ionrow(row, estimblock)
+                variablename = row[0]
+                if row[1].endswith('='):
+                    atomic_number = int(row[2])
+                    startindex = 3
+                else:
+                    atomic_number = int(row[1].split('=')[1])
+                    startindex = 2
+
+                if variablename not in estimblock:
+                    estimblock[variablename] = {}
+
+                for index, token in list(enumerate(row))[startindex::2]:
+                    try:
+                        ion_stage = int(token.rstrip(':'))
+                    except ValueError:
+                        print(f'Cannot parse row: {row}')
+                        return
+
+                    value_thision = float(row[index + 1].rstrip(','))
+
+                    estimblock[variablename][(atomic_number, ion_stage)] = value_thision
+
+                    if variablename == 'populations':
+                        # contribute the ion population to the element population
+                        if atomic_number not in estimblock['populations']:
+                            estimblock['populations'][atomic_number] = 0.
+                        estimblock['populations'][atomic_number] += value_thision
+
+                    elif variablename == 'Alpha_R*nne':
+                        if 'Alpha_R' not in estimblock:
+                            estimblock['Alpha_R'] = {}
+                        estimblock['Alpha_R'][(atomic_number, ion_stage)] = value_thision / estimblock['nne']
+
+                if variablename == 'populations':
+                    # contribute the element population to the total population
+                    if 'total' not in estimblock['populations']:
+                        estimblock['populations']['total'] = 0.
+                    estimblock['populations']['total'] += estimblock['populations'][atomic_number]
 
             elif row[0] == 'heating:':
                 for index, token in list(enumerate(row))[1::2]:
