@@ -49,7 +49,7 @@ def read_files(modelpath, modelgridindex=-1):
     else:
         for radfield_file in radfield_files:
             if modelgridindex > -1:
-                print(f'Reading {radfield_file}...')
+                print(f'Reading {Path(radfield_file).relative_to(modelpath.parent)}...')
 
             radfielddata_thisfile = pd.read_csv(radfield_file, delim_whitespace=True)
             # radfielddata_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)

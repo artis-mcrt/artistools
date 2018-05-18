@@ -37,7 +37,7 @@ def readfile(packetsfile, usecols, filehandle=None, filesize=-1):
     if filesize < 0:
         filesize = Path(packetsfile).stat().st_size / 1024 / 1024
 
-    print(f'Reading {packetsfile} ({filesize:.3f} MiB)', end='')
+    print(f'Reading {packetsfile} ({filesize:.2f} MiB)', end='')
     inputcolumncount = len(pd.read_csv(
         filehandle if filehandle else packetsfile, nrows=1, delim_whitespace=True, header=None).columns)
     if inputcolumncount < 3:

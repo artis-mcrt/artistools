@@ -284,7 +284,7 @@ def get_timestep_time_delta(timestep, timearray=None, inputparams=None):
 @lru_cache(maxsize=8)
 def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisations=False):
     """Return a list of lists of levels."""
-    adatafilename = os.path.join(modelpath, 'adata.txt')
+    adatafilename = Path(modelpath, 'adata.txt')
 
     transitiontuple = namedtuple('transition', 'lower upper A collstr forbidden')
 
@@ -292,9 +292,9 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
 
     transitionsdict = {}
     if get_transitions:
-        transition_filename = os.path.join(modelpath, 'transitiondata.txt')
+        transition_filename = Path(modelpath, 'transitiondata.txt')
 
-        print(f'Reading {transition_filename}')
+        print(f'Reading {transition_filename.relative_to(modelpath.parent)}')
         with opengzip(transition_filename, 'r') as ftransitions:
             for line in ftransitions:
                 if not line.strip():
@@ -319,9 +319,9 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
 
     phixsdict = {}
     if get_photoionisations:
-        phixs_filename = os.path.join(modelpath, 'phixsdata_v2.txt')
+        phixs_filename = Path(modelpath, 'phixsdata_v2.txt')
 
-        print(f'Reading {phixs_filename}')
+        print(f'Reading {phixs_filename.relative_to(modelpath.parent)}')
         with opengzip(phixs_filename, 'r') as fphixs:
             nphixspoints = int(fphixs.readline())
             phixsnuincrement = float(fphixs.readline())
@@ -364,7 +364,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
     iontuple = namedtuple('ion', 'Z ion_stage level_count ion_pot levels transitions')
     leveltuple = namedtuple('level', 'energy_ev g transition_count levelname phixstable')
     with opengzip(adatafilename, 'rt') as fadata:
-        print(f'Reading {adatafilename}')
+        print(f'Reading {adatafilename.relative_to(modelpath.parent)}')
         for line in fadata:
             if not line.strip():
                 continue
@@ -645,7 +645,7 @@ def get_cellsofmpirank(mpirank, modelpath):
         ndo = nblock
         nstart = n_leftover + mpirank * nblock
 
-    return range(nstart, nstart + ndo)
+    return list(range(nstart, nstart + ndo))
 
 
 @lru_cache(maxsize=32)
