@@ -410,8 +410,8 @@ def parse_recombratefile(frecomb):
             arr_rrc_low_n.append(rrc_low_n)
             arr_rrc_total.append(rrc_total)
 
-        recombdata_thision = pd.DataFrame(dict(
-            log10T_e=arr_log10t, rrc_low_n=arr_rrc_low_n, rrc_total=arr_rrc_total))
+        recombdata_thision = pd.DataFrame({
+            'log10T_e': arr_log10t, 'rrc_low_n': arr_rrc_low_n, 'rrc_total': arr_rrc_total})
 
         recombdata_thision.eval('T_e = 10 ** log10T_e', inplace=True)
 
