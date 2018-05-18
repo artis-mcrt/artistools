@@ -227,84 +227,83 @@ def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
 
     if match_modelgridindex >= 0:
         mpirank = at.get_mpirankofcell(match_modelgridindex, modelpath=modelpath)
-        strmpirank = f'{mpirank:04d}'
+        mpiranklist = [mpirank]
     else:
-        strmpirank = '????'
-
-    estimfiles = chain(
-        Path(modelpath).rglob(f'**/estimators_{strmpirank}.out'),
-        Path(modelpath).rglob(f'**/estimators_{strmpirank}.out.gz'))
-
-    if match_modelgridindex < 0:
         npts_model = at.get_npts_model(modelpath)
-        estimfiles = [x for x in estimfiles if
-                      int(re.findall('[0-9]+', os.path.basename(x))[-1]) < npts_model]
-        # actually number of files read may be less if some files are contained within a folder
-        # that is known not to contain the required timestep
-        print(f'Reading up to {len(list(estimfiles))} estimator files from {modelpath}...')
+        mpiranklist = range(min(at.get_nprocs(modelpath), npts_model))
 
-    if not estimfiles:
-        print("No estimator files found")
-        return False
-
-    # set of timesteps covered by files in a directory, where the key is the absolute path of the directory
-    runfolder_timesteps = {}
-
-    # membership means that a full estimator file has been read from the folder, so all timesteps are known
-    runfolder_timesteps_are_known = set()
+    folderlist = sorted([child for child in modelpath.iterdir() if child.is_dir()]) + [modelpath]
 
     estimators = {}
-    # sorting the paths important, because there is a duplicate estimator block (except missing heating/cooling rates)
-    # when Artis restarts and here, only the first found block for each timestep, modelgridindex is kept
-    for estfilepath in sorted(estimfiles):
-        estfilefolderpath = estfilepath.parent.resolve()
+    for folderpath in folderlist:
+        nfilesread_thisfolder = 0
+        folder_timesteps = set()
+        for mpirank in mpiranklist:
+            if not at.get_cellsofmpirank(mpirank, modelpath):
+                continue
+            else:
+                estimfilename = f'estimators_{mpirank:04d}.out'
+                estfilepath = Path(folderpath, estimfilename)
+                if not estfilepath.is_file():
+                    estfilepath = Path(folderpath, estimfilename + '.gz')
+                    if not estfilepath.is_file():
+                        continue
 
-        if (match_timestep >= 0 and
-                estfilefolderpath in runfolder_timesteps_are_known and
-                match_timestep not in runfolder_timesteps[estfilefolderpath]):
-            # already found every timestep in the first file in this folder and it wasn't a match
-            continue
+                if len(mpiranklist) == 1:
+                    filesize = Path(estfilepath).stat().st_size / 1024 / 1024
+                    print(f'Reading {estfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)')
 
-        # this won't lead to too many print outs if we're looking for one particular cell
-        if match_modelgridindex >= 0:
-            filesize = Path(estfilepath).stat().st_size / 1024 / 1024
-            print(f'Reading {estfilepath} ({filesize:.3f} MiB)')
+                nfilesread_thisfolder += 1
+                for timestep, modelgridindex, estimblock in parse_estimfile(estfilepath, modeldata):
 
-        for timestep, modelgridindex, estimblock in parse_estimfile(estfilepath, modeldata):
-            if estfilefolderpath not in runfolder_timesteps:
-                runfolder_timesteps[estfilefolderpath] = set()
+                    if match_timestep >= 0:
 
-            if (match_timestep >= 0 and
-                    match_timestep not in runfolder_timesteps[estfilefolderpath] and
-                    match_timestep == timestep):
-                print(f" Found timestep {match_timestep} in {estfilepath.relative_to(modelpath)} so reading "
-                      f"rest of {Path(estfilepath.parent.relative_to(modelpath), '*')}")
+                        if timestep in folder_timesteps and match_timestep not in folder_timesteps:
+                            # we know all timesteps from this file, but none of them match
+                            break  # next folder
 
-            runfolder_timesteps[estfilefolderpath].add(timestep)
+                        folder_timesteps.add(timestep)
 
-            # when the model restarts, it writes out a duplicate block with the estimators loaded from gridsave.dat
-            # However, it doesn't have the heating/cooling rates, so these are zero (they are also zero in LTE mode)
-            # here we keep the block only if it hasn't already been set with the real block (before the restart)
-            # and replace with the real block if it is found afterwards
-            if (match_timestep < 0 or timestep == match_timestep) and (
-                match_modelgridindex < 0 or modelgridindex == match_modelgridindex) and (
-                    estimblock['emptycell'] or (
-                        estimblock['cooling_adiabatic'] >= 0. or (timestep, modelgridindex) not in estimators)):
-                estimators[(timestep, modelgridindex)] = estimblock
+                        if match_timestep != timestep:
+                            continue  # timestep not a match, so skip this block
 
-                # this won't match in the default case of match_timestep == -1, and match_modelgridindex == -1
-                if (match_timestep == timestep and match_modelgridindex == modelgridindex):
-                    # found our key, so exit now!
-                    return estimators
+                    if (match_modelgridindex >= 0 and match_modelgridindex != modelgridindex):
+                        continue  # modelgridindex not a match, skip this block
 
-        if (match_modelgridindex < 0 and
-                estfilefolderpath not in runfolder_timesteps_are_known and
-                match_timestep >= 0 and
-                match_timestep not in runfolder_timesteps[estfilefolderpath]):
-            print(f" Skipping rest of {Path(estfilepath.parent.relative_to(modelpath), '*')} because "
-                  f"the {estfilepath.relative_to(modelpath)} didn't contain timestep {match_timestep}")
+                    # when the model restarts, it writes out a duplicate block with the estimators loaded from gridsave
+                    # However, it doesn't have the heating/cooling rates, so these are zero (they are also zero in LTE)
+                    # here we keep the block only if it hasn't already been set with the real block (before the restart)
+                    # and replace with the real block if it is found afterwards
+                    if estimblock['emptycell'] or (
+                            estimblock['cooling_adiabatic'] >= 0. or (timestep, modelgridindex) not in estimators):
 
-        runfolder_timesteps_are_known.add(estfilefolderpath)
+                        estimators[(timestep, modelgridindex)] = estimblock
+
+                        # this won't match in the default case of match_timestep == -1, and match_modelgridindex == -1
+                        if (match_timestep == timestep and match_modelgridindex == modelgridindex):
+                            # found our key, so exit now!
+                            return estimators
+
+                if match_timestep >= 0 and match_timestep not in folder_timesteps:
+                    # if len(mpiranklist) > 1:
+                    #     print(f" Skipping rest of {Path(folderpath.relative_to(modelpath), '*')} because "
+                    #           f"the {estfilepath.relative_to(modelpath)} didn't contain timestep {match_timestep}")
+                    break  # next folder
+
+        if match_modelgridindex < 0 and nfilesread_thisfolder > 0:
+            print(f'Read {nfilesread_thisfolder} estimator files in {folderpath.relative_to(modelpath.parent)} and ', end='')
+            if match_timestep >= 0 and match_timestep in folder_timesteps:
+                print(f'found timestep {match_timestep}')
+            else:
+                print(f'didn\'t find timestep {match_timestep}')
+        elif match_modelgridindex >= 0:
+            if match_timestep >= 0 and match_timestep in folder_timesteps:
+                print(f' Found timestep {match_timestep}')
+
+        if match_timestep >= 0 and match_timestep in folder_timesteps:
+            # found our timestep in current folder
+            break
+
     return estimators
 
 
