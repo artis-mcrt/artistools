@@ -151,11 +151,9 @@ def parse_estimfile(estfilepath, modeldata):
                 emptycell = (row[4] == 'EMPTYCELL')
                 estimblock['emptycell'] = emptycell
                 if not emptycell:
-                    estimblock['TR'] = float(row[5])
-                    estimblock['Te'] = float(row[7])
-                    estimblock['W'] = float(row[9])
-                    estimblock['TJ'] = float(row[11])
-                    estimblock['nne'] = float(row[15])
+                    # will be TR, Te, W, TJ, nne
+                    for variablename, value in zip(row[4::2], row[5::2]):
+                        estimblock[variablename] = float(value)
 
             elif row[1].startswith('Z='):
                 variablename = row[0]
@@ -169,9 +167,9 @@ def parse_estimfile(estfilepath, modeldata):
                 if variablename not in estimblock:
                     estimblock[variablename] = {}
 
-                for token, value in zip(row[startindex::2], row[startindex + 1::2]):
+                for ion_stage_str, value in zip(row[startindex::2], row[startindex + 1::2]):
                     try:
-                        ion_stage = int(token.rstrip(':'))
+                        ion_stage = int(ion_stage_str.rstrip(':'))
                     except ValueError:
                         print(f'Cannot parse row: {row}')
                         return
@@ -226,11 +224,9 @@ def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
     modeldata, _ = at.get_modeldata(modelpath)
 
     if match_modelgridindex >= 0:
-        mpirank = at.get_mpirankofcell(match_modelgridindex, modelpath=modelpath)
-        mpiranklist = [mpirank]
+        mpiranklist = [at.get_mpirankofcell(match_modelgridindex, modelpath=modelpath)]
     else:
-        npts_model = at.get_npts_model(modelpath)
-        mpiranklist = range(min(at.get_nprocs(modelpath), npts_model))
+        mpiranklist = range(min(at.get_nprocs(modelpath), at.get_npts_model(modelpath)))
 
     folderlist = sorted([child for child in modelpath.iterdir() if child.is_dir()]) + [modelpath]
 
