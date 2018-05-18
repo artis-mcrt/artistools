@@ -256,14 +256,13 @@ def plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision):
                         row = line.split()
                         try:
                             levelnum = levelnumofconfigterm[(row[1], row[2])]
-                            if levelnum in dfpopthision['level']:
+                            if levelnum in dfpopthision['level'].values:
                                 levelnums.append(levelnum)
                                 if firstdep < 0:
                                     firstdep = float(row[0])
                                 depcoeffs.append(float(row[0]) / firstdep)
                         except (IndexError, ValueError):
                             pass
-
                     ax.plot(levelnums, depcoeffs, linewidth=1.5, color='C1',
                             label=f'{ionstr} Chianti NLTE', linestyle='None', marker='*', zorder=-1)
 
@@ -282,7 +281,7 @@ def plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision):
             row = line.split()
             try:
                 levelnum = int(row[1]) - 1
-                if levelnum in dfpopthision['level']:
+                if levelnum in dfpopthision['level'].values:
                     levelnums.append(levelnum)
                     if firstdep < 0:
                         firstdep = float(row[0])
@@ -301,7 +300,7 @@ def plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision):
             row = line.split()
             try:
                 levelnum = levelnumofconfigterm[(row[1], row[2])]
-                if levelnum in dfpopthision['level']:
+                if levelnum in dfpopthision['level'].values:
                     levelnums.append(levelnum)
                     if firstdep < 0:
                         firstdep = float(row[0])
@@ -319,7 +318,7 @@ def plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision):
             row = line.split()
             try:
                 levelnum = levelnumofconfigterm[(row[1], row[2])]
-                if levelnum in dfpopthision['level']:
+                if levelnum in dfpopthision['level'].values:
                     levelnums.append(levelnum)
                     if firstdep < 0:
                         firstdep = float(row[0])
