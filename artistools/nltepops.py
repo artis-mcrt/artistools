@@ -156,7 +156,7 @@ def read_file(nltefilename, modelpath, modelgridindex, timestep):
     """Read NLTE populations from one file."""
     if modelgridindex > -1:
         filesize = Path(nltefilename).stat().st_size / 1024 / 1024
-        print(f'Reading {nltefilename} ({filesize:.3f} MiB)')
+        print(f'Reading {Path(nltefilename).relative_to(modelpath.parent)} ({filesize:.2f} MiB)')
 
     try:
         dfpop = pd.read_csv(nltefilename, delim_whitespace=True)
@@ -426,12 +426,13 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
     ax.set_yscale('log')
 
     if args.departuremode:
-        yvalues = dfpopthision['departure_coeff']
         ax.set_ylabel('Departure coefficient')
+
+        ycolumnname = 'departure_coeff'
     else:
         ax.set_ylabel('Population density (cm$^-2$)')
 
-        yvalues = dfpopthision['n_NLTE']
+        ycolumnname = 'n_NLTE'
 
         ax.plot(dfpopthision['level'], dfpopthision['n_LTE_T_e_normed'], linewidth=1.5,
                 label=f'{ionstr} LTE T$_e$ = {T_e:.0f} K', linestyle='None', marker='*')
@@ -453,12 +454,12 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
         #     axis.plot(levelnums, floers_levelpop_values, linewidth=1.5,
         #               label=f'Floers NLTE', linestyle='None', marker='*')
 
-    ax.plot(dfpopthision['level'], yvalues, linewidth=1.5,
+    ax.plot(dfpopthision['level'], dfpopthision[ycolumnname], linewidth=1.5,
             linestyle='None', marker='x', label=f'{ionstr} ARTIS NLTE', color='black')
 
     dfpopthisionoddlevels = dfpopthision.query('parity==1')
     if not dfpopthisionoddlevels.level.empty:
-        ax.plot(dfpopthisionoddlevels['level'], yvalues, linewidth=2,
+        ax.plot(dfpopthisionoddlevels['level'], dfpopthisionoddlevels[ycolumnname], linewidth=2,
                 label='Odd parity', linestyle='None',
                 marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
 
