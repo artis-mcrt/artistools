@@ -169,14 +169,14 @@ def parse_estimfile(estfilepath, modeldata):
                 if variablename not in estimblock:
                     estimblock[variablename] = {}
 
-                for index, token in list(enumerate(row))[startindex::2]:
+                for token, value in zip(row[startindex::2], row[startindex + 1::2]):
                     try:
                         ion_stage = int(token.rstrip(':'))
                     except ValueError:
                         print(f'Cannot parse row: {row}')
                         return
 
-                    value_thision = float(row[index + 1].rstrip(','))
+                    value_thision = float(value.rstrip(','))
 
                     estimblock[variablename][(atomic_number, ion_stage)] = value_thision
 
@@ -198,16 +198,17 @@ def parse_estimfile(estfilepath, modeldata):
                     estimblock['populations']['total'] += estimblock['populations'][atomic_number]
 
             elif row[0] == 'heating:':
-                for index, token in list(enumerate(row))[1::2]:
-                    estimblock[f'heating_{token}'] = float(row[index + 1])
+                for heatingtype, value in zip(row[1::2], row[2::2]):
+                    estimblock[f'heating_{heatingtype}'] = float(value)
+
                 if estimblock['heating_gamma/gamma_dep'] > 0:
                     estimblock['gamma_dep'] = (
                         estimblock['heating_gamma'] /
                         estimblock['heating_gamma/gamma_dep'])
 
             elif row[0] == 'cooling:':
-                for index, token in list(enumerate(row))[1::2]:
-                    estimblock[f'cooling_{token}'] = float(row[index + 1])
+                for coolingtype, value in zip(row[1::2], row[2::2]):
+                    estimblock[f'cooling_{coolingtype}'] = float(value)
 
     # reached the end of file
     if timestep >= 0 and modelgridindex >= 0:
