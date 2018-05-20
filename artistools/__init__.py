@@ -319,6 +319,7 @@ def parse_adata(fadata, phixsdict, ionlist):
 def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisations=False):
     """Return a list of lists of levels."""
     adatafilename = Path(modelpath, 'adata.txt')
+    firstlevelnumber = 1
 
     transitiontuple = namedtuple('transition', 'lower upper A collstr forbidden')
 
