@@ -315,13 +315,37 @@ def parse_adata(fadata, phixsdict, ionlist):
                 fadata.readline()
 
 
+def parse_transitiondata(ftransitions, ionlist):
+    transitiontuple = namedtuple('transition', 'lower upper A collstr forbidden')
+    firstlevelnumber = 1
+
+    for line in ftransitions:
+        if not line.strip():
+            continue
+
+        ionheader = line.split()
+        Z = int(ionheader[0])
+        ionstage = int(ionheader[1])
+        transition_count = int(ionheader[2])
+
+        if not ionlist or (Z, ionstage) in ionlist:
+            translist = []
+            for _ in range(transition_count):
+                row = ftransitions.readline().split()
+                translist.append(
+                    transitiontuple(int(row[0]) - firstlevelnumber, int(row[1]) - firstlevelnumber,
+                                    float(row[2]), float(row[3]), int(row[4]) == 1))
+
+            yield Z, ionstage, pd.DataFrame(translist, columns=transitiontuple._fields)
+        else:
+            for _ in range(transition_count):
+                ftransitions.readline()
+
+
 @lru_cache(maxsize=8)
 def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisations=False):
     """Return a list of lists of levels."""
     adatafilename = Path(modelpath, 'adata.txt')
-    firstlevelnumber = 1
-
-    transitiontuple = namedtuple('transition', 'lower upper A collstr forbidden')
 
     transitionsdict = {}
     if get_transitions:
@@ -329,26 +353,9 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
 
         print(f'Reading {transition_filename.relative_to(modelpath.parent)}')
         with opengzip(transition_filename, 'r') as ftransitions:
-            for line in ftransitions:
-                if not line.strip():
-                    continue
-
-                ionheader = line.split()
-                Z = int(ionheader[0])
-                ionstage = int(ionheader[1])
-                transition_count = int(ionheader[2])
-
-                if not ionlist or (Z, ionstage) in ionlist:
-                    translist = []
-                    for _ in range(transition_count):
-                        row = ftransitions.readline().split()
-                        translist.append(
-                            transitiontuple(int(row[0]) - firstlevelnumber, int(row[1]) - firstlevelnumber,
-                                            float(row[2]), float(row[3]), int(row[4]) == 1))
-                    transitionsdict[(Z, ionstage)] = pd.DataFrame(translist, columns=transitiontuple._fields)
-                else:
-                    for _ in range(transition_count):
-                        ftransitions.readline()
+            transitionsdict = {
+                (Z, ionstage): dftransitions
+                for Z, ionstage, dftransitions in parse_transitiondata(ftransitions, ionlist)}
 
     phixsdict = {}
     if get_photoionisations:
@@ -395,10 +402,12 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
 
     level_lists = []
     iontuple = namedtuple('ion', 'Z ion_stage level_count ion_pot levels transitions')
+
     with opengzip(adatafilename, 'rt') as fadata:
         print(f'Reading {adatafilename.relative_to(modelpath.parent)}')
+
         for Z, ionstage, level_count, ionisation_energy_ev, dflevels in parse_adata(fadata, phixsdict, ionlist):
-            translist = transitionsdict.get((Z, ionstage), pd.DataFrame(columns=transitiontuple._fields))
+            translist = transitionsdict.get((Z, ionstage), pd.DataFrame())
             level_lists.append(iontuple(Z, ionstage, level_count, ionisation_energy_ev, dflevels, translist))
 
     dfadata = pd.DataFrame(level_lists)
