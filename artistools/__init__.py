@@ -342,6 +342,48 @@ def parse_transitiondata(ftransitions, ionlist):
                 ftransitions.readline()
 
 
+def parse_phixsdata(fphixs, ionlist):
+    nphixspoints = int(fphixs.readline())
+    phixsnuincrement = float(fphixs.readline())
+
+    xgrid = np.linspace(1.0, 1.0 + phixsnuincrement * (nphixspoints + 1), num=nphixspoints + 1, endpoint=False)
+
+    for line in fphixs:
+        if not line.strip():
+            continue
+
+        ionheader = line.split()
+        Z = int(ionheader[0])
+        upperionstage = int(ionheader[1])
+        upperionlevel = int(ionheader[2])
+        lowerionstage = int(ionheader[3])
+        lowerionlevel = int(ionheader[4])
+        # threshold_ev = float(ionheader[5])
+
+        assert upperionstage == lowerionstage + 1
+
+        if upperionlevel >= 0:
+            targetlist = [(upperionlevel, 1.0)]
+        else:
+            targetlist = []
+            ntargets = int(fphixs.readline())
+            for _ in range(ntargets):
+                level, fraction = fphixs.readline().split()
+                targetlist.append((int(level), float(fraction)))
+
+        if not ionlist or (Z, lowerionstage) in ionlist:
+            phixslist = []
+            for _ in range(nphixspoints):
+                phixslist.append(float(fphixs.readline()))
+            phixstable = np.array(list(zip(xgrid, phixslist)))
+
+            yield Z, upperionstage, upperionlevel, lowerionstage, lowerionlevel, targetlist, phixstable
+
+        else:
+            for _ in range(nphixspoints):
+                fphixs.readline()
+
+
 @lru_cache(maxsize=8)
 def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisations=False):
     """Return a list of lists of levels."""
@@ -363,42 +405,9 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
 
         print(f'Reading {phixs_filename.relative_to(modelpath.parent)}')
         with opengzip(phixs_filename, 'r') as fphixs:
-            nphixspoints = int(fphixs.readline())
-            phixsnuincrement = float(fphixs.readline())
-
-            xgrid = np.linspace(1.0, 1.0 + phixsnuincrement * (nphixspoints + 1), num=nphixspoints + 1, endpoint=False)
-
-            for line in fphixs:
-                if not line.strip():
-                    continue
-
-                ionheader = line.split()
-                Z = int(ionheader[0])
-                upperionstage = int(ionheader[1])
-                upperionlevel = int(ionheader[2])
-                lowerionstage = int(ionheader[3])
-                lowerionlevel = int(ionheader[4])
-                # threshold_ev = float(ionheader[5])
-
-                assert upperionstage == lowerionstage + 1
-
-                if upperionlevel >= 0:
-                    targetlist = [(upperionlevel, 1.0)]
-                else:
-                    targetlist = []
-                    ntargets = int(fphixs.readline())
-                    for _ in range(ntargets):
-                        level, fraction = fphixs.readline().split()
-                        targetlist.append((int(level), float(fraction)))
-
-                if not ionlist or (Z, lowerionstage) in ionlist:
-                    phixslist = []
-                    for _ in range(nphixspoints):
-                        phixslist.append(float(fphixs.readline()))
-                    phixsdict[(Z, lowerionstage, lowerionlevel)] = np.array(list(zip(xgrid, phixslist)))
-                else:
-                    for _ in range(nphixspoints):
-                        fphixs.readline()
+            for (Z, upperionstage, upperionlevel, lowerionstage,
+                 lowerionlevel, targetlist, phixstable) in parse_phixsdata(fphixs, ionlist):
+                phixsdict[(Z, lowerionstage, lowerionlevel)] = phixstable
 
     level_lists = []
     iontuple = namedtuple('ion', 'Z ion_stage level_count ion_pot levels transitions')
