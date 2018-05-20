@@ -281,7 +281,8 @@ def get_timestep_time_delta(timestep, timearray=None, inputparams=None):
     return delta_t
 
 
-def parse_adata(fadata, phixsdict):
+def parse_adata(fadata, phixsdict, ionlist):
+    """Generator yielding ions and their level lists from adata.txt"""
     firstlevelnumber = 1
     leveltuple = namedtuple('level', 'energy_ev g transition_count levelname phixstable')
 
@@ -295,19 +296,23 @@ def parse_adata(fadata, phixsdict):
         level_count = int(ionheader[2])
         ionisation_energy_ev = float(ionheader[3])
 
-        level_list = []
-        for levelindex in range(level_count):
-            line = fadata.readline()
-            row = line.split()
-            levelname = row[4].strip('\'')
-            numberin = int(row[0])
-            assert levelindex == numberin - firstlevelnumber
-            phixstable = phixsdict.get((Z, ionstage, numberin), [])
-            level_list.append(leveltuple(float(row[1]), float(row[2]), int(row[3]), levelname, phixstable))
+        if not ionlist or (Z, ionstage) in ionlist:
+            level_list = []
+            for levelindex in range(level_count):
+                line = fadata.readline()
+                row = line.split()
+                levelname = row[4].strip('\'')
+                numberin = int(row[0])
+                assert levelindex == numberin - firstlevelnumber
+                phixstable = phixsdict.get((Z, ionstage, numberin), [])
+                level_list.append(leveltuple(float(row[1]), float(row[2]), int(row[3]), levelname, phixstable))
 
-        dflevels = pd.DataFrame(level_list)
+            dflevels = pd.DataFrame(level_list)
 
-        yield Z, ionstage, level_count, ionisation_energy_ev, dflevels
+            yield Z, ionstage, level_count, ionisation_energy_ev, dflevels
+        else:
+            for _ in range(level_count):
+                fadata.readline()
 
 
 @lru_cache(maxsize=8)
@@ -391,10 +396,9 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
     iontuple = namedtuple('ion', 'Z ion_stage level_count ion_pot levels transitions')
     with opengzip(adatafilename, 'rt') as fadata:
         print(f'Reading {adatafilename.relative_to(modelpath.parent)}')
-        for Z, ionstage, level_count, ionisation_energy_ev, dflevels in parse_adata(fadata, phixsdict):
-            if not ionlist or (Z, ionstage) in ionlist:
-                translist = transitionsdict.get((Z, ionstage), pd.DataFrame(columns=transitiontuple._fields))
-                level_lists.append(iontuple(Z, ionstage, level_count, ionisation_energy_ev, dflevels, translist))
+        for Z, ionstage, level_count, ionisation_energy_ev, dflevels in parse_adata(fadata, phixsdict, ionlist):
+            translist = transitionsdict.get((Z, ionstage), pd.DataFrame(columns=transitiontuple._fields))
+            level_lists.append(iontuple(Z, ionstage, level_count, ionisation_energy_ev, dflevels, translist))
 
     dfadata = pd.DataFrame(level_lists)
     return dfadata
