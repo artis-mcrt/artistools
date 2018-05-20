@@ -255,8 +255,9 @@ def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
                     if match_timestep >= 0:
 
                         if timestep in folder_timesteps and match_timestep not in folder_timesteps:
-                            # we know all timesteps from this file, but none of them match
-                            break  # next folder
+                            # we know all timesteps from this folder (because we're seeing this one a second time)
+                            # but none of them match, so go to next folder
+                            break
 
                         folder_timesteps.add(timestep)
 
@@ -266,10 +267,10 @@ def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
                     if (match_modelgridindex >= 0 and match_modelgridindex != modelgridindex):
                         continue  # modelgridindex not a match, skip this block
 
-                    # when the model restarts, it writes out a duplicate block with the estimators loaded from gridsave
-                    # However, it doesn't have the heating/cooling rates, so these are zero (they are also zero in LTE)
-                    # here we keep the block only if it hasn't already been set with the real block (before the restart)
-                    # and replace with the real block if it is found afterwards
+                    # when the model restarts, it writes out a duplicate block with the estimators loaded
+                    # from gridsave.dat. It doesn't have the heating/cooling rates,
+                    # and we ignore these restart blocks
+                    # if timestep != min(folder_timesteps) or timestep == 0:
                     if estimblock['emptycell'] or (
                             estimblock['cooling_adiabatic'] >= 0. or (timestep, modelgridindex) not in estimators):
 
@@ -287,7 +288,8 @@ def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
                     break  # next folder
 
         if match_modelgridindex < 0 and nfilesread_thisfolder > 0:
-            print(f'Read {nfilesread_thisfolder} estimator files in {folderpath.relative_to(modelpath.parent)} and ', end='')
+            print(f'Read {nfilesread_thisfolder} estimator files in {folderpath.relative_to(modelpath.parent)} and ',
+                  end='')
             if match_timestep >= 0 and match_timestep in folder_timesteps:
                 print(f'found timestep {match_timestep}')
             else:
