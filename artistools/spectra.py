@@ -350,7 +350,7 @@ def plot_reference_spectra(axes, plotobjects, plotobjectlabels, args, flambdafil
     if args.refspecfiles is not None:
         if isinstance(args.refspecfiles, str):
             args.refspecfiles = [args.refspecfiles]
-        colorlist = ['0.0', '0.3']
+        colorlist = ['0.0', '0.2']
         if args.refspecaboveartis:
             plotkwargs['zorder'] = 1000
         for index, filename in enumerate(args.refspecfiles):
@@ -540,7 +540,7 @@ def plot_artis_spectrum(axes, modelpath, args, scale_to_peak=None, from_packets=
         supxmin, supxmax = axis.get_xlim()
         spectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
             x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
-            label=linelabel if index == 0 else None, alpha=0.95, **plotkwargs)
+            label=linelabel if index == 0 else None, alpha=0.9, **plotkwargs)
 
 
 def make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=None):
