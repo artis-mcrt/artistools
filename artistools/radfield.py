@@ -2,15 +2,15 @@
 
 import argparse
 import math
-import os
-import re
+# import os
+# import re
 import sys
 
 from astropy import constants as const
 from astropy import units as u
 from functools import lru_cache
 from pathlib import Path
-from itertools import chain
+# from itertools import chain
 
 import numpy as np
 import pandas as pd
@@ -22,6 +22,7 @@ import artistools as at
 import artistools.spectra
 
 
+@lru_cache(maxsize=4)
 def read_files(modelpath, timestep=-1, modelgridindex=-1):
     """Read radiation field data from a list of file paths into a pandas DataFrame."""
     radfielddata = pd.DataFrame()
