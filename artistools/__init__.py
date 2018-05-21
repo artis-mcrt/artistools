@@ -391,7 +391,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
         transition_filename = Path(modelpath, 'transitiondata.txt')
 
         print(f'Reading {transition_filename.relative_to(modelpath.parent)}')
-        with opengzip(transition_filename, 'r') as ftransitions:
+        with opengzip(transition_filename, 'rt') as ftransitions:
             transitionsdict = {
                 (Z, ionstage): dftransitions
                 for Z, ionstage, dftransitions in parse_transitiondata(ftransitions, ionlist)}
@@ -401,7 +401,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
         phixs_filename = Path(modelpath, 'phixsdata_v2.txt')
 
         print(f'Reading {phixs_filename.relative_to(modelpath.parent)}')
-        with opengzip(phixs_filename, 'r') as fphixs:
+        with opengzip(phixs_filename, 'rt') as fphixs:
             for (Z, upperionstage, upperionlevel, lowerionstage,
                  lowerionlevel, targetlist, phixstable) in parse_phixsdata(fphixs, ionlist):
                 phixsdict[(Z, lowerionstage, lowerionlevel)] = phixstable
@@ -584,7 +584,7 @@ def firstexisting(filelist, path=Path('.')):
 
 def get_linelist(modelpath):
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
-    with opengzip(Path(modelpath, 'linestat.out'), 'r') as linestatfile:
+    with opengzip(Path(modelpath, 'linestat.out'), 'rt') as linestatfile:
         lambda_angstroms = [float(wl) * 1e-8 for wl in linestatfile.readline().split()]
         nlines = len(lambda_angstroms)
 
@@ -656,7 +656,7 @@ def get_runfolder_timesteps(folderpath):
     folder_timesteps = set()
     restart_timestepfound = False
     try:
-        with opengzip(Path(folderpath, 'estimators_0000.out'), 'r') as estfile:
+        with opengzip(Path(folderpath, 'estimators_0000.out'), 'rt') as estfile:
             for line in estfile:
                 if line.startswith('timestep '):
                     timestep = int(line.split()[1])
