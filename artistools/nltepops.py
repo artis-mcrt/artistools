@@ -11,7 +11,7 @@ from itertools import chain
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-import numpy as np
+# import numpy as np
 import pandas as pd
 from astropy import constants as const
 
@@ -89,7 +89,7 @@ def get_nltepops(modelpath, timestep, modelgridindex):
             # print(f'Reading {nltefilepath}')
             dfpop = pd.read_csv(nltefilepath, delim_whitespace=True)
 
-            dfpop.query('(modelgridindex==@modelgridindex) & (timestep==@timestep)', inplace=True)
+            dfpop.query('modelgridindex==@modelgridindex and timestep==@timestep', inplace=True)
             if not dfpop.empty:
                 return dfpop
 
@@ -163,9 +163,8 @@ def read_file(nltefilename, modelpath, modelgridindex, timestep):
     except pd.errors.EmptyDataError:
         return pd.DataFrame()
 
-    dfpop.query('timestep==@timestep', inplace=True)
-    if modelgridindex >= 0:
-        dfpop.query('modelgridindex==@modelgridindex', inplace=True)
+    dfpop.query('timestep==@timestep' + (' and modelgridindex==@modelgridindex' if modelgridindex >= 0 else ''),
+                inplace=True)
 
     return dfpop
 

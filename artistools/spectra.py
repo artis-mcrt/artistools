@@ -398,7 +398,7 @@ def plot_reference_spectrum(
 
     specdata.query('lambda_angstroms > @xmin and lambda_angstroms < @xmax', inplace=True)
 
-    print_integrated_flux(specdata.f_lambda, specdata.lambda_angstroms, distance_megaparsec=objectdist_megaparsec)
+    print_integrated_flux(specdata['f_lambda'], specdata['lambda_angstroms'], distance_megaparsec=objectdist_megaparsec)
 
     if len(specdata) > 5000:
         # specdata = scipy.signal.resample(specdata, 10000)
@@ -526,7 +526,7 @@ def plot_artis_spectrum(axes, modelpath, args, scale_to_peak=None, from_packets=
     spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
 
     print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
-          f'(t={args.timemin:.3f} to {args.timemax:.3f}d)', end='')
+          f'(t={args.timemin:.3f} to {args.timemax:.3f}d)')
     print_integrated_flux(spectrum['f_lambda'], spectrum['lambda_angstroms'])
 
     if scale_to_peak:
