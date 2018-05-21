@@ -83,7 +83,7 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         self.labeltemplate = labeltemplate
 
     def _set_orderOfMagnitude(self, range):
-        """Over-riding this to avoid having orderOfMagnitude reset elsewhere"""
+        """Over-riding this to avoid having orderOfMagnitude reset elsewhere."""
         super()._set_orderOfMagnitude(range)
         # ticker.ScalarFormatter._set_orderOfMagnitude(self, range)
         stroffset = self.axis.get_major_formatter().get_offset().replace(r'$\times', '$') + ' '
@@ -95,7 +95,6 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
 
 def showtimesteptimes(modelpath=None, numberofcolumns=5):
     """Print a table showing the timesteps and their corresponding times."""
-
     if modelpath is None:
         modelpath = Path()
 
@@ -157,9 +156,8 @@ def get_modeldata(filename):
         t_model_init_days = float(fmodel.readline())
         for line in fmodel:
             row = line.split()
-            rowdf = pd.DataFrame([gridcelltuple._make([int(row[0])] + list(map(float, row[1:])))],
-                                 columns=gridcelltuple._fields)
-            modeldata = modeldata.append(rowdf, ignore_index=True)
+
+            modeldata = modeldata.append([gridcelltuple(int(row[0]), *(map(float, row[1:])))], ignore_index=True)
 
             # the model.txt file may contain more shells, but we should ignore them
             # if we have already read in the specified number of shells
@@ -209,7 +207,7 @@ def save_initialabundances(dfabundances, abundancefilename):
 
 @lru_cache(maxsize=16)
 def get_nu_grid(modelpath):
-    """Get an array of frequencies at which the ARTIS spectra are binned by exspec"""
+    """Get an array of frequencies at which the ARTIS spectra are binned by exspec."""
     specfilename = firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     return specdata.loc[:, '0'].values
@@ -263,7 +261,6 @@ def get_timestep_time(modelpath, timestep):
 
 def get_timestep_time_delta(timestep, timearray=None, inputparams=None):
     """Return the time in days between timestep and timestep + 1."""
-
     if inputparams:
         tmin = inputparams['tmin']
         dlogt = (math.log(inputparams['tmax']) - math.log(tmin)) / inputparams['ntstep']
@@ -282,7 +279,7 @@ def get_timestep_time_delta(timestep, timearray=None, inputparams=None):
 
 
 def parse_adata(fadata, phixsdict, ionlist):
-    """Generator yielding ions and their level lists from adata.txt"""
+    """Generate ions and their level lists from adata.txt."""
     firstlevelnumber = 1
     leveltuple = namedtuple('level', 'energy_ev g transition_count levelname phixstable')
 
@@ -336,7 +333,7 @@ def parse_transitiondata(ftransitions, ionlist):
                     transitiontuple(int(row[0]) - firstlevelnumber, int(row[1]) - firstlevelnumber,
                                     float(row[2]), float(row[3]), int(row[4]) == 1))
 
-            yield Z, ionstage, pd.DataFrame(translist, columns=transitiontuple._fields)
+            yield Z, ionstage, pd.DataFrame(translist)
         else:
             for _ in range(transition_count):
                 ftransitions.readline()
@@ -586,7 +583,7 @@ def firstexisting(filelist, path=Path('.')):
 
 
 def get_linelist(modelpath):
-    """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels"""
+    """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     with opengzip(Path(modelpath, 'linestat.out'), 'r') as linestatfile:
         lambda_angstroms = [float(wl) * 1e-8 for wl in linestatfile.readline().split()]
         nlines = len(lambda_angstroms)
@@ -615,7 +612,7 @@ def get_linelist(modelpath):
 
 @lru_cache(maxsize=8)
 def get_npts_model(modelpath):
-    """Return the number of cell in the model.txt"""
+    """Return the number of cell in the model.txt."""
     with Path(modelpath, 'model.txt').open('r') as modelfile:
         npts_model = int(modelfile.readline())
     return npts_model
