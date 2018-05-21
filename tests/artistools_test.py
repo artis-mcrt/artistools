@@ -36,15 +36,23 @@ def test_deposition():
     at.deposition.main(modelpath=modelpath)
 
 
-def test_estimators():
-    at.estimators.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
-    at.estimators.main(modelpath=modelpath, outputfile=outputpath, modelgridindex=0)
+def test_estimator_snapshot(benchmark):
+    benchmark.pedantic(at.estimators.main, kwargs=dict(modelpath=modelpath, outputfile=outputpath, timedays=300),
+                       **benchargs)
 
 
-def test_lightcurve():
-    at.lightcurve.main(modelpath=modelpath, outputfile=outputpath)
-    at.lightcurve.main(modelpath=modelpath, frompackets=True,
-                       outputfile=os.path.join(outputpath, 'lightcurve_from_packets.pdf'))
+def test_estimator_timeevolution(benchmark):
+    benchmark.pedantic(at.estimators.main, kwargs=dict(modelpath=modelpath, outputfile=outputpath, modelgridindex=0),
+                       **benchargs)
+
+
+def test_lightcurve(benchmark):
+    benchmark.pedantic(at.lightcurve.main, kwargs=dict(modelpath=modelpath, outputfile=outputpath), **benchargs)
+
+
+def test_lightcurve_frompackets(benchmark):
+    benchmark.pedantic(at.lightcurve.main, kwargs=dict(modelpath=modelpath, frompackets=True,
+                       outputfile=os.path.join(outputpath, 'lightcurve_from_packets.pdf')), **benchargs)
 
 
 def test_lightcurve_magnitudes_plot():
@@ -66,33 +74,55 @@ def test_menu():
 
 def test_nltepops(benchmark):
     # mybench(benchmark, at.nltepops.main, modelpath=modelpath, outputfile=outputpath, timedays=300)
-    benchmark.pedantic(at.nltepops.main, kwargs=dict(modelpath=modelpath, outputfile=outputpath, timedays=300), **benchargs)
+    benchmark.pedantic(at.nltepops.main, kwargs=dict(modelpath=modelpath, outputfile=outputpath, timedays=300),
+                       **benchargs)
 
 
 def test_nltepops_departuremode(benchmark):
-    benchmark.pedantic(at.nltepops.main, kwargs=dict(modelpath=modelpath, outputfile=outputpath, timedays=300, departuremode=True), **benchargs)
+    benchmark.pedantic(at.nltepops.main, kwargs=dict(modelpath=modelpath, outputfile=outputpath, timedays=300,
+                                                     departuremode=True), **benchargs)
 
 
-def test_nonthermal():
-    at.nonthermal.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
+def test_nonthermal(benchmark):
+    benchmark.pedantic(at.nonthermal.main, kwargs=dict(modelpath=modelpath, outputfile=outputpath, timedays=300),
+                       **benchargs)
 
 
-def test_radfield():
-    at.radfield.main(modelpath=modelpath, outputfile=outputpath)
+def test_radfield(benchmark):
+    benchmark.pedantic(at.radfield.main, kwargs=dict(modelpath=modelpath, outputfile=outputpath), **benchargs)
 
 
 def test_get_ionrecombratecalibration():
     at.get_ionrecombratecalibration(modelpath=modelpath)
 
 
-def test_spectraplot():
-    at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320)
-    at.spectra.main(modelpath=modelpath, outputfile=os.path.join(outputpath, 'spectrum_from_packets.pdf'),
-                    timemin=290, timemax=320, frompackets=True)
+def test_spectraplot(benchmark):
+    benchmark.pedantic(at.spectra.main,
+                       kwargs=dict(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320),
+                       **benchargs)
+
+
+def test_spectra_frompackets(benchmark):
+    benchmark.pedantic(at.spectra.main,
+                       kwargs=dict(modelpath=modelpath,
+                                   outputfile=os.path.join(outputpath, 'spectrum_from_packets.pdf'),
+                                   timemin=290, timemax=320, frompackets=True), **benchargs)
+
+
+def test_spectra_outputtext():
     at.spectra.main(modelpath=modelpath, output_spectra=True)
-    at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320, emissionabsorption=True)
-    at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320, emissionabsorption=True,
-                    nostack=True)
+
+
+def test_spectraemissionplot(benchmark):
+    benchmark.pedantic(at.spectra.main,
+                       kwargs=dict(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320,
+                                   emissionabsorption=True), **benchargs)
+
+
+def test_spectraemissionplot_nostack(benchmark):
+    benchmark.pedantic(at.spectra.main,
+                       kwargs=dict(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320,
+                                   emissionabsorption=True, nostack=True), **benchargs)
 
 
 def test_spectra_get_spectrum():
@@ -151,5 +181,3 @@ def test_spencerfano():
 
 def test_transitions():
     at.transitions.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
-
-
