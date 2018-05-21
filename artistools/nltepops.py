@@ -181,41 +181,33 @@ def read_files(modelpath, timestep, modelgridindex=-1, noprint=False):
     dfpop = pd.DataFrame()
     for folderpath in folderlist:
         nfilesread_thisfolder = 0
-        folder_timesteps = set()
         for mpirank in mpiranklist:
-            if not at.get_cellsofmpirank(mpirank, modelpath):
-                continue
-            else:
-                nltefilename = f'nlte_{mpirank:04d}.out'
-                nltefilepath = Path(folderpath, nltefilename)
+            nltefilename = f'nlte_{mpirank:04d}.out'
+            nltefilepath = Path(folderpath, nltefilename)
+            if not nltefilepath.is_file():
+                nltefilepath = Path(folderpath, nltefilename + '.gz')
                 if not nltefilepath.is_file():
-                    nltefilepath = Path(folderpath, nltefilename + '.gz')
-                    if not nltefilepath.is_file():
-                        # if the first file is not found in the folder, then skip the folder
-                        if nfilesread_thisfolder == 0:
-                            break
-                        else:
-                            print(f'Warning: Could not find {nltefilepath.relative_to(modelpath.parent)}')
-                            continue
-
-                nfilesread_thisfolder += 1
-
-                dfpop_thisfile = read_file(
-                    nltefilepath, modelpath, modelgridindex, timestep).copy()
-
-                # found our data!
-                if not dfpop_thisfile.empty:
-                    if modelgridindex >= 0:
-                        return dfpop_thisfile
+                    # if the first file is not found in the folder, then skip the folder
+                    if nfilesread_thisfolder == 0:
+                        break
                     else:
-                        if dfpop.empty:
-                            dfpop = dfpop_thisfile
-                        else:
-                            dfpop = dfpop.append(dfpop_thisfile, ignore_index=True)
+                        print(f'Warning: Could not find {nltefilepath.relative_to(modelpath.parent)}')
+                        continue
 
-        if timestep in folder_timesteps:
-            # found our timestep in current folder
-            break
+            nfilesread_thisfolder += 1
+
+            dfpop_thisfile = read_file(
+                nltefilepath, modelpath, modelgridindex, timestep).copy()
+
+            # found our data!
+            if not dfpop_thisfile.empty:
+                if modelgridindex >= 0:
+                    return dfpop_thisfile
+                else:
+                    if dfpop.empty:
+                        dfpop = dfpop_thisfile
+                    else:
+                        dfpop = dfpop.append(dfpop_thisfile, ignore_index=True)
 
     return dfpop
 

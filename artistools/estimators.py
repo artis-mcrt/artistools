@@ -8,11 +8,11 @@ import argparse
 import gzip
 import math
 import os
-import re
+# import re
 import sys
 from collections import namedtuple
 from functools import lru_cache
-from itertools import chain
+# from itertools import chain
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -235,62 +235,59 @@ def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
         nfilesread_thisfolder = 0
         folder_timesteps = set()
         for mpirank in mpiranklist:
-            if not at.get_cellsofmpirank(mpirank, modelpath):
-                continue
-            else:
-                estimfilename = f'estimators_{mpirank:04d}.out'
-                estfilepath = Path(folderpath, estimfilename)
+            estimfilename = f'estimators_{mpirank:04d}.out'
+            estfilepath = Path(folderpath, estimfilename)
+            if not estfilepath.is_file():
+                estfilepath = Path(folderpath, estimfilename + '.gz')
                 if not estfilepath.is_file():
-                    estfilepath = Path(folderpath, estimfilename + '.gz')
-                    if not estfilepath.is_file():
-                        # if the first file is not found in the folder, then skip the folder
-                        if nfilesread_thisfolder == 0:
-                            break
-                        else:
-                            print(f'Warning: Could not find {estfilepath.relative_to(modelpath.parent)}')
-                            continue
+                    # if the first file is not found in the folder, then skip the folder
+                    if nfilesread_thisfolder == 0:
+                        break
+                    else:
+                        print(f'Warning: Could not find {estfilepath.relative_to(modelpath.parent)}')
+                        continue
 
-                if len(mpiranklist) == 1:
-                    filesize = Path(estfilepath).stat().st_size / 1024 / 1024
-                    print(f'Reading {estfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)')
+            if len(mpiranklist) == 1:
+                filesize = Path(estfilepath).stat().st_size / 1024 / 1024
+                print(f'Reading {estfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)')
 
-                nfilesread_thisfolder += 1
-                for timestep, modelgridindex, estimblock in parse_estimfile(estfilepath, modeldata):
+            nfilesread_thisfolder += 1
+            for timestep, modelgridindex, estimblock in parse_estimfile(estfilepath, modeldata):
 
-                    if match_timestep >= 0:
+                if match_timestep >= 0:
 
-                        if timestep in folder_timesteps and match_timestep not in folder_timesteps:
-                            # we know all timesteps from this folder (because we're seeing this one a second time)
-                            # but none of them match, so go to next folder
-                            break
+                    if timestep in folder_timesteps and match_timestep not in folder_timesteps:
+                        # we know all timesteps from this folder (because we're seeing this one a second time)
+                        # but none of them match, so go to next folder
+                        break
 
-                        folder_timesteps.add(timestep)
+                    folder_timesteps.add(timestep)
 
-                        if match_timestep != timestep:
-                            continue  # timestep not a match, so skip this block
+                    if match_timestep != timestep:
+                        continue  # timestep not a match, so skip this block
 
-                    if (match_modelgridindex >= 0 and match_modelgridindex != modelgridindex):
-                        continue  # modelgridindex not a match, skip this block
+                if (match_modelgridindex >= 0 and match_modelgridindex != modelgridindex):
+                    continue  # modelgridindex not a match, skip this block
 
-                    # when the model restarts, it writes out a duplicate block with the estimators loaded
-                    # from gridsave.dat. It doesn't have the heating/cooling rates,
-                    # and we ignore these restart blocks
-                    # if timestep != min(folder_timesteps) or timestep == 0:
-                    if estimblock['emptycell'] or (
-                            estimblock['cooling_adiabatic'] >= 0. or (timestep, modelgridindex) not in estimators):
+                # when the model restarts, it writes out a duplicate block with the estimators loaded
+                # from gridsave.dat. It doesn't have the heating/cooling rates,
+                # and we ignore these restart blocks
+                # if timestep != min(folder_timesteps) or timestep == 0:
+                if estimblock['emptycell'] or (
+                        estimblock['cooling_adiabatic'] >= 0. or (timestep, modelgridindex) not in estimators):
 
-                        estimators[(timestep, modelgridindex)] = estimblock
+                    estimators[(timestep, modelgridindex)] = estimblock
 
-                        # this won't match in the default case of match_timestep == -1, and match_modelgridindex == -1
-                        if (match_timestep == timestep and match_modelgridindex == modelgridindex):
-                            # found our key, so exit now!
-                            return estimators
+                    # this won't match in the default case of match_timestep == -1, and match_modelgridindex == -1
+                    if (match_timestep == timestep and match_modelgridindex == modelgridindex):
+                        # found our key, so exit now!
+                        return estimators
 
-                if match_timestep >= 0 and match_timestep not in folder_timesteps:
-                    # if len(mpiranklist) > 1:
-                    #     print(f" Skipping rest of {Path(folderpath.relative_to(modelpath), '*')} because "
-                    #           f"the {estfilepath.relative_to(modelpath)} didn't contain timestep {match_timestep}")
-                    break  # next folder
+            if match_timestep >= 0 and match_timestep not in folder_timesteps:
+                # if len(mpiranklist) > 1:
+                #     print(f" Skipping rest of {Path(folderpath.relative_to(modelpath), '*')} because "
+                #           f"the {estfilepath.relative_to(modelpath)} didn't contain timestep {match_timestep}")
+                break  # next folder
 
         if match_modelgridindex < 0 and nfilesread_thisfolder > 0:
             print(f'Read {nfilesread_thisfolder} estimator files in {folderpath.relative_to(modelpath.parent)} and ',
