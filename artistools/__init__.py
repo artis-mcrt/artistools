@@ -654,9 +654,9 @@ def get_inputparams(modelpath):
 def get_runfolder_timesteps(folderpath):
     """Get the set of timesteps covered by the output files in an ARTIS run folder."""
     folder_timesteps = set()
-    restart_timestepfound = False
     try:
         with opengzip(Path(folderpath, 'estimators_0000.out'), 'rt') as estfile:
+            restart_timestepfound = False
             for line in estfile:
                 if line.startswith('timestep '):
                     timestep = int(line.split()[1])
