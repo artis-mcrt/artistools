@@ -172,45 +172,51 @@ def read_file(nltefilename, modelpath, modelgridindex, timestep):
 
 def read_files(modelpath, timestep, modelgridindex=-1, noprint=False):
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
-    if modelgridindex > -1:
-        mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
-
-        nlte_files = list(chain(
-            Path(modelpath).rglob(f'nlte_{mpirank:04d}.out'),
-            Path(modelpath).rglob(f'nlte_{mpirank:04d}.out.gz')))
+    if modelgridindex >= 0:
+        mpiranklist = [at.get_mpirankofcell(modelgridindex, modelpath=modelpath)]
     else:
-        nlte_files_all = chain(
-            Path(modelpath).rglob('nlte_????.out'),
-            Path(modelpath).rglob('nlte_????.out.gz'))
+        mpiranklist = range(min(at.get_nprocs(modelpath), at.get_npts_model(modelpath)))
 
-        def filerank(estfile):
-            """Get the MPI process rank of an estimator file name."""
-            return int(re.findall('[0-9]+', os.path.basename(estfile))[-1])
-
-        npts_model = at.get_npts_model(modelpath)
-        nlte_files = [x for x in nlte_files_all if filerank(x) < npts_model]
-        print(f'Reading {len(nlte_files)} NLTE population files...')
+    folderlist = sorted([child for child in modelpath.iterdir() if child.is_dir()]) + [modelpath]
 
     dfpop = pd.DataFrame()
-
-    if not nlte_files:
-        print("No NLTE files found.")
-        return dfpop
-
-    for nltefilepath in sorted(nlte_files):
-
-        dfpop_thisfile = read_file(
-            nltefilepath, modelpath, modelgridindex, timestep).copy()
-
-        # found our data!
-        if not dfpop_thisfile.empty:
-            if modelgridindex >= 0:
-                return dfpop_thisfile
+    for folderpath in folderlist:
+        nfilesread_thisfolder = 0
+        folder_timesteps = set()
+        for mpirank in mpiranklist:
+            if not at.get_cellsofmpirank(mpirank, modelpath):
+                continue
             else:
-                if dfpop.empty:
-                    dfpop = dfpop_thisfile
-                else:
-                    dfpop = dfpop.append(dfpop_thisfile, ignore_index=True)
+                nltefilename = f'nlte_{mpirank:04d}.out'
+                nltefilepath = Path(folderpath, nltefilename)
+                if not nltefilepath.is_file():
+                    nltefilepath = Path(folderpath, nltefilename + '.gz')
+                    if not nltefilepath.is_file():
+                        # if the first file is not found in the folder, then skip the folder
+                        if nfilesread_thisfolder == 0:
+                            break
+                        else:
+                            print(f'Warning: Could not find {nltefilepath.relative_to(modelpath.parent)}')
+                            continue
+
+                nfilesread_thisfolder += 1
+
+                dfpop_thisfile = read_file(
+                    nltefilepath, modelpath, modelgridindex, timestep).copy()
+
+                # found our data!
+                if not dfpop_thisfile.empty:
+                    if modelgridindex >= 0:
+                        return dfpop_thisfile
+                    else:
+                        if dfpop.empty:
+                            dfpop = dfpop_thisfile
+                        else:
+                            dfpop = dfpop.append(dfpop_thisfile, ignore_index=True)
+
+        if timestep in folder_timesteps:
+            # found our timestep in current folder
+            break
 
     return dfpop
 

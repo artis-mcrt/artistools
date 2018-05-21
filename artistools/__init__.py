@@ -463,13 +463,13 @@ def get_model_name(path):
     """
     abspath = os.path.abspath(path)
 
-    folderpath = abspath if os.path.isdir(abspath) else os.path.dirname(os.path.abspath(path))
+    modelpath = abspath if os.path.isdir(abspath) else os.path.dirname(abspath)
 
     try:
-        plotlabelfile = os.path.join(folderpath, 'plotlabel.txt')
+        plotlabelfile = os.path.join(modelpath, 'plotlabel.txt')
         return open(plotlabelfile, mode='r').readline().strip()
     except FileNotFoundError:
-        return os.path.basename(folderpath)
+        return os.path.basename(modelpath)
 
 
 def get_time_range(timearray, timestep_range_str, timemin, timemax, timedays_range_str):

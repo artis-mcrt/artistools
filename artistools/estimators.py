@@ -243,7 +243,12 @@ def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
                 if not estfilepath.is_file():
                     estfilepath = Path(folderpath, estimfilename + '.gz')
                     if not estfilepath.is_file():
-                        continue
+                        # if the first file is not found in the folder, then skip the folder
+                        if nfilesread_thisfolder == 0:
+                            break
+                        else:
+                            print(f'Warning: Could not find {estfilepath.relative_to(modelpath.parent)}')
+                            continue
 
                 if len(mpiranklist) == 1:
                     filesize = Path(estfilepath).stat().st_size / 1024 / 1024
