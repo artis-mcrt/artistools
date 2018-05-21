@@ -188,13 +188,12 @@ def save_modeldata(dfmodeldata, t_model_init_days, filename):
 
 
 @lru_cache(maxsize=8)
-def get_initialabundances(abundancefilename):
+def get_initialabundances(modelpath):
     """Return a list of mass fractions."""
-    if os.path.isdir(abundancefilename):
-        abundancefilename = firstexisting(['abundances.txt.gz', 'abundances.txt'], path=abundancefilename)
+    abundancefilepath = firstexisting(['abundances.txt.gz', 'abundances.txt'], path=modelpath)
 
     columns = ['inputcellid', *['X_' + elsymbols[x] for x in range(1, 31)]]
-    abundancedata = pd.read_csv(abundancefilename, delim_whitespace=True, header=None, names=columns)
+    abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, names=columns)
     abundancedata.index.name = 'modelgridindex'
     return abundancedata
 
@@ -649,6 +648,54 @@ def get_inputparams(modelpath):
         # there are more parameters in the file that are not read yet...
 
     return params
+
+
+@lru_cache(maxsize=64)
+def get_runfolder_timesteps(folderpath):
+    """Get the set of timesteps covered by the output files in an ARTIS run folder."""
+    folder_timesteps = set()
+    restart_timestepfound = False
+    try:
+        with opengzip(Path(folderpath, 'estimators_0000.out'), 'r') as estfile:
+            for line in estfile:
+                if line.startswith('timestep '):
+                    timestep = int(line.split()[1])
+
+                    if not restart_timestepfound and timestep != 0:
+                        # the first timestep of a restarted run is duplicate and should be ignored
+                        restart_timestepfound = True
+                    elif timestep not in folder_timesteps:
+                        folder_timesteps.add(timestep)
+                    else:
+                        # second time seeing this timestep
+                        return folder_timesteps
+
+    except FileNotFoundError:
+        pass
+
+    return folder_timesteps
+
+
+@lru_cache(maxsize=16)
+def get_runfolders(modelpath, timestep=-1):
+    """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction."""
+    folderlist = sorted([child for child in modelpath.iterdir() if child.is_dir()]) + [modelpath]
+
+    if timestep >= 0:
+        for folderpath in folderlist:
+            if timestep in get_runfolder_timesteps(folderpath):
+                return [folderpath]
+
+        return []
+
+    return folderlist
+
+
+def get_mpiranklist(modelpath, modelgridindex):
+    if modelgridindex >= 0:
+        return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
+    else:
+        return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
 
 
 @lru_cache(maxsize=8)

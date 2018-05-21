@@ -152,9 +152,9 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
 
 
 @lru_cache(maxsize=8)
-def read_file(nltefilename, modelpath, modelgridindex, timestep):
+def read_file(nltefilename, modelpath, modelgridindex, timestep, noprint=False):
     """Read NLTE populations from one file."""
-    if modelgridindex > -1:
+    if modelgridindex > -1 and not noprint:
         filesize = Path(nltefilename).stat().st_size / 1024 / 1024
         print(f'Reading {Path(nltefilename).relative_to(modelpath.parent)} ({filesize:.2f} MiB)')
 
@@ -171,15 +171,10 @@ def read_file(nltefilename, modelpath, modelgridindex, timestep):
 
 def read_files(modelpath, timestep, modelgridindex=-1, noprint=False):
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
-    if modelgridindex >= 0:
-        mpiranklist = [at.get_mpirankofcell(modelgridindex, modelpath=modelpath)]
-    else:
-        mpiranklist = range(min(at.get_nprocs(modelpath), at.get_npts_model(modelpath)))
-
-    folderlist = sorted([child for child in modelpath.iterdir() if child.is_dir()]) + [modelpath]
+    mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
 
     dfpop = pd.DataFrame()
-    for folderpath in folderlist:
+    for folderpath in at.get_runfolders(modelpath, timestep=timestep):
         nfilesread_thisfolder = 0
         for mpirank in mpiranklist:
             nltefilename = f'nlte_{mpirank:04d}.out'
@@ -188,16 +183,13 @@ def read_files(modelpath, timestep, modelgridindex=-1, noprint=False):
                 nltefilepath = Path(folderpath, nltefilename + '.gz')
                 if not nltefilepath.is_file():
                     # if the first file is not found in the folder, then skip the folder
-                    if nfilesread_thisfolder == 0:
-                        break
-                    else:
-                        print(f'Warning: Could not find {nltefilepath.relative_to(modelpath.parent)}')
-                        continue
+                    print(f'Warning: Could not find {nltefilepath.relative_to(modelpath.parent)}')
+                    continue
 
             nfilesread_thisfolder += 1
 
             dfpop_thisfile = read_file(
-                nltefilepath, modelpath, modelgridindex, timestep).copy()
+                nltefilepath, modelpath, modelgridindex, timestep, noprint).copy()
 
             # found our data!
             if not dfpop_thisfile.empty:
@@ -494,11 +486,13 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, modelgridindex, tim
         T_e = args.exc_temperature
         T_R = args.exc_temperature
 
-    dfpop = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex).query('Z == @atomic_number')
+    dfpop = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
 
     if dfpop.empty:
         print(f'No NLTE population data for modelgrid cell {args.modelgridindex} timestep {timestep}')
         return
+
+    dfpop.query('Z == @atomic_number', inplace=True)
 
     # top_ion = 9999
     max_ion_stage = dfpop.ion_stage.max()
