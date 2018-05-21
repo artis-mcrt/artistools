@@ -22,51 +22,52 @@ import artistools as at
 import artistools.spectra
 
 
-@lru_cache(maxsize=16)
-def read_files(modelpath, modelgridindex=-1):
+def read_files(modelpath, timestep=-1, modelgridindex=-1):
     """Read radiation field data from a list of file paths into a pandas DataFrame."""
-    radfielddata = None
+    radfielddata = pd.DataFrame()
 
-    if modelgridindex > -1:
-        mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
-
-        radfield_files = list(chain(
-            Path(modelpath).rglob(f'radfield_{mpirank:04d}.out'),
-            Path(modelpath).rglob(f'radfield_{mpirank:04d}.out.gz')))
+    if modelgridindex >= 0:
+        mpiranklist = [at.get_mpirankofcell(modelgridindex, modelpath=modelpath)]
     else:
-        radfield_files_all = chain(
-            Path(modelpath).rglob('radfield_????.out'),
-            Path(modelpath).rglob('radfield_????.out.gz'))
+        mpiranklist = range(min(at.get_nprocs(modelpath), at.get_npts_model(modelpath)))
 
-        def filerank(estfile):
-            return int(re.findall('[0-9]+', os.path.basename(estfile))[-1])
+    folderlist = sorted([child for child in modelpath.iterdir() if child.is_dir()]) + [modelpath]
 
-        npts_model = at.get_npts_model(modelpath)
-        radfield_files = sorted([x for x in radfield_files_all if filerank(x) < npts_model])
-        print(f'Reading {len(radfield_files)} radfield files...')
+    for folderpath in folderlist:
+        nfilesread_thisfolder = 0
+        for mpirank in mpiranklist:
+            radfieldfilename = f'radfield_{mpirank:04d}.out'
+            radfieldfilepath = Path(folderpath, radfieldfilename)
+            if not radfieldfilepath.is_file():
+                radfieldfilepath = Path(folderpath, radfieldfilename + '.gz')
+                if not radfieldfilepath.is_file():
+                    # if the first file is not found in the folder, then skip the folder
+                    if nfilesread_thisfolder == 0:
+                        break
+                    else:
+                        print(f'Warning: Could not find {radfieldfilepath.relative_to(modelpath.parent)}')
+                        continue
 
-    if not radfield_files:
-        print("No radfield files")
-    else:
-        for radfield_file in radfield_files:
+            nfilesread_thisfolder += 1
+
             if modelgridindex > -1:
-                print(f'Reading {Path(radfield_file).relative_to(modelpath.parent)}...')
+                filesize = Path(radfieldfilepath).stat().st_size / 1024 / 1024
+                print(f'Reading {Path(radfieldfilepath).relative_to(modelpath.parent)} ({filesize:.2f} MiB)')
 
-            radfielddata_thisfile = pd.read_csv(radfield_file, delim_whitespace=True)
+            radfielddata_thisfile = pd.read_csv(radfieldfilepath, delim_whitespace=True)
             # radfielddata_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
+
+            if timestep >= 0:
+                radfielddata_thisfile.query('timestep==@timestep', inplace=True)
 
             if modelgridindex >= 0:
                 radfielddata_thisfile.query('modelgridindex==@modelgridindex', inplace=True)
 
-            if radfielddata_thisfile is not None:
-                if not radfielddata_thisfile.empty:
-                    if radfielddata is None:
-                        radfielddata = radfielddata_thisfile.copy()
-                    else:
-                        radfielddata = radfielddata.append(radfielddata_thisfile.copy(), ignore_index=True)
-
-        if radfielddata is None or len(radfielddata) == 0:
-            print("No radfield data found")
+            if not radfielddata_thisfile.empty:
+                if timestep >= 0 and modelgridindex >= 0:
+                    return radfielddata_thisfile
+                else:
+                    radfielddata = radfielddata.append(radfielddata_thisfile.copy(), ignore_index=True)
 
     return radfielddata
 
@@ -226,7 +227,7 @@ def plot_celltimestep(
         modelpath, timestep, outputfile,
         xmin, xmax, modelgridindex, args, normalised=False):
     """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells)."""
-    radfielddata = read_files(modelpath, modelgridindex=modelgridindex).query('timestep==@timestep')
+    radfielddata = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     if radfielddata.empty:
         print(f'No data for timestep {timestep:d}')
         return
@@ -366,7 +367,7 @@ def plot_line_estimator_evolution(axis, radfielddata, bin_num, modelgridindex=No
 
 
 def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
-    """Plot a estimator evolution over time for a cell."""
+    """Plot a estimator evolution over time for a cell. This is not well tested and should be checked."""
     print(f'Plotting time evolution of cell {modelgridindex:d}')
 
     radfielddata = read_files(modelpath, modelgridindex=modelgridindex)
@@ -380,7 +381,7 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
                                       args.figscale * at.figwidth * (0.25 + nlinesplotted * 0.35)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    timestep = at.get_closest_timestep(modelpath, time_days)
+    timestep = at.get_closest_timestep(modelpath, 330)
     time_days = float(at.get_timestep_time(modelpath, timestep))
 
     dftopestimators = radfielddataselected.query('timestep==@timestep and bin_num < -1').copy()
@@ -497,9 +498,7 @@ def main(args=None, argsraw=None, **kwargs):
         else:
             modelgridindex = args.modelgridindex
 
-        radfielddata = read_files(modelpath, modelgridindex=modelgridindex)
-
-        timesteplast = max(radfielddata['timestep'])
+        timesteplast = len(at.get_timestep_times_float(modelpath))
         if args.timedays:
             timesteplist = [at.get_closest_timestep(modelpath, args.timedays)]
         elif args.timestep:
