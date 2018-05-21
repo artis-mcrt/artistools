@@ -34,7 +34,7 @@ def read_files(modelpath, modelgridindex=-1):
             Path(modelpath).rglob(f'radfield_{mpirank:04d}.out'),
             Path(modelpath).rglob(f'radfield_{mpirank:04d}.out.gz')))
     else:
-        estimfiles_all = chain(
+        radfield_files_all = chain(
             Path(modelpath).rglob('radfield_????.out'),
             Path(modelpath).rglob('radfield_????.out.gz'))
 
@@ -42,7 +42,7 @@ def read_files(modelpath, modelgridindex=-1):
             return int(re.findall('[0-9]+', os.path.basename(estfile))[-1])
 
         npts_model = at.get_npts_model(modelpath)
-        radfield_files = [x for x in estimfiles_all if filerank(x) < npts_model]
+        radfield_files = sorted([x for x in radfield_files_all if filerank(x) < npts_model])
         print(f'Reading {len(radfield_files)} radfield files...')
 
     if not radfield_files:
@@ -226,7 +226,6 @@ def plot_celltimestep(
         modelpath, timestep, outputfile,
         xmin, xmax, modelgridindex, args, normalised=False):
     """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells)."""
-
     radfielddata = read_files(modelpath, modelgridindex=modelgridindex).query('timestep==@timestep')
     if radfielddata.empty:
         print(f'No data for timestep {timestep:d}')
@@ -341,7 +340,8 @@ def plot_global_fitted_field_evolution(axis, radfielddata, nu_line, modelgridind
         lambda x: j_nu_dbb([nu_line], x.W, x.T_R)[0], axis=1)
 
     const_c = const.c.to('angstrom/s').value
-    radfielddataselected.eval('J_lambda_fullspec_at_line = J_nu_fullspec_at_line * (@nu_line ** 2) / @const_c', inplace=True)
+    radfielddataselected.eval('J_lambda_fullspec_at_line = J_nu_fullspec_at_line * (@nu_line ** 2) / @const_c',
+                              inplace=True)
     lambda_angstroms = const_c / nu_line
 
     radfielddataselected.plot(x='timestep', y='J_lambda_fullspec_at_line', ax=axis,
@@ -351,7 +351,6 @@ def plot_global_fitted_field_evolution(axis, radfielddata, nu_line, modelgridind
 def plot_line_estimator_evolution(axis, radfielddata, bin_num, modelgridindex=None,
                                   timestep_min=None, timestep_max=None, **plotkwargs):
     """Plot the Jblue_lu values over time for a detailed line estimators."""
-
     radfielddataselected = radfielddata.query(
         'bin_num == @bin_num' +
         (' & modelgridindex == @modelgridindex' if modelgridindex else '') +
@@ -402,7 +401,8 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
 
         plot_global_fitted_field_evolution(ax, radfielddata, nu_line, modelgridindex=modelgridindex)
         ax.annotate(
-            f'$\lambda$={lambda_angstroms:.1f} Å in cell {modelgridindex:d}\n',
+            r'$\lambda$='
+            f'{lambda_angstroms:.1f} Å in cell {modelgridindex:d}\n',
             xy=(0.02, 0.96), xycoords='axes fraction',
             horizontalalignment='left', verticalalignment='top', fontsize=10)
 
@@ -498,7 +498,6 @@ def main(args=None, argsraw=None, **kwargs):
             modelgridindex = args.modelgridindex
 
         radfielddata = read_files(modelpath, modelgridindex=modelgridindex)
-
 
         timesteplast = max(radfielddata['timestep'])
         if args.timedays:

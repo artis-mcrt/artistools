@@ -330,10 +330,10 @@ def parse_transitiondata(ftransitions, ionlist):
             for _ in range(transition_count):
                 row = ftransitions.readline().split()
                 translist.append(
-                    transitiontuple(int(row[0]) - firstlevelnumber, int(row[1]) - firstlevelnumber,
-                                    float(row[2]), float(row[3]), int(row[4]) == 1))
+                    (int(row[0]) - firstlevelnumber, int(row[1]) - firstlevelnumber,
+                     float(row[2]), float(row[3]), int(row[4]) == 1))
 
-            yield Z, ionstage, pd.DataFrame(translist)
+            yield Z, ionstage, pd.DataFrame(translist, columns=['lower', 'upper', 'A', 'collstr', 'forbidden'])
         else:
             for _ in range(transition_count):
                 ftransitions.readline()
