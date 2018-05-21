@@ -281,7 +281,6 @@ def get_timestep_time_delta(timestep, timearray=None, inputparams=None):
 def parse_adata(fadata, phixsdict, ionlist):
     """Generate ions and their level lists from adata.txt."""
     firstlevelnumber = 1
-    leveltuple = namedtuple('level', 'energy_ev g transition_count levelname phixstable')
 
     for line in fadata:
         if not line.strip():
@@ -296,24 +295,26 @@ def parse_adata(fadata, phixsdict, ionlist):
         if not ionlist or (Z, ionstage) in ionlist:
             level_list = []
             for levelindex in range(level_count):
-                line = fadata.readline()
-                row = line.split()
+                row = fadata.readline().split()
+
                 levelname = row[4].strip('\'')
                 numberin = int(row[0])
                 assert levelindex == numberin - firstlevelnumber
                 phixstable = phixsdict.get((Z, ionstage, numberin), [])
-                level_list.append(leveltuple(float(row[1]), float(row[2]), int(row[3]), levelname, phixstable))
 
-            dflevels = pd.DataFrame(level_list)
+                level_list.append((float(row[1]), float(row[2]), int(row[3]), levelname, phixstable))
+
+            dflevels = pd.DataFrame(level_list,
+                                    columns=['energy_ev', 'g', 'transition_count', 'levelname', 'phixstable'])
 
             yield Z, ionstage, level_count, ionisation_energy_ev, dflevels
+
         else:
             for _ in range(level_count):
                 fadata.readline()
 
 
 def parse_transitiondata(ftransitions, ionlist):
-    transitiontuple = namedtuple('transition', 'lower upper A collstr forbidden')
     firstlevelnumber = 1
 
     for line in ftransitions:
