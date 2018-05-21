@@ -27,29 +27,17 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
     """Read radiation field data from a list of file paths into a pandas DataFrame."""
     radfielddata = pd.DataFrame()
 
-    if modelgridindex >= 0:
-        mpiranklist = [at.get_mpirankofcell(modelgridindex, modelpath=modelpath)]
-    else:
-        mpiranklist = range(min(at.get_nprocs(modelpath), at.get_npts_model(modelpath)))
+    mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
 
-    folderlist = sorted([child for child in modelpath.iterdir() if child.is_dir()]) + [modelpath]
-
-    for folderpath in folderlist:
-        nfilesread_thisfolder = 0
+    for folderpath in at.get_runfolders(modelpath, timestep=timestep):
         for mpirank in mpiranklist:
             radfieldfilename = f'radfield_{mpirank:04d}.out'
             radfieldfilepath = Path(folderpath, radfieldfilename)
             if not radfieldfilepath.is_file():
                 radfieldfilepath = Path(folderpath, radfieldfilename + '.gz')
                 if not radfieldfilepath.is_file():
-                    # if the first file is not found in the folder, then skip the folder
-                    if nfilesread_thisfolder == 0:
-                        break
-                    else:
-                        print(f'Warning: Could not find {radfieldfilepath.relative_to(modelpath.parent)}')
-                        continue
-
-            nfilesread_thisfolder += 1
+                    print(f'Warning: Could not find {radfieldfilepath.relative_to(modelpath.parent)}')
+                    continue
 
             if modelgridindex > -1:
                 filesize = Path(radfieldfilepath).stat().st_size / 1024 / 1024
