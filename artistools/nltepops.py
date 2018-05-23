@@ -498,8 +498,11 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
     if nrows == 1:
         axes = [axes]
 
-    mgiaxindex = 0
-    for modelgridindex in mgilist:
+    prev_ion_stage = -1
+    for mgilistindex, modelgridindex in enumerate(mgilist):
+        mgifirstaxindex = mgilistindex
+        mgilastaxindex = mgilistindex + len(ion_stage_list) - 1
+
         estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
         elsymbol = at.elsymbols[atomic_number]
         print(f'Plotting NLTE pops for {modelname} modelgridindex {args.modelgridindex}, '
@@ -540,21 +543,6 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         nne = estimators[(timestep, modelgridindex)]['nne']
         W = estimators[(timestep, modelgridindex)]['W']
 
-        for ax, ion_stage in zip(axes[mgiaxindex:mgiaxindex + len(ion_stage_list)], ion_stage_list):
-            ion_data = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0]
-            lastsubplot = modelgridindex == mgilist[-1] and ion_stage == ion_stage_list[-1]
-            make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, estimators,
-                            T_e, T_R, modelgridindex, timestep, args, lastsubplot=lastsubplot)
-
-            # ax.annotate(ionstr, xy=(0.95, 0.96), xycoords='axes fraction',
-            #             horizontalalignment='right', verticalalignment='top', fontsize=12)
-            ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
-
-            ax.set_xlim(xmin=-1)
-
-        if not args.nolegend:
-            axes[mgiaxindex].legend(loc='best', handlelength=2, frameon=False, numpoints=1)
-
         subplot_title = f'{modelname}'
         if len(modelname) > 10:
             subplot_title += '\n'
@@ -571,9 +559,24 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         subplot_title += f' (Te={T_e:.0f} K, nne={nne:.1e} ' + r'cm$^{-3}$, T$_R$=' + f'{T_R:.0f} K, W={W:.1e})'
 
         if not args.notitle:
-            axes[mgiaxindex].set_title(subplot_title, fontsize=10)
+            axes[mgifirstaxindex].set_title(subplot_title, fontsize=10)
 
-        mgiaxindex += len(ion_stage_list)
+        for ax, ion_stage in zip(axes[mgifirstaxindex:mgilastaxindex + 1], ion_stage_list):
+            ion_data = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0]
+            lastsubplot = modelgridindex == mgilist[-1] and ion_stage == ion_stage_list[-1]
+            make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, estimators,
+                            T_e, T_R, modelgridindex, timestep, args, lastsubplot=lastsubplot)
+
+            # ax.annotate(ionstr, xy=(0.95, 0.96), xycoords='axes fraction',
+            #             horizontalalignment='right', verticalalignment='top', fontsize=12)
+            ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
+
+            ax.set_xlim(xmin=-1)
+
+            if not args.nolegend and prev_ion_stage != ion_stage:
+                ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1)
+
+            prev_ion_stage = ion_stage
 
     if args.x == 'index':
         axes[-1].set_xlabel(r'Level index')
@@ -694,7 +697,8 @@ def main(args=None, argsraw=None, **kwargs):
     for vel in args.velocity:
         mgilist.append(at.get_closest_cell(modelpath, vel))
 
-    assert len(mgilist)
+    if not mgilist:
+        mgilist.append(0)
 
     for el_in in args.elements:
         try:
