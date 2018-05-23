@@ -126,7 +126,7 @@ def get_ylabel(variable):
 
 
 def parse_estimfile(estfilepath, modeldata):
-    """Generator for blocks (modelgrid and timestep) of estimators."""
+    """Generate timestep, modelgridindex, dict from estimator file."""
     opener = gzip.open if str(estfilepath).endswith('.gz') else open
     with opener(estfilepath, 'rt') as estimfile:
         timestep = -1
@@ -340,6 +340,7 @@ def plot_averageionisation(ax, xlist, elementlist, timesteplist, mgilist, estima
 
 def plot_multi_ion_series(
         ax, xlist, seriestype, ionlist, timesteplist, mgilist, estimators, modelpath, args, **plotkwargs):
+    """Plot an ion-specific property like populations"""
     assert len(xlist) - 1 == len(mgilist) == len(timesteplist)
     # if seriestype == 'populations':
     #     ax.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
@@ -453,6 +454,7 @@ def plot_multi_ion_series(
 
 
 def plot_series(ax, xlist, variablename, showlegend, timesteplist, mgilist, estimators, nounits=False, **plotkwargs):
+    """Plot something like Te or TR."""
     assert len(xlist) - 1 == len(mgilist) == len(timesteplist)
     formattedvariablename = dictlabelreplacements.get(variablename, variablename)
     serieslabel = f'{formattedvariablename}'
@@ -540,13 +542,13 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timesteplist, modelpath
     return list(xlist), list(mgilist_out), list(timesteplist_out)
 
 
-def plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modelpath, estimators, args, **plotkwargs):
+def plot_subplot(ax, timesteplist, xlist, plotitems, mgilist, modelpath, estimators, args, **plotkwargs):
     assert len(xlist) - 1 == len(mgilist) == len(timesteplist)
     showlegend = False
 
     ylabel = 'UNDEFINED'
     sameylabel = True
-    for variablename in yvariables:
+    for variablename in plotitems:
         if not isinstance(variablename, str):
             pass
         elif ylabel == 'UNDEFINED':
@@ -555,31 +557,32 @@ def plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modelpath, estima
             sameylabel = False
             break
 
-    for variablename in yvariables:
-        if not isinstance(variablename, str):  # it's a sequence of values
-            showlegend = True
-            if variablename[0] == 'initabundances':
-                plot_init_abundances(ax, xlist, variablename[1], mgilist, modelpath)
-            elif variablename[0] == 'averageionisation':
-                plot_averageionisation(ax, xlist, variablename[1], timesteplist, mgilist, estimators, modelpath)
-            elif variablename[0] == '_ymin':
-                ax.set_ylim(ymin=variablename[1])
-            elif variablename[0] == '_ymax':
-                ax.set_ylim(ymax=variablename[1])
-            else:
-                seriestype, ionlist = variablename
-                plot_multi_ion_series(ax, xlist, seriestype, ionlist, timesteplist, mgilist, estimators,
-                                      modelpath, args, **plotkwargs)
-        else:
-            showlegend = len(yvariables) > 1 or len(variablename) > 20
-            plot_series(ax, xlist, variablename, showlegend, timesteplist, mgilist, estimators,
+    for plotitem in plotitems:
+        if isinstance(plotitem, str):
+            showlegend = len(plotitems) > 1 or len(variablename) > 20
+            plot_series(ax, xlist, plotitem, showlegend, timesteplist, mgilist, estimators,
                         nounits=sameylabel, **plotkwargs)
             if showlegend and sameylabel:
                 ax.set_ylabel(ylabel)
+            showlegend = True
+        else:  # it's a sequence of values
+            seriestype, params = plotitem
+            if seriestype == 'initabundances':
+                plot_init_abundances(ax, xlist, params, mgilist, modelpath)
+            elif seriestype == 'averageionisation':
+                plot_averageionisation(ax, xlist, params, timesteplist, mgilist, estimators, modelpath)
+            elif seriestype == '_ymin':
+                ax.set_ylim(ymin=params)
+            elif seriestype == '_ymax':
+                ax.set_ylim(ymax=params)
+            else:
+                seriestype, ionlist = plotitem
+                plot_multi_ion_series(ax, xlist, seriestype, ionlist, timesteplist, mgilist, estimators,
+                                      modelpath, args, **plotkwargs)
 
     ax.tick_params(right=True)
     if showlegend:
-        if yvariables[0][0] == 'populations':
+        if plotitems[0][0] == 'populations':
             ax.legend(loc='upper left', handlelength=2, ncol=3,
                       frameon=False, numpoints=1, prop={'size': 8})
         else:
@@ -605,9 +608,9 @@ def make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators
     xmin = args.xmin if args.xmin > 0 else min(xlist)
     xmax = args.xmax if args.xmax > 0 else max(xlist)
 
-    for ax, yvariables in zip(axes, plotlist):
+    for ax, plotitems in zip(axes, plotlist):
         ax.set_xlim(xmin=xmin, xmax=xmax)
-        plot_subplot(ax, timesteplist, xlist, yvariables, mgilist, modelpath, estimators, args, **plotkwargs)
+        plot_subplot(ax, timesteplist, xlist, plotitems, mgilist, modelpath, estimators, args, **plotkwargs)
 
     if len(set(timesteplist)) == 1:  # single timestep plot
         figure_title = f'{modelname}\nTimestep {timesteplist[0]}'
