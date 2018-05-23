@@ -633,11 +633,13 @@ def get_runfolder_timesteps(folderpath):
 
 
 @lru_cache(maxsize=16)
-def get_runfolders(modelpath, timestep=-1):
-    """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction."""
+def get_runfolders(modelpath, timestep=None):
+    """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
+
+    The folder list may include non-ARTIS folders if a timestep is not specified."""
     folderlist = sorted([child for child in modelpath.iterdir() if child.is_dir()]) + [modelpath]
 
-    if timestep >= 0:
+    if timestep is not None and timestep > -1:
         for folderpath in folderlist:
             if timestep in get_runfolder_timesteps(folderpath):
                 return [folderpath]
@@ -658,7 +660,10 @@ def get_mpiranklist(modelpath, modelgridindex=None):
 
             return sorted(list(mpiranklist))
         except TypeError:
-            return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
+            if modelgridindex < 0:
+                return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
+            else:
+                return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
 @lru_cache(maxsize=8)

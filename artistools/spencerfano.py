@@ -450,7 +450,7 @@ def main(args=None, argsraw=None, **kwargs):
         sys.exit()
 
     modeldata, _ = at.get_modeldata(modelpath)
-    estimators = at.estimators.read_estimators(modelpath)
+    estimators = at.estimators.read_estimators(modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex)
     estim = estimators[(args.timestep, args.modelgridindex)]
 
     dfnltepops = at.nltepops.get_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
