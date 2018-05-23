@@ -214,13 +214,21 @@ def parse_estimfile(estfilepath, modeldata):
 
 
 @lru_cache(maxsize=16)
-def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
+def read_estimators(modelpath, modelgridindex=None, timestep=-1):
     """Read estimator files into a nested dictionary structure.
 
     Speed it up by only retrieving estimators for a particular timestep or modelgridindex.
     """
     match_timestep = timestep
-    match_modelgridindex = modelgridindex
+    if modelgridindex is None:
+        match_modelgridindex = []
+    else:
+        try:
+            len(modelgridindex)
+            match_modelgridindex = modelgridindex
+        except TypeError:
+            match_modelgridindex = [modelgridindex]
+
     modeldata, _ = at.get_modeldata(modelpath)
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex)
@@ -246,13 +254,14 @@ def read_estimators(modelpath, modelgridindex=-1, timestep=-1):
 
                 if match_timestep >= 0 and match_timestep != timestep:
                     continue  # timestep not a match, so skip this block
-                elif match_modelgridindex >= 0 and match_modelgridindex != modelgridindex:
+                elif match_modelgridindex and modelgridindex not in match_modelgridindex:
                     continue  # modelgridindex not a match, skip this block
 
                 estimators[(timestep, modelgridindex)] = estimblock
 
                 # this won't match in the default case of match_timestep == -1, and match_modelgridindex == -1
-                if (match_timestep == timestep and match_modelgridindex == modelgridindex):
+                if (match_timestep == timestep and len(match_modelgridindex) == 1 and
+                        match_modelgridindex[0] == modelgridindex):
                     # found our key, so exit now!
                     return estimators
 
