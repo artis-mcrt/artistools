@@ -26,10 +26,19 @@ benchargs = dict(iterations=1, rounds=1)
 
 
 def test_timestep_times():
-    timearray = at.get_timestep_times(modelpath)
-    assert len(timearray) == 100
-    assert timearray[0] == '250.421'
-    assert timearray[-1] == '349.412'
+    timestartarray = at.get_timestep_times_float(modelpath, loc='start')
+    timedeltarray = at.get_timestep_times_float(modelpath, loc='delta')
+    timearray = at.get_timestep_times_float(modelpath)
+    strtimearray = at.get_timestep_times(modelpath)
+    assert len(strtimearray) == 100
+    assert math.isclose(float(strtimearray[0]), 250.421, abs_tol=1e-3)
+    assert math.isclose(float(strtimearray[-1]), 349.412, abs_tol=1e-3)
+
+    assert all([math.isclose(float(strtimearray[ts]), timearray[ts], abs_tol=1e-3)
+                for ts in range(len(strtimearray))])
+
+    assert all([math.isclose(tstart + (tdelta / 2.), tmid, abs_tol=1e-3)
+                for tstart, tdelta, tmid in zip(timestartarray, timedeltarray, timearray)])
 
 
 def test_deposition():
