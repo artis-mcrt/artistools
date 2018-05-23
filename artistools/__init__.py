@@ -220,23 +220,30 @@ def get_timestep_times(modelpath):
         time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
         return time_columns.columns[1:]
     except FileNotFoundError:
-        return [f'{tdays:.3f}' for tdays in get_timestep_times_float(modelpath, inputparamson=True)]
+        return [f'{tdays:.3f}' for tdays in get_timestep_times_float(modelpath)]
 
 
 @lru_cache(maxsize=16)
-def get_timestep_times_float(modelpath, inputparamson=None):
+def get_timestep_times_float(modelpath, loc='mid'):
     """Return a list of the time in days of each timestep."""
-    if inputparamson:
-        inputparams = get_inputparams(modelpath)
-        tmin = inputparams['tmin']
-        dlogt = (math.log(inputparams['tmax']) - math.log(tmin)) / inputparams['ntstep']
-        timesteps = range(inputparams['ntstep'])
-        tstarts = [tmin * math.exp(ts * dlogt) for ts in timesteps]
+    inputparams = get_inputparams(modelpath)
+    tmin = inputparams['tmin']
+    dlogt = (math.log(inputparams['tmax']) - math.log(tmin)) / inputparams['ntstep']
+    timesteps = range(inputparams['ntstep'])
+    if loc == 'mid':
         tmids = [tmin * math.exp((ts + 0.5) * dlogt) for ts in timesteps]
         return tmids
+    elif loc == 'start':
+        tstarts = [tmin * math.exp(ts * dlogt) for ts in timesteps]
+        return tstarts
+    elif loc == 'end':
+        tends = [tmin * math.exp((ts + 1) * dlogt) for ts in timesteps]
+        return tends
+    elif loc == 'delta':
+        tdeltas = [tmin * (math.exp((ts + 1) * dlogt) - math.exp(ts * dlogt)) for ts in timesteps]
+        return tdeltas
     else:
-        timearray = get_timestep_times(modelpath)
-        return [float(t.rstrip('d')) for t in timearray]
+        raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
 
 
 def get_closest_timestep(modelpath, timedays):
@@ -469,57 +476,6 @@ def get_model_name(path):
         return os.path.basename(modelpath)
 
 
-def get_time_range(timearray, timestep_range_str, timemin, timemax, timedays_range_str):
-    """Handle a time range specified in either days or timesteps."""
-    # assertions make sure time is specified either by timesteps or times in days, but not both!
-    timedays_is_specified = (timemin is not None and timemax is not None) or timedays_range_str is not None
-
-    if timemin and timemin > float(timearray[-1].strip('d')):
-        raise ValueError(f"timemin {timemin} is after the last timestep at {timearray[-1]}")
-    elif timemax and timemax < float(timearray[0].strip('d')):
-        raise ValueError(f"timemax {timemax} is before the first timestep at {timearray[0]}")
-
-    if timestep_range_str is not None:
-        if timedays_is_specified:
-            raise ValueError("Cannot specify both time in days and timestep numbers.")
-
-        if '-' in timestep_range_str:
-            timestepmin, timestepmax = [int(nts) for nts in timestep_range_str.split('-')]
-        else:
-            timestepmin = int(timestep_range_str)
-            timestepmax = timestepmin
-    elif timedays_is_specified:
-        if timedays_range_str is not None and '-' in timedays_range_str:
-            timemin, timemax = [float(timedays) for timedays in timedays_range_str.split('-')]
-
-        timestepmin = None
-        for timestep, time in enumerate(timearray):
-            timefloat = float(time.strip('d'))
-            if float(timemin) <= timefloat:
-                timestepmin = timestep
-                break
-
-        if timestepmin is None:
-            print(f"Time min {timemin} is greater than all timesteps ({timearray[0]} to {timearray[-1]})")
-            sys.exit()
-
-        if not timemax:
-            timemax = float(timearray[-1].strip('d'))
-        for timestep, time in enumerate(timearray):
-            timefloat = float(time.strip('d'))
-            if timefloat + get_timestep_time_delta(timestep, timearray) <= timemax:
-                timestepmax = timestep
-        if timestepmax < timestepmin:
-            raise ValueError("Specified time range does not include any full timesteps.")
-    else:
-        raise ValueError("Either time or timesteps must be specified.")
-
-    time_days_lower = float(timearray[timestepmin])
-    time_days_upper = float(timearray[timestepmax]) + get_timestep_time_delta(timestepmax, timearray)
-
-    return timestepmin, timestepmax, time_days_lower, time_days_upper
-
-
 def get_atomic_number(elsymbol):
     if elsymbol.title() in elsymbols:
         return elsymbols.index(elsymbol.title())
@@ -691,11 +647,18 @@ def get_runfolders(modelpath, timestep=-1):
     return folderlist
 
 
-def get_mpiranklist(modelpath, modelgridindex):
-    if modelgridindex >= 0:
-        return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
-    else:
+def get_mpiranklist(modelpath, modelgridindex=None):
+    if modelgridindex is None:
         return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
+    else:
+        try:
+            mpiranklist = set()
+            for mgi in modelgridindex:
+                mpiranklist.add(get_mpirankofcell(mgi, modelpath=modelpath))
+
+            return sorted(list(mpiranklist))
+        except TypeError:
+            return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
 @lru_cache(maxsize=8)
