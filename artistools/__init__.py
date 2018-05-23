@@ -656,7 +656,10 @@ def get_mpiranklist(modelpath, modelgridindex=None):
         try:
             mpiranklist = set()
             for mgi in modelgridindex:
-                mpiranklist.add(get_mpirankofcell(mgi, modelpath=modelpath))
+                if mgi < 0:
+                    return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
+                else:
+                    mpiranklist.add(get_mpirankofcell(mgi, modelpath=modelpath))
 
             return sorted(list(mpiranklist))
         except TypeError:
