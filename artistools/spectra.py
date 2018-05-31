@@ -27,7 +27,19 @@ refspectra = {
         ('SN2011fe +364d', 6.40),
 
     'dop_dered_SN2013aa_20140208_fc_final.txt':  # (Maguire et al. 2016)
-        ('SN2013aa +360d', 13.95),
+        ('SN2013aa old +360d', 13.95),
+
+    'SN2013aa_20140216_3Ang.txt':  # (Maguire et al. 2016)
+        ('SN2013aa +360d', 18.1),
+
+    'SN2013ct_20131119_3Ang.txt':  # (Maguire et al. 2016)
+        ('SN2013ct +229d', 12.1),
+
+    'SN2013cs_20140325_3Ang.txt':  # (Maguire et al. 2016)
+        ('SN2013cs +303d', 44.1),
+
+    'PSNJ11492548_20160202_3Ang.txt':  # (Maguire et al. 2018)
+        ('PSNJ1149 +206d', 24.),
 
     '2003du_20031213_3219_8822_00.txt':  # (Stanishev et al. 2007)
         ('SN2003du +221.3d', 30.47),
@@ -350,12 +362,11 @@ def plot_reference_spectra(axes, plotobjects, plotobjectlabels, args, flambdafil
     if args.refspecfiles is not None:
         if isinstance(args.refspecfiles, str):
             args.refspecfiles = [args.refspecfiles]
-        colorlist = ['0.0', '0.2']
+        colorlist = ['0.0', '0.3', '0.5']
         if args.refspecaboveartis:
             plotkwargs['zorder'] = 1000
         for index, filename in enumerate(args.refspecfiles):
-            if index < len(colorlist):
-                plotkwargs['color'] = colorlist[index]
+            plotkwargs['color'] = colorlist[min(index, len(colorlist) - 1)]
 
             for axindex, axis in enumerate(axes):
                 supxmin, supxmax = axis.get_xlim()
@@ -419,7 +430,7 @@ def plot_reference_spectrum(
         ycolumnname = 'f_lambda'
 
     if 'linewidth' not in plotkwargs and 'lw' not in plotkwargs:
-        plotkwargs['linewidth'] = 0.5
+        plotkwargs['linewidth'] = 0.6
 
     lineplot = specdata.plot(x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None, **plotkwargs)
     # lineplot.get_lines()[0].get_color())
