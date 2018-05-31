@@ -502,68 +502,12 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
     plt.close()
 
 
-def get_time_range(timearray, timestep_range_str, timemin, timemax, timedays_range_str):
-    """Handle a time range specified in either days or timesteps."""
-    # assertions make sure time is specified either by timesteps or times in days, but not both!
-    timedays_is_specified = (timemin is not None and timemax is not None) or timedays_range_str is not None
-
-    if timemin and timemin > float(timearray[-1].strip('d')):
-        raise ValueError(f"timemin {timemin} is after the last timestep at {timearray[-1]}")
-    elif timemax and timemax < float(timearray[0].strip('d')):
-        raise ValueError(f"timemax {timemax} is before the first timestep at {timearray[0]}")
-
-    if timestep_range_str is not None:
-        if timedays_is_specified:
-            raise ValueError("Cannot specify both time in days and timestep numbers.")
-
-        if '-' in timestep_range_str:
-            timestepmin, timestepmax = [int(nts) for nts in timestep_range_str.split('-')]
-        else:
-            timestepmin = int(timestep_range_str)
-            timestepmax = timestepmin
-    elif timedays_is_specified:
-        if timedays_range_str is not None:
-            if '-' in timedays_range_str:
-                timemin, timemax = [float(timedays) for timedays in timedays_range_str.split('-')]
-            else:
-                timeavg = float(timedays_range_str)
-                timedelta = 10
-                timemin, timemax = timeavg - timedelta, timeavg + timedelta
-
-        timestepmin = None
-        for timestep, time in enumerate(timearray):
-            timefloat = float(time.strip('d'))
-            if float(timemin) <= timefloat:
-                timestepmin = timestep
-                break
-
-        if timestepmin is None:
-            print(f"Time min {timemin} is greater than all timesteps ({timearray[0]} to {timearray[-1]})")
-            raise ValueError
-
-        if not timemax:
-            timemax = float(timearray[-1].strip('d'))
-        for timestep, time in enumerate(timearray):
-            timefloat = float(time.strip('d'))
-            if timefloat + at.get_timestep_time_delta(timestep, timearray) <= timemax:
-                timestepmax = timestep
-        if timestepmax < timestepmin:
-            raise ValueError("Specified time range does not include any full timesteps.")
-    else:
-        raise ValueError("Either time or timesteps must be specified.")
-
-    time_days_lower = float(timearray[timestepmin])
-    time_days_upper = float(timearray[timestepmax]) + at.get_timestep_time_delta(timestepmax, timearray)
-
-    return timestepmin, timestepmax, time_days_lower, time_days_upper
-
-
 def plot_artis_spectrum(
         axes, modelpath, args, scale_to_peak=None, from_packets=False, filterfunc=None, linelabel=None, **plotkwargs):
     """Plot an ARTIS output spectrum."""
 
-    (timestepmin, timestepmax, args.timemin, args.timemax) = get_time_range(
-        at.get_timestep_times(modelpath), args.timestep, args.timemin, args.timemax, args.timedays)
+    (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+        modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
 
     modelname = at.get_model_name(modelpath)
     timeavg = (args.timemin + args.timemax) / 2.
@@ -645,13 +589,11 @@ def make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=None):
 def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_peak=None):
     """Plot the emission and absorption by ion for an ARTIS model."""
 
-    timearray = at.get_timestep_times(modelpath)
     arraynu = at.get_nu_grid(modelpath)
     arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
 
-    (timestepmin, timestepmax,
-     args.timemin, args.timemax) = get_time_range(
-         timearray, args.timestep, args.timemin, args.timemax, args.timedays)
+    (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+        modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
 
     modelname = at.get_model_name(modelpath)
     print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
@@ -855,7 +797,7 @@ def write_flambda_spectra(modelpath, args):
         args.timestep = f'0-{number_of_timesteps - 1}'
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = get_time_range(
-        timearray, args.timestep, args.timemin, args.timemax, args.timedays)
+        modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
 
     with open(outdirectory / 'spectra_list.txt', 'w+') as spectra_list:
 
