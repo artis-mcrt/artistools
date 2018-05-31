@@ -271,6 +271,27 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None):
     return estimators
 
 
+def get_averaged_estimator(estimators, timesteps, modelgridindex, xvariable):
+    try:
+        try:
+            valuesum = 0
+            for timestep in timesteps:
+                valuesum += estimators[(timestep, modelgridindex)][xvariable]
+            return valuesum / set(timesteps)
+
+        except TypeError:
+            timestep = timesteps
+            return estimators[(timestep, modelgridindex)][xvariable]
+    except KeyError:
+        if (timestep, modelgridindex) in estimators:
+            print(f'Unknown x variable: {xvariable} for timestep {timestep} in cell {modelgridindex}')
+        else:
+            print(f'No data for cell {modelgridindex} at timestep {timestep}')
+        print(estimators[(timestep, modelgridindex)])
+        sys.exit()
+
+
+
 def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, **plotkwargs):
     assert len(xlist) - 1 == len(mgilist)
     modeldata, _ = at.get_modeldata(modelpath)
@@ -499,51 +520,43 @@ def plot_series(ax, xlist, variablename, showlegend, timesteplist, mgilist, esti
     ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename, None), **plotkwargs)
 
 
-def get_xlist(xvariable, allnonemptymgilist, estimators, timesteplist, modelpath, args):
+def get_xlist(xvariable, allnonemptymgilist, estimators, timestepslist, modelpath, args):
     if xvariable in ['cellid', 'modelgridindex']:
         if args.xmax >= 0:
             mgilist_out = [mgi for mgi in allnonemptymgilist if mgi <= args.xmax]
         else:
             mgilist_out = allnonemptymgilist
         xlist = mgilist_out
-        timesteplist_out = timesteplist
+        timestepslist_out = timestepslist
     elif xvariable == 'timestep':
         mgilist_out = allnonemptymgilist
-        xlist = timesteplist
-        timesteplist_out = timesteplist
+        xlist = timestepslist
+        timestepslist_out = timestepslist
     elif xvariable == 'time':
         mgilist_out = allnonemptymgilist
         timearray = at.get_timestep_times_float(modelpath)
-        xlist = [timearray[ts] for ts in timesteplist]
-        timesteplist_out = timesteplist
+        xlist = [timearray[ts] for ts in timestepslist]
+        timestepslist_out = timestepslist
     else:
-        try:
-            xlist = []
-            mgilist_out = []
-            timesteplist_out = []
-            for modelgridindex, timestep in zip(allnonemptymgilist, timesteplist):
-                xvalue = estimators[(timestep, modelgridindex)][xvariable]
-                if args.xmax < 0 or xvalue <= args.xmax:
-                    xlist.append(xvalue)
-                    mgilist_out.append(modelgridindex)
-                    timesteplist_out.append(timestep)
-        except KeyError:
-            if (timestep, modelgridindex) in estimators:
-                print(f'Unknown x variable: {xvariable} for timestep {timestep} in cell {modelgridindex}')
-            else:
-                print(f'No data for cell {modelgridindex} at timestep {timestep}')
-            print(estimators[(timestep, modelgridindex)])
-            sys.exit()
+        xlist = []
+        mgilist_out = []
+        timestepslist_out = []
+        for modelgridindex, timesteps in zip(allnonemptymgilist, timestepslist):
+            xvalue = get_averaged_estimator(estimators, timesteps, modelgridindex, xvariable)
+            if args.xmax < 0 or xvalue <= args.xmax:
+                xlist.append(xvalue)
+                mgilist_out.append(modelgridindex)
+                timestepslist_out.append(timesteps)
 
-    xlist, mgilist_out, timesteplist_out = zip(
-        *[xmt for xmt in sorted(zip(xlist, mgilist_out, timesteplist_out))])
-    assert len(xlist) == len(mgilist_out) == len(timesteplist_out)
+    xlist, mgilist_out, timestepslist_out = zip(
+        *[xmt for xmt in sorted(zip(xlist, mgilist_out, timestepslist_out))])
+    assert len(xlist) == len(mgilist_out) == len(timestepslist_out)
 
-    return list(xlist), list(mgilist_out), list(timesteplist_out)
+    return list(xlist), list(mgilist_out), list(timestepslist_out)
 
 
-def plot_subplot(ax, timesteplist, xlist, plotitems, mgilist, modelpath, estimators, args, **plotkwargs):
-    assert len(xlist) - 1 == len(mgilist) == len(timesteplist)
+def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath, estimators, args, **plotkwargs):
+    assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
     showlegend = False
 
     ylabel = 'UNDEFINED'
@@ -560,7 +573,7 @@ def plot_subplot(ax, timesteplist, xlist, plotitems, mgilist, modelpath, estimat
     for plotitem in plotitems:
         if isinstance(plotitem, str):
             showlegend = len(plotitems) > 1 or len(variablename) > 20
-            plot_series(ax, xlist, plotitem, showlegend, timesteplist, mgilist, estimators,
+            plot_series(ax, xlist, plotitem, showlegend, timestepslist, mgilist, estimators,
                         nounits=sameylabel, **plotkwargs)
             if showlegend and sameylabel:
                 ax.set_ylabel(ylabel)
@@ -570,14 +583,14 @@ def plot_subplot(ax, timesteplist, xlist, plotitems, mgilist, modelpath, estimat
             if seriestype == 'initabundances':
                 plot_init_abundances(ax, xlist, params, mgilist, modelpath)
             elif seriestype == 'averageionisation':
-                plot_averageionisation(ax, xlist, params, timesteplist, mgilist, estimators, modelpath)
+                plot_averageionisation(ax, xlist, params, timestepslist, mgilist, estimators, modelpath)
             elif seriestype == '_ymin':
                 ax.set_ylim(ymin=params)
             elif seriestype == '_ymax':
                 ax.set_ylim(ymax=params)
             else:
                 seriestype, ionlist = plotitem
-                plot_multi_ion_series(ax, xlist, seriestype, ionlist, timesteplist, mgilist, estimators,
+                plot_multi_ion_series(ax, xlist, seriestype, ionlist, timestepslist, mgilist, estimators,
                                       modelpath, args, **plotkwargs)
 
     ax.tick_params(right=True)
@@ -589,7 +602,7 @@ def plot_subplot(ax, timesteplist, xlist, plotitems, mgilist, modelpath, estimat
             ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
 
 
-def make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, xvariable, plotlist,
+def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimators, xvariable, plotlist,
               args, **plotkwargs):
     modelname = at.get_model_name(modelpath)
     fig, axes = plt.subplots(nrows=len(plotlist), ncols=1, sharex=True,
@@ -601,8 +614,8 @@ def make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
 
     axes[-1].set_xlabel(f'{xvariable}{get_units_string(xvariable)}')
-    xlist, mgilist, timesteplist = get_xlist(
-        xvariable, allnonemptymgilist, estimators, timesteplist_unfiltered, modelpath, args)
+    xlist, mgilist, timestepslist = get_xlist(
+        xvariable, allnonemptymgilist, estimators, timestepslist_unfiltered, modelpath, args)
     xlist = np.insert(xlist, 0, 0.)
 
     xmin = args.xmin if args.xmin > 0 else min(xlist)
@@ -610,12 +623,12 @@ def make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators
 
     for ax, plotitems in zip(axes, plotlist):
         ax.set_xlim(xmin=xmin, xmax=xmax)
-        plot_subplot(ax, timesteplist, xlist, plotitems, mgilist, modelpath, estimators, args, **plotkwargs)
+        plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath, estimators, args, **plotkwargs)
 
-    if len(set(timesteplist)) == 1:  # single timestep plot
-        figure_title = f'{modelname}\nTimestep {timesteplist[0]}'
+    if len(set(timestepslist)) == 1:  # single timestep plot
+        figure_title = f'{modelname}\nTimestep {timestepslist[0]}'
         try:
-            time_days = float(at.get_timestep_time(modelpath, timesteplist[0]))
+            time_days = float(at.get_timestep_time(modelpath, timestepslist[0]))
         except FileNotFoundError:
             time_days = 0
         else:
@@ -734,11 +747,17 @@ def addargs(parser):
     parser.add_argument('-modelgridindex', '-cell', type=int, default=-1,
                         help='Modelgridindex for time evolution plot')
 
-    parser.add_argument('-timestep', '-ts',
+    parser.add_argument('-timestep', '-ts', nargs='?',
                         help='Timestep number for internal structure plot')
 
-    parser.add_argument('-timedays', '-time', '-t',
+    parser.add_argument('-timedays', '-time', '-t', nargs='?',
                         help='Time in days to plot for internal structure plot')
+
+    parser.add_argument('-timemin', type=float,
+                        help='Lower time in days')
+
+    parser.add_argument('-timemax', type=float,
+                        help='Upper time in days')
 
     parser.add_argument('-x',
                         help='Horizontal axis variable, e.g. cellid, velocity, timestep, or time')
@@ -781,28 +800,11 @@ def main(args=None, argsraw=None, **kwargs):
 
     modelpath = args.modelpath
 
-    if args.timedays:
-        if isinstance(args.timedays, str) and '-' in args.timedays:
-            timestepmin, timestepmax = [
-                at.get_closest_timestep(modelpath, float(timedays))
-                for timedays in args.timedays.split('-')]
-        else:
-            timestep = at.get_closest_timestep(modelpath, args.timedays)
-            timestepmin, timestepmax = timestep, timestep
-    else:
-        if not args.timestep:
-            if args.modelgridindex > -1:
-                timearray = at.get_timestep_times(modelpath)
-                timestepmin = 0
-                timestepmax = len(timearray) - 1
-            else:
-                print('ERROR: A time or timestep must be specified if no cell is specified')
-                return -1
-        elif '-' in args.timestep:
-            timestepmin, timestepmax = [int(nts) for nts in args.timestep.split('-')]
-        else:
-            timestepmin = int(args.timestep)
-            timestepmax = timestepmin
+    if not args.timedays and not args.timestep and args.modelgridindex > -1:
+        args.timestep = f'0-{len(at.get_timestep_times(modelpath)) - 1}'
+
+    (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+         modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
 
     timestepfilter = timestepmin if timestepmin == timestepmax else -1
     estimators = read_estimators(modelpath, modelgridindex=args.modelgridindex, timestep=timestepfilter)
@@ -847,7 +849,7 @@ def main(args=None, argsraw=None, **kwargs):
         allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
                               if not estimators[(timestepmin, modelgridindex)]['emptycell']]
 
-        if args.modelgridindex > -1:
+        if args.modelgridindex > -1 or args.x == 'time':
             # plot time evolution in specific cell
             if not args.x:
                 args.x = 'time'
@@ -855,12 +857,14 @@ def main(args=None, argsraw=None, **kwargs):
             mgilist = [args.modelgridindex] * len(timesteplist_unfiltered)
             make_plot(modelpath, timesteplist_unfiltered, mgilist, estimators, args.x, plotlist, args)
         else:
-            # plot a snapshot at each timestep showing internal structure
+            # plot a range of cells a snapshot at each timestep showing internal structure
+
             if not args.x:
                 args.x = 'velocity'
-            for timestep in range(timestepmin, timestepmax + 1):
-                timesteplist_unfiltered = [timestep] * len(allnonemptymgilist)  # constant timestep
-                make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist, args)
+
+            timesteps_included = tuple(range(timestepmin, timestepmax + 1))
+            timesteplist_unfiltered = [timesteps_included] * len(allnonemptymgilist)  # constant timestep
+            make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist, args)
 
 
 if __name__ == "__main__":
