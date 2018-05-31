@@ -633,20 +633,24 @@ def get_runfolder_timesteps(folderpath):
 
 
 @lru_cache(maxsize=16)
-def get_runfolders(modelpath, timestep=None):
+def get_runfolders(modelpath, timestep=None, timesteps=None):
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
     The folder list may include non-ARTIS folders if a timestep is not specified."""
-    folderlist = sorted([child for child in modelpath.iterdir() if child.is_dir()]) + [modelpath]
+    folderlist_all = sorted([child for child in modelpath.iterdir() if child.is_dir()]) + [modelpath]
 
-    if timestep is not None and timestep > -1:
-        for folderpath in folderlist:
-            if timestep in get_runfolder_timesteps(folderpath):
+    folder_list_matching = []
+    if (timestep is not None and timestep > -1) or (timesteps is not None and len(timesteps) > 0):
+        for folderpath in folderlist_all:
+            folder_timesteps = get_runfolder_timesteps(folderpath)
+            if timesteps is None and timestep is not None and timestep in folder_timesteps:
                 return [folderpath]
+            elif timesteps is not None and any([ts in folder_timesteps for ts in timesteps]):
+                folder_list_matching.append(folderpath)
 
-        return []
+        return folder_list_matching
 
-    return folderlist
+    return folderlist_all
 
 
 def get_mpiranklist(modelpath, modelgridindex=None):

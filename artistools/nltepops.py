@@ -230,13 +230,12 @@ def plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision, ar
             levelnumofconfigterm[(row[0], row[1])] = int(row[2]) - 1
 
         # ax.set_ylim(ymin=5e-4)
-        print(f'chianti_{elsym}_{ion_stage}_*.txt')
         for depfilepath in Path('data').rglob(f'chianti_{elsym}_{ion_stage}_*.txt'):
             with depfilepath.open('r') as depfile:
                 firstline = depfile.readline()
                 file_nne = float(firstline[firstline.find('ne = ') + 5:].split(',')[0])
                 file_Te = float(firstline[firstline.find('Te = ') + 5:].split(',')[0])
-                print(file_nne, nne, file_Te, T_e,)
+                print(depfilepath, file_nne, nne, file_Te, T_e,)
                 if (math.isclose(file_nne, nne, rel_tol=0.1) and
                         math.isclose(file_Te, T_e, abs_tol=1000)):
                     print(f'Plotting reference data from {depfilepath},')
