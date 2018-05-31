@@ -214,27 +214,27 @@ def parse_estimfile(estfilepath, modeldata):
 
 
 @lru_cache(maxsize=16)
-def read_estimators(modelpath, modelgridindex=None, timestep=-1):
+def read_estimators(modelpath, modelgridindex=None, timestep=None):
     """Read estimator files into a nested dictionary structure.
 
     Speed it up by only retrieving estimators for a particular timestep or modelgridindex.
     """
-    match_timestep = timestep
     if modelgridindex is None:
         match_modelgridindex = []
     else:
-        try:
-            len(modelgridindex)
-            match_modelgridindex = modelgridindex
-        except TypeError:
-            match_modelgridindex = [modelgridindex]
+        match_modelgridindex = tuple(modelgridindex) if hasattr(modelgridindex, 'len') else (modelgridindex,)
+
+    if timestep is None:
+        match_timestep = []
+    else:
+        match_timestep = tuple(timestep) if hasattr(timestep, 'len') else (timestep,)
 
     modeldata, _ = at.get_modeldata(modelpath)
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex)
 
     estimators = {}
-    for folderpath in at.get_runfolders(modelpath, timestep=timestep):
+    for folderpath in at.get_runfolders(modelpath, timesteps=match_timestep):
         nfilesread_thisfolder = 0
         for mpirank in mpiranklist:
             estimfilename = f'estimators_{mpirank:04d}.out'
@@ -250,18 +250,18 @@ def read_estimators(modelpath, modelgridindex=None, timestep=-1):
                 print(f'Reading {estfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)')
 
             nfilesread_thisfolder += 1
-            for timestep, modelgridindex, estimblock in parse_estimfile(estfilepath, modeldata):
+            for file_timestep, file_modelgridindex, file_estimblock in parse_estimfile(estfilepath, modeldata):
 
-                if match_timestep >= 0 and match_timestep != timestep:
+                if match_timestep and file_timestep not in match_timestep:
                     continue  # timestep not a match, so skip this block
-                elif match_modelgridindex and modelgridindex not in match_modelgridindex:
+                elif match_modelgridindex and file_modelgridindex not in match_modelgridindex:
                     continue  # modelgridindex not a match, skip this block
 
-                estimators[(timestep, modelgridindex)] = estimblock
+                estimators[(file_timestep, file_modelgridindex)] = file_estimblock
 
                 # this won't match in the default case of match_timestep == -1, and match_modelgridindex == -1
-                if (match_timestep == timestep and len(match_modelgridindex) == 1 and
-                        match_modelgridindex[0] == modelgridindex):
+                if (len(match_timestep) == 1 and match_timestep[0] == file_timestep
+                        and len(match_modelgridindex) == 1 and match_modelgridindex[0] == file_modelgridindex):
                     # found our key, so exit now!
                     return estimators
 
@@ -340,7 +340,7 @@ def plot_averageionisation(ax, xlist, elementlist, timesteplist, mgilist, estima
 
 def plot_multi_ion_series(
         ax, xlist, seriestype, ionlist, timesteplist, mgilist, estimators, modelpath, args, **plotkwargs):
-    """Plot an ion-specific property like populations"""
+    """Plot an ion-specific property, e.g., populations."""
     assert len(xlist) - 1 == len(mgilist) == len(timesteplist)
     # if seriestype == 'populations':
     #     ax.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
