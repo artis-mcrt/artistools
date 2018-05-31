@@ -45,9 +45,9 @@ variableunits = {
 }
 
 variablelongunits = {
-    'TR': 'Temperature in kelvin',
-    'Te': 'Temperature in kelvin',
-    'TJ': 'Temperature in kelvin',
+    'TR': 'Temperature [K]',
+    'Te': 'Temperature [K]',
+    'TJ': 'Temperature [K]',
 }
 
 dictlabelreplacements = {
@@ -657,7 +657,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
         nrows=len(ion_stage_list), ncols=1, sharex=True, figsize=(5, 8),
         tight_layout={"pad": 0.5, "w_pad": 0.0, "h_pad": 0.0})
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
-    axes[-1].set_xlabel(f'T_e in kelvin')
+    axes[-1].set_xlabel(f'T_e in kelvins')
 
     recombcalibrationdata = at.get_ionrecombratecalibration(modelpath)
 
