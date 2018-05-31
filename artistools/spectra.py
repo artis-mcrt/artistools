@@ -539,7 +539,7 @@ def get_time_range(timearray, timestep_range_str, timemin, timemax, timedays_ran
 
         if timestepmin is None:
             print(f"Time min {timemin} is greater than all timesteps ({timearray[0]} to {timearray[-1]})")
-            sys.exit()
+            raise ValueError
 
         if not timemax:
             timemax = float(timearray[-1].strip('d'))
@@ -558,22 +558,27 @@ def get_time_range(timearray, timestep_range_str, timemin, timemax, timedays_ran
     return timestepmin, timestepmax, time_days_lower, time_days_upper
 
 
-def plot_artis_spectrum(axes, modelpath, args, scale_to_peak=None, from_packets=False, filterfunc=None, **plotkwargs):
+def plot_artis_spectrum(
+        axes, modelpath, args, scale_to_peak=None, from_packets=False, filterfunc=None, linelabel=None, **plotkwargs):
+    """Plot an ARTIS output spectrum."""
+
     (timestepmin, timestepmax, args.timemin, args.timemax) = get_time_range(
         at.get_timestep_times(modelpath), args.timestep, args.timemin, args.timemax, args.timedays)
 
     modelname = at.get_model_name(modelpath)
-
-    if len(modelname) < 70:
-        linelabel = f'{modelname}'
-    else:
-        linelabel = f'...{modelname[-67:]}'
-
     timeavg = (args.timemin + args.timemax) / 2.
-    linelabel += f' +{timeavg:.0f}d'
-    if not args.hidemodeltimerange:
-        timedelta = (args.timemax - args.timemin) / 2
-        linelabel += r' ($\pm$ ' + f'{timedelta:.0f}d)'
+    timedelta = (args.timemax - args.timemin) / 2
+    if linelabel is None:
+        if len(modelname) < 70:
+            linelabel = f'{modelname}'
+        else:
+            linelabel = f'...{modelname[-67:]}'
+
+        linelabel += f' +{timeavg:.0f}d'
+        if not args.hidemodeltimerange:
+            linelabel += r' ($\pm$ ' + f'{timedelta:.0f}d)'
+    else:
+        linelabel = linelabel.format(**locals())
 
     if from_packets:
         # find any other packets files in the same directory
@@ -624,7 +629,10 @@ def make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=None):
             plotkwargs['color'] = ['blue', 'orange', 'red'][index]
         # if index < 10:
         #     plotkwargs['color'] = f'C{index}'
-        plot_artis_spectrum(axes, modelpath, args=args, scale_to_peak=scale_to_peak, from_packets=args.frompackets,
+        linelabel = args.modellabels[index] if index < len(args.modellabels) else None
+
+        plot_artis_spectrum(axes, modelpath, linelabel=linelabel, args=args,
+                            scale_to_peak=scale_to_peak, from_packets=args.frompackets,
                             filterfunc=filterfunc, **plotkwargs)
 
     for axis in axes:
@@ -799,11 +807,10 @@ def make_plot(modelpaths, args):
         if args.ymax is not None:
             ax.set_ylim(ymax=args.ymax)
 
-    axes[-1].set_xlabel(r'Wavelength ($\AA$)')
+    axes[-1].set_xlabel(r'Wavelength [$\AA$]')
     for ax in axes:
         if '{' in ax.get_ylabel():
             ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))
-
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
@@ -873,6 +880,9 @@ def write_flambda_spectra(modelpath, args):
 def addargs(parser):
     parser.add_argument('-modelpath', default=[], nargs='*', action=at.AppendPath,
                         help='Paths to ARTIS folders with spec.out or packets files')
+
+    parser.add_argument('-modellabels', default=[], nargs='*',
+                        help='Model name overrides')
 
     parser.add_argument('--frompackets', action='store_true',
                         help='Read packets files directly instead of exspec results')
