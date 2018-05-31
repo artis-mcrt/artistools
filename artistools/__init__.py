@@ -322,9 +322,11 @@ def get_timestep_time(modelpath, timestep):
     return -1
 
 
-def get_timestep_time_delta(timestep, timearray=None, inputparams=None):
+def get_timestep_time_delta(timestep, timearray=None, inputparams=None, modelpath=None):
     """Return the time in days between timestep and timestep + 1."""
-    if inputparams:
+    if inputparams is not None or modelpath is not None:
+        if modelpath is not None:
+            inputparams = get_inputparams(modelpath)
         tmin = inputparams['tmin']
         dlogt = (math.log(inputparams['tmax']) - math.log(tmin)) / inputparams['ntstep']
         timesteps = range(inputparams['ntstep'])

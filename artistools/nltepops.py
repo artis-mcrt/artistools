@@ -214,10 +214,11 @@ def annotate_emission_line(ax, y, upperlevel, lowerlevel, label):
                 size=10, va="bottom", ha="center",)
 
 
-def plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision, args, annotatelines):
+def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, dfpopthision, args, annotatelines):
     ionstr = at.get_ionstring(atomic_number, ion_stage)
 
-    # comparison to Chianti file from Stuart Sim
+    nne, Te, TR, W = [estimators_celltimestep[s] for s in ['nne', 'Te', 'TR', 'W']]
+    # comparison to Chianti file
     elsym = at.elsymbols[atomic_number]
     elsymlower = elsym.lower()
     if Path('data', f'{elsymlower}_{ion_stage}-levelmap.txt').exists():
@@ -235,11 +236,14 @@ def plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision, ar
                 firstline = depfile.readline()
                 file_nne = float(firstline[firstline.find('ne = ') + 5:].split(',')[0])
                 file_Te = float(firstline[firstline.find('Te = ') + 5:].split(',')[0])
-                print(depfilepath, file_nne, nne, file_Te, T_e,)
-                if (math.isclose(file_nne, nne, rel_tol=0.1) and
-                        math.isclose(file_Te, T_e, abs_tol=1000)):
+                file_TR = float(firstline[firstline.find('TR = ') + 5:].split(',')[0])
+                file_W = float(firstline[firstline.find('W = ') + 5:].split(',')[0])
+                print(depfilepath, file_nne, nne, file_Te, Te, file_TR, TR, file_W, W)
+                if (math.isclose(file_nne, nne, rel_tol=0.01) and
+                        math.isclose(file_Te, Te, abs_tol=10)):
                     print(f'Plotting reference data from {depfilepath},')
-                    print(f'nne = {file_nne} (ARTIS {nne}) cm^-3, Te = {file_Te} (ARTIS {T_e}) K')
+                    print(f'nne = {file_nne} (ARTIS {nne}) cm^-3, Te = {file_Te} (ARTIS {Te}) K, '
+                          f'TR = {file_TR} (ARTIS {TR} K, W = {file_W} (ARTIS {W}')
                     levelnums = []
                     depcoeffs = []
                     firstdep = -1
@@ -254,8 +258,16 @@ def plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision, ar
                                 depcoeffs.append(float(row[0]) / firstdep)
                         except (KeyError, IndexError, ValueError):
                             pass
-                    ax.plot(levelnums, depcoeffs, linewidth=1.5, color='C1',
-                            label=f'{ionstr} Chianti NLTE', linestyle='None', marker='*', zorder=-1)
+                    if file_W > 0:
+                        bbstr = ' with dilute blackbody'
+                        color = 'C2'
+                        marker = '+'
+                    else:
+                        bbstr = ''
+                        color = 'C1'
+                        marker = '^'
+                    ax.plot(levelnums, depcoeffs, linewidth=1.5, color=color,
+                            label=f'{ionstr} Chianti NLTE{bbstr}', linestyle='None', marker=marker, zorder=-1)
 
         if annotatelines and atomic_number == 28 and ion_stage == 2:
             annotate_emission_line(ax=ax, y=0.04, upperlevel=6, lowerlevel=0, label=r'$\lambda$7378')
@@ -401,8 +413,9 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
                 marker='s', markersize=10, markerfacecolor=(0, 0, 0, 0), markeredgecolor='black')
 
     if args.plotrefdata:
-        nne = estimators[(timestep, modelgridindex)]['nne']
-        plot_reference_data(ax, atomic_number, ion_stage, T_e, nne, dfpopthision, args, annotatelines=lastsubplot)
+        plot_reference_data(
+            ax, atomic_number, ion_stage, estimators[(timestep, modelgridindex)],
+            dfpopthision, args, annotatelines=lastsubplot)
 
 
 def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, args):
