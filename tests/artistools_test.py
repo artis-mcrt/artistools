@@ -51,7 +51,8 @@ def test_estimator_snapshot(benchmark):
 
 
 def test_estimator_timeevolution(benchmark):
-    benchmark.pedantic(at.estimators.main, kwargs=dict(modelpath=modelpath, outputfile=outputpath, modelgridindex=0),
+    benchmark.pedantic(at.estimators.main, kwargs=dict(modelpath=modelpath, outputfile=outputpath, modelgridindex=0,
+                                                       x='time'),
                        **benchargs)
 
 

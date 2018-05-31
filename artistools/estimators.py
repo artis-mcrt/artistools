@@ -217,7 +217,7 @@ def parse_estimfile(estfilepath, modeldata):
 def read_estimators(modelpath, modelgridindex=None, timestep=None):
     """Read estimator files into a nested dictionary structure.
 
-    Speed it up by only retrieving estimators for a particular timestep or modelgridindex.
+    Speed it up by only retrieving estimators for a particular timestep(s) or modelgrid cells.
     """
     if modelgridindex is None:
         match_modelgridindex = []
@@ -271,12 +271,14 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None):
     return estimators
 
 
-def get_averaged_estimator(estimators, timesteps, modelgridindex, xvariable):
+def get_averaged_estimator(modelpath, estimators, timesteps, modelgridindex, xvariable):
     try:
         try:
             valuesum = 0
             for timestep in timesteps:
-                valuesum += estimators[(timestep, modelgridindex)][xvariable]
+                valuesum += (
+                    estimators[(timestep, modelgridindex)][xvariable] *
+                    at.get_timestep_time_delta(timestep, modelpath=modelpath))
             return valuesum / set(timesteps)
 
         except TypeError:
@@ -289,7 +291,6 @@ def get_averaged_estimator(estimators, timesteps, modelgridindex, xvariable):
             print(f'No data for cell {modelgridindex} at timestep {timestep}')
         print(estimators[(timestep, modelgridindex)])
         sys.exit()
-
 
 
 def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, **plotkwargs):
@@ -542,7 +543,7 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timestepslist, modelpat
         mgilist_out = []
         timestepslist_out = []
         for modelgridindex, timesteps in zip(allnonemptymgilist, timestepslist):
-            xvalue = get_averaged_estimator(estimators, timesteps, modelgridindex, xvariable)
+            xvalue = get_averaged_estimator(modelpath, estimators, timesteps, modelgridindex, xvariable)
             if args.xmax < 0 or xvalue <= args.xmax:
                 xlist.append(xvalue)
                 mgilist_out.append(modelgridindex)
@@ -625,33 +626,24 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
         ax.set_xlim(xmin=xmin, xmax=xmax)
         plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath, estimators, args, **plotkwargs)
 
-    if len(set(timestepslist)) == 1:  # single timestep plot
-        figure_title = f'{modelname}\nTimestep {timestepslist[0]}'
-        try:
-            time_days = float(at.get_timestep_time(modelpath, timestepslist[0]))
-        except FileNotFoundError:
-            time_days = 0
-        else:
-            figure_title += f' ({time_days:.2f}d)'
-
-        defaultoutputfile = Path('plotestimators_ts{timestep:02d}_{time_days:.0f}d.pdf')
-        if os.path.isdir(args.outputfile):
-            args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
-        outfilename = str(args.outputfile).format(timestep=timesteplist[0], time_days=time_days)
-    elif len(set(mgilist)) == 1:  # single grid cell plot
+    if len(set(mgilist)) == 1:  # single grid cell plot
         figure_title = f'{modelname}\nCell {mgilist[0]}'
 
         defaultoutputfile = Path('plotestimators_cell{modelgridindex:03d}.pdf')
         if os.path.isdir(args.outputfile):
             args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
-        outfilename = str(args.outputfile).format(modelgridindex=mgilist[0])
-    else:  # mix of timesteps and cells somehow?
-        figure_title = f'{modelname}'
 
-        defaultoutputfile = Path('plotestimators.pdf')
+        outfilename = str(args.outputfile).format(modelgridindex=mgilist[0])
+
+    else:
+        timeavg = (args.timemin + args.timemax) / 2.
+        figure_title = f'{modelname}\nTimestep {timestepslist[0]} ({timeavg:.2f}d)'
+
+        defaultoutputfile = Path('plotestimators_ts{timestep:02d}_{timeavg:.0f}d.pdf')
         if os.path.isdir(args.outputfile):
             args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
-        outfilename = args.outputfile
+
+        outfilename = str(args.outputfile).format(timestep=timestepslist[0], timeavg=timeavg)
 
     if not args.notitle:
         axes[0].set_title(figure_title, fontsize=11)
