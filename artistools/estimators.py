@@ -472,13 +472,16 @@ def plot_multi_ion_series(
             else:
                 # this is very slow!
                 estim = get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [])
-
                 dictvars = {}
                 for k, v in estim.items():
                     if isinstance(v, dict):
                         dictvars[k] = v.get((atomic_number, ion_stage), 0.)
                     else:
                         dictvars[k] = v
+
+                # dictvars will now define things like 'Te', 'TR',
+                # as well as 'populations' which applies to the current ion
+
                 try:
                     yvalue = eval(seriestype, {"__builtins__": math}, dictvars)
                 except ZeroDivisionError:
@@ -522,21 +525,15 @@ def plot_series(ax, xlist, variablename, showlegend, timestepslist, mgilist,
 
     ylist = []
     for modelgridindex, timesteps in zip(mgilist, timestepslist):
-        valuesum = 0.
-        tdeltasum = 0.
-        for timestep in timesteps:
-            try:
-                tdelta = at.get_timestep_time_delta(timestep, modelpath=modelpath)
-                valuesum += eval(variablename, {"__builtins__": math}, estimators[(timestep, modelgridindex)]) * tdelta
-                tdeltasum += tdelta
-            except KeyError:
-                if (timestep, modelgridindex) in estimators:
-                    print(f"Undefined variable: {variablename} for timestep {timestep} in cell {modelgridindex}")
-                else:
-                    print(f'No data for cell {modelgridindex} at timestep {timestep}')
-                # print(estimators[(timestep, modelgridindex)])
-                sys.exit()
-        ylist.append(valuesum / tdeltasum)
+        estimavg = get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [])
+        try:
+            ylist.append(eval(variablename, {"__builtins__": math}, estimavg))
+        except KeyError:
+            if (timesteps[0], modelgridindex) in estimators:
+                print(f"Undefined variable: {variablename} in cell {modelgridindex}")
+            else:
+                print(f'No data for cell {modelgridindex}')
+            sys.exit()
 
     ylist.insert(0, ylist[0])
 
