@@ -595,6 +595,8 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timestepslist, modelpat
 
 
 def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath, estimators, args, **plotkwargs):
+    """Make plot from ARTIS estimators."""
+    # these three lists give the x value, modelgridex, and a list of timesteps (for averaging) for each plot of the plot
     assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
     showlegend = False
 
@@ -635,10 +637,11 @@ def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath, estima
     ax.tick_params(right=True)
     if showlegend:
         if plotitems[0][0] == 'populations':
-            ax.legend(loc='upper left', handlelength=2, ncol=3,
-                      frameon=False, numpoints=1, prop={'size': 8})
+            ax.legend(loc='upper right', handlelength=2, ncol=3,
+                      frameon=False, numpoints=1, prop={'size': 9})
         else:
-            ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
+            ax.legend(loc='best', handlelength=2,
+                      frameon=False, numpoints=1,)  # prop={'size': 9})
 
 
 def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimators, xvariable, plotlist,
