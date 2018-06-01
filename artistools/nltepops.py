@@ -231,7 +231,7 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
             levelnumofconfigterm[(row[0], row[1])] = int(row[2]) - 1
 
         # ax.set_ylim(ymin=5e-4)
-        for depfilepath in Path('data').rglob(f'chianti_{elsym}_{ion_stage}_*.txt'):
+        for depfilepath in sorted(Path('data').rglob(f'chianti_{elsym}_{ion_stage}_*.txt')):
             with depfilepath.open('r') as depfile:
                 firstline = depfile.readline()
                 file_nne = float(firstline[firstline.find('ne = ') + 5:].split(',')[0])
