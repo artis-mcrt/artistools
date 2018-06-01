@@ -796,7 +796,7 @@ def write_flambda_spectra(modelpath, args):
     if not args.timestep:
         args.timestep = f'0-{number_of_timesteps - 1}'
 
-    (timestepmin, timestepmax, args.timemin, args.timemax) = get_time_range(
+    (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
 
     with open(outdirectory / 'spectra_list.txt', 'w+') as spectra_list:
