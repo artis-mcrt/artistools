@@ -573,7 +573,7 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timestepslist, modelpat
     elif xvariable == 'time':
         mgilist_out = allnonemptymgilist
         timearray = at.get_timestep_times_float(modelpath)
-        xlist = [timearray[ts] for ts in timestepslist]
+        xlist = [np.mean([timearray[ts] for ts in tslist]) for tslist in timestepslist]
         timestepslist_out = timestepslist
     else:
         xlist = []
@@ -588,6 +588,7 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timestepslist, modelpat
 
     xlist, mgilist_out, timestepslist_out = zip(
         *[xmt for xmt in sorted(zip(xlist, mgilist_out, timestepslist_out))])
+
     assert len(xlist) == len(mgilist_out) == len(timestepslist_out)
 
     return list(xlist), list(mgilist_out), list(timestepslist_out)
@@ -882,14 +883,15 @@ def main(args=None, argsraw=None, **kwargs):
             if not args.x:
                 args.x = 'time'
             mgilist = [args.modelgridindex] * len(timesteps_included)
-            make_plot(modelpath, timesteps_included, mgilist, estimators, args.x, plotlist, args)
+            timesteplist_unfiltered = [(ts,) for ts in timesteps_included]
+            make_plot(modelpath, timesteplist_unfiltered, mgilist, estimators, args.x, plotlist, args)
         else:
-            # plot a range of cells a snapshot at each timestep showing internal structure
+            # plot a range of cells in a time snapshot  showing internal structure
 
             if not args.x:
                 args.x = 'velocity'
 
-            timesteplist_unfiltered = [timesteps_included] * len(allnonemptymgilist)  # constant timestep
+            timesteplist_unfiltered = [timesteps_included] * len(allnonemptymgilist)
             make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist, args)
 
 
