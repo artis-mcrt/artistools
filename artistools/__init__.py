@@ -259,13 +259,16 @@ def get_closest_timestep(modelpath, timedays):
 def get_time_range(modelpath, timestep_range_str, timemin, timemax, timedays_range_str):
     """Handle a time range specified in either days or timesteps."""
     # assertions make sure time is specified either by timesteps or times in days, but not both!
-    timearray = get_timestep_times(modelpath)
+    tstarts = get_timestep_times_float(modelpath, loc='start')
+    tmids = get_timestep_times_float(modelpath, loc='mid')
+    tends = get_timestep_times_float(modelpath, loc='end')
+
     timedays_is_specified = (timemin is not None and timemax is not None) or timedays_range_str is not None
 
-    if timemin and timemin > float(timearray[-1].strip('d')):
-        raise ValueError(f"timemin {timemin} is after the last timestep at {timearray[-1]}")
-    elif timemax and timemax < float(timearray[0].strip('d')):
-        raise ValueError(f"timemax {timemax} is before the first timestep at {timearray[0]}")
+    if timemin and timemin > tends[-1]:
+        raise ValueError(f"timemin {timemin} is after the last timestep at {tends[-1]}")
+    elif timemax and timemax < tstarts[0]:
+        raise ValueError(f"timemax {timemax} is before the first timestep at {tstarts[0]}")
 
     if timestep_range_str is not None:
         if timedays_is_specified:
@@ -277,38 +280,42 @@ def get_time_range(modelpath, timestep_range_str, timemin, timemax, timedays_ran
             timestepmin = int(timestep_range_str)
             timestepmax = timestepmin
     elif timedays_is_specified:
+        timestepmin = None
+        timestepmax = None
         if timedays_range_str is not None:
             if isinstance(timedays_range_str, str) and '-' in timedays_range_str:
                 timemin, timemax = [float(timedays) for timedays in timedays_range_str.split('-')]
             else:
                 timeavg = float(timedays_range_str)
-                timedelta = 10
-                timemin, timemax = timeavg - timedelta, timeavg + timedelta
+                timestepmin = get_closest_timestep(modelpath, timeavg)
+                timestepmax = timestepmin
+                timemin = tstarts[timestepmin]
+                timemax = tends[timestepmax]
+                # timedelta = 10
+                # timemin, timemax = timeavg - timedelta, timeavg + timedelta
 
-        timestepmin = None
-        for timestep, time in enumerate(timearray):
-            timefloat = float(time.strip('d'))
-            if float(timemin) <= timefloat:
+        for timestep, tmid in enumerate(tmids):
+            if tmid >= float(timemin):
                 timestepmin = timestep
                 break
 
         if timestepmin is None:
-            print(f"Time min {timemin} is greater than all timesteps ({timearray[0]} to {timearray[-1]})")
+            print(f"Time min {timemin} is greater than all timesteps ({tstarts[0]} to {tends[-1]})")
             raise ValueError
 
         if not timemax:
-            timemax = float(timearray[-1].strip('d'))
-        for timestep, time in enumerate(timearray):
-            timefloat = float(time.strip('d'))
-            if timefloat + get_timestep_time_delta(timestep, timearray) <= timemax:
+            timemax = tends[-1]
+        for timestep, tmid in enumerate(tmids):
+            if tmid <= float(timemax):
                 timestepmax = timestep
+
         if timestepmax < timestepmin:
             raise ValueError("Specified time range does not include any full timesteps.")
     else:
         raise ValueError("Either time or timesteps must be specified.")
 
-    time_days_lower = float(timearray[timestepmin])
-    time_days_upper = float(timearray[timestepmax]) + get_timestep_time_delta(timestepmax, timearray)
+    time_days_lower = tstarts[timestepmin]
+    time_days_upper = tends[timestepmax]
 
     return timestepmin, timestepmax, time_days_lower, time_days_upper
 
@@ -713,7 +720,7 @@ def get_runfolders(modelpath, timestep=None, timesteps=None):
 
 
 def get_mpiranklist(modelpath, modelgridindex=None):
-    if modelgridindex is None:
+    if modelgridindex is None or modelgridindex == []:
         return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
     else:
         try:

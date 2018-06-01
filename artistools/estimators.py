@@ -12,6 +12,7 @@ import os
 import sys
 from collections import namedtuple
 from functools import lru_cache
+from functools import reduce
 # from itertools import chain
 from pathlib import Path
 
@@ -57,6 +58,7 @@ dictlabelreplacements = {
 
 
 def get_elemcolor(atomic_number=None, elsymbol=None):
+    """Get the colour of an element from the reserved color list (reserving a new one if needed)."""
     assert (atomic_number is None) != (elsymbol is None)
     if atomic_number is not None:
         elsymbol = at.elsymbols[atomic_number]
@@ -221,13 +223,18 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None):
     """
     if modelgridindex is None:
         match_modelgridindex = []
+    elif hasattr(modelgridindex, '__iter__'):
+        match_modelgridindex = tuple(modelgridindex)
     else:
-        match_modelgridindex = tuple(modelgridindex) if hasattr(modelgridindex, 'len') else (modelgridindex,)
+        match_modelgridindex = (modelgridindex,)
+
+    if -1 in match_modelgridindex:
+        match_modelgridindex = []
 
     if timestep is None:
         match_timestep = []
     else:
-        match_timestep = tuple(timestep) if hasattr(timestep, 'len') else (timestep,)
+        match_timestep = tuple(timestep) if hasattr(timestep, '__iter__') else (timestep,)
 
     modeldata, _ = at.get_modeldata(modelpath)
 
@@ -245,7 +252,7 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None):
                     print(f'Warning: Could not find {estfilepath.relative_to(modelpath.parent)}')
                     continue
 
-            if len(mpiranklist) == 1:
+            if len(mpiranklist) < 10:
                 filesize = Path(estfilepath).stat().st_size / 1024 / 1024
                 print(f'Reading {estfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)')
 
@@ -259,7 +266,7 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None):
 
                 estimators[(file_timestep, file_modelgridindex)] = file_estimblock
 
-                # this won't match in the default case of match_timestep == -1, and match_modelgridindex == -1
+                # shortcut if we specified one cell and timestep and found it
                 if (len(match_timestep) == 1 and match_timestep[0] == file_timestep
                         and len(match_modelgridindex) == 1 and match_modelgridindex[0] == file_modelgridindex):
                     # found our key, so exit now!
@@ -271,26 +278,40 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None):
     return estimators
 
 
-def get_averaged_estimator(modelpath, estimators, timesteps, modelgridindex, xvariable):
-    try:
-        try:
-            valuesum = 0
-            for timestep in timesteps:
-                valuesum += (
-                    estimators[(timestep, modelgridindex)][xvariable] *
-                    at.get_timestep_time_delta(timestep, modelpath=modelpath))
-            return valuesum / set(timesteps)
+def get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, keys):
+    """Get the average of estimators[(timestep, modelgridindex)][keys[0]]...[keys[-1]] across timesteps."""
+    if isinstance(keys, str):
+        keys = [keys]
 
-        except TypeError:
-            timestep = timesteps
-            return estimators[(timestep, modelgridindex)][xvariable]
-    except KeyError:
-        if (timestep, modelgridindex) in estimators:
-            print(f'Unknown x variable: {xvariable} for timestep {timestep} in cell {modelgridindex}')
-        else:
-            print(f'No data for cell {modelgridindex} at timestep {timestep}')
-        print(estimators[(timestep, modelgridindex)])
-        sys.exit()
+    # reduce(lambda d, k: d[k], keys, dictionary) will give dictionary[keys[0]][keys[1]...[keys[-1]]
+    # using up all keys are in the keys list
+
+    if not hasattr(timesteps, '__iter__'):
+        # single timestep, so no averaging needed
+        return reduce(lambda d, k: d[k], [(timesteps, modelgridindex)] + keys, estimators)
+
+    firsttimestepvalue = reduce(lambda d, k: d[k], [(timesteps[0], modelgridindex)] + keys, estimators)
+    if isinstance(firsttimestepvalue, dict):
+        dictout = {k: get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, keys + [k])
+                   for k in firsttimestepvalue.keys()}
+
+        return dictout
+    else:
+        tdeltas = at.get_timestep_times_float(modelpath, loc='delta')
+        valuesum = 0
+        tdeltasum = 0
+        for timestep, tdelta in zip(timesteps, tdeltas):
+            valuesum += reduce(lambda d, k: d[k], [(timestep, modelgridindex)] + keys, estimators) * tdelta
+            tdeltasum += tdelta
+        return valuesum / tdeltasum
+
+    # except KeyError:
+    #     if (timestep, modelgridindex) in estimators:
+    #         print(f'Unknown x variable: {xvariable} for timestep {timestep} in cell {modelgridindex}')
+    #     else:
+    #         print(f'No data for cell {modelgridindex} at timestep {timestep}')
+    #     print(estimators[(timestep, modelgridindex)])
+    #     sys.exit()
 
 
 def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, **plotkwargs):
@@ -347,13 +368,22 @@ def get_averageionisation(populations, atomic_number):
     return free_electron_weighted_pop_sum / populations[atomic_number]
 
 
-def plot_averageionisation(ax, xlist, elementlist, timesteplist, mgilist, estimators, modelpath, **plotkwargs):
+def plot_averageionisation(ax, xlist, elementlist, timestepslist, mgilist, estimators, modelpath, **plotkwargs):
     ax.set_ylabel('Average ionisation')
     for elsymb in elementlist:
         atomic_number = at.get_atomic_number(elsymb)
         ylist = []
-        for modelgridindex, timestep in zip(mgilist, timesteplist):
-            ylist.append(get_averageionisation(estimators[(timestep, modelgridindex)]['populations'], atomic_number))
+        for modelgridindex, timesteps in zip(mgilist, timestepslist):
+            valuesum = 0
+            tdeltasum = 0
+            for timestep in timesteps:
+                tdelta = at.get_timestep_time_delta(timestep, modelpath=modelpath)
+                valuesum += (
+                    get_averageionisation(estimators[(timestep, modelgridindex)]['populations'],
+                                          atomic_number) * tdelta)
+                tdeltasum += tdelta
+
+            ylist.append(valuesum / tdeltasum)
 
         color = get_elemcolor(atomic_number=atomic_number)
         ylist.insert(0, ylist[0])
@@ -361,9 +391,9 @@ def plot_averageionisation(ax, xlist, elementlist, timesteplist, mgilist, estima
 
 
 def plot_multi_ion_series(
-        ax, xlist, seriestype, ionlist, timesteplist, mgilist, estimators, modelpath, args, **plotkwargs):
+        ax, xlist, seriestype, ionlist, timestepslist, mgilist, estimators, modelpath, args, **plotkwargs):
     """Plot an ion-specific property, e.g., populations."""
-    assert len(xlist) - 1 == len(mgilist) == len(timesteplist)
+    assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
     # if seriestype == 'populations':
     #     ax.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
 
@@ -410,26 +440,23 @@ def plot_multi_ion_series(
             ax.set_ylabel(seriestype)
 
         ylist = []
-        for modelgridindex, timestep in zip(mgilist, timesteplist):
-            estim = estimators[(timestep, modelgridindex)]
-
+        for modelgridindex, timesteps in zip(mgilist, timestepslist):
             if seriestype == 'populations':
-                if (atomic_number, ion_stage) not in estim['populations']:
-                    print(f'Note: population for {(atomic_number, ion_stage)} not in estimators for '
-                          f'cell {modelgridindex} timestep {timestep}')
-                    # print(f'Keys: {estim["populations"].keys()}')
-                    # raise KeyError
+                # if (atomic_number, ion_stage) not in estim['populations']:
+                #     print(f'Note: population for {(atomic_number, ion_stage)} not in estimators for '
+                #           f'cell {modelgridindex} timesteps {timesteps}')
 
-                nionpop = estim['populations'].get((atomic_number, ion_stage), 0.)
+                estimpop = get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, ['populations'])
+                nionpop = estimpop.get((atomic_number, ion_stage), 0.)
 
                 try:
                     if args.ionpoptype == 'absolute':
                         yvalue = nionpop  # Plot as fraction of element population
                     elif args.ionpoptype == 'elpop':
-                        elpop = estim['populations'].get(atomic_number, 0.)
+                        elpop = estimpop.get(atomic_number, 0.)
                         yvalue = nionpop / elpop  # Plot as fraction of element population
                     elif args.ionpoptype == 'totalpop':
-                        totalpop = estim['populations']['total']
+                        totalpop = estimpop['total']
                         yvalue = nionpop / totalpop  # Plot as fraction of total population
                     else:
                         assert False
@@ -443,6 +470,9 @@ def plot_multi_ion_series(
             # else:
             #     ylist.append(estim[seriestype].get((atomic_number, ion_stage), 0.))
             else:
+                # this is very slow!
+                estim = get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [])
+
                 dictvars = {}
                 for k, v in estim.items():
                     if isinstance(v, dict):
@@ -475,9 +505,10 @@ def plot_multi_ion_series(
     ax.set_ylim(ymin=ymin, ymax=ymax * 10 ** (0.3 * math.log10(ymax / ymin)))
 
 
-def plot_series(ax, xlist, variablename, showlegend, timesteplist, mgilist, estimators, nounits=False, **plotkwargs):
+def plot_series(ax, xlist, variablename, showlegend, timestepslist, mgilist,
+                modelpath, estimators, nounits=False, **plotkwargs):
     """Plot something like Te or TR."""
-    assert len(xlist) - 1 == len(mgilist) == len(timesteplist)
+    assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
     formattedvariablename = dictlabelreplacements.get(variablename, variablename)
     serieslabel = f'{formattedvariablename}'
     if not nounits:
@@ -490,16 +521,22 @@ def plot_series(ax, xlist, variablename, showlegend, timesteplist, mgilist, esti
         linelabel = None
 
     ylist = []
-    for modelgridindex, timestep in zip(mgilist, timesteplist):
-        try:
-            ylist.append(eval(variablename, {"__builtins__": math}, estimators[(timestep, modelgridindex)]))
-        except KeyError:
-            if (timestep, modelgridindex) in estimators:
-                print(f"Undefined variable: {variablename} for timestep {timestep} in cell {modelgridindex}")
-            else:
-                print(f'No data for cell {modelgridindex} at timestep {timestep}')
-            # print(estimators[(timestep, modelgridindex)])
-            sys.exit()
+    for modelgridindex, timesteps in zip(mgilist, timestepslist):
+        valuesum = 0.
+        tdeltasum = 0.
+        for timestep in timesteps:
+            try:
+                tdelta = at.get_timestep_time_delta(timestep, modelpath=modelpath)
+                valuesum += eval(variablename, {"__builtins__": math}, estimators[(timestep, modelgridindex)]) * tdelta
+                tdeltasum += tdelta
+            except KeyError:
+                if (timestep, modelgridindex) in estimators:
+                    print(f"Undefined variable: {variablename} for timestep {timestep} in cell {modelgridindex}")
+                else:
+                    print(f'No data for cell {modelgridindex} at timestep {timestep}')
+                # print(estimators[(timestep, modelgridindex)])
+                sys.exit()
+        ylist.append(valuesum / tdeltasum)
 
     ylist.insert(0, ylist[0])
 
@@ -543,7 +580,7 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timestepslist, modelpat
         mgilist_out = []
         timestepslist_out = []
         for modelgridindex, timesteps in zip(allnonemptymgilist, timestepslist):
-            xvalue = get_averaged_estimator(modelpath, estimators, timesteps, modelgridindex, xvariable)
+            xvalue = get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, xvariable)
             if args.xmax < 0 or xvalue <= args.xmax:
                 xlist.append(xvalue)
                 mgilist_out.append(modelgridindex)
@@ -574,12 +611,12 @@ def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath, estima
     for plotitem in plotitems:
         if isinstance(plotitem, str):
             showlegend = len(plotitems) > 1 or len(variablename) > 20
-            plot_series(ax, xlist, plotitem, showlegend, timestepslist, mgilist, estimators,
-                        nounits=sameylabel, **plotkwargs)
+            plot_series(ax, xlist, plotitem, showlegend, timestepslist, mgilist, modelpath,
+                        estimators, nounits=sameylabel, **plotkwargs)
             if showlegend and sameylabel:
                 ax.set_ylabel(ylabel)
-            showlegend = True
         else:  # it's a sequence of values
+            showlegend = True
             seriestype, params = plotitem
             if seriestype == 'initabundances':
                 plot_init_abundances(ax, xlist, params, mgilist, modelpath)
@@ -798,11 +835,10 @@ def main(args=None, argsraw=None, **kwargs):
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
          modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
 
-    timestepfilter = timestepmin if timestepmin == timestepmax else -1
-    estimators = read_estimators(modelpath, modelgridindex=args.modelgridindex, timestep=timestepfilter)
+    print(f'Timesteps {timestepmin} to {timestepmax} ({args.timemin:.1f} to {args.timemax:.1f}d)')
 
-    if not estimators:
-        return -1
+    timesteps_included = tuple(range(timestepmin, timestepmax + 1))
+    estimators = read_estimators(modelpath, modelgridindex=args.modelgridindex, timestep=timesteps_included)
 
     if args.plotlist:
         plotlist = args.plotlist
@@ -845,16 +881,14 @@ def main(args=None, argsraw=None, **kwargs):
             # plot time evolution in specific cell
             if not args.x:
                 args.x = 'time'
-            timesteplist_unfiltered = list(range(timestepmin, timestepmax + 1))
-            mgilist = [args.modelgridindex] * len(timesteplist_unfiltered)
-            make_plot(modelpath, timesteplist_unfiltered, mgilist, estimators, args.x, plotlist, args)
+            mgilist = [args.modelgridindex] * len(timesteps_included)
+            make_plot(modelpath, timesteps_included, mgilist, estimators, args.x, plotlist, args)
         else:
             # plot a range of cells a snapshot at each timestep showing internal structure
 
             if not args.x:
                 args.x = 'velocity'
 
-            timesteps_included = tuple(range(timestepmin, timestepmax + 1))
             timesteplist_unfiltered = [timesteps_included] * len(allnonemptymgilist)  # constant timestep
             make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist, args)
 
