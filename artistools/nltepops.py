@@ -238,12 +238,12 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
                 file_Te = float(firstline[firstline.find('Te = ') + 5:].split(',')[0])
                 file_TR = float(firstline[firstline.find('TR = ') + 5:].split(',')[0])
                 file_W = float(firstline[firstline.find('W = ') + 5:].split(',')[0])
-                print(depfilepath, file_nne, nne, file_Te, Te, file_TR, TR, file_W, W)
+                # print(depfilepath, file_nne, nne, file_Te, Te, file_TR, TR, file_W, W)
                 if (math.isclose(file_nne, nne, rel_tol=0.01) and
                         math.isclose(file_Te, Te, abs_tol=10)):
                     print(f'Plotting reference data from {depfilepath},')
                     print(f'nne = {file_nne} (ARTIS {nne}) cm^-3, Te = {file_Te} (ARTIS {Te}) K, '
-                          f'TR = {file_TR} (ARTIS {TR} K, W = {file_W} (ARTIS {W}')
+                          f'TR = {file_TR} (ARTIS {TR} K, W = {file_W} (ARTIS {W})')
                     levelnums = []
                     depcoeffs = []
                     firstdep = -1
@@ -404,7 +404,7 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
         #               label=f'Floers NLTE', linestyle='None', marker='*')
 
     ax.plot(dfpopthision['level'], dfpopthision[ycolumnname], linewidth=1.5,
-            linestyle='None', marker='x', label=f'{ionstr} ARTIS NLTE', color='black')
+            linestyle='None', marker='x', label=f'{ionstr} ARTIS NLTE', color='blue')
 
     dfpopthisionoddlevels = dfpopthision.query('parity==1')
     if not dfpopthisionoddlevels.level.empty:
@@ -531,7 +531,8 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
             ax.set_xlim(xmin=-1)
 
             if not args.nolegend and prev_ion_stage != ion_stage:
-                ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1)
+                ax.legend(
+                    loc='best', handlelength=1, frameon=True, numpoints=1, edgecolor='0.93', facecolor='0.93')
 
             prev_ion_stage = ion_stage
 
