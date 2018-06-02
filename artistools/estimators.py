@@ -70,6 +70,11 @@ def get_elemcolor(atomic_number=None, elsymbol=None):
     return elementcolors[elsymbol]
 
 
+def moving_average(arr, N=5):
+    arr_padded = np.pad(arr, (N // 2, N - 1 - N // 2), mode='edge')
+    return np.convolve(arr_padded, np.ones((N,)) / N, mode='valid')
+
+
 def get_ionrecombrates_fromfile(filename):
     """WARNING: copy pasted from artis-atomic! replace with a package import soon ionstage is the lower ion stage."""
     print(f'Reading {filename}')
@@ -278,16 +283,16 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None):
     return estimators
 
 
-def get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, keys):
+def get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, keys, avgadjcells=0):
     """Get the average of estimators[(timestep, modelgridindex)][keys[0]]...[keys[-1]] across timesteps."""
     if isinstance(keys, str):
         keys = [keys]
 
-    # reduce(lambda d, k: d[k], keys, dictionary) will give dictionary[keys[0]][keys[1]...[keys[-1]]
-    # using up all keys are in the keys list
+    # reduce(lambda d, k: d[k], keys, dictionary) returns dictionary[keys[0]][keys[1]]...[keys[-1]]
+    # applying all keys in the keys list
 
+    # if single timestep, no averaging needed
     if not hasattr(timesteps, '__iter__'):
-        # single timestep, so no averaging needed
         return reduce(lambda d, k: d[k], [(timesteps, modelgridindex)] + keys, estimators)
 
     firsttimestepvalue = reduce(lambda d, k: d[k], [(timesteps[0], modelgridindex)] + keys, estimators)
@@ -301,8 +306,12 @@ def get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, ke
         valuesum = 0
         tdeltasum = 0
         for timestep, tdelta in zip(timesteps, tdeltas):
-            valuesum += reduce(lambda d, k: d[k], [(timestep, modelgridindex)] + keys, estimators) * tdelta
-            tdeltasum += tdelta
+            for mgi in range(modelgridindex - avgadjcells, modelgridindex + avgadjcells + 1):
+                try:
+                    valuesum += reduce(lambda d, k: d[k], [(timestep, mgi)] + keys, estimators) * tdelta
+                    tdeltasum += tdelta
+                except KeyError:
+                    pass
         return valuesum / tdeltasum
 
     # except KeyError:
@@ -314,7 +323,7 @@ def get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, ke
     #     sys.exit()
 
 
-def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, **plotkwargs):
+def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, args, **plotkwargs):
     assert len(xlist) - 1 == len(mgilist)
     modeldata, _ = at.get_modeldata(modelpath)
     abundancedata = at.get_initialabundances(modelpath)
@@ -350,6 +359,8 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, **plotkwarg
         ylist.insert(0, ylist[0])
         # or ax.step(where='pre', )
         color = get_elemcolor(atomic_number=atomic_number)
+        if args.malength > 0:
+            ylist = moving_average(ylist, N=args.malength)
         ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, linestyle=linestyle, color=color, **plotkwargs)
 
 
@@ -368,7 +379,8 @@ def get_averageionisation(populations, atomic_number):
     return free_electron_weighted_pop_sum / populations[atomic_number]
 
 
-def plot_averageionisation(ax, xlist, elementlist, timestepslist, mgilist, estimators, modelpath, **plotkwargs):
+def plot_averageionisation(
+        ax, xlist, elementlist, timestepslist, mgilist, estimators, modelpath, args, **plotkwargs):
     ax.set_ylabel('Average ionisation')
     for elsymb in elementlist:
         atomic_number = at.get_atomic_number(elsymb)
@@ -387,6 +399,8 @@ def plot_averageionisation(ax, xlist, elementlist, timestepslist, mgilist, estim
 
         color = get_elemcolor(atomic_number=atomic_number)
         ylist.insert(0, ylist[0])
+        if args.malength > 0:
+            ylist = moving_average(ylist, N=args.malength)
         ax.plot(xlist, ylist, label=elsymb, color=color, **plotkwargs)
 
 
@@ -500,6 +514,8 @@ def plot_multi_ion_series(
         # color = f'C{colorindex}'
         color = get_elemcolor(atomic_number=atomic_number)
         # or ax.step(where='pre', )
+        if args.malength > 0:
+            ylist = moving_average(ylist, N=args.malength)
         ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, dashes=dashes, **plotkwargs)
         prev_atomic_number = atomic_number
 
@@ -509,7 +525,7 @@ def plot_multi_ion_series(
 
 
 def plot_series(ax, xlist, variablename, showlegend, timestepslist, mgilist,
-                modelpath, estimators, nounits=False, **plotkwargs):
+                modelpath, estimators, args, nounits=False, **plotkwargs):
     """Plot something like Te or TR."""
     assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
     formattedvariablename = dictlabelreplacements.get(variablename, variablename)
@@ -552,6 +568,8 @@ def plot_series(ax, xlist, variablename, showlegend, timestepslist, mgilist,
     # print out the data to stdout. Maybe want to add a CSV export option at some point?
     # print(f'#cellidorvelocity {variablename}\n' + '\n'.join([f'{x}  {y}' for x, y in zip(xlist, ylist)]))
 
+    if args.malength > 0:
+        ylist = moving_average(ylist, N=args.malength)
     ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename, None), **plotkwargs)
 
 
@@ -613,16 +631,16 @@ def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath, estima
         if isinstance(plotitem, str):
             showlegend = len(plotitems) > 1 or len(variablename) > 20
             plot_series(ax, xlist, plotitem, showlegend, timestepslist, mgilist, modelpath,
-                        estimators, nounits=sameylabel, **plotkwargs)
+                        estimators, args, nounits=sameylabel, **plotkwargs)
             if showlegend and sameylabel:
                 ax.set_ylabel(ylabel)
         else:  # it's a sequence of values
             showlegend = True
             seriestype, params = plotitem
             if seriestype == 'initabundances':
-                plot_init_abundances(ax, xlist, params, mgilist, modelpath)
+                plot_init_abundances(ax, xlist, params, mgilist, modelpath, args)
             elif seriestype == 'averageionisation':
-                plot_averageionisation(ax, xlist, params, timestepslist, mgilist, estimators, modelpath)
+                plot_averageionisation(ax, xlist, params, timestepslist, mgilist, estimators, modelpath, args)
             elif seriestype == '_ymin':
                 ax.set_ylim(ymin=params)
             elif seriestype == '_ymax':
@@ -635,10 +653,10 @@ def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath, estima
     ax.tick_params(right=True)
     if showlegend:
         if plotitems[0][0] == 'populations':
-            ax.legend(loc='upper right', handlelength=2, ncol=3,
+            ax.legend(loc='upper right', handlelength=2, ncol=math.ceil(len(plotitems[0][1]) / 2.),
                       frameon=False, numpoints=1, prop={'size': 9})
         else:
-            ax.legend(loc='best', handlelength=2,
+            ax.legend(loc='upper right', handlelength=2,
                       frameon=False, numpoints=1,)  # prop={'size': 9})
 
 
@@ -798,6 +816,9 @@ def addargs(parser):
 
     parser.add_argument('-xmax', type=int, default=-1,
                         help='Plot range: maximum x value')
+
+    parser.add_argument('-malength', type=int, default=0,
+                        help='Smoothing length (1 is same as none)')
 
     parser.add_argument('--notitle', action='store_true',
                         help='Suppress the top title from the plot')
