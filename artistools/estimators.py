@@ -70,9 +70,9 @@ def get_elemcolor(atomic_number=None, elsymbol=None):
     return elementcolors[elsymbol]
 
 
-def moving_average(arr, N=5):
-    arr_padded = np.pad(arr, (N // 2, N - 1 - N // 2), mode='edge')
-    return np.convolve(arr_padded, np.ones((N,)) / N, mode='valid')
+def moving_average(arr, n):
+    arr_padded = np.pad(arr, (n // 2, n - 1 - n // 2), mode='edge')
+    return np.convolve(arr_padded, np.ones((n,)) / n, mode='valid')
 
 
 def get_ionrecombrates_fromfile(filename):
