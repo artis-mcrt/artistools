@@ -578,10 +578,11 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timestepslist, modelpat
         timestepslist_out = []
         for modelgridindex, timesteps in zip(allnonemptymgilist, timestepslist):
             xvalue = get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, xvariable)
-            if args.xmax < 0 or xvalue <= args.xmax:
-                xlist.append(xvalue)
-                mgilist_out.append(modelgridindex)
-                timestepslist_out.append(timesteps)
+            xlist.append(xvalue)
+            mgilist_out.append(modelgridindex)
+            timestepslist_out.append(timesteps)
+            if args.xmax > 0 and xvalue > args.xmax:
+                break
 
     xlist, mgilist_out, timestepslist_out = zip(
         *[xmt for xmt in sorted(zip(xlist, mgilist_out, timestepslist_out))])
