@@ -1,0 +1,58 @@
+2003du_20031213_3219_8822_00.txt:  # (Stanishev et al. 2007)
+  label: 'SN2003du +221.3d'
+  dist_mpc: 30.47
+
+2010lp_20110928_fors2.txt:
+  label: 'SN2010lp +264d (Taubenberger et al. 2013)'
+
+dop_dered_SN2013aa_20140208_fc_final.txt:  # (Maguire et al. 2016)
+  label: 'SN2013aa old +360d'
+  dist_mpc: 13.95
+
+FranssonJerkstrand2015_W7_330d_10Mpc.txt:
+  label: 'SUMO W7 +330d'  # W7 from Iwamoto+1999
+  reference: 'Fransson & Jerkstrand (2015)'
+  dist_mpc: 10
+
+maurer2011_RTJ_W7_338d_1Mpc.txt:
+  label: 'RTJ W7 Nomoto+1984 +338d (Maurer et al. 2011)'
+  dist_mpc: 1.
+
+nero-nebspec.txt:
+  label: 'NERO +300d one-zone'
+  dist_mpc: 1.
+
+PSNJ11492548_20160202_3Ang.txt:  # (Maguire et al. 2018)
+  label: 'PSNJ1149 +206d'
+  dist_mpc: 24.
+  r_v: 3.1
+  e_bminusv: 0.025
+  z: 0.0056
+
+sn2011fe_PTF11kly_20120822_norm.txt:  # (Mazzali et al. 2015)
+  label: 'SN2011fe +364d'
+  dist_mpc: 6.40
+  z: 0.0056
+
+SN2013aa_20140216_3Ang.txt:
+  label: 'SN2013aa +360d'
+  reference: 'Maguire et al. (2016)'
+  dist_mpc: 18.1
+  r_v: 3.1
+  e_bminusv: 0.169
+  z: 0.003999
+
+SN2013ct_20131119_3Ang.txt:  # (Maguire et al. 2016)
+  label: 'SN2013ct +229d'
+  dist_mpc: 12.1
+  r_v: 3.1
+  e_bminusv: 0.025
+  z: 0.00384
+
+SN2013cs_20140325_3Ang.txt:  # (Maguire et al. 2016)
+  label: 'SN2013cs +303d'
+  dist_mpc: 44.1
+  r_v: 3.1
+  e_bminusv: 0.082
+  z: 0.00924
+
