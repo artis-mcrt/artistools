@@ -12,47 +12,11 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import yaml
 from astropy import constants as const
 from astropy import units as u
 
 import artistools as at
-
-# dict consistint of {filename : (legend label, distance in Mpc)}
-# use -1 for distance if unknown
-refspectra = {
-    '2010lp_20110928_fors2.txt':
-        ('SN2010lp +264d (Taubenberger et al. 2013)', -1),
-
-    'sn2011fe_PTF11kly_20120822_norm.txt':  # (Mazzali et al. 2015)
-        ('SN2011fe +364d', 6.40),
-
-    'dop_dered_SN2013aa_20140208_fc_final.txt':  # (Maguire et al. 2016)
-        ('SN2013aa old +360d', 13.95),
-
-    'SN2013aa_20140216_3Ang.txt':  # (Maguire et al. 2016)
-        ('SN2013aa +360d', 18.1),
-
-    'SN2013ct_20131119_3Ang.txt':  # (Maguire et al. 2016)
-        ('SN2013ct +229d', 12.1),
-
-    'SN2013cs_20140325_3Ang.txt':  # (Maguire et al. 2016)
-        ('SN2013cs +303d', 44.1),
-
-    'PSNJ11492548_20160202_3Ang.txt':  # (Maguire et al. 2018)
-        ('PSNJ1149 +206d', 24.),
-
-    '2003du_20031213_3219_8822_00.txt':  # (Stanishev et al. 2007)
-        ('SN2003du +221.3d', 30.47),
-
-    'FranssonJerkstrand2015_W7_330d_10Mpc.txt':  # (Fransson & Jerkstrand 2015)
-        ('SUMO W7 +330d', 10),  # Iwamoto+1999
-
-    'maurer2011_RTJ_W7_338d_1Mpc.txt':
-        ('RTJ W7 Nomoto+1984 +338d (Maurer et al. 2011)', 1),
-
-    'nero-nebspec.txt':
-        ('NERO +300d one-zone', 1),
-}
 
 fluxcontributiontuple = namedtuple(
     'fluxcontribution', 'fluxcontrib linelabel array_flambda_emission array_flambda_absorption color')
@@ -379,6 +343,17 @@ def plot_reference_spectra(axes, plotobjects, plotobjectlabels, args, flambdafil
                     plotobjectlabels.append(serieslabel)
 
 
+@lru_cache(maxsize=4)
+def load_yaml_path(folderpath):
+    yamlpath = Path(folderpath, 'metadata.yml')
+    if yamlpath.exists():
+        with yamlpath.open('r') as yamlfile:
+            metadata = yaml.load(yamlfile)
+        return metadata
+    else:
+        return {}
+
+
 def plot_reference_spectrum(
         filename, axis, xmin, xmax, flambdafilterfunc=None, scale_to_peak=None, scale_to_dist_mpc=1, **plotkwargs):
     """Plot a single reference spectrum.
@@ -390,26 +365,44 @@ def plot_reference_spectrum(
     else:
         filepath = Path(at.PYDIR, 'data', 'refspectra', filename)
 
-    objectlabel, objectdist_megaparsec = refspectra.get(filename, [filename, -1])
-
     specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
                            names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
 
+    metadata_all = load_yaml_path(filepath.parent.resolve())
+    metadata = metadata_all.get(filename, {})
+
+    if 'z' in metadata:
+        specdata['lambda_angstroms'] /= 1 + metadata['z']
+
+    if 'e_bminusv' in metadata:
+        from extinction import apply, ccm89
+        if 'r_v' not in metadata:
+            metadata['r_v'] = metadata['a_v'] / metadata['e_bminusv']
+        elif 'a_v' not in metadata:
+            metadata['a_v'] = metadata['e_bminusv'] * metadata['r_v']
+
+        specdata['f_lambda'] = apply(
+            ccm89(specdata['lambda_angstroms'].values, a_v=-metadata['a_v'], r_v=metadata['r_v'], unit='aa'),
+            specdata['f_lambda'].values)
+
     # scale to flux at required distance
     if scale_to_dist_mpc:
-        assert objectdist_megaparsec > 0  # we must know the true distance in order to scale to some other distance
-        specdata['f_lambda'] = specdata['f_lambda'] * (objectdist_megaparsec / scale_to_dist_mpc) ** 2
+        assert metadata['dist_mpc'] > 0  # we must know the true distance in order to scale to some other distance
+        specdata['f_lambda'] = specdata['f_lambda'] * (metadata['dist_mpc'] / scale_to_dist_mpc) ** 2
 
     if 'label' not in plotkwargs:
-        plotkwargs['label'] = objectlabel
+        plotkwargs['label'] = metadata['label'] if 'label' in metadata else filename
 
-    serieslabel = plotkwargs['label']
-    print(f"Reference spectrum '{serieslabel}' has {len(specdata)} points in the plot range")
+    print(f"Reference spectrum \'{plotkwargs['label']}\' has {len(specdata)} points in the plot range")
     print(f" file: {filename}")
+
+    print(' Metadata: ' + ', '.join([f"{k}='{v}'" if hasattr(v, 'lower') else f'{k}={v}'
+                                     for k, v in metadata.items()]))
 
     specdata.query('lambda_angstroms > @xmin and lambda_angstroms < @xmax', inplace=True)
 
-    print_integrated_flux(specdata['f_lambda'], specdata['lambda_angstroms'], distance_megaparsec=objectdist_megaparsec)
+    print_integrated_flux(
+        specdata['f_lambda'], specdata['lambda_angstroms'], distance_megaparsec=metadata['dist_mpc'])
 
     if len(specdata) > 5000:
         # specdata = scipy.signal.resample(specdata, 10000)
@@ -430,11 +423,11 @@ def plot_reference_spectrum(
         ycolumnname = 'f_lambda'
 
     if 'linewidth' not in plotkwargs and 'lw' not in plotkwargs:
-        plotkwargs['linewidth'] = 0.6
+        plotkwargs['linewidth'] = 0.7
 
     lineplot = specdata.plot(x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None, **plotkwargs)
-    # lineplot.get_lines()[0].get_color())
-    return mpatches.Patch(color=plotkwargs['color']), plotkwargs['label']
+
+    return mpatches.Patch(color=lineplot.get_lines()[0].get_color()), plotkwargs['label']
 
 
 def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
@@ -561,7 +554,7 @@ def plot_artis_spectrum(
 
 def make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=None):
     """Plot reference spectra and ARTIS spectra."""
-    plot_reference_spectra(axes, [], [], args, scale_to_peak=scale_to_peak, flambdafilterfunc=filterfunc, lw=0.3)
+    plot_reference_spectra(axes, [], [], args, scale_to_peak=scale_to_peak, flambdafilterfunc=filterfunc)
 
     for index, modelpath in enumerate(modelpaths):
         plotkwargs = {}
