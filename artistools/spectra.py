@@ -673,8 +673,8 @@ def make_plot(modelpaths, args):
     if nrows == 1:
         axes = [axes]
 
-    import scipy.signal
     if args.filtersavgol:
+        import scipy.signal
         window_length, poly_order = [int(x) for x in args.filtersavgol]
 
         def filterfunc(y):
