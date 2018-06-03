@@ -75,6 +75,20 @@ def moving_average(arr, n):
     return np.convolve(arr_padded, np.ones((n,)) / n, mode='valid')
 
 
+def apply_filters(xlist, ylist, args):
+    if args.filtermovingavg > 0:
+        ylist = moving_average(ylist, args.filtermovingavg)
+
+    if args.filtersavgol:
+        import scipy.signal
+        window_length, polyorder = [int(x) for x in args.filtersavgol]
+
+        ylist = scipy.signal.savgol_filter(ylist, window_length=window_length, polyorder=polyorder,
+                                           mode='nearest')
+
+    return xlist, ylist
+
+
 def get_ionrecombrates_fromfile(filename):
     """WARNING: copy pasted from artis-atomic! replace with a package import soon ionstage is the lower ion stage."""
     print(f'Reading {filename}')
@@ -359,8 +373,9 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, args, **plo
         ylist.insert(0, ylist[0])
         # or ax.step(where='pre', )
         color = get_elemcolor(atomic_number=atomic_number)
-        if args.malength > 0:
-            ylist = moving_average(ylist, N=args.malength)
+
+        xlist, ylist = apply_filters(xlist, ylist, args)
+
         ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, linestyle=linestyle, color=color, **plotkwargs)
 
 
@@ -399,8 +414,9 @@ def plot_averageionisation(
 
         color = get_elemcolor(atomic_number=atomic_number)
         ylist.insert(0, ylist[0])
-        if args.malength > 0:
-            ylist = moving_average(ylist, N=args.malength)
+
+        xlist, ylist = apply_filters(xlist, ylist, args)
+
         ax.plot(xlist, ylist, label=elsymb, color=color, **plotkwargs)
 
 
@@ -514,8 +530,9 @@ def plot_multi_ion_series(
         # color = f'C{colorindex}'
         color = get_elemcolor(atomic_number=atomic_number)
         # or ax.step(where='pre', )
-        if args.malength > 0:
-            ylist = moving_average(ylist, N=args.malength)
+
+        xlist, ylist = apply_filters(xlist, ylist, args)
+
         ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, dashes=dashes, **plotkwargs)
         prev_atomic_number = atomic_number
 
@@ -568,8 +585,8 @@ def plot_series(ax, xlist, variablename, showlegend, timestepslist, mgilist,
     # print out the data to stdout. Maybe want to add a CSV export option at some point?
     # print(f'#cellidorvelocity {variablename}\n' + '\n'.join([f'{x}  {y}' for x, y in zip(xlist, ylist)]))
 
-    if args.malength > 0:
-        ylist = moving_average(ylist, N=args.malength)
+    xlist, ylist = apply_filters(xlist, ylist, args)
+
     ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename, None), **plotkwargs)
 
 
@@ -817,8 +834,12 @@ def addargs(parser):
     parser.add_argument('-xmax', type=int, default=-1,
                         help='Plot range: maximum x value')
 
-    parser.add_argument('-malength', type=int, default=0,
+    parser.add_argument('-filtermovingavg', type=int, default=0,
                         help='Smoothing length (1 is same as none)')
+
+    parser.add_argument('-filtersavgol', nargs=2,
+                        help='Savitzky–Golay filter. Specify the window_length and polyorder.'
+                        'e.g. -filtersavgol 5 3')
 
     parser.add_argument('--notitle', action='store_true',
                         help='Suppress the top title from the plot')
