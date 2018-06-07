@@ -258,7 +258,6 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None):
     modeldata, _ = at.get_modeldata(modelpath)
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex)
-
     estimators = {}
     for folderpath in at.get_runfolders(modelpath, timesteps=match_timestep):
         nfilesread_thisfolder = 0
@@ -518,7 +517,7 @@ def plot_multi_ion_series(
                     yvalue = float('NaN')
                 ylist.append(yvalue)
 
-        plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
+        plotlabel = at.get_ionstring(atomic_number, ion_stage, spectral=False)
 
         ylist.insert(0, ylist[0])
         # linestyle = ['-.', '-', '--', (0, (4, 1, 1, 1)), ':'] + [(0, x) for x in dashes_list][ion_stage - 1]
@@ -671,7 +670,7 @@ def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath, estima
     if showlegend:
         if plotitems[0][0] == 'populations':
             ax.legend(loc='upper right', handlelength=2, ncol=math.ceil(len(plotitems[0][1]) / 2.),
-                      frameon=False, numpoints=1, prop={'size': 9})
+                      frameon=False, numpoints=1)
         else:
             ax.legend(loc='upper right', handlelength=2,
                       frameon=False, numpoints=1,)  # prop={'size': 9})
@@ -919,7 +918,7 @@ def main(args=None, argsraw=None, **kwargs):
     else:
         modeldata, _ = at.get_modeldata(modelpath)
         allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
-                              if not estimators[(timestepmin, modelgridindex)]['emptycell']]
+                              if not estimators[(timesteps_included[-1], modelgridindex)]['emptycell']]
 
         if args.modelgridindex > -1 or args.x == 'time':
             # plot time evolution in specific cell

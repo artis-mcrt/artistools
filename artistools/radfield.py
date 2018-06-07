@@ -104,7 +104,7 @@ def plot_field_estimators(axis, radfielddata, modelgridindex=None, timestep=None
 
 
 def j_nu_dbb(arr_nu_hz, W, T):
-    """# CGS units J_nu for diluted blackbody."""
+    """# CGS units J_nu for dilute blackbody."""
     k_b = const.k_B.to('eV/K').value
     h = const.h.to('eV s').value
 
@@ -127,9 +127,9 @@ def plot_fullspecfittedfield(axis, radfielddata, xmin, xmax, modelgridindex=None
     arr_lambda = const.c.to('angstrom/s').value / arr_nu_hz
     arr_j_lambda = arr_j_nu * arr_nu_hz / arr_lambda
 
-    label = (
-        r'Full-spectrum fitted field (T$_{\mathrm{R}}$ '
-        f'= {row["T_R"]} K)')
+    label = r'Dilute blackbody model '
+    # label += r'(T$_{\mathrm{R}}$'
+    # label += f'= {row["T_R"]} K)')
     axis.plot(arr_lambda, arr_j_lambda,
               label=label, **plotkwargs)
 
@@ -137,7 +137,7 @@ def plot_fullspecfittedfield(axis, radfielddata, xmin, xmax, modelgridindex=None
 
 
 def plot_fitted_field(axis, radfielddata, xmin, xmax, modelgridindex=None, timestep=None, **plotkwargs):
-    """Plot the fitted diluted blackbody for each bin as well as the global fit."""
+    """Plot the fitted dilute blackbody for each bin as well as the global fit."""
     fittedxvalues = []
     fittedyvalues = []
 
@@ -167,7 +167,7 @@ def plot_fitted_field(axis, radfielddata, xmin, xmax, modelgridindex=None, times
             fittedyvalues += arr_j_lambda
 
     if fittedxvalues:
-        axis.plot(fittedxvalues, fittedyvalues, label='Band-fitted field', **plotkwargs)
+        axis.plot(fittedxvalues, fittedyvalues, label='Radiation field model', **plotkwargs)
 
     return max(fittedyvalues)
 
