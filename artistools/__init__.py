@@ -748,7 +748,6 @@ def get_mpiranklist(modelpath, modelgridindex=None):
                 return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
-@lru_cache(maxsize=8)
 def get_cellsofmpirank(mpirank, modelpath):
     """Return an iterable of the cell numbers processed by a given MPI rank."""
     npts_model = get_npts_model(modelpath)
@@ -769,7 +768,6 @@ def get_cellsofmpirank(mpirank, modelpath):
     return list(range(nstart, nstart + ndo))
 
 
-@lru_cache(maxsize=32)
 def get_mpirankofcell(modelgridindex, modelpath):
     """Return the rank number of the MPI process responsible for handling a specified cell's updating and output."""
     npts_model = get_npts_model(modelpath)
