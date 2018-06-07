@@ -672,7 +672,7 @@ def get_inputparams(modelpath):
     return params
 
 
-@lru_cache(maxsize=64)
+# @lru_cache(maxsize=64)
 def get_runfolder_timesteps(folderpath):
     """Get the set of timesteps covered by the output files in an ARTIS run folder."""
     folder_timesteps = set()
@@ -690,31 +690,30 @@ def get_runfolder_timesteps(folderpath):
                         folder_timesteps.add(timestep)
                     else:
                         # second time seeing this timestep
-                        return folder_timesteps
+                        return tuple(folder_timesteps)
 
     except FileNotFoundError:
         pass
 
-    return folder_timesteps
+    return tuple(folder_timesteps)
 
 
-@lru_cache(maxsize=16)
+# @lru_cache(maxsize=16)
 def get_runfolders(modelpath, timestep=None, timesteps=None):
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
     The folder list may include non-ARTIS folders if a timestep is not specified."""
-    folderlist_all = sorted([child for child in modelpath.iterdir() if child.is_dir()]) + [modelpath]
-
+    folderlist_all = tuple(sorted([child for child in modelpath.iterdir() if child.is_dir()]) + [modelpath])
     folder_list_matching = []
     if (timestep is not None and timestep > -1) or (timesteps is not None and len(timesteps) > 0):
         for folderpath in folderlist_all:
             folder_timesteps = get_runfolder_timesteps(folderpath)
             if timesteps is None and timestep is not None and timestep in folder_timesteps:
-                return [folderpath]
+                return (folderpath,)
             elif timesteps is not None and any([ts in folder_timesteps for ts in timesteps]):
                 folder_list_matching.append(folderpath)
 
-        return folder_list_matching
+        return tuple(folder_list_matching)
 
     return folderlist_all
 
