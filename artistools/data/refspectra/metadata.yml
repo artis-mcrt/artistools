@@ -14,6 +14,7 @@ FranssonJerkstrand2015_W7_330d_10Mpc.txt:
   label: 'SUMO W7 +330d'  # W7 from Iwamoto+1999
   reference: 'Fransson & Jerkstrand (2015)'
   dist_mpc: 10
+  f_lambda_columnindex: 2
 
 maurer2011_RTJ_W7_338d_1Mpc.txt:
   label: 'RTJ W7 Nomoto+1984 +338d (Maurer et al. 2011)'
