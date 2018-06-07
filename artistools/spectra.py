@@ -366,11 +366,13 @@ def plot_reference_spectrum(
     else:
         filepath = Path(at.PYDIR, 'data', 'refspectra', filename)
 
-    specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
-                           names=['lambda_angstroms', 'f_lambda'], usecols=[0, 1])
-
     metadata_all = load_yaml_path(filepath.parent.resolve())
     metadata = metadata_all.get(filename, {})
+
+    flambdaindex = metadata.get('f_lambda_columnindex', 1)
+
+    specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
+                           names=['lambda_angstroms', 'f_lambda'], usecols=[0, flambdaindex])
 
     if 'e_bminusv' in metadata:
         from extinction import apply, ccm89
