@@ -321,22 +321,20 @@ def print_integrated_flux(arr_f_lambda, arr_lambda_angstroms, distance_megaparse
 
 
 def plot_reference_spectra(axes, plotobjects, plotobjectlabels, args, flambdafilterfunc=None, scale_to_peak=None,
-                           scaletoreftime=None, **plotkwargs):
+                           **plotkwargs):
     """Plot reference spectra listed in args.refspecfiles."""
     if args.refspecfiles is not None:
         if isinstance(args.refspecfiles, str):
             args.refspecfiles = [args.refspecfiles]
-        colorlist = ['0.0', '0.3', '0.5']
-        if args.refspecaboveartis:
-            plotkwargs['zorder'] = 1000
         for index, filename in enumerate(args.refspecfiles):
-            plotkwargs['color'] = colorlist[min(index, len(colorlist) - 1)]
+            if index < len(args.refspeccolors):
+                plotkwargs['color'] = args.refspeccolors[index]
 
             for axindex, axis in enumerate(axes):
                 supxmin, supxmax = axis.get_xlim()
                 plotobj, serieslabel = plot_reference_spectrum(
                     filename, axis, supxmin, supxmax,
-                    flambdafilterfunc, scale_to_peak, scaletoreftime=scaletoreftime, **plotkwargs)
+                    flambdafilterfunc, scale_to_peak, scaletoreftime=args.scaletoreftime, **plotkwargs)
 
                 if axindex == 0:
                     plotobjects.append(plotobj)
@@ -561,29 +559,32 @@ def plot_artis_spectrum(
         supxmin, supxmax = axis.get_xlim()
         spectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
             x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
-            label=linelabel if index == 0 else None, alpha=0.8, **plotkwargs)
+            label=linelabel if index == 0 else None, **plotkwargs)
 
 
 def make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=None):
     """Plot reference spectra and ARTIS spectra."""
-    plot_reference_spectra(axes, [], [], args, scale_to_peak=scale_to_peak, flambdafilterfunc=filterfunc,
-                           scaletoreftime=args.scaletoreftime)
+
+    if not args.refspecafterartis:
+        plot_reference_spectra(axes, [], [], args, scale_to_peak=scale_to_peak, flambdafilterfunc=filterfunc)
 
     for index, modelpath in enumerate(modelpaths):
         plotkwargs = {}
         # plotkwargs['dashes'] = dashesList[index]
         # plotkwargs['dash_capstyle'] = dash_capstyleList[index]
         plotkwargs['linestyle'] = '--' if (int(index / 7) % 2) else '-'
-        plotkwargs['linewidth'] = 1.5  # - (0.1 * index)
-        if index < 3:
-            plotkwargs['color'] = ['blue', 'orange', 'red'][index]
-        # if index < 10:
-        #     plotkwargs['color'] = f'C{index}'
+        plotkwargs['linewidth'] = 1.3  # - (0.1 * index)
+        plotkwargs['color'] = args.modelcolors[index]
+        plotkwargs['alpha'] = 0.9
+
         linelabel = args.modellabels[index] if index < len(args.modellabels) else None
 
         plot_artis_spectrum(axes, modelpath, linelabel=linelabel, args=args,
                             scale_to_peak=scale_to_peak, from_packets=args.frompackets,
                             filterfunc=filterfunc, **plotkwargs)
+
+    if args.refspecafterartis:
+        plot_reference_spectra(axes, [], [], args, scale_to_peak=scale_to_peak, flambdafilterfunc=filterfunc)
 
     for axis in axes:
         axis.set_ylim(ymin=0.)
@@ -724,6 +725,8 @@ def make_plot(modelpaths, args):
         plotobjects, plotobjectlabels = axes[0].get_legend_handles_labels()
 
     if not args.nolegend:
+        if args.reverselegendorder:
+            plotobjects, plotobjectlabels = plotobjects[::-1], plotobjectlabels[::-1]
         leg = axes[0].legend(
             plotobjects, plotobjectlabels, loc='upper right', frameon=False,
             handlelength=1, ncol=legendncol, numpoints=1)
@@ -832,6 +835,9 @@ def addargs(parser):
     parser.add_argument('-modellabels', default=[], nargs='*',
                         help='Model name overrides')
 
+    parser.add_argument('-modelcolors', default=[f'C{i}' for i in range(10)], nargs='*',
+                        help='List of colors for ARTIS models')
+
     parser.add_argument('--frompackets', action='store_true',
                         help='Read packets files directly instead of exspec results')
 
@@ -899,8 +905,11 @@ def addargs(parser):
     parser.add_argument('--use_comovingframe', action='store_true',
                         help='Use the time of packet escape to the surface (instead of a plane toward the observer)')
 
-    parser.add_argument('-obsspec', action='append', dest='refspecfiles',
+    parser.add_argument('-obsspec', '-refspecfiles', action='append', dest='refspecfiles',
                         help='Also plot reference spectrum from this file')
+
+    parser.add_argument('-refspeccolors', default=['0.0', '0.3', '0.5'], nargs='*',
+                        help='Set a list of color for reference spectra')
 
     parser.add_argument('-fluxdistmpc', type=float,
                         help=('Plot flux at this distance in megaparsec. Default is the distance to '
@@ -918,8 +927,11 @@ def addargs(parser):
     parser.add_argument('--nolegend', action='store_true',
                         help='Suppress the legend from the plot')
 
-    parser.add_argument('--refspecaboveartis', action='store_true',
-                        help='Change the z order so that refererence spectra are plottted over ARTIS spectra.')
+    parser.add_argument('--reverselegendorder', action='store_true',
+                        help='Reverse the order of legend items')
+
+    parser.add_argument('--refspecafterartis', action='store_true',
+                        help='Plot reference spectra after artis spectra')
 
     parser.add_argument('-outputfile', '-o', action='store', dest='outputfile', type=Path,
                         help='path/filename for PDF file')
