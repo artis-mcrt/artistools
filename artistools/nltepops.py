@@ -259,6 +259,7 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
                         except (KeyError, IndexError, ValueError):
                             pass
                     if file_W > 0:
+                        continue
                         bbstr = ' with dilute blackbody'
                         color = 'C2'
                         marker = '+'
@@ -404,7 +405,7 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
         #               label=f'Floers NLTE', linestyle='None', marker='*')
 
     ax.plot(dfpopthision['level'], dfpopthision[ycolumnname], linewidth=1.5,
-            linestyle='None', marker='x', label=f'{ionstr} ARTIS NLTE', color='blue')
+            linestyle='None', marker='x', label=f'{ionstr} ARTIS NLTE', color='black')
 
     dfpopthisionoddlevels = dfpopthision.query('parity==1')
     if not dfpopthisionoddlevels.level.empty:
