@@ -321,7 +321,7 @@ def print_integrated_flux(arr_f_lambda, arr_lambda_angstroms, distance_megaparse
 
 
 def plot_reference_spectra(axes, plotobjects, plotobjectlabels, args, flambdafilterfunc=None, scale_to_peak=None,
-                           **plotkwargs):
+                           scaletoreftime=None, **plotkwargs):
     """Plot reference spectra listed in args.refspecfiles."""
     if args.refspecfiles is not None:
         if isinstance(args.refspecfiles, str):
@@ -336,7 +336,7 @@ def plot_reference_spectra(axes, plotobjects, plotobjectlabels, args, flambdafil
                 supxmin, supxmax = axis.get_xlim()
                 plotobj, serieslabel = plot_reference_spectrum(
                     filename, axis, supxmin, supxmax,
-                    flambdafilterfunc, scale_to_peak, **plotkwargs)
+                    flambdafilterfunc, scale_to_peak, scaletoreftime=scaletoreftime, **plotkwargs)
 
                 if axindex == 0:
                     plotobjects.append(plotobj)
@@ -355,7 +355,8 @@ def load_yaml_path(folderpath):
 
 
 def plot_reference_spectrum(
-        filename, axis, xmin, xmax, flambdafilterfunc=None, scale_to_peak=None, scale_to_dist_mpc=1, **plotkwargs):
+        filename, axis, xmin, xmax, flambdafilterfunc=None, scale_to_peak=None, scale_to_dist_mpc=1,
+        scaletoreftime=None, **plotkwargs):
     """Plot a single reference spectrum.
 
     The filename must be in space separated text formated with the first two
@@ -371,9 +372,6 @@ def plot_reference_spectrum(
     metadata_all = load_yaml_path(filepath.parent.resolve())
     metadata = metadata_all.get(filename, {})
 
-    if 'z' in metadata:
-        specdata['lambda_angstroms'] /= 1 + metadata['z']
-
     if 'e_bminusv' in metadata:
         from extinction import apply, ccm89
         if 'r_v' not in metadata:
@@ -385,6 +383,9 @@ def plot_reference_spectrum(
             ccm89(specdata['lambda_angstroms'].values, a_v=-metadata['a_v'], r_v=metadata['r_v'], unit='aa'),
             specdata['f_lambda'].values)
 
+    if 'z' in metadata:
+        specdata['lambda_angstroms'] /= (1 + metadata['z'])
+
     # scale to flux at required distance
     if scale_to_dist_mpc:
         assert metadata['dist_mpc'] > 0  # we must know the true distance in order to scale to some other distance
@@ -392,6 +393,15 @@ def plot_reference_spectrum(
 
     if 'label' not in plotkwargs:
         plotkwargs['label'] = metadata['label'] if 'label' in metadata else filename
+
+    if scaletoreftime is not None:
+        assert scaletoreftime > 100
+        timefactor = math.exp(metadata['t'] / 133.) / math.exp(scaletoreftime / 133.)
+        print(f" Scale from time {metadata['t']} to {scaletoreftime}, factor {timefactor}")
+        specdata['f_lambda'] *= timefactor
+        # plotkwargs['label'] += f' * {timefactor:.2f}'
+    if 'scale_factor' in metadata:
+        specdata['f_lambda'] *= metadata['scale_factor']
 
     print(f"Reference spectrum \'{plotkwargs['label']}\' has {len(specdata)} points in the plot range")
     print(f" file: {filename}")
@@ -549,12 +559,13 @@ def plot_artis_spectrum(
         supxmin, supxmax = axis.get_xlim()
         spectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
             x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
-            label=linelabel if index == 0 else None, alpha=0.9, **plotkwargs)
+            label=linelabel if index == 0 else None, alpha=0.8, **plotkwargs)
 
 
 def make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=None):
     """Plot reference spectra and ARTIS spectra."""
-    plot_reference_spectra(axes, [], [], args, scale_to_peak=scale_to_peak, flambdafilterfunc=filterfunc)
+    plot_reference_spectra(axes, [], [], args, scale_to_peak=scale_to_peak, flambdafilterfunc=filterfunc,
+                           scaletoreftime=args.scaletoreftime)
 
     for index, modelpath in enumerate(modelpaths):
         plotkwargs = {}
@@ -892,6 +903,9 @@ def addargs(parser):
     parser.add_argument('-fluxdistmpc', type=float,
                         help=('Plot flux at this distance in megaparsec. Default is the distance to '
                               'first reference spectrum if this is known, or otherwise 1 Mpc'))
+
+    parser.add_argument('-scaletoreftime', type=float, default=None,
+                        help=('Scale reference spectra flux using Co56 decay timescale'))
 
     parser.add_argument('-figscale', type=float, default=1.8,
                         help='Scale factor for plot area. 1.0 is for single-column')
