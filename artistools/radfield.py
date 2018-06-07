@@ -28,7 +28,6 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
     radfielddata = pd.DataFrame()
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
-
     for folderpath in at.get_runfolders(modelpath, timestep=timestep):
         for mpirank in mpiranklist:
             radfieldfilename = f'radfield_{mpirank:04d}.out'
@@ -234,12 +233,15 @@ def plot_celltimestep(
         axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep,
         color='purple', linewidth=1.5)
 
-    ymax2 = plot_field_estimators(
-        axis, radfielddata, modelgridindex=modelgridindex, timestep=timestep, color='blue', linewidth=1.5)
+    if args.nobandaverage:
+        ymax2 = plot_field_estimators(
+            axis, radfielddata, modelgridindex=modelgridindex, timestep=timestep, color='green', linewidth=1.5)
+    else:
+        ymax2 = ymax1
 
     ymax3 = plot_fitted_field(
         axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep,
-        alpha=0.8, color='green', linewidth=1.5)
+        alpha=0.8, color='blue', linewidth=1.5)
 
     ymax4 = plot_line_estimators(
         axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep, zorder=-2, color='red')
@@ -449,6 +451,9 @@ def addargs(parser):
 
     parser.add_argument('--notitle', action='store_true',
                         help='Suppress the top title from the plot')
+
+    parser.add_argument('--nobandaverage', action='store_true',
+                        help='Suppress the band-average line')
 
     parser.add_argument('-figscale', type=float, default=1.,
                         help='Scale factor for plot area. 1.0 is for single-column')
