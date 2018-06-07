@@ -1,5 +1,6 @@
 2003du_20031213_3219_8822_00.txt:  # (Stanishev et al. 2007)
   label: 'SN2003du +221.3d'
+  t: 221.3
   dist_mpc: 30.47
 
 2010lp_20110928_fors2.txt:
@@ -24,19 +25,33 @@ nero-nebspec.txt:
 
 PSNJ11492548_20160202_3Ang.txt:  # (Maguire et al. 2018)
   label: 'PSNJ1149 +206d'
+  t: 206
   dist_mpc: 24.
   r_v: 3.1
   e_bminusv: 0.025
   z: 0.0056
 
-sn2011fe_PTF11kly_20120822_norm.txt:  # (Mazzali et al. 2015)
+PTF11kly_20120402_norm.dat.txt:
+  label: 'SN2011fe +223d'
+  reference: 'Mazzali et al. (2015)'
+  t: 223
+  dist_mpc: 6.40
+  r_v: 3.1
+  # Patat 2013 &A 549, A64
+  e_bminusv: 0.023 #0.014 mag in the host galaxy and E(B − V) = 0.009 mag for the Milky Way
+  z: 0.000804
+
+sn2011fe_PTF11kly_20120822_norm.txt:
   label: 'SN2011fe +364d'
+  reference: 'Mazzali et al. (2015)'
+  t: 364
   dist_mpc: 6.40
   z: 0.0056
 
 SN2013aa_20140216_3Ang.txt:
   label: 'SN2013aa +360d'
   reference: 'Maguire et al. (2016)'
+  t: 360
   dist_mpc: 18.1
   r_v: 3.1
   e_bminusv: 0.169
@@ -44,13 +59,16 @@ SN2013aa_20140216_3Ang.txt:
 
 SN2013ct_20131119_3Ang.txt:  # (Maguire et al. 2016)
   label: 'SN2013ct +229d'
+  t: 229
   dist_mpc: 12.1
   r_v: 3.1
   e_bminusv: 0.025
   z: 0.00384
+  scale_factor: 2.5
 
 SN2013cs_20140325_3Ang.txt:  # (Maguire et al. 2016)
   label: 'SN2013cs +303d'
+  t: 303
   dist_mpc: 44.1
   r_v: 3.1
   e_bminusv: 0.082
