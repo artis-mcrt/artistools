@@ -561,7 +561,7 @@ def get_ionstring(atomic_number, ionstage, spectral=True):
     else:
         # ion notion e.g. Co+, Fe2+
         if ionstage > 2:
-            strcharge = r'$^{' + str(ionstage - 1) + r'+}$'
+            strcharge = r'$^{' + str(ionstage - 1) + r'{+}}$'
         elif ionstage == 2:
             strcharge = r'$^{+}$'
         else:
