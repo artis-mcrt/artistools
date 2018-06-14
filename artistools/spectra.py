@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Artistools - spectra related functions."""
 import argparse
-import glob
 import math
 from collections import namedtuple
 from functools import lru_cache
@@ -75,8 +74,12 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
     return dfspectrum
 
 
-def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_min, lambda_max, delta_lambda=30,
-                              use_comovingframe=None, filehandles=None):
+def get_spectrum_from_packets(
+        modelpath, timelowdays, timehighdays, lambda_min, lambda_max,
+        delta_lambda=30, use_comovingframe=None, maxpacketfiles=-1):
+    """Get a spectrum dataframe using the packets files as input."""
+    import artistools.packets
+    packetsfiles = at.packets.get_packetsfiles(modelpath, maxpacketfiles)
     if use_comovingframe:
         modeldata, _ = at.get_modeldata(Path(packetsfiles[0]).parent)
         vmax = modeldata.iloc[-1].velocity * u.km / u.s
@@ -91,7 +94,7 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
         if value > array[2][xindex] or array[2][xindex] == 0:
             array[2][xindex] = value
 
-    import artistools.packets
+    # linelist = at.get_linelist(modelpath)
     array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
     array_energysum = np.zeros_like(array_lambda, dtype=np.float)  # total packet energy sum of each bin
     array_energysum_positron = np.zeros_like(array_lambda, dtype=np.float)  # total packet energy sum of each bin
@@ -101,20 +104,20 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
 
     timelow = timelowdays * u.day.to('s')
     timehigh = timehighdays * u.day.to('s')
-    nprocs = len(packetsfiles)  # hopefully this is true
+
+    nprocs_read = len(packetsfiles)
     c_cgs = const.c.to('cm/s').value
     c_ang_s = const.c.to('angstrom/s').value
     nu_min = c_ang_s / lambda_max
     nu_max = c_ang_s / lambda_min
-    assert not filehandles or len(packetsfiles) == len(filehandles)
     for index, packetsfile in enumerate(packetsfiles):
         dfpackets = at.packets.readfile(
-            packetsfile if not filehandles else filehandles[index],
+            packetsfile,
             usecols=[
                 'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
                 'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz',
                 'em_posx', 'em_posy', 'em_posz', 'em_time',
-                'true_emission_velocity', 'originated_from_positron'])
+                'true_emission_velocity', 'originated_from_positron', 'true_emission_type'])
 
         querystr = 'type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT" and @nu_min <= nu_rf < @nu_max and'
         if not use_comovingframe:
@@ -124,8 +127,14 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
 
         dfpackets.query(querystr, inplace=True)
 
-        print(f"{len(dfpackets)} escaped r-packets with matching nu and arrival time")
+        print(f"  {len(dfpackets)} escaped r-packets with matching nu and arrival time")
         for _, packet in dfpackets.iterrows():
+            # transition = linelist[packet.true_emission_type]
+            # if transition.atomic_number != 26 or transition.ionstage != 2:
+            #     continue
+            # if transition.upperlevelindex <= 80:
+            #     continue
+
             lambda_rf = c_ang_s / packet.nu_rf
             # pos_dot_dir = packet.posx * packet.dirx + packet.posy * packet.diry + packet.posz * packet.dirz
             # t_arrive = packet['escape_time'] - (pos_dot_dir / c_cgs)
@@ -150,10 +159,10 @@ def get_spectrum_from_packets(packetsfiles, timelowdays, timehighdays, lambda_mi
             update_min_sum_max(array_trueemvelocity, xindex, pkt_en, true_emission_velocity)
 
     array_flambda = (array_energysum / delta_lambda / (timehigh - timelow) /
-                     4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs)
+                     4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read)
 
     array_flambda_positron = (array_energysum_positron / delta_lambda / (timehigh - timelow) /
-                              4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs)
+                              4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read)
 
     with np.errstate(divide='ignore', invalid='ignore'):
         array_emvelocity[1] = np.divide(array_emvelocity[1], array_energysum)
@@ -188,7 +197,6 @@ def get_flux_contributions(
     timearray = at.get_timestep_times(modelpath)
     arraynu = at.get_nu_grid(modelpath)
     arraylambda = const.c.to('angstrom/s').value / arraynu
-    modelpath = Path(emissionfilename).parent
     elementlist = at.get_composition_data(modelpath)
     nelements = len(elementlist)
 
@@ -219,6 +227,7 @@ def get_flux_contributions(
     contribution_list = []
     if filterfunc:
         print("Applying filter to ARTIS spectrum")
+
     for element in range(nelements):
         nions = elementlist.nions[element]
         # nions = elementlist.iloc[element].uppermost_ionstage - elementlist.iloc[element].lowermost_ionstage + 1
@@ -260,9 +269,9 @@ def get_flux_contributions(
                     abs(np.trapz(array_fnu_emission, x=arraynu)) + abs(np.trapz(array_fnu_absorption, x=arraynu)))
 
                 if emissiontype == 'bound-bound':
-                    linelabel = f'{at.elsymbols[elementlist.Z[element]]} {at.roman_numerals[ion_stage]}'
+                    linelabel = at.get_ionstring(elementlist.Z[element], ion_stage)
                 elif emissiontype != 'free-free':
-                    linelabel = f'{at.elsymbols[elementlist.Z[element]]} {at.roman_numerals[ion_stage]} {emissiontype}'
+                    linelabel = f'{at.get_ionstring(elementlist.Z[element], ion_stage)} {emissiontype}'
                 else:
                     linelabel = f'{emissiontype}'
 
@@ -273,6 +282,114 @@ def get_flux_contributions(
                                           color=None))
 
     return contribution_list, array_flambda_emission_total
+
+
+@lru_cache(maxsize=4)
+def get_flux_contributions_from_packets(
+        modelpath, timelowdays, timehighdays, lambda_min, lambda_max, delta_lambda=30,
+        getabsorption=True, maxpacketfiles=-1, filterfunc=None):
+    array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
+
+    import artistools.packets
+    packetsfiles = at.packets.get_packetsfiles(modelpath, maxpacketfiles)
+
+    linelist = at.get_linelist(modelpath)
+
+    energysum_spectrum_emission_total = np.zeros_like(array_lambda, dtype=np.float)
+    array_energysum_spectra = {}
+
+    timelow = timelowdays * u.day.to('s')
+    timehigh = timehighdays * u.day.to('s')
+
+    nprocs_read = len(packetsfiles)
+    c_cgs = const.c.to('cm/s').value
+    c_ang_s = const.c.to('angstrom/s').value
+    nu_min = c_ang_s / lambda_max
+    nu_max = c_ang_s / lambda_min
+    for index, packetsfile in enumerate(packetsfiles):
+        dfpackets = at.packets.readfile(
+            packetsfile,
+            usecols=[
+                'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
+                'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz',
+                # 'em_posx', 'em_posy', 'em_posz', 'em_time',
+                'true_emission_velocity',
+                # 'originated_from_positron',
+                'true_emission_type',
+                'absorption_type',
+            ])
+
+        querystr = 'type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT" and @nu_min <= nu_rf < @nu_max and'
+        querystr += '@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh'
+
+        dfpackets.query(querystr, inplace=True)
+
+        print(f"  {len(dfpackets)} escaped r-packets with matching nu and arrival time")
+        for _, packet in dfpackets.iterrows():
+            lambda_rf = c_ang_s / packet.nu_rf
+
+            xindex = math.floor((lambda_rf - lambda_min) / delta_lambda)
+            assert xindex >= 0
+
+            energysum_spectrum_emission_total[xindex] += packet.e_rf
+
+            emtype = packet.true_emission_type
+            if emtype >= 0:
+                processtuple = (
+                    int(linelist[emtype].atomic_number), int(linelist[emtype].ionstage), 'bound-bound')
+                # print(linelist[emtype].lambda_angstroms, lambda_rf)
+
+                if processtuple not in array_energysum_spectra:
+                    array_energysum_spectra[processtuple] = (
+                        np.zeros_like(array_lambda, dtype=np.float), np.zeros_like(array_lambda, dtype=np.float))
+
+                array_energysum_spectra[processtuple][0][xindex] += packet.e_rf
+
+            if getabsorption:
+                abstype = packet.absorption_type
+                if at >= 0:
+                    processtuple = (
+                        int(linelist[abstype].atomic_number), int(linelist[abstype].ionstage), 'bound-bound')
+
+                    if processtuple not in array_energysum_spectra:
+                        array_energysum_spectra[processtuple] = (
+                            np.zeros_like(array_lambda, dtype=np.float), np.zeros_like(array_lambda, dtype=np.float))
+
+                    array_energysum_spectra[processtuple][1][xindex] += packet.e_rf
+
+    array_flambda_emission_total = (
+        energysum_spectrum_emission_total / delta_lambda / (timehigh - timelow) /
+        4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read)
+
+    contribution_list = []
+    for ((atomic_number, ionstage, emissiontype),
+         (energysum_spec_emission, energysum_spec_absorption)) in array_energysum_spectra.items():
+        array_flambda_emission = (
+            energysum_spec_emission / delta_lambda / (timehigh - timelow) /
+            4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read)
+
+        array_flambda_absorption = (
+            energysum_spec_absorption / delta_lambda / (timehigh - timelow) /
+            4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read)
+
+        if emissiontype == 'bound-bound':
+            linelabel = at.get_ionstring(atomic_number, ionstage)
+        elif emissiontype != 'free-free':
+            linelabel = f'{at.get_ionstring(atomic_number, ionstage)} {emissiontype}'
+        else:
+            linelabel = f'{emissiontype}'
+
+        fluxcontribthisseries = (
+            abs(np.trapz(array_flambda_emission, x=array_lambda)) +
+            abs(np.trapz(array_flambda_absorption, x=array_lambda)))
+
+        contribution_list.append(
+            fluxcontributiontuple(fluxcontrib=fluxcontribthisseries, linelabel=linelabel,
+                                  array_flambda_emission=array_flambda_emission,
+                                  array_flambda_absorption=array_flambda_absorption,
+                                  color=None))
+
+    return contribution_list, array_flambda_emission_total, array_lambda
 
 
 def sort_and_reduce_flux_contribution_list(
@@ -288,8 +405,8 @@ def sort_and_reduce_flux_contribution_list(
         contribution_list = sorted(contribution_list_in, key=lambda x: -x.fluxcontrib)
 
     # combine the items past maxseriescount or not in manual list into a single item
-    remainder_flambda_emission = np.zeros_like(arraylambda_angstroms)
-    remainder_flambda_absorption = np.zeros_like(arraylambda_angstroms)
+    remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=np.float)
+    remainder_flambda_absorption = np.zeros_like(arraylambda_angstroms, dtype=np.float)
     remainder_fluxcontrib = 0
 
     contribution_list_out = []
@@ -495,9 +612,12 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
 
     axis.set_xlabel(r'Wavelength ($\AA$)')
     axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
-    if args.xmax - args.xmin < 11000:
+    if (args.xmax - args.xmin) < 11000:
         axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
         axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
+    elif (args.xmax - args.xmin) < 14000:
+        axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
+        axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=250))
 
     filenameout = str(Path(outputpath, 'plotspecstats.pdf'))
     fig.savefig(filenameout, format='pdf')
@@ -528,16 +648,9 @@ def plot_artis_spectrum(
         linelabel = linelabel.format(**locals())
 
     if from_packets:
-        # find any other packets files in the same directory
-        packetsfiles_thismodel = sorted(
-            glob.glob(str(Path(modelpath, 'packets00_*.out'))) +
-            glob.glob(str(Path(modelpath, 'packets00_*.out.gz'))))
-        if args.maxpacketfiles >= 0 and len(packetsfiles_thismodel) > args.maxpacketfiles:
-            print(f'Using on the first {args.maxpacketfiles} packet files out of {len(packetsfiles_thismodel)}')
-            packetsfiles_thismodel = packetsfiles_thismodel[:args.maxpacketfiles]
         spectrum = get_spectrum_from_packets(
-            packetsfiles_thismodel, args.timemin, args.timemax, lambda_min=args.xmin, lambda_max=args.xmax,
-            use_comovingframe=args.use_comovingframe)
+            modelpath, args.timemin, args.timemax, lambda_min=args.xmin, lambda_max=args.xmax,
+            use_comovingframe=args.use_comovingframe, maxpacketfiles=args.maxpacketfiles)
         make_spectrum_stat_plot(spectrum, linelabel, Path(args.outputfile).parent, args)
     else:
         spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc)
@@ -597,7 +710,6 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     """Plot the emission and absorption by ion for an ARTIS model."""
 
     arraynu = at.get_nu_grid(modelpath)
-    arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
@@ -606,8 +718,15 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
           f'(t={args.timemin:.3f}d to {args.timemax:.3f}d)')
 
-    contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
-        modelpath, filterfunc, timestepmin, timestepmax, getabsorption=args.showabsorption)
+    if args.frompackets:
+        (contribution_list, array_flambda_emission_total,
+         arraylambda_angstroms) = at.spectra.get_flux_contributions_from_packets(
+            modelpath, args.timemin, args.timemax, args.xmin, args.xmax,
+            getabsorption=args.showabsorption, maxpacketfiles=args.maxpacketfiles, filterfunc=filterfunc)
+    else:
+        arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
+        contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
+            modelpath, filterfunc, timestepmin, timestepmax, getabsorption=args.showabsorption)
 
     at.spectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
 
@@ -705,9 +824,12 @@ def make_plot(modelpaths, args):
         supxmax = xboundaries[index + 1]
         axis.set_xlim(xmin=supxmin, xmax=supxmax)
 
-        if supxmax - supxmin < 11000:
+        if (args.xmax - args.xmin) < 11000:
             axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
             axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
+        elif (args.xmax - args.xmin) < 14000:
+            axis.xaxis.set_major_locator(ticker.MultipleLocator(base=2000))
+            axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
 
     if args.showemission or args.showabsorption:
         if len(modelpaths) > 1:
@@ -769,8 +891,6 @@ def make_plot(modelpaths, args):
         args.outputfile = args.outputfile / defaultoutputfile
 
     filenameout = str(args.outputfile).format(time_days_min=args.timemin, time_days_max=args.timemax)
-    if args.frompackets:
-        filenameout = filenameout.replace('.pdf', '_frompackets.pdf')
     fig.savefig(Path(filenameout).open('wb'), format='pdf')
     # plt.show()
     print(f'Saved {filenameout}')

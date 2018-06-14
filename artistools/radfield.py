@@ -294,7 +294,7 @@ def plot_celltimestep(
 
     axis.set_xlabel(r'Wavelength ($\AA$)')
     axis.set_ylabel(r'J$_\lambda$ [{}erg/s/cm$^2$/$\AA$]')
-    axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
+    axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
     axis.set_xlim(xmin=xmin, xmax=xmax)
     axis.set_ylim(ymin=0.0, ymax=ymax)
     axis.yaxis.set_major_formatter(at.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))

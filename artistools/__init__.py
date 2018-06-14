@@ -614,10 +614,11 @@ def firstexisting(filelist, path=Path('.')):
     raise FileNotFoundError(f'None of these files exist: {", ".join([str(x) for x in fullpaths])}')
 
 
-def get_linelist(modelpath):
+@lru_cache(maxsize=2)
+def get_linelist(modelpath, returntype='dict'):
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     with opengzip(Path(modelpath, 'linestat.out'), 'rt') as linestatfile:
-        lambda_angstroms = [float(wl) * 1e-8 for wl in linestatfile.readline().split()]
+        lambda_angstroms = [float(wl) * 1e+8 for wl in linestatfile.readline().split()]
         nlines = len(lambda_angstroms)
 
         atomic_numbers = [int(z) for z in linestatfile.readline().split()]
@@ -631,15 +632,25 @@ def get_linelist(modelpath):
         lower_levels = [int(levelplusone) - 1 for levelplusone in linestatfile.readline().split()]
         assert len(lower_levels) == nlines
 
-    dflinelist = pd.DataFrame({
-        'lambda_angstroms': lambda_angstroms,
-        'atomic_number': atomic_numbers,
-        'ionstage': ion_stages,
-        'upperlevelindex': upper_levels,
-        'lowerlevelindex': lower_levels,
-    })
+    if returntype == 'dict':
+        linetuple = namedtuple('line', 'lambda_angstroms atomic_number ionstage upperlevelindex lowerlevelindex')
+        linelistdict = {
+            index: linetuple(lambda_a, Z, ionstage, upper, lower) for index, lambda_a, Z, ionstage, upper, lower
+            in zip(range(nlines), lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels)}
+        return linelistdict
+    elif returntype == 'dataframe':
+        # considering our standard lineline is about 1.5 million lines,
+        # using a dataframe make the lookup process very slow
+        dflinelist = pd.DataFrame({
+            'lambda_angstroms': lambda_angstroms,
+            'atomic_number': atomic_numbers,
+            'ionstage': ion_stages,
+            'upperlevelindex': upper_levels,
+            'lowerlevelindex': lower_levels,
+        })
+        dflinelist.index.name = 'linelistindex'
 
-    return dflinelist
+        return dflinelist
 
 
 @lru_cache(maxsize=8)
