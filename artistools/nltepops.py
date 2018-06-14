@@ -268,7 +268,7 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
                         color = 'C1'
                         marker = '^'
                     ax.plot(levelnums, depcoeffs, linewidth=1.5, color=color,
-                            label=f'{ionstr} Chianti NLTE{bbstr}', linestyle='None', marker=marker, zorder=-1)
+                            label=f'{ionstr} CHIANTI NLTE{bbstr}', linestyle='None', marker=marker, zorder=-1)
 
         if annotatelines and atomic_number == 28 and ion_stage == 2:
             annotate_emission_line(ax=ax, y=0.04, upperlevel=6, lowerlevel=0, label=r'$\lambda$7378')

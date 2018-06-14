@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 # import math
+import glob
 from pathlib import Path
 
 # import matplotlib.patches as mpatches
@@ -63,6 +64,20 @@ def readfile(packetsfile, usecols, filehandle=None, filesize=-1):
             dfpackets[col] = float('NaN')
 
     return dfpackets
+
+
+def get_packetsfiles(modelpath, maxpacketfiles=-1):
+    packetsfiles = sorted(
+        glob.glob(str(Path(modelpath, 'packets00_*.out'))) +
+        glob.glob(str(Path(modelpath, 'packets00_*.out.gz'))) +
+        glob.glob(str(Path(modelpath, 'packets', 'packets00_*.out'))) +
+        glob.glob(str(Path(modelpath, 'packets', 'packets00_*.out.gz')))
+    )
+    if maxpacketfiles >= 0 and len(packetsfiles) > maxpacketfiles:
+        print(f'Using only the first {maxpacketfiles} packet files out of {len(packetsfiles)}')
+        packetsfiles = packetsfiles[:maxpacketfiles]
+
+    return packetsfiles
 
 
 def t_arrive(packet):
