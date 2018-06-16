@@ -255,6 +255,8 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None):
     else:
         match_timestep = tuple(timestep) if hasattr(timestep, '__iter__') else (timestep,)
 
+    # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
+
     modeldata, _ = at.get_modeldata(modelpath)
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex)

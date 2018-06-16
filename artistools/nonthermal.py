@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 import argparse
-import glob
+# import glob
 # import math
-import re
+# import re
 import os
 from collections import namedtuple
+from functools import lru_cache
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -16,6 +17,44 @@ import artistools as at
 
 DEFAULTSPECPATH = '../example_run/spec.out'
 defaultoutputfile = 'plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf'
+
+
+@lru_cache(maxsize=4)
+def read_files(modelpath, timestep=-1, modelgridindex=-1):
+    """Read ARTIS -thermal spectrum data into a pandas DataFrame."""
+    nonthermaldata = pd.DataFrame()
+
+    mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
+    for folderpath in at.get_runfolders(modelpath, timestep=timestep):
+        for mpirank in mpiranklist:
+            nonthermalfile = f'nonthermalspec_{mpirank:04d}.out'
+            filepath = Path(folderpath, nonthermalfile)
+            if not filepath.is_file():
+                filepath = Path(folderpath, nonthermalfile + '.gz')
+                if not filepath.is_file():
+                    print(f'Warning: Could not find {filepath.relative_to(modelpath.parent)}')
+                    continue
+
+            if modelgridindex > -1:
+                filesize = Path(filepath).stat().st_size / 1024 / 1024
+                print(f'Reading {Path(filepath).relative_to(modelpath.parent)} ({filesize:.2f} MiB)')
+
+            nonthermaldata_thisfile = pd.read_csv(filepath, delim_whitespace=True, error_bad_lines=False)
+            # radfielddata_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
+
+            if timestep >= 0:
+                nonthermaldata_thisfile.query('timestep==@timestep', inplace=True)
+
+            if modelgridindex >= 0:
+                nonthermaldata_thisfile.query('modelgridindex==@modelgridindex', inplace=True)
+
+            if not nonthermaldata_thisfile.empty:
+                if timestep >= 0 and modelgridindex >= 0:
+                    return nonthermaldata_thisfile
+                else:
+                    nonthermaldata = nonthermaldata.append(nonthermaldata_thisfile.copy(), ignore_index=True)
+
+    return nonthermaldata
 
 
 def ar_xs(energy_ev, ionpot_ev, A, B, C, D):
@@ -43,7 +82,8 @@ def get_arxs_array_shell(arr_enev, row):
         if u <= 1:
             ar_xs_array[index] = 0.
         else:
-            ar_xs_array[index] = 1e-14 * (A * (1 - 1 / u) + B * pow((1 - 1 / u), 2) + C * np.log(u) + D * np.log(u) / u) / (u * pow(ionpot_ev, 2))
+            ar_xs_array[index] = (1e-14 * (A * (1 - 1 / u) + B * pow((1 - 1 / u), 2) +
+                                           C * np.log(u) + D * np.log(u) / u) / (u * pow(ionpot_ev, 2)))
 
     return ar_xs_array
 
@@ -53,7 +93,8 @@ def get_arxs_array(arr_enev, dfcollion, Z, ionstage):
     dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage')
     print(dfcollion_thision)
     for index, row in dfcollion_thision.iterrows():
-        ar_xs_array = np.add(ar_xs_array, np.array([ar_xs(energy_ev, row.ionpot_ev, row.A, row.B, row.C, row.D) for energy_ev in arr_enev]))
+        ar_xs_array = np.add(ar_xs_array, np.array(
+            [ar_xs(energy_ev, row.ionpot_ev, row.A, row.B, row.C, row.D) for energy_ev in arr_enev]))
     return ar_xs_array
 
 
@@ -81,7 +122,8 @@ def make_xs_plot(axis, nonthermaldata, timestep, outputfile, args):
 
     axis.set_ylabel(r'cross section (cm2)')
 
-    axis.legend(loc='upper center', handlelength=2, frameon=False, numpoints=1, prop={'size': 13})
+    if not args.nolegend:
+        axis.legend(loc='upper center', handlelength=2, frameon=False, numpoints=1, prop={'size': 13})
 
 
 def make_plot(nonthermaldata, timestep, outputfile, args):
@@ -108,7 +150,7 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
 
     # nonthermaldata.plot(x='energy_ev', y='y', linewidth=1.5, ax=axis, color='blue', legend=False)
     axes[0].plot(nonthermaldata['energy_ev'], np.log10(nonthermaldata['y']),
-              linewidth=2.0, color='black', label=modelname)
+                 linewidth=2.0, color='black', label=modelname)
     axes[0].set_ylabel(r'log [y (e$^-$ / cm$^2$ / s / eV)]')
 
     if args.xsplot:
@@ -124,7 +166,8 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
             figure_title += f' ({time_days:.2f}d)'
         axes[0].set_title(figure_title, fontsize=13)
 
-    axes[0].legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
+    if not args.nolegend:
+        axes[0].legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
 
     axes[-1].set_xlabel(r'Energy (eV)')
     # axis.yaxis.set_minor_locator(ticker.MultipleLocator(base=0.1))
@@ -172,6 +215,9 @@ def addargs(parser):
     parser.add_argument('--notitle', action='store_true',
                         help='Suppress the top title from the plot')
 
+    parser.add_argument('--nolegend', action='store_true',
+                        help='Suppress the legend from the plot')
+
     parser.add_argument('--kf1992spec', action='store_true',
                         help='Show the pure-oxygen result form Figure 1 of Kozma & Fransson 1992')
 
@@ -200,42 +246,19 @@ def main(args=None, argsraw=None, **kwargs):
     if args.listtimesteps:
         at.showtimesteptimes()
     else:
-        nonthermaldata = None
-        nonthermal_files = (
-            glob.glob(os.path.join(args.modelpath, 'nonthermalspec_????.out'), recursive=True) +
-            glob.glob(os.path.join(args.modelpath, 'nonthermalspec_????.out.gz'), recursive=True) +
-            glob.glob(os.path.join(args.modelpath, '*/nonthermalspec_????.out'), recursive=True) +
-            glob.glob(os.path.join(args.modelpath, '*/nonthermalspec_????.out.gz'), recursive=True))
-
-        for nonthermal_file in nonthermal_files:
-            filerank = int(re.findall('[0-9]+', os.path.basename(nonthermal_file))[-1])
-
-            if filerank > args.modelgridindex:
-                continue
-            print(f'Loading {nonthermal_file}...')
-
-            nonthermaldata_thisfile = pd.read_csv(nonthermal_file, delim_whitespace=True, error_bad_lines=False)
-            nonthermaldata_thisfile.query('modelgridindex==@args.modelgridindex', inplace=True)
-            if not nonthermaldata_thisfile.empty:
-                if nonthermaldata is None:
-                    nonthermaldata = nonthermaldata_thisfile.copy()
-                else:
-                    nonthermaldata.append(nonthermaldata_thisfile, ignore_index=True)
-
-        if args.timestep < 0:
-            timestepmin = max(nonthermaldata['timestep'])
-        else:
-            timestepmin = args.timestep
+        timestepmin = args.timestep
 
         if not args.timestepmax or args.timestepmax < 0:
             timestepmax = timestepmin + 1
         else:
             timestepmax = args.timestepmax
 
-        list_timesteps = range(timestepmin, timestepmax)
+        list_timesteps = tuple(range(timestepmin, timestepmax))
 
         for timestep in list_timesteps:
-            nonthermaldata_currenttimestep = nonthermaldata.query('timestep==@timestep')
+            nonthermaldata_currenttimestep = read_files(
+                modelpath=Path(args.modelpath),
+                modelgridindex=args.modelgridindex, timestep=timestep)
 
             if not nonthermaldata_currenttimestep.empty:
                 outputfile = args.outputfile.format(args.modelgridindex, timestep)
