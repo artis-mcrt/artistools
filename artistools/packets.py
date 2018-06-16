@@ -30,17 +30,15 @@ types = {
     10: 'TYPE_GAMMA',
 }
 
+type_ids = dict((v, k) for k, v in types.items())
 
-def readfile(packetsfile, usecols, filehandle=None, filesize=-1):
-    """Read a packet file into a pandas DataFrame.
 
-    if a filehandle is passed, this will be used instead of the file path. filesize is in bytes"""
-    if filesize < 0:
-        filesize = Path(packetsfile).stat().st_size / 1024 / 1024
+def readfile(packetsfile, usecols, only_escaped_rpkts=True):
+    """Read a packet file into a pandas DataFrame."""
+    filesize = Path(packetsfile).stat().st_size / 1024 / 1024
 
-    print(f'Reading {packetsfile} ({filesize:.2f} MiB)', end='')
-    inputcolumncount = len(pd.read_csv(
-        filehandle if filehandle else packetsfile, nrows=1, delim_whitespace=True, header=None).columns)
+    print(f'Reading {packetsfile} ({filesize:.1f} MiB)', end='')
+    inputcolumncount = len(pd.read_csv(packetsfile, nrows=1, delim_whitespace=True, header=None).columns)
     if inputcolumncount < 3:
         print("\nWARNING: packets file has no columns!")
         print(open(packetsfile, "r").readlines())
@@ -50,14 +48,21 @@ def readfile(packetsfile, usecols, filehandle=None, filesize=-1):
     usecols_nodata = [n for n in usecols if columns.index(n) >= inputcolumncount]
     usecols_actual = [n for n in usecols if columns.index(n) < inputcolumncount]
     dfpackets = pd.read_csv(
-        filehandle if filehandle else packetsfile,
-        delim_whitespace=True,
-        names=columns[:inputcolumncount],
-        header=None,
-        usecols=usecols_actual)
-    dfpackets['type'] = dfpackets['type_id'].map(lambda x: types.get(x, x))
-    dfpackets['escape_type'] = dfpackets['escape_type_id'].map(lambda x: types.get(x, x))
-    print(f' ({len(dfpackets):.1e} packets)')
+        packetsfile, delim_whitespace=True,
+        names=columns[:inputcolumncount], header=None, usecols=usecols_actual)
+
+    print(f' ({len(dfpackets):.1e} packets', end='')
+
+    if only_escaped_rpkts:
+        dfpackets.query(f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids["TYPE_RPKT"]}',
+                        inplace=True)
+        print(f', {len(dfpackets)} escaped r-pkts)')
+    else:
+        print(')')
+
+    # dfpackets['type'] = dfpackets['type_id'].map(lambda x: types.get(x, x))
+    # dfpackets['escape_type'] = dfpackets['escape_type_id'].map(lambda x: types.get(x, x))
+
     if usecols_nodata:
         print(f'WARNING: no data in packets file for columns: {usecols_nodata}')
         for col in usecols_nodata:
@@ -66,14 +71,14 @@ def readfile(packetsfile, usecols, filehandle=None, filesize=-1):
     return dfpackets
 
 
-def get_packetsfiles(modelpath, maxpacketfiles=-1):
+def get_packetsfiles(modelpath, maxpacketfiles=None):
     packetsfiles = sorted(
         glob.glob(str(Path(modelpath, 'packets00_*.out'))) +
         glob.glob(str(Path(modelpath, 'packets00_*.out.gz'))) +
         glob.glob(str(Path(modelpath, 'packets', 'packets00_*.out'))) +
         glob.glob(str(Path(modelpath, 'packets', 'packets00_*.out.gz')))
     )
-    if maxpacketfiles >= 0 and len(packetsfiles) > maxpacketfiles:
+    if maxpacketfiles is not None and maxpacketfiles > 0 and len(packetsfiles) > maxpacketfiles:
         print(f'Using only the first {maxpacketfiles} packet files out of {len(packetsfiles)}')
         packetsfiles = packetsfiles[:maxpacketfiles]
 
@@ -81,9 +86,7 @@ def get_packetsfiles(modelpath, maxpacketfiles=-1):
 
 
 def t_arrive(packet):
-    """
-        time in seconds
-    """
+    """time in seconds"""
     return (packet['escape_time'] -
             (packet['posx'] * packet['dirx'] + packet['posy'] * packet['diry']
              + packet['posz'] * packet['dirz']) / const.c.to('cm/s').value)
