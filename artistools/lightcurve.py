@@ -53,11 +53,10 @@ def get_from_packets(modelpath, lcpath, escape_type='TYPE_RPKT'):
     for packetsfile in packetsfiles:
         dfpackets = at.packets.readfile(packetsfile, usecols=[
             'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
-            'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'])
+            'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'],
+            only_escaped_rpkts=True)
 
-        dfpackets.query('type == "TYPE_ESCAPE" and escape_type == @escape_type', inplace=True)
-
-        print(f"{len(dfpackets)} {escape_type} packets escaped")
+        print(f"{len(dfpackets)} {escape_type} r-packets escaped")
 
         dfpackets['t_arrive_d'] = dfpackets.apply(lambda packet: at.packets.t_arrive(packet) * u.s.to('day'), axis=1)
 
