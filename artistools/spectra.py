@@ -94,7 +94,6 @@ def get_spectrum_from_packets(
         if value > array[2][xindex] or array[2][xindex] == 0:
             array[2][xindex] = value
 
-    linelist = at.get_linelist(modelpath)
     array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
     array_energysum = np.zeros_like(array_lambda, dtype=np.float)  # total packet energy sum of each bin
     array_energysum_positron = np.zeros_like(array_lambda, dtype=np.float)  # total packet energy sum of each bin
@@ -132,6 +131,7 @@ def get_spectrum_from_packets(
         for _, packet in dfpackets.iterrows():
             if packet.true_emission_type < 0:
                 continue
+            # linelist = at.get_linelist(modelpath)
             # transition = linelist[packet.true_emission_type]
             # if transition.upperlevelindex <= 80:
             #     continue
@@ -290,6 +290,48 @@ def get_flux_contributions_from_packets(
         modelpath, timelowerdays, timeupperdays, lambda_min, lambda_max, delta_lambda=30,
         getabsorption=True, maxpacketfiles=None, filterfunc=None, groupby='ion',
         use_comovingframe=False):
+
+    def get_emprocesslabel(emtype):
+        if emtype >= 0:
+            if groupby == 'line':
+                line = linelist[emtype]
+                label = (f'{at.get_ionstring(line.atomic_number, line.ionstage)} '
+                         f'{line.lambda_angstroms:.0f} '
+                         f'{line.upperlevelindex},{line.lowerlevelindex}')
+            else:
+                line = linelist[emtype]
+                label = f'{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound'
+        elif emtype == 9999999:
+            label = f'free-free'
+        else:
+            bflist = at.get_bflist(modelpath)
+            (atomic_number, ionstage, level) = bflist[-emtype - 1]
+            if groupby == 'line':
+                label = f'{at.get_ionstring(atomic_number, ionstage)} bound-free {level}'
+            else:
+                label = f'{at.get_ionstring(atomic_number, ionstage)} bound-free'
+
+        return label
+
+    def get_absprocesslabel(abstype, linelist):
+        if abstype >= 0:
+            line = linelist[emtype]
+            if groupby == 'line':
+                label = (
+                    f'{at.get_ionstring(line.atomic_number, line.ionstage)} '
+                    f'{line.lambda_angstroms:.0f} '
+                    f'{line.upperlevelindex},{line.lowerlevelindex}')
+            else:
+                label = f'{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound'
+        elif abstype == -1:
+            label = 'free-free'
+        elif abstype == -2:
+            label = 'bound-free'
+        else:
+            label = '? other absorp.'
+
+        return label
+
     assert groupby in [None, 'ion', 'line']
     array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
 
@@ -335,7 +377,7 @@ def get_flux_contributions_from_packets(
              '@timelow < escape_time * @betafactor < @timehigh'),
             inplace=True)
 
-        print(f"  {len(dfpackets)} escaped r-packets with matching nu and arrival time")
+        print(f"  {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges")
         for _, packet in dfpackets.iterrows():
             lambda_rf = c_ang_s / packet.nu_rf
 
@@ -349,86 +391,40 @@ def get_flux_contributions_from_packets(
             emtype = packet.true_emission_type
             # if emtype >= 0 and linelist[emtype].upperlevelindex <= 80:
             #     continue
-            if emtype >= 0 or groupby == 'line':
-                if groupby == 'line':
-                    emprocesskey = emtype
-                else:
-                    if emtype >= 0:
-                        processtype = 'bound-bound'
-                    elif emtype == -9999999:
-                        processtype = 'free-free'
-                    else:
-                        processtype = 'bound-free'
+            emprocesskey = get_emprocesslabel(emtype)
 
-                    emprocesskey = (int(linelist[emtype].atomic_number), int(linelist[emtype].ionstage), processtype)
+            if emprocesskey not in array_energysum_spectra:
+                array_energysum_spectra[emprocesskey] = (
+                    np.zeros_like(array_lambda, dtype=np.float), np.zeros_like(array_lambda, dtype=np.float))
 
-                # print(linelist[emtype].lambda_angstroms, lambda_rf)
-
-                if emprocesskey not in array_energysum_spectra:
-                    array_energysum_spectra[emprocesskey] = (
-                        np.zeros_like(array_lambda, dtype=np.float), np.zeros_like(array_lambda, dtype=np.float))
-
-                array_energysum_spectra[emprocesskey][0][xindex] += pkt_en
+            array_energysum_spectra[emprocesskey][0][xindex] += pkt_en
 
             if getabsorption:
                 abstype = packet.absorption_type
-                if abstype >= 0 or groupby == 'line':
-                    if groupby == 'line':
-                        absprocesskey = abstype
-                    else:
-                        if abstype >= 0:
-                            processtype = 'bound-bound'
-                        elif abstype == -1:
-                            processtype = 'free-free'
-                        elif abstype == -2:
-                            processtype = 'bound-free'
-                        else:
-                            processtype = 'other'
+                absprocesskey = get_absprocesslabel(abstype)
 
-                        absprocesskey = (
-                            int(linelist[emtype].atomic_number), int(linelist[emtype].ionstage), processtype)
+                if absprocesskey not in array_energysum_spectra:
+                    array_energysum_spectra[absprocesskey] = (
+                        np.zeros_like(array_lambda, dtype=np.float), np.zeros_like(array_lambda, dtype=np.float))
 
-                    if absprocesskey not in array_energysum_spectra:
-                        array_energysum_spectra[absprocesskey] = (
-                            np.zeros_like(array_lambda, dtype=np.float), np.zeros_like(array_lambda, dtype=np.float))
-
-                    array_energysum_spectra[absprocesskey][1][xindex] += pkt_en
+                array_energysum_spectra[absprocesskey][1][xindex] += pkt_en
 
     normfactor = (1. / delta_lambda / (timehigh - timelow) / 4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read)
 
     array_flambda_emission_total = energysum_spectrum_emission_total * normfactor
 
     contribution_list = []
-    for (groupkey,
+    for (groupname,
          (energysum_spec_emission, energysum_spec_absorption)) in array_energysum_spectra.items():
         array_flambda_emission = energysum_spec_emission * normfactor
 
         array_flambda_absorption = energysum_spec_absorption * normfactor
 
-        if groupby == 'line':
-            if groupkey >= 0:
-                line = linelist[groupkey]
-                linelabel = (
-                    f'{at.get_ionstring(line.atomic_number, line.ionstage)} '
-                    f'{line.lambda_angstroms:.0f} '
-                    f'{line.upperlevelindex},{line.lowerlevelindex}'
-                )
-            else:
-                linelabel = f'{groupkey}'
-
-        else:
-            atomic_number, ionstage, emissiontype = groupkey
-
-            if emissiontype.endswith('bound-bound'):
-                linelabel = f'{at.get_ionstring(atomic_number, ionstage)}'
-            elif emissiontype != 'free-free':
-                linelabel = f'{at.get_ionstring(atomic_number, ionstage)} {emissiontype}'
-            else:
-                linelabel = f'{emissiontype}'
-
         fluxcontribthisseries = (
             abs(np.trapz(array_flambda_emission, x=array_lambda)) +
             abs(np.trapz(array_flambda_absorption, x=array_lambda)))
+
+        linelabel = groupname.rstrip(' bound-bound')
 
         contribution_list.append(
             fluxcontributiontuple(fluxcontrib=fluxcontribthisseries, linelabel=linelabel,

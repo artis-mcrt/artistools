@@ -615,6 +615,22 @@ def firstexisting(filelist, path=Path('.')):
 
 
 @lru_cache(maxsize=2)
+def get_bflist(modelpath, returntype='dict'):
+    compositiondata = get_composition_data(modelpath)
+    bflist = {}
+    with opengzip(Path(modelpath, 'bflist.dat'), 'rt') as filein:
+        bflistcount = int(filein.readline)
+
+        for k in range(bflistcount):
+            i, elementindex, ionindex, level = [int(x) for x in filein.readline().split()]
+            atomic_number = compositiondata.Z[elementindex]
+            ion_stage = ionindex + compositiondata.lowermost_ionstage[elementindex]
+            bflist[i] = (atomic_number, ion_stage, level)
+
+    return bflist
+
+
+@lru_cache(maxsize=2)
 def get_linelist(modelpath, returntype='dict'):
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     with opengzip(Path(modelpath, 'linestat.out'), 'rt') as linestatfile:
