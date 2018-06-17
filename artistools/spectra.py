@@ -305,33 +305,31 @@ def get_flux_contributions_from_packets(
             return f'free-free'
         else:
             bflist = at.get_bflist(modelpath)
-            if -emtype - 1 in bflist:
-                (atomic_number, ionstage, level) = bflist[-emtype - 1]
+            bfindex = -emtype - 1
+            if bfindex in bflist:
+                (atomic_number, ionstage, level) = bflist[bfindex]
                 if groupby == 'line':
                     return f'{at.get_ionstring(atomic_number, ionstage)} bound-free {level}'
                 else:
                     return f'{at.get_ionstring(atomic_number, ionstage)} bound-free'
             else:
-                return False
+                return f'? bound-free (bfindex={bfindex})'
 
     def get_absprocesslabel(abstype, linelist):
         if abstype >= 0:
             line = linelist[emtype]
             if groupby == 'line':
-                label = (
-                    f'{at.get_ionstring(line.atomic_number, line.ionstage)} '
-                    f'{line.lambda_angstroms:.0f} '
-                    f'{line.upperlevelindex},{line.lowerlevelindex}')
+                return (f'{at.get_ionstring(line.atomic_number, line.ionstage)} '
+                        f'{line.lambda_angstroms:.0f} '
+                        f'{line.upperlevelindex},{line.lowerlevelindex}')
             else:
-                label = f'{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound'
+                return f'{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound'
         elif abstype == -1:
-            label = 'free-free'
+            return 'free-free'
         elif abstype == -2:
-            label = 'bound-free'
+            return 'bound-free'
         else:
-            label = '? other absorp.'
-
-        return label
+            return '? other absorp.'
 
     assert groupby in [None, 'ion', 'line']
     array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
@@ -394,7 +392,7 @@ def get_flux_contributions_from_packets(
             #     continue
             emprocesskey = get_emprocesslabel(emtype)
 
-            if emprocesskey and emprocesskey not in array_energysum_spectra:
+            if emprocesskey not in array_energysum_spectra:
                 array_energysum_spectra[emprocesskey] = (
                     np.zeros_like(array_lambda, dtype=np.float), np.zeros_like(array_lambda, dtype=np.float))
 
@@ -797,6 +795,15 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
                          linewidth=1.5, color='black', zorder=100)
         linecolor = line[0].get_color()
         plotobjects.append(mpatches.Patch(color=linecolor))
+
+    for x in contributions_sorted_reduced:
+        integemiss = abs(np.trapz(x.array_flambda_emission, x=arraylambda_angstroms))
+        if args.showabsorption:
+            intabsorp = abs(np.trapz(-x.array_flambda_absorption, x=arraylambda_angstroms))
+            print(f'{x.fluxcontrib:.1e}, emission {integemiss:.1e}, '
+                  f"absorption {intabsorp:.1e} [erg/s/cm^2]: '{x.linelabel}'")
+        else:
+            print(f"{integemiss:.1e} erg/s/cm^2: '{x.linelabel}'")
 
     if args.nostack:
         for x in contributions_sorted_reduced:
