@@ -619,7 +619,7 @@ def get_bflist(modelpath, returntype='dict'):
     compositiondata = get_composition_data(modelpath)
     bflist = {}
     with opengzip(Path(modelpath, 'bflist.dat'), 'rt') as filein:
-        bflistcount = int(filein.readline)
+        bflistcount = int(filein.readline())
 
         for k in range(bflistcount):
             i, elementindex, ionindex, level = [int(x) for x in filein.readline().split()]
