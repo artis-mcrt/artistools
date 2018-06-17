@@ -487,27 +487,6 @@ def print_integrated_flux(arr_f_lambda, arr_lambda_angstroms, distance_megaparse
     # print(f'(L={luminosity.to("Lsun"):.3e})')
 
 
-def plot_reference_spectra(axes, plotobjects, plotobjectlabels, args, flambdafilterfunc=None, scale_to_peak=None,
-                           **plotkwargs):
-    """Plot reference spectra listed in args.refspecfiles."""
-    if args.refspecfiles is not None:
-        if isinstance(args.refspecfiles, str):
-            args.refspecfiles = [args.refspecfiles]
-        for index, filename in enumerate(args.refspecfiles):
-            if index < len(args.refspeccolors):
-                plotkwargs['color'] = args.refspeccolors[index]
-
-            for axindex, axis in enumerate(axes):
-                supxmin, supxmax = axis.get_xlim()
-                plotobj, serieslabel = plot_reference_spectrum(
-                    filename, axis, supxmin, supxmax,
-                    flambdafilterfunc, scale_to_peak, scaletoreftime=args.scaletoreftime, **plotkwargs)
-
-                if axindex == 0:
-                    plotobjects.append(plotobj)
-                    plotobjectlabels.append(serieslabel)
-
-
 @lru_cache(maxsize=4)
 def load_yaml_path(folderpath):
     yamlpath = Path(folderpath, 'metadata.yml')
@@ -599,9 +578,6 @@ def plot_reference_spectrum(
         ycolumnname = 'f_lambda_scaled'
     else:
         ycolumnname = 'f_lambda'
-
-    if 'linewidth' not in plotkwargs and 'lw' not in plotkwargs:
-        plotkwargs['linewidth'] = 0.7
 
     lineplot = specdata.plot(x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None, **plotkwargs)
 
@@ -729,28 +705,37 @@ def plot_artis_spectrum(
             label=linelabel if index == 0 else None, **plotkwargs)
 
 
-def make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=None):
+def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
     """Plot reference spectra and ARTIS spectra."""
-    if not args.refspecafterartis:
-        plot_reference_spectra(axes, [], [], args, scale_to_peak=scale_to_peak, flambdafilterfunc=filterfunc)
-
-    for index, modelpath in enumerate(modelpaths):
+    artisindex = 0
+    refspecindex = 0
+    for specpath in speclist:
         plotkwargs = {}
-        # plotkwargs['dashes'] = dashesList[index]
-        # plotkwargs['dash_capstyle'] = dash_capstyleList[index]
-        plotkwargs['linestyle'] = '--' if (int(index / 7) % 2) else '-'
-        plotkwargs['linewidth'] = 1.3  # - (0.1 * index)
-        plotkwargs['color'] = args.modelcolors[index]
         plotkwargs['alpha'] = 0.9
+        if Path(specpath).is_dir() or Path(specpath).name == 'spec.out':
+            # plotkwargs['dashes'] = dashesList[artisindex]
+            # plotkwargs['dash_capstyle'] = dash_capstyleList[artisindex]
+            plotkwargs['linewidth'] = 1.3  # - (0.1 * artisindex)
+            plotkwargs['linestyle'] = '--' if (int(artisindex / 7) % 2) else '-'
+            plotkwargs['color'] = args.modelcolors[artisindex]
 
-        linelabel = args.modellabels[index] if index < len(args.modellabels) else None
+            linelabel = args.modellabels[artisindex] if artisindex < len(args.modellabels) else None
 
-        plot_artis_spectrum(axes, modelpath, linelabel=linelabel, args=args,
-                            scale_to_peak=scale_to_peak, from_packets=args.frompackets,
-                            filterfunc=filterfunc, **plotkwargs)
+            plot_artis_spectrum(axes, specpath, linelabel=linelabel, args=args,
+                                scale_to_peak=scale_to_peak, from_packets=args.frompackets,
+                                filterfunc=filterfunc, **plotkwargs)
+            artisindex += 1
+        else:
+            plotkwargs['linewidth'] = 1.
+            if refspecindex < len(args.refspeccolors):
+                plotkwargs['color'] = args.refspeccolors[refspecindex]
 
-    if args.refspecafterartis:
-        plot_reference_spectra(axes, [], [], args, scale_to_peak=scale_to_peak, flambdafilterfunc=filterfunc)
+            for axindex, axis in enumerate(axes):
+                supxmin, supxmax = axis.get_xlim()
+                plot_reference_spectrum(
+                    specpath, axis, supxmin, supxmax,
+                    filterfunc, scale_to_peak, scaletoreftime=args.scaletoreftime, **plotkwargs)
+            refspecindex += 1
 
     for axis in axes:
         axis.set_ylim(ymin=0.)
@@ -842,8 +827,22 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     plotobjectlabels.extend(list([x.linelabel for x in contributions_sorted_reduced]))
     print(plotobjectlabels)
     # print(len(plotobjectlabels), len(plotobjects))
-    plot_reference_spectra([axis], plotobjects, plotobjectlabels, args, flambdafilterfunc=filterfunc,
-                           scale_to_peak=scale_to_peak, linewidth=0.5)
+
+    if args.refspecfiles is not None:
+        plotkwargs = {}
+        if isinstance(args.refspecfiles, str):
+            args.refspecfiles = [args.refspecfiles]
+        for index, filename in enumerate(args.refspecfiles):
+            if index < len(args.refspeccolors):
+                plotkwargs['color'] = args.refspeccolors[index]
+
+            supxmin, supxmax = axis.get_xlim()
+            plotobj, serieslabel = plot_reference_spectrum(
+                filename, axis, supxmin, supxmax,
+                filterfunc, scale_to_peak, scaletoreftime=args.scaletoreftime, **plotkwargs)
+
+            plotobjects.append(plotobj)
+            plotobjectlabels.append(serieslabel)
 
     axis.axhline(color='white', linewidth=0.5)
 
@@ -907,7 +906,17 @@ def make_plot(modelpaths, args):
         legendncol = 1
         defaultoutputfile = Path("plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
-        make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=scale_to_peak)
+        if args.refspecfiles is not None:
+            if isinstance(args.refspecfiles, str):
+                args.refspecfiles = [args.refspecfiles]
+        else:
+            args.refspecfiles = []
+
+        if not args.refspecafterartis:
+            speclist = args.refspecfiles + modelpaths
+        else:
+            speclist = modelpaths + args.refspecfiles
+        make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=scale_to_peak)
         plotobjects, plotobjectlabels = axes[0].get_legend_handles_labels()
 
     if not args.nolegend:
