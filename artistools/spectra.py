@@ -801,28 +801,36 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
 
     if args.nostack:
         for x in contributions_sorted_reduced:
-            emissioncomponentplot = axis.plot(
-                arraylambda_angstroms, x.array_flambda_emission * scalefactor, linewidth=1, color=x.color)
+            if args.showemission:
+                emissioncomponentplot = axis.plot(
+                    arraylambda_angstroms, x.array_flambda_emission * scalefactor, linewidth=1, color=x.color)
 
-            linecolor = emissioncomponentplot[0].get_color()
+                linecolor = emissioncomponentplot[0].get_color()
+            else:
+                linecolor = None
             plotobjects.append(mpatches.Patch(color=linecolor))
 
             if args.showabsorption:
                 axis.plot(arraylambda_angstroms, -x.array_flambda_absorption * scalefactor,
                           color=linecolor, linewidth=1, alpha=0.6)
     else:
-        stackplot = axis.stackplot(
-            arraylambda_angstroms,
-            [x.array_flambda_emission * scalefactor for x in contributions_sorted_reduced],
-            colors=[x.color for x in contributions_sorted_reduced], linewidth=0)
-        plotobjects.extend(stackplot)
+        if args.showemission:
+            stackplot = axis.stackplot(
+                arraylambda_angstroms,
+                [x.array_flambda_emission * scalefactor for x in contributions_sorted_reduced],
+                colors=[x.color for x in contributions_sorted_reduced], linewidth=0)
+            plotobjects.extend(stackplot)
+            facecolors = [p.get_facecolor()[0] for p in stackplot]
+        else:
+            facecolors = [x.color for x in contributions_sorted_reduced]
 
         if args.showabsorption:
-            facecolors = [p.get_facecolor()[0] for p in stackplot]
-            axis.stackplot(
+            absstackplot = axis.stackplot(
                 arraylambda_angstroms,
                 [-x.array_flambda_absorption * scalefactor for x in contributions_sorted_reduced],
                 colors=facecolors, linewidth=0)
+            if not args.showemission:
+                plotobjects.extend(absstackplot)
 
     plotobjectlabels.extend(list([x.linelabel for x in contributions_sorted_reduced]))
     print(plotobjectlabels)
@@ -830,8 +838,6 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
 
     if args.refspecfiles is not None:
         plotkwargs = {}
-        if isinstance(args.refspecfiles, str):
-            args.refspecfiles = [args.refspecfiles]
         for index, filename in enumerate(args.refspecfiles):
             if index < len(args.refspeccolors):
                 plotkwargs['color'] = args.refspeccolors[index]
@@ -880,6 +886,17 @@ def make_plot(modelpaths, args):
 
     scale_to_peak = 1.0 if args.normalised else None
 
+    if args.refspecfiles is not None:
+        if isinstance(args.refspecfiles, str):
+            args.refspecfiles = [args.refspecfiles]
+    else:
+        args.refspecfiles = []
+
+    if not args.refspecafterartis:
+        speclist = args.refspecfiles + modelpaths
+    else:
+        speclist = modelpaths + args.refspecfiles
+
     xboundaries = [args.xmin] + args.xsplit + [args.xmax]
     for index, axis in enumerate(axes):
         axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\AA$]')
@@ -906,22 +923,13 @@ def make_plot(modelpaths, args):
         legendncol = 1
         defaultoutputfile = Path("plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
-        if args.refspecfiles is not None:
-            if isinstance(args.refspecfiles, str):
-                args.refspecfiles = [args.refspecfiles]
-        else:
-            args.refspecfiles = []
-
-        if not args.refspecafterartis:
-            speclist = args.refspecfiles + modelpaths
-        else:
-            speclist = modelpaths + args.refspecfiles
         make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=scale_to_peak)
         plotobjects, plotobjectlabels = axes[0].get_legend_handles_labels()
 
     if not args.nolegend:
         if args.reverselegendorder:
             plotobjects, plotobjectlabels = plotobjects[::-1], plotobjectlabels[::-1]
+
         leg = axes[0].legend(
             plotobjects, plotobjectlabels, loc='upper right', frameon=False,
             handlelength=1, ncol=legendncol, numpoints=1)
@@ -946,17 +954,18 @@ def make_plot(modelpaths, args):
     #    axis.spines[axis].set_linewidth(framewidth)
 
     for ax in axes:
-        ax.set_xlabel('')
         # ax.xaxis.set_major_formatter(plt.NullFormatter())
         if args.ymin is not None:
             ax.set_ylim(ymin=args.ymin)
         if args.ymax is not None:
             ax.set_ylim(ymax=args.ymax)
 
-    axes[-1].set_xlabel(r'Wavelength [$\AA$]')
-    for ax in axes:
         if '{' in ax.get_ylabel():
             ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))
+
+        ax.set_xlabel('')
+
+    axes[-1].set_xlabel(r'Wavelength [$\AA$]')
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
