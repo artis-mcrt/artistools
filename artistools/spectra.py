@@ -295,23 +295,24 @@ def get_flux_contributions_from_packets(
         if emtype >= 0:
             if groupby == 'line':
                 line = linelist[emtype]
-                label = (f'{at.get_ionstring(line.atomic_number, line.ionstage)} '
-                         f'{line.lambda_angstroms:.0f} '
-                         f'{line.upperlevelindex},{line.lowerlevelindex}')
+                return (f'{at.get_ionstring(line.atomic_number, line.ionstage)} '
+                        f'{line.lambda_angstroms:.0f} '
+                        f'({line.upperlevelindex}->{line.lowerlevelindex})')
             else:
                 line = linelist[emtype]
-                label = f'{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound'
+                return f'{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound'
         elif emtype == 9999999:
-            label = f'free-free'
+            return f'free-free'
         else:
             bflist = at.get_bflist(modelpath)
-            (atomic_number, ionstage, level) = bflist[-emtype - 1]
-            if groupby == 'line':
-                label = f'{at.get_ionstring(atomic_number, ionstage)} bound-free {level}'
+            if -emtype - 1 in bflist:
+                (atomic_number, ionstage, level) = bflist[-emtype - 1]
+                if groupby == 'line':
+                    return f'{at.get_ionstring(atomic_number, ionstage)} bound-free {level}'
+                else:
+                    return f'{at.get_ionstring(atomic_number, ionstage)} bound-free'
             else:
-                label = f'{at.get_ionstring(atomic_number, ionstage)} bound-free'
-
-        return label
+                return False
 
     def get_absprocesslabel(abstype, linelist):
         if abstype >= 0:
@@ -393,7 +394,7 @@ def get_flux_contributions_from_packets(
             #     continue
             emprocesskey = get_emprocesslabel(emtype)
 
-            if emprocesskey not in array_energysum_spectra:
+            if emprocesskey and emprocesskey not in array_energysum_spectra:
                 array_energysum_spectra[emprocesskey] = (
                     np.zeros_like(array_lambda, dtype=np.float), np.zeros_like(array_lambda, dtype=np.float))
 
@@ -518,7 +519,8 @@ def plot_reference_spectrum(
     """Plot a single reference spectrum.
 
     The filename must be in space separated text formated with the first two
-    columns being wavelength in Angstroms, and F_lambda"""
+    columns being wavelength in Angstroms, and F_lambda
+    """
     if Path(filename).is_file():
         filepath = filename
     else:
@@ -675,7 +677,6 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
 def plot_artis_spectrum(
         axes, modelpath, args, scale_to_peak=None, from_packets=False, filterfunc=None, linelabel=None, **plotkwargs):
     """Plot an ARTIS output spectrum."""
-
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
 
@@ -724,7 +725,6 @@ def plot_artis_spectrum(
 
 def make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=None):
     """Plot reference spectra and ARTIS spectra."""
-
     if not args.refspecafterartis:
         plot_reference_spectra(axes, [], [], args, scale_to_peak=scale_to_peak, flambdafilterfunc=filterfunc)
 
@@ -755,7 +755,6 @@ def make_spectrum_plot(modelpaths, axes, filterfunc, args, scale_to_peak=None):
 
 def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_peak=None):
     """Plot the emission and absorption by ion for an ARTIS model."""
-
     arraynu = at.get_nu_grid(modelpath)
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
@@ -946,11 +945,8 @@ def make_plot(modelpaths, args):
 
 
 def write_flambda_spectra(modelpath, args):
-    """
-    Write lambda_angstroms and f_lambda to .txt files for all timesteps. Also create a text file containing the time
-    in days for each timestep.
-    """
-
+    """Write lambda_angstroms and f_lambda to .txt files for all timesteps and create
+    a text file containing the time in days for each timestep."""
     outdirectory = Path(modelpath, 'spectrum_data')
 
     # if not outdirectory.is_dir():
@@ -1113,7 +1109,6 @@ def addargs(parser):
 
 def main(args=None, argsraw=None, **kwargs):
     """Plot spectra from ARTIS and reference data."""
-
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
