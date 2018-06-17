@@ -188,9 +188,13 @@ def get_spectrum_from_packets(
 
 @lru_cache(maxsize=4)
 def get_flux_contributions(
-        modelpath, filterfunc=None, timestepmin=0, timestepmax=None, getabsorption=True):
+        modelpath, filterfunc=None, timestepmin=0, timestepmax=None, getabsorption=True, use_lastemissiontype=False):
     # emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out', 'emission.out.gz', 'emission.out']
-    emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out']
+    if use_lastemissiontype:
+        emissionfilenames = ['emission.out.gz', 'emission.out']
+    else:
+        emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out']
+
     emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
     absorptionfilename = (at.firstexisting(['absorption.out.gz', 'absorption.out'], path=modelpath)
                           if getabsorption else None)
@@ -289,15 +293,17 @@ def get_flux_contributions(
 def get_flux_contributions_from_packets(
         modelpath, timelowerdays, timeupperdays, lambda_min, lambda_max, delta_lambda=30,
         getabsorption=True, maxpacketfiles=None, filterfunc=None, groupby='ion',
-        use_comovingframe=False):
+        use_comovingframe=False, use_lastemissiontype=False):
 
     def get_emprocesslabel(emtype):
         if emtype >= 0:
             if groupby == 'line':
                 line = linelist[emtype]
+                # if line.atomic_number != 26 or line.ionstage != 2:
+                #     return 'non-Fe II ions'
                 return (f'{at.get_ionstring(line.atomic_number, line.ionstage)} '
-                        f'{line.lambda_angstroms:.0f} '
-                        f'({line.upperlevelindex}->{line.lowerlevelindex})')
+                        f'λ{line.lambda_angstroms:.0f} '
+                        f'({line.upperlevelindex}-{line.lowerlevelindex})')
             else:
                 line = linelist[emtype]
                 return f'{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound'
@@ -317,11 +323,11 @@ def get_flux_contributions_from_packets(
 
     def get_absprocesslabel(abstype, linelist):
         if abstype >= 0:
-            line = linelist[emtype]
+            line = linelist[abstype]
             if groupby == 'line':
                 return (f'{at.get_ionstring(line.atomic_number, line.ionstage)} '
-                        f'{line.lambda_angstroms:.0f} '
-                        f'{line.upperlevelindex},{line.lowerlevelindex}')
+                        f'λ{line.lambda_angstroms:.0f} '
+                        f'({line.upperlevelindex}-{line.lowerlevelindex})')
             else:
                 return f'{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound'
         elif abstype == -1:
@@ -355,16 +361,17 @@ def get_flux_contributions_from_packets(
     c_ang_s = const.c.to('angstrom/s').value
     nu_min = c_ang_s / lambda_max
     nu_max = c_ang_s / lambda_min
+    emtypecolumn = 'emission_type' if use_lastemissiontype else 'true_emission_type'
     for index, packetsfile in enumerate(packetsfiles):
         dfpackets = at.packets.readfile(
             packetsfile,
             usecols=[
-                'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
+                'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'nu_cmf', 'escape_type_id', 'escape_time',
                 'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz',
                 # 'em_posx', 'em_posy', 'em_posz', 'em_time',
                 'true_emission_velocity',
                 # 'originated_from_positron',
-                'true_emission_type',
+                emtypecolumn,
                 'absorption_type',
             ],
             only_escaped_rpkts=True)
@@ -387,10 +394,11 @@ def get_flux_contributions_from_packets(
 
             energysum_spectrum_emission_total[xindex] += pkt_en
 
-            emtype = packet.true_emission_type
             # if emtype >= 0 and linelist[emtype].upperlevelindex <= 80:
             #     continue
-            emprocesskey = get_emprocesslabel(emtype)
+            # emprocesskey = get_emprocesslabel(packet.emission_type)
+            emprocesskey = get_emprocesslabel(packet[emtypecolumn])
+            # print('packet lambda_cmf: {c_ang_s / packet.nu_cmf}.1f}, lambda_rf {lambda_rf:.1f}, {emprocesskey}')
 
             if emprocesskey not in array_energysum_spectra:
                 array_energysum_spectra[emprocesskey] = (
@@ -696,7 +704,7 @@ def plot_artis_spectrum(
     if from_packets:
         spectrum = get_spectrum_from_packets(
             modelpath, args.timemin, args.timemax, lambda_min=args.xmin, lambda_max=args.xmax,
-            use_comovingframe=args.use_comovingframe, maxpacketfiles=args.maxpacketfiles)
+            use_comovingframe=args.use_comovingframe, maxpacketfiles=args.maxpacketfiles, delta_lambda=args.deltalambda)
         make_spectrum_stat_plot(spectrum, linelabel, Path(args.outputfile).parent, args)
     else:
         spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc)
@@ -704,7 +712,7 @@ def plot_artis_spectrum(
     spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
 
     print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
-          f'(t={args.timemin:.3f} to {args.timemax:.3f}d)')
+          f'({args.timemin:.3f} to {args.timemax:.3f}d)')
     print_integrated_flux(spectrum['f_lambda'], spectrum['lambda_angstroms'])
 
     if scale_to_peak:
@@ -760,18 +768,19 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
 
     modelname = at.get_model_name(modelpath)
     print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
-          f'(t={args.timemin:.3f}d to {args.timemax:.3f}d)')
+          f'({args.timemin:.3f} to {args.timemax:.3f}d)')
 
     if args.frompackets:
         (contribution_list, array_flambda_emission_total,
          arraylambda_angstroms) = at.spectra.get_flux_contributions_from_packets(
             modelpath, args.timemin, args.timemax, args.xmin, args.xmax,
             getabsorption=args.showabsorption, maxpacketfiles=args.maxpacketfiles, filterfunc=filterfunc,
-            groupby=args.groupby)
+            groupby=args.groupby, delta_lambda=args.deltalambda, use_lastemissiontype=args.use_lastemissiontype)
     else:
         arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
         contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
-            modelpath, filterfunc, timestepmin, timestepmax, getabsorption=args.showabsorption)
+            modelpath, filterfunc, timestepmin, timestepmax, getabsorption=args.showabsorption,
+            use_lastemissiontype=args.use_lastemissiontype)
 
     at.spectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
 
@@ -831,13 +840,14 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
                 colors=facecolors, linewidth=0)
 
     plotobjectlabels.extend(list([x.linelabel for x in contributions_sorted_reduced]))
-
+    print(plotobjectlabels)
+    # print(len(plotobjectlabels), len(plotobjects))
     plot_reference_spectra([axis], plotobjects, plotobjectlabels, args, flambdafilterfunc=filterfunc,
                            scale_to_peak=scale_to_peak, linewidth=0.5)
 
     axis.axhline(color='white', linewidth=0.5)
 
-    plotlabel = f'{modelname}\nt={args.timemin:.2f}d to {args.timemax:.2f}d'
+    plotlabel = f'{modelname}\n{args.timemin:.2f}d to {args.timemax:.2f}d'
     if not args.notitle:
         axis.set_title(plotlabel, fontsize=11)
     # axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
@@ -952,8 +962,10 @@ def make_plot(modelpaths, args):
 
 
 def write_flambda_spectra(modelpath, args):
-    """Write lambda_angstroms and f_lambda to .txt files for all timesteps and create
-    a text file containing the time in days for each timestep."""
+    """Write out spectra to text files.
+
+    Writes lambda_angstroms and f_lambda to .txt files for all timesteps and create a text file containing the time in days for each timestep.
+    """
     outdirectory = Path(modelpath, 'spectrum_data')
 
     # if not outdirectory.is_dir():
@@ -1030,7 +1042,7 @@ def addargs(parser):
     parser.add_argument('-fixedionlist', type=list, nargs='+',
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')
 
-    parser.add_argument('-maxseriescount', type=int, default=12,
+    parser.add_argument('-maxseriescount', type=int, default=16,
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')
 
     parser.add_argument('--listtimesteps', action='store_true',
@@ -1058,6 +1070,9 @@ def addargs(parser):
     parser.add_argument('-xmax', type=int, default=11000,
                         help='Plot range: maximum wavelength in Angstroms')
 
+    parser.add_argument('-deltalambda', type=int, default=50,
+                        help='Lambda bin size in Angstroms (applies to from_packets only)')
+
     parser.add_argument('-xsplit', nargs='*', default=[],
                         help='Split into subplots at xvalue(s)')
 
@@ -1075,6 +1090,9 @@ def addargs(parser):
 
     parser.add_argument('--use_comovingframe', action='store_true',
                         help='Use the time of packet escape to the surface (instead of a plane toward the observer)')
+
+    parser.add_argument('--use_lastemissiontype', action='store_true',
+                        help='Tag packets by their last scattering rather than thermal emission type')
 
     parser.add_argument('-groupby', default='ion', choices=['ion', 'line'],
                         help=('Use a different color for each ion or line. Requires showemission and frompackets.'))
