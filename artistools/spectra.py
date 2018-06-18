@@ -188,7 +188,7 @@ def get_spectrum_from_packets(
 
 @lru_cache(maxsize=4)
 def get_flux_contributions(
-        modelpath, filterfunc=None, timestepmin=0, timestepmax=None, getabsorption=True, use_lastemissiontype=False):
+        modelpath, filterfunc=None, timestepmin=0, timestepmax=None, getemission=True, getabsorption=True, use_lastemissiontype=False):
     # emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out', 'emission.out.gz', 'emission.out']
     if use_lastemissiontype:
         emissionfilenames = ['emission.out.gz', 'emission.out']
@@ -228,7 +228,7 @@ def get_flux_contributions(
     else:
         absorptiondata = None
 
-    array_flambda_emission_total = np.zeros_like(arraylambda)
+    array_flambda_emission_total = np.zeros_like(arraylambda, dtype=np.float)
     contribution_list = []
     if filterfunc:
         print("Applying filter to ARTIS spectrum")
@@ -247,10 +247,13 @@ def get_flux_contributions(
             for (selectedcolumn, emissiontype) in ionserieslist:
                 # if linelabel.startswith('Fe ') or linelabel.endswith("-free"):
                 #     continue
-                array_fnu_emission = stackspectra(
-                    [(emissiondata.iloc[timestep::len(timearray), selectedcolumn].values,
-                      at.get_timestep_time_delta(timestep, timearray))
-                     for timestep in range(timestepmin, timestepmax + 1)])
+                if emissiondata is not None:
+                    array_fnu_emission = stackspectra(
+                        [(emissiondata.iloc[timestep::len(timearray), selectedcolumn].values,
+                          at.get_timestep_time_delta(timestep, timearray))
+                         for timestep in range(timestepmin, timestepmax + 1)])
+                else:
+                    array_fnu_emission = np.zeros_like(arraylambda, dtype=np.float)
 
                 if absorptiondata is not None and selectedcolumn < nelements * maxion:  # bound-bound process
                     array_fnu_absorption = stackspectra(
@@ -258,7 +261,7 @@ def get_flux_contributions(
                           at.get_timestep_time_delta(timestep, timearray))
                          for timestep in range(timestepmin, timestepmax + 1)])
                 else:
-                    array_fnu_absorption = np.zeros_like(array_fnu_emission)
+                    array_fnu_absorption = np.zeros_like(arraylambda, dtype=np.float)
 
                 # best to use the filter on fnu (because it hopefully has regular sampling)
                 if filterfunc:
@@ -292,7 +295,7 @@ def get_flux_contributions(
 @lru_cache(maxsize=4)
 def get_flux_contributions_from_packets(
         modelpath, timelowerdays, timeupperdays, lambda_min, lambda_max, delta_lambda=30,
-        getabsorption=True, maxpacketfiles=None, filterfunc=None, groupby='ion',
+        getemission=True, getabsorption=True, maxpacketfiles=None, filterfunc=None, groupby='ion',
         use_comovingframe=False, use_lastemissiontype=False):
 
     def get_emprocesslabel(emtype):
@@ -321,7 +324,7 @@ def get_flux_contributions_from_packets(
             else:
                 return f'? bound-free (bfindex={bfindex})'
 
-    def get_absprocesslabel(abstype, linelist):
+    def get_absprocesslabel(abstype):
         if abstype >= 0:
             line = linelist[abstype]
             if groupby == 'line':
@@ -394,19 +397,24 @@ def get_flux_contributions_from_packets(
 
             energysum_spectrum_emission_total[xindex] += pkt_en
 
-            # if emtype >= 0 and linelist[emtype].upperlevelindex <= 80:
-            #     continue
-            # emprocesskey = get_emprocesslabel(packet.emission_type)
-            emprocesskey = get_emprocesslabel(packet[emtypecolumn])
-            # print('packet lambda_cmf: {c_ang_s / packet.nu_cmf}.1f}, lambda_rf {lambda_rf:.1f}, {emprocesskey}')
+            if getemission:
+                # if emtype >= 0 and linelist[emtype].upperlevelindex <= 80:
+                #     continue
+                # emprocesskey = get_emprocesslabel(packet.emission_type)
+                emprocesskey = get_emprocesslabel(packet[emtypecolumn])
+                # print('packet lambda_cmf: {c_ang_s / packet.nu_cmf}.1f}, lambda_rf {lambda_rf:.1f}, {emprocesskey}')
 
-            if emprocesskey not in array_energysum_spectra:
-                array_energysum_spectra[emprocesskey] = (
-                    np.zeros_like(array_lambda, dtype=np.float), np.zeros_like(array_lambda, dtype=np.float))
+                if emprocesskey not in array_energysum_spectra:
+                    array_energysum_spectra[emprocesskey] = (
+                        np.zeros_like(array_lambda, dtype=np.float), np.zeros_like(array_lambda, dtype=np.float))
 
-            array_energysum_spectra[emprocesskey][0][xindex] += pkt_en
+                array_energysum_spectra[emprocesskey][0][xindex] += pkt_en
 
             if getabsorption:
+                # lambda_abs = c_ang_s / packet.absorptionfreq
+                # xindexabsorbed = math.floor((lambda_abs - lambda_min) / delta_lambda)
+                xindexabsorbed = xindex
+
                 abstype = packet.absorption_type
                 absprocesskey = get_absprocesslabel(abstype)
 
@@ -414,7 +422,7 @@ def get_flux_contributions_from_packets(
                     array_energysum_spectra[absprocesskey] = (
                         np.zeros_like(array_lambda, dtype=np.float), np.zeros_like(array_lambda, dtype=np.float))
 
-                array_energysum_spectra[absprocesskey][1][xindex] += pkt_en
+                array_energysum_spectra[absprocesskey][1][xindexabsorbed] += pkt_en
 
     normfactor = (1. / delta_lambda / (timehigh - timelow) / 4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read)
 
@@ -443,16 +451,17 @@ def get_flux_contributions_from_packets(
 
 
 def sort_and_reduce_flux_contribution_list(
-        contribution_list_in, maxseriescount, arraylambda_angstroms, fixedionlist=[]):
+        contribution_list_in, maxseriescount, arraylambda_angstroms, fixedionlist=None):
 
     if fixedionlist:
         # sort in manual order
-        contribution_list = sorted(contribution_list_in,
-                                   key=lambda x: fixedionlist.index(x.linelabel)
-                                   if x.linelabel in fixedionlist else len(fixedionlist) + 1)
+        def sortkey(x):
+            return fixedionlist.index(x.linelabel) if x.linelabel in fixedionlist else len(fixedionlist) + 1
     else:
         # sort descending by flux contribution
-        contribution_list = sorted(contribution_list_in, key=lambda x: -x.fluxcontrib)
+        def sortkey(x): return -x.fluxcontrib
+
+    contribution_list = sorted(contribution_list_in, key=sortkey)
 
     # combine the items past maxseriescount or not in manual list into a single item
     remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=np.float)
@@ -460,15 +469,32 @@ def sort_and_reduce_flux_contribution_list(
     remainder_fluxcontrib = 0
 
     contribution_list_out = []
+    numotherprinted = 0
     for index, row in enumerate(contribution_list):
+        strother = ''
         if fixedionlist and row.linelabel in fixedionlist:
             contribution_list_out.append(row._replace(color=color_list[fixedionlist.index(row.linelabel)]))
         elif not fixedionlist and index < maxseriescount:
             contribution_list_out.append(row._replace(color=color_list[index]))
         else:
+            strother = ' (other)'
             remainder_fluxcontrib += row.fluxcontrib
             remainder_flambda_emission += row.array_flambda_emission
             remainder_flambda_absorption += row.array_flambda_absorption
+
+        if numotherprinted < 10:
+            integemiss = abs(np.trapz(row.array_flambda_emission, x=arraylambda_angstroms))
+            integabsorp = abs(np.trapz(-row.array_flambda_absorption, x=arraylambda_angstroms))
+            if integabsorp > 0. and integemiss > 0.:
+                print(f'{row.fluxcontrib:.1e}, emission {integemiss:.1e}, '
+                      f"absorption {integabsorp:.1e} [erg/s/cm^2]: '{row.linelabel}'" + strother)
+            elif integemiss > 0.:
+                print(f"  emission {integemiss:.1e} erg/s/cm^2: '{row.linelabel}'" + strother)
+            else:
+                print(f"absorption {integabsorp:.1e} erg/s/cm^2: '{row.linelabel}'" + strother)
+
+            if strother:
+                numotherprinted += 1
 
     if remainder_fluxcontrib > 0.:
         contribution_list_out.append(fluxcontributiontuple(
@@ -759,12 +785,14 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
         (contribution_list, array_flambda_emission_total,
          arraylambda_angstroms) = at.spectra.get_flux_contributions_from_packets(
             modelpath, args.timemin, args.timemax, args.xmin, args.xmax,
-            getabsorption=args.showabsorption, maxpacketfiles=args.maxpacketfiles, filterfunc=filterfunc,
+            getemission=args.showemission, getabsorption=args.showabsorption,
+            maxpacketfiles=args.maxpacketfiles, filterfunc=filterfunc,
             groupby=args.groupby, delta_lambda=args.deltalambda, use_lastemissiontype=args.use_lastemissiontype)
     else:
         arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
         contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
-            modelpath, filterfunc, timestepmin, timestepmax, getabsorption=args.showabsorption,
+            modelpath, filterfunc, timestepmin, timestepmax,
+            getemission=args.showemission, getabsorption=args.showabsorption,
             use_lastemissiontype=args.use_lastemissiontype)
 
     at.spectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
@@ -789,15 +817,6 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
                          linewidth=1.5, color='black', zorder=100)
         linecolor = line[0].get_color()
         plotobjects.append(mpatches.Patch(color=linecolor))
-
-    for x in contributions_sorted_reduced:
-        integemiss = abs(np.trapz(x.array_flambda_emission, x=arraylambda_angstroms))
-        if args.showabsorption:
-            intabsorp = abs(np.trapz(-x.array_flambda_absorption, x=arraylambda_angstroms))
-            print(f'{x.fluxcontrib:.1e}, emission {integemiss:.1e}, '
-                  f"absorption {intabsorp:.1e} [erg/s/cm^2]: '{x.linelabel}'")
-        else:
-            print(f"{integemiss:.1e} erg/s/cm^2: '{x.linelabel}'")
 
     if args.nostack:
         for x in contributions_sorted_reduced:
