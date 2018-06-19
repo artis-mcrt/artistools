@@ -458,7 +458,8 @@ def sort_and_reduce_flux_contribution_list(
     if fixedionlist:
         # sort in manual order
         def sortkey(x):
-            return (fixedionlist.index(x.linelabel) if x.linelabel in fixedionlist else len(fixedionlist) + 1, -x.fluxcontrib)
+            return (fixedionlist.index(x.linelabel) if x.linelabel in fixedionlist
+                    else len(fixedionlist) + 1, -x.fluxcontrib)
     else:
         # sort descending by flux contribution
         def sortkey(x): return -x.fluxcontrib
