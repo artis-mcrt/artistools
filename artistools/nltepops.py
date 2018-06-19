@@ -554,7 +554,7 @@ def addargs(parser):
         help='List of elements to plot')
 
     parser.add_argument(
-        '-modelpath', default='.',
+        '-modelpath', default=Path(),  type=Path,
         help='Path to ARTIS folder')
 
     timegroup = parser.add_mutually_exclusive_group()
@@ -588,7 +588,7 @@ def addargs(parser):
         help='Ion stage range, 1 is neutral, 2 is 1+')
 
     parser.add_argument(
-        '-maxlevel', default=-1,
+        '-maxlevel', default=-1, type=int,
         help='Maximum level to plot')
 
     parser.add_argument(
@@ -632,17 +632,20 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
+    modelpath = args.modelpath
+
     if args.timedays:
-        timestep = at.get_closest_timestep(args.modelpath, args.timedays)
+        timestep = at.get_closest_timestep(modelpath, args.timedays)
     else:
         timestep = int(args.timestep)
-
-    modelpath = args.modelpath
 
     if os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     ionstages_permitted = at.parse_range_list(args.ionstages) if args.ionstages else None
+
+    if isinstance(args.modelgridindex, str):
+        args.modelgridindex = [args.modelgridindex]
 
     if isinstance(args.elements, str):
         args.elements = [args.elements]
@@ -652,7 +655,8 @@ def main(args=None, argsraw=None, **kwargs):
 
     mgilist = []
     for mgi in args.modelgridindex:
-        mgilist.append(at.get_closest_cell(modelpath, mgi))
+        mgilist.append(int(mgi))
+
     for vel in args.velocity:
         mgilist.append(at.get_closest_cell(modelpath, vel))
 
