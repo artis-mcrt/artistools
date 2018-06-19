@@ -188,42 +188,44 @@ def get_spectrum_from_packets(
 
 @lru_cache(maxsize=4)
 def get_flux_contributions(
-        modelpath, filterfunc=None, timestepmin=0, timestepmax=None, getemission=True, getabsorption=True, use_lastemissiontype=False):
-    # emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out', 'emission.out.gz', 'emission.out']
-    if use_lastemissiontype:
-        emissionfilenames = ['emission.out.gz', 'emission.out']
-    else:
-        emissionfilenames = ['emissiontrue.out.gz', 'emissiontrue.out']
-
-    emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
-    absorptionfilename = (at.firstexisting(['absorption.out.gz', 'absorption.out'], path=modelpath)
-                          if getabsorption else None)
-
+        modelpath, filterfunc=None, timestepmin=0, timestepmax=None, getemission=True, getabsorption=True,
+        use_lastemissiontype=False):
     timearray = at.get_timestep_times(modelpath)
     arraynu = at.get_nu_grid(modelpath)
     arraylambda = const.c.to('angstrom/s').value / arraynu
     elementlist = at.get_composition_data(modelpath)
     nelements = len(elementlist)
 
-    emissionfilesize = Path(emissionfilename).stat().st_size / 1024 / 1024
-    print(f' Reading {emissionfilename} ({emissionfilesize:.2f} MiB)')
-    emissiondata = pd.read_csv(emissionfilename, delim_whitespace=True, header=None)
-    maxion_float = (emissiondata.shape[1] - 1) / 2 / nelements  # also known as MIONS in ARTIS sn3d.h
-    assert maxion_float.is_integer()
-    maxion = int(maxion_float)
-    print(f' inferred MAXION = {maxion} from emission file using nlements = {nelements} from compositiondata.txt')
+    if getemission:
+        emissionfilenames = (['emission.out.gz', 'emission.out'] if use_lastemissiontype
+                             else ['emissiontrue.out.gz', 'emissiontrue.out'])
 
-    # check that the row count is product of timesteps and frequency bins found in spec.out
-    assert emissiondata.shape[0] == len(arraynu) * len(timearray)
+        emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
+        emissionfilesize = Path(emissionfilename).stat().st_size / 1024 / 1024
+        print(f' Reading {emissionfilename} ({emissionfilesize:.2f} MiB)')
+        emissiondata = pd.read_csv(emissionfilename, delim_whitespace=True, header=None)
+        maxion_float = (emissiondata.shape[1] - 1) / 2 / nelements  # also known as MIONS in ARTIS sn3d.h
+        assert maxion_float.is_integer()
+        maxion = int(maxion_float)
+        print(f' inferred MAXION = {maxion} from emission file using nlements = {nelements} from compositiondata.txt')
 
-    if absorptionfilename:
+        # check that the row count is product of timesteps and frequency bins found in spec.out
+        assert emissiondata.shape[0] == len(arraynu) * len(timearray)
+
+    if getabsorption:
+        absorptionfilename = at.firstexisting(['absorption.out.gz', 'absorption.out'], path=modelpath)
         absorptionfilesize = Path(absorptionfilename).stat().st_size / 1024 / 1024
         print(f' Reading {absorptionfilename} ({absorptionfilesize:.2f} MiB)')
         absorptiondata = pd.read_csv(absorptionfilename, delim_whitespace=True, header=None)
         absorption_maxion_float = absorptiondata.shape[1] / nelements
         assert absorption_maxion_float.is_integer()
         absorption_maxion = int(absorption_maxion_float)
-        assert absorption_maxion == maxion
+        if not getemission:
+            maxion = absorption_maxion
+            print(f' inferred MAXION = {maxion} from absorption file using nlements = {nelements}'
+                  'from compositiondata.txt')
+        else:
+            assert absorption_maxion == maxion
         assert absorptiondata.shape[0] == len(arraynu) * len(timearray)
     else:
         absorptiondata = None
@@ -247,7 +249,7 @@ def get_flux_contributions(
             for (selectedcolumn, emissiontype) in ionserieslist:
                 # if linelabel.startswith('Fe ') or linelabel.endswith("-free"):
                 #     continue
-                if emissiondata is not None:
+                if getemission:
                     array_fnu_emission = stackspectra(
                         [(emissiondata.iloc[timestep::len(timearray), selectedcolumn].values,
                           at.get_timestep_time_delta(timestep, timearray))
@@ -456,7 +458,7 @@ def sort_and_reduce_flux_contribution_list(
     if fixedionlist:
         # sort in manual order
         def sortkey(x):
-            return fixedionlist.index(x.linelabel) if x.linelabel in fixedionlist else len(fixedionlist) + 1
+            return (fixedionlist.index(x.linelabel) if x.linelabel in fixedionlist else len(fixedionlist) + 1, -x.fluxcontrib)
     else:
         # sort descending by flux contribution
         def sortkey(x): return -x.fluxcontrib
