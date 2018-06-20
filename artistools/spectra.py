@@ -300,17 +300,27 @@ def get_flux_contributions_from_packets(
         getemission=True, getabsorption=True, maxpacketfiles=None, filterfunc=None, groupby='ion',
         use_comovingframe=False, use_lastemissiontype=False):
 
+    assert groupby in [None, 'ion', 'line', 'upperterm']
+
+    if groupby == 'upperterm':
+        adata = at.get_levels(modelpath)
+
     def get_emprocesslabel(emtype):
         if emtype >= 0:
+            line = linelist[emtype]
             if groupby == 'line':
-                line = linelist[emtype]
                 # if line.atomic_number != 26 or line.ionstage != 2:
                 #     return 'non-Fe II ions'
                 return (f'{at.get_ionstring(line.atomic_number, line.ionstage)} '
                         f'λ{line.lambda_angstroms:.0f} '
                         f'({line.upperlevelindex}-{line.lowerlevelindex})')
+            elif groupby == 'upperterm':
+                upper_config = adata.query(
+                    'Z == @line.atomic_number and ion_stage == @line.ionstage', inplace=False
+                    ).iloc[0].levels.iloc[line.upperlevelindex].levelname
+                upper_term_noj = upper_config.split('_')[-1].split('[')[0]
+                return (f'{at.get_ionstring(line.atomic_number, line.ionstage)} {upper_term_noj}')
             else:
-                line = linelist[emtype]
                 return f'{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound'
         elif emtype == 9999999:
             return f'free-free'
@@ -342,7 +352,6 @@ def get_flux_contributions_from_packets(
         else:
             return '? other absorp.'
 
-    assert groupby in [None, 'ion', 'line']
     array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
 
     if use_comovingframe:
@@ -441,7 +450,7 @@ def get_flux_contributions_from_packets(
             abs(np.trapz(array_flambda_emission, x=array_lambda)) +
             abs(np.trapz(array_flambda_absorption, x=array_lambda)))
 
-        linelabel = groupname.rstrip(' bound-bound')
+        linelabel = groupname.replace(' bound-bound', '')
 
         contribution_list.append(
             fluxcontributiontuple(fluxcontrib=fluxcontribthisseries, linelabel=linelabel,
@@ -473,30 +482,32 @@ def sort_and_reduce_flux_contribution_list(
 
     contribution_list_out = []
     numotherprinted = 0
+    entered_other = False
     for index, row in enumerate(contribution_list):
-        strother = ''
         if fixedionlist and row.linelabel in fixedionlist:
             contribution_list_out.append(row._replace(color=color_list[fixedionlist.index(row.linelabel)]))
         elif not fixedionlist and index < maxseriescount:
             contribution_list_out.append(row._replace(color=color_list[index]))
         else:
-            strother = ' (other)'
             remainder_fluxcontrib += row.fluxcontrib
             remainder_flambda_emission += row.array_flambda_emission
             remainder_flambda_absorption += row.array_flambda_absorption
+            if not entered_other:
+                print("  Other (top 20):")
+                entered_other = True
 
-        if numotherprinted < 10:
+        if numotherprinted < 20:
             integemiss = abs(np.trapz(row.array_flambda_emission, x=arraylambda_angstroms))
             integabsorp = abs(np.trapz(-row.array_flambda_absorption, x=arraylambda_angstroms))
             if integabsorp > 0. and integemiss > 0.:
                 print(f'{row.fluxcontrib:.1e}, emission {integemiss:.1e}, '
-                      f"absorption {integabsorp:.1e} [erg/s/cm^2]: '{row.linelabel}'" + strother)
+                      f"absorption {integabsorp:.1e} [erg/s/cm^2]: '{row.linelabel}'")
             elif integemiss > 0.:
-                print(f"  emission {integemiss:.1e} erg/s/cm^2: '{row.linelabel}'" + strother)
+                print(f"  emission {integemiss:.1e} erg/s/cm^2: '{row.linelabel}'")
             else:
-                print(f"absorption {integabsorp:.1e} erg/s/cm^2: '{row.linelabel}'" + strother)
+                print(f"absorption {integabsorp:.1e} erg/s/cm^2: '{row.linelabel}'")
 
-            if strother:
+            if entered_other:
                 numotherprinted += 1
 
     if remainder_fluxcontrib > 0.:
@@ -1134,7 +1145,7 @@ def addargs(parser):
     parser.add_argument('--use_lastemissiontype', action='store_true',
                         help='Tag packets by their last scattering rather than thermal emission type')
 
-    parser.add_argument('-groupby', default='ion', choices=['ion', 'line'],
+    parser.add_argument('-groupby', default='ion', choices=['ion', 'line', 'upperterm'],
                         help=('Use a different color for each ion or line. Requires showemission and frompackets.'))
 
     parser.add_argument('-obsspec', '-refspecfiles', action='append', dest='refspecfiles',
