@@ -224,7 +224,7 @@ def addargs(parser):
     parser.add_argument('-figscale', type=float, default=1.,
                         help='Scale factor for plot area. 1.0 is for single-column')
 
-    parser.add_argument('-o', action='store', dest='outputfile',
+    parser.add_argument('-o', action='store', dest='outputfile', type=Path,
                         default=defaultoutputfile,
                         help='Filename for PDF file')
 
@@ -261,7 +261,7 @@ def main(args=None, argsraw=None, **kwargs):
                 modelgridindex=args.modelgridindex, timestep=timestep)
 
             if not nonthermaldata_currenttimestep.empty:
-                outputfile = args.outputfile.format(args.modelgridindex, timestep)
+                outputfile = str(args.outputfile).format(args.modelgridindex, timestep)
                 print(f'Plotting timestep {timestep:d}')
                 make_plot(nonthermaldata_currenttimestep, timestep, outputfile, args)
             else:
