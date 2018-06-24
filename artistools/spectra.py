@@ -300,9 +300,9 @@ def get_flux_contributions_from_packets(
         getemission=True, getabsorption=True, maxpacketfiles=None, filterfunc=None, groupby='ion',
         use_comovingframe=False, use_lastemissiontype=False):
 
-    assert groupby in [None, 'ion', 'line', 'upperterm']
+    assert groupby in [None, 'ion', 'line', 'upperterm', 'terms']
 
-    if groupby == 'upperterm':
+    if groupby in ['terms', 'upperterm']:
         adata = at.get_levels(modelpath)
 
     def get_emprocesslabel(emtype):
@@ -314,6 +314,16 @@ def get_flux_contributions_from_packets(
                 return (f'{at.get_ionstring(line.atomic_number, line.ionstage)} '
                         f'λ{line.lambda_angstroms:.0f} '
                         f'({line.upperlevelindex}-{line.lowerlevelindex})')
+            elif groupby == 'terms':
+                upper_config = adata.query(
+                    'Z == @line.atomic_number and ion_stage == @line.ionstage', inplace=False
+                    ).iloc[0].levels.iloc[line.upperlevelindex].levelname
+                upper_term_noj = upper_config.split('_')[-1].split('[')[0]
+                lower_config = adata.query(
+                    'Z == @line.atomic_number and ion_stage == @line.ionstage', inplace=False
+                    ).iloc[0].levels.iloc[line.lowerlevelindex].levelname
+                lower_term_noj = lower_config.split('_')[-1].split('[')[0]
+                return (f'{at.get_ionstring(line.atomic_number, line.ionstage)} {upper_term_noj}->{lower_term_noj}')
             elif groupby == 'upperterm':
                 upper_config = adata.query(
                     'Z == @line.atomic_number and ion_stage == @line.ionstage', inplace=False
@@ -866,7 +876,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
                 plotobjects.extend(absstackplot)
 
     plotobjectlabels.extend(list([x.linelabel for x in contributions_sorted_reduced]))
-    print(plotobjectlabels)
+    # print(plotobjectlabels)
     # print(len(plotobjectlabels), len(plotobjects))
 
     if args.refspecfiles is not None:
@@ -1093,7 +1103,7 @@ def addargs(parser):
     parser.add_argument('-fixedionlist', type=list, nargs='+',
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')
 
-    parser.add_argument('-maxseriescount', type=int, default=16,
+    parser.add_argument('-maxseriescount', type=int, default=14,
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')
 
     parser.add_argument('--listtimesteps', action='store_true',
@@ -1145,7 +1155,7 @@ def addargs(parser):
     parser.add_argument('--use_lastemissiontype', action='store_true',
                         help='Tag packets by their last scattering rather than thermal emission type')
 
-    parser.add_argument('-groupby', default='ion', choices=['ion', 'line', 'upperterm'],
+    parser.add_argument('-groupby', default='ion', choices=['ion', 'line', 'upperterm', 'terms'],
                         help=('Use a different color for each ion or line. Requires showemission and frompackets.'))
 
     parser.add_argument('-obsspec', '-refspecfiles', action='append', dest='refspecfiles',
