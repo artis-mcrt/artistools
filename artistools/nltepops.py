@@ -215,8 +215,6 @@ def annotate_emission_line(ax, y, upperlevel, lowerlevel, label):
 
 
 def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, dfpopthision, args, annotatelines):
-    ionstr = at.get_ionstring(atomic_number, ion_stage)
-
     nne, Te, TR, W = [estimators_celltimestep[s] for s in ['nne', 'Te', 'TR', 'W']]
     # comparison to Chianti file
     elsym = at.elsymbols[atomic_number]
@@ -267,6 +265,7 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
                         bbstr = ''
                         color = 'C1'
                         marker = '^'
+                    ionstr = at.get_ionstring(atomic_number, ion_stage, spectral=False)
                     ax.plot(levelnums, depcoeffs, linewidth=1.5, color=color,
                             label=f'{ionstr} CHIANTI NLTE{bbstr}', linestyle='None', marker=marker, zorder=-1)
 
@@ -279,7 +278,7 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
 def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, estimators,
                     T_e, T_R, modelgridindex, timestep, args, lastsubplot):
     """Plot the level populations the specified ion, cell, and timestep."""
-    ionstr = at.get_ionstring(atomic_number, ion_stage)
+    ionstr = at.get_ionstring(atomic_number, ion_stage, spectral=False)
 
     dfpopthision = dfpop.query(
         'modelgridindex == @modelgridindex and timestep == @timestep '
