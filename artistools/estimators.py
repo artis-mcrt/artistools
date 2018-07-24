@@ -872,7 +872,7 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    modelpath = args.modelpath
+    modelpath = Path(args.modelpath)
 
     if not args.timedays and not args.timestep and args.modelgridindex > -1:
         args.timestep = f'0-{len(at.get_timestep_times(modelpath)) - 1}'
