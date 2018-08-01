@@ -33,7 +33,7 @@ def stackspectra(spectra_and_factors):
     return stackedspectrum
 
 
-def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None):
+def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None, reftime=None):
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax < 0:
         timestepmax = timestepmin
@@ -55,8 +55,14 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
     else:
         timearray = specdata.columns.values[1:]
 
+    def timefluxscale(timestep):
+        if reftime is not None:
+            return math.exp(float(timearray[timestep]) / 133.) / math.exp(reftime / 133.)
+        else:
+            return 1.
+
     f_nu = stackspectra([
-        (specdata[specdata.columns[timestep + 1]], at.get_timestep_time_delta(timestep, timearray))
+        (specdata[specdata.columns[timestep + 1]] * timefluxscale(timestep), at.get_timestep_time_delta(timestep, timearray))
         for timestep in range(timestepmin, timestepmax + 1)])
 
     # best to use the filter on this list because it
@@ -733,7 +739,8 @@ def plot_artis_spectrum(
             use_comovingframe=args.use_comovingframe, maxpacketfiles=args.maxpacketfiles, delta_lambda=args.deltalambda)
         make_spectrum_stat_plot(spectrum, linelabel, Path(args.outputfile).parent, args)
     else:
-        spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc)
+        spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
+                                reftime=timeavg)
 
     spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
 
@@ -973,9 +980,11 @@ def make_plot(modelpaths, args):
         if args.reverselegendorder:
             plotobjects, plotobjectlabels = plotobjects[::-1], plotobjectlabels[::-1]
 
+        fs = 12 if (args.showemission or args.showabsorption) else None
         leg = axes[0].legend(
             plotobjects, plotobjectlabels, loc='upper right', frameon=False,
-            handlelength=1, ncol=legendncol, numpoints=1)
+            handlelength=1, ncol=legendncol, numpoints=1, fontsize=fs)
+        leg.set_zorder(200)
 
         for artist, text in zip(leg.legendHandles, leg.get_texts()):
             if hasattr(artist, 'get_color'):
