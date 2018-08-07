@@ -715,19 +715,19 @@ def get_runfolder_timesteps(folderpath):
     folder_timesteps = set()
     try:
         with opengzip(Path(folderpath, 'estimators_0000.out'), 'rt') as estfile:
-            restart_timestepfound = False
+            restart_timestep = -1
             for line in estfile:
                 if line.startswith('timestep '):
                     timestep = int(line.split()[1])
-
-                    if not restart_timestepfound and timestep != 0:
+                    if timestep != restart_timestep and timestep != 0:
                         # the first timestep of a restarted run is duplicate and should be ignored
-                        restart_timestepfound = True
+                        restart_timestep = timestep
                     elif timestep not in folder_timesteps:
                         folder_timesteps.add(timestep)
-                    else:
-                        # second time seeing this timestep
-                        return tuple(folder_timesteps)
+                    # the same timestep will
+                    # else:
+                    #     # second time seeing this timestep
+                    #     return tuple(folder_timesteps)
 
     except FileNotFoundError:
         pass
