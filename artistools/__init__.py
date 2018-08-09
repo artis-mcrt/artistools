@@ -719,15 +719,13 @@ def get_runfolder_timesteps(folderpath):
             for line in estfile:
                 if line.startswith('timestep '):
                     timestep = int(line.split()[1])
-                    if timestep != restart_timestep and timestep != 0:
+
+                    if (restart_timestep < 0 and timestep != 0):
                         # the first timestep of a restarted run is duplicate and should be ignored
                         restart_timestep = timestep
-                    elif timestep not in folder_timesteps:
+
+                    if timestep != restart_timestep:
                         folder_timesteps.add(timestep)
-                    # the same timestep will
-                    # else:
-                    #     # second time seeing this timestep
-                    #     return tuple(folder_timesteps)
 
     except FileNotFoundError:
         pass
