@@ -429,7 +429,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
     dfpop = read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0])
 
     if dfpop.empty:
-        print(f'No NLTE population data for modelgrid cell {args.modelgridindex} timestep {timestep}')
+        print(f'No NLTE population data for modelgrid cell {mgilist[0]} timestep {timestep}')
         return
 
     dfpop.query('Z == @atomic_number', inplace=True)
