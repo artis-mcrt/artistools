@@ -126,7 +126,8 @@ def make_xs_plot(axis, nonthermaldata, timestep, outputfile, args):
         axis.legend(loc='upper center', handlelength=2, frameon=False, numpoints=1, prop={'size': 13})
 
 
-def make_plot(nonthermaldata, timestep, outputfile, args):
+def make_plot(modelpaths, args):
+              # nonthermaldata, modelpath, modelgridindex, timestep, outputfile, args):
     """Draw the bin edges, fitted field, and emergent spectrum."""
     nplots = 1 if not args.xsplot else 2
     fig, axes = plt.subplots(nrows=nplots, ncols=1, sharex=True,
@@ -138,36 +139,58 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
 
     if args.kf1992spec:
         kf92spec = pd.read_csv(
-            Path(args.modelpath, 'KF1992spec-fig1.txt'),
+            Path(modelpath, 'KF1992spec-fig1.txt'),
             header=None, names=['e_kev', 'log10_y'])
         kf92spec['energy_ev'] = kf92spec['e_kev'] * 1000.
         kf92spec.eval('y = 10 ** log10_y', inplace=True)
         axes[0].plot(kf92spec['energy_ev'], kf92spec['log10_y'],
                      linewidth=2.0, color='red', label='Kozma & Fransson (1992)')
 
-    modelname = at.get_model_name(args.modelpath)
-    # ymax = max(nonthermaldata['y'])
-
-    # nonthermaldata.plot(x='energy_ev', y='y', linewidth=1.5, ax=axis, color='blue', legend=False)
-    axes[0].plot(nonthermaldata['energy_ev'], np.log10(nonthermaldata['y']),
-                 linewidth=2.0, color='black', label=modelname)
-    axes[0].set_ylabel(r'log [y (e$^-$ / cm$^2$ / s / eV)]')
-
-    if args.xsplot:
-        make_xs_plot(axes[1], nonthermaldata, timestep, outputfile, args)
-
-    if not args.notitle:
-        figure_title = f'Cell {args.modelgridindex} at Timestep {timestep}'
-        try:
-            time_days = float(at.get_timestep_time('.', timestep))
-        except FileNotFoundError:
-            time_days = 0
+    for index, modelpath in enumerate(modelpaths):
+        modelname = at.get_model_name(modelpath)
+        if args.velocity >= 0.:
+            modelgridindex = at.get_closest_cell(modelpath, args.velocity)
         else:
-            figure_title += f' ({time_days:.2f}d)'
-        axes[0].set_title(figure_title, fontsize=13)
+            modelgridindex = args.modelgridindex
+
+        if args.timedays:
+            timestep = at.get_closest_timestep(modelpath, args.timedays)
+        else:
+            timestep = args.timestep
+
+        nonthermaldata = read_files(
+            modelpath=Path(modelpath),
+            modelgridindex=modelgridindex, timestep=timestep)
+
+        if nonthermaldata.empty:
+            print(f'No data for timestep {timestep:d}')
+            continue
+
+        if index < len(args.modellabels):
+            model_label = args.modellabels[index]
+        else:
+            model_label = f'{modelname} cell {modelgridindex} at timestep {timestep}'
+            try:
+                time_days = float(at.get_timestep_time('.', timestep))
+            except FileNotFoundError:
+                time_days = 0
+            else:
+                model_label += f' ({time_days:.2f}d)'
+
+        outputfile = str(args.outputfile).format(modelgridindex, timestep)
+        print(f'Plotting timestep {timestep:d}')
+        # ymax = max(nonthermaldata['y'])
+
+        # nonthermaldata.plot(x='energy_ev', y='y', linewidth=1.5, ax=axis, color='blue', legend=False)
+        axes[0].plot((nonthermaldata['energy_ev']), np.log10(nonthermaldata['y']), label=model_label,
+                     linewidth=0.0, marker='x', color='black' if index == 0 else None, alpha=0.95)
+        axes[0].set_ylabel(r'log [y (e$^-$ / cm$^2$ / s / eV)]')
+
+        if args.xsplot:
+            make_xs_plot(axes[1], nonthermaldata, timestep, outputfile, args)
 
     if not args.nolegend:
-        axes[0].legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
+        axes[0].legend(loc='best', handlelength=2, frameon=False, numpoints=1)
 
     axes[-1].set_xlabel(r'Energy (eV)')
     # axis.yaxis.set_minor_locator(ticker.MultipleLocator(base=0.1))
@@ -188,8 +211,11 @@ def make_plot(nonthermaldata, timestep, outputfile, args):
 
 
 def addargs(parser):
-    parser.add_argument('-modelpath', default='.',
-                        help='Path to ARTIS folder')
+    parser.add_argument('-modelpath', default=[], nargs='*', action=at.AppendPath,
+                        help='Paths to ARTIS folders with spec.out or packets files')
+
+    parser.add_argument('-modellabels', default=[], nargs='*',
+                        help='Model name overrides')
 
     parser.add_argument('-listtimesteps', action='store_true',
                         help='Show the times at each timestep')
@@ -197,23 +223,23 @@ def addargs(parser):
     parser.add_argument('-xsplot', action='store_true',
                         help='Show the cross section plot')
 
+    parser.add_argument('-timedays', '-time', '-t',
+                        help='Time in days to plot')
+
     parser.add_argument('-timestep', '-ts', type=int, default=-1,
                         help='Timestep number to plot')
-
-    parser.add_argument('-timestepmax', type=int, default=-1,
-                        help='Make plots for all timesteps up to this timestep')
 
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Modelgridindex to plot')
 
-    parser.add_argument('-xmin', type=int,
+    parser.add_argument('-velocity', '-v', type=float, default=-1,
+                        help='Specify cell by velocity')
+
+    parser.add_argument('-xmin', type=float, default=0.,
                         help='Plot range: minimum energy in eV')
 
-    parser.add_argument('-xmax', type=int,
+    parser.add_argument('-xmax', type=float,
                         help='Plot range: maximum energy in eV')
-
-    parser.add_argument('--notitle', action='store_true',
-                        help='Suppress the top title from the plot')
 
     parser.add_argument('--nolegend', action='store_true',
                         help='Suppress the legend from the plot')
@@ -240,32 +266,26 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
+    if not args.modelpath:
+        args.modelpath = [Path('.')]
+    elif isinstance(args.modelpath, (str, Path)):
+        args.modelpath = [args.modelpath]
+
+    # flatten the list
+    modelpaths = []
+    for elem in args.modelpath:
+        if isinstance(elem, list):
+            modelpaths.extend(elem)
+        else:
+            modelpaths.append(elem)
+
     if os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     if args.listtimesteps:
         at.showtimesteptimes()
     else:
-        timestepmin = args.timestep
-
-        if not args.timestepmax or args.timestepmax < 0:
-            timestepmax = timestepmin + 1
-        else:
-            timestepmax = args.timestepmax
-
-        list_timesteps = tuple(range(timestepmin, timestepmax))
-
-        for timestep in list_timesteps:
-            nonthermaldata_currenttimestep = read_files(
-                modelpath=Path(args.modelpath),
-                modelgridindex=args.modelgridindex, timestep=timestep)
-
-            if not nonthermaldata_currenttimestep.empty:
-                outputfile = str(args.outputfile).format(args.modelgridindex, timestep)
-                print(f'Plotting timestep {timestep:d}')
-                make_plot(nonthermaldata_currenttimestep, timestep, outputfile, args)
-            else:
-                print(f'No data for timestep {timestep:d}')
+        make_plot(modelpaths, args)
 
 
 if __name__ == "__main__":
