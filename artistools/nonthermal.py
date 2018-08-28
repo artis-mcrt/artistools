@@ -139,7 +139,7 @@ def make_plot(modelpaths, args):
 
     if args.kf1992spec:
         kf92spec = pd.read_csv(
-            Path(modelpath, 'KF1992spec-fig1.txt'),
+            Path(modelpaths[0], 'KF1992spec-fig1.txt'),
             header=None, names=['e_kev', 'log10_y'])
         kf92spec['energy_ev'] = kf92spec['e_kev'] * 1000.
         kf92spec.eval('y = 10 ** log10_y', inplace=True)
@@ -183,7 +183,7 @@ def make_plot(modelpaths, args):
 
         # nonthermaldata.plot(x='energy_ev', y='y', linewidth=1.5, ax=axis, color='blue', legend=False)
         axes[0].plot((nonthermaldata['energy_ev']), np.log10(nonthermaldata['y']), label=model_label,
-                     linewidth=0.0, marker='x', color='black' if index == 0 else None, alpha=0.95)
+                     linewidth=2.0, color='black' if index == 0 else None, alpha=0.95)
         axes[0].set_ylabel(r'log [y (e$^-$ / cm$^2$ / s / eV)]')
 
         if args.xsplot:
