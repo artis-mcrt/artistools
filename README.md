@@ -37,8 +37,8 @@ Use the -h option to get a list of command-line arguments for each subcommand. M
 ## Example output
 
 ![Emission plot](images/fig-emission.png)
-![Estimator plot](images/fig-estimators.png)
 ![NLTE plot](images/fig-nlte-Ni.png)
+![Estimator plot](images/fig-estimators.png)
 
 ## Meta
 
