@@ -34,6 +34,12 @@ Artistools provides the following commands:
 
 Use the -h option to get a list of command-line arguments for each subcommand. Most of these commands would usually be run from within an ARTIS simulation folder.
 
+## Example output
+
+![Emission plot](images/fig-emission.png)
+![Estimator plot](images/fig-estimators.png)
+![NLTE plot](images/fig-nlte-Ni.png)
+
 ## Meta
 
 Distributed under the MIT license. See ``LICENSE`` for more information.
