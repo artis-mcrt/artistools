@@ -226,8 +226,8 @@ def make_plot(engrid, yvec, outputfilename):
     #    ax.annotate(modellabel, xy=(0.97, 0.95), xycoords='axes fraction', horizontalalignment='right',
     #                verticalalignment='top', fontsize=fs)
     # ax.set_yscale('log')
-    ax.set_xlim(xmin=engrid[0], xmax=engrid[-1] * 1.0)
-    # ax.set_ylim(ymin=5, ymax=14)
+    ax.set_xlim(engrid[0], engrid[-1] * 1.0)
+    # ax.set_ylim(bottom=5, top=14)
     ax.set_xlabel(r'Electron energy [eV]', fontsize=fs)
     ax.set_ylabel(r'y(E)', fontsize=fs)
     print(f"Saving '{outputfilename}'")

@@ -104,8 +104,8 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
         axis.plot(lcdata.time, lcdata['lum'], linewidth=2, linestyle=linestyle, label=f'{modelname}')
         # axis.plot(lcdata.time, lcdata['lum_cmf'], linewidth=2, linestyle=linestyle, label=f'{modelname} (cmf)')
 
-    # axis.set_xlim(xmin=xminvalue,xmax=xmaxvalue)
-    # axis.set_ylim(ymin=-0.1,ymax=1.3)
+    # axis.set_xlim(left=xminvalue, right=xmaxvalue)
+    # axis.set_ylim(bottom=-0.1, top=1.3)
 
     axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
     axis.set_xlabel(r'Time (days)')

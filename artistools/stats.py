@@ -54,8 +54,8 @@ def main():
         axes[1].plot(timesteptimes, yvalues, linestyle=linestyle, linewidth=1.5, label=linelabel)
 
     for axis in axes:
-        axis.set_xlim(xmin=250, xmax=300)
-        # axis.set_ylim(ymin=-0.1,ymax=1.3)
+        axis.set_xlim(250, 300)
+        # axis.set_ylim(-0.1, 1.3)
 
     axes[0].legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
     axes[-1].set_xlabel(r'Time (days)')

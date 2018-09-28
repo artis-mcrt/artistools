@@ -118,8 +118,8 @@ def make_plot(dfmacroatom, modelpath, specfilename, timestepmin, timestepmax, ou
     axis.set_xlabel(r'Wavelength in ($\AA$)')
     axis.set_ylabel(r'Wavelength out ($\AA$)')
     # axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
-    axis.set_xlim(xmin=xmin, xmax=xmax)
-    axis.set_ylim(ymin=xmin, ymax=xmax)
+    axis.set_xlim(xmin, xmax)
+    axis.set_ylim(xmin, xmax)
 
     # axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 13})
 
