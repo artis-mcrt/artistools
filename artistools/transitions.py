@@ -149,7 +149,7 @@ def make_plot(xvalues, yvalues, axes, temperature_list, vardict, ions, ionpopdic
     axes[-1].set_xlabel(r'Wavelength ($\AA$)')
 
     for axis in axes:
-        axis.set_xlim(xmin=xmin, xmax=xmax)
+        axis.set_xlim(xmin, xmax)
         axis.set_ylabel(r'$\propto$ F$_\lambda$')
 
     axes[-1].legend(loc='upper right', handlelength=1, frameon=False, numpoints=1, prop={'size': 8})

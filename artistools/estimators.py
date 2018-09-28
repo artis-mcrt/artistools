@@ -343,8 +343,7 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, args, **plo
     modeldata, _ = at.get_modeldata(modelpath)
     abundancedata = at.get_initialabundances(modelpath)
 
-    ax.set_ylim(ymin=0.)
-    ax.set_ylim(ymax=1.0)
+    ax.set_ylim(0., 1.0)
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split('_')
         elsymbol = splitvariablename[0].strip('0123456789')
@@ -539,7 +538,7 @@ def plot_multi_ion_series(
 
     ax.set_yscale('log')
     ymin, ymax = ax.get_ylim()
-    ax.set_ylim(ymin=ymin, ymax=ymax * 10 ** (0.3 * math.log10(ymax / ymin)))
+    ax.set_ylim(ymin, ymax * 10 ** (0.3 * math.log10(ymax / ymin)))
 
 
 def plot_series(ax, xlist, variablename, showlegend, timestepslist, mgilist,
@@ -660,9 +659,9 @@ def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath, estima
             elif seriestype == 'averageionisation':
                 plot_averageionisation(ax, xlist, params, timestepslist, mgilist, estimators, modelpath, args)
             elif seriestype == '_ymin':
-                ax.set_ylim(ymin=params)
+                ax.set_ylim(bottom=params)
             elif seriestype == '_ymax':
-                ax.set_ylim(ymax=params)
+                ax.set_ylim(top=params)
             else:
                 seriestype, ionlist = plotitem
                 plot_multi_ion_series(ax, xlist, seriestype, ionlist, timestepslist, mgilist, estimators,
@@ -698,7 +697,7 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
     xmax = args.xmax if args.xmax > 0 else max(xlist)
 
     for ax, plotitems in zip(axes, plotlist):
-        ax.set_xlim(xmin=xmin, xmax=xmax)
+        ax.set_xlim(left=xmin, right=xmax)
         plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath, estimators, args, **plotkwargs)
 
     if len(set(mgilist)) == 1:  # single grid cell plot

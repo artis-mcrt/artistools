@@ -197,10 +197,10 @@ def make_plot(modelpaths, args):
     # axis.set_yscale("log", nonposy='clip')
     for ax in axes:
         if args.xmin is not None:
-            ax.set_xlim(xmin=args.xmin)
+            ax.set_xlim(left=args.xmin)
         if args.xmax:
-            ax.set_xlim(xmax=args.xmax)
-    # axis.set_ylim(ymin=0.0, ymax=ymax)
+            ax.set_xlim(right=args.xmax)
+    # axis.set_ylim(bottom=0.0, top=ymax)
 
     # axis.legend(loc='upper center', handlelength=2,
     #             frameon=False, numpoints=1, prop={'size': 13})

@@ -694,7 +694,7 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
     # spectrum.plot(x='lambda_angstroms', y='packetcount', ax=axis)
 
     axis.set_xlabel(r'Wavelength ($\AA$)')
-    axis.set_xlim(xmin=args.xmin, xmax=args.xmax)
+    axis.set_xlim(left=args.xmin, right=args.xmax)
     xdiff = (args.xmax - args.xmin)
     if xdiff < 5000:
         axis.xaxis.set_major_locator(ticker.MultipleLocator(base=100))
@@ -795,9 +795,9 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
             refspecindex += 1
 
     for axis in axes:
-        axis.set_ylim(ymin=0.)
+        axis.set_ylim(bottom=0.)
         if args.normalised:
-            axis.set_ylim(ymax=1.25)
+            axis.set_ylim(top=1.25)
             axis.set_ylabel(r'Scaled F$_\lambda$')
 
 
@@ -908,7 +908,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     # axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
     #               horizontalalignment='right', verticalalignment='bottom', fontsize=7)
 
-    axis.set_ylim(ymax=scalefactor * max_flambda_emission_total * 1.2)
+    axis.set_ylim(top=scalefactor * max_flambda_emission_total * 1.2)
     if scale_to_peak:
         axis.set_ylabel(r'Scaled F$_\lambda$')
 
@@ -952,7 +952,7 @@ def make_plot(modelpaths, args):
         axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\AA$]')
         supxmin = xboundaries[index]
         supxmax = xboundaries[index + 1]
-        axis.set_xlim(xmin=supxmin, xmax=supxmax)
+        axis.set_xlim(left=supxmin, right=supxmax)
 
         if (args.xmax - args.xmin) < 11000:
             axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
@@ -1008,9 +1008,9 @@ def make_plot(modelpaths, args):
     for ax in axes:
         # ax.xaxis.set_major_formatter(plt.NullFormatter())
         if args.ymin is not None:
-            ax.set_ylim(ymin=args.ymin)
+            ax.set_ylim(bottom=args.ymin)
         if args.ymax is not None:
-            ax.set_ylim(ymax=args.ymax)
+            ax.set_ylim(top=args.ymax)
 
         if '{' in ax.get_ylabel():
             ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))

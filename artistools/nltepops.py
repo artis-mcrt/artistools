@@ -220,15 +220,15 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
     elsym = at.elsymbols[atomic_number]
     elsymlower = elsym.lower()
     if Path('data', f'{elsymlower}_{ion_stage}-levelmap.txt').exists():
-        # ax.set_ylim(ymin=2e-3)
-        # ax.set_ylim(ymax=4)
+        # ax.set_ylim(bottom=2e-3)
+        # ax.set_ylim(top=4)
         levelmapfile = Path('data', f'{elsymlower}_{ion_stage}-levelmap.txt').open('r')
         levelnumofconfigterm = {}
         for line in levelmapfile:
             row = line.split()
             levelnumofconfigterm[(row[0], row[1])] = int(row[2]) - 1
 
-        # ax.set_ylim(ymin=5e-4)
+        # ax.set_ylim(bottom=5e-4)
         for depfilepath in sorted(Path('data').rglob(f'chianti_{elsym}_{ion_stage}_*.txt')):
             with depfilepath.open('r') as depfile:
                 firstline = depfile.readline()
@@ -528,7 +528,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
             #             horizontalalignment='right', verticalalignment='top', fontsize=12)
             ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
 
-            ax.set_xlim(xmin=-1)
+            ax.set_xlim(left=-1)
 
             if not args.nolegend and prev_ion_stage != ion_stage:
                 ax.legend(
