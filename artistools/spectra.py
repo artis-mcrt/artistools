@@ -635,9 +635,10 @@ def plot_reference_spectrum(
     else:
         ycolumnname = 'f_lambda'
 
+    ymax = max(specdata[ycolumnname])
     lineplot = specdata.plot(x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None, **plotkwargs)
 
-    return mpatches.Patch(color=lineplot.get_lines()[0].get_color()), plotkwargs['label']
+    return mpatches.Patch(color=lineplot.get_lines()[0].get_color()), plotkwargs['label'], ymax
 
 
 def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
@@ -886,6 +887,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     # print(plotobjectlabels)
     # print(len(plotobjectlabels), len(plotobjects))
 
+    ymaxrefall = 0.
     if args.refspecfiles is not None:
         plotkwargs = {}
         for index, filename in enumerate(args.refspecfiles):
@@ -893,9 +895,10 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
                 plotkwargs['color'] = args.refspeccolors[index]
 
             supxmin, supxmax = axis.get_xlim()
-            plotobj, serieslabel = plot_reference_spectrum(
+            plotobj, serieslabel, ymaxref = plot_reference_spectrum(
                 filename, axis, supxmin, supxmax,
                 filterfunc, scale_to_peak, scaletoreftime=args.scaletoreftime, **plotkwargs)
+            ymaxrefall = max(ymaxrefall, ymaxref)
 
             plotobjects.append(plotobj)
             plotobjectlabels.append(serieslabel)
@@ -908,7 +911,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     # axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
     #               horizontalalignment='right', verticalalignment='bottom', fontsize=7)
 
-    axis.set_ylim(top=scalefactor * max_flambda_emission_total * 1.2)
+    axis.set_ylim(top=max(ymaxrefall, scalefactor * max_flambda_emission_total * 1.2))
     if scale_to_peak:
         axis.set_ylabel(r'Scaled F$_\lambda$')
 
