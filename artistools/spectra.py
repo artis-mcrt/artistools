@@ -716,6 +716,10 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
 def plot_artis_spectrum(
         axes, modelpath, args, scale_to_peak=None, from_packets=False, filterfunc=None, linelabel=None, **plotkwargs):
     """Plot an ARTIS output spectrum."""
+    if not Path(modelpath, 'input.txt').exists():
+        print(f"Skipping '{modelpath}' (not an ARTIS folder?)")
+        return
+        
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
 
@@ -771,6 +775,7 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
         plotkwargs = {}
         plotkwargs['alpha'] = 0.9
         if Path(specpath).is_dir() or Path(specpath).name == 'spec.out':
+            # ARTIS model spectrum
             # plotkwargs['dashes'] = dashesList[artisindex]
             # plotkwargs['dash_capstyle'] = dash_capstyleList[artisindex]
             plotkwargs['linewidth'] = 1.3  # - (0.1 * artisindex)
@@ -784,6 +789,7 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
                                 filterfunc=filterfunc, **plotkwargs)
             artisindex += 1
         else:
+            # reference spectrum
             plotkwargs['linewidth'] = 1.
             if refspecindex < len(args.refspeccolors):
                 plotkwargs['color'] = args.refspeccolors[refspecindex]
