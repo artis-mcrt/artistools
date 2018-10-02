@@ -719,7 +719,7 @@ def plot_artis_spectrum(
     if not Path(modelpath, 'input.txt').exists():
         print(f"Skipping '{modelpath}' (not an ARTIS folder?)")
         return
-        
+
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
 
@@ -1024,9 +1024,13 @@ def make_plot(modelpaths, args):
         if '{' in ax.get_ylabel():
             ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))
 
+        if args.hidexticklabels:
+            ax.tick_params(axis='x', which='both',
+                           # bottom=True, top=True,
+                           labelbottom=False)
         ax.set_xlabel('')
 
-    axes[-1].set_xlabel(r'Wavelength [$\AA$]')
+    axes[-1].set_xlabel(args.xlabel)
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
@@ -1200,6 +1204,12 @@ def addargs(parser):
 
     parser.add_argument('--reverselegendorder', action='store_true',
                         help='Reverse the order of legend items')
+
+    parser.add_argument('--hidexticklabels', action='store_true',
+                        help='Don''t show numbers on the x axis')
+
+    parser.add_argument('-xlabel', default=r'Wavelength [$\AA$]',
+                        help=('Label for the x axis'))
 
     parser.add_argument('--refspecafterartis', action='store_true',
                         help='Plot reference spectra after artis spectra')
