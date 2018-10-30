@@ -296,7 +296,7 @@ def main(args=None, argsraw=None, **kwargs):
         Te = estimators['Te']
         TR = estimators['TR']
         figure_title = f'{modelname}\n'
-        figure_title += (f'Cell {modelgridindex} (v={velocity} km/s) with '
+        figure_title += (f'Cell {modelgridindex} ({velocity} km/s) with '
                          f'Te = {Te:.1f} K, TR = {TR:.1f} K at timestep {timestep}')
         time_days = float(at.get_timestep_time(modelpath, timestep))
         if time_days != -1:
