@@ -432,16 +432,18 @@ def plot_multi_ion_series(
     # decoded into numeric form, e.g., [(26, 1), (26, 2)]
     iontuplelist = [
         (at.get_atomic_number(ionstr.split(' ')[0]), at.decode_roman_numeral(ionstr.split(' ')[1]))
+        if ' ' in ionstr else (at.get_atomic_number(ionstr), 'ALL')
         for ionstr in ionlist]
     iontuplelist.sort()
     print(f'Subplot with ions: {iontuplelist}')
 
     missingions = set()
     for atomic_number, ion_stage in iontuplelist:
-        if compositiondata.query('Z == @atomic_number '
-                                 '& lowermost_ionstage <= @ion_stage '
-                                 '& uppermost_ionstage >= @ion_stage').empty:
-            missingions.add((atomic_number, ion_stage))
+        if ion_stage != 'ALL' and compositiondata.query(
+            'Z == @atomic_number '
+            '& lowermost_ionstage <= @ion_stage '
+            '& uppermost_ionstage >= @ion_stage').empty:
+                missingions.add((atomic_number, ion_stage))
 
     if missingions:
         print(f" Warning: Can't plot {seriestype} for {missingions} "
@@ -477,7 +479,10 @@ def plot_multi_ion_series(
                 #           f'cell {modelgridindex} timesteps {timesteps}')
 
                 estimpop = get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, ['populations'])
-                nionpop = estimpop.get((atomic_number, ion_stage), 0.)
+                if ion_stage == 'ALL':
+                    nionpop = estimpop.get((atomic_number), 0.)
+                else:
+                    nionpop = estimpop.get((atomic_number, ion_stage), 0.)
 
                 try:
                     if args.ionpoptype == 'absolute':
@@ -503,11 +508,11 @@ def plot_multi_ion_series(
                 # this is very slow!
                 estim = get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [])
                 dictvars = {}
-                for k, v in estim.items():
-                    if isinstance(v, dict):
-                        dictvars[k] = v.get((atomic_number, ion_stage), 0.)
+                for k, value in estim.items():
+                    if isinstance(value, dict):
+                        dictvars[k] = value.get((atomic_number, ion_stage), 0.)
                     else:
-                        dictvars[k] = v
+                        dictvars[k] = value
 
                 # dictvars will now define things like 'Te', 'TR',
                 # as well as 'populations' which applies to the current ion
@@ -522,10 +527,14 @@ def plot_multi_ion_series(
 
         ylist.insert(0, ylist[0])
         # linestyle = ['-.', '-', '--', (0, (4, 1, 1, 1)), ':'] + [(0, x) for x in dashes_list][ion_stage - 1]
-        dashes = [(3, 1, 1, 1), (), (1.5, 1.5), (6, 3), (1, 3)][ion_stage - 1]
+        if ion_stage == 'ALL':
+            dashes = ()
+            linewidth = 1.0
+        else:
+            dashes = [(3, 1, 1, 1), (), (1.5, 1.5), (6, 3), (1, 3)][ion_stage - 1]
+            linewidth = [1.0, 1.0, 1.0, 0.7, 0.7][ion_stage - 1]
+            # color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][ion_stage - 1]
 
-        linewidth = [1.0, 1.0, 1.0, 0.7, 0.7][ion_stage - 1]
-        # color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][ion_stage - 1]
         # assert colorindex < 10
         # color = f'C{colorindex}'
         color = get_elemcolor(atomic_number=atomic_number)
