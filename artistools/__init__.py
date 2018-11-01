@@ -556,7 +556,9 @@ def decode_roman_numeral(strin):
 
 @lru_cache(maxsize=16)
 def get_ionstring(atomic_number, ionstage, spectral=True):
-    if spectral:
+    if ionstage == 'ALL' or ionstage is None:
+        return f'{elsymbols[atomic_number]}'
+    elif spectral:
         return f'{elsymbols[atomic_number]} {roman_numerals[ionstage]}'
     else:
         # ion notion e.g. Co+, Fe2+
