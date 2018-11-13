@@ -778,13 +778,14 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
         plotkwargs['color'] = args.color[seriesindex]
         if args.dashes[seriesindex]:
             plotkwargs['dashes'] = args.dashes[seriesindex]
-        plotkwargs['linewidth'] = args.linewidth[seriesindex]
+        if args.linewidth[seriesindex]:
+            plotkwargs['linewidth'] = args.linewidth[seriesindex]
 
         if Path(specpath).is_dir() or Path(specpath).name == 'spec.out':
             # ARTIS model spectrum
             # plotkwargs['dash_capstyle'] = dash_capstyleList[artisindex]
             if 'linewidth' not in plotkwargs:
-                plotkwargs['linewidth'] = 1.3  # - (0.1 * artisindex)
+                plotkwargs['linewidth'] = 1.3
 
             plotkwargs['linelabel'] = args.label[seriesindex]
 
@@ -795,7 +796,7 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
         else:
             # reference spectrum
             if 'linewidth' not in plotkwargs:
-                plotkwargs['linewidth'] = 1.
+                plotkwargs['linewidth'] = 1.1
 
             for _, axis in enumerate(axes):
                 supxmin, supxmax = axis.get_xlim()
