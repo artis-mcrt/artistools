@@ -17,6 +17,7 @@ from functools import reduce
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import scipy.signal
 # import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
@@ -80,7 +81,6 @@ def apply_filters(xlist, ylist, args):
         ylist = moving_average(ylist, args.filtermovingavg)
 
     if args.filtersavgol:
-        import scipy.signal
         window_length, polyorder = [int(x) for x in args.filtersavgol]
 
         ylist = scipy.signal.savgol_filter(ylist, window_length=window_length, polyorder=polyorder,
