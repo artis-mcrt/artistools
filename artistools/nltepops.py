@@ -239,6 +239,16 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
                 # print(depfilepath, file_nne, nne, file_Te, Te, file_TR, TR, file_W, W)
                 if (math.isclose(file_nne, nne, rel_tol=0.01) and
                         math.isclose(file_Te, Te, abs_tol=10)):
+                    if file_W > 0:
+                        continue
+                        bbstr = ' with dilute blackbody'
+                        color = 'C2'
+                        marker = '+'
+                    else:
+                        bbstr = ''
+                        color = 'C1'
+                        marker = '^'
+
                     print(f'Plotting reference data from {depfilepath},')
                     print(f'nne = {file_nne} (ARTIS {nne}) cm^-3, Te = {file_Te} (ARTIS {Te}) K, '
                           f'TR = {file_TR} (ARTIS {TR} K, W = {file_W} (ARTIS {W})')
@@ -256,15 +266,6 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
                                 depcoeffs.append(float(row[0]) / firstdep)
                         except (KeyError, IndexError, ValueError):
                             pass
-                    if file_W > 0:
-                        continue
-                        bbstr = ' with dilute blackbody'
-                        color = 'C2'
-                        marker = '+'
-                    else:
-                        bbstr = ''
-                        color = 'C1'
-                        marker = '^'
                     ionstr = at.get_ionstring(atomic_number, ion_stage, spectral=False)
                     ax.plot(levelnums, depcoeffs, linewidth=1.5, color=color,
                             label=f'{ionstr} CHIANTI NLTE{bbstr}', linestyle='None', marker=marker, zorder=-1)
