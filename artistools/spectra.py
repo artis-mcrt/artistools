@@ -320,7 +320,7 @@ def get_flux_contributions_from_packets(
                 return (f'{at.get_ionstring(line.atomic_number, line.ionstage)} '
                         f'λ{line.lambda_angstroms:.0f} '
                         f'({line.upperlevelindex}-{line.lowerlevelindex})')
-            elif groupby == 'terms':
+            if groupby == 'terms':
                 upper_config = adata.query(
                     'Z == @line.atomic_number and ion_stage == @line.ionstage', inplace=False
                     ).iloc[0].levels.iloc[line.upperlevelindex].levelname
@@ -329,28 +329,24 @@ def get_flux_contributions_from_packets(
                     'Z == @line.atomic_number and ion_stage == @line.ionstage', inplace=False
                     ).iloc[0].levels.iloc[line.lowerlevelindex].levelname
                 lower_term_noj = lower_config.split('_')[-1].split('[')[0]
-                return (f'{at.get_ionstring(line.atomic_number, line.ionstage)} {upper_term_noj}->{lower_term_noj}')
-            elif groupby == 'upperterm':
+                return f'{at.get_ionstring(line.atomic_number, line.ionstage)} {upper_term_noj}->{lower_term_noj}'
+            if groupby == 'upperterm':
                 upper_config = adata.query(
                     'Z == @line.atomic_number and ion_stage == @line.ionstage', inplace=False
                     ).iloc[0].levels.iloc[line.upperlevelindex].levelname
                 upper_term_noj = upper_config.split('_')[-1].split('[')[0]
-                return (f'{at.get_ionstring(line.atomic_number, line.ionstage)} {upper_term_noj}')
-            else:
-                return f'{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound'
-        elif emtype == 9999999:
+                return f'{at.get_ionstring(line.atomic_number, line.ionstage)} {upper_term_noj}'
+            return f'{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound'
+        if emtype == 9999999:
             return f'free-free'
-        else:
-            bflist = at.get_bflist(modelpath)
-            bfindex = -emtype - 1
-            if bfindex in bflist:
-                (atomic_number, ionstage, level) = bflist[bfindex]
-                if groupby == 'line':
-                    return f'{at.get_ionstring(atomic_number, ionstage)} bound-free {level}'
-                else:
-                    return f'{at.get_ionstring(atomic_number, ionstage)} bound-free'
-            else:
-                return f'? bound-free (bfindex={bfindex})'
+        bflist = at.get_bflist(modelpath)
+        bfindex = -emtype - 1
+        if bfindex in bflist:
+            (atomic_number, ionstage, level) = bflist[bfindex]
+            if groupby == 'line':
+                return f'{at.get_ionstring(atomic_number, ionstage)} bound-free {level}'
+            return f'{at.get_ionstring(atomic_number, ionstage)} bound-free'
+        return f'? bound-free (bfindex={bfindex})'
 
     def get_absprocesslabel(abstype):
         if abstype >= 0:
@@ -359,14 +355,12 @@ def get_flux_contributions_from_packets(
                 return (f'{at.get_ionstring(line.atomic_number, line.ionstage)} '
                         f'λ{line.lambda_angstroms:.0f} '
                         f'({line.upperlevelindex}-{line.lowerlevelindex})')
-            else:
-                return f'{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound'
-        elif abstype == -1:
+            return f'{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound'
+        if abstype == -1:
             return 'free-free'
-        elif abstype == -2:
+        if abstype == -2:
             return 'bound-free'
-        else:
-            return '? other absorp.'
+        return '? other absorp.'
 
     array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
 
