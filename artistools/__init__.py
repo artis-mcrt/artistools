@@ -69,11 +69,29 @@ class AppendPath(argparse.Action):
 class ExponentLabelFormatter(ticker.ScalarFormatter):
     """Formatter to move the 'x10^x' offset text into the axis label."""
 
-    def __init__(self, labeltemplate, useMathText=True):
+    def __init__(self, labeltemplate, useMathText=True, decimalplaces=None):
         assert '{' in labeltemplate
         self.labeltemplate = labeltemplate
+        self.decimalplaces = decimalplaces
         super().__init__(useOffset=True, useMathText=useMathText)
         # ticker.ScalarFormatter.__init__(self, useOffset=useOffset, useMathText=useMathText)
+
+    def _set_format(self, vmin, vmax):
+        super()._set_format(vmin, vmax)
+        if self.decimalplaces is not None:
+            self.format = '%1.' + str(self.decimalplaces) + 'f'
+            if self._usetex:
+                self.format = '$%s$' % self.format
+            elif self._useMathText:
+                self.format = '$%s$' % ('\\mathdefault{%s}' % self.format)
+
+
+    def set_locs(self, locs):
+        super().set_locs(locs)
+        if self.decimalplaces is not None:
+            # rounding the tick labels will make the locations incorrect unless we round these too
+            newlocs = [float(('%1.' + str(self.decimalplaces) + 'f') % (x / (10 ** self.orderOfMagnitude))) * (10 ** self.orderOfMagnitude) for x in self.locs]
+            super().set_locs(newlocs)
 
     def set_axis(self, axis):
         super().set_axis(axis)

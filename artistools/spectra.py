@@ -1015,7 +1015,7 @@ def make_plot(args):
             ax.set_ylim(top=args.ymax)
 
         if '{' in ax.get_ylabel():
-            ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))
+            ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True, decimalplaces=1))
 
         if args.hidexticklabels:
             ax.tick_params(axis='x', which='both',
