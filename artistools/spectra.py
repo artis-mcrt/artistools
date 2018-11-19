@@ -1153,7 +1153,7 @@ def addargs(parser):
     parser.add_argument('--nostack', action='store_true',
                         help="Plot each emission/absorption contribution separately instead of a stackplot")
 
-    parser.add_argument('-fixedionlist', type=list, nargs='+',
+    parser.add_argument('-fixedionlist', nargs='+',
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')
 
     parser.add_argument('-maxseriescount', type=int, default=14,
