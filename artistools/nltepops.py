@@ -251,7 +251,7 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
 
                     print(f'Plotting reference data from {depfilepath},')
                     print(f'nne = {file_nne} (ARTIS {nne}) cm^-3, Te = {file_Te} (ARTIS {Te}) K, '
-                          f'TR = {file_TR} (ARTIS {TR} K, W = {file_W} (ARTIS {W})')
+                          f'TR = {file_TR} (ARTIS {TR}) K, W = {file_W} (ARTIS {W})')
                     levelnums = []
                     depcoeffs = []
                     firstdep = -1
