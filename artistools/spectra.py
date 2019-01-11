@@ -43,7 +43,7 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
         specfilename = Path(modelpath) / "specpol.out"
         master_branch = True
     elif Path(modelpath).is_dir():
-        specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
+        specfilename = at.firstexisting(['spec.out.xz', 'spec.out.gz', 'spec.out'], path=modelpath)
     else:
         specfilename = modelpath
 
@@ -205,8 +205,8 @@ def get_flux_contributions(
     nelements = len(elementlist)
 
     if getemission:
-        emissionfilenames = (['emission.out.gz', 'emission.out'] if use_lastemissiontype
-                             else ['emissiontrue.out.gz', 'emissiontrue.out'])
+        emissionfilenames = (['emission.out.xz', 'emission.out.gz', 'emission.out'] if use_lastemissiontype
+                             else ['emissiontrue.out.xz', 'emissiontrue.out.gz', 'emissiontrue.out'])
 
         emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
         emissionfilesize = Path(emissionfilename).stat().st_size / 1024 / 1024
@@ -221,7 +221,7 @@ def get_flux_contributions(
         assert emissiondata.shape[0] == len(arraynu) * len(timearray)
 
     if getabsorption:
-        absorptionfilename = at.firstexisting(['absorption.out.gz', 'absorption.out'], path=modelpath)
+        absorptionfilename = at.firstexisting(['absorption.out.xz', 'absorption.out.gz', 'absorption.out'], path=modelpath)
         absorptionfilesize = Path(absorptionfilename).stat().st_size / 1024 / 1024
         print(f' Reading {absorptionfilename} ({absorptionfilesize:.2f} MiB)')
         absorptiondata = pd.read_csv(absorptionfilename, delim_whitespace=True, header=None)
@@ -1084,7 +1084,7 @@ def write_flambda_spectra(modelpath, args):
         number_of_timesteps = len(timearray)
 
     else:
-        specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
+        specfilename = at.firstexisting(['spec.out.xz', 'spec.out.gz', 'spec.out'], path=modelpath)
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = specdata.columns.values[1:]
         number_of_timesteps = len(specdata.keys()) - 1

@@ -6,6 +6,7 @@ A collection of plotting, analysis, and file format conversion tools for the ART
 import argparse
 from functools import lru_cache
 import gzip
+import lzma
 import math
 import os.path
 import sys
@@ -90,7 +91,8 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         super().set_locs(locs)
         if self.decimalplaces is not None:
             # rounding the tick labels will make the locations incorrect unless we round these too
-            newlocs = [float(('%1.' + str(self.decimalplaces) + 'f') % (x / (10 ** self.orderOfMagnitude))) * (10 ** self.orderOfMagnitude) for x in self.locs]
+            newlocs = [float(('%1.' + str(self.decimalplaces) + 'f') % (x / (10 ** self.orderOfMagnitude)))
+                       * (10 ** self.orderOfMagnitude) for x in self.locs]
             super().set_locs(newlocs)
 
     def set_axis(self, axis):
@@ -164,7 +166,7 @@ def get_composition_data(filename):
 def get_modeldata(filename):
     """Return a list containing named tuples for all model grid cells."""
     if os.path.isdir(filename):
-        filename = firstexisting(['model.txt.gz', 'model.txt'], path=filename)
+        filename = firstexisting(['model.txt.xz', 'model.txt.gz', 'model.txt'], path=filename)
 
     modeldata = pd.DataFrame()
     gridcelltuple = namedtuple('gridcell', 'inputcellid velocity logrho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48')
@@ -208,7 +210,7 @@ def save_modeldata(dfmodeldata, t_model_init_days, filename):
 @lru_cache(maxsize=8)
 def get_initialabundances(modelpath):
     """Return a list of mass fractions."""
-    abundancefilepath = firstexisting(['abundances.txt.gz', 'abundances.txt'], path=modelpath)
+    abundancefilepath = firstexisting(['abundances.txt.xz', 'abundances.txt.gz', 'abundances.txt'], path=modelpath)
 
     columns = ['inputcellid', *['X_' + elsymbols[x] for x in range(1, 31)]]
     abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, names=columns)
@@ -482,7 +484,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
         transition_filename = Path(modelpath, 'transitiondata.txt')
 
         print(f'Reading {transition_filename.relative_to(modelpath.parent)}')
-        with opengzip(transition_filename, 'rt') as ftransitions:
+        with zopen(transition_filename, 'rt') as ftransitions:
             transitionsdict = {
                 (Z, ionstage): dftransitions
                 for Z, ionstage, dftransitions in parse_transitiondata(ftransitions, ionlist)}
@@ -492,7 +494,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
         phixs_filename = Path(modelpath, 'phixsdata_v2.txt')
 
         print(f'Reading {phixs_filename.relative_to(modelpath.parent)}')
-        with opengzip(phixs_filename, 'rt') as fphixs:
+        with zopen(phixs_filename, 'rt') as fphixs:
             for (Z, upperionstage, upperionlevel, lowerionstage,
                  lowerionlevel, targetlist, phixstable) in parse_phixsdata(fphixs, ionlist):
                 phixsdict[(Z, lowerionstage, lowerionlevel)] = phixstable
@@ -500,7 +502,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
     level_lists = []
     iontuple = namedtuple('ion', 'Z ion_stage level_count ion_pot levels transitions')
 
-    with opengzip(adatafilename, 'rt') as fadata:
+    with zopen(adatafilename, 'rt') as fadata:
         print(f'Reading {adatafilename.relative_to(modelpath.parent)}')
 
         for Z, ionstage, level_count, ionisation_energy_ev, dflevels in parse_adata(fadata, phixsdict, ionlist):
@@ -618,10 +620,16 @@ def parse_range_list(rngs, dictvars={}):
     return sorted(set(chain.from_iterable([parse_range(rng, dictvars) for rng in rngs.split(',')])))
 
 
-def opengzip(filename, mode):
-    """Open filename.gz or filename."""
-    filenamegz = str(filename) + '.gz'
-    return gzip.open(filenamegz, mode) if os.path.exists(filenamegz) else open(filename, mode)
+def zopen(filename, mode):
+    """Open filename.xz, filename.gz or filename."""
+    filenamexz = str(filename) if str(filename).endswith(".xz") else str(filename) + '.xz'
+    filenamegz = str(filename) if str(filename).endswith(".gz") else str(filename) + '.gz'
+    if os.path.exists(filenamexz):
+        return lzma.open(filenamexz, mode)
+    elif os.path.exists(filenamegz):
+        return gzip.open(filenamegz, mode)
+    else:
+        return open(filename, mode)
 
 
 def firstexisting(filelist, path=Path('.')):
@@ -638,7 +646,7 @@ def firstexisting(filelist, path=Path('.')):
 def get_bflist(modelpath, returntype='dict'):
     compositiondata = get_composition_data(modelpath)
     bflist = {}
-    with opengzip(Path(modelpath, 'bflist.dat'), 'rt') as filein:
+    with zopen(Path(modelpath, 'bflist.dat'), 'rt') as filein:
         bflistcount = int(filein.readline())
 
         for k in range(bflistcount):
@@ -653,7 +661,7 @@ def get_bflist(modelpath, returntype='dict'):
 @lru_cache(maxsize=2)
 def get_linelist(modelpath, returntype='dict'):
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
-    with opengzip(Path(modelpath, 'linestat.out'), 'rt') as linestatfile:
+    with zopen(Path(modelpath, 'linestat.out'), 'rt') as linestatfile:
         lambda_angstroms = [float(wl) * 1e+8 for wl in linestatfile.readline().split()]
         nlines = len(lambda_angstroms)
 
@@ -734,7 +742,7 @@ def get_runfolder_timesteps(folderpath):
     """Get the set of timesteps covered by the output files in an ARTIS run folder."""
     folder_timesteps = set()
     try:
-        with opengzip(Path(folderpath, 'estimators_0000.out'), 'rt') as estfile:
+        with zopen(Path(folderpath, 'estimators_0000.out'), 'rt') as estfile:
             restart_timestep = -1
             for line in estfile:
                 if line.startswith('timestep '):

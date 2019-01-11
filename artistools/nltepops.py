@@ -77,8 +77,7 @@ def get_nltepops(modelpath, timestep, modelgridindex):
     mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
 
     nlte_files = list(chain(
-        Path(modelpath).rglob(f'nlte_{mpirank:04d}.out'),
-        Path(modelpath).rglob(f'nlte_{mpirank:04d}.out.gz')))
+        Path(modelpath).rglob(f'nlte_{mpirank:04d}.out*')))
 
     if not nlte_files:
         print("No NLTE files found.")

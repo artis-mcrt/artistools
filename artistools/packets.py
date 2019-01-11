@@ -73,11 +73,8 @@ def readfile(packetsfile, usecols, only_escaped_rpkts=True):
 
 def get_packetsfiles(modelpath, maxpacketfiles=None):
     packetsfiles = sorted(
-        glob.glob(str(Path(modelpath, 'packets00_*.out'))) +
-        glob.glob(str(Path(modelpath, 'packets00_*.out.gz'))) +
-        glob.glob(str(Path(modelpath, 'packets', 'packets00_*.out'))) +
-        glob.glob(str(Path(modelpath, 'packets', 'packets00_*.out.gz')))
-    )
+        glob.glob(str(Path(modelpath, 'packets00_*.out*'))) +
+        glob.glob(str(Path(modelpath, 'packets', 'packets00_*.out*'))))
     if maxpacketfiles is not None and maxpacketfiles > 0 and len(packetsfiles) > maxpacketfiles:
         print(f'Using only the first {maxpacketfiles} packet files out of {len(packetsfiles)}')
         packetsfiles = packetsfiles[:maxpacketfiles]
