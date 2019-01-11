@@ -67,10 +67,8 @@ def main(args=None, argsraw=None, **kwargs):
             timestepmax = args.timestepmax
 
         input_files = (
-            glob.glob(os.path.join(args.modelpath, 'macroatom_????.out'), recursive=True) +
-            glob.glob(os.path.join(args.modelpath, 'macroatom_????.out.gz'), recursive=True) +
-            glob.glob(os.path.join(args.modelpath, '*/macroatom_????.out'), recursive=True) +
-            glob.glob(os.path.join(args.modelpath, '*/macroatom_????.out.gz'), recursive=True))
+            glob.glob(os.path.join(args.modelpath, 'macroatom_????.out*'), recursive=True) +
+            glob.glob(os.path.join(args.modelpath, '*/macroatom_????.out*'), recursive=True))
 
         if not input_files:
             print("No macroatom files found")

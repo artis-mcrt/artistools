@@ -148,8 +148,7 @@ def get_ylabel(variable):
 
 def parse_estimfile(estfilepath, modeldata):
     """Generate timestep, modelgridindex, dict from estimator file."""
-    opener = gzip.open if str(estfilepath).endswith('.gz') else open
-    with opener(estfilepath, 'rt') as estimfile:
+    with at.zopen(estfilepath, 'rt') as estimfile:
         timestep = -1
         modelgridindex = -1
         estimblock = {}

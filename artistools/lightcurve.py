@@ -30,8 +30,7 @@ def readfile(filepath_or_buffer):
 
 def get_from_packets(modelpath, lcpath, escape_type='TYPE_RPKT'):
     import artistools.packets
-    packetsfiles = (glob.glob(os.path.join(modelpath, 'packets00_????.out')) +
-                    glob.glob(os.path.join(modelpath, 'packets00_????.out.gz')))
+    packetsfiles = (glob.glob(os.path.join(modelpath, 'packets00_????.out*')))
     ranks = [int(os.path.basename(filename)[10:10 + 4]) for filename in packetsfiles]
     nprocs = max(ranks) + 1
     print(f'Reading packets for {nprocs} processes')
@@ -84,7 +83,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
         print(f"====> {modelname}")
         lcname = 'gamma_light_curve.out' if gammalc else 'light_curve.out'
         try:
-            lcpath = at.firstexisting([lcname + '.gz', lcname], path=modelpath)
+            lcpath = at.firstexisting([lcname + '.xz', lcname + '.gz', lcname], path=modelpath)
         except FileNotFoundError:
             print(f"Skipping {modelname} because {lcpath} does not exist")
             continue
@@ -123,7 +122,7 @@ def get_magnitudes(modelpath):
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
     else:
-        specfilename = at.firstexisting(['spec.out.gz', 'spec.out'], path=modelpath)
+        specfilename = at.firstexisting(['spec.out.xz', 'spec.out.gz', 'spec.out'], path=modelpath)
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = specdata.columns.values[1:]
 
