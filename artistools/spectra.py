@@ -750,7 +750,7 @@ def plot_artis_spectrum(
         spectrum = get_spectrum_from_packets(
             modelpath, args.timemin, args.timemax, lambda_min=args.xmin, lambda_max=args.xmax,
             use_comovingframe=args.use_comovingframe, maxpacketfiles=args.maxpacketfiles,
-            delta_lambda=args.deltalambda, useinternalpackets=args.interalpackets)
+            delta_lambda=args.deltalambda, useinternalpackets=args.internalpackets)
         if args.outputfile is None:
                 statpath = Path()
         else:
