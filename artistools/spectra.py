@@ -62,7 +62,8 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
             return 1.
 
     f_nu = stackspectra([
-        (specdata[specdata.columns[timestep + 1]] * timefluxscale(timestep), at.get_timestep_time_delta(timestep, timearray))
+        (specdata[specdata.columns[timestep + 1]] * timefluxscale(timestep),
+         at.get_timestep_time_delta(timestep, timearray))
         for timestep in range(timestepmin, timestepmax + 1)])
 
     # best to use the filter on this list because it
@@ -82,8 +83,9 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
 
 def get_spectrum_from_packets(
         modelpath, timelowdays, timehighdays, lambda_min, lambda_max,
-        delta_lambda=30, use_comovingframe=None, maxpacketfiles=None):
+        delta_lambda=30, use_comovingframe=None, maxpacketfiles=None, useinternalpackets=False):
     """Get a spectrum dataframe using the packets files as input."""
+    assert(useinternalpackets == False)
     import artistools.packets
     packetsfiles = at.packets.get_packetsfiles(modelpath, maxpacketfiles)
     if use_comovingframe:
@@ -304,7 +306,7 @@ def get_flux_contributions(
 def get_flux_contributions_from_packets(
         modelpath, timelowerdays, timeupperdays, lambda_min, lambda_max, delta_lambda=30,
         getemission=True, getabsorption=True, maxpacketfiles=None, filterfunc=None, groupby='ion',
-        use_comovingframe=False, use_lastemissiontype=False):
+        use_comovingframe=False, use_lastemissiontype=False, useinternalpackets=False):
 
     assert groupby in [None, 'ion', 'line', 'upperterm', 'terms']
 
@@ -385,7 +387,12 @@ def get_flux_contributions_from_packets(
     c_ang_s = const.c.to('angstrom/s').value
     nu_min = c_ang_s / lambda_max
     nu_max = c_ang_s / lambda_min
-    emtypecolumn = 'emission_type' if use_lastemissiontype else 'true_emission_type'
+
+    if useinternalpackets:
+        emtypecolumn = 'emission_type'
+    else:
+        emtypecolumn = 'emission_type' if use_lastemissiontype else 'true_emission_type'
+
     for index, packetsfile in enumerate(packetsfiles):
         dfpackets = at.packets.readfile(
             packetsfile,
@@ -398,16 +405,21 @@ def get_flux_contributions_from_packets(
                 emtypecolumn,
                 'absorption_type',
             ],
-            only_escaped_rpkts=True)
+            only_escaped_rpkts=(not useinternalpackets))
 
-        dfpackets.query(
-            '@nu_min <= nu_rf < @nu_max and ' +
-            ('@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh'
-             if not use_comovingframe else
-             '@timelow < escape_time * @betafactor < @timehigh'),
-            inplace=True)
+        if useinternalpackets:
+            print("Using non-escaped internal packets")
+            dfpackets.query(f'type_id == {at.packets.type_ids["TYPE_RPKT"]} and @nu_min <= nu_rf < @nu_max', inplace=True)
+            print(f"  {len(dfpackets)} internal r-packets matching frequency range")
+        else:
+            dfpackets.query(
+                '@nu_min <= nu_rf < @nu_max and ' +
+                ('@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh'
+                 if not use_comovingframe else
+                 '@timelow < escape_time * @betafactor < @timehigh'),
+                inplace=True)
+            print(f"  {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges")
 
-        print(f"  {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges")
         for _, packet in dfpackets.iterrows():
             lambda_rf = c_ang_s / packet.nu_rf
 
@@ -690,7 +702,10 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
     axis.set_xlabel(r'Wavelength ($\AA$)')
     axis.set_xlim(left=args.xmin, right=args.xmax)
     xdiff = (args.xmax - args.xmin)
-    if xdiff < 5000:
+    if xdiff < 1000:
+        axis.xaxis.set_major_locator(ticker.MultipleLocator(base=50))
+        axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=10))
+    elif xdiff < 5000:
         axis.xaxis.set_major_locator(ticker.MultipleLocator(base=100))
         axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=50))
     elif xdiff < 11000:
@@ -734,8 +749,13 @@ def plot_artis_spectrum(
     if from_packets:
         spectrum = get_spectrum_from_packets(
             modelpath, args.timemin, args.timemax, lambda_min=args.xmin, lambda_max=args.xmax,
-            use_comovingframe=args.use_comovingframe, maxpacketfiles=args.maxpacketfiles, delta_lambda=args.deltalambda)
-        make_spectrum_stat_plot(spectrum, linelabel, Path(args.outputfile).parent, args)
+            use_comovingframe=args.use_comovingframe, maxpacketfiles=args.maxpacketfiles,
+            delta_lambda=args.deltalambda, useinternalpackets=args.interalpackets)
+        if args.outputfile is None:
+                statpath = Path()
+        else:
+            statpath = Path(args.outputfile).resolve().parent
+        make_spectrum_stat_plot(spectrum, linelabel, statpath, args)
     else:
         spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
                                 reftime=timeavg)
@@ -823,9 +843,11 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
             modelpath, args.timemin, args.timemax, args.xmin, args.xmax,
             getemission=args.showemission, getabsorption=args.showabsorption,
             maxpacketfiles=args.maxpacketfiles, filterfunc=filterfunc,
-            groupby=args.groupby, delta_lambda=args.deltalambda, use_lastemissiontype=args.use_lastemissiontype)
+            groupby=args.groupby, delta_lambda=args.deltalambda, use_lastemissiontype=args.use_lastemissiontype,
+            useinternalpackets=args.internalpackets)
     else:
         arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
+        assert(args.groupby == 'ion')
         contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
             modelpath, filterfunc, timestepmin, timestepmax,
             getemission=args.showemission, getabsorption=args.showabsorption,
@@ -956,7 +978,10 @@ def make_plot(args):
         supxmax = xboundaries[index + 1]
         axis.set_xlim(left=supxmin, right=supxmax)
 
-        if (args.xmax - args.xmin) < 11000:
+        if (args.xmax - args.xmin) < 2000:
+            axis.xaxis.set_major_locator(ticker.MultipleLocator(base=100))
+            axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=10))
+        elif (args.xmax - args.xmin) < 11000:
             axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
             axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
         elif (args.xmax - args.xmin) < 14000:
@@ -967,7 +992,10 @@ def make_plot(args):
         if len(args.modelpath) > 1:
             raise ValueError("ERROR: emission/absorption plot can only take one input model", args.modelpaths)
         legendncol = 2
-        defaultoutputfile = Path("plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
+        if args.internalpackets:
+            defaultoutputfile = Path("plotspecinternalemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
+        else:
+            defaultoutputfile = Path("plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
         plotobjects, plotobjectlabels = make_emissionabsorption_plot(
             args.modelpath[0], axes[0], filterfunc, args, scale_to_peak=scale_to_peak)
@@ -1149,6 +1177,9 @@ def addargs(parser):
 
     parser.add_argument('--showabsorption', action='store_true',
                         help='Plot the absorption spectra by ion/process')
+
+    parser.add_argument('--internalpackets', action='store_true',
+                        help='Use non-escaped packets')
 
     parser.add_argument('--nostack', action='store_true',
                         help="Plot each emission/absorption contribution separately instead of a stackplot")
