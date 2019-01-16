@@ -573,7 +573,7 @@ def plot_reference_spectrum(
         filepath = Path(at.PYDIR, 'data', 'refspectra', filename)
 
     metadata_all = load_yaml_path(filepath.parent.resolve())
-    metadata = metadata_all.get(filename, {})
+    metadata = metadata_all.get(str(filename), {})
 
     flambdaindex = metadata.get('f_lambda_columnindex', 1)
 
