@@ -85,7 +85,7 @@ def get_spectrum_from_packets(
         modelpath, timelowdays, timehighdays, lambda_min, lambda_max,
         delta_lambda=30, use_comovingframe=None, maxpacketfiles=None, useinternalpackets=False):
     """Get a spectrum dataframe using the packets files as input."""
-    assert(useinternalpackets == False)
+    assert(not useinternalpackets)
     import artistools.packets
     packetsfiles = at.packets.get_packetsfiles(modelpath, maxpacketfiles)
     if use_comovingframe:
@@ -938,7 +938,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     #               horizontalalignment='right', verticalalignment='bottom', fontsize=7)
 
     axis.set_ylim(top=max(ymaxrefall, scalefactor * max_flambda_emission_total * 1.2))
-    if scale_to_peak:
+    if scale_to_peak or args.internalpackets:
         axis.set_ylabel(r'Scaled F$_\lambda$')
 
     return plotobjects, plotobjectlabels
