@@ -125,7 +125,7 @@ def get_spectrum_from_packets(
                 'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz',
                 'em_posx', 'em_posy', 'em_posz', 'em_time',
                 'true_emission_velocity', 'originated_from_positron', 'true_emission_type'],
-            only_escaped_rpkts=True)
+            escape_type='TYPE_RPKT')
 
         querystr = '@nu_min <= nu_rf < @nu_max and'
         if not use_comovingframe:
@@ -394,24 +394,24 @@ def get_flux_contributions_from_packets(
         emtypecolumn = 'emission_type' if use_lastemissiontype else 'true_emission_type'
 
     for index, packetsfile in enumerate(packetsfiles):
-        dfpackets = at.packets.readfile(
-            packetsfile,
-            usecols=[
-                'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'nu_cmf', 'escape_type_id', 'escape_time',
-                'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz',
-                # 'em_posx', 'em_posy', 'em_posz', 'em_time',
-                'true_emission_velocity',
-                # 'originated_from_positron',
-                emtypecolumn,
-                'absorption_type',
-            ],
-            only_escaped_rpkts=(not useinternalpackets))
+        usecols = [
+            'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'nu_cmf', 'escape_type_id', 'escape_time',
+            'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz',
+            # 'em_posx', 'em_posy', 'em_posz', 'em_time',
+            'true_emission_velocity',
+            # 'originated_from_positron',
+            emtypecolumn,
+            'absorption_type',
+        ]
 
         if useinternalpackets:
-            print("Using non-escaped internal packets")
-            dfpackets.query(f'type_id == {at.packets.type_ids["TYPE_RPKT"]} and @nu_min <= nu_rf < @nu_max', inplace=True)
+            dfpackets = at.packets.readfile(packetsfile, usecols=usecols, type='TYPE_RPKT')
+            print("Using non-escaped internal r-packets")
+            dfpackets.query(f'type_id == {at.packets.type_ids["TYPE_RPKT"]} and @nu_min <= nu_rf < @nu_max',
+                            inplace=True)
             print(f"  {len(dfpackets)} internal r-packets matching frequency range")
         else:
+            dfpackets = at.packets.readfile(packetsfile, usecols=usecols, escape_type='TYPE_RPKT')
             dfpackets.query(
                 '@nu_min <= nu_rf < @nu_max and ' +
                 ('@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh'
@@ -457,7 +457,11 @@ def get_flux_contributions_from_packets(
 
                 array_energysum_spectra[absprocesskey][1][xindexabsorbed] += pkt_en
 
-    normfactor = (1. / delta_lambda / (timehigh - timelow) / 4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read)
+    if useinternalpackets:
+        normfactor = (1. / delta_lambda / (timehigh - timelow) / 4 / math.pi
+                      / (u.megaparsec.to('cm') ** 2) / nprocs_read)
+    else:
+        normfactor = c_cgs / 4 / math.pi / delta_lambda / volume / nprocs_read
 
     array_flambda_emission_total = energysum_spectrum_emission_total * normfactor
 
@@ -1115,26 +1119,6 @@ def write_flambda_spectra(modelpath, args):
     print(f'Saved in {outdirectory}')
 
 
-def trim_or_pad(requiredlength, *listoflistin):
-    for listin in listoflistin:
-        if listin is None:
-            listin = []
-        if len(listin) < requiredlength:
-            listin.extend([None for _ in range(requiredlength - len(listin))])
-        if len(listin) < requiredlength:
-            listin = listin[:requiredlength]
-
-
-def flatten_list(listin):
-    listout = []
-    for elem in listin:
-        if isinstance(elem, list):
-            listout.extend(elem)
-        else:
-            listout.append(elem)
-    return listout
-
-
 def addargs(parser):
     parser.add_argument('-specpath', default=[], nargs='*', action=at.AppendPath,
                         help='Paths to ARTIS folders or reference spectra filenames')
@@ -1299,16 +1283,16 @@ def main(args=None, argsraw=None, **kwargs):
     elif isinstance(args.modelpath, (str, Path)):
         args.modelpath = [args.modelpath]
 
-    args.modelpath = flatten_list(args.modelpath)
-    args.specpath = flatten_list(args.specpath)
+    args.modelpath = at.flatten_list(args.modelpath)
+    args.specpath = at.flatten_list(args.specpath)
 
-    trim_or_pad(len(args.specpath), args.color, args.label, args.linestyle, args.dashes)
+    at.trim_or_pad(len(args.specpath), args.color, args.label, args.linestyle, args.dashes)
 
-    trim_or_pad(len(args.modelpath), args.modellabels, args.modelcolors)
+    at.trim_or_pad(len(args.modelpath), args.modellabels, args.modelcolors)
 
     if args.refspecfiles is None:
         args.refspecfiles = []
-    trim_or_pad(len(args.refspecfiles), args.refspeccolors)
+    at.trim_or_pad(len(args.refspecfiles), args.refspeccolors)
 
     if not args.refspecafterartis:
         if args.refspecfiles:
@@ -1330,7 +1314,7 @@ def main(args=None, argsraw=None, **kwargs):
             args.specpath.extend(args.refspecfiles)
             args.color.extend(args.refspeccolors)
 
-    trim_or_pad(len(args.specpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth)
+    at.trim_or_pad(len(args.specpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth)
 
     args.modelpath = []
     args.modellabels = []
