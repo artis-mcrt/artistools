@@ -57,17 +57,17 @@ def get_from_packets(modelpath, lcpath, packet_type='TYPE_ESCAPE', escape_type='
         if not (dfpackets.empty):
             print(f"sum of e_cmf {dfpackets['e_cmf'].sum()} e_rf {dfpackets['e_rf'].sum()}")
 
-            # dfpackets['t_arrive_d'] = dfpackets.apply(lambda packet: at.packets.t_arrive(packet) * u.s.to('day'), axis=1)
+            dfpackets['t_arrive_d'] = dfpackets.apply(lambda packet: at.packets.t_arrive(packet) * u.s.to('day'), axis=1)
 
-            # binned = pd.cut(dfpackets['t_arrive_d'], timearrayplusend, labels=False, include_lowest=True)
-            # for binindex, e_rf_sum in dfpackets.groupby(binned)['e_rf'].sum().iteritems():
-            #     lcdata['lum'][binindex] += e_rf_sum
-            #
-            # dfpackets['t_arrive_cmf_d'] = dfpackets['escape_time'] * betafactor * u.s.to('day')
-            #
-            # binned_cmf = pd.cut(dfpackets['t_arrive_cmf_d'], timearrayplusend, labels=False, include_lowest=True)
-            # for binindex, e_cmf_sum in dfpackets.groupby(binned_cmf)['e_cmf'].sum().iteritems():
-            #     lcdata['lum_cmf'][binindex] += e_cmf_sum
+            binned = pd.cut(dfpackets['t_arrive_d'], timearrayplusend, labels=False, include_lowest=True)
+            for binindex, e_rf_sum in dfpackets.groupby(binned)['e_rf'].sum().iteritems():
+                lcdata['lum'][binindex] += e_rf_sum
+
+            dfpackets['t_arrive_cmf_d'] = dfpackets['escape_time'] * betafactor * u.s.to('day')
+
+            binned_cmf = pd.cut(dfpackets['t_arrive_cmf_d'], timearrayplusend, labels=False, include_lowest=True)
+            for binindex, e_cmf_sum in dfpackets.groupby(binned_cmf)['e_cmf'].sum().iteritems():
+                lcdata['lum_cmf'][binindex] += e_cmf_sum
 
     lcdata['lum'] = np.divide(lcdata['lum'] / nprocs_read * (u.erg / u.day).to('solLum'), arr_timedelta)
     lcdata['lum_cmf'] = np.divide(lcdata['lum_cmf'] / nprocs_read / betafactor * (u.erg / u.day).to('solLum'), arr_timedelta)
@@ -118,7 +118,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
         axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
         if args.print_data:
             print(lcdata[['time', 'lum', 'lum_cmf']].to_string(index=False))
-        # axis.plot(lcdata.time, lcdata['lum_cmf'], linewidth=2, linestyle=linestyle, label=f'{modelname} (cmf)')
+        axis.plot(lcdata.time, lcdata['lum_cmf'], label=f'{modelname} (cmf)')
 
     # axis.set_xlim(left=xminvalue, right=xmaxvalue)
     # axis.set_ylim(bottom=-0.1, top=1.3)
