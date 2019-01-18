@@ -28,13 +28,12 @@ def readfile(filepath_or_buffer):
     return lcdata
 
 
-def get_from_packets(modelpath, lcpath, escape_type='TYPE_RPKT'):
+def get_from_packets(modelpath, lcpath, packet_type='TYPE_ESCAPE', escape_type='TYPE_RPKT', maxpacketfiles=None):
     import artistools.packets
-    packetsfiles = (glob.glob(os.path.join(modelpath, 'packets00_????.out*')))
-    ranks = [int(os.path.basename(filename)[10:10 + 4]) for filename in packetsfiles]
-    nprocs = max(ranks) + 1
-    print(f'Reading packets for {nprocs} processes')
-    assert len(packetsfiles) == nprocs
+
+    packetsfiles = at.packets.get_packetsfiles(modelpath, maxpacketfiles=maxpacketfiles)
+    nprocs_read = len(packetsfiles)
+    assert nprocs_read > 0
 
     timearray = at.lightcurve.readfile(lcpath)['time'].values
     # timearray = np.arange(250, 350, 0.1)
@@ -53,54 +52,72 @@ def get_from_packets(modelpath, lcpath, escape_type='TYPE_RPKT'):
         dfpackets = at.packets.readfile(packetsfile, usecols=[
             'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
             'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'],
-            only_escaped_rpkts=True)
+            type=packet_type, escape_type=escape_type)
 
-        print(f"{len(dfpackets)} {escape_type} r-packets escaped")
+        if not (dfpackets.empty):
+            print(f"sum of e_cmf {dfpackets['e_cmf'].sum()} e_rf {dfpackets['e_rf'].sum()}")
 
-        dfpackets['t_arrive_d'] = dfpackets.apply(lambda packet: at.packets.t_arrive(packet) * u.s.to('day'), axis=1)
+            # dfpackets['t_arrive_d'] = dfpackets.apply(lambda packet: at.packets.t_arrive(packet) * u.s.to('day'), axis=1)
 
-        binned = pd.cut(dfpackets['t_arrive_d'], timearrayplusend, labels=False, include_lowest=True)
-        for binindex, e_rf_sum in dfpackets.groupby(binned)['e_rf'].sum().iteritems():
-            lcdata['lum'][binindex] += e_rf_sum
+            # binned = pd.cut(dfpackets['t_arrive_d'], timearrayplusend, labels=False, include_lowest=True)
+            # for binindex, e_rf_sum in dfpackets.groupby(binned)['e_rf'].sum().iteritems():
+            #     lcdata['lum'][binindex] += e_rf_sum
+            #
+            # dfpackets['t_arrive_cmf_d'] = dfpackets['escape_time'] * betafactor * u.s.to('day')
+            #
+            # binned_cmf = pd.cut(dfpackets['t_arrive_cmf_d'], timearrayplusend, labels=False, include_lowest=True)
+            # for binindex, e_cmf_sum in dfpackets.groupby(binned_cmf)['e_cmf'].sum().iteritems():
+            #     lcdata['lum_cmf'][binindex] += e_cmf_sum
 
-        dfpackets['t_arrive_cmf_d'] = dfpackets['escape_time'] * betafactor * u.s.to('day')
-
-        binned_cmf = pd.cut(dfpackets['t_arrive_cmf_d'], timearrayplusend, labels=False, include_lowest=True)
-        for binindex, e_cmf_sum in dfpackets.groupby(binned_cmf)['e_cmf'].sum().iteritems():
-            lcdata['lum_cmf'][binindex] += e_cmf_sum
-
-    lcdata['lum'] = np.divide(lcdata['lum'] / nprocs * (u.erg / u.day).to('solLum'), arr_timedelta)
-    lcdata['lum_cmf'] = np.divide(lcdata['lum_cmf'] / nprocs / betafactor * (u.erg / u.day).to('solLum'), arr_timedelta)
+    lcdata['lum'] = np.divide(lcdata['lum'] / nprocs_read * (u.erg / u.day).to('solLum'), arr_timedelta)
+    lcdata['lum_cmf'] = np.divide(lcdata['lum_cmf'] / nprocs_read / betafactor * (u.erg / u.day).to('solLum'), arr_timedelta)
     return lcdata
 
 
-def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=False):
+def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type=False, maxpacketfiles=None, args=None):
     fig, axis = plt.subplots(
         nrows=1, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    for index, modelpath in enumerate(modelpaths):
+    if not frompackets and escape_type not in ['TYPE_RPKT', 'TYPE_GAMMA']:
+        print(f'Escape_type of {escape_type} not one of TYPE_RPKT or TYPE_GAMMA, so frompackets must be enabled')
+        assert False
+    elif not frompackets and args.packet_type != 'TYPE_ESCAPE' and args.packet_type is not None:
+        print(f'Looking for non-escaped packets, so frompackets must be enabled')
+        assert False
+
+    for seriesindex, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
         print(f"====> {modelname}")
-        lcname = 'gamma_light_curve.out' if gammalc else 'light_curve.out'
+        lcname = 'gamma_light_curve.out' if (escape_type == 'TYPE_GAMMA' and not frompackets) else 'light_curve.out'
         try:
             lcpath = at.firstexisting([lcname + '.xz', lcname + '.gz', lcname], path=modelpath)
         except FileNotFoundError:
-            print(f"Skipping {modelname} because {lcpath} does not exist")
+            print(f"Skipping {modelname} because {lcname} does not exist")
             continue
         if not os.path.exists(str(lcpath)):
             print(f"Skipping {modelname} because {lcpath} does not exist")
             continue
         elif frompackets:
             lcdata = at.lightcurve.get_from_packets(
-                modelpath, lcpath, escape_type='TYPE_GAMMA' if gammalc else 'TYPE_RPKT')
+                modelpath, lcpath, packet_type=args.packet_type, escape_type=escape_type, maxpacketfiles=maxpacketfiles)
         else:
             lcdata = at.lightcurve.readfile(lcpath)
 
-        print("Plotting...")
+        plotkwargs = {}
+        if args.label[seriesindex] is None:
+            plotkwargs['label'] = modelname
+        else:
+            plotkwargs['label'] = args.label[seriesindex]
 
-        linestyle = ['-', '--'][int(index / 7)]
-
-        axis.plot(lcdata.time, lcdata['lum'], linewidth=2, linestyle=linestyle, label=f'{modelname}')
+        plotkwargs['linestyle'] = args.linestyle[seriesindex]
+        plotkwargs['color'] = args.color[seriesindex]
+        if args.dashes[seriesindex]:
+            plotkwargs['dashes'] = args.dashes[seriesindex]
+        if args.linewidth[seriesindex]:
+            plotkwargs['linewidth'] = args.linewidth[seriesindex]
+        axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
+        if args.print_data:
+            print(lcdata[['time', 'lum', 'lum_cmf']].to_string(index=False))
         # axis.plot(lcdata.time, lcdata['lum_cmf'], linewidth=2, linestyle=linestyle, label=f'{modelname} (cmf)')
 
     # axis.set_xlim(left=xminvalue, right=xmaxvalue)
@@ -108,7 +125,13 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, gammalc=Fal
 
     axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
     axis.set_xlabel(r'Time (days)')
-    axis.set_ylabel(r'$\mathrm{L} ' + ('_\gamma' if gammalc else '') + r'/ \mathrm{L}_\odot$')
+    if escape_type == 'TYPE_GAMMA':
+        lum_suffix = r'_\gamma'
+    elif escape_type == 'TYPE_RPKT':
+        lum_suffix = r'_{\mathrm{OVOIR}}'
+    else:
+        lum_suffix = r'_{\mathrm{' + escape_type.replace("_", "\_") + '}}'
+    axis.set_ylabel(r'$\mathrm{L} ' + lum_suffix + r'/ \mathrm{L}_\odot$')
 
     fig.savefig(str(filenameout), format='pdf')
     print(f'Saved {filenameout}')
@@ -315,19 +338,52 @@ def read_hesma_lightcurve(args):
 
 
 def addargs(parser):
-    parser.add_argument('modelpath', default=[], nargs='*', action=at.AppendPath,
+    parser.add_argument('-modelpath', default=[], nargs='*', action=at.AppendPath,
                         help='Path(s) to ARTIS folders with light_curve.out or packets files'
                         ' (may include wildcards such as * and **)')
+
+    parser.add_argument('-label', default=[], nargs='*',
+                        help='List of series label overrides')
+
+    parser.add_argument('-color', default=[f'C{i}' for i in range(10)], nargs='*',
+                        help='List of line colors')
+
+    parser.add_argument('-linestyle', default=[], nargs='*',
+                        help='List of line styles')
+
+    parser.add_argument('-linewidth', default=[], nargs='*',
+                        help='List of line widths')
+
+    parser.add_argument('-dashes', default=[], nargs='*',
+                        help='Dashes property of lines')
+
     parser.add_argument('--frompackets', action='store_true',
                         help='Read packets files instead of light_curve.out')
+
+    parser.add_argument('-maxpacketfiles', type=int, default=None,
+                        help='Limit the number of packet files read')
+
     parser.add_argument('--gamma', action='store_true',
                         help='Make light curve from gamma rays instead of R-packets')
+
+    parser.add_argument('-packet_type', default='TYPE_ESCAPE',
+                        help='Type of escaping packets')
+
+    parser.add_argument('-escape_type', default='TYPE_RPKT',
+                        help='Type of escaping packets')
+
     parser.add_argument('-o', action='store', dest='outputfile', type=Path,
                         help='Filename for PDF file')
+
     parser.add_argument('--magnitude', action='store_true',
                         help='Plot synthetic magnitudes')
+
     parser.add_argument('--colour_evolution', action='store_true',
                         help='Plot of colour evolution')
+
+    parser.add_argument('--print_data', action='store_true',
+                        help='Print plotted data')
+
     parser.add_argument('--plot_hesma_model', action='store', type=Path, default=False,
                         help='Plot hesma model on top of lightcurve plot. '
                         'Enter model name saved in data/hesma directory')
@@ -349,20 +405,23 @@ def main(args=None, argsraw=None, **kwargs):
     elif not isinstance(args.modelpath, Iterable):
         args.modelpath = [args.modelpath]
 
-    # flatten the list
-    modelpaths = []
-    for elem in args.modelpath:
-        if isinstance(elem, list):
-            modelpaths.extend(elem)
-        else:
-            modelpaths.append(elem)
+    args.modelpath = at.flatten_list(args.modelpath)
+
+    at.trim_or_pad(len(args.modelpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth)
+
+    if args.gamma:
+        args.escape_type = 'TYPE_GAMMA'
 
     if args.magnitude:
         defaultoutputfile = 'magnitude_absolute.pdf'
     elif args.colour_evolution:
         defaultoutputfile = 'colour_evolution.pdf'
+    elif args.escape_type == 'TYPE_GAMMA':
+        defaultoutputfile = 'plotlightcurve_gamma.pdf'
+    elif args.escape_type == 'TYPE_RPKT':
+        defaultoutputfile = 'plotlightcurve.pdf'
     else:
-        defaultoutputfile = 'plotlightcurve_gamma.pdf' if args.gamma else 'plotlightcurve.pdf'
+        defaultoutputfile = f'plotlightcurve_{args.escape_type}.pdf'
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
@@ -370,21 +429,17 @@ def main(args=None, argsraw=None, **kwargs):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     if args.magnitude:
-        for modelpath in modelpaths:
+        for modelpath in args.modelpath:
             make_magnitudes_plot(modelpath, args)
         print(f'Saved figure: {args.outputfile}')
 
     elif args.colour_evolution:
-        for modelpath in modelpaths:
+        for modelpath in args.modelpath:
             colour_evolution_plot('B', 'V', modelpath, args)
         print(f'Saved figure: {args.outputfile}')
-
     else:
-        # combined the results of applying wildcards on each input
-        # print(args.modelpath)
-        # modelpaths = list(itertools.chain.from_iterable([Path().glob(pattern=str(x)) for x in args.modelpath]))
-        modelpaths = args.modelpath
-        make_lightcurve_plot(modelpaths, args.outputfile, args.frompackets, args.gamma)
+        make_lightcurve_plot(args.modelpath, args.outputfile, args.frompackets,
+                             args.escape_type, maxpacketfiles=args.maxpacketfiles, args=args)
 
 
 if __name__ == "__main__":

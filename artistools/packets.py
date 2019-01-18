@@ -25,15 +25,16 @@ columns = (
 )
 
 types = {
-    32: 'TYPE_ESCAPE',
-    11: 'TYPE_RPKT',
     10: 'TYPE_GAMMA',
+    11: 'TYPE_RPKT',
+    20: 'TYPE_NTLEPTON',
+    32: 'TYPE_ESCAPE',
 }
 
 type_ids = dict((v, k) for k, v in types.items())
 
 
-def readfile(packetsfile, usecols, only_escaped_rpkts=True):
+def readfile(packetsfile, usecols, type=None, escape_type=None):
     """Read a packet file into a pandas DataFrame."""
     filesize = Path(packetsfile).stat().st_size / 1024 / 1024
 
@@ -53,10 +54,14 @@ def readfile(packetsfile, usecols, only_escaped_rpkts=True):
 
     print(f' ({len(dfpackets):.1e} packets', end='')
 
-    if only_escaped_rpkts:
-        dfpackets.query(f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids["TYPE_RPKT"]}',
+    if escape_type is not None and escape_type != '' and escape_type != 'ALL':
+        assert type is None or type == 'TYPE_ESCAPE'
+        dfpackets.query(f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids[escape_type]}',
                         inplace=True)
-        print(f', {len(dfpackets)} escaped r-pkts)')
+        print(f', {len(dfpackets)} escaped as {escape_type})')
+    elif type is not None and type != 'ALL' and type != '':
+        dfpackets.query(f'type_id == {type_ids[type]}', inplace=True)
+        print(f', {len(dfpackets)} with type {type})')
     else:
         print(')')
 
@@ -76,7 +81,7 @@ def get_packetsfiles(modelpath, maxpacketfiles=None):
         glob.glob(str(Path(modelpath, 'packets00_*.out*'))) +
         glob.glob(str(Path(modelpath, 'packets', 'packets00_*.out*'))))
     if maxpacketfiles is not None and maxpacketfiles > 0 and len(packetsfiles) > maxpacketfiles:
-        print(f'Using only the first {maxpacketfiles} packet files out of {len(packetsfiles)}')
+        print(f'Using only the first {maxpacketfiles} of {len(packetsfiles)} packets files')
         packetsfiles = packetsfiles[:maxpacketfiles]
 
     return packetsfiles

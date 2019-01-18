@@ -86,7 +86,6 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
             elif self._useMathText:
                 self.format = '$%s$' % ('\\mathdefault{%s}' % self.format)
 
-
     def set_locs(self, locs):
         super().set_locs(locs)
         if self.decimalplaces is not None:
@@ -618,6 +617,26 @@ def parse_range_list(rngs, dictvars={}):
         rngs = ','.join(rngs)
 
     return sorted(set(chain.from_iterable([parse_range(rng, dictvars) for rng in rngs.split(',')])))
+
+
+def trim_or_pad(requiredlength, *listoflistin):
+    for listin in listoflistin:
+        if listin is None:
+            listin = []
+        if len(listin) < requiredlength:
+            listin.extend([None for _ in range(requiredlength - len(listin))])
+        if len(listin) < requiredlength:
+            listin = listin[:requiredlength]
+
+
+def flatten_list(listin):
+    listout = []
+    for elem in listin:
+        if isinstance(elem, list):
+            listout.extend(elem)
+        else:
+            listout.append(elem)
+    return listout
 
 
 def zopen(filename, mode):
