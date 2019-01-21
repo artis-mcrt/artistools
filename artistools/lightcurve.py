@@ -118,7 +118,9 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
         axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
         if args.print_data:
             print(lcdata[['time', 'lum', 'lum_cmf']].to_string(index=False))
-        axis.plot(lcdata.time, lcdata['lum_cmf'], label=f'{modelname} (cmf)')
+        plotkwargs['linewidth'] = 1
+        plotkwargs['label']=f'{modelname} (cmf)'
+        axis.plot(lcdata.time, lcdata['lum_cmf'], **plotkwargs)
 
     # axis.set_xlim(left=xminvalue, right=xmaxvalue)
     # axis.set_ylim(bottom=-0.1, top=1.3)
