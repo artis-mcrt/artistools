@@ -32,8 +32,8 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
         for mpirank in mpiranklist:
             radfieldfilename = f'radfield_{mpirank:04d}.out'
             radfieldfilepath = Path(folderpath, radfieldfilename)
-            radfieldfilepath = at.firstexisting([radfieldfilename + '.xz', radfieldfilename + '.gz', radfieldfilename],
-                                                modelpath=folderpath)
+            radfieldfilepath = at.firstexisting(
+                [radfieldfilename + '.xz', radfieldfilename + '.gz', radfieldfilename], path=folderpath)
 
             if modelgridindex > -1:
                 filesize = Path(radfieldfilepath).stat().st_size / 1024 / 1024
