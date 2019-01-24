@@ -463,7 +463,7 @@ def parse_phixsdata(fphixs, ionlist):
         if not ionlist or (Z, lowerionstage) in ionlist:
             phixslist = []
             for _ in range(nphixspoints):
-                phixslist.append(float(fphixs.readline()))
+                phixslist.append(float(fphixs.readline()) * 1e-18)
             phixstable = np.array(list(zip(xgrid, phixslist)))
 
             yield Z, upperionstage, upperionlevel, lowerionstage, lowerionlevel, targetlist, phixstable

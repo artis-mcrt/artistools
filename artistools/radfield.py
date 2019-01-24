@@ -74,8 +74,8 @@ def select_bin(radfielddata, nu=None, lambda_angstroms=None, modelgridindex=None
     return dfselected.iloc[0].bin_num, dfselected.iloc[0].nu_lower, dfselected.iloc[0].nu_upper
 
 
-def plot_field_estimators(axis, radfielddata, modelgridindex=None, timestep=None, **plotkwargs):
-    """Plot the dJ/dlambda constant average estimators for each bin."""
+def get_binaverage_field(axis, radfielddata, modelgridindex=None, timestep=None):
+    """Get the dJ/dlambda constant average estimators of each bin."""
     # exclude the global fit parameters and detailed lines with negative "bin_num"
     bindata = radfielddata.copy().query(
         'bin_num >= 0' +
@@ -95,9 +95,7 @@ def plot_field_estimators(axis, radfielddata, modelgridindex=None, timestep=None
     arr_lambda = np.insert(arr_lambda, 0, const.c.to('angstrom/s').value / bindata['nu_lower'].iloc[0])
     yvalues = np.insert(yvalues, 0, 0.)
 
-    axis.step(arr_lambda, yvalues, where='pre', label='Band-average field', **plotkwargs)
-
-    return max(yvalues)
+    return arr_lambda, yvalues
 
 
 def j_nu_dbb(arr_nu_hz, W, T):
@@ -111,7 +109,7 @@ def j_nu_dbb(arr_nu_hz, W, T):
     return [0. for _ in arr_nu_hz]
 
 
-def plot_fullspecfittedfield(axis, radfielddata, xmin, xmax, modelgridindex=None, timestep=None, **plotkwargs):
+def get_fullspecfittedfield(radfielddata, xmin, xmax, modelgridindex=None, timestep=None):
     row = radfielddata.query(
         'bin_num == -1' +
         (' & modelgridindex==@modelgridindex' if modelgridindex else '') +
@@ -124,19 +122,13 @@ def plot_fullspecfittedfield(axis, radfielddata, xmin, xmax, modelgridindex=None
     arr_lambda = const.c.to('angstrom/s').value / arr_nu_hz
     arr_j_lambda = arr_j_nu * arr_nu_hz / arr_lambda
 
-    label = r'Dilute blackbody model '
-    # label += r'(T$_{\mathrm{R}}$'
-    # label += f'= {row["T_R"]} K)')
-    axis.plot(arr_lambda, arr_j_lambda,
-              label=label, **plotkwargs)
-
-    return max(arr_j_lambda)
+    return arr_lambda, arr_j_lambda
 
 
-def plot_fitted_field(axis, radfielddata, xmin, xmax, modelgridindex=None, timestep=None, **plotkwargs):
-    """Plot the fitted dilute blackbody for each bin as well as the global fit."""
-    fittedxvalues = []
-    fittedyvalues = []
+def get_fitted_field(radfielddata, modelgridindex=None, timestep=None, print_bins=False, xmin=None, xmax=None):
+    """Return the fitted dilute blackbody made up of all bins."""
+    arr_lambda = []
+    j_lambda_fitted = []
 
     radfielddata_subset = radfielddata.copy().query(
         'bin_num >= 0' +
@@ -144,29 +136,32 @@ def plot_fitted_field(axis, radfielddata, xmin, xmax, modelgridindex=None, times
         (' & timestep==@timestep' if timestep else ''))
 
     for _, row in radfielddata_subset.iterrows():
+        nu_lower = row['nu_lower']
+        nu_upper = row['nu_upper']
+
         if row['W'] >= 0:
-            nu_lower = row['nu_lower']
-            nu_upper = row['nu_upper']
+            arr_nu_hz_bin = np.linspace(nu_lower, nu_upper, num=500)
+            arr_j_nu = j_nu_dbb(arr_nu_hz_bin, row['W'], row['T_R'])
 
-            arr_nu_hz = np.linspace(nu_lower, nu_upper, num=500)
-            arr_j_nu = j_nu_dbb(arr_nu_hz, row['W'], row['T_R'])
+            arr_lambda_bin = const.c.to('angstrom/s').value / arr_nu_hz_bin
+            arr_j_lambda_bin = arr_j_nu * arr_nu_hz_bin / arr_lambda_bin
 
-            arr_lambda = const.c.to('angstrom/s').value / arr_nu_hz
-            arr_j_lambda = arr_j_nu * arr_nu_hz / arr_lambda
-
-            fittedxvalues += list(arr_lambda)
-            fittedyvalues += list(arr_j_lambda)
+            arr_lambda += list(arr_lambda_bin)
+            j_lambda_fitted += list(arr_j_lambda_bin)
         else:
-            arr_nu_hz = (row['nu_lower'], row['nu_upper'])
-            arr_j_lambda = [0., 0.]
+            arr_nu_hz_bin = [nu_lower, nu_upper]
+            arr_j_lambda_bin = [0., 0.]
 
-            fittedxvalues += [const.c.to('angstrom/s').value / nu for nu in arr_nu_hz]
-            fittedyvalues += arr_j_lambda
+            arr_lambda += [const.c.to('angstrom/s').value / nu for nu in arr_nu_hz_bin]
+            j_lambda_fitted += arr_j_lambda_bin
 
-    if fittedxvalues:
-        axis.plot(fittedxvalues, fittedyvalues, label='Radiation field model', **plotkwargs)
+        lambda_lower = const.c.to('angstrom/s').value / row['nu_upper']
+        lambda_upper = const.c.to('angstrom/s').value / row['nu_lower']
+        if print_bins and (xmax is None or lambda_lower < xmax) and (xmin is None or lambda_upper > xmin):
+            print(f"Bin lambda_lower {lambda_lower:.1f} W {row['W']:.1e} "
+                  f"contribs {row['ncontrib']} J_nu_avg {row['J_nu_avg']:.1e}")
 
-    return max(fittedyvalues)
+    return arr_lambda, j_lambda_fitted
 
 
 def plot_line_estimators(axis, radfielddata, xmin, xmax, modelgridindex=None, timestep=None, **plotkwargs):
@@ -208,6 +203,85 @@ def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=Non
     dfspectrum.plot(x='lambda_angstroms', y='f_lambda', ax=axis, label=label, **plotkwargs)
 
 
+def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, timestep, xmin, xmax):
+    axes[0].set_ylabel(r'$\sigma$ [cm$^2$]')
+
+    arr_lambda_fitted, j_lambda_fitted = get_fitted_field(
+        radfielddata, modelgridindex=modelgridindex, timestep=timestep,
+        print_bins=True, xmin=xmin, xmax=xmax)
+
+    arr_lambda_fitted, j_lambda_fitted = zip(*[
+        pt for pt in zip(arr_lambda_fitted, j_lambda_fitted) if xmin <= pt[0] <= xmax])
+
+    from scipy.interpolate import interp1d
+    # H = 6.6260755e-27  # Planck constant [erg s]
+    KB = 1.38064852e-16
+    EV = 1.6021772e-12  # eV to ergs [eV/erg]
+    ONEOVERH = 1.509188961e+26
+    HOVERKB = 4.799243681748932e-11
+
+    T_R = radfielddata.query('bin_num == -1').iloc[0].T_R
+
+    ionlist = ((26, 2), (28, 2))
+    ionlist = ((26, 2), )
+    adata = at.get_levels(modelpath, ionlist=ionlist, get_photoionisations=True)
+    xlist = np.linspace(xmin, xmax, num=5000)
+
+    arr_nu_hz = const.c.to('angstrom/s').value / np.array(arr_lambda_fitted)
+    for atomic_number, ion_stage in ionlist:
+        ionstr = at.get_ionstring(atomic_number, ion_stage)
+        print(f'{ionstr}')
+        arr_gamma_level_dnu = np.zeros_like(arr_lambda_fitted)
+        arr_gamma_dnu = np.zeros_like(arr_lambda_fitted)
+        arr_gamma_dlambda = np.zeros_like(arr_lambda_fitted)
+        ion_data = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0]
+        ion_pop = 0
+        gamma_r_ion2 = 0.
+        max_levels = 9
+        for _, level in ion_data.levels[:max_levels].iterrows():
+                ion_pop += level.g * math.exp(-level.energy_ev * EV / KB / T_R)
+        for level_num, level in ion_data.levels[:max_levels].iterrows():
+            nu_threshold = ONEOVERH * (ion_data.ion_pot - level.energy_ev) * EV
+
+            sigma_bf = interp1d(level.phixstable[:, 0] * nu_threshold, level.phixstable[:, 1],
+                                kind='linear', bounds_error=False,
+                                fill_value=0., assume_sorted=True)
+
+            # def sigma_bf(nu):
+            #     nu_factor = nu / nu_threshold
+            #     if nu_factor < level.phixstable[0, 0]:
+            #         return 0.
+            #     elif nu_factor > level.phixstable[-1, 0]:
+            #         return level.phixstable[-1, 1] * math.pow(level.phixstable[-1, 0] / nu_factor, 3)
+            #
+            #     return np.interp(nu_factor, level.phixstable[:, 0], level.phixstable[:, 1], left=0.)
+            levelpopfrac = level.g * math.exp(-level.energy_ev * EV / KB / T_R) / ion_pop
+
+            for i in range(len(arr_nu_hz)):
+                nu = arr_nu_hz[i]
+                j_nu = j_lambda_fitted[i] * arr_lambda_fitted[i] / nu
+
+                arr_gamma_level_dnu[i] = (
+                    ONEOVERH * sigma_bf(nu) / nu * j_nu * (1 - math.exp(-HOVERKB * nu / T_R)) * levelpopfrac)
+
+                arr_gamma_dnu[i] += arr_gamma_level_dnu[i]
+                arr_gamma_dlambda[i] += arr_gamma_level_dnu[i] * nu / arr_lambda_fitted[i]
+
+            gamma_r_level = np.trapz(arr_gamma_level_dnu, x=arr_nu_hz)
+            gamma_r_ion2 += gamma_r_level
+            lambda_threshold = const.c.to('angstrom/s').value / nu_threshold
+            print(f'  level {level_num} pop_frac {levelpopfrac:.2f} gamma_R({ionstr}): {gamma_r_level:.2e} lambda_threshold {lambda_threshold:.1f} {level.levelname}')
+            axes[0].plot(xlist, [sigma_bf(const.c.to('angstrom/s').value / lambda_angstroms) for lambda_angstroms in xlist],
+                         label=f'Sigma_bf({ionstr} {level.levelname})')
+
+        # xlist = arr_lambda_fitted
+
+        axes[1].plot(arr_lambda_fitted, arr_gamma_dlambda, label=f'dGamma_R({ionstr})/dlambda')
+
+        gamma_r_ion = abs(np.trapz(arr_gamma_dlambda, x=arr_lambda_fitted))
+        print(f'Gamma_R({ionstr}): {gamma_r_ion:.2e}')
+
+
 def plot_celltimestep(
         modelpath, timestep, outputfile,
         xmin, xmax, modelgridindex, args, normalised=False):
@@ -220,30 +294,43 @@ def plot_celltimestep(
     modelname = at.get_model_name(modelpath)
     time_days = at.get_timestep_times_float(modelpath)[timestep]
     print(f'Plotting {modelname} timestep {timestep:d} (t={time_days:.3f}d)')
+    T_R = radfielddata.query('bin_num == -1').iloc[0].T_R
+    print(f'T_R = {T_R}')
 
-    nrows = 1
-    fig, axis = plt.subplots(nrows=nrows, ncols=1, sharex=True,
+    nrows = 1 if not args.photoionrates else 3
+    fig, axes = plt.subplots(nrows=nrows, ncols=1, sharex=True,
                              figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * (0.25 + nrows * 0.4)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    ymax1 = plot_fullspecfittedfield(
-        axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep,
-        color='purple', linewidth=1.5)
+    axis = axes if nrows == 1 else axes[-1]
 
-    if args.nobandaverage:
-        ymax2 = plot_field_estimators(
-            axis, radfielddata, modelgridindex=modelgridindex, timestep=timestep, color='green', linewidth=1.5)
-    else:
-        ymax2 = ymax1
+    xlist, yvalues = get_fullspecfittedfield(
+        radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep)
 
-    ymax3 = plot_fitted_field(
-        axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep,
-        alpha=0.8, color='blue', linewidth=1.5)
+    label = r'Dilute blackbody model '
+    # label += r'(T$_{\mathrm{R}}$'
+    # label += f'= {row["T_R"]} K)')
+    axis.plot(xlist, yvalues, label=label, color='purple', linewidth=1.5)
+    ymax = max(yvalues)
 
-    ymax4 = plot_line_estimators(
+    if not args.nobandaverage:
+        arr_lambda, yvalues = get_binaverage_field(
+            axis, radfielddata, modelgridindex=modelgridindex, timestep=timestep)
+        axis.step(arr_lambda, yvalues, where='pre', label='Band-average field', color='green', linewidth=1.5)
+        ymax = max([ymax] + [point[1] for point in zip(arr_lambda, yvalues) if xmin <= point[0] <= xmax])
+
+    arr_lambda_fitted, j_lambda_fitted = get_fitted_field(
+        radfielddata, modelgridindex=modelgridindex, timestep=timestep)
+    ymax = max([ymax] + [point[1] for point in zip(arr_lambda_fitted, j_lambda_fitted) if xmin <= point[0] <= xmax])
+
+    axis.plot(arr_lambda_fitted, j_lambda_fitted, label='Radiation field model', alpha=0.8, color='blue', linewidth=1.5)
+
+    ymax3 = plot_line_estimators(
         axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep, zorder=-2, color='red')
 
-    ymax = max(ymax1, ymax2, ymax3, ymax4)
+    ymax = max(ymax, ymax3)
+    if args.ymax >= 0:
+        ymax = args.ymax
 
     try:
         specfilename = at.firstexisting(['spec.out', 'spec.out.gz'], path=modelpath)
@@ -275,8 +362,6 @@ def plot_celltimestep(
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5,
                     color='red', label='', zorder=-1, alpha=0.4)
 
-    # T_R = radfielddata.query('bin_num == -1').iloc[0].T_R
-    modelname = at.get_model_name(modelpath)
     velocity = at.get_modeldata(modelpath)[0]['velocity'][modelgridindex]
 
     figure_title = f'{modelname} {velocity:.0f} km/s at {time_days:.0f}d'
@@ -284,6 +369,12 @@ def plot_celltimestep(
 
     if not args.notitle:
         axis.set_title(figure_title, fontsize=11)
+
+    if args.photoionrates:
+        calculate_photoionrates(
+            axes, modelpath, radfielddata, modelgridindex=modelgridindex, timestep=timestep, xmin=xmin, xmax=xmax)
+        axes[0].legend(loc='best', handlelength=2, frameon=False, numpoints=1)
+        axes[1].legend(loc='best', handlelength=2, frameon=False, numpoints=1)
 
     # axis.annotate(figure_title,
     #               xy=(0.02, 0.96), xycoords='axes fraction',
@@ -443,6 +534,9 @@ def addargs(parser):
     parser.add_argument('-xmax', type=int, default=20000,
                         help='Plot range: maximum wavelength in Angstroms')
 
+    parser.add_argument('-ymax', type=int, default=-1,
+                        help='Plot range: maximum J_nu')
+
     parser.add_argument('--normalised', action='store_true',
                         help='Normalise the spectra to their peak values')
 
@@ -450,6 +544,9 @@ def addargs(parser):
                         help='Suppress the top title from the plot')
 
     parser.add_argument('--nobandaverage', action='store_true',
+                        help='Suppress the band-average line')
+
+    parser.add_argument('--photoionrates', action='store_true',
                         help='Suppress the band-average line')
 
     parser.add_argument('-figscale', type=float, default=1.,
