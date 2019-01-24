@@ -228,58 +228,63 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
     xlist = np.linspace(xmin, xmax, num=5000)
 
     arr_nu_hz = const.c.to('angstrom/s').value / np.array(arr_lambda_fitted)
+    j_nu_fitted = np.array(j_lambda_fitted) * arr_lambda_fitted / arr_nu_hz
+
     for atomic_number, ion_stage in ionlist:
         ionstr = at.get_ionstring(atomic_number, ion_stage)
         print(f'{ionstr}')
-        arr_gamma_level_dnu = np.zeros_like(arr_lambda_fitted)
         arr_gamma_dnu = np.zeros_like(arr_lambda_fitted)
-        arr_gamma_dlambda = np.zeros_like(arr_lambda_fitted)
         ion_data = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0]
-        ion_pop = 0
-        gamma_r_ion2 = 0.
         max_levels = 9
+
+        ion_pop = 0
         for _, level in ion_data.levels[:max_levels].iterrows():
                 ion_pop += level.g * math.exp(-level.energy_ev * EV / KB / T_R)
+
+        gamma_r_ion2 = 0.
         for level_num, level in ion_data.levels[:max_levels].iterrows():
             nu_threshold = ONEOVERH * (ion_data.ion_pot - level.energy_ev) * EV
 
-            sigma_bf = interp1d(level.phixstable[:, 0] * nu_threshold, level.phixstable[:, 1],
-                                kind='linear', bounds_error=False,
-                                fill_value=0., assume_sorted=True)
+            interp_sigma_bf = interp1d(
+                level.phixstable[:, 0] * nu_threshold, level.phixstable[:, 1], kind='linear', bounds_error=True,
+                fill_value=0., assume_sorted=True)
 
-            # def sigma_bf(nu):
-            #     nu_factor = nu / nu_threshold
-            #     if nu_factor < level.phixstable[0, 0]:
-            #         return 0.
-            #     elif nu_factor > level.phixstable[-1, 0]:
-            #         return level.phixstable[-1, 1] * math.pow(level.phixstable[-1, 0] / nu_factor, 3)
-            #
-            #     return np.interp(nu_factor, level.phixstable[:, 0], level.phixstable[:, 1], left=0.)
+            def sigma_bf(nu):
+                nu_factor = nu / nu_threshold
+                if nu_factor < level.phixstable[0, 0]:
+                    return 0.
+                elif nu_factor > level.phixstable[-1, 0]:
+                    return level.phixstable[-1, 1] * math.pow(level.phixstable[-1, 0] / nu_factor, 3)
+
+                # return np.interp(nu_factor, level.phixstable[:, 0], level.phixstable[:, 1], left=0.)
+                return interp_sigma_bf(nu)
+
             levelpopfrac = level.g * math.exp(-level.energy_ev * EV / KB / T_R) / ion_pop
 
-            for i in range(len(arr_nu_hz)):
-                nu = arr_nu_hz[i]
-                j_nu = j_lambda_fitted[i] * arr_lambda_fitted[i] / nu
+            arr_sigma_bf = np.array([sigma_bf(nu) for nu in arr_nu_hz])
+            arr_gamma_level_dnu = (
+                ONEOVERH * arr_sigma_bf / arr_nu_hz * j_nu_fitted *
+                (1 - np.exp(-HOVERKB * arr_nu_hz / T_R)) * levelpopfrac)
 
-                arr_gamma_level_dnu[i] = (
-                    ONEOVERH * sigma_bf(nu) / nu * j_nu * (1 - math.exp(-HOVERKB * nu / T_R)) * levelpopfrac)
-
-                arr_gamma_dnu[i] += arr_gamma_level_dnu[i]
-                arr_gamma_dlambda[i] += arr_gamma_level_dnu[i] * nu / arr_lambda_fitted[i]
+            arr_gamma_dnu += arr_gamma_level_dnu
 
             gamma_r_level = np.trapz(arr_gamma_level_dnu, x=arr_nu_hz)
             gamma_r_ion2 += gamma_r_level
             lambda_threshold = const.c.to('angstrom/s').value / nu_threshold
-            print(f'  level {level_num} pop_frac {levelpopfrac:.2f} gamma_R({ionstr}): {gamma_r_level:.2e} lambda_threshold {lambda_threshold:.1f} {level.levelname}')
-            axes[0].plot(xlist, [sigma_bf(const.c.to('angstrom/s').value / lambda_angstroms) for lambda_angstroms in xlist],
+            print(f'  level {level_num} pop_frac {levelpopfrac:.2f} gamma_R({ionstr}): {gamma_r_level:.2e} '
+                  f'lambda_threshold {lambda_threshold:.1f} {level.levelname}')
+            axes[0].plot(xlist, [sigma_bf(const.c.to('angstrom/s').value / lambda_angstroms)
+                                 for lambda_angstroms in xlist],
                          label=f'Sigma_bf({ionstr} {level.levelname})')
 
         # xlist = arr_lambda_fitted
+        arr_gamma_dlambda = arr_gamma_dnu * arr_nu_hz / arr_lambda_fitted
 
         axes[1].plot(arr_lambda_fitted, arr_gamma_dlambda, label=f'dGamma_R({ionstr})/dlambda')
 
         gamma_r_ion = abs(np.trapz(arr_gamma_dlambda, x=arr_lambda_fitted))
         print(f'Gamma_R({ionstr}): {gamma_r_ion:.2e}')
+        # print(f'Gamma_R({ionstr}): {gamma_r_ion2:.2e}')
 
 
 def plot_celltimestep(
