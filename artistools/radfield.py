@@ -288,8 +288,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
 
 
 def plot_celltimestep(
-        modelpath, timestep, outputfile,
-        xmin, xmax, modelgridindex, args, normalised=False):
+        modelpath, timestep, outputfile, xmin, xmax, modelgridindex, args, normalised=False):
     """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells)."""
     radfielddata = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     if radfielddata.empty:

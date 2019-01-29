@@ -618,7 +618,7 @@ def plot_reference_spectrum(
     print(f"Reference spectrum \'{plotkwargs['label']}\' has {len(specdata)} points in the plot range")
     print(f" file: {filename}")
 
-    print(' Metadata: ' + ', '.join([f"{k}='{v}'" if hasattr(v, 'lower') else f'{k}={v}'
+    print(' metadata: ' + ', '.join([f"{k}='{v}'" if hasattr(v, 'lower') else f'{k}={v}'
                                      for k, v in metadata.items()]))
 
     specdata.query('lambda_angstroms > @xmin and lambda_angstroms < @xmax', inplace=True)

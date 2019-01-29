@@ -625,8 +625,8 @@ def trim_or_pad(requiredlength, *listoflistin):
             listin = []
         if len(listin) < requiredlength:
             listin.extend([None for _ in range(requiredlength - len(listin))])
-        if len(listin) < requiredlength:
-            listin = listin[:requiredlength]
+        if len(listin) > requiredlength:
+            del listin[requiredlength:]
 
 
 def flatten_list(listin):
