@@ -16,6 +16,8 @@ from astropy import constants as const
 from astropy import units as u
 
 import artistools as at
+import artistools.radfield
+
 
 fluxcontributiontuple = namedtuple(
     'fluxcontribution', 'fluxcontrib linelabel array_flambda_emission array_flambda_absorption color')
@@ -941,9 +943,16 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     # axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
     #               horizontalalignment='right', verticalalignment='bottom', fontsize=7)
 
-    axis.set_ylim(top=max(ymaxrefall, scalefactor * max_flambda_emission_total * 1.2))
+    ymax = max(ymaxrefall, scalefactor * max_flambda_emission_total * 1.2)
+    axis.set_ylim(top=ymax)
     if scale_to_peak or args.internalpackets:
         axis.set_ylabel(r'Scaled F$_\lambda$')
+
+    if args.showbinedges:
+        radfielddata = at.radfield.read_files(modelpath, timestep=timestepmax, modelgridindex=30)
+        binedges = at.radfield.get_binedges(radfielddata)
+        axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5,
+                    color='red', label='', zorder=-1, alpha=0.4)
 
     return plotobjects, plotobjectlabels
 
@@ -1238,6 +1247,9 @@ def addargs(parser):
 
     parser.add_argument('-scaletoreftime', type=float, default=None,
                         help=('Scale reference spectra flux using Co56 decay timescale'))
+
+    parser.add_argument('--showbinedges', action='store_true',
+                        help='Plot vertical lines at the bin edges')
 
     parser.add_argument('-figscale', type=float, default=1.8,
                         help='Scale factor for plot area. 1.0 is for single-column')

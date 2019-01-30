@@ -287,6 +287,11 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
         # print(f'Gamma_R({ionstr}): {gamma_r_ion2:.2e}')
 
 
+def get_binedges(radfielddata):
+    return [const.c.to('angstrom/s').value / radfielddata['nu_lower'].iloc[1]] + \
+               list(const.c.to('angstrom/s').value / radfielddata['nu_upper'][1:])
+
+
 def plot_celltimestep(
         modelpath, timestep, outputfile, xmin, xmax, modelgridindex, args, normalised=False):
     """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells)."""
@@ -361,8 +366,7 @@ def plot_celltimestep(
                      color='black', alpha=0.6, linewidth=1.0, **plotkwargs)
 
     if args.showbinedges:
-        binedges = [const.c.to('angstrom/s').value / radfielddata['nu_lower'].iloc[1]] + \
-            list(const.c.to('angstrom/s').value / radfielddata['nu_upper'][1:])
+        binedges = get_binedges(radfielddata)
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5,
                     color='red', label='', zorder=-1, alpha=0.4)
 
