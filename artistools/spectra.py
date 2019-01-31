@@ -307,7 +307,7 @@ def get_flux_contributions(
 @lru_cache(maxsize=4)
 def get_flux_contributions_from_packets(
         modelpath, timelowerdays, timeupperdays, lambda_min, lambda_max, delta_lambda=30,
-        getemission=True, getabsorption=True, maxpacketfiles=None, filterfunc=None, groupby='ion',
+        getemission=True, getabsorption=True, maxpacketfiles=None, filterfunc=None, groupby='ion', modelgridindex=None,
         use_comovingframe=False, use_lastemissiontype=False, useinternalpackets=False):
 
     assert groupby in [None, 'ion', 'line', 'upperterm', 'terms']
@@ -407,10 +407,31 @@ def get_flux_contributions_from_packets(
         ]
 
         if useinternalpackets:
+            # if we're using packets*.out files, these packets are from the last timestep
+            t_seconds = at.get_timestep_times_float(modelpath, loc='start')[-1] * u.day.to('s')
+
+            if modelgridindex is not None:
+                if modelgridindex > 0:
+                    v_inner = at.get_modeldata(modelpath)[0]['velocity'].iloc[modelgridindex - 1] * 1e5
+                else:
+                    v_inner = 0.
+                v_outer = at.get_modeldata(modelpath)[0]['velocity'].iloc[modelgridindex] * 1e5
+            else:
+                v_inner = 0
+                v_outer = at.get_modeldata(modelpath)[0]['velocity'].iloc[-1] * 1e5
+
+
+            r_inner = t_seconds * v_inner
+            r_outer = t_seconds * v_outer
+
             dfpackets = at.packets.readfile(packetsfile, usecols=usecols, type='TYPE_RPKT')
             print("Using non-escaped internal r-packets")
             dfpackets.query(f'type_id == {at.packets.type_ids["TYPE_RPKT"]} and @nu_min <= nu_rf < @nu_max',
                             inplace=True)
+            if modelgridindex is not None:
+                dfpackets.eval(f'velocity = sqrt(posx ** 2 + posy ** 2 + posz ** 2) / @t_seconds', inplace=True)
+                dfpackets.query(f'@v_inner <= velocity <= @v_outer',
+                                inplace=True)
             print(f"  {len(dfpackets)} internal r-packets matching frequency range")
         else:
             dfpackets = at.packets.readfile(packetsfile, usecols=usecols, escape_type='TYPE_RPKT')
@@ -460,10 +481,6 @@ def get_flux_contributions_from_packets(
                 array_energysum_spectra[absprocesskey][1][xindexabsorbed] += pkt_en
 
     if useinternalpackets:
-        # if we're using packets*.out files, there are from the last timestep
-        t_seconds = at.get_timestep_times_float(modelpath, pos='start')[-1] * u.day.to('s')
-        r_inner = t_seconds * v_inner
-        r_outer = t_seconds * v_outer
         volume = 4 / 3. * math.pi * (r_outer ** 3 - r_inner ** 3)
         normfactor = c_cgs / 4 / math.pi / delta_lambda / volume / nprocs_read
     else:
@@ -950,8 +967,10 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
 
     ymax = max(ymaxrefall, scalefactor * max_flambda_emission_total * 1.2)
     axis.set_ylim(top=ymax)
-    if scale_to_peak or args.internalpackets:
+    if scale_to_peak:
         axis.set_ylabel(r'Scaled F$_\lambda$')
+    elif args.internalpackets:
+        axis.set_ylabel(r'J$_\lambda$ [{}erg/s/cm$^2$/$\AA$]')
 
     if args.showbinedges:
         radfielddata = at.radfield.read_files(modelpath, timestep=timestepmax, modelgridindex=30)

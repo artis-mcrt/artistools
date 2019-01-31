@@ -203,7 +203,7 @@ def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=Non
     dfspectrum.plot(x='lambda_angstroms', y='f_lambda', ax=axis, label=label, **plotkwargs)
 
 
-def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, timestep, xmin, xmax):
+def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, timestep, xmin, xmax, args):
     axes[0].set_ylabel(r'$\sigma$ [cm$^2$]')
 
     arr_lambda_fitted, j_lambda_fitted = get_fitted_field(
@@ -212,6 +212,15 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
 
     arr_lambda_fitted, j_lambda_fitted = zip(*[
         pt for pt in zip(arr_lambda_fitted, j_lambda_fitted) if xmin <= pt[0] <= xmax])
+
+    (contribution_list, array_jlambda_emission_total,
+     arraylambda_angstrom_em) = at.spectra.get_flux_contributions_from_packets(
+        modelpath, timelowerdays=-1, timeupperdays=2000, lambda_min=args.xmin, lambda_max=args.xmax,
+        getemission=True, getabsorption=False, modelgridindex=modelgridindex,
+        maxpacketfiles=args.maxpacketfiles,
+        groupby='ion', delta_lambda=20,
+        useinternalpackets=True)
+
 
     from scipy.interpolate import interp1d
     # H = 6.6260755e-27  # Planck constant [erg s]
@@ -227,13 +236,12 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
     adata = at.get_levels(modelpath, ionlist=ionlist, get_photoionisations=True)
     xlist = np.linspace(xmin, xmax, num=5000)
 
-    arr_nu_hz = const.c.to('angstrom/s').value / np.array(arr_lambda_fitted)
-    j_nu_fitted = np.array(j_lambda_fitted) * arr_lambda_fitted / arr_nu_hz
+    # arr_nu_hz = const.c.to('angstrom/s').value / np.array(arr_lambda_fitted)
+    # j_nu_fitted = np.array(j_lambda_fitted) * arr_lambda_fitted / arr_nu_hz
 
     for atomic_number, ion_stage in ionlist:
         ionstr = at.get_ionstring(atomic_number, ion_stage)
         print(f'{ionstr}')
-        arr_gamma_dnu = np.zeros_like(arr_lambda_fitted)
         ion_data = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0]
         max_levels = 9
 
@@ -241,50 +249,61 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
         for _, level in ion_data.levels[:max_levels].iterrows():
                 ion_pop += level.g * math.exp(-level.energy_ev * EV / KB / T_R)
 
-        gamma_r_ion2 = 0.
-        for level_num, level in ion_data.levels[:max_levels].iterrows():
-            nu_threshold = ONEOVERH * (ion_data.ion_pot - level.energy_ev) * EV
+        x = []
+        x += list([(arraylambda_angstrom_em, contribrow.array_flambda_emission, contribrow.linelabel) for contribrow in contribution_list])
+        x += [(arraylambda_angstrom_em, array_jlambda_emission_total, 'Total emission')]
+        x += [(arr_lambda_fitted, j_lambda_fitted, 'Binned field')]
+        for arraylambda_angstrom, j_lambda_arr, linelabel in x:
+            arr_nu_hz = const.c.to('angstrom/s').value / np.array(arraylambda_angstrom)
+            print(f'Radiation field due to {linelabel}')
+            j_nu_arr = np.array(j_lambda_arr) * arraylambda_angstrom / arr_nu_hz
+            gamma_r_ion2 = 0.
+            arr_gamma_dnu = np.zeros_like(arr_nu_hz)
+            for level_num, level in ion_data.levels[:max_levels].iterrows():
+                nu_threshold = ONEOVERH * (ion_data.ion_pot - level.energy_ev) * EV
 
-            interp_sigma_bf = interp1d(
-                level.phixstable[:, 0] * nu_threshold, level.phixstable[:, 1], kind='linear', bounds_error=True,
-                fill_value=0., assume_sorted=True)
+                interp_sigma_bf = interp1d(
+                    level.phixstable[:, 0] * nu_threshold, level.phixstable[:, 1], kind='linear', bounds_error=True,
+                    fill_value=0., assume_sorted=True)
 
-            def sigma_bf(nu):
-                nu_factor = nu / nu_threshold
-                if nu_factor < level.phixstable[0, 0]:
-                    return 0.
-                elif nu_factor > level.phixstable[-1, 0]:
-                    return level.phixstable[-1, 1] * math.pow(level.phixstable[-1, 0] / nu_factor, 3)
+                def sigma_bf(nu):
+                    nu_factor = nu / nu_threshold
+                    if nu_factor < level.phixstable[0, 0]:
+                        return 0.
+                    elif nu_factor > level.phixstable[-1, 0]:
+                        return level.phixstable[-1, 1] * math.pow(level.phixstable[-1, 0] / nu_factor, 3)
 
-                # return np.interp(nu_factor, level.phixstable[:, 0], level.phixstable[:, 1], left=0.)
-                return interp_sigma_bf(nu)
+                    # return np.interp(nu_factor, level.phixstable[:, 0], level.phixstable[:, 1], left=0.)
+                    return interp_sigma_bf(nu)
 
-            levelpopfrac = level.g * math.exp(-level.energy_ev * EV / KB / T_R) / ion_pop
+                levelpopfrac = level.g * math.exp(-level.energy_ev * EV / KB / T_R) / ion_pop
 
-            arr_sigma_bf = np.array([sigma_bf(nu) for nu in arr_nu_hz])
-            arr_gamma_level_dnu = (
-                ONEOVERH * arr_sigma_bf / arr_nu_hz * j_nu_fitted *
-                (1 - np.exp(-HOVERKB * arr_nu_hz / T_R)) * levelpopfrac)
+                arr_sigma_bf = np.array([sigma_bf(nu) for nu in arr_nu_hz])
 
-            arr_gamma_dnu += arr_gamma_level_dnu
+                arr_gamma_level_dnu = np.abs(
+                    ONEOVERH * arr_sigma_bf / arr_nu_hz * j_nu_arr *
+                    (1 - np.exp(-HOVERKB * arr_nu_hz / T_R)) * levelpopfrac)
 
-            gamma_r_level = np.trapz(arr_gamma_level_dnu, x=arr_nu_hz)
-            gamma_r_ion2 += gamma_r_level
-            lambda_threshold = const.c.to('angstrom/s').value / nu_threshold
-            print(f'  level {level_num} pop_frac {levelpopfrac:.2f} gamma_R({ionstr}): {gamma_r_level:.2e} '
-                  f'lambda_threshold {lambda_threshold:.1f} {level.levelname}')
-            axes[0].plot(xlist, [sigma_bf(const.c.to('angstrom/s').value / lambda_angstroms)
-                                 for lambda_angstroms in xlist],
-                         label=f'Sigma_bf({ionstr} {level.levelname})')
+                arr_gamma_dnu += arr_gamma_level_dnu
 
-        # xlist = arr_lambda_fitted
-        arr_gamma_dlambda = arr_gamma_dnu * arr_nu_hz / arr_lambda_fitted
+                gamma_r_level = np.abs(np.trapz(arr_gamma_level_dnu, x=arr_nu_hz))
+                gamma_r_ion2 += gamma_r_level
+                lambda_threshold = const.c.to('angstrom/s').value / nu_threshold
+                print(f'  level {level_num} pop_frac {levelpopfrac:.2f} gamma_R({ionstr}): {gamma_r_level:.2e} '
+                      f'lambda_threshold {lambda_threshold:.1f} {level.levelname}')
+                # axes[0].plot(xlist, [sigma_bf(const.c.to('angstrom/s').value / lambda_angstroms)
+                #                      for lambda_angstroms in xlist],
+                #              label=f'Sigma_bf({ionstr} {level.levelname})')
 
-        axes[1].plot(arr_lambda_fitted, arr_gamma_dlambda, label=f'dGamma_R({ionstr})/dlambda')
+            # xlist = arr_lambda_fitted
+            arr_gamma_dlambda = arr_gamma_dnu * arr_nu_hz / arraylambda_angstrom
 
-        gamma_r_ion = abs(np.trapz(arr_gamma_dlambda, x=arr_lambda_fitted))
-        print(f'Gamma_R({ionstr}): {gamma_r_ion:.2e}')
-        # print(f'Gamma_R({ionstr}): {gamma_r_ion2:.2e}')
+            axes[1].plot(arraylambda_angstrom, arr_gamma_dlambda, label=f'd$\Gamma_R$({ionstr} due to {linelabel}/d$\lambda$')
+
+            gamma_r_ion = abs(np.trapz(arr_gamma_dlambda, x=arraylambda_angstrom))
+            print(f'Gamma_R({ionstr} due to {linelabel}): {gamma_r_ion:.2e}')
+            print(f'Gamma_R({ionstr} due to {linelabel}): {gamma_r_ion2:.2e}')
+    axes[2].plot(arraylambda_angstrom_em, array_jlambda_emission_total, label=f'J$\lambda$ from packets')
 
 
 def get_binedges(radfielddata):
@@ -380,9 +399,9 @@ def plot_celltimestep(
 
     if args.photoionrates:
         calculate_photoionrates(
-            axes, modelpath, radfielddata, modelgridindex=modelgridindex, timestep=timestep, xmin=xmin, xmax=xmax)
+            axes, modelpath, radfielddata, modelgridindex=modelgridindex, timestep=timestep, xmin=xmin, xmax=xmax, args=args)
         axes[0].legend(loc='best', handlelength=2, frameon=False, numpoints=1)
-        axes[1].legend(loc='best', handlelength=2, frameon=False, numpoints=1)
+        axes[1].legend(loc='best', handlelength=2, frameon=False, numpoints=1, fontsize=4)
 
     # axis.annotate(figure_title,
     #               xy=(0.02, 0.96), xycoords='axes fraction',
@@ -514,6 +533,9 @@ def addargs(parser):
 
     parser.add_argument('-listtimesteps', action='store_true',
                         help='Show the times at each timestep')
+
+    parser.add_argument('-maxpacketfiles', type=int, default=None,
+                        help='Limit the number of packet files read')
 
     parser.add_argument('-xaxis', '-x', default='lambda', choices=['lambda', 'timestep'],
                         help='Horizontal axis variable.')
