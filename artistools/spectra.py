@@ -460,10 +460,15 @@ def get_flux_contributions_from_packets(
                 array_energysum_spectra[absprocesskey][1][xindexabsorbed] += pkt_en
 
     if useinternalpackets:
+        # if we're using packets*.out files, there are from the last timestep
+        t_seconds = at.get_timestep_times_float(modelpath, pos='start')[-1] * u.day.to('s')
+        r_inner = t_seconds * v_inner
+        r_outer = t_seconds * v_outer
+        volume = 4 / 3. * math.pi * (r_outer ** 3 - r_inner ** 3)
+        normfactor = c_cgs / 4 / math.pi / delta_lambda / volume / nprocs_read
+    else:
         normfactor = (1. / delta_lambda / (timehigh - timelow) / 4 / math.pi
                       / (u.megaparsec.to('cm') ** 2) / nprocs_read)
-    else:
-        normfactor = c_cgs / 4 / math.pi / delta_lambda / volume / nprocs_read
 
     array_flambda_emission_total = energysum_spectrum_emission_total * normfactor
 
