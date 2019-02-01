@@ -289,8 +289,8 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
                 gamma_r_level = np.abs(np.trapz(arr_gamma_level_dnu, x=arr_nu_hz))
                 gamma_r_ion2 += gamma_r_level
                 lambda_threshold = const.c.to('angstrom/s').value / nu_threshold
-                print(f'  level {level_num} pop_frac {levelpopfrac:.2f} gamma_R({ionstr}): {gamma_r_level:.2e} '
-                      f'lambda_threshold {lambda_threshold:.1f} {level.levelname}')
+                print(f'  level {level_num} pop_frac {levelpopfrac:.2f} threshold {lambda_threshold:.1f} Å '
+                      f' gamma_R({ionstr}) {gamma_r_level:.2e} {level.levelname}')
                 # axes[0].plot(xlist, [sigma_bf(const.c.to('angstrom/s').value / lambda_angstroms)
                 #                      for lambda_angstroms in xlist],
                 #              label=f'Sigma_bf({ionstr} {level.levelname})')
@@ -316,7 +316,7 @@ def plot_celltimestep(
     """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells)."""
     radfielddata = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     if radfielddata.empty:
-        print(f'No data for timestep {timestep:d}')
+        print(f'No data for timestep {timestep:d} modelgridindex {modelgridindex:d}')
         return
 
     modelname = at.get_model_name(modelpath)
