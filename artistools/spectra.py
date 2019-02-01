@@ -865,10 +865,12 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
           f'({args.timemin:.3f} to {args.timemax:.3f}d)')
 
+    xmin, xmax = axis.get_xlim()
+
     if args.frompackets:
         (contribution_list, array_flambda_emission_total,
          arraylambda_angstroms) = at.spectra.get_flux_contributions_from_packets(
-            modelpath, args.timemin, args.timemax, args.xmin, args.xmax,
+            modelpath, args.timemin, args.timemax, xmin, xmax,
             getemission=args.showemission, getabsorption=args.showabsorption,
             maxpacketfiles=args.maxpacketfiles, filterfunc=filterfunc,
             groupby=args.groupby, delta_lambda=args.deltalambda, use_lastemissiontype=args.use_lastemissiontype,
@@ -892,7 +894,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     plotobjects = []
 
     max_flambda_emission_total = max(
-        [flambda if (args.xmin < lambda_ang < args.xmax) else -99.0
+        [flambda if (xmin < lambda_ang < xmax) else -99.0
          for lambda_ang, flambda in zip(arraylambda_angstroms, array_flambda_emission_total)])
 
     scalefactor = (scale_to_peak / max_flambda_emission_total if scale_to_peak else 1.)
@@ -1034,8 +1036,9 @@ def make_plot(args):
         else:
             defaultoutputfile = Path("plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
-        plotobjects, plotobjectlabels = make_emissionabsorption_plot(
-            args.modelpath[0], axes[0], filterfunc, args, scale_to_peak=scale_to_peak)
+        for index, axis in enumerate(axes):
+            plotobjects, plotobjectlabels = make_emissionabsorption_plot(
+                args.modelpath[0], axis, filterfunc, args, scale_to_peak=scale_to_peak)
     else:
         legendncol = 1
         defaultoutputfile = Path("plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
