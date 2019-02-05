@@ -546,7 +546,7 @@ def addargs(parser):
     parser.add_argument('-timestep', '-ts', action='append',
                         help='Timestep number to plot')
 
-    parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
+    parser.add_argument('-modelgridindex', '-cell', action='append',
                         help='Modelgridindex to plot')
 
     parser.add_argument('-velocity', '-v', type=float, default=-1,
@@ -608,13 +608,15 @@ def main(args=None, argsraw=None, **kwargs):
 
     modelpath = args.modelpath
 
+    modelgridindexlist = []
+
     if args.listtimesteps:
         at.showtimesteptimes(modelpath=args.modelpath)
     else:
         if args.velocity >= 0.:
-            modelgridindex = at.get_closest_cell(modelpath, args.velocity)
+            modelgridindexlist[0] = at.get_closest_cell(modelpath, args.velocity)
         else:
-            modelgridindex = args.modelgridindex
+            modelgridindexlist = at.parse_range_list(args.modelgridindex)
 
         timesteplast = len(at.get_timestep_times_float(modelpath))
         if args.timedays:
@@ -625,19 +627,20 @@ def main(args=None, argsraw=None, **kwargs):
             print("Using last timestep.")
             timesteplist = [timesteplast]
 
-        if args.xaxis == 'lambda':
-            for timestep in timesteplist:
-                outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
-                plot_celltimestep(
-                    modelpath, timestep, outputfile,
-                    xmin=args.xmin, xmax=args.xmax, modelgridindex=modelgridindex,
-                    args=args, normalised=args.normalised)
-        elif args.xaxis == 'timestep':
-            outputfile = args.outputfile.format(modelgridindex=modelgridindex)
-            plot_timeevolution(modelpath, outputfile, modelgridindex, args)
-        else:
-            print('Unknown plot type {args.plot}')
-            return 1
+        for modelgridindex in modelgridindexlist:
+            if args.xaxis == 'lambda':
+                for timestep in timesteplist:
+                    outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
+                    plot_celltimestep(
+                        modelpath, timestep, outputfile,
+                        xmin=args.xmin, xmax=args.xmax, modelgridindex=modelgridindex,
+                        args=args, normalised=args.normalised)
+            elif args.xaxis == 'timestep':
+                outputfile = args.outputfile.format(modelgridindex=modelgridindex)
+                plot_timeevolution(modelpath, outputfile, modelgridindex, args)
+            else:
+                print('Unknown plot type {args.plot}')
+                return 1
 
     return 0
 
