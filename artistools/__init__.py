@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 from astropy import units as u
 from astropy import constants as const
+from PyPDF2 import PdfFileMerger
 
 if sys.version_info < (3,):
     print("Python 2 not supported")
@@ -659,6 +660,22 @@ def firstexisting(filelist, path=Path('.')):
             return fullpath
 
     raise FileNotFoundError(f'None of these files exist: {", ".join([str(x) for x in fullpaths])}')
+
+
+def join_pdf_files(pdf_list, modelpath_list):
+
+    merger = PdfFileMerger()
+
+    for pdf, modelpath in zip(pdf_list, modelpath_list):
+        fullpath = firstexisting([pdf], path=modelpath)
+        merger.append(open(fullpath, 'rb'))
+        os.remove(fullpath)
+
+    resultfilename = f'{pdf_list[0].split(".")[0]}-{pdf_list[-1].split(".")[0]}'
+    with open(f'{resultfilename}.pdf', 'wb') as resultfile:
+        merger.write(resultfile)
+
+    print(f'Files merged and saved to {resultfilename}.pdf')
 
 
 @lru_cache(maxsize=2)

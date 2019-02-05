@@ -317,7 +317,7 @@ def plot_celltimestep(
     radfielddata = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     if radfielddata.empty:
         print(f'No data for timestep {timestep:d} modelgridindex {modelgridindex:d}')
-        return
+        return False
 
     modelname = at.get_model_name(modelpath)
     time_days = at.get_timestep_times_float(modelpath)[timestep]
@@ -419,6 +419,7 @@ def plot_celltimestep(
     print(f'Saving to {outputfile}')
     fig.savefig(str(outputfile), format='pdf')
     plt.close()
+    return True
 
 
 def plot_bin_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex, **plotkwargs):
@@ -608,6 +609,8 @@ def main(args=None, argsraw=None, **kwargs):
 
     modelpath = args.modelpath
 
+    pdf_list = []
+    modelpath_list = []
     modelgridindexlist = []
 
     if args.listtimesteps:
@@ -631,16 +634,23 @@ def main(args=None, argsraw=None, **kwargs):
             if args.xaxis == 'lambda':
                 for timestep in timesteplist:
                     outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
-                    plot_celltimestep(
+                    make_plot = plot_celltimestep(
                         modelpath, timestep, outputfile,
                         xmin=args.xmin, xmax=args.xmax, modelgridindex=modelgridindex,
                         args=args, normalised=args.normalised)
+                    if make_plot:
+                        pdf_list.append(outputfile)
+                        modelpath_list.append(args.modelpath)
             elif args.xaxis == 'timestep':
                 outputfile = args.outputfile.format(modelgridindex=modelgridindex)
                 plot_timeevolution(modelpath, outputfile, modelgridindex, args)
             else:
                 print('Unknown plot type {args.plot}')
                 return 1
+
+    if len(pdf_list) > 1:
+        print(pdf_list, modelpath_list)
+        at.join_pdf_files(pdf_list, modelpath_list)
 
     return 0
 
