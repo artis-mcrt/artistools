@@ -616,6 +616,8 @@ def parse_range_list(rngs, dictvars={}):
     """
     if isinstance(rngs, list):
         rngs = ','.join(rngs)
+    elif not hasattr(rngs, 'split'):
+        return [rngs]
 
     return sorted(set(chain.from_iterable([parse_range(rng, dictvars) for rng in rngs.split(',')])))
 
