@@ -99,7 +99,7 @@ def test_nonthermal(benchmark):
 
 
 def test_radfield(benchmark):
-    benchmark.pedantic(at.radfield.main, kwargs=dict(modelpath=modelpath, outputfile=outputpath), **benchargs)
+    benchmark.pedantic(at.radfield.main, kwargs=dict(modelpath=modelpath, modelgridindex=0, outputfile=outputpath), **benchargs)
 
 
 def test_get_ionrecombratecalibration():
