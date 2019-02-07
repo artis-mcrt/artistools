@@ -189,6 +189,44 @@ def get_modeldata(filename):
     return modeldata, t_model_init_days
 
 
+@lru_cache(maxsize=8)
+def get_mg_associated_cells(modelpath):
+    """Return a dict with the associated propagation cells for each model grid cell."""
+    if os.path.isdir(modelpath):
+        filename = firstexisting(['grid.out.xz', 'grid.out.gz', 'grid.out'], path=modelpath)
+    else:
+        filename = modelpath
+
+    assoc_cells = {}
+    with open(filename, 'r') as fgrid:
+        for line in fgrid:
+            row = line.split()
+            propcellid, mgi = int(row[0]), int(row[1])
+            if mgi not in assoc_cells:
+                assoc_cells[mgi] = []
+            assoc_cells[mgi].append(propcellid)
+
+    return assoc_cells
+
+
+@lru_cache(maxsize=8)
+def get_mgi_of_propcells(modelpath):
+    """Return a dict with the associated model grid cell of each propagration cell."""
+    if os.path.isdir(modelpath):
+        filename = firstexisting(['grid.out.xz', 'grid.out.gz', 'grid.out'], path=modelpath)
+    else:
+        filename = modelpath
+
+    mgi_of_propcells = {}
+    with open(filename, 'r') as fgrid:
+        for line in fgrid:
+            row = line.split()
+            propcellid, mgi = int(row[0]), int(row[1])
+            mgi_of_propcells[propcellid] = mgi
+
+    return mgi_of_propcells
+
+
 def get_closest_cell(modelpath, velocity):
     """Return the modelgridindex of the cell whose velocity is closest to velocity."""
     modeldata, _ = get_modeldata(modelpath)
