@@ -191,7 +191,9 @@ def get_modeldata(filename):
 
 @lru_cache(maxsize=8)
 def get_grid_mapping(modelpath):
-    """Return a dict with the associated propagation cells for each model grid cell."""
+    """Return dict with the associated propagation cells for each model grid cell and
+    a dict with the associated model grid cell of each propagration cell."""
+
     if os.path.isdir(modelpath):
         filename = firstexisting(['grid.out.xz', 'grid.out.gz', 'grid.out'], path=modelpath)
     else:
