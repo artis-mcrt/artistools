@@ -157,7 +157,7 @@ def get_magnitudes(modelpath):
         (time, bol_magnitude) for time, bol_magnitude in zip(timearray, bolometric_magnitude(modelpath, timearray))
         if math.isfinite(bol_magnitude)]
 
-    filters_list = ['U', 'B', 'V', 'R', 'I']
+    filters_list = ['U', 'B', 'V', 'R', 'I', 'J', 'H', 'K']
 
     for filter_name in filters_list:
         if filter_name not in filters_dict:
@@ -249,40 +249,72 @@ def evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux):
     return phot_filtobs_sn
 
 
-def make_magnitudes_plot(modelpath, args):
-    modelname = at.get_model_name(modelpath)
-    print(f'Reading spectra: {modelname}')
-    filters_dict = get_magnitudes(modelpath)
-
-    if args.plot_hesma_model:
-        hesma_model = read_hesma_lightcurve(args)
-        linename = str(args.plot_hesma_model).split('_')[:3]
-        linename = "_".join(linename)
-
-    f, axarr = plt.subplots(nrows=2, ncols=3, sharex='all', sharey='all', squeeze=True)
+def make_magnitudes_plot(modelpaths, args):
+    rows = 3
+    cols = 3
+    f, axarr = plt.subplots(nrows=rows, ncols=cols, sharex='all', sharey='all', squeeze=True)
     axarr = axarr.flatten()
 
-    colours = ['brown', 'purple', 'blue', 'green', 'red', 'darkred']
-    axarr[0].invert_yaxis()
-    for plotnumber, (key, colour) in enumerate(zip(filters_dict, colours)):
-        time = []
-        magnitude = []
 
-        for t, mag in filters_dict[key]:
-            time.append(float(t))
-            magnitude.append(mag)
+    linenames = []
 
-        axarr[plotnumber].plot(time, magnitude, label=key, color=colour)
-        if args.plot_hesma_model and key in hesma_model.keys():
-            axarr[plotnumber].plot(hesma_model.t, hesma_model[key], color='black', label=linename)
+    for modelnumber, modelpath in enumerate(modelpaths):
 
-        axarr[plotnumber].legend(loc='best', frameon=True, fontsize='small')
-        axarr[plotnumber].set_ylabel('Absolute Magnitude')
-        axarr[plotnumber].set_xlabel('Time in Days')
-        axarr[plotnumber].axis([0, 100, -14, -20])
+        modelname = at.get_model_name(modelpath)
+        linenames.append(modelname)
+        print(f'Reading spectra: {modelname}')
+        filters_dict = get_magnitudes(modelpath)
 
+        if modelnumber == 0 and args.plot_hesma_model:
+            hesma_model = read_hesma_lightcurve(args)
+            linename = str(args.plot_hesma_model).split('_')[:3]
+            linename = "_".join(linename)
+
+            if linename not in linenames:
+                linenames.append(linename)
+
+
+        for plotnumber, key in enumerate(filters_dict):
+            time = []
+            magnitude = []
+
+            for t, mag in filters_dict[key]:
+                time.append(float(t))
+                magnitude.append(mag)
+
+            axarr[plotnumber].plot(time, magnitude)
+
+            if modelnumber == 0 and args.plot_hesma_model and key in hesma_model.keys():
+                axarr[plotnumber].plot(hesma_model.t, hesma_model[key], color='black')
+
+            # axarr[plotnumber].axis([10, 60, -16, -19.5])
+            axarr[plotnumber].text(75, -19, key)
+            plt.minorticks_on()
+            plt.tick_params(axis='both', top=True, right=True)
+
+    for plot in range(rows):
+    # plt.ylabel('Magnitude', fontsize='x-large')
+        axarr[plot*cols].set_ylabel('Magnitude')
+
+    plots = np.arange(0, rows*cols)
+    for plot in plots[-cols:]:
+        axarr[plot].set_xlabel('Time in Days')
+
+    # axarr[0].axis([10, 50, -17.5, -19.5])
+    # axarr[1].axis([10, 50, -17.5, -19.5])
+    plt.axis([0, 100, -14, -20])
+    # plt.gca().invert_yaxis()
+
+    print(linenames)
     plt.minorticks_on()
-    f.suptitle(f'{modelname}')
+    # axarr[0].tick_params(axis='both', top=True, right=True)
+    # f.suptitle(f'{modelname}')
+    plt.subplots_adjust(hspace=.0, wspace=.0)
+    f.legend(labels=linenames, frameon=True, fontsize='xx-small')
+    # plt.tight_layout()
+    # f.set_figheight(8)
+    # f.set_figwidth(7)
+    # plt.show()
     plt.savefig(args.outputfile, format='pdf')
 
 
@@ -409,6 +441,14 @@ def main(args=None, argsraw=None, **kwargs):
 
     args.modelpath = at.flatten_list(args.modelpath)
 
+    # flatten the list
+    modelpaths = []
+    for elem in args.modelpath:
+        if isinstance(elem, list):
+            modelpaths.extend(elem)
+        else:
+            modelpaths.append(elem)
+
     at.trim_or_pad(len(args.modelpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth)
 
     if args.gamma:
@@ -431,8 +471,7 @@ def main(args=None, argsraw=None, **kwargs):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     if args.magnitude:
-        for modelpath in args.modelpath:
-            make_magnitudes_plot(modelpath, args)
+        make_magnitudes_plot(modelpaths, args)
         print(f'Saved figure: {args.outputfile}')
 
     elif args.colour_evolution:
