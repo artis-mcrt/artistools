@@ -213,6 +213,19 @@ def get_grid_mapping(modelpath):
     return assoc_cells, mgi_of_propcells
 
 
+def get_wid_init(modelpath):
+    tmin = get_timestep_times_float(modelpath, loc='start')[0] * u.day.to('s')
+    vmax = get_modeldata(modelpath)[0]['velocity'].iloc[-1] * 1e5
+
+    rmax = vmax * tmin
+
+    coordmax0 = rmax
+    ncoordgrid0 = 50
+
+    wid_init = 2 * coordmax0 / ncoordgrid0
+    return wid_init
+
+
 def get_closest_cell(modelpath, velocity):
     """Return the modelgridindex of the cell whose velocity is closest to velocity."""
     modeldata, _ = get_modeldata(modelpath)

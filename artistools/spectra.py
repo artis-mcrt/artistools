@@ -398,6 +398,7 @@ def get_flux_contributions_from_packets(
     for index, packetsfile in enumerate(packetsfiles):
         usecols = [
             'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'nu_cmf', 'escape_type_id', 'escape_time',
+            'where',
             'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz',
             # 'em_posx', 'em_posy', 'em_posz', 'em_time',
             'true_emission_velocity',
@@ -429,9 +430,11 @@ def get_flux_contributions_from_packets(
             dfpackets.query(f'type_id == {at.packets.type_ids["TYPE_RPKT"]} and @nu_min <= nu_rf < @nu_max',
                             inplace=True)
             if modelgridindex is not None:
-                dfpackets.eval(f'velocity = sqrt(posx ** 2 + posy ** 2 + posz ** 2) / @t_seconds', inplace=True)
-                dfpackets.query(f'@v_inner <= velocity <= @v_outer',
-                                inplace=True)
+                assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
+                # dfpackets.eval(f'velocity = sqrt(posx ** 2 + posy ** 2 + posz ** 2) / @t_seconds', inplace=True)
+                # dfpackets.query(f'@v_inner <= velocity <= @v_outer',
+                #                 inplace=True)
+                dfpackets.query(f'where in @assoc_cells[@modelgridindex]', inplace=True)
             print(f"  {len(dfpackets)} internal r-packets matching frequency range")
         else:
             dfpackets = at.packets.readfile(packetsfile, usecols=usecols, escape_type='TYPE_RPKT')
@@ -481,7 +484,10 @@ def get_flux_contributions_from_packets(
                 array_energysum_spectra[absprocesskey][1][xindexabsorbed] += pkt_en
 
     if useinternalpackets:
-        volume = 4 / 3. * math.pi * (r_outer ** 3 - r_inner ** 3)
+        volume_shells = 4 / 3. * math.pi * (r_outer ** 3 - r_inner ** 3)
+        assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
+        volume = (at.get_wid_init(modelpath) * t_seconds / (at.get_inputparams(modelpath)['tmin'] * u.day.to('s'))) ** 3 * len(assoc_cells[modelgridindex])
+        print('volume', volume, 'shell volume', volume_shells, '------------------------------------------------------------------------')
         normfactor = c_cgs / 4 / math.pi / delta_lambda / volume / nprocs_read
     else:
         normfactor = (1. / delta_lambda / (timehigh - timelow) / 4 / math.pi
