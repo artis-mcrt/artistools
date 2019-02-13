@@ -318,7 +318,7 @@ def make_magnitudes_plot(modelpaths, args):
     plt.savefig(args.outputfile, format='pdf')
 
 
-def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
+def colour_evolution_plot(modelpath, args):
     modelname = at.get_model_name(modelpath)
     print(f'Reading spectra: {modelname}')
     filters_dict = get_magnitudes(modelpath)
@@ -329,7 +329,9 @@ def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
     plot_times = []
     diff = []
 
-    for filter_1, filter_2 in zip(filters_dict[filter_name1], filters_dict[filter_name2]):
+    filter_names = args.colour_evolution[0].split('-')
+
+    for filter_1, filter_2 in zip(filters_dict[filter_names[0]], filters_dict[filter_names[1]]):
         # Make magnitude dictionaries where time is the key
         time_dict_1[filter_1[0]] = filter_1[1]
         time_dict_2[filter_2[0]] = filter_2[1]
@@ -339,13 +341,15 @@ def colour_evolution_plot(filter_name1, filter_name2, modelpath, args):
             plot_times.append(float(time))
             diff.append(time_dict_1[time] - time_dict_2[time])
 
-    plt.plot(plot_times, diff, marker='.', linestyle='None', label=modelname)
-    plt.ylabel(f'{filter_name1}-{filter_name2}')
-    plt.xlabel('Time in Days')
+    plt.plot(plot_times, diff, label=modelname)
+
+    plt.ylabel(f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
+    plt.xlabel('Time in Days Since Explosion', fontsize='x-large')
+    plt.tight_layout()
 
     plt.legend(loc='best', frameon=True)
-    plt.title('B-V Colour Evolution')
-    # plt.ylim(-0.5, 3)
+    plt.minorticks_on()
+    plt.tick_params(axis='both', top=True, right=True)
 
     plt.savefig(args.outputfile, format='pdf')
 
@@ -412,8 +416,8 @@ def addargs(parser):
     parser.add_argument('--magnitude', action='store_true',
                         help='Plot synthetic magnitudes')
 
-    parser.add_argument('--colour_evolution', action='store_true',
-                        help='Plot of colour evolution')
+    parser.add_argument('--colour_evolution', action='append',
+                        help='Plot of colour evolution. Give two filters eg. B-V')
 
     parser.add_argument('--print_data', action='store_true',
                         help='Print plotted data')
@@ -475,8 +479,8 @@ def main(args=None, argsraw=None, **kwargs):
         print(f'Saved figure: {args.outputfile}')
 
     elif args.colour_evolution:
-        for modelpath in args.modelpath:
-            colour_evolution_plot('B', 'V', modelpath, args)
+        for modelpath in modelpaths:
+            colour_evolution_plot(modelpath, args)
         print(f'Saved figure: {args.outputfile}')
     else:
         make_lightcurve_plot(args.modelpath, args.outputfile, args.frompackets,
