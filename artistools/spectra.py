@@ -484,10 +484,12 @@ def get_flux_contributions_from_packets(
                 array_energysum_spectra[absprocesskey][1][xindexabsorbed] += pkt_en
 
     if useinternalpackets:
-        volume_shells = 4 / 3. * math.pi * (r_outer ** 3 - r_inner ** 3)
-        assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
-        volume = (at.get_wid_init(modelpath) * t_seconds / (at.get_inputparams(modelpath)['tmin'] * u.day.to('s'))) ** 3 * len(assoc_cells[modelgridindex])
-        print('volume', volume, 'shell volume', volume_shells, '------------------------------------------------------------------------')
+        volume = 4 / 3. * math.pi * (r_outer ** 3 - r_inner ** 3)
+        if modelgridindex:
+            volume_shells = volume
+            assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
+            volume = (at.get_wid_init(modelpath) * t_seconds / (at.get_inputparams(modelpath)['tmin'] * u.day.to('s'))) ** 3 * len(assoc_cells[modelgridindex])
+            print('volume', volume, 'shell volume', volume_shells, '-------------------------------------------------')
         normfactor = c_cgs / 4 / math.pi / delta_lambda / volume / nprocs_read
     else:
         normfactor = (1. / delta_lambda / (timehigh - timelow) / 4 / math.pi
