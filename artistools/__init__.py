@@ -169,15 +169,21 @@ def get_modeldata(filename):
         filename = firstexisting(['model.txt.xz', 'model.txt.gz', 'model.txt'], path=filename)
 
     modeldata = pd.DataFrame()
-    gridcelltuple = namedtuple('gridcell', 'inputcellid velocity logrho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48')
+    gridcelltuple = namedtuple(
+        'gridcell', 'inputcellid velocity_inner velocity_outer logrho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48')
 
+    velocity_inner = 0.
     with open(filename, 'r') as fmodel:
         gridcellcount = int(fmodel.readline())
         t_model_init_days = float(fmodel.readline())
         for line in fmodel:
             row = line.split()
 
-            modeldata = modeldata.append([gridcelltuple(int(row[0]), *(map(float, row[1:])))], ignore_index=True)
+            celltuple = gridcelltuple(int(row[0]), velocity_inner, *(map(float, row[1:])))
+            modeldata = modeldata.append([celltuple], ignore_index=True)
+
+            # next inner is the current outer
+            velocity_inner = celltuple.velocity_outer
 
             # the model.txt file may contain more shells, but we should ignore them
             # if we have already read in the specified number of shells
@@ -215,7 +221,7 @@ def get_grid_mapping(modelpath):
 
 def get_wid_init(modelpath):
     tmin = get_timestep_times_float(modelpath, loc='start')[0] * u.day.to('s')
-    vmax = get_modeldata(modelpath)[0]['velocity'].iloc[-1] * 1e5
+    vmax = get_modeldata(modelpath)[0]['velocity_outer'].iloc[-1] * 1e5
 
     rmax = vmax * tmin
 
@@ -229,9 +235,9 @@ def get_wid_init(modelpath):
 def get_closest_cell(modelpath, velocity):
     """Return the modelgridindex of the cell whose velocity is closest to velocity."""
     modeldata, _ = get_modeldata(modelpath)
-    # print(modeldata['velocity'])
-    # arrvel = [float(cell['velocity']) for cell in modeldata]
-    mgi = np.abs(modeldata['velocity'].values - velocity).argmin()
+    # print(modeldata['velocity_outer'])
+    # arrvel = [float(cell['velocity_outer']) for cell in modeldata]
+    mgi = np.abs(modeldata['velocity_outer'].values - velocity).argmin()
     return mgi
 
 
@@ -239,7 +245,7 @@ def save_modeldata(dfmodeldata, t_model_init_days, filename):
     with open(filename, 'w') as fmodel:
         fmodel.write(f'{len(dfmodeldata)}\n{t_model_init_days:f}\n')
         for _, cell in dfmodeldata.iterrows():
-            fmodel.write(f'{cell.inputcellid:6.0f}   {cell.velocity:9.2f}   {cell.logrho:10.8f} '
+            fmodel.write(f'{cell.inputcellid:6.0f}   {cell.velocity_outer:9.2f}   {cell.logrho:10.8f} '
                          f'{cell.X_Fegroup:5.2f} {cell.X_Ni56:5.2f} {cell.X_Co56:5.2f} '
                          f'{cell.X_Fe52:5.2f} {cell.X_Cr48:5.2f}\n')
 

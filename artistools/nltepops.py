@@ -503,7 +503,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         subplot_title = f'{modelname}'
         if len(modelname) > 10:
             subplot_title += '\n'
-        velocity = at.get_modeldata(modelpath)[0]['velocity'][modelgridindex]
+        velocity = at.get_modeldata(modelpath)[0]['velocity_outer'][modelgridindex]
         subplot_title += f' {velocity:.0f} km/s at'
 
         try:

@@ -38,7 +38,7 @@ def get_from_packets(modelpath, lcpath, packet_type='TYPE_ESCAPE', escape_type='
     timearray = at.lightcurve.readfile(lcpath)['time'].values
     # timearray = np.arange(250, 350, 0.1)
     model, _ = at.get_modeldata(modelpath)
-    vmax = model.iloc[-1].velocity * u.km / u.s
+    vmax = model.iloc[-1].velocity_outer * u.km / u.s
     betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
     arr_timedelta = [at.get_timestep_time_delta(timestep, timearray) for timestep in range(len(timearray))]
@@ -70,7 +70,8 @@ def get_from_packets(modelpath, lcpath, packet_type='TYPE_ESCAPE', escape_type='
                 lcdata['lum_cmf'][binindex] += e_cmf_sum
 
     lcdata['lum'] = np.divide(lcdata['lum'] / nprocs_read * (u.erg / u.day).to('solLum'), arr_timedelta)
-    lcdata['lum_cmf'] = np.divide(lcdata['lum_cmf'] / nprocs_read / betafactor * (u.erg / u.day).to('solLum'), arr_timedelta)
+    lcdata['lum_cmf'] = np.divide(lcdata['lum_cmf'] / nprocs_read / betafactor * (u.erg / u.day).to('solLum'),
+                                  arr_timedelta)
     return lcdata
 
 

@@ -505,7 +505,7 @@ def main(args=None, argsraw=None, **kwargs):
     # ionpopdict[(at.get_atomic_number('Ca'), 1)] = 0.026 * nntot
     # ionpopdict[(at.get_atomic_number('Fe'), 1)] = 0.012 * nntot
 
-    velocity = modeldata['velocity'][args.modelgridindex]
+    velocity = modeldata['velocity_outer'][args.modelgridindex]
     args.time_days = float(at.get_timestep_time(modelpath, args.timestep))
     print(f'timestep {args.timestep} cell {args.modelgridindex} (v={velocity} km/s at {args.time_days:.1f}d)')
 

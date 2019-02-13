@@ -46,9 +46,9 @@ def main(args=None, argsraw=None, **kwargs):
 
     phixs = adata.query('Z==26 & ion_stage==1', inplace=False).iloc[0].levels.iloc[0].phixstable[0][1] * 1e-18
 
-    v_inner = 0 * u.km / u.s
     for i, row in dfmodel.iterrows():
-        v_outer = row['velocity'] * u.km / u.s
+        v_inner = row['velocity_inner'] * u.km / u.s
+        v_outer = row['velocity_outer'] * u.km / u.s
 
         volume_init = ((4 * math.pi / 3) * ((v_outer * t_init) ** 3 - (v_inner * t_init) ** 3)).to('cm3')
 
@@ -76,8 +76,6 @@ def main(args=None, argsraw=None, **kwargs):
             width = ((v_outer - v_inner) * t_now).to('cm').value
             tau = width * phixs * nnlevel
             print(f'width: {width:.3e} cm, phixs: {phixs:.3e} cm^2, nnlevel: {nnlevel:.3e} cm^-3, tau: {tau:.3e}')
-
-        v_inner = v_outer
 
 
 if __name__ == "__main__":
