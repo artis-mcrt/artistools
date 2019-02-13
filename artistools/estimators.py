@@ -43,7 +43,7 @@ variableunits = {
     'nne': 'e-/cm3',
     'heating': 'erg/s/cm3',
     'cooling': 'erg/s/cm3',
-    'velocity': 'km/s',
+    'velocity_outer': 'km/s',
 }
 
 variablelongunits = {
@@ -167,7 +167,7 @@ def parse_estimfile(estfilepath, modeldata):
                 # print(f'Timestep {timestep} cell {modelgridindex}')
 
                 estimblock = {}
-                estimblock['velocity'] = modeldata['velocity'][modelgridindex]
+                estimblock['velocity_outer'] = modeldata['velocity_outer'][modelgridindex]
                 emptycell = (row[4] == 'EMPTYCELL')
                 estimblock['emptycell'] = emptycell
                 if not emptycell:
@@ -940,7 +940,7 @@ def main(args=None, argsraw=None, **kwargs):
             # plot a range of cells in a time snapshot  showing internal structure
 
             if not args.x:
-                args.x = 'velocity'
+                args.x = 'velocity_outer'
 
             timesteplist_unfiltered = [timesteps_included] * len(allnonemptymgilist)
             make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist, args)

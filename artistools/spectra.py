@@ -92,7 +92,7 @@ def get_spectrum_from_packets(
     packetsfiles = at.packets.get_packetsfiles(modelpath, maxpacketfiles)
     if use_comovingframe:
         modeldata, _ = at.get_modeldata(Path(packetsfiles[0]).parent)
-        vmax = modeldata.iloc[-1].velocity * u.km / u.s
+        vmax = modeldata.iloc[-1].velocity_outer * u.km / u.s
         betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
     def update_min_sum_max(array, xindex, e_rf, value):
@@ -370,7 +370,7 @@ def get_flux_contributions_from_packets(
 
     if use_comovingframe:
         modeldata, _ = at.get_modeldata(modelpath)
-        vmax = modeldata.iloc[-1].velocity * u.km / u.s
+        vmax = modeldata.iloc[-1].velocity_outer * u.km / u.s
         betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
     import artistools.packets
@@ -412,14 +412,11 @@ def get_flux_contributions_from_packets(
             t_seconds = at.get_timestep_times_float(modelpath, loc='start')[-1] * u.day.to('s')
 
             if modelgridindex is not None:
-                if modelgridindex > 0:
-                    v_inner = at.get_modeldata(modelpath)[0]['velocity'].iloc[modelgridindex - 1] * 1e5
-                else:
-                    v_inner = 0.
-                v_outer = at.get_modeldata(modelpath)[0]['velocity'].iloc[modelgridindex] * 1e5
+                v_inner = at.get_modeldata(modelpath)[0]['velocity_inner'].iloc[modelgridindex] * 1e5
+                v_outer = at.get_modeldata(modelpath)[0]['velocity_outer'].iloc[modelgridindex] * 1e5
             else:
-                v_inner = 0
-                v_outer = at.get_modeldata(modelpath)[0]['velocity'].iloc[-1] * 1e5
+                v_inner = 0.
+                v_outer = at.get_modeldata(modelpath)[0]['velocity_outer'].iloc[-1] * 1e5
 
             r_inner = t_seconds * v_inner
             r_outer = t_seconds * v_outer

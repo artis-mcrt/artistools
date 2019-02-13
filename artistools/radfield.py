@@ -371,7 +371,7 @@ def plot_celltimestep(
         if not normalised:
             modeldata, _t_model_init = at.get_modeldata(modelpath)
             # outer velocity
-            v_surface = modeldata.loc[int(radfielddata.modelgridindex.max())].velocity * u.km / u.s
+            v_surface = modeldata.loc[int(radfielddata.modelgridindex.max())].velocity_outer * u.km / u.s
             r_surface = (time_days * u.day * v_surface).to('km')
             r_observer = u.megaparsec.to('km')
             scale_factor = (r_observer / r_surface) ** 2 / (2 * math.pi)
@@ -389,7 +389,7 @@ def plot_celltimestep(
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5,
                     color='red', label='', zorder=-1, alpha=0.4)
 
-    velocity = at.get_modeldata(modelpath)[0]['velocity'][modelgridindex]
+    velocity = at.get_modeldata(modelpath)[0]['velocity_outer'][modelgridindex]
 
     figure_title = f'{modelname} {velocity:.0f} km/s at {time_days:.0f}d'
     # figure_title += '\ncell {modelgridindex} timestep {timestep}'

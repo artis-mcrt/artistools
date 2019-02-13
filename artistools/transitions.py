@@ -291,7 +291,7 @@ def main(args=None, argsraw=None, **kwargs):
             'Z==@Z and ion_stage==@ion_stage')['n_NLTE'].sum() for Z, ion_stage in ionlist}
 
         modelname = at.get_model_name(modelpath)
-        velocity = modeldata['velocity'][modelgridindex]
+        velocity = modeldata['velocity_outer'][modelgridindex]
 
         Te = estimators['Te']
         TR = estimators['TR']
