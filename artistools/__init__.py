@@ -304,7 +304,7 @@ def get_timestep_times_float(modelpath, loc='mid'):
 
 
 def get_closest_timestep(modelpath, timedays):
-    """Return the timestep number whose time is closest to timedays."""
+    """Return the timestep number whose midpoint time is closest to timedays."""
     try:
         # could be a string like '330d'
         timedays_float = float(timedays.rstrip('d'))

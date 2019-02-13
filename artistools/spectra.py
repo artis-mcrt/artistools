@@ -421,7 +421,6 @@ def get_flux_contributions_from_packets(
                 v_inner = 0
                 v_outer = at.get_modeldata(modelpath)[0]['velocity'].iloc[-1] * 1e5
 
-
             r_inner = t_seconds * v_inner
             r_outer = t_seconds * v_outer
 
