@@ -168,12 +168,14 @@ def parse_estimfile(estfilepath, modeldata):
 
                 estimblock = {}
                 estimblock['velocity_outer'] = modeldata['velocity_outer'][modelgridindex]
+                estimblock['velocity'] = estimblock['velocity_outer']
                 emptycell = (row[4] == 'EMPTYCELL')
                 estimblock['emptycell'] = emptycell
                 if not emptycell:
                     # will be TR, Te, W, TJ, nne
                     for variablename, value in zip(row[4::2], row[5::2]):
                         estimblock[variablename] = float(value)
+                    estimblock['lognne'] = math.log10(estimblock['nne'])
 
             elif row[1].startswith('Z='):
                 variablename = row[0]
@@ -439,10 +441,10 @@ def plot_multi_ion_series(
     missingions = set()
     for atomic_number, ion_stage in iontuplelist:
         if ion_stage != 'ALL' and compositiondata.query(
-            'Z == @atomic_number '
-            '& lowermost_ionstage <= @ion_stage '
-            '& uppermost_ionstage >= @ion_stage').empty:
-                missingions.add((atomic_number, ion_stage))
+                'Z == @atomic_number '
+                '& lowermost_ionstage <= @ion_stage '
+                '& uppermost_ionstage >= @ion_stage').empty:
+            missingions.add((atomic_number, ion_stage))
 
     if missingions:
         print(f" Warning: Can't plot {seriestype} for {missingions} "
