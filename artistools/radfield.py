@@ -136,21 +136,22 @@ def get_fitted_field(radfielddata, modelgridindex=None, timestep=None, print_bin
         (' & timestep==@timestep' if timestep else ''))
 
     if lambdamin is not None:
-        nu_min = const.c.to('angstrom/s') / lambdamax
+        nu_min = const.c.to('angstrom/s').value / lambdamax
 
     if lambdamax is not None:
-        nu_max = const.c.to('angstrom/s') / lambdamin
+        nu_max = const.c.to('angstrom/s').value / lambdamin
 
     for _, row in radfielddata_subset.iterrows():
         nu_lower = row['nu_lower']
         nu_upper = row['nu_upper']
 
-        if nu_lower < nu_min or nu_upper > nu_max:
-            continue
-
         if lambdamax is not None:
+            if nu_upper > nu_max:
+                continue
             nu_lower = max(nu_lower, nu_min)
         if lambdamin is not None:
+            if nu_lower < nu_min:
+                continue
             nu_upper = min(nu_upper, nu_max)
 
         if row['W'] >= 0:
@@ -171,7 +172,7 @@ def get_fitted_field(radfielddata, modelgridindex=None, timestep=None, print_bin
 
         lambda_lower = const.c.to('angstrom/s').value / row['nu_upper']
         lambda_upper = const.c.to('angstrom/s').value / row['nu_lower']
-        if print_bins and (xmax is None or lambda_lower < xmax) and (xmin is None or lambda_upper > xmin):
+        if print_bins and (lambdamax is None or lambda_lower < lambdamax) and (lambdamin is None or lambda_upper > lambdamin):
             print(f"Bin lambda_lower {lambda_lower:.1f} W {row['W']:.1e} "
                   f"contribs {row['ncontrib']} J_nu_avg {row['J_nu_avg']:.1e}")
 
@@ -245,7 +246,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
     T_R = radfielddata.query('bin_num == -1').iloc[0].T_R
 
     ionlist = ((26, 2), (28, 2))
-    ionlist = ((26, 2), )
+    ionlist = ((26, 4), )
     adata = at.get_levels(modelpath, ionlist=ionlist, get_photoionisations=True)
 
     # arr_nu_hz = const.c.to('angstrom/s').value / np.array(arr_lambda_fitted)
@@ -631,7 +632,7 @@ def main(args=None, argsraw=None, **kwargs):
         at.showtimesteptimes(modelpath=args.modelpath)
     else:
         if args.velocity >= 0.:
-            modelgridindexlist[0] = at.get_closest_cell(modelpath, args.velocity)
+            modelgridindexlist = [at.get_closest_cell(modelpath, args.velocity)]
         else:
             modelgridindexlist = at.parse_range_list(args.modelgridindex)
 
