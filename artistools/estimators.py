@@ -5,7 +5,6 @@ Examples are temperatures, populations, heating/cooling rates.
 """
 # import math
 import argparse
-import gzip
 import math
 import os
 # import re
@@ -53,6 +52,7 @@ variablelongunits = {
 }
 
 dictlabelreplacements = {
+    'lognne': 'Log nne',
     'Te': 'T$_e$',
     'TR': 'T$_R$'
 }
@@ -339,7 +339,7 @@ def get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, ke
     #     sys.exit()
 
 
-def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, args, **plotkwargs):
+def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, dfalldata=None, args=None, **plotkwargs):
     assert len(xlist) - 1 == len(mgilist)
     modeldata, _ = at.get_modeldata(modelpath)
     abundancedata = at.get_initialabundances(modelpath)
@@ -371,6 +371,9 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, args, **plo
                 yvalue = abundancedata.loc[modelgridindex][f'X_{elsymbol}']
             ylist.append(yvalue)
 
+        if dfalldata is not None:
+            dfalldata['initabundances.' + speciesstr] = ylist
+
         ylist.insert(0, ylist[0])
         # or ax.step(where='pre', )
         color = get_elemcolor(atomic_number=atomic_number)
@@ -396,7 +399,7 @@ def get_averageionisation(populations, atomic_number):
 
 
 def plot_averageionisation(
-        ax, xlist, elementlist, timestepslist, mgilist, estimators, modelpath, args, **plotkwargs):
+        ax, xlist, elementlist, timestepslist, mgilist, estimators, modelpath, dfalldata=None, args=None, **plotkwargs):
     ax.set_ylabel('Average ionisation')
     for elsymb in elementlist:
         atomic_number = at.get_atomic_number(elsymb)
@@ -414,6 +417,10 @@ def plot_averageionisation(
             ylist.append(valuesum / tdeltasum)
 
         color = get_elemcolor(atomic_number=atomic_number)
+
+        if dfalldata is not None:
+            dfalldata['averageionisation.' + elsymb] = ylist
+
         ylist.insert(0, ylist[0])
 
         xlist, ylist = apply_filters(xlist, ylist, args)
@@ -422,7 +429,8 @@ def plot_averageionisation(
 
 
 def plot_multi_ion_series(
-        ax, xlist, seriestype, ionlist, timestepslist, mgilist, estimators, modelpath, args, **plotkwargs):
+        ax, xlist, seriestype, ionlist, timestepslist, mgilist, estimators,
+        modelpath, dfalldata=None, args=None, **plotkwargs):
     """Plot an ion-specific property, e.g., populations."""
     assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
     # if seriestype == 'populations':
@@ -526,7 +534,6 @@ def plot_multi_ion_series(
 
         plotlabel = at.get_ionstring(atomic_number, ion_stage, spectral=False)
 
-        ylist.insert(0, ylist[0])
         # linestyle = ['-.', '-', '--', (0, (4, 1, 1, 1)), ':'] + [(0, x) for x in dashes_list][ion_stage - 1]
         if ion_stage == 'ALL':
             dashes = ()
@@ -541,6 +548,11 @@ def plot_multi_ion_series(
         color = get_elemcolor(atomic_number=atomic_number)
         # or ax.step(where='pre', )
 
+        if dfalldata is not None:
+            dfalldata[f'{seriestype}.{atomic_number}.{ion_stage}'] = ylist
+
+        ylist.insert(0, ylist[0])
+
         xlist, ylist = apply_filters(xlist, ylist, args)
 
         ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, dashes=dashes, **plotkwargs)
@@ -552,7 +564,7 @@ def plot_multi_ion_series(
 
 
 def plot_series(ax, xlist, variablename, showlegend, timestepslist, mgilist,
-                modelpath, estimators, args, nounits=False, **plotkwargs):
+                modelpath, estimators, args, nounits=False, dfalldata=None, **plotkwargs):
     """Plot something like Te or TR."""
     assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
     formattedvariablename = dictlabelreplacements.get(variablename, variablename)
@@ -578,8 +590,6 @@ def plot_series(ax, xlist, variablename, showlegend, timestepslist, mgilist,
                 print(f'No data for cell {modelgridindex}')
             sys.exit()
 
-    ylist.insert(0, ylist[0])
-
     try:
         if math.log10(max(ylist) / min(ylist)) > 2:
             ax.set_yscale('log')
@@ -594,6 +604,11 @@ def plot_series(ax, xlist, variablename, showlegend, timestepslist, mgilist,
 
     # print out the data to stdout. Maybe want to add a CSV export option at some point?
     # print(f'#cellidorvelocity {variablename}\n' + '\n'.join([f'{x}  {y}' for x, y in zip(xlist, ylist)]))
+
+    if dfalldata is not None:
+        dfalldata[variablename] = ylist
+
+    ylist.insert(0, ylist[0])
 
     xlist, ylist = apply_filters(xlist, ylist, args)
 
@@ -637,7 +652,8 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timestepslist, modelpat
     return list(xlist), list(mgilist_out), list(timestepslist_out)
 
 
-def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath, estimators, args, **plotkwargs):
+def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath,
+                 estimators, dfalldata=None, args=None, **plotkwargs):
     """Make plot from ARTIS estimators."""
     # these three lists give the x value, modelgridex, and a list of timesteps (for averaging) for each plot of the plot
     assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
@@ -658,16 +674,17 @@ def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath, estima
         if isinstance(plotitem, str):
             showlegend = len(plotitems) > 1 or len(variablename) > 20
             plot_series(ax, xlist, plotitem, showlegend, timestepslist, mgilist, modelpath,
-                        estimators, args, nounits=sameylabel, **plotkwargs)
+                        estimators, args, nounits=sameylabel, dfalldata=dfalldata, **plotkwargs)
             if showlegend and sameylabel:
                 ax.set_ylabel(ylabel)
         else:  # it's a sequence of values
             showlegend = True
             seriestype, params = plotitem
             if seriestype == 'initabundances':
-                plot_init_abundances(ax, xlist, params, mgilist, modelpath, args)
+                plot_init_abundances(ax, xlist, params, mgilist, modelpath, dfalldata=dfalldata, args=args)
             elif seriestype == 'averageionisation':
-                plot_averageionisation(ax, xlist, params, timestepslist, mgilist, estimators, modelpath, args)
+                plot_averageionisation(ax, xlist, params, timestepslist, mgilist, estimators,
+                                       modelpath, dfalldata=dfalldata, args=args)
             elif seriestype == '_ymin':
                 ax.set_ylim(bottom=params)
             elif seriestype == '_ymax':
@@ -675,7 +692,7 @@ def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath, estima
             else:
                 seriestype, ionlist = plotitem
                 plot_multi_ion_series(ax, xlist, seriestype, ionlist, timestepslist, mgilist, estimators,
-                                      modelpath, args, **plotkwargs)
+                                      modelpath, dfalldata, args, **plotkwargs)
 
     ax.tick_params(right=True)
     if showlegend:
@@ -701,6 +718,11 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
     axes[-1].set_xlabel(f'{xvariable}{get_units_string(xvariable)}')
     xlist, mgilist, timestepslist = get_xlist(
         xvariable, allnonemptymgilist, estimators, timestepslist_unfiltered, modelpath, args)
+
+    dfalldata = pd.DataFrame(index=mgilist)
+    dfalldata.index.name = "modelgridindex"
+    dfalldata[xvariable] = xlist
+
     xlist = np.insert(xlist, 0, 0.)
 
     xmin = args.xmin if args.xmin > 0 else min(xlist)
@@ -708,7 +730,8 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
 
     for ax, plotitems in zip(axes, plotlist):
         ax.set_xlim(left=xmin, right=xmax)
-        plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath, estimators, args, **plotkwargs)
+        plot_subplot(ax, timestepslist, xlist, plotitems, mgilist,
+                     modelpath, estimators, dfalldata=dfalldata, args=args, **plotkwargs)
 
     if len(set(mgilist)) == 1:  # single grid cell plot
         figure_title = f'{modelname}\nCell {mgilist[0]}'
@@ -733,8 +756,15 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
         axes[0].set_title(figure_title, fontsize=11)
     # plt.suptitle(figure_title, fontsize=11, verticalalignment='top')
 
+    if args.write_data:
+        dfalldata.sort_index(inplace=True)
+        dataoutfilename = Path(outfilename).with_suffix('.txt')
+        dfalldata.to_csv(dataoutfilename)
+        print(f'Saved {dataoutfilename}')
+
     fig.savefig(outfilename, format='pdf')
     print(f'Saved {outfilename}')
+
     if args.show:
         plt.show()
     else:
@@ -867,6 +897,9 @@ def addargs(parser):
 
     parser.add_argument('-show', action='store_true',
                         help='Show plot before quitting')
+
+    parser.add_argument('-write_data', action='store_true', default=True,
+                        help='Save data used to generate the plot in a CSV file')
 
     parser.add_argument('-o', action='store', dest='outputfile', type=Path, default=Path(),
                         help='Filename for PDF file')
