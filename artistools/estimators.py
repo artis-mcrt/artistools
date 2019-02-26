@@ -898,7 +898,7 @@ def addargs(parser):
     parser.add_argument('-show', action='store_true',
                         help='Show plot before quitting')
 
-    parser.add_argument('-write_data', action='store_true', default=True,
+    parser.add_argument('--write_data', action='store_true', default=True,
                         help='Save data used to generate the plot in a CSV file')
 
     parser.add_argument('-o', action='store', dest='outputfile', type=Path, default=Path(),
