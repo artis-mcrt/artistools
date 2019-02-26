@@ -125,7 +125,7 @@ def get_fullspecfittedfield(radfielddata, xmin, xmax, modelgridindex=None, times
     return arr_lambda, arr_j_lambda
 
 
-def get_fitted_field(radfielddata, modelgridindex=None, timestep=None, print_bins=False, xmin=None, xmax=None):
+def get_fitted_field(radfielddata, modelgridindex=None, timestep=None, print_bins=False, lambdamin=None, lambdamax=None):
     """Return the fitted dilute blackbody made up of all bins."""
     arr_lambda = []
     j_lambda_fitted = []
@@ -135,9 +135,23 @@ def get_fitted_field(radfielddata, modelgridindex=None, timestep=None, print_bin
         (' & modelgridindex==@modelgridindex' if modelgridindex else '') +
         (' & timestep==@timestep' if timestep else ''))
 
+    if lambdamin is not None:
+        nu_min = const.c.to('angstrom/s') / lambdamax
+
+    if lambdamax is not None:
+        nu_max = const.c.to('angstrom/s') / lambdamin
+
     for _, row in radfielddata_subset.iterrows():
         nu_lower = row['nu_lower']
         nu_upper = row['nu_upper']
+
+        if nu_lower < nu_min or nu_upper > nu_max:
+            continue
+
+        if lambdamax is not None:
+            nu_lower = max(nu_lower, nu_min)
+        if lambdamin is not None:
+            nu_upper = min(nu_upper, nu_max)
 
         if row['W'] >= 0:
             arr_nu_hz_bin = np.linspace(nu_lower, nu_upper, num=500)
@@ -208,14 +222,14 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
 
     arr_lambda_fitted, j_lambda_fitted = get_fitted_field(
         radfielddata, modelgridindex=modelgridindex, timestep=timestep,
-        print_bins=True, xmin=xmin, xmax=xmax)
+        print_bins=True, lambdamin=xmin, lambdamax=xmax)
 
     arr_lambda_fitted, j_lambda_fitted = zip(*[
         pt for pt in zip(arr_lambda_fitted, j_lambda_fitted) if xmin <= pt[0] <= xmax])
 
     (contribution_list, array_jlambda_emission_total,
      arraylambda_angstrom_em) = at.spectra.get_flux_contributions_from_packets(
-        modelpath, timelowerdays=-1, timeupperdays=2000, lambda_min=args.xmin, lambda_max=args.xmax,
+        modelpath, timelowerdays=-1, timeupperdays=2000, lambda_min=xmin, lambda_max=xmax,
         getemission=True, getabsorption=False, modelgridindex=modelgridindex,
         maxpacketfiles=args.maxpacketfiles,
         groupby='ion', delta_lambda=20,
