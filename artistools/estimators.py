@@ -487,7 +487,12 @@ def plot_multi_ion_series(
                 #     print(f'Note: population for {(atomic_number, ion_stage)} not in estimators for '
                 #           f'cell {modelgridindex} timesteps {timesteps}')
 
-                estimpop = get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, ['populations'])
+                try:
+                    estimpop = get_averaged_estimators(
+                        modelpath, estimators, timesteps, modelgridindex, ['populations'])
+                except KeyError:
+                    ylist.append(float('nan'))
+                    continue
                 if ion_stage == 'ALL':
                     nionpop = estimpop.get((atomic_number), 0.)
                 else:
@@ -515,7 +520,12 @@ def plot_multi_ion_series(
             #     ylist.append(estim[seriestype].get((atomic_number, ion_stage), 0.))
             else:
                 # this is very slow!
-                estim = get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [])
+                try:
+                    estim = get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [])
+                except KeyError:
+                    ylist.append(float('nan'))
+                    continue
+
                 dictvars = {}
                 for k, value in estim.items():
                     if isinstance(value, dict):
@@ -549,7 +559,7 @@ def plot_multi_ion_series(
         # or ax.step(where='pre', )
 
         if dfalldata is not None:
-            dfalldata[f'{seriestype}.{atomic_number}.{ion_stage}'] = ylist
+            dfalldata[f'{seriestype}.{args.ionpoptype}.{atomic_number}.{ion_stage}'] = ylist
 
         ylist.insert(0, ylist[0])
 
@@ -898,7 +908,7 @@ def addargs(parser):
     parser.add_argument('-show', action='store_true',
                         help='Show plot before quitting')
 
-    parser.add_argument('--write_data', action='store_true', default=True,
+    parser.add_argument('--write_data', action='store_true',
                         help='Save data used to generate the plot in a CSV file')
 
     parser.add_argument('-o', action='store', dest='outputfile', type=Path, default=Path(),
@@ -924,8 +934,16 @@ def main(args=None, argsraw=None, **kwargs):
 
     print(f'Timesteps {timestepmin} to {timestepmax} ({args.timemin:.1f} to {args.timemax:.1f}d)')
 
-    timesteps_included = tuple(range(timestepmin, timestepmax + 1))
-    estimators = read_estimators(modelpath, modelgridindex=args.modelgridindex, timestep=timesteps_included)
+    timesteps_included = list(range(timestepmin, timestepmax + 1))
+    estimators = read_estimators(modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included))
+
+    for ts in reversed(timesteps_included):
+        if (ts, 0) not in estimators:
+            timesteps_included.remove(ts)
+
+    if not timesteps_included:
+        print("No timesteps with data are included")
+        return
 
     if args.plotlist:
         plotlist = args.plotlist
@@ -962,7 +980,7 @@ def main(args=None, argsraw=None, **kwargs):
     else:
         modeldata, _ = at.get_modeldata(modelpath)
         allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
-                              if not estimators[(timesteps_included[-1], modelgridindex)]['emptycell']]
+                              if not estimators[(timesteps_included[0], modelgridindex)]['emptycell']]
 
         if args.modelgridindex > -1 or args.x == 'time':
             # plot time evolution in specific cell
@@ -972,7 +990,7 @@ def main(args=None, argsraw=None, **kwargs):
             timesteplist_unfiltered = [(ts,) for ts in timesteps_included]
             make_plot(modelpath, timesteplist_unfiltered, mgilist, estimators, args.x, plotlist, args)
         else:
-            # plot a range of cells in a time snapshot  showing internal structure
+            # plot a range of cells in a time snapshot showing internal structure
 
             if not args.x:
                 args.x = 'velocity_outer'
