@@ -516,7 +516,7 @@ def get_flux_contributions_from_packets(
 
 
 def sort_and_reduce_flux_contribution_list(
-        contribution_list_in, maxseriescount, arraylambda_angstroms, fixedionlist=None):
+        contribution_list_in, maxseriescount, arraylambda_angstroms, fixedionlist=None, hideother=False):
 
     if fixedionlist:
         # sort in manual order
@@ -564,7 +564,7 @@ def sort_and_reduce_flux_contribution_list(
             if entered_other:
                 numotherprinted += 1
 
-    if remainder_fluxcontrib > 0.:
+    if remainder_fluxcontrib > 0. and not hideother:
         contribution_list_out.append(fluxcontributiontuple(
             fluxcontrib=remainder_fluxcontrib, linelabel='Other',
             array_flambda_emission=remainder_flambda_emission, array_flambda_absorption=remainder_flambda_absorption,
@@ -858,7 +858,7 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
             axis.set_ylabel(r'Scaled F$_\lambda$')
 
 
-def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_peak=None):
+def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_to_peak=None):
     """Plot the emission and absorption by ion for an ARTIS model."""
     arraynu = at.get_nu_grid(modelpath)
 
@@ -892,7 +892,8 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     # print("\n".join([f"{x[0]}, {x[1]}" for x in contribution_list]))
 
     contributions_sorted_reduced = at.spectra.sort_and_reduce_flux_contribution_list(
-        contribution_list, args.maxseriescount, arraylambda_angstroms, fixedionlist=args.fixedionlist)
+        contribution_list, args.maxseriescount, arraylambda_angstroms, fixedionlist=args.fixedionlist,
+        hideother=args.hideother)
 
     plotobjectlabels = []
     plotobjects = []
@@ -903,12 +904,20 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
 
     scalefactor = (scale_to_peak / max_flambda_emission_total if scale_to_peak else 1.)
 
-    if args.refspecfiles is None or args.refspecfiles == []:
+    if (args.refspecfiles is None or args.refspecfiles == []) and not args.hidenetspectrum:
         plotobjectlabels.append('Net spectrum')
         line = axis.plot(arraylambda_angstroms, array_flambda_emission_total * scalefactor,
                          linewidth=1.5, color='black', zorder=100)
         linecolor = line[0].get_color()
         plotobjects.append(mpatches.Patch(color=linecolor))
+
+    dfaxisdata = pd.DataFrame(index=arraylambda_angstroms)
+    dfaxisdata.index.name = 'lambda_angstroms'
+    # dfaxisdata['nu_hz'] = arraynu
+    for x in contributions_sorted_reduced:
+        dfaxisdata['emission_flambda.' + x.linelabel] = x.array_flambda_emission
+        if args.showabsorption:
+            dfaxisdata['absorption_flambda.' + x.linelabel] = x.array_flambda_absorption
 
     if args.nostack:
         for x in contributions_sorted_reduced:
@@ -972,7 +981,9 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
     #               horizontalalignment='right', verticalalignment='bottom', fontsize=7)
 
     ymax = max(ymaxrefall, scalefactor * max_flambda_emission_total * 1.2)
-    axis.set_ylim(top=ymax)
+    if not args.hidenetspectrum:
+        axis.set_ylim(top=ymax)
+
     if scale_to_peak:
         axis.set_ylabel(r'Scaled F$_\lambda$')
     elif args.internalpackets:
@@ -984,7 +995,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args, scale_to_pea
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5,
                     color='red', label='', zorder=-1, alpha=0.4)
 
-    return plotobjects, plotobjectlabels
+    return plotobjects, plotobjectlabels, dfaxisdata
 
 
 def make_plot(args):
@@ -1014,6 +1025,7 @@ def make_plot(args):
     else:
         args.refspecfiles = []
 
+    dfalldata = pd.DataFrame()
     xboundaries = [args.xmin] + args.xsplit + [args.xmax]
     for index, axis in enumerate(axes):
         axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\AA$]')
@@ -1041,8 +1053,9 @@ def make_plot(args):
             defaultoutputfile = Path("plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
         for index, axis in enumerate(axes):
-            plotobjects, plotobjectlabels = make_emissionabsorption_plot(
-                args.modelpath[0], axis, filterfunc, args, scale_to_peak=scale_to_peak)
+            plotobjects, plotobjectlabels, dfaxisdata = make_emissionabsorption_plot(
+                args.modelpath[0], axis, filterfunc, args=args, scale_to_peak=scale_to_peak)
+            dfalldata = dfalldata.append(dfaxisdata)
     else:
         legendncol = 1
         defaultoutputfile = Path("plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
@@ -1103,7 +1116,13 @@ def make_plot(args):
         args.outputfile = args.outputfile / defaultoutputfile
 
     filenameout = str(args.outputfile).format(time_days_min=args.timemin, time_days_max=args.timemax)
-    fig.savefig(Path(filenameout).open('wb'), format='pdf')
+
+    if args.write_data:
+        datafilenameout = Path(filenameout).with_suffix('.txt')
+        dfalldata.to_csv(datafilenameout)
+        print(f'Saved {datafilenameout}')
+
+    fig.savefig(filenameout, format='pdf')
     # plt.show()
     print(f'Saved {filenameout}')
     plt.close()
@@ -1112,7 +1131,8 @@ def make_plot(args):
 def write_flambda_spectra(modelpath, args):
     """Write out spectra to text files.
 
-    Writes lambda_angstroms and f_lambda to .txt files for all timesteps and create a text file containing the time in days for each timestep.
+    Writes lambda_angstroms and f_lambda to .txt files for all timesteps and create
+    a text file containing the time in days for each timestep.
     """
     outdirectory = Path(modelpath, 'spectrum_data')
 
@@ -1285,6 +1305,12 @@ def addargs(parser):
     parser.add_argument('-figscale', type=float, default=1.8,
                         help='Scale factor for plot area. 1.0 is for single-column')
 
+    parser.add_argument('--hidenetspectrum', action='store_true',
+                        help='Hide net spectrum')
+
+    parser.add_argument('--hideother', action='store_true',
+                        help='Hide other contributions')
+
     parser.add_argument('--notitle', action='store_true',
                         help='Suppress the top title from the plot')
 
@@ -1302,6 +1328,9 @@ def addargs(parser):
 
     parser.add_argument('--refspecafterartis', action='store_true',
                         help='Plot reference spectra after artis spectra')
+
+    parser.add_argument('--write_data', action='store_true',
+                        help='Save data used to generate the plot in a CSV file')
 
     parser.add_argument('-outputfile', '-o', action='store', dest='outputfile', type=Path,
                         help='path/filename for PDF file')
