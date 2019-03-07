@@ -760,7 +760,7 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
         if os.path.isdir(args.outputfile):
             args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
-        outfilename = str(args.outputfile).format(timestep=timestepslist[0], timeavg=timeavg)
+        outfilename = str(args.outputfile).format(timestep=timestepslist[0][0], timeavg=timeavg)
 
     if not args.notitle:
         axes[0].set_title(figure_title, fontsize=11)
