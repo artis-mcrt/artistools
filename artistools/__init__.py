@@ -379,7 +379,7 @@ def get_time_range(modelpath, timestep_range_str, timemin, timemax, timedays_ran
 
     timesteplast = len(tmids) - 1
     if timestepmax > timesteplast:
-        print("Warning timestepmax {timestepmax} > timesteplast {timesteplast}")
+        print(f"Warning timestepmax {timestepmax} > timesteplast {timesteplast}")
         timestepmax = timesteplast
     time_days_lower = tstarts[timestepmin]
     time_days_upper = tends[timestepmax]
