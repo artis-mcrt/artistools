@@ -373,7 +373,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
         axes[2].plot(arraylambda_angstrom_em, array_jlambda_emission_total, label=f'Internal radfield from packets')
 
         fieldlist += list([(arraylambda_angstrom_em, contribrow.array_flambda_emission, contribrow.linelabel)
-                   for contribrow in contribution_list])
+                          for contribrow in contribution_list])
         fieldlist += [(arraylambda_angstrom_em, array_jlambda_emission_total, 'Total emission')]
 
     fieldlist += [(arr_lambda_fitted, j_lambda_fitted, 'binned field')]
