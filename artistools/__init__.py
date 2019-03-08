@@ -439,12 +439,13 @@ def parse_adata(fadata, phixsdict, ionlist):
                 levelname = row[4].strip('\'')
                 numberin = int(row[0])
                 assert levelindex == numberin - firstlevelnumber
-                phixstable = phixsdict.get((Z, ionstage, numberin), [])
+                phixstargetlist, phixstable = phixsdict.get((Z, ionstage, numberin), ([], []))
 
-                level_list.append((float(row[1]), float(row[2]), int(row[3]), levelname, phixstable))
+                level_list.append((float(row[1]), float(row[2]), int(row[3]), levelname, phixstargetlist, phixstable))
 
             dflevels = pd.DataFrame(level_list,
-                                    columns=['energy_ev', 'g', 'transition_count', 'levelname', 'phixstable'])
+                                    columns=['energy_ev', 'g', 'transition_count',
+                                             'levelname', 'phixstargetlist', 'phixstable'])
 
             yield Z, ionstage, level_count, ionisation_energy_ev, dflevels
 
@@ -492,9 +493,9 @@ def parse_phixsdata(fphixs, ionlist):
         ionheader = line.split()
         Z = int(ionheader[0])
         upperionstage = int(ionheader[1])
-        upperionlevel = int(ionheader[2])
+        upperionlevel = int(ionheader[2]) - 1
         lowerionstage = int(ionheader[3])
-        lowerionlevel = int(ionheader[4])
+        lowerionlevel = int(ionheader[4]) - 1
         # threshold_ev = float(ionheader[5])
 
         assert upperionstage == lowerionstage + 1
@@ -543,8 +544,8 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
         print(f'Reading {phixs_filename.relative_to(modelpath.parent)}')
         with zopen(phixs_filename, 'rt') as fphixs:
             for (Z, upperionstage, upperionlevel, lowerionstage,
-                 lowerionlevel, targetlist, phixstable) in parse_phixsdata(fphixs, ionlist):
-                phixsdict[(Z, lowerionstage, lowerionlevel)] = phixstable
+                 lowerionlevel, phixstargetlist, phixstable) in parse_phixsdata(fphixs, ionlist):
+                phixsdict[(Z, lowerionstage, lowerionlevel)] = (phixstargetlist, phixstable)
 
     level_lists = []
     iontuple = namedtuple('ion', 'Z ion_stage level_count ion_pot levels transitions')
