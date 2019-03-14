@@ -22,6 +22,14 @@ import artistools as at
 import artistools.spectra
 import artistools.estimators
 
+H = 6.6260755e-27  # Planck constant [erg s]
+KB = 1.38064852e-16
+EV = 1.6021772e-12  # eV to ergs [eV/erg]
+ONEOVERH = 1.509188961e+26
+HOVERKB = 4.799243681748932e-11
+TWOOVERCLIGHTSQUARED = 2.2253001e-21
+SAHACONST = 2.0706659e-16
+
 
 @lru_cache(maxsize=4)
 def read_files(modelpath, timestep=-1, modelgridindex=-1):
@@ -222,8 +230,14 @@ def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=Non
     dfspectrum.plot(x='lambda_angstroms', y='f_lambda', ax=axis, label=label, **plotkwargs)
 
 
-def evaluate_phixs(phixstable, nu_threshold, arr_nu_hz):
+@lru_cache(maxsize=128)
+def evaluate_phixs(modelpath, atomic_number, lower_ion_stage, lowerlevelindex, nu_threshold, arr_nu_hz):
+    adata = at.get_levels(modelpath, get_photoionisations=True)
+    lower_ion_data = adata.query('Z == @atomic_number and ion_stage == @lower_ion_stage').iloc[0]
+    lowerlevel = lower_ion_data.levels.iloc[lowerlevelindex]
+
     from scipy.interpolate import interp1d
+    phixstable = lowerlevel.phixstable
     interp_sigma_bf = interp1d(
         phixstable[:, 0] * nu_threshold, phixstable[:, 1], kind='linear', bounds_error=True,
         fill_value=0., assume_sorted=True)
@@ -242,18 +256,41 @@ def evaluate_phixs(phixstable, nu_threshold, arr_nu_hz):
     return np.array([sigma_bf(nu) for nu in arr_nu_hz])
 
 
-def get_recombination_intensity(atomic_number, upper_ion_stage, arraylambda_angstrom, array_kappa_bf_nu,
-                               modelgridindex, timestep, modelpath):
+def get_kappa_bf_ion(
+        atomic_number, lower_ion_stage, modelgridindex, timestep, modelpath, arr_nu_hz, max_levels):
     adata = at.get_levels(modelpath, get_photoionisations=True)
-    arr_nu_hz = const.c.to('angstrom/s').value / np.array(arraylambda_angstrom)
+    estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
+    T_e = estimators[(timestep, modelgridindex)]['Te']
 
-    H = 6.6260755e-27  # Planck constant [erg s]
-    KB = 1.38064852e-16
-    EV = 1.6021772e-12  # eV to ergs [eV/erg]
-    ONEOVERH = 1.509188961e+26
-    HOVERKB = 4.799243681748932e-11
-    TWOOVERCLIGHTSQUARED = 2.2253001e-21
-    SAHACONST = 2.0706659e-16
+    ion_data = adata.query('Z == @atomic_number and ion_stage == @lower_ion_stage').iloc[0]
+    upper_ion_data = adata.query('Z == @atomic_number and ion_stage == (@lower_ion_stage + 1)').iloc[0]
+
+    lowerionpopdensity = estimators[(timestep, modelgridindex)]['populations'][(atomic_number, lower_ion_stage)]
+
+    ion_popfactor_sum = 0
+    for _, level in ion_data.levels[:max_levels].iterrows():
+        ion_popfactor_sum += level.g * math.exp(-level.energy_ev * EV / KB / T_e)
+
+    array_kappa_bf_nu_ion = np.zeros_like(arr_nu_hz)
+    for levelnum, lowerlevel in ion_data.levels[:max_levels].iterrows():
+        levelpopfrac = lowerlevel.g * math.exp(-lowerlevel.energy_ev * EV / KB / T_e) / ion_popfactor_sum
+
+        for upperlevelnum, phixsfrac in lowerlevel.phixstargetlist:
+            upperlevel = upper_ion_data.levels.iloc[upperlevelnum]
+
+            nu_threshold = ONEOVERH * (ion_data.ion_pot - lowerlevel.energy_ev + upperlevel.energy_ev) * EV
+
+            arr_sigma_bf = evaluate_phixs(modelpath, atomic_number, lower_ion_stage, levelnum,
+                                          nu_threshold, tuple(arr_nu_hz)) * phixsfrac
+
+            array_kappa_bf_nu_ion += arr_sigma_bf * levelpopfrac * lowerionpopdensity
+
+    return array_kappa_bf_nu_ion
+
+
+def get_recombination_emission(
+        atomic_number, upper_ion_stage, arr_nu_hz, modelgridindex, timestep, modelpath):
+    adata = at.get_levels(modelpath, get_photoionisations=True)
 
     lower_ion_stage = upper_ion_stage - 1
     upperionstr = at.get_ionstring(atomic_number, upper_ion_stage)
@@ -271,7 +308,7 @@ def get_recombination_intensity(atomic_number, upper_ion_stage, arraylambda_angs
     arr_alpha_level_dnu = np.zeros_like(arr_nu_hz)
 
     upperionpopdensity = estimators[(timestep, modelgridindex)]['populations'][(atomic_number, upper_ion_stage)]
-    print(f'Recombination from {upperionstr} to {lowerionstr} ({upperionstr} pop density = {upperionpopdensity:.1e}/cm3)')
+    print(f'Recombination from {upperionstr} to {lowerionstr} ({upperionstr} pop = {upperionpopdensity:.1e}/cm3)')
 
     upper_level_popfactor_sum = 0
     for upperlevelnum, upperlevel in lower_ion_data.levels[:200].iterrows():
@@ -285,9 +322,11 @@ def get_recombination_intensity(atomic_number, upper_ion_stage, arraylambda_angs
 
             nu_threshold = ONEOVERH * (lower_ion_data.ion_pot - lowerlevel.energy_ev + upperlevel.energy_ev) * EV
 
-            arr_sigma_bf = evaluate_phixs(lowerlevel.phixstable, nu_threshold, arr_nu_hz) * phixsfrac
+            arr_sigma_bf = evaluate_phixs(modelpath, atomic_number, lower_ion_stage, levelnum,
+                                          nu_threshold, tuple(arr_nu_hz)) * phixsfrac
 
-            sfac = SAHACONST * lowerlevel.g / upperlevel.g * math.pow(T_e, -1.5) * math.exp(HOVERKB * nu_threshold / T_e)
+            sfac = (SAHACONST * lowerlevel.g / upperlevel.g *
+                    math.pow(T_e, -1.5) * math.exp(HOVERKB * nu_threshold / T_e))
 
             arr_alpha_level_dnu = 4. * math.pi * sfac * (
                 TWOOVERCLIGHTSQUARED * arr_sigma_bf *
@@ -309,26 +348,54 @@ def get_recombination_intensity(atomic_number, upper_ion_stage, arraylambda_angs
     # mean_free_path = vmax * t_seconds
 
     arr_j_nu = arr_alpha_dnu / 4 / math.pi * H * arr_nu_hz * upperionpopdensity * nne
-    for i, lambda_a in enumerate(arraylambda_angstrom):
-        if arr_j_nu[i] > 0.:
-            arr_j_nu[i] /= array_kappa_bf_nu[i]
+    return arr_j_nu
 
-    arr_j_lambda = arr_j_nu * arr_nu_hz / arraylambda_angstrom
-    j = np.abs(np.trapz(arr_j_nu, x=arr_nu_hz))
-    print(f'  Contribution to J = {j:.1e} ergs/s/cm2')
-    return arr_j_lambda
+
+def get_ion_gamma_dnu(modelpath, modelgridindex, timestep, atomic_number, ion_stage, arr_nu_hz, J_nu_arr, max_levels):
+    """Calculate the contribution to the photoionisation rate coefficient per J_nu at each frequency nu for an ion."""
+    estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
+
+    T_e = estimators[(timestep, modelgridindex)]['Te']
+    T_R = estimators[(timestep, modelgridindex)]['Te']
+
+    adata = at.get_levels(modelpath, get_photoionisations=True)
+    ion_data = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0]
+    upper_ion_data = adata.query('Z == @atomic_number and ion_stage == (@ion_stage + 1)').iloc[0]
+    ionstr = at.get_ionstring(atomic_number, ion_stage)
+
+    ion_popfactor_sum = 0
+    for _, level in ion_data.levels[:max_levels].iterrows():
+        ion_popfactor_sum += level.g * math.exp(-level.energy_ev * EV / KB / T_e)
+
+    arr_gamma_dnu = np.zeros_like(arr_nu_hz)
+    for levelnum, level in ion_data.levels[:max_levels].iterrows():
+        levelpopfrac = level.g * math.exp(-level.energy_ev * EV / KB / T_e) / ion_popfactor_sum
+
+        for upperlevelnum, phixsfrac in level.phixstargetlist:
+            upperlevel = upper_ion_data.levels.iloc[upperlevelnum]
+            nu_threshold = ONEOVERH * (ion_data.ion_pot - level.energy_ev + upperlevel.energy_ev) * EV
+
+            arr_sigma_bf = evaluate_phixs(modelpath, atomic_number, ion_stage,
+                                          levelnum, nu_threshold, tuple(arr_nu_hz)) * phixsfrac
+
+            arr_gamma_level_dnu = np.abs(
+                ONEOVERH * arr_sigma_bf / arr_nu_hz * J_nu_arr *
+                (1 - np.exp(-HOVERKB * arr_nu_hz / T_R)) * levelpopfrac)
+
+            arr_gamma_dnu += arr_gamma_level_dnu
+
+            gamma_r_level = np.abs(np.trapz(arr_gamma_level_dnu, x=arr_nu_hz))
+            lambda_threshold = const.c.to('angstrom/s').value / nu_threshold
+
+            print(f'  level {levelnum} pop_frac {levelpopfrac:.2f} upperlevel {upperlevelnum}'
+                  f' threshold {lambda_threshold:.1f} Å '
+                  f' gamma_R_level({ionstr}) {gamma_r_level:.2e} {level.levelname}')
+
+    return arr_gamma_dnu
 
 
 def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, timestep, xmin, xmax, ymax, args):
     axes[0].set_ylabel(r'$\sigma$ [cm$^2$]')
-
-    # H = 6.6260755e-27  # Planck constant [erg s]
-    KB = 1.38064852e-16
-    EV = 1.6021772e-12  # eV to ergs [eV/erg]
-    ONEOVERH = 1.509188961e+26
-    HOVERKB = 4.799243681748932e-11
-
-    T_R = radfielddata.query('bin_num == -1').iloc[0].T_R
 
     # recomblowerionlist = ((26, 1), (26, 2), (26, 3), (26, 4))
     recomblowerionlist = ((26, 2), (26, 3), (26, 4), (27, 2), (27, 3), (28, 2), (28, 3), (28, 4))
@@ -353,47 +420,42 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
     print(f'T_e {T_e:.1f} K, nne {nne:.1e} /cm3')
 
     arraylambda_angstrom_recomb = np.linspace(xmin, xmax, num=5000)
+    arr_nu_hz_recomb = const.c.to('angstrom/s').value / np.array(arraylambda_angstrom_recomb)
 
-    arraylambda_nuhz_recomb = const.c.to('angstrom/s').value / np.array(arraylambda_angstrom_recomb)
-    array_kappa_bf_nu = np.zeros_like(arraylambda_nuhz_recomb)
+    # calculate bound-free opacity
+    array_kappa_bf_nu = np.zeros_like(arr_nu_hz_recomb)
     for atomic_number, lower_ion_stage in recomblowerionlist:
-        ion_data = adata.query('Z == @atomic_number and ion_stage == @lower_ion_stage').iloc[0]
-        upper_ion_data = adata.query('Z == @atomic_number and ion_stage == (@lower_ion_stage + 1)').iloc[0]
+        array_kappa_bf_nu += get_kappa_bf_ion(
+            atomic_number, lower_ion_stage, modelgridindex, timestep, modelpath, arr_nu_hz_recomb, max_levels)
 
-        lowerionpopdensity = estimators[(timestep, modelgridindex)]['populations'][(atomic_number, lower_ion_stage)]
-
-        ion_popfactor_sum = 0
-        for _, level in ion_data.levels[:max_levels].iterrows():
-            ion_popfactor_sum += level.g * math.exp(-level.energy_ev * EV / KB / T_e)
-
-        for level_num, lowerlevel in ion_data.levels[:max_levels].iterrows():
-            for upperlevelnum, phixsfrac in lowerlevel.phixstargetlist:
-                upperlevel = upper_ion_data.levels.iloc[upperlevelnum]
-
-                nu_threshold = ONEOVERH * (ion_data.ion_pot - lowerlevel.energy_ev + upperlevel.energy_ev) * EV
-
-                arr_sigma_bf = evaluate_phixs(lowerlevel.phixstable, nu_threshold, arraylambda_nuhz_recomb) * phixsfrac
-
-                levelpopfrac = lowerlevel.g * math.exp(-lowerlevel.energy_ev * EV / KB / T_e) / ion_popfactor_sum
-
-                array_kappa_bf_nu += arr_sigma_bf * levelpopfrac * lowerionpopdensity
-
-    j_lambda_recomb_total = np.zeros_like(arraylambda_angstrom_recomb)
+    # calculate recombination emission
+    J_lambda_recomb_total = np.zeros_like(arraylambda_angstrom_recomb)
     for atomic_number, lower_ion_stage in recomblowerionlist:
-        j_lambda_recomb = get_recombination_intensity(
-            atomic_number, lower_ion_stage + 1, arraylambda_angstrom_recomb, array_kappa_bf_nu,
+        j_emiss_nu_recomb = get_recombination_emission(
+            atomic_number, lower_ion_stage + 1, arr_nu_hz_recomb,
             modelgridindex, timestep, modelpath)
-        j_lambda_recomb_total += j_lambda_recomb
+
+        # calculate mean intensity from emission and opacity to (assuming dJ/ds = 0)
+        J_nu_recomb = np.array([4 * math.pi * j_emiss_nu / kappa_bf if j_emiss_nu > 0 else 0.
+                                for j_emiss_nu, kappa_bf in zip(j_emiss_nu_recomb, array_kappa_bf_nu)])
+
+        J_contrib = np.abs(np.trapz(J_nu_recomb, x=arr_nu_hz_recomb))
+
+        J_lambda_recomb = J_nu_recomb * arr_nu_hz_recomb / arraylambda_angstrom_recomb
+
+        print(f'  Contribution to J = {J_contrib:.1e} ergs/s/cm2')
+
+        J_lambda_recomb_total += J_lambda_recomb
 
         upperionstr = at.get_ionstring(atomic_number, lower_ion_stage + 1)
         fieldlabel = f'{upperionstr} -> {at.roman_numerals[lower_ion_stage]} recombination'
-        axes[2].plot(arraylambda_angstrom_recomb, j_lambda_recomb, label=fieldlabel)
-        fieldlist += [(arraylambda_angstrom_recomb, j_lambda_recomb, fieldlabel)]
+        axes[2].plot(arraylambda_angstrom_recomb, J_lambda_recomb, label=fieldlabel)
+        fieldlist += [(arraylambda_angstrom_recomb, J_lambda_recomb, fieldlabel)]
 
     fieldlabel = f'Summed recombination'
-    axes[2].plot(arraylambda_angstrom_recomb, j_lambda_recomb_total, label=fieldlabel)
-    fieldlist += [(arraylambda_angstrom_recomb, j_lambda_recomb_total, fieldlabel)]
-    ymax = max(ymax, max(j_lambda_recomb_total))
+    axes[2].plot(arraylambda_angstrom_recomb, J_lambda_recomb_total, label=fieldlabel)
+    fieldlist += [(arraylambda_angstrom_recomb, J_lambda_recomb_total, fieldlabel)]
+    ymax = max(ymax, max(J_lambda_recomb_total))
 
     if args.frompackets:
         (contribution_list, array_jlambda_emission_total,
@@ -414,35 +476,21 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
     for atomic_number, ion_stage in photoionlist:
         ionstr = at.get_ionstring(atomic_number, ion_stage)
         ion_data = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0]
-        ion_popfactor_sum = 0
-        for _, level in ion_data.levels[:max_levels].iterrows():
-            ion_popfactor_sum += level.g * math.exp(-level.energy_ev * EV / KB / T_e)
 
-        for arraylambda_angstrom, j_lambda_arr, linelabel in fieldlist:
+        for levelnum, level in ion_data.levels[:max_levels].iterrows():
+            nu_threshold = ONEOVERH * (ion_data.ion_pot - level.energy_ev) * EV
+            arr_sigma_bf = evaluate_phixs(modelpath, atomic_number, ion_stage, levelnum,
+                                          nu_threshold, tuple(arr_nu_hz_recomb))
+            axes[0].plot(arraylambda_angstrom_recomb, arr_sigma_bf,
+                         label=r'$\sigma_{bf}$' + f'({ionstr} {level.levelname})')
+
+        for arraylambda_angstrom, J_lambda_arr, linelabel in fieldlist:
             arr_nu_hz = const.c.to('angstrom/s').value / np.array(arraylambda_angstrom)
             print(f'{ionstr} photoionisation rate coeffs using radiation field due to {linelabel}')
-            j_nu_arr = np.array(j_lambda_arr) * arraylambda_angstrom / arr_nu_hz
-            arr_gamma_dnu = np.zeros_like(arr_nu_hz)
-            for level_num, level in ion_data.levels[:max_levels].iterrows():
-                nu_threshold = ONEOVERH * (ion_data.ion_pot - level.energy_ev) * EV
+            J_nu_arr = np.array(J_lambda_arr) * arraylambda_angstrom / arr_nu_hz
 
-                arr_sigma_bf = evaluate_phixs(level.phixstable, nu_threshold, arr_nu_hz)
-
-                levelpopfrac = level.g * math.exp(-level.energy_ev * EV / KB / T_e) / ion_popfactor_sum
-
-                arr_gamma_level_dnu = np.abs(
-                    ONEOVERH * arr_sigma_bf / arr_nu_hz * j_nu_arr *
-                    (1 - np.exp(-HOVERKB * arr_nu_hz / T_R)) * levelpopfrac)
-
-                arr_gamma_dnu += arr_gamma_level_dnu
-
-                gamma_r_level = np.abs(np.trapz(arr_gamma_level_dnu, x=arr_nu_hz))
-                lambda_threshold = const.c.to('angstrom/s').value / nu_threshold
-                print(f'  level {level_num} pop_frac {levelpopfrac:.2f} threshold {lambda_threshold:.1f} Å '
-                      f' gamma_R({ionstr}) {gamma_r_level:.2e} {level.levelname}')
-                if linelabel == 'binned field':
-                    axes[0].plot(arraylambda_angstrom, arr_sigma_bf,
-                                 label=r'$\sigma_{bf}$' + f'({ionstr} {level.levelname})')
+            arr_gamma_dnu = get_ion_gamma_dnu(modelpath, modelgridindex, timestep,
+                                              atomic_number, ion_stage, arr_nu_hz, J_nu_arr, max_levels)
 
             # xlist = arr_lambda_fitted
             arr_gamma_dlambda = arr_gamma_dnu * arr_nu_hz / arraylambda_angstrom

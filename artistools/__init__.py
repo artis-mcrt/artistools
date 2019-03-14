@@ -481,6 +481,7 @@ def parse_transitiondata(ftransitions, ionlist):
 
 
 def parse_phixsdata(fphixs, ionlist):
+    firstlevelnumber = 1
     nphixspoints = int(fphixs.readline())
     phixsnuincrement = float(fphixs.readline())
 
@@ -493,9 +494,9 @@ def parse_phixsdata(fphixs, ionlist):
         ionheader = line.split()
         Z = int(ionheader[0])
         upperionstage = int(ionheader[1])
-        upperionlevel = int(ionheader[2]) - 1
+        upperionlevel = int(ionheader[2]) - firstlevelnumber
         lowerionstage = int(ionheader[3])
-        lowerionlevel = int(ionheader[4]) - 1
+        lowerionlevel = int(ionheader[4]) - firstlevelnumber
         # threshold_ev = float(ionheader[5])
 
         assert upperionstage == lowerionstage + 1
@@ -507,7 +508,7 @@ def parse_phixsdata(fphixs, ionlist):
             ntargets = int(fphixs.readline())
             for _ in range(ntargets):
                 level, fraction = fphixs.readline().split()
-                targetlist.append((int(level), float(fraction)))
+                targetlist.append((int(level) - firstlevelnumber, float(fraction)))
 
         if not ionlist or (Z, lowerionstage) in ionlist:
             phixslist = []
