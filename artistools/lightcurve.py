@@ -288,10 +288,12 @@ def make_magnitudes_plot(modelpaths, args):
             if modelnumber == 0 and args.plot_hesma_model and key in hesma_model.keys():
                 axarr[plotnumber].plot(hesma_model.t, hesma_model[key], color='black')
 
-            # axarr[plotnumber].axis([10, 60, -16, -19.5])
-            axarr[plotnumber].text(75, -19, key)
+            # axarr[plotnumber].axis([0, 60, -16, -19.5])
+            axarr[plotnumber].text(45, -19, key)
             plt.minorticks_on()
             plt.tick_params(axis='both', top=True, right=True)
+
+    # linenames.append(plot_lightcurve_from_data(filters_dict.keys(), axarr))
 
     for plot in range(rows):
     # plt.ylabel('Magnitude', fontsize='x-large')
@@ -303,7 +305,7 @@ def make_magnitudes_plot(modelpaths, args):
 
     # axarr[0].axis([10, 50, -17.5, -19.5])
     # axarr[1].axis([10, 50, -17.5, -19.5])
-    plt.axis([0, 100, -14, -20])
+    plt.axis([0, 80, -15, -20])
     # plt.gca().invert_yaxis()
 
     print(linenames)
@@ -319,38 +321,41 @@ def make_magnitudes_plot(modelpaths, args):
     plt.savefig(args.outputfile, format='pdf')
 
 
-def colour_evolution_plot(modelpath, args):
-    modelname = at.get_model_name(modelpath)
-    print(f'Reading spectra: {modelname}')
-    filters_dict = get_magnitudes(modelpath)
+def colour_evolution_plot(modelpaths, args):
+    for modelpath in modelpaths:
+        modelname = at.get_model_name(modelpath)
+        print(f'Reading spectra: {modelname}')
+        filters_dict = get_magnitudes(modelpath)
 
-    time_dict_1 = {}
-    time_dict_2 = {}
+        time_dict_1 = {}
+        time_dict_2 = {}
 
-    plot_times = []
-    diff = []
+        plot_times = []
+        diff = []
 
-    filter_names = args.colour_evolution[0].split('-')
+        filter_names = args.colour_evolution[0].split('-')
 
-    for filter_1, filter_2 in zip(filters_dict[filter_names[0]], filters_dict[filter_names[1]]):
-        # Make magnitude dictionaries where time is the key
-        time_dict_1[filter_1[0]] = filter_1[1]
-        time_dict_2[filter_2[0]] = filter_2[1]
+        for filter_1, filter_2 in zip(filters_dict[filter_names[0]], filters_dict[filter_names[1]]):
+            # Make magnitude dictionaries where time is the key
+            time_dict_1[filter_1[0]] = filter_1[1]
+            time_dict_2[filter_2[0]] = filter_2[1]
 
-    for time in time_dict_1.keys():
-        if time in time_dict_2.keys():  # Test if time has a magnitude for both filters
-            plot_times.append(float(time))
-            diff.append(time_dict_1[time] - time_dict_2[time])
+        for time in time_dict_1.keys():
+            if time in time_dict_2.keys():  # Test if time has a magnitude for both filters
+                plot_times.append(float(time))
+                diff.append(time_dict_1[time] - time_dict_2[time])
 
-    plt.plot(plot_times, diff, label=modelname)
+        plt.plot(plot_times, diff, label=modelname)
+
+    # plot_color_evoloution_from_data(filter_names)
 
     plt.ylabel(f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
     plt.xlabel('Time in Days Since Explosion', fontsize='x-large')
     plt.tight_layout()
-
     plt.legend(loc='best', frameon=True)
     plt.minorticks_on()
     plt.tick_params(axis='both', top=True, right=True)
+    plt.xlim(0, 80)
 
     plt.savefig(args.outputfile, format='pdf')
 
@@ -374,6 +379,46 @@ def read_hesma_lightcurve(args):
         else:
             hesma_model = pd.read_csv(hesma_modelname, delim_whitespace=True)
     return hesma_model
+
+
+def read_12fr_lightcurve():
+    data_path = os.path.join(at.PYDIR, 'data/lightcurves/SN2012fr.dat')
+    lightcurve_data = pd.read_csv(data_path)
+    lightcurve_data['time'] = lightcurve_data['time'].apply(lambda x: x - 56223)
+    lightcurve_data['magnitude'] = lightcurve_data['magnitude'].apply(lambda x: (x - 5 * np.log10(17.9e6/10))) ##24e6 is distance to 2012fr - needs changed
+    return lightcurve_data
+
+
+def read_11fe_lightcurve():
+    data_path = os.path.join(at.PYDIR, "data/lightcurves/SN2011fe.dat")
+    lightcurve_data = pd.read_csv(data_path)
+    lightcurve_data['time'] = lightcurve_data['time'].apply(lambda x: x - (54975.239+822.6870999999956))
+    lightcurve_data['magnitude'] = lightcurve_data['magnitude'].apply(lambda x: (x - 5 * np.log10(6.4e6 / 10)))
+    return lightcurve_data
+
+
+def plot_lightcurve_from_data(filter_names, axarr):
+    lightcurve_data = read_11fe_lightcurve()
+
+    filter_data = {}
+    for plotnumber, filter_name in enumerate(filter_names):
+        if filter_name is 'bol':
+            continue
+        filter_data[filter_name] = lightcurve_data.loc[lightcurve_data['band'] == filter_name]
+        axarr[plotnumber].plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], '.')
+    linename = 'SN2011fe'
+    return linename
+
+
+def plot_color_evoloution_from_data(filter_names):
+    lightcurve_from_data = read_11fe_lightcurve()
+
+    band_data = []
+    for i, band in enumerate(filter_names):
+        band_data.append(lightcurve_from_data.loc[lightcurve_from_data['band'] == filter_names[i]])
+
+    merge_dataframes = band_data[0].merge(band_data[1], how='inner', on=['time'])
+    plt.plot(merge_dataframes['time'], merge_dataframes['magnitude_x'] - merge_dataframes['magnitude_y'], '.', label='SN2011fe')
 
 
 def addargs(parser):
@@ -460,9 +505,9 @@ def main(args=None, argsraw=None, **kwargs):
         args.escape_type = 'TYPE_GAMMA'
 
     if args.magnitude:
-        defaultoutputfile = 'magnitude_absolute.pdf'
+        defaultoutputfile = 'plot_colour_band_lightcurves.pdf'
     elif args.colour_evolution:
-        defaultoutputfile = 'colour_evolution.pdf'
+        defaultoutputfile = 'plot_colour_evolution.pdf'
     elif args.escape_type == 'TYPE_GAMMA':
         defaultoutputfile = 'plotlightcurve_gamma.pdf'
     elif args.escape_type == 'TYPE_RPKT':
@@ -480,8 +525,7 @@ def main(args=None, argsraw=None, **kwargs):
         print(f'Saved figure: {args.outputfile}')
 
     elif args.colour_evolution:
-        for modelpath in modelpaths:
-            colour_evolution_plot(modelpath, args)
+        colour_evolution_plot(modelpaths, args)
         print(f'Saved figure: {args.outputfile}')
     else:
         make_lightcurve_plot(args.modelpath, args.outputfile, args.frompackets,
