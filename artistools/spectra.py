@@ -203,16 +203,22 @@ def get_flux_contributions(
     timearray = at.get_timestep_times(modelpath)
     arraynu = at.get_nu_grid(modelpath)
     arraylambda = const.c.to('angstrom/s').value / arraynu
-    elementlist = at.get_composition_data(modelpath)
+    if not Path(modelpath, 'compositiondata.txt').is_file():
+        elementlist = at.get_composition_data_from_outputfile(modelpath)
+    else:
+        elementlist = at.get_composition_data(modelpath)
     nelements = len(elementlist)
 
     if getemission:
-        emissionfilenames = (['emission.out.xz', 'emission.out.gz', 'emission.out'] if use_lastemissiontype
-                             else ['emissiontrue.out.xz', 'emissiontrue.out.gz', 'emissiontrue.out'])
+        emissionfilenames = (['emission.out.xz', 'emission.out.gz', 'emission.out', 'emissionpol.out'] if use_lastemissiontype
+    else ['emissiontrue.out.xz', 'emissiontrue.out.gz', 'emissiontrue.out', 'emissionpol.out']) #TODO: does master branch have true version? Ok to use this?
 
         emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
-        emissionfilesize = Path(emissionfilename).stat().st_size / 1024 / 1024
-        print(f' Reading {emissionfilename} ({emissionfilesize:.2f} MiB)')
+        try:
+            emissionfilesize = Path(emissionfilename).stat().st_siplze / 1024 / 1024
+            print(f' Reading {emissionfilename} ({emissionfilesize:.2f} MiB)')
+        except AttributeError:
+            print(f' Reading {emissionfilename}')
         emissiondata = pd.read_csv(emissionfilename, delim_whitespace=True, header=None)
         maxion_float = (emissiondata.shape[1] - 1) / 2 / nelements  # also known as MIONS in ARTIS sn3d.h
         assert maxion_float.is_integer()
