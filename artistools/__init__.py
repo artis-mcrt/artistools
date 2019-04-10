@@ -162,6 +162,28 @@ def get_composition_data(filename):
     return compdf
 
 
+def get_composition_data_from_outputfile(modelpath):
+    """Read ion list from output file"""
+    atomic_composition = {}
+
+    output = open(modelpath / "output_0-0.txt", 'r').read().splitlines()
+    ioncount = 0
+    for row in output:
+        if row.split()[0] == '[input.c]':
+            split_row = row.split()
+            if split_row[1] == 'element':
+                Z = int(split_row[4])
+                ioncount = 0
+            elif split_row[1] == 'ion':
+                ioncount += 1
+                atomic_composition[Z] = ioncount
+
+    composition_df = pd.DataFrame([(Z, atomic_composition[Z]) for Z in atomic_composition.keys()], columns=['Z', 'nions'])
+    composition_df['lowermost_ionstage'] = [1] * composition_df.shape[0]
+    composition_df['uppermost_ionstage'] = composition_df['nions']
+    return composition_df
+
+
 @lru_cache(maxsize=8)
 def get_modeldata(filename):
     """Return a list containing named tuples for all model grid cells."""
