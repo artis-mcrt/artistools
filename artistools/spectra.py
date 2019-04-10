@@ -229,9 +229,12 @@ def get_flux_contributions(
         assert emissiondata.shape[0] == len(arraynu) * len(timearray)
 
     if getabsorption:
-        absorptionfilename = at.firstexisting(['absorption.out.xz', 'absorption.out.gz', 'absorption.out'], path=modelpath)
-        absorptionfilesize = Path(absorptionfilename).stat().st_size / 1024 / 1024
-        print(f' Reading {absorptionfilename} ({absorptionfilesize:.2f} MiB)')
+        absorptionfilename = at.firstexisting(['absorption.out.xz', 'absorption.out.gz', 'absorption.out', 'absorptionpol.out'], path=modelpath)
+        try:
+            absorptionfilesize = Path(absorptionfilename).stat().st_size / 1024 / 1024
+            print(f' Reading {absorptionfilename} ({absorptionfilesize:.2f} MiB)')
+        except AttributeError:
+            print(f' Reading {emissionfilename}')
         absorptiondata = pd.read_csv(absorptionfilename, delim_whitespace=True, header=None)
         absorption_maxion_float = absorptiondata.shape[1] / nelements
         assert absorption_maxion_float.is_integer()
