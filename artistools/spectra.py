@@ -196,6 +196,26 @@ def get_spectrum_from_packets(
     return dfspectrum
 
 
+def make_virtual_spectra_summed_file(modelpath):
+    mpiranklist = at.get_mpiranklist(modelpath)
+    for mpirank in mpiranklist:
+        print(f"Reading rank {mpirank}")
+        vspecpolfilename = f'vspecpol_{mpirank}-0.out'
+        vspecpolpath = Path(modelpath, vspecpolfilename)
+        if not vspecpolpath.is_file():
+            vspecpolpath = Path(modelpath, vspecpolfilename + '.gz')
+            if not vspecpolpath.is_file():
+                print(f'Warning: Could not find {vspecpolpath.relative_to(modelpath.parent)}')
+                continue
+
+        if mpirank is min(mpiranklist):
+            vspecpolfile = pd.read_csv(vspecpolpath, delim_whitespace=True, index_col=0)
+        else:
+            vspecpolfile += pd.read_csv(vspecpolpath, delim_whitespace=True, index_col=0)
+    vspecpolfile.to_csv(modelpath / 'vspecpol.out', sep=' ')
+
+
+
 @lru_cache(maxsize=4)
 def get_flux_contributions(
         modelpath, filterfunc=None, timestepmin=0, timestepmax=None, getemission=True, getabsorption=True,
@@ -1347,6 +1367,9 @@ def addargs(parser):
     parser.add_argument('--output_spectra', action='store_true',
                         help='Write out spectra to text files')
 
+    parser.add_argument('--makevspecpol', action='store_true',
+                        help='Make file with summed values from each vspecpol thread')
+
 
 def main(args=None, argsraw=None, **kwargs):
     """Plot spectra from ARTIS and reference data."""
@@ -1396,6 +1419,10 @@ def main(args=None, argsraw=None, **kwargs):
             args.color.extend(args.refspeccolors)
 
     at.trim_or_pad(len(args.specpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth)
+
+    if args.makevspecpol:
+        make_virtual_spectra_summed_file(args.modelpath[0])
+        return
 
     args.modelpath = []
     args.modellabels = []
