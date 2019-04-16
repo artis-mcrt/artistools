@@ -229,7 +229,6 @@ def make_virtual_spectra_summed_file(modelpath):
         vspecpol.to_csv(modelpath / f'vspecpol_total-{spec_index}.out', sep=' ', index=False, header=False)
 
 
-
 @lru_cache(maxsize=4)
 def get_flux_contributions(
         modelpath, filterfunc=None, timestepmin=0, timestepmax=None, getemission=True, getabsorption=True,
