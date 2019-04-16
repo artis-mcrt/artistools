@@ -198,6 +198,7 @@ def get_spectrum_from_packets(
 
 def make_virtual_spectra_summed_file(modelpath):
     mpiranklist = at.get_mpiranklist(modelpath)
+    vspecpol_data_old = []
     for mpirank in mpiranklist:
         print(f"Reading rank {mpirank}")
         vspecpolfilename = f'vspecpol_{mpirank}-0.out'
@@ -208,11 +209,24 @@ def make_virtual_spectra_summed_file(modelpath):
                 print(f'Warning: Could not find {vspecpolpath.relative_to(modelpath.parent)}')
                 continue
 
-        if mpirank is min(mpiranklist):
-            vspecpolfile = pd.read_csv(vspecpolpath, delim_whitespace=True, index_col=0)
-        else:
-            vspecpolfile += pd.read_csv(vspecpolpath, delim_whitespace=True, index_col=0)
-    vspecpolfile.to_csv(modelpath / 'vspecpol.out', sep=' ')
+        vspecpolfile = pd.read_csv(vspecpolpath, delim_whitespace=True, header=None)
+        index_to_split = vspecpolfile.index[vspecpolfile.iloc[:, 1] == vspecpolfile.iloc[0, 1]]
+        vspecpol_data = []
+        for i, index_value in enumerate(index_to_split):
+            if index_value != index_to_split[-1]:
+                chunk = vspecpolfile.iloc[index_value:index_to_split[i+1], :]
+            else:
+                chunk = vspecpolfile.iloc[index_value:, :]
+            vspecpol_data.append(chunk)
+
+        if len(vspecpol_data_old) > 0:
+            for i, vspecpol in enumerate(vspecpol_data):
+                vspecpol.iloc[1:, 1:] += vspecpol_data_old[i].iloc[1:, 1:]
+
+        vspecpol_data_old = vspecpol_data
+
+    for spec_index, vspecpol in enumerate(vspecpol_data):
+        vspecpol.to_csv(modelpath / f'vspecpol_total-{spec_index}.out', sep=' ', index=False, header=False)
 
 
 
