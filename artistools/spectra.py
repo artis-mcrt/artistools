@@ -229,6 +229,48 @@ def make_virtual_spectra_summed_file(modelpath):
         vspecpol.to_csv(modelpath / f'vspecpol_total-{spec_index}.out', sep=' ', index=False, header=False)
 
 
+def get_vspecpol_spectrum(modelpath, timeavg, args, fnufilterfunc=None):
+    specfilename = Path(modelpath) / f"vspecpol_total-{args.plotvspecpol}.out"
+
+    vspecdata = pd.read_csv(specfilename, delim_whitespace=True)
+    nu = vspecdata.loc[:, '0.0'].values
+
+    timearray = [i for i in vspecdata.columns.values[1:] if i[-2] != '.']
+
+    def match_closest_time(reftime):
+        return str("{0:.4f}".format(min([float(x) for x in timearray], key=lambda x: abs(x - reftime))))
+
+    timelower = match_closest_time(args.timemin)
+    timeupper = match_closest_time(args.timemax)
+    timestepmin = vspecdata.columns.get_loc(timelower)
+    timestepmax = vspecdata.columns.get_loc(timeupper)
+
+    def timefluxscale(timestep):
+        if timeavg is not None:
+            return math.exp(float(timearray[timestep]) / 133.) / math.exp(timeavg / 133.)
+        else:
+            return 1.
+
+    f_nu = stackspectra([
+        (vspecdata[vspecdata.columns[timestep + 1]] * timefluxscale(timestep),
+         at.get_timestep_time_delta(timestep, timearray))
+        for timestep in range(timestepmin, timestepmax + 1)])
+
+    # best to use the filter on this list because it
+    # has regular sampling
+    if fnufilterfunc:
+        print("Applying filter to ARTIS spectrum")
+        f_nu = fnufilterfunc(f_nu)
+
+    dfspectrum = pd.DataFrame({'nu': nu, 'f_nu': f_nu})
+    dfspectrum.sort_values(by='nu', ascending=False, inplace=True)
+
+    dfspectrum.eval('lambda_angstroms = @c / nu', local_dict={'c': const.c.to('angstrom/s').value}, inplace=True)
+    dfspectrum.eval('f_lambda = f_nu * nu / lambda_angstroms', inplace=True)
+
+    return dfspectrum
+
+
 @lru_cache(maxsize=4)
 def get_flux_contributions(
         modelpath, filterfunc=None, timestepmin=0, timestepmax=None, getemission=True, getabsorption=True,
@@ -833,6 +875,8 @@ def plot_artis_spectrum(
     else:
         spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
                                 reftime=timeavg)
+        if args.plotvspecpol is not None:
+            vspectrum = get_vspecpol_spectrum(modelpath, timeavg, args)
 
     spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
 
@@ -852,6 +896,10 @@ def plot_artis_spectrum(
         spectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
             x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
             label=linelabel if index == 0 else None, **plotkwargs)
+        if args.plotvspecpol is not None:
+            vspectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
+                x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
+                label=f'vspecpol-{args.plotvspecpol}' if index == 0 else None, color='k')
 
 
 def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
@@ -1382,6 +1430,9 @@ def addargs(parser):
 
     parser.add_argument('--makevspecpol', action='store_true',
                         help='Make file with summed values from each vspecpol thread')
+
+    parser.add_argument('--plotvspecpol', type=int,
+                        help='Plot vspecpol. Expects int for spec number in vspecpol files')
 
 
 def main(args=None, argsraw=None, **kwargs):
