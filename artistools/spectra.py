@@ -877,6 +877,7 @@ def plot_artis_spectrum(
                                 reftime=timeavg)
         if args.plotvspecpol is not None:
             vspectrum = get_vspecpol_spectrum(modelpath, timeavg, args)
+            vpkt_data = at.get_vpkt_data(modelpath)
 
     spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
 
@@ -899,7 +900,7 @@ def plot_artis_spectrum(
         if args.plotvspecpol is not None:
             vspectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
                 x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
-                label=f'vspecpol-{args.plotvspecpol}' if index == 0 else None, color='k')
+                label=fr"cos($\theta$) = {vpkt_data['cos_theta'][args.plotvspecpol]}" if index == 0 else None, color='k')
 
 
 def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
