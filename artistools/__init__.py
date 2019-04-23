@@ -217,6 +217,18 @@ def get_modeldata(filename):
     return modeldata, t_model_init_days
 
 
+def get_vpkt_data(modelpath):
+    filename = Path(modelpath, 'vpkt.txt')
+    vpkt_data = {}
+    with open(filename, 'r') as vpkt:
+        vpkt_data['nobservations'] = int(vpkt.readline())
+        vpkt_data['cos_theta'] = [int(x) for x in vpkt.readline().split()]
+        vpkt_data['phi'] = [int(x) for x in vpkt.readline().split()]
+        line4 = vpkt.readline()
+        _, vpkt_data['initial_timestep'], vpkt_data['final_timestep'] = [int(x) for x in vpkt.readline().split()]
+        return vpkt_data
+
+
 @lru_cache(maxsize=8)
 def get_grid_mapping(modelpath):
     """Return dict with the associated propagation cells for each model grid cell and
