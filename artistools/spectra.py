@@ -35,7 +35,7 @@ def stackspectra(spectra_and_factors):
     return stackedspectrum
 
 
-def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None, reftime=None):
+def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None, reftime=None, args=None):
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax < 0:
         timestepmax = timestepmin
@@ -50,6 +50,22 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
         specfilename = modelpath
 
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
+
+    if master_branch:
+        cols_to_split = []
+        stokes_params = {}
+        for i, key in enumerate(specdata.keys()):
+            if specdata.keys()[1] in key:
+                cols_to_split.append(i)
+
+        stokes_params['I'] = pd.concat([specdata['0'], specdata.iloc[:, cols_to_split[0]: cols_to_split[1]]], axis=1)
+        stokes_params['Q'] = pd.concat([specdata['0'], specdata.iloc[:, cols_to_split[1]: cols_to_split[2]]], axis=1)
+        stokes_params['U'] = pd.concat([specdata['0'], specdata.iloc[:, cols_to_split[2]:]], axis=1)
+
+        stokes_params['Q'].columns = stokes_params['I'].keys()
+        stokes_params['U'].columns = stokes_params['I'].keys()
+
+        specdata = stokes_params[args.stokesparam]
 
     nu = specdata.loc[:, '0'].values
     if master_branch:
@@ -233,6 +249,22 @@ def get_vspecpol_spectrum(modelpath, timeavg, args, fnufilterfunc=None):
     specfilename = Path(modelpath) / f"vspecpol_total-{args.plotvspecpol}.out"
 
     vspecdata = pd.read_csv(specfilename, delim_whitespace=True)
+    print(vspecdata)
+    cols_to_split = []
+    stokes_params = {}
+    for i, key in enumerate(vspecdata.keys()):
+        if vspecdata.keys()[1] in key:
+            cols_to_split.append(i)
+
+    stokes_params['I'] = pd.concat([vspecdata['0.0'], vspecdata.iloc[:, cols_to_split[0]: cols_to_split[1]]], axis=1)
+    stokes_params['Q'] = pd.concat([vspecdata['0.0'], vspecdata.iloc[:, cols_to_split[1]: cols_to_split[2]]], axis=1)
+    stokes_params['U'] = pd.concat([vspecdata['0.0'], vspecdata.iloc[:, cols_to_split[2]:]], axis=1)
+
+    stokes_params['Q'].columns = stokes_params['I'].keys()
+    stokes_params['U'].columns = stokes_params['I'].keys()
+
+    vspecdata = stokes_params[args.stokesparam]
+
     nu = vspecdata.loc[:, '0.0'].values
 
     timearray = [i for i in vspecdata.columns.values[1:] if i[-2] != '.']
@@ -874,7 +906,7 @@ def plot_artis_spectrum(
         make_spectrum_stat_plot(spectrum, linelabel, statpath, args)
     else:
         spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
-                                reftime=timeavg)
+                                reftime=timeavg, args=args)
         if args.plotvspecpol is not None:
             vspectrum = get_vspecpol_spectrum(modelpath, timeavg, args)
             vpkt_data = at.get_vpkt_data(modelpath)
@@ -1434,6 +1466,9 @@ def addargs(parser):
 
     parser.add_argument('--plotvspecpol', type=int,
                         help='Plot vspecpol. Expects int for spec number in vspecpol files')
+
+    parser.add_argument('--stokesparam', type=str, default='I',
+                        help='Stokes param to plot. Default I. Expects I, Q or U')
 
 
 def main(args=None, argsraw=None, **kwargs):
