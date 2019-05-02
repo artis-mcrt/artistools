@@ -50,24 +50,13 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
         specfilename = modelpath
 
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
+    specdata = specdata.rename(columns={'0': 'nu'})
 
     if master_branch:
-        cols_to_split = []
-        stokes_params = {}
-        for i, key in enumerate(specdata.keys()):
-            if specdata.keys()[1] in key:
-                cols_to_split.append(i)
-
-        stokes_params['I'] = pd.concat([specdata['0'], specdata.iloc[:, cols_to_split[0]: cols_to_split[1]]], axis=1)
-        stokes_params['Q'] = pd.concat([specdata['0'], specdata.iloc[:, cols_to_split[1]: cols_to_split[2]]], axis=1)
-        stokes_params['U'] = pd.concat([specdata['0'], specdata.iloc[:, cols_to_split[2]:]], axis=1)
-
-        stokes_params['Q'].columns = stokes_params['I'].keys()
-        stokes_params['U'].columns = stokes_params['I'].keys()
-
+        stokes_params = get_polarisation(args, specdata=specdata)
         specdata = stokes_params[args.stokesparam]
 
-    nu = specdata.loc[:, '0'].values
+    nu = specdata.loc[:, 'nu'].values
     if master_branch:
         timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
     else:
@@ -245,28 +234,37 @@ def make_virtual_spectra_summed_file(modelpath):
         vspecpol.to_csv(modelpath / f'vspecpol_total-{spec_index}.out', sep=' ', index=False, header=False)
 
 
-def get_vspecpol_spectrum(modelpath, timeavg, args, fnufilterfunc=None):
-    specfilename = Path(modelpath) / f"vspecpol_total-{args.plotvspecpol}.out"
+def get_polarisation(args, modelpath=None, specdata=None):
+    if specdata is None:
+        specfilename = at.firstexisting([f'vspecpol_total-{args.plotvspecpol}.out', 'spec.out.xz', 'spec.out.gz',
+                                         'spec.out', 'specpol.out'], path=modelpath)
+        specdata = pd.read_csv(specfilename, delim_whitespace=True)
+        specdata = specdata.rename(columns={specdata.keys()[0]: 'nu'})
 
-    vspecdata = pd.read_csv(specfilename, delim_whitespace=True)
-    print(vspecdata)
     cols_to_split = []
     stokes_params = {}
-    for i, key in enumerate(vspecdata.keys()):
-        if vspecdata.keys()[1] in key:
+    for i, key in enumerate(specdata.keys()):
+        if specdata.keys()[1] in key:
             cols_to_split.append(i)
 
-    stokes_params['I'] = pd.concat([vspecdata['0.0'], vspecdata.iloc[:, cols_to_split[0]: cols_to_split[1]]], axis=1)
-    stokes_params['Q'] = pd.concat([vspecdata['0.0'], vspecdata.iloc[:, cols_to_split[1]: cols_to_split[2]]], axis=1)
-    stokes_params['U'] = pd.concat([vspecdata['0.0'], vspecdata.iloc[:, cols_to_split[2]:]], axis=1)
+    stokes_params['I'] = pd.concat([specdata['nu'], specdata.iloc[:, cols_to_split[0]: cols_to_split[1]]], axis=1)
+    stokes_params['Q'] = pd.concat([specdata['nu'], specdata.iloc[:, cols_to_split[1]: cols_to_split[2]]], axis=1)
+    stokes_params['U'] = pd.concat([specdata['nu'], specdata.iloc[:, cols_to_split[2]:]], axis=1)
 
-    stokes_params['Q'].columns = stokes_params['I'].keys()
-    stokes_params['U'].columns = stokes_params['I'].keys()
+    for param in ['Q', 'U']:
+        stokes_params[param].columns = stokes_params['I'].keys()
+        stokes_params[param + '/I'] = pd.concat([specdata['nu'],
+                                                 stokes_params[param].iloc[:, 1:]
+                                                 / stokes_params['I'].iloc[:, 1:]], axis=1)
 
+    return stokes_params
+
+
+def get_vspecpol_spectrum(modelpath, timeavg, args, fnufilterfunc=None):
+    stokes_params = get_polarisation(args, modelpath=modelpath)
     vspecdata = stokes_params[args.stokesparam]
 
-    nu = vspecdata.loc[:, '0.0'].values
-
+    nu = vspecdata.loc[:, 'nu'].values
     timearray = [i for i in vspecdata.columns.values[1:] if i[-2] != '.']
 
     def match_closest_time(reftime):
@@ -301,6 +299,34 @@ def get_vspecpol_spectrum(modelpath, timeavg, args, fnufilterfunc=None):
     dfspectrum.eval('f_lambda = f_nu * nu / lambda_angstroms', inplace=True)
 
     return dfspectrum
+
+
+def plot_polarisation(modelpath, args):
+    stokes_params = get_polarisation(args, modelpath=modelpath)
+    stokes_params[args.stokesparam].eval('lambda_angstroms = @c / nu', local_dict={'c': const.c.to('angstrom/s').value}, inplace=True)
+
+    timearray = stokes_params[args.stokesparam].keys()[1:-1]
+    (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+                    modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
+    timeavg = (args.timemin + args.timemax) / 2.
+
+    def match_closest_time(reftime):
+        return str("{0:.4f}".format(min([float(x) for x in timearray], key=lambda x: abs(x - reftime))))
+
+    timeavg = match_closest_time(timeavg)
+    vpkt_data = at.get_vpkt_data(modelpath)
+
+    if args.plotvspecpol:
+        linelabel = fr"{timeavg} days, cos($\theta$) = {vpkt_data['cos_theta'][args.plotvspecpol]}"
+    else:
+        linelabel = f"{timeavg} days"
+    fig = stokes_params[args.stokesparam].plot(x='lambda_angstroms', y=timeavg, label=linelabel)
+
+    fig.set_ylabel(f"{args.stokesparam} (%)")
+    fig.set_xlabel(r'Wavelength ($\AA$)')
+    figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
+    plt.savefig(modelpath / figname, format='pdf')
+    print(f"Saved {figname}")
 
 
 @lru_cache(maxsize=4)
@@ -926,13 +952,14 @@ def plot_artis_spectrum(
 
     for index, axis in enumerate(axes):
         supxmin, supxmax = axis.get_xlim()
-        spectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
-            x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
-            label=linelabel if index == 0 else None, **plotkwargs)
         if args.plotvspecpol is not None:
             vspectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
                 x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
-                label=fr"cos($\theta$) = {vpkt_data['cos_theta'][args.plotvspecpol]}" if index == 0 else None, color='k')
+                label=fr"cos($\theta$) = {vpkt_data['cos_theta'][args.plotvspecpol]}, Stokes = {args.stokesparam}, {timeavg:.2f} days" if index == 0 else None, color='k')
+        else:
+            spectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
+                x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
+                label=linelabel if index == 0 else None, **plotkwargs)
 
 
 def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
@@ -975,7 +1002,8 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
             refspecindex += 1
 
     for axis in axes:
-        axis.set_ylim(bottom=0.)
+        if args.stokesparam == 'I':
+            axis.set_ylim(bottom=0.)
         if args.normalised:
             axis.set_ylim(top=1.25)
             axis.set_ylabel(r'Scaled F$_\lambda$')
@@ -1522,6 +1550,10 @@ def main(args=None, argsraw=None, **kwargs):
 
     if args.makevspecpol:
         make_virtual_spectra_summed_file(args.modelpath[0])
+        return
+
+    if '/' in args.stokesparam:
+        plot_polarisation(args.modelpath[0], args)
         return
 
     args.modelpath = []
