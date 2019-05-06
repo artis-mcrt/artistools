@@ -314,6 +314,16 @@ def plot_polarisation(modelpath, args):
         return str("{0:.4f}".format(min([float(x) for x in timearray], key=lambda x: abs(x - reftime))))
 
     timeavg = match_closest_time(timeavg)
+    if args.filtersavgol:
+        import scipy.signal
+        window_length, poly_order = [int(x) for x in args.filtersavgol]
+
+        def filterfunc(y):
+            return scipy.signal.savgol_filter(y, window_length, poly_order)
+
+        print("Applying filter to ARTIS spectrum")
+        stokes_params[args.stokesparam][timeavg] = filterfunc(stokes_params[args.stokesparam][timeavg])
+
     vpkt_data = at.get_vpkt_data(modelpath)
 
     if args.plotvspecpol:
@@ -677,6 +687,7 @@ def sort_and_reduce_flux_contribution_list(
     remainder_fluxcontrib = 0
 
     contribution_list_out = []
+    plotted_ion_list = []
     numotherprinted = 0
     entered_other = False
     for index, row in enumerate(contribution_list):
@@ -695,6 +706,7 @@ def sort_and_reduce_flux_contribution_list(
         if numotherprinted < 20:
             integemiss = abs(np.trapz(row.array_flambda_emission, x=arraylambda_angstroms))
             integabsorp = abs(np.trapz(-row.array_flambda_absorption, x=arraylambda_angstroms))
+            plotted_ion_list.append(row.linelabel)
             if integabsorp > 0. and integemiss > 0.:
                 print(f'{row.fluxcontrib:.1e}, emission {integemiss:.1e}, '
                       f"absorption {integabsorp:.1e} [erg/s/cm^2]: '{row.linelabel}'")
@@ -705,6 +717,8 @@ def sort_and_reduce_flux_contribution_list(
 
             if entered_other:
                 numotherprinted += 1
+
+    print("List of ions included:", *plotted_ion_list[:14], sep="' '", end="'\n", )
 
     if remainder_fluxcontrib > 0. and not hideother:
         contribution_list_out.append(fluxcontributiontuple(
@@ -934,7 +948,7 @@ def plot_artis_spectrum(
         spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
                                 reftime=timeavg, args=args)
         if args.plotvspecpol is not None:
-            vspectrum = get_vspecpol_spectrum(modelpath, timeavg, args)
+            vspectrum = get_vspecpol_spectrum(modelpath, timeavg, args, fnufilterfunc=filterfunc)
             vpkt_data = at.get_vpkt_data(modelpath)
 
     spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
