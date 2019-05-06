@@ -756,7 +756,7 @@ def plot_reference_spectrum(
     columns being wavelength in Angstroms, and F_lambda
     """
     if Path(filename).is_file():
-        filepath = filename
+        filepath = Path(filename)
     else:
         filepath = Path(at.PYDIR, 'data', 'refspectra', filename)
 
