@@ -54,7 +54,10 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
 
     if master_branch:
         stokes_params = get_polarisation(args, specdata=specdata)
-        specdata = stokes_params[args.stokesparam]
+        if args is not None:
+            specdata = stokes_params[args.stokesparam]
+        else:
+            specdata = stokes_params['I']
 
     nu = specdata.loc[:, 'nu'].values
     if master_branch:
