@@ -47,6 +47,7 @@ commandlist = {
     'plotartisradfield': ('artistools.radfield', 'main'),
     'plotartisspectrum': ('artistools.spectra', 'main'),
     'plotartistransitions': ('artistools.transitions', 'main'),
+    'plotartisinitialcomposition': ('artistools.initial_composition', 'main'),
 }
 
 console_scripts = [f'{command} = {submodulename}:{funcname}'
