@@ -32,6 +32,11 @@ PSNJ11492548_20160202_3Ang.txt:  # (Maguire et al. 2018)
   e_bminusv: 0.025
   z: 0.0056
 
+SN2011fe_+21_num53.dat:
+  label: 'SN2011fe +21d'
+  t: 21
+  dist_mpc: 6.40
+
 PTF11kly_20120402_norm.dat.txt:
   label: 'SN2011fe +223d'
   reference: 'Mazzali et al. (2015)'
