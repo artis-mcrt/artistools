@@ -38,3 +38,5 @@ wheels/
 .installed.cfg
 *.egg
 *.dat
+artistools/data/vspecpol_Fink2010_model3/vspecpol_3obs_n5e8.out
+artistools/data/vspecpol_Fink2010_model3/vspecpol_5obs_n1e8.out
