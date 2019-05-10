@@ -44,10 +44,11 @@ def plot_3d_initial_abundances(modelpath, args):
     im = ax.scatter(plotvals[f'cellpos_in[{plotaxis1}]'] / t_model * (u.cm/u.day).to('km/s') / factor,
                     plotvals[f'cellpos_in[{plotaxis2}]'] / t_model * (u.cm/u.day).to('km/s') / factor,
                     c=plotvals[ion])
-    plt.colorbar(im, label=ion)
+    plt.colorbar(im, label='X_ion')
     plt.xlabel(fr"v$_{plotaxis1}$ in 10$^3$ km/s")
     plt.ylabel(fr"v$_{plotaxis2}$ in 10$^3$ km/s")
-    plt.title(f'At {sliceaxis} = {sliceposition}')
+    plt.text(25, 25, args.ion, color='white', fontweight='bold')
+    # plt.title(f'At {sliceaxis} = {sliceposition}')
 
     outfilename = 'plot_composition.pdf'
     plt.savefig(Path(modelpath[0]) / outfilename, format='pdf')
