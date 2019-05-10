@@ -2,9 +2,11 @@
 import argparse
 import math
 import os
+from pathlib import Path
 import pandas as pd
 import artistools as at
 import matplotlib.pyplot as plt
+from astropy import units as u
 
 
 def get_3d_model_input(modelpath):
@@ -24,6 +26,11 @@ def plot_3d_initial_abundances(modelpath, args):
 
     merge_dfs = model.merge(abundances, how='inner', on='inputcellid')
 
+    with open(os.path.join(modelpath[0], 'model.txt'), 'r') as fmodelin:
+        fmodelin.readline()  # npts_model3d
+        t_model = float(fmodelin.readline())  # days
+        vmax = float(fmodelin.readline())  # v_max in [cm/s]
+
     plotaxis1 = 'z'
     plotaxis2 = 'y'
     sliceaxis = 'x'
@@ -33,13 +40,18 @@ def plot_3d_initial_abundances(modelpath, args):
     plotvals = (merge_dfs.loc[merge_dfs[f'cellpos_in[{sliceaxis}]'] == sliceposition])
     print(plotvals.keys())
     ax = plt.subplot(111)
-    im = ax.scatter(plotvals[f'cellpos_in[{plotaxis1}]'], plotvals[f'cellpos_in[{plotaxis2}]'], c=plotvals[ion])
+    factor = 10**3
+    im = ax.scatter(plotvals[f'cellpos_in[{plotaxis1}]'] / t_model * (u.cm/u.day).to('km/s') / factor,
+                    plotvals[f'cellpos_in[{plotaxis2}]'] / t_model * (u.cm/u.day).to('km/s') / factor,
+                    c=plotvals[ion])
     plt.colorbar(im, label=ion)
-    plt.xlabel(plotaxis1)
-    plt.ylabel(plotaxis2)
+    plt.xlabel(fr"v$_{plotaxis1}$ in 10$^3$ km/s")
+    plt.ylabel(fr"v$_{plotaxis2}$ in 10$^3$ km/s")
     plt.title(f'At {sliceaxis} = {sliceposition}')
 
-    plt.show()
+    outfilename = 'plot_composition.pdf'
+    plt.savefig(Path(modelpath[0]) / outfilename, format='pdf')
+    print(f'Saved {outfilename}')
 
 
 def addargs(parser):
