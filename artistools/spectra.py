@@ -943,7 +943,7 @@ def plot_artis_spectrum(
             use_comovingframe=args.use_comovingframe, maxpacketfiles=args.maxpacketfiles,
             delta_lambda=args.deltalambda, useinternalpackets=args.internalpackets)
         if args.outputfile is None:
-                statpath = Path()
+            statpath = Path()
         else:
             statpath = Path(args.outputfile).resolve().parent
         make_spectrum_stat_plot(spectrum, linelabel, statpath, args)
@@ -956,8 +956,9 @@ def plot_artis_spectrum(
 
     spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
 
-    print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
+    print(f"Plotting '{linelabel}' timesteps {timestepmin} to {timestepmax} "
           f'({args.timemin:.3f} to {args.timemax:.3f}d)')
+    print(f" modelpath {modelname}")
     print_integrated_flux(spectrum['f_lambda'], spectrum['lambda_angstroms'])
 
     if scale_to_peak:
@@ -1397,7 +1398,7 @@ def addargs(parser):
                         help="Plot each emission/absorption contribution separately instead of a stackplot")
 
     parser.add_argument('-fixedionlist', nargs='+',
-                        help='Maximum number of plot series (ions/processes) for emission/absorption plot')
+                        help='Specify a list of ions instead of using the auto-generated list in order of importance')
 
     parser.add_argument('-maxseriescount', type=int, default=14,
                         help='Maximum number of plot series (ions/processes) for emission/absorption plot')

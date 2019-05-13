@@ -699,6 +699,8 @@ def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath,
                 ax.set_ylim(bottom=params)
             elif seriestype == '_ymax':
                 ax.set_ylim(top=params)
+            elif seriestype == '_yscale':
+                ax.set_yscale(params)
             else:
                 seriestype, ionlist = plotitem
                 plot_multi_ion_series(ax, xlist, seriestype, ionlist, timestepslist, mgilist, estimators,
