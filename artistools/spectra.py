@@ -1197,7 +1197,11 @@ def make_plot(args):
     dfalldata = pd.DataFrame()
     xboundaries = [args.xmin] + args.xsplit + [args.xmax]
     for index, axis in enumerate(axes):
-        axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\AA$]')
+        if args.logscale:
+            axis.set_yscale('log')
+            axis.set_ylabel(r'log$_1$$_0$ F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
+        else:
+            axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\AA$]')
         supxmin = xboundaries[index]
         supxmax = xboundaries[index + 1]
         axis.set_xlim(left=supxmin, right=supxmax)
@@ -1473,6 +1477,9 @@ def addargs(parser):
 
     parser.add_argument('-figscale', type=float, default=1.8,
                         help='Scale factor for plot area. 1.0 is for single-column')
+
+    parser.add_argument('-logscale', action='store_true',
+                        help='Use log scale')
 
     parser.add_argument('--hidenetspectrum', action='store_true',
                         help='Hide net spectrum')
