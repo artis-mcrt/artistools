@@ -237,7 +237,7 @@ def make_virtual_spectra_summed_file(modelpath):
         vspecpol.to_csv(modelpath / f'vspecpol_total-{spec_index}.out', sep=' ', index=False, header=False)
 
 
-def get_polarisation(args, angle=None, modelpath=None, specdata=None):
+def get_polarisation(angle=None, modelpath=None, specdata=None):
     if specdata is None:
         specfilename = at.firstexisting([f'vspecpol_total-{angle}.out', 'spec.out.xz', 'spec.out.gz',
                                          'spec.out', 'specpol.out'], path=modelpath)
@@ -264,7 +264,7 @@ def get_polarisation(args, angle=None, modelpath=None, specdata=None):
 
 
 def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
-    stokes_params = get_polarisation(args, angle, modelpath=modelpath)
+    stokes_params = get_polarisation(angle, modelpath=modelpath)
     vspecdata = stokes_params[args.stokesparam]
 
     nu = vspecdata.loc[:, 'nu'].values
@@ -306,7 +306,7 @@ def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
 
 def plot_polarisation(modelpath, args):
     angle = args.plotvspecpol
-    stokes_params = get_polarisation(args, angle, modelpath=modelpath)
+    stokes_params = get_polarisation(angle, modelpath=modelpath)
     stokes_params[args.stokesparam].eval('lambda_angstroms = @c / nu', local_dict={'c': const.c.to('angstrom/s').value}, inplace=True)
 
     timearray = stokes_params[args.stokesparam].keys()[1:-1]
@@ -952,8 +952,9 @@ def plot_artis_spectrum(
         spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
                                 reftime=timeavg, args=args)
         if args.plotvspecpol is not None:
-            angle = args.plotvspecpol
-            vspectrum = get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=filterfunc)
+            vspectrum = {}
+            for angle in args.plotvspecpol:
+                vspectrum[angle] = get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=filterfunc)
             vpkt_data = at.get_vpkt_data(modelpath)
 
     spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
@@ -973,10 +974,10 @@ def plot_artis_spectrum(
     for index, axis in enumerate(axes):
         supxmin, supxmax = axis.get_xlim()
         if args.plotvspecpol is not None:
-            angle = args.plotvspecpol
-            vspectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
-                x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
-                label=fr"cos($\theta$) = {vpkt_data['cos_theta'][angle]}, Stokes = {args.stokesparam}, {timeavg:.2f} days" if index == 0 else None, color='k')
+            for angle in args.plotvspecpol:
+                vspectrum[angle].query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
+                    x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
+                    label=fr"cos($\theta$) = {vpkt_data['cos_theta'][angle]}, Stokes = {args.stokesparam}, {timeavg:.2f} days" if index == 0 else None)
         else:
             spectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
                 x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
@@ -1520,7 +1521,7 @@ def addargs(parser):
     parser.add_argument('--makevspecpol', action='store_true',
                         help='Make file with summed values from each vspecpol thread')
 
-    parser.add_argument('--plotvspecpol', type=int,
+    parser.add_argument('--plotvspecpol', type=int, nargs='+',
                         help='Plot vspecpol. Expects int for spec number in vspecpol files')
 
     parser.add_argument('--stokesparam', type=str, default='I',
