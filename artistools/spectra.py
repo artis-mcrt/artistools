@@ -237,9 +237,9 @@ def make_virtual_spectra_summed_file(modelpath):
         vspecpol.to_csv(modelpath / f'vspecpol_total-{spec_index}.out', sep=' ', index=False, header=False)
 
 
-def get_polarisation(args, modelpath=None, specdata=None):
+def get_polarisation(args, angle=None, modelpath=None, specdata=None):
     if specdata is None:
-        specfilename = at.firstexisting([f'vspecpol_total-{args.plotvspecpol}.out', 'spec.out.xz', 'spec.out.gz',
+        specfilename = at.firstexisting([f'vspecpol_total-{angle}.out', 'spec.out.xz', 'spec.out.gz',
                                          'spec.out', 'specpol.out'], path=modelpath)
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         specdata = specdata.rename(columns={specdata.keys()[0]: 'nu'})
@@ -263,8 +263,8 @@ def get_polarisation(args, modelpath=None, specdata=None):
     return stokes_params
 
 
-def get_vspecpol_spectrum(modelpath, timeavg, args, fnufilterfunc=None):
-    stokes_params = get_polarisation(args, modelpath=modelpath)
+def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
+    stokes_params = get_polarisation(args, angle, modelpath=modelpath)
     vspecdata = stokes_params[args.stokesparam]
 
     nu = vspecdata.loc[:, 'nu'].values
@@ -305,7 +305,8 @@ def get_vspecpol_spectrum(modelpath, timeavg, args, fnufilterfunc=None):
 
 
 def plot_polarisation(modelpath, args):
-    stokes_params = get_polarisation(args, modelpath=modelpath)
+    angle = args.plotvspecpol
+    stokes_params = get_polarisation(args, angle, modelpath=modelpath)
     stokes_params[args.stokesparam].eval('lambda_angstroms = @c / nu', local_dict={'c': const.c.to('angstrom/s').value}, inplace=True)
 
     timearray = stokes_params[args.stokesparam].keys()[1:-1]
@@ -330,7 +331,7 @@ def plot_polarisation(modelpath, args):
     vpkt_data = at.get_vpkt_data(modelpath)
 
     if args.plotvspecpol:
-        linelabel = fr"{timeavg} days, cos($\theta$) = {vpkt_data['cos_theta'][args.plotvspecpol]}"
+        linelabel = fr"{timeavg} days, cos($\theta$) = {vpkt_data['cos_theta'][angle]}"
     else:
         linelabel = f"{timeavg} days"
     fig = stokes_params[args.stokesparam].plot(x='lambda_angstroms', y=timeavg, label=linelabel)
@@ -951,7 +952,8 @@ def plot_artis_spectrum(
         spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
                                 reftime=timeavg, args=args)
         if args.plotvspecpol is not None:
-            vspectrum = get_vspecpol_spectrum(modelpath, timeavg, args, fnufilterfunc=filterfunc)
+            angle = args.plotvspecpol
+            vspectrum = get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=filterfunc)
             vpkt_data = at.get_vpkt_data(modelpath)
 
     spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
@@ -971,9 +973,10 @@ def plot_artis_spectrum(
     for index, axis in enumerate(axes):
         supxmin, supxmax = axis.get_xlim()
         if args.plotvspecpol is not None:
+            angle = args.plotvspecpol
             vspectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
                 x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
-                label=fr"cos($\theta$) = {vpkt_data['cos_theta'][args.plotvspecpol]}, Stokes = {args.stokesparam}, {timeavg:.2f} days" if index == 0 else None, color='k')
+                label=fr"cos($\theta$) = {vpkt_data['cos_theta'][angle]}, Stokes = {args.stokesparam}, {timeavg:.2f} days" if index == 0 else None, color='k')
         else:
             spectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
                 x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
