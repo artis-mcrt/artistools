@@ -7,6 +7,7 @@ import pandas as pd
 import artistools as at
 import matplotlib.pyplot as plt
 from astropy import units as u
+import matplotlib
 
 
 def get_3d_model_input(modelpath):
@@ -39,18 +40,25 @@ def plot_3d_initial_abundances(modelpath, args):
 
     plotvals = (merge_dfs.loc[merge_dfs[f'cellpos_in[{sliceaxis}]'] == sliceposition])
     print(plotvals.keys())
+    factor = 10 ** 3
+    font = {'weight': 'bold',
+            'size': 10}
+
+    matplotlib.rc('font', **font)
+    x = plotvals[f'cellpos_in[{plotaxis1}]'] / t_model * (u.cm/u.day).to('km/s') / factor
+    y = plotvals[f'cellpos_in[{plotaxis2}]'] / t_model * (u.cm/u.day).to('km/s') / factor
+    # fig = plt.figure(figsize=(5, 5))
     ax = plt.subplot(111)
-    factor = 10**3
-    im = ax.scatter(plotvals[f'cellpos_in[{plotaxis1}]'] / t_model * (u.cm/u.day).to('km/s') / factor,
-                    plotvals[f'cellpos_in[{plotaxis2}]'] / t_model * (u.cm/u.day).to('km/s') / factor,
-                    c=plotvals[ion])
-    plt.colorbar(im, label='X_ion')
+    im = ax.scatter(x, y, c=plotvals[ion], marker="s")
+
+    plt.colorbar(im, label=ion)
     plt.xlabel(fr"v$_{plotaxis1}$ in 10$^3$ km/s")
     plt.ylabel(fr"v$_{plotaxis2}$ in 10$^3$ km/s")
-    plt.text(25, 25, args.ion, color='white', fontweight='bold')
+    plt.text(25, 25, args.ion, color='white', fontweight='bold', fontsize='x-large')
+    ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
 
-    outfilename = 'plot_composition.pdf'
+    outfilename = f'plot_composition{args.ion}.pdf'
     plt.savefig(Path(modelpath[0]) / outfilename, format='pdf')
     print(f'Saved {outfilename}')
 
