@@ -271,7 +271,7 @@ def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
     timearray = [i for i in vspecdata.columns.values[1:] if i[-2] != '.']
 
     def match_closest_time(reftime):
-        return str("{0:.4f}".format(min([float(x) for x in timearray], key=lambda x: abs(x - reftime))))
+        return str("{}".format(min([float(x) for x in timearray], key=lambda x: abs(x - reftime))))
 
     timelower = match_closest_time(args.timemin)
     timeupper = match_closest_time(args.timemax)
