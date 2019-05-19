@@ -33,19 +33,24 @@ PSNJ11492548_20160202_3Ang.txt:  # (Maguire et al. 2018)
   z: 0.0056
 
 SN2011fe_-10_num5.dat:
-  label: 'SN2011fe -10d before maximum light'
+  label: 'SN2011fe -10d before maximum'
   t: -10.7
   dist_mpc: 6.40
 
 SN2011fe_-0_8_num27.dat:
-  label: 'SN2011fe near maximum light'
+  label: 'SN2011fe near maximum'
   t: -0.8
   dist_mpc: 6.40
 
 SN2011fe_+21_num53.dat:
-  label: 'SN2011fe +21d after maximum light'
+  label: 'SN2011fe +21d after maximum'
   t: 21
   dist_mpc: 6.40
+
+SN2012fr_+0_num46.dat:
+  label: 'SN2011fr at maximum'
+  t: 0.0
+  dist_mpc: 17.9
 
 PTF11kly_20120402_norm.dat.txt:
   label: 'SN2011fe +223d'
