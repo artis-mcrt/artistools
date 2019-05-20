@@ -772,10 +772,15 @@ def get_bflist(modelpath, returntype='dict'):
         bflistcount = int(filein.readline())
 
         for k in range(bflistcount):
-            i, elementindex, ionindex, level = [int(x) for x in filein.readline().split()]
+            rowints = [int(x) for x in filein.readline().split()]
+            i, elementindex, ionindex, level = rowints[:4]
+            if len(rowints) > 4:
+                upperionlevel = rowints[4]
+            else:
+                upperionlevel = -1
             atomic_number = compositiondata.Z[elementindex]
             ion_stage = ionindex + compositiondata.lowermost_ionstage[elementindex]
-            bflist[i] = (atomic_number, ion_stage, level)
+            bflist[i] = (atomic_number, ion_stage, level, upperionlevel)
 
     return bflist
 
