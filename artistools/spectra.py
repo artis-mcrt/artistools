@@ -502,7 +502,7 @@ def get_flux_contributions_from_packets(
         bflist = at.get_bflist(modelpath)
         bfindex = -emtype - 1
         if bfindex in bflist:
-            (atomic_number, ionstage, level) = bflist[bfindex]
+            (atomic_number, ionstage, level) = bflist[bfindex][:3]
             if groupby == 'line':
                 return f'{at.get_ionstring(atomic_number, ionstage)} bound-free {level}'
             return f'{at.get_ionstring(atomic_number, ionstage)} bound-free'
