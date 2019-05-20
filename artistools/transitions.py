@@ -99,13 +99,27 @@ def generate_ion_spectrum(transitions, xvalues, popcolumn, plot_resolution, args
     return yvalues
 
 
-def make_plot(xvalues, yvalues, axes, temperature_list, vardict, ions, ionpopdict, xmin, xmax):
+def make_plot(xvalues, yvalues, temperature_list, vardict, ionlist, ionpopdict, xmin, xmax, figure_title, outputfilename):
+    # npanels = len(ionlist) + 1
+    npanels = len(ionlist)
+
+    fig, axes = plt.subplots(
+        nrows=npanels, ncols=1, sharex=True, sharey=False, figsize=(6, 2 * (len(ionlist) + 1)),
+        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+
+    if len(ionlist) == 1:
+        axes = [axes]
+
+    if figure_title:
+        print(figure_title)
+        axes[0].set_title(figure_title, fontsize=10)
+
     peak_y_value = -1
     yvalues_combined = np.zeros((len(temperature_list), len(xvalues)))
     for seriesindex, temperature in enumerate(temperature_list):
         T_exc = eval(temperature, vardict)
         serieslabel = 'NLTE' if T_exc < 0 else f'LTE {temperature} = {T_exc:.0f} K'
-        for ion_index, axis in enumerate(axes[:-1]):
+        for ion_index, axis in enumerate(axes[:len(ionlist)]):
             # an ion subplot
             yvalues_combined[seriesindex] += yvalues[seriesindex][ion_index]
 
@@ -113,25 +127,16 @@ def make_plot(xvalues, yvalues, axes, temperature_list, vardict, ions, ionpopdic
 
             peak_y_value = max(yvalues[seriesindex][ion_index])
 
-            # if seriesindex == 0:
-            #     at.spectra.plot_reference_spectrum(
-            #         'NTT_20170818_cal.txt', axis, xmin, xmax, True, scale_to_peak=peak_y_value,
-            #         zorder=-1, linewidth=1, flambdafilterfunc=filterfunc)
-            #
-            #     at.spectra.plot_reference_spectrum(
-            #         'XS_20170819_cal.txt', axis, xmin, xmax, True, scale_to_peak=peak_y_value,
-            #         zorder=-1, linewidth=1, flambdafilterfunc=filterfunc)
-            #
-            #     at.spectra.plot_reference_spectrum(
-            #         'XS_20170821_cal.txt', axis, xmin, xmax, True, scale_to_peak=peak_y_value,
-            #         zorder=-1, linewidth=1, flambdafilterfunc=filterfunc)
+            axis.legend(loc='upper left', handlelength=1, frameon=False, numpoints=1, prop={'size': 8})
 
-        axes[-1].plot(xvalues, yvalues_combined[seriesindex], linewidth=1.5, label=serieslabel)
-        peak_y_value = max(peak_y_value, max(yvalues_combined[seriesindex]))
+        if len(axes) > len(ionlist):
+            axes[len(ionlist)].plot(xvalues, yvalues_combined[seriesindex], linewidth=1.5, label=serieslabel)
+            peak_y_value = max(peak_y_value, max(yvalues_combined[seriesindex]))
 
     axislabels = [
         f'{at.elsymbols[Z]} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[(Z, ion_stage)]:.1e}/cm3)'
-        for (Z, ion_stage) in ions] + ['Total']
+        for (Z, ion_stage) in ionlist]
+    axislabels += ['Total']
 
     for axis, axislabel in zip(axes, axislabels):
         axis.annotate(
@@ -141,10 +146,10 @@ def make_plot(xvalues, yvalues, axes, temperature_list, vardict, ions, ionpopdic
     # at.spectra.plot_reference_spectrum(
     #     'dop_dered_SN2013aa_20140208_fc_final.txt', axes[-1], xmin, xmax, True,
     #     scale_to_peak=peak_y_value, zorder=-1, linewidth=1, color='black')
-
-    at.spectra.plot_reference_spectrum(
-        '2003du_20031213_3219_8822_00.txt', axes[-1], xmin, xmax,
-        scale_to_peak=peak_y_value, zorder=-1, linewidth=1, color='black')
+    #
+    # at.spectra.plot_reference_spectrum(
+    #     '2003du_20031213_3219_8822_00.txt', axes[-1], xmin, xmax,
+    #     scale_to_peak=peak_y_value, zorder=-1, linewidth=1, color='black')
 
     axes[-1].set_xlabel(r'Wavelength ($\AA$)')
 
@@ -152,7 +157,9 @@ def make_plot(xvalues, yvalues, axes, temperature_list, vardict, ions, ionpopdic
         axis.set_xlim(xmin, xmax)
         axis.set_ylabel(r'$\propto$ F$_\lambda$')
 
-    axes[-1].legend(loc='upper right', handlelength=1, frameon=False, numpoints=1, prop={'size': 8})
+    print(f"Saving '{outputfilename}'")
+    fig.savefig(outputfilename, format='pdf')
+    plt.close()
 
 
 def add_upper_lte_pop(dftransitions, T_exc, ionpop, ltepartfunc, columnname=None):
@@ -166,7 +173,7 @@ def add_upper_lte_pop(dftransitions, T_exc, ionpop, ltepartfunc, columnname=None
 
 
 def addargs(parser):
-    parser.add_argument('-modelpath', default=Path(), type=Path,
+    parser.add_argument('-modelpath', default=None, type=Path,
                         help='Path to ARTIS folder')
 
     parser.add_argument('-xmin', type=int, default=3500,
@@ -175,7 +182,7 @@ def addargs(parser):
     parser.add_argument('-xmax', type=int, default=8000,
                         help='Plot range: maximum wavelength in Angstroms')
 
-    parser.add_argument('-T', type=float, dest='T', default=2000,
+    parser.add_argument('-T', type=float, dest='T', default=[], nargs='*',
                         help='Temperature in Kelvin')
 
     parser.add_argument('-sigma_v', type=float, default=5500.,
@@ -195,6 +202,9 @@ def addargs(parser):
 
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Modelgridindex to plot')
+
+    parser.add_argument('--normalised', action='store_true',
+                        help='Normalise all spectra to their peak values')
 
     parser.add_argument('--print-lines', action='store_true',
                         help='Output details of matching line details to standard out')
@@ -223,7 +233,7 @@ def main(args=None, argsraw=None, **kwargs):
         from_model = True
     else:
         from_model = False
-        args.modelpath = '.'
+        args.modelpath = Path()
 
     modelpath = args.modelpath
     if from_model:
@@ -250,7 +260,10 @@ def main(args=None, argsraw=None, **kwargs):
     plot_xmax_wide = args.xmax * (1 + args.gaussian_window * args.sigma_v / const.c.to('km / s').value)
 
     ionlist = [
-        (26, 1), (26, 2), (26, 3), (28, 2),
+        (26, 1), (26, 2), (26, 3),
+        (27, 2), (27, 3),
+        (28, 2), (28, 3),
+        # (28, 2),
         # iontuple(45, 1),
         # iontuple(54, 1),
         # iontuple(54, 2),
@@ -267,12 +280,6 @@ def main(args=None, argsraw=None, **kwargs):
         dftransgfall, ionlist = get_kurucz_transitions()
 
     ionlist.sort()
-    fig, axes = plt.subplots(
-        nrows=len(ionlist) + 1, ncols=1, sharex=True, sharey=True, figsize=(6, 2 * (len(ionlist) + 1)),
-        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
-
-    if len(ionlist) == 1:
-        axes = [axes]
 
     # resolution of the plot in Angstroms
     plot_resolution = max(1, int((args.xmax - args.xmin) / 1000))
@@ -307,20 +314,29 @@ def main(args=None, argsraw=None, **kwargs):
         temperature_list = ['-1']
         vardict = {'Te': Te, 'TR': TR}
     else:
-        Te = args.T
-        Fe3overFe2 = 8  # number ratio
+        if not args.T:
+            args.T = [2000]
+        if len(args.T) == 1:
+            figure_title = f'Te = {args.T[0]:.1f}'
+        else:
+            figure_title = None
+
+        temperature_list = []
+        vardict = {}
+        for index, temperature in enumerate(args.T):
+            tlabel = 'Te'
+            if index > 0:
+                tlabel += f'_{index + 1}'
+            vardict[tlabel] = temperature
+            temperature_list.append(tlabel)
+
+        # Fe3overFe2 = 8  # number ratio
         # ionpopdict = {
         #     (26, 2): 1 / (1 + Fe3overFe2),
         #     (26, 3): Fe3overFe2 / (1 + Fe3overFe2),
         #     (28, 2): 1.0e-2,
         # }
         ionpopdict = {ion: 1 for ion in ionlist}
-        temperature_list = ['Te']
-        vardict = {'Te': Te}
-        figure_title = f'Te = {Te:.1f}'
-
-    print(figure_title)
-    axes[0].set_title(figure_title, fontsize=10)
 
     hc = (const.h * const.c).to('eV Angstrom').value
 
@@ -404,9 +420,17 @@ def main(args=None, argsraw=None, **kwargs):
                         ltepartfunc = 1.0
                     add_upper_lte_pop(dftransitions, T_exc, ionpopdict[ionid], ltepartfunc, columnname=popcolumnname)
 
+                if args.print_lines:
+                    dftransitions.eval(f'flux_factor_{popcolumnname} = flux_factor * {popcolumnname}', inplace=True)
+
                 yvalues[seriesindex][ionindex] = generate_ion_spectrum(dftransitions, xvalues,
                                                                        popcolumnname, plot_resolution, args)
+                if args.normalised:
+                    yvalues[seriesindex][ionindex] /= max(yvalues[seriesindex][ionindex])  # todo: move to ax.plot line
 
+        if args.print_lines:
+            print(dftransitions.columns)
+            print(dftransitions[['lower', 'upper', 'forbidden', 'A', 'lambda_angstroms', 'flux_factor_upper_pop_lte_3000K']].to_string(index=False))
     print()
 
     if from_model:
@@ -432,16 +456,12 @@ def main(args=None, argsraw=None, **kwargs):
               f"{estimators['populations'][(26, 3)] / estimators['populations'][(26, 2)]:.2f}          "
               f"{estimators['populations'][(28, 3)] / estimators['populations'][(28, 2)]:5.2f}")
 
-    make_plot(xvalues, yvalues, axes, temperature_list, vardict, ionlist, ionpopdict, args.xmin, args.xmax)
-
     if from_model:
         outputfilename = str(args.outputfile).format(cell=modelgridindex, timestep=timestep, time_days=time_days)
     else:
         outputfilename = 'plottransitions.pdf'
 
-    print(f"Saving '{outputfilename}'")
-    fig.savefig(outputfilename, format='pdf')
-    plt.close()
+    make_plot(xvalues, yvalues, temperature_list, vardict, ionlist, ionpopdict, args.xmin, args.xmax, figure_title, outputfilename)
 
 
 if __name__ == "__main__":
