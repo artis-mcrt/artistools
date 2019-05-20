@@ -49,11 +49,13 @@ def plot_3d_initial_abundances(modelpath, args):
     y = plotvals[f'cellpos_in[{plotaxis2}]'] / t_model * (u.cm/u.day).to('km/s') / factor
     # fig = plt.figure(figsize=(5, 5))
     ax = plt.subplot(111)
-    im = ax.scatter(x, y, c=plotvals[ion], marker="s")
+    im = ax.scatter(x, y, c=plotvals[ion], marker="8")
 
-    plt.colorbar(im, label=ion)
-    plt.xlabel(fr"v$_{plotaxis1}$ in 10$^3$ km/s")
-    plt.ylabel(fr"v$_{plotaxis2}$ in 10$^3$ km/s")
+    cbar = plt.colorbar(im)
+    cbar.set_label(label=ion, size='x-large') #, fontweight='bold')
+    # cbar.ax.tick_params(labelsize='x-large')
+    plt.xlabel(fr"v$_{plotaxis1}$ in 10$^3$ km/s", fontsize='x-large')#, fontweight='bold')
+    plt.ylabel(fr"v$_{plotaxis2}$ in 10$^3$ km/s", fontsize='x-large')#, fontweight='bold')
     plt.text(25, 25, args.ion, color='white', fontweight='bold', fontsize='x-large')
     ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
