@@ -975,9 +975,10 @@ def plot_artis_spectrum(
         supxmin, supxmax = axis.get_xlim()
         if args.plotvspecpol is not None:
             for angle in args.plotvspecpol:
+                viewing_angle =round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
                 vspectrum[angle].query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
                     x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
-                    label=fr"cos($\theta$) = {vpkt_data['cos_theta'][angle]}, Stokes = {args.stokesparam}, {timeavg:.2f} days" if index == 0 else None)
+                    label=fr"cos($\theta$) = {viewing_angle}" if index == 0 else None) #, {timeavg:.2f} days
         else:
             spectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
                 x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
