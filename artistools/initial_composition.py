@@ -32,8 +32,8 @@ def plot_3d_initial_abundances(modelpath, args):
         t_model = float(fmodelin.readline())  # days
         vmax = float(fmodelin.readline())  # v_max in [cm/s]
 
-    plotaxis1 = 'z'
-    plotaxis2 = 'y'
+    plotaxis1 = 'y'
+    plotaxis2 = 'z'
     sliceaxis = 'x'
     sliceposition = 0.0
     ion = f'X_{args.ion}'
@@ -42,7 +42,7 @@ def plot_3d_initial_abundances(modelpath, args):
     print(plotvals.keys())
     factor = 10 ** 3
     font = {'weight': 'bold',
-            'size': 10}
+            'size': 18}
 
     matplotlib.rc('font', **font)
     x = plotvals[f'cellpos_in[{plotaxis1}]'] / t_model * (u.cm/u.day).to('km/s') / factor
@@ -56,7 +56,8 @@ def plot_3d_initial_abundances(modelpath, args):
     # cbar.ax.tick_params(labelsize='x-large')
     plt.xlabel(fr"v$_{plotaxis1}$ in 10$^3$ km/s", fontsize='x-large')#, fontweight='bold')
     plt.ylabel(fr"v$_{plotaxis2}$ in 10$^3$ km/s", fontsize='x-large')#, fontweight='bold')
-    plt.text(25, 25, args.ion, color='white', fontweight='bold', fontsize='x-large')
+    plt.text(20, 25, args.ion, color='white', fontweight='bold', fontsize='x-large')
+    plt.tight_layout()
     ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
 
