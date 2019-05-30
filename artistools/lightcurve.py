@@ -155,44 +155,48 @@ def get_magnitudes(modelpath, args, angle=None):
         specfilename = at.firstexisting(['spec.out.xz', 'spec.out.gz', 'spec.out'], path=modelpath)
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = specdata.columns.values[1:]
-
+    print(args.filter)
     filters_dict = {}
+    if not args.filter:
+        args.filter = ['B']
 
-    # filters_dict['bol'] = [
-    #     (time, bol_magnitude) for time, bol_magnitude in zip(timearray, bolometric_magnitude(modelpath, timearray, args, angle))
-    #     if math.isfinite(bol_magnitude)]
+    if args.filter[0] == 'bol':
+        filters_dict['bol'] = [
+            (time, bol_magnitude) for time, bol_magnitude in zip(timearray, bolometric_magnitude(modelpath, timearray, args, angle))
+            if math.isfinite(bol_magnitude)]
+    else:
+        filters_list = args.filter
+        # filters_list = ['B']
 
-    filters_list = ['V']
+        for filter_name in filters_list:
+            if filter_name not in filters_dict:
+                filters_dict[filter_name] = []
 
-    for filter_name in filters_list:
-        if filter_name not in filters_dict:
-            filters_dict[filter_name] = []
+        filterdir = os.path.join(at.PYDIR, 'data/filters/')
 
-    filterdir = os.path.join(at.PYDIR, 'data/filters/')
+        for filter_name in filters_list:
 
-    for filter_name in filters_list:
+            zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max \
+                = get_filter_data(filterdir, filter_name)
 
-        zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max \
-            = get_filter_data(filterdir, filter_name)
+            for timestep, time in enumerate(timearray):
 
-        for timestep, time in enumerate(timearray):
+                wave, flux = get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle)
 
-            wave, flux = get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle)
+                if len(wave) > len(wavefilter):
+                    interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.)
+                    wavefilter = np.linspace(min(wave), int(max(wave)), len(wave))
+                    transmission = interpolate_fn(wavefilter)
+                else:
+                    interpolate_fn = interp1d(wave, flux, bounds_error=False, fill_value=0.)
+                    wave = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
+                    flux = interpolate_fn(wave)
 
-            if len(wave) > len(wavefilter):
-                interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.)
-                wavefilter = np.linspace(min(wave), int(max(wave)), len(wave))
-                transmission = interpolate_fn(wavefilter)
-            else:
-                interpolate_fn = interp1d(wave, flux, bounds_error=False, fill_value=0.)
-                wave = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
-                flux = interpolate_fn(wave)
+                phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux)
 
-            phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux)
-
-            if phot_filtobs_sn != 0.0:
-                phot_filtobs_sn = phot_filtobs_sn - 25  # Absolute magnitude
-                filters_dict[filter_name].append((timearray[timestep], phot_filtobs_sn))
+                if phot_filtobs_sn != 0.0:
+                    phot_filtobs_sn = phot_filtobs_sn - 25  # Absolute magnitude
+                    filters_dict[filter_name].append((timearray[timestep], phot_filtobs_sn))
 
     return filters_dict
 
@@ -311,29 +315,17 @@ def make_magnitudes_plot(modelpaths, args):
                 # plt.text(45, -19, key)
     plt.minorticks_on()
     plt.tick_params(axis='both', top=True, right=True)
-
-        # linenames.append(plot_lightcurve_from_data(filters_dict.keys(), axarr))
-
-    # for plot in range(rows):
-    plt.ylabel('Magnitude', fontsize='x-large')
-    # plt.ylabel('Magnitude')
-
-    # plots = np.arange(0, rows*cols)
-    # for plot in plots[-cols:]:
+    plt.ylabel(f'{args.filter[0]} Magnitude', fontsize='x-large')
     plt.xlabel('Time in Days', fontsize='x-large')
 
-    # axarr[0].axis([10, 50, -17.5, -19.5])
-    # axarr[1].axis([10, 50, -17.5, -19.5])
     # plt.axis([10, 30, -14, -18])
     plt.gca().invert_yaxis()
     plt.xlim(10, 30)
 
     plt.minorticks_on()
-    # axarr[0].tick_params(axis='both', top=True, right=True)
     # f.suptitle(f'{modelname}')
-    # plt.subplots_adjust(hspace=.0, wspace=.0)
     # f.legend(labels=linenames, frameon=True, fontsize='xx-small')
-    # plt.tight_layout()
+    plt.tight_layout()
     # f.set_figheight(8)
     # f.set_figwidth(7)
     # plt.show()
@@ -345,7 +337,10 @@ def colour_evolution_plot(modelpaths, args):
     for modelpath in modelpaths:
         modelname = at.get_model_name(modelpath)
         print(f'Reading spectra: {modelname}')
-        filters_dict = get_magnitudes(modelpath)
+
+        filter_names = args.colour_evolution[0].split('-')
+        args.filter = filter_names
+        filters_dict = get_magnitudes(modelpath, args)
 
         time_dict_1 = {}
         time_dict_2 = {}
@@ -353,7 +348,7 @@ def colour_evolution_plot(modelpaths, args):
         plot_times = []
         diff = []
 
-        filter_names = args.colour_evolution[0].split('-')
+
 
         for filter_1, filter_2 in zip(filters_dict[filter_names[0]], filters_dict[filter_names[1]]):
             # Make magnitude dictionaries where time is the key
@@ -481,6 +476,9 @@ def addargs(parser):
 
     parser.add_argument('--magnitude', action='store_true',
                         help='Plot synthetic magnitudes')
+
+    parser.add_argument('--filter', type=str, nargs='+',
+                        help='Choose filter eg. bol U B V R I. Default B')
 
     parser.add_argument('--colour_evolution', action='append',
                         help='Plot of colour evolution. Give two filters eg. B-V')
