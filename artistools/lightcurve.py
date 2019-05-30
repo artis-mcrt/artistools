@@ -17,6 +17,7 @@ from astropy import units as u
 import artistools as at
 import artistools.spectra
 import matplotlib.pyplot as plt
+import matplotlib
 
 from scipy.interpolate import interp1d
 
@@ -155,7 +156,7 @@ def get_magnitudes(modelpath, args, angle=None):
         specfilename = at.firstexisting(['spec.out.xz', 'spec.out.gz', 'spec.out'], path=modelpath)
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = specdata.columns.values[1:]
-    print(args.filter)
+
     filters_dict = {}
     if not args.filter:
         args.filter = ['B']
@@ -270,6 +271,9 @@ def make_magnitudes_plot(modelpaths, args):
     # f, axarr = plt.subplots(nrows=rows, ncols=cols, sharex='all', sharey='all', squeeze=True)
     # axarr = axarr.flatten()
 
+    font = {'size': 20}
+    matplotlib.rc('font', **font)
+
     if args.plotvspecpol:
         angles = args.plotvspecpol
     else:
@@ -306,17 +310,19 @@ def make_magnitudes_plot(modelpaths, args):
                     linelabel = fr"$\theta$ = {viewing_angle}"
                 else:
                     linelabel = f'{modelname}'
-                plt.plot(time, magnitude, label=linelabel)
+                fig = plt.plot(time, magnitude, label=linelabel, linewidth=3)
 
                 if modelnumber == 0 and args.plot_hesma_model and key in hesma_model.keys():
                     plt.plot(hesma_model.t, hesma_model[key], color='black')
 
                 # axarr[plotnumber].axis([0, 60, -16, -19.5])
                 # plt.text(45, -19, key)
+    # plot_lightcurve_from_data(filters_dict.keys(), fig)
+
     plt.minorticks_on()
     plt.tick_params(axis='both', top=True, right=True)
-    plt.ylabel(f'{args.filter[0]} Magnitude', fontsize='x-large')
-    plt.xlabel('Time in Days', fontsize='x-large')
+    plt.ylabel(f'{key} Magnitude')
+    plt.xlabel('Time in Days Since Explosion')
 
     # plt.axis([10, 30, -14, -18])
     plt.gca().invert_yaxis()
@@ -329,11 +335,14 @@ def make_magnitudes_plot(modelpaths, args):
     # f.set_figheight(8)
     # f.set_figwidth(7)
     # plt.show()
-    plt.legend(loc='best')
+    plt.legend(loc='best', frameon=False)
     plt.savefig(args.outputfile, format='pdf')
 
 
 def colour_evolution_plot(modelpaths, args):
+    font = {'size': 20}
+    matplotlib.rc('font', **font)
+
     for modelpath in modelpaths:
         modelname = at.get_model_name(modelpath)
         print(f'Reading spectra: {modelname}')
@@ -360,17 +369,17 @@ def colour_evolution_plot(modelpaths, args):
                 plot_times.append(float(time))
                 diff.append(time_dict_1[time] - time_dict_2[time])
 
-        plt.plot(plot_times, diff, label=modelname)
+        plt.plot(plot_times, diff, label=modelname, linewidth=3)
 
     # plot_color_evoloution_from_data(filter_names)
 
-    plt.ylabel(f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
-    plt.xlabel('Time in Days Since Explosion', fontsize='x-large')
+    plt.ylabel(f'{filter_names[0]}-{filter_names[1]}')
+    plt.xlabel('Time in Days Since Explosion')
     plt.tight_layout()
-    plt.legend(loc='best', frameon=True)
+    plt.legend(loc='best', frameon=False, fontsize='x-small')
     plt.minorticks_on()
     plt.tick_params(axis='both', top=True, right=True)
-    plt.xlim(0, 80)
+    plt.xlim(5, 80)
 
     plt.savefig(args.outputfile, format='pdf')
 
@@ -414,14 +423,14 @@ def read_11fe_lightcurve():
 
 def plot_lightcurve_from_data(filter_names, axarr):
     lightcurve_data = read_11fe_lightcurve()
+    linename = 'SN2011fe'
 
     filter_data = {}
     for plotnumber, filter_name in enumerate(filter_names):
         if filter_name is 'bol':
             continue
         filter_data[filter_name] = lightcurve_data.loc[lightcurve_data['band'] == filter_name]
-        axarr[plotnumber].plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], '.')
-    linename = 'SN2011fe'
+        plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], '.', label=linename, color='r')
     return linename
 
 
@@ -433,7 +442,8 @@ def plot_color_evoloution_from_data(filter_names):
         band_data.append(lightcurve_from_data.loc[lightcurve_from_data['band'] == filter_names[i]])
 
     merge_dataframes = band_data[0].merge(band_data[1], how='inner', on=['time'])
-    plt.plot(merge_dataframes['time'], merge_dataframes['magnitude_x'] - merge_dataframes['magnitude_y'], '.', label='SN2011fe')
+    plt.plot(merge_dataframes['time'], merge_dataframes['magnitude_x'] - merge_dataframes['magnitude_y'], '.',
+             label='SN2011fe', color='r')
 
 
 def addargs(parser):
