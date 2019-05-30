@@ -162,7 +162,7 @@ def get_magnitudes(modelpath, args, angle=None):
     #     (time, bol_magnitude) for time, bol_magnitude in zip(timearray, bolometric_magnitude(modelpath, timearray, args, angle))
     #     if math.isfinite(bol_magnitude)]
 
-    filters_list = ['B']
+    filters_list = ['V']
 
     for filter_name in filters_list:
         if filter_name not in filters_dict:
@@ -177,7 +177,7 @@ def get_magnitudes(modelpath, args, angle=None):
 
         for timestep, time in enumerate(timearray):
 
-            wave, flux = get_spectrum_in_filter_range(modelpath, timestep, wavefilter_min, wavefilter_max)
+            wave, flux = get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle)
 
             if len(wave) > len(wavefilter):
                 interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.)
@@ -234,8 +234,11 @@ def get_filter_data(filterdir, filter_name):
     return zeropointenergyflux, np.array(wavefilter), np.array(transmission), wavefilter_min, wavefilter_max
 
 
-def get_spectrum_in_filter_range(modelpath, timestep, wavefilter_min, wavefilter_max):
-    spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep)
+def get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle=None):
+    if angle != None:
+        spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
+    else:
+        spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep)
 
     wave, flux = [], []
     for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
@@ -321,8 +324,9 @@ def make_magnitudes_plot(modelpaths, args):
 
     # axarr[0].axis([10, 50, -17.5, -19.5])
     # axarr[1].axis([10, 50, -17.5, -19.5])
-    plt.axis([10, 30, -17, -19.5])
-    # plt.gca().invert_yaxis()
+    # plt.axis([10, 30, -14, -18])
+    plt.gca().invert_yaxis()
+    plt.xlim(10, 30)
 
     plt.minorticks_on()
     # axarr[0].tick_params(axis='both', top=True, right=True)
