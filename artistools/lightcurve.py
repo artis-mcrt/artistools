@@ -141,9 +141,13 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
     plt.close()
 
 
-def get_magnitudes(modelpath):
+def get_magnitudes(modelpath, args, angle=None):
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
-    if Path(modelpath, 'specpol.out').is_file():
+    if args and args.plotvspecpol:
+        stokes_params = at.spectra.get_polarisation(angle, modelpath)
+        vspecdata = stokes_params['I']
+        timearray = vspecdata.keys()[1:]
+    elif Path(modelpath, 'specpol.out').is_file():
         specfilename = os.path.join(modelpath, "specpol.out")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
@@ -155,48 +159,51 @@ def get_magnitudes(modelpath):
     filters_dict = {}
 
     filters_dict['bol'] = [
-        (time, bol_magnitude) for time, bol_magnitude in zip(timearray, bolometric_magnitude(modelpath, timearray))
+        (time, bol_magnitude) for time, bol_magnitude in zip(timearray, bolometric_magnitude(modelpath, timearray, args, angle))
         if math.isfinite(bol_magnitude)]
 
-    filters_list = ['U', 'B', 'V', 'R', 'I', 'J', 'H', 'K']
+    # filters_list = ['B']
 
-    for filter_name in filters_list:
-        if filter_name not in filters_dict:
-            filters_dict[filter_name] = []
+    # for filter_name in filters_list:
+    #     if filter_name not in filters_dict:
+    #         filters_dict[filter_name] = []
 
     filterdir = os.path.join(at.PYDIR, 'data/filters/')
 
-    for filter_name in filters_list:
-
-        for timestep, time in enumerate(timearray):
-
-            zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max \
-                = get_filter_data(filterdir, filter_name)
-
-            wave, flux = get_spectrum_in_filter_range(modelpath, timestep, wavefilter_min, wavefilter_max)
-
-            if len(wave) > len(wavefilter):
-                interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.)
-                wavefilter = np.linspace(min(wave), int(max(wave)), len(wave))
-                transmission = interpolate_fn(wavefilter)
-            else:
-                interpolate_fn = interp1d(wave, flux, bounds_error=False, fill_value=0.)
-                wave = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
-                flux = interpolate_fn(wave)
-
-            phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux)
-
-            if phot_filtobs_sn != 0.0:
-                phot_filtobs_sn = phot_filtobs_sn - 25  # Absolute magnitude
-                filters_dict[filter_name].append((timearray[timestep], phot_filtobs_sn))
+    # for filter_name in filters_list:
+    #
+    #     for timestep, time in enumerate(timearray):
+    #
+    #         zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max \
+    #             = get_filter_data(filterdir, filter_name)
+    #
+    #         wave, flux = get_spectrum_in_filter_range(modelpath, timestep, wavefilter_min, wavefilter_max)
+    #
+    #         if len(wave) > len(wavefilter):
+    #             interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.)
+    #             wavefilter = np.linspace(min(wave), int(max(wave)), len(wave))
+    #             transmission = interpolate_fn(wavefilter)
+    #         else:
+    #             interpolate_fn = interp1d(wave, flux, bounds_error=False, fill_value=0.)
+    #             wave = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
+    #             flux = interpolate_fn(wave)
+    #
+    #         phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux)
+    #
+    #         if phot_filtobs_sn != 0.0:
+    #             phot_filtobs_sn = phot_filtobs_sn - 25  # Absolute magnitude
+    #             filters_dict[filter_name].append((timearray[timestep], phot_filtobs_sn))
 
     return filters_dict
 
 
-def bolometric_magnitude(modelpath, timearray):
+def bolometric_magnitude(modelpath, timearray, args, angle=None):
     magnitudes = []
     for timestep, time in enumerate(timearray):
-        spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep)
+        if angle != None:
+            spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
+        else:
+            spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep)
 
         integrated_flux = np.trapz(spectrum['f_lambda'], spectrum['lambda_angstroms'])
         integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to('cm'), 2)
@@ -251,73 +258,82 @@ def evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux):
 
 
 def make_magnitudes_plot(modelpaths, args):
-    rows = 3
-    cols = 3
-    f, axarr = plt.subplots(nrows=rows, ncols=cols, sharex='all', sharey='all', squeeze=True)
-    axarr = axarr.flatten()
+    # rows = 1
+    # cols = 1
+    # f, axarr = plt.subplots(nrows=rows, ncols=cols, sharex='all', sharey='all', squeeze=True)
+    # axarr = axarr.flatten()
 
+    if args.plotvspecpol:
+        angles = args.plotvspecpol
+    else:
+        angles = [None]
 
-    linenames = []
+    for angle in angles:
+        linenames = []
 
-    for modelnumber, modelpath in enumerate(modelpaths):
+        for modelnumber, modelpath in enumerate(modelpaths):
 
-        modelname = at.get_model_name(modelpath)
-        linenames.append(modelname)
-        print(f'Reading spectra: {modelname}')
-        filters_dict = get_magnitudes(modelpath)
+            modelname = at.get_model_name(modelpath)
+            linenames.append(modelname)
+            print(f'Reading spectra: {modelname}')
+            filters_dict = get_magnitudes(modelpath, args, angle)
 
-        if modelnumber == 0 and args.plot_hesma_model:
-            hesma_model = read_hesma_lightcurve(args)
-            linename = str(args.plot_hesma_model).split('_')[:3]
-            linename = "_".join(linename)
+            if modelnumber == 0 and args.plot_hesma_model:
+                hesma_model = read_hesma_lightcurve(args)
+                linename = str(args.plot_hesma_model).split('_')[:3]
+                linename = "_".join(linename)
 
-            if linename not in linenames:
-                linenames.append(linename)
+                if linename not in linenames:
+                    linenames.append(linename)
 
+            for plotnumber, key in enumerate(filters_dict):
+                time = []
+                magnitude = []
 
-        for plotnumber, key in enumerate(filters_dict):
-            time = []
-            magnitude = []
+                for t, mag in filters_dict[key]:
+                    time.append(float(t))
+                    magnitude.append(mag)
+                if angle != None:
+                    vpkt_data = at.get_vpkt_data(modelpath)
+                    viewing_angle = round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
+                    linelabel = fr"$\theta$ = {viewing_angle}"
+                else:
+                    linelabel = f'{modelname}'
+                plt.plot(time, magnitude, label=linelabel)
 
-            for t, mag in filters_dict[key]:
-                time.append(float(t))
-                magnitude.append(mag)
+                if modelnumber == 0 and args.plot_hesma_model and key in hesma_model.keys():
+                    plt.plot(hesma_model.t, hesma_model[key], color='black')
 
-            axarr[plotnumber].plot(time, magnitude)
+                # axarr[plotnumber].axis([0, 60, -16, -19.5])
+                # plt.text(45, -19, key)
+    plt.minorticks_on()
+    plt.tick_params(axis='both', top=True, right=True)
 
-            if modelnumber == 0 and args.plot_hesma_model and key in hesma_model.keys():
-                axarr[plotnumber].plot(hesma_model.t, hesma_model[key], color='black')
+        # linenames.append(plot_lightcurve_from_data(filters_dict.keys(), axarr))
 
-            # axarr[plotnumber].axis([0, 60, -16, -19.5])
-            axarr[plotnumber].text(45, -19, key)
-            plt.minorticks_on()
-            plt.tick_params(axis='both', top=True, right=True)
+    # for plot in range(rows):
+    plt.ylabel('Magnitude', fontsize='x-large')
+    # plt.ylabel('Magnitude')
 
-    # linenames.append(plot_lightcurve_from_data(filters_dict.keys(), axarr))
-
-    for plot in range(rows):
-    # plt.ylabel('Magnitude', fontsize='x-large')
-        axarr[plot*cols].set_ylabel('Magnitude')
-
-    plots = np.arange(0, rows*cols)
-    for plot in plots[-cols:]:
-        axarr[plot].set_xlabel('Time in Days')
+    # plots = np.arange(0, rows*cols)
+    # for plot in plots[-cols:]:
+    plt.xlabel('Time in Days', fontsize='x-large')
 
     # axarr[0].axis([10, 50, -17.5, -19.5])
     # axarr[1].axis([10, 50, -17.5, -19.5])
-    plt.axis([0, 80, -15, -20])
+    plt.axis([10, 30, -17, -19.5])
     # plt.gca().invert_yaxis()
 
-    print(linenames)
     plt.minorticks_on()
     # axarr[0].tick_params(axis='both', top=True, right=True)
     # f.suptitle(f'{modelname}')
-    plt.subplots_adjust(hspace=.0, wspace=.0)
-    f.legend(labels=linenames, frameon=True, fontsize='xx-small')
+    # plt.subplots_adjust(hspace=.0, wspace=.0)
+    # f.legend(labels=linenames, frameon=True, fontsize='xx-small')
     # plt.tight_layout()
     # f.set_figheight(8)
     # f.set_figwidth(7)
     # plt.show()
+    plt.legend(loc='best')
     plt.savefig(args.outputfile, format='pdf')
 
 
@@ -471,6 +487,9 @@ def addargs(parser):
     parser.add_argument('--plot_hesma_model', action='store', type=Path, default=False,
                         help='Plot hesma model on top of lightcurve plot. '
                         'Enter model name saved in data/hesma directory')
+
+    parser.add_argument('--plotvspecpol', type=int, nargs='+',
+                        help='Plot vspecpol. Expects int for spec number in vspecpol files')
 
 
 def main(args=None, argsraw=None, **kwargs):

@@ -265,6 +265,8 @@ def get_polarisation(angle=None, modelpath=None, specdata=None):
 
 def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
     stokes_params = get_polarisation(angle, modelpath=modelpath)
+    if not 'stokesparam' in args:
+        args.stokesparam = 'I'
     vspecdata = stokes_params[args.stokesparam]
 
     nu = vspecdata.loc[:, 'nu'].values
@@ -273,21 +275,25 @@ def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
     def match_closest_time(reftime):
         return str("{}".format(min([float(x) for x in timearray], key=lambda x: abs(x - reftime))))
 
-    timelower = match_closest_time(args.timemin)
-    timeupper = match_closest_time(args.timemax)
+    if 'timemin' and 'timemax' in args:
+        timelower = match_closest_time(args.timemin)
+        timeupper = match_closest_time(args.timemax)
+    else:
+        timelower = timeavg
+        timeupper = timeavg
     timestepmin = vspecdata.columns.get_loc(timelower)
     timestepmax = vspecdata.columns.get_loc(timeupper)
 
     def timefluxscale(timestep):
         if timeavg is not None:
-            return math.exp(float(timearray[timestep]) / 133.) / math.exp(timeavg / 133.)
+            return math.exp(float(timearray[timestep]) / 133.) / math.exp(float(timeavg) / 133.)
         else:
             return 1.
 
     f_nu = stackspectra([
         (vspecdata[vspecdata.columns[timestep + 1]] * timefluxscale(timestep),
          at.get_timestep_time_delta(timestep, timearray))
-        for timestep in range(timestepmin, timestepmax + 1)])
+        for timestep in range(timestepmin-1, timestepmax)])
 
     # best to use the filter on this list because it
     # has regular sampling
