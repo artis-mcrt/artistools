@@ -158,41 +158,41 @@ def get_magnitudes(modelpath, args, angle=None):
 
     filters_dict = {}
 
-    filters_dict['bol'] = [
-        (time, bol_magnitude) for time, bol_magnitude in zip(timearray, bolometric_magnitude(modelpath, timearray, args, angle))
-        if math.isfinite(bol_magnitude)]
+    # filters_dict['bol'] = [
+    #     (time, bol_magnitude) for time, bol_magnitude in zip(timearray, bolometric_magnitude(modelpath, timearray, args, angle))
+    #     if math.isfinite(bol_magnitude)]
 
-    # filters_list = ['B']
+    filters_list = ['B']
 
-    # for filter_name in filters_list:
-    #     if filter_name not in filters_dict:
-    #         filters_dict[filter_name] = []
+    for filter_name in filters_list:
+        if filter_name not in filters_dict:
+            filters_dict[filter_name] = []
 
     filterdir = os.path.join(at.PYDIR, 'data/filters/')
 
-    # for filter_name in filters_list:
-    #
-    #     for timestep, time in enumerate(timearray):
-    #
-    #         zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max \
-    #             = get_filter_data(filterdir, filter_name)
-    #
-    #         wave, flux = get_spectrum_in_filter_range(modelpath, timestep, wavefilter_min, wavefilter_max)
-    #
-    #         if len(wave) > len(wavefilter):
-    #             interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.)
-    #             wavefilter = np.linspace(min(wave), int(max(wave)), len(wave))
-    #             transmission = interpolate_fn(wavefilter)
-    #         else:
-    #             interpolate_fn = interp1d(wave, flux, bounds_error=False, fill_value=0.)
-    #             wave = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
-    #             flux = interpolate_fn(wave)
-    #
-    #         phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux)
-    #
-    #         if phot_filtobs_sn != 0.0:
-    #             phot_filtobs_sn = phot_filtobs_sn - 25  # Absolute magnitude
-    #             filters_dict[filter_name].append((timearray[timestep], phot_filtobs_sn))
+    for filter_name in filters_list:
+
+        zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max \
+            = get_filter_data(filterdir, filter_name)
+
+        for timestep, time in enumerate(timearray):
+
+            wave, flux = get_spectrum_in_filter_range(modelpath, timestep, wavefilter_min, wavefilter_max)
+
+            if len(wave) > len(wavefilter):
+                interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.)
+                wavefilter = np.linspace(min(wave), int(max(wave)), len(wave))
+                transmission = interpolate_fn(wavefilter)
+            else:
+                interpolate_fn = interp1d(wave, flux, bounds_error=False, fill_value=0.)
+                wave = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
+                flux = interpolate_fn(wave)
+
+            phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux)
+
+            if phot_filtobs_sn != 0.0:
+                phot_filtobs_sn = phot_filtobs_sn - 25  # Absolute magnitude
+                filters_dict[filter_name].append((timearray[timestep], phot_filtobs_sn))
 
     return filters_dict
 
