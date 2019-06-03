@@ -249,7 +249,6 @@ def make_averaged_vspecfiles(args):
         vspecdata = []
         for modelpath in args.modelpath:
             vspecdata.append(pd.read_csv(modelpath / filename, delim_whitespace=True, header=None))
-        print(len(vspecdata), spec_index)
         for i in range(1, len(vspecdata)):
             vspecdata[0].iloc[1:, 1:] += vspecdata[i].iloc[1:, 1:]
 
@@ -1549,7 +1548,7 @@ def addargs(parser):
                         help='Make file with summed values from each vspecpol thread')
 
     parser.add_argument('--averagevspecpolfiles', action='store_true',
-                        help='Average the vspecpol files for multiple simulations')
+                        help='Average the vspecpol-total files for multiple simulations')
 
     parser.add_argument('--plotvspecpol', type=int, nargs='+',
                         help='Plot vspecpol. Expects int for spec number in vspecpol files')
