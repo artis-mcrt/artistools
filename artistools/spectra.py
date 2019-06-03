@@ -5,6 +5,7 @@ import math
 from collections import namedtuple
 from functools import lru_cache
 from pathlib import Path
+import os
 
 import matplotlib.ticker as ticker
 import matplotlib.patches as mpatches
@@ -237,9 +238,28 @@ def make_virtual_spectra_summed_file(modelpath):
         vspecpol.to_csv(modelpath / f'vspecpol_total-{spec_index}.out', sep=' ', index=False, header=False)
 
 
+def make_averaged_vspecfiles(args):
+    filenames = []
+    for vspecfile in os.listdir(args.modelpath[0]):
+        print(vspecfile)
+        if vspecfile.startswith('vspecpol_total-'):
+            filenames.append(vspecfile)
+
+    for spec_index, filename in enumerate(filenames):  # vspecpol-total files
+        vspecdata = []
+        for modelpath in args.modelpath:
+            vspecdata.append(pd.read_csv(modelpath / filename, delim_whitespace=True, header=None))
+        print(len(vspecdata), spec_index)
+        for i in range(1, len(vspecdata)):
+            vspecdata[0].iloc[1:, 1:] += vspecdata[i].iloc[1:, 1:]
+
+        vspecdata[0].iloc[1:, 1:] = vspecdata[0].iloc[1:, 1:]/len(vspecdata)
+        vspecdata[0].to_csv(args.modelpath[0] / f'vspecpol_averaged-{spec_index}.out', sep=' ', index=False, header=False)
+
+
 def get_polarisation(angle=None, modelpath=None, specdata=None):
     if specdata is None:
-        specfilename = at.firstexisting([f'vspecpol_total-{angle}.out', 'spec.out.xz', 'spec.out.gz',
+        specfilename = at.firstexisting([f'vspecpol_averaged-{angle}.out', f'vspecpol_total-{angle}.out', 'spec.out.xz', 'spec.out.gz',
                                          'spec.out', 'specpol.out'], path=modelpath)
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         specdata = specdata.rename(columns={specdata.keys()[0]: 'nu'})
@@ -1528,6 +1548,9 @@ def addargs(parser):
     parser.add_argument('--makevspecpol', action='store_true',
                         help='Make file with summed values from each vspecpol thread')
 
+    parser.add_argument('--averagevspecpolfiles', action='store_true',
+                        help='Average the vspecpol files for multiple simulations')
+
     parser.add_argument('--plotvspecpol', type=int, nargs='+',
                         help='Plot vspecpol. Expects int for spec number in vspecpol files')
 
@@ -1586,6 +1609,10 @@ def main(args=None, argsraw=None, **kwargs):
 
     if args.makevspecpol:
         make_virtual_spectra_summed_file(args.modelpath[0])
+        return
+
+    if args.averagevspecpolfiles:
+        make_averaged_vspecfiles(args)
         return
 
     if '/' in args.stokesparam:
