@@ -15,6 +15,7 @@ import pandas as pd
 import yaml
 from astropy import constants as const
 from astropy import units as u
+import re
 
 import artistools as at
 import artistools.radfield
@@ -244,6 +245,14 @@ def make_averaged_vspecfiles(args):
         print(vspecfile)
         if vspecfile.startswith('vspecpol_total-'):
             filenames.append(vspecfile)
+
+    def sorted_by_number(l):
+
+        convert = lambda text: int(text) if text.isdigit() else text
+        alphanum_key = lambda key: [convert(c) for c in re.split('([0-9]+)', key)]
+        return sorted(l, key=alphanum_key)
+
+    filenames = sorted_by_number(filenames)
 
     for spec_index, filename in enumerate(filenames):  # vspecpol-total files
         vspecdata = []
