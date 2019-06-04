@@ -242,7 +242,6 @@ def make_virtual_spectra_summed_file(modelpath):
 def make_averaged_vspecfiles(args):
     filenames = []
     for vspecfile in os.listdir(args.modelpath[0]):
-        print(vspecfile)
         if vspecfile.startswith('vspecpol_total-'):
             filenames.append(vspecfile)
 
