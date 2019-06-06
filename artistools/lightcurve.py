@@ -310,7 +310,7 @@ def make_magnitudes_plot(modelpaths, args):
                     linelabel = fr"$\theta$ = {viewing_angle}"
                 else:
                     linelabel = f'{modelname}'
-                fig = plt.plot(time, magnitude, label=linelabel, linewidth=3)
+                    fig = plt.plot(time, magnitude, label=linelabel, linewidth=3)
 
                 if modelnumber == 0 and args.plot_hesma_model and key in hesma_model.keys():
                     plt.plot(hesma_model.t, hesma_model[key], color='black')
@@ -320,13 +320,15 @@ def make_magnitudes_plot(modelpaths, args):
     # plot_lightcurve_from_data(filters_dict.keys(), fig)
 
     plt.minorticks_on()
-    plt.tick_params(axis='both', top=True, right=True)
+    plt.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18)
+    plt.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=18)
     plt.ylabel(f'{key} Magnitude')
     plt.xlabel('Time in Days Since Explosion')
 
     # plt.axis([10, 30, -14, -18])
     plt.gca().invert_yaxis()
-    plt.xlim(10, 30)
+    plt.xlim(5, 80)
+    # plt.ylim(-15, -19.5)
 
     plt.minorticks_on()
     # f.suptitle(f'{modelname}')
@@ -335,7 +337,9 @@ def make_magnitudes_plot(modelpaths, args):
     # f.set_figheight(8)
     # f.set_figwidth(7)
     # plt.show()
-    plt.legend(loc='best', frameon=False)
+    plt.legend(loc='best', frameon=False, fontsize='x-small')
+    if len(filters_dict) == 1:
+        args.outputfile = f'plot{key}lightcurves.pdf'
     plt.savefig(args.outputfile, format='pdf')
 
 
@@ -430,7 +434,7 @@ def plot_lightcurve_from_data(filter_names, axarr):
         if filter_name is 'bol':
             continue
         filter_data[filter_name] = lightcurve_data.loc[lightcurve_data['band'] == filter_name]
-        plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], '.', label=linename, color='r')
+        plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], '.', label=linename, color='k')
     return linename
 
 
@@ -536,7 +540,7 @@ def main(args=None, argsraw=None, **kwargs):
         args.escape_type = 'TYPE_GAMMA'
 
     if args.magnitude:
-        defaultoutputfile = 'plot_colour_band_lightcurves.pdf'
+        defaultoutputfile = f'plotlightcurves.pdf'
     elif args.colour_evolution:
         defaultoutputfile = 'plot_colour_evolution.pdf'
     elif args.escape_type == 'TYPE_GAMMA':
