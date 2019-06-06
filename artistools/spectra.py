@@ -10,6 +10,7 @@ import os
 import matplotlib.ticker as ticker
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
+import matplotlib
 import numpy as np
 import pandas as pd
 import yaml
@@ -1206,6 +1207,8 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
 
 
 def make_plot(args):
+    font = {'size': 18}
+    matplotlib.rc('font', **font)
     nrows = len(args.xsplit) + 1
     fig, axes = plt.subplots(
         nrows=nrows, ncols=1, sharey=False,
