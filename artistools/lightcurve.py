@@ -310,7 +310,7 @@ def make_magnitudes_plot(modelpaths, args):
                     linelabel = fr"$\theta$ = {viewing_angle}"
                 else:
                     linelabel = f'{modelname}'
-                    fig = plt.plot(time, magnitude, label=linelabel, linewidth=3)
+                fig = plt.plot(time, magnitude, label=linelabel, linewidth=3)
 
                 if modelnumber == 0 and args.plot_hesma_model and key in hesma_model.keys():
                     plt.plot(hesma_model.t, hesma_model[key], color='black')
@@ -327,8 +327,17 @@ def make_magnitudes_plot(modelpaths, args):
 
     # plt.axis([10, 30, -14, -18])
     plt.gca().invert_yaxis()
-    plt.xlim(5, 80)
-    # plt.ylim(-15, -19.5)
+    if args.ymax is None:
+        args.ymax = -20
+    if args.ymin is None:
+        args.ymin = -14
+    if args.xmax is None:
+        args.xmax = 100
+    if args.xmin is None:
+        args.xmin = 5
+
+    plt.ylim(args.ymin, args.ymax)
+    plt.xlim(args.xmin, args.xmax)
 
     plt.minorticks_on()
     # f.suptitle(f'{modelname}')
@@ -336,7 +345,6 @@ def make_magnitudes_plot(modelpaths, args):
     plt.tight_layout()
     # f.set_figheight(8)
     # f.set_figwidth(7)
-    # plt.show()
     plt.legend(loc='best', frameon=False, fontsize='x-small')
     if len(filters_dict) == 1:
         args.outputfile = f'plot{key}lightcurves.pdf'
@@ -506,6 +514,18 @@ def addargs(parser):
 
     parser.add_argument('--plotvspecpol', type=int, nargs='+',
                         help='Plot vspecpol. Expects int for spec number in vspecpol files')
+
+    parser.add_argument('-ymax', type=float, default=None,
+                        help='Plot range: y-axis')
+
+    parser.add_argument('-ymin', type=float, default=None,
+                        help='Plot range: y-axis')
+
+    parser.add_argument('-xmax', type=float, default=None,
+                        help='Plot range: x-axis')
+
+    parser.add_argument('-xmin', type=float, default=None,
+                        help='Plot range: x-axis')
 
 
 def main(args=None, argsraw=None, **kwargs):
