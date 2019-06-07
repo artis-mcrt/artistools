@@ -317,7 +317,9 @@ def make_magnitudes_plot(modelpaths, args):
 
                 # axarr[plotnumber].axis([0, 60, -16, -19.5])
                 # plt.text(45, -19, key)
-    # plot_lightcurve_from_data(filters_dict.keys(), fig)
+    if args.reflightcurves:
+        for reflightcurve in args.reflightcurves:
+            plot_lightcurve_from_data(filters_dict.keys(), reflightcurve)
 
     plt.minorticks_on()
     plt.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18)
@@ -383,7 +385,10 @@ def colour_evolution_plot(modelpaths, args):
 
         plt.plot(plot_times, diff, label=modelname, linewidth=3)
 
-    # plot_color_evoloution_from_data(filter_names)
+    if args.reflightcurves:
+        for reflightcurve in args.reflightcurves:
+            plot_color_evoloution_from_data(filter_names, reflightcurve)
+
 
     plt.ylabel(f'{filter_names[0]}-{filter_names[1]}')
     plt.xlabel('Time in Days Since Explosion')
@@ -417,37 +422,33 @@ def read_hesma_lightcurve(args):
     return hesma_model
 
 
-def read_12fr_lightcurve():
-    data_path = os.path.join(at.PYDIR, 'data/lightcurves/SN2012fr.dat')
+def read_lightcurve_data(lightcurvefilename):
+    filepath = Path(at.PYDIR, 'data', 'lightcurves', lightcurvefilename)
+    metadata_all = at.spectra.load_yaml_path(filepath.parent.resolve())
+    metadata = metadata_all.get(str(lightcurvefilename), {})
+
+    data_path = os.path.join(at.PYDIR, f"data/lightcurves/{lightcurvefilename}")
     lightcurve_data = pd.read_csv(data_path)
-    lightcurve_data['time'] = lightcurve_data['time'].apply(lambda x: x - 56223)
-    lightcurve_data['magnitude'] = lightcurve_data['magnitude'].apply(lambda x: (x - 5 * np.log10(17.9e6/10))) ##24e6 is distance to 2012fr - needs changed
-    return lightcurve_data
+    lightcurve_data['time'] = lightcurve_data['time'].apply(lambda x: x - (metadata['timecorrection']))
+    lightcurve_data['magnitude'] = lightcurve_data['magnitude'].apply(lambda x: (x - 5 * np.log10(metadata['dist_mpc'] * 10**6 / 10)))
+    return lightcurve_data, metadata
 
 
-def read_11fe_lightcurve():
-    data_path = os.path.join(at.PYDIR, "data/lightcurves/SN2011fe.dat")
-    lightcurve_data = pd.read_csv(data_path)
-    lightcurve_data['time'] = lightcurve_data['time'].apply(lambda x: x - (54975.239+822.6870999999956))
-    lightcurve_data['magnitude'] = lightcurve_data['magnitude'].apply(lambda x: (x - 5 * np.log10(6.4e6 / 10)))
-    return lightcurve_data
-
-
-def plot_lightcurve_from_data(filter_names, axarr):
-    lightcurve_data = read_11fe_lightcurve()
-    linename = 'SN2011fe'
+def plot_lightcurve_from_data(filter_names, lightcurvefilename):
+    lightcurve_data, metadata = read_lightcurve_data(lightcurvefilename)
+    linename = metadata['label']
 
     filter_data = {}
     for plotnumber, filter_name in enumerate(filter_names):
         if filter_name is 'bol':
             continue
         filter_data[filter_name] = lightcurve_data.loc[lightcurve_data['band'] == filter_name]
-        plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], '.', label=linename, color='k')
+        plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], '.', label=linename)
     return linename
 
 
-def plot_color_evoloution_from_data(filter_names):
-    lightcurve_from_data = read_11fe_lightcurve()
+def plot_color_evoloution_from_data(filter_names, lightcurvefilename):
+    lightcurve_from_data, metadata = read_lightcurve_data(lightcurvefilename)
 
     band_data = []
     for i, band in enumerate(filter_names):
@@ -455,7 +456,7 @@ def plot_color_evoloution_from_data(filter_names):
 
     merge_dataframes = band_data[0].merge(band_data[1], how='inner', on=['time'])
     plt.plot(merge_dataframes['time'], merge_dataframes['magnitude_x'] - merge_dataframes['magnitude_y'], '.',
-             label='SN2011fe', color='r')
+             label=metadata['label'])
 
 
 def addargs(parser):
@@ -526,6 +527,9 @@ def addargs(parser):
 
     parser.add_argument('-xmin', type=float, default=None,
                         help='Plot range: x-axis')
+
+    parser.add_argument('-reflightcurves', type=str, nargs='+', dest='reflightcurves',
+                        help='Also plot reference lightcurves from these files')
 
 
 def main(args=None, argsraw=None, **kwargs):
