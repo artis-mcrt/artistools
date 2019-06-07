@@ -52,7 +52,8 @@ def plot_3d_initial_abundances(modelpath, args):
     im = ax.scatter(x, y, c=plotvals[ion], marker="8")
 
     cbar = plt.colorbar(im)
-    cbar.set_label(label=ion, size='x-large') #, fontweight='bold')
+    # cbar.set_label(label=ion, size='x-large') #, fontweight='bold')
+    # cbar.ax.set_title(f'{args.ion}', size='small')
     # cbar.ax.tick_params(labelsize='x-large')
     plt.xlabel(fr"v$_{plotaxis1}$ in 10$^3$ km/s", fontsize='x-large')#, fontweight='bold')
     plt.ylabel(fr"v$_{plotaxis2}$ in 10$^3$ km/s", fontsize='x-large')#, fontweight='bold')
