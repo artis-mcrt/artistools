@@ -1000,6 +1000,9 @@ def plot_artis_spectrum(
 
     if scale_to_peak:
         spectrum['f_lambda_scaled'] = spectrum['f_lambda'] / spectrum['f_lambda'].max() * scale_to_peak
+        if args.plotvspecpol is not None:
+            for angle in args.plotvspecpol:
+                vspectrum[angle]['f_lambda_scaled'] = vspectrum[angle]['f_lambda'] / vspectrum[angle]['f_lambda'].max() * scale_to_peak
 
         ycolumnname = 'f_lambda_scaled'
     else:
@@ -1207,8 +1210,9 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
 
 
 def make_plot(args):
-    font = {'size': 18}
-    matplotlib.rc('font', **font)
+    if not args.figscale:
+        font = {'size': 18}
+        matplotlib.rc('font', **font)
     nrows = len(args.xsplit) + 1
     fig, axes = plt.subplots(
         nrows=nrows, ncols=1, sharey=False,
