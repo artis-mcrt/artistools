@@ -43,12 +43,17 @@ SN2011fe_-5_num20.dat:
   dist_mpc: 6.40
 
 SN2011fe_-0_8_num27.dat:
-  label: 'SN2011fe near maximum'
+  label: 'SN2011fe near max'
   t: -0.8
   dist_mpc: 6.40
 
+SN2011fe_+18_2_num51.dat:
+  label: 'SN2011fe +18.2d'
+  t: 18.2
+  dist_mpc: 6.40
+
 SN2011fe_+21_num53.dat:
-  label: 'SN2011fe +21d after maximum'
+  label: 'SN2011fe +21d'
   t: 21
   dist_mpc: 6.40
 
@@ -132,5 +137,11 @@ SN2013cs_20140325_3Ang.txt:  # (Maguire et al. 2016)
 2018byg_2018-06-08_P200_DBSP_None.ascii:
   label: 'SN2018byg +18d'
   t: 18
+  dist_mpc: 308.026
+  z: 0.066304
+
+2018byg_2018-06-17_Keck1_LRIS_None.ascii:
+  label: 'SN2018byg +27d'
+  t: 27
   dist_mpc: 308.026
   z: 0.066304
