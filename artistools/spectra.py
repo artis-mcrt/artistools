@@ -791,7 +791,7 @@ def load_yaml_path(folderpath):
     yamlpath = Path(folderpath, 'metadata.yml')
     if yamlpath.exists():
         with yamlpath.open('r') as yamlfile:
-            metadata = yaml.load(yamlfile)
+            metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
         return metadata
     return {}
 
