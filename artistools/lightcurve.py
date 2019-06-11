@@ -325,7 +325,10 @@ def make_magnitudes_plot(modelpaths, args):
     plt.minorticks_on()
     plt.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18)
     plt.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=18)
-    plt.ylabel(f'{key} Magnitude')
+    if key == 'rs':
+        plt.ylabel('r Magnitude')
+    else:
+        plt.ylabel(f'{key} Magnitude')
     plt.xlabel('Time in Days Since Explosion')
 
     # plt.axis([10, 30, -14, -18])
@@ -443,6 +446,8 @@ def plot_lightcurve_from_data(filter_names, lightcurvefilename, color):
     for plotnumber, filter_name in enumerate(filter_names):
         if filter_name is 'bol':
             continue
+        elif filter_name == 'rs':
+            filter_name = 'r'
         filter_data[filter_name] = lightcurve_data.loc[lightcurve_data['band'] == filter_name]
         plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], '.', label=linename, color=color)
     return linename
