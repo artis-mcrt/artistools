@@ -79,8 +79,8 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         super().__init__(useOffset=True, useMathText=useMathText)
         # ticker.ScalarFormatter.__init__(self, useOffset=useOffset, useMathText=useMathText)
 
-    def _set_format(self, vmin, vmax):
-        super()._set_format(vmin, vmax)
+    def _set_format(self):
+        super()._set_format()
         if self.decimalplaces is not None:
             self.format = '%1.' + str(self.decimalplaces) + 'f'
             if self._usetex:
