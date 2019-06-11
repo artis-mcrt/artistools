@@ -370,6 +370,17 @@ def plot_polarisation(modelpath, args):
         linelabel = f"{timeavg} days"
     fig = stokes_params[args.stokesparam].plot(x='lambda_angstroms', y=timeavg, label=linelabel)
 
+    if args.ymax is None:
+        args.ymax = 0.5
+    if args.ymin is None:
+        args.ymin = -0.5
+    if args.xmax is None:
+        args.xmax = 10000
+    if args.xmin is None:
+        args.xmin = 0
+    plt.ylim(args.ymin, args.ymax)
+    plt.xlim(args.xmin, args.xmax)
+
     fig.set_ylabel(f"{args.stokesparam} (%)")
     fig.set_xlabel(r'Wavelength ($\AA$)')
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
