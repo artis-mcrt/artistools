@@ -318,8 +318,9 @@ def make_magnitudes_plot(modelpaths, args):
                 # axarr[plotnumber].axis([0, 60, -16, -19.5])
                 # plt.text(45, -19, key)
     if args.reflightcurves:
-        for reflightcurve in args.reflightcurves:
-            plot_lightcurve_from_data(filters_dict.keys(), reflightcurve)
+        colours = ['0.0', '0.3', '0.5']
+        for i, reflightcurve in enumerate(args.reflightcurves):
+            plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, colours[i])
 
     plt.minorticks_on()
     plt.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18)
@@ -434,7 +435,7 @@ def read_lightcurve_data(lightcurvefilename):
     return lightcurve_data, metadata
 
 
-def plot_lightcurve_from_data(filter_names, lightcurvefilename):
+def plot_lightcurve_from_data(filter_names, lightcurvefilename, color):
     lightcurve_data, metadata = read_lightcurve_data(lightcurvefilename)
     linename = metadata['label']
 
@@ -443,7 +444,7 @@ def plot_lightcurve_from_data(filter_names, lightcurvefilename):
         if filter_name is 'bol':
             continue
         filter_data[filter_name] = lightcurve_data.loc[lightcurve_data['band'] == filter_name]
-        plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], '.', label=linename)
+        plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], '.', label=linename, color=color)
     return linename
 
 
