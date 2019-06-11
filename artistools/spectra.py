@@ -365,7 +365,7 @@ def plot_polarisation(modelpath, args):
     vpkt_data = at.get_vpkt_data(modelpath)
 
     if args.plotvspecpol:
-        linelabel = fr"{timeavg} days, cos($\theta$) = {vpkt_data['cos_theta'][angle]}"
+        linelabel = fr"{timeavg} days, cos($\theta$) = {vpkt_data['cos_theta'][angle[0]]}"
     else:
         linelabel = f"{timeavg} days"
     fig = stokes_params[args.stokesparam].plot(x='lambda_angstroms', y=timeavg, label=linelabel)
