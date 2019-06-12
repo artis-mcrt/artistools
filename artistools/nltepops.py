@@ -121,12 +121,16 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
             (dfpop['modelgridindex'] == modelgridindex) & (dfpop['timestep'] == timestep)
             & (dfpop['Z'] == Z) & (dfpop['ion_stage'] == ion_stage) & (dfpop['level'] == -1))
 
+        masknotsuperlevel = (
+            (dfpop['modelgridindex'] == modelgridindex) & (dfpop['timestep'] == timestep)
+            & (dfpop['Z'] == Z) & (dfpop['ion_stage'] == ion_stage) & (dfpop['level'] != -1))
+
         if not dfpop[masksuperlevel].empty:
             levelnumber_sl = dfpop.query(
                 'modelgridindex == @modelgridindex and timestep == @timestep '
                 'and Z == @Z and ion_stage == @ion_stage').level.max()
 
-            if maxlevel >= 0 and levelnumber_sl <= maxlevel:
+            if maxlevel < 0 or levelnumber_sl <= maxlevel:
                 if not noprint:
                     print(f'{at.elsymbols[Z]} {at.roman_numerals[ion_stage]} '
                           f'has a superlevel at level {levelnumber_sl}')
@@ -137,10 +141,6 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
 
             dfpop.loc[masksuperlevel, 'level'] = levelnumber_sl + 2
 
-        masknotsuperlevel = (
-            (dfpop['modelgridindex'] == modelgridindex) & (dfpop['timestep'] == timestep)
-            & (dfpop['Z'] == Z) & (dfpop['ion_stage'] == ion_stage) & (dfpop['level'] != -1))
-
         def f_ltepop(x, T_exc, gs_pop, gsg, gse, ionlevels):
             return (ionlevels.iloc[int(x.level)].g / gsg
                     * math.exp(- (ionlevels.iloc[int(x.level)].energy_ev - gse) / k_b / T_exc))
@@ -148,6 +148,8 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
         for columnname, T_exc in columntemperature_tuples:
             dfpop.loc[masknotsuperlevel, columnname] = dfpop.loc[masknotsuperlevel].apply(
                 f_ltepop, args=(T_exc, gs_pop, gs_g, gs_energy, ionlevels), axis=1)
+
+    return dfpop
 
 
 @lru_cache(maxsize=8)
@@ -288,7 +290,8 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
     if not args.hide_lte_tr:
         lte_columns.append(('n_LTE_T_R', T_R))
 
-    add_lte_pops(modelpath, dfpopthision, lte_columns, args.maxlevel)
+    dfpopthision = add_lte_pops(modelpath, dfpopthision, lte_columns, noprint=False, maxlevel=args.maxlevel)
+    print(dfpopthision[['level', 'n_LTE_T_e']])
 
     if args.maxlevel >= 0:
         dfpopthision.query('level <= @args.maxlevel', inplace=True)
