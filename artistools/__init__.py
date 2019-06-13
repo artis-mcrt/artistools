@@ -79,6 +79,15 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         super().__init__(useOffset=True, useMathText=useMathText)
         # ticker.ScalarFormatter.__init__(self, useOffset=useOffset, useMathText=useMathText)
 
+    def _compute_offset(self):
+        super()._compute_offset()
+        # or use self.orderOfMagnitude
+        stroffset = self.get_offset().replace(r'$\times', '$') + ' '
+        strnewlabel = self.labeltemplate.format(stroffset)
+        # print(f"Renaming axis {strnewlabel}")
+        self.axis.set_label_text(strnewlabel)
+        self.axis.offsetText.set_visible(False)
+
     def _set_format(self):
         super()._set_format()
         if self.decimalplaces is not None:
@@ -98,20 +107,12 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
 
     def set_axis(self, axis):
         super().set_axis(axis)
-        self.axis.set_label_text(self.labeltemplate.format(''))
+        stroffset = self.get_offset().replace(r'$\times', '$') + ' '
+        self.axis.set_label_text(self.labeltemplate.format(stroffset))
 
     def set_labeltemplate(self, labeltemplate):
         self.labeltemplate = labeltemplate
 
-    def _set_orderOfMagnitude(self, range):
-        """Over-riding this to avoid having orderOfMagnitude reset elsewhere."""
-        super()._set_orderOfMagnitude(range)
-        # ticker.ScalarFormatter._set_orderOfMagnitude(self, range)
-        stroffset = self.axis.get_major_formatter().get_offset().replace(r'$\times', '$') + ' '
-        strnewlabel = self.labeltemplate.format(stroffset)
-        # print(f"Renaming axis {strnewlabel}")
-        self.axis.set_label_text(strnewlabel)
-        self.axis.offsetText.set_visible(False)
 
 
 def showtimesteptimes(modelpath=None, numberofcolumns=5):
