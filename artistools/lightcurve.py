@@ -182,18 +182,18 @@ def get_magnitudes(modelpath, args, angle=None):
 
             for timestep, time in enumerate(timearray):
 
-                wave, flux = get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle)
+                wavelength_from_spectrum, flux = get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle)
 
-                if len(wave) > len(wavefilter):
+                if len(wavelength_from_spectrum) > len(wavefilter):
                     interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.)
-                    wavefilter = np.linspace(min(wave), int(max(wave)), len(wave))
+                    wavefilter = np.linspace(min(wavelength_from_spectrum), int(max(wavelength_from_spectrum)), len(wavelength_from_spectrum))
                     transmission = interpolate_fn(wavefilter)
                 else:
-                    interpolate_fn = interp1d(wave, flux, bounds_error=False, fill_value=0.)
-                    wave = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
-                    flux = interpolate_fn(wave)
+                    interpolate_fn = interp1d(wavelength_from_spectrum, flux, bounds_error=False, fill_value=0.)
+                    wavelength_from_spectrum = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
+                    flux = interpolate_fn(wavelength_from_spectrum)
 
-                phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux)
+                phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux)
 
                 if phot_filtobs_sn != 0.0:
                     phot_filtobs_sn = phot_filtobs_sn - 25  # Absolute magnitude
@@ -245,18 +245,18 @@ def get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wave
     else:
         spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep)
 
-    wave, flux = [], []
+    wavelength_from_spectrum, flux = [], []
     for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
         if wavefilter_min <= wavelength <= wavefilter_max:  # to match the spectrum wavelengths to those of the filter
-            wave.append(wavelength)
+            wavelength_from_spectrum.append(wavelength)
             flux.append(flambda)
 
-    return np.array(wave), np.array(flux)
+    return np.array(wavelength_from_spectrum), np.array(flux)
 
 
-def evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux):
+def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux):
     cf = flux * transmission
-    flux_obs = abs(np.trapz(cf, wave))  # using trapezoidal rule to integrate
+    flux_obs = abs(np.trapz(cf, wavelength_from_spectrum))  # using trapezoidal rule to integrate
     if flux_obs == 0.0:
         phot_filtobs_sn = 0.0
     else:
