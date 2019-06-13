@@ -291,7 +291,6 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
         lte_columns.append(('n_LTE_T_R', T_R))
 
     dfpopthision = add_lte_pops(modelpath, dfpopthision, lte_columns, noprint=False, maxlevel=args.maxlevel)
-    print(dfpopthision[['level', 'n_LTE_T_e']])
 
     if args.maxlevel >= 0:
         dfpopthision.query('level <= @args.maxlevel', inplace=True)
