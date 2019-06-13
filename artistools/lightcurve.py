@@ -265,7 +265,7 @@ def evaluate_magnitudes(flux, transmission, wave, zeropointenergyflux):
     return phot_filtobs_sn
 
 
-def make_magnitudes_plot(modelpaths, args):
+def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
     # rows = 1
     # cols = 1
     # f, axarr = plt.subplots(nrows=rows, ncols=cols, sharex='all', sharey='all', squeeze=True)
@@ -320,13 +320,14 @@ def make_magnitudes_plot(modelpaths, args):
     if args.reflightcurves:
         colours = ['0.0', '0.3', '0.5']
         for i, reflightcurve in enumerate(args.reflightcurves):
-            plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, colours[i])
+            plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, colours[i], filternames_conversion_dict)
 
     plt.minorticks_on()
     plt.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18)
     plt.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=18)
-    if key == 'rs':
-        plt.ylabel('r Magnitude')
+
+    if key in filternames_conversion_dict:
+        plt.ylabel(f'{filternames_conversion_dict[key]} Magnitude')
     else:
         plt.ylabel(f'{key} Magnitude')
     plt.xlabel('Time in Days Since Explosion')
@@ -357,7 +358,7 @@ def make_magnitudes_plot(modelpaths, args):
     plt.savefig(args.outputfile, format='pdf')
 
 
-def colour_evolution_plot(modelpaths, args):
+def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
     font = {'size': 20}
     matplotlib.rc('font', **font)
 
@@ -391,7 +392,7 @@ def colour_evolution_plot(modelpaths, args):
 
     if args.reflightcurves:
         for reflightcurve in args.reflightcurves:
-            plot_color_evoloution_from_data(filter_names, reflightcurve)
+            plot_color_evoloution_from_data(filter_names, reflightcurve, filternames_conversion_dict)
 
 
     plt.ylabel(f'{filter_names[0]}-{filter_names[1]}')
@@ -434,11 +435,13 @@ def read_lightcurve_data(lightcurvefilename):
     data_path = os.path.join(at.PYDIR, f"data/lightcurves/{lightcurvefilename}")
     lightcurve_data = pd.read_csv(data_path)
     lightcurve_data['time'] = lightcurve_data['time'].apply(lambda x: x - (metadata['timecorrection']))
-    lightcurve_data['magnitude'] = lightcurve_data['magnitude'].apply(lambda x: (x - 5 * np.log10(metadata['dist_mpc'] * 10**6 / 10)))
+    # m - M = -5log(d) - 5  Get absolute magnitude
+    lightcurve_data['magnitude'] = lightcurve_data['magnitude'].apply(lambda x:
+                                                                    (x - 5 * np.log10(metadata['dist_mpc']*10**6) + 5))
     return lightcurve_data, metadata
 
 
-def plot_lightcurve_from_data(filter_names, lightcurvefilename, color):
+def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, filternames_conversion_dict):
     lightcurve_data, metadata = read_lightcurve_data(lightcurvefilename)
     linename = metadata['label']
 
@@ -446,19 +449,21 @@ def plot_lightcurve_from_data(filter_names, lightcurvefilename, color):
     for plotnumber, filter_name in enumerate(filter_names):
         if filter_name is 'bol':
             continue
-        elif filter_name == 'rs':
-            filter_name = 'r'
+        elif filter_name in filternames_conversion_dict:
+            filter_name = filternames_conversion_dict[filter_name]
         filter_data[filter_name] = lightcurve_data.loc[lightcurve_data['band'] == filter_name]
         plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], '.', label=linename, color=color)
     return linename
 
 
-def plot_color_evoloution_from_data(filter_names, lightcurvefilename):
+def plot_color_evoloution_from_data(filter_names, lightcurvefilename, filternames_conversion_dict):
     lightcurve_from_data, metadata = read_lightcurve_data(lightcurvefilename)
 
     band_data = []
     for i, band in enumerate(filter_names):
-        band_data.append(lightcurve_from_data.loc[lightcurve_from_data['band'] == filter_names[i]])
+        if band in filternames_conversion_dict:
+            band = filternames_conversion_dict[band]
+        band_data.append(lightcurve_from_data.loc[lightcurve_from_data['band'] == band])
 
     merge_dataframes = band_data[0].merge(band_data[1], how='inner', on=['time'])
     plt.plot(merge_dataframes['time'], merge_dataframes['magnitude_x'] - merge_dataframes['magnitude_y'], '.',
@@ -585,12 +590,13 @@ def main(args=None, argsraw=None, **kwargs):
     elif os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
+    filternames_conversion_dict = {'rs': 'r', 'gs': 'g', 'is': 'i'}
     if args.magnitude:
-        make_magnitudes_plot(modelpaths, args)
+        make_magnitudes_plot(modelpaths, filternames_conversion_dict, args)
         print(f'Saved figure: {args.outputfile}')
 
     elif args.colour_evolution:
-        colour_evolution_plot(modelpaths, args)
+        colour_evolution_plot(modelpaths, filternames_conversion_dict, args)
         print(f'Saved figure: {args.outputfile}')
     else:
         make_lightcurve_plot(args.modelpath, args.outputfile, args.frompackets,
