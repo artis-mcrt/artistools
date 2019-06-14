@@ -1577,7 +1577,8 @@ def addargs(parser):
                         help='Average the vspecpol-total files for multiple simulations')
 
     parser.add_argument('--plotvspecpol', type=int, nargs='+',
-                        help='Plot vspecpol. Expects int for spec number in vspecpol files')
+                        help='Plot viewing angles from vspecpol virtual packets. '
+                             'Expects int for angle = spec number in vspecpol files')
 
     parser.add_argument('--stokesparam', type=str, default='I',
                         help='Stokes param to plot. Default I. Expects I, Q or U')
