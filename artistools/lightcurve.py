@@ -352,7 +352,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
     plt.tight_layout()
     # f.set_figheight(8)
     # f.set_figwidth(7)
-    plt.legend(loc='best', frameon=False, fontsize='x-small')
+    if not args.nolegend:
+        plt.legend(loc='best', frameon=False, fontsize='x-small')
     if len(filters_dict) == 1:
         args.outputfile = f'plot{key}lightcurves.pdf'
     plt.savefig(args.outputfile, format='pdf')
@@ -398,7 +399,8 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
     plt.ylabel(f'{filter_names[0]}-{filter_names[1]}')
     plt.xlabel('Time in Days Since Explosion')
     plt.tight_layout()
-    plt.legend(loc='best', frameon=False, fontsize='x-small')
+    if not args.nolegend:
+        plt.legend(loc='best', frameon=False, fontsize='x-small')
     plt.minorticks_on()
     plt.tick_params(axis='both', top=True, right=True)
     plt.xlim(5, 80)
@@ -492,6 +494,9 @@ def addargs(parser):
 
     parser.add_argument('-label', default=[], nargs='*',
                         help='List of series label overrides')
+
+    parser.add_argument('--nolegend', action='store_true',
+                        help='Suppress the legend from the plot')
 
     parser.add_argument('-color', default=[f'C{i}' for i in range(10)], nargs='*',
                         help='List of line colors')
