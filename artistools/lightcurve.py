@@ -353,7 +353,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
     # f.set_figheight(8)
     # f.set_figwidth(7)
     if not args.nolegend:
-        plt.legend(loc='best', frameon=False, fontsize='x-small')
+        plt.legend(loc='best', frameon=True, fontsize='x-small')
     if len(filters_dict) == 1:
         args.outputfile = f'plot{key}lightcurves.pdf'
     plt.savefig(args.outputfile, format='pdf')
@@ -457,22 +457,22 @@ def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, filternam
         elif filter_name in filternames_conversion_dict:
             filter_name = filternames_conversion_dict[filter_name]
         filter_data[filter_name] = lightcurve_data.loc[lightcurve_data['band'] == filter_name]
-
-        # x_values = []
-        # y_values = []
-        # limits_x = []
-        # limits_y = []
-        # for index, row in filter_data[filter_name].iterrows():
-        #     if row['e_magnitude'] != -99.0:
-        #         x_values.append(row['time'])
-        #         y_values.append(row['magnitude'])
-        #     else:
-        #         limits_x.append(row['time'])
-        #         limits_y.append(row['magnitude'])
-        # plt.plot(x_values, y_values, '.', label=linename, color=color)
-        # plt.plot(limits_x, limits_y, '^', label=None, color=color)
-
-        plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], '.', label=linename, color=color)
+        if linename == 'SN2018byg':
+            x_values = []
+            y_values = []
+            limits_x = []
+            limits_y = []
+            for index, row in filter_data[filter_name].iterrows():
+                if row['e_magnitude'] != -99.0:
+                    x_values.append(row['time'])
+                    y_values.append(row['magnitude'])
+                else:
+                    limits_x.append(row['time'])
+                    limits_y.append(row['magnitude'])
+            plt.plot(x_values, y_values, '.', label=linename, color=color)
+            plt.plot(limits_x, limits_y, '^', label=None, color=color)
+        else:
+            plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], '.', label=linename, color=color)
     return linename
 
 
