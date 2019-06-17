@@ -394,7 +394,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
         for i, reflightcurve in enumerate(args.reflightcurves):
             plot_color_evoloution_from_data(filter_names, reflightcurve, colours[i], filternames_conversion_dict)
 
-    plt.ylabel(f'{filter_names[0]}-{filter_names[1]}')
+    plt.ylabel(r'$\Delta$m')
     plt.xlabel('Time in Days Since Explosion')
     plt.tight_layout()
     if not args.nolegend:
@@ -403,6 +403,9 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
     plt.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18)
     plt.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=18)
     plt.xlim(5, 60)
+    plt.ylim(-1, 2.5)
+
+    plt.text(10, 2, f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
 
     args.outputfile = f'plotcolorevolution{filter_names[0]}-{filter_names[1]}.pdf'
     plt.savefig(args.outputfile, format='pdf')
