@@ -377,8 +377,6 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
         plot_times = []
         diff = []
 
-
-
         for filter_1, filter_2 in zip(filters_dict[filter_names[0]], filters_dict[filter_names[1]]):
             # Make magnitude dictionaries where time is the key
             time_dict_1[filter_1[0]] = filter_1[1]
@@ -395,15 +393,15 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
         for reflightcurve in args.reflightcurves:
             plot_color_evoloution_from_data(filter_names, reflightcurve, filternames_conversion_dict)
 
-
     plt.ylabel(f'{filter_names[0]}-{filter_names[1]}')
     plt.xlabel('Time in Days Since Explosion')
     plt.tight_layout()
     if not args.nolegend:
         plt.legend(loc='best', frameon=False, fontsize='x-small')
     plt.minorticks_on()
-    plt.tick_params(axis='both', top=True, right=True)
-    plt.xlim(5, 80)
+    plt.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18)
+    plt.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=18)
+    plt.xlim(5, 60)
 
     plt.savefig(args.outputfile, format='pdf')
 
