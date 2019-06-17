@@ -390,8 +390,9 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
         plt.plot(plot_times, diff, label=modelname, linewidth=3)
 
     if args.reflightcurves:
-        for reflightcurve in args.reflightcurves:
-            plot_color_evoloution_from_data(filter_names, reflightcurve, filternames_conversion_dict)
+        colours = ['0.0', '0.3', '0.5']
+        for i, reflightcurve in enumerate(args.reflightcurves):
+            plot_color_evoloution_from_data(filter_names, reflightcurve, colours[i], filternames_conversion_dict)
 
     plt.ylabel(f'{filter_names[0]}-{filter_names[1]}')
     plt.xlabel('Time in Days Since Explosion')
@@ -403,6 +404,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
     plt.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=18)
     plt.xlim(5, 60)
 
+    args.outputfile = f'plotcolorevolution{filter_names[0]}-{filter_names[1]}.pdf'
     plt.savefig(args.outputfile, format='pdf')
 
 
@@ -471,7 +473,7 @@ def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, filternam
     return linename
 
 
-def plot_color_evoloution_from_data(filter_names, lightcurvefilename, filternames_conversion_dict):
+def plot_color_evoloution_from_data(filter_names, lightcurvefilename, color, filternames_conversion_dict):
     lightcurve_from_data, metadata = read_lightcurve_data(lightcurvefilename)
 
     band_data = []
@@ -482,7 +484,7 @@ def plot_color_evoloution_from_data(filter_names, lightcurvefilename, filtername
 
     merge_dataframes = band_data[0].merge(band_data[1], how='inner', on=['time'])
     plt.plot(merge_dataframes['time'], merge_dataframes['magnitude_x'] - merge_dataframes['magnitude_y'], '.',
-             label=metadata['label'])
+             label=metadata['label'], color=color)
 
 
 def addargs(parser):
