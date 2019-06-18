@@ -318,7 +318,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
                 # axarr[plotnumber].axis([0, 60, -16, -19.5])
                 # plt.text(45, -19, key)
     if args.reflightcurves:
-        colours = ['0.0', '0.3', '0.5']
+        colours = args.refspeccolors
+        print(args.refspeccolors)
         for i, reflightcurve in enumerate(args.reflightcurves):
             plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, colours[i], filternames_conversion_dict)
 
@@ -390,7 +391,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
         plt.plot(plot_times, diff, label=modelname, linewidth=3)
 
     if args.reflightcurves:
-        colours = ['0.0', '0.3', '0.5']
+        colours = args.refspeccolors
         for i, reflightcurve in enumerate(args.reflightcurves):
             plot_color_evoloution_from_data(filter_names, reflightcurve, colours[i], filternames_conversion_dict)
 
@@ -402,8 +403,17 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
     plt.minorticks_on()
     plt.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18)
     plt.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=18)
-    plt.xlim(5, 60)
-    plt.ylim(-1, 2.5)
+    if args.ymax is None:
+        args.ymax = 1
+    if args.ymin is None:
+        args.ymin = -1
+    if args.xmax is None:
+        args.xmax = 80
+    if args.xmin is None:
+        args.xmin = 5
+
+    plt.ylim(args.ymin, args.ymax)
+    plt.xlim(args.xmin, args.xmax)
 
     plt.text(10, 2, f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
 
@@ -564,6 +574,9 @@ def addargs(parser):
 
     parser.add_argument('-reflightcurves', type=str, nargs='+', dest='reflightcurves',
                         help='Also plot reference lightcurves from these files')
+
+    parser.add_argument('-refspeccolors', default=['0.0', '0.3', '0.5'], nargs='*',
+                        help='Set a list of color for reference spectra')
 
 
 def main(args=None, argsraw=None, **kwargs):
