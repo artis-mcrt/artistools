@@ -33,7 +33,7 @@ PSNJ11492548_20160202_3Ang.txt:  # (Maguire et al. 2018)
   z: 0.0056
 
 SN2011fe_-10_num5.dat:
-  label: 'SN2011fe -10d before maximum'
+  label: 'SN2011fe -10d'
   t: -10.7
   dist_mpc: 6.40
 
@@ -42,8 +42,13 @@ SN2011fe_-5_num20.dat:
   t: -5
   dist_mpc: 6.40
 
+SN2011fe_-1.8_num26.dat:
+  label: 'SN2011fe -1.8d'
+  t: -1.8
+  dist_mpc: 6.40
+
 SN2011fe_-0_8_num27.dat:
-  label: 'SN2011fe near max'
+  label: 'SN2011fe'
   t: -0.8
   dist_mpc: 6.40
 
@@ -145,3 +150,9 @@ SN2013cs_20140325_3Ang.txt:  # (Maguire et al. 2016)
   t: 27
   dist_mpc: 278.82235323
   z: 0.066304
+
+2016jhr_18days.dat:
+  label: 'SN2016jhr 18 days'
+  t: 18
+  dist_mpc: 546.5
+  scale_factor: 4
