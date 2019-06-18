@@ -319,9 +319,10 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
                 # plt.text(45, -19, key)
     if args.reflightcurves:
         colours = args.refspeccolors
+        markers = args.refspecmarkers
         print(args.refspeccolors)
         for i, reflightcurve in enumerate(args.reflightcurves):
-            plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, colours[i], filternames_conversion_dict)
+            plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, colours[i], markers[i], filternames_conversion_dict)
 
     plt.minorticks_on()
     plt.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18)
@@ -392,8 +393,9 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
 
     if args.reflightcurves:
         colours = args.refspeccolors
+        markers = args.refspecmarkers
         for i, reflightcurve in enumerate(args.reflightcurves):
-            plot_color_evoloution_from_data(filter_names, reflightcurve, colours[i], filternames_conversion_dict)
+            plot_color_evoloution_from_data(filter_names, reflightcurve, colours[i], markers[i], filternames_conversion_dict)
 
     plt.ylabel(r'$\Delta$m')
     plt.xlabel('Time in Days Since Explosion')
@@ -456,7 +458,7 @@ def read_lightcurve_data(lightcurvefilename):
     return lightcurve_data, metadata
 
 
-def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, filternames_conversion_dict):
+def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, marker, filternames_conversion_dict):
     lightcurve_data, metadata = read_lightcurve_data(lightcurvefilename)
     linename = metadata['label']
 
@@ -482,11 +484,11 @@ def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, filternam
             plt.plot(x_values, y_values, '.', label=linename, color=color)
             plt.plot(limits_x, limits_y, '^', label=None, color=color)
         else:
-            plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], '.', label=linename, color=color)
+            plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], marker, label=linename, color=color)
     return linename
 
 
-def plot_color_evoloution_from_data(filter_names, lightcurvefilename, color, filternames_conversion_dict):
+def plot_color_evoloution_from_data(filter_names, lightcurvefilename, color, marker, filternames_conversion_dict):
     lightcurve_from_data, metadata = read_lightcurve_data(lightcurvefilename)
 
     band_data = []
@@ -496,7 +498,7 @@ def plot_color_evoloution_from_data(filter_names, lightcurvefilename, color, fil
         band_data.append(lightcurve_from_data.loc[lightcurve_from_data['band'] == band])
 
     merge_dataframes = band_data[0].merge(band_data[1], how='inner', on=['time'])
-    plt.plot(merge_dataframes['time'], merge_dataframes['magnitude_x'] - merge_dataframes['magnitude_y'], '.',
+    plt.plot(merge_dataframes['time'], merge_dataframes['magnitude_x'] - merge_dataframes['magnitude_y'], marker,
              label=metadata['label'], color=color)
 
 
@@ -577,6 +579,9 @@ def addargs(parser):
 
     parser.add_argument('-refspeccolors', default=['0.0', '0.3', '0.5'], nargs='*',
                         help='Set a list of color for reference spectra')
+
+    parser.add_argument('-refspecmarkers', default=['.', 'h', 's'], nargs='*',
+                        help='Set a list of markers for reference spectra')
 
 
 def main(args=None, argsraw=None, **kwargs):
