@@ -113,35 +113,35 @@ SN2013cs_20140325_3Ang.txt:  # (Maguire et al. 2016)
 2018byg_2018-05-08_P200_DBSP_None.ascii:
   label: 'SN2018byg -10d'
   t: -10
-  dist_mpc: 308.026
+  dist_mpc: 278.82235323
   z: 0.066304
 
 2018byg_2018-05-14_Keck1_LRIS_None.ascii:
   label: 'SN2018byg -5d'
   t: -5
-  dist_mpc: 308.026
+  dist_mpc: 278.82235323
   z: 0.066304
 
 2018byg_2018-05-17_P200_DBSP_None.ascii:
   label: 'SN2018byg -2d'
   t: -2
-  dist_mpc: 308.026
+  dist_mpc: 278.82235323
   z: 0.066304
 
 2018byg_2018-06-03_Keck1_MOSFIRE_None.ascii:
   label: 'SN2018byg +18d MOSFIRE'
   t: 15
-  dist_mpc: 308.026
+  dist_mpc: 278.82235323
   z: 0.066304
 
 2018byg_2018-06-08_P200_DBSP_None.ascii:
   label: 'SN2018byg +18d'
   t: 18
-  dist_mpc: 308.026
+  dist_mpc: 278.82235323
   z: 0.066304
 
 2018byg_2018-06-17_Keck1_LRIS_None.ascii:
   label: 'SN2018byg +27d'
   t: 27
-  dist_mpc: 308.026
+  dist_mpc: 278.82235323
   z: 0.066304

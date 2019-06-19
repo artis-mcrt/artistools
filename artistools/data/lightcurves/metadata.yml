@@ -11,4 +11,5 @@ SN2012fr.dat:
 SN2018byg.dat:
   label: 'SN2018byg'
   timecorrection: -18 #rise time of 18 days since explosion #58227.054 #58242.270 -15.216
-  dist_mpc: 308.026
+  dist_mpc: 278.82235323
+  z: 0.066304
