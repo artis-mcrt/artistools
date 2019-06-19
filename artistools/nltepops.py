@@ -125,10 +125,18 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
             (dfpop['modelgridindex'] == modelgridindex) & (dfpop['timestep'] == timestep)
             & (dfpop['Z'] == Z) & (dfpop['ion_stage'] == ion_stage) & (dfpop['level'] != -1))
 
+        def f_ltepop(x, T_exc, gsg, gse, ionlevels):
+            return (ionlevels.iloc[int(x.level)].g / gsg
+                    * math.exp(- (ionlevels.iloc[int(x.level)].energy_ev - gse) / k_b / T_exc))
+
+        for columnname, T_exc in columntemperature_tuples:
+            dfpop.loc[masknotsuperlevel, columnname] = dfpop.loc[masknotsuperlevel].apply(
+                f_ltepop, args=(T_exc, gs_g, gs_energy, ionlevels), axis=1)
+
         if not dfpop[masksuperlevel].empty:
             levelnumber_sl = dfpop.query(
                 'modelgridindex == @modelgridindex and timestep == @timestep '
-                'and Z == @Z and ion_stage == @ion_stage').level.max()
+                'and Z == @Z and ion_stage == @ion_stage').level.max() + 1
 
             if maxlevel < 0 or levelnumber_sl <= maxlevel:
                 if not noprint:
@@ -136,18 +144,10 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
                           f'has a superlevel at level {levelnumber_sl}')
 
                 for columnname, T_exc in columntemperature_tuples:
-                    dfpop.loc[masksuperlevel, columnname] = gs_pop * ionlevels.iloc[levelnumber_sl:].eval(
+                    dfpop.loc[masksuperlevel, columnname] = ionlevels.iloc[levelnumber_sl:].eval(
                         'g / @gs_g * exp(- (energy_ev - @gs_energy) / @k_b / @T_exc)').sum()
 
             dfpop.loc[masksuperlevel, 'level'] = levelnumber_sl + 2
-
-        def f_ltepop(x, T_exc, gs_pop, gsg, gse, ionlevels):
-            return (ionlevels.iloc[int(x.level)].g / gsg
-                    * math.exp(- (ionlevels.iloc[int(x.level)].energy_ev - gse) / k_b / T_exc))
-
-        for columnname, T_exc in columntemperature_tuples:
-            dfpop.loc[masknotsuperlevel, columnname] = dfpop.loc[masknotsuperlevel].apply(
-                f_ltepop, args=(T_exc, gs_pop, gs_g, gs_energy, ionlevels), axis=1)
 
     return dfpop
 
@@ -381,7 +381,7 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
 
         ycolumnname = 'departure_coeff'
     else:
-        ax.set_ylabel('Population density (cm$^-2$)')
+        ax.set_ylabel(r'Population density (cm$^{-3}$)')
 
         ycolumnname = 'n_NLTE'
 
