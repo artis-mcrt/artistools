@@ -997,10 +997,13 @@ def plot_artis_spectrum(
         spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
                                 reftime=timeavg, args=args)
         if args.plotvspecpol is not None:
+            vpkt_data = at.get_vpkt_data(modelpath)
+            if args.timemin < vpkt_data['initial_time'] or args.timemax > vpkt_data['final_time']:
+                print(f"Timestep out of range of virtual packets: start time {vpkt_data['initial_time']} days end time {vpkt_data['final_time']} days")
+                quit()
             vspectrum = {}
             for angle in args.plotvspecpol:
                 vspectrum[angle] = get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=filterfunc)
-            vpkt_data = at.get_vpkt_data(modelpath)
 
     spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
 
