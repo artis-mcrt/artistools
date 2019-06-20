@@ -417,9 +417,12 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
     plt.ylim(args.ymin, args.ymax)
     plt.xlim(args.xmin, args.xmax)
 
-    plt.text(10, 2, f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
-
     args.outputfile = f'plotcolorevolution{filter_names[0]}-{filter_names[1]}.pdf'
+    for i in range(2):
+        if filter_names[i] in filternames_conversion_dict:
+            filter_names[i] = filternames_conversion_dict[filter_names[i]]
+    plt.text(10, args.ymax - 0.5, f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
+
     plt.savefig(args.outputfile, format='pdf')
 
 
@@ -481,8 +484,8 @@ def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, marker, f
                 else:
                     limits_x.append(row['time'])
                     limits_y.append(row['magnitude'])
-            plt.plot(x_values, y_values, '.', label=linename, color=color)
-            plt.plot(limits_x, limits_y, '^', label=None, color=color)
+            plt.plot(x_values, y_values, marker, label=linename, color=color)
+            # plt.plot(limits_x, limits_y, 'v', label=None, color=color)
         else:
             plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], marker, label=linename, color=color)
     return linename
@@ -496,6 +499,12 @@ def plot_color_evoloution_from_data(filter_names, lightcurvefilename, color, mar
         if band in filternames_conversion_dict:
             band = filternames_conversion_dict[band]
         band_data.append(lightcurve_from_data.loc[lightcurve_from_data['band'] == band])
+
+    for i in range(2):
+        if metadata['label'] == 'SN 2018byg':
+            band_data[i] = band_data[i][band_data[i].e_magnitude != -99.00]
+        if metadata['label'] in ['SN 2016jhr', 'SN 2018byg']:
+            band_data[i]['time'] = band_data[i]['time'].apply(lambda x: round(float(x)))  # round to nearest day
 
     merge_dataframes = band_data[0].merge(band_data[1], how='inner', on=['time'])
     plt.plot(merge_dataframes['time'], merge_dataframes['magnitude_x'] - merge_dataframes['magnitude_y'], marker,
