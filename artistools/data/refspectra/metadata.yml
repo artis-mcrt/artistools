@@ -33,34 +33,46 @@ PSNJ11492548_20160202_3Ang.txt:  # (Maguire et al. 2018)
   z: 0.0056
 
 SN2011fe_-10_num5.dat:
-  label: 'SN2011fe -10d'
+  label: 'SN 2011fe -10d'
   t: -10.7
   dist_mpc: 6.40
+  z: 0.0056
 
 SN2011fe_-5_num20.dat:
-  label: 'SN2011fe -5d'
+  label: 'SN 2011fe -5d'
   t: -5
   dist_mpc: 6.40
+  z: 0.0056
 
 SN2011fe_-1.8_num26.dat:
-  label: 'SN2011fe -1.8d'
+  label: 'SN 2011fe -1.8d'
   t: -1.8
   dist_mpc: 6.40
+  z: 0.0056
 
 SN2011fe_-0_8_num27.dat:
-  label: 'SN2011fe'
+  label: 'SN 2011fe'
   t: -0.8
   dist_mpc: 6.40
+  z: 0.0056
 
 SN2011fe_+18_2_num51.dat:
-  label: 'SN2011fe +18.2d'
+  label: 'SN 2011fe +18.2d'
   t: 18.2
   dist_mpc: 6.40
+  z: 0.0056
 
 SN2011fe_+21_num53.dat:
-  label: 'SN2011fe +21d'
+  label: 'SN 2011fe +21d'
   t: 21
   dist_mpc: 6.40
+  z: 0.0056
+
+SN2011fe_+28.2_num59.dat:
+  label: 'SN 2011fe +28.2d'
+  t: 28.2
+  dist_mpc: 6.40
+  z: 0.0056
 
 SN2012fr_-10_num8.dat:
   label: 'SN2011fr -10d before maximum'
@@ -116,43 +128,54 @@ SN2013cs_20140325_3Ang.txt:  # (Maguire et al. 2016)
   z: 0.00924
 
 2018byg_2018-05-08_P200_DBSP_None.ascii:
-  label: 'SN2018byg -10d'
+  label: 'SN 2018byg -10d'
   t: -10
   dist_mpc: 278.82235323
   z: 0.066304
 
 2018byg_2018-05-14_Keck1_LRIS_None.ascii:
-  label: 'SN2018byg -5d'
+  label: 'SN 2018byg -5d'
   t: -5
   dist_mpc: 278.82235323
   z: 0.066304
 
 2018byg_2018-05-17_P200_DBSP_None.ascii:
-  label: 'SN2018byg -2d'
+  label: 'SN 2018byg -2d'
   t: -2
   dist_mpc: 278.82235323
   z: 0.066304
+  scale_factor: 2.5
 
 2018byg_2018-06-03_Keck1_MOSFIRE_None.ascii:
-  label: 'SN2018byg +18d MOSFIRE'
+  label: 'SN 2018byg +18d MOSFIRE'
   t: 15
   dist_mpc: 278.82235323
   z: 0.066304
+  scale_factor: 2.5
 
 2018byg_2018-06-08_P200_DBSP_None.ascii:
-  label: 'SN2018byg +18d'
+  label: 'SN 2018byg +18d'
   t: 18
   dist_mpc: 278.82235323
   z: 0.066304
+  scale_factor: 40
 
 2018byg_2018-06-17_Keck1_LRIS_None.ascii:
-  label: 'SN2018byg +27d'
+  label: 'SN 2018byg +27d'
   t: 27
   dist_mpc: 278.82235323
   z: 0.066304
 
 2016jhr_18days.dat:
-  label: 'SN2016jhr 18 days'
+  label: 'SN 2016jhr -2d'
   t: 18
   dist_mpc: 546.5
-  scale_factor: 4
+#  z: 0.11737 #Already redshift corrected?
+  scale_factor: 3.5
+
+2016jhr_29.33d_num1.dat:
+  label: 'SN 2016jhr +47 days'
+  t: 47
+  dist_mpc: 546.5
+  z: 0.11737
+#  scale_factor: 2.5
