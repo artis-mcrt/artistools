@@ -226,7 +226,7 @@ def get_vpkt_data(modelpath):
         vpkt_data['cos_theta'] = [float(x) for x in vpkt.readline().split()]
         vpkt_data['phi'] = [int(x) for x in vpkt.readline().split()]
         line4 = vpkt.readline()
-        _, vpkt_data['initial_timestep'], vpkt_data['final_timestep'] = [int(x) for x in vpkt.readline().split()]
+        _, vpkt_data['initial_time'], vpkt_data['final_time'] = [int(x) for x in vpkt.readline().split()]
         return vpkt_data
 
 
