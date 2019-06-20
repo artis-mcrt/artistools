@@ -814,7 +814,7 @@ def plot_reference_spectrum(
 
     flambdaindex = metadata.get('f_lambda_columnindex', 1)
 
-    specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
+    specdata = pd.read_csv(filepath, delim_whitespace=True, header=None, comment='#',
                            names=['lambda_angstroms', 'f_lambda'], usecols=[0, flambdaindex])
 
     if 'e_bminusv' in metadata:
