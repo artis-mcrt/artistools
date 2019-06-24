@@ -312,6 +312,24 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
                     linelabel = f'{modelname}'
                 fig = plt.plot(time, magnitude, label=linelabel, linewidth=3)
 
+                # tmax = time[magnitude.index(min(magnitude))]
+                # tmax_plus1 = time[magnitude.index(min(magnitude)) + 1]
+                # tmax_minus1 = time[magnitude.index(min(magnitude)) - 1]
+                # if tmax_plus1 > tmax_minus1:
+                #     tmax = np.mean([tmax, tmax_plus1])
+                # else:
+                #     tmax = np.mean([tmax, tmax_minus1])
+                # print(tmax_minus1, tmax_plus1)
+                #
+                # def match_closest_time(reftime):
+                #     return str("{}".format(min([float(x) for x in time], key=lambda x: abs(x - reftime))))
+                #
+                # time_after15days = match_closest_time(tmax + 15)
+                # mag_after15days = magnitude[time.index(float(time_after15days))]
+                # print(f'{key}max ={min(magnitude)} at time = {tmax}')
+                # print(f'After 15 days ({time_after15days}) mag = {mag_after15days}')
+                # print(f'deltam15 = {min(magnitude) - mag_after15days}')
+
                 if modelnumber == 0 and args.plot_hesma_model and key in hesma_model.keys():
                     plt.plot(hesma_model.t, hesma_model[key], color='black')
 
@@ -355,7 +373,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
     # f.set_figheight(8)
     # f.set_figwidth(7)
     if not args.nolegend:
-        plt.legend(loc='best', frameon=True, fontsize='x-small')
+        plt.legend(loc='best', frameon=True, fontsize='xx-small')
     if len(filters_dict) == 1:
         args.outputfile = f'plot{key}lightcurves.pdf'
     plt.savefig(args.outputfile, format='pdf')
