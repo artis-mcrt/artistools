@@ -148,6 +148,10 @@ def get_magnitudes(modelpath, args, angle=None):
         stokes_params = at.spectra.get_polarisation(angle, modelpath)
         vspecdata = stokes_params['I']
         timearray = vspecdata.keys()[1:]
+    if args and args.plotviewingangle:
+        specfilename = os.path.join(modelpath, "specpol_res.out")
+        specdataresdata = pd.read_csv(specfilename, delim_whitespace=True)
+        timearray = [i for i in specdataresdata.columns.values[1:] if i[-2] != '.']
     elif Path(modelpath, 'specpol.out').is_file():
         specfilename = os.path.join(modelpath, "specpol.out")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
@@ -181,6 +185,10 @@ def get_magnitudes(modelpath, args, angle=None):
                 = get_filter_data(filterdir, filter_name)
 
             for timestep, time in enumerate(timearray):
+                if args.xmin and float(time) < args.xmin:
+                    continue
+                if args.xmax and float(time) > args.xmax:
+                    continue
 
                 wavelength_from_spectrum, flux = get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle)
 
@@ -206,7 +214,12 @@ def bolometric_magnitude(modelpath, timearray, args, angle=None):
     magnitudes = []
     for timestep, time in enumerate(timearray):
         if angle != None:
-            spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
+            if args.plotvspecpol:
+                spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
+            else:
+                res_specdata = at.spectra.read_specpol_res(modelpath, angle=angle)
+                spectrum = at.spectra.get_res_spectrum(modelpath, timestep, timestep, angle=angle,
+                                                       res_specdata=res_specdata)
         else:
             spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep)
 
@@ -241,7 +254,12 @@ def get_filter_data(filterdir, filter_name):
 
 def get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle=None):
     if angle != None:
-        spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
+        if args.plotvspecpol:
+            spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
+        else:
+            res_specdata = at.spectra.read_specpol_res(modelpath, angle=angle)
+            spectrum = at.spectra.get_res_spectrum(modelpath, timestep, timestep, angle=angle,
+                                                   res_specdata=res_specdata)
     else:
         spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep)
 
@@ -276,6 +294,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
 
     if args.plotvspecpol:
         angles = args.plotvspecpol
+    elif args.plotviewingangle:
+        angles = args.plotviewingangle
     else:
         angles = [None]
 
@@ -304,10 +324,12 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
                 for t, mag in filters_dict[key]:
                     time.append(float(t))
                     magnitude.append(mag)
-                if angle != None:
+                if args.plotvspecpol and angle != None:
                     vpkt_data = at.get_vpkt_data(modelpath)
                     viewing_angle = round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
                     linelabel = fr"$\theta$ = {viewing_angle}"
+                elif args.plotviewingangle and angle != None:
+                    linelabel = f"bin number {angle}"
                 else:
                     linelabel = f'{modelname}'
                 fig = plt.plot(time, magnitude, label=linelabel, linewidth=3)
@@ -338,7 +360,6 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
     if args.reflightcurves:
         colours = args.refspeccolors
         markers = args.refspecmarkers
-        print(args.refspeccolors)
         for i, reflightcurve in enumerate(args.reflightcurves):
             plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, colours[i], markers[i], filternames_conversion_dict)
 
@@ -408,6 +429,14 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
                 diff.append(time_dict_1[time] - time_dict_2[time])
 
         plt.plot(plot_times, diff, label=modelname, linewidth=3)
+
+        # def match_closest_time(reftime):
+        #     return ("{}".format(min([float(x) for x in plot_times], key=lambda x: abs(x - reftime))))
+        #
+        # tmax_B = 17.0
+        # tmax_B = float(match_closest_time(tmax_B))
+        # print(f'{filter_names[0]} - {filter_names[1]} at t_Bmax ({tmax_B}) = '
+        #       f'{diff[plot_times.index(tmax_B)]}')
 
     if args.reflightcurves:
         colours = args.refspeccolors
@@ -588,6 +617,9 @@ def addargs(parser):
 
     parser.add_argument('--plotvspecpol', type=int, nargs='+',
                         help='Plot vspecpol. Expects int for spec number in vspecpol files')
+
+    parser.add_argument('--plotviewingangle', type=int, nargs='+',
+                        help='Plot viewing angles. Expects int for angle number in specpol_res.out')
 
     parser.add_argument('-ymax', type=float, default=None,
                         help='Plot range: y-axis')
