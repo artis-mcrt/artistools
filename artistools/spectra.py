@@ -207,6 +207,87 @@ def get_spectrum_from_packets(
     return dfspectrum
 
 
+def read_specpol_res(modelpath, angle, args=None):
+    """Return specpol_res data for a given angle"""
+    if Path(modelpath, 'specpol_res.out').is_file():
+        specfilename = Path(modelpath) / "specpol_res.out"
+    else:
+        specfilename = modelpath
+
+    specdata = pd.read_csv(specfilename, delim_whitespace=True, header=None)
+
+    index_to_split = specdata.index[specdata.iloc[:, 1] == specdata.iloc[0, 1]]
+    # print(len(index_to_split))
+    res_specdata = []
+    for i, index_value in enumerate(index_to_split):
+        if index_value != index_to_split[-1]:
+            chunk = specdata.iloc[index_value:index_to_split[i + 1], :]
+        else:
+            chunk = specdata.iloc[index_value:, :]
+        res_specdata.append(chunk)
+
+    for i, res_spec in enumerate(res_specdata):
+        res_specdata[i] = res_specdata[i].rename(columns=res_specdata[i].iloc[0]).drop(res_specdata[i].index[0])
+        res_specdata[i] = res_specdata[i].rename(columns={0: 'nu'})
+        res_specdata[i].columns = res_specdata[i].columns.astype(str)
+
+    if angle is None:
+        angle = args.plotviewingangle[0]
+
+    stokes_params = get_polarisation(args, specdata=res_specdata[angle])
+    if args is not None:
+        res_specdata[angle] = stokes_params[args.stokesparam]
+    else:
+        res_specdata[angle] = stokes_params['I']
+
+    return res_specdata
+
+
+
+def get_res_spectrum(modelpath, timestepmin: int, timestepmax=-1, angle=None, res_specdata=None, fnufilterfunc=None, reftime=None, args=None):
+    """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
+    if timestepmax < 0:
+        timestepmax = timestepmin
+
+    print(f"Reading spectrum at timestep {timestepmin}")
+
+    if angle is None:
+        angle = args.plotviewingangle[0]
+
+    if res_specdata is None:
+        print("Reading specpol_res.out")
+        res_specdata = read_specpol_res(modelpath, angle)
+
+    nu = res_specdata[angle].loc[:, 'nu'].values
+    # if master_branch:
+    timearray = [i for i in res_specdata[angle].columns.values[1:] if i[-2] != '.']
+    # else:
+    #     timearray = res_specdata[angle].columns.values[1:]
+
+    def timefluxscale(timestep):
+        if reftime is not None:
+            return math.exp(float(timearray[timestep]) / 133.) / math.exp(reftime / 133.)
+        else:
+            return 1.
+    # for angle in args.plotviewingangle:
+    f_nu = stackspectra([(res_specdata[angle][res_specdata[angle].columns[timestep + 1]] * timefluxscale(timestep),
+                          at.get_timestep_time_delta(timestep, timearray))
+                         for timestep in range(timestepmin, timestepmax + 1)])
+
+    # best to use the filter on this list because it
+    # has regular sampling
+    if fnufilterfunc:
+        print("Applying filter to ARTIS spectrum")
+        f_nu = fnufilterfunc(f_nu)
+
+    dfspectrum = pd.DataFrame({'nu': nu, 'f_nu': f_nu})
+    dfspectrum.sort_values(by='nu', ascending=False, inplace=True)
+
+    dfspectrum.eval('lambda_angstroms = @c / nu', local_dict={'c': const.c.to('angstrom/s').value}, inplace=True)
+    dfspectrum.eval('f_lambda = f_nu * nu / lambda_angstroms', inplace=True)
+    return dfspectrum
+
+
 def make_virtual_spectra_summed_file(modelpath):
     mpiranklist = at.get_mpiranklist(modelpath)
     vspecpol_data_old = []
@@ -996,6 +1077,8 @@ def plot_artis_spectrum(
     else:
         spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
                                 reftime=timeavg, args=args)
+        # res_spectrum = get_res_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
+        #                         reftime=timeavg, args=args)
         if args.plotvspecpol is not None:
             vpkt_data = at.get_vpkt_data(modelpath)
             if args.timemin < vpkt_data['initial_time'] or args.timemax > vpkt_data['final_time']:
@@ -1585,6 +1668,9 @@ def addargs(parser):
 
     parser.add_argument('--stokesparam', type=str, default='I',
                         help='Stokes param to plot. Default I. Expects I, Q or U')
+
+    parser.add_argument('--plotviewingangle', type=int, nargs='+',
+                        help='Plot viewing angles. Expects int for angle number in specpol_res.out')
 
 
 def main(args=None, argsraw=None, **kwargs):
