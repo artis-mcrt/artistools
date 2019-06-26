@@ -10,14 +10,68 @@ from astropy import units as u
 import matplotlib
 
 
+def get_2d_model_input(modelpath):
+    filepath = os.path.join(modelpath, 'model.txt')
+    num_lines = sum(1 for line in open(filepath))
+    skiprowlist = [0, 1, 2]
+    skiprowlistodds = skiprowlist + [i for i in range(3, num_lines) if i % 2 == 1]
+    skiprowlistevens = skiprowlist + [i for i in range(3, num_lines) if i % 2 == 0]
+
+    model1stlines = pd.read_csv(filepath, delim_whitespace=True, header=None, skiprows=skiprowlistevens)
+    model2ndlines = pd.read_csv(filepath, delim_whitespace=True, header=None, skiprows=skiprowlistodds)
+
+    model = pd.concat([model1stlines, model2ndlines], axis=1)
+    column_names = ['inputcellid', 'cellpos_mid[r]', 'cellpos_mid[z]', 'rho_model',
+                    'ffe', 'fni', 'fco', 'ffe52', 'fcr48']
+    model.columns = column_names
+    return model
+
+
 def get_3d_model_input(modelpath):
     model = pd.read_csv(os.path.join(modelpath[0], 'model.txt'), delim_whitespace=True, header=None, skiprows=3)
     columns = ['inputcellid', 'cellpos_in[z]', 'cellpos_in[y]', 'cellpos_in[x]', 'rho_model',
                'ffe', 'fni', 'fco', 'ffe52', 'fcr48']
     model = pd.DataFrame(model.values.reshape(-1, 10))
     model.columns = columns
-    # print(model)
     return model
+
+
+def plot_2d_initial_abundances(modelpath, args):
+    model = get_2d_model_input(modelpath[0])
+    abundances = at.get_initialabundances(modelpath[0])
+
+    abundances['inputcellid'] = abundances['inputcellid'].apply(lambda x: float(x))
+
+    merge_dfs = model.merge(abundances, how='inner', on='inputcellid')
+
+    with open(os.path.join(modelpath[0], 'model.txt'), 'r') as fmodelin:
+        fmodelin.readline()  # npts r, npts z
+        t_model = float(fmodelin.readline())  # days
+        vmax = float(fmodelin.readline())  # v_max in [cm/s]
+
+    r = merge_dfs['cellpos_mid[r]'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
+    z = merge_dfs['cellpos_mid[z]'] / t_model * (u.cm / u.day).to('km/s') / 10 ** 3
+
+    ion = f'X_{args.ion}'
+    font = {'weight': 'bold',
+            'size': 18}
+
+    f = plt.figure(figsize=(4, 5))
+    ax = f.add_subplot(111)
+    im = ax.scatter(r, z, c=merge_dfs[ion], marker="8")
+
+    f.colorbar(im)
+    plt.xlabel(fr"v$_x$ in 10$^3$ km/s", fontsize='x-large')#, fontweight='bold')
+    plt.ylabel(fr"v$_z$ in 10$^3$ km/s", fontsize='x-large')#, fontweight='bold')
+    plt.text(20, 25, args.ion, color='white', fontweight='bold', fontsize='x-large')
+    plt.tight_layout()
+    ax.labelsize: 'large'
+    # plt.title(f'At {sliceaxis} = {sliceposition}')
+
+    outfilename = f'plot_composition{args.ion}.pdf'
+    plt.savefig(Path(modelpath[0]) / outfilename, format='pdf')
+    print(f'Saved {outfilename}')
+
 
 def plot_3d_initial_abundances(modelpath, args):
     model = get_3d_model_input(modelpath[0])
@@ -90,7 +144,14 @@ def main(args=None, argsraw=None, **kwargs):
 
     args.modelpath = at.flatten_list(args.modelpath)
 
-    plot_3d_initial_abundances(args.modelpath, args)
+    inputparams = at.get_inputparams(args.modelpath[0])
+    print(inputparams['n_dimensions'])
+
+    if inputparams['n_dimensions'] == 2:
+        plot_2d_initial_abundances(args.modelpath, args)
+
+    if inputparams['n_dimensions'] == 3:
+        plot_3d_initial_abundances(args.modelpath, args)
 
 if __name__ == '__main__':
     main()
