@@ -449,7 +449,25 @@ def plot_polarisation(modelpath, args):
         linelabel = fr"{timeavg} days, cos($\theta$) = {vpkt_data['cos_theta'][angle[0]]}"
     else:
         linelabel = f"{timeavg} days"
-    fig = stokes_params[args.stokesparam].plot(x='lambda_angstroms', y=timeavg, label=linelabel)
+
+    if args.binflux:
+        new_lambda_angstroms = []
+        binned_flux = []
+
+        wavelengths = stokes_params[args.stokesparam]['lambda_angstroms']
+        fluxes = stokes_params[args.stokesparam][timeavg]
+        nbins = 5
+
+        for i in np.arange(0, len(wavelengths-nbins), nbins):
+            new_lambda_angstroms.append(wavelengths[i + int(nbins/2)])
+            sum_flux = 0
+            for j in range(i, i+nbins):
+                sum_flux += fluxes[j]
+            binned_flux.append(sum_flux/nbins)
+
+        fig = plt.plot(new_lambda_angstroms, binned_flux)
+    else:
+        fig = stokes_params[args.stokesparam].plot(x='lambda_angstroms', y=timeavg, label=linelabel)
 
     if args.ymax is None:
         args.ymax = 0.5
@@ -462,8 +480,8 @@ def plot_polarisation(modelpath, args):
     plt.ylim(args.ymin, args.ymax)
     plt.xlim(args.xmin, args.xmax)
 
-    fig.set_ylabel(f"{args.stokesparam} (%)")
-    fig.set_xlabel(r'Wavelength ($\AA$)')
+    plt.ylabel(f"{args.stokesparam} (%)")
+    plt.xlabel(r'Wavelength ($\AA$)')
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
     plt.savefig(modelpath / figname, format='pdf')
     print(f"Saved {figname}")
@@ -1109,10 +1127,27 @@ def plot_artis_spectrum(
         supxmin, supxmax = axis.get_xlim()
         if args.plotvspecpol is not None:
             for angle in args.plotvspecpol:
-                viewing_angle =round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
-                vspectrum[angle].query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
-                    x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
-                    label=fr"$\theta$ = {viewing_angle}" if index == 0 else None) #, {timeavg:.2f} days
+                if args.binflux:
+                    new_lambda_angstroms = []
+                    binned_flux = []
+
+                    wavelengths = vspectrum[angle]['lambda_angstroms']
+                    fluxes = vspectrum[angle][ycolumnname]
+                    nbins = 5
+
+                    for i in np.arange(0, len(wavelengths - nbins), nbins):
+                        new_lambda_angstroms.append(wavelengths[i + int(nbins/2)])
+                        sum_flux = 0
+                        for j in range(i, i + nbins):
+                            sum_flux += fluxes[j]
+                        binned_flux.append(sum_flux / nbins)
+
+                    plt.plot(new_lambda_angstroms, binned_flux)
+                else:
+                    viewing_angle =round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
+                    vspectrum[angle].query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
+                        x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
+                        label=fr"$\theta$ = {viewing_angle}" if index == 0 else None) #, {timeavg:.2f} days
         else:
             spectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
                 x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
@@ -1671,6 +1706,9 @@ def addargs(parser):
 
     parser.add_argument('--plotviewingangle', type=int, nargs='+',
                         help='Plot viewing angles. Expects int for angle number in specpol_res.out')
+
+    parser.add_argument('--binflux', action='store_true',
+                        help='Bin flux over wavelength and average flux')
 
 
 def main(args=None, argsraw=None, **kwargs):
