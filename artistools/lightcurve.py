@@ -148,7 +148,7 @@ def get_magnitudes(modelpath, args, angle=None):
         stokes_params = at.spectra.get_polarisation(angle, modelpath)
         vspecdata = stokes_params['I']
         timearray = vspecdata.keys()[1:]
-    if args and args.plotviewingangle:
+    elif args and args.plotviewingangle:
         specfilename = os.path.join(modelpath, "specpol_res.out")
         specdataresdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdataresdata.columns.values[1:] if i[-2] != '.']
