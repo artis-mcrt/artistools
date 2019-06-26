@@ -218,6 +218,32 @@ def get_modeldata(filename):
     return modeldata, t_model_init_days
 
 
+def get_2d_modeldata(modelpath):
+    filepath = os.path.join(modelpath, 'model.txt')
+    num_lines = sum(1 for line in open(filepath))
+    skiprowlist = [0, 1, 2]
+    skiprowlistodds = skiprowlist + [i for i in range(3, num_lines) if i % 2 == 1]
+    skiprowlistevens = skiprowlist + [i for i in range(3, num_lines) if i % 2 == 0]
+
+    model1stlines = pd.read_csv(filepath, delim_whitespace=True, header=None, skiprows=skiprowlistevens)
+    model2ndlines = pd.read_csv(filepath, delim_whitespace=True, header=None, skiprows=skiprowlistodds)
+
+    model = pd.concat([model1stlines, model2ndlines], axis=1)
+    column_names = ['inputcellid', 'cellpos_mid[r]', 'cellpos_mid[z]', 'rho_model',
+                    'ffe', 'fni', 'fco', 'ffe52', 'fcr48']
+    model.columns = column_names
+    return model
+
+
+def get_3d_modeldata(modelpath):
+    model = pd.read_csv(os.path.join(modelpath[0], 'model.txt'), delim_whitespace=True, header=None, skiprows=3)
+    columns = ['inputcellid', 'cellpos_in[z]', 'cellpos_in[y]', 'cellpos_in[x]', 'rho_model',
+               'ffe', 'fni', 'fco', 'ffe52', 'fcr48']
+    model = pd.DataFrame(model.values.reshape(-1, 10))
+    model.columns = columns
+    return model
+
+
 def get_vpkt_data(modelpath):
     filename = Path(modelpath, 'vpkt.txt')
     vpkt_data = {}
