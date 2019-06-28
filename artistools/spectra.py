@@ -207,6 +207,87 @@ def get_spectrum_from_packets(
     return dfspectrum
 
 
+def read_specpol_res(modelpath, angle, args=None):
+    """Return specpol_res data for a given angle"""
+    if Path(modelpath, 'specpol_res.out').is_file():
+        specfilename = Path(modelpath) / "specpol_res.out"
+    else:
+        specfilename = modelpath
+
+    specdata = pd.read_csv(specfilename, delim_whitespace=True, header=None)
+
+    index_to_split = specdata.index[specdata.iloc[:, 1] == specdata.iloc[0, 1]]
+    # print(len(index_to_split))
+    res_specdata = []
+    for i, index_value in enumerate(index_to_split):
+        if index_value != index_to_split[-1]:
+            chunk = specdata.iloc[index_value:index_to_split[i + 1], :]
+        else:
+            chunk = specdata.iloc[index_value:, :]
+        res_specdata.append(chunk)
+
+    for i, res_spec in enumerate(res_specdata):
+        res_specdata[i] = res_specdata[i].rename(columns=res_specdata[i].iloc[0]).drop(res_specdata[i].index[0])
+        res_specdata[i] = res_specdata[i].rename(columns={0: 'nu'})
+        res_specdata[i].columns = res_specdata[i].columns.astype(str)
+
+    if angle is None:
+        angle = args.plotviewingangle[0]
+
+    stokes_params = get_polarisation(args, specdata=res_specdata[angle])
+    if args is not None:
+        res_specdata[angle] = stokes_params[args.stokesparam]
+    else:
+        res_specdata[angle] = stokes_params['I']
+
+    return res_specdata
+
+
+
+def get_res_spectrum(modelpath, timestepmin: int, timestepmax=-1, angle=None, res_specdata=None, fnufilterfunc=None, reftime=None, args=None):
+    """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
+    if timestepmax < 0:
+        timestepmax = timestepmin
+
+    print(f"Reading spectrum at timestep {timestepmin}")
+
+    if angle is None:
+        angle = args.plotviewingangle[0]
+
+    if res_specdata is None:
+        print("Reading specpol_res.out")
+        res_specdata = read_specpol_res(modelpath, angle)
+
+    nu = res_specdata[angle].loc[:, 'nu'].values
+    # if master_branch:
+    timearray = [i for i in res_specdata[angle].columns.values[1:] if i[-2] != '.']
+    # else:
+    #     timearray = res_specdata[angle].columns.values[1:]
+
+    def timefluxscale(timestep):
+        if reftime is not None:
+            return math.exp(float(timearray[timestep]) / 133.) / math.exp(reftime / 133.)
+        else:
+            return 1.
+    # for angle in args.plotviewingangle:
+    f_nu = stackspectra([(res_specdata[angle][res_specdata[angle].columns[timestep + 1]] * timefluxscale(timestep),
+                          at.get_timestep_time_delta(timestep, timearray))
+                         for timestep in range(timestepmin, timestepmax + 1)])
+
+    # best to use the filter on this list because it
+    # has regular sampling
+    if fnufilterfunc:
+        print("Applying filter to ARTIS spectrum")
+        f_nu = fnufilterfunc(f_nu)
+
+    dfspectrum = pd.DataFrame({'nu': nu, 'f_nu': f_nu})
+    dfspectrum.sort_values(by='nu', ascending=False, inplace=True)
+
+    dfspectrum.eval('lambda_angstroms = @c / nu', local_dict={'c': const.c.to('angstrom/s').value}, inplace=True)
+    dfspectrum.eval('f_lambda = f_nu * nu / lambda_angstroms', inplace=True)
+    return dfspectrum
+
+
 def make_virtual_spectra_summed_file(modelpath):
     mpiranklist = at.get_mpiranklist(modelpath)
     vspecpol_data_old = []
@@ -368,7 +449,25 @@ def plot_polarisation(modelpath, args):
         linelabel = fr"{timeavg} days, cos($\theta$) = {vpkt_data['cos_theta'][angle[0]]}"
     else:
         linelabel = f"{timeavg} days"
-    fig = stokes_params[args.stokesparam].plot(x='lambda_angstroms', y=timeavg, label=linelabel)
+
+    if args.binflux:
+        new_lambda_angstroms = []
+        binned_flux = []
+
+        wavelengths = stokes_params[args.stokesparam]['lambda_angstroms']
+        fluxes = stokes_params[args.stokesparam][timeavg]
+        nbins = 5
+
+        for i in np.arange(0, len(wavelengths-nbins), nbins):
+            new_lambda_angstroms.append(wavelengths[i + int(nbins/2)])
+            sum_flux = 0
+            for j in range(i, i+nbins):
+                sum_flux += fluxes[j]
+            binned_flux.append(sum_flux/nbins)
+
+        fig = plt.plot(new_lambda_angstroms, binned_flux)
+    else:
+        fig = stokes_params[args.stokesparam].plot(x='lambda_angstroms', y=timeavg, label=linelabel)
 
     if args.ymax is None:
         args.ymax = 0.5
@@ -381,8 +480,8 @@ def plot_polarisation(modelpath, args):
     plt.ylim(args.ymin, args.ymax)
     plt.xlim(args.xmin, args.xmax)
 
-    fig.set_ylabel(f"{args.stokesparam} (%)")
-    fig.set_xlabel(r'Wavelength ($\AA$)')
+    plt.ylabel(f"{args.stokesparam} (%)")
+    plt.xlabel(r'Wavelength ($\AA$)')
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
     plt.savefig(modelpath / figname, format='pdf')
     print(f"Saved {figname}")
@@ -814,7 +913,7 @@ def plot_reference_spectrum(
 
     flambdaindex = metadata.get('f_lambda_columnindex', 1)
 
-    specdata = pd.read_csv(filepath, delim_whitespace=True, header=None,
+    specdata = pd.read_csv(filepath, delim_whitespace=True, header=None, comment='#',
                            names=['lambda_angstroms', 'f_lambda'], usecols=[0, flambdaindex])
 
     if 'e_bminusv' in metadata:
@@ -996,11 +1095,16 @@ def plot_artis_spectrum(
     else:
         spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
                                 reftime=timeavg, args=args)
+        # res_spectrum = get_res_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
+        #                         reftime=timeavg, args=args)
         if args.plotvspecpol is not None:
+            vpkt_data = at.get_vpkt_data(modelpath)
+            if args.timemin < vpkt_data['initial_time'] or args.timemax > vpkt_data['final_time']:
+                print(f"Timestep out of range of virtual packets: start time {vpkt_data['initial_time']} days end time {vpkt_data['final_time']} days")
+                quit()
             vspectrum = {}
             for angle in args.plotvspecpol:
                 vspectrum[angle] = get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=filterfunc)
-            vpkt_data = at.get_vpkt_data(modelpath)
 
     spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
 
@@ -1023,10 +1127,27 @@ def plot_artis_spectrum(
         supxmin, supxmax = axis.get_xlim()
         if args.plotvspecpol is not None:
             for angle in args.plotvspecpol:
-                viewing_angle =round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
-                vspectrum[angle].query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
-                    x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
-                    label=fr"$\theta$ = {viewing_angle}" if index == 0 else None) #, {timeavg:.2f} days
+                if args.binflux:
+                    new_lambda_angstroms = []
+                    binned_flux = []
+
+                    wavelengths = vspectrum[angle]['lambda_angstroms']
+                    fluxes = vspectrum[angle][ycolumnname]
+                    nbins = 5
+
+                    for i in np.arange(0, len(wavelengths - nbins), nbins):
+                        new_lambda_angstroms.append(wavelengths[i + int(nbins/2)])
+                        sum_flux = 0
+                        for j in range(i, i + nbins):
+                            sum_flux += fluxes[j]
+                        binned_flux.append(sum_flux / nbins)
+
+                    plt.plot(new_lambda_angstroms, binned_flux)
+                else:
+                    viewing_angle =round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
+                    vspectrum[angle].query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
+                        x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
+                        label=fr"$\theta$ = {viewing_angle}" if index == 0 else None) #, {timeavg:.2f} days
         else:
             spectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
                 x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
@@ -1577,10 +1698,17 @@ def addargs(parser):
                         help='Average the vspecpol-total files for multiple simulations')
 
     parser.add_argument('--plotvspecpol', type=int, nargs='+',
-                        help='Plot vspecpol. Expects int for spec number in vspecpol files')
+                        help='Plot viewing angles from vspecpol virtual packets. '
+                             'Expects int for angle = spec number in vspecpol files')
 
     parser.add_argument('--stokesparam', type=str, default='I',
                         help='Stokes param to plot. Default I. Expects I, Q or U')
+
+    parser.add_argument('--plotviewingangle', type=int, nargs='+',
+                        help='Plot viewing angles. Expects int for angle number in specpol_res.out')
+
+    parser.add_argument('--binflux', action='store_true',
+                        help='Bin flux over wavelength and average flux')
 
 
 def main(args=None, argsraw=None, **kwargs):

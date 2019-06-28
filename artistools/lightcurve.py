@@ -148,6 +148,10 @@ def get_magnitudes(modelpath, args, angle=None):
         stokes_params = at.spectra.get_polarisation(angle, modelpath)
         vspecdata = stokes_params['I']
         timearray = vspecdata.keys()[1:]
+    elif args and args.plotviewingangle:
+        specfilename = os.path.join(modelpath, "specpol_res.out")
+        specdataresdata = pd.read_csv(specfilename, delim_whitespace=True)
+        timearray = [i for i in specdataresdata.columns.values[1:] if i[-2] != '.']
     elif Path(modelpath, 'specpol.out').is_file():
         specfilename = os.path.join(modelpath, "specpol.out")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
@@ -181,6 +185,10 @@ def get_magnitudes(modelpath, args, angle=None):
                 = get_filter_data(filterdir, filter_name)
 
             for timestep, time in enumerate(timearray):
+                if args.xmin and float(time) < args.xmin:
+                    continue
+                if args.xmax and float(time) > args.xmax:
+                    continue
 
                 wavelength_from_spectrum, flux = get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle)
 
@@ -206,7 +214,12 @@ def bolometric_magnitude(modelpath, timearray, args, angle=None):
     magnitudes = []
     for timestep, time in enumerate(timearray):
         if angle != None:
-            spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
+            if args.plotvspecpol:
+                spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
+            else:
+                res_specdata = at.spectra.read_specpol_res(modelpath, angle=angle)
+                spectrum = at.spectra.get_res_spectrum(modelpath, timestep, timestep, angle=angle,
+                                                       res_specdata=res_specdata)
         else:
             spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep)
 
@@ -241,7 +254,12 @@ def get_filter_data(filterdir, filter_name):
 
 def get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle=None):
     if angle != None:
-        spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
+        if args.plotvspecpol:
+            spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
+        else:
+            res_specdata = at.spectra.read_specpol_res(modelpath, angle=angle)
+            spectrum = at.spectra.get_res_spectrum(modelpath, timestep, timestep, angle=angle,
+                                                   res_specdata=res_specdata)
     else:
         spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep)
 
@@ -276,6 +294,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
 
     if args.plotvspecpol:
         angles = args.plotvspecpol
+    elif args.plotviewingangle:
+        angles = args.plotviewingangle
     else:
         angles = [None]
 
@@ -304,13 +324,33 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
                 for t, mag in filters_dict[key]:
                     time.append(float(t))
                     magnitude.append(mag)
-                if angle != None:
+                if args.plotvspecpol and angle != None:
                     vpkt_data = at.get_vpkt_data(modelpath)
                     viewing_angle = round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
                     linelabel = fr"$\theta$ = {viewing_angle}"
+                elif args.plotviewingangle and angle != None:
+                    linelabel = f"bin number {angle}"
                 else:
                     linelabel = f'{modelname}'
                 fig = plt.plot(time, magnitude, label=linelabel, linewidth=3)
+
+                # tmax = time[magnitude.index(min(magnitude))]
+                # tmax_plus1 = time[magnitude.index(min(magnitude)) + 1]
+                # tmax_minus1 = time[magnitude.index(min(magnitude)) - 1]
+                # if tmax_plus1 > tmax_minus1:
+                #     tmax = np.mean([tmax, tmax_plus1])
+                # else:
+                #     tmax = np.mean([tmax, tmax_minus1])
+                # print(tmax_minus1, tmax_plus1)
+                #
+                # def match_closest_time(reftime):
+                #     return str("{}".format(min([float(x) for x in time], key=lambda x: abs(x - reftime))))
+                #
+                # time_after15days = match_closest_time(tmax + 15)
+                # mag_after15days = magnitude[time.index(float(time_after15days))]
+                # print(f'{key}max ={min(magnitude)} at time = {tmax}')
+                # print(f'After 15 days ({time_after15days}) mag = {mag_after15days}')
+                # print(f'deltam15 = {min(magnitude) - mag_after15days}')
 
                 if modelnumber == 0 and args.plot_hesma_model and key in hesma_model.keys():
                     plt.plot(hesma_model.t, hesma_model[key], color='black')
@@ -318,9 +358,10 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
                 # axarr[plotnumber].axis([0, 60, -16, -19.5])
                 # plt.text(45, -19, key)
     if args.reflightcurves:
-        colours = ['0.0', '0.3', '0.5']
+        colours = args.refspeccolors
+        markers = args.refspecmarkers
         for i, reflightcurve in enumerate(args.reflightcurves):
-            plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, colours[i], filternames_conversion_dict)
+            plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, colours[i], markers[i], filternames_conversion_dict)
 
     plt.minorticks_on()
     plt.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18)
@@ -352,7 +393,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
     plt.tight_layout()
     # f.set_figheight(8)
     # f.set_figwidth(7)
-    plt.legend(loc='best', frameon=False, fontsize='x-small')
+    if not args.nolegend:
+        plt.legend(loc='best', frameon=True, fontsize='xx-small')
     if len(filters_dict) == 1:
         args.outputfile = f'plot{key}lightcurves.pdf'
     plt.savefig(args.outputfile, format='pdf')
@@ -376,8 +418,6 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
         plot_times = []
         diff = []
 
-
-
         for filter_1, filter_2 in zip(filters_dict[filter_names[0]], filters_dict[filter_names[1]]):
             # Make magnitude dictionaries where time is the key
             time_dict_1[filter_1[0]] = filter_1[1]
@@ -390,18 +430,45 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
 
         plt.plot(plot_times, diff, label=modelname, linewidth=3)
 
+        # def match_closest_time(reftime):
+        #     return ("{}".format(min([float(x) for x in plot_times], key=lambda x: abs(x - reftime))))
+        #
+        # tmax_B = 17.0
+        # tmax_B = float(match_closest_time(tmax_B))
+        # print(f'{filter_names[0]} - {filter_names[1]} at t_Bmax ({tmax_B}) = '
+        #       f'{diff[plot_times.index(tmax_B)]}')
+
     if args.reflightcurves:
-        for reflightcurve in args.reflightcurves:
-            plot_color_evoloution_from_data(filter_names, reflightcurve, filternames_conversion_dict)
+        colours = args.refspeccolors
+        markers = args.refspecmarkers
+        for i, reflightcurve in enumerate(args.reflightcurves):
+            plot_color_evoloution_from_data(filter_names, reflightcurve, colours[i], markers[i], filternames_conversion_dict)
 
-
-    plt.ylabel(f'{filter_names[0]}-{filter_names[1]}')
+    plt.ylabel(r'$\Delta$m')
     plt.xlabel('Time in Days Since Explosion')
     plt.tight_layout()
-    plt.legend(loc='best', frameon=False, fontsize='x-small')
+    if not args.nolegend:
+        plt.legend(loc='best', frameon=False, fontsize='x-small')
     plt.minorticks_on()
-    plt.tick_params(axis='both', top=True, right=True)
-    plt.xlim(5, 80)
+    plt.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18)
+    plt.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=18)
+    if args.ymax is None:
+        args.ymax = 1
+    if args.ymin is None:
+        args.ymin = -1
+    if args.xmax is None:
+        args.xmax = 80
+    if args.xmin is None:
+        args.xmin = 5
+
+    plt.ylim(args.ymin, args.ymax)
+    plt.xlim(args.xmin, args.xmax)
+
+    args.outputfile = f'plotcolorevolution{filter_names[0]}-{filter_names[1]}.pdf'
+    for i in range(2):
+        if filter_names[i] in filternames_conversion_dict:
+            filter_names[i] = filternames_conversion_dict[filter_names[i]]
+    plt.text(10, args.ymax - 0.5, f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
 
     plt.savefig(args.outputfile, format='pdf')
 
@@ -441,7 +508,7 @@ def read_lightcurve_data(lightcurvefilename):
     return lightcurve_data, metadata
 
 
-def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, filternames_conversion_dict):
+def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, marker, filternames_conversion_dict):
     lightcurve_data, metadata = read_lightcurve_data(lightcurvefilename)
     linename = metadata['label']
 
@@ -452,26 +519,26 @@ def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, filternam
         elif filter_name in filternames_conversion_dict:
             filter_name = filternames_conversion_dict[filter_name]
         filter_data[filter_name] = lightcurve_data.loc[lightcurve_data['band'] == filter_name]
-
-        # x_values = []
-        # y_values = []
-        # limits_x = []
-        # limits_y = []
-        # for index, row in filter_data[filter_name].iterrows():
-        #     if row['e_magnitude'] != -99.0:
-        #         x_values.append(row['time'])
-        #         y_values.append(row['magnitude'])
-        #     else:
-        #         limits_x.append(row['time'])
-        #         limits_y.append(row['magnitude'])
-        # plt.plot(x_values, y_values, '.', label=linename, color=color)
-        # plt.plot(limits_x, limits_y, '^', label=None, color=color)
-
-        plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], '.', label=linename, color=color)
+        if linename == 'SN2018byg':
+            x_values = []
+            y_values = []
+            limits_x = []
+            limits_y = []
+            for index, row in filter_data[filter_name].iterrows():
+                if row['e_magnitude'] != -99.0:
+                    x_values.append(row['time'])
+                    y_values.append(row['magnitude'])
+                else:
+                    limits_x.append(row['time'])
+                    limits_y.append(row['magnitude'])
+            plt.plot(x_values, y_values, marker, label=linename, color=color)
+            # plt.plot(limits_x, limits_y, 'v', label=None, color=color)
+        else:
+            plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], marker, label=linename, color=color)
     return linename
 
 
-def plot_color_evoloution_from_data(filter_names, lightcurvefilename, filternames_conversion_dict):
+def plot_color_evoloution_from_data(filter_names, lightcurvefilename, color, marker, filternames_conversion_dict):
     lightcurve_from_data, metadata = read_lightcurve_data(lightcurvefilename)
 
     band_data = []
@@ -480,9 +547,15 @@ def plot_color_evoloution_from_data(filter_names, lightcurvefilename, filtername
             band = filternames_conversion_dict[band]
         band_data.append(lightcurve_from_data.loc[lightcurve_from_data['band'] == band])
 
+    for i in range(2):
+        if metadata['label'] == 'SN 2018byg':
+            band_data[i] = band_data[i][band_data[i].e_magnitude != -99.00]
+        if metadata['label'] in ['SN 2016jhr', 'SN 2018byg']:
+            band_data[i]['time'] = band_data[i]['time'].apply(lambda x: round(float(x)))  # round to nearest day
+
     merge_dataframes = band_data[0].merge(band_data[1], how='inner', on=['time'])
-    plt.plot(merge_dataframes['time'], merge_dataframes['magnitude_x'] - merge_dataframes['magnitude_y'], '.',
-             label=metadata['label'])
+    plt.plot(merge_dataframes['time'], merge_dataframes['magnitude_x'] - merge_dataframes['magnitude_y'], marker,
+             label=metadata['label'], color=color)
 
 
 def addargs(parser):
@@ -492,6 +565,9 @@ def addargs(parser):
 
     parser.add_argument('-label', default=[], nargs='*',
                         help='List of series label overrides')
+
+    parser.add_argument('--nolegend', action='store_true',
+                        help='Suppress the legend from the plot')
 
     parser.add_argument('-color', default=[f'C{i}' for i in range(10)], nargs='*',
                         help='List of line colors')
@@ -542,6 +618,9 @@ def addargs(parser):
     parser.add_argument('--plotvspecpol', type=int, nargs='+',
                         help='Plot vspecpol. Expects int for spec number in vspecpol files')
 
+    parser.add_argument('--plotviewingangle', type=int, nargs='+',
+                        help='Plot viewing angles. Expects int for angle number in specpol_res.out')
+
     parser.add_argument('-ymax', type=float, default=None,
                         help='Plot range: y-axis')
 
@@ -556,6 +635,12 @@ def addargs(parser):
 
     parser.add_argument('-reflightcurves', type=str, nargs='+', dest='reflightcurves',
                         help='Also plot reference lightcurves from these files')
+
+    parser.add_argument('-refspeccolors', default=['0.0', '0.3', '0.5'], nargs='*',
+                        help='Set a list of color for reference spectra')
+
+    parser.add_argument('-refspecmarkers', default=['.', 'h', 's'], nargs='*',
+                        help='Set a list of markers for reference spectra')
 
 
 def main(args=None, argsraw=None, **kwargs):

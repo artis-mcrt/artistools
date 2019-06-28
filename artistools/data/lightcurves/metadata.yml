@@ -1,15 +1,25 @@
 SN2011fe.dat:
-  label: 'SN2011fe'
+  label: 'SN 2011fe'
   timecorrection: 55796.687  #explosion date of August 23.687 ± 0.014 UT #  #55797.9261  #54975.239 + 822.6870999999956
   dist_mpc: 6.4
 
 SN2012fr.dat:
-  label: 'SN2012fr'
+  label: 'SN 2012fr'
   timecorrection: 56223
   dist_mpc: 17.9
 
 SN2018byg.dat:
-  label: 'SN2018byg'
+  label: 'SN 2018byg'
   timecorrection: -18 #rise time of 18 days since explosion #58227.054 #58242.270 -15.216
   dist_mpc: 278.82235323
   z: 0.066304
+
+SN2016jhr_BV.dat:
+  label: 'SN 2016jhr'
+  timecorrection: -20 #B band maximum of 20 days
+  dist_mpc: 546.5
+
+SN2016jhr_gri.dat:
+  label: 'SN 2016jhr'
+  timecorrection: 2457483.3459707 # 2457482.8459707 + 0.5
+  dist_mpc: 546.5
