@@ -881,7 +881,10 @@ def main(args=None, argsraw=None, **kwargs):
         if args.velocity >= 0.:
             modelgridindexlist = [at.get_closest_cell(modelpath, args.velocity)]
         else:
-            modelgridindexlist = at.parse_range_list(args.modelgridindex)
+            if args.modelgridindex is None:
+                modelgridindexlist = [0]
+            else:
+                modelgridindexlist = at.parse_range_list(args.modelgridindex)
 
         timesteplast = len(at.get_timestep_times_float(modelpath))
         if args.timedays:
