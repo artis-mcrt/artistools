@@ -904,14 +904,8 @@ def load_yaml_path(folderpath):
     return {}
 
 
-def plot_reference_spectrum(
-        filename, axis, xmin, xmax, flambdafilterfunc=None, scale_to_peak=None, scale_to_dist_mpc=1,
-        scaletoreftime=None, **plotkwargs):
-    """Plot a single reference spectrum.
+def get_reference_spectrum(filename):
 
-    The filename must be in space separated text formated with the first two
-    columns being wavelength in Angstroms, and F_lambda
-    """
     if Path(filename).is_file():
         filepath = Path(filename)
     else:
@@ -964,6 +958,19 @@ def plot_reference_spectrum(
 
     if 'z' in metadata:
         specdata['lambda_angstroms'] /= (1 + metadata['z'])
+
+    return specdata, metadata
+
+
+def plot_reference_spectrum(
+        filename, axis, xmin, xmax, flambdafilterfunc=None, scale_to_peak=None, scale_to_dist_mpc=1,
+        scaletoreftime=None, **plotkwargs):
+    """Plot a single reference spectrum.
+
+    The filename must be in space separated text formated with the first two
+    columns being wavelength in Angstroms, and F_lambda
+    """
+    specdata, metadata = get_reference_spectrum(filename)
 
     # scale to flux at required distance
     if scale_to_dist_mpc:
