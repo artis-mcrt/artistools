@@ -13,6 +13,8 @@ SN2018byg.dat:
   timecorrection: -18 #rise time of 18 days since explosion #58227.054 #58242.270 -15.216
   dist_mpc: 278.82235323
   z: 0.066304
+  a_v: 0.032
+  r_v: 3.1
 
 SN2016jhr_BV.dat:
   label: 'SN 2016jhr'
@@ -23,3 +25,5 @@ SN2016jhr_gri.dat:
   label: 'SN 2016jhr'
   timecorrection: 2457483.3459707 # 2457482.8459707 + 0.5
   dist_mpc: 546.5
+  e_bminusv: 0.0263
+  r_v: 3.1
