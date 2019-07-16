@@ -214,31 +214,40 @@ def read_specpol_res(modelpath, angle, args=None):
     else:
         specfilename = modelpath
 
-    specdata = pd.read_csv(specfilename, delim_whitespace=True, header=None)
+    specdata = pd.read_csv(specfilename, delim_whitespace=True, header=None, dtype=str)
 
     index_to_split = specdata.index[specdata.iloc[:, 1] == specdata.iloc[0, 1]]
     # print(len(index_to_split))
     res_specdata = []
     for i, index_value in enumerate(index_to_split):
         if index_value != index_to_split[-1]:
-            chunk = specdata.iloc[index_value:index_to_split[i + 1], :]
+            chunk = specdata.iloc[index_to_split[i]:index_to_split[i + 1], :]
         else:
-            chunk = specdata.iloc[index_value:, :]
+            chunk = specdata.iloc[index_to_split[i]:, :]
         res_specdata.append(chunk)
+    # print(res_specdata[0])
+
+    columns = res_specdata[0].iloc[0]
+    # print(columns)
+    for i, res_spec in enumerate(res_specdata):
+        res_specdata[i] = res_specdata[i].rename(columns=columns).drop(res_specdata[i].index[0])
+        numberofIvalues = len(res_specdata[i].columns.drop_duplicates())
+        res_specdata[i] = res_specdata[i].iloc[:, : numberofIvalues]
+        res_specdata[i] = res_specdata[i].astype(float)
+        res_specdata[i] =res_specdata[i].to_numpy()
+
+    # Averages over 10 bins to reduce noise
+
+    for start_bin in np.arange(start=0, stop=100, step=10):
+        # print(start_bin)
+        for bin_number in range(start_bin+1, start_bin+10):
+            # print(bin_number)
+            res_specdata[start_bin] += res_specdata[bin_number]
+        res_specdata[start_bin] /= 10
 
     for i, res_spec in enumerate(res_specdata):
-        res_specdata[i] = res_specdata[i].rename(columns=res_specdata[i].iloc[0]).drop(res_specdata[i].index[0])
-        res_specdata[i] = res_specdata[i].rename(columns={0: 'nu'})
-        res_specdata[i].columns = res_specdata[i].columns.astype(str)
-
-    if angle is None:
-        angle = args.plotviewingangle[0]
-
-    stokes_params = get_polarisation(args, specdata=res_specdata[angle])
-    if args is not None:
-        res_specdata[angle] = stokes_params[args.stokesparam]
-    else:
-        res_specdata[angle] = stokes_params['I']
+        res_specdata[i] = pd.DataFrame(data=res_specdata[i], columns=columns[:numberofIvalues])
+        res_specdata[i] = res_specdata[i].rename(columns={'0': 'nu'})
 
     return res_specdata
 
@@ -249,7 +258,7 @@ def get_res_spectrum(modelpath, timestepmin: int, timestepmax=-1, angle=None, re
     if timestepmax < 0:
         timestepmax = timestepmin
 
-    print(f"Reading spectrum at timestep {timestepmin}")
+    # print(f"Reading spectrum at timestep {timestepmin}")
 
     if angle is None:
         angle = args.plotviewingangle[0]
@@ -480,7 +489,7 @@ def plot_polarisation(modelpath, args):
     plt.ylim(args.ymin, args.ymax)
     plt.xlim(args.xmin, args.xmax)
 
-    plt.ylabel(f"{args.stokesparam} (%)")
+    plt.ylabel(f"{args.stokesparam}")
     plt.xlabel(r'Wavelength ($\AA$)')
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
     plt.savefig(modelpath / figname, format='pdf')
@@ -916,7 +925,33 @@ def plot_reference_spectrum(
     specdata = pd.read_csv(filepath, delim_whitespace=True, header=None, comment='#',
                            names=['lambda_angstroms', 'f_lambda'], usecols=[0, flambdaindex])
 
-    if 'e_bminusv' in metadata:
+    # new_lambda_angstroms = []
+    # binned_flux = []
+    #
+    # wavelengths = specdata['lambda_angstroms']
+    # fluxes = specdata['f_lambda']
+    # nbins = 10
+    #
+    # for i in np.arange(start=0, stop=len(wavelengths) - nbins, step=nbins):
+    #     new_lambda_angstroms.append(wavelengths[i + int(nbins / 2)])
+    #     sum_flux = 0
+    #     for j in range(i, i + nbins):
+    #
+    #         if not math.isnan(fluxes[j]):
+    #             print(fluxes[j])
+    #             sum_flux += fluxes[j]
+    #     binned_flux.append(sum_flux / nbins)
+    #
+    # filtered_specdata = pd.DataFrame(new_lambda_angstroms, columns=['lambda_angstroms'])
+    # filtered_specdata['f_lamba'] = binned_flux
+    # print(filtered_specdata)
+    # plt.plot(specdata['lambda_angstroms'], specdata['f_lambda'])
+    # plt.plot(new_lambda_angstroms, binned_flux)
+    #
+    # # filtered_specdata.to_csv('/Users/ccollins/artis_nebular/artistools/artistools/data/refspectra/' + name, index=False, header=False, sep=' ')
+
+    if 'a_v' in metadata or 'e_bminusv' in metadata:
+        print('Correcting for reddening')
         from extinction import apply, ccm89
         if 'r_v' not in metadata:
             metadata['r_v'] = metadata['a_v'] / metadata['e_bminusv']
@@ -1147,7 +1182,7 @@ def plot_artis_spectrum(
                     viewing_angle =round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
                     vspectrum[angle].query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
                         x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
-                        label=fr"$\theta$ = {viewing_angle}" if index == 0 else None) #, {timeavg:.2f} days
+                        label=fr"$\theta$ = {viewing_angle}$^\circ$" if index == 0 else None) #, {timeavg:.2f} days
         else:
             spectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
                 x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
@@ -1342,9 +1377,8 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
 
 
 def make_plot(args):
-    if not args.figscale:
-        font = {'size': 18}
-        matplotlib.rc('font', **font)
+    # font = {'size': 16}
+    # matplotlib.rc('font', **font)
     nrows = len(args.xsplit) + 1
     fig, axes = plt.subplots(
         nrows=nrows, ncols=1, sharey=False,
@@ -1471,6 +1505,10 @@ def make_plot(args):
         datafilenameout = Path(filenameout).with_suffix('.txt')
         dfalldata.to_csv(datafilenameout)
         print(f'Saved {datafilenameout}')
+
+    # plt.minorticks_on()
+    # plt.tick_params(axis='x', which='minor', length=5, width=2, labelsize=18)
+    # plt.tick_params(axis='both', which='major', length=8, width=2, labelsize=18)
 
     fig.savefig(filenameout, format='pdf')
     # plt.show()
@@ -1706,6 +1744,9 @@ def addargs(parser):
 
     parser.add_argument('--plotviewingangle', type=int, nargs='+',
                         help='Plot viewing angles. Expects int for angle number in specpol_res.out')
+
+    parser.add_argument('--averagespecpolres', action='store_true',
+                        help='Average bins of specpol_res.out')
 
     parser.add_argument('--binflux', action='store_true',
                         help='Bin flux over wavelength and average flux')
