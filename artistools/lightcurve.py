@@ -19,6 +19,8 @@ import artistools.spectra
 import matplotlib.pyplot as plt
 import matplotlib
 
+from extinction import apply, ccm89
+
 from scipy.interpolate import interp1d
 
 
@@ -179,18 +181,18 @@ def get_magnitudes(modelpath, args, angle=None):
 
         filterdir = os.path.join(at.PYDIR, 'data/filters/')
 
+        if angle != None:
+            res_specdata = at.spectra.read_specpol_res(modelpath, angle=angle)
+        else:
+            res_specdata = None
+
         for filter_name in filters_list:
 
             zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max \
                 = get_filter_data(filterdir, filter_name)
 
             for timestep, time in enumerate(timearray):
-                if args.xmin and float(time) < args.xmin:
-                    continue
-                if args.xmax and float(time) > args.xmax:
-                    continue
-
-                wavelength_from_spectrum, flux = get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle)
+                wavelength_from_spectrum, flux = get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle, res_specdata=res_specdata)
 
                 if len(wavelength_from_spectrum) > len(wavefilter):
                     interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.)
@@ -252,12 +254,11 @@ def get_filter_data(filterdir, filter_name):
     return zeropointenergyflux, np.array(wavefilter), np.array(transmission), wavefilter_min, wavefilter_max
 
 
-def get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle=None):
+def get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle=None, res_specdata=None):
     if angle != None:
         if args.plotvspecpol:
             spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
         else:
-            res_specdata = at.spectra.read_specpol_res(modelpath, angle=angle)
             spectrum = at.spectra.get_res_spectrum(modelpath, timestep, timestep, angle=angle,
                                                    res_specdata=res_specdata)
     else:
@@ -289,7 +290,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
     # f, axarr = plt.subplots(nrows=rows, ncols=cols, sharex='all', sharey='all', squeeze=True)
     # axarr = axarr.flatten()
 
-    font = {'size': 20}
+    font = {'size': 24}
     matplotlib.rc('font', **font)
 
     if args.plotvspecpol:
@@ -299,7 +300,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
     else:
         angles = [None]
 
-    for angle in angles:
+    for index, angle in enumerate(angles):
         linenames = []
 
         for modelnumber, modelpath in enumerate(modelpaths):
@@ -329,7 +330,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
                     viewing_angle = round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
                     linelabel = fr"$\theta$ = {viewing_angle}"
                 elif args.plotviewingangle and angle != None:
-                    linelabel = f"bin number {angle}"
+                    linelabel = fr"$\theta$ = {angle_names[index]}$^\circ$"
                 else:
                     linelabel = f'{modelname}'
                 fig = plt.plot(time, magnitude, label=linelabel, linewidth=3)
@@ -371,7 +372,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
         plt.ylabel(f'{filternames_conversion_dict[key]} Magnitude')
     else:
         plt.ylabel(f'{key} Magnitude')
-    plt.xlabel('Time in Days Since Explosion')
+    plt.xlabel('Time Since Explosion [d]')
 
     # plt.axis([10, 30, -14, -18])
     plt.gca().invert_yaxis()
@@ -401,34 +402,61 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
 
 
 def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
-    font = {'size': 20}
+    font = {'size': 22}
     matplotlib.rc('font', **font)
 
-    for modelpath in modelpaths:
-        modelname = at.get_model_name(modelpath)
-        print(f'Reading spectra: {modelname}')
+    if args.plotvspecpol:
+        angles = args.plotvspecpol
+    elif args.plotviewingangle:
+        angles = args.plotviewingangle
+    else:
+        angles = [None]
 
-        filter_names = args.colour_evolution[0].split('-')
-        args.filter = filter_names
-        filters_dict = get_magnitudes(modelpath, args)
+    for index, angle in enumerate(angles):
 
-        time_dict_1 = {}
-        time_dict_2 = {}
+        for modelpath in modelpaths:
+            modelname = at.get_model_name(modelpath)
+            print(f'Reading spectra: {modelname}')
 
-        plot_times = []
-        diff = []
+            filter_names = args.colour_evolution[0].split('-')
+            args.filter = filter_names
+            filters_dict = get_magnitudes(modelpath, args, angle)
 
-        for filter_1, filter_2 in zip(filters_dict[filter_names[0]], filters_dict[filter_names[1]]):
-            # Make magnitude dictionaries where time is the key
-            time_dict_1[filter_1[0]] = filter_1[1]
-            time_dict_2[filter_2[0]] = filter_2[1]
+            time_dict_1 = {}
+            time_dict_2 = {}
 
-        for time in time_dict_1.keys():
-            if time in time_dict_2.keys():  # Test if time has a magnitude for both filters
-                plot_times.append(float(time))
-                diff.append(time_dict_1[time] - time_dict_2[time])
+            plot_times = []
+            diff = []
 
-        plt.plot(plot_times, diff, label=modelname, linewidth=3)
+            for filter_1, filter_2 in zip(filters_dict[filter_names[0]], filters_dict[filter_names[1]]):
+                # Make magnitude dictionaries where time is the key
+                time_dict_1[filter_1[0]] = filter_1[1]
+                time_dict_2[filter_2[0]] = filter_2[1]
+
+            for time in time_dict_1.keys():
+                if time in time_dict_2.keys():  # Test if time has a magnitude for both filters
+                    plot_times.append(float(time))
+                    diff.append(time_dict_1[time] - time_dict_2[time])
+
+            if args.plotvspecpol and angle != None:
+                vpkt_data = at.get_vpkt_data(modelpath)
+                viewing_angle = round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
+                linelabel = fr"$\theta$ = {viewing_angle}"
+            elif args.plotviewingangle and angle != None:
+                linelabel = f"bin number = {angle}"
+            else:
+                linelabel = f'{modelname}'
+
+            if args.filtersavgol:
+                import scipy.signal
+                window_length, poly_order = [int(x) for x in args.filtersavgol]
+
+                def filterfunc(y):
+                    return scipy.signal.savgol_filter(y, window_length, poly_order)
+
+                diff = filterfunc(diff)
+
+            plt.plot(plot_times, diff, label=linelabel, linewidth=3)
 
         # def match_closest_time(reftime):
         #     return ("{}".format(min([float(x) for x in plot_times], key=lambda x: abs(x - reftime))))
@@ -445,10 +473,10 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
             plot_color_evolution_from_data(filter_names, reflightcurve, colours[i], markers[i], filternames_conversion_dict)
 
     plt.ylabel(r'$\Delta$m')
-    plt.xlabel('Time in Days Since Explosion')
+    plt.xlabel('Time Since Explosion [d]')
     plt.tight_layout()
     if not args.nolegend:
-        plt.legend(loc='best', frameon=False, fontsize='x-small')
+        plt.legend(loc='best', frameon=True, fontsize='x-small')
     plt.minorticks_on()
     plt.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18)
     plt.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=18)
@@ -504,37 +532,58 @@ def read_lightcurve_data(lightcurvefilename):
     lightcurve_data['time'] = lightcurve_data['time'].apply(lambda x: x - (metadata['timecorrection']))
     # m - M = -5log(d) - 5  Get absolute magnitude
     lightcurve_data['magnitude'] = lightcurve_data['magnitude'].apply(lambda x:
-                                                                    (x - 5 * np.log10(metadata['dist_mpc']*10**6) + 5))
+                                                                (x - 5 * np.log10(metadata['dist_mpc']*10**6) + 5))
     return lightcurve_data, metadata
 
 
 def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, marker, filternames_conversion_dict):
     lightcurve_data, metadata = read_lightcurve_data(lightcurvefilename)
     linename = metadata['label']
+    filterdir = os.path.join(at.PYDIR, 'data/filters/')
 
     filter_data = {}
     for plotnumber, filter_name in enumerate(filter_names):
+        f = open(filterdir / Path(f'{filter_name}.txt'))
+        lines = f.readlines()
+        lambda0 = float(lines[2])
+
         if filter_name is 'bol':
             continue
         elif filter_name in filternames_conversion_dict:
             filter_name = filternames_conversion_dict[filter_name]
         filter_data[filter_name] = lightcurve_data.loc[lightcurve_data['band'] == filter_name]
-        if linename == 'SN2018byg':
-            x_values = []
-            y_values = []
-            limits_x = []
-            limits_y = []
-            for index, row in filter_data[filter_name].iterrows():
-                if row['e_magnitude'] != -99.0:
-                    x_values.append(row['time'])
-                    y_values.append(row['magnitude'])
-                else:
-                    limits_x.append(row['time'])
-                    limits_y.append(row['magnitude'])
-            plt.plot(x_values, y_values, marker, label=linename, color=color)
-            # plt.plot(limits_x, limits_y, 'v', label=None, color=color)
-        else:
-            plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], marker, label=linename, color=color)
+        # if linename == 'SN2018byg':
+        #     x_values = []
+        #     y_values = []
+        #     limits_x = []
+        #     limits_y = []
+        #     for index, row in filter_data[filter_name].iterrows():
+        #         if row['e_magnitude'] != -99.0:
+        #             x_values.append(row['time'])
+        #             y_values.append(row['magnitude'])
+        #         else:
+        #             limits_x.append(row['time'])
+        #             limits_y.append(row['magnitude'])
+        #     print(x_values, y_values)
+        #     plt.plot(x_values, y_values, marker, label=linename, color=color)
+        #     # plt.plot(limits_x, limits_y, 'v', label=None, color=color)
+        # else:
+
+        if 'a_v' in metadata or 'e_bminusv' in metadata:
+            print('Correcting for reddening')
+            if 'r_v' not in metadata:
+                metadata['r_v'] = metadata['a_v'] / metadata['e_bminusv']
+            elif 'a_v' not in metadata:
+                metadata['a_v'] = metadata['e_bminusv'] * metadata['r_v']
+
+            clightinangstroms = 3e+18
+            # Convert to flux, deredden, then convert back to magnitudes
+            filters = np.array([lambda0] * len(filter_data[filter_name]['magnitude']), dtype=float)
+            filter_data[filter_name]['flux'] = clightinangstroms/(lambda0**2) * 10 ** -((filter_data[filter_name]['magnitude'] +48.6)/2.5) ##gs
+            filter_data[filter_name]['dered'] = apply(ccm89(filters[:], a_v=-metadata['a_v'], r_v=metadata['r_v']), filter_data[filter_name]['flux'])
+            filter_data[filter_name]['magnitude'] = 2.5*np.log10(clightinangstroms / (filter_data[filter_name]['dered'] * lambda0**2)) - 48.6
+
+        plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], marker, label=linename, color=color)
     return linename
 
 
@@ -642,6 +691,9 @@ def addargs(parser):
     parser.add_argument('-refspecmarkers', default=['.', 'h', 's'], nargs='*',
                         help='Set a list of markers for reference spectra')
 
+    parser.add_argument('-filtersavgol', nargs=2,
+                        help='Savitzky–Golay filter. Specify the window_length and poly_order.'
+                        'e.g. -filtersavgol 5 3')
 
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
