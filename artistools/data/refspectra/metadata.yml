@@ -132,18 +132,25 @@ SN2013cs_20140325_3Ang.txt:  # (Maguire et al. 2016)
   t: -10
   dist_mpc: 278.82235323
   z: 0.066304
+  a_v: 0.032
+  r_v: 3.1
+  scale_factor: 0.5
 
 2018byg_2018-05-14_Keck1_LRIS_None.ascii:
   label: 'SN 2018byg -5d'
   t: -5
   dist_mpc: 278.82235323
   z: 0.066304
+  a_v: 0.032
+  r_v: 3.1
 
 2018byg_2018-05-17_P200_DBSP_None.ascii:
   label: 'SN 2018byg -2d'
   t: -2
   dist_mpc: 278.82235323
   z: 0.066304
+  a_v: 0.032
+  r_v: 3.1
   scale_factor: 2.5
 
 2018byg_2018-06-03_Keck1_MOSFIRE_None.ascii:
@@ -151,29 +158,53 @@ SN2013cs_20140325_3Ang.txt:  # (Maguire et al. 2016)
   t: 15
   dist_mpc: 278.82235323
   z: 0.066304
-  scale_factor: 2.5
+  a_v: 0.032
+  r_v: 3.1
+  scale_factor: 2
 
 2018byg_2018-06-08_P200_DBSP_None.ascii:
   label: 'SN 2018byg +18d'
   t: 18
   dist_mpc: 278.82235323
   z: 0.066304
-  scale_factor: 40
+  a_v: 0.032
+  r_v: 3.1
+  scale_factor: 30
+
+2018byg_2018-06-03_Keck1_MOSFIRE_None_filtered.dat:
+  label: 'SN 2018byg +18d MOSFIRE'
+  t: 15
+  dist_mpc: 278.82235323
+  z: 0.066304
+  a_v: 0.032
+  r_v: 3.1
+  scale_factor: 2
+
+2018byg_2018-06-08_P200_DBSP_None_filtered.dat:
+  label: 'SN 2018byg +18d'
+  t: 18
+  dist_mpc: 278.82235323
+  z: 0.066304
+  a_v: 0.032
+  r_v: 3.1
+  scale_factor: 30
 
 2018byg_2018-06-17_Keck1_LRIS_None.ascii:
   label: 'SN 2018byg +27d'
   t: 27
   dist_mpc: 278.82235323
   z: 0.066304
+  a_v: 0.032
+  r_v: 3.1
 
-2016jhr_18days.dat:
+2016jhr_18days.dat:  #From electronic journal -- rest frame wavelength
   label: 'SN 2016jhr -2d'
   t: 18
   dist_mpc: 546.5
 #  z: 0.11737 #Already redshift corrected?
   scale_factor: 3.5
 
-2016jhr_29.33d_num1.dat:
+2016jhr_29.33d_num1.dat:  #From open SNe catalog
   label: 'SN 2016jhr +47 days'
   t: 47
   dist_mpc: 546.5
