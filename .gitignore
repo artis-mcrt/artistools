@@ -40,3 +40,4 @@ wheels/
 *.dat
 artistools/data/spectra/*
 artistools/data/vspecpol_Fink2010_model3/*
+*.ascii
