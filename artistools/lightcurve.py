@@ -144,7 +144,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
     plt.close()
 
 
-def get_magnitudes(modelpath, args, angle=None):
+def get_magnitudes(modelpath, args, angle=None, modelnumber=None):
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
     if args and args.plotvspecpol:
         stokes_params = at.spectra.get_polarisation(angle, modelpath)
@@ -192,7 +192,9 @@ def get_magnitudes(modelpath, args, angle=None):
                 = get_filter_data(filterdir, filter_name)
 
             for timestep, time in enumerate(timearray):
-                wavelength_from_spectrum, flux = get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle, res_specdata=res_specdata)
+                wavelength_from_spectrum, flux = \
+                    get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle,
+                                                 res_specdata=res_specdata, modelnumber=modelnumber)
 
                 if len(wavelength_from_spectrum) > len(wavefilter):
                     interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.)
@@ -254,7 +256,7 @@ def get_filter_data(filterdir, filter_name):
     return zeropointenergyflux, np.array(wavefilter), np.array(transmission), wavefilter_min, wavefilter_max
 
 
-def get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle=None, res_specdata=None):
+def get_spectrum_at_time(modelpath, timestep, time, args, angle=None, res_specdata=None, modelnumber=None):
     if angle != None:
         if args.plotvspecpol:
             spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
@@ -262,7 +264,15 @@ def get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wave
             spectrum = at.spectra.get_res_spectrum(modelpath, timestep, timestep, angle=angle,
                                                    res_specdata=res_specdata)
     else:
-        spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep)
+        spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep, modelnumber=modelnumber, args=args)
+
+    return spectrum
+
+
+def get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle=None,
+                                 res_specdata=None, modelnumber=None, spectrum=None):
+    if spectrum is None:
+        spectrum = get_spectrum_at_time(modelpath, timestep, time, args, angle, res_specdata, modelnumber)
 
     wavelength_from_spectrum, flux = [], []
     for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
@@ -290,6 +300,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
     # f, axarr = plt.subplots(nrows=rows, ncols=cols, sharex='all', sharey='all', squeeze=True)
     # axarr = axarr.flatten()
 
+    # colours = ['k', 'darkmagenta', 'darkred']
+    # angle_names = [0, 45, 90, 180]
     font = {'size': 24}
     matplotlib.rc('font', **font)
 
@@ -299,6 +311,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
         angles = args.plotviewingangle
     else:
         angles = [None]
+    # angles.append(None)
 
     for index, angle in enumerate(angles):
         linenames = []
@@ -308,7 +321,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
             modelname = at.get_model_name(modelpath)
             linenames.append(modelname)
             print(f'Reading spectra: {modelname}')
-            filters_dict = get_magnitudes(modelpath, args, angle)
+            filters_dict = get_magnitudes(modelpath, args, angle, modelnumber=modelnumber)
 
             if modelnumber == 0 and args.plot_hesma_model:
                 hesma_model = read_hesma_lightcurve(args)
@@ -330,10 +343,21 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
                     viewing_angle = round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
                     linelabel = fr"$\theta$ = {viewing_angle}"
                 elif args.plotviewingangle and angle != None:
+                    # linelabel = fr"bin number = {angle}"
                     linelabel = fr"$\theta$ = {angle_names[index]}$^\circ$"
+                    # plt.plot(time, magnitude, label=linelabel, linewidth=3)
+                # elif 'label' in args:
+                #     linelabel = args.label[modelnumber]
                 else:
                     linelabel = f'{modelname}'
-                fig = plt.plot(time, magnitude, label=linelabel, linewidth=3)
+                    # linelabel = 'Angle averaged'
+
+                # if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
+                #     linestyle = '--'
+                # else:
+                #     linestyle = '-'
+                plt.plot(time, magnitude, label=linelabel, linewidth=3)
+                    # plt.plot(time, magnitude, label=linelabel, linewidth=3, color='k', linestyle=':')
 
                 # tmax = time[magnitude.index(min(magnitude))]
                 # tmax_plus1 = time[magnitude.index(min(magnitude)) + 1]
@@ -405,6 +429,8 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
     font = {'size': 22}
     matplotlib.rc('font', **font)
 
+    # colours = ['k', 'darkmagenta', 'darkred']
+
     if args.plotvspecpol:
         angles = args.plotvspecpol
     elif args.plotviewingangle:
@@ -414,13 +440,13 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
 
     for index, angle in enumerate(angles):
 
-        for modelpath in modelpaths:
+        for modelnumber, modelpath in enumerate(modelpaths):
             modelname = at.get_model_name(modelpath)
             print(f'Reading spectra: {modelname}')
 
             filter_names = args.colour_evolution[0].split('-')
             args.filter = filter_names
-            filters_dict = get_magnitudes(modelpath, args, angle)
+            filters_dict = get_magnitudes(modelpath, args, angle=angle, modelnumber=modelnumber)
 
             time_dict_1 = {}
             time_dict_2 = {}
@@ -444,8 +470,15 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
                 linelabel = fr"$\theta$ = {viewing_angle}"
             elif args.plotviewingangle and angle != None:
                 linelabel = f"bin number = {angle}"
+            # elif 'label' in args:
+            #     linelabel = args.label[modelnumber]
             else:
                 linelabel = f'{modelname}'
+
+            # if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
+            #     linestyle = '--'
+            # else:
+            #     linestyle = '-'
 
             if args.filtersavgol:
                 import scipy.signal
@@ -528,7 +561,7 @@ def read_lightcurve_data(lightcurvefilename):
     metadata = metadata_all.get(str(lightcurvefilename), {})
 
     data_path = os.path.join(at.PYDIR, f"data/lightcurves/{lightcurvefilename}")
-    lightcurve_data = pd.read_csv(data_path)
+    lightcurve_data = pd.read_csv(data_path, comment='#')
     lightcurve_data['time'] = lightcurve_data['time'].apply(lambda x: x - (metadata['timecorrection']))
     # m - M = -5log(d) - 5  Get absolute magnitude
     lightcurve_data['magnitude'] = lightcurve_data['magnitude'].apply(lambda x:
@@ -552,21 +585,7 @@ def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, marker, f
         elif filter_name in filternames_conversion_dict:
             filter_name = filternames_conversion_dict[filter_name]
         filter_data[filter_name] = lightcurve_data.loc[lightcurve_data['band'] == filter_name]
-        # if linename == 'SN2018byg':
-        #     x_values = []
-        #     y_values = []
-        #     limits_x = []
-        #     limits_y = []
-        #     for index, row in filter_data[filter_name].iterrows():
-        #         if row['e_magnitude'] != -99.0:
-        #             x_values.append(row['time'])
-        #             y_values.append(row['magnitude'])
-        #         else:
-        #             limits_x.append(row['time'])
-        #             limits_y.append(row['magnitude'])
-        #     print(x_values, y_values)
-        #     plt.plot(x_values, y_values, marker, label=linename, color=color)
-        #     # plt.plot(limits_x, limits_y, 'v', label=None, color=color)
+            # plt.plot(limits_x, limits_y, 'v', label=None, color=color)
         # else:
 
         if 'a_v' in metadata or 'e_bminusv' in metadata:
@@ -584,25 +603,63 @@ def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, marker, f
             filter_data[filter_name]['magnitude'] = 2.5*np.log10(clightinangstroms / (filter_data[filter_name]['dered'] * lambda0**2)) - 48.6
 
         plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], marker, label=linename, color=color)
+
+        # if linename == 'SN 2018byg':
+        #     x_values = []
+        #     y_values = []
+        #     limits_x = []
+        #     limits_y = []
+        #     for index, row in filter_data[filter_name].iterrows():
+        #         if row['date'] == 58252:
+        #             plt.plot(row['time'], row['magnitude'], '*', label=linename, color=color)
+        #         elif row['e_magnitude'] != -1:
+        #             x_values.append(row['time'])
+        #             y_values.append(row['magnitude'])
+        #         else:
+        #             limits_x.append(row['time'])
+        #             limits_y.append(row['magnitude'])
+        #     print(x_values, y_values)
+        #     plt.plot(x_values, y_values, 'o', label=linename, color=color)
+        #     plt.plot(limits_x, limits_y, 's', label=linename, color=color)
     return linename
 
 
 def plot_color_evolution_from_data(filter_names, lightcurvefilename, color, marker, filternames_conversion_dict):
     lightcurve_from_data, metadata = read_lightcurve_data(lightcurvefilename)
+    filterdir = os.path.join(at.PYDIR, 'data/filters/')
 
-    band_data = []
-    for i, band in enumerate(filter_names):
-        if band in filternames_conversion_dict:
-            band = filternames_conversion_dict[band]
-        band_data.append(lightcurve_from_data.loc[lightcurve_from_data['band'] == band])
+    filter_data = []
+    for i, filter_name in enumerate(filter_names):
+        f = open(filterdir / Path(f'{filter_name}.txt'))
+        lines = f.readlines()
+        lambda0 = float(lines[2])
 
-    for i in range(2):
-        if metadata['label'] == 'SN 2018byg':
-            band_data[i] = band_data[i][band_data[i].e_magnitude != -99.00]
-        if metadata['label'] in ['SN 2016jhr', 'SN 2018byg']:
-            band_data[i]['time'] = band_data[i]['time'].apply(lambda x: round(float(x)))  # round to nearest day
+        if filter_name in filternames_conversion_dict:
+            filter_name = filternames_conversion_dict[filter_name]
+        filter_data.append(lightcurve_from_data.loc[lightcurve_from_data['band'] == filter_name])
 
-    merge_dataframes = band_data[0].merge(band_data[1], how='inner', on=['time'])
+        if 'a_v' in metadata or 'e_bminusv' in metadata:
+            print('Correcting for reddening')
+            if 'r_v' not in metadata:
+                metadata['r_v'] = metadata['a_v'] / metadata['e_bminusv']
+            elif 'a_v' not in metadata:
+                metadata['a_v'] = metadata['e_bminusv'] * metadata['r_v']
+
+            clightinangstroms = 3e+18
+            # Convert to flux, deredden, then convert back to magnitudes
+            filters = np.array([lambda0] * filter_data[i].shape[0], dtype=float)
+            filter_data[i]['flux'] = clightinangstroms/(lambda0**2) * 10 ** -((filter_data[i]['magnitude'] +48.6)/2.5)
+            filter_data[i]['dered'] = apply(ccm89(filters[:], a_v=-metadata['a_v'], r_v=metadata['r_v']), filter_data[i]['flux'])
+            filter_data[i]['magnitude'] = 2.5*np.log10(clightinangstroms / (filter_data[i]['dered'] * lambda0**2)) - 48.6
+
+
+    # for i in range(2):
+    #     # if metadata['label'] == 'SN 2018byg':
+    #     #     filter_data[i] = filter_data[i][filter_data[i].e_magnitude != -99.00]
+    #     if metadata['label'] in ['SN 2016jhr', 'SN 2018byg']:
+    #         filter_data[i]['time'] = filter_data[i]['time'].apply(lambda x: round(float(x)))  # round to nearest day
+
+    merge_dataframes = filter_data[0].merge(filter_data[1], how='inner', on=['time'])
     plt.plot(merge_dataframes['time'], merge_dataframes['magnitude_x'] - merge_dataframes['magnitude_y'], marker,
              label=metadata['label'], color=color)
 
@@ -694,6 +751,10 @@ def addargs(parser):
     parser.add_argument('-filtersavgol', nargs=2,
                         help='Savitzky–Golay filter. Specify the window_length and poly_order.'
                         'e.g. -filtersavgol 5 3')
+
+    parser.add_argument('-redshifttoz', type=float, nargs='+',
+                        help='Redshift to z = x. Expects array length of number modelpaths.'
+                             'If not to be redshifted then = 0.')
 
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
