@@ -38,7 +38,7 @@ def stackspectra(spectra_and_factors):
     return stackedspectrum
 
 
-def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None, reftime=None, args=None):
+def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None, reftime=None, modelnumber=None, args=None):
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax < 0:
         timestepmax = timestepmin
@@ -52,15 +52,16 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
     else:
         specfilename = modelpath
 
-    specdata = pd.read_csv(specfilename, delim_whitespace=True)
-    specdata = specdata.rename(columns={'0': 'nu'})
-
     if master_branch:
-        stokes_params = get_polarisation(args, specdata=specdata)
-        if args is not None:
+        # angle = args.plotviewingangle[0]
+        stokes_params = get_polarisation(angle=None, modelpath=modelpath)
+        if args is not None and 'stokesparam' in args:
             specdata = stokes_params[args.stokesparam]
         else:
             specdata = stokes_params['I']
+    else:
+        specdata = pd.read_csv(specfilename, delim_whitespace=True)
+        specdata = specdata.rename(columns={'0': 'nu'})
 
     nu = specdata.loc[:, 'nu'].values
     if master_branch:
@@ -90,6 +91,14 @@ def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None
 
     dfspectrum.eval('lambda_angstroms = @c / nu', local_dict={'c': const.c.to('angstrom/s').value}, inplace=True)
     dfspectrum.eval('f_lambda = f_nu * nu / lambda_angstroms', inplace=True)
+
+    # if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
+    # #     plt.plot(dfspectrum['lambda_angstroms'], dfspectrum['f_lambda'], color='k')
+    #     z = args.redshifttoz[modelnumber]
+    #     dfspectrum['lambda_angstroms'] *= (1 + z)
+    # #     plt.plot(dfspectrum['lambda_angstroms'], dfspectrum['f_lambda'], color='r')
+    # #     plt.show()
+    # #     quit()
 
     return dfspectrum
 
@@ -429,8 +438,8 @@ def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
 
 
 def plot_polarisation(modelpath, args):
-    angle = args.plotvspecpol
-    stokes_params = get_polarisation(angle, modelpath=modelpath)
+    angle = args.plotviewingangle[0]
+    stokes_params = get_polarisation(angle=angle, modelpath=modelpath)
     stokes_params[args.stokesparam].eval('lambda_angstroms = @c / nu', local_dict={'c': const.c.to('angstrom/s').value}, inplace=True)
 
     timearray = stokes_params[args.stokesparam].keys()[1:-1]
@@ -1507,7 +1516,7 @@ def make_plot(args):
         args.outputfile = args.outputfile / defaultoutputfile
 
     filenameout = str(args.outputfile).format(time_days_min=args.timemin, time_days_max=args.timemax)
-
+    # plt.text(6000, (args.ymax * 0.9), f'{round(args.timemin) + 1} days', fontsize='large')
     if args.write_data:
         datafilenameout = Path(filenameout).with_suffix('.txt')
         dfalldata.to_csv(datafilenameout)
