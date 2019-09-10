@@ -190,11 +190,14 @@ def parse_estimfile(estfilepath, modeldata):
                     estimblock[variablename] = {}
 
                 for ion_stage_str, value in zip(row[startindex::2], row[startindex + 1::2]):
-                    try:
-                        ion_stage = int(ion_stage_str.rstrip(':'))
-                    except ValueError:
-                        print(f'Cannot parse row: {row}')
-                        return
+                    if ion_stage_str.strip() in ['SUM:', '(or']:
+                        continue
+
+                    # try:
+                    ion_stage = int(ion_stage_str.rstrip(':'))
+                    # except ValueError:
+                    #     print(f'Cannot parse row: {row}')
+                    #     continue
 
                     value_thision = float(value.rstrip(','))
 
@@ -219,16 +222,20 @@ def parse_estimfile(estfilepath, modeldata):
 
             elif row[0] == 'heating:':
                 for heatingtype, value in zip(row[1::2], row[2::2]):
-                    estimblock[f'heating_{heatingtype}'] = float(value)
+                    estimblock['heating_' + heatingtype] = float(value)
 
-                if estimblock['heating_gamma/gamma_dep'] > 0:
+                if 'heating_gamma/gamma_dep' in estimblock and estimblock['heating_gamma/gamma_dep'] > 0:
                     estimblock['gamma_dep'] = (
                         estimblock['heating_gamma'] /
                         estimblock['heating_gamma/gamma_dep'])
+                elif 'heating_dep/total_dep' in estimblock and estimblock['heating_dep/total_dep'] > 0:
+                    estimblock['total_dep'] = (
+                        estimblock['heating_dep'] /
+                        estimblock['heating_dep/total_dep'])
 
             elif row[0] == 'cooling:':
                 for coolingtype, value in zip(row[1::2], row[2::2]):
-                    estimblock[f'cooling_{coolingtype}'] = float(value)
+                    estimblock['cooling_' + coolingtype] = float(value)
 
     # reached the end of file
     if timestep >= 0 and modelgridindex >= 0:
