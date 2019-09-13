@@ -190,14 +190,14 @@ def parse_estimfile(estfilepath, modeldata):
                     estimblock[variablename] = {}
 
                 for ion_stage_str, value in zip(row[startindex::2], row[startindex + 1::2]):
-                    if ion_stage_str.strip() == 'SUM:':
+                    if ion_stage_str.strip() in ['SUM:', '(or']:
                         continue
 
                     try:
                         ion_stage = int(ion_stage_str.rstrip(':'))
                     except ValueError:
                         print(f'Cannot parse row: {row}')
-                        return
+                        continue
 
                     value_thision = float(value.rstrip(','))
 
