@@ -203,16 +203,15 @@ def parse_estimfile(estfilepath, modeldata):
 
                     estimblock[variablename][(atomic_number, ion_stage)] = value_thision
 
-                    if variablename == 'populations':
-                        # contribute the ion population to the element population
-                        if atomic_number not in estimblock['populations']:
-                            estimblock['populations'][atomic_number] = 0.
-                        estimblock['populations'][atomic_number] += value_thision
-
-                    elif variablename == 'Alpha_R*nne':
+                    if variablename == 'Alpha_R*nne':
                         if 'Alpha_R' not in estimblock:
                             estimblock['Alpha_R'] = {}
                         estimblock['Alpha_R'][(atomic_number, ion_stage)] = value_thision / estimblock['nne']
+                    else:  # variablename == 'populations':
+                        # contribute the ion population to the element population
+                        if atomic_number not in estimblock[variablename]:
+                            estimblock[variablename][atomic_number] = 0.
+                        estimblock[variablename][atomic_number] += value_thision
 
                 if variablename == 'populations':
                     # contribute the element population to the total population
@@ -443,6 +442,8 @@ def plot_multi_ion_series(
     # if seriestype == 'populations':
     #     ax.yaxis.set_major_locator(ticker.MultipleLocator(base=0.10))
 
+    plotted_something = False
+
     compositiondata = at.get_composition_data(modelpath)
 
     # decoded into numeric form, e.g., [(26, 1), (26, 2)]
@@ -574,10 +575,15 @@ def plot_multi_ion_series(
 
         ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, dashes=dashes, **plotkwargs)
         prev_atomic_number = atomic_number
+        plotted_something = True
 
-    ax.set_yscale('log')
-    ymin, ymax = ax.get_ylim()
-    ax.set_ylim(ymin, ymax * 10 ** (0.3 * math.log10(ymax / ymin)))
+    if plotted_something:
+        ax.set_yscale('log')
+        ymin, ymax = ax.get_ylim()
+        new_ymax = ymax * 10 ** (0.3 * math.log10(ymax / ymin))
+        print(ymin, ymax, new_ymax)
+        if ymin > 0 and new_ymax > ymin and np.isfinite(new_ymax):
+            ax.set_ylim(ymin, new_ymax)
 
 
 def plot_series(ax, xlist, variablename, showlegend, timestepslist, mgilist,
