@@ -1745,9 +1745,12 @@ def addargs(parser):
     parser.add_argument('--output_spectra', action='store_true',
                         help='Write out spectra to text files')
 
+    # Combines all vspecpol files into one file which can then be read by artistools
     parser.add_argument('--makevspecpol', action='store_true',
                         help='Make file with summed values from each vspecpol thread')
 
+    # To get better statistics for polarisation use multiple runs of the same simulation. This will then average the
+    # files produced by makevspecpol for all simualtions.
     parser.add_argument('--averagevspecpolfiles', action='store_true',
                         help='Average the vspecpol-total files for multiple simulations')
 
