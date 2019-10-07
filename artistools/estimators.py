@@ -42,6 +42,7 @@ variableunits = {
     'nne': 'e-/cm3',
     'heating': 'erg/s/cm3',
     'cooling': 'erg/s/cm3',
+    'velocity': 'km/s',
     'velocity_outer': 'km/s',
 }
 
