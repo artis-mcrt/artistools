@@ -442,7 +442,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
         colours = args.refspeccolors
         markers = args.refspecmarkers
         for i, reflightcurve in enumerate(args.reflightcurves):
-            plot_color_evoloution_from_data(filter_names, reflightcurve, colours[i], markers[i], filternames_conversion_dict)
+            plot_color_evolution_from_data(filter_names, reflightcurve, colours[i], markers[i], filternames_conversion_dict)
 
     plt.ylabel(r'$\Delta$m')
     plt.xlabel('Time in Days Since Explosion')
@@ -538,7 +538,7 @@ def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, marker, f
     return linename
 
 
-def plot_color_evoloution_from_data(filter_names, lightcurvefilename, color, marker, filternames_conversion_dict):
+def plot_color_evolution_from_data(filter_names, lightcurvefilename, color, marker, filternames_conversion_dict):
     lightcurve_from_data, metadata = read_lightcurve_data(lightcurvefilename)
 
     band_data = []
