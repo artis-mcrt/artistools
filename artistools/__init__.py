@@ -877,7 +877,7 @@ def get_inputparams(modelpath):
         # number of start and end time step
         params['itstep'], params['ftstep'] = [int(x) for x in inputfile.readline().split()]
 
-        params['tmin'], params['tmax'] = [int(x) for x in inputfile.readline().split()]
+        params['tmin'], params['tmax'] = [float(x) for x in inputfile.readline().split()]
 
         params['nusyn_min'], params['nusyn_max'] = [
             (float(x) * u.MeV / const.h).to('Hz') for x in inputfile.readline().split()]
