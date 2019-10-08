@@ -68,13 +68,13 @@ def plot_3d_initial_abundances(modelpath, args):
 
     plotvals = (merge_dfs.loc[merge_dfs[f'cellpos_in[{sliceaxis}]'] == sliceposition])
     print(plotvals.keys())
-    factor = 10 ** 3
+
     font = {'weight': 'bold',
             'size': 18}
 
     matplotlib.rc('font', **font)
-    x = plotvals[f'cellpos_in[{plotaxis1}]'] / t_model * (u.cm/u.day).to('km/s') / factor
-    y = plotvals[f'cellpos_in[{plotaxis2}]'] / t_model * (u.cm/u.day).to('km/s') / factor
+    x = plotvals[f'cellpos_in[{plotaxis1}]'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
+    y = plotvals[f'cellpos_in[{plotaxis2}]'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
     # fig = plt.figure(figsize=(5, 5))
     ax = plt.subplot(111)
     im = ax.scatter(x, y, c=plotvals[ion], marker="8")
