@@ -343,8 +343,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
                     viewing_angle = round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
                     linelabel = fr"$\theta$ = {viewing_angle}"
                 elif args.plotviewingangle and angle != None:
-                    # linelabel = fr"bin number = {angle}"
-                    linelabel = fr"$\theta$ = {angle_names[index]}$^\circ$"
+                    linelabel = fr"bin number = {angle}"
+                    # linelabel = fr"$\theta$ = {angle_names[index]}$^\circ$"
                     # plt.plot(time, magnitude, label=linelabel, linewidth=3)
                 # elif 'label' in args:
                 #     linelabel = args.label[modelnumber]
