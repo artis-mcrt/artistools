@@ -359,6 +359,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                 plt.plot(time, magnitude, label=linelabel, linewidth=3)
                 # plt.plot(time, magnitude, label=linelabel, linewidth=3, color='k', linestyle=':')
 
+                # UNCOMMENT TO ESTIMATE BAND MAXIMUM AND DELTAM15
                 # tmax = time[magnitude.index(min(magnitude))]
                 # tmax_plus1 = time[magnitude.index(min(magnitude)) + 1]
                 # tmax_minus1 = time[magnitude.index(min(magnitude)) - 1]
@@ -491,10 +492,11 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
 
             plt.plot(plot_times, diff, label=linelabel, linewidth=3)
 
+        # UNCOMMENT TO ESTIMATE COLOUR AT TIME B MAX
         # def match_closest_time(reftime):
         #     return ("{}".format(min([float(x) for x in plot_times], key=lambda x: abs(x - reftime))))
         #
-        # tmax_B = 17.0
+        # tmax_B = 17.0  # CHANGE TO TIME OF B MAX
         # tmax_B = float(match_closest_time(tmax_B))
         # print(f'{filter_names[0]} - {filter_names[1]} at t_Bmax ({tmax_B}) = '
         #       f'{diff[plot_times.index(tmax_B)]}')
