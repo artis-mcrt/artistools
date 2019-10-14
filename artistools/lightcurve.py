@@ -419,7 +419,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
     # f.set_figheight(8)
     # f.set_figwidth(7)
     if not args.nolegend:
-        plt.legend(loc='best', frameon=True, fontsize='xx-small')
+        plt.legend(loc='best', frameon=True, fontsize='xx-small', ncol=2)
     if len(filters_dict) == 1:
         args.outputfile = f'plot{key}lightcurves.pdf'
     plt.savefig(args.outputfile, format='pdf')
@@ -509,7 +509,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
     plt.xlabel('Time Since Explosion [d]')
     plt.tight_layout()
     if not args.nolegend:
-        plt.legend(loc='best', frameon=True, fontsize='x-small')
+        plt.legend(loc='best', frameon=True, fontsize='x-small', ncol=2, handlelength=1.0)
     plt.minorticks_on()
     plt.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18)
     plt.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=18)
@@ -709,7 +709,8 @@ def addargs(parser):
                         help='Plot synthetic magnitudes')
 
     parser.add_argument('--filter', type=str, nargs='+',
-                        help='Choose filter eg. bol U B V R I. Default B')
+                        help='Choose filter eg. bol U B V R I. Default B. '
+                             'WARNING: filter names are not case sensitive eg. sloan-r is not r, it is rs')
 
     parser.add_argument('--colour_evolution', action='append',
                         help='Plot of colour evolution. Give two filters eg. B-V')
