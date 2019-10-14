@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
 import argparse
-import glob
-import itertools
+# import glob
+# import itertools
 import math
 import os
-import sys
+# import sys
 from pathlib import Path
 from typing import Iterable
 
@@ -123,7 +123,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
         if args.print_data:
             print(lcdata[['time', 'lum', 'lum_cmf']].to_string(index=False))
         plotkwargs['linewidth'] = 1
-        plotkwargs['label']=f'{modelname} (cmf)'
+        plotkwargs['label'] = f'{modelname} (cmf)'
         axis.plot(lcdata.time, lcdata['lum_cmf'], **plotkwargs)
 
     # axis.set_xlim(left=xminvalue, right=xmaxvalue)
@@ -136,7 +136,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
     elif escape_type == 'TYPE_RPKT':
         lum_suffix = r'_{\mathrm{OVOIR}}'
     else:
-        lum_suffix = r'_{\mathrm{' + escape_type.replace("_", "\_") + '}}'
+        lum_suffix = r'_{\mathrm{' + escape_type.replace("_", r"\_") + '}}'
     axis.set_ylabel(r'$\mathrm{L} ' + lum_suffix + r'/ \mathrm{L}_\odot$')
 
     fig.savefig(str(filenameout), format='pdf')
@@ -181,7 +181,7 @@ def get_magnitudes(modelpath, args, angle=None, modelnumber=None):
 
         filterdir = os.path.join(at.PYDIR, 'data/filters/')
 
-        if angle != None:
+        if angle is not None:
             res_specdata = at.spectra.read_specpol_res(modelpath, angle=angle)
         else:
             res_specdata = None
@@ -217,7 +217,7 @@ def get_magnitudes(modelpath, args, angle=None, modelnumber=None):
 def bolometric_magnitude(modelpath, timearray, args, angle=None):
     magnitudes = []
     for timestep, time in enumerate(timearray):
-        if angle != None:
+        if angle is not None:
             if args.plotvspecpol:
                 spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
             else:
@@ -257,7 +257,7 @@ def get_filter_data(filterdir, filter_name):
 
 
 def get_spectrum_at_time(modelpath, timestep, time, args, angle=None, res_specdata=None, modelnumber=None):
-    if angle != None:
+    if angle is not None:
         if args.plotvspecpol:
             spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
         else:
@@ -294,7 +294,7 @@ def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointe
     return phot_filtobs_sn
 
 
-def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
+def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
     # rows = 1
     # cols = 1
     # f, axarr = plt.subplots(nrows=rows, ncols=cols, sharex='all', sharey='all', squeeze=True)
@@ -338,11 +338,11 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
                 for t, mag in filters_dict[key]:
                     time.append(float(t))
                     magnitude.append(mag)
-                if args.plotvspecpol and angle != None:
+                if args.plotvspecpol and angle is not None:
                     vpkt_data = at.get_vpkt_data(modelpath)
                     viewing_angle = round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
                     linelabel = fr"$\theta$ = {viewing_angle}"
-                elif args.plotviewingangle and angle != None:
+                elif args.plotviewingangle and angle is not None:
                     linelabel = fr"bin number = {angle}"
                     # linelabel = fr"$\theta$ = {angle_names[index]}$^\circ$"
                     # plt.plot(time, magnitude, label=linelabel, linewidth=3)
@@ -357,7 +357,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
                 # else:
                 #     linestyle = '-'
                 plt.plot(time, magnitude, label=linelabel, linewidth=3)
-                    # plt.plot(time, magnitude, label=linelabel, linewidth=3, color='k', linestyle=':')
+                # plt.plot(time, magnitude, label=linelabel, linewidth=3, color='k', linestyle=':')
 
                 # tmax = time[magnitude.index(min(magnitude))]
                 # tmax_plus1 = time[magnitude.index(min(magnitude)) + 1]
@@ -421,11 +421,11 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, args):
     if not args.nolegend:
         plt.legend(loc='best', frameon=True, fontsize='xx-small', ncol=2)
     if len(filters_dict) == 1:
-        args.outputfile = f'plot{key}lightcurves.pdf'
+        args.outputfile = os.path.join(outputfolder, f'plot{key}lightcurves.pdf')
     plt.savefig(args.outputfile, format='pdf')
 
 
-def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
+def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
     font = {'size': 22}
     matplotlib.rc('font', **font)
 
@@ -464,11 +464,11 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
                     plot_times.append(float(time))
                     diff.append(time_dict_1[time] - time_dict_2[time])
 
-            if args.plotvspecpol and angle != None:
+            if args.plotvspecpol and angle is not None:
                 vpkt_data = at.get_vpkt_data(modelpath)
                 viewing_angle = round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
                 linelabel = fr"$\theta$ = {viewing_angle}"
-            elif args.plotviewingangle and angle != None:
+            elif args.plotviewingangle and angle is not None:
                 linelabel = f"bin number = {angle}"
             # elif 'label' in args:
             #     linelabel = args.label[modelnumber]
@@ -525,7 +525,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, args):
     plt.ylim(args.ymin, args.ymax)
     plt.xlim(args.xmin, args.xmax)
 
-    args.outputfile = f'plotcolorevolution{filter_names[0]}-{filter_names[1]}.pdf'
+    args.outputfile = os.path.join(outputfolder, f'plotcolorevolution{filter_names[0]}-{filter_names[1]}.pdf')
     for i in range(2):
         if filter_names[i] in filternames_conversion_dict:
             filter_names[i] = filternames_conversion_dict[filter_names[i]]
@@ -564,8 +564,9 @@ def read_lightcurve_data(lightcurvefilename):
     lightcurve_data = pd.read_csv(data_path, comment='#')
     lightcurve_data['time'] = lightcurve_data['time'].apply(lambda x: x - (metadata['timecorrection']))
     # m - M = -5log(d) - 5  Get absolute magnitude
-    lightcurve_data['magnitude'] = lightcurve_data['magnitude'].apply(lambda x:
-                                                                (x - 5 * np.log10(metadata['dist_mpc']*10**6) + 5))
+    lightcurve_data['magnitude'] = lightcurve_data['magnitude'].apply(lambda x: (
+        x - 5 * np.log10(metadata['dist_mpc'] * 10 ** 6) + 5))
+
     return lightcurve_data, metadata
 
 
@@ -580,12 +581,12 @@ def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, marker, f
         lines = f.readlines()
         lambda0 = float(lines[2])
 
-        if filter_name is 'bol':
+        if filter_name == 'bol':
             continue
         elif filter_name in filternames_conversion_dict:
             filter_name = filternames_conversion_dict[filter_name]
         filter_data[filter_name] = lightcurve_data.loc[lightcurve_data['band'] == filter_name]
-            # plt.plot(limits_x, limits_y, 'v', label=None, color=color)
+        # plt.plot(limits_x, limits_y, 'v', label=None, color=color)
         # else:
 
         if 'a_v' in metadata or 'e_bminusv' in metadata:
@@ -598,11 +599,18 @@ def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, marker, f
             clightinangstroms = 3e+18
             # Convert to flux, deredden, then convert back to magnitudes
             filters = np.array([lambda0] * len(filter_data[filter_name]['magnitude']), dtype=float)
-            filter_data[filter_name]['flux'] = clightinangstroms/(lambda0**2) * 10 ** -((filter_data[filter_name]['magnitude'] +48.6)/2.5) ##gs
-            filter_data[filter_name]['dered'] = apply(ccm89(filters[:], a_v=-metadata['a_v'], r_v=metadata['r_v']), filter_data[filter_name]['flux'])
-            filter_data[filter_name]['magnitude'] = 2.5*np.log10(clightinangstroms / (filter_data[filter_name]['dered'] * lambda0**2)) - 48.6
 
-        plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], marker, label=linename, color=color)
+            filter_data[filter_name]['flux'] = clightinangstroms / (lambda0 ** 2) * 10 ** -(
+                (filter_data[filter_name]['magnitude'] + 48.6) / 2.5)  # gs
+
+            filter_data[filter_name]['dered'] = apply(
+                ccm89(filters[:], a_v=-metadata['a_v'], r_v=metadata['r_v']), filter_data[filter_name]['flux'])
+
+            filter_data[filter_name]['magnitude'] = 2.5 * np.log10(
+                clightinangstroms / (filter_data[filter_name]['dered'] * lambda0 ** 2)) - 48.6
+
+        plt.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], marker,
+                 label=linename, color=color)
 
         # if linename == 'SN 2018byg':
         #     x_values = []
@@ -648,10 +656,15 @@ def plot_color_evolution_from_data(filter_names, lightcurvefilename, color, mark
             clightinangstroms = 3e+18
             # Convert to flux, deredden, then convert back to magnitudes
             filters = np.array([lambda0] * filter_data[i].shape[0], dtype=float)
-            filter_data[i]['flux'] = clightinangstroms/(lambda0**2) * 10 ** -((filter_data[i]['magnitude'] +48.6)/2.5)
-            filter_data[i]['dered'] = apply(ccm89(filters[:], a_v=-metadata['a_v'], r_v=metadata['r_v']), filter_data[i]['flux'])
-            filter_data[i]['magnitude'] = 2.5*np.log10(clightinangstroms / (filter_data[i]['dered'] * lambda0**2)) - 48.6
 
+            filter_data[i]['flux'] = clightinangstroms / (lambda0 ** 2) * 10 ** -(
+                (filter_data[i]['magnitude'] + 48.6) / 2.5)
+
+            filter_data[i]['dered'] = apply(ccm89(filters[:], a_v=-metadata['a_v'], r_v=metadata['r_v']),
+                                            filter_data[i]['flux'])
+
+            filter_data[i]['magnitude'] = 2.5 * np.log10(
+                clightinangstroms / (filter_data[i]['dered'] * lambda0 ** 2)) - 48.6
 
     # for i in range(2):
     #     # if metadata['label'] == 'SN 2018byg':
@@ -757,6 +770,7 @@ def addargs(parser):
                         help='Redshift to z = x. Expects array length of number modelpaths.'
                              'If not to be redshifted then = 0.')
 
+
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
         parser = argparse.ArgumentParser(
@@ -800,17 +814,19 @@ def main(args=None, argsraw=None, **kwargs):
         defaultoutputfile = f'plotlightcurve_{args.escape_type}.pdf'
 
     if not args.outputfile:
+        outputfolder = Path()
         args.outputfile = defaultoutputfile
     elif os.path.isdir(args.outputfile):
-        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+        outputfolder = Path(args.outputfile)
+        args.outputfile = os.path.join(outputfolder, defaultoutputfile)
 
     filternames_conversion_dict = {'rs': 'r', 'gs': 'g', 'is': 'i'}
     if args.magnitude:
-        make_magnitudes_plot(modelpaths, filternames_conversion_dict, args)
+        make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
         print(f'Saved figure: {args.outputfile}')
 
     elif args.colour_evolution:
-        colour_evolution_plot(modelpaths, filternames_conversion_dict, args)
+        colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
         print(f'Saved figure: {args.outputfile}')
     else:
         make_lightcurve_plot(args.modelpath, args.outputfile, args.frompackets,
