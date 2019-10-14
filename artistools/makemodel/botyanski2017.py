@@ -33,7 +33,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-            description='Plot ARTIS non-thermal electron energy spectrum.')
+            description='Create Botyanski et al. 2017 .')
 
         addargs(parser)
         parser.set_defaults(**kwargs)

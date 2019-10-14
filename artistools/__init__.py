@@ -39,6 +39,7 @@ commandlist = {
     'listartistimesteps': ('artistools', 'showtimesteptimes'),
     'makeartismodel1dslicefrom3d': ('artistools.makemodel.1dslicefrom3d', 'main'),
     'makeartismodelbotyanski2017': ('artistools.makemodel.botyanski2017', 'main'),
+    'makeartismodelfromshen2018': ('artistools.makemodel.shen2018', 'main'),
     'plotartisestimators': ('artistools.estimators', 'main'),
     'plotartislightcurve': ('artistools.lightcurve', 'main'),
     'plotartisnltepops': ('artistools.nltepops', 'main'),
@@ -308,7 +309,12 @@ def save_modeldata(dfmodeldata, t_model_init_days, filename):
         for _, cell in dfmodeldata.iterrows():
             fmodel.write(f'{cell.inputcellid:6.0f}   {cell.velocity_outer:9.2f}   {cell.logrho:10.8f} '
                          f'{cell.X_Fegroup:5.2f} {cell.X_Ni56:5.2f} {cell.X_Co56:5.2f} '
-                         f'{cell.X_Fe52:5.2f} {cell.X_Cr48:5.2f}\n')
+                         f'{cell.X_Fe52:5.2f} {cell.X_Cr48:5.2f}')
+            if 'X_Ni57' in dfmodeldata.columns:
+                fmodel.write(f' {cell.X_Ni57:5.2f}')
+                if 'X_Co57' in dfmodeldata.columns:
+                    fmodel.write(f' {cell.X_Co57:5.2f}')
+            fmodel.write('\n')
 
 
 @lru_cache(maxsize=8)
