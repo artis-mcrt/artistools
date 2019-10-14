@@ -243,7 +243,7 @@ def read_specpol_res(modelpath, angle, args=None):
         numberofIvalues = len(res_specdata[i].columns.drop_duplicates())
         res_specdata[i] = res_specdata[i].iloc[:, : numberofIvalues]
         res_specdata[i] = res_specdata[i].astype(float)
-        res_specdata[i] =res_specdata[i].to_numpy()
+        res_specdata[i] = res_specdata[i].to_numpy()
 
     # Averages over 10 bins to reduce noise
 
@@ -261,8 +261,10 @@ def read_specpol_res(modelpath, angle, args=None):
     return res_specdata
 
 
+def get_res_spectrum(
+        modelpath, timestepmin: int, timestepmax=-1, angle=None, res_specdata=None, fnufilterfunc=None,
+        reftime=None, args=None):
 
-def get_res_spectrum(modelpath, timestepmin: int, timestepmax=-1, angle=None, res_specdata=None, fnufilterfunc=None, reftime=None, args=None):
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax < 0:
         timestepmax = timestepmin
@@ -347,8 +349,12 @@ def make_averaged_vspecfiles(args):
 
     def sorted_by_number(l):
 
-        convert = lambda text: int(text) if text.isdigit() else text
-        alphanum_key = lambda key: [convert(c) for c in re.split('([0-9]+)', key)]
+        def convert(text):
+            return int(text) if text.isdigit() else text
+
+        def alphanum_key(key):
+            return [convert(c) for c in re.split('([0-9]+)', key)]
+
         return sorted(l, key=alphanum_key)
 
     filenames = sorted_by_number(filenames)
@@ -366,7 +372,8 @@ def make_averaged_vspecfiles(args):
 
 def get_polarisation(angle=None, modelpath=None, specdata=None):
     if specdata is None:
-        specfilename = at.firstexisting([f'vspecpol_averaged-{angle}.out', f'vspecpol_total-{angle}.out', 'spec.out.xz', 'spec.out.gz',
+        specfilename = at.firstexisting([f'vspecpol_averaged-{angle}.out', f'vspecpol_total-{angle}.out',
+                                         'spec.out.xz', 'spec.out.gz',
                                          'spec.out', 'specpol.out'], path=modelpath)
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         specdata = specdata.rename(columns={specdata.keys()[0]: 'nu'})
@@ -392,7 +399,7 @@ def get_polarisation(angle=None, modelpath=None, specdata=None):
 
 def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
     stokes_params = get_polarisation(angle, modelpath=modelpath)
-    if not 'stokesparam' in args:
+    if 'stokesparam' not in args:
         args.stokesparam = 'I'
     vspecdata = stokes_params[args.stokesparam]
 
@@ -1195,10 +1202,10 @@ def plot_artis_spectrum(
 
                     plt.plot(new_lambda_angstroms, binned_flux)
                 else:
-                    viewing_angle =round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
+                    viewing_angle = round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
                     vspectrum[angle].query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
                         x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
-                        label=fr"$\theta$ = {viewing_angle}$^\circ$" if index == 0 else None) #, {timeavg:.2f} days
+                        label=fr"$\theta$ = {viewing_angle}$^\circ$" if index == 0 else None)  # {timeavg:.2f} days
         else:
             spectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
                 x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
