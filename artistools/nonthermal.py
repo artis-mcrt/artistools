@@ -196,6 +196,7 @@ def make_plot(modelpaths, args):
     # axis.yaxis.set_minor_locator(ticker.MultipleLocator(base=0.1))
     # axis.set_yscale("log", nonposy='clip')
     for ax in axes:
+        ax.tick_params(direction='in')
         if args.xmin is not None:
             ax.set_xlim(left=args.xmin)
         if args.xmax:
