@@ -113,8 +113,6 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         self._set_formatted_label_text()
 
 
-
-
 def showtimesteptimes(modelpath=None, numberofcolumns=5):
     """Print a table showing the timesteps and their corresponding times."""
     if modelpath is None:
@@ -193,15 +191,19 @@ def get_modeldata(filename):
         filename = firstexisting(['model.txt.xz', 'model.txt.gz', 'model.txt'], path=filename)
 
     modeldata = pd.DataFrame()
-    gridcelltuple = namedtuple(
-        'gridcell', 'inputcellid velocity_inner velocity_outer logrho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48')
 
+    gridcelltuple = None
     velocity_inner = 0.
     with open(filename, 'r') as fmodel:
         gridcellcount = int(fmodel.readline())
         t_model_init_days = float(fmodel.readline())
         for line in fmodel:
             row = line.split()
+
+            if gridcelltuple is None:
+                gridcelltuple = namedtuple('gridcell', [
+                    'inputcellid', 'velocity_inner', 'velocity_outer', 'logrho',
+                    'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57'][:len(row) + 1])
 
             celltuple = gridcelltuple(int(row[0]), velocity_inner, *(map(float, row[1:])))
             modeldata = modeldata.append([celltuple], ignore_index=True)
