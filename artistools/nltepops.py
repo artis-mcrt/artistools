@@ -531,6 +531,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
             ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
 
             ax.set_xlim(left=-1)
+            ax.tick_params(direction='in')
 
             if not args.nolegend and prev_ion_stage != ion_stage:
                 ax.legend(
