@@ -128,7 +128,6 @@ def get_ionrecombrates_fromfile(filename):
     dfrecombrates = pd.DataFrame.from_records(records, columns=recomb_tuple._fields)
     return dfrecombrates
 
-
 def get_units_string(variable):
     if variable in variableunits:
         return f' [{variableunits[variable]}]'
@@ -755,6 +754,7 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
 
     for ax, plotitems in zip(axes, plotlist):
         ax.set_xlim(left=xmin, right=xmax)
+        ax.tick_params(direction='in')
         plot_subplot(ax, timestepslist, xlist, plotitems, mgilist,
                      modelpath, estimators, dfalldata=dfalldata, args=args, **plotkwargs)
 
