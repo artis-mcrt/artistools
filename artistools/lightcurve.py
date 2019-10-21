@@ -420,7 +420,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     # f.set_figheight(8)
     # f.set_figwidth(7)
     if not args.nolegend:
-        plt.legend(loc='best', frameon=True, fontsize='xx-small', ncol=2)
+        plt.legend(loc='best', frameon=False, fontsize='xx-small', ncol=2, handlelength=1)
     if len(filters_dict) == 1:
         args.outputfile = os.path.join(outputfolder, f'plot{key}lightcurves.pdf')
     plt.savefig(args.outputfile, format='pdf')
