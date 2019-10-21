@@ -578,11 +578,12 @@ def plot_multi_ion_series(
         plotted_something = True
 
     if plotted_something:
-        ax.set_yscale('log')
-        ymin, ymax = ax.get_ylim()
-        new_ymax = ymax * 10 ** (0.3 * math.log10(ymax / ymin))
-        if ymin > 0 and new_ymax > ymin and np.isfinite(new_ymax):
-            ax.set_ylim(ymin, new_ymax)
+        if args.yscale == 'log':
+            ax.set_yscale('log')
+            ymin, ymax = ax.get_ylim()
+            new_ymax = ymax * 10 ** (0.3 * math.log10(ymax / ymin))
+            if ymin > 0 and new_ymax > ymin and np.isfinite(new_ymax):
+                ax.set_ylim(ymin, new_ymax)
 
 
 def plot_series(ax, xlist, variablename, showlegend, timestepslist, mgilist,
@@ -898,6 +899,9 @@ def addargs(parser):
 
     parser.add_argument('-xmax', type=int, default=-1,
                         help='Plot range: maximum x value')
+
+    parser.add_argument('-yscale', default='log', choices=['log', 'linear'],
+                        help='Set yscale to log or linear (default log)')
 
     parser.add_argument('-filtermovingavg', type=int, default=0,
                         help='Smoothing length (1 is same as none)')
