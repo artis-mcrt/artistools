@@ -801,6 +801,8 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
     else:
         plt.close()
 
+    return outfilename
+
 
 def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plotkwargs):
     fig, axes = plt.subplots(
@@ -895,6 +897,9 @@ def addargs(parser):
 
     parser.add_argument('-timemax', type=float,
                         help='Upper time in days')
+
+    parser.add_argument('-multiplot', action='store_true',
+                        help='Make multiple plots for timesteps in range')
 
     parser.add_argument('-x',
                         help='Horizontal axis variable, e.g. cellid, velocity, timestep, or time')
@@ -1022,8 +1027,27 @@ def main(args=None, argsraw=None, **kwargs):
             if not args.x:
                 args.x = 'velocity_outer'
 
-            timesteplist_unfiltered = [timesteps_included] * len(allnonemptymgilist)
-            make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist, args)
+            if args.multiplot:
+                pdf_list = []
+                modelpath_list = []
+                for timestep in range(timestepmin, timestepmax + 1):
+                    timesteplist_unfiltered = [[timestep]] * len(allnonemptymgilist)
+                    outfilename = make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x,
+                                            plotlist, args)
+
+                    if '/' in outfilename:
+                        outfilename = outfilename.split('/')[1]
+
+                    pdf_list.append(outfilename)
+                    modelpath_list.append(modelpath)
+
+                if len(pdf_list) > 1:
+                    at.join_pdf_files(pdf_list, modelpath_list)
+
+            else:
+                timesteplist_unfiltered = [timesteps_included] * len(allnonemptymgilist)
+                make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist, args)
+
 
 
 if __name__ == "__main__":
