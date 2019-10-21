@@ -1500,7 +1500,6 @@ def make_plot(args):
     #    axis.spines[axis].set_linewidth(framewidth)
 
     for ax in axes:
-        ax.tick_params(direction='in')
         # ax.xaxis.set_major_formatter(plt.NullFormatter())
         if args.ymin is not None:
             ax.set_ylim(bottom=args.ymin)
@@ -1515,6 +1514,7 @@ def make_plot(args):
                            # bottom=True, top=True,
                            labelbottom=False)
         ax.set_xlabel('')
+        ax.tick_params(which='both', direction='in')
 
     axes[-1].set_xlabel(args.xlabel)
 

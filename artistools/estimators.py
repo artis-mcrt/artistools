@@ -760,7 +760,7 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
 
     for ax, plotitems in zip(axes, plotlist):
         ax.set_xlim(left=xmin, right=xmax)
-        ax.tick_params(direction='in')
+        ax.tick_params(which='both', direction='in')
         plot_subplot(ax, timestepslist, xlist, plotitems, mgilist,
                      modelpath, estimators, dfalldata=dfalldata, args=args, **plotkwargs)
 
