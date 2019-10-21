@@ -566,6 +566,11 @@ def plot_multi_ion_series(
         color = get_elemcolor(atomic_number=atomic_number)
         # or ax.step(where='pre', )
 
+        if args.colorbyion:
+            color = f'C{ion_stage - 1}'
+            plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
+            dashes = ()
+
         if dfalldata is not None:
             dfalldata[f'{seriestype}.{args.ionpoptype}.{atomic_number}.{ion_stage}'] = ylist
 
@@ -932,6 +937,9 @@ def addargs(parser):
 
     parser.add_argument('-o', action='store', dest='outputfile', type=Path, default=Path(),
                         help='Filename for PDF file')
+
+    parser.add_argument('-colorbyion', action='store_true',
+                        help='Populations plots colored by ion rather than element')
 
 
 def main(args=None, argsraw=None, **kwargs):
