@@ -726,7 +726,7 @@ def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath,
 
     ax.tick_params(right=True)
     if showlegend:
-        if plotitems[0][0] == 'populations':
+        if plotitems[0][0] == 'populations' and args.yscale == 'log':
             ax.legend(loc='upper right', handlelength=2, ncol=math.ceil(len(plotitems[0][1]) / 2.),
                       frameon=False, numpoints=1)
         else:
