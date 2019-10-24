@@ -146,7 +146,7 @@ def get_ylabel(variable):
     return ''
 
 
-def parse_estimfile(estfilepath, modeldata):
+def parse_estimfile(estfilepath, modeldata, modelpath):
     """Generate timestep, modelgridindex, dict from estimator file."""
     with at.zopen(estfilepath, 'rt') as estimfile:
         timestep = -1
@@ -163,6 +163,9 @@ def parse_estimfile(estfilepath, modeldata):
                     yield timestep, modelgridindex, estimblock
 
                 timestep = int(row[1])
+                inputparams = at.get_inputparams(modelpath)
+                if timestep > inputparams['itstep']:  # Don't break if there are incomplete timesteps
+                    break
                 modelgridindex = int(row[3])
                 # print(f'Timestep {timestep} cell {modelgridindex}')
 
@@ -284,7 +287,8 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None):
                 print(f'Reading {estfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)')
 
             nfilesread_thisfolder += 1
-            for file_timestep, file_modelgridindex, file_estimblock in parse_estimfile(estfilepath, modeldata):
+            for file_timestep, file_modelgridindex, file_estimblock in parse_estimfile(estfilepath, modeldata,
+                                                                                       modelpath):
 
                 if match_timestep and file_timestep not in match_timestep:
                     continue  # timestep not a match, so skip this block
