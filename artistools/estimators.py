@@ -128,6 +128,7 @@ def get_ionrecombrates_fromfile(filename):
     dfrecombrates = pd.DataFrame.from_records(records, columns=recomb_tuple._fields)
     return dfrecombrates
 
+
 def get_units_string(variable):
     if variable in variableunits:
         return f' [{variableunits[variable]}]'
@@ -148,6 +149,8 @@ def get_ylabel(variable):
 
 def parse_estimfile(estfilepath, modeldata, modelpath):
     """Generate timestep, modelgridindex, dict from estimator file."""
+    itstep = at.get_inputparams(modelpath)['itstep']
+
     with at.zopen(estfilepath, 'rt') as estimfile:
         timestep = -1
         modelgridindex = -1
@@ -163,9 +166,12 @@ def parse_estimfile(estfilepath, modeldata, modelpath):
                     yield timestep, modelgridindex, estimblock
 
                 timestep = int(row[1])
-                inputparams = at.get_inputparams(modelpath)
-                if timestep > inputparams['itstep']:  # Don't break if there are incomplete timesteps
-                    break
+                if timestep > itstep:
+                    print(f"Dropping estimator data from timestep {timestep} and later (> itstep {itstep})")
+                    # itstep in input.txt is updated by ARTIS at every timestep, so the data beyond here
+                    # could be half-written to disk and cause parsing errors
+                    return
+
                 modelgridindex = int(row[3])
                 # print(f'Timestep {timestep} cell {modelgridindex}')
 
