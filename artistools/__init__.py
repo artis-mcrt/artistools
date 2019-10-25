@@ -40,6 +40,8 @@ commandlist = {
     'makeartismodel1dslicefrom3d': ('artistools.makemodel.1dslicefrom3d', 'main'),
     'makeartismodelbotyanski2017': ('artistools.makemodel.botyanski2017', 'main'),
     'makeartismodelfromshen2018': ('artistools.makemodel.shen2018', 'main'),
+    'makeartismodelscalevelocity': ('artistools.makemodel.scalevelocity', 'main'),
+    'makeartismodelfullymixed': ('artistools.makemodel.fullymixed', 'main'),
     'plotartisestimators': ('artistools.estimators', 'main'),
     'plotartislightcurve': ('artistools.lightcurve', 'main'),
     'plotartisnltepops': ('artistools.nltepops', 'main'),
