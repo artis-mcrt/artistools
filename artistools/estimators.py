@@ -742,7 +742,8 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
               args, **plotkwargs):
     modelname = at.get_model_name(modelpath)
     fig, axes = plt.subplots(nrows=len(plotlist), ncols=1, sharex=True,
-                             figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * 0.5 * len(plotlist)),
+                             figsize=(args.figscale * at.figwidth * args.scalefigwidth,
+                                      args.figscale * at.figwidth * 0.5 * len(plotlist)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
     if len(plotlist) == 1:
         axes = [axes]
@@ -937,6 +938,9 @@ def addargs(parser):
 
     parser.add_argument('-figscale', type=float, default=1.,
                         help='Scale factor for plot area. 1.0 is for single-column')
+
+    parser.add_argument('-scalefigwidth', type=float, default=1.,
+                        help='Scale factor for plot width.')
 
     parser.add_argument('-show', action='store_true',
                         help='Show plot before quitting')
