@@ -306,12 +306,13 @@ def get_closest_cell(modelpath, velocity):
 
 
 def save_modeldata(dfmodeldata, t_model_init_days, filename):
+    """Save a pandas DataFrame into ARTIS model.txt"""
     with open(filename, 'w') as fmodel:
         fmodel.write(f'{len(dfmodeldata)}\n{t_model_init_days:f}\n')
         for _, cell in dfmodeldata.iterrows():
             fmodel.write(f'{cell.inputcellid:6.0f}   {cell.velocity_outer:9.2f}   {cell.logrho:10.8f} '
-                         f'{cell.X_Fegroup:5.2f} {cell.X_Ni56:5.2f} {cell.X_Co56:5.2f} '
-                         f'{cell.X_Fe52:5.2f} {cell.X_Cr48:5.2f}')
+                         f'{cell.X_Fegroup:10.4e} {cell.X_Ni56:10.4e} {cell.X_Co56:10.4e} '
+                         f'{cell.X_Fe52:10.4e} {cell.X_Cr48:10.4e}')
             if 'X_Ni57' in dfmodeldata.columns:
                 fmodel.write(f' {cell.X_Ni57:5.2f}')
                 if 'X_Co57' in dfmodeldata.columns:
