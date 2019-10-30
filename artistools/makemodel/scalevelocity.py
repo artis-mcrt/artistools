@@ -11,7 +11,7 @@ import artistools as at
 
 
 def addargs(parser):
-    parser.add_argument('-scalefactor', '-s',
+    parser.add_argument('-kescalefactor', '-s',
                         default=0.5,
                         help='Kinetic energy scale factor')
     parser.add_argument('-inputfile', '-i',
@@ -46,8 +46,10 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     print(dfmodeldata)
 
-    dfmodeldata.eval('velocity_inner = sqrt(velocity_inner ** 2 * @args.scalefactor)', inplace=True)
-    dfmodeldata.eval('velocity_outer = sqrt(velocity_outer ** 2 * @args.scalefactor)', inplace=True)
+    velocityscalefactor = math.sqrt(args.kescalefactor)
+
+    dfmodeldata.velocity_inner *= velocityscalefactor
+    dfmodeldata.velocity_outer *= velocityscalefactor
 
     dfmodeldata.eval('logrho = log10(shellmass_grams / ('
                      '4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)'
