@@ -212,7 +212,7 @@ def parse_estimfile(estfilepath, modeldata, modelpath):
 
                     estimblock[variablename][(atomic_number, ion_stage)] = value_thision
 
-                    if variablename == 'Alpha_R*nne':
+                    if variablename in ['Alpha_R*nne', 'AlphaR*nne']:
                         if 'Alpha_R' not in estimblock:
                             estimblock['Alpha_R'] = {}
                         estimblock['Alpha_R'][(atomic_number, ion_stage)] = value_thision / estimblock['nne']
