@@ -786,7 +786,11 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
 
     else:
         timeavg = (args.timemin + args.timemax) / 2.
-        figure_title = f'{modelname}\nTimestep {timestepslist[0]} ({timeavg:.2f}d)'
+        if args.multiplot:
+            tdays = estimators[(timestepslist[0][0], mgilist[0])]['tdays']
+            figure_title = f'{modelname}\nTimestep {timestepslist[0]} ({tdays:.2f}d)'
+        else:
+            figure_title = f'{modelname}\nTimestep {timestepslist[0]} ({timeavg:.2f}d)'
 
         defaultoutputfile = Path('plotestimators_ts{timestep:02d}_{timeavg:.0f}d.pdf')
         if os.path.isdir(args.outputfile):
