@@ -272,9 +272,9 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
                             label=f'{ionstr} CHIANTI NLTE{bbstr}', linestyle='None', marker=marker, zorder=-1)
 
         if annotatelines and atomic_number == 28 and ion_stage == 2:
-            annotate_emission_line(ax=ax, y=0.04, upperlevel=6, lowerlevel=0, label=r'$\lambda$7378')
+            annotate_emission_line(ax=ax, y=0.04, upperlevel=6, lowerlevel=0, label=r'7378$~\mathrm{{\AA}}$')
             annotate_emission_line(ax=ax, y=0.15, upperlevel=6, lowerlevel=2, label=r'1.939 $\mu$m')
-            annotate_emission_line(ax=ax, y=0.26, upperlevel=7, lowerlevel=1, label=r'$\lambda$7412')
+            annotate_emission_line(ax=ax, y=0.26, upperlevel=7, lowerlevel=1, label=r'7412$~\mathrm{{\AA}}$')
 
 
 def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, estimators,
