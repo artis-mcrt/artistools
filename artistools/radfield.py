@@ -666,8 +666,8 @@ def plot_celltimestep(
     #               xy=(0.02, 0.96), xycoords='axes fraction',
     #               horizontalalignment='left', verticalalignment='top', fontsize=8)
 
-    axis.set_xlabel(r'Wavelength ($\AA$)')
-    axis.set_ylabel(r'J$_\lambda$ [{}erg/s/cm$^2$/$\AA$]')
+    axis.set_xlabel(r'Wavelength ($\mathrm{{\AA}}$)')
+    axis.set_ylabel(r'J$_\lambda$ [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]')
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
     axis.set_xlim(left=xmin, right=xmax)
     axis.set_ylim(bottom=0.0, top=ymax)
@@ -775,7 +775,7 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
             horizontalalignment='left', verticalalignment='top', fontsize=10)
 
         ax.tick_params(which='both', direction='in')
-        ax.set_ylabel(r'J$_\lambda$ [erg/s/cm$^2$/$\AA$]')
+        ax.set_ylabel(r'J$_\lambda$ [erg/s/cm$^2$/$\mathrm{{\AA}}$]')
         ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1)
 
     axes[-1].set_xlabel(r'Timestep')
