@@ -1388,7 +1388,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
     if scale_to_peak:
         axis.set_ylabel(r'Scaled F$_\lambda$')
     elif args.internalpackets:
-        axis.set_ylabel(r'J$_\lambda$ [{}erg/s/cm$^2$/$\AA$]')
+        axis.set_ylabel(r'J$_\lambda$ [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]')
 
     if args.showbinedges:
         radfielddata = at.radfield.read_files(modelpath, timestep=timestepmax, modelgridindex=30)
@@ -1433,7 +1433,7 @@ def make_plot(args):
     for index, axis in enumerate(axes):
         if args.logscale:
             axis.set_yscale('log')
-            axis.set_ylabel(r'log$_1$$_0$ F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
+            axis.set_ylabel(r'log$_1$$_0$ F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\mathrm{{\AA}}$]')
         else:
             axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]')
         supxmin = xboundaries[index]
