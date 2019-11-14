@@ -506,7 +506,7 @@ def plot_polarisation(modelpath, args):
     plt.xlim(args.xmin, args.xmax)
 
     plt.ylabel(f"{args.stokesparam}")
-    plt.xlabel(r'Wavelength ($\AA$)')
+    plt.xlabel(r'Wavelength ($\mathrm{{\AA}}$)')
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
     plt.savefig(modelpath / figname, format='pdf')
     print(f"Saved {figname}")
@@ -1053,7 +1053,7 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
         axes[0].set_title(figure_title, fontsize=11)
 
     axis = axes[0]
-    axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
+    axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\mathrm{{\AA}}$]')
     spectrum.eval('f_lambda_not_from_positron = f_lambda - f_lambda_originated_from_positron', inplace=True)
     plotobjects = axis.stackplot(
         spectrum['lambda_angstroms'],
@@ -1093,7 +1093,7 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
     # axis.set_ylabel('Number of packets per bin')
     # spectrum.plot(x='lambda_angstroms', y='packetcount', ax=axis)
 
-    axis.set_xlabel(r'Wavelength ($\AA$)')
+    axis.set_xlabel(r'Wavelength ($\mathrm{{\AA}}$)')
     axis.set_xlim(left=args.xmin, right=args.xmax)
     xdiff = (args.xmax - args.xmin)
     if xdiff < 1000:
@@ -1435,7 +1435,7 @@ def make_plot(args):
             axis.set_yscale('log')
             axis.set_ylabel(r'log$_1$$_0$ F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\AA$]')
         else:
-            axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\AA$]')
+            axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]')
         supxmin = xboundaries[index]
         supxmax = xboundaries[index + 1]
         axis.set_xlim(left=supxmin, right=supxmax)
@@ -1738,7 +1738,7 @@ def addargs(parser):
     parser.add_argument('--hidexticklabels', action='store_true',
                         help='Don''t show numbers on the x axis')
 
-    parser.add_argument('-xlabel', default=r'Wavelength [$\AA$]',
+    parser.add_argument('-xlabel', default=r'Wavelength [$\mathrm{{\AA}}$]',
                         help=('Label for the x axis'))
 
     parser.add_argument('--refspecafterartis', action='store_true',
