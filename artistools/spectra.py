@@ -10,7 +10,7 @@ import os
 import matplotlib.ticker as ticker
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
-import matplotlib
+import matplotlib as mpl
 import numpy as np
 import pandas as pd
 import yaml
@@ -21,11 +21,10 @@ import re
 import artistools as at
 import artistools.radfield
 
+hatches = ['', 'x', '-', '\\', '+', 'O', '.', '', 'x', '*', '\\', '+', 'O', '.']  # ,
 
 fluxcontributiontuple = namedtuple(
     'fluxcontribution', 'fluxcontrib linelabel array_flambda_emission array_flambda_absorption color')
-
-color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
 
 
 def stackspectra(spectra_and_factors):
@@ -38,7 +37,9 @@ def stackspectra(spectra_and_factors):
     return stackedspectrum
 
 
-def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None, reftime=None, modelnumber=None, args=None):
+def get_spectrum(
+        modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None,
+        reftime=None, modelnumber=None, args=None):
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax < 0:
         timestepmax = timestepmin
@@ -367,7 +368,8 @@ def make_averaged_vspecfiles(args):
             vspecdata[0].iloc[1:, 1:] += vspecdata[i].iloc[1:, 1:]
 
         vspecdata[0].iloc[1:, 1:] = vspecdata[0].iloc[1:, 1:]/len(vspecdata)
-        vspecdata[0].to_csv(args.modelpath[0] / f'vspecpol_averaged-{spec_index}.out', sep=' ', index=False, header=False)
+        vspecdata[0].to_csv(args.modelpath[0] / f'vspecpol_averaged-{spec_index}.out',
+                            sep=' ', index=False, header=False)
 
 
 def get_polarisation(angle=None, modelpath=None, specdata=None):
@@ -447,7 +449,8 @@ def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
 def plot_polarisation(modelpath, args):
     angle = args.plotviewingangle[0]
     stokes_params = get_polarisation(angle=angle, modelpath=modelpath)
-    stokes_params[args.stokesparam].eval('lambda_angstroms = @c / nu', local_dict={'c': const.c.to('angstrom/s').value}, inplace=True)
+    stokes_params[args.stokesparam].eval(
+        'lambda_angstroms = @c / nu', local_dict={'c': const.c.to('angstrom/s').value}, inplace=True)
 
     timearray = stokes_params[args.stokesparam].keys()[1:-1]
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
@@ -526,8 +529,11 @@ def get_flux_contributions(
     nelements = len(elementlist)
 
     if getemission:
-        emissionfilenames = (['emission.out.xz', 'emission.out.gz', 'emission.out', 'emissionpol.out'] if use_lastemissiontype
-    else ['emissiontrue.out.xz', 'emissiontrue.out.gz', 'emissiontrue.out', 'emissionpol.out']) #TODO: does master branch have true version? Ok to use this?
+        if use_lastemissiontype:
+            emissionfilenames = ['emission.out.xz', 'emission.out.gz', 'emission.out', 'emissionpol.out']
+        else:
+            # TODO: does master branch have true version? Ok to use this?
+            emissionfilenames = ['emissiontrue.out.xz', 'emissiontrue.out.gz', 'emissiontrue.out', 'emissionpol.out']
 
         emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
         try:
@@ -841,7 +847,7 @@ def get_flux_contributions_from_packets(
 
 
 def sort_and_reduce_flux_contribution_list(
-        contribution_list_in, maxseriescount, arraylambda_angstroms, fixedionlist=None, hideother=False):
+        contribution_list_in, maxseriescount, arraylambda_angstroms, fixedionlist=None, hideother=False, greyscale=False):
 
     if fixedionlist:
         # sort in manual order
@@ -863,6 +869,21 @@ def sort_and_reduce_flux_contribution_list(
     plotted_ion_list = []
     numotherprinted = 0
     entered_other = False
+    if greyscale:
+        seriescount = len(fixedionlist) if fixedionlist else maxseriescount
+        colorcount = math.ceil(seriescount / 1. / len(hatches))
+        greylist = [str(x) for x in np.linspace(0.4, 0.9, colorcount, endpoint=True)]
+        color_list = []
+        for c in range(colorcount):
+            for h in hatches:
+                color_list.append(greylist[c])
+        # color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
+        mpl.rcParams['hatch.linewidth'] = 0.1
+        # TODO: remove???
+        color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
+    else:
+        color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
+
     for index, row in enumerate(contribution_list):
         if fixedionlist and row.linelabel in fixedionlist:
             contribution_list_out.append(row._replace(color=color_list[fixedionlist.index(row.linelabel)]))
@@ -886,12 +907,12 @@ def sort_and_reduce_flux_contribution_list(
             elif integemiss > 0.:
                 print(f"  emission {integemiss:.1e} erg/s/cm^2: '{row.linelabel}'")
             else:
-                print(f"absorption {integabsorp:.1e} erg/s/cm^2: '{row.linelabel}'")
+                print(f"absorption {integabsorp:.1e} erg/s/cm^2: '{row.linelabel}'")§
 
             if entered_other:
                 numotherprinted += 1
 
-    print("List of ions included:", *plotted_ion_list[:14], sep="' '", end="'\n", )
+    print(f"Ions included: {', '.join(plotted_ion_list)}")
 
     if remainder_fluxcontrib > 0. and not hideother:
         contribution_list_out.append(fluxcontributiontuple(
@@ -1294,7 +1315,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
 
     contributions_sorted_reduced = at.spectra.sort_and_reduce_flux_contribution_list(
         contribution_list, args.maxseriescount, arraylambda_angstroms, fixedionlist=args.fixedionlist,
-        hideother=args.hideother)
+        hideother=args.hideother, greyscale=args.greyscale)
 
     plotobjectlabels = []
     plotobjects = []
@@ -1340,6 +1361,10 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
                 arraylambda_angstroms,
                 [x.array_flambda_emission * scalefactor for x in contributions_sorted_reduced],
                 colors=[x.color for x in contributions_sorted_reduced], linewidth=0)
+            if args.greyscale:
+                for i, stack in enumerate(stackplot):
+                    selectedhatch = hatches[i % len(hatches)]
+                    stack.set_hatch(selectedhatch * 7)
             plotobjects.extend(stackplot)
             facecolors = [p.get_facecolor()[0] for p in stackplot]
         else:
@@ -1618,6 +1643,9 @@ def addargs(parser):
 
     parser.add_argument('-modelcolors', default=[f'C{i}' for i in range(10)], nargs='*',
                         help='List of colors for ARTIS models')
+
+    parser.add_argument('--greyscale', action='store_true',
+                        help='Plot in greyscale')
 
     parser.add_argument('--frompackets', action='store_true',
                         help='Read packets files directly instead of exspec results')
