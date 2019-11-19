@@ -907,7 +907,7 @@ def sort_and_reduce_flux_contribution_list(
             elif integemiss > 0.:
                 print(f"  emission {integemiss:.1e} erg/s/cm^2: '{row.linelabel}'")
             else:
-                print(f"absorption {integabsorp:.1e} erg/s/cm^2: '{row.linelabel}'")§
+                print(f"absorption {integabsorp:.1e} erg/s/cm^2: '{row.linelabel}'")
 
             if entered_other:
                 numotherprinted += 1
