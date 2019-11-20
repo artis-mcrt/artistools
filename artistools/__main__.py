@@ -1,0 +1,3 @@
+import artistools
+
+artistools.main()

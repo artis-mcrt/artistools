@@ -115,7 +115,7 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         self._set_formatted_label_text()
 
 
-def showtimesteptimes(modelpath=None, numberofcolumns=5):
+def showtimesteptimes(modelpath=None, numberofcolumns=5, args=None):
     """Print a table showing the timesteps and their corresponding times."""
     if modelpath is None:
         modelpath = Path()
@@ -1049,3 +1049,7 @@ def main(argsraw=None):
 
         for command in commandlist:
             print(f'  {command}')
+
+
+if __name__ == '__main__':
+    main()
