@@ -866,7 +866,6 @@ def sort_and_reduce_flux_contribution_list(
     remainder_fluxcontrib = 0
 
     contribution_list_out = []
-    plotted_ion_list = []
     numotherprinted = 0
     entered_other = False
     if greyscale:
@@ -900,7 +899,6 @@ def sort_and_reduce_flux_contribution_list(
         if numotherprinted < 20:
             integemiss = abs(np.trapz(row.array_flambda_emission, x=arraylambda_angstroms))
             integabsorp = abs(np.trapz(-row.array_flambda_absorption, x=arraylambda_angstroms))
-            plotted_ion_list.append(row.linelabel)
             if integabsorp > 0. and integemiss > 0.:
                 print(f'{row.fluxcontrib:.1e}, emission {integemiss:.1e}, '
                       f"absorption {integabsorp:.1e} [erg/s/cm^2]: '{row.linelabel}'")
@@ -911,8 +909,6 @@ def sort_and_reduce_flux_contribution_list(
 
             if entered_other:
                 numotherprinted += 1
-
-    print(f"Ions included: {', '.join(plotted_ion_list)}")
 
     if remainder_fluxcontrib > 0. and not hideother:
         contribution_list_out.append(fluxcontributiontuple(
