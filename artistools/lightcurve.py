@@ -126,7 +126,10 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
         plotkwargs['label'] = f'{modelname} (cmf)'
         axis.plot(lcdata.time, lcdata['lum_cmf'], **plotkwargs)
 
-    # axis.set_xlim(left=xminvalue, right=xmaxvalue)
+    if args.xmin:
+        axis.set_xlim(left=args.xmin)
+    if args.xmax:
+        axis.set_xlim(right=args.xmax)
     # axis.set_ylim(bottom=-0.1, top=1.3)
 
     axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
