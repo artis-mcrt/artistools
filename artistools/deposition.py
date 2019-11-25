@@ -79,4 +79,4 @@ def main(args=None, argsraw=None, **kwargs):
 
 
 if __name__ == "__main__":
-    main(args)
+    main()
