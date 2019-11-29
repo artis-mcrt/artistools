@@ -14,7 +14,7 @@ git clone https://github.com/lukeshingles/artistools.git
 ```
 Then from the repo directory run:
 ```sh
-python setup.py develop
+pip install -e .
 ```
 
 ## Usage
