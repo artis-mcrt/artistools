@@ -16,7 +16,9 @@ def addargs(parser):
                         help='Time in days')
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main_analytical(args=None, argsraw=None, **kwargs):
+    """Use the model initial conditions to calculate the deposition rates"""
+
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -62,7 +64,6 @@ def main(args=None, argsraw=None, **kwargs):
 
         co56_positron_dep = (0.19 * 0.610 * u.MeV * (mco56_now / (55.9398393 * u.u)) / meanlife_co56).to('erg/s')
         v48_positron_dep = 0
-        # v48_positron_dep = (0.290 * 0.499 * u.MeV) * (math.exp(-t / T48V) - exp(-t / T48CR)) / (T48V - T48CR) * mcr48_now / MCR48;
 
         power_now = co56_positron_dep + v48_positron_dep
 
@@ -77,6 +78,18 @@ def main(args=None, argsraw=None, **kwargs):
             tau = width * phixs * nnlevel
             print(f'width: {width:.3e} cm, phixs: {phixs:.3e} cm^2, nnlevel: {nnlevel:.3e} cm^-3, tau: {tau:.3e}')
 
+
+def main(args=None, argsraw=None, **kwargs):
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            description='Plot deposition rate of a model at time t (days).')
+        addargs(parser)
+        parser.set_defaults(**kwargs)
+        args = parser.parse_args(argsraw)
+
+
+        # TODO: plot deposition.out file!
 
 if __name__ == "__main__":
     main()
