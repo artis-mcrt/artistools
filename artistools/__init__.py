@@ -34,7 +34,7 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
 commandlist = {
-    'getartismodeldeposition': ('artistools.deposition', 'main'),
+    'getartismodeldeposition': ('artistools.deposition', 'main_analytical'),
     'getartisspencerfano': ('artistools.spencerfano', 'main'),
     'listartistimesteps': ('artistools', 'showtimesteptimes'),
     'makeartismodel1dslicefrom3d': ('artistools.makemodel.1dslicefrom3d', 'main'),
@@ -42,6 +42,7 @@ commandlist = {
     'makeartismodelfromshen2018': ('artistools.makemodel.shen2018', 'main'),
     'makeartismodelscalevelocity': ('artistools.makemodel.scalevelocity', 'main'),
     'makeartismodelfullymixed': ('artistools.makemodel.fullymixed', 'main'),
+    'plotartisdeposition': ('artistools.deposition', 'main'),
     'plotartisestimators': ('artistools.estimators', 'main'),
     'plotartislightcurve': ('artistools.lightcurve', 'main'),
     'plotartisnltepops': ('artistools.nltepops', 'main'),
