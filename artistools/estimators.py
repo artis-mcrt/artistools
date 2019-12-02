@@ -984,7 +984,8 @@ def main(args=None, argsraw=None, **kwargs):
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
          modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
 
-    print(f"Plotting estimators for '{modelname}' timesteps {timestepmin} to {timestepmax} ({args.timemin:.1f} to {args.timemax:.1f}d)")
+    print(f"Plotting estimators for '{modelname}' timesteps {timestepmin} to {timestepmax} "
+          f"({args.timemin:.1f} to {args.timemax:.1f}d)")
 
     timesteps_included = list(range(timestepmin, timestepmax + 1))
     estimators = read_estimators(modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included))
