@@ -1454,9 +1454,7 @@ def make_plot(args):
     for index, axis in enumerate(axes):
         if args.logscale:
             axis.set_yscale('log')
-            axis.set_ylabel(r'log$_1$$_0$ F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\mathrm{{\AA}}$]')
-        else:
-            axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]')
+        axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]')
         supxmin = xboundaries[index]
         supxmax = xboundaries[index + 1]
         axis.set_xlim(left=supxmin, right=supxmax)
