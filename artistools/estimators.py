@@ -11,9 +11,11 @@ import os
 import sys
 from collections import namedtuple
 from functools import lru_cache
+from functools import partial
 from functools import reduce
 # from itertools import chain
 from pathlib import Path
+import multiprocessing
 
 import matplotlib.pyplot as plt
 import scipy.signal
@@ -250,6 +252,32 @@ def parse_estimfile(estfilepath, modeldata, modelpath):
         yield timestep, modelgridindex, estimblock
 
 
+def read_estimators_from_file(modelpath, modeldata, folderpath, match_timestep, match_modelgridindex, printfilename, mpirank):
+    estimators_thisfile = {}
+    estimfilename = f'estimators_{mpirank:04d}.out'
+    estfilepath = Path(folderpath, estimfilename)
+    if not estfilepath.is_file():
+        estfilepath = Path(folderpath, estimfilename + '.gz')
+        if not estfilepath.is_file():
+            print(f'Warning: Could not find {estfilepath.relative_to(modelpath.parent)}')
+            return {}
+
+    if printfilename:
+        filesize = Path(estfilepath).stat().st_size / 1024 / 1024
+        print(f'Reading {estfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)')
+
+    for file_timestep, file_modelgridindex, file_estimblock in parse_estimfile(
+            estfilepath, modeldata, modelpath):
+
+        if match_timestep and file_timestep not in match_timestep:
+            continue  # timestep not a match, so skip this block
+        elif match_modelgridindex and file_modelgridindex not in match_modelgridindex:
+            continue  # modelgridindex not a match, skip this block
+
+        estimators_thisfile[(file_timestep, file_modelgridindex)] = file_estimblock
+    return estimators_thisfile
+
+
 @lru_cache(maxsize=16)
 def read_estimators(modelpath, modelgridindex=None, timestep=None):
     """Read estimator files into a nested dictionary structure.
@@ -276,38 +304,21 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None):
     modeldata, _ = at.get_modeldata(modelpath)
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex)
+
+    printfilename = len(mpiranklist) < 10
+
     estimators = {}
     for folderpath in at.get_runfolders(modelpath, timesteps=match_timestep):
         nfilesread_thisfolder = 0
-        for mpirank in mpiranklist:
-            estimfilename = f'estimators_{mpirank:04d}.out'
-            estfilepath = Path(folderpath, estimfilename)
-            if not estfilepath.is_file():
-                estfilepath = Path(folderpath, estimfilename + '.gz')
-                if not estfilepath.is_file():
-                    print(f'Warning: Could not find {estfilepath.relative_to(modelpath.parent)}')
-                    continue
 
-            if len(mpiranklist) < 10:
-                filesize = Path(estfilepath).stat().st_size / 1024 / 1024
-                print(f'Reading {estfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)')
-
-            nfilesread_thisfolder += 1
-            for file_timestep, file_modelgridindex, file_estimblock in parse_estimfile(estfilepath, modeldata,
-                                                                                       modelpath):
-
-                if match_timestep and file_timestep not in match_timestep:
-                    continue  # timestep not a match, so skip this block
-                elif match_modelgridindex and file_modelgridindex not in match_modelgridindex:
-                    continue  # modelgridindex not a match, skip this block
-
-                estimators[(file_timestep, file_modelgridindex)] = file_estimblock
-
-                # shortcut if we specified one cell and timestep and found it
-                if (len(match_timestep) == 1 and match_timestep[0] == file_timestep
-                        and len(match_modelgridindex) == 1 and match_modelgridindex[0] == file_modelgridindex):
-                    # found our key, so exit now!
-                    return estimators
+        p = multiprocessing.Pool()
+        processfile = partial(read_estimators_from_file, modelpath, modeldata, folderpath,
+                              match_timestep, match_modelgridindex, printfilename)
+        arr_rankestimators = p.map(processfile, mpiranklist)
+        for estimators_thisfile in arr_rankestimators:
+            if estimators_thisfile:
+                estimators.update(estimators_thisfile)
+                nfilesread_thisfolder += 1
 
         if nfilesread_thisfolder > 0:
             print(f'Read {nfilesread_thisfolder} estimator files in {folderpath.relative_to(modelpath.parent)}')
