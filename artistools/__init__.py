@@ -299,13 +299,25 @@ def get_wid_init(modelpath):
     return wid_init
 
 
-def get_closest_cell(modelpath, velocity):
-    """Return the modelgridindex of the cell whose velocity is closest to velocity."""
+def get_mgi_of_velocity(modelpath, velocity, mgilist=None):
+    """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
+    If mgilist is given, then chose from these cells only"""
     modeldata, _ = get_modeldata(modelpath)
-    # print(modeldata['velocity_outer'])
-    # arrvel = [float(cell['velocity_outer']) for cell in modeldata]
-    mgi = np.abs(modeldata['velocity_outer'].values - velocity).argmin()
-    return mgi
+
+    if not mgilist:
+        mgilist = [mgi for mgi in modeldata.index]
+        arr_vouter = modeldata['velocity_outer'].values
+    else:
+        arr_vouter = np.array([modeldata['velocity_outer'][mgi] for mgi in mgilist])
+
+    index_closestvouter = np.abs(arr_vouter - velocity).argmin()
+
+    if velocity < arr_vouter[index_closestvouter]:
+        return mgilist[index_closestvouter]
+    elif velocity < arr_vouter[index_closestvouter + 1]:
+        return mgilist[index_closestvouter + 1]
+    else:
+        assert(False)
 
 
 def save_modeldata(dfmodeldata, t_model_init_days, filename):
