@@ -34,7 +34,7 @@ def readfile(filepath_or_buffer):
 def get_from_packets(modelpath, lcpath, packet_type='TYPE_ESCAPE', escape_type='TYPE_RPKT', maxpacketfiles=None):
     import artistools.packets
 
-    packetsfiles = at.packets.get_packetsfiles(modelpath, maxpacketfiles=maxpacketfiles)
+    packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
     assert nprocs_read > 0
 
