@@ -1471,7 +1471,7 @@ def make_plot(args):
 
     if args.showemission or args.showabsorption:
         if len(args.modelpath) > 1:
-            raise ValueError("ERROR: emission/absorption plot can only take one input model", args.modelpaths)
+            raise ValueError("ERROR: emission/absorption plot can only take one input model", args.modelpath)
         legendncol = 2
         if args.internalpackets:
             defaultoutputfile = Path("plotspecinternalemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
