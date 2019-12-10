@@ -705,7 +705,7 @@ def get_flux_contributions_from_packets(
         betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
     import artistools.packets
-    packetsfiles = at.packets.get_packetsfiles(modelpath, maxpacketfiles)
+    packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
 
     linelist = at.get_linelist(modelpath)
 
