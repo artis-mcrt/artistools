@@ -660,7 +660,7 @@ def main(args=None, argsraw=None, **kwargs):
         mgilist.append(int(mgi))
 
     for vel in args.velocity:
-        mgilist.append(at.get_closest_cell(modelpath, vel))
+        mgilist.append(at.get_mgi_of_velocity(modelpath, vel))
 
     if not mgilist:
         mgilist.append(0)

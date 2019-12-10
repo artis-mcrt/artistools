@@ -149,7 +149,7 @@ def make_plot(modelpaths, args):
     for index, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
         if args.velocity >= 0.:
-            modelgridindex = at.get_closest_cell(modelpath, args.velocity)
+            modelgridindex = at.get_mgi_of_velocity(modelpath, args.velocity)
         else:
             modelgridindex = args.modelgridindex
 
