@@ -110,7 +110,7 @@ def get_spectrum_from_packets(
     """Get a spectrum dataframe using the packets files as input."""
     assert(not useinternalpackets)
     import artistools.packets
-    packetsfiles = at.packets.get_packetsfiles(modelpath, maxpacketfiles)
+    packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
     if use_comovingframe:
         modeldata, _ = at.get_modeldata(Path(packetsfiles[0]).parent)
         vmax = modeldata.iloc[-1].velocity_outer * u.km / u.s

@@ -76,7 +76,7 @@ def readfile(packetsfile, usecols, type=None, escape_type=None):
     return dfpackets
 
 
-def get_packetsfiles(modelpath, maxpacketfiles=None):
+def get_packetsfilepaths(modelpath, maxpacketfiles=None):
     packetsfiles = sorted(
         glob.glob(str(Path(modelpath, 'packets00_*.out*'))) +
         glob.glob(str(Path(modelpath, 'packets', 'packets00_*.out*'))))
