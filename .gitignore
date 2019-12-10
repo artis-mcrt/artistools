@@ -10,6 +10,7 @@ coverage.xml
 *.tmp
 .tags
 .tags_swap
+.tags?
 .idea
 
 .pytest_cache
