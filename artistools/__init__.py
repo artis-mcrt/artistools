@@ -394,14 +394,21 @@ def get_timestep_times_float(modelpath, loc='mid'):
         raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
 
 
-def get_closest_timestep(modelpath, timedays):
-    """Return the timestep number whose midpoint time is closest to timedays."""
+def get_timestep_of_timedays(modelpath, timedays):
+    """Return the timestep containing the given time in days."""
     try:
         # could be a string like '330d'
         timedays_float = float(timedays.rstrip('d'))
     except AttributeError:
         timedays_float = float(timedays)
-    return np.abs(np.array(get_timestep_times_float(modelpath)) - timedays_float).argmin()
+
+    arr_tstart = get_timestep_times_float(modelpath, loc='start')
+
+    for ts, tstart in enumerate(arr_tstart):
+        if tstart > timedays_float:
+            return ts
+
+    assert(False)
 
 
 def get_time_range(modelpath, timestep_range_str, timemin, timemax, timedays_range_str):
@@ -435,7 +442,7 @@ def get_time_range(modelpath, timestep_range_str, timemin, timemax, timedays_ran
                 timemin, timemax = [float(timedays) for timedays in timedays_range_str.split('-')]
             else:
                 timeavg = float(timedays_range_str)
-                timestepmin = get_closest_timestep(modelpath, timeavg)
+                timestepmin = get_timestep_of_timedays(modelpath, timeavg)
                 timestepmax = timestepmin
                 timemin = tstarts[timestepmin]
                 timemax = tends[timestepmax]
