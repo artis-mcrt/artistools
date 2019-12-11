@@ -6,12 +6,15 @@ A collection of plotting, analysis, and file format conversion tools for the ART
 import argparse
 from functools import lru_cache
 import gzip
+import hashlib
 import lzma
 import math
 import os.path
+import pickle
 import sys
 from collections import namedtuple
 from itertools import chain
+from functools import wraps
 import matplotlib.ticker as ticker
 from pathlib import Path
 from typing import Iterable
@@ -27,6 +30,7 @@ if sys.version_info < (3,):
     print("Python 2 not supported")
 
 enable_multiprocessing = True
+enable_diskcache = True
 
 figwidth = 5
 
@@ -63,6 +67,44 @@ elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, 'data', 'elements.csv')
 
 roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
+
+
+def diskcache(func):
+    if not enable_diskcache:
+        return func
+    cachefolder = Path('artistoolscache')
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        myhash = hashlib.sha1()
+        myhash.update(func.__module__.encode('utf-8'))
+        myhash.update(func.__qualname__.encode('utf-8'))
+        myhash.update(str(args).encode('utf-8'))
+        myhash.update(str(kwargs).encode('utf-8'))
+        filename = Path(cachefolder, f'cached-{func.__module__}.{func.__qualname__}-{myhash.hexdigest()}.tmp')
+        if filename.exists():
+            filesize = Path(filename).stat().st_size / 1024 / 1024
+
+            with open(filename, 'rb') as f:
+                print(f'diskcache: Loading results from {filename} ({filesize:.1f} MiB)...', end='')
+                result = pickle.load(f)
+            print(f'done.')
+
+            return result
+        else:
+            if not cachefolder.is_dir():
+                cachefolder.mkdir(parents=True, exist_ok=True)
+
+            result = func(*args, **kwargs)
+            with open(filename, 'wb') as f:
+                print(f'diskcache: saving results to {filename}...', end='')
+                pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+            filesize = Path(filename).stat().st_size / 1024 / 1024
+            print(f'done. ({filesize:.1f} MiB)')
+
+            return result
+    return wrapper
+
 
 class AppendPath(argparse.Action):
     def __call__(self, parser, args, values, option_string=None):
@@ -183,7 +225,8 @@ def get_composition_data_from_outputfile(modelpath):
                 ioncount += 1
                 atomic_composition[Z] = ioncount
 
-    composition_df = pd.DataFrame([(Z, atomic_composition[Z]) for Z in atomic_composition.keys()], columns=['Z', 'nions'])
+    composition_df = pd.DataFrame(
+        [(Z, atomic_composition[Z]) for Z in atomic_composition.keys()], columns=['Z', 'nions'])
     composition_df['lowermost_ionstage'] = [1] * composition_df.shape[0]
     composition_df['uppermost_ionstage'] = composition_df['nions']
     return composition_df
@@ -767,14 +810,27 @@ def parse_range_list(rngs, dictvars={}):
     return sorted(set(chain.from_iterable([parse_range(rng, dictvars) for rng in rngs.split(',')])))
 
 
+def makelist(x):
+    """If x is not a list (or is a string), make a list containing x."""
+    if x is None:
+        return []
+    elif isinstance(x, (str, Path)):
+        return [x, ]
+    else:
+        return x
+
+
 def trim_or_pad(requiredlength, *listoflistin):
+    """Make lists equal in length to requiedlength either by padding with None or truncating"""
     for listin in listoflistin:
-        if listin is None:
-            listin = []
+        listin = makelist(listin)
+
         if len(listin) < requiredlength:
-            listin.extend([None for _ in range(requiredlength - len(listin))])
-        if len(listin) > requiredlength:
-            del listin[requiredlength:]
+            yield listin.extend([None for _ in range(requiredlength - len(listin))])
+        elif len(listin) > requiredlength:
+            yield listin[:requiredlength]
+        else:
+            yield listin
 
 
 def flatten_list(listin):
