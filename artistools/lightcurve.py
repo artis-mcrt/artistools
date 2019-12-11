@@ -38,13 +38,13 @@ def get_from_packets(modelpath, lcpath, packet_type='TYPE_ESCAPE', escape_type='
     nprocs_read = len(packetsfiles)
     assert nprocs_read > 0
 
-    timearray = at.lightcurve.readfile(lcpath)['time'].values
+    timearray = at.get_timestep_times_float(modelpath=modelpath, loc='mid')
+    arr_timedelta = at.get_timestep_times_float(modelpath=modelpath, loc='delta')
     # timearray = np.arange(250, 350, 0.1)
     model, _ = at.get_modeldata(modelpath)
     vmax = model.iloc[-1].velocity_outer * u.km / u.s
     betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
-    arr_timedelta = [at.get_timestep_time_delta(timestep, timearray) for timestep in range(len(timearray))]
     timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
 
     lcdata = pd.DataFrame({'time': timearray,
@@ -59,8 +59,6 @@ def get_from_packets(modelpath, lcpath, packet_type='TYPE_ESCAPE', escape_type='
 
         if not (dfpackets.empty):
             print(f"sum of e_cmf {dfpackets['e_cmf'].sum()} e_rf {dfpackets['e_rf'].sum()}")
-
-            dfpackets['t_arrive_d'] = dfpackets.apply(lambda packet: at.packets.t_arrive(packet) * u.s.to('day'), axis=1)
 
             binned = pd.cut(dfpackets['t_arrive_d'], timearrayplusend, labels=False, include_lowest=True)
             for binindex, e_rf_sum in dfpackets.groupby(binned)['e_rf'].sum().iteritems():
