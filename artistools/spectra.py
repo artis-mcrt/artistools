@@ -551,8 +551,7 @@ def get_flux_contributions(
         assert emissiondata.shape[0] == len(arraynu) * len(timearray)
 
     if getabsorption:
-        absorptionfilename = at.firstexisting(['absorption.out.xz', 'absorption.out.gz', 'absorption.out',
-                                               'absorptionpol.out'], path=modelpath)
+        absorptionfilename = at.firstexisting(['absorption.out.xz', 'absorption.out.gz', 'absorption.out', 'absorptionpol.out'], path=modelpath)
         try:
             absorptionfilesize = Path(absorptionfilename).stat().st_size / 1024 / 1024
             print(f' Reading {absorptionfilename} ({absorptionfilesize:.2f} MiB)')
