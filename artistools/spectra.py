@@ -1846,13 +1846,15 @@ def main(args=None, argsraw=None, **kwargs):
     args.modelpath = at.flatten_list(args.modelpath)
     args.specpath = at.flatten_list(args.specpath)
 
-    at.trim_or_pad(len(args.specpath), args.color, args.label, args.linestyle, args.dashes)
+    args.color, args.label, args.linestyle, args.dashes = at.trim_or_pad(
+        len(args.specpath), args.color, args.label, args.linestyle, args.dashes)
 
-    at.trim_or_pad(len(args.modelpath), args.modellabels, args.modelcolors)
+    args.modellabels, args.modelcolors = at.trim_or_pad(
+        len(args.modelpath), args.modellabels, args.modelcolors)
 
     if args.refspecfiles is None:
         args.refspecfiles = []
-    at.trim_or_pad(len(args.refspecfiles), args.refspeccolors)
+    args.refspeccolors = at.trim_or_pad(len(args.refspecfiles), args.refspeccolors)
 
     if not args.refspecafterartis:
         if args.refspecfiles:
@@ -1874,7 +1876,8 @@ def main(args=None, argsraw=None, **kwargs):
             args.specpath.extend(args.refspecfiles)
             args.color.extend(args.refspeccolors)
 
-    at.trim_or_pad(len(args.specpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth)
+    args.color, args.label, args.linestyle, args.dashes, args.linewidth = at.trim_or_pad(
+        len(args.specpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth)
 
     if args.makevspecpol:
         make_virtual_spectra_summed_file(args.modelpath[0])

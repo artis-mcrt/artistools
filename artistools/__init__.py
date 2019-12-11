@@ -833,7 +833,7 @@ def trim_or_pad(requiredlength, *listoflistin):
         else:
             listout = listin
 
-        assert(listout is not None)
+        assert(len(listout) == requiredlength)
         yield listout
 
 

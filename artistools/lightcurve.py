@@ -800,7 +800,8 @@ def main(args=None, argsraw=None, **kwargs):
         else:
             modelpaths.append(elem)
 
-    at.trim_or_pad(len(args.modelpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth)
+    args.color, args.label, args.linestyle, args.dashes, args.linewidth = at.trim_or_pad(
+        len(args.modelpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth)
 
     if args.gamma:
         args.escape_type = 'TYPE_GAMMA'
