@@ -85,7 +85,7 @@ def diskcache(func):
             filesize = Path(filename).stat().st_size / 1024 / 1024
 
             with open(filename, 'rb') as f:
-                print(f'diskcache: Loading results from {filename} ({filesize:.1f} MiB)...', end='')
+                print(f'diskcache: Loading {filename} ({filesize:.1f} MiB)...', end='')
                 result = pickle.load(f)
             print(f'done.')
 
@@ -96,7 +96,7 @@ def diskcache(func):
 
             result = func(*args, **kwargs)
             with open(filename, 'wb') as f:
-                print(f'diskcache: saving results to {filename}...', end='')
+                print(f'diskcache: Saving {filename}...', end='')
                 pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
 
             filesize = Path(filename).stat().st_size / 1024 / 1024
@@ -826,11 +826,15 @@ def trim_or_pad(requiredlength, *listoflistin):
         listin = makelist(listin)
 
         if len(listin) < requiredlength:
-            yield listin.extend([None for _ in range(requiredlength - len(listin))])
+            listout = listin.copy()
+            listout.extend([None for _ in range(requiredlength - len(listin))])
         elif len(listin) > requiredlength:
-            yield listin[:requiredlength]
+            listout = listin[:requiredlength]
         else:
-            yield listin
+            listout = listin
+
+        assert(listout is not None)
+        yield listout
 
 
 def flatten_list(listin):
