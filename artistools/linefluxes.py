@@ -231,7 +231,7 @@ def make_emitting_regions_plot(args):
     for axis, t_days in zip(axes, times_days):
         floersindex = np.abs(floers_times - t_days).argmin()
         axis.plot(floers_data[floersindex]['ne'], floers_data[floersindex]['temp'],
-                  color='black', lw=2, label=f'Floers et al. (2019) {floers_keys[floersindex]}}d')
+                  color='black', lw=2, label=f'Floers et al. (2019) {floers_keys[floersindex]}d')
 
     # axis.set_xlim(left=supxmin, right=supxmax)
     # pd.set_option('display.max_rows', 50)
