@@ -26,12 +26,9 @@ from PyPDF2 import PdfFileMerger
 if sys.version_info < (3,):
     print("Python 2 not supported")
 
-PYDIR = os.path.dirname(os.path.abspath(__file__))
+enable_multiprocessing = True
 
-elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, 'data', 'elements.csv'))['symbol'].values)
-
-roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
-                  'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
+figwidth = 5
 
 commandlist = {
     'getartismodeldeposition': ('artistools.deposition', 'main_analytical'),
@@ -45,6 +42,7 @@ commandlist = {
     'plotartisdeposition': ('artistools.deposition', 'main'),
     'plotartisestimators': ('artistools.estimators', 'main'),
     'plotartislightcurve': ('artistools.lightcurve', 'main'),
+    'plotartislinefluxes': ('artistools.linefluxes', 'main'),
     'plotartisnltepops': ('artistools.nltepops', 'main'),
     'plotartismacroatom': ('artistools.macroatom', 'main'),
     'plotartisnonthermal': ('artistools.nonthermal', 'main'),
@@ -59,8 +57,12 @@ console_scripts = [f'{command} = {submodulename}:{funcname}'
 console_scripts.append('at = artistools:main')
 console_scripts.append('artistools = artistools:main')
 
-figwidth = 5
+PYDIR = os.path.dirname(os.path.abspath(__file__))
 
+elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, 'data', 'elements.csv'))['symbol'].values)
+
+roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
+                  'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
 class AppendPath(argparse.Action):
     def __call__(self, parser, args, values, option_string=None):
