@@ -46,6 +46,10 @@ def readfile(packetsfile, usecols, type=None, escape_type=None):
         print("\nWARNING: packets file has no columns!")
         print(open(packetsfile, "r").readlines())
 
+    for c in usecols:
+        if c not in columns:
+            raise ValueError(f"Unknown packet column: '{c}'. Must be one of {columns}")
+
     # the packets file may have a truncated set of columns, but we assume that they
     # are only truncated, i.e. the columns with the same index have the same meaning
     usecols_nodata = [n for n in usecols if columns.index(n) >= inputcolumncount]
