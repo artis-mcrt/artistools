@@ -250,7 +250,7 @@ def parse_estimfile(estfilepath, modelpath):
         yield timestep, modelgridindex, estimblock
 
 
-def read_estimators_from_file(modelpath, folderpath, velocity_outer, printfilename, mpirank):
+def read_estimators_from_file(modelpath, folderpath, arr_velocity_outer, printfilename, mpirank):
     estimators_thisfile = {}
     estimfilename = f'estimators_{mpirank:04d}.out'
     estfilepath = Path(folderpath, estimfilename)
@@ -267,7 +267,7 @@ def read_estimators_from_file(modelpath, folderpath, velocity_outer, printfilena
     for fileblock_timestep, fileblock_modelgridindex, file_estimblock in parse_estimfile(
             estfilepath, modelpath):
 
-        file_estimblock['velocity_outer'] = velocity_outer[fileblock_modelgridindex]
+        file_estimblock['velocity_outer'] = arr_velocity_outer[fileblock_modelgridindex]
         file_estimblock['velocity'] = file_estimblock['velocity_outer']
 
         estimators_thisfile[(fileblock_timestep, fileblock_modelgridindex)] = file_estimblock
@@ -299,7 +299,7 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None):
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
 
     modeldata, _ = at.get_modeldata(modelpath)
-    velocity_outer = tuple(list([float(v) for v in modeldata['velocity_outer'].values]))
+    arr_velocity_outer = tuple(list([float(v) for v in modeldata['velocity_outer'].values]))
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex)
 
@@ -309,14 +309,15 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None):
     for folderpath in at.get_runfolders(modelpath, timesteps=match_timestep):
         print(f'Reading {len(list(mpiranklist))} estimator files in {folderpath.relative_to(modelpath.parent)}')
 
-        processfile = partial(read_estimators_from_file, modelpath, folderpath, velocity_outer, printfilename)
+        processfile = partial(read_estimators_from_file, modelpath, folderpath, arr_velocity_outer, printfilename)
 
-        # with multiprocessing.get_context("spawn").Pool() as pool:
-        #     arr_rankestimators = pool.imap_unordered(processfile, mpiranklist)
-        #     pool.close()
-        #     pool.join()
-
-        arr_rankestimators = [processfile(rank) for rank in mpiranklist]
+        if at.enable_multiprocessing:
+            with multiprocessing.get_context("spawn").Pool() as pool:
+                arr_rankestimators = pool.map(processfile, mpiranklist)
+                pool.close()
+                pool.join()
+        else:
+            arr_rankestimators = [processfile(rank) for rank in mpiranklist]
 
         for estimators_thisfile in arr_rankestimators:
             estimators.update(estimators_thisfile)
