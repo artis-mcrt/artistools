@@ -147,7 +147,7 @@ def get_spectrum_from_packets(
                 'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
                 'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz',
                 'em_posx', 'em_posy', 'em_posz', 'em_time',
-                'true_emission_velocity', 'originated_from_positron', 'true_emission_type'],
+                'true_emission_velocity', 'originated_from_positron', 'trueemissiontype'],
             escape_type='TYPE_RPKT')
 
         querystr = '@nu_min <= nu_rf < @nu_max and'
@@ -160,10 +160,10 @@ def get_spectrum_from_packets(
 
         print(f"  {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges")
         for _, packet in dfpackets.iterrows():
-            if packet.true_emission_type < 0:
+            if packet.trueemissiontype < 0:
                 continue
             # linelist = at.get_linelist(modelpath)
-            # transition = linelist[packet.true_emission_type]
+            # transition = linelist[packet.trueemissiontype]
             # if transition.upperlevelindex <= 80:
             #     continue
 
@@ -656,7 +656,7 @@ def get_flux_contributions_from_packets(
                 return (f'{at.get_ionstring(line.atomic_number, line.ionstage)} '
                         f'λ{line.lambda_angstroms:.0f} '
                         f'({line.upperlevelindex}-{line.lowerlevelindex})')
-            if groupby == 'terms':
+            elif groupby == 'terms':
                 upper_config = adata.query(
                     'Z == @line.atomic_number and ion_stage == @line.ionstage', inplace=False
                     ).iloc[0].levels.iloc[line.upperlevelindex].levelname
@@ -666,7 +666,7 @@ def get_flux_contributions_from_packets(
                     ).iloc[0].levels.iloc[line.lowerlevelindex].levelname
                 lower_term_noj = lower_config.split('_')[-1].split('[')[0]
                 return f'{at.get_ionstring(line.atomic_number, line.ionstage)} {upper_term_noj}->{lower_term_noj}'
-            if groupby == 'upperterm':
+            elif groupby == 'upperterm':
                 upper_config = adata.query(
                     'Z == @line.atomic_number and ion_stage == @line.ionstage', inplace=False
                     ).iloc[0].levels.iloc[line.upperlevelindex].levelname
@@ -723,9 +723,9 @@ def get_flux_contributions_from_packets(
     nu_max = c_ang_s / lambda_min
 
     if useinternalpackets:
-        emtypecolumn = 'emission_type'
+        emtypecolumn = 'emissiontype'
     else:
-        emtypecolumn = 'emission_type' if use_lastemissiontype else 'true_emission_type'
+        emtypecolumn = 'emissiontype' if use_lastemissiontype else 'trueemissiontype'
 
     for index, packetsfile in enumerate(packetsfiles):
         usecols = [
@@ -787,7 +787,7 @@ def get_flux_contributions_from_packets(
             if getemission:
                 # if emtype >= 0 and linelist[emtype].upperlevelindex <= 80:
                 #     continue
-                # emprocesskey = get_emprocesslabel(packet.emission_type)
+                # emprocesskey = get_emprocesslabel(packet.emissiontype)
                 emprocesskey = get_emprocesslabel(packet[emtypecolumn])
                 # print('packet lambda_cmf: {c_ang_s / packet.nu_cmf}.1f}, lambda_rf {lambda_rf:.1f}, {emprocesskey}')
 
@@ -816,7 +816,8 @@ def get_flux_contributions_from_packets(
         if modelgridindex:
             volume_shells = volume
             assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
-            volume = (at.get_wid_init(modelpath) * t_seconds / (at.get_inputparams(modelpath)['tmin'] * u.day.to('s'))) ** 3 * len(assoc_cells[modelgridindex])
+            volume = (at.get_wid_init(modelpath) * t_seconds / (
+                at.get_inputparams(modelpath)['tmin'] * u.day.to('s'))) ** 3 * len(assoc_cells[modelgridindex])
             print('volume', volume, 'shell volume', volume_shells, '-------------------------------------------------')
         normfactor = c_cgs / 4 / math.pi / delta_lambda / volume / nprocs_read
     else:
