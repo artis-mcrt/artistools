@@ -154,7 +154,7 @@ def make_plot(modelpaths, args):
             modelgridindex = args.modelgridindex
 
         if args.timedays:
-            timestep = at.get_closest_timestep(modelpath, args.timedays)
+            timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
         else:
             timestep = args.timestep
 

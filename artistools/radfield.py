@@ -748,7 +748,7 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
                                       args.figscale * at.figwidth * (0.25 + nlinesplotted * 0.35)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
-    timestep = at.get_closest_timestep(modelpath, 330)
+    timestep = at.get_timestep_of_timedays(modelpath, 330)
     time_days = float(at.get_timestep_time(modelpath, timestep))
 
     dftopestimators = radfielddataselected.query('timestep==@timestep and bin_num < -1').copy()
@@ -890,7 +890,7 @@ def main(args=None, argsraw=None, **kwargs):
 
         timesteplast = len(at.get_timestep_times_float(modelpath))
         if args.timedays:
-            timesteplist = [at.get_closest_timestep(modelpath, args.timedays)]
+            timesteplist = [at.get_timestep_of_timedays(modelpath, args.timedays)]
         elif args.timestep:
             timesteplist = at.parse_range_list(args.timestep, dictvars={'last': timesteplast})
         else:

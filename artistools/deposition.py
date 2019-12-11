@@ -42,7 +42,7 @@ def main_analytical(args=None, argsraw=None, **kwargs):
     print('The following assumes that all 56Ni has decayed to 56Co and all energy comes from emitted positrons')
 
     adata = at.get_levels(args.modelpath, get_photoionisations=True)
-    timestep = at.get_closest_timestep(args.modelpath, args.timedays)
+    timestep = at.get_timestep_of_timedays(args.modelpath, args.timedays)
     dfnltepops = at.nltepops.read_files(
         args.modelpath, timestep=timestep, noprint=True).query('Z == 26')
 
