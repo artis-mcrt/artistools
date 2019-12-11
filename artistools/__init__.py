@@ -42,7 +42,6 @@ commandlist = {
     'plotartisdeposition': ('artistools.deposition', 'main'),
     'plotartisestimators': ('artistools.estimators', 'main'),
     'plotartislightcurve': ('artistools.lightcurve', 'main'),
-    'plotartislinefluxes': ('artistools.linefluxes', 'main'),
     'plotartisnltepops': ('artistools.nltepops', 'main'),
     'plotartismacroatom': ('artistools.macroatom', 'main'),
     'plotartisnonthermal': ('artistools.nonthermal', 'main'),
