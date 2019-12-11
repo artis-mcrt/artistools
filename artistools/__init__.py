@@ -312,7 +312,7 @@ def get_mgi_of_velocity(modelpath, velocity, mgilist=None):
 
     index_closestvouter = np.abs(arr_vouter - velocity).argmin()
 
-    if velocity < arr_vouter[index_closestvouter] or index_closestvouter >= len(arr_vouter):
+    if velocity < arr_vouter[index_closestvouter] or index_closestvouter + 1 >= len(mgilist):
         return mgilist[index_closestvouter]
     elif velocity < arr_vouter[index_closestvouter + 1]:
         return mgilist[index_closestvouter + 1]
@@ -928,7 +928,6 @@ def get_inputparams(modelpath):
     return params
 
 
-# @lru_cache(maxsize=64)
 @lru_cache(maxsize=16)
 def get_runfolder_timesteps(folderpath):
     """Get the set of timesteps covered by the output files in an ARTIS run folder."""
