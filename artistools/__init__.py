@@ -379,16 +379,16 @@ def get_timestep_times_float(modelpath, loc='mid'):
     dlogt = (math.log(inputparams['tmax']) - math.log(tmin)) / inputparams['ntstep']
     timesteps = range(inputparams['ntstep'])
     if loc == 'mid':
-        tmids = [tmin * math.exp((ts + 0.5) * dlogt) for ts in timesteps]
+        tmids = np.array([tmin * math.exp((ts + 0.5) * dlogt) for ts in timesteps])
         return tmids
     elif loc == 'start':
-        tstarts = [tmin * math.exp(ts * dlogt) for ts in timesteps]
+        tstarts = np.array([tmin * math.exp(ts * dlogt) for ts in timesteps])
         return tstarts
     elif loc == 'end':
-        tends = [tmin * math.exp((ts + 1) * dlogt) for ts in timesteps]
+        tends = np.array([tmin * math.exp((ts + 1) * dlogt) for ts in timesteps])
         return tends
     elif loc == 'delta':
-        tdeltas = [tmin * (math.exp((ts + 1) * dlogt) - math.exp(ts * dlogt)) for ts in timesteps]
+        tdeltas = np.array([tmin * (math.exp((ts + 1) * dlogt) - math.exp(ts * dlogt)) for ts in timesteps])
         return tdeltas
     else:
         raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
