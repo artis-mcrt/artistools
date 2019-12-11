@@ -90,7 +90,7 @@ def test_nltepops_departuremode():
 
 
 def test_nonthermal():
-    at.nonthermal.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
+    at.nonthermal.main(modelpath=modelpath, outputfile=outputpath, timedays=320)
 
 
 def test_radfield():

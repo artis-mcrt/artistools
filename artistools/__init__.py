@@ -312,7 +312,7 @@ def get_mgi_of_velocity(modelpath, velocity, mgilist=None):
 
     index_closestvouter = np.abs(arr_vouter - velocity).argmin()
 
-    if velocity < arr_vouter[index_closestvouter]:
+    if velocity < arr_vouter[index_closestvouter] or index_closestvouter >= len(arr_vouter):
         return mgilist[index_closestvouter]
     elif velocity < arr_vouter[index_closestvouter + 1]:
         return mgilist[index_closestvouter + 1]
@@ -409,6 +409,7 @@ def get_timestep_of_timedays(modelpath, timedays):
             return ts
 
     assert(False)
+    return
 
 
 def get_time_range(modelpath, timestep_range_str, timemin, timemax, timedays_range_str):
@@ -506,6 +507,7 @@ def get_timestep_time_delta(timestep, timearray=None, inputparams=None, modelpat
     else:
         assert timearray or inputparams
 
+    # assert(delta_t == get_timestep_times_float(modelpath, loc='delta'))
     return delta_t
 
 
@@ -927,6 +929,7 @@ def get_inputparams(modelpath):
 
 
 # @lru_cache(maxsize=64)
+@lru_cache(maxsize=16)
 def get_runfolder_timesteps(folderpath):
     """Get the set of timesteps covered by the output files in an ARTIS run folder."""
     folder_timesteps = set()
@@ -950,7 +953,6 @@ def get_runfolder_timesteps(folderpath):
     return tuple(folder_timesteps)
 
 
-# @lru_cache(maxsize=16)
 def get_runfolders(modelpath, timestep=None, timesteps=None):
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
@@ -967,7 +969,7 @@ def get_runfolders(modelpath, timestep=None, timesteps=None):
 
         return tuple(folder_list_matching)
 
-    return folderlist_all
+    return [folderpath for folderpath in folderlist_all if get_runfolder_timesteps(folderpath)]
 
 
 def get_mpiranklist(modelpath, modelgridindex=None):
