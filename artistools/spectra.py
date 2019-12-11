@@ -4,6 +4,7 @@ import argparse
 import math
 from collections import namedtuple
 from functools import lru_cache
+from functools import partial
 from pathlib import Path
 import os
 
@@ -929,6 +930,25 @@ def print_integrated_flux(arr_f_lambda, arr_lambda_angstroms, distance_megaparse
     # print(f'(L={luminosity.to("Lsun"):.3e})')
 
 
+def get_line_flux(lambda_low, lambda_high, arr_f_lambda, arr_lambda_angstroms):
+    index_low, index_high = [np.searchsorted(arr_lambda_angstroms, wl, side="left") for wl in (lambda_low, lambda_high)]
+    flux_integral = abs(np.trapz(arr_f_lambda[index_low:index_high], x=arr_lambda_angstroms[index_low:index_high]))
+    return flux_integral
+
+
+def print_floers_line_ratio(modelpath, timedays, arr_f_lambda, arr_lambda_angstroms):
+    f_12570 = get_line_flux(12570 - 200, 12570 + 200, arr_f_lambda, arr_lambda_angstroms)
+    f_7155 = get_line_flux(7000, 7350, arr_f_lambda, arr_lambda_angstroms)
+    print(f'f_12570 {f_12570:.2e} f_7155 {f_7155:.2e}')
+    if f_7155 > 0 and f_12570 > 0:
+        fratio = f_12570 / f_7155
+        print(f'f_12570/f_7122 = {fratio:.2e} (log10 is {math.log10(fratio):.2e})')
+        outfilename = f"fe2_nir_vis_ratio_{os.path.basename(modelpath)}.txt"
+        print(f' saved to {outfilename}')
+        with open(outfilename, "a+") as f:
+            f.write(f'{timedays:.1f} {fratio:.3e}\n')
+
+
 @lru_cache(maxsize=4)
 def load_yaml_path(folderpath):
     yamlpath = Path(folderpath, 'metadata.yml')
@@ -1310,6 +1330,10 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
     at.spectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
 
     # print("\n".join([f"{x[0]}, {x[1]}" for x in contribution_list]))
+
+    # for c in contribution_list:
+    #     if c.linelabel == 'Fe II':
+    #         print_floers_line_ratio(modelpath, args.timedays, c.array_flambda_emission[::-1], arraylambda_angstroms[::-1])
 
     contributions_sorted_reduced = at.spectra.sort_and_reduce_flux_contribution_list(
         contribution_list, args.maxseriescount, arraylambda_angstroms, fixedionlist=args.fixedionlist,

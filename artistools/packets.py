@@ -36,6 +36,34 @@ types = {
 type_ids = dict((v, k) for k, v in types.items())
 
 
+def calculate_emvelocity(dfpackets):
+    return dfpackets.eval(
+        "emission_velocity_kms = sqrt(em_posx ** 2 + em_posy ** 2 + em_posz ** 2) * @u.cm.to('km') / em_time",
+        inplace=True)
+
+
+def calculate_emmodelgridindex(dfpackets, modelpath, allnonemptymgilist):
+    def em_modelgridindex(packet):
+        return at.get_mgi_of_velocity(modelpath, packet.emission_velocity_kms, mgilist=allnonemptymgilist)
+
+    dfpackets['em_modelgridindex'] = dfpackets.apply(em_modelgridindex, axis=1)
+
+
+def calculate_emtrue_modelgridindex(dfpackets, modelpath, allnonemptymgilist):
+    def emtrue_modelgridindex(packet):
+        return at.get_mgi_of_velocity(modelpath, packet.true_emission_velocity * u.cm.to('km'),
+                                      mgilist=allnonemptymgilist)
+
+    dfpackets['emtrue_modelgridindex'] = dfpackets.apply(emtrue_modelgridindex, axis=1)
+
+
+def calculate_emtimestep(dfpackets, modelpath):
+    def em_timestep(packet):
+        return at.get_timestep_of_timedays(modelpath, packet.em_time * u.s.to('day'))
+
+    dfpackets['em_timestep'] = dfpackets.apply(em_timestep, axis=1)
+
+
 def readfile(packetsfile, usecols, type=None, escape_type=None):
     """Read a packet file into a pandas DataFrame."""
     filesize = Path(packetsfile).stat().st_size / 1024 / 1024
