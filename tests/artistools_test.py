@@ -21,6 +21,8 @@ import artistools.transitions
 modelpath = Path('tests', 'data')
 outputpath = Path('tests', 'output')
 specfilename = modelpath / 'spec.out'
+at.enable_diskcache = False
+at.enable_multiprocessing = False
 
 
 def test_timestep_times():
