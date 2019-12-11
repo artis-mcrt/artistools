@@ -149,7 +149,7 @@ def get_ylabel(variable):
     return ''
 
 
-def parse_estimfile(estfilepath, modeldata, modelpath):
+def parse_estimfile(estfilepath, modelpath):
     """Generate timestep, modelgridindex, dict from estimator file."""
     itstep = at.get_inputparams(modelpath)['itstep']
 
@@ -178,8 +178,6 @@ def parse_estimfile(estfilepath, modeldata, modelpath):
                 # print(f'Timestep {timestep} cell {modelgridindex}')
 
                 estimblock = {}
-                estimblock['velocity_outer'] = modeldata['velocity_outer'][modelgridindex]
-                estimblock['velocity'] = estimblock['velocity_outer']
                 emptycell = (row[4] == 'EMPTYCELL')
                 estimblock['emptycell'] = emptycell
                 if not emptycell:
@@ -252,7 +250,7 @@ def parse_estimfile(estfilepath, modeldata, modelpath):
         yield timestep, modelgridindex, estimblock
 
 
-def read_estimators_from_file(modelpath, modeldata, folderpath, match_timestep, match_modelgridindex, printfilename, mpirank):
+def read_estimators_from_file(modelpath, folderpath, velocity_outer, printfilename, mpirank):
     estimators_thisfile = {}
     estimfilename = f'estimators_{mpirank:04d}.out'
     estfilepath = Path(folderpath, estimfilename)
@@ -266,15 +264,14 @@ def read_estimators_from_file(modelpath, modeldata, folderpath, match_timestep, 
         filesize = Path(estfilepath).stat().st_size / 1024 / 1024
         print(f'Reading {estfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)')
 
-    for file_timestep, file_modelgridindex, file_estimblock in parse_estimfile(
-            estfilepath, modeldata, modelpath):
+    for fileblock_timestep, fileblock_modelgridindex, file_estimblock in parse_estimfile(
+            estfilepath, modelpath):
 
-        if match_timestep and file_timestep not in match_timestep:
-            continue  # timestep not a match, so skip this block
-        elif match_modelgridindex and file_modelgridindex not in match_modelgridindex:
-            continue  # modelgridindex not a match, skip this block
+        file_estimblock['velocity_outer'] = velocity_outer[fileblock_modelgridindex]
+        file_estimblock['velocity'] = file_estimblock['velocity_outer']
 
-        estimators_thisfile[(file_timestep, file_modelgridindex)] = file_estimblock
+        estimators_thisfile[(fileblock_timestep, fileblock_modelgridindex)] = file_estimblock
+
     return estimators_thisfile
 
 
@@ -302,6 +299,7 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None):
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
 
     modeldata, _ = at.get_modeldata(modelpath)
+    velocity_outer = tuple(list([float(v) for v in modeldata['velocity_outer'].values]))
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex)
 
@@ -309,19 +307,19 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None):
 
     estimators = {}
     for folderpath in at.get_runfolders(modelpath, timesteps=match_timestep):
-        nfilesread_thisfolder = 0
+        print(f'Reading {len(list(mpiranklist))} estimator files in {folderpath.relative_to(modelpath.parent)}')
 
-        p = multiprocessing.Pool()
-        processfile = partial(read_estimators_from_file, modelpath, modeldata, folderpath,
-                              match_timestep, match_modelgridindex, printfilename)
-        arr_rankestimators = p.map(processfile, mpiranklist)
+        processfile = partial(read_estimators_from_file, modelpath, folderpath, velocity_outer, printfilename)
+
+        # with multiprocessing.get_context("spawn").Pool() as pool:
+        #     arr_rankestimators = pool.imap_unordered(processfile, mpiranklist)
+        #     pool.close()
+        #     pool.join()
+
+        arr_rankestimators = [processfile(rank) for rank in mpiranklist]
+
         for estimators_thisfile in arr_rankestimators:
-            if estimators_thisfile:
-                estimators.update(estimators_thisfile)
-                nfilesread_thisfolder += 1
-
-        if nfilesread_thisfolder > 0:
-            print(f'Read {nfilesread_thisfolder} estimator files in {folderpath.relative_to(modelpath.parent)}')
+            estimators.update(estimators_thisfile)
 
     return estimators
 
