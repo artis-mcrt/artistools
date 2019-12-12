@@ -881,7 +881,7 @@ def main(args=None, argsraw=None, **kwargs):
         at.showtimesteptimes(modelpath=args.modelpath)
     else:
         if args.velocity >= 0.:
-            modelgridindexlist = [at.get_mgi_of_velocity(modelpath, args.velocity)]
+            modelgridindexlist = [at.get_mgi_of_velocity_kms(modelpath, args.velocity)]
         else:
             if args.modelgridindex is None:
                 modelgridindexlist = [0]

@@ -72,20 +72,25 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
 def diskcache(func):
     if not enable_diskcache:
         return func
-    cachefolder = Path('artistoolscache')
+
     @wraps(func)
     def wrapper(*args, **kwargs):
+        cachefolder = Path('__artistoolscache__')
+
         myhash = hashlib.sha1()
         myhash.update(func.__module__.encode('utf-8'))
         myhash.update(func.__qualname__.encode('utf-8'))
         myhash.update(str(args).encode('utf-8'))
         myhash.update(str(kwargs).encode('utf-8'))
-        filename = Path(cachefolder, f'cached-{func.__module__}.{func.__qualname__}-{myhash.hexdigest()}.tmp')
+        hash_strhex = myhash.hexdigest()
+
+        filename = Path(cachefolder, f'cached-{func.__module__}.{func.__qualname__}-{hash_strhex}.tmp')
+
         if filename.exists():
             filesize = Path(filename).stat().st_size / 1024 / 1024
 
             with open(filename, 'rb') as f:
-                print(f'diskcache: Loading {filename} ({filesize:.1f} MiB)...', end='')
+                print(f"diskcache: Loading '{filename}' ({filesize:.1f} MiB)...", end='')
                 result = pickle.load(f)
             print(f'done.')
 
@@ -96,7 +101,7 @@ def diskcache(func):
 
             result = func(*args, **kwargs)
             with open(filename, 'wb') as f:
-                print(f'diskcache: Saving {filename}...', end='')
+                print(f"diskcache: Saving '{filename}'...", end='')
                 pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
 
             filesize = Path(filename).stat().st_size / 1024 / 1024
@@ -344,7 +349,7 @@ def get_wid_init(modelpath):
     return wid_init
 
 
-def get_mgi_of_velocity(modelpath, velocity, mgilist=None):
+def get_mgi_of_velocity_kms(modelpath, velocity, mgilist=None):
     """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
     If mgilist is given, then chose from these cells only"""
     modeldata, _ = get_modeldata(modelpath)
