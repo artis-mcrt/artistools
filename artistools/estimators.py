@@ -149,7 +149,7 @@ def get_ylabel(variable):
     return ''
 
 
-def parse_estimfile(estfilepath, modelpath):
+def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcooling=True):
     """Generate timestep, modelgridindex, dict from estimator file."""
     itstep = at.get_inputparams(modelpath)['itstep']
 
@@ -186,7 +186,7 @@ def parse_estimfile(estfilepath, modelpath):
                         estimblock[variablename] = float(value)
                     estimblock['lognne'] = math.log10(estimblock['nne'])
 
-            elif row[1].startswith('Z='):
+            elif row[1].startswith('Z=') and get_ion_values:
                 variablename = row[0]
                 if row[1].endswith('='):
                     atomic_number = int(row[2])
@@ -228,7 +228,7 @@ def parse_estimfile(estfilepath, modelpath):
                         estimblock['populations']['total'] = 0.
                     estimblock['populations']['total'] += estimblock['populations'][atomic_number]
 
-            elif row[0] == 'heating:':
+            elif row[0] == 'heating:' and get_heatingcooling:
                 for heatingtype, value in zip(row[1::2], row[2::2]):
                     estimblock['heating_' + heatingtype] = float(value)
 
@@ -241,7 +241,7 @@ def parse_estimfile(estfilepath, modelpath):
                         estimblock['heating_dep'] /
                         estimblock['heating_dep/total_dep'])
 
-            elif row[0] == 'cooling:':
+            elif row[0] == 'cooling:' and get_heatingcooling:
                 for coolingtype, value in zip(row[1::2], row[2::2]):
                     estimblock['cooling_' + coolingtype] = float(value)
 
@@ -250,7 +250,8 @@ def parse_estimfile(estfilepath, modelpath):
         yield timestep, modelgridindex, estimblock
 
 
-def read_estimators_from_file(modelpath, folderpath, arr_velocity_outer, printfilename, mpirank):
+def read_estimators_from_file(modelpath, folderpath, arr_velocity_outer, printfilename, mpirank,
+                              get_ion_values=True, get_heatingcooling=True):
     estimators_thisfile = {}
     estimfilename = f'estimators_{mpirank:04d}.out'
     estfilepath = Path(folderpath, estimfilename)
@@ -265,7 +266,7 @@ def read_estimators_from_file(modelpath, folderpath, arr_velocity_outer, printfi
         print(f'Reading {estfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)')
 
     for fileblock_timestep, fileblock_modelgridindex, file_estimblock in parse_estimfile(
-            estfilepath, modelpath):
+            estfilepath, modelpath, get_ion_values=get_ion_values, get_heatingcooling=get_heatingcooling):
 
         file_estimblock['velocity_outer'] = arr_velocity_outer[fileblock_modelgridindex]
         file_estimblock['velocity'] = file_estimblock['velocity_outer']
@@ -276,7 +277,8 @@ def read_estimators_from_file(modelpath, folderpath, arr_velocity_outer, printfi
 
 
 @lru_cache(maxsize=16)
-def read_estimators(modelpath, modelgridindex=None, timestep=None):
+@at.diskcache
+def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_values=True, get_heatingcooling=True):
     """Read estimator files into a nested dictionary structure.
 
     Speed it up by only retrieving estimators for a particular timestep(s) or modelgrid cells.
@@ -309,7 +311,8 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None):
     for folderpath in at.get_runfolders(modelpath, timesteps=match_timestep):
         print(f'Reading {len(list(mpiranklist))} estimator files in {folderpath.relative_to(modelpath.parent)}')
 
-        processfile = partial(read_estimators_from_file, modelpath, folderpath, arr_velocity_outer, printfilename)
+        processfile = partial(read_estimators_from_file, modelpath, folderpath, arr_velocity_outer, printfilename,
+                              get_ion_values=get_ion_values, get_heatingcooling=get_heatingcooling)
 
         if at.enable_multiprocessing:
             with multiprocessing.get_context("spawn").Pool() as pool:
