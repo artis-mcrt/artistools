@@ -25,7 +25,7 @@ EMTYPECOLUMN = 'emissiontype'
 # EMTYPECOLUMN = 'trueemissiontype'
 
 
-@at.diskcache
+@at.diskcache()
 def get_packets_with_emtype_onefile(lineindices, packetsfile):
     dfpackets = at.packets.readfile(packetsfile, usecols=[
         'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
@@ -103,7 +103,7 @@ def get_line_fluxes_from_packets(modelpath, labelandlineindices, maxpacketfiles=
 
 
 @lru_cache(maxsize=16)
-@at.diskcache
+@at.diskcache()
 def get_labelandlineindices(modelpath):
     dflinelist = at.get_linelist(modelpath, returntype='dataframe')
     dflinelist.query('atomic_number == 26 and ionstage == 2', inplace=True)
@@ -236,7 +236,7 @@ def get_packets_with_emission_conditions(modelpath, lineindices, tstart, tend, m
     return dfpackets_selected
 
 
-@at.diskcache
+@at.diskcache()
 def get_emissionregion_data(times_days, modelpath, modellabel, timebins_tstart, timebins_tend, maxpacketfiles=None):
     emdata_model = {}
 
@@ -290,12 +290,12 @@ def plot_nne_te_points(axis, serieslabel, em_log10nne, em_Te, normtotalpackets, 
 
     # axis.scatter(arr_log10nne, arr_te, s=arr_weight * 20, marker=marker, color=color_adj, lw=0, alpha=1.0,
     #              edgecolors='none')
-
-    axis.scatter(arr_log10nne, arr_te, s=np.sqrt(arr_weight) * 10, marker=marker, color=color_adj, lw=0, alpha=0.8,
+    alpha = 0.8
+    axis.scatter(arr_log10nne, arr_te, s=np.sqrt(arr_weight) * 10, marker=marker, color=color_adj, lw=0, alpha=alpha,
                  edgecolors='none')
 
     # make an invisible plot series to appear in the legend with a fixed marker size
-    axis.plot([0], [0], marker=marker, markersize=3, color=color_adj, linestyle='None', label=serieslabel)
+    axis.plot([0], [0], marker=marker, markersize=3, color=color_adj, linestyle='None', label=serieslabel, alpha=alpha)
 
     # axis.plot(em_log10nne, em_Te, label=serieslabel, linestyle='None',
     #           marker='o', markersize=2.5, markeredgewidth=0, alpha=0.05,

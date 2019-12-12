@@ -250,7 +250,8 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
         yield timestep, modelgridindex, estimblock
 
 
-def read_estimators_from_file(modelpath, folderpath, arr_velocity_outer, printfilename, mpirank,
+@at.diskcache(ignorekwargs=['printfilename'])
+def read_estimators_from_file(modelpath, folderpath, arr_velocity_outer, mpirank, printfilename=False,
                               get_ion_values=True, get_heatingcooling=True):
     estimators_thisfile = {}
     estimfilename = f'estimators_{mpirank:04d}.out'
@@ -277,7 +278,7 @@ def read_estimators_from_file(modelpath, folderpath, arr_velocity_outer, printfi
 
 
 @lru_cache(maxsize=16)
-@at.diskcache
+@at.diskcache()
 def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_values=True, get_heatingcooling=True):
     """Read estimator files into a nested dictionary structure.
 
@@ -311,8 +312,9 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_value
     for folderpath in at.get_runfolders(modelpath, timesteps=match_timestep):
         print(f'Reading {len(list(mpiranklist))} estimator files in {folderpath.relative_to(modelpath.parent)}')
 
-        processfile = partial(read_estimators_from_file, modelpath, folderpath, arr_velocity_outer, printfilename,
-                              get_ion_values=get_ion_values, get_heatingcooling=get_heatingcooling)
+        processfile = partial(read_estimators_from_file, modelpath, folderpath, arr_velocity_outer,
+                              get_ion_values=get_ion_values, get_heatingcooling=get_heatingcooling,
+                              printfilename=printfilename)
 
         if at.enable_multiprocessing:
             with multiprocessing.get_context("spawn").Pool() as pool:
