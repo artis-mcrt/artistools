@@ -69,46 +69,53 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
 
-def diskcache(func):
-    if not enable_diskcache:
-        return func
+def diskcache(ignoreargs=[], ignorekwargs=[]):
+    # @wraps(diskcache)
+    def diskcacheinner(func):
+        # if not enable_diskcache:
+        #     return func
 
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        cachefolder = Path('__artistoolscache__')
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            cachefolder = Path('__artistoolscache__')
 
-        myhash = hashlib.sha1()
-        myhash.update(func.__module__.encode('utf-8'))
-        myhash.update(func.__qualname__.encode('utf-8'))
-        myhash.update(str(args).encode('utf-8'))
-        myhash.update(str(kwargs).encode('utf-8'))
-        hash_strhex = myhash.hexdigest()
+            myhash = hashlib.sha1()
+            myhash.update(func.__module__.encode('utf-8'))
+            myhash.update(func.__qualname__.encode('utf-8'))
 
-        filename = Path(cachefolder, f'cached-{func.__module__}.{func.__qualname__}-{hash_strhex}.tmp')
+            myhash.update(str(tuple(
+                arg for argindex, arg in enumerate(args) if argindex not in ignoreargs)).encode('utf-8'))
 
-        if filename.exists():
-            filesize = Path(filename).stat().st_size / 1024 / 1024
+            myhash.update(str({k: v for k, v in kwargs.items() if k not in ignorekwargs}).encode('utf-8'))
 
-            with open(filename, 'rb') as f:
-                print(f"diskcache: Loading '{filename}' ({filesize:.1f} MiB)...", end='')
-                result = pickle.load(f)
-            print(f'done.')
+            hash_strhex = myhash.hexdigest()
 
-            return result
-        else:
-            if not cachefolder.is_dir():
-                cachefolder.mkdir(parents=True, exist_ok=True)
+            filename = Path(cachefolder, f'cached-{func.__module__}.{func.__qualname__}-{hash_strhex}.tmp')
 
-            result = func(*args, **kwargs)
-            with open(filename, 'wb') as f:
-                print(f"diskcache: Saving '{filename}'...", end='')
-                pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
+            if filename.exists():
+                filesize = Path(filename).stat().st_size / 1024 / 1024
 
-            filesize = Path(filename).stat().st_size / 1024 / 1024
-            print(f'done. ({filesize:.1f} MiB)')
+                with open(filename, 'rb') as f:
+                    print(f"diskcache: Loading '{filename}' ({filesize:.1f} MiB)...", end='')
+                    result = pickle.load(f)
+                print(f'done.')
 
-            return result
-    return wrapper
+                return result
+            else:
+                if not cachefolder.is_dir():
+                    cachefolder.mkdir(parents=True, exist_ok=True)
+
+                result = func(*args, **kwargs)
+                with open(filename, 'wb') as f:
+                    print(f"diskcache: Saving '{filename}'...", end='')
+                    pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+                filesize = Path(filename).stat().st_size / 1024 / 1024
+                print(f'done. ({filesize:.1f} MiB)')
+
+                return result
+        return wrapper
+    return diskcacheinner
 
 
 class AppendPath(argparse.Action):
