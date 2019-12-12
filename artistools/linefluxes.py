@@ -267,20 +267,58 @@ def get_emissionregion_data(times_days, modelpath, modellabel, timebins_tstart, 
     return emdata_model
 
 
+def plot_nne_te_points(axis, serieslabel, em_log10nne, em_Te, normtotalpackets, color, marker='o'):
+    # color_adj = [(c + 0.3) / 1.3 for c in mpl.colors.to_rgb(color)]
+    color_adj = [(c + 0.1) / 1.1 for c in mpl.colors.to_rgb(color)]
+    hitcount = {}
+    for log10nne, Te in zip(em_log10nne, em_Te):
+        hitcount[(log10nne, Te)] = hitcount.get((log10nne, Te), 0) + 1
+
+    if hitcount:
+        arr_log10nne, arr_te = zip(*hitcount.keys())
+    else:
+        arr_log10nne, arr_te = np.array([]), np.array([])
+
+    arr_weight = np.array([hitcount[(x, y)] for x, y in zip(arr_log10nne, arr_te)])  # /
+    arr_weight = (arr_weight / normtotalpackets + 0.000) * 500
+
+    # arr_weight = arr_weight / float(max(arr_weight))
+    # arr_color = np.zeros((len(arr_x), 4))
+    # arr_color[:, :3] = np.array([[c for c in mpl.colors.to_rgb(color)] for x in arr_weight])
+    # arr_color[:, 3] = (arr_weight + 0.2) / 1.2
+    # np.array([[c * z for c in mpl.colors.to_rgb(color)] for z in arr_z])
+
+    # axis.scatter(arr_log10nne, arr_te, s=arr_weight * 20, marker=marker, color=color_adj, lw=0, alpha=1.0,
+    #              edgecolors='none')
+
+    axis.scatter(arr_log10nne, arr_te, s=np.sqrt(arr_weight) * 10, marker=marker, color=color_adj, lw=0, alpha=0.8,
+                 edgecolors='none')
+
+    # make an invisible plot series to appear in the legend with a fixed marker size
+    axis.plot([0], [0], marker=marker, markersize=3, color=color_adj, linestyle='None', label=serieslabel)
+
+    # axis.plot(em_log10nne, em_Te, label=serieslabel, linestyle='None',
+    #           marker='o', markersize=2.5, markeredgewidth=0, alpha=0.05,
+    #           fillstyle='full', color=color_b)
+
+
+def plot_nne_te_bars(axis, serieslabel, em_log10nne, em_Te, color):
+    errorbarkwargs = dict(xerr=np.std(em_log10nne), yerr=np.std(em_Te),
+                          color='black', markersize=10., fillstyle='full',
+                          capthick=4, capsize=15, linewidth=4.,
+                          alpha=1.0)
+    # black larger one for an outline
+    axis.errorbar(np.mean(em_log10nne), np.mean(em_Te), **errorbarkwargs)
+    errorbarkwargs['markersize'] -= 2
+    errorbarkwargs['capthick'] -= 2
+    errorbarkwargs['capsize'] -= 1
+    errorbarkwargs['linewidth'] -= 2
+    errorbarkwargs['color'] = color
+    # errorbarkwargs['zorder'] += 0.5
+    axis.errorbar(np.mean(em_log10nne), np.mean(em_Te), **errorbarkwargs)
+
+
 def make_emitting_regions_plot(args):
-    def plot_nne_te(axis, serieslabel, em_log10nne, em_Te, color):
-        color_b = [(x + 1.) / 2. for x in mpl.colors.to_rgb(color)]
-
-        axis.plot(em_log10nne, em_Te, label=serieslabel, linestyle='None',
-                  marker='o', markersize=2.5, markeredgewidth=0, alpha=0.5,
-                  fillstyle='full', color=color_b)
-
-        if len(em_log10nne) > 0:
-            axis.errorbar(np.mean(em_log10nne), np.mean(em_Te),
-                          xerr=np.std(em_log10nne), yerr=np.std(em_Te),
-                          color=color, markersize=10., fillstyle='full',
-                          markeredgewidth=3, capsize=15, linewidth=3.,
-                          alpha=1.0, zorder=10)
 
     # font = {'size': 16}
     # matplotlib.rc('font', **font)
@@ -339,41 +377,53 @@ def make_emitting_regions_plot(args):
                       color='black', lw=2, label=f'Floers et al. (2019) {floers_keys[floersindex]}d')
 
             if modeltag == 'all':
-                for truemodelindex in range(modelindex):
-                    labelandlineindices = get_labelandlineindices(args.modelpath[truemodelindex])
+                for bars in [False, True]:
+                    for truemodelindex in range(modelindex):
+                        labelandlineindices = get_labelandlineindices(args.modelpath[truemodelindex])
 
-                    em_log10nne = np.concatenate(
-                        [emdata_all[truemodelindex][(timeindex, featureindex)]['em_log10nne']
-                         for featureindex in range(len(labelandlineindices))])
+                        em_log10nne = np.concatenate(
+                            [emdata_all[truemodelindex][(timeindex, featureindex)]['em_log10nne']
+                             for featureindex in range(len(labelandlineindices))])
 
-                    em_Te = np.concatenate(
-                        [emdata_all[truemodelindex][(timeindex, featureindex)]['em_Te']
-                         for featureindex in range(len(labelandlineindices))])
+                        em_Te = np.concatenate(
+                            [emdata_all[truemodelindex][(timeindex, featureindex)]['em_Te']
+                             for featureindex in range(len(labelandlineindices))])
 
-                    modelcolor = args.color[truemodelindex]
-                    plot_nne_te(axis, args.label[truemodelindex], em_log10nne, em_Te, modelcolor)
+                        normtotalpackets = len(em_log10nne) * 8.  # circles have more area than triangles, so decrease
+                        modelcolor = args.color[truemodelindex]
+                        if not bars:
+                            plot_nne_te_points(
+                                axis, args.label[truemodelindex], em_log10nne, em_Te, normtotalpackets, modelcolor)
+                        else:
+                            plot_nne_te_bars(axis, args.label[truemodelindex], em_log10nne, em_Te, modelcolor)
             else:
                 modellabel = args.label[modelindex]
                 labelandlineindices = get_labelandlineindices(modelpath)
 
                 featurecolours = ['blue', 'red']
+                markers = [10, 11]
                 # featurecolours = ['C0', 'C3']
                 # featurebarcolours = ['blue', 'red']
 
-                for featureindex, (featurelabel, lineindices, _, _) in enumerate(labelandlineindices):
-                    emdata = emdata_all[modelindex][(timeindex, featureindex)]
+                normtotalpackets = np.sum([len(emdata_all[modelindex][(timeindex, featureindex)]['em_log10nne'])
+                                           for featureindex in range(len(labelandlineindices))])
 
-                    print(f'   {len(emdata["em_log10nne"])} points plotted for {featurelabel} Ā')
-                    serieslabel = f'{modellabel} {featurelabel}' + r' $\mathrm{\AA}$'
-                    plot_nne_te(axis, serieslabel, emdata['em_log10nne'], emdata['em_Te'],
-                                featurecolours[featureindex])
+                for bars in [False, True]:
+                    for featureindex, (featurelabel, lineindices, _, _) in enumerate(labelandlineindices):
+                        emdata = emdata_all[modelindex][(timeindex, featureindex)]
+
+                        print(f'   {len(emdata["em_log10nne"])} points plotted for {featurelabel} Ā')
+                        serieslabel = f'{modellabel} {featurelabel}' + r' $\mathrm{\AA}$'
+                        if not bars:
+                            plot_nne_te_points(
+                                axis, serieslabel, emdata['em_log10nne'], emdata['em_Te'],
+                                normtotalpackets, featurecolours[featureindex], marker=markers[featureindex])
+                        else:
+                            plot_nne_te_bars(
+                                axis, serieslabel, emdata['em_log10nne'], emdata['em_Te'], featurecolours[featureindex])
 
             leg = axis.legend(loc='upper left', frameon=False, handlelength=1, ncol=1,
                               numpoints=1, fontsize='small', markerscale=3.)
-
-            for l in leg.get_lines():
-                l.set_alpha(1.)
-                # l.set_marker('.')
 
             axis.set_ylim(ymin=3000)
             axis.set_ylim(ymax=10000)
