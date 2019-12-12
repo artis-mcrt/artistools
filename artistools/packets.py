@@ -11,6 +11,7 @@ from astropy import constants as const
 from astropy import units as u
 
 # from collections import namedtuple
+from functools import lru_cache
 
 import artistools as at
 
@@ -36,32 +37,41 @@ types = {
 type_ids = dict((v, k) for k, v in types.items())
 
 
-def calculate_emvelocity(dfpackets):
-    return dfpackets.eval(
-        "emission_velocity_kms = sqrt(em_posx ** 2 + em_posy ** 2 + em_posz ** 2) * @u.cm.to('km') / em_time",
-        inplace=True)
+def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None):
+    if dfpackets.empty:
+        return dfpackets
 
+    colnames = at.makelist(colnames)
 
-def calculate_emmodelgridindex(dfpackets, modelpath, allnonemptymgilist):
     def em_modelgridindex(packet):
-        return at.get_mgi_of_velocity(modelpath, packet.emission_velocity_kms, mgilist=allnonemptymgilist)
+        return at.get_mgi_of_velocity_kms(modelpath, packet.emission_velocity * u.cm.to('km'),
+                                          mgilist=allnonemptymgilist)
 
-    dfpackets['em_modelgridindex'] = dfpackets.apply(em_modelgridindex, axis=1)
-
-
-def calculate_emtrue_modelgridindex(dfpackets, modelpath, allnonemptymgilist):
     def emtrue_modelgridindex(packet):
-        return at.get_mgi_of_velocity(modelpath, packet.true_emission_velocity * u.cm.to('km'),
+        return at.get_mgi_of_velocity_kms(modelpath, packet.true_emission_velocity * u.cm.to('km'),
                                       mgilist=allnonemptymgilist)
 
-    dfpackets['emtrue_modelgridindex'] = dfpackets.apply(emtrue_modelgridindex, axis=1)
-
-
-def calculate_emtimestep(dfpackets, modelpath):
     def em_timestep(packet):
         return at.get_timestep_of_timedays(modelpath, packet.em_time * u.s.to('day'))
 
-    dfpackets['em_timestep'] = dfpackets.apply(em_timestep, axis=1)
+    if 'emission_velocity' in colnames:
+        dfpackets.eval(
+            "emission_velocity = sqrt(em_posx ** 2 + em_posy ** 2 + em_posz ** 2) / em_time",
+            inplace=True)
+
+    if 'em_modelgridindex' in colnames:
+        if 'emission_velocity' not in dfpackets.columns:
+            dfpackets = add_derived_columns(dfpackets, modelpath, ['emission_velocity'],
+                                            allnonemptymgilist=allnonemptymgilist)
+        dfpackets['em_modelgridindex'] = dfpackets.apply(em_modelgridindex, axis=1)
+
+    if 'emtrue_modelgridindex' in colnames:
+        dfpackets['emtrue_modelgridindex'] = dfpackets.apply(emtrue_modelgridindex, axis=1)
+
+    if 'em_timestep' in colnames:
+        dfpackets['em_timestep'] = dfpackets.apply(em_timestep, axis=1)
+
+    return dfpackets
 
 
 def readfile(packetsfile, usecols, type=None, escape_type=None):
@@ -107,6 +117,9 @@ def readfile(packetsfile, usecols, type=None, escape_type=None):
         for col in usecols_nodata:
             dfpackets[col] = float('NaN')
 
+    # # neglect light travel time correction
+    # dfpackets.eval("t_arrive_d = escape_time * @u.s.to('day')", inplace=True)
+
     dfpackets.eval(
         "t_arrive_d = (escape_time - "
         "(posx * dirx + posy * diry + posz * dirz) / @const.c.to('cm/s').value) * @u.s.to('day')", inplace=True)
@@ -114,6 +127,7 @@ def readfile(packetsfile, usecols, type=None, escape_type=None):
     return dfpackets
 
 
+@lru_cache(maxsize=16)
 def get_packetsfilepaths(modelpath, maxpacketfiles=None):
     packetsfiles = sorted(
         glob.glob(str(Path(modelpath, 'packets00_*.out*'))) +
