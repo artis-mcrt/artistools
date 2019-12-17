@@ -4,7 +4,7 @@ import argparse
 import json
 import math
 import multiprocessing
-# from collections import namedtuple
+from collections import namedtuple
 from functools import lru_cache
 from functools import partial
 from pathlib import Path
@@ -25,7 +25,7 @@ EMTYPECOLUMN = 'emissiontype'
 # EMTYPECOLUMN = 'trueemissiontype'
 
 
-@at.diskcache()
+@at.diskcache(quiet=True)
 def get_packets_with_emtype_onefile(lineindices, packetsfile):
     dfpackets = at.packets.readfile(packetsfile, usecols=[
         'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
@@ -40,6 +40,7 @@ def get_packets_with_emtype_onefile(lineindices, packetsfile):
 
 
 @lru_cache(maxsize=16)
+@at.diskcache(savegzipped=True)
 def get_packets_with_emtype(modelpath, lineindices, maxpacketfiles=None):
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
@@ -71,7 +72,7 @@ def calculate_timebinned_packet_sum(dfpackets, timearrayplusend):
     return binnedenergysums
 
 
-def get_line_fluxes_from_packets(modelpath, labelandlineindices, maxpacketfiles=None, arr_tstart=None, arr_tend=None):
+def get_line_fluxes_from_packets(emfeatures, modelpath, maxpacketfiles=None, arr_tstart=None, arr_tend=None):
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times_float(modelpath, loc='start')
     if arr_tend is None:
@@ -87,36 +88,51 @@ def get_line_fluxes_from_packets(modelpath, labelandlineindices, maxpacketfiles=
     timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
 
     dictlcdata = {'time': arr_tmid}
-    dictlcdata.update({
-       f'flux_{label}': np.zeros_like(arr_tstart, dtype=np.float) for label, _, _, _ in labelandlineindices})
 
-    for label, lineindices, _, _ in labelandlineindices:
-        dfpackets_selected, nprocs_read = get_packets_with_emtype(modelpath, lineindices, maxpacketfiles=maxpacketfiles)
+    for feature in emfeatures:
+        # dictlcdata[feature.colname] = np.zeros_like(arr_tstart, dtype=np.float)
+
+        dfpackets_selected, nprocs_read = get_packets_with_emtype(
+            modelpath, feature.linelistindices, maxpacketfiles=maxpacketfiles)
+
         normfactor = (1. / 4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read / u.s.to('day'))
 
         energysumsreduced = calculate_timebinned_packet_sum(dfpackets_selected, timearrayplusend)
         fluxdata = np.divide(energysumsreduced * normfactor, arr_timedelta)
-        dictlcdata[f'flux_{label}'] = fluxdata
+        dictlcdata[feature.colname] = fluxdata
 
     lcdata = pd.DataFrame(dictlcdata)
     return lcdata
 
 
-@lru_cache(maxsize=16)
-@at.diskcache()
-def get_labelandlineindices(modelpath):
+def get_closelines(modelpath, atomic_number, ion_stage, approxlambda, lambdamin, lambdamax):
     dflinelist = at.get_linelist(modelpath, returntype='dataframe')
-    dflinelist.query('atomic_number == 26 and ionstage == 2', inplace=True)
+    dflinelistclosematches = dflinelist.query(
+        'atomic_number == @atomic_number and ionstage == @ion_stage and @lambdamin < lambda_angstroms < @lambdamax')
+
+    linelistindices = tuple(dflinelistclosematches.index.values)
+    lowestlambda = dflinelistclosematches.lambda_angstroms.min()
+    highestlamba = dflinelistclosematches.lambda_angstroms.max()
+    colname = f'flux_{at.get_ionstring(atomic_number, ion_stage, nospace=True)}_{approxlambda}'
+    featurelabel = f'{at.get_ionstring(atomic_number, ion_stage)} {approxlambda} Å'
+
+    return (colname, featurelabel, approxlambda, linelistindices, lowestlambda, highestlamba, atomic_number, ion_stage)
+
+
+def get_labelandlineindices(modelpath, emfeaturesearch):
+    featuretuple = namedtuple('feature', [
+        'colname', 'featurelabel', 'approxlambda', 'linelistindices', 'lowestlambda',
+        'highestlamba', 'atomic_number', 'ion_stage'])
 
     labelandlineindices = []
-    for lambdamin, lambdamax, approxlambda in [(7150, 7160, 7155), (12470, 12670, 12570)]:
-        dflinelistclosematches = dflinelist.query('@lambdamin < lambda_angstroms < @lambdamax')
-        linelistindicies = tuple(dflinelistclosematches.index.values)
-        lowestlambda = dflinelistclosematches.lambda_angstroms.min()
-        highestlamba = dflinelistclosematches.lambda_angstroms.max()
-        labelandlineindices.append([approxlambda, linelistindicies, lowestlambda, highestlamba])
-        # for index, line in lineclosematches.iterrows():
-        #     print(line)
+    for params in emfeaturesearch:
+        feature = featuretuple(*get_closelines(modelpath, *params))
+        print(f'{feature.featurelabel} includes {len(feature.linelistindices)} lines '
+              f'[{feature.lowestlambda:.1f} Å, {feature.highestlamba:.1f} Å]')
+        labelandlineindices.append(feature)
+    # labelandlineindices.append(featuretuple(*get_closelines(dflinelist, 26, 2, 7155, 7150, 7160)))
+    # labelandlineindices.append(featuretuple(*get_closelines(dflinelist, 26, 2, 12570, 12470, 12670)))
+    # labelandlineindices.append(featuretuple(*get_closelines(dflinelist, 28, 2, 7378, 7373, 7383)))
 
     return labelandlineindices
 
@@ -136,7 +152,6 @@ def make_flux_ratio_plot(args):
     axis = axes[0]
     axis.set_yscale('log')
     # axis.set_ylabel(r'log$_1$$_0$ F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\mathrm{{\AA}}$]')
-    axis.set_ylabel(r'F$_{12570\,\mathrm{\AA}}$ / F$_{7155\,\mathrm{\AA}}$')
 
     # axis.set_xlim(left=supxmin, right=supxmax)
     pd.set_option('display.max_rows', 3500)
@@ -145,30 +160,46 @@ def make_flux_ratio_plot(args):
     for seriesindex, (modelpath, modellabel, modelcolor) in enumerate(zip(args.modelpath, args.label, args.color)):
         print(f"====> {modellabel}")
 
-        labelandlineindices = get_labelandlineindices(modelpath)
-        for approxlambda, linelistindicies, lowestlambda, highestlamba in labelandlineindices:
-            print(f'  {approxlambda} Å feature including {len(linelistindicies)} lines '
-                  f'[{lowestlambda:.1f} Å, {highestlamba:.1f} Å]')
+        emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
-        dflcdata = get_line_fluxes_from_packets(modelpath, labelandlineindices, maxpacketfiles=args.maxpacketfiles,
+        dflcdata = get_line_fluxes_from_packets(emfeatures, modelpath, maxpacketfiles=args.maxpacketfiles,
                                                 arr_tstart=args.timebins_tstart,
                                                 arr_tend=args.timebins_tend)
-        dflcdata.eval('fratio_12570_7155 = flux_12570 / flux_7155', inplace=True)
+
+        dflcdata.eval(f'fratio = {emfeatures[1].colname} / {emfeatures[0].colname}', inplace=True)
+        axis.set_ylabel(r'F$_{\mathrm{' + emfeatures[1].featurelabel + r'}}$ / F$_{\mathrm{' +
+                        emfeatures[0].featurelabel + r'}}$')
+        # \mathrm{\AA}
+
         # for row in dflcdata
         # print(dflcdata.time)
         # print(dflcdata)
 
-        axis.plot(dflcdata.time, dflcdata['fratio_12570_7155'], label=modellabel, marker='s', color=modelcolor)
+        axis.plot(dflcdata.time, dflcdata['fratio'], label=modellabel, marker='s', color=modelcolor)
 
-        axis.set_ylim(ymin=0.05)
-        axis.set_ylim(ymax=4.2)
         tmin = dflcdata.time.min()
         tmax = dflcdata.time.max()
 
-    for ax in axes:
+    if args.emfeaturesearch[0][:3] == (26, 2, 7155) and args.emfeaturesearch[1][:3] == (26, 2, 12570):
+        axis.set_ylim(ymin=0.05)
+        axis.set_ylim(ymax=4.2)
         arr_tdays = np.linspace(tmin, tmax, 3)
         arr_floersfit = [10 ** (0.0043 * timedays - 1.65) for timedays in arr_tdays]
-        ax.plot(arr_tdays, arr_floersfit, color='black', label='Floers et al. (2019) best fit', lw=2.)
+        for ax in axes:
+            ax.plot(arr_tdays, arr_floersfit, color='black', label='Floers et al. (2019) best fit', lw=2.)
+
+    m18_tdays = np.array([206, 229, 303, 339])
+    m18_pew = {}
+    # m18_pew[(26, 2, 12570)] = np.array([2383, 1941, 2798, 6770])
+    m18_pew[(26, 2, 7155)] = np.array([618, 417, 406, 474])
+    m18_pew[(28, 2, 7378)] = np.array([157, 256, 236, 309])
+    if args.emfeaturesearch[1][:3] in m18_pew and args.emfeaturesearch[0][:3] in m18_pew:
+        axis.set_ylim(ymax=12)
+        arr_fratio = m18_pew[args.emfeaturesearch[1][:3]] / m18_pew[args.emfeaturesearch[0][:3]]
+        for ax in axes:
+            ax.plot(m18_tdays, arr_fratio, color='black', label='Maguire et al. (2018)', lw=2., marker='s')
+
+    for ax in axes:
         ax.set_xlabel(r'Time [days]')
         ax.tick_params(which='both', direction='in')
         ax.legend(loc='upper right', frameon=False, handlelength=1, ncol=2, numpoints=1)
@@ -185,6 +216,7 @@ def make_flux_ratio_plot(args):
     plt.close()
 
 
+@at.diskcache()
 def get_packets_with_emission_conditions(modelpath, lineindices, tstart, tend, maxpacketfiles=None):
     estimators = at.estimators.read_estimators(modelpath, get_ion_values=False, get_heatingcooling=False)
 
@@ -236,37 +268,6 @@ def get_packets_with_emission_conditions(modelpath, lineindices, tstart, tend, m
     return dfpackets_selected
 
 
-@at.diskcache()
-def get_emissionregion_data(times_days, modelpath, modellabel, timebins_tstart, timebins_tend, maxpacketfiles=None):
-    emdata_model = {}
-
-    print(f"Getting packets/nne/Te data for ARTIS model: '{modellabel}'")
-
-    labelandlineindices = get_labelandlineindices(modelpath)
-    for approxlambda, linelistindicies, lowestlambda, highestlamba in labelandlineindices:
-        print(f'{approxlambda} Å feature including {len(linelistindicies)} lines '
-              f'[{lowestlambda:.1f} Å, {highestlamba:.1f} Å]')
-
-    alllineindices = tuple(np.concatenate([l[1] for l in labelandlineindices]))
-
-    for timeindex, (tmid, tstart, tend) in enumerate(zip(times_days, timebins_tstart, timebins_tend)):
-        dfpackets = get_packets_with_emission_conditions(
-            modelpath, alllineindices, tstart, tend, maxpacketfiles=maxpacketfiles)
-
-        for featureindex, (featurelabel, lineindices, _, _) in enumerate(labelandlineindices):
-            dfpackets_selected = dfpackets.query(f'{EMTYPECOLUMN} in @lineindices', inplace=False)
-            if dfpackets_selected.empty:
-                emdata_model[(timeindex, featureindex)] = {
-                    'em_log10nne': [],
-                    'em_Te': []}
-            else:
-                emdata_model[(timeindex, featureindex)] = {
-                    'em_log10nne': dfpackets_selected.em_log10nne.values,
-                    'em_Te': dfpackets_selected.em_Te.values}
-
-    return emdata_model
-
-
 def plot_nne_te_points(axis, serieslabel, em_log10nne, em_Te, normtotalpackets, color, marker='o'):
     # color_adj = [(c + 0.3) / 1.3 for c in mpl.colors.to_rgb(color)]
     color_adj = [(c + 0.1) / 1.1 for c in mpl.colors.to_rgb(color)]
@@ -279,8 +280,9 @@ def plot_nne_te_points(axis, serieslabel, em_log10nne, em_Te, normtotalpackets, 
     else:
         arr_log10nne, arr_te = np.array([]), np.array([])
 
-    arr_weight = np.array([hitcount[(x, y)] for x, y in zip(arr_log10nne, arr_te)])  # /
-    arr_weight = (arr_weight / normtotalpackets + 0.000) * 500
+    arr_weight = np.array([hitcount[(x, y)] for x, y in zip(arr_log10nne, arr_te)])
+    arr_weight = (arr_weight / normtotalpackets) * 500
+    arr_size = np.sqrt(arr_weight) * 10
 
     # arr_weight = arr_weight / float(max(arr_weight))
     # arr_color = np.zeros((len(arr_x), 4))
@@ -291,7 +293,7 @@ def plot_nne_te_points(axis, serieslabel, em_log10nne, em_Te, normtotalpackets, 
     # axis.scatter(arr_log10nne, arr_te, s=arr_weight * 20, marker=marker, color=color_adj, lw=0, alpha=1.0,
     #              edgecolors='none')
     alpha = 0.8
-    axis.scatter(arr_log10nne, arr_te, s=np.sqrt(arr_weight) * 10, marker=marker, color=color_adj, lw=0, alpha=alpha,
+    axis.scatter(arr_log10nne, arr_te, s=arr_size, marker=marker, color=color_adj, lw=0, alpha=alpha,
                  edgecolors='none')
 
     # make an invisible plot series to appear in the legend with a fixed marker size
@@ -303,6 +305,8 @@ def plot_nne_te_points(axis, serieslabel, em_log10nne, em_Te, normtotalpackets, 
 
 
 def plot_nne_te_bars(axis, serieslabel, em_log10nne, em_Te, color):
+    if len(em_log10nne) == 0:
+        return
     errorbarkwargs = dict(xerr=np.std(em_log10nne), yerr=np.std(em_Te),
                           color='black', markersize=10., fillstyle='full',
                           capthick=4, capsize=15, linewidth=4.,
@@ -359,9 +363,27 @@ def make_emitting_regions_plot(args):
         print(f"ARTIS model: '{modellabel}'")
 
         if modelpath is not None:
-            emdata_all[modelindex] = get_emissionregion_data(times_days, modelpath, modellabel,
-                                                             args.timebins_tstart, args.timebins_tend,
-                                                             maxpacketfiles=args.maxpacketfiles)
+            print(f"Getting packets/nne/Te data for ARTIS model: '{modellabel}'")
+
+            emdata_all[modelindex] = {}
+
+            emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
+
+            for feature in emfeatures:
+                for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend):
+
+                    dfpackets = get_packets_with_emission_conditions(
+                        modelpath, feature.linelistindices, tstart, tend, maxpacketfiles=args.maxpacketfiles)
+
+                    dfpackets_selected = dfpackets.query(f'{EMTYPECOLUMN} in @feature.linelistindices', inplace=False)
+                    if dfpackets_selected.empty:
+                        emdata_all[modelindex][(tmid, feature.colname)] = {
+                            'em_log10nne': [],
+                            'em_Te': []}
+                    else:
+                        emdata_all[modelindex][(tmid, feature.colname)] = {
+                            'em_log10nne': dfpackets_selected.em_log10nne.values,
+                            'em_Te': dfpackets_selected.em_Te.values}
 
         for timeindex, tmid in enumerate(times_days):
             print(f'  Plot at {tmid} days')
@@ -379,15 +401,15 @@ def make_emitting_regions_plot(args):
             if modeltag == 'all':
                 for bars in [False, True]:
                     for truemodelindex in range(modelindex):
-                        labelandlineindices = get_labelandlineindices(args.modelpath[truemodelindex])
+                        emfeatures = get_labelandlineindices(args.modelpath[truemodelindex], args.emfeaturesearch)
 
                         em_log10nne = np.concatenate(
-                            [emdata_all[truemodelindex][(timeindex, featureindex)]['em_log10nne']
-                             for featureindex in range(len(labelandlineindices))])
+                            [emdata_all[truemodelindex][(tmid, feature.colname)]['em_log10nne']
+                             for feature in emfeatures])
 
                         em_Te = np.concatenate(
-                            [emdata_all[truemodelindex][(timeindex, featureindex)]['em_Te']
-                             for featureindex in range(len(labelandlineindices))])
+                            [emdata_all[truemodelindex][(tmid, feature.colname)]['em_Te']
+                             for feature in emfeatures])
 
                         normtotalpackets = len(em_log10nne) * 8.  # circles have more area than triangles, so decrease
                         modelcolor = args.color[truemodelindex]
@@ -398,22 +420,23 @@ def make_emitting_regions_plot(args):
                             plot_nne_te_bars(axis, args.label[truemodelindex], em_log10nne, em_Te, modelcolor)
             else:
                 modellabel = args.label[modelindex]
-                labelandlineindices = get_labelandlineindices(modelpath)
+                emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
                 featurecolours = ['blue', 'red']
                 markers = [10, 11]
                 # featurecolours = ['C0', 'C3']
                 # featurebarcolours = ['blue', 'red']
 
-                normtotalpackets = np.sum([len(emdata_all[modelindex][(timeindex, featureindex)]['em_log10nne'])
-                                           for featureindex in range(len(labelandlineindices))])
+                normtotalpackets = np.sum([len(emdata_all[modelindex][(tmid, feature.colname)]['em_log10nne'])
+                                           for feature in emfeatures])
 
                 for bars in [False, True]:
-                    for featureindex, (featurelabel, lineindices, _, _) in enumerate(labelandlineindices):
-                        emdata = emdata_all[modelindex][(timeindex, featureindex)]
+                    for featureindex, feature in enumerate(emfeatures):
+                        emdata = emdata_all[modelindex][(tmid, feature.colname)]
 
-                        print(f'   {len(emdata["em_log10nne"])} points plotted for {featurelabel} Ā')
-                        serieslabel = f'{modellabel} {featurelabel}' + r' $\mathrm{\AA}$'
+                        if not bars:
+                            print(f'   {len(emdata["em_log10nne"])} points plotted for {feature.featurelabel}')
+                        serieslabel = modellabel + ' ' + feature.featurelabel.replace('Å', r' $\mathrm{\AA}$')
                         if not bars:
                             plot_nne_te_points(
                                 axis, serieslabel, emdata['em_log10nne'], emdata['em_Te'],
@@ -422,8 +445,8 @@ def make_emitting_regions_plot(args):
                             plot_nne_te_bars(
                                 axis, serieslabel, emdata['em_log10nne'], emdata['em_Te'], featurecolours[featureindex])
 
-            leg = axis.legend(loc='upper left', frameon=False, handlelength=1, ncol=1,
-                              numpoints=1, fontsize='small', markerscale=3.)
+            axis.legend(loc='upper left', frameon=False, handlelength=1, ncol=1,
+                        numpoints=1, fontsize='small', markerscale=3.)
 
             axis.set_ylim(ymin=3000)
             axis.set_ylim(ymax=10000)
@@ -438,7 +461,7 @@ def make_emitting_regions_plot(args):
 
             outputfile = str(args.outputfile).format(timeavg=tmid, modeltag=modeltag)
             fig.savefig(outputfile, format='pdf')
-            print(f'  Saved {outputfile}')
+            print(f'    Saved {outputfile}')
             plt.close()
 
 
@@ -466,6 +489,9 @@ def addargs(parser):
 
     parser.add_argument('-maxpacketfiles', type=int, default=None,
                         help='Limit the number of packet files read')
+
+    parser.add_argument('-emfeaturesearch', default=[], nargs='*',
+                        help='List of tuples (TODO explain)')
 
     # parser.add_argument('-timemin', type=float,
     #                     help='Lower time in days to integrate spectrum')
