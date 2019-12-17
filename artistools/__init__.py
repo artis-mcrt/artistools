@@ -15,6 +15,7 @@ import sys
 from collections import namedtuple
 from itertools import chain
 from functools import wraps
+from functools import partial
 import matplotlib.ticker as ticker
 from pathlib import Path
 from typing import Iterable
@@ -69,11 +70,13 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
 
-def diskcache(ignoreargs=[], ignorekwargs=[]):
-    # @wraps(diskcache)
+def diskcache(ignoreargs=[], ignorekwargs=[], clearcache=False, saveonly=False, quiet=False, savegzipped=False):
+    def printopt(*args, **kwargs):
+        if not quiet:
+            print(*args, **kwargs)
+
+    @wraps(diskcache)
     def diskcacheinner(func):
-        # if not enable_diskcache:
-        #     return func
 
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -90,31 +93,45 @@ def diskcache(ignoreargs=[], ignorekwargs=[]):
 
             hash_strhex = myhash.hexdigest()
 
-            filename = Path(cachefolder, f'cached-{func.__module__}.{func.__qualname__}-{hash_strhex}.tmp')
+            filename_nogz = Path(cachefolder, f'cached-{func.__module__}.{func.__qualname__}-{hash_strhex}.tmp')
+            filename_gz = Path(cachefolder, f'cached-{func.__module__}.{func.__qualname__}-{hash_strhex}.tmp.gz')
 
-            if filename.exists():
+            saveresult = False
+
+            if filename_nogz.exists() or filename_gz.exists() and not saveonly:
+                filename = filename_nogz if filename_nogz.exists() else filename_gz
+
                 filesize = Path(filename).stat().st_size / 1024 / 1024
-
-                with open(filename, 'rb') as f:
-                    print(f"diskcache: Loading '{filename}' ({filesize:.1f} MiB)...", end='')
+                with zopen(filename, 'rb') as f:
                     result = pickle.load(f)
-                print(f'done.')
-
-                return result
+                printopt(f"diskcache: Loaded '{filename}' ({filesize:.1f} MiB)...")
             else:
+                result = func(*args, **kwargs)
+                saveresult = True
+
+            # replace the gzipped or non-gzipped file with the correct one
+            if (savegzipped and filename_nogz.exists()):
+                filename_nogz.unlink()
+                saveresult = True
+            elif (not savegzipped and filename_gz.exists()):
+                filename_gz.unlink()
+                saveresult = True
+
+            if saveresult:
                 if not cachefolder.is_dir():
                     cachefolder.mkdir(parents=True, exist_ok=True)
 
-                result = func(*args, **kwargs)
-                with open(filename, 'wb') as f:
-                    print(f"diskcache: Saving '{filename}'...", end='')
+                fopen, filename = (gzip.open, filename_gz) if savegzipped else (open, filename_nogz)
+                with fopen(filename, 'wb') as f:
                     pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
 
                 filesize = Path(filename).stat().st_size / 1024 / 1024
-                print(f'done. ({filesize:.1f} MiB)')
+                printopt(f"diskcache: Saved '{filename}' ({filesize:.1f} MiB)")
 
-                return result
-        return wrapper
+            return result
+
+        return wrapper if enable_diskcache else func
+
     return diskcacheinner
 
 
@@ -170,6 +187,12 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
     def set_axis(self, axis):
         super().set_axis(axis)
         self._set_formatted_label_text()
+
+
+def make_namedtuple(typename, **fields):
+    """Make a namedtuple from a dictionary of attributes and values.
+    Example: make_namedtuple('mytuple', x=2, y=3)"""
+    return namedtuple(typename, fields)(*fields.values())
 
 
 def showtimesteptimes(modelpath=None, numberofcolumns=5, args=None):
@@ -775,11 +798,11 @@ def decode_roman_numeral(strin):
 
 
 @lru_cache(maxsize=16)
-def get_ionstring(atomic_number, ionstage, spectral=True):
+def get_ionstring(atomic_number, ionstage, spectral=True, nospace=False):
     if ionstage == 'ALL' or ionstage is None:
         return f'{elsymbols[atomic_number]}'
     elif spectral:
-        return f'{elsymbols[atomic_number]} {roman_numerals[ionstage]}'
+        return f"{elsymbols[atomic_number]}{' ' if not nospace else ''}{roman_numerals[ionstage]}"
     else:
         # ion notion e.g. Co+, Fe2+
         if ionstage > 2:
@@ -918,7 +941,7 @@ def get_bflist(modelpath, returntype='dict'):
     return bflist
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=16)
 def get_linelist(modelpath, returntype='dict'):
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     with zopen(Path(modelpath, 'linestat.out'), 'rt') as linestatfile:
