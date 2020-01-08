@@ -502,9 +502,11 @@ def get_time_range(modelpath, timestep_range_str, timemin, timemax, timedays_ran
     timedays_is_specified = (timemin is not None and timemax is not None) or timedays_range_str is not None
 
     if timemin and timemin > tends[-1]:
-        raise ValueError(f"timemin {timemin} is after the last timestep at {tends[-1]}")
+        print(f"{get_model_name(modelpath)}: WARNING timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
+        return -1, -1, timemin, timemax
     elif timemax and timemax < tstarts[0]:
-        raise ValueError(f"timemax {timemax} is before the first timestep at {tstarts[0]}")
+        print(f"{get_model_name(modelpath)}: WARNING timemax {timemax} is before the first timestep at {tstarts[0]:.1f}")
+        return -1, -1, timemin, timemax
 
     if timestep_range_str is not None:
         if timedays_is_specified:

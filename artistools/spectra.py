@@ -1165,6 +1165,9 @@ def plot_artis_spectrum(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
 
     modelname = at.get_model_name(modelpath)
+    if timestepmin == timestepmax == -1:
+        return
+
     timeavg = (args.timemin + args.timemax) / 2.
     timedelta = (args.timemax - args.timemin) / 2
     if linelabel is None:
