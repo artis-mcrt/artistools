@@ -12,8 +12,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 # import matplotlib.ticker as ticker
 import pandas as pd
+from astropy import units as u
 
 import artistools as at
+import artistools.spencerfano
 
 DEFAULTSPECPATH = '../example_run/spec.out'
 defaultoutputfile = 'plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf'
@@ -109,7 +111,7 @@ def read_colliondata(collionfilename='collion.txt'):
     return dfcollion
 
 
-def make_xs_plot(axis, nonthermaldata, timestep, outputfile, args):
+def make_xs_plot(axis, nonthermaldata, args):
     dfcollion = read_colliondata()
 
     arr_en = nonthermaldata['energy_ev'].unique()
@@ -126,10 +128,87 @@ def make_xs_plot(axis, nonthermaldata, timestep, outputfile, args):
         axis.legend(loc='upper center', handlelength=2, frameon=False, numpoints=1, prop={'size': 13})
 
 
+def inteuler(x, y):
+    dx = y[1:] - y[:-1]
+    return np.dot(x[:-1], dx)
+
+
+def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata, args):
+    estimators = at.estimators.read_estimators(modelpath, get_ion_values=True, get_heatingcooling=True,
+                                               modelgridindex=modelgridindex, timestep=timestep)
+
+    # print(estimators[(timestep, modelgridindex)].keys())
+    total_depev = (estimators[(timestep, modelgridindex)]['total_dep'] * u.erg.to('eV'))
+
+    print(f"Deposition: {total_depev:.1f} eV / cm3 / s")
+
+    arr_enev = nonthermaldata['energy_ev'].values
+    arr_y = nonthermaldata['y'].values
+
+    frac_ionisation = 0.
+
+    dfcollion = read_colliondata()
+
+    elementlist = at.get_composition_data(modelpath)
+    totalpop = estimators[(timestep, modelgridindex)]['populations']['total']
+    nelements = len(elementlist)
+    for element in range(nelements):
+        Z = elementlist.Z[element]
+
+        elpop = estimators[(timestep, modelgridindex)]['populations'][Z]
+        if elpop <= 1e-4 * totalpop:
+            continue
+
+        arr_ionisation_element = np.zeros(len(arr_enev), dtype=np.float)
+        frac_ionisation_element = 0.
+
+        nions = elementlist.nions[element]
+        for ion in range(nions):
+            ionstage = ion + elementlist.lowermost_ionstage[element]
+            ionpop = estimators[(timestep, modelgridindex)]['populations'][(Z, ionstage)]
+
+            dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage')
+
+            # print(at.get_ionstring(Z, ionstage), ionpop)
+
+            arr_ionisation_ion = np.zeros(len(arr_enev), dtype=np.float)
+            frac_ionisation_ion = 0.
+
+            for index, row in dfcollion_thision.iterrows():
+                arr_xs = get_arxs_array_shell(arr_enev, row)
+                arr_ionisation_shell = ionpop * arr_y * arr_xs * row.ionpot_ev / total_depev
+                arr_ionisation_ion += arr_ionisation_shell
+
+                frac_ionisation_shell = np.trapz(x=arr_enev, y=arr_ionisation_shell)
+                frac_ionisation_ion += frac_ionisation_shell
+
+            arr_ionisation_element += arr_ionisation_ion
+            frac_ionisation_element += frac_ionisation_ion
+
+        frac_ionisation += frac_ionisation_element
+
+        if frac_ionisation_element > 1e-5:
+            axis.plot(arr_enev, arr_ionisation_element, label=f'Ionisation Z={Z}')
+
+    nne = estimators[(timestep, modelgridindex)]['nne']
+    arr_heating = np.array([at.spencerfano.lossfunction(enev, nne) / total_depev for enev in arr_enev])
+
+    frac_heating = np.trapz(x=arr_enev, y=arr_heating)
+
+    print(f'   frac_heating: {frac_heating}')
+    print(f'frac_ionisation: {frac_ionisation}')
+
+    axis.plot(arr_enev, arr_heating, label=f'Heating')
+
+    axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 11})
+
+
 def make_plot(modelpaths, args):
-              # nonthermaldata, modelpath, modelgridindex, timestep, outputfile, args):
-    """Draw the bin edges, fitted field, and emergent spectrum."""
-    nplots = 1 if not args.xsplot else 2
+    nplots = 1
+    if args.xsplot:
+        nplots += 1
+    if args.showcontributions:
+        nplots += 1
     fig, axes = plt.subplots(nrows=nplots, ncols=1, sharex=True,
                              figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * 0.7 * nplots),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
@@ -138,9 +217,7 @@ def make_plot(modelpaths, args):
         axes = [axes]
 
     if args.kf1992spec:
-        kf92spec = pd.read_csv(
-            Path(modelpaths[0], 'KF1992spec-fig1.txt'),
-            header=None, names=['e_kev', 'log10_y'])
+        kf92spec = pd.read_csv(Path(modelpaths[0], 'KF1992spec-fig1.txt'), header=None, names=['e_kev', 'log10_y'])
         kf92spec['energy_ev'] = kf92spec['e_kev'] * 1000.
         kf92spec.eval('y = 10 ** log10_y', inplace=True)
         axes[0].plot(kf92spec['energy_ev'], kf92spec['log10_y'],
@@ -161,6 +238,9 @@ def make_plot(modelpaths, args):
         nonthermaldata = read_files(
             modelpath=Path(modelpath),
             modelgridindex=modelgridindex, timestep=timestep)
+
+        if args.xmin:
+            nonthermaldata.query('energy_ev >= @args.xmin', inplace=True)
 
         if nonthermaldata.empty:
             print(f'No data for timestep {timestep:d}')
@@ -186,8 +266,11 @@ def make_plot(modelpaths, args):
                      linewidth=2.0, color='black' if index == 0 else None, alpha=0.95)
         axes[0].set_ylabel(r'log [y (e$^-$ / cm$^2$ / s / eV)]')
 
+        if args.showcontributions:
+            plot_contributions(axes[1], modelpath, timestep, modelgridindex, nonthermaldata, args)
+
         if args.xsplot:
-            make_xs_plot(axes[1], nonthermaldata, timestep, outputfile, args)
+            make_xs_plot(axes[-1], nonthermaldata, args)
 
     if not args.nolegend:
         axes[0].legend(loc='best', handlelength=2, frameon=False, numpoints=1)
@@ -244,6 +327,9 @@ def addargs(parser):
 
     parser.add_argument('--nolegend', action='store_true',
                         help='Suppress the legend from the plot')
+
+    parser.add_argument('--showcontributions', action='store_true',
+                        help='Plot the NT contributions to ionisation and heating energy')
 
     parser.add_argument('--kf1992spec', action='store_true',
                         help='Show the pure-oxygen result form Figure 1 of Kozma & Fransson 1992')
