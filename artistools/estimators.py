@@ -230,7 +230,8 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
 
             elif row[0] == 'heating:' and get_heatingcooling:
                 for heatingtype, value in zip(row[1::2], row[2::2]):
-                    estimblock['heating_' + heatingtype] = float(value)
+                    key = 'heating_' + heatingtype if not heatingtype.startswith('heating_') else heatingtype
+                    estimblock[key] = float(value)
 
                 if 'heating_gamma/gamma_dep' in estimblock and estimblock['heating_gamma/gamma_dep'] > 0:
                     estimblock['gamma_dep'] = (
