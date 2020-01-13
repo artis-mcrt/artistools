@@ -327,7 +327,7 @@ def get_2d_modeldata(modelpath):
 
 
 def get_3d_modeldata(modelpath):
-    model = pd.read_csv(os.path.join(modelpath[0], 'model.txt'), delim_whitespace=True, header=None, skiprows=3)
+    model = pd.read_csv(os.path.join(modelpath[0], 'model.txt'), delim_whitespace=True, header=None, skiprows=3, dtype=np.float64)
     columns = ['inputcellid', 'cellpos_in[z]', 'cellpos_in[y]', 'cellpos_in[x]', 'rho_model',
                'ffe', 'fni', 'fco', 'ffe52', 'fcr48']
     model = pd.DataFrame(model.values.reshape(-1, 10))
