@@ -63,7 +63,8 @@ def plot_3d_initial_abundances(modelpath, args):
     plotaxis1 = 'y'
     plotaxis2 = 'z'
     sliceaxis = 'x'
-    sliceposition = 0.0
+    sliceposition = merge_dfs.iloc[(merge_dfs['cellpos_in[x]']).abs().argsort()][:1]['cellpos_in[x]'].item()
+    # Choose position to slice. This gets minimum absolute value as the closest to 0
     ion = f'X_{args.ion}'
 
     plotvals = (merge_dfs.loc[merge_dfs[f'cellpos_in[{sliceaxis}]'] == sliceposition])
