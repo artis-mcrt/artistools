@@ -120,9 +120,10 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
         axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
         if args.print_data:
             print(lcdata[['time', 'lum', 'lum_cmf']].to_string(index=False))
-        plotkwargs['linewidth'] = 1
-        plotkwargs['label'] = f'{modelname} (cmf)'
-        axis.plot(lcdata.time, lcdata['lum_cmf'], **plotkwargs)
+        if args.plotcmf:
+            plotkwargs['linewidth'] = 1
+            plotkwargs['label'] += ' (cmf)'
+            axis.plot(lcdata.time, lcdata['lum_cmf'], **plotkwargs)
 
     if args.xmin:
         axis.set_xlim(left=args.xmin)
@@ -720,6 +721,9 @@ def addargs(parser):
 
     parser.add_argument('-o', action='store', dest='outputfile', type=Path,
                         help='Filename for PDF file')
+
+    parser.add_argument('--plotcmf', action='store_true',
+                        help='Plot comoving frame light curve')
 
     parser.add_argument('--magnitude', action='store_true',
                         help='Plot synthetic magnitudes')
