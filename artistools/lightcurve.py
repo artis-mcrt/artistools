@@ -750,10 +750,10 @@ def addargs(parser):
     parser.add_argument('-ymin', type=float, default=None,
                         help='Plot range: y-axis')
 
-    parser.add_argument('-xmax', type=float, default=None,
+    parser.add_argument('-xmax', '-timemax', type=float, default=None,
                         help='Plot range: x-axis')
 
-    parser.add_argument('-xmin', type=float, default=None,
+    parser.add_argument('-xmin', '-timemin', type=float, default=None,
                         help='Plot range: x-axis')
 
     parser.add_argument('-reflightcurves', type=str, nargs='+', dest='reflightcurves',
