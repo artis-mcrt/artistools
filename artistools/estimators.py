@@ -426,7 +426,9 @@ def get_averageionisation(populations, atomic_number):
             free_electron_weighted_pop_sum += populations[key] * (ion_stage - 1)
             popsum += populations[key]
 
-    assert(found)
+    if not found:
+        return float('NaN')
+
     return free_electron_weighted_pop_sum / populations[atomic_number]
 
 
