@@ -1176,7 +1176,8 @@ def plot_artis_spectrum(
         else:
             linelabel = f'...{modelname[-67:]}'
 
-        linelabel += f' +{timeavg:.0f}d'
+        if not args.hidemodeltime:
+            linelabel += f' +{timeavg:.0f}d'
         if not args.hidemodeltimerange:
             linelabel += r' ($\pm$ ' + f'{timedelta:.0f}d)'
     else:
@@ -1741,6 +1742,9 @@ def addargs(parser):
 
     parser.add_argument('--hidemodeltimerange', action='store_true',
                         help='Hide the "at t=x to yd" from the line labels')
+
+    parser.add_argument('--hidemodeltime', action='store_true',
+                        help='Hide the time from the line labels')
 
     parser.add_argument('--normalised', action='store_true',
                         help='Normalise all spectra to their peak values')
