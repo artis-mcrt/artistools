@@ -1309,6 +1309,11 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
 
     modelname = at.get_model_name(modelpath)
+
+    if timestepmin == timestepmax == -1:
+        print(f"Can't plot {modelname}...skipping")
+        return [], [], None
+
     print(f'Plotting {modelname} timesteps {timestepmin} to {timestepmax} '
           f'({args.timemin:.3f} to {args.timemax:.3f}d)')
 
