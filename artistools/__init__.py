@@ -102,9 +102,13 @@ def diskcache(ignoreargs=[], ignorekwargs=[], clearcache=False, saveonly=False, 
                 filename = filename_nogz if filename_nogz.exists() else filename_gz
 
                 filesize = Path(filename).stat().st_size / 1024 / 1024
-                with zopen(filename, 'rb') as f:
-                    result = pickle.load(f)
-                printopt(f"diskcache: Loaded '{filename}' ({filesize:.1f} MiB)...")
+                try:
+                    with zopen(filename, 'rb') as f:
+                        result = pickle.load(f)
+                    printopt(f"diskcache: Loaded '{filename}' ({filesize:.1f} MiB)...")
+                except ValueError:
+                    result = func(*args, **kwargs)
+                    saveresult = True
             else:
                 result = func(*args, **kwargs)
                 saveresult = True
