@@ -36,6 +36,7 @@ enable_diskcache = True
 figwidth = 5
 
 commandlist = {
+    'writeartiscomparisondata': ('artistools.writecomparsiondata', 'main_analytical'),
     'getartismodeldeposition': ('artistools.deposition', 'main_analytical'),
     'getartisspencerfano': ('artistools.spencerfano', 'main'),
     'listartistimesteps': ('artistools', 'showtimesteptimes'),
