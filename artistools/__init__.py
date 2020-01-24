@@ -70,7 +70,7 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
 
-def diskcache(ignoreargs=[], ignorekwargs=[], clearcache=False, saveonly=False, quiet=False, savegzipped=False):
+def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savegzipped=False):
     def printopt(*args, **kwargs):
         if not quiet:
             print(*args, **kwargs)
@@ -98,7 +98,7 @@ def diskcache(ignoreargs=[], ignorekwargs=[], clearcache=False, saveonly=False, 
 
             saveresult = False
 
-            if filename_nogz.exists() or filename_gz.exists() and not saveonly:
+            if (filename_nogz.exists() or filename_gz.exists()) and not saveonly:
                 filename = filename_nogz if filename_nogz.exists() else filename_gz
 
                 filesize = Path(filename).stat().st_size / 1024 / 1024
