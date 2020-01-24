@@ -160,6 +160,8 @@ def main(args=None, argsraw=None, **kwargs):
     modelpathlist = args.modelpath
     selected_timesteps = args.selected_timesteps
 
+    args.outputpath.mkdir(parents=True, exist_ok=True)
+
     for modelpath in modelpathlist:
         model_id = str(modelpath.name).split('_')[0]
 
