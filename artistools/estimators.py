@@ -311,7 +311,7 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_value
 
     estimators = {}
     for folderpath in at.get_runfolders(modelpath, timesteps=match_timestep):
-        print(f'Reading {len(list(mpiranklist))} estimator files in {folderpath.relative_to(modelpath.parent)}')
+        print(f'Reading {len(list(mpiranklist))} estimator files in {folderpath.relative_to(Path(modelpath).parent)}')
 
         processfile = partial(read_estimators_from_file, modelpath, folderpath, arr_velocity_outer,
                               get_ion_values=get_ion_values, get_heatingcooling=get_heatingcooling,
