@@ -1059,7 +1059,7 @@ def get_runfolders(modelpath, timestep=None, timesteps=None):
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
     The folder list may include non-ARTIS folders if a timestep is not specified."""
-    folderlist_all = tuple(sorted([child for child in modelpath.iterdir() if child.is_dir()]) + [modelpath])
+    folderlist_all = tuple(sorted([child for child in Path(modelpath).iterdir() if child.is_dir()]) + [Path(modelpath)])
     folder_list_matching = []
     if (timestep is not None and timestep > -1) or (timesteps is not None and len(timesteps) > 0):
         for folderpath in folderlist_all:
