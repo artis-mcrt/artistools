@@ -99,10 +99,11 @@ def write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnone
                         continue
                     v_mid = (cell.velocity_inner + cell.velocity_outer) / 2.
                     f.write(f'{v_mid:.2f}')
+                    elabund = estimators[(timestep, modelgridindex)]['populations'].get(atomic_number, 0)
                     for ion in range(nions):
                         ion_stage = ion + elementlist.lowermost_ionstage[element]
                         ionabund = estimators[(timestep, modelgridindex)]['populations'].get((atomic_number, ion_stage), 0)
-                        f.write(' {:.4e}'.format(ionabund))
+                        f.write(' {:.4e}'.format(ionabund / elabund))
                     f.write('\n')
 
 
