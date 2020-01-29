@@ -808,7 +808,7 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
 
     else:
         timeavg = (args.timemin + args.timemax) / 2.
-        if args.multiplot:
+        if args.multiplot and not args.classicartis:
             tdays = estimators[(timestepslist[0][0], mgilist[0])]['tdays']
             figure_title = f'{modelname}\nTimestep {timestepslist[0]} ({tdays:.2f}d)'
         else:
