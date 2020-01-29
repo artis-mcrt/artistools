@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 
 import artistools as at
+import artistools.classic_estimators
 
 # from astropy import constants as const
 
@@ -472,7 +473,10 @@ def plot_multi_ion_series(
 
     plotted_something = False
 
-    compositiondata = at.get_composition_data(modelpath)
+    if args.classicartis:
+        compositiondata = at.classic_estimators.get_atomic_composition(modelpath)
+    else:
+        compositiondata = at.get_composition_data(modelpath)
 
     # decoded into numeric form, e.g., [(26, 1), (26, 2)]
     iontuplelist = [
@@ -982,6 +986,9 @@ def addargs(parser):
     parser.add_argument('-colorbyion', action='store_true',
                         help='Populations plots colored by ion rather than element')
 
+    parser.add_argument('--classicartis', action='store_true',
+                        help='Flag to show using output from classic ARTIS branch')
+
 
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
@@ -1006,7 +1013,12 @@ def main(args=None, argsraw=None, **kwargs):
           f"({args.timemin:.1f} to {args.timemax:.1f}d)")
 
     timesteps_included = list(range(timestepmin, timestepmax + 1))
-    estimators = read_estimators(modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included))
+
+    if args.classicartis:
+        modeldata, _ = at.get_modeldata(modelpath)
+        estimators = at.classic_estimators.read_classic_estimators(modelpath, modeldata)
+    else:
+        estimators = read_estimators(modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included))
 
     for ts in reversed(timesteps_included):
         if (ts, 0) not in estimators:
@@ -1050,8 +1062,12 @@ def main(args=None, argsraw=None, **kwargs):
         plot_recombrates(modelpath, estimators, 28, [3, 4, 5])
     else:
         modeldata, _ = at.get_modeldata(modelpath)
-        allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
-                              if not estimators[(timesteps_included[0], modelgridindex)]['emptycell']]
+        if args.classicartis:
+            allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
+                                  if (timesteps_included[0], modelgridindex) in estimators]
+        else:
+            allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
+                                  if not estimators[(timesteps_included[0], modelgridindex)]['emptycell']]
 
         if args.modelgridindex > -1 or args.x == 'time':
             # plot time evolution in specific cell
