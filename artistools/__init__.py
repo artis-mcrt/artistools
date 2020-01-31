@@ -445,6 +445,20 @@ def get_nu_grid(modelpath):
     return specdata.loc[:, '0'].values
 
 
+def get_deposition(modelpath):
+    times = get_timestep_times_float(modelpath)
+    depdata = pd.read_csv(Path(modelpath, 'deposition.out'), delim_whitespace=True, header=None, names=[
+        'time', 'gammadep_over_Lsun', 'posdep_over_Lsun', 'total_dep_over_Lsun'])
+    depdata.index.name = 'timestep'
+
+    # no timesteps are given in deposition.out, so ensure that
+    # the times in days match up with the times of our assumed timesteps
+    for timestep, row in depdata.iterrows():
+        assert(abs(times[timestep] / row['time'] - 1) < 0.01)
+
+    return depdata
+
+
 @lru_cache(maxsize=16)
 def get_timestep_times(modelpath):
     """Return a list of the time in days of each timestep using a spec.out file."""
