@@ -8,14 +8,14 @@ import artistools as at
 import artistools.estimators
 
 
-def write_spectra(modelpath, model_id, selected_timesteps):
+def write_spectra(modelpath, model_id, selected_timesteps, outfile):
     spec_data = np.loadtxt(Path(modelpath, "spec.out"))
 
     times = spec_data[0, 1:]
     freqs = spec_data[1:, 0]
     lambdas = 2.99792458e18 / freqs
 
-    print("\n".join(["{0}, {1}".format(*x) for x in enumerate(times)]))
+    # print("\n".join(["{0}, {1}".format(*x) for x in enumerate(times)]))
 
     fluxes_nu = spec_data[1:, 1:]
 
@@ -30,17 +30,17 @@ def write_spectra(modelpath, model_id, selected_timesteps):
         # 2.99792458e18 is c in Angstrom / second
         lum_lambda[n, :] = fluxes_nu[n, :] * 2.99792458e18 / lambdas[n] / lambdas[n] * area
 
-    f = open("spectra_" + model_id + "_artisnebular.txt", "w")
-    f.write("#NTIMES: {0}\n".format(len(selected_timesteps)))
-    f.write("#NWAVE: {0}\n".format(len(lambdas)))
-    f.write("#TIMES[d]: {0}\n".format(" ".join(["{0:.2f}".format(times[ts]) for ts in selected_timesteps])))
-    f.write("#wavelength[Ang] flux_t0[erg/s/Ang] flux_t1[erg/s/Ang] ... flux_tn[erg/s/Ang]\n")
+    with open(outfile, "w") as f:
+        f.write("#NTIMES: {0}\n".format(len(selected_timesteps)))
+        f.write("#NWAVE: {0}\n".format(len(lambdas)))
+        f.write("#TIMES[d]: {0}\n".format(" ".join(["{0:.2f}".format(times[ts]) for ts in selected_timesteps])))
+        f.write("#wavelength[Ang] flux_t0[erg/s/Ang] flux_t1[erg/s/Ang] ... flux_tn[erg/s/Ang]\n")
 
-    for n in reversed(range(len(lambdas))):
-        f.write("{0:.2f} ".format(lambdas[n]) + " ".join(
-            ["{0:.2e}".format(lum_lambda[n, ts]) for ts in selected_timesteps]) + "\n")
+        for n in reversed(range(len(lambdas))):
+            f.write("{0:.2f} ".format(lambdas[n]) + " ".join(
+                ["{0:.2e}".format(lum_lambda[n, ts]) for ts in selected_timesteps]) + "\n")
 
-    f.close()
+        f.close()
 
 
 def write_ntimes_nvel(f, selected_timesteps, modelpath):
@@ -176,7 +176,7 @@ def main(args=None, argsraw=None, **kwargs):
         allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
                               if not estimators[(selected_timesteps[0], modelgridindex)]['emptycell']]
 
-        # write_spectra(modelpath, model_id, selected_timesteps)
+        write_spectra(modelpath, model_id, selected_timesteps, Path(args.outputpath, "spectra_" + model_id + "_artisnebular.txt"))
         write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, Path(args.outputpath, "eden_" + model_id + "_artisnebular.txt"), keyname='nne')
         write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, Path(args.outputpath, "edep_" + model_id + "_artisnebular.txt"), keyname='total_dep')
         write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, Path(args.outputpath, "tgas_" + model_id + "_artisnebular.txt"), keyname='Te')
