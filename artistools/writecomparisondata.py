@@ -4,8 +4,11 @@ import argparse
 import numpy as np
 from pathlib import Path
 
+import pandas as pd
+
 import artistools as at
 import artistools.estimators
+import artistools.lightcurve
 
 
 def write_spectra(modelpath, model_id, selected_timesteps, outfile):
@@ -46,9 +49,9 @@ def write_spectra(modelpath, model_id, selected_timesteps, outfile):
 def write_ntimes_nvel(f, selected_timesteps, modelpath):
     times = at.get_timestep_times_float(modelpath)
     modeldata, t_model_init_days = at.get_modeldata(modelpath)
-    f.write(f'#NTIMES {len(selected_timesteps)}\n')
+    f.write(f'#NTIMES: {len(selected_timesteps)}\n')
     f.write(f'#NVEL {len(modeldata)}\n')
-    f.write(f'#TIMES[d] {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
+    f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
 
 
 def write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, outfile, keyname):
@@ -86,9 +89,9 @@ def write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnone
         elsymb = at.elsymbols[atomic_number].lower()
         nions = elementlist.nions[element]
         with open(Path(outputpath, f'ionfrac_{elsymb}_{model_id}_artisnebular.txt'), 'w') as f:
-            f.write(f'#NTIMES {len(selected_timesteps)}\n')
+            f.write(f'#NTIMES: {len(selected_timesteps)}\n')
             f.write(f'#NSTAGES {nions}\n')
-            f.write(f'#TIMES[d] {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
+            f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
             f.write('#\n')
             for timestep in selected_timesteps:
                 f.write(f'#TIME: {times[timestep]:.2f}\n')
@@ -112,8 +115,8 @@ def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptym
     times = at.get_timestep_times_float(modelpath)
     modeldata, t_model_init_days = at.get_modeldata(modelpath)
     with open(Path(outputpath, f'phys_{model_id}_artisnebular.txt'), 'w') as f:
-        f.write(f'#NTIMES {len(selected_timesteps)}\n')
-        f.write(f'#TIMES[d] {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
+        f.write(f'#NTIMES: {len(selected_timesteps)}\n')
+        f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
         f.write('#\n')
         for timestep in selected_timesteps:
             f.write(f'#TIME: {times[timestep]:.2f}\n')
@@ -135,6 +138,26 @@ def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptym
                     estvalue = estimators[(timestep, modelgridindex)][keyname]
                     f.write(' {:.4e}'.format(estvalue))
                 f.write('\n')
+
+
+def write_lbol_edep(modelpath, model_id, selected_timesteps, estimators, outputpath):
+    # times = at.get_timestep_times_float(modelpath)
+    dflightcurve = at.lightcurve.readfile(Path(modelpath, "light_curve.out"))
+    dfdep = at.get_deposition(modelpath)
+
+    df = pd.merge(dflightcurve, dfdep, left_index=True, right_index=True, suffixes=('', '_dep'))
+
+    with open(outputpath, "w") as f:
+        f.write(f'#NTIMES: {len(selected_timesteps)}\n')
+        f.write("#time[d] Lbol[erg/s] Edep[erg/s] \n")
+
+        for timestep, row in df.iterrows():
+            if timestep not in selected_timesteps:
+                continue
+            f.write(f"{row.time:.2f} {row.lum * 3.826e33:.2e} {row.total_dep_over_Lsun * 3.826e33:.2e}\n")
+
+    f.close()
+
 
 def addargs(parser):
     parser.add_argument('-modelpath', default=[], nargs='*', action=at.AppendPath,
@@ -176,9 +199,14 @@ def main(args=None, argsraw=None, **kwargs):
         allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
                               if not estimators[(selected_timesteps[0], modelgridindex)]['emptycell']]
 
+        write_lbol_edep(modelpath, model_id, selected_timesteps, estimators, Path(args.outputpath, "lbol_edep_" + model_id + "_artisnebular.txt"))
+
         write_spectra(modelpath, model_id, selected_timesteps, Path(args.outputpath, "spectra_" + model_id + "_artisnebular.txt"))
+
         write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, Path(args.outputpath, "eden_" + model_id + "_artisnebular.txt"), keyname='nne')
+
         write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, Path(args.outputpath, "edep_" + model_id + "_artisnebular.txt"), keyname='total_dep')
+
         write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, Path(args.outputpath, "tgas_" + model_id + "_artisnebular.txt"), keyname='Te')
 
         write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputpath)

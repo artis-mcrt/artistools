@@ -28,6 +28,7 @@ def readfile(filepath_or_buffer):
     lcdata = pd.read_csv(filepath_or_buffer, delim_whitespace=True, header=None, names=['time', 'lum', 'lum_cmf'])
     # the light_curve.dat file repeats x values, so keep the first half only
     lcdata = lcdata.iloc[:len(lcdata) // 2]
+    lcdata.index.name = 'timestep'
     return lcdata
 
 
