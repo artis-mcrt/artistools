@@ -355,6 +355,15 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                     linelabel = f'{modelname}'
                     # linelabel = 'Angle averaged'
 
+                if args.filtersavgol:
+                    import scipy.signal
+                    window_length, poly_order = [int(x) for x in args.filtersavgol]
+
+                    def filterfunc(y):
+                        return scipy.signal.savgol_filter(y, window_length, poly_order)
+                    print("Applying Savitzky–Golay filter")
+                    magnitude = filterfunc(magnitude)
+
                 # if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
                 #     linestyle = '--'
                 # else:
@@ -491,6 +500,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                 def filterfunc(y):
                     return scipy.signal.savgol_filter(y, window_length, poly_order)
 
+                print("Applying Savitzky–Golay filter")
                 diff = filterfunc(diff)
 
             plt.plot(plot_times, diff, label=linelabel, linewidth=3)
