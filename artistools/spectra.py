@@ -462,13 +462,9 @@ def plot_polarisation(modelpath, args):
         return str("{0:.4f}".format(min([float(x) for x in timearray], key=lambda x: abs(x - reftime))))
 
     timeavg = match_closest_time(timeavg)
-    if args.filtersavgol:
-        import scipy.signal
-        window_length, poly_order = [int(x) for x in args.filtersavgol]
 
-        def filterfunc(y):
-            return scipy.signal.savgol_filter(y, window_length, poly_order)
-
+    filterfunc = at.get_filterfunc(args)
+    if filterfunc is not None:
         print("Applying filter to ARTIS spectrum")
         stokes_params[args.stokesparam][timeavg] = filterfunc(stokes_params[args.stokesparam][timeavg])
 
@@ -1468,14 +1464,7 @@ def make_plot(args):
     if nrows == 1:
         axes = [axes]
 
-    if args.filtersavgol:
-        import scipy.signal
-        window_length, poly_order = [int(x) for x in args.filtersavgol]
-
-        def filterfunc(y):
-            return scipy.signal.savgol_filter(y, window_length, poly_order)
-    else:
-        filterfunc = None
+    filterfunc = at.get_filterfunc(args)
 
     scale_to_peak = 1.0 if args.normalised else None
 

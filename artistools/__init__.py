@@ -926,6 +926,28 @@ def firstexisting(filelist, path=Path('.')):
     raise FileNotFoundError(f'None of these files exist: {", ".join([str(x) for x in fullpaths])}')
 
 
+def get_filterfunc(args, mode='interp'):
+    """Using command line arguments to determine the appropriate filter function."""
+
+    if hasattr(args, "filtermovingavg") and args.filtermovingavg > 0:
+        def filterfunc(ylist):
+            n = args.filtermovingavg
+            arr_padded = np.pad(ylist, (n // 2, n - 1 - n // 2), mode='edge')
+            return np.convolve(arr_padded, np.ones((n,)) / n, mode='valid')
+
+    elif hasattr(args, "filtersavgol") and args.filtersavgol:
+        import scipy.signal
+        window_length, poly_order = [int(x) for x in args.filtersavgol]
+
+        def filterfunc(ylist):
+            return scipy.signal.savgol_filter(ylist, window_length, poly_order, mode=mode)
+        print("Applying Savitzky–Golay filter")
+    else:
+        filterfunc = None
+
+    return filterfunc
+
+
 def join_pdf_files(pdf_list, modelpath_list):
 
     merger = PdfFileMerger()
