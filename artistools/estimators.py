@@ -75,20 +75,11 @@ def get_elemcolor(atomic_number=None, elsymbol=None):
     return elementcolors[elsymbol]
 
 
-def moving_average(arr, n):
-    arr_padded = np.pad(arr, (n // 2, n - 1 - n // 2), mode='edge')
-    return np.convolve(arr_padded, np.ones((n,)) / n, mode='valid')
-
-
 def apply_filters(xlist, ylist, args):
-    if args.filtermovingavg > 0:
-        ylist = moving_average(ylist, args.filtermovingavg)
+    filterfunc = at.get_filterfunc(args)
 
-    if args.filtersavgol:
-        window_length, polyorder = [int(x) for x in args.filtersavgol]
-
-        ylist = scipy.signal.savgol_filter(ylist, window_length=window_length, polyorder=polyorder,
-                                           mode='nearest')
+    if filterfunc is not None:
+        ylist = filterfunc(ylist)
 
     return xlist, ylist
 
