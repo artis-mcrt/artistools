@@ -185,7 +185,7 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
                     # will be TR, Te, W, TJ, nne
                     for variablename, value in zip(row[4::2], row[5::2]):
                         estimblock[variablename] = float(value)
-                    estimblock['lognne'] = math.log10(estimblock['nne'])
+                    estimblock['lognne'] = math.log10(estimblock['nne']) if estimblock['nne'] > 0 else float('-inf')
 
             elif row[1].startswith('Z=') and get_ion_values:
                 variablename = row[0]
