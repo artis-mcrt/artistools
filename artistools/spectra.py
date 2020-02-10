@@ -1720,10 +1720,10 @@ def addargs(parser):
     parser.add_argument('-timemax', type=float,
                         help='Upper time in days to integrate spectrum')
 
-    parser.add_argument('-xmin', '-lambdamin', type=int, default=2500,
+    parser.add_argument('-xmin', '-lambdamin', dest='xmin', type=int, default=2500,
                         help='Plot range: minimum wavelength in Angstroms')
 
-    parser.add_argument('-xmax', '-lambdamax', type=int, default=11000,
+    parser.add_argument('-xmax', '-lambdamax', dest='xmin', type=int, default=11000,
                         help='Plot range: maximum wavelength in Angstroms')
 
     parser.add_argument('-deltalambda', type=int, default=50,
