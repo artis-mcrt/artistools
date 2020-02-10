@@ -865,10 +865,6 @@ def sort_and_reduce_flux_contribution_list(
     remainder_flambda_absorption = np.zeros_like(arraylambda_angstroms, dtype=np.float)
     remainder_fluxcontrib = 0
 
-    contribution_list_out = []
-    plotted_ion_list = []
-    numotherprinted = 0
-    entered_other = False
     if greyscale:
         seriescount = len(fixedionlist) if fixedionlist else maxseriescount
         colorcount = math.ceil(seriescount / 1. / len(hatches))
@@ -884,35 +880,43 @@ def sort_and_reduce_flux_contribution_list(
     else:
         color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
 
+    contribution_list_out = []
+    numotherprinted = 0
+    maxnumotherprinted = 20
+    entered_other = False
+    plotted_ion_list = []
     for index, row in enumerate(contribution_list):
         if fixedionlist and row.linelabel in fixedionlist:
             contribution_list_out.append(row._replace(color=color_list[fixedionlist.index(row.linelabel)]))
         elif not fixedionlist and index < maxseriescount:
             contribution_list_out.append(row._replace(color=color_list[index]))
+            plotted_ion_list.append(row.linelabel)
         else:
             remainder_fluxcontrib += row.fluxcontrib
             remainder_flambda_emission += row.array_flambda_emission
             remainder_flambda_absorption += row.array_flambda_absorption
             if not entered_other:
-                print("  Other (top 20):")
+                print(f"  Other (top {maxnumotherprinted}):")
                 entered_other = True
 
-        if numotherprinted < 20:
+        if numotherprinted < maxnumotherprinted:
             integemiss = abs(np.trapz(row.array_flambda_emission, x=arraylambda_angstroms))
             integabsorp = abs(np.trapz(-row.array_flambda_absorption, x=arraylambda_angstroms))
-            plotted_ion_list.append(row.linelabel)
             if integabsorp > 0. and integemiss > 0.:
                 print(f'{row.fluxcontrib:.1e}, emission {integemiss:.1e}, '
                       f"absorption {integabsorp:.1e} [erg/s/cm^2]: '{row.linelabel}'")
             elif integemiss > 0.:
-                print(f"  emission {integemiss:.1e} erg/s/cm^2: '{row.linelabel}'")
+                print(f"  emission {integemiss:.1e} [erg/s/cm^2]: '{row.linelabel}'")
             else:
-                print(f"absorption {integabsorp:.1e} erg/s/cm^2: '{row.linelabel}'")
+                print(f"absorption {integabsorp:.1e} [erg/s/cm^2]: '{row.linelabel}'")
 
             if entered_other:
                 numotherprinted += 1
 
-    print("List of ions included:", *plotted_ion_list[:14], sep="' '", end="'\n", )
+    if not fixedionlist:
+        cmdarg = "'" + "' '".join(plotted_ion_list) + "'"
+        print('To reuse this ion/process contribution list, pass the following command-line argument: ')
+        print(f'     -fixedionlist {cmdarg}')
 
     if remainder_fluxcontrib > 0. and not hideother:
         contribution_list_out.append(fluxcontributiontuple(
