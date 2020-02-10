@@ -1708,10 +1708,10 @@ def addargs(parser):
                         help='Savitzky–Golay filter. Specify the window_length and poly_order.'
                         'e.g. -filtersavgol 5 3')
 
-    parser.add_argument('-timestep', '-ts', nargs='?',
+    parser.add_argument('-timestep', '-ts', dest='timestep', nargs='?',
                         help='First timestep or a range e.g. 45-65')
 
-    parser.add_argument('-timedays', '-time', '-t', nargs='?',
+    parser.add_argument('-timedays', '-time', '-t', dest='timedays', nargs='?',
                         help='Range of times in days to plot (e.g. 50-100)')
 
     parser.add_argument('-timemin', type=float,
@@ -1723,7 +1723,7 @@ def addargs(parser):
     parser.add_argument('-xmin', '-lambdamin', dest='xmin', type=int, default=2500,
                         help='Plot range: minimum wavelength in Angstroms')
 
-    parser.add_argument('-xmax', '-lambdamax', dest='xmin', type=int, default=11000,
+    parser.add_argument('-xmax', '-lambdamax', dest='xmax', type=int, default=11000,
                         help='Plot range: maximum wavelength in Angstroms')
 
     parser.add_argument('-deltalambda', type=int, default=50,
