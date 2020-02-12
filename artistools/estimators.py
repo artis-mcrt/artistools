@@ -479,7 +479,7 @@ def plot_multi_ion_series(
 
     missingions = set()
     for atomic_number, ion_stage in iontuplelist:
-        if ion_stage != 'ALL' and compositiondata.query(
+        if ion_stage != 'ALL' and not args.classicartis and compositiondata.query(
                 'Z == @atomic_number '
                 '& lowermost_ionstage <= @ion_stage '
                 '& uppermost_ionstage >= @ion_stage').empty:
@@ -802,6 +802,9 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
         if args.multiplot and not args.classicartis:
             tdays = estimators[(timestepslist[0][0], mgilist[0])]['tdays']
             figure_title = f'{modelname}\nTimestep {timestepslist[0]} ({tdays:.2f}d)'
+        elif args.multiplot and args.classicartis:
+            timedays = float(at.get_timestep_time('.', timestepslist[0])[0])
+            figure_title = f'{modelname}\nTimestep {timestepslist[0]} ({timedays:.2f}d)'
         else:
             figure_title = f'{modelname}\nTimestep {timestepslist[0]} ({timeavg:.2f}d)'
 
