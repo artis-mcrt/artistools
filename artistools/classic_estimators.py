@@ -30,7 +30,8 @@ def parse_ion_row_classic(row, outdict, atomic_composition):
 
     elements = atomic_composition.keys()
 
-    i = 6
+    i = 6  # skip first 6 numbers in est file. These are n, TR, Te, W, TJ, grey_depth.
+    # Numbers after these 6 are populations
     for atomic_number in elements:
         for ion_stage in range(1, atomic_composition[atomic_number] + 1):
             value_thision = float(row[i])
@@ -53,6 +54,22 @@ def get_estimator_files(modelpath):
     return estimfiles
 
 
+def get_first_ts_in_run_directory(modelpath):
+    folderlist_all = tuple(sorted([child for child in Path(modelpath).iterdir() if child.is_dir()]) + [Path(modelpath)])
+
+    first_timesteps_in_dir = {}
+
+    for folder in folderlist_all:
+        if os.path.isfile(folder/'output_0-0.txt'):
+            with open(folder/'output_0-0.txt', 'r') as output_0:
+                timesteps_in_dir = [line.strip('...\n').split(' ')[-1] for line in output_0
+                                    if '[debug] update_packets: updating packet 0 for timestep' in line]
+            first_ts = timesteps_in_dir[0]
+            first_timesteps_in_dir[str(folder)] = int(first_ts)
+
+    return first_timesteps_in_dir
+
+
 def read_classic_estimators(modelpath, modeldata):
     estimfiles = get_estimator_files(modelpath)
     if not estimfiles:
@@ -60,13 +77,16 @@ def read_classic_estimators(modelpath, modeldata):
         return False
     print(f'Reading {len(estimfiles)} estimator files...')
 
+    first_timesteps_in_dir = get_first_ts_in_run_directory(modelpath)
     atomic_composition = get_atomic_composition(modelpath)
+
     estimators = {}
     for estfile in estimfiles:
         opener = gzip.open if estfile.endswith('.gz') else open
 
+        timestep = first_timesteps_in_dir[str(estfile).split('/')[0]]  # get the starting timestep for the estfile
+
         with opener(estfile, 'rt') as estfile:
-            timestep = 0
             modelgridindex = -1
             for line in estfile:
                 row = line.split()
