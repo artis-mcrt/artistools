@@ -1080,7 +1080,7 @@ def get_runfolder_timesteps(folderpath):
                 if line.startswith('timestep '):
                     timestep = int(line.split()[1])
 
-                    if (restart_timestep < 0 and timestep != 0):
+                    if (restart_timestep < 0 and timestep != 0 and 0 not in folder_timesteps):
                         # the first timestep of a restarted run is duplicate and should be ignored
                         restart_timestep = timestep
 
