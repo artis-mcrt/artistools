@@ -1005,7 +1005,7 @@ def get_reference_spectrum(filename):
     # # filtered_specdata.to_csv('/Users/ccollins/artis_nebular/artistools/artistools/data/refspectra/' + name, index=False, header=False, sep=' ')
 
     if 'a_v' in metadata or 'e_bminusv' in metadata:
-        print('Correcting for reddening')
+        print(' Correcting for reddening')
         from extinction import apply, ccm89
         if 'r_v' not in metadata:
             metadata['r_v'] = metadata['a_v'] / metadata['e_bminusv']
@@ -1045,7 +1045,7 @@ def plot_reference_spectrum(
         timefactor = math.exp(metadata['t'] / 133.) / math.exp(scaletoreftime / 133.)
         print(f" Scale from time {metadata['t']} to {scaletoreftime}, factor {timefactor}")
         specdata['f_lambda'] *= timefactor
-        # plotkwargs['label'] += f' * {timefactor:.2f}'
+        plotkwargs['label'] += f' * {timefactor:.2f}'
     if 'scale_factor' in metadata:
         specdata['f_lambda'] *= metadata['scale_factor']
 
@@ -1154,7 +1154,7 @@ def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
         axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=250))
 
     filenameout = str(Path(outputpath, 'plotspecstats.pdf'))
-    fig.savefig(filenameout, format='pdf')
+    fig.savefig(filenameout)
     print(f'Saved {filenameout}')
     plt.close()
 
@@ -1586,7 +1586,7 @@ def make_plot(args):
     # plt.tick_params(axis='x', which='minor', length=5, width=2, labelsize=18)
     # plt.tick_params(axis='both', which='major', length=8, width=2, labelsize=18)
 
-    fig.savefig(filenameout, format='pdf')
+    fig.savefig(filenameout)
     # plt.show()
     print(f'Saved {filenameout}')
     plt.close()
