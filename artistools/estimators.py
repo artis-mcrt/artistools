@@ -259,8 +259,15 @@ def read_estimators_from_file(modelpath, folderpath, arr_velocity_outer, mpirank
         filesize = Path(estfilepath).stat().st_size / 1024 / 1024
         print(f'Reading {estfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)')
 
+    first_ts_after_restart = True
     for fileblock_timestep, fileblock_modelgridindex, file_estimblock in parse_estimfile(
             estfilepath, modelpath, get_ion_values=get_ion_values, get_heatingcooling=get_heatingcooling):
+
+        if fileblock_timestep == 0:
+            first_ts_after_restart = False
+        if first_ts_after_restart:
+            first_ts_after_restart = False
+            continue
 
         file_estimblock['velocity_outer'] = arr_velocity_outer[fileblock_modelgridindex]
         file_estimblock['velocity'] = file_estimblock['velocity_outer']
