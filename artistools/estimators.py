@@ -831,7 +831,7 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
         dfalldata.to_csv(dataoutfilename)
         print(f'Saved {dataoutfilename}')
 
-    fig.savefig(outfilename, format='pdf')
+    fig.savefig(outfilename)
     print(f'Saved {outfilename}')
 
     if args.show:
@@ -909,7 +909,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
     # fig.suptitle(plotlabel, fontsize=12)
     elsymbol = at.elsymbols[atomic_number]
     outfilename = f"plotestimators_recombrates_{elsymbol}.pdf"
-    fig.savefig(outfilename, format='pdf')
+    fig.savefig(outfilename)
     print(f'Saved {outfilename}')
     plt.close()
 
