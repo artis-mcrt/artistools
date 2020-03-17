@@ -259,23 +259,10 @@ def get_filter_data(filterdir, filter_name):
     return zeropointenergyflux, np.array(wavefilter), np.array(transmission), wavefilter_min, wavefilter_max
 
 
-def get_spectrum_at_time(modelpath, timestep, time, args, angle=None, res_specdata=None, modelnumber=None):
-    if angle is not None:
-        if args.plotvspecpol:
-            spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
-        else:
-            spectrum = at.spectra.get_res_spectrum(modelpath, timestep, timestep, angle=angle,
-                                                   res_specdata=res_specdata)
-    else:
-        spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep, modelnumber=modelnumber, args=args)
-
-    return spectrum
-
-
 def get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle=None,
                                  res_specdata=None, modelnumber=None, spectrum=None):
     if spectrum is None:
-        spectrum = get_spectrum_at_time(modelpath, timestep, time, args, angle, res_specdata, modelnumber)
+        spectrum = at.spectra.get_spectrum_at_time(modelpath, timestep, time, args, angle, res_specdata, modelnumber)
 
     wavelength_from_spectrum, flux = [], []
     for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
