@@ -110,8 +110,7 @@ def get_spectrum_at_time(modelpath, timestep, time, args, angle=None, res_specda
         if args.plotvspecpol:
             spectrum = get_vspecpol_spectrum(modelpath, time, angle, args)
         else:
-            spectrum = get_res_spectrum(modelpath, timestep, timestep, angle=angle,
-                                                   res_specdata=res_specdata)
+            spectrum = get_res_spectrum(modelpath, timestep, timestep, angle=angle, res_specdata=res_specdata)
     else:
         spectrum = get_spectrum(modelpath, timestep, timestep, modelnumber=modelnumber, args=args)
 
