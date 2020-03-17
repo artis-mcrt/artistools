@@ -45,16 +45,16 @@ def get_spectrum(
     if timestepmax < 0:
         timestepmax = timestepmin
 
-    master_branch = False
+    polarisationdata = False
     if Path(modelpath, 'specpol.out').is_file():
         specfilename = Path(modelpath) / "specpol.out"
-        master_branch = True
+        polarisationdata = True
     elif Path(modelpath).is_dir():
         specfilename = at.firstexisting(['spec.out.xz', 'spec.out.gz', 'spec.out'], path=modelpath)
     else:
         specfilename = modelpath
 
-    if master_branch:
+    if polarisationdata:
         # angle = args.plotviewingangle[0]
         stokes_params = get_polarisation(angle=None, modelpath=modelpath)
         if args is not None and 'stokesparam' in args:
@@ -66,7 +66,7 @@ def get_spectrum(
         specdata = specdata.rename(columns={'0': 'nu'})
 
     nu = specdata.loc[:, 'nu'].values
-    if master_branch:
+    if polarisationdata:
         timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
     else:
         timearray = specdata.columns.values[1:]
