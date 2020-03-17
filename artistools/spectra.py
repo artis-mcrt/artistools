@@ -105,6 +105,19 @@ def get_spectrum(
     return dfspectrum
 
 
+def get_spectrum_at_time(modelpath, timestep, time, args, angle=None, res_specdata=None, modelnumber=None):
+    if angle is not None:
+        if args.plotvspecpol:
+            spectrum = get_vspecpol_spectrum(modelpath, time, angle, args)
+        else:
+            spectrum = get_res_spectrum(modelpath, timestep, timestep, angle=angle,
+                                                   res_specdata=res_specdata)
+    else:
+        spectrum = get_spectrum(modelpath, timestep, timestep, modelnumber=modelnumber, args=args)
+
+    return spectrum
+
+
 def get_spectrum_from_packets(
         modelpath, timelowdays, timehighdays, lambda_min, lambda_max,
         delta_lambda=30, use_comovingframe=None, maxpacketfiles=None, useinternalpackets=False):
