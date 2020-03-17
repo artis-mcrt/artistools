@@ -38,23 +38,17 @@ def stackspectra(spectra_and_factors):
     return stackedspectrum
 
 
-def get_spectrum(
-        modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None,
-        reftime=None, modelnumber=None, args=None):
-    """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
-    if timestepmax < 0:
-        timestepmax = timestepmin
-
-    polarisationdata = False
+def get_specdata(modelpath, args=None):
+    args.polarisationdata = False
     if Path(modelpath, 'specpol.out').is_file():
         specfilename = Path(modelpath) / "specpol.out"
-        polarisationdata = True
+        args.polarisationdata = True
     elif Path(modelpath).is_dir():
         specfilename = at.firstexisting(['spec.out.xz', 'spec.out.gz', 'spec.out'], path=modelpath)
     else:
         specfilename = modelpath
 
-    if polarisationdata:
+    if args.polarisationdata:
         # angle = args.plotviewingangle[0]
         stokes_params = get_polarisation(angle=None, modelpath=modelpath)
         if args is not None and 'stokesparam' in args:
@@ -65,8 +59,20 @@ def get_spectrum(
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         specdata = specdata.rename(columns={'0': 'nu'})
 
+    return specdata
+
+
+def get_spectrum(
+        modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None,
+        reftime=None, modelnumber=None, args=None):
+    """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
+    if timestepmax < 0:
+        timestepmax = timestepmin
+
+    specdata = get_specdata(modelpath, args)
+
     nu = specdata.loc[:, 'nu'].values
-    if polarisationdata:
+    if args.polarisationdata:
         timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
     else:
         timearray = specdata.columns.values[1:]
