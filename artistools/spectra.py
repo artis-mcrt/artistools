@@ -1462,7 +1462,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
 
 def make_plot(args):
     # font = {'size': 16}
-    # matplotlib.rc('font', **font)
+    # mpl.rc('font', **font)
     nrows = len(args.xsplit) + 1
     fig, axes = plt.subplots(
         nrows=nrows, ncols=1, sharey=False,
