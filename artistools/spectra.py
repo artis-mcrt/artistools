@@ -38,17 +38,17 @@ def stackspectra(spectra_and_factors):
     return stackedspectrum
 
 
-def get_specdata(modelpath, args=None):
-    args.polarisationdata = False
+def get_specdata(modelpath, args):
+    polarisationdata = False
     if Path(modelpath, 'specpol.out').is_file():
         specfilename = Path(modelpath) / "specpol.out"
-        args.polarisationdata = True
+        polarisationdata = True
     elif Path(modelpath).is_dir():
         specfilename = at.firstexisting(['spec.out.xz', 'spec.out.gz', 'spec.out'], path=modelpath)
     else:
         specfilename = modelpath
 
-    if args.polarisationdata:
+    if polarisationdata:
         # angle = args.plotviewingangle[0]
         stokes_params = get_polarisation(angle=None, modelpath=modelpath)
         if args is not None and 'stokesparam' in args:
@@ -72,7 +72,11 @@ def get_spectrum(
     specdata = get_specdata(modelpath, args)
 
     nu = specdata.loc[:, 'nu'].values
-    if args.polarisationdata:
+    polarisationdata = False
+    if Path(modelpath, 'specpol.out').is_file():
+        specfilename = Path(modelpath) / "specpol.out"
+        polarisationdata = True
+    if polarisationdata:
         timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
     else:
         timearray = specdata.columns.values[1:]
