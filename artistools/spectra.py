@@ -551,9 +551,7 @@ def get_flux_contributions(
         if use_lastemissiontype:
             emissionfilenames = ['emission.out.xz', 'emission.out.gz', 'emission.out', 'emissionpol.out']
         else:
-            # TODO: does master branch have true version? Ok to use this?
-            emissionfilenames = ['emissiontrue.out.xz', 'emissiontrue.out.gz', 'emissiontrue.out',
-                                 'emissionpol.out', 'emission.out']
+            emissionfilenames = ['emissiontrue.out.xz', 'emissiontrue.out.gz', 'emissiontrue.out']
 
         emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
         try:
