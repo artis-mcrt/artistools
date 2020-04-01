@@ -70,11 +70,12 @@ def write_single_estimator(modelpath, selected_timesteps, estimators, allnonempt
             v_mid = (cell.velocity_inner + cell.velocity_outer) / 2.
             f.write(f'{v_mid:.2f}')
             for timestep in selected_timesteps:
-                try:
-                    cellvalue = estimators[(timestep, modelgridindex)][keyname]
-                except KeyError:
-                    cellvalue = (estimators[(timestep - 1, modelgridindex)][keyname]
-                                 + estimators[(timestep + 1, modelgridindex)][keyname]) / 2.
+                cellvalue = estimators[(timestep, modelgridindex)][keyname]
+                # try:
+                #     cellvalue = estimators[(timestep, modelgridindex)][keyname]
+                # except KeyError:
+                #     cellvalue = (estimators[(timestep - 1, modelgridindex)][keyname]
+                #                  + estimators[(timestep + 1, modelgridindex)][keyname]) / 2.
                 f.write(f' {cellvalue:.2e}')
             f.write('\n')
 
