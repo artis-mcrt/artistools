@@ -164,7 +164,7 @@ def addargs(parser):
                         help='Paths to ARTIS folders')
 
     parser.add_argument('-selected_timesteps', default=[], nargs='*', action=at.AppendPath,
-                        help='Paths to ARTIS folders')
+                        help='Selected ARTIS timesteps')
 
     parser.add_argument('-outputpath', '-o', action='store', type=Path, default=Path(),
                         help='path for output files')
