@@ -1010,7 +1010,7 @@ def get_reference_spectrum(filename):
     # # filtered_specdata.to_csv('/Users/ccollins/artis_nebular/artistools/artistools/data/refspectra/' + name, index=False, header=False, sep=' ')
 
     if 'a_v' in metadata or 'e_bminusv' in metadata:
-        print(' Correcting for reddening')
+        print('Correcting for reddening')
         from extinction import apply, ccm89
         if 'r_v' not in metadata:
             metadata['r_v'] = metadata['a_v'] / metadata['e_bminusv']
@@ -1039,6 +1039,7 @@ def plot_reference_spectrum(
 
     # scale to flux at required distance
     if scale_to_dist_mpc:
+        print(f'Scale to {scale_to_dist_mpc} Mpc')
         assert metadata['dist_mpc'] > 0  # we must know the true distance in order to scale to some other distance
         specdata['f_lambda'] = specdata['f_lambda'] * (metadata['dist_mpc'] / scale_to_dist_mpc) ** 2
 
