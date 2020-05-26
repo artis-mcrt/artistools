@@ -26,7 +26,7 @@ EMTYPECOLUMN = 'emissiontype'
 
 
 @at.diskcache(quiet=True)
-def get_packets_with_emtype_onefile(lineindices, packetsfile):
+def get_packets_with_emtype_onefile(emtypecolumn, lineindices, packetsfile):
     dfpackets = at.packets.readfile(packetsfile, usecols=[
         'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
         'em_posx', 'em_posy', 'em_posz', 'em_time',
@@ -34,21 +34,21 @@ def get_packets_with_emtype_onefile(lineindices, packetsfile):
         'trueemissiontype', 'true_emission_velocity'],
         type='TYPE_ESCAPE', escape_type='TYPE_RPKT')
 
-    dfpackets_selected = dfpackets.query(f'{EMTYPECOLUMN} in @lineindices', inplace=False)
+    dfpackets_selected = dfpackets.query(f'{emtypecolumn} in @lineindices', inplace=False)
 
     return dfpackets_selected
 
 
 @lru_cache(maxsize=16)
 @at.diskcache(savegzipped=True)
-def get_packets_with_emtype(modelpath, lineindices, maxpacketfiles=None):
+def get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles=None):
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
     assert nprocs_read > 0
 
     model, _ = at.get_modeldata(modelpath)
     # vmax = model.iloc[-1].velocity_outer * u.km / u.s
-    processfile = partial(get_packets_with_emtype_onefile, lineindices)
+    processfile = partial(get_packets_with_emtype_onefile, emtypecolumn, lineindices)
     if at.enable_multiprocessing:
         with multiprocessing.get_context("spawn").Pool() as pool:
             arr_dfmatchingpackets = pool.map(processfile, packetsfiles)
@@ -93,7 +93,7 @@ def get_line_fluxes_from_packets(emfeatures, modelpath, maxpacketfiles=None, arr
         # dictlcdata[feature.colname] = np.zeros_like(arr_tstart, dtype=np.float)
 
         dfpackets_selected, nprocs_read = get_packets_with_emtype(
-            modelpath, feature.linelistindices, maxpacketfiles=maxpacketfiles)
+            modelpath, EMTYPECOLUMN, feature.linelistindices, maxpacketfiles=maxpacketfiles)
 
         normfactor = (1. / 4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read / u.s.to('day'))
 
@@ -105,10 +105,18 @@ def get_line_fluxes_from_packets(emfeatures, modelpath, maxpacketfiles=None, arr
     return lcdata
 
 
-def get_closelines(modelpath, atomic_number, ion_stage, approxlambda, lambdamin, lambdamax):
+def get_closelines(modelpath, atomic_number, ion_stage, approxlambda, lambdamin=-1, lambdamax=-1, lowerlevelindex=-1, upperlevelindex=-1):
     dflinelist = at.get_linelist(modelpath, returntype='dataframe')
-    dflinelistclosematches = dflinelist.query(
-        'atomic_number == @atomic_number and ionstage == @ion_stage and @lambdamin < lambda_angstroms < @lambdamax')
+    dflinelistclosematches = dflinelist.query('atomic_number == @atomic_number and ionstage == @ion_stage').copy()
+    if lambdamin > 0:
+        dflinelistclosematches.query('@lambdamin < lambda_angstroms', inplace=True)
+    if lambdamax > 0:
+        dflinelistclosematches.query('@lambdamax > lambda_angstroms', inplace=True)
+    if lowerlevelindex >= 0:
+        dflinelistclosematches.query('lowerlevelindex==@lowerlevelindex', inplace=True)
+    if upperlevelindex >= 0:
+        dflinelistclosematches.query('upperlevelindex==@upperlevelindex', inplace=True)
+    # print(dflinelistclosematches)
 
     linelistindices = tuple(dflinelistclosematches.index.values)
     lowestlambda = dflinelistclosematches.lambda_angstroms.min()
@@ -326,15 +334,22 @@ def make_emitting_regions_plot(args):
 
     # font = {'size': 16}
     # matplotlib.rc('font', **font)
+    # 'floers_te_nne.json',
+    refdatafilenames = ['floers_te_nne_Bautista.json', 'floers_te_nne_CMFGEN.json', 'floers_te_nne_Smyth.json']
 
-    with open('floers_te_nne.json', encoding='utf-8') as data_file:
-        floers_te_nne = json.loads(data_file.read())
+    refdatacolors = ['0.0', 'C1', 'C2', 'C4']
+    refdatakeys = {}
+    refdatatimes = {}
+    refdatapoints = {}
+    for refdatafilename in refdatafilenames:
+        with open(refdatafilename, encoding='utf-8') as data_file:
+            floers_te_nne = json.loads(data_file.read())
 
-    # give an ordering and index to dict items
-    floers_keys = [t for t in sorted(floers_te_nne.keys(), key=lambda x: float(x))]  # strings, not floats
-    floers_times = np.array([float(t) for t in floers_keys])
-    floers_data = [floers_te_nne[t] for t in floers_keys]
-    print(f'Floers data available for times: {list(floers_times)}')
+        # give an ordering and index to dict items
+        refdatakeys[refdatafilename] = [t for t in sorted(floers_te_nne.keys(), key=lambda x: float(x))]  # strings, not floats
+        refdatatimes[refdatafilename] = np.array([float(t) for t in refdatakeys[refdatafilename]])
+        refdatapoints[refdatafilename] = [floers_te_nne[t] for t in refdatakeys[refdatafilename]]
+        print(f'{refdatafilename} data available for times: {list(refdatatimes[refdatafilename])}')
 
     times_days = (np.array(args.timebins_tstart) + np.array(args.timebins_tend)) / 2.
 
@@ -394,9 +409,11 @@ def make_emitting_regions_plot(args):
                 figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * (0.25 + nrows * 0.7)),
                 tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.2})
 
-            floersindex = np.abs(floers_times - tmid).argmin()
-            axis.plot(floers_data[floersindex]['ne'], floers_data[floersindex]['temp'],
-                      color='black', lw=2, label=f'Floers et al. (2019) {floers_keys[floersindex]}d')
+
+            for findex, f in enumerate(refdatafilenames):
+                floersindex = np.abs(refdatatimes[f] - tmid).argmin()
+                axis.plot(refdatapoints[f][floersindex]['ne'], refdatapoints[f][floersindex]['temp'],
+                          color=refdatacolors[findex], lw=2, label=f'Floers et al. (2019) {f} {refdatakeys[f][floersindex]}d')
 
             if modeltag == 'all':
                 for bars in [False, True]:
