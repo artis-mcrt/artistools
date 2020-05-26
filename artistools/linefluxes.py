@@ -251,7 +251,7 @@ def get_packets_with_emission_conditions(modelpath, lineindices, tstart, tend, m
     #     interp_te[ts] = interpolate.interp1d(arr_v.copy(), arr_te.copy(), kind='linear', fill_value='extrapolate')
 
     dfpackets_selected, _ = get_packets_with_emtype(
-        modelpath, lineindices, maxpacketfiles=maxpacketfiles)
+        modelpath, EMTYPECOLUMN, lineindices, maxpacketfiles=maxpacketfiles)
 
     dfpackets_selected = dfpackets_selected.query(
         't_arrive_d >= @tstart and t_arrive_d <= @tend', inplace=False).copy()
