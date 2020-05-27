@@ -21,9 +21,6 @@ from scipy import interpolate
 import artistools as at
 import artistools.packets
 
-EMTYPECOLUMN = 'emissiontype'
-# EMTYPECOLUMN = 'trueemissiontype'
-
 
 @at.diskcache(quiet=True)
 def get_packets_with_emtype_onefile(emtypecolumn, lineindices, packetsfile):
@@ -72,7 +69,7 @@ def calculate_timebinned_packet_sum(dfpackets, timearrayplusend):
     return binnedenergysums
 
 
-def get_line_fluxes_from_packets(emfeatures, modelpath, maxpacketfiles=None, arr_tstart=None, arr_tend=None):
+def get_line_fluxes_from_packets(emtypecolumn, emfeatures, modelpath, maxpacketfiles=None, arr_tstart=None, arr_tend=None):
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times_float(modelpath, loc='start')
     if arr_tend is None:
@@ -93,7 +90,7 @@ def get_line_fluxes_from_packets(emfeatures, modelpath, maxpacketfiles=None, arr
         # dictlcdata[feature.colname] = np.zeros_like(arr_tstart, dtype=np.float)
 
         dfpackets_selected, nprocs_read = get_packets_with_emtype(
-            modelpath, EMTYPECOLUMN, feature.linelistindices, maxpacketfiles=maxpacketfiles)
+            modelpath, emtypecolumn, feature.linelistindices, maxpacketfiles=maxpacketfiles)
 
         normfactor = (1. / 4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read / u.s.to('day'))
 
@@ -170,7 +167,7 @@ def make_flux_ratio_plot(args):
 
         emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
-        dflcdata = get_line_fluxes_from_packets(emfeatures, modelpath, maxpacketfiles=args.maxpacketfiles,
+        dflcdata = get_line_fluxes_from_packets(args.emtypecolumn, emfeatures, modelpath, maxpacketfiles=args.maxpacketfiles,
                                                 arr_tstart=args.timebins_tstart,
                                                 arr_tend=args.timebins_tend)
 
@@ -225,7 +222,7 @@ def make_flux_ratio_plot(args):
 
 
 @at.diskcache()
-def get_packets_with_emission_conditions(modelpath, lineindices, tstart, tend, maxpacketfiles=None):
+def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, tstart, tend, maxpacketfiles=None):
     estimators = at.estimators.read_estimators(modelpath, get_ion_values=False, get_heatingcooling=False)
 
     modeldata, _ = at.get_modeldata(modelpath)
@@ -251,7 +248,7 @@ def get_packets_with_emission_conditions(modelpath, lineindices, tstart, tend, m
     #     interp_te[ts] = interpolate.interp1d(arr_v.copy(), arr_te.copy(), kind='linear', fill_value='extrapolate')
 
     dfpackets_selected, _ = get_packets_with_emtype(
-        modelpath, EMTYPECOLUMN, lineindices, maxpacketfiles=maxpacketfiles)
+        modelpath, emtypecolumn, lineindices, maxpacketfiles=maxpacketfiles)
 
     dfpackets_selected = dfpackets_selected.query(
         't_arrive_d >= @tstart and t_arrive_d <= @tend', inplace=False).copy()
@@ -336,20 +333,20 @@ def make_emitting_regions_plot(args):
     # matplotlib.rc('font', **font)
     # 'floers_te_nne.json',
     refdatafilenames = ['floers_te_nne_Bautista.json', 'floers_te_nne_CMFGEN.json', 'floers_te_nne_Smyth.json']
-
+    refdatalabels = ['Floers et al. (2019) Bautista', 'Floers CMFGEN', 'Floers Smyth']
     refdatacolors = ['0.0', 'C1', 'C2', 'C4']
-    refdatakeys = {}
-    refdatatimes = {}
-    refdatapoints = {}
-    for refdatafilename in refdatafilenames:
+    refdatakeys = [None for _ in refdatafilenames]
+    refdatatimes = [None for _ in refdatafilenames]
+    refdatapoints = [None for _ in refdatafilenames]
+    for refdataindex, refdatafilename in enumerate(refdatafilenames):
         with open(refdatafilename, encoding='utf-8') as data_file:
             floers_te_nne = json.loads(data_file.read())
 
         # give an ordering and index to dict items
-        refdatakeys[refdatafilename] = [t for t in sorted(floers_te_nne.keys(), key=lambda x: float(x))]  # strings, not floats
-        refdatatimes[refdatafilename] = np.array([float(t) for t in refdatakeys[refdatafilename]])
-        refdatapoints[refdatafilename] = [floers_te_nne[t] for t in refdatakeys[refdatafilename]]
-        print(f'{refdatafilename} data available for times: {list(refdatatimes[refdatafilename])}')
+        refdatakeys[refdataindex] = [t for t in sorted(floers_te_nne.keys(), key=lambda x: float(x))]  # strings, not floats
+        refdatatimes[refdataindex] = np.array([float(t) for t in refdatakeys[refdataindex]])
+        refdatapoints[refdataindex] = [floers_te_nne[t] for t in refdatakeys[refdataindex]]
+        print(f'{refdatafilename} data available for times: {list(refdatatimes[refdataindex])}')
 
     times_days = (np.array(args.timebins_tstart) + np.array(args.timebins_tend)) / 2.
 
@@ -388,9 +385,9 @@ def make_emitting_regions_plot(args):
                 for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend):
 
                     dfpackets = get_packets_with_emission_conditions(
-                        modelpath, feature.linelistindices, tstart, tend, maxpacketfiles=args.maxpacketfiles)
+                        modelpath, args.emtypecolumn, feature.linelistindices, tstart, tend, maxpacketfiles=args.maxpacketfiles)
 
-                    dfpackets_selected = dfpackets.query(f'{EMTYPECOLUMN} in @feature.linelistindices', inplace=False)
+                    dfpackets_selected = dfpackets.query(f'{args.emtypecolumn} in @feature.linelistindices', inplace=False)
                     if dfpackets_selected.empty:
                         emdata_all[modelindex][(tmid, feature.colname)] = {
                             'em_log10nne': [],
@@ -410,10 +407,10 @@ def make_emitting_regions_plot(args):
                 tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.2})
 
 
-            for findex, f in enumerate(refdatafilenames):
-                floersindex = np.abs(refdatatimes[f] - tmid).argmin()
-                axis.plot(refdatapoints[f][floersindex]['ne'], refdatapoints[f][floersindex]['temp'],
-                          color=refdatacolors[findex], lw=2, label=f'Floers et al. (2019) {f} {refdatakeys[f][floersindex]}d')
+            for refdataindex, f in enumerate(refdatafilenames):
+                timeindex = np.abs(refdatatimes[refdataindex] - tmid).argmin()
+                axis.plot(refdatapoints[refdataindex][timeindex]['ne'], refdatapoints[refdataindex][timeindex]['temp'],
+                          color=refdatacolors[refdataindex], lw=2, label=f'{refdatalabels[refdataindex]} {refdatakeys[refdataindex][timeindex]}d')
 
             if modeltag == 'all':
                 for bars in [False, True]:
@@ -510,6 +507,13 @@ def addargs(parser):
     parser.add_argument('-emfeaturesearch', default=[], nargs='*',
                         help='List of tuples (TODO explain)')
 
+    # parser.add_argument('-emtypecolumn', default='trueemissiontype', choices=['emissiontype', 'trueemissiontype'],
+    #                     help='Packet property for emission type - first thermal emission (trueemissiontype) '
+    #                     'or last emission type (emissiontype)')
+
+    parser.add_argument('--use_lastemissiontype', action='store_true',
+                        help='Tag packets by their last scattering rather than thermal emission type')
+
     # parser.add_argument('-timemin', type=float,
     #                     help='Lower time in days to integrate spectrum')
     #
@@ -566,6 +570,8 @@ def main(args=None, argsraw=None, **kwargs):
     args.modelpath = at.flatten_list(args.modelpath)
 
     args.label, args.modeltag, args.color = at.trim_or_pad(len(args.modelpath), args.label, args.modeltag, args.color)
+
+    args.emtypecolumn = 'emissiontype' if args.use_lastemissiontype else 'trueemissiontype'
 
     for i in range(len(args.label)):
         if args.label[i] is None:
