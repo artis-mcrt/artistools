@@ -86,11 +86,15 @@ def get_line_fluxes_from_packets(emtypecolumn, emfeatures, modelpath, maxpacketf
 
     dictlcdata = {'time': arr_tmid}
 
+    linelistindices_allfeatures = tuple([l for feature in emfeatures for l in feature.linelistindices])
+
+    dfpackets, nprocs_read = get_packets_with_emtype(
+            modelpath, emtypecolumn, linelistindices_allfeatures, maxpacketfiles=maxpacketfiles)
+
     for feature in emfeatures:
         # dictlcdata[feature.colname] = np.zeros_like(arr_tstart, dtype=np.float)
 
-        dfpackets_selected, nprocs_read = get_packets_with_emtype(
-            modelpath, emtypecolumn, feature.linelistindices, maxpacketfiles=maxpacketfiles)
+        dfpackets_selected = dfpackets.query(f'{emtypecolumn} in @feature.linelistindices', inplace=False)
 
         normfactor = (1. / 4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read / u.s.to('day'))
 
@@ -247,26 +251,27 @@ def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, t
     #                                                kind='linear', fill_value='extrapolate')
     #     interp_te[ts] = interpolate.interp1d(arr_v.copy(), arr_te.copy(), kind='linear', fill_value='extrapolate')
 
+    em_mgicolumn = 'em_modelgridindex' if emtypecolumn == 'emissiontype' else 'emtrue_modelgridindex'
+
     dfpackets_selected, _ = get_packets_with_emtype(
         modelpath, emtypecolumn, lineindices, maxpacketfiles=maxpacketfiles)
 
     dfpackets_selected = dfpackets_selected.query(
         't_arrive_d >= @tstart and t_arrive_d <= @tend', inplace=False).copy()
 
-    dfpackets_selected = at.packets.add_derived_columns(
-        dfpackets_selected, modelpath, ['em_timestep', 'em_modelgridindex'],
-        allnonemptymgilist=allnonemptymgilist)
+    dfpackets_selected = at.packets.add_derived_columns(dfpackets_selected, modelpath, ['em_timestep', em_mgicolumn],
+                                                        allnonemptymgilist=allnonemptymgilist)
 
     if not dfpackets_selected.empty:
         def em_lognne(packet):
             # return interp_log10nne[packet.em_timestep](packet.true_emission_velocity)
-            return math.log10(estimators[(packet.em_timestep, packet.em_modelgridindex)]['nne'])
+            return math.log10(estimators[(packet['em_timestep'], packet[em_mgicolumn])]['nne'])
 
         dfpackets_selected['em_log10nne'] = dfpackets_selected.apply(em_lognne, axis=1)
 
         def em_Te(packet):
             # return interp_te[packet.em_timestep](packet.true_emission_velocity)
-            return estimators[(packet.em_timestep, packet.em_modelgridindex)]['Te']
+            return estimators[(packet['em_timestep'], packet[em_mgicolumn])]['Te']
 
         dfpackets_selected['em_Te'] = dfpackets_selected.apply(em_Te, axis=1)
 
@@ -358,6 +363,8 @@ def make_emitting_regions_plot(args):
     pd.options.display.max_rows = 500
 
     emdata_all = {}
+    log10nnedata_all = {}
+    Tedata_all = {}
 
     # data is collected, now make plots
     defaultoutputfile = 'emittingregions.pdf'
@@ -381,12 +388,13 @@ def make_emitting_regions_plot(args):
 
             emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
-            for feature in emfeatures:
-                for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend):
+            linelistindices_allfeatures = tuple([l for feature in emfeatures for l in feature.linelistindices])
 
-                    dfpackets = get_packets_with_emission_conditions(
-                        modelpath, args.emtypecolumn, feature.linelistindices, tstart, tend, maxpacketfiles=args.maxpacketfiles)
+            for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend):
+                dfpackets = get_packets_with_emission_conditions(
+                    modelpath, args.emtypecolumn, linelistindices_allfeatures, tstart, tend, maxpacketfiles=args.maxpacketfiles)
 
+                for feature in emfeatures:
                     dfpackets_selected = dfpackets.query(f'{args.emtypecolumn} in @feature.linelistindices', inplace=False)
                     if dfpackets_selected.empty:
                         emdata_all[modelindex][(tmid, feature.colname)] = {
@@ -396,6 +404,24 @@ def make_emitting_regions_plot(args):
                         emdata_all[modelindex][(tmid, feature.colname)] = {
                             'em_log10nne': dfpackets_selected.em_log10nne.values,
                             'em_Te': dfpackets_selected.em_Te.values}
+
+            estimators = at.estimators.read_estimators(modelpath, get_ion_values=False, get_heatingcooling=False)
+            modeldata, _ = at.get_modeldata(modelpath)
+            Tedata_all[modelindex] = {}
+            log10nnedata_all[modelindex] = {}
+            for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend):
+                Tedata_all[modelindex][tmid] = []
+                log10nnedata_all[modelindex][tmid] = []
+                tstartlist = at.get_timestep_times_float(modelpath, loc='start')
+                tendlist = at.get_timestep_times_float(modelpath, loc='end')
+                tslist = [ts for ts in range(len(tstartlist)) if tendlist[ts] >= tstart and tstartlist[ts] <= tend]
+                for timestep in tslist:
+                    for modelgridindex in modeldata.index:
+                        try:
+                            Tedata_all[modelindex][tmid].append(estimators[(timestep, modelgridindex)]['Te'])
+                            log10nnedata_all[modelindex][tmid].append(math.log10(estimators[(timestep, modelgridindex)]['nne']))
+                        except KeyError:
+                            pass
 
         for timeindex, tmid in enumerate(times_days):
             print(f'  Plot at {tmid} days')
@@ -444,13 +470,18 @@ def make_emitting_regions_plot(args):
                 normtotalpackets = np.sum([len(emdata_all[modelindex][(tmid, feature.colname)]['em_log10nne'])
                                            for feature in emfeatures])
 
+                axis.scatter(log10nnedata_all[modelindex][tmid], Tedata_all[modelindex][tmid], s=1.0, marker='o',
+                             color='0.4', lw=0, edgecolors='none', label='All cells')
+
                 for bars in [False, True]:
                     for featureindex, feature in enumerate(emfeatures):
                         emdata = emdata_all[modelindex][(tmid, feature.colname)]
 
                         if not bars:
                             print(f'   {len(emdata["em_log10nne"])} points plotted for {feature.featurelabel}')
+
                         serieslabel = modellabel + ' ' + feature.featurelabel.replace('Å', r' $\mathrm{\AA}$')
+
                         if not bars:
                             plot_nne_te_points(
                                 axis, serieslabel, emdata['em_log10nne'], emdata['em_Te'],
