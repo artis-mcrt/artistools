@@ -48,8 +48,7 @@ def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None)
                                           mgilist=allnonemptymgilist)
 
     def emtrue_modelgridindex(packet):
-        return at.get_mgi_of_velocity_kms(modelpath, packet.true_emission_velocity * u.cm.to('km'),
-                                      mgilist=allnonemptymgilist)
+        return at.get_mgi_of_velocity_kms(modelpath, packet.true_emission_velocity * u.cm.to('km'), mgilist=allnonemptymgilist)
 
     def em_timestep(packet):
         return at.get_timestep_of_timedays(modelpath, packet.em_time * u.s.to('day'))
@@ -74,7 +73,8 @@ def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None)
     return dfpackets
 
 
-def readfile(packetsfile, usecols, type=None, escape_type=None):
+@at.diskcache(savegzipped=True)
+def readfile(packetsfile, type=None, escape_type=None):
     """Read a packet file into a pandas DataFrame."""
     filesize = Path(packetsfile).stat().st_size / 1024 / 1024
 
@@ -84,17 +84,14 @@ def readfile(packetsfile, usecols, type=None, escape_type=None):
         print("\nWARNING: packets file has no columns!")
         print(open(packetsfile, "r").readlines())
 
-    for c in usecols:
-        if c not in columns:
-            raise ValueError(f"Unknown packet column: '{c}'. Must be one of {columns}")
-
     # the packets file may have a truncated set of columns, but we assume that they
     # are only truncated, i.e. the columns with the same index have the same meaning
-    usecols_nodata = [n for n in usecols if columns.index(n) >= inputcolumncount]
-    usecols_actual = [n for n in usecols if columns.index(n) < inputcolumncount]
+    usecols_nodata = [n for n in columns if columns.index(n) >= inputcolumncount]
+    # usecols_actual = [n for n in columns if columns.index(n) < inputcolumncount]
+
     dfpackets = pd.read_csv(
         packetsfile, delim_whitespace=True,
-        names=columns[:inputcolumncount], header=None, usecols=usecols_actual)
+        names=columns[:inputcolumncount], header=None)
 
     print(f' ({len(dfpackets):.1e} packets', end='')
 

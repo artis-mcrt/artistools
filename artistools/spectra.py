@@ -164,14 +164,7 @@ def get_spectrum_from_packets(
     nu_min = c_ang_s / lambda_max
     nu_max = c_ang_s / lambda_min
     for index, packetsfile in enumerate(packetsfiles):
-        dfpackets = at.packets.readfile(
-            packetsfile,
-            usecols=[
-                'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
-                'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz',
-                'em_posx', 'em_posy', 'em_posz', 'em_time',
-                'true_emission_velocity', 'originated_from_positron', 'trueemissiontype'],
-            escape_type='TYPE_RPKT')
+        dfpackets = at.packets.readfile(packetsfile, escape_type='TYPE_RPKT')
 
         querystr = '@nu_min <= nu_rf < @nu_max and'
         if not use_comovingframe:
@@ -746,17 +739,6 @@ def get_flux_contributions_from_packets(
         emtypecolumn = 'emissiontype' if use_lastemissiontype else 'trueemissiontype'
 
     for index, packetsfile in enumerate(packetsfiles):
-        usecols = [
-            'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'nu_cmf', 'escape_type_id', 'escape_time',
-            'where',
-            'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz',
-            # 'em_posx', 'em_posy', 'em_posz', 'em_time',
-            'true_emission_velocity',
-            # 'originated_from_positron',
-            emtypecolumn,
-            'absorption_type',
-        ]
-
         if useinternalpackets:
             # if we're using packets*.out files, these packets are from the last timestep
             t_seconds = at.get_timestep_times_float(modelpath, loc='start')[-1] * u.day.to('s')
@@ -771,7 +753,7 @@ def get_flux_contributions_from_packets(
             r_inner = t_seconds * v_inner
             r_outer = t_seconds * v_outer
 
-            dfpackets = at.packets.readfile(packetsfile, usecols=usecols, type='TYPE_RPKT')
+            dfpackets = at.packets.readfile(packetsfile, type='TYPE_RPKT')
             print("Using non-escaped internal r-packets")
             dfpackets.query(f'type_id == {at.packets.type_ids["TYPE_RPKT"]} and @nu_min <= nu_rf < @nu_max',
                             inplace=True)
@@ -783,7 +765,7 @@ def get_flux_contributions_from_packets(
                 dfpackets.query(f'where in @assoc_cells[@modelgridindex]', inplace=True)
             print(f"  {len(dfpackets)} internal r-packets matching frequency range")
         else:
-            dfpackets = at.packets.readfile(packetsfile, usecols=usecols, escape_type='TYPE_RPKT')
+            dfpackets = at.packets.readfile(packetsfile, escape_type='TYPE_RPKT')
             dfpackets.query(
                 '@nu_min <= nu_rf < @nu_max and ' +
                 ('@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh'
