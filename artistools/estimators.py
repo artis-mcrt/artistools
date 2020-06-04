@@ -247,6 +247,7 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
 @at.diskcache(ignorekwargs=['printfilename'])
 def read_estimators_from_file(modelpath, folderpath, arr_velocity_outer, mpirank, printfilename=False,
                               get_ion_values=True, get_heatingcooling=True):
+
     estimators_thisfile = {}
     estimfilename = f'estimators_{mpirank:04d}.out'
     estfilepath = Path(folderpath, estimfilename)
@@ -510,7 +511,7 @@ def plot_multi_ion_series(
             if args.ionpoptype == 'absolute':
                 ax.set_ylabel('X$_{ion}$ [/cm3]')
             elif args.ionpoptype == 'elpop':
-                # elcode = at.elsymbols[atomic_number]
+                # elsym = at.elsymbols[atomic_number]
                 ax.set_ylabel('X$_{ion}$/X$_{element}$')
             elif args.ionpoptype == 'totalpop':
                 ax.set_ylabel('X$_{ion}$/X$_{tot}$')
@@ -603,7 +604,14 @@ def plot_multi_ion_series(
             dashes = ()
 
         if dfalldata is not None:
-            dfalldata[f'{seriestype}.{args.ionpoptype}.{atomic_number}.{ion_stage}'] = ylist
+            elsym = at.elsymbols[atomic_number].lower()
+            if args.ionpoptype == 'absolute':
+                colname = f'nnion_{elsym}_ionstage{ion_stage}'
+            elif args.ionpoptype == 'elpop':
+                colname = f'nnion_over_nnelem_{elsym}_ionstage{ion_stage}'
+            elif args.ionpoptype == 'totalpop':
+                colname = f'nnion_over_nntot_{elsym}_ionstage{ion_stage}'
+            dfalldata[colname] = ylist
 
         ylist.insert(0, ylist[0])
 
