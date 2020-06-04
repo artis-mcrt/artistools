@@ -53,10 +53,7 @@ def get_from_packets(modelpath, lcpath, packet_type='TYPE_ESCAPE', escape_type='
                            'lum_cmf': np.zeros_like(timearray, dtype=np.float)})
 
     for packetsfile in packetsfiles:
-        dfpackets = at.packets.readfile(packetsfile, usecols=[
-            'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
-            'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz'],
-            type=packet_type, escape_type=escape_type)
+        dfpackets = at.packets.readfile(packetsfile, type=packet_type, escape_type=escape_type)
 
         if not (dfpackets.empty):
             print(f"sum of e_cmf {dfpackets['e_cmf'].sum()} e_rf {dfpackets['e_rf'].sum()}")
