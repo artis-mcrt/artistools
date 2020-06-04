@@ -74,7 +74,7 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
 
-def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savegzipped=False):
+def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savegzipped=False, funcdepends=None):
     def printopt(*args, **kwargs):
         if not quiet:
             print(*args, **kwargs)
@@ -86,57 +86,98 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
         def wrapper(*args, **kwargs):
             cachefolder = Path('__artistoolscache__')
 
-            myhash = hashlib.sha1()
-            myhash.update(func.__module__.encode('utf-8'))
-            myhash.update(func.__qualname__.encode('utf-8'))
+            namearghash = hashlib.sha1()
+            namearghash.update(func.__module__.encode('utf-8'))
+            namearghash.update(func.__qualname__.encode('utf-8'))
 
-            myhash.update(str(tuple(
-                arg for argindex, arg in enumerate(args) if argindex not in ignoreargs)).encode('utf-8'))
+            namearghash.update(
+                str(tuple(arg for argindex, arg in enumerate(args) if argindex not in ignoreargs)).encode('utf-8'))
 
-            myhash.update(str({k: v for k, v in kwargs.items() if k not in ignorekwargs}).encode('utf-8'))
+            namearghash.update(str({k: v for k, v in kwargs.items() if k not in ignorekwargs}).encode('utf-8'))
 
-            hash_strhex = myhash.hexdigest()
+            namearghash_strhex = namearghash.hexdigest()
 
-            filename_nogz = Path(cachefolder, f'cached-{func.__module__}.{func.__qualname__}-{hash_strhex}.tmp')
-            filename_gz = Path(cachefolder, f'cached-{func.__module__}.{func.__qualname__}-{hash_strhex}.tmp.gz')
+            filename_nogz = Path(cachefolder, f'cached-{func.__module__}.{func.__qualname__}-{namearghash_strhex}.tmp')
+            filename_gz = Path(cachefolder, f'cached-{func.__module__}.{func.__qualname__}-{namearghash_strhex}.tmp.gz')
 
+            execfunc = True
             saveresult = False
+            functime = -1
 
             if (filename_nogz.exists() or filename_gz.exists()) and not saveonly:
+                # found a candidate file, so load it
                 filename = filename_nogz if filename_nogz.exists() else filename_gz
 
                 filesize = Path(filename).stat().st_size / 1024 / 1024
-                try:
-                    with zopen(filename, 'rb') as f:
-                        result = pickle.load(f)
-                    printopt(f"diskcache: Loaded '{filename}' ({filesize:.1f} MiB)...")
-                except ValueError:
-                    result = func(*args, **kwargs)
-                    saveresult = True
-            else:
-                result = func(*args, **kwargs)
-                saveresult = True
 
-            # replace the gzipped or non-gzipped file with the correct one
-            if (savegzipped and filename_nogz.exists()):
-                filename_nogz.unlink()
+                try:
+                    printopt(f"diskcache: Loading '{filename}' ({filesize:.1f} MiB)...")
+
+                    with zopen(filename, 'rb') as f:
+                        result, sourcehash_strhex_filein = pickle.load(f)
+
+                    if sourcehash_strhex_filein == sourcehash_strhex:
+                        execfunc = False
+                    else:
+                        printopt(f"diskcache: Overwriting '{filename}' (function source code has changed)")
+
+                except ValueError:
+                    pass
+
+                except EOFError:
+                    printopt(f"diskcache: Overwriting '{filename}' (EOFError)")
+                    pass
+
+                except OSError:
+                    printopt(f"diskcache: Overwriting '{filename}' (OSError)")
+                    pass
+
+            if execfunc:
+                timestart = time.time()
+                result = func(*args, **kwargs)
+                functime = time.time() - timestart
+
+            if functime > 1:
+                # slow functions are worth saving to disk
                 saveresult = True
-            elif (not savegzipped and filename_gz.exists()):
-                filename_gz.unlink()
-                saveresult = True
+            else:
+                # check if we need to replace the gzipped or non-gzipped file with the correct one
+                # if we so, need to save the new file even though functime is unknown since we read
+                # from disk version instead of executing the function
+                if savegzipped and filename_nogz.exists():
+                    saveresult = True
+                elif not savegzipped and filename_gz.exists():
+                    saveresult = True
+
+                if filename_nogz.exists():
+                    filename_nogz.unlink()
+                if filename_gz.exists():
+                    filename_gz.unlink()
 
             if saveresult:
+                # if the cache folder doesn't exist, create it
                 if not cachefolder.is_dir():
                     cachefolder.mkdir(parents=True, exist_ok=True)
 
                 fopen, filename = (gzip.open, filename_gz) if savegzipped else (open, filename_nogz)
                 with fopen(filename, 'wb') as f:
-                    pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
+                    pickle.dump((result, sourcehash_strhex), f, protocol=pickle.HIGHEST_PROTOCOL)
 
                 filesize = Path(filename).stat().st_size / 1024 / 1024
-                printopt(f"diskcache: Saved '{filename}' ({filesize:.1f} MiB)")
+                printopt(f"diskcache: Saved '{filename}' ({filesize:.1f} MiB, functime {functime:.1f}s)")
 
             return result
+
+        sourcehash = hashlib.sha1()
+        sourcehash.update(inspect.getsource(func).encode('utf-8'))
+        if funcdepends:
+            try:
+                for f in funcdepends:
+                    sourcehash.update(inspect.getsource(f).encode('utf-8'))
+            except TypeError:
+                sourcehash.update(inspect.getsource(funcdepends).encode('utf-8'))
+
+        sourcehash_strhex = sourcehash.hexdigest()
 
         return wrapper if enable_diskcache else func
 
