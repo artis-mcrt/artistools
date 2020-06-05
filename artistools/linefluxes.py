@@ -22,14 +22,8 @@ import artistools as at
 import artistools.packets
 
 
-@at.diskcache(quiet=True)
 def get_packets_with_emtype_onefile(emtypecolumn, lineindices, packetsfile):
-    dfpackets = at.packets.readfile(packetsfile, usecols=[
-        'type_id', 'e_cmf', 'e_rf', 'nu_rf', 'escape_type_id', 'escape_time',
-        'em_posx', 'em_posy', 'em_posz', 'em_time',
-        'posx', 'posy', 'posz', 'dirx', 'diry', 'dirz', 'emissiontype',
-        'trueemissiontype', 'true_emission_velocity'],
-        type='TYPE_ESCAPE', escape_type='TYPE_RPKT')
+    dfpackets = at.packets.readfile(packetsfile, type='TYPE_ESCAPE', escape_type='TYPE_RPKT')
 
     dfpackets_selected = dfpackets.query(f'{emtypecolumn} in @lineindices', inplace=False)
 
@@ -178,11 +172,10 @@ def make_flux_ratio_plot(args):
         dflcdata.eval(f'fratio = {emfeatures[1].colname} / {emfeatures[0].colname}', inplace=True)
         axis.set_ylabel(r'F$_{\mathrm{' + emfeatures[1].featurelabel + r'}}$ / F$_{\mathrm{' +
                         emfeatures[0].featurelabel + r'}}$')
+
         # \mathrm{\AA}
 
-        # for row in dflcdata
-        # print(dflcdata.time)
-        # print(dflcdata)
+        print(dflcdata)
 
         axis.plot(dflcdata.time, dflcdata['fratio'], label=modellabel, marker='s', color=modelcolor)
 
@@ -225,7 +218,7 @@ def make_flux_ratio_plot(args):
     plt.close()
 
 
-@at.diskcache()
+@at.diskcache(savegzipped=True)
 def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, tstart, tend, maxpacketfiles=None):
     estimators = at.estimators.read_estimators(modelpath, get_ion_values=False, get_heatingcooling=False)
 
