@@ -444,25 +444,26 @@ def get_averageexcitation(modelpath, modelgridindex, timestep, atomic_number, io
     if dfnltepops.empty:
         return float('NaN')
     else:
-        dfnltepops_ion = dfnltepops.query('Z==@atomic_number & ion_stage==@ion_stage')
-        levelnumber_sl = dfnltepops_ion.level.max() + 1
+        dfnltepops_ion = dfnltepops.query(
+            'modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number & ion_stage==@ion_stage')
 
         k_b = const.k_B.to('eV / K').value
 
-        for _, x in dfnltepops_ion.iterrows():
-            nlteindex = int(x.level)
-            if nlteindex >= 0:
-                energypopsum += ionlevels.iloc[nlteindex].energy_ev * x['n_NLTE']
-                ionpopsum += x['n_NLTE']
-            else:
-                # pass
-                superlevelpop = x['n_NLTE']
-                energy_boltzfac_sum = ionlevels.iloc[levelnumber_sl:].eval(
-                    'energy_ev * g * exp(- energy_ev / @k_b / @T_exc)').sum()
-                boltzfac_sum = ionlevels.iloc[levelnumber_sl:].eval(
-                    'g * exp(- energy_ev / @k_b / @T_exc)').sum()
-                energypopsum += energy_boltzfac_sum * superlevelpop / boltzfac_sum  # adjust to the actual superlevel population from ARTIS
-                ionpopsum += superlevelpop
+        ionpopsum = dfnltepops_ion.n_NLTE.sum()
+        energypopsum = dfnltepops_ion[dfnltepops_ion.level >= 0].eval(
+            '@ionlevels.iloc[level].energy_ev.values * n_NLTE').sum()
+
+        try:
+            superlevelrow = dfnltepops_ion[dfnltepops_ion.level < 0].iloc[0]
+            levelnumber_sl = dfnltepops_ion.level.max() + 1
+
+            energy_boltzfac_sum = ionlevels.iloc[levelnumber_sl:].eval('energy_ev * g * exp(- energy_ev / @k_b / @T_exc)').sum()
+            boltzfac_sum = ionlevels.iloc[levelnumber_sl:].eval('g * exp(- energy_ev / @k_b / @T_exc)').sum()
+            # adjust to the actual superlevel population from ARTIS
+            energypopsum += energy_boltzfac_sum * superlevelrow.n_NLTE / boltzfac_sum
+        except IndexError:
+            # no superlevel
+            pass
 
     return energypopsum / ionpopsum
 
