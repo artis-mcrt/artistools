@@ -26,7 +26,7 @@ import pandas as pd
 import artistools as at
 import artistools.classic_estimators
 
-# from astropy import constants as const
+from astropy import constants as const
 
 colors_tab10 = list(plt.get_cmap('tab10')(np.linspace(0, 1.0, 10)))
 
@@ -433,20 +433,70 @@ def get_averageionisation(populations, atomic_number):
     return free_electron_weighted_pop_sum / populations[atomic_number]
 
 
-def plot_averageionisation(
-        ax, xlist, elementlist, timestepslist, mgilist, estimators, modelpath, dfalldata=None, args=None, **plotkwargs):
-    ax.set_ylabel('Average ionisation')
-    for elsymb in elementlist:
-        atomic_number = at.get_atomic_number(elsymb)
+def get_averageexcitation(modelpath, modelgridindex, timestep, atomic_number, ion_stage, T_exc):
+    import artistools.nltepops
+    dfnltepops = at.nltepops.get_nltepops(modelpath, modelgridindex=modelgridindex, timestep=timestep)
+    adata = at.get_levels(modelpath)
+    ionlevels = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0].levels
+
+    energypopsum = 0
+    ionpopsum = 0
+    if dfnltepops.empty:
+        return float('NaN')
+    else:
+        dfnltepops_ion = dfnltepops.query('Z==@atomic_number & ion_stage==@ion_stage')
+        levelnumber_sl = dfnltepops_ion.level.max() + 1
+
+        k_b = const.k_B.to('eV / K').value
+
+        for _, x in dfnltepops_ion.iterrows():
+            nlteindex = int(x.level)
+            if nlteindex >= 0:
+                energypopsum += ionlevels.iloc[nlteindex].energy_ev * x['n_NLTE']
+                ionpopsum += x['n_NLTE']
+            else:
+                # pass
+                superlevelpop = x['n_NLTE']
+                energy_boltzfac_sum = ionlevels.iloc[levelnumber_sl:].eval(
+                    'energy_ev * g * exp(- energy_ev / @k_b / @T_exc)').sum()
+                boltzfac_sum = ionlevels.iloc[levelnumber_sl:].eval(
+                    'g * exp(- energy_ev / @k_b / @T_exc)').sum()
+                energypopsum += energy_boltzfac_sum * superlevelpop / boltzfac_sum  # adjust to the actual superlevel population from ARTIS
+                ionpopsum += superlevelpop
+
+    return energypopsum / ionpopsum
+
+
+def plot_average_ionisation_excitation(
+        ax, xlist, seriestype, params, timestepslist, mgilist,
+        estimators, modelpath, dfalldata=None, args=None, **plotkwargs):
+    if seriestype == 'averageionisation':
+        ax.set_ylabel('Average ion charge')
+    elif seriestype == 'averageexcitation':
+        ax.set_ylabel('Average excitation [eV]')
+    else:
+        raise ValueError()
+
+    for paramvalue in params:
+        if seriestype == 'averageionisation':
+            atomic_number = at.get_atomic_number(paramvalue)
+        else:
+            atomic_number = at.get_atomic_number(paramvalue.split(' ')[0])
+            ion_stage = at.decode_roman_numeral(paramvalue.split(' ')[1])
         ylist = []
         for modelgridindex, timesteps in zip(mgilist, timestepslist):
             valuesum = 0
             tdeltasum = 0
             for timestep in timesteps:
                 tdelta = at.get_timestep_time_delta(timestep, modelpath=modelpath)
-                valuesum += (
-                    get_averageionisation(estimators[(timestep, modelgridindex)]['populations'],
-                                          atomic_number) * tdelta)
+
+                if seriestype == 'averageionisation':
+                    valuesum += (get_averageionisation(
+                        estimators[(timestep, modelgridindex)]['populations'], atomic_number) * tdelta)
+                elif seriestype == 'averageexcitation':
+                    T_exc = estimators[(timestep, modelgridindex)]['Te']
+                    valuesum += (get_averageexcitation(
+                        modelpath, modelgridindex, timestep, atomic_number, ion_stage, T_exc) * tdelta)
                 tdeltasum += tdelta
 
             ylist.append(valuesum / tdeltasum)
@@ -454,13 +504,13 @@ def plot_averageionisation(
         color = get_elemcolor(atomic_number=atomic_number)
 
         if dfalldata is not None:
-            dfalldata['averageionisation.' + elsymb] = ylist
+            dfalldata[seriestype + '.' + paramvalue] = ylist
 
         ylist.insert(0, ylist[0])
 
         xlist, ylist = apply_filters(xlist, ylist, args)
 
-        ax.plot(xlist, ylist, label=elsymb, color=color, **plotkwargs)
+        ax.plot(xlist, ylist, label=paramvalue, color=color, **plotkwargs)
 
 
 def plot_multi_ion_series(
@@ -749,9 +799,9 @@ def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath,
             seriestype, params = plotitem
             if seriestype == 'initabundances':
                 plot_init_abundances(ax, xlist, params, mgilist, modelpath, dfalldata=dfalldata, args=args)
-            elif seriestype == 'averageionisation':
-                plot_averageionisation(ax, xlist, params, timestepslist, mgilist, estimators,
-                                       modelpath, dfalldata=dfalldata, args=args)
+            elif seriestype in ['averageionisation', 'averageexcitation']:
+                plot_average_ionisation_excitation(
+                    ax, xlist, seriestype, params, timestepslist, mgilist, estimators, modelpath, dfalldata=dfalldata, args=args)
             elif seriestype == '_ymin':
                 ax.set_ylim(bottom=params)
             elif seriestype == '_ymax':
@@ -1048,6 +1098,8 @@ def main(args=None, argsraw=None, **kwargs):
             # ['heating_gamma/gamma_dep'],
             # ['nne'],
             ['Te', 'TR'],
+            [['averageionisation', ['Fe', 'Ni']]],
+            [['averageexcitation', ['Fe II', 'Fe III']]],
             # [['populations', ['He I', 'He II', 'He III']]],
             # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
             # [['populations', ['O I', 'O II', 'O III', 'O IV']]],

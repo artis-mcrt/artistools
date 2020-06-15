@@ -76,8 +76,7 @@ def get_nltepops(modelpath, timestep, modelgridindex):
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
     mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
 
-    nlte_files = list(chain(
-        Path(modelpath).rglob(f'nlte_{mpirank:04d}.out*')))
+    nlte_files = list(chain(Path(modelpath).rglob(f'nlte_{mpirank:04d}.out*')))
 
     if not nlte_files:
         print("No NLTE files found.")
@@ -86,8 +85,7 @@ def get_nltepops(modelpath, timestep, modelgridindex):
         print(f'Loading {len(nlte_files)} NLTE files')
         for nltefilepath in nlte_files:
             # print(f'Reading {nltefilepath}')
-            dfpop = pd.read_csv(nltefilepath, delim_whitespace=True)
-
+            dfpop = lru_cache(maxsize=512)(pd.read_csv)(nltefilepath, delim_whitespace=True)
             dfpop.query('modelgridindex==@modelgridindex and timestep==@timestep', inplace=True)
             if not dfpop.empty:
                 return dfpop
