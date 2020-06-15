@@ -149,15 +149,15 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
                 elif not savegzipped and filename_gz.exists():
                     saveresult = True
 
-                if filename_nogz.exists():
-                    filename_nogz.unlink()
-                if filename_gz.exists():
-                    filename_gz.unlink()
-
             if saveresult:
                 # if the cache folder doesn't exist, create it
                 if not cachefolder.is_dir():
                     cachefolder.mkdir(parents=True, exist_ok=True)
+
+                if filename_nogz.exists():
+                    filename_nogz.unlink()
+                if filename_gz.exists():
+                    filename_gz.unlink()
 
                 fopen, filename = (gzip.open, filename_gz) if savegzipped else (open, filename_nogz)
                 with fopen(filename, 'wb') as f:
