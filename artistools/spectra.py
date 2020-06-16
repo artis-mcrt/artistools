@@ -801,18 +801,19 @@ def get_flux_contributions_from_packets(
                 array_energysum_spectra[emprocesskey][0][xindex] += pkt_en
 
             if getabsorption:
-                # lambda_abs = c_ang_s / packet.absorptionfreq
-                # xindexabsorbed = math.floor((lambda_abs - lambda_min) / delta_lambda)
-                xindexabsorbed = xindex
-
                 abstype = packet.absorption_type
-                absprocesskey = get_absprocesslabel(abstype)
+                if abstype > 0:
+                    absprocesskey = get_absprocesslabel(abstype)
 
-                if absprocesskey not in array_energysum_spectra:
-                    array_energysum_spectra[absprocesskey] = (
-                        np.zeros_like(array_lambda, dtype=np.float), np.zeros_like(array_lambda, dtype=np.float))
+                    lambda_abs = c_ang_s / packet.absorption_freq
+                    xindexabsorbed = math.floor((lambda_abs - lambda_min) / delta_lambda)
+                    # xindexabsorbed = xindex
 
-                array_energysum_spectra[absprocesskey][1][xindexabsorbed] += pkt_en
+                    if absprocesskey not in array_energysum_spectra:
+                        array_energysum_spectra[absprocesskey] = (
+                            np.zeros_like(array_lambda, dtype=np.float), np.zeros_like(array_lambda, dtype=np.float))
+
+                    array_energysum_spectra[absprocesskey][1][xindexabsorbed] += pkt_en
 
     if useinternalpackets:
         volume = 4 / 3. * math.pi * (r_outer ** 3 - r_inner ** 3)
