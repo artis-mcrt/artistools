@@ -41,7 +41,6 @@ def plothesmaresspec(fig, ax):
         specdata = pd.read_csv(specfilename, delim_whitespace=True, header=None, dtype=np.float64)
 
         index_to_split = specdata.index[specdata.iloc[:, 1] == specdata.iloc[0, 1]]
-        # print(len(index_to_split))
         res_specdata = []
         for i, index_value in enumerate(index_to_split):
             if index_value != index_to_split[-1]:
@@ -57,21 +56,12 @@ def plothesmaresspec(fig, ax):
         for i, res_spec in enumerate(res_specdata):
             res_specdata[i] = res_specdata[i].rename(columns=column_names).drop(res_specdata[i].index[0])
 
-        # ax.plot(res_specdata[0]['lambda'], res_specdata[0][11.54] * (1e-5) ** 2, label="hesma 0")
-        # ax.plot(res_specdata[5]['lambda'], res_specdata[5][11.54] * (1e-5) ** 2, label="hesma 5")
-        # ax.plot(res_specdata[9]['lambda'], res_specdata[9][11.54] * (1e-5) ** 2, label="hesma 9")
-
-
         ax.plot(res_specdata[0]['lambda'], res_specdata[0][11.7935] * (1e-5) ** 2, label="hesma 0")
         ax.plot(res_specdata[1]['lambda'], res_specdata[1][11.7935] * (1e-5) ** 2, label="hesma 1")
         ax.plot(res_specdata[2]['lambda'], res_specdata[2][11.7935] * (1e-5) ** 2, label="hesma 2")
         ax.plot(res_specdata[3]['lambda'], res_specdata[3][11.7935] * (1e-5) ** 2, label="hesma 3")
         ax.plot(res_specdata[4]['lambda'], res_specdata[4][11.7935] * (1e-5) ** 2, label="hesma 4")
 
-
-        # plt.plot(res_specdata[0]['lambda'], res_specdata[0][11.54], label=f"hesma 0 {specfilename}")
-        # plt.plot(res_specdata[5]['lambda'], res_specdata[5][11.54], label=f"hesma 5 {specfilename}")
-        # plt.plot(res_specdata[9]['lambda'], res_specdata[9][11.54], label=f"hesma 9 {specfilename}")
 
     fig.legend()
     # plt.show()
@@ -99,10 +89,11 @@ def make_hesma_vspecfiles(modelpath):
 
         print(vspecdata)
 
-        if angle is 0:
-            vspecdata.to_csv(modelpath / 'hesma_virtualspecseq_theta.dat', sep=' ', index=False)
+        if angle == 0:
+            vspecdata.to_csv(modelpath / 'hesma_virtualspecseq_theta.dat', sep=' ', index=False)  # create file
         else:
-            vspecdata.to_csv(modelpath / 'hesma_virtualspecseq_theta.dat', mode='a', sep=' ', index=False) # append to file
+            # append to file
+            vspecdata.to_csv(modelpath / 'hesma_virtualspecseq_theta.dat', mode='a', sep=' ', index=False)
 
 
 # modelpath = Path("/Users/ccollins/My Passport/SabrinaModels/M2a")
