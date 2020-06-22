@@ -134,100 +134,53 @@ def get_spectrum_from_packets(
     assert(not useinternalpackets)
     import artistools.packets
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
+
+    c_cgs = const.c.to('cm/s').value
+    c_ang_s = const.c.to('angstrom/s').value
+    nu_min = c_ang_s / lambda_max
+    nu_max = c_ang_s / lambda_min
+
     if use_comovingframe:
         modeldata, _ = at.get_modeldata(Path(packetsfiles[0]).parent)
         vmax = modeldata.iloc[-1].velocity_outer * u.km / u.s
         betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
-    def update_min_sum_max(array, xindex, e_rf, value):
-        if value < array[0][xindex] or array[0][xindex] == 0:
-            array[0][xindex] = value
-
-        array[1][xindex] += e_rf * value
-
-        if value > array[2][xindex] or array[2][xindex] == 0:
-            array[2][xindex] = value
-
     array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
     array_energysum = np.zeros_like(array_lambda, dtype=np.float)  # total packet energy sum of each bin
-    array_energysum_positron = np.zeros_like(array_lambda, dtype=np.float)  # total packet energy sum of each bin
     array_pktcount = np.zeros_like(array_lambda, dtype=np.int)  # number of packets in each bin
-    array_emvelocity = np.zeros((3, len(array_lambda)), dtype=np.float)
-    array_trueemvelocity = np.zeros((3, len(array_lambda)), dtype=np.float)
 
     timelow = timelowdays * u.day.to('s')
     timehigh = timehighdays * u.day.to('s')
 
     nprocs_read = len(packetsfiles)
-    c_cgs = const.c.to('cm/s').value
-    c_ang_s = const.c.to('angstrom/s').value
-    nu_min = c_ang_s / lambda_max
-    nu_max = c_ang_s / lambda_min
+    querystr = '@nu_min <= nu_rf < @nu_max and trueemissiontype >= 0 and '
+    if not use_comovingframe:
+        querystr += '@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh'
+    else:
+        querystr += '@timelow < escape_time * @betafactor < @timehigh'
+
     for index, packetsfile in enumerate(packetsfiles):
-        dfpackets = at.packets.readfile(packetsfile, escape_type='TYPE_RPKT')
-
-        querystr = '@nu_min <= nu_rf < @nu_max and'
-        if not use_comovingframe:
-            querystr += '@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh'
-        else:
-            querystr += '@timelow < escape_time * @betafactor < @timehigh'
-
-        dfpackets.query(querystr, inplace=True)
+        dfpackets = at.packets.readfile(packetsfile, type='TYPE_ESCAPE', escape_type='TYPE_RPKT').query(
+            querystr, inplace=False)
 
         print(f"  {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges")
-        for _, packet in dfpackets.iterrows():
-            if packet.trueemissiontype < 0:
-                continue
-            # linelist = at.get_linelist(modelpath)
-            # transition = linelist[packet.trueemissiontype]
-            # if transition.upperlevelindex <= 80:
-            #     continue
 
-            lambda_rf = c_ang_s / packet.nu_rf
-            # pos_dot_dir = packet.posx * packet.dirx + packet.posy * packet.diry + packet.posz * packet.dirz
-            # t_arrive = packet['escape_time'] - (pos_dot_dir / c_cgs)
-            # print(f"Packet escaped at {t_arrive / u.day.to('s'):.1f} days with "
-            #       f"nu={packet.nu_rf:.2e}, lambda={lambda_rf:.1f}")
-            xindex = math.floor((lambda_rf - lambda_min) / delta_lambda)
-            assert xindex >= 0
-
-            pkt_en = packet.e_cmf / betafactor if use_comovingframe else packet.e_rf
-
-            array_energysum[xindex] += pkt_en
-            if packet.originated_from_positron:
-                array_energysum_positron[xindex] += pkt_en
-            array_pktcount[xindex] += 1
-
-            # convert cm/s to km/s
-            emission_velocity = (
-                math.sqrt(packet.em_posx ** 2 + packet.em_posy ** 2 + packet.em_posz ** 2) / packet.em_time) / 1e5
-            update_min_sum_max(array_emvelocity, xindex, pkt_en, emission_velocity)
-
-            true_emission_velocity = packet.true_emission_velocity / 1e5
-            update_min_sum_max(array_trueemvelocity, xindex, pkt_en, true_emission_velocity)
+        binned_wl = pd.cut(c_ang_s / dfpackets['nu_rf'], array_lambda, right=False, labels=False, include_lowest=True)
+        if use_comovingframe:
+            for xindex, en_sum in dfpackets.groupby(binned_wl).e_cmf.sum().iteritems():
+                array_energysum[int(xindex)] += en_sum / betafactor
+        else:
+            for xindex, en_sum in dfpackets.groupby(binned_wl).e_rf.sum().iteritems():
+                array_energysum[int(xindex)] += en_sum
 
     array_flambda = (array_energysum / delta_lambda / (timehigh - timelow) /
                      4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read)
 
-    array_flambda_positron = (array_energysum_positron / delta_lambda / (timehigh - timelow) /
-                              4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read)
-
-    with np.errstate(divide='ignore', invalid='ignore'):
-        array_emvelocity[1] = np.divide(array_emvelocity[1], array_energysum)
-        array_trueemvelocity[1] = np.divide(array_trueemvelocity[1], array_energysum)
-
     dfspectrum = pd.DataFrame({
         'lambda_angstroms': array_lambda,
         'f_lambda': array_flambda,
-        'f_lambda_originated_from_positron': array_flambda_positron,
         'packetcount': array_pktcount,
         'energy_sum': array_energysum,
-        'emission_velocity_min': array_emvelocity[0],
-        'emission_velocity_avg': array_emvelocity[1],
-        'emission_velocity_max': array_emvelocity[2],
-        'trueemission_velocity_min': array_trueemvelocity[0],
-        'trueemission_velocity_avg': array_trueemvelocity[1],
-        'trueemission_velocity_max': array_trueemvelocity[2],
     })
 
     return dfspectrum
@@ -769,7 +722,7 @@ def get_flux_contributions_from_packets(
                 dfpackets.query(f'where in @assoc_cells[@modelgridindex]', inplace=True)
             print(f"  {len(dfpackets)} internal r-packets matching frequency range")
         else:
-            dfpackets = at.packets.readfile(packetsfile, escape_type='TYPE_RPKT')
+            dfpackets = at.packets.readfile(packetsfile, type='TYPE_ESCAPE', escape_type='TYPE_RPKT')
             dfpackets.query(
                 '@nu_min <= nu_rf < @nu_max and ' +
                 ('@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh'
@@ -1092,81 +1045,6 @@ def plot_reference_spectrum(
     return mpatches.Patch(color=lineplot.get_lines()[0].get_color()), plotkwargs['label'], ymax
 
 
-def make_spectrum_stat_plot(spectrum, figure_title, outputpath, args):
-    """Plot the min, max, and average velocity of emission vs wavelength."""
-    nsubplots = 2
-    fig, axes = plt.subplots(nrows=nsubplots, ncols=1, sharex=True,
-                             figsize=(args.figscale * 8, args.figscale * 4 * nsubplots),
-                             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
-
-    spectrum.query('@args.xmin < lambda_angstroms and lambda_angstroms < @args.xmax', inplace=True)
-
-    if not args.notitle:
-        axes[0].set_title(figure_title, fontsize=11)
-
-    axis = axes[0]
-    axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\mathrm{{\AA}}$]')
-    spectrum.eval('f_lambda_not_from_positron = f_lambda - f_lambda_originated_from_positron', inplace=True)
-    plotobjects = axis.stackplot(
-        spectrum['lambda_angstroms'],
-        [spectrum['f_lambda_originated_from_positron'], spectrum['f_lambda_not_from_positron']], linewidth=0)
-
-    plotobjectlabels = ['f_lambda_originated_from_positron', 'f_lambda_not_from_positron']
-
-    # axis.plot(spectrum['lambda_angstroms'], spectrum['f_lambda'], color='black', linewidth=0.5)
-
-    axis.legend(plotobjects, plotobjectlabels, loc='best', handlelength=1,
-                frameon=False, numpoints=1)
-
-    axis = axes[1]
-    # axis.plot(spectrum['lambda_angstroms'], spectrum['trueemission_velocity_min'], color='#089FFF')
-    # axis.plot(spectrum['lambda_angstroms'], spectrum['trueemission_velocity_max'], color='#089FFF')
-    axis.fill_between(spectrum['lambda_angstroms'],
-                      spectrum['trueemission_velocity_min'],
-                      spectrum['trueemission_velocity_max'],
-                      alpha=0.5, facecolor='#089FFF')
-
-    # axis.plot(spectrum['lambda_angstroms'], spectrum['emission_velocity_min'], color='#FF9848')
-    # axis.plot(spectrum['lambda_angstroms'], spectrum['emission_velocity_max'], color='#FF9848')
-    axis.fill_between(spectrum['lambda_angstroms'],
-                      spectrum['emission_velocity_min'],
-                      spectrum['emission_velocity_max'],
-                      alpha=0.5, facecolor='#FF9848')
-
-    axis.plot(spectrum['lambda_angstroms'], spectrum['trueemission_velocity_avg'], color='#1B2ACC',
-              label='Average true emission velocity [km/s]')
-
-    axis.plot(spectrum['lambda_angstroms'], spectrum['emission_velocity_avg'], color='#CC4F1B',
-              label='Average emission velocity [km/s]')
-
-    axis.set_ylabel('Velocity [km/s]')
-
-    # axis = axes[2]
-    # axis.set_ylabel('Number of packets per bin')
-    # spectrum.plot(x='lambda_angstroms', y='packetcount', ax=axis)
-
-    axis.set_xlabel(r'Wavelength ($\mathrm{{\AA}}$)')
-    axis.set_xlim(left=args.xmin, right=args.xmax)
-    xdiff = (args.xmax - args.xmin)
-    if xdiff < 1000:
-        axis.xaxis.set_major_locator(ticker.MultipleLocator(base=50))
-        axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=10))
-    elif xdiff < 5000:
-        axis.xaxis.set_major_locator(ticker.MultipleLocator(base=100))
-        axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=50))
-    elif xdiff < 11000:
-        axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
-        axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
-    elif xdiff < 14000:
-        axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
-        axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=250))
-
-    filenameout = str(Path(outputpath, 'plotspecstats.pdf'))
-    fig.savefig(filenameout)
-    print(f'Saved {filenameout}')
-    plt.close()
-
-
 def plot_artis_spectrum(
         axes, modelpath, args, scale_to_peak=None, from_packets=False, filterfunc=None, linelabel=None, **plotkwargs):
     """Plot an ARTIS output spectrum."""
@@ -1205,7 +1083,6 @@ def plot_artis_spectrum(
             statpath = Path()
         else:
             statpath = Path(args.outputfile).resolve().parent
-        make_spectrum_stat_plot(spectrum, linelabel, statpath, args)
     else:
         spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
                                 reftime=timeavg, args=args)
@@ -1468,12 +1345,87 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
     return plotobjects, plotobjectlabels, dfaxisdata
 
 
+def make_contrib_plot(axes, modelpath, densityplotyvars, args):
+    import artistools.packets
+
+    (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+        modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
+
+    modeldata, _ = at.get_modeldata(modelpath)
+
+    estimators = at.estimators.read_estimators(modelpath=modelpath)
+    allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
+                          if not estimators[(0, modelgridindex)]['emptycell']]
+
+    packetsfiles = at.packets.get_packetsfilepaths(modelpath, args.maxpacketfiles)
+    tdays_min = float(args.timemin)
+    tdays_max = float(args.timemax)
+
+    c_ang_s = const.c.to('angstrom/s').value
+    nu_min = c_ang_s / args.xmax
+    nu_max = c_ang_s / args.xmin
+
+    querystr = ''
+
+    list_lambda = {}
+    lists_y = {}
+    list_weights = []
+    for index, packetsfile in enumerate(packetsfiles):
+        dfpackets = at.packets.readfile(packetsfile, type='TYPE_ESCAPE', escape_type='TYPE_RPKT')
+
+        dfpackets_selected = dfpackets.query(
+            '@nu_min <= nu_rf < @nu_max and t_arrive_d >= @tdays_min and t_arrive_d <= @tdays_max',
+            inplace=False).copy()
+
+        dfpackets_selected = at.packets.add_derived_columns(
+            dfpackets_selected, modelpath, ['em_timestep', 'emtrue_modelgridindex'], allnonemptymgilist=allnonemptymgilist)
+
+        # dfpackets.eval('xindex = floor((@c_ang_s / nu_rf - @lambda_min) / @delta_lambda)', inplace=True)
+        # dfpackets.eval('lambda_rf_binned = @lambda_min + @delta_lambda * floor((@c_ang_s / nu_rf - @lambda_min) / @delta_lambda)', inplace=True)
+
+        for _, packet in dfpackets_selected.iterrows():
+            for v in densityplotyvars:
+                if v not in list_lambda:
+                    list_lambda[v] = []
+                if v not in lists_y:
+                    lists_y[v] = []
+                if v == 'velocity':
+                    if not np.isnan(packet.true_emission_velocity):
+                        list_lambda[v].append(c_ang_s / packet.nu_rf)
+                        lists_y[v].append(packet.true_emission_velocity / 1e5)
+                else:
+                    k = (packet['em_timestep'], packet['emtrue_modelgridindex'])
+                    if k in estimators:
+                        list_lambda[v].append(c_ang_s / packet.nu_rf)
+                        lists_y[v].append(estimators[k][v])
+
+    for ax, yvar in zip(axes, densityplotyvars):
+        # ax.set_ylabel(r'velocity [{} km/s]')
+        ax.set_ylabel(yvar + ' ' + at.estimators.get_units_string(yvar))
+        # ax.plot(list_lambda, list_yvar, lw=0, marker='o', markersize=0.5)
+        # ax.hexbin(list_lambda[yvar], lists_y[yvar], gridsize=100, cmap=plt.cm.BuGn_r)
+        ax.hist2d(list_lambda[yvar], lists_y[yvar], bins=(50, 30), cmap=plt.cm.Greys)
+        # plt.cm.Greys
+        # x = np.array(list_lambda[yvar])
+        # y = np.array(lists_y[yvar])
+        # from scipy.stats import kde
+        #
+        # nbins = 30
+        # xi, yi = np.mgrid[x.min():x.max():nbins*1j, y.min():y.max():nbins*1j]
+        # zi = k(np.vstack([xi.flatten(), yi.flatten()]))
+        # ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.BuGn_r)
+
+
+
 def make_plot(args):
     # font = {'size': 16}
     # mpl.rc('font', **font)
-    nrows = len(args.xsplit) + 1
+    densityplotyvars = ['velocity', 'Te', 'nne']
+    # densityplotyvars = []
+
+    nrows = 1 + len(densityplotyvars)
     fig, axes = plt.subplots(
-        nrows=nrows, ncols=1, sharey=False,
+        nrows=nrows, ncols=1, sharey=False, sharex=True, squeeze=True,
         figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * (0.25 + nrows * 0.4)),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
@@ -1491,14 +1443,12 @@ def make_plot(args):
         args.refspecfiles = []
 
     dfalldata = pd.DataFrame()
-    xboundaries = [args.xmin] + args.xsplit + [args.xmax]
+
+    axes[-1].set_ylabel(r'F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]')
     for index, axis in enumerate(axes):
         if args.logscale:
             axis.set_yscale('log')
-        axis.set_ylabel(r'F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]')
-        supxmin = xboundaries[index]
-        supxmax = xboundaries[index + 1]
-        axis.set_xlim(left=supxmin, right=supxmax)
+        axis.set_xlim(left=args.xmin, right=args.xmax)
 
         if (args.xmax - args.xmin) < 2000:
             axis.xaxis.set_major_locator(ticker.MultipleLocator(base=100))
@@ -1510,6 +1460,9 @@ def make_plot(args):
             axis.xaxis.set_major_locator(ticker.MultipleLocator(base=2000))
             axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
 
+    if densityplotyvars:
+        make_contrib_plot(axes[:-1], args.modelpath[0], densityplotyvars, args)
+
     if args.showemission or args.showabsorption:
         if len(args.modelpath) > 1:
             raise ValueError("ERROR: emission/absorption plot can only take one input model", args.modelpath)
@@ -1519,23 +1472,22 @@ def make_plot(args):
         else:
             defaultoutputfile = Path("plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
-        for index, axis in enumerate(axes):
-            plotobjects, plotobjectlabels, dfaxisdata = make_emissionabsorption_plot(
-                args.modelpath[0], axis, filterfunc, args=args, scale_to_peak=scale_to_peak)
-            dfalldata = dfalldata.append(dfaxisdata)
+        plotobjects, plotobjectlabels, dfaxisdata = make_emissionabsorption_plot(
+            args.modelpath[0], axes[0], filterfunc, args=args, scale_to_peak=scale_to_peak)
+        dfalldata = dfalldata.append(dfaxisdata)
     else:
         legendncol = 1
         defaultoutputfile = Path("plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
-        make_spectrum_plot(args.specpath, axes, filterfunc, args, scale_to_peak=scale_to_peak)
-        plotobjects, plotobjectlabels = axes[0].get_legend_handles_labels()
+        make_spectrum_plot(args.specpath, [axes[-1]], filterfunc, args, scale_to_peak=scale_to_peak)
+        plotobjects, plotobjectlabels = axes[-1].get_legend_handles_labels()
 
     if not args.nolegend:
         if args.reverselegendorder:
             plotobjects, plotobjectlabels = plotobjects[::-1], plotobjectlabels[::-1]
 
         fs = 12 if (args.showemission or args.showabsorption) else None
-        leg = axes[0].legend(
+        leg = axes[-1].legend(
             plotobjects, plotobjectlabels, loc='upper right', frameon=False,
             handlelength=1, ncol=legendncol, numpoints=1, fontsize=fs)
         leg.set_zorder(200)
@@ -1559,12 +1511,13 @@ def make_plot(args):
     # for axis in ['top', 'bottom', 'left', 'right']:
     #    axis.spines[axis].set_linewidth(framewidth)
 
+    if args.ymin is not None:
+        axes[-1].set_ylim(bottom=args.ymin)
+    if args.ymax is not None:
+        axes[-1].set_ylim(top=args.ymax)
+
     for ax in axes:
         # ax.xaxis.set_major_formatter(plt.NullFormatter())
-        if args.ymin is not None:
-            ax.set_ylim(bottom=args.ymin)
-        if args.ymax is not None:
-            ax.set_ylim(top=args.ymax)
 
         if '{' in ax.get_ylabel():
             ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True, decimalplaces=1))
@@ -1736,9 +1689,6 @@ def addargs(parser):
 
     parser.add_argument('-deltalambda', type=int, default=50,
                         help='Lambda bin size in Angstroms (applies to from_packets only)')
-
-    parser.add_argument('-xsplit', nargs='*', default=[],
-                        help='Split into subplots at xvalue(s)')
 
     parser.add_argument('-ymin', type=float, default=None,
                         help='Plot range: y-axis')
