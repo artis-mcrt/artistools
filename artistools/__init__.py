@@ -445,6 +445,8 @@ def get_mgi_of_velocity_kms(modelpath, velocity, mgilist=None):
         return mgilist[index_closestvouter]
     elif velocity < arr_vouter[index_closestvouter + 1]:
         return mgilist[index_closestvouter + 1]
+    elif np.isnan(velocity):
+        return float('nan')
     else:
         print(f"Can't find cell with velocity of {velocity}. Velocity list: {arr_vouter}")
         assert(False)
