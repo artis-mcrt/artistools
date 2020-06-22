@@ -662,6 +662,8 @@ def get_flux_contributions_from_packets(
         adata = at.get_levels(modelpath)
 
     def get_emprocesslabel(emtype):
+        if emtype == 9999999:
+            return f'free-free'
         if emtype >= 0:
             line = linelist[emtype]
             if groupby == 'line':
@@ -687,8 +689,6 @@ def get_flux_contributions_from_packets(
                 upper_term_noj = upper_config.split('_')[-1].split('[')[0]
                 return f'{at.get_ionstring(line.atomic_number, line.ionstage)} {upper_term_noj}'
             return f'{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound'
-        if emtype == 9999999:
-            return f'free-free'
         bflist = at.get_bflist(modelpath)
         bfindex = -emtype - 1
         if bfindex in bflist:
