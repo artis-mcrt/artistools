@@ -1420,8 +1420,8 @@ def make_contrib_plot(axes, modelpath, densityplotyvars, args):
 def make_plot(args):
     # font = {'size': 16}
     # mpl.rc('font', **font)
-    densityplotyvars = ['velocity', 'Te', 'nne']
-    # densityplotyvars = []
+    # densityplotyvars = ['velocity', 'Te', 'nne']
+    densityplotyvars = []
 
     nrows = 1 + len(densityplotyvars)
     fig, axes = plt.subplots(
