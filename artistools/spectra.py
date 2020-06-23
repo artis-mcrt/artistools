@@ -1463,10 +1463,10 @@ def make_plot(args):
             axis.xaxis.set_major_locator(ticker.MultipleLocator(base=2000))
             axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
 
+    densityplotyvars = []
+    # densityplotyvars = ['emission_velocity', 'emission_velocity', 'Te', 'nne']
+    # densityplotyvars = ['true_emission_velocity', 'emission_velocity', 'Te', 'nne']
     if densityplotyvars:
-        # densityplotyvars = ['emission_velocity', 'emission_velocity', 'Te', 'nne']
-        # densityplotyvars = ['true_emission_velocity', 'emission_velocity', 'Te', 'nne']
-        densityplotyvars = []
         make_contrib_plot(axes[:-1], args.modelpath[0], densityplotyvars, args)
 
     if args.showemission or args.showabsorption:
