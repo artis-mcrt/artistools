@@ -1464,7 +1464,7 @@ def make_plot(args):
             axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
 
     densityplotyvars = []
-    # densityplotyvars = ['emission_velocity', 'emission_velocity', 'Te', 'nne']
+    # densityplotyvars = ['emission_velocity', 'Te', 'nne']
     # densityplotyvars = ['true_emission_velocity', 'emission_velocity', 'Te', 'nne']
     if densityplotyvars:
         make_contrib_plot(axes[:-1], args.modelpath[0], densityplotyvars, args)
