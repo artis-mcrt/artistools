@@ -1426,6 +1426,10 @@ def make_plot(args):
     # font = {'size': 16}
     # mpl.rc('font', **font)
 
+    densityplotyvars = []
+    # densityplotyvars = ['emission_velocity', 'Te', 'nne']
+    # densityplotyvars = ['true_emission_velocity', 'emission_velocity', 'Te', 'nne']
+
     nrows = 1 + len(densityplotyvars)
     fig, axes = plt.subplots(
         nrows=nrows, ncols=1, sharey=False, sharex=True, squeeze=True,
@@ -1463,9 +1467,6 @@ def make_plot(args):
             axis.xaxis.set_major_locator(ticker.MultipleLocator(base=2000))
             axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
 
-    densityplotyvars = []
-    # densityplotyvars = ['emission_velocity', 'Te', 'nne']
-    # densityplotyvars = ['true_emission_velocity', 'emission_velocity', 'Te', 'nne']
     if densityplotyvars:
         make_contrib_plot(axes[:-1], args.modelpath[0], densityplotyvars, args)
 
