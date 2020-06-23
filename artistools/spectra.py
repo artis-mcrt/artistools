@@ -1377,8 +1377,9 @@ def make_contrib_plot(axes, modelpath, densityplotyvars, args):
             '@nu_min <= nu_rf < @nu_max and t_arrive_d >= @tdays_min and t_arrive_d <= @tdays_max',
             inplace=False).copy()
 
+        # todo: optimize this to avoid calculating unused columns
         dfpackets_selected = at.packets.add_derived_columns(
-            dfpackets_selected, modelpath, ['em_timestep', 'emtrue_modelgridindex'], allnonemptymgilist=allnonemptymgilist)
+            dfpackets_selected, modelpath, ['em_timestep', 'emtrue_modelgridindex', 'emission_velocity'], allnonemptymgilist=allnonemptymgilist)
 
         # dfpackets.eval('xindex = floor((@c_ang_s / nu_rf - @lambda_min) / @delta_lambda)', inplace=True)
         # dfpackets.eval('lambda_rf_binned = @lambda_min + @delta_lambda * floor((@c_ang_s / nu_rf - @lambda_min) / @delta_lambda)', inplace=True)
@@ -1389,7 +1390,11 @@ def make_contrib_plot(axes, modelpath, densityplotyvars, args):
                     list_lambda[v] = []
                 if v not in lists_y:
                     lists_y[v] = []
-                if v == 'velocity':
+                if v == 'emission_velocity':
+                    if not np.isnan(packet.emission_velocity):
+                        list_lambda[v].append(c_ang_s / packet.nu_rf)
+                        lists_y[v].append(packet.emission_velocity / 1e5)
+                elif v == 'true_emission_velocity':
                     if not np.isnan(packet.true_emission_velocity):
                         list_lambda[v].append(c_ang_s / packet.nu_rf)
                         lists_y[v].append(packet.true_emission_velocity / 1e5)
@@ -1420,8 +1425,6 @@ def make_contrib_plot(axes, modelpath, densityplotyvars, args):
 def make_plot(args):
     # font = {'size': 16}
     # mpl.rc('font', **font)
-    # densityplotyvars = ['velocity', 'Te', 'nne']
-    densityplotyvars = []
 
     nrows = 1 + len(densityplotyvars)
     fig, axes = plt.subplots(
@@ -1461,6 +1464,9 @@ def make_plot(args):
             axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
 
     if densityplotyvars:
+        # densityplotyvars = ['emission_velocity', 'emission_velocity', 'Te', 'nne']
+        # densityplotyvars = ['true_emission_velocity', 'emission_velocity', 'Te', 'nne']
+        densityplotyvars = []
         make_contrib_plot(axes[:-1], args.modelpath[0], densityplotyvars, args)
 
     if args.showemission or args.showabsorption:
