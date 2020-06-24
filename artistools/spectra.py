@@ -129,7 +129,8 @@ def get_spectrum_at_time(modelpath, timestep, time, args, angle=None, res_specda
 
 def get_spectrum_from_packets(
         modelpath, timelowdays, timehighdays, lambda_min, lambda_max,
-        delta_lambda=30, use_comovingframe=None, maxpacketfiles=None, useinternalpackets=False):
+        delta_lambda=30, use_comovingframe=None, maxpacketfiles=None, useinternalpackets=False,
+        getpacketcount=False):
     """Get a spectrum dataframe using the packets files as input."""
     assert(not useinternalpackets)
     import artistools.packets
@@ -145,9 +146,11 @@ def get_spectrum_from_packets(
         vmax = modeldata.iloc[-1].velocity_outer * u.km / u.s
         betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
-    array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
+    array_lambdabinedges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
+    array_lambda = array_lambdabinedges[:-1]  # exclude the right-most boundary value
     array_energysum = np.zeros_like(array_lambda, dtype=np.float)  # total packet energy sum of each bin
-    array_pktcount = np.zeros_like(array_lambda, dtype=np.int)  # number of packets in each bin
+    if getpacketcount:
+        array_pktcount = np.zeros_like(array_lambda, dtype=np.int)  # number of packets in each bin
 
     timelow = timelowdays * u.day.to('s')
     timehigh = timehighdays * u.day.to('s')
@@ -157,7 +160,7 @@ def get_spectrum_from_packets(
     if not use_comovingframe:
         querystr += '@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh'
     else:
-        querystr += '@timelow < escape_time * @betafactor < @timehigh'
+        querystr += '@timelow < (escape_time * @betafactor) < @timehigh'
 
     for index, packetsfile in enumerate(packetsfiles):
         dfpackets = at.packets.readfile(packetsfile, type='TYPE_ESCAPE', escape_type='TYPE_RPKT').query(
@@ -165,25 +168,35 @@ def get_spectrum_from_packets(
 
         print(f"  {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges")
 
-        binned_wl = pd.cut(c_ang_s / dfpackets['nu_rf'], array_lambda, right=False, labels=False, include_lowest=True)
+        dfpackets.eval('lambda_rf = @c_ang_s / nu_rf', inplace=True)
+        wl_bins = pd.cut(
+            x=dfpackets['lambda_rf'], bins=array_lambdabinedges, right=True,
+            labels=range(len(array_lambda)), include_lowest=True)
+
         if use_comovingframe:
-            for xindex, en_sum in dfpackets.groupby(binned_wl).e_cmf.sum().iteritems():
-                array_energysum[int(xindex)] += en_sum / betafactor
+            array_energysum += dfpackets.e_cmf.groupby(wl_bins).sum().values / betafactor
         else:
-            for xindex, en_sum in dfpackets.groupby(binned_wl).e_rf.sum().iteritems():
-                array_energysum[int(xindex)] += en_sum
+            array_energysum += dfpackets.e_rf.groupby(wl_bins).sum().values
+            # for xindex, en_sum in dfpackets.e_rf.groupby(wl_bins).sum().iteritems():
+            #     array_energysum[int(xindex)] += en_sum
+            # array_pktcount += dfbinned.count().values
+
+        if getpacketcount:
+            array_pktcount += dfpackets.lambda_rf.groupby(wl_bins).count().values
 
     array_flambda = (array_energysum / delta_lambda / (timehigh - timelow) /
                      4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read)
 
-    dfspectrum = pd.DataFrame({
+    dfdict = {
         'lambda_angstroms': array_lambda,
         'f_lambda': array_flambda,
-        'packetcount': array_pktcount,
         'energy_sum': array_energysum,
-    })
+    }
 
-    return dfspectrum
+    if getpacketcount:
+        dfdict['packetcount'] = array_pktcount
+
+    return pd.DataFrame(dfdict)
 
 
 def read_specpol_res(modelpath, angle=None, args=None):
@@ -1046,11 +1059,15 @@ def plot_reference_spectrum(
 
 
 def plot_artis_spectrum(
-        axes, modelpath, args, scale_to_peak=None, from_packets=False, filterfunc=None, linelabel=None, **plotkwargs):
+        axes, modelpath, args, scale_to_peak=None, from_packets=False, filterfunc=None,
+        linelabel=None, plotpacketcount=False, **plotkwargs):
     """Plot an ARTIS output spectrum."""
     if not Path(modelpath, 'input.txt').exists():
         print(f"Skipping '{modelpath}' (not an ARTIS folder?)")
         return
+
+    if plotpacketcount:
+        from_packets = True
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
@@ -1078,7 +1095,7 @@ def plot_artis_spectrum(
         spectrum = get_spectrum_from_packets(
             modelpath, args.timemin, args.timemax, lambda_min=args.xmin, lambda_max=args.xmax,
             use_comovingframe=args.use_comovingframe, maxpacketfiles=args.maxpacketfiles,
-            delta_lambda=args.deltalambda, useinternalpackets=args.internalpackets)
+            delta_lambda=args.deltalambda, useinternalpackets=args.internalpackets, getpacketcount=plotpacketcount)
         if args.outputfile is None:
             statpath = Path()
         else:
@@ -1108,11 +1125,15 @@ def plot_artis_spectrum(
         spectrum['f_lambda_scaled'] = spectrum['f_lambda'] / spectrum['f_lambda'].max() * scale_to_peak
         if args.plotvspecpol is not None:
             for angle in args.plotvspecpol:
-                vspectrum[angle]['f_lambda_scaled'] = vspectrum[angle]['f_lambda'] / vspectrum[angle]['f_lambda'].max() * scale_to_peak
+                vspectrum[angle]['f_lambda_scaled'] = (
+                    vspectrum[angle]['f_lambda'] / vspectrum[angle]['f_lambda'].max() * scale_to_peak)
 
         ycolumnname = 'f_lambda_scaled'
     else:
         ycolumnname = 'f_lambda'
+
+    if plotpacketcount:
+        ycolumnname = 'packetcount'
 
     for index, axis in enumerate(axes):
         supxmin, supxmax = axis.get_xlim()
@@ -1170,7 +1191,7 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
 
             plot_artis_spectrum(axes, specpath, args=args,
                                 scale_to_peak=scale_to_peak, from_packets=args.frompackets,
-                                filterfunc=filterfunc, **plotkwargs)
+                                filterfunc=filterfunc, plotpacketcount=args.plotpacketcount, **plotkwargs)
             artisindex += 1
         else:
             # reference spectrum
@@ -1190,6 +1211,8 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
         if args.normalised:
             axis.set_ylim(top=1.25)
             axis.set_ylabel(r'Scaled F$_\lambda$')
+        if args.plotpacketcount:
+            axis.set_ylabel(r'Monte Carlo packets per bin')
 
 
 def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_to_peak=None):
@@ -1391,11 +1414,11 @@ def make_contrib_plot(axes, modelpath, densityplotyvars, args):
                 if v not in lists_y:
                     lists_y[v] = []
                 if v == 'emission_velocity':
-                    if not np.isnan(packet.emission_velocity):
+                    if not np.isnan(packet.emission_velocity) and not np.isinf(packet.emission_velocity):
                         list_lambda[v].append(c_ang_s / packet.nu_rf)
                         lists_y[v].append(packet.emission_velocity / 1e5)
                 elif v == 'true_emission_velocity':
-                    if not np.isnan(packet.true_emission_velocity):
+                    if not np.isnan(packet.true_emission_velocity) and not np.isinf(packet.true_emission_velocity):
                         list_lambda[v].append(c_ang_s / packet.nu_rf)
                         lists_y[v].append(packet.true_emission_velocity / 1e5)
                 else:
@@ -1659,6 +1682,9 @@ def addargs(parser):
 
     parser.add_argument('--internalpackets', action='store_true',
                         help='Use non-escaped packets')
+
+    parser.add_argument('--plotpacketcount', action='store_true',
+                        help='Plot bin packet counts instead of specific intensity')
 
     parser.add_argument('--nostack', action='store_true',
                         help="Plot each emission/absorption contribution separately instead of a stackplot")
