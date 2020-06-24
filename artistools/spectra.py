@@ -28,6 +28,29 @@ fluxcontributiontuple = namedtuple(
     'fluxcontribution', 'fluxcontrib linelabel array_flambda_emission array_flambda_absorption color')
 
 
+def get_exspec_bins():
+    MNUBINS = 1000
+    NU_MIN_R = 1e13
+    NU_MAX_R = 5e15
+
+    c_ang_s = const.c.to('angstrom/s').value
+
+    dlognu = (math.log(NU_MAX_R) - math.log(NU_MIN_R)) / MNUBINS
+
+    bins_nu_lower = np.array(
+        [math.exp(math.log(NU_MIN_R) + (m * (dlognu))) for m in range(MNUBINS)])
+    # bins_nu_upper = np.array(
+    #     [math.exp(math.log(NU_MIN_R) + ((m + 1) * (dlognu))) for m in range(MNUBINS)])
+    bins_nu_upper = bins_nu_lower * math.exp(dlognu)
+    bins_nu_centre = 0.5 * (bins_nu_lower + bins_nu_upper)
+
+    array_lambdabinedges = np.append(c_ang_s / np.flip(bins_nu_upper), c_ang_s / bins_nu_lower[0])
+    array_lambda = c_ang_s / np.flip(bins_nu_centre)
+    delta_lambda = np.flip(c_ang_s / bins_nu_lower - c_ang_s / bins_nu_upper)
+
+    return array_lambdabinedges, array_lambda, delta_lambda
+
+
 def stackspectra(spectra_and_factors):
     factor_sum = sum([factor for _, factor in spectra_and_factors])
 
@@ -129,25 +152,29 @@ def get_spectrum_at_time(modelpath, timestep, time, args, angle=None, res_specda
 
 def get_spectrum_from_packets(
         modelpath, timelowdays, timehighdays, lambda_min, lambda_max,
-        delta_lambda=30, use_comovingframe=None, maxpacketfiles=None, useinternalpackets=False,
+        delta_lambda=None, use_comovingframe=None, maxpacketfiles=None, useinternalpackets=False,
         getpacketcount=False):
     """Get a spectrum dataframe using the packets files as input."""
     assert(not useinternalpackets)
     import artistools.packets
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
 
-    c_cgs = const.c.to('cm/s').value
-    c_ang_s = const.c.to('angstrom/s').value
-    nu_min = c_ang_s / lambda_max
-    nu_max = c_ang_s / lambda_min
-
     if use_comovingframe:
         modeldata, _ = at.get_modeldata(Path(packetsfiles[0]).parent)
         vmax = modeldata.iloc[-1].velocity_outer * u.km / u.s
         betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
-    array_lambdabinedges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
-    array_lambda = array_lambdabinedges[:-1]  # exclude the right-most boundary value
+    c_cgs = const.c.to('cm/s').value
+    c_ang_s = const.c.to('angstrom/s').value
+    nu_min = c_ang_s / lambda_max
+    nu_max = c_ang_s / lambda_min
+
+    if delta_lambda:
+        array_lambdabinedges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
+        array_lambda = array_lambdabinedges[:-1]  # exclude the right-most boundary value
+    else:
+        array_lambdabinedges, array_lambda, delta_lambda = get_exspec_bins()
+
     array_energysum = np.zeros_like(array_lambda, dtype=np.float)  # total packet energy sum of each bin
     if getpacketcount:
         array_pktcount = np.zeros_like(array_lambda, dtype=np.int)  # number of packets in each bin
@@ -618,7 +645,7 @@ def get_flux_contributions(
 
 @lru_cache(maxsize=4)
 def get_flux_contributions_from_packets(
-        modelpath, timelowerdays, timeupperdays, lambda_min, lambda_max, delta_lambda=30,
+        modelpath, timelowerdays, timeupperdays, lambda_min, lambda_max, delta_lambda=None,
         getemission=True, getabsorption=True, maxpacketfiles=None, filterfunc=None, groupby='ion', modelgridindex=None,
         use_comovingframe=False, use_lastemissiontype=False, useinternalpackets=False):
 
@@ -679,7 +706,11 @@ def get_flux_contributions_from_packets(
             return 'bound-free'
         return '? other absorp.'
 
-    array_lambda = np.arange(lambda_min, lambda_max, delta_lambda)
+    if delta_lambda:
+        array_lambdabinedges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
+        array_lambda = array_lambdabinedges[:-1]  # exclude the right-most boundary value
+    else:
+        array_lambdabinedges, array_lambda, delta_lambda = get_exspec_bins()
 
     if use_comovingframe:
         modeldata, _ = at.get_modeldata(modelpath)
@@ -744,10 +775,15 @@ def get_flux_contributions_from_packets(
                 inplace=True)
             print(f"  {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges")
 
+        if np.isscalar(delta_lambda):
+            dfpackets.eval('xindex = floor((@c_ang_s / nu_rf - @lambda_min) / @delta_lambda)', inplace=True)
+            print(dfpackets.xindex)
+        else:
+            dfpackets['xindex'] = np.digitize(c_ang_s / dfpackets.nu_rf, bins=array_lambdabinedges, right=True) - 1
+
         for _, packet in dfpackets.iterrows():
             lambda_rf = c_ang_s / packet.nu_rf
-
-            xindex = math.floor((lambda_rf - lambda_min) / delta_lambda)
+            xindex = int(packet.xindex)
             assert xindex >= 0
 
             pkt_en = packet.e_cmf / betafactor if use_comovingframe else packet.e_rf
@@ -1720,7 +1756,7 @@ def addargs(parser):
     parser.add_argument('-xmax', '-lambdamax', dest='xmax', type=int, default=11000,
                         help='Plot range: maximum wavelength in Angstroms')
 
-    parser.add_argument('-deltalambda', type=int, default=50,
+    parser.add_argument('-deltalambda', type=int, default=None,
                         help='Lambda bin size in Angstroms (applies to from_packets only)')
 
     parser.add_argument('-ymin', type=float, default=None,
