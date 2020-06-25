@@ -1029,6 +1029,7 @@ def get_reference_spectrum(filename):
             specdata['f_lambda'].values)
 
     if 'z' in metadata:
+        print('Correcting for redshift')
         specdata['lambda_angstroms'] /= (1 + metadata['z'])
 
     return specdata, metadata
