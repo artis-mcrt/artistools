@@ -1097,6 +1097,18 @@ def plot_reference_spectrum(
     return mpatches.Patch(color=lineplot.get_lines()[0].get_color()), plotkwargs['label'], ymax
 
 
+def plot_filter_functions(axis):
+    filter_names = ['U', 'B', 'V', 'R', 'I']
+    colours = ['r', 'b', 'g', 'c', 'm']
+
+    filterdir = os.path.join(at.PYDIR, 'data/filters/')
+    for index, filter_name in enumerate(filter_names):
+        filter_data = pd.read_csv(filterdir / Path(f'{filter_name}.txt'),
+                        delim_whitespace=True, header=None, skiprows=4, names=['lamba_angstroms', 'flux_normalised'])
+        filter_data.plot(x='lamba_angstroms', y='flux_normalised', ax=axis, label=filter_name,
+                         color=colours[index], alpha=0.3)
+
+
 def plot_artis_spectrum(
         axes, modelpath, args, scale_to_peak=None, from_packets=False, filterfunc=None,
         linelabel=None, plotpacketcount=False, **plotkwargs):
@@ -1255,6 +1267,11 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
             refspecindex += 1
 
     for axis in axes:
+        if args.showfilterfunctions:
+            if not args.normalised:
+                print("Use args.normalised")
+            plot_filter_functions(axis)
+
         if args.stokesparam == 'I':
             axis.set_ylim(bottom=0.)
         if args.normalised:
@@ -1875,6 +1892,9 @@ def addargs(parser):
 
     parser.add_argument('--binflux', action='store_true',
                         help='Bin flux over wavelength and average flux')
+
+    parser.add_argument('--showfilterfunctions', action='store_true',
+                        help='Plot Bessell filter functions over spectrum. Also use --normalised')
 
 
 def main(args=None, argsraw=None, **kwargs):
