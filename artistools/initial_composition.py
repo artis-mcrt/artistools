@@ -8,6 +8,8 @@ import artistools as at
 import matplotlib.pyplot as plt
 from astropy import units as u
 import matplotlib
+import numpy as np
+import scipy.interpolate
 
 
 def plot_2d_initial_abundances(modelpath, args):
@@ -54,6 +56,7 @@ def plot_3d_initial_abundances(modelpath, args):
     abundances['inputcellid'] = abundances['inputcellid'].apply(lambda x: float(x))
 
     merge_dfs = model.merge(abundances, how='inner', on='inputcellid')
+    # merge_dfs = plot_most_abundant(modelpath, args)
 
     with open(os.path.join(modelpath[0], 'model.txt'), 'r') as fmodelin:
         fmodelin.readline()  # npts_model3d
@@ -78,7 +81,7 @@ def plot_3d_initial_abundances(modelpath, args):
     y = plotvals[f'cellpos_in[{plotaxis2}]'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
     # fig = plt.figure(figsize=(5, 5))
     ax = plt.subplot(111)
-    im = ax.scatter(x, y, c=plotvals[ion], marker="8")
+    im = ax.scatter(x, y, c=plotvals[ion], marker="8", rasterized=True)  # cmap=plt.get_cmap('PuOr')
 
     cbar = plt.colorbar(im)
     # cbar.set_label(label=ion, size='x-large') #, fontweight='bold')
@@ -94,6 +97,21 @@ def plot_3d_initial_abundances(modelpath, args):
     outfilename = f'plot_composition{args.ion}.pdf'
     plt.savefig(Path(modelpath[0]) / outfilename, format='pdf')
     print(f'Saved {outfilename}')
+
+
+def plot_most_abundant(modelpath, args):
+    model = at.get_3d_modeldata(modelpath[0])
+    abundances = at.get_initialabundances(modelpath[0])
+
+    merge_dfs = model.merge(abundances, how='inner', on='inputcellid')
+    elements = [x for x in merge_dfs.keys() if 'X_' in x]
+
+    merge_dfs['max'] = merge_dfs[elements].idxmax(axis=1)
+
+    merge_dfs['max'] = merge_dfs['max'].apply(lambda x: at.get_atomic_number(x[2:]))
+    merge_dfs = merge_dfs[merge_dfs['max'] != 1]
+
+    return merge_dfs
 
 
 def addargs(parser):
