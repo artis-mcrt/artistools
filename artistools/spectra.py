@@ -140,10 +140,12 @@ def get_spectrum(
 
 def get_spectrum_at_time(modelpath, timestep, time, args, angle=None, res_specdata=None, modelnumber=None):
     if angle is not None:
-        if args.plotvspecpol:
+        if args.plotvspecpol and os.path.isfile(modelpath/'vpkt.txt'):
             spectrum = get_vspecpol_spectrum(modelpath, time, angle, args)
-        else:
+        elif os.path.isfile(modelpath/'specpol_res.out'):
             spectrum = get_res_spectrum(modelpath, timestep, timestep, angle=angle, res_specdata=res_specdata)
+        else:
+            spectrum = get_spectrum(modelpath, timestep, timestep, modelnumber=modelnumber, args=args)
     else:
         spectrum = get_spectrum(modelpath, timestep, timestep, modelnumber=modelnumber, args=args)
 
