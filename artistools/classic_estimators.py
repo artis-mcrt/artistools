@@ -106,4 +106,17 @@ def read_classic_estimators(modelpath, modeldata):
 
                 parse_ion_row_classic(row, estimators[(timestep, modelgridindex)], atomic_composition)
 
+
+                estimators[(timestep, modelgridindex)]['heating_ff'] = float(row[-9])
+                estimators[(timestep, modelgridindex)]['heating_bf'] = float(row[-8])
+                estimators[(timestep, modelgridindex)]['heating_coll'] = float(row[-7])
+                estimators[(timestep, modelgridindex)]['heating_dep'] = float(row[-6])
+
+                estimators[(timestep, modelgridindex)]['cooling_ff'] = float(row[-5])
+                estimators[(timestep, modelgridindex)]['cooling_fb'] = float(row[-4])
+                estimators[(timestep, modelgridindex)]['cooling_coll'] = float(row[-3])
+                estimators[(timestep, modelgridindex)]['cooling_adiabatic'] = float(row[-2])
+
+                estimators[(timestep, modelgridindex)]['energy_deposition'] = float(row[-1])
+
     return estimators
