@@ -777,7 +777,6 @@ def get_flux_contributions_from_packets(
 
         if np.isscalar(delta_lambda):
             dfpackets.eval('xindex = floor((@c_ang_s / nu_rf - @lambda_min) / @delta_lambda)', inplace=True)
-            print(dfpackets.xindex)
         else:
             dfpackets['xindex'] = np.digitize(c_ang_s / dfpackets.nu_rf, bins=array_lambdabinedges, right=True) - 1
 
@@ -1335,7 +1334,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
             if args.showabsorption:
                 axis.plot(arraylambda_angstroms, -x.array_flambda_absorption * scalefactor,
                           color=linecolor, linewidth=1, alpha=0.6)
-    else:
+    elif contributions_sorted_reduced:
         if args.showemission:
             stackplot = axis.stackplot(
                 arraylambda_angstroms,
