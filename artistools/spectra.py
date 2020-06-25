@@ -140,10 +140,12 @@ def get_spectrum(
 
 def get_spectrum_at_time(modelpath, timestep, time, args, angle=None, res_specdata=None, modelnumber=None):
     if angle is not None:
-        if args.plotvspecpol:
+        if args.plotvspecpol and os.path.isfile(modelpath/'vpkt.txt'):
             spectrum = get_vspecpol_spectrum(modelpath, time, angle, args)
-        else:
+        elif os.path.isfile(modelpath/'specpol_res.out'):
             spectrum = get_res_spectrum(modelpath, timestep, timestep, angle=angle, res_specdata=res_specdata)
+        else:
+            spectrum = get_spectrum(modelpath, timestep, timestep, modelnumber=modelnumber, args=args)
     else:
         spectrum = get_spectrum(modelpath, timestep, timestep, modelnumber=modelnumber, args=args)
 
@@ -263,6 +265,7 @@ def read_specpol_res(modelpath, angle=None, args=None):
             # print(bin_number)
             res_specdata[start_bin] += res_specdata[bin_number]
         res_specdata[start_bin] /= 10  # every 10th bin is the average of 10 bins
+        print(f'bin number {start_bin} = the average of bins {start_bin} to {start_bin + 9}')
 
     if angle and angle % 10 == 0:
         print(f"Bin number {angle} is the average of 10 angle bins")
@@ -1025,6 +1028,7 @@ def get_reference_spectrum(filename):
             specdata['f_lambda'].values)
 
     if 'z' in metadata:
+        print('Correcting for redshift')
         specdata['lambda_angstroms'] /= (1 + metadata['z'])
 
     return specdata, metadata
@@ -1138,16 +1142,22 @@ def plot_artis_spectrum(
     else:
         spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
                                 reftime=timeavg, args=args)
-        # res_spectrum = get_res_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
-        #                         reftime=timeavg, args=args)
-        if args.plotvspecpol is not None and os.path.isfile(modelpath/'vpkt.txt'):
+        if args.plotviewingangle:  # read specpol res.
+            angles = args.plotviewingangle
+            viewinganglespectra = {}
+            for angle in angles:
+                viewinganglespectra[angle] = get_res_spectrum(modelpath, timestepmin, timestepmax, angle=angle,
+                                                              fnufilterfunc=filterfunc, reftime=timeavg, args=args)
+        elif args.plotvspecpol is not None and os.path.isfile(modelpath/'vpkt.txt'):
+            # read virtual packet files (after running plotartisspectrum --makevspecpol)
             vpkt_data = at.get_vpkt_data(modelpath)
             if args.timemin < vpkt_data['initial_time'] or args.timemax > vpkt_data['final_time']:
                 print(f"Timestep out of range of virtual packets: start time {vpkt_data['initial_time']} days end time {vpkt_data['final_time']} days")
                 quit()
-            vspectrum = {}
-            for angle in args.plotvspecpol:
-                vspectrum[angle] = get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=filterfunc)
+            angles = args.plotvspecpol
+            viewinganglespectra = {}
+            for angle in angles:
+                viewinganglespectra[angle] = get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=filterfunc)
 
     spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
 
@@ -1160,8 +1170,8 @@ def plot_artis_spectrum(
         spectrum['f_lambda_scaled'] = spectrum['f_lambda'] / spectrum['f_lambda'].max() * scale_to_peak
         if args.plotvspecpol is not None:
             for angle in args.plotvspecpol:
-                vspectrum[angle]['f_lambda_scaled'] = (
-                    vspectrum[angle]['f_lambda'] / vspectrum[angle]['f_lambda'].max() * scale_to_peak)
+                viewinganglespectra[angle]['f_lambda_scaled'] = (
+                    viewinganglespectra[angle]['f_lambda'] / viewinganglespectra[angle]['f_lambda'].max() * scale_to_peak)
 
         ycolumnname = 'f_lambda_scaled'
     else:
@@ -1172,14 +1182,14 @@ def plot_artis_spectrum(
 
     for index, axis in enumerate(axes):
         supxmin, supxmax = axis.get_xlim()
-        if args.plotvspecpol is not None and os.path.isfile(modelpath/'vpkt.txt'):
-            for angle in args.plotvspecpol:
+        if (args.plotvspecpol is not None and os.path.isfile(modelpath/'vpkt.txt')) or args.plotviewingangle:
+            for angle in angles:
                 if args.binflux:
                     new_lambda_angstroms = []
                     binned_flux = []
 
-                    wavelengths = vspectrum[angle]['lambda_angstroms']
-                    fluxes = vspectrum[angle][ycolumnname]
+                    wavelengths = viewinganglespectra[angle]['lambda_angstroms']
+                    fluxes = viewinganglespectra[angle][ycolumnname]
                     nbins = 5
 
                     for i in np.arange(0, len(wavelengths - nbins), nbins):
@@ -1191,10 +1201,14 @@ def plot_artis_spectrum(
 
                     plt.plot(new_lambda_angstroms, binned_flux)
                 else:
-                    viewing_angle = round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
-                    vspectrum[angle].query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
+                    if args.plotvspecpol:
+                        viewing_angle = round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
+                        linelabel = fr"$\theta$ = {viewing_angle}$^\circ$" if index == 0 else None
+                    else:
+                        linelabel = f'bin number {angle}'
+                    viewinganglespectra[angle].query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
                         x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
-                        label=fr"$\theta$ = {viewing_angle}$^\circ$" if index == 0 else None)  # {timeavg:.2f} days
+                        label=linelabel)  # {timeavg:.2f} days {at.get_model_name(modelpath)}
         else:
             spectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
                 x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,

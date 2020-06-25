@@ -146,11 +146,12 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
 
 def get_magnitudes(modelpath, args, angle=None, modelnumber=None):
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
-    if args and args.plotvspecpol:
+    if args and args.plotvspecpol and os.path.isfile(modelpath/'vpkt.txt'):
+        print("Found vpkt.txt, using vitual packets")
         stokes_params = at.spectra.get_polarisation(angle, modelpath)
         vspecdata = stokes_params['I']
         timearray = vspecdata.keys()[1:]
-    elif args and args.plotviewingangle:
+    elif args and args.plotviewingangle and os.path.isfile(modelpath/'specpol_res.out'):
         specfilename = os.path.join(modelpath, "specpol_res.out")
         specdataresdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdataresdata.columns.values[1:] if i[-2] != '.']
