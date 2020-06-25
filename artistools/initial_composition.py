@@ -8,6 +8,8 @@ import artistools as at
 import matplotlib.pyplot as plt
 from astropy import units as u
 import matplotlib
+import numpy as np
+import scipy.interpolate
 
 
 def plot_2d_initial_abundances(modelpath, args):
@@ -108,7 +110,6 @@ def plot_most_abundant(modelpath, args):
 
     merge_dfs['max'] = merge_dfs['max'].apply(lambda x: at.get_atomic_number(x[2:]))
     merge_dfs = merge_dfs[merge_dfs['max'] != 1]
-
 
     return merge_dfs
 
