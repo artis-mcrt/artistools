@@ -168,61 +168,65 @@ def get_magnitudes(modelpath, args, angle=None, modelnumber=None):
     if not args.filter:
         args.filter = ['B']
 
-    if args.filter[0] == 'bol':
-        filters_dict['bol'] = [
-            (time, bol_magnitude) for time, bol_magnitude in zip(timearray, bolometric_magnitude(modelpath, timearray, args, angle))
-            if math.isfinite(bol_magnitude)]
+    filters_list = args.filter
+
+    # filters_list = ['B']
+    if angle is not None and os.path.isfile(modelpath/'specpol_res.out'):
+        res_specdata = at.spectra.read_specpol_res(modelpath, angle=angle)
     else:
-        filters_list = args.filter
-        # filters_list = ['B']
+        res_specdata = None
 
-        for filter_name in filters_list:
-            if filter_name not in filters_dict:
-                filters_dict[filter_name] = []
+    for filter_name in filters_list:
+        if filter_name == 'bol':
+            filters_dict['bol'] = [
+                (time, bol_magnitude) for time, bol_magnitude in
+                zip(timearray, bolometric_magnitude(modelpath, timearray, args, angle=angle, res_specdata=res_specdata))
+                if math.isfinite(bol_magnitude)]
+        elif filter_name not in filters_dict:
+            filters_dict[filter_name] = []
 
-        filterdir = os.path.join(at.PYDIR, 'data/filters/')
+    filterdir = os.path.join(at.PYDIR, 'data/filters/')
 
-        if angle is not None:
-            res_specdata = at.spectra.read_specpol_res(modelpath, angle=angle)
-        else:
-            res_specdata = None
+    for filter_name in filters_list:
+        if filter_name == 'bol':
+            continue
+        zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max \
+            = get_filter_data(filterdir, filter_name)
 
-        for filter_name in filters_list:
+        for timestep, time in enumerate(timearray):
+            time = float(time)
+            wavelength_from_spectrum, flux = \
+                get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle,
+                                             res_specdata=res_specdata, modelnumber=modelnumber)
 
-            zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max \
-                = get_filter_data(filterdir, filter_name)
+            if len(wavelength_from_spectrum) > len(wavefilter):
+                interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.)
+                wavefilter = np.linspace(min(wavelength_from_spectrum), int(max(wavelength_from_spectrum)), len(wavelength_from_spectrum))
+                transmission = interpolate_fn(wavefilter)
+            else:
+                interpolate_fn = interp1d(wavelength_from_spectrum, flux, bounds_error=False, fill_value=0.)
+                wavelength_from_spectrum = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
+                flux = interpolate_fn(wavelength_from_spectrum)
 
-            for timestep, time in enumerate(timearray):
-                wavelength_from_spectrum, flux = \
-                    get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle,
-                                                 res_specdata=res_specdata, modelnumber=modelnumber)
+            phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux)
 
-                if len(wavelength_from_spectrum) > len(wavefilter):
-                    interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.)
-                    wavefilter = np.linspace(min(wavelength_from_spectrum), int(max(wavelength_from_spectrum)), len(wavelength_from_spectrum))
-                    transmission = interpolate_fn(wavefilter)
-                else:
-                    interpolate_fn = interp1d(wavelength_from_spectrum, flux, bounds_error=False, fill_value=0.)
-                    wavelength_from_spectrum = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
-                    flux = interpolate_fn(wavelength_from_spectrum)
-
-                phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux)
-
-                if phot_filtobs_sn != 0.0:
-                    phot_filtobs_sn = phot_filtobs_sn - 25  # Absolute magnitude
-                    filters_dict[filter_name].append((timearray[timestep], phot_filtobs_sn))
+            # print(time, phot_filtobs_sn)
+            # if phot_filtobs_sn != 0.0:
+            phot_filtobs_sn = phot_filtobs_sn - 25  # Absolute magnitude
+            filters_dict[filter_name].append((time, phot_filtobs_sn))
 
     return filters_dict
 
 
-def bolometric_magnitude(modelpath, timearray, args, angle=None):
+def bolometric_magnitude(modelpath, timearray, args, angle=None, res_specdata=None):
     magnitudes = []
     for timestep, time in enumerate(timearray):
         if angle is not None:
             if args.plotvspecpol:
                 spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
             else:
-                res_specdata = at.spectra.read_specpol_res(modelpath, angle=angle)
+                if res_specdata is None:
+                    res_specdata = at.spectra.read_specpol_res(modelpath, angle=angle)
                 spectrum = at.spectra.get_res_spectrum(modelpath, timestep, timestep, angle=angle,
                                                        res_specdata=res_specdata)
         else:
