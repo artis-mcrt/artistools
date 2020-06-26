@@ -155,7 +155,8 @@ def get_spectrum_at_time(modelpath, timestep, time, args, angle=None, res_specda
     return spectrum
 
 
-def get_spectrum_from_packets_worker(querystr, qlocals, array_lambda, array_lambdabinedges, use_comovingframe, getpacketcount, packetsfile):
+def get_spectrum_from_packets_worker(querystr, qlocals, array_lambda, array_lambdabinedges, packetsfile,
+                                     use_comovingframe=False, getpacketcount=False, betafactor=None):
     dfpackets = at.packets.readfile(packetsfile, type='TYPE_ESCAPE', escape_type='TYPE_RPKT').query(
         querystr, inplace=False, local_dict=qlocals)
 
@@ -223,7 +224,8 @@ def get_spectrum_from_packets(
         get_spectrum_from_packets_worker, querystr,
         dict(nu_min=nu_min, nu_max=nu_max, timelow=timelow, timehigh=timehigh,
              betafactor=betafactor, c_cgs=c_cgs, c_ang_s=c_ang_s),
-        array_lambda, array_lambdabinedges, use_comovingframe, getpacketcount)
+        array_lambda, array_lambdabinedges, use_comovingframe=use_comovingframe, getpacketcount=getpacketcount,
+        betafactor=betafactor)
     if at.enable_multiprocessing:
         with Pool() as pool:
             results = pool.map(processfile, packetsfiles)
