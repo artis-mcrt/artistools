@@ -12,15 +12,18 @@ import matplotlib.ticker as ticker
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+import multiprocessing
 import numpy as np
 import pandas as pd
 import yaml
 from astropy import constants as const
 from astropy import units as u
+from multiprocessing import Pool
 import re
 
 import artistools as at
 import artistools.radfield
+import artistools.packets
 
 hatches = ['', 'x', '-', '\\', '+', 'O', '.', '', 'x', '*', '\\', '+', 'O', '.']  # ,
 
@@ -152,19 +155,44 @@ def get_spectrum_at_time(modelpath, timestep, time, args, angle=None, res_specda
     return spectrum
 
 
+def get_spectrum_from_packets_worker(querystr, qlocals, array_lambda, array_lambdabinedges, use_comovingframe, getpacketcount, packetsfile):
+    dfpackets = at.packets.readfile(packetsfile, type='TYPE_ESCAPE', escape_type='TYPE_RPKT').query(
+        querystr, inplace=False, local_dict=qlocals)
+
+    print(f"  {packetsfile}: {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges ")
+
+    dfpackets.eval('lambda_rf = @c_ang_s / nu_rf', inplace=True, local_dict=qlocals)
+    wl_bins = pd.cut(
+        x=dfpackets['lambda_rf'], bins=array_lambdabinedges, right=True,
+        labels=range(len(array_lambda)), include_lowest=True)
+
+    if use_comovingframe:
+        array_energysum_onefile = dfpackets.e_cmf.groupby(wl_bins).sum().values / betafactor
+    else:
+        array_energysum_onefile = dfpackets.e_rf.groupby(wl_bins).sum().values
+
+    if getpacketcount:
+        array_pktcount_onefile = dfpackets.lambda_rf.groupby(wl_bins).count().values
+    else:
+        array_pktcount_onefile = None
+
+    return array_energysum_onefile, array_pktcount_onefile
+
+
 def get_spectrum_from_packets(
         modelpath, timelowdays, timehighdays, lambda_min, lambda_max,
         delta_lambda=None, use_comovingframe=None, maxpacketfiles=None, useinternalpackets=False,
         getpacketcount=False):
     """Get a spectrum dataframe using the packets files as input."""
     assert(not useinternalpackets)
-    import artistools.packets
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
 
     if use_comovingframe:
         modeldata, _ = at.get_modeldata(Path(packetsfiles[0]).parent)
         vmax = modeldata.iloc[-1].velocity_outer * u.km / u.s
         betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
+    else:
+        betafactor = None
 
     c_cgs = const.c.to('cm/s').value
     c_ang_s = const.c.to('angstrom/s').value
@@ -191,27 +219,22 @@ def get_spectrum_from_packets(
     else:
         querystr += '@timelow < (escape_time * @betafactor) < @timehigh'
 
-    for index, packetsfile in enumerate(packetsfiles):
-        dfpackets = at.packets.readfile(packetsfile, type='TYPE_ESCAPE', escape_type='TYPE_RPKT').query(
-            querystr, inplace=False)
+    processfile = partial(
+        get_spectrum_from_packets_worker, querystr,
+        dict(nu_min=nu_min, nu_max=nu_max, timelow=timelow, timehigh=timehigh,
+             betafactor=betafactor, c_cgs=c_cgs, c_ang_s=c_ang_s),
+        array_lambda, array_lambdabinedges, use_comovingframe, getpacketcount)
+    if at.enable_multiprocessing:
+        with Pool() as pool:
+            results = pool.map(processfile, packetsfiles)
+            pool.close()
+            pool.join()
+    else:
+        results = [processfile(p) for p in packetsfiles]
 
-        print(f"  {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges")
-
-        dfpackets.eval('lambda_rf = @c_ang_s / nu_rf', inplace=True)
-        wl_bins = pd.cut(
-            x=dfpackets['lambda_rf'], bins=array_lambdabinedges, right=True,
-            labels=range(len(array_lambda)), include_lowest=True)
-
-        if use_comovingframe:
-            array_energysum += dfpackets.e_cmf.groupby(wl_bins).sum().values / betafactor
-        else:
-            array_energysum += dfpackets.e_rf.groupby(wl_bins).sum().values
-            # for xindex, en_sum in dfpackets.e_rf.groupby(wl_bins).sum().iteritems():
-            #     array_energysum[int(xindex)] += en_sum
-            # array_pktcount += dfbinned.count().values
-
-        if getpacketcount:
-            array_pktcount += dfpackets.lambda_rf.groupby(wl_bins).count().values
+    array_energysum = np.ufunc.reduce(np.add, [r[0] for r in results])
+    if getpacketcount:
+        array_pktcount += np.ufunc.reduce(np.add, [r[1] for r in results])
 
     array_flambda = (array_energysum / delta_lambda / (timehigh - timelow) /
                      4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read)
