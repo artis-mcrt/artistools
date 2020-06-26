@@ -173,7 +173,7 @@ def get_spectrum_from_packets(
 
     if delta_lambda:
         array_lambdabinedges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
-        array_lambda = array_lambdabinedges[:-1]  # exclude the right-most boundary value
+        array_lambda = 0.5 * (array_lambdabinedges[:-1] + array_lambdabinedges[1:])  # bin centres
     else:
         array_lambdabinedges, array_lambda, delta_lambda = get_exspec_bins()
 
@@ -711,7 +711,7 @@ def get_flux_contributions_from_packets(
 
     if delta_lambda:
         array_lambdabinedges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
-        array_lambda = array_lambdabinedges[:-1]  # exclude the right-most boundary value
+        array_lambda = 0.5 * (array_lambdabinedges[:-1] + array_lambdabinedges[1:])  # bin centres
     else:
         array_lambdabinedges, array_lambda, delta_lambda = get_exspec_bins()
 
