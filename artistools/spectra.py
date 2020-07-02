@@ -18,7 +18,6 @@ import pandas as pd
 import yaml
 from astropy import constants as const
 from astropy import units as u
-from multiprocessing import Pool
 import re
 
 import artistools as at
@@ -226,8 +225,8 @@ def get_spectrum_from_packets(
              betafactor=betafactor, c_cgs=c_cgs, c_ang_s=c_ang_s),
         array_lambda, array_lambdabinedges, use_comovingframe=use_comovingframe, getpacketcount=getpacketcount,
         betafactor=betafactor)
-    if at.enable_multiprocessing:
-        with Pool() as pool:
+    if at.num_processes > 1:
+        with multiprocessing.Pool(processes=at.num_processes) as pool:
             results = pool.map(processfile, packetsfiles)
             pool.close()
             pool.join()

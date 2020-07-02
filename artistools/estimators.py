@@ -318,8 +318,8 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_value
                               get_ion_values=get_ion_values, get_heatingcooling=get_heatingcooling,
                               printfilename=printfilename)
 
-        if at.enable_multiprocessing:
-            with multiprocessing.get_context("spawn").Pool() as pool:
+        if at.num_processes > 1:
+            with multiprocessing.Pool(processes=at.num_processes) as pool:
                 arr_rankestimators = pool.map(processfile, mpiranklist)
                 pool.close()
                 pool.join()
