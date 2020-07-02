@@ -40,8 +40,8 @@ def get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles
     model, _ = at.get_modeldata(modelpath)
     # vmax = model.iloc[-1].velocity_outer * u.km / u.s
     processfile = partial(get_packets_with_emtype_onefile, emtypecolumn, lineindices)
-    if at.enable_multiprocessing:
-        with multiprocessing.get_context("spawn").Pool() as pool:
+    if at.num_processes > 1:
+        with multiprocessing.Pool(processes=at.num_processes) as pool:
             arr_dfmatchingpackets = pool.map(processfile, packetsfiles)
             pool.close()
             pool.join()
