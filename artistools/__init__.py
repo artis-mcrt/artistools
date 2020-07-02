@@ -35,7 +35,8 @@ if sys.version_info < (3,):
 
 # num_processes = 1
 # num_processes = multiprocessing.cpu_count() - 1
-num_processes = min(1, int(multiprocessing.cpu_count() / 2))
+num_processes = max(1, int(multiprocessing.cpu_count() / 2))
+print(f'Using {num_processes} processes')
 
 enable_diskcache = True
 
