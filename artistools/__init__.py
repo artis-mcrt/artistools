@@ -79,7 +79,8 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
 
-def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savegzipped=False, funcdepends=None):
+def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savegzipped=False,
+              funcdepends=None, checksourcecodehash=False):
     def printopt(*args, **kwargs):
         if not quiet:
             print(*args, **kwargs)
@@ -121,7 +122,7 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
                     with zopen(filename, 'rb') as f:
                         result, sourcehash_strhex_filein = pickle.load(f)
 
-                    if sourcehash_strhex_filein == sourcehash_strhex:
+                    if not checksourcecodehash or (sourcehash_strhex_filein == sourcehash_strhex):
                         execfunc = False
                     else:
                         printopt(f"diskcache: Overwriting '{filename}' (function source code has changed)")
