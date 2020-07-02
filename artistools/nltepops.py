@@ -135,7 +135,7 @@ def read_file(nltefilepath):
     """Read NLTE populations from one file."""
 
     if not nltefilepath.is_file():
-        nltefilepath = nltefilepath + '.gz'
+        nltefilepath = Path(str(nltefilepath) + '.gz')
         print(nltefilepath)
         if not nltefilepath.is_file():
             # if the first file is not found in the folder, then skip the folder
