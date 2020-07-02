@@ -453,7 +453,7 @@ def main(args=None, argsraw=None, **kwargs):
     estimators = at.estimators.read_estimators(modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex)
     estim = estimators[(args.timestep, args.modelgridindex)]
 
-    dfnltepops = at.nltepops.get_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
+    dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
 
     if dfnltepops is None or dfnltepops.empty:
         print(f'ERROR: no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}')
