@@ -288,7 +288,7 @@ def main(args=None, argsraw=None, **kwargs):
         adata = at.get_levels(modelpath, tuple(ionlist), get_transitions=True)
 
     if from_model:
-        dfnltepops = at.nltepops.get_nltepops(modelpath, modelgridindex=modelgridindex, timestep=timestep)
+        dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
 
         if dfnltepops is None or dfnltepops.empty:
             print(f'ERROR: no NLTE populations for cell {modelgridindex} at timestep {timestep}')

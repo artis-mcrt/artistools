@@ -2,6 +2,7 @@
 """Artistools - NLTE population related functions."""
 import argparse
 import math
+import multiprocessing
 import os
 import re
 # import sys
@@ -71,28 +72,6 @@ def texifyconfiguration(levelname):
     return strout
 
 
-@lru_cache(maxsize=32)
-def get_nltepops(modelpath, timestep, modelgridindex):
-    """Read in NLTE populations from a model for a particular timestep and grid cell."""
-    mpirank = at.get_mpirankofcell(modelgridindex, modelpath=modelpath)
-
-    nlte_files = list(chain(Path(modelpath).rglob(f'nlte_{mpirank:04d}.out*')))
-
-    if not nlte_files:
-        print("No NLTE files found.")
-        return False
-    else:
-        print(f'Loading {len(nlte_files)} NLTE files')
-        for nltefilepath in nlte_files:
-            # print(f'Reading {nltefilepath}')
-            dfpop = lru_cache(maxsize=512)(pd.read_csv)(nltefilepath, delim_whitespace=True)
-            dfpop.query('modelgridindex==@modelgridindex and timestep==@timestep', inplace=True)
-            if not dfpop.empty:
-                return dfpop
-
-    return pd.DataFrame()
-
-
 def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxlevel=-1):
     """Add columns to dfpop with LTE populations.
 
@@ -150,55 +129,56 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
     return dfpop
 
 
-@lru_cache(maxsize=8)
-def read_file(nltefilename, modelpath, modelgridindex, timestep, noprint=False):
+@lru_cache(maxsize=512)
+@at.diskcache(savegzipped=True)
+def read_file(nltefilepath):
     """Read NLTE populations from one file."""
-    if modelgridindex > -1 and not noprint:
-        filesize = Path(nltefilename).stat().st_size / 1024 / 1024
-        print(f'Reading {Path(nltefilename).relative_to(modelpath.parent)} ({filesize:.2f} MiB)')
+
+    if not nltefilepath.is_file():
+        nltefilepath = nltefilepath + '.gz'
+        print(nltefilepath)
+        if not nltefilepath.is_file():
+            # if the first file is not found in the folder, then skip the folder
+            print(f'Warning: Could not find {nltefilepath}')
+            return pd.DataFrame()
+
+    filesize = Path(nltefilepath).stat().st_size / 1024 / 1024
+    print(f'Reading {nltefilepath} ({filesize:.2f} MiB)')
 
     try:
-        dfpop = pd.read_csv(nltefilename, delim_whitespace=True)
+        dfpop = pd.read_csv(nltefilepath, delim_whitespace=True)
     except pd.errors.EmptyDataError:
         return pd.DataFrame()
-
-    dfpop.query('timestep==@timestep' + (' and modelgridindex==@modelgridindex' if modelgridindex >= 0 else ''),
-                inplace=True)
 
     return dfpop
 
 
-def read_files(modelpath, timestep, modelgridindex=-1, noprint=False):
+@lru_cache(maxsize=512)
+@at.diskcache(savegzipped=True)
+def read_files(modelpath, timestep=-1, modelgridindex=-1):
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
+
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
 
     dfpop = pd.DataFrame()
-    for folderpath in at.get_runfolders(modelpath, timestep=timestep):
-        nfilesread_thisfolder = 0
-        for mpirank in mpiranklist:
-            nltefilename = f'nlte_{mpirank:04d}.out'
-            nltefilepath = Path(folderpath, nltefilename)
-            if not nltefilepath.is_file():
-                nltefilepath = Path(folderpath, nltefilename + '.gz')
-                if not nltefilepath.is_file():
-                    # if the first file is not found in the folder, then skip the folder
-                    print(f'Warning: Could not find {nltefilepath.relative_to(modelpath.parent)}')
-                    continue
 
-            nfilesread_thisfolder += 1
+    nltefilepaths = [Path(folderpath, f'nlte_{mpirank:04d}.out')
+                     for folderpath in at.get_runfolders(modelpath, timestep=timestep) for mpirank in mpiranklist]
 
-            dfpop_thisfile = read_file(
-                nltefilepath, modelpath, modelgridindex, timestep, noprint).copy()
+    if at.num_processes > 1:
+        with multiprocessing.Pool(processes=at.num_processes) as pool:
+            arr_dfnltepop = pool.map(read_file, nltefilepaths)
+            pool.close()
+            pool.join()
+    else:
+        arr_dfnltepop = [read_file(f) for f in nltefilepaths]
 
-            # found our data!
-            if not dfpop_thisfile.empty:
-                if modelgridindex >= 0:
-                    return dfpop_thisfile
-                else:
-                    if dfpop.empty:
-                        dfpop = dfpop_thisfile
-                    else:
-                        dfpop = dfpop.append(dfpop_thisfile, ignore_index=True)
+    dfpop = pd.concat(arr_dfnltepop).copy()
+    if timestep >= 0:
+        dfpop.query('timestep==@timestep', inplace=True)
+
+    if modelgridindex >= 0:
+        dfpop.query('modelgridindex==@modelgridindex', inplace=True)
 
     return dfpop
 

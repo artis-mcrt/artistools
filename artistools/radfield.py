@@ -313,7 +313,7 @@ def get_recombination_emission(
         for upperlevelnum, upperlevel in lower_ion_data.levels[:200].iterrows():
             upper_level_popfactor_sum += upperlevel.g * math.exp(-upperlevel.energy_ev * EV / KB / T_e)
     else:
-        dfnltepops = at.nltepops.get_nltepops(modelpath, modelgridindex=modelgridindex, timestep=timestep)
+        dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
         dfnltepops_upperion = dfnltepops.query('Z==@atomic_number & ion_stage==@upper_ion_stage')
         upperion_nltepops = {x.level: x['n_NLTE'] for _, x in dfnltepops_upperion.iterrows()}
 
