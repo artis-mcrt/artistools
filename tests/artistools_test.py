@@ -18,11 +18,10 @@ import artistools.radfield
 import artistools.spectra
 import artistools.transitions
 
-modelpath = Path('tests', 'data')
-outputpath = Path('tests', 'output')
+modelpath = Path(os.path.dirname(os.path.abspath(__file__)), 'data')
+outputpath = Path(os.path.dirname(os.path.abspath(__file__)), 'output')
 specfilename = modelpath / 'spec.out'
 at.enable_diskcache = False
-at.enable_multiprocessing = False
 
 
 def test_timestep_times():
@@ -82,13 +81,7 @@ def test_menu():
 def test_nltepops():
     # at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timedays=300),
     #                    **benchargs)
-    at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
-
-
-def test_nltepops_departuremode():
-    # at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timedays=300,
-    #                                                  departuremode=True), **benchargs)
-    at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timedays=300)
+    at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timedays=320)
 
 
 def test_nonthermal():
