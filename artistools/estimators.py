@@ -514,6 +514,56 @@ def plot_average_ionisation_excitation(
         ax.plot(xlist, ylist, label=paramvalue, color=color, **plotkwargs)
 
 
+def plot_levelpop(
+        ax, xlist, seriestype, params, timestepslist, mgilist,
+        estimators, modelpath, dfalldata=None, args=None, **plotkwargs):
+    if seriestype == 'levelpopulation':
+        ax.set_ylabel('Level population density [cm$^{-3}$]')
+    else:
+        raise ValueError()
+
+    for paramvalue in params:
+        print(f'plot_levelpop {paramvalue}')
+        paramsplit = paramvalue.split(' ')
+        atomic_number = at.get_atomic_number(paramsplit[0])
+        ion_stage = at.decode_roman_numeral(paramsplit[1])
+        levelindex = int(paramsplit[2])
+
+        # level index query goes outside for caching granularity reasons
+        dfnltepops = at.nltepops.read_files(
+            modelpath,
+            dfquery=f'Z=={atomic_number:.0f} and ion_stage=={ion_stage:.0f}').query('level==@levelindex')
+
+        ylist = []
+        for modelgridindex, timesteps in zip(mgilist, timestepslist):
+            valuesum = 0
+            tdeltasum = 0
+            print(f'modelgridindex {modelgridindex} timesteps {timesteps}')
+
+            for timestep in timesteps:
+                tdelta = at.get_timestep_time_delta(timestep, modelpath=modelpath)
+
+                levelpop = dfnltepops.query(
+                    'modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number'
+                    ' and ion_stage==@ion_stage and level==@levelindex').iloc[0].n_NLTE
+
+                valuesum += levelpop
+                tdeltasum += tdelta
+
+            ylist.append(valuesum / tdeltasum)
+
+        if dfalldata is not None:
+            elsym = at.elsymbols[atomic_number].lower()
+            colname = f'nnlevel_{elsym}_ionstage{ion_stage}_level{levelindex}'
+            dfalldata[colname] = ylist
+
+        ylist.insert(0, ylist[0])
+
+        xlist, ylist = apply_filters(xlist, ylist, args)
+
+        ax.plot(xlist, ylist, label=paramvalue, **plotkwargs)
+
+
 def plot_multi_ion_series(
         ax, xlist, seriestype, ionlist, timestepslist, mgilist, estimators,
         modelpath, dfalldata=None, args=None, **plotkwargs):
@@ -800,6 +850,9 @@ def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath,
             seriestype, params = plotitem
             if seriestype == 'initabundances':
                 plot_init_abundances(ax, xlist, params, mgilist, modelpath, dfalldata=dfalldata, args=args)
+            elif seriestype == 'levelpopulation':
+                plot_levelpop(
+                    ax, xlist, seriestype, params, timestepslist, mgilist, estimators, modelpath, dfalldata=dfalldata, args=args)
             elif seriestype in ['averageionisation', 'averageexcitation']:
                 plot_average_ionisation_excitation(
                     ax, xlist, seriestype, params, timestepslist, mgilist, estimators, modelpath, dfalldata=dfalldata, args=args)

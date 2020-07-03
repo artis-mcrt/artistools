@@ -80,7 +80,7 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
 
 
 def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savegzipped=False,
-              funcdepends=None, checksourcecodehash=False):
+              funcdepends=None, funcversion=None):
     def printopt(*args, **kwargs):
         if not quiet:
             print(*args, **kwargs)
@@ -120,22 +120,20 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
                     printopt(f"diskcache: Loading '{filename}' ({filesize:.1f} MiB)...")
 
                     with zopen(filename, 'rb') as f:
-                        result, sourcehash_strhex_filein = pickle.load(f)
+                        result, version_filein = pickle.load(f)
 
-                    if not checksourcecodehash or (sourcehash_strhex_filein == sourcehash_strhex):
+                    if version_filein == str_funcversion:
                         execfunc = False
+                    elif (not funcversion) and (not version_filein.startswith('funcversion_')):
+                        execfunc = False
+                    # elif version_filein == sourcehash_strhex:
+                    #     execfunc = False
                     else:
-                        printopt(f"diskcache: Overwriting '{filename}' (function source code has changed)")
+                        printopt(f"diskcache: Overwriting '{filename}' (function version mismatch)")
 
-                except ValueError:
-                    pass
-
-                except EOFError:
-                    printopt(f"diskcache: Overwriting '{filename}' (EOFError)")
-                    pass
-
-                except OSError:
-                    printopt(f"diskcache: Overwriting '{filename}' (OSError)")
+                except Exception as ex:
+                    # ex = sys.exc_info()[0]
+                    printopt(f"diskcache: Overwriting '{filename}' (Error: {ex})")
                     pass
 
             if execfunc:
@@ -167,23 +165,24 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
 
                 fopen, filename = (gzip.open, filename_gz) if savegzipped else (open, filename_nogz)
                 with fopen(filename, 'wb') as f:
-                    pickle.dump((result, sourcehash_strhex), f, protocol=pickle.HIGHEST_PROTOCOL)
+                    pickle.dump((result, str_funcversion), f, protocol=pickle.HIGHEST_PROTOCOL)
 
                 filesize = Path(filename).stat().st_size / 1024 / 1024
                 printopt(f"diskcache: Saved '{filename}' ({filesize:.1f} MiB, functime {functime:.1f}s)")
 
             return result
 
-        sourcehash = hashlib.sha1()
-        sourcehash.update(inspect.getsource(func).encode('utf-8'))
-        if funcdepends:
-            try:
-                for f in funcdepends:
-                    sourcehash.update(inspect.getsource(f).encode('utf-8'))
-            except TypeError:
-                sourcehash.update(inspect.getsource(funcdepends).encode('utf-8'))
-
-        sourcehash_strhex = sourcehash.hexdigest()
+        # sourcehash = hashlib.sha1()
+        # sourcehash.update(inspect.getsource(func).encode('utf-8'))
+        # if funcdepends:
+        #     try:
+        #         for f in funcdepends:
+        #             sourcehash.update(inspect.getsource(f).encode('utf-8'))
+        #     except TypeError:
+        #         sourcehash.update(inspect.getsource(funcdepends).encode('utf-8'))
+        #
+        # sourcehash_strhex = sourcehash.hexdigest()
+        str_funcversion = f'funcversion_{funcversion}' if funcversion else f'funcversion_none'
 
         return wrapper if enable_diskcache else func
 
@@ -643,6 +642,7 @@ def get_timestep_time(modelpath, timestep):
     return -1
 
 
+@lru_cache(maxsize=256)
 def get_timestep_time_delta(timestep, timearray=None, inputparams=None, modelpath=None):
     """Return the time in days between timestep and timestep + 1."""
     if inputparams is not None or modelpath is not None:
