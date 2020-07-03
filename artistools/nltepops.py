@@ -7,6 +7,7 @@ import os
 import re
 # import sys
 from functools import lru_cache
+from functools import partial
 from pathlib import Path
 from itertools import chain
 
@@ -129,7 +130,6 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
     return dfpop
 
 
-@lru_cache(maxsize=512)
 @at.diskcache(savegzipped=True)
 def read_file(nltefilepath):
     """Read NLTE populations from one file."""
@@ -153,9 +153,18 @@ def read_file(nltefilepath):
     return dfpop
 
 
-@lru_cache(maxsize=512)
-@at.diskcache(savegzipped=True)
-def read_files(modelpath, timestep=-1, modelgridindex=-1):
+def read_file_filtered(nltefilepath, strquery=None, dfqueryvars=None):
+    dfpopfile = read_file(nltefilepath)
+
+    if strquery:
+        dfpopfile.query(strquery, local_dict=dfqueryvars, inplace=True)
+
+    return dfpopfile
+
+
+@lru_cache(maxsize=2)
+@at.diskcache(savegzipped=True, funcversion="2020-07-03.1327", saveonly=False)
+def read_files(modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryvars={}):
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
@@ -165,20 +174,33 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
     nltefilepaths = [Path(folderpath, f'nlte_{mpirank:04d}.out')
                      for folderpath in at.get_runfolders(modelpath, timestep=timestep) for mpirank in mpiranklist]
 
+    dfqueryvars['modelgridindex'] = modelgridindex
+    dfqueryvars['timestep'] = timestep
+
+    if timestep >= 0:
+        dfquery_full = 'timestep==@timestep'
+    elif modelgridindex >= 0:
+        if dfquery_full:
+            dfquery_full += ' and '
+        dfquery_full += 'modelgridindex==@modelgridindex'
+    else:
+        dfquery_full = ''
+
+    if dfquery:
+        if dfquery_full:
+            dfquery_full = f'({dfquery_full}) and '
+        dfquery_full += f'({dfquery})'
+
     if at.num_processes > 1:
         with multiprocessing.Pool(processes=at.num_processes) as pool:
-            arr_dfnltepop = pool.map(read_file, nltefilepaths)
+            arr_dfnltepop = pool.map(partial(read_file_filtered, strquery=dfquery, dfqueryvars=dfqueryvars),
+                                     nltefilepaths)
             pool.close()
             pool.join()
     else:
-        arr_dfnltepop = [read_file(f) for f in nltefilepaths]
+        arr_dfnltepop = [read_file_filtered(f, strquery=dfquery, dfqueryvars=dfqueryvars) for f in nltefilepaths]
 
     dfpop = pd.concat(arr_dfnltepop).copy()
-    if timestep >= 0:
-        dfpop.query('timestep==@timestep', inplace=True)
-
-    if modelgridindex >= 0:
-        dfpop.query('modelgridindex==@modelgridindex', inplace=True)
 
     return dfpop
 
