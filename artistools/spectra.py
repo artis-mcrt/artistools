@@ -804,8 +804,13 @@ def get_flux_contributions_from_packets(
 
         if np.isscalar(delta_lambda):
             dfpackets.eval('xindex = floor((@c_ang_s / nu_rf - @lambda_min) / @delta_lambda)', inplace=True)
+            if getabsorption:
+                dfpackets.eval('xindexabsorbed = floor((@c_ang_s / absorption_freq - @lambda_min) / @delta_lambda)', inplace=True)
         else:
             dfpackets['xindex'] = np.digitize(c_ang_s / dfpackets.nu_rf, bins=array_lambdabinedges, right=True) - 1
+            if getabsorption:
+                dfpackets['xindexabsorbed'] = np.digitize(
+                    c_ang_s / dfpackets.absorption_freq, bins=array_lambdabinedges, right=True) - 1
 
         for _, packet in dfpackets.iterrows():
             lambda_rf = c_ang_s / packet.nu_rf
@@ -834,9 +839,8 @@ def get_flux_contributions_from_packets(
                 if abstype > 0:
                     absprocesskey = get_absprocesslabel(abstype)
 
-                    lambda_abs = c_ang_s / packet.absorption_freq
-                    xindexabsorbed = math.floor((lambda_abs - lambda_min) / delta_lambda)
-                    # xindexabsorbed = xindex
+                    xindexabsorbed = int(packet.xindexabsorbed)  # bin by absorption wavelength
+                    # xindexabsorbed = xindex  # bin by final escaped wavelength
 
                     if absprocesskey not in array_energysum_spectra:
                         array_energysum_spectra[absprocesskey] = (
