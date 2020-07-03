@@ -674,7 +674,7 @@ def get_flux_contributions(
 def get_flux_contributions_from_packets(
         modelpath, timelowerdays, timeupperdays, lambda_min, lambda_max, delta_lambda=None,
         getemission=True, getabsorption=True, maxpacketfiles=None, filterfunc=None, groupby='ion', modelgridindex=None,
-        use_comovingframe=False, use_lastemissiontype=False, useinternalpackets=False):
+        use_comovingframe=False, use_lastemissiontype=False, useinternalpackets=False, emissionvelocitycut=None):
 
     assert groupby in [None, 'ion', 'line', 'upperterm', 'terms']
 
@@ -801,6 +801,12 @@ def get_flux_contributions_from_packets(
                  '@timelow < escape_time * @betafactor < @timehigh'),
                 inplace=True)
             print(f"  {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges")
+
+            if emissionvelocitycut:
+                dfpackets = at.packets.add_derived_columns(
+                    dfpackets, modelpath, ['emission_velocity'])
+
+                dfpackets.query('(emission_velocity / 1e5) > @emissionvelocitycut', inplace=True)
 
         if np.isscalar(delta_lambda):
             dfpackets.eval('xindex = floor((@c_ang_s / nu_rf - @lambda_min) / @delta_lambda)', inplace=True)
@@ -1334,7 +1340,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
             getemission=args.showemission, getabsorption=args.showabsorption,
             maxpacketfiles=args.maxpacketfiles, filterfunc=filterfunc,
             groupby=args.groupby, delta_lambda=args.deltalambda, use_lastemissiontype=args.use_lastemissiontype,
-            useinternalpackets=args.internalpackets)
+            useinternalpackets=args.internalpackets, emissionvelocitycut=args.emissionvelocitycut)
     else:
         arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
         assert(args.groupby in [None, 'ion'])
@@ -1774,6 +1780,10 @@ def addargs(parser):
     parser.add_argument('--showabsorption', action='store_true',
                         help='Plot the absorption spectra by ion/process')
 
+    parser.add_argument('--emissionvelocitycut', type=float,
+                        help=('Only show contributions to emission plots where emission velocity '
+                              'is greater than some velocity (km/s) eg. --emissionvelocitycut 15000'))
+
     parser.add_argument('--internalpackets', action='store_true',
                         help='Use non-escaped packets')
 
@@ -1976,6 +1986,9 @@ def main(args=None, argsraw=None, **kwargs):
 
     args.color, args.label, args.linestyle, args.dashes, args.linewidth = at.trim_or_pad(
         len(args.specpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth)
+
+    if args.emissionvelocitycut:
+        args.frompackets = True
 
     if args.makevspecpol:
         make_virtual_spectra_summed_file(args.modelpath[0])
