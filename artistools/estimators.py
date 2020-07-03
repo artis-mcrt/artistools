@@ -522,6 +522,7 @@ def plot_levelpop(
     else:
         raise ValueError()
 
+    tdeltadict = {}
     for paramvalue in params:
         print(f'plot_levelpop {paramvalue}')
         paramsplit = paramvalue.split(' ')
@@ -541,14 +542,15 @@ def plot_levelpop(
             print(f'modelgridindex {modelgridindex} timesteps {timesteps}')
 
             for timestep in timesteps:
-                tdelta = at.get_timestep_time_delta(timestep, modelpath=modelpath)
+                if timestep not in tdeltadict:
+                    tdeltadict[timestep] = at.get_timestep_time_delta(timestep, modelpath=modelpath)
 
                 levelpop = dfnltepops.query(
                     'modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number'
                     ' and ion_stage==@ion_stage and level==@levelindex').iloc[0].n_NLTE
 
                 valuesum += levelpop
-                tdeltasum += tdelta
+                tdeltasum += tdeltadict[timestep]
 
             ylist.append(valuesum / tdeltasum)
 

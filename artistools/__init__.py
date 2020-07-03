@@ -642,7 +642,6 @@ def get_timestep_time(modelpath, timestep):
     return -1
 
 
-@lru_cache(maxsize=256)
 def get_timestep_time_delta(timestep, timearray=None, inputparams=None, modelpath=None):
     """Return the time in days between timestep and timestep + 1."""
     if inputparams is not None or modelpath is not None:

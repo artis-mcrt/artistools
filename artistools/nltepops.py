@@ -177,14 +177,14 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryv
     dfqueryvars['modelgridindex'] = modelgridindex
     dfqueryvars['timestep'] = timestep
 
+    dfquery_full = ''
     if timestep >= 0:
         dfquery_full = 'timestep==@timestep'
-    elif modelgridindex >= 0:
+
+    if modelgridindex >= 0:
         if dfquery_full:
             dfquery_full += ' and '
         dfquery_full += 'modelgridindex==@modelgridindex'
-    else:
-        dfquery_full = ''
 
     if dfquery:
         if dfquery_full:
@@ -193,12 +193,12 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryv
 
     if at.num_processes > 1:
         with multiprocessing.Pool(processes=at.num_processes) as pool:
-            arr_dfnltepop = pool.map(partial(read_file_filtered, strquery=dfquery, dfqueryvars=dfqueryvars),
+            arr_dfnltepop = pool.map(partial(read_file_filtered, strquery=dfquery_full, dfqueryvars=dfqueryvars),
                                      nltefilepaths)
             pool.close()
             pool.join()
     else:
-        arr_dfnltepop = [read_file_filtered(f, strquery=dfquery, dfqueryvars=dfqueryvars) for f in nltefilepaths]
+        arr_dfnltepop = [read_file_filtered(f, strquery=dfquery_full, dfqueryvars=dfqueryvars) for f in nltefilepaths]
 
     dfpop = pd.concat(arr_dfnltepop).copy()
 
@@ -428,7 +428,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
     time_days = float(at.get_timestep_time(modelpath, timestep))
     modelname = at.get_model_name(modelpath)
 
-    dfpop = read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0])
+    dfpop = read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0]).copy()
 
     if dfpop.empty:
         print(f'No NLTE population data for modelgrid cell {mgilist[0]} timestep {timestep}')
@@ -484,7 +484,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
             T_e = args.exc_temperature
             T_R = args.exc_temperature
 
-        dfpop = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
+        dfpop = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex).copy()
 
         if dfpop.empty:
             print(f'No NLTE population data for modelgrid cell {modelgridindex} timestep {timestep}')
