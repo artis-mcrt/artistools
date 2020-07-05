@@ -1,5 +1,9 @@
 language: python
-python: 3.6
+arch:
+  - amd64
+  - arm64
+os: linux
+python: 3.8
 
 cache: pip
 
