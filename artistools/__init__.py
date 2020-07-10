@@ -554,11 +554,13 @@ def get_timestep_of_timedays(modelpath, timedays):
         timedays_float = float(timedays)
 
     arr_tstart = get_timestep_times_float(modelpath, loc='start')
+    arr_tend = get_timestep_times_float(modelpath, loc='end')
 
-    for ts, tstart in enumerate(arr_tstart):
-        if tstart > timedays_float:
+    for ts, (tstart, tend) in enumerate(zip(arr_tstart, arr_tend)):
+        if timedays_float > tstart and timedays_float < tend:
             return ts
 
+    raise ValueError(f"Could not find timestep bracketing time {timedays_float}")
     assert(False)
     return
 
