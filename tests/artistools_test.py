@@ -81,11 +81,11 @@ def test_menu():
 def test_nltepops():
     # at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timedays=300),
     #                    **benchargs)
-    at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timedays=320)
+    at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timestep=40)
 
 
 def test_nonthermal():
-    at.nonthermal.main(modelpath=modelpath, outputfile=outputpath, timedays=320)
+    at.nonthermal.main(modelpath=modelpath, outputfile=outputpath, timestep=70)
 
 
 def test_radfield():
