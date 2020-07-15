@@ -323,6 +323,7 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_value
                 arr_rankestimators = pool.map(processfile, mpiranklist)
                 pool.close()
                 pool.join()
+                pool.terminate()
         else:
             arr_rankestimators = [processfile(rank) for rank in mpiranklist]
 

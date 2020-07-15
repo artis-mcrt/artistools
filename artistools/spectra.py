@@ -230,6 +230,7 @@ def get_spectrum_from_packets(
             results = pool.map(processfile, packetsfiles)
             pool.close()
             pool.join()
+            pool.terminate()
     else:
         results = [processfile(p) for p in packetsfiles]
 

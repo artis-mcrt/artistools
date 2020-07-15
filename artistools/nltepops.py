@@ -197,6 +197,7 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryv
                                      nltefilepaths)
             pool.close()
             pool.join()
+            pool.terminate()
     else:
         arr_dfnltepop = [read_file_filtered(f, strquery=dfquery_full, dfqueryvars=dfqueryvars) for f in nltefilepaths]
 

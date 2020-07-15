@@ -45,6 +45,7 @@ def get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles
             arr_dfmatchingpackets = pool.map(processfile, packetsfiles)
             pool.close()
             pool.join()
+            pool.terminate()
     else:
         arr_dfmatchingpackets = [processfile(f) for f in packetsfiles]
 
@@ -223,8 +224,9 @@ def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, t
     estimators = at.estimators.read_estimators(modelpath, get_ion_values=False, get_heatingcooling=False)
 
     modeldata, _ = at.get_modeldata(modelpath)
+    ts = at.get_timestep_of_timedays(modelpath, tend)
     allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
-                          if not estimators[(0, modelgridindex)]['emptycell']]
+                          if not estimators[(ts, modelgridindex)]['emptycell']]
 
     # model_tmids = at.get_timestep_times_float(modelpath, loc='mid')
     # arr_velocity_mid = tuple(list([(float(v1) + float(v2)) * 0.5 for v1, v2 in zip(
@@ -258,13 +260,13 @@ def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, t
     if not dfpackets_selected.empty:
         def em_lognne(packet):
             # return interp_log10nne[packet.em_timestep](packet.true_emission_velocity)
-            return math.log10(estimators[(packet['em_timestep'], packet[em_mgicolumn])]['nne'])
+            return math.log10(estimators[(int(packet['em_timestep']), int(packet[em_mgicolumn]))]['nne'])
 
         dfpackets_selected['em_log10nne'] = dfpackets_selected.apply(em_lognne, axis=1)
 
         def em_Te(packet):
             # return interp_te[packet.em_timestep](packet.true_emission_velocity)
-            return estimators[(packet['em_timestep'], packet[em_mgicolumn])]['Te']
+            return estimators[(int(packet['em_timestep']), int(packet[em_mgicolumn]))]['Te']
 
         dfpackets_selected['em_Te'] = dfpackets_selected.apply(em_Te, axis=1)
 
