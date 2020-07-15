@@ -51,6 +51,7 @@ commandlist = {
     'makeartismodel1dslicefromcone': ('artistools.makemodel.1dslicefromconein3dmodel', 'main'),
     'makeartismodelbotyanski2017': ('artistools.makemodel.botyanski2017', 'main'),
     'makeartismodelfromshen2018': ('artistools.makemodel.shen2018', 'main'),
+    'makeartismodelfromlapuente': ('artistools.makemodel.lapuente', 'main'),
     'makeartismodelscalevelocity': ('artistools.makemodel.scalevelocity', 'main'),
     'makeartismodelfullymixed': ('artistools.makemodel.fullymixed', 'main'),
     'plotartisdeposition': ('artistools.deposition', 'main'),
