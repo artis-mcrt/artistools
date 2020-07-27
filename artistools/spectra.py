@@ -1452,8 +1452,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
     #               horizontalalignment='right', verticalalignment='bottom', fontsize=7)
 
     ymax = max(ymaxrefall, scalefactor * max_flambda_emission_total * 1.2)
-    if not args.hidenetspectrum:
-        axis.set_ylim(top=ymax)
+    axis.set_ylim(top=ymax)
 
     if scale_to_peak:
         axis.set_ylabel(r'Scaled F$_\lambda$')
