@@ -261,15 +261,8 @@ def read_estimators_from_file(modelpath, folderpath, arr_velocity_outer, mpirank
         filesize = Path(estfilepath).stat().st_size / 1024 / 1024
         print(f'Reading {estfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)')
 
-    first_ts_after_restart = True
     for fileblock_timestep, fileblock_modelgridindex, file_estimblock in parse_estimfile(
             estfilepath, modelpath, get_ion_values=get_ion_values, get_heatingcooling=get_heatingcooling):
-
-        if fileblock_timestep == 0:
-            first_ts_after_restart = False
-        if first_ts_after_restart:
-            first_ts_after_restart = False
-            continue
 
         file_estimblock['velocity_outer'] = arr_velocity_outer[fileblock_modelgridindex]
         file_estimblock['velocity'] = file_estimblock['velocity_outer']
@@ -327,7 +320,17 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_value
         else:
             arr_rankestimators = [processfile(rank) for rank in mpiranklist]
 
-        for estimators_thisfile in arr_rankestimators:
+        for mpirank, estimators_thisfile in zip(mpiranklist, arr_rankestimators):
+            dupekeys = list(sorted([k for k in estimators_thisfile if k in estimators]))
+            for k in dupekeys:
+                # dropping the lowest timestep is normal for restarts. Only warn about other cases
+                if k[0] != dupekeys[0][0]:
+                    filepath = Path(folderpath, f'estimators_{mpirank:04d}.out')
+                    print('WARNING: Duplicate estimator block for (timestep, mgi) key {k}. '
+                          'Dropping block from {filepath}')
+
+                del estimators_thisfile[k]
+
             estimators.update(estimators_thisfile)
 
     return estimators
