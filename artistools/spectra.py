@@ -812,7 +812,8 @@ def get_flux_contributions_from_packets(
         if np.isscalar(delta_lambda):
             dfpackets.eval('xindex = floor((@c_ang_s / nu_rf - @lambda_min) / @delta_lambda)', inplace=True)
             if getabsorption:
-                dfpackets.eval('xindexabsorbed = floor((@c_ang_s / absorption_freq - @lambda_min) / @delta_lambda)', inplace=True)
+                dfpackets.eval('xindexabsorbed = floor((@c_ang_s / absorption_freq - @lambda_min) / @delta_lambda)',
+                               inplace=True)
         else:
             dfpackets['xindex'] = np.digitize(c_ang_s / dfpackets.nu_rf, bins=array_lambdabinedges, right=True) - 1
             if getabsorption:
@@ -893,7 +894,8 @@ def get_flux_contributions_from_packets(
 
 
 def sort_and_reduce_flux_contribution_list(
-        contribution_list_in, maxseriescount, arraylambda_angstroms, fixedionlist=None, hideother=False, greyscale=False):
+        contribution_list_in, maxseriescount, arraylambda_angstroms,
+        fixedionlist=None, hideother=False, greyscale=False):
 
     if fixedionlist:
         # sort in manual order
@@ -1218,7 +1220,8 @@ def plot_artis_spectrum(
         if args.plotvspecpol is not None:
             for angle in args.plotvspecpol:
                 viewinganglespectra[angle]['f_lambda_scaled'] = (
-                    viewinganglespectra[angle]['f_lambda'] / viewinganglespectra[angle]['f_lambda'].max() * scale_to_peak)
+                    viewinganglespectra[angle]['f_lambda'] / viewinganglespectra[angle]['f_lambda'].max() *
+                    scale_to_peak)
 
         ycolumnname = 'f_lambda_scaled'
     else:
@@ -1253,9 +1256,10 @@ def plot_artis_spectrum(
                         linelabel = fr"$\theta$ = {viewing_angle}$^\circ$" if index == 0 else None
                     else:
                         linelabel = f'bin number {angle}'
-                    viewinganglespectra[angle].query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
-                        x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
-                        label=linelabel)  # {timeavg:.2f} days {at.get_model_name(modelpath)}
+                    viewinganglespectra[angle].query(
+                        '@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
+                            x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
+                            label=linelabel)  # {timeavg:.2f} days {at.get_model_name(modelpath)}
         else:
             spectrum.query('@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax').plot(
                 x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
@@ -1544,7 +1548,6 @@ def make_contrib_plot(axes, modelpath, densityplotyvars, args):
         # ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.BuGn_r)
 
 
-
 def make_plot(args):
     # font = {'size': 16}
     # mpl.rc('font', **font)
@@ -1669,6 +1672,7 @@ def make_plot(args):
     filenameout = str(args.outputfile).format(time_days_min=args.timemin, time_days_max=args.timemax)
     # plt.text(6000, (args.ymax * 0.9), f'{round(args.timemin) + 1} days', fontsize='large')
     if args.write_data:
+        print(dfalldata)
         datafilenameout = Path(filenameout).with_suffix('.txt')
         dfalldata.to_csv(datafilenameout)
         print(f'Saved {datafilenameout}')
@@ -1689,10 +1693,7 @@ def write_flambda_spectra(modelpath, args):
     Writes lambda_angstroms and f_lambda to .txt files for all timesteps and create
     a text file containing the time in days for each timestep.
     """
-    outdirectory = Path(modelpath, 'spectrum_data')
-
-    # if not outdirectory.is_dir():
-    #     outdirectory.mkdir()
+    outdirectory = Path(modelpath, 'spectra')
 
     outdirectory.mkdir(parents=True, exist_ok=True)
 
@@ -1716,16 +1717,23 @@ def write_flambda_spectra(modelpath, args):
 
     with open(outdirectory / 'spectra_list.txt', 'w+') as spectra_list:
 
+        arr_tmid = at.get_timestep_times_float(modelpath, loc='mid')
+
         for timestep in range(timestepmin, timestepmax + 1):
 
-            spectrum = get_spectrum(modelpath, timestep, timestep)
+            dfspectrum = get_spectrum(modelpath, timestep, timestep)
+            tmid = arr_tmid[timestep]
 
-            with open(outdirectory / f'spec_data_ts_{timestep}.txt', 'w+') as spec_file:
+            outfilepath = outdirectory / f'spectrum_ts{timestep:02.0f}_{tmid:.0f}d.txt'
 
-                for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
-                    spec_file.write(f'{wavelength} {flambda}\n')
+            with open(outfilepath, 'w') as spec_file:
 
-            spectra_list.write(str(Path(outdirectory, f'spec_data_ts_{timestep}.txt').absolute()) + '\n')
+                spec_file.write(f'#lambda f_lambda_1Mpc\n')
+                spec_file.write(f'#[A] [erg/s/cm2/A]\n')
+
+                dfspectrum.to_csv(spec_file, header=False, sep=' ', index=False, columns=["lambda_angstroms", "f_lambda"])
+
+            spectra_list.write(str(outfilepath.absolute()) + '\n')
 
     with open(outdirectory / 'time_list.txt', 'w+') as time_list:
         for time in timearray:
