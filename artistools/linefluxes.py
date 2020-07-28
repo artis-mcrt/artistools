@@ -25,12 +25,9 @@ import artistools.packets
 def get_packets_with_emtype_onefile(emtypecolumn, lineindices, packetsfile):
     dfpackets = at.packets.readfile(packetsfile, type='TYPE_ESCAPE', escape_type='TYPE_RPKT')
 
-    dfpackets_selected = dfpackets.query(f'{emtypecolumn} in @lineindices', inplace=False)
-
-    return dfpackets_selected
+    return dfpackets.query(f'{emtypecolumn} in @lineindices', inplace=False).copy()
 
 
-@lru_cache(maxsize=16)
 @at.diskcache(savegzipped=True)
 def get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles=None):
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
@@ -41,11 +38,12 @@ def get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles
     # vmax = model.iloc[-1].velocity_outer * u.km / u.s
     processfile = partial(get_packets_with_emtype_onefile, emtypecolumn, lineindices)
     if at.num_processes > 1:
+        print(f"Reading packets files with {at.num_processes} processes")
         with multiprocessing.Pool(processes=at.num_processes) as pool:
             arr_dfmatchingpackets = pool.map(processfile, packetsfiles)
             pool.close()
             pool.join()
-            pool.terminate()
+            # pool.terminate()
     else:
         arr_dfmatchingpackets = [processfile(f) for f in packetsfiles]
 
@@ -178,18 +176,27 @@ def make_flux_ratio_plot(args):
 
         print(dflcdata)
 
-        axis.plot(dflcdata.time, dflcdata['fratio'], label=modellabel, marker='s', color=modelcolor)
+        axis.plot(dflcdata.time, dflcdata['fratio'], label=modellabel, marker='s', lw=0, color=modelcolor, alpha=0.7)
 
         tmin = dflcdata.time.min()
         tmax = dflcdata.time.max()
 
     if args.emfeaturesearch[0][:3] == (26, 2, 7155) and args.emfeaturesearch[1][:3] == (26, 2, 12570):
         axis.set_ylim(ymin=0.05)
-        axis.set_ylim(ymax=4.2)
+        axis.set_ylim(ymax=10)
         arr_tdays = np.linspace(tmin, tmax, 3)
         arr_floersfit = [10 ** (0.0043 * timedays - 1.65) for timedays in arr_tdays]
         for ax in axes:
             ax.plot(arr_tdays, arr_floersfit, color='black', label='Floers et al. (2019) best fit', lw=2.)
+
+        femis = pd.read_csv("/Users/luke/Library/Mobile Documents/com~apple~CloudDocs/Papers (first-author)/2020 Artis ionisation/generateplots/floers_model_NIR_VIS_ratio.csv")
+
+        timecolumns = femis.columns[1:]
+        xlist = [float(x) for x in timecolumns]
+        for index, row in femis.iloc[:5].iterrows():
+            ylist = [row[x] for x in timecolumns]
+            color = args.color[index] if index < len(args.color) else None
+            ax.plot(xlist, ylist, color=color, label='Floers_' + row['model'], marker='x', lw=0, alpha=1.0)
 
     m18_tdays = np.array([206, 229, 303, 339])
     m18_pew = {}
@@ -205,7 +212,7 @@ def make_flux_ratio_plot(args):
     for ax in axes:
         ax.set_xlabel(r'Time [days]')
         ax.tick_params(which='both', direction='in')
-        ax.legend(loc='upper right', frameon=False, handlelength=1, ncol=2, numpoints=1)
+        ax.legend(loc='upper right', frameon=False, handlelength=1, ncol=2, numpoints=1, prop={'size': 9})
 
     defaultoutputfile = 'linefluxes.pdf'
     if not args.outputfile:
@@ -332,8 +339,8 @@ def make_emitting_regions_plot(args):
     # font = {'size': 16}
     # matplotlib.rc('font', **font)
     # 'floers_te_nne.json',
-    refdatafilenames = ['floers_te_nne_Bautista.json', 'floers_te_nne_CMFGEN.json', 'floers_te_nne_Smyth.json']
-    refdatalabels = ['Floers et al. (2019) Bautista', 'Floers CMFGEN', 'Floers Smyth']
+    refdatafilenames = ['floers_te_nne_Bautista.json', ]  #, 'floers_te_nne_CMFGEN.json', 'floers_te_nne_Smyth.json']
+    refdatalabels = ['Floers et al. (2019) Bautista', ] #, 'Floers CMFGEN', 'Floers Smyth']
     refdatacolors = ['0.0', 'C1', 'C2', 'C4']
     refdatakeys = [None for _ in refdatafilenames]
     refdatatimes = [None for _ in refdatafilenames]
