@@ -1731,7 +1731,8 @@ def write_flambda_spectra(modelpath, args):
                 spec_file.write(f'#lambda f_lambda_1Mpc\n')
                 spec_file.write(f'#[A] [erg/s/cm2/A]\n')
 
-                dfspectrum.to_csv(spec_file, header=False, sep=' ', index=False, columns=["lambda_angstroms", "f_lambda"])
+                dfspectrum.to_csv(spec_file, header=False, sep=' ', index=False,
+                                  columns=["lambda_angstroms", "f_lambda"])
 
             spectra_list.write(str(outfilepath.absolute()) + '\n')
 
