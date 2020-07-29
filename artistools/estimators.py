@@ -555,7 +555,7 @@ def plot_levelpop(
                     'modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number'
                     ' and ion_stage==@ion_stage and level==@levelindex').iloc[0].n_NLTE
 
-                valuesum += levelpop
+                valuesum += levelpop * tdeltadict[timestep]
                 tdeltasum += tdeltadict[timestep]
 
             ylist.append(valuesum / tdeltasum)
