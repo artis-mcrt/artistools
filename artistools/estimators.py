@@ -545,7 +545,7 @@ def plot_levelpop(
         for modelgridindex, timesteps in zip(mgilist, timestepslist):
             valuesum = 0
             tdeltasum = 0
-            print(f'modelgridindex {modelgridindex} timesteps {timesteps}')
+            # print(f'modelgridindex {modelgridindex} timesteps {timesteps}')
 
             for timestep in timesteps:
                 if timestep not in tdeltadict:
