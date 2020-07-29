@@ -461,7 +461,9 @@ def get_averageexcitation(modelpath, modelgridindex, timestep, atomic_number, io
             superlevelrow = dfnltepops_ion[dfnltepops_ion.level < 0].iloc[0]
             levelnumber_sl = dfnltepops_ion.level.max() + 1
 
-            energy_boltzfac_sum = ionlevels.iloc[levelnumber_sl:].eval('energy_ev * g * exp(- energy_ev / @k_b / @T_exc)').sum()
+            energy_boltzfac_sum = ionlevels.iloc[levelnumber_sl:].eval(
+                'energy_ev * g * exp(- energy_ev / @k_b / @T_exc)').sum()
+
             boltzfac_sum = ionlevels.iloc[levelnumber_sl:].eval('g * exp(- energy_ev / @k_b / @T_exc)').sum()
             # adjust to the actual superlevel population from ARTIS
             energypopsum += energy_boltzfac_sum * superlevelrow.n_NLTE / boltzfac_sum
@@ -854,20 +856,29 @@ def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath,
         else:  # it's a sequence of values
             showlegend = True
             seriestype, params = plotitem
+
             if seriestype == 'initabundances':
                 plot_init_abundances(ax, xlist, params, mgilist, modelpath, dfalldata=dfalldata, args=args)
+
             elif seriestype == 'levelpopulation':
                 plot_levelpop(
-                    ax, xlist, seriestype, params, timestepslist, mgilist, estimators, modelpath, dfalldata=dfalldata, args=args)
+                    ax, xlist, seriestype, params, timestepslist, mgilist, estimators, modelpath,
+                    dfalldata=dfalldata, args=args)
+
             elif seriestype in ['averageionisation', 'averageexcitation']:
                 plot_average_ionisation_excitation(
-                    ax, xlist, seriestype, params, timestepslist, mgilist, estimators, modelpath, dfalldata=dfalldata, args=args)
+                    ax, xlist, seriestype, params, timestepslist, mgilist, estimators, modelpath,
+                    dfalldata=dfalldata, args=args)
+
             elif seriestype == '_ymin':
                 ax.set_ylim(bottom=params)
+
             elif seriestype == '_ymax':
                 ax.set_ylim(top=params)
+
             elif seriestype == '_yscale':
                 ax.set_yscale(params)
+
             else:
                 seriestype, ionlist = plotitem
                 plot_multi_ion_series(ax, xlist, seriestype, ionlist, timestepslist, mgilist, estimators,
