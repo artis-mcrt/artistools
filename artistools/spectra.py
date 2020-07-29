@@ -1050,7 +1050,8 @@ def get_reference_spectrum(filename):
     # plt.plot(specdata['lambda_angstroms'], specdata['f_lambda'])
     # plt.plot(new_lambda_angstroms, binned_flux)
     #
-    # # filtered_specdata.to_csv('/Users/ccollins/artis_nebular/artistools/artistools/data/refspectra/' + name, index=False, header=False, sep=' ')
+    # filtered_specdata.to_csv('/Users/ccollins/artis_nebular/artistools/artistools/data/refspectra/' + name,
+    #                          index=False, header=False, sep=' ')
 
     if 'a_v' in metadata or 'e_bminusv' in metadata:
         print('Correcting for reddening')
@@ -1140,8 +1141,8 @@ def plot_filter_functions(axis):
 
     filterdir = os.path.join(at.PYDIR, 'data/filters/')
     for index, filter_name in enumerate(filter_names):
-        filter_data = pd.read_csv(filterdir / Path(f'{filter_name}.txt'),
-                        delim_whitespace=True, header=None, skiprows=4, names=['lamba_angstroms', 'flux_normalised'])
+        filter_data = pd.read_csv(filterdir / Path(f'{filter_name}.txt'), delim_whitespace=True,
+                                  header=None, skiprows=4, names=['lamba_angstroms', 'flux_normalised'])
         filter_data.plot(x='lamba_angstroms', y='flux_normalised', ax=axis, label=filter_name,
                          color=colours[index], alpha=0.3)
 
@@ -1201,12 +1202,14 @@ def plot_artis_spectrum(
             # read virtual packet files (after running plotartisspectrum --makevspecpol)
             vpkt_data = at.get_vpkt_data(modelpath)
             if args.timemin < vpkt_data['initial_time'] or args.timemax > vpkt_data['final_time']:
-                print(f"Timestep out of range of virtual packets: start time {vpkt_data['initial_time']} days end time {vpkt_data['final_time']} days")
+                print(f"Timestep out of range of virtual packets: start time {vpkt_data['initial_time']} days "
+                      "end time {vpkt_data['final_time']} days")
                 quit()
             angles = args.plotvspecpol
             viewinganglespectra = {}
             for angle in angles:
-                viewinganglespectra[angle] = get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=filterfunc)
+                viewinganglespectra[angle] = get_vspecpol_spectrum(
+                    modelpath, timeavg, angle, args, fnufilterfunc=filterfunc)
 
     spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
 
@@ -1358,10 +1361,6 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
 
     # print("\n".join([f"{x[0]}, {x[1]}" for x in contribution_list]))
 
-    # for c in contribution_list:
-    #     if c.linelabel == 'Fe II':
-    #         print_floers_line_ratio(modelpath, args.timedays, c.array_flambda_emission[::-1], arraylambda_angstroms[::-1])
-
     contributions_sorted_reduced = at.spectra.sort_and_reduce_flux_contribution_list(
         contribution_list, args.maxseriescount, arraylambda_angstroms, fixedionlist=args.fixedionlist,
         hideother=args.hideother, greyscale=args.greyscale)
@@ -1506,10 +1505,12 @@ def make_contrib_plot(axes, modelpath, densityplotyvars, args):
 
         # todo: optimize this to avoid calculating unused columns
         dfpackets_selected = at.packets.add_derived_columns(
-            dfpackets_selected, modelpath, ['em_timestep', 'emtrue_modelgridindex', 'emission_velocity'], allnonemptymgilist=allnonemptymgilist)
+            dfpackets_selected, modelpath, ['em_timestep', 'emtrue_modelgridindex', 'emission_velocity'],
+            allnonemptymgilist=allnonemptymgilist)
 
         # dfpackets.eval('xindex = floor((@c_ang_s / nu_rf - @lambda_min) / @delta_lambda)', inplace=True)
-        # dfpackets.eval('lambda_rf_binned = @lambda_min + @delta_lambda * floor((@c_ang_s / nu_rf - @lambda_min) / @delta_lambda)', inplace=True)
+        dfpackets.eval('lambda_rf_binned = @lambda_min + @delta_lambda * floor((@c_ang_s / nu_rf - @lambda_min) / '
+                       '@delta_lambda)', inplace=True)
 
         for _, packet in dfpackets_selected.iterrows():
             for v in densityplotyvars:
