@@ -429,8 +429,8 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, seriestype,
 
         ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, linestyle=linestyle, color=color, **plotkwargs)
 
-        if args.yscale == 'log':
-            ax.set_yscale('log')
+        # if args.yscale == 'log':
+        #     ax.set_yscale('log')
 
 
 def get_averageionisation(populations, atomic_number):
