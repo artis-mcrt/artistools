@@ -103,6 +103,30 @@ def plot_3d_initial_abundances(modelpath, args):
     print(f'Saved {outfilename}')
 
 
+def get_model_abundances_Msun_1D(modelpath):
+    filename = modelpath / 'model.txt'
+    modeldata, t_model_init_days = at.get_modeldata(filename)
+    abundancedata = at.get_initialabundances(modelpath)
+
+    t_model_init_seconds = t_model_init_days * 24 * 60 * 60
+
+    modeldata['volume_shell'] = 4 / 3 * math.pi * ((modeldata['velocity_outer'] * 1e5 * t_model_init_seconds) ** 3
+                                                   - (modeldata['velocity_inner'] * 1e5 * t_model_init_seconds) ** 3)
+
+    modeldata['mass_shell'] = (10 ** modeldata['logrho']) * modeldata['volume_shell']
+
+    merge_dfs = modeldata.merge(abundancedata, how='inner', on='inputcellid')
+
+    print("Total mass (Msun):")
+    for key in merge_dfs.keys():
+        if 'X_' in key:
+            merge_dfs[f'mass_{key}'] = merge_dfs[key] * merge_dfs['mass_shell'] * u.g.to('solMass')
+            # get mass of element in each cell
+            print(key, merge_dfs[f'mass_{key}'].sum())  # print total mass of element in solmass
+
+    return merge_dfs
+
+
 def plot_most_abundant(modelpath, args):
     model = at.get_3d_modeldata(modelpath[0])
     abundances = at.get_initialabundances(modelpath[0])
