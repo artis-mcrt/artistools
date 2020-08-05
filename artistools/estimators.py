@@ -25,6 +25,7 @@ import pandas as pd
 
 import artistools as at
 import artistools.classic_estimators
+import artistools.initial_composition
 
 from astropy import constants as const
 
@@ -376,36 +377,45 @@ def get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, ke
     #     sys.exit()
 
 
-def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, dfalldata=None, args=None, **plotkwargs):
+def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, seriestype, dfalldata=None, args=None, **plotkwargs):
     assert len(xlist) - 1 == len(mgilist)
     modeldata, _ = at.get_modeldata(modelpath)
     abundancedata = at.get_initialabundances(modelpath)
+    mergemodelabundata = modeldata.merge(abundancedata, how='inner', on='inputcellid')
+
+    if seriestype == 'initmasses':
+        mergemodelabundata = at.initial_composition.get_model_abundances_Msun_1D(modelpath)
 
     ax.set_ylim(0., 1.0)
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split('_')
         elsymbol = splitvariablename[0].strip('0123456789')
         atomic_number = at.get_atomic_number(elsymbol)
-        ax.set_ylabel('Initial mass fraction')
+        if seriestype == 'initabundances':
+            ax.set_ylabel('Initial mass fraction')
+            valuetype = 'X_'
+        elif seriestype == 'initmasses':
+            ax.set_ylabel(r'Initial mass [M$_\odot$]')
+            valuetype = 'mass_X_'
 
         ylist = []
         linelabel = speciesstr
         linestyle = '-'
         for modelgridindex in mgilist:
             if speciesstr.lower() in ['ni_56', 'ni56', '56ni']:
-                yvalue = modeldata.loc[modelgridindex]['X_Ni56']
+                yvalue = mergemodelabundata.loc[modelgridindex][f'{valuetype}Ni56']
                 linelabel = '$^{56}$Ni'
                 linestyle = '--'
             elif speciesstr.lower() in ['ni_stb', 'ni_stable']:
-                yvalue = abundancedata.loc[modelgridindex][f'X_{elsymbol}'] - modeldata.loc[modelgridindex]['X_Ni56']
+                yvalue = mergemodelabundata.loc[modelgridindex][f'{valuetype}{elsymbol}'] - modeldata.loc[modelgridindex]['X_Ni56']
                 linelabel = 'Stable Ni'
             elif speciesstr.lower() in ['co_56', 'co56', '56co']:
-                yvalue = modeldata.loc[modelgridindex]['X_Co56']
+                yvalue = mergemodelabundata.loc[modelgridindex][f'{valuetype}Co56']
                 linelabel = '$^{56}$Co'
             elif speciesstr.lower() in ['fegrp', 'ffegroup']:
-                yvalue = modeldata.loc[modelgridindex]['X_Fegroup']
+                yvalue = mergemodelabundata.loc[modelgridindex][f'{valuetype}Fegroup']
             else:
-                yvalue = abundancedata.loc[modelgridindex][f'X_{elsymbol}']
+                yvalue = mergemodelabundata.loc[modelgridindex][f'{valuetype}{elsymbol}']
             ylist.append(yvalue)
 
         if dfalldata is not None:
@@ -418,6 +428,9 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, dfalldata=N
         xlist, ylist = apply_filters(xlist, ylist, args)
 
         ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, linestyle=linestyle, color=color, **plotkwargs)
+
+        if args.yscale == 'log':
+            ax.set_yscale('log')
 
 
 def get_averageionisation(populations, atomic_number):
@@ -857,8 +870,8 @@ def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath,
             showlegend = True
             seriestype, params = plotitem
 
-            if seriestype == 'initabundances':
-                plot_init_abundances(ax, xlist, params, mgilist, modelpath, dfalldata=dfalldata, args=args)
+            if seriestype in ['initabundances', 'initmasses']:
+                plot_init_abundances(ax, xlist, params, mgilist, modelpath, seriestype, dfalldata=dfalldata, args=args)
 
             elif seriestype == 'levelpopulation':
                 plot_levelpop(
@@ -1166,6 +1179,7 @@ def main(args=None, argsraw=None, **kwargs):
             [['initabundances', ['Fe', 'Ni_stable', 'Ni_56']]],
             # ['heating_gamma', 'heating_coll', 'heating_bf', 'heating_ff'],
             # ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff'],
+            [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
             # ['heating_gamma/gamma_dep'],
             # ['nne'],
             ['Te', 'TR'],
