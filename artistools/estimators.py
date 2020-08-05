@@ -377,13 +377,15 @@ def get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, ke
     #     sys.exit()
 
 
-def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, seriestype, dfalldata=None, args=None, **plotkwargs):
+def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, seriestype, dfalldata=None, args=None,
+                         **plotkwargs):
     assert len(xlist) - 1 == len(mgilist)
-    modeldata, _ = at.get_modeldata(modelpath)
-    abundancedata = at.get_initialabundances(modelpath)
-    mergemodelabundata = modeldata.merge(abundancedata, how='inner', on='inputcellid')
 
-    if seriestype == 'initmasses':
+    if seriestype == 'initabundances':
+        modeldata, _ = at.get_modeldata(modelpath)
+        abundancedata = at.get_initialabundances(modelpath)
+        mergemodelabundata = modeldata.merge(abundancedata, how='inner', on='inputcellid')
+    elif seriestype == 'initmasses':
         mergemodelabundata = at.initial_composition.get_model_abundances_Msun_1D(modelpath)
 
     for speciesstr in specieslist:
@@ -407,7 +409,8 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, seriestype,
                 linelabel = '$^{56}$Ni'
                 linestyle = '--'
             elif speciesstr.lower() in ['ni_stb', 'ni_stable']:
-                yvalue = mergemodelabundata.loc[modelgridindex][f'{valuetype}{elsymbol}'] - modeldata.loc[modelgridindex]['X_Ni56']
+                yvalue = (mergemodelabundata.loc[modelgridindex][f'{valuetype}{elsymbol}'] -
+                          mergemodelabundata.loc[modelgridindex]['X_Ni56'])
                 linelabel = 'Stable Ni'
             elif speciesstr.lower() in ['co_56', 'co56', '56co']:
                 yvalue = mergemodelabundata.loc[modelgridindex][f'{valuetype}Co56']
