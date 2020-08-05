@@ -386,12 +386,12 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, seriestype,
     if seriestype == 'initmasses':
         mergemodelabundata = at.initial_composition.get_model_abundances_Msun_1D(modelpath)
 
-    ax.set_ylim(0., 1.0)
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split('_')
         elsymbol = splitvariablename[0].strip('0123456789')
         atomic_number = at.get_atomic_number(elsymbol)
         if seriestype == 'initabundances':
+            ax.set_ylim(0., 1.0)
             ax.set_ylabel('Initial mass fraction')
             valuetype = 'X_'
         elif seriestype == 'initmasses':
