@@ -500,6 +500,7 @@ def plot_average_ionisation_excitation(
     else:
         raise ValueError()
 
+    arr_tdelta = at.get_timestep_times_float(modelpath, loc='delta')
     for paramvalue in params:
         if seriestype == 'averageionisation':
             atomic_number = at.get_atomic_number(paramvalue)
@@ -511,16 +512,15 @@ def plot_average_ionisation_excitation(
             valuesum = 0
             tdeltasum = 0
             for timestep in timesteps:
-                tdelta = at.get_timestep_time_delta(timestep, modelpath=modelpath)
 
                 if seriestype == 'averageionisation':
                     valuesum += (get_averageionisation(
-                        estimators[(timestep, modelgridindex)]['populations'], atomic_number) * tdelta)
+                        estimators[(timestep, modelgridindex)]['populations'], atomic_number) * arr_tdelta[timestep])
                 elif seriestype == 'averageexcitation':
                     T_exc = estimators[(timestep, modelgridindex)]['Te']
                     valuesum += (get_averageexcitation(
-                        modelpath, modelgridindex, timestep, atomic_number, ion_stage, T_exc) * tdelta)
-                tdeltasum += tdelta
+                        modelpath, modelgridindex, timestep, atomic_number, ion_stage, T_exc) * arr_tdelta[timestep])
+                tdeltasum += arr_tdelta[timestep]
 
             ylist.append(valuesum / tdeltasum)
 
@@ -544,7 +544,7 @@ def plot_levelpop(
     else:
         raise ValueError()
 
-    tdeltadict = {}
+    arr_tdelta = at.get_timestep_times_float(modelpath, loc='delta')
     for paramvalue in params:
         print(f'plot_levelpop {paramvalue}')
         paramsplit = paramvalue.split(' ')
@@ -564,15 +564,12 @@ def plot_levelpop(
             # print(f'modelgridindex {modelgridindex} timesteps {timesteps}')
 
             for timestep in timesteps:
-                if timestep not in tdeltadict:
-                    tdeltadict[timestep] = at.get_timestep_time_delta(timestep, modelpath=modelpath)
-
                 levelpop = dfnltepops.query(
                     'modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number'
                     ' and ion_stage==@ion_stage and level==@levelindex').iloc[0].n_NLTE
 
-                valuesum += levelpop * tdeltadict[timestep]
-                tdeltasum += tdeltadict[timestep]
+                valuesum += levelpop * arr_tdelta[timestep]
+                tdeltasum += arr_tdelta[timestep]
 
             ylist.append(valuesum / tdeltasum)
 
@@ -1151,7 +1148,7 @@ def main(args=None, argsraw=None, **kwargs):
     modelname = at.get_model_name(modelpath)
 
     if not args.timedays and not args.timestep and args.modelgridindex > -1:
-        args.timestep = f'0-{len(at.get_timestep_times(modelpath)) - 1}'
+        args.timestep = f'0-{len(at.get_timestep_times_float(modelpath)) - 1}'
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
          modelpath, args.timestep, args.timemin, args.timemax, args.timedays)

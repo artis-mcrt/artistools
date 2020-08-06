@@ -20,24 +20,19 @@ import artistools.transitions
 
 modelpath = Path(os.path.dirname(os.path.abspath(__file__)), 'data')
 outputpath = Path(os.path.dirname(os.path.abspath(__file__)), 'output')
-specfilename = modelpath / 'spec.out'
 at.enable_diskcache = False
 
 
 def test_timestep_times():
     timestartarray = at.get_timestep_times_float(modelpath, loc='start')
     timedeltarray = at.get_timestep_times_float(modelpath, loc='delta')
-    timearray = at.get_timestep_times_float(modelpath)
-    strtimearray = at.get_timestep_times(modelpath)
-    assert len(strtimearray) == 100
-    assert math.isclose(float(strtimearray[0]), 250.421, abs_tol=1e-3)
-    assert math.isclose(float(strtimearray[-1]), 349.412, abs_tol=1e-3)
+    timemidarray = at.get_timestep_times_float(modelpath, loc='mid')
+    assert len(timestartarray) == 100
+    assert math.isclose(float(timemidarray[0]), 250.421, abs_tol=1e-3)
+    assert math.isclose(float(timemidarray[-1]), 349.412, abs_tol=1e-3)
 
-    assert all([math.isclose(float(strtimearray[ts]), timearray[ts], abs_tol=1e-3)
-                for ts in range(len(strtimearray))])
-
-    assert all([math.isclose(tstart + (tdelta / 2.), tmid, abs_tol=1e-3)
-                for tstart, tdelta, tmid in zip(timestartarray, timedeltarray, timearray)])
+    assert all([tstart < tmid < (tstart + tdelta)
+                for tstart, tdelta, tmid in zip(timestartarray, timedeltarray, timemidarray)])
 
 
 def test_deposition():
@@ -125,7 +120,7 @@ def test_spectra_get_spectrum():
         assert min(dfspectrumpkts['f_lambda']) < 1e-9
         assert math.isclose(np.mean(dfspectrumpkts['f_lambda']), 1.0314682640070206e-14, abs_tol=1e-5)
 
-    dfspectrum = at.spectra.get_spectrum(specfilename, 55, 65, fnufilterfunc=None)
+    dfspectrum = at.spectra.get_spectrum(modelpath, 55, 65, fnufilterfunc=None)
     assert len(dfspectrum['lambda_angstroms']) == 1000
     assert len(dfspectrum['f_lambda']) == 1000
     assert abs(dfspectrum['lambda_angstroms'].values[-1] - 29920.601421214415) < 1e-5
@@ -148,11 +143,11 @@ def test_spectra_get_flux_contributions():
     timestepmin = 40
     timestepmax = 80
     dfspectrum = at.spectra.get_spectrum(
-        specfilename, timestepmin=timestepmin, timestepmax=timestepmax, fnufilterfunc=None)
+        modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fnufilterfunc=None)
 
     integrated_flux_specout = np.trapz(dfspectrum['f_lambda'], x=dfspectrum['lambda_angstroms'])
 
-    specdata = pd.read_csv(specfilename, delim_whitespace=True)
+    specdata = pd.read_csv(modelpath / 'spec.out', delim_whitespace=True)
     arraynu = specdata.loc[:, '0'].values
     arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
 
