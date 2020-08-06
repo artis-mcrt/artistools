@@ -102,8 +102,10 @@ def get_spectrum(
     if Path(modelpath, 'specpol.out').is_file():
         specfilename = Path(modelpath) / "specpol.out"
         polarisationdata = True
-
-    arr_tmid = at.get_timestep_times_float(modelpath, loc='mid')
+    if polarisationdata and os.path.isfile(modelpath/'vpkt.txt'):
+        arr_tmid = [i for i in specdata.columns.values[1:] if i[-2] != '.']  # read timesteps from vspec file
+    else:
+        arr_tmid = at.get_timestep_times_float(modelpath, loc='mid')
 
     def timefluxscale(timestep):
         if reftime is not None:
@@ -445,11 +447,11 @@ def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
     vspecdata = stokes_params[args.stokesparam]
 
     nu = vspecdata.loc[:, 'nu'].values
-    arr_tmid = at.get_timestep_times_float(modelpath, loc='mid')
-    arr_tdelta = at.get_timestep_times_float(modelpath, loc='delta')
 
+    arr_tmid = [float(i) for i in vspecdata.columns.values[1:] if i[-2] != '.']
+    arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1])] + [arr_tmid[-1] - arr_tmid[-2]]
     def match_closest_time(reftime):
-        return str("{}".format(min([abs(float(x) - reftime) for x in arr_tmid])))
+        return str("{}".format(min([float(x) for x in arr_tmid], key=lambda x: abs(x - reftime))))
 
     if 'timemin' and 'timemax' in args:
         timelower = match_closest_time(args.timemin)
