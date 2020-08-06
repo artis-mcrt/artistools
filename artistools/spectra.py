@@ -102,10 +102,7 @@ def get_spectrum(
     if Path(modelpath, 'specpol.out').is_file():
         specfilename = Path(modelpath) / "specpol.out"
         polarisationdata = True
-    if polarisationdata and os.path.isfile(modelpath/'vpkt.txt'):
-        arr_tmid = [i for i in specdata.columns.values[1:] if i[-2] != '.']  # read timesteps from vspec file
-    else:
-        arr_tmid = at.get_timestep_times_float(modelpath, loc='mid')
+    arr_tmid = at.get_timestep_times_float(modelpath, loc='mid')
 
     def timefluxscale(timestep):
         if reftime is not None:
