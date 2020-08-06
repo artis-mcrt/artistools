@@ -55,6 +55,7 @@ def get_exspec_bins():
 
 def stackspectra(spectra_and_factors):
     factor_sum = sum([factor for _, factor in spectra_and_factors])
+    print(f'factor_sum {factor_sum}')
 
     stackedspectrum = np.zeros_like(spectra_and_factors[0][0], dtype=np.float)
     for spectrum, factor in spectra_and_factors:
@@ -101,20 +102,20 @@ def get_spectrum(
     if Path(modelpath, 'specpol.out').is_file():
         specfilename = Path(modelpath) / "specpol.out"
         polarisationdata = True
-    if polarisationdata:
-        timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
-    else:
-        timearray = specdata.columns.values[1:]
+
+    arr_tmid = at.get_timestep_times_float(modelpath, loc='mid')
 
     def timefluxscale(timestep):
         if reftime is not None:
-            return math.exp(float(timearray[timestep]) / 133.) / math.exp(reftime / 133.)
+            return math.exp(float(arr_tmid[timestep]) / 133.) / math.exp(reftime / 133.)
         else:
             return 1.
 
+    arr_tdelta = at.get_timestep_times_float(modelpath, loc='delta')
+
     f_nu = stackspectra([
         (specdata[specdata.columns[timestep + 1]] * timefluxscale(timestep),
-         at.get_timestep_time_delta(timestep, timearray))
+         arr_tdelta[timestep])
         for timestep in range(timestepmin, timestepmax + 1)])
 
     # best to use the filter on this list because it
@@ -320,19 +321,17 @@ def get_res_spectrum(
         res_specdata = read_specpol_res(modelpath, angle)
 
     nu = res_specdata[angle].loc[:, 'nu'].values
-    # if master_branch:
-    timearray = [i for i in res_specdata[angle].columns.values[1:] if i[-2] != '.']
-    # else:
-    #     timearray = res_specdata[angle].columns.values[1:]
+    arr_tmid = at.get_timestep_times_float(modelpath, loc='mid')
+    arr_tdelta = at.get_timestep_times_float(modelpath, loc='delta')
 
     def timefluxscale(timestep):
         if reftime is not None:
-            return math.exp(float(timearray[timestep]) / 133.) / math.exp(reftime / 133.)
+            return math.exp(float(arr_tmid[timestep]) / 133.) / math.exp(reftime / 133.)
         else:
             return 1.
     # for angle in args.plotviewingangle:
     f_nu = stackspectra([(res_specdata[angle][res_specdata[angle].columns[timestep + 1]] * timefluxscale(timestep),
-                          at.get_timestep_time_delta(timestep, timearray))
+                          arr_tdelta[timestep])
                          for timestep in range(timestepmin, timestepmax + 1)])
 
     # best to use the filter on this list because it
@@ -446,10 +445,11 @@ def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
     vspecdata = stokes_params[args.stokesparam]
 
     nu = vspecdata.loc[:, 'nu'].values
-    timearray = [i for i in vspecdata.columns.values[1:] if i[-2] != '.']
+    arr_tmid = at.get_timestep_times_float(modelpath, loc='mid')
+    arr_tdelta = at.get_timestep_times_float(modelpath, loc='delta')
 
     def match_closest_time(reftime):
-        return str("{}".format(min([float(x) for x in timearray], key=lambda x: abs(x - reftime))))
+        return str("{}".format(min([abs(float(x) - reftime) for x in arr_tmid])))
 
     if 'timemin' and 'timemax' in args:
         timelower = match_closest_time(args.timemin)
@@ -462,13 +462,13 @@ def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
 
     def timefluxscale(timestep):
         if timeavg is not None:
-            return math.exp(float(timearray[timestep]) / 133.) / math.exp(float(timeavg) / 133.)
+            return math.exp(float(arr_tmid[timestep]) / 133.) / math.exp(float(timeavg) / 133.)
         else:
             return 1.
 
     f_nu = stackspectra([
         (vspecdata[vspecdata.columns[timestep + 1]] * timefluxscale(timestep),
-         at.get_timestep_time_delta(timestep, timearray))
+         arr_tdelta[timestep])
         for timestep in range(timestepmin-1, timestepmax)])
 
     # best to use the filter on this list because it
@@ -555,7 +555,9 @@ def plot_polarisation(modelpath, args):
 def get_flux_contributions(
         modelpath, filterfunc=None, timestepmin=0, timestepmax=None, getemission=True, getabsorption=True,
         use_lastemissiontype=False):
-    timearray = at.get_timestep_times(modelpath)
+
+    arr_tmid = at.get_timestep_times_float(modelpath, loc='mid')
+    arr_tdelta = at.get_timestep_times_float(modelpath, loc='delta')
     arraynu = at.get_nu_grid(modelpath)
     arraylambda = const.c.to('angstrom/s').value / arraynu
     if not Path(modelpath, 'compositiondata.txt').is_file():
@@ -583,7 +585,7 @@ def get_flux_contributions(
         print(f' inferred MAXION = {maxion} from emission file using nlements = {nelements} from compositiondata.txt')
 
         # check that the row count is product of timesteps and frequency bins found in spec.out
-        assert emissiondata.shape[0] == len(arraynu) * len(timearray)
+        assert emissiondata.shape[0] == len(arraynu) * len(arr_tmid)
 
     if getabsorption:
         absorptionfilename = at.firstexisting(['absorption.out.xz', 'absorption.out.gz', 'absorption.out',
@@ -603,7 +605,7 @@ def get_flux_contributions(
                   'from compositiondata.txt')
         else:
             assert absorption_maxion == maxion
-        assert absorptiondata.shape[0] == len(arraynu) * len(timearray)
+        assert absorptiondata.shape[0] == len(arraynu) * len(arr_tmid)
     else:
         absorptiondata = None
 
@@ -628,16 +630,16 @@ def get_flux_contributions(
                 #     continue
                 if getemission:
                     array_fnu_emission = stackspectra(
-                        [(emissiondata.iloc[timestep::len(timearray), selectedcolumn].values,
-                          at.get_timestep_time_delta(timestep, timearray))
+                        [(emissiondata.iloc[timestep::len(arr_tmid), selectedcolumn].values,
+                          arr_tdelta[timestep])
                          for timestep in range(timestepmin, timestepmax + 1)])
                 else:
                     array_fnu_emission = np.zeros_like(arraylambda, dtype=np.float)
 
                 if absorptiondata is not None and selectedcolumn < nelements * maxion:  # bound-bound process
                     array_fnu_absorption = stackspectra(
-                        [(absorptiondata.iloc[timestep::len(timearray), selectedcolumn].values,
-                          at.get_timestep_time_delta(timestep, timearray))
+                        [(absorptiondata.iloc[timestep::len(arr_tmid), selectedcolumn].values,
+                          arr_tdelta[timestep])
                          for timestep in range(timestepmin, timestepmax + 1)])
                 else:
                     array_fnu_absorption = np.zeros_like(arraylambda, dtype=np.float)
@@ -1702,13 +1704,12 @@ def write_flambda_spectra(modelpath, args):
         specfilename = modelpath / 'specpol.out'
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
-        number_of_timesteps = len(timearray)
-
     else:
         specfilename = at.firstexisting(['spec.out.xz', 'spec.out.gz', 'spec.out'], path=modelpath)
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = specdata.columns.values[1:]
-        number_of_timesteps = len(specdata.keys()) - 1
+
+    number_of_timesteps = len(timearray)
 
     if not args.timestep:
         args.timestep = f'0-{number_of_timesteps - 1}'
@@ -1738,7 +1739,7 @@ def write_flambda_spectra(modelpath, args):
             spectra_list.write(str(outfilepath.absolute()) + '\n')
 
     with open(outdirectory / 'time_list.txt', 'w+') as time_list:
-        for time in timearray:
+        for time in arr_tmid:
             time_list.write(f'{str(time)} \n')
 
     print(f'Saved in {outdirectory}')

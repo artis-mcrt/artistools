@@ -255,9 +255,9 @@ def showtimesteptimes(modelpath=None, numberofcolumns=5, args=None):
     if modelpath is None:
         modelpath = Path()
 
-    print('Time steps and corresponding times in days:\n')
+    print('Timesteps and midpoint times in days:\n')
 
-    times = get_timestep_times(modelpath)
+    times = get_timestep_times_float(modelpath, loc='mid')
     indexendofcolumnone = math.ceil((len(times) - 1) / numberofcolumns)
     for rownum in range(0, indexendofcolumnone):
         strline = ""
@@ -514,18 +514,35 @@ def get_deposition(modelpath):
 
 @lru_cache(maxsize=16)
 def get_timestep_times(modelpath):
-    """Return a list of the time in days of each timestep using a spec.out file."""
+    """Return a list of the mid time in days of each timestep from a spec.out file."""
     try:
         specfilename = firstexisting(['spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
         time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
         return time_columns.columns[1:]
     except FileNotFoundError:
-        return [f'{tdays:.3f}' for tdays in get_timestep_times_float(modelpath)]
+        return [f'{tdays:.3f}' for tdays in get_timestep_times_float(modelpath, loc='mid')]
 
 
 @lru_cache(maxsize=16)
 def get_timestep_times_float(modelpath, loc='mid'):
     """Return a list of the time in days of each timestep."""
+
+    # custom timestep file
+    tsfilepath = Path(modelpath, 'timesteps.out')
+    if tsfilepath.exists():
+        dftimesteps = pd.read_csv(tsfilepath, delim_whitespace=True, escapechar='#', index_col='timestep')
+        if loc == 'mid':
+            return dftimesteps.tmid_days.values
+        elif loc == 'start':
+            return dftimesteps.tstart_days.values
+        elif loc == 'end':
+            return dftimesteps.tstart_days.values + dftimesteps.twidth_days.values
+        elif loc == 'delta':
+            return dftimesteps.twidth_days.values
+        else:
+            raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
+
+    # older versions of Artis always used logarithmic timesteps and didn't produce a timesteps.out file
     inputparams = get_inputparams(modelpath)
     tmin = inputparams['tmin']
     dlogt = (math.log(inputparams['tmax']) - math.log(tmin)) / inputparams['ntstep']
@@ -638,33 +655,11 @@ def get_time_range(modelpath, timestep_range_str, timemin, timemax, timedays_ran
 
 def get_timestep_time(modelpath, timestep):
     """Return the time in days of a timestep number using a spec.out file."""
-    timearray = get_timestep_times(modelpath)
+    timearray = get_timestep_times_float(modelpath, loc='mid')
     if timearray is not None:
         return timearray[timestep]
 
     return -1
-
-
-def get_timestep_time_delta(timestep, timearray=None, inputparams=None, modelpath=None):
-    """Return the time in days between timestep and timestep + 1."""
-    if inputparams is not None or modelpath is not None:
-        if modelpath is not None:
-            inputparams = get_inputparams(modelpath)
-        tmin = inputparams['tmin']
-        dlogt = (math.log(inputparams['tmax']) - math.log(tmin)) / inputparams['ntstep']
-        timesteps = range(inputparams['ntstep'])
-        tstarts = [tmin * math.exp(ts * dlogt) for ts in timesteps]
-        delta_t = tmin * math.exp((timestep + 1) * dlogt) - tstarts[timestep]
-    elif timearray is not None:
-        if timestep < len(timearray) - 1:
-            delta_t = (float(timearray[timestep + 1]) - float(timearray[timestep]))
-        else:
-            delta_t = (float(timearray[timestep]) - float(timearray[timestep - 1]))
-    else:
-        assert timearray or inputparams
-
-    # assert(delta_t == get_timestep_times_float(modelpath, loc='delta'))
-    return delta_t
 
 
 def parse_adata(fadata, phixsdict, ionlist):
