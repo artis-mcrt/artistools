@@ -55,7 +55,6 @@ def get_exspec_bins():
 
 def stackspectra(spectra_and_factors):
     factor_sum = sum([factor for _, factor in spectra_and_factors])
-    print(f'factor_sum {factor_sum}')
 
     stackedspectrum = np.zeros_like(spectra_and_factors[0][0], dtype=np.float)
     for spectrum, factor in spectra_and_factors:
