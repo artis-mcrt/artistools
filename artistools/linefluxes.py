@@ -69,7 +69,7 @@ def get_line_fluxes_from_packets(emtypecolumn, emfeatures, modelpath, maxpacketf
         arr_tend = at.get_timestep_times_float(modelpath, loc='end')
 
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
-    arr_tmid = arr_tend = at.get_timestep_times_float(modelpath, loc='mid')
+    arr_tmid = arr_tend = (np.array(arr_tstart) + np.array(arr_tend)) / 2.
 
     model, _ = at.get_modeldata(modelpath)
     # vmax = model.iloc[-1].velocity_outer * u.km / u.s
