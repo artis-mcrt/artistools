@@ -1,0 +1,2 @@
+time magnitude band
+3180.79 17.865 R
