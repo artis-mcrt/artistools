@@ -1,2 +1,0 @@
-time magnitude band
-3180.79 18.162 B
