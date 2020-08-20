@@ -405,7 +405,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                         or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
 
                     zfit = np.polyfit(x=time, y=magnitude, deg=10)
-                    xfit = np.linspace(line_min, line_max - 1, num=1000)
+                    xfit = np.linspace(args.xmin, args.xmax - 1, num=1000)
                     # Taking line_min and line_max from the limits set for the lightcurve being plotted
                     fxfit = []
                     for j in range(len(xfit)):
