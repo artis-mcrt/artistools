@@ -372,10 +372,10 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                 magnitude = []
 
                 for t, mag in filters_dict[key]:
-                    line_min=1.5
-                    line_max=31
-                    if float(t)>line_min and float(t)<line_max:            #adjusting plot range for artis simulation (x-axis)
-                        time.append(float(t))
+                    # adjusting plot range for artis simulation (x-axis)
+                    if (args.xmin and args.xmax) and (args.xmin < t < args.xmax) \
+                            or (args.xmin is None or args.xmax is None):
+                        time.append(t)
                         magnitude.append(mag)
 
                 if args.plotvspecpol and angle is not None:
