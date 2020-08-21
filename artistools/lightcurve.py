@@ -13,25 +13,19 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 from astropy import units as u
-import statistics as stat
-from pandas.core.strings import str_replace
 
 import artistools as at
 import artistools.spectra
 import matplotlib.pyplot as plt
 import matplotlib
-from collections import Counter
 from extinction import apply, ccm89
 
 from scipy.interpolate import interp1d
 
-from matplotlib.legend_handler import HandlerLine2D, HandlerTuple
-from matplotlib.lines import Line2D
+from matplotlib.legend_handler import HandlerTuple
 
 color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
 
-COUNT = 0
-COUNT1 = 0
 
 def readfile(filepath_or_buffer):
     lcdata = pd.read_csv(filepath_or_buffer, delim_whitespace=True, header=None, names=['time', 'lum', 'lum_cmf'])
@@ -359,14 +353,6 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
             print(f'Reading spectra: {modelname}')
             filters_dict = get_magnitudes(modelpath, args, angle, modelnumber=modelnumber)
 
-            if modelnumber == 0 and args.plot_hesma_model:
-                hesma_model = read_hesma_lightcurve(args)
-                linename = str(args.plot_hesma_model).split('_')[:3]
-                linename = "_".join(linename)
-
-                if linename not in linenames:
-                    linenames.append(linename)
-
             for plotnumber, key in enumerate(filters_dict):
                 time = []
                 magnitude = []
@@ -405,7 +391,9 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                         or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
 
                     zfit = np.polyfit(x=time, y=magnitude, deg=10)
-                    xfit = np.linspace(args.xmin, args.xmax - 1, num=1000)
+                    print(args.xmin, args.xmax)
+                    xfit = np.linspace(args.xmin + 1, args.xmax - 1, num=1000)
+
                     # Taking line_min and line_max from the limits set for the lightcurve being plotted
                     fxfit = []
                     for j in range(len(xfit)):
@@ -493,7 +481,11 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
             modelnames.append(modelname)
             modelnumbers.append(modelnumber)
 
-        if args.plot_angle_averaged_lightcurves:
+        if args.magnitude and not (
+                args.calculate_peakmag_risetime_delta_m15 or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
+                or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file or args.test_viewing_angle_fit
+                or args.make_viewing_angle_peakmag_risetime_scatter_plot or
+                args.make_viewing_angle_peakmag_delta_m15_scatter_plot or args.plotviewingangle):
             plt.plot(time, magnitude, label=modelname, color=colours[modelnumber], linewidth=3)
 
     # Saving all this viewing angle info for each model to a file so that it is available to plot if required again
@@ -521,8 +513,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                              marker='o', color=colours[ii], s=40)
             plotvalues.append((a0, p0))
             plt.errorbar(band_risetime_angle_averaged_polyfit[ii], band_peakmag_angle_averaged_polyfit[ii],
-                         xerr=stat.stdev(band_risetime_viewing_angles),
-                         yerr=stat.stdev(band_peak_mag_viewing_angles), ecolor=colours[ii], capsize=2)
+                         xerr=np.std(band_risetime_viewing_angles),
+                         yerr=np.std(band_peak_mag_viewing_angles), ecolor=colours[ii], capsize=2)
 
         plt.legend(plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
                    loc='upper right', fontsize=8, ncol=2, columnspacing=1)
@@ -551,8 +543,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                              marker='o', color=colours[ii], s=40)
             plotvalues.append((a0, p0))
             plt.errorbar(band_delta_m15_angle_averaged_polyfit[ii], band_peakmag_angle_averaged_polyfit[ii],
-                         xerr=stat.stdev(band_delta_m15_viewing_angles),
-                         yerr=stat.stdev(band_peak_mag_viewing_angles), ecolor=colours[ii], capsize=2)
+                         xerr=np.std(band_delta_m15_viewing_angles),
+                         yerr=np.std(band_peak_mag_viewing_angles), ecolor=colours[ii], capsize=2)
 
         plt.legend(plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
                    loc='upper right', fontsize=8, ncol=2, columnspacing=1)
@@ -567,8 +559,11 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
         print("saving " + f'{modelname}' + "_viewing_angle_scatter_plot.pdf")
         plt.close()
 
-    if args.plot_angle_averaged_lightcurves or args.plotviewingangles_lightcurves:
-
+    if (args.magnitude or args.plotviewingangles_lightcurves) and not (
+            args.calculate_peakmag_risetime_delta_m15 or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
+            or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file or args.test_viewing_angle_fit
+            or args.make_viewing_angle_peakmag_risetime_scatter_plot or
+            args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
         if args.reflightcurves:
             colours = args.refspeccolors
             markers = args.refspecmarkers
@@ -607,7 +602,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
         # f.set_figheight(8)
         # f.set_figwidth(7)
         if not args.nolegend:
-            plt.legend(loc='lower right', frameon=True, fontsize=14, ncol=3, handlelength=1, columnspacing=1)
+            plt.legend(loc='lower right', frameon=True, fontsize=12, ncol=2, handlelength=1, columnspacing=1)
         if len(filters_dict) == 1:
             args.outputfile = os.path.join(outputfolder, f'{modelname}_plot{key}lightcurves.pdf')
         plt.savefig(args.outputfile, format='pdf')
@@ -865,7 +860,7 @@ def plot_color_evolution_from_data(filter_names, lightcurvefilename, color, mark
 def addargs(parser):
     parser.add_argument('-modelpath', default=[], nargs='*', action=at.AppendPath,
                         help='Path(s) to ARTIS folders with light_curve.out or packets files'
-                             ' (may include wildcards such as * and **)')
+                        ' (may include wildcards such as * and **)')
 
     parser.add_argument('-label', default=[], nargs='*',
                         help='List of series label overrides')
@@ -911,7 +906,7 @@ def addargs(parser):
 
     parser.add_argument('--filter', type=str, nargs='+',
                         help='Choose filter eg. bol U B V R I. Default B. '
-                             'WARNING: filter names are not case sensitive eg. sloan-r is not r, it is rs')
+                        'WARNING: filter names are not case sensitive eg. sloan-r is not r, it is rs')
 
     parser.add_argument('--colour_evolution', action='append',
                         help='Plot of colour evolution. Give two filters eg. B-V')
@@ -921,7 +916,7 @@ def addargs(parser):
 
     parser.add_argument('--plot_hesma_model', action='store', type=Path, default=False,
                         help='Plot hesma model on top of lightcurve plot. '
-                             'Enter model name saved in data/hesma directory')
+                        'Enter model name saved in data/hesma directory')
 
     parser.add_argument('--plotvspecpol', type=int, nargs='+',
                         help='Plot vspecpol. Expects int for spec number in vspecpol files')
@@ -956,49 +951,45 @@ def addargs(parser):
 
     parser.add_argument('-redshifttoz', type=float, nargs='+',
                         help='Redshift to z = x. Expects array length of number modelpaths.'
-                             'If not to be redshifted then = 0.')
+                        'If not to be redshifted then = 0.')
 
     parser.add_argument('--calculate_peakmag_risetime_delta_m15', action='store_true',
                         help='Calculate band risetime, peak mag and delta m15 values for '
-                             'the models specified using a polynomial fitting method and '
-                             'print to screen')
+                        'the models specified using a polynomial fitting method and '
+                        'print to screen')
 
     parser.add_argument('--save_angle_averaged_peakmag_risetime_delta_m15_to_file', action='store_true',
                         help='Save the band risetime, peak mag and delta m15 values for '
-                             'the angle averaged model lightcurves to file')
+                        'the angle averaged model lightcurves to file')
 
     parser.add_argument('--save_viewing_angle_peakmag_risetime_delta_m15_to_file', action='store_true',
                         help='Save the band risetime, peak mag and delta m15 values for '
-                             'all viewing angles specified for plotting at a later time '
-                             'as these values take a long time to calculate for all '
-                             'viewing angles. Need to run this command first alongside '
-                             '--plotviewingangles in order to save the data for the '
-                             'viewing angles you want to use before making the scatter'
-                             'plots')
+                        'all viewing angles specified for plotting at a later time '
+                        'as these values take a long time to calculate for all '
+                        'viewing angles. Need to run this command first alongside '
+                        '--plotviewingangles in order to save the data for the '
+                        'viewing angles you want to use before making the scatter'
+                        'plots')
 
     parser.add_argument('--test_viewing_angle_fit', action='store_true',
                         help='Plots the lightcurves for each  viewing angle along with'
-                             'the polynomial fit for each viewing angle specified'
-                             'to check the fit is working properly: use alongside'
-                             '--plotviewingangle ')
+                        'the polynomial fit for each viewing angle specified'
+                        'to check the fit is working properly: use alongside'
+                        '--plotviewingangle ')
 
     parser.add_argument('--make_viewing_angle_peakmag_risetime_scatter_plot', action='store_true',
                         help='Makes scatter plot of band peak mag with risetime with the '
-                             'angle averaged values being the solid dot and the errors bars'
-                             'representing the standard deviation of the viewing angle'
-                             'distribution')
+                        'angle averaged values being the solid dot and the errors bars'
+                        'representing the standard deviation of the viewing angle'
+                        'distribution')
 
     parser.add_argument('--make_viewing_angle_peakmag_delta_m15_scatter_plot', action='store_true',
                         help='Makes scatter plot of band peak with delta m15 with the angle'
-                             'averaged values being the solid dot and the error bars representing '
-                             'the standard deviation of the viewing angle distribution')
-
-    parser.add_argument('--plot_angle_averaged_lightcurves', action='store_true',
-                        help='Make angle averaged lightcurve plots for the models specified')
+                        'averaged values being the solid dot and the error bars representing '
+                        'the standard deviation of the viewing angle distribution')
 
     parser.add_argument('--plotviewingangles_lightcurves', action='store_true',
-                        help='Use alongside --plotviewingangle in order to plot the'
-                             'lightcurves for the viewing angles specified together')
+                        help='Make lightcurve plots for the viewing angles and models specified')
 
     parser.add_argument('--average_every_tenth_viewing_angle', action='store_true',
                         help='average every tenth viewing angle to reduce noise')
