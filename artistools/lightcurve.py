@@ -182,7 +182,7 @@ def get_magnitudes(modelpath, args, angle=None, modelnumber=None):
     for filter_name in filters_list:
         if filter_name == 'bol':
             filters_dict['bol'] = [
-                (time, bol_magnitude) for time, bol_magnitude in
+                (float(time), bol_magnitude) for time, bol_magnitude in
                 zip(timearray, bolometric_magnitude(modelpath, timearray, args, angle=angle, res_specdata=res_specdata))
                 if math.isfinite(bol_magnitude)]
         elif filter_name not in filters_dict:
