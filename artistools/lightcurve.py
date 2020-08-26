@@ -319,7 +319,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange', 'tab:pink', 'tab:gray', 'gold', 'tab:cyan',
                'darkblue', 'bisque', 'yellow']
 
-    colours2 = ['gray', 'lightblue', 'pink', 'yellowgreen', 'mediumorchid', 'sandybrown']
+    colours2 = ['gray', 'lightblue', 'pink', 'yellowgreen', 'mediumorchid', 'sandybrown', 'plum', 'lightgray',
+                'wheat', 'paleturquoise']
 
     # angle_names = [0, 45, 90, 180]
     font = {'size': 24}
