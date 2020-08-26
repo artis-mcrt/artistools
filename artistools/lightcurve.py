@@ -330,16 +330,9 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
 
         if args.plotvspecpol:
             angles = args.plotvspecpol
-        elif args.plotviewingangle:
-            angles = args.plotviewingangle
-        else:
-            angles = [None]
-        # angles.append(None)
-
-    for modelnumber, modelpath in enumerate(modelpaths):
-
-        if args.plotvspecpol:
-            angles = args.plotvspecpol
+        elif args.plotviewingangle[0] == -1:
+            angles = np.arange(0, 100, 1, dtype=int)
+            print(angles)
         elif args.plotviewingangle:
             angles = args.plotviewingangle
         else:
@@ -392,7 +385,6 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                         or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
 
                     zfit = np.polyfit(x=time, y=magnitude, deg=10)
-                    print(args.xmin, args.xmax)
                     xfit = np.linspace(args.xmin + 1, args.xmax - 1, num=1000)
 
                     # Taking line_min and line_max from the limits set for the lightcurve being plotted
@@ -446,7 +438,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                     plt.axvline(x=float(time_after15days_polyfit), color="black", linestyle="--")
                     print("time after 15 days polyfit = ", time_after15days_polyfit)
                     plt.tight_layout()
-                    plt.savefig(f'{key}' + "_band_" + f'{modelname}' + "_viewing_angle" + str(index) + ".png")
+                    plt.savefig(f'{key}' + "_band_" + f'{modelname}' + "_viewing_angle" + str(angle) + ".png")
                     plt.close()
 
                 if args.plotviewingangle and args.plotviewingangles_lightcurves:
@@ -527,7 +519,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
         plt.tick_params(axis='both', which='major', top=False, right=False, length=8, width=2, labelsize=12)
         plt.tight_layout()
         plt.savefig(key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf", format="pdf")
-        print("saving " + f'{modelname}' + "_viewing_angle_scatter_plot.pdf")
+        print("saving " + key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf")
         plt.close()
 
     elif args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
@@ -557,7 +549,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
         plt.tick_params(axis='both', which='major', top=False, right=False, length=8, width=2, labelsize=12)
         plt.tight_layout()
         plt.savefig(key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf", format="pdf")
-        print("saving " + f'{modelname}' + "_viewing_angle_scatter_plot.pdf")
+        print("saving " + key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf")
         plt.close()
 
     if (args.magnitude or args.plotviewingangles_lightcurves) and not (
@@ -923,7 +915,8 @@ def addargs(parser):
                         help='Plot vspecpol. Expects int for spec number in vspecpol files')
 
     parser.add_argument('--plotviewingangle', type=int, nargs='+',
-                        help='Plot viewing angles. Expects int for angle number in specpol_res.out')
+                        help='Plot viewing angles. Expects int for angle number in specpol_res.out'
+                        'use args = -1 to select all the viewing angles')
 
     parser.add_argument('-ymax', type=float, default=None,
                         help='Plot range: y-axis')
