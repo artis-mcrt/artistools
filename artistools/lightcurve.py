@@ -330,9 +330,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
 
         if args.plotvspecpol:
             angles = args.plotvspecpol
-        elif args.plotviewingangle[0] == -1:
+        elif args.plotviewingangle and args.plotviewingangle[0] == -1:
             angles = np.arange(0, 100, 1, dtype=int)
-            print(angles)
         elif args.plotviewingangle:
             angles = args.plotviewingangle
         else:
