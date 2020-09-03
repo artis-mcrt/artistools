@@ -468,32 +468,9 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                        key) + "_band_deltam15 ", comments='')
 
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
-        for ii, modelname in enumerate(modelnames):
-            viewing_angle_plot_data = pd.read_csv(key + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
-                                                  delimiter=" ")
-            band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].values
-            band_risetime_viewing_angles = viewing_angle_plot_data["risetime_polyfit"].values
-
-            a0 = plt.scatter(band_risetime_viewing_angles, band_peak_mag_viewing_angles, marker='x', color=colours2[ii])
-            p0 = plt.scatter(band_risetime_angle_averaged_polyfit[ii], band_peakmag_angle_averaged_polyfit[ii],
-                             marker='o', color=colours[ii], s=40)
-            plotvalues.append((a0, p0))
-            plt.errorbar(band_risetime_angle_averaged_polyfit[ii], band_peakmag_angle_averaged_polyfit[ii],
-                         xerr=np.std(band_risetime_viewing_angles),
-                         yerr=np.std(band_peak_mag_viewing_angles), ecolor=colours[ii], capsize=2)
-
-        plt.legend(plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
-                   loc='upper right', fontsize=8, ncol=2, columnspacing=1)
-        plt.xlabel('Rise Time in Days', fontsize=14)
-        plt.ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
-        plt.gca().invert_yaxis()
-        plt.minorticks_on()
-        plt.tick_params(axis='both', which='minor', top=False, right=False, length=5, width=2, labelsize=12)
-        plt.tick_params(axis='both', which='major', top=False, right=False, length=8, width=2, labelsize=12)
-        plt.tight_layout()
-        plt.savefig(key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf", format="pdf")
-        print("saving " + key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf")
-        plt.close()
+        make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_risetime_angle_averaged_polyfit,
+                                                         band_peakmag_angle_averaged_polyfit, colours, colours2,
+                                                         plotvalues, key)
 
     elif args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
         for ii, modelname in enumerate(modelnames):
@@ -609,6 +586,38 @@ def calculate_peak_time_mag_deltam15(time, magnitude, key, band_risetime_polyfit
     band_deltam15_polyfit.append((min(fxfit) - mag_after15days_polyfit) * -1)
 
     return band_risetime_polyfit, band_peakmag_polyfit, band_deltam15_polyfit
+
+
+def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_risetime_angle_averaged_polyfit,
+                                                     band_peakmag_angle_averaged_polyfit, colours, colours2,
+                                                     plotvalues, key):
+    for ii, modelname in enumerate(modelnames):
+        viewing_angle_plot_data = pd.read_csv(key + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
+                                              delimiter=" ")
+        band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].values
+        band_risetime_viewing_angles = viewing_angle_plot_data["risetime_polyfit"].values
+
+        a0 = plt.scatter(band_risetime_viewing_angles, band_peak_mag_viewing_angles, marker='x', color=colours2[ii])
+        p0 = plt.scatter(band_risetime_angle_averaged_polyfit[ii], band_peakmag_angle_averaged_polyfit[ii],
+                         marker='o', color=colours[ii], s=40)
+        plotvalues.append((a0, p0))
+        plt.errorbar(band_risetime_angle_averaged_polyfit[ii], band_peakmag_angle_averaged_polyfit[ii],
+                     xerr=np.std(band_risetime_viewing_angles),
+                     yerr=np.std(band_peak_mag_viewing_angles), ecolor=colours[ii], capsize=2)
+
+    plt.legend(plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
+               loc='upper right', fontsize=8, ncol=2, columnspacing=1)
+    plt.xlabel('Rise Time in Days', fontsize=14)
+    plt.ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
+    plt.gca().invert_yaxis()
+    plt.minorticks_on()
+    plt.tick_params(axis='both', which='minor', top=False, right=False, length=5, width=2, labelsize=12)
+    plt.tick_params(axis='both', which='major', top=False, right=False, length=8, width=2, labelsize=12)
+    plt.tight_layout()
+    plt.savefig(key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf", format="pdf")
+    print("saving " + key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf")
+    plt.close()
+
 
 def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
     font = {'size': 22}
