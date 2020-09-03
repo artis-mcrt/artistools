@@ -445,7 +445,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                     text_key = filternames_conversion_dict[key]
                 else:
                     text_key = key
-                if len(args.filter) > 1:
+                if args.filter and len(args.filter) > 1:
                     ax[plotnumber].text(args.xmax * 0.1, args.ymax * 0.97, text_key)
                 else:
                     ax.text(args.xmax * 0.75, args.ymax * 0.95, text_key)
@@ -481,7 +481,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                 or args.make_viewing_angle_peakmag_risetime_scatter_plot or
                 args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
 
-                    if len(args.filter) > 1:
+                    if args.filter and len(args.filter) > 1:
                         if linestyle == 'dashed':
                             alpha = 0.6
                         else:
@@ -571,7 +571,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     #             plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, colours[i], markers[i],
     #                                       filternames_conversion_dict)
 
-    if len(args.filter) > 1:
+    if args.filter and len(args.filter) > 1:
         for axis in ax:
             # axis.set_xscale('log')
             axis.minorticks_on()
@@ -587,7 +587,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
         ax.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=labelfontsize,
                        direction='in')
 
-    if len(args.filter) > 1:
+    if args.filter and len(args.filter) > 1:
         fig.text(0.5, 0.025, 'Time Since Explosion [days]', ha='center', va='center')
         fig.text(0.02, 0.5, 'Absolute Magnitude', ha='center', va='center', rotation='vertical')
     elif key in filternames_conversion_dict:
@@ -607,11 +607,11 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     # f.set_figheight(8)
     # f.set_figwidth(7)
     if not args.nolegend:
-        if len(args.filter) > 1:
+        if args.filter and len(args.filter) > 1:
             ax[0].legend(loc='best', frameon=True, fontsize='xx-small', ncol=1)
         else:
             ax.legend(loc='best', frameon=False, fontsize='small', ncol=1, handlelength=0.7)
-    if len(filters_dict) == 1:
+    if args.filter and len(filters_dict) == 1:
         args.outputfile = os.path.join(outputfolder, f'plot{key}lightcurves.pdf')
     if args.show:
         plt.show()
