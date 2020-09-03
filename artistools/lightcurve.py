@@ -376,42 +376,16 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                 if filterfunc is not None:
                     magnitude = filterfunc(magnitude)
 
-                """Calculating band peak time, peak magnitude and delta m15"""
+                # Calculating band peak time, peak magnitude and delta m15
                 if (args.calculate_peakmag_risetime_delta_m15
                         or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
                         or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
                         or args.make_viewing_angle_peakmag_risetime_scatter_plot
                         or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
+                    band_risetime_polyfit, band_peakmag_polyfit, band_deltam15_polyfit = \
+                        calculate_peak_time_mag_deltam15(time, magnitude, key, band_risetime_polyfit,
+                                                         band_peakmag_polyfit, band_deltam15_polyfit, args)
 
-                    zfit = np.polyfit(x=time, y=magnitude, deg=10)
-                    xfit = np.linspace(args.xmin + 1, args.xmax - 1, num=1000)
-
-                    # Taking line_min and line_max from the limits set for the lightcurve being plotted
-                    fxfit = []
-                    for j in range(len(xfit)):
-                        fxfit.append(zfit[0] * (xfit[j] ** 10) + zfit[1] * (xfit[j] ** 9) + zfit[2] * (xfit[j] ** 8) +
-                                     zfit[3] * (xfit[j] ** 7) + zfit[4] * (xfit[j] ** 6) + zfit[5] * (xfit[j] ** 5) +
-                                     zfit[6] * (xfit[j] ** 4) + zfit[7] * (xfit[j] ** 3) + zfit[8] * (xfit[j] ** 2) +
-                                     zfit[9] * (xfit[j]) + zfit[10])
-                        # polynomial with 10 degrees of freedom used here but change as required if it improves the fit
-
-                    def match_closest_time_polyfit(reftime_polyfit):
-                        return str("{}".format(min([float(x) for x in xfit], key=lambda x: abs(x - reftime_polyfit))))
-
-                    index_min = np.argmin(fxfit)
-                    tmax_polyfit = xfit[index_min]
-                    time_after15days_polyfit = match_closest_time_polyfit(tmax_polyfit + 15)
-                    for ii, xfits in enumerate(xfit):
-                        if float(xfits) == float(time_after15days_polyfit):
-                            index_after_15_days = ii
-
-                    mag_after15days_polyfit = fxfit[index_after_15_days]
-                    print(f'{key}_max polyfit = {min(fxfit)} at time = {tmax_polyfit}')
-                    print(f'deltam15 polyfit = {min(fxfit) - mag_after15days_polyfit}')
-
-                    band_risetime_polyfit.append(tmax_polyfit)
-                    band_peakmag_polyfit.append(min(fxfit))
-                    band_deltam15_polyfit.append((min(fxfit) - mag_after15days_polyfit) * -1)
 
                 """Plotting the lightcurves for all viewing angles specified in the command line along with the 
                 polynomial fit and peak mag, risetime to peak and delta m15 marked on the plots to check the 
@@ -448,8 +422,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                 # else:
                 #     linestyle = '-'
 
-        """Saving viewing angle data so it can be read in and plotted later on without re-running the script
-           as it is quite time consuming"""
+        # Saving viewing angle data so it can be read in and plotted later on without re-running the script
+        #    as it is quite time consuming
         if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
             np.savetxt(key + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
                        np.c_[band_peakmag_polyfit, band_risetime_polyfit, band_deltam15_polyfit],
@@ -599,6 +573,42 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
             args.outputfile = os.path.join(outputfolder, f'{modelname}_plot{key}lightcurves.pdf')
         plt.savefig(args.outputfile, format='pdf')
         plt.close()
+
+
+def calculate_peak_time_mag_deltam15(time, magnitude, key, band_risetime_polyfit, band_peakmag_polyfit,
+                                     band_deltam15_polyfit, args):
+    """Calculating band peak time, peak magnitude and delta m15"""
+    zfit = np.polyfit(x=time, y=magnitude, deg=10)
+    xfit = np.linspace(args.xmin + 1, args.xmax - 1, num=1000)
+
+    # Taking line_min and line_max from the limits set for the lightcurve being plotted
+    fxfit = []
+    for j in range(len(xfit)):
+        fxfit.append(zfit[0] * (xfit[j] ** 10) + zfit[1] * (xfit[j] ** 9) + zfit[2] * (xfit[j] ** 8) +
+                     zfit[3] * (xfit[j] ** 7) + zfit[4] * (xfit[j] ** 6) + zfit[5] * (xfit[j] ** 5) +
+                     zfit[6] * (xfit[j] ** 4) + zfit[7] * (xfit[j] ** 3) + zfit[8] * (xfit[j] ** 2) +
+                     zfit[9] * (xfit[j]) + zfit[10])
+        # polynomial with 10 degrees of freedom used here but change as required if it improves the fit
+
+    def match_closest_time_polyfit(reftime_polyfit):
+        return str("{}".format(min([float(x) for x in xfit], key=lambda x: abs(x - reftime_polyfit))))
+
+    index_min = np.argmin(fxfit)
+    tmax_polyfit = xfit[index_min]
+    time_after15days_polyfit = match_closest_time_polyfit(tmax_polyfit + 15)
+    for ii, xfits in enumerate(xfit):
+        if float(xfits) == float(time_after15days_polyfit):
+            index_after_15_days = ii
+
+    mag_after15days_polyfit = fxfit[index_after_15_days]
+    print(f'{key}_max polyfit = {min(fxfit)} at time = {tmax_polyfit}')
+    print(f'deltam15 polyfit = {min(fxfit) - mag_after15days_polyfit}')
+
+    band_risetime_polyfit.append(tmax_polyfit)
+    band_peakmag_polyfit.append(min(fxfit))
+    band_deltam15_polyfit.append((min(fxfit) - mag_after15days_polyfit) * -1)
+
+    return band_risetime_polyfit, band_peakmag_polyfit, band_deltam15_polyfit
 
 def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
     font = {'size': 22}
