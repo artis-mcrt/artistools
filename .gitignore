@@ -46,3 +46,11 @@ __artistoolscache__
 artistools/data/code_comparison_files/*
 artistools/.ipynb_checkpoints/*
 
+artistools/data/hesma/*
+artistools/data/lightcurves/2005hk*
+artistools/data/lightcurves/ZTF18abc*
+artistools/data/refspectra/2012Z_*
+artistools/data/refspectra/N1*
+artistools/data/refspectra/ZTF18abc*
+
+

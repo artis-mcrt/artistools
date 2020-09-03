@@ -26,4 +26,233 @@ SN2016jhr_gri.dat:
   timecorrection: 2457483.3459707 # 2457482.8459707 + 0.5
   dist_mpc: 546.5
   e_bminusv: 0.0263
+
+2005hk_lc_B.dat:
+  label: 'SN 2005hk'
+  timecorrection: 2453675.59
+  dist_mpc: 49.20
+  e_bminusv: 0.112
+  z: 0.0118
   r_v: 3.1
+  #a_v:
+
+2005hk_lc_I.dat:
+  label: 'SN 2005hk'
+  timecorrection: 2453675.59
+  dist_mpc: 49.20
+  e_bminusv: 0.112
+  z: 0.0118
+  r_v: 3.1
+  #a_v:
+
+2005hk_lc_R.dat:
+  label: 'SN 2005hk'
+  timecorrection: 2453675.59
+  dist_mpc: 49.20
+  e_bminusv: 0.112
+  z: 0.0118
+  r_v: 3.1
+  #a_v:
+
+2005hk_lc_V.dat:
+  label: 'SN 2005hk'
+  timecorrection: 2453675.59
+  dist_mpc: 49.20
+  e_bminusv: 0.112
+  z: 0.0118
+  r_v: 3.1
+  #a_v:
+
+2008ha_lc_B.txt:
+  label: 'SN 2008ha'
+  timecorrection: 2454781.76
+  dist_mpc: 21.28
+  e_bminusv: 0.076
+  z: 0.004647
+  r_v: 3.1
+
+2008ha_lc_V.txt:
+  label: 'SN 2008ha'
+  timecorrection: 2454781.76
+  dist_mpc: 21.28
+  e_bminusv: 0.076
+  z: 0.004647
+  r_v: 3.1
+
+2008ha_lc_R.txt:
+  label: 'SN 2008ha'
+  timecorrection: 2454781.76
+  dist_mpc: 21.28
+  e_bminusv: 0.076
+  z: 0.004647
+  r_v: 3.1
+
+2008ha_lc_I.txt:
+  label: 'SN 2008ha'
+  timecorrection: 2454781.76
+  dist_mpc: 21.28
+  e_bminusv: 0.076
+  z: 0.004647
+  r_v: 3.1
+
+
+2004cs_unfiltered_lc_data.txt:
+  label: 'SN 2004cs unfiltered'
+  timecorrection: 3178.90
+  dist_mpc: 61.2
+  z: 0.014060
+  r_v: 3.1
+  #a_v: 1
+  #e_bminusv:
+
+2004cs_unfiltered_lc_data_R.txt:
+  label: 'SN 2004cs unfiltered'
+  timecorrection: 3178.90
+  dist_mpc: 61.2
+  z: 0.014060
+  r_v: 3.1
+  #a_v: 1
+  #e_bminusv:
+
+2004cs_unfiltered_lc_data_I.txt:
+  label: 'SN 2004cs unfiltered'
+  timecorrection: 3178.90
+  dist_mpc: 61.2
+  z: 0.014060
+  r_v: 3.1
+  #a_v: 1
+  #e_bminusv:
+
+2004cs_unfiltered_lc_data_V.txt:
+  label: 'SN 2004cs unfiltered'
+  timecorrection: 3178.90
+  dist_mpc: 61.2
+  z: 0.014060
+  r_v: 3.1
+  #a_v: 1
+  #e_bminusv:
+
+2004cs_unfiltered_lc_data_rs.txt:
+  label: 'SN 2004cs unfiltered'
+  timecorrection: 3178.90
+  dist_mpc: 61.2
+  z: 0.014060
+  r_v: 3.1
+  #a_v: 1
+  #e_bminusv:
+
+2007qd_lc_rs_microJy.txt:
+  label: 'SN 2007qd'
+  timecorrection: 54399.29
+  dist_mpc: 192.1
+  z: 0.043147
+  e_bminusv: 0.035
+#  a_v:
+  r_v: 3.1
+
+2004cs_Rband_photometric_point.txt:
+  label: 'SN2004cs R band'
+  timecorrection: 3178.90
+  dist_mpc: 61.2
+  z: 0.014060
+  r_v: 3.1
+
+2004cs_Bband_photometric_point.txt:
+  label: 'SN2004cs B band'
+  timecorrection: 3178.90
+  dist_mpc: 61.2
+  z: 0.014060
+  r_v: 3.1
+
+2004cs_Vband_photometric_point.txt:
+  label: 'SN2004cs V band'
+  timecorrection: 3178.90
+  dist_mpc: 61.2
+  z: 0.014060
+  r_v: 3.1
+
+ZTF18abclfee_g_band_k_corrected.dat:
+  label: 'ZTF18abcdlfee g band'
+  timecorrection: 5.828935250000000087e+04
+  dist_mpc: 100.8
+  z: 0.023
+  r_v: 3.1
+  e_bminusv: 0.0997
+
+ZTF18abclfee_r_band_k_corrected.dat:
+  label: 'ZTF18abcdlfee r band'
+  timecorrection: 5.828925110000000132e+04
+  dist_mpc: 100.8
+  z: 0.023
+  r_v: 3.1
+  e_bminusv: 0.0997
+
+
+SN2015H_r_band.txt:
+  label: 'SN2015H r band'
+  timecorrection: 57045.14
+  dist_mpc: 60.57
+  z: 0.012462
+  r_v: 3.1
+  e_bminusv: 0.048
+
+n100Hdef_2014_B_band.txt:
+  label: 'n100H'
+  timecorrection: 0.0
+  dist_mpc: 0.00001
+
+n100Hdef_2014_V_band.txt:
+  label: 'n100H'
+  timecorrection: 0.0
+  dist_mpc: 0.00001
+
+n100Hdef_2014_R_band.txt:
+  label: 'n100H'
+  timecorrection: 0.0
+  dist_mpc: 0.00001
+
+n100Hdef_2014_I_band.txt:
+  label: 'n100H'
+  timecorrection: 0.0
+  dist_mpc: 0.00001
+
+n100Ldef_2014_B_band.txt:
+  label: 'n100L'
+  timecorrection: 0.0
+  dist_mpc: 0.00001
+
+n100Ldef_2014_V_band.txt:
+  label: 'n100L'
+  timecorrection: 0.0
+  dist_mpc: 0.00001
+
+n100Ldef_2014_R_band.txt:
+  label: 'n100L'
+  timecorrection: 0.0
+  dist_mpc: 0.00001
+
+n100Ldef_2014_I_band.txt:
+  label: 'n100L'
+  timecorrection: 0.0
+  dist_mpc: 0.00001
+
+n100def_2014_B_band.txt:
+  label: 'n100'
+  timecorrection: 0.0
+  dist_mpc: 0.00001
+
+n100def_2014_V_band.txt:
+  label: 'n100'
+  timecorrection: 0.0
+  dist_mpc: 0.00001
+
+n100def_2014_R_band.txt:
+  label: 'n100'
+  timecorrection: 0.0
+  dist_mpc: 0.00001
+
+n100def_2014_I_band.txt:
+  label: 'n100'
+  timecorrection: 0.0
+  dist_mpc: 0.00001
+

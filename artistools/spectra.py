@@ -283,16 +283,18 @@ def read_specpol_res(modelpath, angle=None, args=None):
         res_specdata[i] = res_specdata[i].to_numpy()
 
     # Averages over 10 bins to reduce noise
-    for start_bin in np.arange(start=0, stop=100, step=10):
-        # print(start_bin)
-        for bin_number in range(start_bin+1, start_bin+10):
-            # print(bin_number)
-            res_specdata[start_bin] += res_specdata[bin_number]
-        res_specdata[start_bin] /= 10  # every 10th bin is the average of 10 bins
-        print(f'bin number {start_bin} = the average of bins {start_bin} to {start_bin + 9}')
 
-    if angle and angle % 10 == 0:
-        print(f"Bin number {angle} is the average of 10 angle bins")
+    if args.average_every_tenth_viewing_angle:
+        for start_bin in np.arange(start=0, stop=100, step=10):
+            # print(start_bin)
+            for bin_number in range(start_bin+1, start_bin+10):
+                # print(bin_number)
+                res_specdata[start_bin] += res_specdata[bin_number]
+            res_specdata[start_bin] /= 10  # every 10th bin is the average of 10 bins
+            print(f'bin number {start_bin} = the average of bins {start_bin} to {start_bin + 9}')
+
+        if angle and angle % 10 == 0:
+            print(f"Bin number {angle} is the average of 10 angle bins")
 
     for i, res_spec in enumerate(res_specdata):
         res_specdata[i] = pd.DataFrame(data=res_specdata[i], columns=columns[:numberofIvalues])
