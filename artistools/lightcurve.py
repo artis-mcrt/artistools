@@ -295,7 +295,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     labelfontsize = 22
     font = {'size': labelfontsize}
     matplotlib.rc('font', **font)
-    if len(args.filter) > 1:
+    if args.filter and len(args.filter) > 1:
         rows = 2
         cols = 3
     else:
@@ -304,7 +304,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     fig, ax = plt.subplots(nrows=rows, ncols=cols, sharex=True, sharey=True,
                            figsize=(at.figwidth * 1.6 * cols, at.figwidth * 1.1 * rows*1.75),
                            tight_layout={"pad": 3.0, "w_pad": 0.6, "h_pad": 0.6}) # (6.2 * 3, 9.4 * 3)
-    if len(args.filter) > 1:
+    if args.filter and len(args.filter) > 1:
         ax = ax.flatten()
 
     plt.gca().invert_yaxis()
