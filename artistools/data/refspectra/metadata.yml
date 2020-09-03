@@ -210,3 +210,240 @@ SN2013cs_20140325_3Ang.txt:  # (Maguire et al. 2016)
   dist_mpc: 546.5
   z: 0.11737
 #  scale_factor: 2.5
+
+N1_deflag_8.91_days_since_explosion.dat:
+  label: 'N1 +8.9d'
+  dist_mpc: 0.00001
+  #scale_factor: 0.5
+
+N1_deflag_9.25_days_since_explosion.dat:
+  label: 'N1 +9.3d'
+  dist_mpc: 0.00001
+  #scale_factor: 0.5
+
+N1_deflag_11.12_days_since_explosion.dat:
+  label: 'N1 +11.1d'
+  dist_mpc: 0.00001
+  #scale_factor: 0.5
+
+N1_deflag_13.87_days_since_explosion.dat:
+  label: 'N1 +13.9d'
+  dist_mpc: 0.00001
+#  scale_factor: 0.429
+
+N1_deflag_15.49_days_since_explosion.dat:
+  label: 'N1 +15.5d'
+  dist_mpc: 0.00001
+#  scale_factor: 0.429
+
+N1_deflag_16.68_days_since_explosion.dat:
+  label: 'N1 +16.7d'
+  dist_mpc: 0.00001
+  #scale_factor: 0.5
+
+N1_deflag_25.03_days_since_explosion.dat:
+  label: 'N1 +25.0d'
+  dist_mpc: 0.00001
+  #scale_factor: 0.429
+
+
+ZTF18abclfee_9.03_days_since_explosion.ascii:
+  label: 'ZTF18abclfee +9.0d'
+  dist_mpc: 100.8
+  z: 0.023
+  r_v: 3.1
+  e_bminusv: 0.0997
+
+
+ZTF18abclfee_10.98_days_since_explosion.ascii:
+  label: 'ZTF18abclfee +11.0d'
+  dist_mpc: 100.8
+  z: 0.023
+  r_v: 3.1
+  e_bminusv: 0.0997
+
+ZTF18abclfee_13.58_days_since_explosion.ascii:
+  label: 'ZTF18abclfee +13.6d'
+  dist_mpc: 100.8
+#  scale_factor: 2.1546e-16
+  z: 0.023
+  r_v: 3.1
+  e_bminusv: 0.0997
+
+ZTF18abclfee_16.94_days_since_explosion.ascii:
+  label: 'ZTF18abclfee +16.9d'
+  dist_mpc: 100.8
+  z: 0.023
+  r_v: 3.1
+  e_bminusv: 0.0997
+
+
+ZTF18abclfee_16.99_days_since_explosion.ascii:
+  label: 'ZTF18abclfee +17.0d'
+  dist_mpc: 100.8
+  z: 0.023
+  r_v: 3.1
+  e_bminusv: 0.0997
+  scale_factor: 0.145
+
+ZTF18abclfee_43.96_days_since_explosion.ascii:
+  label: 'ZTF18abclfee +44.0d'
+  dist_mpc: 100.8
+  z: 0.023
+  r_v: 3.1
+  e_bminusv: 0.0997
+
+
+2015H_19_days_since_explosion.txt:
+  label: 'SN2015H +19d'
+  t: 0
+  dist_mpc: 60.57
+  z: 0.012462
+  r_v: 3.1
+  e_bminusv: 0.048
+
+2012Z_8.76_days_before_r_peak.dat:
+  label: 'SN2012Z -8.8d'
+  t: 0
+  dist_mpc: 33.0
+  z: 0.007125
+  r_v: 3.1
+  e_bminusv: 0.11
+
+2012Z_6.63_days_before_r_peak.dat:
+  label: 'SN2012Z -6.6d'
+  t: 0
+  dist_mpc: 33.0
+  z: 0.007125
+  r_v: 3.1
+  e_bminusv: 0.11
+
+2012Z_5.56_days_before_r_peak.dat:
+  label: 'SN2012Z -5.6d'
+  t: 0
+  dist_mpc: 33.0
+  z: 0.007125
+  r_v: 3.1
+  e_bminusv: 0.11
+
+2012Z_1.66_days_before_r_peak.dat:
+  label: 'SN2012Z -1.7d'
+  t: 0
+  dist_mpc: 33.0
+  z: 0.007125
+  r_v: 3.1
+  e_bminusv: 0.11
+
+2012Z_4.34_days_since_r_peak.dat:
+  label: 'SN2012Z +4.3d'
+  t: 0
+  dist_mpc: 33.0
+  z: 0.007125
+  r_v: 3.1
+  e_bminusv: 0.11
+
+
+n5_def_8.77_days_before_r_peak.txt:
+  label: 'N5 -8.77d'
+  t: 0
+  dist_mpc: 0.00001
+
+n5_def_6.65_days_before_r_peak.txt:
+  label: 'N5 -6.65d'
+  t: 0
+  dist_mpc: 0.00001
+
+n5_def_5.68_days_before_r_peak.txt:
+  label: 'N5 -5.68d'
+  t: 0
+  dist_mpc: 0.00001
+
+n5_def_1.56_days_before_r_peak.txt:
+  label: 'N5 -1.56d'
+  t: 0
+  dist_mpc: 0.00001
+
+n5_def_4.42_days_after_r_peak.txt:
+  label: 'N5 +4.42d'
+  t: 0
+  dist_mpc: 0.00001
+
+N1_2.81_days_before_r_peak.txt:
+  label: 'N1 -2.81d'
+  t: 0
+  dist_mpc: 0.00001
+
+N1_1.04_days_before_r_peak.txt:
+  label: 'N1 -1.04d'
+  t: 0
+  dist_mpc: 0.00001
+
+N1_1.59_days_after_r_peak.txt:
+  label: 'N1 +1.59d'
+  t: 0
+  dist_mpc: 0.00001
+
+N1_4.91_days_after_r_peak.txt:
+  label: 'N1 +4.91d'
+  t: 0
+  dist_mpc: 0.00001
+
+N3_def_6.72_days_before_r_peak.txt:
+  label: 'N3 -6.7d'
+  t: 0
+  dist_mpc: 0.00001
+
+N3_def_5.54_days_before_r_peak.txt:
+  label: 'N3 -5.5d'
+  t: 0
+  dist_mpc: 0.00001
+
+N3_def_1.71_days_before_r_peak.txt:
+  label: 'N3 -1.7d'
+  t: 0
+  dist_mpc: 0.00001
+
+N3_def_4.50_days_after_r_peak.txt:
+  label: 'N3 +4.5d'
+  t: 0
+  dist_mpc: 0.00001
+
+N100_def_9.95_days.txt:
+  label: 'N100 +10.0d'
+  t: 0
+  dist_mpc: 0.00001
+
+N100_def_14.93_days.txt:
+  label: 'N100 +14.9d'
+  t: 0
+  dist_mpc: 0.00001
+
+N100_def_20.06_days.txt:
+  label: 'N100 +20.0d'
+  t: 0
+  dist_mpc: 0.00001
+
+N100_def_25.03_days.txt:
+  label: 'N100 +25.0d'
+  t: 0
+  dist_mpc: 0.00001
+
+N100L_def_9.95_days.txt:
+  label: 'N100L +10.0d'
+  t: 0
+  dist_mpc: 0.00001
+
+N100L_def_14.93_days.txt:
+  label: 'N100L +14.9d'
+  t: 0
+  dist_mpc: 0.00001
+
+N100L_def_20.06_days.txt:
+  label: 'N100L +20.0d'
+  t: 0
+  dist_mpc: 0.00001
+
+N100L_def_25.03_days.txt:
+  label: 'N100L +25.0d'
+  t: 0
+  dist_mpc: 0.00001
