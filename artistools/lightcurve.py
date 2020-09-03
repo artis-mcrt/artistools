@@ -458,7 +458,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                             or args.make_viewing_angle_peakmag_risetime_scatter_plot
                         or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
 
-                    if args.reflightcurves and modelnumber is 0:
+                    if args.reflightcurves and modelnumber == 0:
                         if len(angles) > 1 and index > 0:
                             print('already plotted reflightcurve')
                         else:
@@ -830,7 +830,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                 if args.linestyle:
                     linestyle = args.linestyle[modelnumber]
 
-                if args.reflightcurves and modelnumber is 0:
+                if args.reflightcurves and modelnumber == 0:
                     colours = args.refspeccolors
                     markers = args.refspecmarkers
                     for i, reflightcurve in enumerate(args.reflightcurves):
@@ -855,10 +855,10 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                 if len(args.colour_evolution) > 1:
 
                     ax[plotnumber].plot(plot_times, diff, label=linelabel, linewidth=4, linestyle=linestyle,
-                                        color=color, alpha=alpha)
+                                        color=color)
                 else:
                     ax.plot(plot_times, diff, label=linelabel, linewidth=3, linestyle=linestyle,
-                                        color=color, alpha=alpha)
+                                        color=color)
 
                 if len(args.colour_evolution) > 1:
                     ax[plotnumber].text(10, args.ymax - 0.5, f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
@@ -959,7 +959,7 @@ def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, marker, f
 
     filter_data = {}
     for plotnumber, filter_name in enumerate(filter_names):
-        if filter_name is 'bol':
+        if filter_name == 'bol':
             continue
         f = open(filterdir / Path(f'{filter_name}.txt'))
         lines = f.readlines()
