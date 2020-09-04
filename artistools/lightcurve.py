@@ -527,7 +527,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
         band_peakmag_polyfit = []
         band_deltam15_polyfit = []
 
-        """Saving the information required to make the viewing angle scatter plots to arrays"""
+        # Saving the information required to make the viewing angle scatter plots to arrays
         if (args.make_viewing_angle_peakmag_risetime_scatter_plot
                 or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
             modelnames.append(modelname)
