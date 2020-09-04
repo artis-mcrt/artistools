@@ -316,6 +316,10 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
         args.xmax = 100
     if args.xmin is None:
         args.xmin = 0
+    if args.timemax is None:
+        args.timemax = args.xmax
+    if args.timemin is None:
+        args.timemin = args.xmin
 
     band_risetime_polyfit = []
     band_peakmag_polyfit = []
@@ -381,7 +385,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
 
                 for t, mag in filters_dict[key]:
                     # adjusting plot range for artis simulation (x-axis)
-                    if (args.xmin < t < args.xmax):
+                    if (args.timemin < t < args.timemax):
                         time.append(t)
                         magnitude.append(mag)
 
@@ -1147,6 +1151,12 @@ def addargs(parser):
 
     parser.add_argument('-xmin', '-timemin', type=float, default=None,
                         help='Plot range: x-axis')
+
+    parser.add_argument('-timemax', type=float, default=None,
+                        help='Time max to plot')
+
+    parser.add_argument('-timemin', type=float, default=None,
+                        help='Time min to plot')
 
     parser.add_argument('-reflightcurves', type=str, nargs='+', dest='reflightcurves',
                         help='Also plot reference lightcurves from these files')
