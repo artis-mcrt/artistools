@@ -527,7 +527,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
         band_peakmag_polyfit = []
         band_deltam15_polyfit = []
 
-        # Saving the information required to make the viewing angle scatter plots to arrays
+        """Saving the information required to make the viewing angle scatter plots to arrays"""
         if (args.make_viewing_angle_peakmag_risetime_scatter_plot
                 or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
             modelnames.append(modelname)
@@ -559,8 +559,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                                                          plotvalues, key)
         return
 
+    elif args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
         make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, colours, colours2,
-    if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
                                                           band_delta_m15_angle_averaged_polyfit,
                                                           band_peakmag_angle_averaged_polyfit, plotvalues)
         return
@@ -633,7 +633,7 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, ban
 
     # Taking line_min and line_max from the limits set for the lightcurve being plotted
     fxfit = []
-    for j, _ in enumerate(xfit):
+    for j in range(len(xfit)):
         fxfit.append(zfit[0] * (xfit[j] ** 10) + zfit[1] * (xfit[j] ** 9) + zfit[2] * (xfit[j] ** 8) +
                      zfit[3] * (xfit[j] ** 7) + zfit[4] * (xfit[j] ** 6) + zfit[5] * (xfit[j] ** 5) +
                      zfit[6] * (xfit[j] ** 4) + zfit[7] * (xfit[j] ** 3) + zfit[8] * (xfit[j] ** 2) +
