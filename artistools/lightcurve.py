@@ -557,11 +557,13 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
         make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_risetime_angle_averaged_polyfit,
                                                          band_peakmag_angle_averaged_polyfit, colours, colours2,
                                                          plotvalues, key)
+        return
 
     elif args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
         make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, colours, colours2,
                                                           band_delta_m15_angle_averaged_polyfit,
                                                           band_peakmag_angle_averaged_polyfit, plotvalues)
+        return
 
     # if (args.magnitude or args.plotviewingangles_lightcurves) and not (
     #         args.calculate_peakmag_risetime_delta_m15 or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
@@ -620,6 +622,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     if args.show:
         plt.show()
     plt.savefig(args.outputfile, format='pdf')
+    print(f'Saved figure: {args.outputfile}')
 
 
 def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, band_risetime_polyfit,
