@@ -672,7 +672,7 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, ban
             plt.ylabel(f'{key} Magnitude')
 
         plt.xlabel('Time Since Explosion [d]')
-        # plt.gca().invert_yaxis()
+        plt.gca().invert_yaxis()
         plt.xlim(0, 40)
         plt.minorticks_on()
         plt.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=12)
