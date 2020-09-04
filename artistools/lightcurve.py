@@ -451,8 +451,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                     text_key = key
                 if args.filter and len(args.filter) > 1:
                     ax[plotnumber].text(args.xmax * 0.1, args.ymax * 0.97, text_key)
-                else:
-                    ax.text(args.xmax * 0.75, args.ymax * 0.95, text_key)
+                # else:
+                #     ax.text(args.xmax * 0.75, args.ymax * 0.95, text_key)
 
                 if (args.magnitude or args.plotviewingangles_lightcurves) and not (
                                             args.calculate_peakmag_risetime_delta_m15
