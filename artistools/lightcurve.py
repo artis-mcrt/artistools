@@ -419,7 +419,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                         or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
                         or args.make_viewing_angle_peakmag_risetime_scatter_plot
                         or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
-                    band_risetime_polyfit, band_peakmag_polyfit, band_deltam15_polyfit = \
+                    band_risetime_polyfit, band_peakmag_polyfit, band_deltam15_polyfit, tmax_polyfit = \
                         calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, band_risetime_polyfit,
                                                          band_peakmag_polyfit, band_deltam15_polyfit,
                                                          filternames_conversion_dict, args)
@@ -512,8 +512,9 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
         #    as it is quite time consuming
         if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
             np.savetxt(key + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
-                       np.c_[band_peakmag_polyfit, band_risetime_polyfit, band_deltam15_polyfit],
-                       delimiter=' ', header='peak_mag_polyfit risetime_polyfit deltam15_polyfit', comments='')
+                       np.c_[band_peakmag_polyfit, band_risetime_polyfit, band_deltam15_polyfit, tmax_polyfit],
+                       delimiter=' ', header='peak_mag_polyfit risetime_polyfit deltam15_polyfit tmax_polyfit',
+                       comments='')
 
         elif (args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
               or args.make_viewing_angle_peakmag_risetime_scatter_plot
@@ -685,7 +686,7 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, ban
         plt.savefig(f'{key}' + "_band_" + f'{modelname}' + "_viewing_angle" + str(angle) + ".png")
         plt.close()
 
-    return band_risetime_polyfit, band_peakmag_polyfit, band_deltam15_polyfit
+    return band_risetime_polyfit, band_peakmag_polyfit, band_deltam15_polyfit, tmax_polyfit
 
 
 def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_risetime_angle_averaged_polyfit,
