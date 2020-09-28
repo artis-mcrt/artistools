@@ -2,6 +2,7 @@
 """Artistools - spectra related functions."""
 import argparse
 import math
+import multiprocessing
 from collections import namedtuple
 from functools import lru_cache
 from functools import partial
@@ -12,7 +13,6 @@ import matplotlib.ticker as ticker
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import multiprocessing
 import numpy as np
 import pandas as pd
 import yaml
