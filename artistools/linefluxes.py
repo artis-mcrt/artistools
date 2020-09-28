@@ -89,10 +89,89 @@ def get_line_fluxes_from_packets(emtypecolumn, emfeatures, modelpath, maxpacketf
 
         dfpackets_selected = dfpackets.query(f'{emtypecolumn} in @feature.linelistindices', inplace=False)
 
-        normfactor = (1. / 4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read / u.s.to('day'))
+        normfactor = 1. / nprocs_read
+
+        # normfactor = 1. / 4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read
 
         energysumsreduced = calculate_timebinned_packet_sum(dfpackets_selected, timearrayplusend)
-        fluxdata = np.divide(energysumsreduced * normfactor, arr_timedelta)
+        # print(energysumsreduced, arr_timedelta)
+        fluxdata = np.divide(energysumsreduced * normfactor, arr_timedelta * u.day.to('s'))
+        dictlcdata[feature.colname] = fluxdata
+
+    lcdata = pd.DataFrame(dictlcdata)
+    return lcdata
+
+
+def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=None, arr_tend=None):
+    if arr_tstart is None:
+        arr_tstart = at.get_timestep_times_float(modelpath, loc='start')
+    if arr_tend is None:
+        arr_tend = at.get_timestep_times_float(modelpath, loc='end')
+
+    arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
+    arr_tmid = arr_tend = (np.array(arr_tstart) + np.array(arr_tend)) / 2.
+
+    modeldata, _ = at.get_modeldata(modelpath)
+
+    ionlist = []
+    for feature in emfeatures:
+        ionlist.append((feature.atomic_number, feature.ion_stage))
+
+    adata = at.get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True, get_photoionisations=False)
+
+    timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
+
+    dictlcdata = {'time': arr_tmid}
+
+    for feature in emfeatures:
+        fluxdata = np.zeros_like(arr_tmid, dtype=np.float)
+
+        dfnltepops = at.nltepops.read_files(
+            modelpath,
+            dfquery=f'Z=={feature.atomic_number:.0f} and ion_stage=={feature.ion_stage:.0f}').query('level in @feature.upperlevelindicies')
+
+        ion = adata.query(
+            'Z == @feature.atomic_number and ion_stage == @feature.ion_stage').iloc[0]
+
+        for timeindex, timedays in enumerate(arr_tmid):
+            v_inner = modeldata.velocity_inner.values * u.km / u.s
+            v_outer = modeldata.velocity_outer.values * u.km / u.s
+
+            t_sec = timedays * u.day
+            shell_volumes = ((4 * math.pi / 3) * ((v_outer * t_sec) ** 3 - (v_inner * t_sec) ** 3)).to('cm3').value
+
+            timestep = at.get_timestep_of_timedays(modelpath, timedays)
+            print(f'{feature.approxlambda}A {timedays}d')
+
+            for upperlevelindex, lowerlevelindex in zip(feature.upperlevelindicies, feature.lowerlevelindicies):
+                unaccounted_shellvol = 0.  # account for the volume of empty shells
+                for modelgridindex in modeldata.index:
+                    try:
+                        levelpop = dfnltepops.query(
+                            'modelgridindex==@modelgridindex and timestep==@timestep and Z==@feature.atomic_number'
+                            ' and ion_stage==@feature.ion_stage and level==@upperlevelindex').iloc[0].n_NLTE
+
+                        A_val = ion.transitions.query(
+                                'upper == @upperlevelindex and lower == @lowerlevelindex').iloc[0].A
+
+                        delta_ergs = (
+                            ion.levels.iloc[upperlevelindex].energy_ev -
+                            ion.levels.iloc[lowerlevelindex].energy_ev) * u.eV.to('erg')
+
+                        l = delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
+                        # print(f'  {modelgridindex} outer_velocity {modeldata.velocity_outer.values[modelgridindex]}'
+                        #       f' km/s shell_vol: {shell_volumes[modelgridindex] + unaccounted_shellvol} cm3'
+                        #       f' n_level {levelpop} cm-3 shell_Lum {l} erg/s')
+
+                        fluxdata[timeindex] += delta_ergs * A_val * levelpop * (
+                            shell_volumes[modelgridindex] + unaccounted_shellvol)
+
+                        unaccounted_shellvol = 0.
+
+                    except IndexError:
+                        unaccounted_shellvol += shell_volumes[modelgridindex]
+                        # print(f'IndexError cell {modelgridindex}')
+
         dictlcdata[feature.colname] = fluxdata
 
     lcdata = pd.DataFrame(dictlcdata)
@@ -113,18 +192,21 @@ def get_closelines(modelpath, atomic_number, ion_stage, approxlambda, lambdamin=
     # print(dflinelistclosematches)
 
     linelistindices = tuple(dflinelistclosematches.index.values)
+    upperlevelindicies = tuple(dflinelistclosematches.upperlevelindex.values)
+    lowerlevelindicies = tuple(dflinelistclosematches.lowerlevelindex.values)
     lowestlambda = dflinelistclosematches.lambda_angstroms.min()
     highestlamba = dflinelistclosematches.lambda_angstroms.max()
     colname = f'flux_{at.get_ionstring(atomic_number, ion_stage, nospace=True)}_{approxlambda}'
     featurelabel = f'{at.get_ionstring(atomic_number, ion_stage)} {approxlambda} Å'
 
-    return (colname, featurelabel, approxlambda, linelistindices, lowestlambda, highestlamba, atomic_number, ion_stage)
+    return (colname, featurelabel, approxlambda, linelistindices, lowestlambda, highestlamba,
+            atomic_number, ion_stage, upperlevelindicies, lowerlevelindicies)
 
 
 def get_labelandlineindices(modelpath, emfeaturesearch):
     featuretuple = namedtuple('feature', [
         'colname', 'featurelabel', 'approxlambda', 'linelistindices', 'lowestlambda',
-        'highestlamba', 'atomic_number', 'ion_stage'])
+        'highestlamba', 'atomic_number', 'ion_stage', 'upperlevelindicies', 'lowerlevelindicies'])
 
     labelandlineindices = []
     for params in emfeaturesearch:
@@ -164,9 +246,15 @@ def make_flux_ratio_plot(args):
 
         emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
-        dflcdata = get_line_fluxes_from_packets(args.emtypecolumn, emfeatures, modelpath, maxpacketfiles=args.maxpacketfiles,
-                                                arr_tstart=args.timebins_tstart,
-                                                arr_tend=args.timebins_tend)
+        if args.frompops:
+            dflcdata = get_line_fluxes_from_pops(args.emtypecolumn, emfeatures, modelpath,
+                                                 arr_tstart=args.timebins_tstart,
+                                                 arr_tend=args.timebins_tend)
+        else:
+            dflcdata = get_line_fluxes_from_packets(args.emtypecolumn, emfeatures, modelpath,
+                                                    maxpacketfiles=args.maxpacketfiles,
+                                                    arr_tstart=args.timebins_tstart,
+                                                    arr_tend=args.timebins_tend)
 
         dflcdata.eval(f'fratio = {emfeatures[1].colname} / {emfeatures[0].colname}', inplace=True)
         axis.set_ylabel(r'F$_{\mathrm{' + emfeatures[1].featurelabel + r'}}$ / F$_{\mathrm{' +
@@ -339,8 +427,8 @@ def make_emitting_regions_plot(args):
     # font = {'size': 16}
     # matplotlib.rc('font', **font)
     # 'floers_te_nne.json',
-    refdatafilenames = ['floers_te_nne_Bautista.json', ]  #, 'floers_te_nne_CMFGEN.json', 'floers_te_nne_Smyth.json']
-    refdatalabels = ['Floers et al. (2019) Bautista', ] #, 'Floers CMFGEN', 'Floers Smyth']
+    refdatafilenames = ['floers_te_nne_Bautista.json', ]  # , 'floers_te_nne_CMFGEN.json', 'floers_te_nne_Smyth.json']
+    refdatalabels = ['Floers et al. (2019) Bautista', ] # , 'Floers CMFGEN', 'Floers Smyth']
     refdatacolors = ['0.0', 'C1', 'C2', 'C4']
     refdatakeys = [None for _ in refdatafilenames]
     refdatatimes = [None for _ in refdatafilenames]
@@ -544,6 +632,9 @@ def addargs(parser):
     #                     help='Packet property for emission type - first thermal emission (trueemissiontype) '
     #                     'or last emission type (emissiontype)')
 
+    parser.add_argument('--frompops', action='store_true',
+                        help='Sum up internal emissivity instead of outgoing packets')
+
     parser.add_argument('--use_lastemissiontype', action='store_true',
                         help='Tag packets by their last scattering rather than thermal emission type')
 
@@ -617,4 +708,5 @@ def main(args=None, argsraw=None, **kwargs):
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     main()
