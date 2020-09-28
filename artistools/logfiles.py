@@ -10,7 +10,6 @@ import artistools as at
 import pandas as pd
 
 
-
 def read_logfiles(modelpath):
     modeldata, _ = at.get_modeldata(modelpath)
 
@@ -102,7 +101,6 @@ def read_time_taken(logfilepaths):
     return logfiledict
 
 
-
 def make_plot(logfiledict):
     for timestep in range(55):
         plotvalues = ['update_packets', 'update_grid', 'write_estimators']
@@ -144,4 +142,5 @@ def main(args=None, argsraw=None, **kwargs):
 
 
 if __name__ == '__main__':
+    multiprocessing.freeze_support()
     main()
