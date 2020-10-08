@@ -351,7 +351,6 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     # angle_names = [0, 45, 90, 180]
     # plt.style.use('dark_background')
 
-
     for modelnumber, modelpath in enumerate(modelpaths):
         modelpath = Path(modelpath)
         if args.plotvspecpol and os.path.isfile(modelpath / 'vpkt.txt'):
