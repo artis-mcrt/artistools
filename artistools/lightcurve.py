@@ -359,6 +359,13 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
             angles = np.arange(0, 100, 1, dtype=int)
         elif args.plotviewingangle and os.path.isfile(modelpath / 'specpol_res.out'):
             angles = args.plotviewingangle
+        elif args.calculate_costheta_phi_from_viewing_angle_numbers and \
+                args.calculate_costheta_phi_from_viewing_angle_numbers[0] == -1:
+            viewing_angles = np.arange(0, 100, 1, dtype=int)
+            calculate_costheta_phi_for_viewing_angles(viewing_angles)
+        elif args.calculate_costheta_phi_from_viewing_angle_numbers:
+            viewing_angles = args.calculate_costheta_phi_from_viewing_angle_numbers
+            calculate_costheta_phi_for_viewing_angles(viewing_angles)
         else:
             angles = [None]
         # angles.append(None)
@@ -750,6 +757,35 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, colours, 
     plt.savefig(key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf", format="pdf")
     print("saving " + key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf")
     plt.close()
+
+def calculate_costheta_phi_for_viewing_angles(viewing_angles):
+    costheta_viewing_angle_bins = ['-1.0 \u2264 cos(\u03B8) < -0.8', '-0.8 \u2264 cos(\u03B8) < -0.6',
+                                   '-0.6 \u2264 cos(\u03B8) < -0.4', '-0.4 \u2264 cos(\u03B8) < -0.2',
+                                   '-0.2 \u2264 cos(\u03B8) < 0', '0 \u2264 cos(\u03B8) < 0.2',
+                                   '0.2 \u2264 cos(\u03B8) < 0.4', '0.4 \u2264 cos(\u03B8) < 0.6',
+                                   '0.6 \u2264 cos(\u03B8) < 0.8', '0.8 \u2264 cos(\u03B8) < 1']
+    phi_viewing_angle_bins = ['0 \u2264 \u03D5 < \u03c0/5', '\u03c0/5 \u2264 \u03D5 < 2\u03c0/5',
+                              '2\u03c0/5 \u2264 \u03D5 < 3\u03c0/5', '3\u03c0/5 \u2264 \u03D5 < 4\u03c0/5',
+                              '4\u03c0/5 \u2264 \u03D5 < \u03c0', '9\u03c0/5 < \u03D5 < 2\u03c0',
+                              '8\u03c0/5 < \u03D5 \u2264 9\u03c0/5', '7\u03c0/5 < \u03D5 \u2264 8\u03c0/5',
+                              '6\u03c0/5 < \u03D5 \u2264 7\u03c0/5', '\u03c0 < \u03D5 \u2264 6\u03c0/5']
+    for i in viewing_angles:
+        if i < 10:
+            costheta_index = 0
+            phi_index = i
+            print(str(i) + "   " + costheta_viewing_angle_bins[costheta_index] + "   " +
+                  phi_viewing_angle_bins[phi_index])
+
+        else:
+            split_viewing_angle = [int(d) for d in str(i)]
+
+            costheta_index = split_viewing_angle[0]
+            phi_index = split_viewing_angle[1]
+
+            print(str(i) + "   " + costheta_viewing_angle_bins[costheta_index] + "   " +
+                  phi_viewing_angle_bins[phi_index])
+
+    exit()
 
 
 def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
@@ -1221,6 +1257,11 @@ def addargs(parser):
 
     parser.add_argument('--average_every_tenth_viewing_angle', action='store_true',
                         help='average every tenth viewing angle to reduce noise')
+
+    parser.add_argument('--calculate_costheta_phi_from_viewing_angle_numbers', type=int, nargs='+',
+                        help='calculate costheta and phi for each viewing angle given the number of the viewing angle'
+                             'Expects ints for angle number supplied from the argument of plot viewing angle'
+                             'use args = -1 to select all viewing angles')
 
 
 def main(args=None, argsraw=None, **kwargs):
