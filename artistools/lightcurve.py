@@ -758,6 +758,7 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, colours, 
     print("saving " + key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf")
     plt.close()
 
+
 def calculate_costheta_phi_for_viewing_angles(viewing_angles):
     costheta_viewing_angle_bins = ['-1.0 \u2264 cos(\u03B8) < -0.8', '-0.8 \u2264 cos(\u03B8) < -0.6',
                                    '-0.6 \u2264 cos(\u03B8) < -0.4', '-0.4 \u2264 cos(\u03B8) < -0.2',
