@@ -771,20 +771,12 @@ def calculate_costheta_phi_for_viewing_angles(viewing_angles):
                               '8\u03c0/5 < \u03D5 \u2264 9\u03c0/5', '7\u03c0/5 < \u03D5 \u2264 8\u03c0/5',
                               '6\u03c0/5 < \u03D5 \u2264 7\u03c0/5', '\u03c0 < \u03D5 \u2264 6\u03c0/5']
     for i in viewing_angles:
-        if i < 10:
-            costheta_index = 0
-            phi_index = i
-            print(str(i) + "   " + costheta_viewing_angle_bins[costheta_index] + "   " +
-                  phi_viewing_angle_bins[phi_index])
+        MABINS = 100
+        phibins = int(math.sqrt(MABINS))
+        costheta_index = i // phibins
+        phi_index = i % phibins
 
-        else:
-            split_viewing_angle = [int(d) for d in str(i)]
-
-            costheta_index = split_viewing_angle[0]
-            phi_index = split_viewing_angle[1]
-
-            print(str(i) + "   " + costheta_viewing_angle_bins[costheta_index] + "   " +
-                  phi_viewing_angle_bins[phi_index])
+        print(f"{i:4d}   {costheta_viewing_angle_bins[costheta_index]}   {phi_viewing_angle_bins[phi_index]}")
 
     exit()
 
