@@ -2,7 +2,9 @@
 
 # import math
 import glob
+import gzip
 import multiprocessing
+import sys
 from pathlib import Path
 
 # import matplotlib.patches as mpatches
@@ -104,10 +106,15 @@ def readfile(packetsfile, type=None, escape_type=None):
     filesize = Path(packetsfile).stat().st_size / 1024 / 1024
 
     print(f'Reading {packetsfile} ({filesize:.1f} MiB)', end='')
-    inputcolumncount = len(pd.read_csv(packetsfile, nrows=1, delim_whitespace=True, header=None).columns)
-    if inputcolumncount < 3:
-        print("\nWARNING: packets file has no columns!")
-        print(open(packetsfile, "r").readlines())
+    try:
+        inputcolumncount = len(pd.read_csv(packetsfile, nrows=1, delim_whitespace=True, header=None).columns)
+        if inputcolumncount < 3:
+            print("\nWARNING: packets file has no columns!")
+            print(open(packetsfile, "r").readlines())
+
+    except gzip.BadGzipFile:
+        print(f"\nBad Gzip File: {packetsfile}")
+        raise gzip.BadGzipFile
 
     # the packets file may have a truncated set of columns, but we assume that they
     # are only truncated, i.e. the columns with the same index have the same meaning
