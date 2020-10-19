@@ -304,7 +304,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
         cols = 1
     fig, ax = plt.subplots(nrows=rows, ncols=cols, sharex=True, sharey=True,
                            figsize=(at.figwidth * 1.6 * cols, at.figwidth * 1.1 * rows*1.75),
-                           tight_layout={"pad": 3.0, "w_pad": 0.6, "h_pad": 0.6}) # (6.2 * 3, 9.4 * 3)
+                           tight_layout={"pad": 3.0, "w_pad": 0.6, "h_pad": 0.6})  # (6.2 * 3, 9.4 * 3)
     if args.filter and len(args.filter) > 1:
         ax = ax.flatten()
 
@@ -411,7 +411,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                     linelabel = f'{modelname}'
                     # linelabel = 'Angle averaged'
 
-                if linelabel == 'None' or linelabel == None:
+                if linelabel == 'None' or linelabel is None:
                     linelabel = f'{modelname}'
 
                 # linelabel = '\n'.join(wrap(linelabel, 40))
@@ -462,11 +462,11 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                 #     ax.text(args.xmax * 0.75, args.ymax * 0.95, text_key)
 
                 if (args.magnitude or args.plotviewingangles_lightcurves) and not (
-                                            args.calculate_peakmag_risetime_delta_m15
-                                        or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-                                    or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
-                                or args.test_viewing_angle_fit
-                            or args.make_viewing_angle_peakmag_risetime_scatter_plot
+                        args.calculate_peakmag_risetime_delta_m15
+                        or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
+                        or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
+                        or args.test_viewing_angle_fit
+                        or args.make_viewing_angle_peakmag_risetime_scatter_plot
                         or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
 
                     if args.reflightcurves and modelnumber == 0:
@@ -487,10 +487,11 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                     linestyle = args.linestyle[modelnumber]
 
                 if args.magnitude and not (
-                args.calculate_peakmag_risetime_delta_m15 or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-                or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file or args.test_viewing_angle_fit
-                or args.make_viewing_angle_peakmag_risetime_scatter_plot or
-                args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
+                        args.calculate_peakmag_risetime_delta_m15 or
+                        args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
+                        or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file or args.test_viewing_angle_fit
+                        or args.make_viewing_angle_peakmag_risetime_scatter_plot or
+                        args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
 
                     if args.filter and len(args.filter) > 1:
                         if linestyle == 'dashed':
@@ -505,15 +506,15 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                             ax[plotnumber].plot(time, magnitude, label=linelabel, linewidth=4, color=color,
                                                 linestyle=linestyle, alpha=alpha)
                             # if key is not 'bol':
-                            #     ax[plotnumber].plot(cmfgen_mags['time[d]'], cmfgen_mags[key], label='CMFGEN', color='k', linewidth=3)
+                            #     ax[plotnumber].plot(
+                            #         cmfgen_mags['time[d]'], cmfgen_mags[key], label='CMFGEN', color='k', linewidth=3)
                     else:
                         # if 'FM3' in str(modelpath):
                         #     ax.plot(time, magnitude, label=linelabel, linewidth=3, color='darkblue')
                         # elif 'M2a' in str(modelpath):
                         #     ax.plot(time, magnitude, label=linelabel, linewidth=3, color='k')
                         # else:
-                        ax.plot(time, magnitude, label=linelabel, linewidth=3) #, color=color, linestyle=linestyle)
-
+                        ax.plot(time, magnitude, label=linelabel, linewidth=3)  # color=color, linestyle=linestyle)
 
         # Saving viewing angle data so it can be read in and plotted later on without re-running the script
         #    as it is quite time consuming
@@ -608,7 +609,6 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     else:
         ax.set_ylabel(f'{key} Magnitude', fontsize=labelfontsize)  # r'M$_{\mathrm{bol}}$'
         ax.set_xlabel('Time Since Explosion [days]', fontsize=labelfontsize)
-
 
     plt.ylim(args.ymin, args.ymax)
     plt.xlim(args.xmin, args.xmax)
@@ -817,7 +817,6 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
     if len(args.colour_evolution) > 1:
         ax = ax.flatten()
 
-
     for modelnumber, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
         print(f'Reading spectra: {modelname}')
@@ -853,7 +852,6 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                         plot_times.append(time)
                         diff.append(time_dict_1[time] - time_dict_2[time])
 
-
                 if args.plotvspecpol and angle is not None:
                     vpkt_data = at.get_vpkt_data(modelpath)
                     viewing_angle = round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
@@ -878,7 +876,9 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                     colours = args.refspeccolors
                     markers = args.refspecmarkers
                     for i, reflightcurve in enumerate(args.reflightcurves):
-                        plot_color_evolution_from_data(filter_names, reflightcurve, colours[i], markers[i], filternames_conversion_dict, ax, plotnumber)
+                        plot_color_evolution_from_data(
+                            filter_names, reflightcurve, colours[i], markers[i], filternames_conversion_dict,
+                            ax, plotnumber)
 
                 # if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
                 #     plot_times = np.array(plot_times) * (1 + args.redshifttoz[modelnumber])
@@ -895,14 +895,13 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                 if filterfunc is not None:
                     diff = filterfunc(diff)
 
-
                 if len(args.colour_evolution) > 1:
 
                     ax[plotnumber].plot(plot_times, diff, label=linelabel, linewidth=4, linestyle=linestyle,
                                         color=color)
                 else:
                     ax.plot(plot_times, diff, label=linelabel, linewidth=3, linestyle=linestyle,
-                                        color=color)
+                            color=color)
 
                 if len(args.colour_evolution) > 1:
                     ax[plotnumber].text(10, args.ymax - 0.5, f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
@@ -916,7 +915,6 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
         # tmax_B = float(match_closest_time(tmax_B))
         # print(f'{filter_names[0]} - {filter_names[1]} at t_Bmax ({tmax_B}) = '
         #       f'{diff[plot_times.index(tmax_B)]}')
-
 
     if len(args.colour_evolution) > 1:
         fig.text(0.5, 0.025, 'Time Since Explosion [days]', ha='center', va='center')
@@ -996,7 +994,9 @@ def read_lightcurve_data(lightcurvefilename):
     return lightcurve_data, metadata
 
 
-def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, marker, filternames_conversion_dict, ax, plotnumber):
+def plot_lightcurve_from_data(
+        filter_names, lightcurvefilename, color, marker, filternames_conversion_dict, ax, plotnumber):
+
     lightcurve_data, metadata = read_lightcurve_data(lightcurvefilename)
     linename = metadata['label'] if plotnumber == 0 else None
     filterdir = os.path.join(at.PYDIR, 'data/filters/')
@@ -1019,10 +1019,8 @@ def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, marker, f
 
         if 'a_v' in metadata or 'e_bminusv' in metadata:
             print('Correcting for reddening')
-            if 'r_v' not in metadata:
-                metadata['r_v'] = metadata['a_v'] / metadata['e_bminusv']
-            elif 'a_v' not in metadata:
-                metadata['a_v'] = metadata['e_bminusv'] * metadata['r_v']
+            metadata.setdefault('r_v', metadata['a_v'] / metadata['e_bminusv'])
+            metadata.setdefault('a_v', metadata['e_bminusv'] * metadata['r_v'])
 
             clightinangstroms = 3e+18
             # Convert to flux, deredden, then convert back to magnitudes
@@ -1038,10 +1036,10 @@ def plot_lightcurve_from_data(filter_names, lightcurvefilename, color, marker, f
                 clightinangstroms / (filter_data[filter_name]['dered'] * lambda0 ** 2)) - 48.6
         if len(filter_names) > 1:
             ax[plotnumber].plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], marker,
-                     label=linename, color=color)
+                                label=linename, color=color)
         else:
             ax.plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], marker,
-                     label=linename, color=color, linewidth=4)
+                    label=linename, color=color, linewidth=4)
 
         # if linename == 'SN 2018byg':
         #     x_values = []
