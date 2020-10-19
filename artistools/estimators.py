@@ -203,17 +203,19 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
                     estimblock[variablename][(atomic_number, ion_stage)] = value_thision
 
                     if variablename in ['Alpha_R*nne', 'AlphaR*nne']:
-                        estimblock.setdefault('Alpha_R', {})[
-                            (atomic_number, ion_stage)] = value_thision / estimblock['nne']
+                        estimblock.setdefault('Alpha_R', {})
+                        estimblock['Alpha_R'][(atomic_number, ion_stage)] = value_thision / estimblock['nne']
 
                     else:  # variablename == 'populations':
 
                         # contribute the ion population to the element population
-                        estimblock[variablename].setdefault(atomic_number, 0.) += value_thision
+                        estimblock[variablename].setdefault(atomic_number, 0.)
+                        estimblock[variablename][atomic_number] += value_thision
 
                 if variablename == 'populations':
                     # contribute the element population to the total population
-                    estimblock['populations'].setdefault('total', 0.) += estimblock['populations'][atomic_number]
+                    estimblock['populations'].setdefault('total', 0.)
+                    estimblock['populations']['total'] += estimblock['populations'][atomic_number]
                     estimblock['nntot'] = estimblock['populations']['total']
 
             elif row[0] == 'heating:' and get_heatingcooling:
