@@ -69,11 +69,9 @@ def get_elemcolor(atomic_number=None, elsymbol=None):
     if atomic_number is not None:
         elsymbol = at.elsymbols[atomic_number]
 
-    # assign a new colour to this element
-    if elsymbol not in elementcolors:
-        elementcolors[elsymbol] = colors_tab10[len(elementcolors)]
+    # assign a new colour to this element if needed
 
-    return elementcolors[elsymbol]
+    return elementcolors.setdefault(elsymbol, colors_tab10[len(elementcolors)])
 
 
 def apply_filters(xlist, ylist, args):
@@ -188,8 +186,7 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
                     atomic_number = int(row[1].split('=')[1])
                     startindex = 2
 
-                if variablename not in estimblock:
-                    estimblock[variablename] = {}
+                estimblock.setdefault(variablename,  {})
 
                 for ion_stage_str, value in zip(row[startindex::2], row[startindex + 1::2]):
                     if ion_stage_str.strip() in ['SUM:', '(or']:
@@ -206,20 +203,17 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
                     estimblock[variablename][(atomic_number, ion_stage)] = value_thision
 
                     if variablename in ['Alpha_R*nne', 'AlphaR*nne']:
-                        if 'Alpha_R' not in estimblock:
-                            estimblock['Alpha_R'] = {}
-                        estimblock['Alpha_R'][(atomic_number, ion_stage)] = value_thision / estimblock['nne']
+                        estimblock.setdefault('Alpha_R', {})[
+                            (atomic_number, ion_stage)] = value_thision / estimblock['nne']
+
                     else:  # variablename == 'populations':
+
                         # contribute the ion population to the element population
-                        if atomic_number not in estimblock[variablename]:
-                            estimblock[variablename][atomic_number] = 0.
-                        estimblock[variablename][atomic_number] += value_thision
+                        estimblock[variablename].setdefault(atomic_number, 0.) += value_thision
 
                 if variablename == 'populations':
                     # contribute the element population to the total population
-                    if 'total' not in estimblock['populations']:
-                        estimblock['populations']['total'] = 0.
-                    estimblock['populations']['total'] += estimblock['populations'][atomic_number]
+                    estimblock['populations'].setdefault('total', 0.) += estimblock['populations'][atomic_number]
                     estimblock['nntot'] = estimblock['populations']['total']
 
             elif row[0] == 'heating:' and get_heatingcooling:
