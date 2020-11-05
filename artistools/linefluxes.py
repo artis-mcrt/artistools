@@ -5,13 +5,12 @@ import json
 import math
 import multiprocessing
 from collections import namedtuple
-from functools import lru_cache
-from functools import partial
+from functools import lru_cache, partial
 from pathlib import Path
 
-import matplotlib.ticker as ticker
-import matplotlib.pyplot as plt
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 from astropy import constants as const
@@ -103,6 +102,7 @@ def get_line_fluxes_from_packets(emtypecolumn, emfeatures, modelpath, maxpacketf
 
 
 def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=None, arr_tend=None):
+    import artistools.nltepops
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times_float(modelpath, loc='start')
     if arr_tend is None:
@@ -241,6 +241,7 @@ def make_flux_ratio_plot(args):
     pd.set_option('display.max_rows', 3500)
     pd.set_option('display.width', 150)
     pd.options.display.max_rows = 500
+
     for seriesindex, (modelpath, modellabel, modelcolor) in enumerate(zip(args.modelpath, args.label, args.color)):
         print(f"====> {modellabel}")
 
@@ -277,14 +278,32 @@ def make_flux_ratio_plot(args):
         for ax in axes:
             ax.plot(arr_tdays, arr_floersfit, color='black', label='Floers et al. (2019) best fit', lw=2.)
 
-        femis = pd.read_csv("/Users/luke/Library/Mobile Documents/com~apple~CloudDocs/Papers (first-author)/2020 Artis ionisation/generateplots/floers_model_NIR_VIS_ratio.csv")
+        femis = pd.read_csv("/Users/luke/Library/Mobile Documents/com~apple~CloudDocs/Papers (first-author)/2020 Artis ionisation/generateplots/floers_model_NIR_VIS_ratio_20201008.csv")
 
-        timecolumns = femis.columns[1:]
-        xlist = [float(x) for x in timecolumns]
-        for index, row in femis.iloc[:5].iterrows():
-            ylist = [row[x] for x in timecolumns]
-            color = args.color[index] if index < len(args.color) else None
-            ax.plot(xlist, ylist, color=color, label='Floers_' + row['model'], marker='x', lw=0, alpha=1.0)
+        amodels = {}
+        for index, row in femis.iterrows():
+            modelname = row.file.replace("fig-nne_Te_allcells-", "").replace(f"-{row.epoch}d.txt", "")
+            if modelname not in amodels:
+                amodels[modelname] = ([], [])
+            amodels[modelname][0].append(row.epoch)
+            amodels[modelname][1].append(row.NIR_VIS_ratio)
+
+        aindex = 0
+        # for amodelname, (xlist, ylist) in amodels.items():
+        for amodelname in [
+                'w7',
+                'subch',
+                'subch_shen2018',
+                # 'subch_shen2018_noradexc', 'subch_shen2018_fe2_52lvls',
+                # 'subch_shen2018_05ke',
+                'subch_shen18_100_5050_electronlossboost4x',
+                # 'subch_shen18_100_5050_0p25ntfe'
+                ]:
+            xlist, ylist = amodels[amodelname]
+            color = args.color[aindex] if aindex < len(args.color) else None
+            print(amodelname, xlist, ylist)
+            axis.plot(xlist, ylist, color=color, label='Floers_' + amodelname[-20:], marker='x', lw=0, alpha=0.9)
+            aindex += 1
 
     m18_tdays = np.array([206, 229, 303, 339])
     m18_pew = {}
@@ -423,12 +442,13 @@ def plot_nne_te_bars(axis, serieslabel, em_log10nne, em_Te, color):
 
 
 def make_emitting_regions_plot(args):
+    import artistools.estimators
 
     # font = {'size': 16}
     # matplotlib.rc('font', **font)
     # 'floers_te_nne.json',
     refdatafilenames = ['floers_te_nne_Bautista.json', ]  # , 'floers_te_nne_CMFGEN.json', 'floers_te_nne_Smyth.json']
-    refdatalabels = ['Floers et al. (2019) Bautista', ] # , 'Floers CMFGEN', 'Floers Smyth']
+    refdatalabels = ['Floers et al. (2019) Bautista', ]  # , 'Floers CMFGEN', 'Floers Smyth']
     refdatacolors = ['0.0', 'C1', 'C2', 'C4']
     refdatakeys = [None for _ in refdatafilenames]
     refdatatimes = [None for _ in refdatafilenames]
