@@ -414,8 +414,8 @@ def make_averaged_vspecfiles(args):
 def get_polarisation(angle=None, modelpath=None, specdata=None):
     if specdata is None:
         specfilename = at.firstexisting([f'vspecpol_averaged-{angle}.out', f'vspecpol_total-{angle}.out',
-                                         'spec.out.xz', 'spec.out.gz',
-                                         'spec.out', 'specpol.out'], path=modelpath)
+                                         'specpol.out'], path=modelpath)
+        print(f"reading {specfilename}")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         specdata = specdata.rename(columns={specdata.keys()[0]: 'nu'})
 
