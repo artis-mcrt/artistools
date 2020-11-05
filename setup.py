@@ -9,6 +9,7 @@ import sys
 
 from setuptools import find_packages, setup
 from setuptools.command.test import test as TestCommand
+
 from artistools import console_scripts
 
 
@@ -46,7 +47,7 @@ setup(
     entry_points={
         'console_scripts': console_scripts
     },
-    python_requires='>==3.6',
+    python_requires='>==3.8',
     # test_suite='tests',
     setup_requires=['coveralls', 'pytest', 'pytest-runner', 'pytest-cov'],
     tests_require=['coveralls', 'pytest', 'pytest-runner', 'pytest-cov'],
