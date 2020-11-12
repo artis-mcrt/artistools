@@ -158,7 +158,7 @@ def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=No
                             ion.levels.iloc[upperlevelindex].energy_ev -
                             ion.levels.iloc[lowerlevelindex].energy_ev) * u.eV.to('erg')
 
-                        l = delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
+                        # l = delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
                         # print(f'  {modelgridindex} outer_velocity {modeldata.velocity_outer.values[modelgridindex]}'
                         #       f' km/s shell_vol: {shell_volumes[modelgridindex] + unaccounted_shellvol} cm3'
                         #       f' n_level {levelpop} cm-3 shell_Lum {l} erg/s')
@@ -168,9 +168,9 @@ def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=No
 
                         unaccounted_shellvol = 0.
 
-                    except IndexError:
+                    except TypeError:
                         unaccounted_shellvol += shell_volumes[modelgridindex]
-                        # print(f'IndexError cell {modelgridindex}')
+                        print(f'IndexError cell {modelgridindex}')
 
         dictlcdata[feature.colname] = fluxdata
 
