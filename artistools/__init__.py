@@ -1084,7 +1084,7 @@ def get_npts_model(modelpath):
 @lru_cache(maxsize=8)
 def get_nprocs(modelpath):
     """Return the number of MPI processes specified in input.txt."""
-    return int(Path(modelpath, 'input.txt').read_text().split('\n')[21])
+    return int(Path(modelpath, 'input.txt').read_text().split('\n')[21].split('#')[0])
 
 
 @lru_cache(maxsize=8)
@@ -1092,26 +1092,26 @@ def get_inputparams(modelpath):
     """Return parameters specified in input.txt."""
     params = {}
     with Path(modelpath, 'input.txt').open('r') as inputfile:
-        params['pre_zseed'] = int(inputfile.readline())
+        params['pre_zseed'] = int(inputfile.readline().split('#')[0])
 
         # number of time steps
-        params['ntstep'] = int(inputfile.readline())
+        params['ntstep'] = int(inputfile.readline().split('#')[0])
 
         # number of start and end time step
-        params['itstep'], params['ftstep'] = [int(x) for x in inputfile.readline().split()]
+        params['itstep'], params['ftstep'] = [int(x) for x in inputfile.readline().split('#')[0].split()]
 
-        params['tmin'], params['tmax'] = [float(x) for x in inputfile.readline().split()]
+        params['tmin'], params['tmax'] = [float(x) for x in inputfile.readline().split('#')[0].split()]
 
         params['nusyn_min'], params['nusyn_max'] = [
-            (float(x) * u.MeV / const.h).to('Hz') for x in inputfile.readline().split()]
+            (float(x) * u.MeV / const.h).to('Hz') for x in inputfile.readline().split('#')[0].split()]
 
         # number of times for synthesis
-        params['nsyn_time'] = int(inputfile.readline())
+        params['nsyn_time'] = int(inputfile.readline().split('#')[0])
 
         # start and end times for synthesis
-        params['nsyn_time_start'], params['nsyn_time_end'] = [float(x) for x in inputfile.readline().split()]
+        params['nsyn_time_start'], params['nsyn_time_end'] = [float(x) for x in inputfile.readline().split('#')[0].split()]
 
-        params['n_dimensions'] = int(inputfile.readline())
+        params['n_dimensions'] = int(inputfile.readline().split('#')[0])
 
         # there are more parameters in the file that are not read yet...
 
