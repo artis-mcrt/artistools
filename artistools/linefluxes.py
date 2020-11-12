@@ -145,6 +145,7 @@ def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=No
 
             for upperlevelindex, lowerlevelindex in zip(feature.upperlevelindicies, feature.lowerlevelindicies):
                 unaccounted_shellvol = 0.  # account for the volume of empty shells
+                unaccounted_shells = []
                 for modelgridindex in modeldata.index:
                     try:
                         levelpop = dfnltepops.query(
@@ -170,7 +171,10 @@ def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=No
 
                     except IndexError:
                         unaccounted_shellvol += shell_volumes[modelgridindex]
-                        print(f'No data for cell {modelgridindex} (expected for empty cells)')
+                        unaccounted_shells.append(modelgridindex)
+                if unaccounted_shells:
+                    print(f'No data for cells {unaccounted_shells} (expected for empty cells)')
+                assert len(unaccounted_shells) < len(modeldata.index)  # must be data for at least one shell
 
         dictlcdata[feature.colname] = fluxdata
 
