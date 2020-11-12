@@ -6,28 +6,26 @@ Examples are temperatures, populations, heating/cooling rates.
 # import math
 import argparse
 import math
+import multiprocessing
 import os
 # import re
 import sys
 from collections import namedtuple
-from functools import lru_cache
-from functools import partial
-from functools import reduce
+from functools import lru_cache, partial, reduce
 # from itertools import chain
 from pathlib import Path
-import multiprocessing
 
 import matplotlib.pyplot as plt
-import scipy.signal
 # import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
+import scipy.signal
+from astropy import constants as const
 
 import artistools as at
 import artistools.classic_estimators
 import artistools.initial_composition
-
-from astropy import constants as const
+import artistools.nltepops
 
 colors_tab10 = list(plt.get_cmap('tab10')(np.linspace(0, 1.0, 10)))
 
