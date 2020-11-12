@@ -572,8 +572,9 @@ def get_timestep_of_timedays(modelpath, timedays):
         timedays_float = float(timedays)
 
     arr_tstart = get_timestep_times_float(modelpath, loc='start')
+    arr_tend = get_timestep_times_float(modelpath, loc='end')
     # to avoid roundoff errors, use the next timestep's tstart at each timestep's tend (t_width is not exact)
-    arr_tend = arr_tstart[1:] + [get_timestep_times_float(modelpath, loc='end')[-1]]
+    arr_tend[:-1] = arr_tstart[1:]
 
     for ts, (tstart, tend) in enumerate(zip(arr_tstart, arr_tend)):
         if timedays_float >= tstart and timedays_float < tend:

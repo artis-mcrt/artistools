@@ -141,7 +141,7 @@ def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=No
             shell_volumes = ((4 * math.pi / 3) * ((v_outer * t_sec) ** 3 - (v_inner * t_sec) ** 3)).to('cm3').value
 
             timestep = at.get_timestep_of_timedays(modelpath, timedays)
-            print(f'{feature.approxlambda}A {timedays}d')
+            print(f'{feature.approxlambda}A {timedays}d (ts {timestep})')
 
             for upperlevelindex, lowerlevelindex in zip(feature.upperlevelindicies, feature.lowerlevelindicies):
                 unaccounted_shellvol = 0.  # account for the volume of empty shells
@@ -168,9 +168,9 @@ def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=No
 
                         unaccounted_shellvol = 0.
 
-                    except TypeError:
+                    except IndexError:
                         unaccounted_shellvol += shell_volumes[modelgridindex]
-                        print(f'IndexError cell {modelgridindex}')
+                        print(f'No data for cell {modelgridindex} (expected for empty cells)')
 
         dictlcdata[feature.colname] = fluxdata
 
