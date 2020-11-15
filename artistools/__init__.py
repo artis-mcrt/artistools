@@ -91,7 +91,7 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
 
         @wraps(func)
         def wrapper(*args, **kwargs):
-            cachefolder = Path('__artistoolscache__')
+            cachefolder = Path('__artistoolscache__.nosync')
 
             namearghash = hashlib.sha1()
             namearghash.update(func.__module__.encode('utf-8'))
