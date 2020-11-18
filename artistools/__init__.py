@@ -93,7 +93,7 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
         @wraps(func)
         def wrapper(*args, **kwargs):
             cachefolder = Path('__artistoolscache__.nosync')
-            if cachefolder.is_dir()::
+            if cachefolder.is_dir():
                 xattr.setxattr(cachefolder, "com.dropbox.ignored", b'1')
 
             namearghash = hashlib.sha1()
