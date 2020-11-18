@@ -15,6 +15,7 @@ import os.path
 import pickle
 import sys
 import time
+import xattr
 from collections import namedtuple
 from itertools import chain
 from functools import wraps
@@ -92,6 +93,7 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
         @wraps(func)
         def wrapper(*args, **kwargs):
             cachefolder = Path('__artistoolscache__.nosync')
+            xattr.setxattr(cachefolder, "com.dropbox.ignored", b'1')
 
             namearghash = hashlib.sha1()
             namearghash.update(func.__module__.encode('utf-8'))
@@ -158,6 +160,7 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
                 # if the cache folder doesn't exist, create it
                 if not cachefolder.is_dir():
                     cachefolder.mkdir(parents=True, exist_ok=True)
+                    xattr.setxattr(cachefolder, "com.dropbox.ignored", b'1')
 
                 if filename_nogz.exists():
                     filename_nogz.unlink()
