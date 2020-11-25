@@ -93,7 +93,7 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
         @wraps(func)
         def wrapper(*args, **kwargs):
             # save cached files in the folder of the first file/folder specified in the arguments
-            modelpath = None
+            modelpath = Path()
             if 'modelpath' in kwargs:
                 modelpath = kwargs['modelpath']
             else:
