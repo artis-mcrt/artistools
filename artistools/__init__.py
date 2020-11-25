@@ -95,7 +95,7 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
             # save cached files in the folder of the first file/folder specified in the arguments
             modelpath = None
             if 'modelpath' in kwargs:
-                modelpath = Path(kwargs['modelpath'], cachefolder)
+                modelpath = kwargs['modelpath']
             else:
                 for arg in args:
                     if os.path.isdir(arg):
