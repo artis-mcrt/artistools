@@ -513,7 +513,7 @@ def analyse_ntspectrum(
     print(f'  frac_excitation_tot: {frac_excitation:.5f}')
     print(f'  frac_ionization_tot: {frac_ionization:.5f}')
 
-    assert(noexcitation)  # not implemented yet
+    # warning: calculate_frac_heating doesn't consider excitation yet
     frac_heating = calculate_frac_heating(engrid, ions, ionpopdict, dfcollion, dftransitions, yvec, nne, deposition_density_ev)
 
     print(f'         frac_heating: {frac_heating:.5f}')
