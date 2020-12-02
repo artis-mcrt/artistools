@@ -233,6 +233,8 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
 
     E_0 = engrid[0]
     deltaen = engrid[1] - engrid[0]
+    N_e_int1 = 0.
+    N_e_int2 = 0.
 
     for Z, ionstage in ions:
         N_e_ion = 0.
@@ -250,24 +252,29 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
             # integral from ionpot to enlambda
             # delta_endash = engrid[1] - engrid[0]
 
-            delta_endash = (enlambda - ionpot_ev) / 100.
+            delta_endash = (enlambda - ionpot_ev) / 10.
             endashlist = np.arange(ionpot_ev, enlambda, delta_endash)
-            weightlist = [1 if (i == 0 or i == len(endashlist) - 1) else 2 for i in range(len(endashlist))]
-            for weight, endash in zip(weightlist, endashlist):
+            for endash in endashlist:
                 i = get_index(en_ev=energy_ev + endash, engrid=engrid)
                 N_e_ion += (
-                    0.5 * weight * yvec[i] * ar_xs_array[i] *
+                    yvec[i] * ar_xs_array[i] *
+                    Psecondary(e_p=energy_ev + endash, epsilon=endash, I=ionpot_ev, J=J) * delta_endash)
+                N_e_int1 += (
+                    nnion * yvec[i] * ar_xs_array[i] *
                     Psecondary(e_p=energy_ev + endash, epsilon=endash, I=ionpot_ev, J=J) * delta_endash)
 
             # // integral from 2E + I up to E_max
             delta_endash = (engrid[-1] - (2 * energy_ev + ionpot_ev)) / 100.
             endashlist = np.arange(2 * energy_ev + ionpot_ev, engrid[-1], delta_endash)
-            weightlist = [1 if (i == 0 or i == len(endashlist) - 1) else 2 for i in range(len(endashlist))]
-            for weight, endash in zip(weightlist, endashlist):
+            for endash in endashlist:
                 i = get_index(en_ev=endash, engrid=engrid)
                 N_e_ion += (
-                    0.5 * weight * yvec[i] * ar_xs_array[i] *
+                    yvec[i] * ar_xs_array[i] *
                     Psecondary(e_p=endash, epsilon=energy_ev + ionpot_ev, I=ionpot_ev, J=J) * delta_endash)
+                N_e_int2 += (
+                    nnion * yvec[i] * ar_xs_array[i] *
+                    Psecondary(e_p=endash, epsilon=energy_ev + ionpot_ev, I=ionpot_ev, J=J) * delta_endash)
+                # print(endash, energy_ev + ionpot_ev, Psecondary(e_p=endash, epsilon=energy_ev + ionpot_ev, I=ionpot_ev, J=J))
 
         N_e += nnion * N_e_ion
 
@@ -282,7 +289,8 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
                     xsvec = get_xs_excitation_vector(engrid, row)
                     N_e += nnlevel * epsilon_trans_ev * xsvec[i] * yvec[i]
 
-    # // source term should be zero at the low end anyway
+    # source term not here because it should be zero at the low end anyway
+    # print(energy_ev, N_e, N_e_int1, N_e_int2)
 
     return N_e
 
@@ -301,6 +309,7 @@ def calculate_frac_heating(
         frac_heating += 0.5 * weight * lossfunction(en_ev, nne) * yvec[i] * deltaen / deposition_density_ev
 
     frac_heating += E_0 * yvec[0] * lossfunction(E_0, nne) / deposition_density_ev
+    print(f"            frac_heating E_0 * y * l(E_0) part: {E_0 * yvec[0] * lossfunction(E_0, nne) / deposition_density_ev}")
 
     frac_heating_N_e = 0.
     delta_en = E_0 / 100.
@@ -369,15 +378,12 @@ def sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
         weight_a = 1
         weight_b = 1
         # integral/J of 1/[1 + (epsilon - ionpot_ev) / J] for epsilon = en + ionpot_ev
-        int_eps_lower_b = np.arctan((en) / J)
         for j in range(jstart, npts):
             # j is the matrix column index which corresponds to the piece of the
             # integral at y(E') where E' >= E and E' = envec(j)
             endash = engrid[j]
             prefactor = nnion * ar_xs_array[j] / np.arctan((endash - ionpot_ev) / 2. / J) * deltaen
             assert(prefactor >= 0)
-            epsilon_upper = (endash + ionpot_ev) / 2
-            int_eps_upper = np.arctan((epsilon_upper - ionpot_ev) / J)
 
             # // atan[(epsilon - ionpot_ev) / J] is the indefinite integral of 1/[1 + (epsilon - ionpot_ev) / J]
             # // in Kozma & Fransson 1992 equation 4
@@ -386,21 +392,28 @@ def sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
 
             # J * atan[(epsilon - ionpot_ev) / J] is the indefinite integral of
             # 1/(1 + (epsilon - ionpot_ev)^2/ J^2) d_epsilon
+            epsilon_upper = (endash + en) / 2
+            int_eps_upper = np.arctan((epsilon_upper - ionpot_ev) / J)
             epsilon_lower = endash - en
+            int_eps_lower = np.arctan((epsilon_lower - ionpot_ev) / J)
             if (int_eps_upper - np.arctan((epsilon_lower - ionpot_ev) / J)) > 0.:
                 if j == npts - 1:
                     weight_a = 1
-                sfmatrix[i, j] += 0.5 * weight_a * prefactor * (int_eps_upper - np.arctan((epsilon_lower - ionpot_ev) / J))
+                sfmatrix[i, j] += 0.5 * weight_a * prefactor * (int_eps_upper - int_eps_lower)
                 if weight_a == 1:
                     weight_a == 2
 
             # endash ranges from 2 * en + ionpot_ev to SF_EMAX
-            if j >= secondintegralstartindex and int_eps_upper > int_eps_lower_b:
+            epsilon_upper = (endash + ionpot_ev) / 2
+            int_eps_upper = np.arctan((epsilon_upper - ionpot_ev) / J)
+            epsilon_lower = en + ionpot_ev
+            int_eps_lower = np.arctan((epsilon_lower - ionpot_ev) / J)
+            if j >= secondintegralstartindex and int_eps_upper > int_eps_lower:
                 # epsilon_lower = en + ionpot_ev
 
                 if j == npts - 1:
                     weight_b = 1
-                sfmatrix[i, j] -= 0.5 * weight_b * prefactor * (int_eps_upper - int_eps_lower_b)
+                sfmatrix[i, j] -= 0.5 * weight_b * prefactor * (int_eps_upper - int_eps_lower)
                 if weight_b == 1:
                     weight_b == 2
 
@@ -448,28 +461,20 @@ def make_plot(
                              figsize=(6, 8), tight_layout={"pad": 0.3, "w_pad": 0.0, "h_pad": 0.0})
 
     npts = len(engrid)
+    E_0 = engrid[0]
 
     # E_init_ev = np.dot(engrid, sourcevec) * deltaen
     # d_etasource_by_d_en_vec = engrid * sourcevec / E_init_ev
     # axes[0].plot(engrid[1:], d_etasource_by_d_en_vec[1:], marker="None", lw=1.5, color='blue', label='Source')
 
     d_etaion_by_d_en_vec = get_d_etaion_by_d_en_vec(engrid, yvec, ions, ionpopdict, dfcollion, deposition_density_ev)
-    axes[1].plot(engrid, d_etaion_by_d_en_vec, marker="None", lw=1.5, color='C0', label='Ionisation')
 
     if not noexcitation:
         d_etaexc_by_d_en_vec = get_d_etaexcitation_by_d_en_vec(engrid, yvec, ions, dftransitions, deposition_density_ev)
-        axes[1].plot(engrid, d_etaexc_by_d_en_vec, marker="None", lw=1.5, color='C1', label='Excitation')
     else:
         d_etaexc_by_d_en_vec = np.zeros(npts)
 
-    d_etaheat_by_d_en_vec = [
-        lossfunction(engrid[i], nne) * yvec[i] for i in range(len(engrid))]
-    axes[1].plot(engrid, d_etaheat_by_d_en_vec, marker="None", lw=1.5, color='C2', label='Heating')
-
-    axes[1].set_ylabel(r'd $\eta$ / dE [eV$^{-1}$]', fontsize=fs)
-    axes[1].set_ylim(bottom=0)
-
-    axes[1].legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 10})
+    d_etaheat_by_d_en_vec = [lossfunction(engrid[i], nne) * yvec[i] / deposition_density_ev for i in range(len(engrid))]
 
     axes[-1].plot(engrid, np.log10(yvec), marker="None", lw=1.5, color='black')
 
@@ -480,16 +485,64 @@ def make_plot(
     for i in reversed(range(len(engrid) - 1)):
         etaion_int[i] = etaion_int[i + 1] + d_etaion_by_d_en_vec[i] * deltaen
         etaexc_int[i] = etaexc_int[i + 1] + d_etaexc_by_d_en_vec[i] * deltaen
-        etaheat_int[i] = etaexc_int[i + 1] + d_etaheat_by_d_en_vec[i] * deltaen
+        etaheat_int[i] = etaheat_int[i + 1] + d_etaheat_by_d_en_vec[i] * deltaen
+
+    etaheat_int[0] += E_0 * yvec[0] * lossfunction(E_0, nne) / deposition_density_ev
+
     etatot_int = etaion_int + etaexc_int + etaheat_int
-    axes[0].plot(engrid, etaion_int, marker="None", lw=1.5, color='C0', label='Ionisation')
+
+    # go below E_0
+    deltaen = E_0 / 10.
+    engrid_low = np.arange(deltaen / 1000., E_0, deltaen)
+    npts_low = len(engrid_low)
+    d_etaheat_by_d_en_low = np.zeros(len(engrid_low))
+    etaheat_int_low = np.zeros(len(engrid_low))
+    etaion_int_low = np.zeros(len(engrid_low))
+    etaexc_int_low = np.zeros(len(engrid_low))
+    x = 0
+    for i in reversed(range(len(engrid_low))):
+        en_ev = engrid_low[i]
+        N_e = calculate_N_e(en_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransitions, noexcitation=noexcitation)
+        d_etaheat_by_d_en_low[i] += N_e * en_ev / deposition_density_ev  # + (yvec[0] * lossfunction(E_0, nne) / deposition_density_ev)
+        etaheat_int_low[i] = (
+            (etaheat_int_low[i + 1] if i < len(engrid_low) - 1 else etaheat_int[0]) +
+            d_etaheat_by_d_en_low[i] * deltaen)
+
+        etaion_int_low[i] = etaion_int[0]  # cross sections start above E_0
+        etaexc_int_low[i] = etaexc_int[0]
+
+    etatot_int_low = etaion_int_low + etaexc_int_low + etaheat_int_low
+    engridfull = np.append(engrid_low, engrid)
+
+    axes[0].plot(engridfull, np.append(etaion_int_low, etaion_int), marker="None", lw=1.5,
+                 color='C0', label='Ionisation')
+
     if not noexcitation:
-        axes[0].plot(engrid, etaexc_int, marker="None", lw=1.5, color='C1', label='Excitation')
-    axes[0].plot(engrid, etaheat_int, marker="None", lw=1.5, color='C2', label='Heating')
-    axes[0].plot(engrid, etatot_int, marker="None", lw=1.5, color='black', label='Total')
+        axes[0].plot(engridfull, np.append(etaexc_int_low, etaexc_int), marker="None", lw=1.5,
+                     color='C1', label='Excitation')
+
+    axes[0].plot(engridfull, np.append(etaheat_int_low, etaheat_int), marker="None", lw=1.5,
+                 color='C2', label='Heating')
+
+    axes[0].plot(engridfull, np.append(etatot_int_low, etatot_int), marker="None", lw=1.5, color='black', label='Total')
+
     axes[0].set_ylim(bottom=0)
     axes[0].legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 10})
-    axes[0].set_ylabel(r'Integral $\eta$ E to Emax', fontsize=fs)
+    axes[0].set_ylabel(r'$\eta$ E to Emax', fontsize=fs)
+
+    axes[1].plot(engridfull, np.append(np.zeros(npts_low), d_etaion_by_d_en_vec), marker="None", lw=1.5, color='C0', label='Ionisation')
+
+    if not noexcitation:
+        axes[1].plot(engridfull, np.append(np.zeros(npts_low), d_etaexc_by_d_en_vec), marker="None", lw=1.5, color='C1', label='Excitation')
+
+    # axes[1].plot(engridfull, np.append(d_etaheat_by_d_en_low, d_etaheat_by_d_en_vec), marker="None",
+    #              lw=1.5, color='C2', label='Heating')
+    axes[1].plot(engrid, d_etaheat_by_d_en_vec, marker="None",
+                 lw=1.5, color='C2', label='Heating')
+
+    axes[1].set_ylim(bottom=0)
+    axes[1].legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 10})
+    axes[1].set_ylabel(r'd $\eta$ / dE [eV$^{-1}$]', fontsize=fs)
 
     etatot_int = etaion_int + etaexc_int + etaheat_int
 
@@ -500,7 +553,7 @@ def make_plot(
     #    ax.annotate(modellabel, xy=(0.97, 0.95), xycoords='axes fraction', horizontalalignment='right',
     #                verticalalignment='top', fontsize=fs)
     # ax.set_yscale('log')
-    axes[-1].set_xlim(engrid[0], engrid[-1] * 1.)
+    axes[-1].set_xlim(0., engrid[-1] * 1.)
     # ax.set_ylim(bottom=5, top=14)
     axes[-1].set_xlabel(r'Electron energy [eV]', fontsize=fs)
     axes[-1].set_ylabel(r'log y(E) [s$^{-1}$ cm$^{-2}$ eV$^{-1}$]', fontsize=fs)
@@ -674,8 +727,8 @@ def analyse_ntspectrum(
     print(f'  frac_excitation_tot: {frac_excitation:.5f}')
     print(f'  frac_ionization_tot: {frac_ionization:.5f}')
 
-    nt_en_tot = get_nt_en_tot(engrid, yvec)
-    print(f' nt_en_tot: {nt_en_tot:.5f} eV/s/cm3')
+    # nt_en_tot = get_nt_en_tot(engrid, yvec)
+    # print(f' nt_en_tot: {nt_en_tot:.5f} eV/s/cm3')
 
     frac_heating = calculate_frac_heating(
         engrid, ions, ionpopdict, dfcollion, dftransitions, yvec, nne, deposition_density_ev,
