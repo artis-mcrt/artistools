@@ -582,7 +582,7 @@ def solve_spencerfano(
     sfmatrix = np.zeros((npts, npts))
     for i in range(npts):
         en = engrid[i]
-        sfmatrix[i, i] += lossfunction(en + deltaen, nne)
+        sfmatrix[i, i] += lossfunction(en, nne)
         # EV = 1.6021772e-12  # in erg
         # print(f"electron loss rate nne={nne:.3e} and {i:d} {en:.2e} eV is {lossfunction(en, nne):.2e} or '
         #       f'{lossfunction_ergs(en * EV, nne) / EV:.2e}")
