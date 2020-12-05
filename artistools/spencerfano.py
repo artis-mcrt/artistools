@@ -957,6 +957,7 @@ def analyse_ntspectrum(
             # by the total ion number density and the "work per ion pair"
             print(f"       work function: {1. / oneoverW / EV:.2f} eV")
             print(f"   work fn ratecoeff: {deposition_density_erg / nntot * oneoverW:.2e}")
+            # Axelrod 1980 Eq 3.225 with E0 = E = E_max
             xs = lossfunction(engrid[-1], nne) * EV * oneoverW / nntot
             print(f"         WFApprox xs: {xs:.2e} cm^2")
 
