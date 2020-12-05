@@ -491,16 +491,17 @@ def differentialsfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
     else:
         xsstartindex = get_index(en_ev=ionpot_ev, engrid=engrid)
 
+    epsilon_lower_a = ionpot_ev
+    int_eps_lower_a = atan((epsilon_lower_a - ionpot_ev) / J)
     for i in range(xsstartindex, npts):
         en = engrid[i]
 
         # integral of xs_ion(e_p=en, epsilon) with epsilon from I to (I + E) / 2
 
-        epsilon_lower = ionpot_ev
         epsilon_upper = (ionpot_ev + en) / 2.
 
-        P_int = 0.
-        if (epsilon_lower < epsilon_upper):
+        if (epsilon_lower_a < epsilon_upper):
+            # P_int = 0.
             # eps_npts = 1000
             # delta_eps = (epsilon_upper - epsilon_lower) / eps_npts
             # for j in range(eps_npts):
@@ -510,9 +511,8 @@ def differentialsfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
             # J * atan[(epsilon - ionpot_ev) / J] is the indefinite integral of
             # 1/(1 + (epsilon - ionpot_ev)^2/ J^2) d_epsilon
 
-            int_eps_lower = atan((epsilon_lower - ionpot_ev) / J)
             int_eps_upper = atan((epsilon_upper - ionpot_ev) / J)
-            P_int = 1. / atan((en - ionpot_ev) / 2. / J) * (int_eps_upper - int_eps_lower)
+            P_int = 1. / atan((en - ionpot_ev) / 2. / J) * (int_eps_upper - int_eps_lower_a)
             # if int_eps_lower == int_eps_upper and epsilon_upper != epsilon_lower:
             # if (abs(P_int2 / P_int - 1.) > 0.2):
             #     print("warning eps low high int low high", epsilon_lower, epsilon_upper, int_eps_lower, int_eps_upper)
@@ -526,19 +526,19 @@ def differentialsfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
         epsilon_upper = enlambda
         if (epsilon_lower < epsilon_upper):
             delta_eps = (epsilon_upper - epsilon_lower) / eps_npts
+            prefactor = nnion / J / atan((en - ionpot_ev) / 2. / J) * delta_eps
             for j in range(eps_npts):
                 epsilon = epsilon_lower + j * delta_eps
                 i_enpluseps = get_index(en + epsilon, engrid=engrid)
-                sfmatrix[i, i_enpluseps] -= nnion * ar_xs_array[i_enpluseps] * Psecondary(
-                    e_p=en, epsilon=epsilon, ionpot_ev=ionpot_ev, J=J) * delta_eps
+                sfmatrix[i, i_enpluseps] -= prefactor * ar_xs_array[i_enpluseps] / (1 + (((epsilon - ionpot_ev) / J) ** 2))
 
         if (2 * en + ionpot_ev) < engrid[-1]:
+            epsilon = en + ionpot_ev
+            prefactor = nnion / J / (1 + (((epsilon - ionpot_ev) / J) ** 2)) * delta_en
             i_endash_lower = get_index(2 * en + ionpot_ev, engrid)
             for j in range(i_endash_lower, npts):
                 endash = engrid[j]
-                epsilon = en + ionpot_ev
-                sfmatrix[i, j] -= nnion * ar_xs_array[j] * Psecondary(
-                    e_p=endash, epsilon=epsilon, ionpot_ev=ionpot_ev, J=J) * delta_en
+                sfmatrix[i, j] -= prefactor * ar_xs_array[j] / atan((endash - ionpot_ev) / 2. / J)
 
 
 def get_d_etaexcitation_by_d_en_vec(engrid, yvec, ions, dftransitions, deposition_density_ev):
@@ -702,6 +702,8 @@ def solve_spencerfano_differentialform(
     for i in range(npts):
         constvec[i] += sourcevec[i]
 
+    lossfngrid = np.array([lossfunction(en, nne) for en in engrid])
+
     sfmatrix = np.zeros((npts, npts))
     for i in range(npts):
         en = engrid[i]
@@ -711,14 +713,14 @@ def solve_spencerfano_differentialform(
         # - dy/dE(E) * lossfn(E) = - (y(E + deltaE) - y(E) ) / deltaen * lossfunction(E)
 
         # - ( - y(E) * lossfunction)
-        sfmatrix[i, i] += lossfunction(en, nne) / deltaen
+        sfmatrix[i, i] += lossfngrid[i] / deltaen
 
         if i + 1 < npts:
             # - y(E + deltaE) * lossfunction
-            sfmatrix[i, i + 1] -= lossfunction(en, nne) / deltaen
+            sfmatrix[i, i + 1] -= lossfngrid[i] / deltaen
 
         # - y(E) * dlossfn/dE
-        sfmatrix[i, i] -= (lossfunction(en + deltaen, nne) - lossfunction(en, nne)) / deltaen
+        sfmatrix[i, i] -= (lossfunction(en + deltaen, nne) - lossfngrid[i]) / deltaen
 
     dftransitions = {}
 
