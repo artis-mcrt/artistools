@@ -384,7 +384,7 @@ def calculate_frac_heating(
     print(f"            frac_heating E_0 * y * l(E_0) part: {E_0 * yvec[0] * lossfunction(E_0, nne) / deposition_density_ev}")
 
     frac_heating_N_e = 0.
-    delta_en = E_0 / 20.
+    delta_en = E_0 / 10.
     for en_ev in np.arange(0., E_0, delta_en):
         N_e = calculate_N_e(en_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransitions, noexcitation=noexcitation)
         frac_heating_N_e += N_e * en_ev * delta_en / deposition_density_ev
@@ -902,7 +902,7 @@ def analyse_ntspectrum(
         for index, shell in dfcollion_thision.iterrows():
             xsstartindex = get_index(en_ev=shell.ionpot_ev, engrid=engrid)
             ar_xs_array = at.nonthermal.get_arxs_array_shell(engrid, shell)
-            print(f'cross section at {engrid[xsstartindex]:.2e} and {engrid[-1]:.2e} eV {ar_xs_array[xsstartindex]} and {ar_xs_array[-1]:.2e}')
+            print(f'cross section at {engrid[xsstartindex + 1]:.2e} eV and {engrid[-1]:.2e} eV {ar_xs_array[xsstartindex + 1]} and {ar_xs_array[-1]:.2e}')
 
             frac_ionization_shell = (
                 nnion * shell.ionpot_ev * np.dot(yvec, ar_xs_array) * deltaen / deposition_density_ev)
@@ -955,10 +955,10 @@ def analyse_ntspectrum(
             # to get the non-thermal ionization rate we need to divide the energy deposited
             # per unit volume per unit time in the grid cell (sum of terms above)
             # by the total ion number density and the "work per ion pair"
-            print(f"WFApprox Fe3 W: {1. / oneoverW / EV:.2f} eV")
-            print(f"WFApprox Fe3 ratecoeff: {deposition_density_erg / nntot * oneoverW:.2e}")
-            xs = engrid[-1] * oneoverW * lossfunction(engrid[-1], nne)
-            print(f"WFApprox Fe3 xs?: {xs:.2e}")
+            print(f"       work function: {1. / oneoverW / EV:.2f} eV")
+            print(f"   work fn ratecoeff: {deposition_density_erg / nntot * oneoverW:.2e}")
+            xs = lossfunction(engrid[-1], nne) * EV * oneoverW / nntot
+            print(f"         WFApprox xs: {xs:.2e} cm^2")
 
         print()
 
