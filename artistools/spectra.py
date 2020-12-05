@@ -1205,7 +1205,7 @@ def plot_artis_spectrum(
             vpkt_data = at.get_vpkt_data(modelpath)
             if args.timemin < vpkt_data['initial_time'] or args.timemax > vpkt_data['final_time']:
                 print(f"Timestep out of range of virtual packets: start time {vpkt_data['initial_time']} days "
-                      "end time {vpkt_data['final_time']} days")
+                      f"end time {vpkt_data['final_time']} days")
                 quit()
             angles = args.plotvspecpol
             viewinganglespectra = {}
