@@ -561,9 +561,9 @@ def differentialsfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
             epsilon = en + ionpot_ev
             prefactor = nnion / J / (1 + (((epsilon - ionpot_ev) / J) ** 2)) * delta_en
             i_endash_lower = get_index(2 * en + ionpot_ev, engrid)
-            for j in range(i_endash_lower, npts):
-                sfmatrix[i, j] -= prefactor * ar_xs_array[j] * oneoveratangrid[j]
-            # sfmatrix[i, i_endash_lower:] -= prefactor * ar_xs_array[i_endash_lower:] / np.arctan((engrid[i_endash_lower:] - ionpot_ev) / 2. / J)
+            # for j in range(i_endash_lower, npts):
+            #     sfmatrix[i, j] -= prefactor * ar_xs_array[j] * oneoveratangrid[j]
+            sfmatrix[i, i_endash_lower:] -= prefactor * ar_xs_array[i_endash_lower:] * oneoveratangrid[i_endash_lower:]
 
 
 def get_d_etaexcitation_by_d_en_vec(engrid, yvec, ions, dftransitions, deposition_density_ev):
@@ -751,7 +751,7 @@ def solve_spencerfano_differentialform(
 
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
-        print(f'  including Z={Z} ion_stage {ionstage} ({at.get_ionstring(Z, ionstage)}). ionization', end='')
+        print(f'  including Z={Z} ion_stage {ionstage} ({at.get_ionstring(Z, ionstage)}) ionization', end='')
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
         # print(dfcollion_thision)
 
@@ -800,7 +800,7 @@ def solve_spencerfano(
 
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
-        print(f'  including Z={Z} ion_stage {ionstage} ({at.get_ionstring(Z, ionstage)}). ionization', end='')
+        print(f'  including Z={Z} ion_stage {ionstage} ({at.get_ionstring(Z, ionstage)}) ionization', end='')
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
         # print(dfcollion_thision)
 
@@ -1159,7 +1159,7 @@ def main(args=None, argsraw=None, **kwargs):
 
         sourcevec = np.zeros(engrid.shape)
         # source_spread_pts = math.ceil(npts / 10.)
-        source_spread_pts = math.ceil(npts * 0.03333)
+        source_spread_pts = math.ceil(npts * 0.3)
         for s in range(npts):
             # spread the source over some energy width
             if (s < npts - source_spread_pts):
