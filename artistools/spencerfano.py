@@ -125,7 +125,8 @@ def get_mean_binding_energy(atomic_number, ion_stage, electron_binding, ionpot_e
             if (electron_loop != 8):
                 # For some reason in the Lotz data, this is no energy for the M5 shell before Ni. So if the complaint
                 # is for 8 (corresponding to that shell) then just use the M4 value
-                print(f"Huh? I'm trying to use a binding energy when I have no data. element {element} ion {ion}\n")
+                print(f"Huh? I'm trying to use a binding energy when I have no data. element {atomic_number} ionstage {ion_stage}\n")
+                assert(electron_loop == 8)
                 # print("Z = %d, ion_stage = %d\n", get_element(element), get_ionstage(element, ion));
         if (use2 < use3):
             total += electronsinshell / use3
@@ -171,7 +172,7 @@ def lossfunction(energy_ev, nne_cgs):
 
 
 def Psecondary(e_p, ionpot_ev, J, e_s=-1, epsilon=-1):
-    assert(e_s >= 0 or epsilon >= 0)
+    assert e_s >= 0 or epsilon >= 0
     # if e_p < I:
     #     return 0.
     #
@@ -281,14 +282,17 @@ def calculate_nt_frac_excitation(engrid, dftransitions, yvec, deposition_density
 
 
 def get_index(en_ev, engrid):
-    assert(en_ev >= engrid[0])
-    assert(en_ev < (engrid[-1] + (engrid[1] - engrid[0])))
+    assert en_ev >= engrid[0]
+    assert en_ev < (engrid[-1] + (engrid[1] - engrid[0]))
 
     for i, en in enumerate(engrid):
-        if en < en_ev:
+        if en <= en_ev:
             index = i
 
     return index
+
+
+N_e_cache = {}
 
 
 def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransitions, noexcitation):
@@ -297,6 +301,13 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
     # not valid for energy > E_0
     if energy_ev == 0.:
         return 0.
+
+    if energy_ev in N_e_cache:
+        # print("returning cached value for", energy_ev)
+        return N_e_cache[energy_ev]
+    # else:
+    #     print("Cache miss for", energy_ev)
+
     N_e = 0.
 
     E_0 = engrid[0]
@@ -318,23 +329,25 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
             # integral from ionpot to enlambda
             # delta_endash = engrid[1] - engrid[0]
 
-            delta_endash = (enlambda - ionpot_ev) / 100.
-            endashlist = np.arange(ionpot_ev, enlambda, delta_endash)
-            for endash in endashlist:
-                i = get_index(en_ev=energy_ev + endash, engrid=engrid)
-                N_e_ion += (
-                    yvec[i] * ar_xs_array[i] *
-                    Psecondary(e_p=energy_ev + endash, epsilon=endash, ionpot_ev=ionpot_ev, J=J) * delta_endash)
+            delta_endash = (enlambda - ionpot_ev) / 1000.
+            if delta_endash >= 0:
+                endashlist = np.arange(ionpot_ev, enlambda, delta_endash)
+                for endash in endashlist:
+                    i = get_index(en_ev=energy_ev + endash, engrid=engrid)
+                    N_e_ion += (
+                        yvec[i] * ar_xs_array[i] *
+                        Psecondary(e_p=energy_ev + endash, epsilon=endash, ionpot_ev=ionpot_ev, J=J) * delta_endash)
 
             # // integral from 2E + I up to E_max
             delta_endash = (engrid[-1] - (2 * energy_ev + ionpot_ev)) / 100.
-            endashlist = np.arange(2 * energy_ev + ionpot_ev, engrid[-1], delta_endash)
-            for endash in endashlist:
-                i = get_index(en_ev=endash, engrid=engrid)
-                N_e_ion += (
-                    yvec[i] * ar_xs_array[i] *
-                    Psecondary(e_p=endash, epsilon=energy_ev + ionpot_ev, ionpot_ev=ionpot_ev, J=J) * delta_endash)
-                # print(endash, energy_ev + ionpot_ev, Psecondary(e_p=endash, epsilon=energy_ev + ionpot_ev, ionpot_ev=ionpot_ev, J=J))
+            if delta_endash >= 0:
+                endashlist = np.arange(2 * energy_ev + ionpot_ev, engrid[-1], delta_endash)
+                for endash in endashlist:
+                    i = get_index(en_ev=endash, engrid=engrid)
+                    N_e_ion += (
+                        yvec[i] * ar_xs_array[i] *
+                        Psecondary(e_p=endash, epsilon=energy_ev + ionpot_ev, ionpot_ev=ionpot_ev, J=J) * delta_endash)
+                    # print(endash, energy_ev + ionpot_ev, Psecondary(e_p=endash, epsilon=energy_ev + ionpot_ev, ionpot_ev=ionpot_ev, J=J))
 
         N_e += nnion * N_e_ion
 
@@ -350,7 +363,7 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
                     N_e += nnlevel * epsilon_trans_ev * xsvec[i] * yvec[i]
 
     # source term not here because it should be zero at the low end anyway
-
+    N_e_cache[energy_ev] = N_e
     return N_e
 
 
@@ -440,7 +453,7 @@ def sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
             # integral at y(E') where E' >= E and E' = envec(j)
             endash = engrid[j]
             prefactor = nnion * ar_xs_array[j] / atan((endash - ionpot_ev) / 2. / J) * deltaen
-            assert(prefactor >= 0)
+            assert prefactor >= 0
 
             # J * atan[(epsilon - ionpot_ev) / J] is the indefinite integral of
             # 1/(1 + (epsilon - ionpot_ev)^2/ J^2) d_epsilon
@@ -491,6 +504,8 @@ def differentialsfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
     else:
         xsstartindex = get_index(en_ev=ionpot_ev, engrid=engrid)
 
+    oneoveratangrid = 1. / np.arctan((engrid - ionpot_ev) / 2. / J)
+
     epsilon_lower_a = ionpot_ev
     int_eps_lower_a = atan((epsilon_lower_a - ionpot_ev) / J)
     for i in range(xsstartindex, npts):
@@ -521,24 +536,34 @@ def differentialsfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
             sfmatrix[i, i] += nnion * ar_xs_array[i] * P_int
 
         enlambda = min(engrid[-1] - en, en + ionpot_ev)
-        eps_npts = 100
         epsilon_lower = ionpot_ev
         epsilon_upper = enlambda
         if (epsilon_lower < epsilon_upper):
-            delta_eps = (epsilon_upper - epsilon_lower) / eps_npts
+            # eps_npts = 100
+            # delta_eps = (epsilon_upper - epsilon_lower) / eps_npts
+            # prefactor = nnion / J / atan((en - ionpot_ev) / 2. / J) * delta_eps
+            # for j in range(eps_npts):
+            #     epsilon = epsilon_lower + j * delta_eps
+            #     i_enpluseps = get_index(en + epsilon, engrid=engrid)
+            #     sfmatrix[i, i_enpluseps] -= prefactor * ar_xs_array[i_enpluseps] / (1 + (((epsilon - ionpot_ev) / J) ** 2))
+
+            j_lower = get_index(en + epsilon_lower, engrid=engrid)
+            j_upper = get_index(en + epsilon_upper, engrid=engrid)
+            delta_eps = (epsilon_upper - epsilon_lower) / (j_upper - j_lower)
             prefactor = nnion / J / atan((en - ionpot_ev) / 2. / J) * delta_eps
-            for j in range(eps_npts):
-                epsilon = epsilon_lower + j * delta_eps
-                i_enpluseps = get_index(en + epsilon, engrid=engrid)
-                sfmatrix[i, i_enpluseps] -= prefactor * ar_xs_array[i_enpluseps] / (1 + (((epsilon - ionpot_ev) / J) ** 2))
+            # for j in range(j_lower, j_upper):
+            #     en_plus_epsilon = engrid[j]
+            #     epsilon = en_plus_epsilon - en
+            #     sfmatrix[i, j] -= prefactor * ar_xs_array[j] / (1 + (((epsilon - ionpot_ev) / J) ** 2))
+            sfmatrix[i, j_lower:j_upper] -= prefactor * ar_xs_array[j_lower:j_upper] / (1 + ((((engrid[j_lower:j_upper] - en) - ionpot_ev) / J) ** 2))
 
         if (2 * en + ionpot_ev) < engrid[-1]:
             epsilon = en + ionpot_ev
             prefactor = nnion / J / (1 + (((epsilon - ionpot_ev) / J) ** 2)) * delta_en
             i_endash_lower = get_index(2 * en + ionpot_ev, engrid)
             for j in range(i_endash_lower, npts):
-                endash = engrid[j]
-                sfmatrix[i, j] -= prefactor * ar_xs_array[j] / atan((endash - ionpot_ev) / 2. / J)
+                sfmatrix[i, j] -= prefactor * ar_xs_array[j] * oneoveratangrid[j]
+            # sfmatrix[i, i_endash_lower:] -= prefactor * ar_xs_array[i_endash_lower:] / np.arctan((engrid[i_endash_lower:] - ionpot_ev) / 2. / J)
 
 
 def get_d_etaexcitation_by_d_en_vec(engrid, yvec, ions, dftransitions, deposition_density_ev):
@@ -615,8 +640,8 @@ def make_plot(
     etatot_int = etaion_int + etaexc_int + etaheat_int
 
     # go below E_0
-    deltaen = E_0 / 10.
-    engrid_low = np.arange(deltaen / 1000., E_0, deltaen)
+    deltaen = E_0 / 20.
+    engrid_low = np.arange(0., E_0, deltaen)
     npts_low = len(engrid_low)
     d_etaheat_by_d_en_low = np.zeros(len(engrid_low))
     etaheat_int_low = np.zeros(len(engrid_low))
@@ -731,9 +756,10 @@ def solve_spencerfano_differentialform(
         # print(dfcollion_thision)
 
         for index, shell in dfcollion_thision.iterrows():
+            assert shell.ionpot_ev >= engrid[0]
             differentialsfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix)
 
-        assert(noexcitation)
+        assert noexcitation
 
         print()
 
@@ -779,6 +805,7 @@ def solve_spencerfano(
         # print(dfcollion_thision)
 
         for index, shell in dfcollion_thision.iterrows():
+            assert shell.ionpot_ev >= engrid[0]
             sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix)
 
         if not noexcitation:
