@@ -833,7 +833,7 @@ def get_nne_nt(engrid, yvec):
 
 def analyse_ntspectrum(
         engrid, yvec, ions, ionpopdict, nntot, nne, deposition_density_ev, dfcollion, dftransitions,
-        noexcitation):
+        noexcitation, modelpath):
 
     deltaen = engrid[1] - engrid[0]
 
@@ -843,7 +843,7 @@ def analyse_ntspectrum(
     frac_excitation_ion = {}
     gamma_nt = {}
 
-    electron_binding = read_binding_energies()
+    electron_binding = read_binding_energies(modelpath)
 
     Zbar = 0.  # mass-weighted average atomic number
     nntot = 0.
@@ -1104,7 +1104,7 @@ def main(args=None, argsraw=None, **kwargs):
         collionfilename=('collion-AR1985.txt' if args.ar1985 else 'collion.txt'))
 
     # WARNING REMOVE
-    dfcollion_thision = dfcollion.query('Z == 26', inplace=True)  # and ionstage == 3 and l == 2
+    dfcollion.query('Z == 26', inplace=True)  # and ionstage == 3 and l == 2
 
     if args.ostat:
         with open(args.ostat, 'w') as fstat:
@@ -1158,7 +1158,7 @@ def main(args=None, argsraw=None, **kwargs):
 
         (frac_excitation, frac_ionization, frac_excitation_ion, frac_ionization_ion, gamma_nt) = analyse_ntspectrum(
             engrid, yvec, ions, ionpopdict, nntot, nne, deposition_density_ev,
-            dfcollion, dftransitions, noexcitation=args.noexcitation)
+            dfcollion, dftransitions, noexcitation=args.noexcitation, modelpath=modelpath)
 
         if args.ostat:
             with open(args.ostat, 'a') as fstat:
