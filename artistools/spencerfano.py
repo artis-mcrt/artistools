@@ -8,11 +8,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from astropy import constants as const
-from functools import lru_cache
 from scipy import linalg
 from pathlib import Path
 # from bigfloat import *
 from math import atan
+# from numpy import arctan as atan
 
 import artistools as at
 import artistools.estimators
@@ -22,7 +22,7 @@ import artistools.nonthermal
 
 minionfraction = 1.e-8  # minimum number fraction of the total population to include in SF solution
 
-defaultoutputfile = 'spencerfano_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
+defaultoutputfile = 'spencerfano_cell{cell:03d}_ts{timestep:02d}_{timedays:.0f}d.pdf'
 
 EV = 1.6021772e-12  # in erg
 QE = 4.80325E-10
@@ -286,7 +286,7 @@ def get_index(en_ev, engrid):
     assert en_ev < (engrid[-1] + (engrid[1] - engrid[0]))
 
     for i, en in enumerate(engrid):
-        if en <= en_ev:
+        if en < en_ev:
             index = i
 
     return index
@@ -453,7 +453,9 @@ def sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
             # integral at y(E') where E' >= E and E' = envec(j)
             endash = engrid[j]
             prefactor = nnion * ar_xs_array[j] / atan((endash - ionpot_ev) / 2. / J) * deltaen
-            assert prefactor >= 0
+            assert not np.isnan(prefactor)
+            assert not np.isinf(prefactor)
+            # assert prefactor >= 0
 
             # J * atan[(epsilon - ionpot_ev) / J] is the indefinite integral of
             # 1/(1 + (epsilon - ionpot_ev)^2/ J^2) d_epsilon
@@ -539,23 +541,28 @@ def differentialsfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
         epsilon_lower = ionpot_ev
         epsilon_upper = enlambda
         if (epsilon_lower < epsilon_upper):
-            # eps_npts = 100
-            # delta_eps = (epsilon_upper - epsilon_lower) / eps_npts
-            # prefactor = nnion / J / atan((en - ionpot_ev) / 2. / J) * delta_eps
-            # for j in range(eps_npts):
-            #     epsilon = epsilon_lower + j * delta_eps
-            #     i_enpluseps = get_index(en + epsilon, engrid=engrid)
-            #     sfmatrix[i, i_enpluseps] -= prefactor * ar_xs_array[i_enpluseps] / (1 + (((epsilon - ionpot_ev) / J) ** 2))
-
-            j_lower = get_index(en + epsilon_lower, engrid=engrid)
-            j_upper = get_index(en + epsilon_upper, engrid=engrid)
-            delta_eps = (epsilon_upper - epsilon_lower) / (j_upper - j_lower)
+            eps_npts = 100
+            delta_eps = (epsilon_upper - epsilon_lower) / eps_npts
             prefactor = nnion / J / atan((en - ionpot_ev) / 2. / J) * delta_eps
-            # for j in range(j_lower, j_upper):
-            #     en_plus_epsilon = engrid[j]
-            #     epsilon = en_plus_epsilon - en
-            #     sfmatrix[i, j] -= prefactor * ar_xs_array[j] / (1 + (((epsilon - ionpot_ev) / J) ** 2))
-            sfmatrix[i, j_lower:j_upper] -= prefactor * ar_xs_array[j_lower:j_upper] / (1 + ((((engrid[j_lower:j_upper] - en) - ionpot_ev) / J) ** 2))
+            for j in range(eps_npts):
+                epsilon = epsilon_lower + j * delta_eps
+                i_enpluseps = get_index(en + epsilon, engrid=engrid)
+                sfmatrix[i, i_enpluseps] -= prefactor * ar_xs_array[i_enpluseps] / (
+                    1 + (((epsilon - ionpot_ev) / J) ** 2))
+
+            # j_lower = get_index(en + epsilon_lower, engrid=engrid)
+            # j_upper = get_index(en + epsilon_upper, engrid=engrid)
+            # if (j_lower < j_upper):
+            #     delta_eps = (epsilon_upper - epsilon_lower) / (j_upper - j_lower)
+            #     prefactor = nnion / J / atan((en - ionpot_ev) / 2. / J) * delta_eps
+            #     print(J, atan((en - ionpot_ev) / 2. / J))
+            #     assert not math.isnan(prefactor)
+            #     assert not math.isinf(prefactor)
+            #     # for j in range(j_lower, j_upper):
+            #     #     en_plus_epsilon = engrid[j]
+            #     #     epsilon = en_plus_epsilon - en
+            #     #     sfmatrix[i, j] -= prefactor * ar_xs_array[j] / (1 + (((epsilon - ionpot_ev) / J) ** 2))
+            #     sfmatrix[i, j_lower:j_upper] -= prefactor * ar_xs_array[j_lower:j_upper] / (1 + ((((engrid[j_lower:j_upper] - en) - ionpot_ev) / J) ** 2))
 
         if (2 * en + ionpot_ev) < engrid[-1]:
             epsilon = en + ionpot_ev
@@ -751,7 +758,7 @@ def solve_spencerfano_differentialform(
 
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
-        print(f'  including Z={Z} ion_stage {ionstage} ({at.get_ionstring(Z, ionstage)}) ionization', end='')
+        print(f'  including Z={Z} ion_stage {ionstage} ({at.get_ionstring(Z, ionstage)}) {nnion=:.2e} ionization', end='')
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
         # print(dfcollion_thision)
 
@@ -800,7 +807,7 @@ def solve_spencerfano(
 
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
-        print(f'  including Z={Z} ion_stage {ionstage} ({at.get_ionstring(Z, ionstage)}) ionization', end='')
+        print(f'  including Z={Z} ion_stage {ionstage} ({at.get_ionstring(Z, ionstage)}) nnion={nnion:.1e}) ionization', end='')
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
         # print(dfcollion_thision)
 
@@ -902,7 +909,6 @@ def analyse_ntspectrum(
         for index, shell in dfcollion_thision.iterrows():
             xsstartindex = get_index(en_ev=shell.ionpot_ev, engrid=engrid)
             ar_xs_array = at.nonthermal.get_arxs_array_shell(engrid, shell)
-            print(f'cross section at {engrid[xsstartindex + 1]:.2e} eV and {engrid[-1]:.2e} eV {ar_xs_array[xsstartindex + 1]} and {ar_xs_array[-1]:.2e}')
 
             frac_ionization_shell = (
                 nnion * shell.ionpot_ev * np.dot(yvec, ar_xs_array) * deltaen / deposition_density_ev)
@@ -919,6 +925,7 @@ def analyse_ntspectrum(
 
             frac_ionization_ion[(Z, ionstage)] += frac_ionization_shell
             eta_over_ionpot_sum += frac_ionization_shell / shell.ionpot_ev
+            print(f'  cross section at {engrid[xsstartindex + 1]:.2e} eV and {engrid[-1]:.2e} eV {ar_xs_array[xsstartindex + 1]:.2e} and {ar_xs_array[-1]:.2e}')
 
         frac_ionization += frac_ionization_ion[(Z, ionstage)]
 
@@ -947,19 +954,18 @@ def analyse_ntspectrum(
         print(f'  Spencer-Fano Gamma: {gamma_nt[(Z, ionstage)]:.2e}')
         # print(f'Alternative Gamma: {integralgamma:.2e}')
 
-        if (Z, ionstage) == (26, 3):
-            binding = get_mean_binding_energy(26, 3, electron_binding, ionpot_ev=30.6512220)  # erg
-            oneoverW = Aconst * binding / Zbar / (2 * 3.14159 * pow(QE, 4))  # per erg
-            deposition_density_erg = deposition_density_ev * EV
+        binding = get_mean_binding_energy(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence)  # binding in erg
+        oneoverW = Aconst * binding / Zbar / (2 * 3.14159 * pow(QE, 4))  # per erg
+        deposition_density_erg = deposition_density_ev * EV
 
-            # to get the non-thermal ionization rate we need to divide the energy deposited
-            # per unit volume per unit time in the grid cell (sum of terms above)
-            # by the total ion number density and the "work per ion pair"
-            print(f"       work function: {1. / oneoverW / EV:.2f} eV")
-            print(f"   work fn ratecoeff: {deposition_density_erg / nntot * oneoverW:.2e}")
-            # Axelrod 1980 Eq 3.225 with E0 = E = E_max
-            xs = lossfunction(engrid[-1], nne) * EV * oneoverW / nnion
-            print(f"         WFApprox xs: {xs:.2e} cm^2")
+        # to get the non-thermal ionization rate we need to divide the energy deposited
+        # per unit volume per unit time in the grid cell (sum of terms above)
+        # by the total ion number density and the "work per ion pair"
+        print(f"       work function: {1. / oneoverW / EV:.2f} eV")
+        print(f"   work fn ratecoeff: {deposition_density_erg / nntot * oneoverW:.2e}")
+        # Axelrod 1980 Eq 3.225 with E0 = E = E_max
+        xs = lossfunction(engrid[-1], nne) * EV * oneoverW / nntot
+        print(f"         WFApprox xs: {xs:.2e} cm^2")
 
         print()
 
@@ -991,6 +997,9 @@ def addargs(parser):
 
     parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
                         help='Modelgridindex to plot')
+
+    parser.add_argument('-velocity', '-v', type=float, default=-1,
+                        help='Specify cell by velocity')
 
     parser.add_argument('-npts', type=int, default=8192,
                         help='Number of points in the energy grid')
@@ -1039,26 +1048,30 @@ def main(args=None, argsraw=None, **kwargs):
 
     modelpath = Path(args.modelpath)
 
-    # if args.timedays:
-    #     args.timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
-    # elif args.timestep is None:
-    #     print("A time or timestep must be specified.")
-    #     sys.exit()
+    if args.timedays:
+        args.timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
+    elif args.timestep is None:
+        print("A time or timestep must be specified.")
+        sys.exit()
 
-    # modeldata, _ = at.get_modeldata(modelpath)
-    # estimators = at.estimators.read_estimators(modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex)
-    # estim = estimators[(args.timestep, args.modelgridindex)]
-    #
-    # dfpops = at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
-    #
-    # if dfpops is None or dfpops.empty:
-    #     print(f'ERROR: no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}')
-    #     return -1
-    #
-    # nntot = estim['populations']['total']
-    # nne = estim['nne']
-    # deposition_density_ev = estim['gamma_dep'] / 1.6021772e-12  # convert erg to eV
-    # ionpopdict = estim['populations']
+    modeldata, _ = at.get_modeldata(modelpath)
+    if args.velocity >= 0.:
+        args.modelgridindex = at.get_mgi_of_velocity_kms(modelpath, args.velocity)
+    else:
+        args.modelgridindex = args.modelgridindex
+    estimators = at.estimators.read_estimators(modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex)
+    estim = estimators[(args.timestep, args.modelgridindex)]
+
+    dfpops = at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
+
+    if dfpops is None or dfpops.empty:
+        print(f'ERROR: no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}')
+        return -1
+
+    nntot = estim['populations']['total']
+    nne = estim['nne']
+    deposition_density_ev = estim['heating_dep'] / 1.6021772e-12  # convert erg to eV
+    ionpopdict = estim['populations']
 
     # ionpopdict = {}
     # deposition_density_ev = 327
@@ -1078,16 +1091,16 @@ def main(args=None, argsraw=None, **kwargs):
     # ionpopdict[(28, 4)] = ionpopdict[28] * 0.
     # ionpopdict[(28, 5)] = ionpopdict[28] * 0.
 
-    x_e = 2.
-    deposition_density_ev = 1e2
-    nntot = 1.0e5
-    ionpopdict = {}
-    nne = nntot * x_e
-    # nne = .1
-    dfpops = {}
+    # x_e = 2.
+    # deposition_density_ev = 1e2
+    # nntot = 1.0e5
+    # ionpopdict = {}
+    # nne = nntot * x_e
+    # # nne = .1
+    # dfpops = {}
 
     # ionpopdict[(at.get_atomic_number('Fe'), 2)] = nntot * 0.5
-    ionpopdict[(at.get_atomic_number('Fe'), 3)] = nntot
+    # ionpopdict[(at.get_atomic_number('Fe'), 3)] = nntot
 
     # KF1992 D. The Oxygen-Carbon Zone
     # ionpopdict[(at.get_atomic_number('C'), 1)] = 0.16 * nntot
@@ -1107,9 +1120,9 @@ def main(args=None, argsraw=None, **kwargs):
     # ionpopdict[(at.get_atomic_number('Ca'), 1)] = 0.026 * nntot
     # ionpopdict[(at.get_atomic_number('Fe'), 1)] = 0.012 * nntot
 
-    # velocity = modeldata['velocity_outer'][args.modelgridindex]
-    # args.time_days = float(at.get_timestep_time(modelpath, args.timestep))
-    # print(f'timestep {args.timestep} cell {args.modelgridindex} (v={velocity} km/s at {args.time_days:.1f}d)')
+    velocity = modeldata['velocity_outer'][args.modelgridindex]
+    args.timedays = float(at.get_timestep_time(modelpath, args.timestep))
+    print(f'timestep {args.timestep} cell {args.modelgridindex} (v={velocity} km/s at {args.timedays:.1f}d)')
 
     ions = []
     for key in ionpopdict.keys():
@@ -1132,9 +1145,6 @@ def main(args=None, argsraw=None, **kwargs):
 
     dfcollion = at.nonthermal.read_colliondata(
         collionfilename=('collion-AR1985.txt' if args.ar1985 else 'collion.txt'))
-
-    # WARNING REMOVE
-    dfcollion.query('Z == 26', inplace=True)  # and ionstage == 3 and l == 2
 
     if args.ostat:
         with open(args.ostat, 'w') as fstat:
@@ -1160,7 +1170,7 @@ def main(args=None, argsraw=None, **kwargs):
 
         sourcevec = np.zeros(engrid.shape)
         # source_spread_pts = math.ceil(npts / 10.)
-        source_spread_pts = math.ceil(npts * 0.3)
+        source_spread_pts = math.ceil(npts * 0.03)
         for s in range(npts):
             # spread the source over some energy width
             if (s < npts - source_spread_pts):
@@ -1180,9 +1190,9 @@ def main(args=None, argsraw=None, **kwargs):
                 adata=adata, noexcitation=args.noexcitation)
 
         if args.makeplot:
-            # outputfilename = str(args.outputfile).format(
-            #     cell=args.modelgridindex, timestep=args.timestep, time_days=args.time_days)
-            outputfilename = 'spencerfano.pdf'
+            outputfilename = str(args.outputfile).format(
+                cell=args.modelgridindex, timestep=args.timestep, timedays=args.timedays)
+            # outputfilename = 'spencerfano.pdf'
             make_plot(engrid, yvec, ions, ionpopdict, dfcollion, dftransitions, nne, sourcevec,
                       deposition_density_ev, outputfilename, noexcitation=args.noexcitation)
 
