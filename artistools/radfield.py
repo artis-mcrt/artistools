@@ -3,7 +3,7 @@
 import argparse
 import math
 import multiprocessing
-# import os
+import os
 # import re
 import sys
 
@@ -219,7 +219,12 @@ def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=Non
     """Plot the ARTIS spectrum."""
     print(f"Plotting {specfilename}")
 
-    dfspectrum = at.spectra.get_spectrum(specfilename, timestep)
+    if os.path.isdir(specfilename):
+        modelpath = specfilename
+    elif os.path.isfile(specfilename):
+        modelpath = Path(specfilename).parent
+
+    dfspectrum = at.spectra.get_spectrum(modelpath, timestep)
     label = 'Emergent spectrum'
     if scale_factor is not None:
         label += ' (scaled)'
