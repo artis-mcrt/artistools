@@ -2,8 +2,10 @@
 import argparse
 import math
 import multiprocessing
+import os
 import sys
 
+import matplotlib.ticker as ticker
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -26,6 +28,8 @@ defaultoutputfile = 'spencerfano_cell{cell:03d}_ts{timestep:02d}_{timedays:.0f}d
 
 EV = 1.6021772e-12  # in erg
 QE = 4.80325E-10
+ME = 9.1093897e-28
+CLIGHT = 2.99792458e+10
 
 
 def get_lte_pops(adata, ions, ionpopdict, temperature):
@@ -52,8 +56,13 @@ def get_lte_pops(adata, ions, ionpopdict, temperature):
     return dfpop
 
 
-def read_binding_energies(modelpath=Path()):
-    with open(Path(modelpath, "binding_energies.txt"), "r") as f:
+def read_binding_energies(modelpath=None):
+    if modelpath:
+        collionfilename = os.path.join(modelpath, 'binding_energies.txt')
+    else:
+        collionfilename = os.path.join(at.PYDIR, 'data', 'binding_energies.txt')
+
+    with open(collionfilename, "r") as f:
         nt_shells, n_z_binding = [int(x) for x in f.readline().split()]
         electron_binding = np.zeros((n_z_binding, nt_shells))
 
@@ -63,10 +72,8 @@ def read_binding_energies(modelpath=Path()):
     return electron_binding
 
 
-def get_mean_binding_energy(atomic_number, ion_stage, electron_binding, ionpot_ev):
-    n_z_binding, nt_shells = electron_binding.shape
+def get_electronoccupancy(atomic_number, ion_stage, nt_shells):
     q = np.zeros(nt_shells)
-    total = 0
 
     ioncharge = ion_stage - 1
     nbound = atomic_number - ioncharge  # number of bound electrons
@@ -111,6 +118,12 @@ def get_mean_binding_energy(atomic_number, ion_stage, electron_binding, ionpot_e
                 q[8] += 1
             else:
                 print("Going beyond the 4s shell in NT calculation. Abort!\n")
+    return q
+
+
+def get_mean_binding_energy(atomic_number, ion_stage, electron_binding, ionpot_ev):
+    n_z_binding, nt_shells = electron_binding.shape
+    q = get_electronoccupancy(atomic_number, ion_stage, nt_shells)
 
     total = 0.0
     for electron_loop in range(nt_shells):
@@ -135,6 +148,49 @@ def get_mean_binding_energy(atomic_number, ion_stage, electron_binding, ionpot_e
         # print("total total)
 
     return total
+
+
+def get_lotz_xs_ionisation(atomic_number, ion_stage, electron_binding, ionpot_ev, en_ev, addepsilontransfactor=False):
+    en_erg = en_ev * EV
+    gamma = en_erg / (ME * CLIGHT ** 2) + 1
+    beta = math.sqrt(1. - 1. / (gamma ** 2))
+    # beta = 0.99
+    # print(f'{gamma=} {beta=}')
+
+    n_z_binding, nt_shells = electron_binding.shape
+    q = get_electronoccupancy(atomic_number, ion_stage, nt_shells)
+
+    part_sigma = 0.0
+    for electron_loop in range(nt_shells):
+        electronsinshell = q[electron_loop]
+        if ((electronsinshell) > 0):
+            use2 = electron_binding[atomic_number - 1][electron_loop]
+            use3 = ionpot_ev * EV
+        if (use2 <= 0):
+            use2 = electron_binding[atomic_number - 1][electron_loop-1]
+            # to get total += electronsinshell/electron_binding[get_element(element)-1][electron_loop-1];
+            # set use3 = 0.
+            if (electron_loop != 8):
+                # For some reason in the Lotz data, this is no energy for the M5 shell before Ni. So if the complaint
+                # is for 8 (corresponding to that shell) then just use the M4 value
+                print(f"Huh? I'm trying to use a binding energy when I have no data. element {atomic_number} ionstage {ion_stage}\n")
+                assert(electron_loop == 8)
+                # print("Z = %d, ion_stage = %d\n", get_element(element), get_ionstage(element, ion));
+
+        if (use2 < use3):
+            p = use3
+        else:
+            p = use2
+
+        prefactor = (p / EV) if addepsilontransfactor else 1.  # times transition energy in eV for Latom calculation
+        part_sigma += prefactor * electronsinshell / p * (
+            (math.log(beta ** 2 * ME * CLIGHT ** 2 / 2. / p) - math.log10(1 - beta ** 2) - beta ** 2))
+
+    Aconst = 1.33e-14 * EV * EV
+    # me is electron mass
+    sigma = 2 * Aconst / (beta ** 2) / ME / (CLIGHT ** 2) * part_sigma
+
+    return sigma
 
 
 def lossfunction(energy_ev, nne_cgs):
@@ -881,12 +937,13 @@ def analyse_ntspectrum(
 
     electron_binding = read_binding_energies(modelpath)
 
-    Zbar = 0.  # mass-weighted average atomic number
+    Zbar = 0.  # electrons per ion
     nntot = 0.
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
         nntot += nnion
-        Zbar += nnion * Z / nntot
+        Zbar += Z * nnion
+    Zbar = Zbar / nntot
 
     Aconst = 1.33e-14 * EV * EV
 
@@ -1207,6 +1264,32 @@ def main(args=None, argsraw=None, **kwargs):
                             f'{gamma_nt[(26, 2)]:.4e} {frac_ionization_ion[(28, 2)]:.4f} '
                             f'{frac_excitation_ion[(28, 2)]:.4f} {gamma_nt[(28, 2)]:.4e}\n')
 
+
+def get_Latom(Zbar, en_ev):
+    # Axelrod 1980 Eq 3.21
+
+    en_erg = en_ev * EV
+    gamma = en_erg / (ME * CLIGHT ** 2) + 1
+    beta = math.sqrt(1. - 1. / (gamma ** 2))
+    vel = beta * CLIGHT  # in cm/s
+    I = 500 * EV
+
+    return 4 * math.pi * QE ** 4 / (ME * vel ** 2) * Zbar * (
+        math.log(2 * ME * vel ** 2 / I) + 0.5 * math.log(1. / (1. - beta ** 2)) - 0.5 * beta ** 2)
+
+
+def get_Lelec(en_ev, nne, nntot):
+    # Axelrod 1980 Eq 3.24
+
+    H = 6.6260755e-27  # in erg seconds
+    HBAR = H / 2. / math.pi
+    en_erg = en_ev * EV
+    gamma = en_erg / (ME * CLIGHT ** 2) + 1
+    beta = math.sqrt(1. - 1. / (gamma ** 2))
+    vel = beta * CLIGHT  # in cm/s
+    omegap = 5.6e4 * math.sqrt(nne)  # in per second
+    return 4 * math.pi * QE ** 4 / (ME * vel ** 2) * nne / nntot * (
+        math.log(2 * ME * vel ** 2 / (HBAR * omegap)) + 0.5 * math.log(1. / (1. - beta ** 2)) - 0.5 * beta ** 2)
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
