@@ -1304,85 +1304,95 @@ def main2():
     x_e = 2.
     nne = 1e6
     nntot = nne / x_e
-    # ionpot_ev = 16.2
-    arr_en_ev = np.linspace(10e3, 5e6, 1000)
+
+    Zbar = 26  # average atomic number
+    nnetot = Zbar * nntot  # total electrons: free and bound included
+    en_min_ev = 10e3
+    en_max_ev = 1000e3
+    print(f'{en_min_ev=:.1e} eV')
+    print(f'{en_max_ev=:.1e} eV')
+    arr_en_ev = np.linspace(en_min_ev, en_max_ev, 1000)
     delta_en_ev = arr_en_ev[1] - arr_en_ev[0]
 
     # Axelrod 1980 Eq 3.24
     Lelec_axelrod = np.array([get_Lelec(en_ev=en_ev, nne=nne, nntot=nntot) for en_ev in arr_en_ev])
 
-    Lelec_kf92 = np.array([lossfunction(energy_ev=en_ev, nne_cgs=nne) * EV / nne for en_ev in arr_en_ev])
+    Lelec_kf92 = np.array([lossfunction(energy_ev=en_ev, nne_cgs=nnetot) * EV / nntot for en_ev in arr_en_ev])
 
     # print(f'{Lelec_axelrod[-1]=}')
     # print(f'{Lelec_kf92[-1]=}')
 
-    Lelec = Lelec_axelrod
-    # Lelec = Lelec_kf92
-
-    Zbar = 26  # average atomic number
-
-    Latom1 = np.array([get_Latom(en_ev=en_ev, Zbar=Zbar) for en_ev in arr_en_ev])
+    Latom_axelrod = np.array([get_Latom(en_ev=en_ev, Zbar=Zbar) for en_ev in arr_en_ev])
 
     for Z, ionstage in ions:
-        print(Z, ionstage)
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
         ionpot_valence_ev = dfcollion_thision.ionpot_ev.min()
+        print(f'\n ion {Z=} {ionstage=} {ionpot_valence_ev=}')
 
         Aconst = 1.33e-14 * EV * EV
         binding = get_mean_binding_energy(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence_ev)  # binding in erg
         oneoverW_limit_sim = Aconst * binding / Zbar / (2 * 3.14159 * pow(QE, 4))  # per erg
         W_limit_ev_sim = 1. / oneoverW_limit_sim / EV
-        print(f'{W_limit_ev_sim=:.2f}')
-        print(f'  eta_ion {ionpot_valence_ev / W_limit_ev_sim:.2f}')
-        print(f'  eta_heat {1 - ionpot_valence_ev / W_limit_ev_sim:.2f}')
+        print(f' {W_limit_ev_sim=:.2f}')
+        print(f'   eta_ion  {ionpot_valence_ev / W_limit_ev_sim:.3f}')
+        print(f'   eta_heat {1 - ionpot_valence_ev / W_limit_ev_sim:.3f}')
         arr_workfn_limit_sim = np.array([W_limit_ev_sim for x in arr_en_ev])
+
+        arr_xs_ar92 = np.zeros(len(arr_en_ev))
+        for index, shell in dfcollion_thision.iterrows():
+            xsvec_shell = at.nonthermal.get_arxs_array_shell(arr_en_ev, shell)
+            arr_xs_ar92 += xsvec_shell
+            # axes[-1].plot(arr_en_ev, xsvec_shell, label=f'AR92 shell {shell.ionpot_ev} eV', linestyle='dashed')
 
         arr_xs_lotz = np.array([
             get_lotz_xs_ionisation(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence_ev, en_ev=en_ev)
             for en_ev in arr_en_ev])
 
-        xs_arr_ar92 = np.zeros(len(arr_en_ev))
-        for index, shell in dfcollion_thision.iterrows():
-            xsvec_shell = at.nonthermal.get_arxs_array_shell(arr_en_ev, shell)
-            xs_arr_ar92 += xsvec_shell
-            # axes[-1].plot(arr_en_ev, xsvec_shell, label=f'AR92 shell {shell.ionpot_ev} eV', linestyle='dashed')
-
-        arr_xs = arr_xs_lotz
-        # arr_xs = xs_arr_ar92
-
         # Axelrod 1980 Eq 3.20, (Latom part).
         # This assumes that the every bound electron cross section is included!
-        Latom2 = np.array([get_lotz_xs_ionisation(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence_ev,
-                                                  en_ev=en_ev, addepsilontransfactor=True) for en_ev in arr_en_ev])
+        Latom_ionisation_lotz = np.array([
+            get_lotz_xs_ionisation(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence_ev,
+            en_ev=en_ev, addepsilontransfactor=True) for en_ev in arr_en_ev])
+
+        L_over_sigma = (Lelec_axelrod[-1] + Latom_axelrod[-1]) / arr_xs_lotz[-1]
+        workfn_limit_axelrod = L_over_sigma / EV
+        print(f' {workfn_limit_axelrod=:.2f}')
+        print(f'   eta_ion  {ionpot_valence_ev / workfn_limit_axelrod:.3f}')
+        print(f'   eta_heat {1 - ionpot_valence_ev / workfn_limit_axelrod:.3f}')
+        # arr_workfn_limit_axelrod = np.array([workfn_limit_axelrod for x in arr_en_ev])
 
         # Approximation to Axelrod 1980 Eq 3.20 (left Latom part) where the transition energy
         # of every ionisation is just the valence potential
-        Latom3 = arr_xs * (ionpot_valence_ev * EV)
+        # Latom_ionisation = arr_xs * (ionpot_valence_ev * EV)
         # print(Latom[-1], Latom2[-1], Latom3[-1])
-        Latom = Latom3
 
-        arr_xs_latom = Latom1 / (ionpot_valence_ev * EV)
+        # arr_xs_latom = Latom1 / (ionpot_valence_ev * EV)
 
-        axes[-1].plot(arr_en_ev, arr_xs_lotz, label=r'$\sigma_{Lotz}$')
-        axes[-1].plot(arr_en_ev, xs_arr_ar92, label=r'$\sigma_{AR92}$')
-        axes[-1].plot(arr_en_ev, arr_xs_latom, label=r'$\sigma$=$L_{atom}/I$', linestyle='dashed')
+        # axes[-1].plot(arr_en_ev, arr_xs_lotz, label=r'$\sigma_{Lotz}$')
+        # axes[-1].plot(arr_en_ev, arr_xs_ar92, label=r'$\sigma_{AR92}$')
+        # axes[-1].plot(arr_en_ev, arr_xs_latom, label=r'$\sigma$=$L_{atom}/I$', linestyle='dashed')
 
+        print()
+
+        Lelec = Lelec_kf92
+        Latom = Latom_ionisation_lotz
+        arr_xs = arr_xs_lotz
         L = Lelec + Latom
         L_over_sigma = L / arr_xs
         workfn_limit = L_over_sigma / EV
 
-        print(f'{workfn_limit[-1]=:.2f}')
-        print(f'  eta_ion {ionpot_valence_ev / workfn_limit[-1]:.2f}')
-        print(f'  eta_heat {1 - ionpot_valence_ev / workfn_limit[-1]:.2f}')
+        print(f' {workfn_limit[-1]=:.2f}')
+        print(f'   eta_ion  {ionpot_valence_ev / workfn_limit[-1]:.3f}')
+        print(f'   eta_heat {1 - ionpot_valence_ev / workfn_limit[-1]:.3f}')
 
         arr_workfn_integrated = np.zeros_like(arr_en_ev)
         integrand = arr_xs / (L / EV)
         for i in range(1, len(arr_en_ev)):
             arr_workfn_integrated[i] = arr_en_ev[i] / (sum(integrand[:i]) * delta_en_ev)
 
-        print(f'{arr_workfn_integrated[-1]=:.2f}')
-        print(f'  eta_ion {ionpot_valence_ev / arr_workfn_integrated[-1]:.2f}')
-        print(f'  eta_heat {1 - ionpot_valence_ev / arr_workfn_integrated[-1]:.2f}')
+        print(f' {arr_workfn_integrated[-1]=:.2f}')
+        print(f'   eta_ion  {ionpot_valence_ev / arr_workfn_integrated[-1]:.3f}')
+        print(f'   eta_heat {1 - ionpot_valence_ev / arr_workfn_integrated[-1]:.3f}')
 
         # axes[-1].plot(arr_en_ev, arr_workfn_limit_sim, label='workfn limit (Sim)')
         # axes[-1].plot(arr_en_ev, workfn_limit, label='workfn limit')
