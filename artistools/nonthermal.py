@@ -64,8 +64,9 @@ def ar_xs(energy_ev, ionpot_ev, A, B, C, D):
     u = energy_ev / ionpot_ev
     if u <= 1:
         return 0
+
     return 1e-14 * (
-        A * (1 - 1 / u) + B * pow((1 - 1 / u), 2) + C * np.log(u) + D * np.log(u) / u) / (u * pow(ionpot_ev, 2))
+        A * (1 - 1 / u) + B * pow((1 - 1 / u), 2) + C * math.log(u) + D * math.log(u) / u) / (u * pow(ionpot_ev, 2))
 
 
 def xs_fe2_old(energy):
@@ -86,7 +87,6 @@ def get_arxs_array_shell(arr_enev, shell):
 def get_arxs_array_ion(arr_enev, dfcollion, Z, ionstage):
     ar_xs_array = np.zeros(len(arr_enev))
     dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage')
-    print(dfcollion_thision)
     for index, shell in dfcollion_thision.iterrows():
         ar_xs_array += get_arxs_array_shell(arr_enev, shell)
 
@@ -193,7 +193,7 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
     print(f'   frac_heating: {frac_heating}')
     print(f'frac_ionisation: {frac_ionisation}')
 
-    axis.plot(arr_enev, arr_heating, label=f'Heating')
+    axis.plot(arr_enev, arr_heating, label='Heating')
 
     axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 11})
 
