@@ -77,16 +77,8 @@ def xs_fe2_old(energy):
 
 
 def get_arxs_array_shell(arr_enev, shell):
-    ar_xs_array = np.zeros(len(arr_enev))
-
-    ionpot_ev, A, B, C, D = shell.ionpot_ev, shell.A, shell.B, shell.C, shell.D
-    for index, energy_ev in enumerate(arr_enev):
-        u = energy_ev / ionpot_ev
-        if u <= 1:
-            ar_xs_array[index] = 0.
-        else:
-            ar_xs_array[index] = (1e-14 * (A * (1 - 1 / u) + B * pow((1 - 1 / u), 2) +
-                                           C * np.log(u) + D * np.log(u) / u) / (u * pow(ionpot_ev, 2)))
+    ar_xs_array = np.array(
+        [ar_xs(energy_ev, shell.ionpot_ev, shell.A, shell.B, shell.C, shell.D) for energy_ev in arr_enev])
 
     return ar_xs_array
 
@@ -96,8 +88,8 @@ def get_arxs_array_ion(arr_enev, dfcollion, Z, ionstage):
     dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage')
     print(dfcollion_thision)
     for index, shell in dfcollion_thision.iterrows():
-        ar_xs_array = np.add(ar_xs_array, np.array(
-            [ar_xs(energy_ev, shell.ionpot_ev, shell.A, shell.B, shell.C, shell.D) for energy_ev in arr_enev]))
+        ar_xs_array += get_arxs_array_shell(arr_enev, shell)
+
     return ar_xs_array
 
 
