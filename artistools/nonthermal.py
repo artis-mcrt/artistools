@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 # import glob
-# import math
+import math
 # import re
 import multiprocessing
 import os
@@ -91,7 +91,7 @@ def get_arxs_array_shell(arr_enev, shell):
     return ar_xs_array
 
 
-def get_arxs_array(arr_enev, dfcollion, Z, ionstage):
+def get_arxs_array_ion(arr_enev, dfcollion, Z, ionstage):
     ar_xs_array = np.zeros(len(arr_enev))
     dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage')
     print(dfcollion_thision)
@@ -122,8 +122,8 @@ def make_xs_plot(axis, nonthermaldata, args):
     # arr_xs_old = [xs_fe2_old(en) for en in arr_en]
     # arr_xs_times_y = [xs_fe1(en) * y for en, y in zip(nonthermaldata['energy_ev'], nonthermaldata['y'])]
 
-    axis.plot(arr_en, get_arxs_array(arr_en, dfcollion, 26, 2), linewidth=2.0, label='Fe II')
-    axis.plot(arr_en, get_arxs_array(arr_en, dfcollion, 28, 2), linewidth=2.0, label='Ni II')
+    axis.plot(arr_en, get_arxs_array_ion(arr_en, dfcollion, 26, 2), linewidth=2.0, label='Fe II')
+    axis.plot(arr_en, get_arxs_array_ion(arr_en, dfcollion, 28, 2), linewidth=2.0, label='Ni II')
 
     axis.set_ylabel(r'cross section (cm2)')
 
