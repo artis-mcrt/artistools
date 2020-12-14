@@ -1042,229 +1042,6 @@ def analyse_ntspectrum(
     return frac_excitation, frac_ionization, frac_excitation_ion, frac_ionization_ion, gamma_nt
 
 
-def addargs(parser):
-    parser.add_argument('-modelpath', default='.',
-                        help='Path to ARTIS folder')
-
-    parser.add_argument('-timedays', '-time', '-t',
-                        help='Time in days to plot')
-
-    parser.add_argument('-timestep', '-ts', type=int,
-                        help='Timestep number to plot')
-
-    parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
-                        help='Modelgridindex to plot')
-
-    parser.add_argument('-velocity', '-v', type=float, default=-1,
-                        help='Specify cell by velocity')
-
-    parser.add_argument('-npts', type=int, default=8192,
-                        help='Number of points in the energy grid')
-
-    parser.add_argument('-emin', type=float, default=0.1,
-                        help='Minimum energy in eV of Spencer-Fano solution')
-
-    parser.add_argument('-emax', type=float, default=16000,
-                        help='Maximum energy in eV of Spencer-Fano solution (approx where energy is injected)')
-
-    parser.add_argument('-vary', action='store', choices=['emin', 'emax', 'npts', 'emax,npts'],
-                        help='Which parameter to vary')
-
-    parser.add_argument('--makeplot', action='store_true',
-                        help='Save a plot of the non-thermal spectrum')
-
-    parser.add_argument('--differentialform', action='store_true',
-                        help=('Solve differential form (KF92 Equation 6) instead of'
-                              'integral form (KF92 Equation 7)'))
-
-    parser.add_argument('--noexcitation', action='store_true',
-                        help='Do not include collisional excitation transitions')
-
-    parser.add_argument('--ar1985', action='store_true',
-                        help='Use Arnaud & Rothenflug (1985, A&AS, 60, 425) for Fe ionization cross sections')
-
-    parser.add_argument('-o', action='store', dest='outputfile',
-                        default=defaultoutputfile,
-                        help='Path/filename for PDF file if --makeplot is enabled')
-
-    parser.add_argument('-ostat', action='store',
-                        help='Path/filename for stats output')
-
-
-def main(args=None, argsraw=None, **kwargs):
-    if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-            description='Plot estimated spectra from bound-bound transitions.')
-        addargs(parser)
-        parser.set_defaults(**kwargs)
-        args = parser.parse_args(argsraw)
-
-    if Path(args.outputfile).is_dir():
-        args.outputfile = Path(args.outputfile, defaultoutputfile)
-
-    modelpath = Path(args.modelpath)
-
-    if args.timedays:
-        args.timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
-    elif args.timestep is None:
-        print("A time or timestep must be specified.")
-        sys.exit()
-
-    modeldata, _ = at.get_modeldata(modelpath)
-    if args.velocity >= 0.:
-        args.modelgridindex = at.get_mgi_of_velocity_kms(modelpath, args.velocity)
-    else:
-        args.modelgridindex = args.modelgridindex
-    estimators = at.estimators.read_estimators(modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex)
-    estim = estimators[(args.timestep, args.modelgridindex)]
-
-    dfpops = at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
-
-    if dfpops is None or dfpops.empty:
-        print(f'ERROR: no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}')
-        return -1
-
-    nntot = estim['populations']['total']
-    nne = estim['nne']
-    deposition_density_ev = estim['heating_dep'] / 1.6021772e-12  # convert erg to eV
-    ionpopdict = estim['populations']
-
-    # ionpopdict = {}
-    # deposition_density_ev = 327
-    # nne = 6.7e5
-    #
-    # ionpopdict[(26, 1)] = ionpopdict[26] * 1e-4
-    # ionpopdict[(26, 2)] = ionpopdict[26] * 0.20
-    # ionpopdict[(26, 3)] = ionpopdict[26] * 0.80
-    # ionpopdict[(26, 4)] = ionpopdict[26] * 0.
-    # ionpopdict[(26, 5)] = ionpopdict[26] * 0.
-    # ionpopdict[(27, 2)] = ionpopdict[27] * 0.20
-    # ionpopdict[(27, 3)] = ionpopdict[27] * 0.80
-    # ionpopdict[(27, 4)] = 0.
-    # # ionpopdict[(28, 1)] = ionpopdict[28] * 6e-3
-    # ionpopdict[(28, 2)] = ionpopdict[28] * 0.18
-    # ionpopdict[(28, 3)] = ionpopdict[28] * 0.82
-    # ionpopdict[(28, 4)] = ionpopdict[28] * 0.
-    # ionpopdict[(28, 5)] = ionpopdict[28] * 0.
-
-    # x_e = 2.
-    # deposition_density_ev = 1e2
-    # nntot = 1.0e5
-    # ionpopdict = {}
-    # nne = nntot * x_e
-    # # nne = .1
-    # dfpops = {}
-
-    # ionpopdict[(at.get_atomic_number('Fe'), 2)] = nntot * 0.5
-    # ionpopdict[(at.get_atomic_number('Fe'), 3)] = nntot
-
-    # KF1992 D. The Oxygen-Carbon Zone
-    # ionpopdict[(at.get_atomic_number('C'), 1)] = 0.16 * nntot
-    # ionpopdict[(at.get_atomic_number('C'), 2)] = 0.16 * nntot * x_e
-    # ionpopdict[(at.get_atomic_number('O'), 1)] = 0.86 * nntot
-    # ionpopdict[(at.get_atomic_number('O'), 2)] = 0.86 * nntot * x_e
-    # ionpopdict[(at.get_atomic_number('Ne'), 1)] = 0.016 * nntot
-
-    # # KF1992 G. The Silicon-Calcium Zone
-    # ionpopdict[(at.get_atomic_number('C'), 1)] = 0.38e-5 * nntot
-    # ionpopdict[(at.get_atomic_number('O'), 1)] = 0.94e-4 * nntot
-    # ionpopdict[(at.get_atomic_number('Si'), 1)] = 0.63 * nntot
-    # ionpopdict[(at.get_atomic_number('Si'), 2)] = 0.63 * nntot * x_e
-    # ionpopdict[(at.get_atomic_number('S'), 1)] = 0.29 * nntot
-    # ionpopdict[(at.get_atomic_number('S'), 2)] = 0.29 * nntot * x_e
-    # ionpopdict[(at.get_atomic_number('Ar'), 1)] = 0.041 * nntot
-    # ionpopdict[(at.get_atomic_number('Ca'), 1)] = 0.026 * nntot
-    # ionpopdict[(at.get_atomic_number('Fe'), 1)] = 0.012 * nntot
-
-    velocity = modeldata['velocity_outer'][args.modelgridindex]
-    args.timedays = float(at.get_timestep_time(modelpath, args.timestep))
-    print(f'timestep {args.timestep} cell {args.modelgridindex} (v={velocity} km/s at {args.timedays:.1f}d)')
-
-    ions = []
-    for key in ionpopdict.keys():
-        # keep only the ion populations, not element or total populations
-        if isinstance(key, tuple) and len(key) == 2 and ionpopdict[key] / nntot >= minionfraction:
-            ions.append(key)
-
-    ions.sort()
-
-    if args.noexcitation:
-        adata = None
-        dfpops = None
-    else:
-        adata = at.get_levels(modelpath, get_transitions=True, ionlist=tuple(ions))
-        dfpops = get_lte_pops(adata, ions, ionpopdict, temperature=6000)
-
-    print(f'     nntot: {nntot:.2e} /cm3')
-    print(f'       nne: {nne:.2e} /cm3')
-    print(f'deposition: {deposition_density_ev:7.2f} eV/s/cm3')
-
-    dfcollion = at.nonthermal.read_colliondata(
-        collionfilename=('collion-AR1985.txt' if args.ar1985 else 'collion.txt'))
-
-    if args.ostat:
-        with open(args.ostat, 'w') as fstat:
-            fstat.write('emin emax npts FeII_frac_ionization FeII_frac_excitation FeII_gamma_nt '
-                        'NiII_frac_ionization NiII_frac_excitation NiII_gamma_nt\n')
-
-    stepcount = 20 if args.vary else 1
-    for step in range(stepcount):
-        emin = args.emin
-        emax = args.emax
-        npts = args.npts
-        if args.vary == 'emin':
-            emin *= 2 ** step
-        elif args.vary == 'emax':
-            emax *= 2 ** step
-        elif args.vary == 'npts':
-            npts *= 2 ** step
-        if args.vary == 'emax,npts':
-            npts *= 2 ** step
-            emax *= 2 ** step
-        engrid = np.linspace(emin, emax, num=npts, endpoint=True)
-        deltaen = engrid[1] - engrid[0]
-
-        sourcevec = np.zeros(engrid.shape)
-        # source_spread_pts = math.ceil(npts / 10.)
-        source_spread_pts = math.ceil(npts * 0.03)
-        for s in range(npts):
-            # spread the source over some energy width
-            if (s < npts - source_spread_pts):
-                sourcevec[s] = 0.
-            elif (s < npts):
-                sourcevec[s] = 1. / (deltaen * source_spread_pts)
-        # sourcevec[-1] = 1.
-        # sourcevec[-3] = 1.
-
-        if args.differentialform:
-            yvec, dftransitions = solve_spencerfano_differentialform(
-                ions, ionpopdict, dfpops, nne, deposition_density_ev, engrid, sourcevec, dfcollion, args,
-                adata=adata, noexcitation=args.noexcitation)
-        else:
-            yvec, dftransitions = solve_spencerfano(
-                ions, ionpopdict, dfpops, nne, deposition_density_ev, engrid, sourcevec, dfcollion, args,
-                adata=adata, noexcitation=args.noexcitation)
-
-        if args.makeplot:
-            outputfilename = str(args.outputfile).format(
-                cell=args.modelgridindex, timestep=args.timestep, timedays=args.timedays)
-            # outputfilename = 'spencerfano.pdf'
-            make_plot(engrid, yvec, ions, ionpopdict, dfcollion, dftransitions, nne, sourcevec,
-                      deposition_density_ev, outputfilename, noexcitation=args.noexcitation)
-
-        (frac_excitation, frac_ionization, frac_excitation_ion, frac_ionization_ion, gamma_nt) = analyse_ntspectrum(
-            engrid, yvec, ions, ionpopdict, nntot, nne, deposition_density_ev,
-            dfcollion, dftransitions, noexcitation=args.noexcitation, modelpath=modelpath)
-
-        if args.ostat:
-            with open(args.ostat, 'a') as fstat:
-                fstat.write(f'{emin} {emax} {npts} {frac_ionization_ion[(26, 2)]:.4f} '
-                            f'{frac_excitation_ion[(26, 2)]:.4f} '
-                            f'{gamma_nt[(26, 2)]:.4e} {frac_ionization_ion[(28, 2)]:.4f} '
-                            f'{frac_excitation_ion[(28, 2)]:.4f} {gamma_nt[(28, 2)]:.4e}\n')
-
-
 def get_Latom(Zbar, en_ev):
     # Axelrod 1980 Eq 3.21
 
@@ -1292,9 +1069,9 @@ def get_Lelec(en_ev, nne, nntot):
         math.log(2 * ME * vel ** 2 / (HBAR * omegap)) + 0.5 * math.log(1. / (1. - beta ** 2)) - 0.5 * beta ** 2)
 
 
-def main2():
+def workfunction_tests():
     electron_binding = read_binding_energies()
-    dfcollion = at.nonthermal.read_colliondata(collionfilename=('collion.txt'))
+    dfcollion = at.nonthermal.read_colliondata()
 
     fig, axes = plt.subplots(nrows=1, ncols=1, sharex=True,
                              figsize=(6, 5), tight_layout={"pad": 0.3, "w_pad": 0.0, "h_pad": 0.0})
@@ -1307,8 +1084,8 @@ def main2():
 
     Zbar = 26  # average atomic number
     nnetot = Zbar * nntot  # total electrons: free and bound included
-    en_min_ev = 10e3
-    en_max_ev = 1000e3
+    en_min_ev = 1
+    en_max_ev = 1500000
     print(f'{en_min_ev=:.1e} eV')
     print(f'{en_max_ev=:.1e} eV')
     arr_en_ev = np.linspace(en_min_ev, en_max_ev, 1000)
@@ -1410,6 +1187,236 @@ def main2():
     print(f"Saving '{outputfilename}'")
     fig.savefig(str(outputfilename), format='pdf')
     plt.close()
+
+
+def addargs(parser):
+    parser.add_argument('-modelpath', default='.',
+                        help='Path to ARTIS folder')
+
+    parser.add_argument('-timedays', '-time', '-t',
+                        help='Time in days to plot')
+
+    parser.add_argument('-timestep', '-ts', type=int,
+                        help='Timestep number to plot')
+
+    parser.add_argument('-modelgridindex', '-cell', type=int, default=0,
+                        help='Modelgridindex to plot')
+
+    parser.add_argument('-velocity', '-v', type=float, default=-1,
+                        help='Specify cell by velocity')
+
+    parser.add_argument('-npts', type=int, default=8192,
+                        help='Number of points in the energy grid')
+
+    parser.add_argument('-emin', type=float, default=0.1,
+                        help='Minimum energy in eV of Spencer-Fano solution')
+
+    parser.add_argument('-emax', type=float, default=16000,
+                        help='Maximum energy in eV of Spencer-Fano solution (approx where energy is injected)')
+
+    parser.add_argument('-vary', action='store', choices=['emin', 'emax', 'npts', 'emax,npts'],
+                        help='Which parameter to vary')
+
+    parser.add_argument('--workfn', action='store_true',
+                        help='Testing related to work functions and high energy limits')
+
+    parser.add_argument('--makeplot', action='store_true',
+                        help='Save a plot of the non-thermal spectrum')
+
+    parser.add_argument('--differentialform', action='store_true',
+                        help=('Solve differential form (KF92 Equation 6) instead of'
+                              'integral form (KF92 Equation 7)'))
+
+    parser.add_argument('--noexcitation', action='store_true',
+                        help='Do not include collisional excitation transitions')
+
+    parser.add_argument('--ar1985', action='store_true',
+                        help='Use Arnaud & Rothenflug (1985, A&AS, 60, 425) for Fe ionization cross sections')
+
+    parser.add_argument('-o', action='store', dest='outputfile',
+                        default=defaultoutputfile,
+                        help='Path/filename for PDF file if --makeplot is enabled')
+
+    parser.add_argument('-ostat', action='store',
+                        help='Path/filename for stats output')
+
+
+def main(args=None, argsraw=None, **kwargs):
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            description='Plot estimated spectra from bound-bound transitions.')
+        addargs(parser)
+        parser.set_defaults(**kwargs)
+        args = parser.parse_args(argsraw)
+
+    if args.workfn:
+        return workfunction_tests()
+
+    if Path(args.outputfile).is_dir():
+        args.outputfile = Path(args.outputfile, defaultoutputfile)
+
+    modelpath = Path(args.modelpath)
+
+    if args.timedays:
+        args.timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
+    elif args.timestep is None:
+        print("A time or timestep must be specified.")
+        sys.exit()
+
+    modeldata, _ = at.get_modeldata(modelpath)
+    if args.velocity >= 0.:
+        args.modelgridindex = at.get_mgi_of_velocity_kms(modelpath, args.velocity)
+    else:
+        args.modelgridindex = args.modelgridindex
+    estimators = at.estimators.read_estimators(modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex)
+    estim = estimators[(args.timestep, args.modelgridindex)]
+
+    dfpops = at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
+
+    if dfpops is None or dfpops.empty:
+        print(f'ERROR: no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}')
+        return -1
+
+    nntot = estim['populations']['total']
+    nne = estim['nne']
+    deposition_density_ev = estim['heating_dep'] / 1.6021772e-12  # convert erg to eV
+    ionpopdict = estim['populations']
+
+    # ionpopdict = {}
+    # deposition_density_ev = 327
+    # nne = 6.7e5
+    #
+    # ionpopdict[(26, 1)] = ionpopdict[26] * 1e-4
+    # ionpopdict[(26, 2)] = ionpopdict[26] * 0.20
+    # ionpopdict[(26, 3)] = ionpopdict[26] * 0.80
+    # ionpopdict[(26, 4)] = ionpopdict[26] * 0.
+    # ionpopdict[(26, 5)] = ionpopdict[26] * 0.
+    # ionpopdict[(27, 2)] = ionpopdict[27] * 0.20
+    # ionpopdict[(27, 3)] = ionpopdict[27] * 0.80
+    # ionpopdict[(27, 4)] = 0.
+    # # ionpopdict[(28, 1)] = ionpopdict[28] * 6e-3
+    # ionpopdict[(28, 2)] = ionpopdict[28] * 0.18
+    # ionpopdict[(28, 3)] = ionpopdict[28] * 0.82
+    # ionpopdict[(28, 4)] = ionpopdict[28] * 0.
+    # ionpopdict[(28, 5)] = ionpopdict[28] * 0.
+
+    # x_e = 2.
+    # deposition_density_ev = 1e2
+    # nntot = 1.0e5
+    # ionpopdict = {}
+    # nne = nntot * x_e
+    # # nne = .1
+    # dfpops = {}
+
+    # ionpopdict[(at.get_atomic_number('Fe'), 2)] = nntot * 0.5
+    # ionpopdict[(at.get_atomic_number('Fe'), 3)] = nntot
+
+    # KF1992 D. The Oxygen-Carbon Zone
+    # ionpopdict[(at.get_atomic_number('C'), 1)] = 0.16 * nntot
+    # ionpopdict[(at.get_atomic_number('C'), 2)] = 0.16 * nntot * x_e
+    # ionpopdict[(at.get_atomic_number('O'), 1)] = 0.86 * nntot
+    # ionpopdict[(at.get_atomic_number('O'), 2)] = 0.86 * nntot * x_e
+    # ionpopdict[(at.get_atomic_number('Ne'), 1)] = 0.016 * nntot
+
+    # # KF1992 G. The Silicon-Calcium Zone
+    # ionpopdict[(at.get_atomic_number('C'), 1)] = 0.38e-5 * nntot
+    # ionpopdict[(at.get_atomic_number('O'), 1)] = 0.94e-4 * nntot
+    # ionpopdict[(at.get_atomic_number('Si'), 1)] = 0.63 * nntot
+    # ionpopdict[(at.get_atomic_number('Si'), 2)] = 0.63 * nntot * x_e
+    # ionpopdict[(at.get_atomic_number('S'), 1)] = 0.29 * nntot
+    # ionpopdict[(at.get_atomic_number('S'), 2)] = 0.29 * nntot * x_e
+    # ionpopdict[(at.get_atomic_number('Ar'), 1)] = 0.041 * nntot
+    # ionpopdict[(at.get_atomic_number('Ca'), 1)] = 0.026 * nntot
+    # ionpopdict[(at.get_atomic_number('Fe'), 1)] = 0.012 * nntot
+
+    velocity = modeldata['velocity_outer'][args.modelgridindex]
+    args.timedays = float(at.get_timestep_time(modelpath, args.timestep))
+    print(f'timestep {args.timestep} cell {args.modelgridindex} (v={velocity} km/s at {args.timedays:.1f}d)')
+
+    ions = []
+    for key in ionpopdict.keys():
+        # keep only the ion populations, not element or total populations
+        if isinstance(key, tuple) and len(key) == 2 and ionpopdict[key] / nntot >= minionfraction:
+            if key[0] >= 26:  # TODO: remove
+                ions.append(key)
+
+    ions.sort()
+
+    if args.noexcitation:
+        adata = None
+        dfpops = None
+    else:
+        adata = at.get_levels(modelpath, get_transitions=True, ionlist=tuple(ions))
+        dfpops = get_lte_pops(adata, ions, ionpopdict, temperature=6000)
+
+    print(f'     nntot: {nntot:.2e} /cm3')
+    print(f'       nne: {nne:.2e} /cm3')
+    print(f'deposition: {deposition_density_ev:7.2f} eV/s/cm3')
+
+    dfcollion = at.nonthermal.read_colliondata(
+        collionfilename=('collion-AR1985.txt' if args.ar1985 else 'collion.txt'))
+
+    if args.ostat:
+        with open(args.ostat, 'w') as fstat:
+            fstat.write('emin emax npts FeII_frac_ionization FeII_frac_excitation FeII_gamma_nt '
+                        'NiII_frac_ionization NiII_frac_excitation NiII_gamma_nt\n')
+
+    stepcount = 20 if args.vary else 1
+    for step in range(stepcount):
+        emin = args.emin
+        emax = args.emax
+        npts = args.npts
+        if args.vary == 'emin':
+            emin *= 2 ** step
+        elif args.vary == 'emax':
+            emax *= 2 ** step
+        elif args.vary == 'npts':
+            npts *= 2 ** step
+        if args.vary == 'emax,npts':
+            npts *= 2 ** step
+            emax *= 2 ** step
+        engrid = np.linspace(emin, emax, num=npts, endpoint=True)
+        deltaen = engrid[1] - engrid[0]
+
+        sourcevec = np.zeros(engrid.shape)
+        # source_spread_pts = math.ceil(npts / 10.)
+        source_spread_pts = math.ceil(npts * 0.03)
+        for s in range(npts):
+            # spread the source over some energy width
+            if (s < npts - source_spread_pts):
+                sourcevec[s] = 0.
+            elif (s < npts):
+                sourcevec[s] = 1. / (deltaen * source_spread_pts)
+        # sourcevec[-1] = 1.
+        # sourcevec[-3] = 1.
+
+        if args.differentialform:
+            yvec, dftransitions = solve_spencerfano_differentialform(
+                ions, ionpopdict, dfpops, nne, deposition_density_ev, engrid, sourcevec, dfcollion, args,
+                adata=adata, noexcitation=args.noexcitation)
+        else:
+            yvec, dftransitions = solve_spencerfano(
+                ions, ionpopdict, dfpops, nne, deposition_density_ev, engrid, sourcevec, dfcollion, args,
+                adata=adata, noexcitation=args.noexcitation)
+
+        if args.makeplot:
+            outputfilename = str(args.outputfile).format(
+                cell=args.modelgridindex, timestep=args.timestep, timedays=args.timedays)
+            # outputfilename = 'spencerfano.pdf'
+            make_plot(engrid, yvec, ions, ionpopdict, dfcollion, dftransitions, nne, sourcevec,
+                      deposition_density_ev, outputfilename, noexcitation=args.noexcitation)
+
+        (frac_excitation, frac_ionization, frac_excitation_ion, frac_ionization_ion, gamma_nt) = analyse_ntspectrum(
+            engrid, yvec, ions, ionpopdict, nntot, nne, deposition_density_ev,
+            dfcollion, dftransitions, noexcitation=args.noexcitation, modelpath=modelpath)
+
+        if args.ostat:
+            with open(args.ostat, 'a') as fstat:
+                fstat.write(f'{emin} {emax} {npts} {frac_ionization_ion[(26, 2)]:.4f} '
+                            f'{frac_excitation_ion[(26, 2)]:.4f} '
+                            f'{gamma_nt[(26, 2)]:.4e} {frac_ionization_ion[(28, 2)]:.4f} '
+                            f'{frac_excitation_ion[(28, 2)]:.4f} {gamma_nt[(28, 2)]:.4e}\n')
 
 
 if __name__ == "__main__":
