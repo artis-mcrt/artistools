@@ -789,6 +789,7 @@ def solve_spencerfano_differentialform(
 
     deltaen = engrid[1] - engrid[0]
     npts = len(engrid)
+    nnetot = get_nnetot(ions, ionpopdict)
 
     print(f'\nSetting up differential-form Spencer-Fano equation with {npts} energy points'
           f' from {engrid[0]} to {engrid[-1]} eV...')
