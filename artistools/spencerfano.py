@@ -213,11 +213,11 @@ def lossfunction(energy_ev, nne_cgs, nnetot_cgs, use_nnetot=True):
 
     if energy_ev > 14:
         assert 2 * energy > zetae
-        lossfunc = nne * 2 * math.pi * pow(QE, 4) / energy * math.log(2 * energy / zetae)
+        lossfunc = nne * 2 * math.pi * QE ** 4 / energy * math.log(2 * energy / zetae)
     else:
         v = math.sqrt(2 * energy / ME)  # velocity in m/s
         eulergamma = 0.577215664901532
-        lossfunc = nne * 2 * math.pi * pow(QE, 4) / energy * math.log(ME * pow(v, 3) / (eulergamma * pow(QE, 2) * omegap))
+        lossfunc = nne * 2 * math.pi * QE ** 4 / energy * math.log(ME * pow(v, 3) / (eulergamma * pow(QE, 2) * omegap))
 
     # lossfunc is now in erg / cm
     return lossfunc / EV  # eV / cm
@@ -1064,7 +1064,7 @@ def get_Latom_axelrod(Zboundbar, en_ev, ionpot_ev):
     # beta = vel / CLIGHT
 
     # I = ionpot_ev * EV
-    I = 300 * EV  # assumed in Axelrod thesis
+    I = 300 * EV  # assumed in Axelrod thesis
 
     if 2 * ME * vel ** 2 < I:
         return 0.
@@ -1074,7 +1074,7 @@ def get_Latom_axelrod(Zboundbar, en_ev, ionpot_ev):
     #     beta = 0.9999
 
     return 4 * math.pi * QE ** 4 / (ME * vel ** 2) * Zboundbar * (
-        math.log(2 * ME * vel ** 2 / I) + 0.5 * math.log(1. / (1. - beta ** 2)) - 0.5 * beta ** 2)
+        math.log(2 * ME * vel ** 2 / I) + math.log(1. / (1. - beta ** 2)) - beta ** 2)
 
 
 def get_Lelec_axelrod(en_ev, nne, nnetot, nntot):
@@ -1083,15 +1083,19 @@ def get_Lelec_axelrod(en_ev, nne, nnetot, nntot):
 
     # Axelrod 1980 Eq 3.24
 
-    H = 6.6260755e-27  # in erg seconds
     HBAR = H / 2. / math.pi
     en_erg = en_ev * EV
     gamma = en_erg / (ME * CLIGHT ** 2) + 1
     beta = math.sqrt(1. - 1. / (gamma ** 2))
     vel = beta * CLIGHT  # in cm/s
-    omegap = 5.6e4 * math.sqrt(nne)  # in per second
+    omegap = 5.64e4 * math.sqrt(nne)  # in per second
     return 4 * math.pi * QE ** 4 / (ME * vel ** 2) * nne / nntot * (
         math.log(2 * ME * vel ** 2 / (HBAR * omegap)) + 0.5 * math.log(1. / (1. - beta ** 2)) - 0.5 * beta ** 2)
+
+
+def lossfunction_axelrod(en_ev, nne, nnetot):
+    # dE / dX
+    return get_Lelec_axelrod(en_ev, nne, nnetot, 1)
 
 
 def workfunction_tests(args):
@@ -1107,8 +1111,8 @@ def workfunction_tests(args):
     nne = 1e6
     nntot = nne / x_e
 
-    Zbar = 26 # average atomic number
-    Zboundbar = 26 - x_e # average bound electrons
+    Zbar = 26  # average atomic number
+    Zboundbar = 26 - x_e  # average bound electrons
     nnetot = Zbar * nntot  # total electrons: free and bound included
     nnebound = nnetot - nne
     en_min_ev = args.emin
@@ -1120,10 +1124,11 @@ def workfunction_tests(args):
     arr_en_ev = np.logspace(start=math.log10(en_min_ev), stop=math.log10(en_max_ev), base=10, num=args.npts, endpoint=True)
 
     delta_en_ev = arr_en_ev[1:] - arr_en_ev[:-1]
-    arr_en_ev = arr_en_ev[:-1]  # remove the endpoint, now that we've used it to calculate detla_en_ev
+    arr_en_ev = arr_en_ev[:-1]  # remove the endpoint, now that we've used it to calculate detla_en_ev
 
     # Axelrod 1980 Eq 3.24
-    Lelec_axelrod = np.array([get_Lelec_axelrod(en_ev=en_ev, nne=nne, nnetot=nnetot, nntot=nntot) for en_ev in arr_en_ev])
+    Lelec_axelrod_nne = np.array([get_Lelec_axelrod(en_ev=en_ev, nne=nne, nnetot=nnetot, nntot=nntot) for en_ev in arr_en_ev])
+    Lelec_axelrod_nnetot = np.array([get_Lelec_axelrod(en_ev=en_ev, nne=nnetot, nnetot=nnetot, nntot=nntot) for en_ev in arr_en_ev])
 
     Lelec_kf92_nne = np.array([lossfunction(en_ev, nne, nnetot, use_nnetot=False) * EV / nntot for en_ev in arr_en_ev])
 
@@ -1148,11 +1153,11 @@ def workfunction_tests(args):
         Aconst = 1.33e-14 * EV * EV
         binding = get_mean_binding_energy(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence_ev)  # binding in erg
         oneoverW_limit_sim = Aconst * binding / Zbar / (2 * 3.14159 * pow(QE, 4))  # per erg
-        W_limit_ev_sim = 1. / oneoverW_limit_sim / EV
-        print(f' {W_limit_ev_sim=:.2f}')
-        print(f'   eta_ion  {ionpot_valence_ev / W_limit_ev_sim:.3f}')
-        print(f'   eta_heat {1 - ionpot_valence_ev / W_limit_ev_sim:.3f}')
-        arr_workfn_limit_sim = np.array([W_limit_ev_sim for x in arr_en_ev])
+        workfn_limit_ev_sim = 1. / oneoverW_limit_sim / EV
+        print(f'\n {workfn_limit_ev_sim=:.2f}')
+        print(f'   eta_ion  {ionpot_valence_ev / workfn_limit_ev_sim:.3f}')
+        print(f'   eta_heat {1 - ionpot_valence_ev / workfn_limit_ev_sim:.3f}')
+        arr_workfn_limit_sim = np.array([workfn_limit_ev_sim for x in arr_en_ev])
 
         arr_xs_ar92 = at.nonthermal.get_arxs_array_ion(arr_en_ev, dfcollion_thision, Z, ionstage)
         Latom_ionisation_ar92 = arr_xs_ar92 * (ionpot_valence_ev * EV)
@@ -1171,9 +1176,9 @@ def workfunction_tests(args):
         # alternative - less accurate
         # Latom_ionisation_lotz = arr_xs_lotz * (ionpot_valence_ev * EV)
 
-        L_over_sigma = (Lelec_axelrod[-1] + Latom_axelrod[-1]) / arr_xs_lotz[-1]
+        L_over_sigma = (Lelec_axelrod_nne[-1] + Latom_axelrod[-1]) / arr_xs_lotz[-1]
         workfn_limit_axelrod = L_over_sigma / EV
-        print(f' {workfn_limit_axelrod=:.2f}')
+        print(f'\n {workfn_limit_axelrod=:.2f}')
         print(f'   eta_ion  {ionpot_valence_ev / workfn_limit_axelrod:.3f}')
         print(f'   eta_heat {1 - ionpot_valence_ev / workfn_limit_axelrod:.3f}')
         arr_workfn_limit_axelrod = np.array([workfn_limit_axelrod for x in arr_en_ev])
@@ -1189,33 +1194,38 @@ def workfunction_tests(args):
         # axes[-1].plot(arr_en_ev, arr_xs_ar92, label=r'$\sigma_{AR92}$')
         # axes[-1].plot(arr_en_ev, arr_xs_latom, label=r'$\sigma$=$L_{atom}/I$', linestyle='dashed')
 
-        print()
-
         # Lelec = Lelec_kf92_nne
         # Lelec = Lelec_kf92_nnetot
         # Lelec = Lelec_kf92_nnebound
-        Lelec = Lelec_axelrod
-
-        assert all(Lelec >= 0)
+        Lelec = Lelec_axelrod_nne
+        # Lelec = Lelec_axelrod_nnetot
 
         Latom = Latom_axelrod
         # Latom = Latom_ionisation_lotz
         # Latom = Latom_ionisation_ar92
-        # print(list(Latom_axelrod / Lelec_axelrod))
+        # axes[-1].plot(arr_en_ev, Lelec_kf92_nne / Latom_axelrod, label='Lelec_kf92 / Latom_axelrod')
+        # axes[-1].plot(arr_en_ev, Lelec_axelrod / Latom_axelrod, label='Lelec_axelrod / Latom_axelrod')
+
+        hbar_ev_s = 6.58211951e-16  # in eV seconds
+        omegap = 5.6e4 * math.sqrt(nne)  # in per second
+        print(f'hbar * omegap = {hbar_ev_s * omegap} eV')
+
+        # arr_Lelec_over_Latom = [x_e / (Zbar - x_e) * (math.log(4 * en_ev / (hbar_ev_s * omegap)) / math.log(4 * en_ev / 300)) for en_ev in arr_en_ev]
+        # axes[-1].plot(arr_en_ev, arr_Lelec_over_Latom, label='Lelec_axelrod / Latom_axelrod analytic')
+
+        # axes[-1].plot(arr_en_ev, Lelec_axelrod / Lelec_kf92_nne, label='lossfunction_axelrod / lossfunction_kf92')
+
         # Latom = Latom_axelrod - Latom_ionisation_lotz + Latom_ionisation_ar92
-        assert all(Latom >= 0)
 
-        arr_xs = arr_xs_lotz
-        # arr_xs = arr_xs_ar92
-
-        assert all(arr_xs >= 0)
+        # arr_xs = arr_xs_lotz
+        arr_xs = arr_xs_ar92
 
         L = Lelec + Latom
 
         with np.errstate(divide='ignore'):
             workfn_limit = L / EV / arr_xs
 
-        print(f' workfn_limit at Emax: {workfn_limit[-1]:.2f}')
+        print(f'\n workfn_limit at Emax: {workfn_limit[-1]:.2f}')
         print(f'   eta_ion  {ionpot_valence_ev / workfn_limit[-1]:.3f}')
         print(f'   eta_heat {1 - ionpot_valence_ev / workfn_limit[-1]:.3f}')
 
@@ -1225,7 +1235,7 @@ def workfunction_tests(args):
         with np.errstate(divide='ignore'):
             arr_workfn_integrated = [arr_en_ev[i] / (sum((integrand * delta_en_ev)[:i])) for i in range(len(arr_en_ev))]
 
-        print(f' workfn_integral_Emin_Emax: {arr_workfn_integrated[-1]:.2f}')
+        print(f'\n workfn_integral_Emin_Emax: {arr_workfn_integrated[-1]:.2f}')
         print(f'   eta_ion  {ionpot_valence_ev / arr_workfn_integrated[-1]:.3f}')
         print(f'   eta_heat {1 - ionpot_valence_ev / arr_workfn_integrated[-1]:.3f}')
 
@@ -1241,7 +1251,7 @@ def workfunction_tests(args):
         # print(min(arr), max(arr))
         # axes[-1].plot(arr_en_ev, arr, label='lossfunc / sigma', color='C3')
 
-    axes[-1].set_ylim(0., 1000)
+    axes[-1].set_ylim(0., 2000)
     # axes[-1].set_ylim(bottom=1e-3, top=1e-2)
     # axes[-1].set_ylim(bottom=min(arr) / 2., top=max(arr) * 2.)
     axes[-1].set_xlabel(r'Emax [eV]')
