@@ -677,7 +677,6 @@ def plot_celltimestep(
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
     axis.set_xlim(left=xmin, right=xmax)
     axis.set_ylim(bottom=0.0, top=ymax)
-    axis.tick_params(which='both', direction='in')
     axis.yaxis.set_major_formatter(at.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))
 
     axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, fontsize=9)
@@ -780,7 +779,6 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
             xy=(0.02, 0.96), xycoords='axes fraction',
             horizontalalignment='left', verticalalignment='top', fontsize=10)
 
-        ax.tick_params(which='both', direction='in')
         ax.set_ylabel(r'J$_\lambda$ [erg/s/cm$^2$/$\mathrm{{\AA}}$]')
         ax.legend(loc='best', handlelength=2, frameon=False, numpoints=1)
 

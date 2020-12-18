@@ -19,8 +19,9 @@ import xattr
 from collections import namedtuple
 from itertools import chain
 from functools import wraps
-from functools import partial
+# from functools import partial
 import matplotlib.ticker as ticker
+import matplotlib.pyplot as plt
 from pathlib import Path
 from typing import Iterable
 
@@ -74,6 +75,9 @@ console_scripts.append('at = artistools:main')
 console_scripts.append('artistools = artistools:main')
 
 PYDIR = os.path.dirname(os.path.abspath(__file__))
+
+plt.style.use('file://' + PYDIR + '/matplotlibrc')
+
 
 elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, 'data', 'elements.csv'))['symbol'].values)
 
