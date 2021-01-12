@@ -1203,7 +1203,8 @@ def plot_artis_spectrum(
         elif args.plotvspecpol is not None and os.path.isfile(modelpath/'vpkt.txt'):
             # read virtual packet files (after running plotartisspectrum --makevspecpol)
             vpkt_data = at.get_vpkt_data(modelpath)
-            if args.timemin < vpkt_data['initial_time'] or args.timemax > vpkt_data['final_time']:
+            if (vpkt_data['time_limits_enabled'] and (
+                    args.timemin < vpkt_data['initial_time'] or args.timemax > vpkt_data['final_time'])):
                 print(f"Timestep out of range of virtual packets: start time {vpkt_data['initial_time']} days "
                       f"end time {vpkt_data['final_time']} days")
                 quit()
@@ -1307,7 +1308,8 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
                 supxmin, supxmax = axis.get_xlim()
                 plot_reference_spectrum(
                     specpath, axis, supxmin, supxmax,
-                    filterfunc, scale_to_peak, scaletoreftime=args.scaletoreftime, **plotkwargs)
+                    filterfunc, scale_to_peak, scaletoreftime=None,
+                    **plotkwargs)
             refspecindex += 1
 
     for axis in axes:
@@ -1663,7 +1665,6 @@ def make_plot(args):
                            # bottom=True, top=True,
                            labelbottom=False)
         ax.set_xlabel('')
-        ax.tick_params(which='both', direction='in')
 
     axes[-1].set_xlabel(args.xlabel)
 
