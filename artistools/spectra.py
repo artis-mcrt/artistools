@@ -350,7 +350,10 @@ def get_res_spectrum(
 
 def make_virtual_spectra_summed_file(modelpath):
     mpiranklist = at.get_mpiranklist(modelpath)
-    vspecpol_data_old = []
+    vspecpol_data_old = []  # virtual packet spectra for each observer (all directions and opacity choices)
+    vpktconfig = at.get_vpkt_config(modelpath)
+    indexmax = vpktconfig['nobsdirections'] * vpktconfig['nspectraperobs']
+    print(f"nobsdirections {vpktconfig['nobsdirections']} nspectraperobs {vpktconfig['nspectraperobs']} (total observers: {indexmax})")
     for mpirank in mpiranklist:
         print(f"Reading rank {mpirank}")
         vspecpolfilename = f'vspecpol_{mpirank}-0.out'
@@ -362,9 +365,10 @@ def make_virtual_spectra_summed_file(modelpath):
                 continue
 
         vspecpolfile = pd.read_csv(vspecpolpath, delim_whitespace=True, header=None)
+        # find duplicated header lines
         index_to_split = vspecpolfile.index[vspecpolfile.iloc[:, 1] == vspecpolfile.iloc[0, 1]]
         vspecpol_data = []
-        for i, index_value in enumerate(index_to_split):
+        for i, index_value in enumerate(index_to_split[:indexmax]):
             if index_value != index_to_split[-1]:
                 chunk = vspecpolfile.iloc[index_value:index_to_split[i+1], :]
             else:
@@ -372,13 +376,17 @@ def make_virtual_spectra_summed_file(modelpath):
             vspecpol_data.append(chunk)
 
         if len(vspecpol_data_old) > 0:
-            for i, vspecpol in enumerate(vspecpol_data):
-                vspecpol.iloc[1:, 1:] += vspecpol_data_old[i].iloc[1:, 1:]
+            for i in range(len(vspecpol_data)):
+                dftmp = vspecpol_data[i].copy()
+                dftmp.iloc[1:, 1:] += vspecpol_data_old[i].iloc[1:, 1:]
+                vspecpol_data[i] = dftmp
 
         vspecpol_data_old = vspecpol_data
 
     for spec_index, vspecpol in enumerate(vspecpol_data):
-        vspecpol.to_csv(modelpath / f'vspecpol_total-{spec_index}.out', sep=' ', index=False, header=False)
+        outfile = modelpath / f'vspecpol_total-{spec_index}.out'
+        print(f'Saved {outfile}')
+        vspecpol.to_csv(outfile, sep=' ', index=False, header=False)
 
 
 def make_averaged_vspecfiles(args):
@@ -507,10 +515,10 @@ def plot_polarisation(modelpath, args):
         print("Applying filter to ARTIS spectrum")
         stokes_params[args.stokesparam][timeavg] = filterfunc(stokes_params[args.stokesparam][timeavg])
 
-    vpkt_data = at.get_vpkt_data(modelpath)
+    vpkt_config = at.get_vpkt_config(modelpath)
 
     if args.plotvspecpol:
-        linelabel = fr"{timeavg} days, cos($\theta$) = {vpkt_data['cos_theta'][angle[0]]}"
+        linelabel = fr"{timeavg} days, cos($\theta$) = {vpkt_config['cos_theta'][angle[0]]}"
     else:
         linelabel = f"{timeavg} days"
 
@@ -1202,11 +1210,11 @@ def plot_artis_spectrum(
                                                               fnufilterfunc=filterfunc, reftime=timeavg, args=args)
         elif args.plotvspecpol is not None and os.path.isfile(modelpath/'vpkt.txt'):
             # read virtual packet files (after running plotartisspectrum --makevspecpol)
-            vpkt_data = at.get_vpkt_data(modelpath)
-            if (vpkt_data['time_limits_enabled'] and (
-                    args.timemin < vpkt_data['initial_time'] or args.timemax > vpkt_data['final_time'])):
-                print(f"Timestep out of range of virtual packets: start time {vpkt_data['initial_time']} days "
-                      f"end time {vpkt_data['final_time']} days")
+            vpkt_config = at.get_vpkt_config(modelpath)
+            if (vpkt_config['time_limits_enabled'] and (
+                    args.timemin < vpkt_config['initial_time'] or args.timemax > vpkt_config['final_time'])):
+                print(f"Timestep out of range of virtual packets: start time {vpkt_config['initial_time']} days "
+                      f"end time {vpkt_config['final_time']} days")
                 quit()
             angles = args.plotvspecpol
             viewinganglespectra = {}
@@ -1258,7 +1266,7 @@ def plot_artis_spectrum(
                     plt.plot(new_lambda_angstroms, binned_flux)
                 else:
                     if args.plotvspecpol:
-                        viewing_angle = round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
+                        viewing_angle = round(math.degrees(math.acos(vpkt_config['cos_theta'][angle])))
                         linelabel = fr"$\theta$ = {viewing_angle}$^\circ$" if index == 0 else None
                     else:
                         linelabel = f'bin number {angle}'
@@ -1903,7 +1911,7 @@ def addargs(parser):
     parser.add_argument('--hidexticklabels', action='store_true',
                         help='Don''t show numbers on the x axis')
 
-    parser.add_argument('-xlabel', default=r'Wavelength [$\mathrm{{\AA}}$]',
+    parser.add_argument('-xlabel', default=r'Wavelength $\left[\mathrm{{\AA}}\right]$',
                         help=('Label for the x axis'))
 
     parser.add_argument('--refspecafterartis', action='store_true',
@@ -1920,7 +1928,7 @@ def addargs(parser):
 
     # Combines all vspecpol files into one file which can then be read by artistools
     parser.add_argument('--makevspecpol', action='store_true',
-                        help='Make file with summed values from each vspecpol thread')
+                        help='Make file summing the virtual packet spectra from all ranks')
 
     # To get better statistics for polarisation use multiple runs of the same simulation. This will then average the
     # files produced by makevspecpol for all simualtions.
