@@ -1200,6 +1200,7 @@ def get_mpiranklist(modelpath, modelgridindex=None):
 
             return sorted(list(mpiranklist))
         except TypeError:
+            # in case modelgridindex is a single number rather than an iterable
             if modelgridindex < 0:
                 return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
             else:
