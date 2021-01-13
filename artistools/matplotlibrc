@@ -2,10 +2,12 @@ pdf.fonttype: 42
 font.family: sans-serif
 font.sans-serif: Tahoma
 #figure.constrained_layout.use: True
-# # plt.rcParams['figure.figsize'] = (4.5, 4.)
+# figure.figsize: 4.5, 4.
 
 savefig.format:    pdf
 
+
+#axes.formatter.useoffset: False
 
 xtick.direction: in
 
