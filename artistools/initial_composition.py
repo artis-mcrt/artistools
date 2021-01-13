@@ -150,6 +150,9 @@ def addargs(parser):
     parser.add_argument('-ion', type=str, default='Fe',
                         help='Choose ion to plot. Default is Fe')
 
+    parser.add_argument('-modeldim', type=int, default=None,
+                        help='Choose how many dimensions. 3 for 3D, 2 for 2D')
+
 
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
@@ -165,7 +168,11 @@ def main(args=None, argsraw=None, **kwargs):
 
     args.modelpath = at.flatten_list(args.modelpath)
 
-    inputparams = at.get_inputparams(args.modelpath[0])
+    if not args.modeldim:
+        inputparams = at.get_inputparams(args.modelpath[0])
+    else:
+        inputparams = {'n_dimensions': args.modeldim}
+
     if inputparams['n_dimensions'] == 2:
         plot_2d_initial_abundances(args.modelpath, args)
 
