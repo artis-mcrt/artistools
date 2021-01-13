@@ -22,6 +22,7 @@ import artistools.packets
 
 
 def get_packets_with_emtype_onefile(emtypecolumn, lineindices, packetsfile):
+    # print(packetsfile)
     dfpackets = at.packets.readfile(packetsfile, type='TYPE_ESCAPE', escape_type='TYPE_RPKT')
 
     return dfpackets.query(f'{emtypecolumn} in @lineindices', inplace=False).copy()
@@ -269,20 +270,24 @@ def make_flux_ratio_plot(args):
 
         print(dflcdata)
 
-        axis.plot(dflcdata.time, dflcdata['fratio'], label=modellabel, marker='s', lw=0, color=modelcolor, alpha=0.7)
+        axis.plot(dflcdata.time, dflcdata['fratio'], label=modellabel, marker='o', lw=0,
+                  markersize=10, markeredgewidth=1,
+                  color=modelcolor, alpha=0.8, fillstyle='none')
 
         tmin = dflcdata.time.min()
         tmax = dflcdata.time.max()
 
     if args.emfeaturesearch[0][:3] == (26, 2, 7155) and args.emfeaturesearch[1][:3] == (26, 2, 12570):
         axis.set_ylim(ymin=0.05)
-        axis.set_ylim(ymax=10)
+        axis.set_ylim(ymax=7)
         arr_tdays = np.linspace(tmin, tmax, 3)
         arr_floersfit = [10 ** (0.0043 * timedays - 1.65) for timedays in arr_tdays]
         for ax in axes:
-            ax.plot(arr_tdays, arr_floersfit, color='black', label='Floers et al. (2019) best fit', lw=2.)
+            ax.plot(arr_tdays, arr_floersfit, color='black', label='Flörs et al. (2019) best fit', lw=2.)
 
-        femis = pd.read_csv("/Users/luke/Library/Mobile Documents/com~apple~CloudDocs/Papers (first-author)/2020 Artis ionisation/generateplots/floers_model_NIR_VIS_ratio_20201008.csv")
+        femis = pd.read_csv(
+            "/Users/luke/Dropbox/Papers (first-author)/2020 Artis ionisation/"
+            "generateplots/floers_model_NIR_VIS_ratio_20201126.csv")
 
         amodels = {}
         for index, row in femis.iterrows():
@@ -294,19 +299,19 @@ def make_flux_ratio_plot(args):
 
         aindex = 0
         # for amodelname, (xlist, ylist) in amodels.items():
-        for amodelname in [
-                'w7',
-                'subch',
-                'subch_shen2018',
-                # 'subch_shen2018_noradexc', 'subch_shen2018_fe2_52lvls',
-                # 'subch_shen2018_05ke',
-                'subch_shen18_100_5050_electronlossboost4x',
-                # 'subch_shen18_100_5050_0p25ntfe'
+        for amodelname, alabel in [
+                ('w7', 'W7'),
+                # ('subch', 'S0'),
+                ('subch_shen2018', '1M$_\odot$ (Shen+18)'),
+                # ('subch_shen2018_electronlossboost4x', '1M$_\odot$ (Shen+18) 4x e- loss'),
+                ('subch_shen2018_electronlossboost8x', '1M$_\odot$ (Shen+18) 8x e- loss'),
+                # ('subch_shen2018_electronlossboost12x', '1M$_\odot$ (Shen+18) 12x e- loss'),
                 ]:
             xlist, ylist = amodels[amodelname]
             color = args.color[aindex] if aindex < len(args.color) else None
             print(amodelname, xlist, ylist)
-            axis.plot(xlist, ylist, color=color, label='Floers_' + amodelname[-20:], marker='x', lw=0, alpha=0.9)
+            axis.plot(xlist, ylist, color=color, label='Flörs ' + alabel, marker='+',
+                      markersize=10, markeredgewidth=2, lw=0, alpha=0.8)
             aindex += 1
 
     m18_tdays = np.array([206, 229, 303, 339])
@@ -322,7 +327,6 @@ def make_flux_ratio_plot(args):
 
     for ax in axes:
         ax.set_xlabel(r'Time [days]')
-        ax.tick_params(which='both', direction='in')
         ax.legend(loc='upper right', frameon=False, handlelength=1, ncol=2, numpoints=1, prop={'size': 9})
 
     defaultoutputfile = 'linefluxes.pdf'
@@ -451,8 +455,8 @@ def make_emitting_regions_plot(args):
     # font = {'size': 16}
     # matplotlib.rc('font', **font)
     # 'floers_te_nne.json',
-    refdatafilenames = ['floers_te_nne_Bautista.json', ]  # , 'floers_te_nne_CMFGEN.json', 'floers_te_nne_Smyth.json']
-    refdatalabels = ['Floers et al. (2019) Bautista', ]  # , 'Floers CMFGEN', 'Floers Smyth']
+    refdatafilenames = ['floers_te_nne.json', ]  # , 'floers_te_nne_CMFGEN.json', 'floers_te_nne_Smyth.json']
+    refdatalabels = ['Floers et al. (2019)', ]  # , 'Floers CMFGEN', 'Floers Smyth']
     refdatacolors = ['0.0', 'C1', 'C2', 'C4']
     refdatakeys = [None for _ in refdatafilenames]
     refdatatimes = [None for _ in refdatafilenames]
@@ -611,7 +615,6 @@ def make_emitting_regions_plot(args):
             axis.set_ylim(ymax=10000)
             axis.set_xlim(xmin=5., xmax=7.)
 
-            axis.tick_params(which='both', direction='in')
             axis.set_xlabel(r'log$_{10}$(n$_{\mathrm{e}}$ [cm$^{-3}$])')
             axis.set_ylabel(r'Electron Temperature [K]')
 
