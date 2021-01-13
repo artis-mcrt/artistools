@@ -397,8 +397,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                         magnitude.append(mag)
 
                 if args.plotvspecpol and angle is not None and os.path.isfile(modelpath / 'vpkt.txt'):
-                    vpkt_data = at.get_vpkt_data(modelpath)
-                    viewing_angle = round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
+                    vpkt_config = at.get_vpkt_config(modelpath)
+                    viewing_angle = round(math.degrees(math.acos(vpkt_config['cos_theta'][angle])))
                     linelabel = fr"$\theta$ = {viewing_angle}"
                 elif args.plotviewingangle and angle is not None and os.path.isfile(modelpath / 'specpol_res.out'):
                     linelabel = fr"bin number = {angle}"
@@ -853,8 +853,8 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                         diff.append(time_dict_1[time] - time_dict_2[time])
 
                 if args.plotvspecpol and angle is not None:
-                    vpkt_data = at.get_vpkt_data(modelpath)
-                    viewing_angle = round(math.degrees(math.acos(vpkt_data['cos_theta'][angle])))
+                    vpkt_config = at.get_vpkt_config(modelpath)
+                    viewing_angle = round(math.degrees(math.acos(vpkt_config['cos_theta'][angle])))
                     linelabel = fr"$\theta$ = {viewing_angle}"
                 elif args.plotviewingangle and angle is not None:
                     linelabel = f"bin number = {angle}"

@@ -408,16 +408,26 @@ def get_3d_modeldata(modelpath):
     return model
 
 
-def get_vpkt_data(modelpath):
+def get_vpkt_config(modelpath):
     filename = Path(modelpath, 'vpkt.txt')
-    vpkt_data = {}
-    with open(filename, 'r') as vpkt:
-        vpkt_data['nobservations'] = int(vpkt.readline())
-        vpkt_data['cos_theta'] = [float(x) for x in vpkt.readline().split()]
-        vpkt_data['phi'] = [float(x) for x in vpkt.readline().split()]
-        line4 = vpkt.readline()
-        vpkt_data['time_limits_enabled'], vpkt_data['initial_time'], vpkt_data['final_time'] = [int(x) for x in vpkt.readline().split()]
-        return vpkt_data
+    vpkt_config = {}
+    with open(filename, 'r') as vpkt_txt:
+        vpkt_config['nobsdirections'] = int(vpkt_txt.readline())
+        vpkt_config['cos_theta'] = [float(x) for x in vpkt_txt.readline().split()]
+        vpkt_config['phi'] = [float(x) for x in vpkt_txt.readline().split()]
+        nspecflag = int(vpkt_txt.readline())
+
+        if nspecflag == 1:
+            vpkt_config['nspectraperobs'] = int(vpkt_txt.readline())
+            for i in range(vpkt_config['nspectraperobs']):
+                vpkt_txt.readline()
+        else:
+            vpkt_config['nspectraperobs'] = 1
+
+        vpkt_config['time_limits_enabled'], vpkt_config['initial_time'], vpkt_config['final_time'] = [
+            int(x) for x in vpkt_txt.readline().split()]
+
+    return vpkt_config
 
 
 @lru_cache(maxsize=8)
