@@ -16,6 +16,8 @@ import matplotlib.ticker as ticker
 # import numpy as np
 import pandas as pd
 from astropy import constants as const
+import numpy as np
+import matplotlib as mpl
 
 import artistools as at
 import artistools.estimators
@@ -421,6 +423,73 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
             dfpopthision, args, annotatelines=lastsubplot)
 
 
+def make_plot_levelpop_over_time(modelpaths, args):
+    font = {'size': 16}
+    mpl.rc('font', **font)
+
+    ionlevels = [1, 3]
+    timesteps = [time for time in range(14, 40)]
+
+    modelgridindex = int(args.modelgridindex[0])
+    Z = int(at.get_atomic_number(args.elements[0]))
+    ionstage = int(args.ionstages[0])
+
+    markers = ['o', 'x', '^', 's', '8']
+    # labels = ['no super level Fe', 'no super level Co', 'no super level Ni', 'no super levels', 'standard case']
+
+    rows = 1
+    cols = 1
+    fig, ax = plt.subplots(nrows=rows, ncols=cols, sharex=True, sharey=True,
+                           figsize=(at.figwidth * 1.3 * cols, at.figwidth * 1.4 * rows),
+                           tight_layout={"pad": 2.0, "w_pad": 0.2, "h_pad": 0.2})
+    for modelnumber, modelpath in enumerate(modelpaths):
+        modelname = at.get_model_name(modelpath)
+
+        populations = {}
+        populationsLTE = {}
+
+        for timestep in timesteps:
+            dfpop = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
+            try:
+                timesteppops = dfpop.loc[(dfpop['Z'] == Z) & (dfpop['ion_stage'] == ionstage)]
+            except KeyError:
+                continue
+            for ionlevel in ionlevels:
+                populations[(timestep, ionlevel)] = (timesteppops.loc[timesteppops['level']
+                                                                      == ionlevel]['n_NLTE'].values[0])
+                # populationsLTE[(timestep, ionlevel)] = (timesteppops.loc[timesteppops['level']
+                #                                                          == ionlevel]['n_LTE'].values[0])
+
+        for ionlevel in ionlevels:
+            plottimesteps = np.array([int(ts) for ts, level in populations.keys() if level == ionlevel])
+            timedays = [float(at.get_timestep_time(modelpath, ts)) for ts in plottimesteps]
+            plotpopulations = np.array([float(populations[ts, level]) for ts, level in populations.keys()
+                                        if level == ionlevel])
+            # plotpopulationsLTE = np.array([float(populationsLTE[ts, level]) for ts, level in populationsLTE.keys()
+            #                             if level == ionlevel])
+
+            ax.plot(timedays, plotpopulations, marker=markers[modelnumber],
+                     label=f'level {ionlevel} {modelname}')
+            # plt.plot(timedays, plotpopulationsLTE, marker=markers[modelnumber+1],
+            #          label=f'level {ionlevel} {modelname} LTE')
+
+    ax.set_yscale('log')
+    labelfontsize = 24
+    ax.set_xlabel('Time Since Explosion [days]', fontsize=labelfontsize)
+    ax.set_ylabel('Level population', fontsize=labelfontsize)
+    ax.legend(loc='best', frameon=True, fontsize='x-small', ncol=1)
+    if not args.notitle:
+        plt.title(f"Z={Z} ionstage={ionstage} cell {modelgridindex}")
+
+    ax.minorticks_on()
+    ax.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18, direction='in')
+    ax.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=18, direction='in')
+
+    figname = f"plotnltelevelpopsZ{Z}cell{modelgridindex}level{ionlevels[0]}.pdf"
+    plt.savefig(modelpaths[0] / figname, format='pdf')
+    print(f"Saved {figname}")
+
+
 def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, args):
     """Plot level populations for chosens ions of an element in a cell and timestep of an ARTIS model."""
     modelname = at.get_model_name(modelpath)
@@ -559,6 +628,10 @@ def addargs(parser):
         '-modelpath', default=Path(),  type=Path,
         help='Path to ARTIS folder')
 
+    # arg to give multiple model paths - can use for levelpopsovertime but breaks other plots
+    # parser.add_argument('-modelpath', default=[], nargs='*', action=at.AppendPath,
+    #                     help='Paths to ARTIS folders')
+
     timegroup = parser.add_mutually_exclusive_group()
     timegroup.add_argument(
         '-timedays', '-time', '-t',
@@ -625,6 +698,9 @@ def addargs(parser):
         '-outputfile', '-o', type=Path, default=defaultoutputfile,
         help='path/filename for PDF file')
 
+    parser.add_argument('-levelpopsovertime', action='store_true',
+                        help='Plot the populations of a level in a given cell over time')
+
 
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
@@ -634,7 +710,11 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    modelpath = args.modelpath
+    if args.levelpopsovertime:
+        if len(args.modelpath) == 1:
+            modelpath = args.modelpath
+    else:
+        modelpath = args.modelpath
 
     if args.timedays:
         timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
@@ -664,6 +744,10 @@ def main(args=None, argsraw=None, **kwargs):
 
     if not mgilist:
         mgilist.append(0)
+
+    if args.levelpopsovertime:
+        make_plot_levelpop_over_time(args.modelpath, args)
+        return
 
     for el_in in args.elements:
         try:
