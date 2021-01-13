@@ -28,15 +28,11 @@ def get_model_data(args):
 
 
 def make_cone(args):
-    args.slice_along_axis = 'x'
-    args.other_axis1 = 'y'
-    args.other_axis2 = 'z'
+    print("Making cone")
 
-    args.positive_axis = True
+    angle_of_cone = 30  # in deg
 
-    angle_of_cone = 30
-
-    theta = np.radians([angle_of_cone / 2])
+    theta = np.radians([angle_of_cone / 2])  # angle between line of sight and edge is half angle of cone
 
     merge_dfs = get_model_data(args)
 
@@ -53,15 +49,38 @@ def make_cone(args):
     return cone
 
 
+def get_profile_along_axis(args=None):
+    print("Getting profile along axis")
+
+    merge_dfs = get_model_data(args)
+
+    position_closest_to_axis = merge_dfs.iloc[
+        (merge_dfs[f'cellpos_in[{args.other_axis2}]']).abs().argsort()][:1][f'cellpos_in[{args.other_axis2}]'].item()
+
+    if args.positive_axis:
+        profile1D = merge_dfs.loc[(merge_dfs[f'cellpos_in[{args.other_axis1}]'] == position_closest_to_axis)
+                                  & (merge_dfs[f'cellpos_in[{args.other_axis2}]'] == position_closest_to_axis)
+                                  & (merge_dfs[f'cellpos_in[{args.slice_along_axis}]'] > 0)]
+    else:
+        profile1D = merge_dfs.loc[(merge_dfs[f'cellpos_in[{args.other_axis1}]'] == position_closest_to_axis)
+                                  & (merge_dfs[f'cellpos_in[{args.other_axis2}]'] == position_closest_to_axis)
+                                  & (merge_dfs[f'cellpos_in[{args.slice_along_axis}]'] < 0)]
+
+    return profile1D.reset_index(drop=True)
+
+
 def make_1D_profile(args):
+    if args.makefromcone:
+        cone = make_cone(args)
 
-    cone = make_cone(args)
+        slice1D = cone.groupby([f'cellpos_in[{args.slice_along_axis}]'], as_index=False).mean()
+        # where more than 1 X value, average rows eg. (1,0,0) (1,1,0) (1,1,1)
 
-    slice1D = cone.groupby([f'cellpos_in[{args.slice_along_axis}]'], as_index=False).mean()
-    # where more than 1 X value, average rows eg. (1,0,0) (1,1,0) (1,1,1)
+    else:  # make from along chosen axis
+        slice1D = get_profile_along_axis(args)
 
     slice1D[f'cellpos_in[{args.slice_along_axis}]'] = slice1D[f'cellpos_in[{args.slice_along_axis}]'].apply(
-        lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))
+        lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))  # Convert positions to velocities
     slice1D = slice1D.rename(columns={f'cellpos_in[{args.slice_along_axis}]': 'vout_kmps'})
     # Convert position to velocity
 
@@ -70,6 +89,7 @@ def make_1D_profile(args):
 
     slice1D['rho_model'] = slice1D['rho_model'].apply(lambda x: np.log10(x) if x != 0 else -100)
     # slice1D = slice1D[slice1D['rho_model'] != -100]  # Remove empty cells
+    # TODO: fix this, -100 probably breaks things if it's not one of the outer cells that gets chopped
     slice1D = slice1D.rename(columns={'rho_model': 'log_rho'})
 
     slice1D.index += 1
@@ -96,7 +116,7 @@ def make_1D_model_files(args):
     #     print(model_df)
 
     # print(modelpath)
-    model_df = model_df.round(decimals=5)  # model files seem to be to 5 df
+    model_df = model_df.round(decimals=5)  # model files seem to be to 5 sf
     model_df.to_csv(args.modelpath[0]/"model_1D.txt", sep=' ', header=False)  # write model.txt
 
     abundances_df.to_csv(args.modelpath[0]/"abundances_1D.txt", sep=' ', header=False)  # write abundances.txt
@@ -120,16 +140,25 @@ def make_1D_model_files(args):
 
 def make_plot(args):
     cone = make_cone(args)
+
+    cone = cone.loc[cone['rho_model'] > 0.0002]  # cut low densities (empty cells?) from plot
     fig = plt.figure()
     ax = fig.gca(projection='3d')
 
-    surf = ax.scatter3D(cone[f'cellpos_in[z]'], cone[f'cellpos_in[y]'], cone[f'cellpos_in[x]'], c=cone['rho_model'])
+    # print(cone['rho_model'])
 
-    fig.colorbar(surf, shrink=0.5, aspect=5)
+    # set up for big model. For scaled down artis input model switch x and z
+    x = cone[f'cellpos_in[z]'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
+    y = cone[f'cellpos_in[y]'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
+    z = cone[f'cellpos_in[x]'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
 
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
-    ax.set_zlabel('z')
+    surf = ax.scatter3D(x, y, z, c=-cone['fni'], cmap=plt.get_cmap('viridis'))
+
+    # fig.colorbar(surf, shrink=0.5, aspect=5)
+
+    ax.set_xlabel(r'x [10$^3$ km/s]')
+    ax.set_ylabel(r'y [10$^3$ km/s]')
+    ax.set_zlabel(r'z [10$^3$ km/s]')
 
     # plt.scatter(cone[f'cellpos_in[x]']/1e11, cone[f'cellpos_in[y]']/1e11)
     plt.show()
@@ -152,7 +181,19 @@ def main(args=None, argsraw=None, **kwargs):
     if not args.modelpath:
         args.modelpath = [Path('.')]
 
+    #TODO: make command line args
+    args.slice_along_axis = 'x'  # Cone made around this axis
+    args.other_axis1 = 'z'
+    args.other_axis2 = 'y'
+    # remember: models before scaling down to artis input have x and z axis swapped compared to artis input files
+
+    args.positive_axis = True  # Cone made around positive axis True/False (False is negative axis)
+
+    args.makefromcone = True  # If false uses points along the axis to make the 1D model instead of a cone
+
     make_1D_model_files(args)
+
+    # make_plot(args) # Uncomment to make 3D plot todo: add command line option
 
 
 if __name__ == '__main__':
