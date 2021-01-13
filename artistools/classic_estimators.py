@@ -84,8 +84,11 @@ def read_classic_estimators(modelpath, modeldata):
     for estfile in estimfiles:
         opener = gzip.open if estfile.endswith('.gz') else open
 
+        # If classic plots break it's probably getting first timestep here
+        # Try either of the next two lines
         timestep = first_timesteps_in_dir[str(estfile).split('/')[0]]  # get the starting timestep for the estfile
-
+        # timestep = first_timesteps_in_dir[str(estfile[:-20])]
+        # timestep = 0  # if the first timestep in the file is 0 then this is fine
         with opener(estfile, 'rt') as estfile:
             modelgridindex = -1
             for line in estfile:
@@ -97,6 +100,7 @@ def read_classic_estimators(modelpath, modeldata):
                 modelgridindex = int(row[0])
 
                 estimators[(timestep, modelgridindex)] = {}
+                # This will only work in 1D for now
                 estimators[(timestep, modelgridindex)]['velocity_outer'] = modeldata['velocity_outer'][modelgridindex]
 
                 estimators[(timestep, modelgridindex)]['TR'] = float(row[1])
@@ -106,6 +110,8 @@ def read_classic_estimators(modelpath, modeldata):
 
                 parse_ion_row_classic(row, estimators[(timestep, modelgridindex)], atomic_composition)
 
+                # heatingrates[tid].ff, heatingrates[tid].bf, heatingrates[tid].collisional, heatingrates[tid].gamma,
+                # coolingrates[tid].ff, coolingrates[tid].fb, coolingrates[tid].collisional, coolingrates[tid].adiabatic)
 
                 estimators[(timestep, modelgridindex)]['heating_ff'] = float(row[-9])
                 estimators[(timestep, modelgridindex)]['heating_bf'] = float(row[-8])
@@ -116,6 +122,18 @@ def read_classic_estimators(modelpath, modeldata):
                 estimators[(timestep, modelgridindex)]['cooling_fb'] = float(row[-4])
                 estimators[(timestep, modelgridindex)]['cooling_coll'] = float(row[-3])
                 estimators[(timestep, modelgridindex)]['cooling_adiabatic'] = float(row[-2])
+
+                estimators[(timestep, modelgridindex)]['cooling_coll - heating_coll'] = \
+                    estimators[(timestep, modelgridindex)]['cooling_coll'] - estimators[(timestep, modelgridindex)]['heating_coll']
+
+                estimators[(timestep, modelgridindex)]['cooling_fb - heating_bf'] = \
+                    estimators[(timestep, modelgridindex)]['cooling_fb'] - estimators[(timestep, modelgridindex)]['heating_bf']
+
+                estimators[(timestep, modelgridindex)]['cooling_ff - heating_ff'] = \
+                    estimators[(timestep, modelgridindex)]['cooling_ff'] - estimators[(timestep, modelgridindex)]['heating_ff']
+
+                estimators[(timestep, modelgridindex)]['cooling_adiabatic - heating_dep'] = \
+                    estimators[(timestep, modelgridindex)]['cooling_adiabatic'] - estimators[(timestep, modelgridindex)]['heating_dep']
 
                 estimators[(timestep, modelgridindex)]['energy_deposition'] = float(row[-1])
 
