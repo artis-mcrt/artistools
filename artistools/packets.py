@@ -121,9 +121,14 @@ def readfile(packetsfile, type=None, escape_type=None):
     usecols_nodata = [n for n in columns if columns.index(n) >= inputcolumncount]
     # usecols_actual = [n for n in columns if columns.index(n) < inputcolumncount]
 
-    dfpackets = pd.read_csv(
-        packetsfile, delim_whitespace=True,
-        names=columns[:inputcolumncount], header=None)
+    try:
+        dfpackets = pd.read_csv(
+            packetsfile, delim_whitespace=True,
+            names=columns[:inputcolumncount], header=None)
+    except Exception as ex:
+        print(f'Problem with file {packetsfile}')
+        print(f'ERROR: {ex}')
+        sys.exit(1)
 
     print(f' ({len(dfpackets):.1e} packets', end='')
 
