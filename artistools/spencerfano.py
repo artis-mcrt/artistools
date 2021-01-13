@@ -14,6 +14,7 @@ from scipy import linalg
 from pathlib import Path
 # from bigfloat import *
 from math import atan
+# import numba
 # from numpy import arctan as atan
 
 import artistools as at
@@ -33,7 +34,7 @@ ME = 9.1093897e-28
 QE = 4.80325E-10
 H_ionpot = 13.5979996 * EV
 CLIGHT = 2.99792458e+10
-
+PI = math.pi
 
 
 def get_lte_pops(adata, ions, ionpopdict, temperature):
@@ -154,7 +155,7 @@ def get_mean_binding_energy(atomic_number, ion_stage, electron_binding, ionpot_e
     return total
 
 
-def get_lotz_xs_ionisation(atomic_number, ion_stage, electron_binding, ionpot_ev, en_ev, addepsilontransfactor=False):
+def get_lotz_xs_ionisation(atomic_number, ion_stage, electron_binding, ionpot_ev, en_ev):
     # Axelrod 1980 Eq 3.38
 
     en_erg = en_ev * EV
@@ -189,8 +190,7 @@ def get_lotz_xs_ionisation(atomic_number, ion_stage, electron_binding, ionpot_ev
             p = use2
 
         if 0.5 * beta ** 2 * ME * CLIGHT ** 2 > p:
-            prefactor = p if addepsilontransfactor else 1.  # times transition energy Latom calculation
-            part_sigma += prefactor * electronsinshell / p * (
+            part_sigma += electronsinshell / p * (
                 (math.log(beta ** 2 * ME * CLIGHT ** 2 / 2. / p) - math.log10(1 - beta ** 2) - beta ** 2))
 
     Aconst = 1.33e-14 * EV * EV
@@ -232,6 +232,7 @@ def Psecondary(e_p, ionpot_ev, J, e_s=-1, epsilon=-1):
         e_s = epsilon - ionpot_ev
     if epsilon < 0:
         epsilon = e_s + ionpot_ev
+
     #
     # if epsilon < I:
     #     return 0.
@@ -343,8 +344,33 @@ def get_Zbar(ions, ionpopdict):
     return Zbar
 
 
+def get_Zboundbar(ions, ionpopdict):
+    Zboundbar = 0.  # electrons per ion
+    nntot = get_nntot(ions, ionpopdict)
+    for Z, ionstage in ions:
+        nnion = ionpopdict[(Z, ionstage)]
+        Zboundbar += (Z - ionstage + 1) * nnion / nntot
+
+    return Zboundbar
+
+
 def get_nnetot(ions, ionpopdict):
-    return get_Zbar(ions, ionpopdict) * get_nntot(ions, ionpopdict)
+    # return get_Zbar(ions, ionpopdict) * get_nntot(ions, ionpopdict)
+    nnetot = 0.  # electrons per ion
+    for Z, ionstage in ions:
+        nnetot += Z * ionpopdict[(Z, ionstage)]
+
+    return nnetot
+
+
+def get_nne(ions, ionpopdict):
+    nne = 0.  # electrons per ion
+    for Z, ionstage in ions:
+        charge = ionstage - 1
+        assert(charge >= 0)
+        nne += charge * ionpopdict[(Z, ionstage)]
+
+    return nne
 
 
 def get_index(en_ev, engrid):
@@ -1049,8 +1075,9 @@ def analyse_ntspectrum(
     return frac_excitation, frac_ionization, frac_excitation_ion, frac_ionization_ion, gamma_nt
 
 
-def get_Latom_axelrod(Zboundbar, en_ev, ionpot_ev):
+def get_Latom_axelrod(Zboundbar, en_ev):
     # Axelrod 1980 Eq 3.21
+    # Latom is 1/N * dE/dX where E is in erg
 
     en_erg = en_ev * EV
 
@@ -1064,7 +1091,7 @@ def get_Latom_axelrod(Zboundbar, en_ev, ionpot_ev):
     # beta = vel / CLIGHT
 
     # I = ionpot_ev * EV
-    I = 300 * EV  # assumed in Axelrod thesis
+    I = 280 * EV  # assumed in Axelrod thesis
 
     if 2 * ME * vel ** 2 < I:
         return 0.
@@ -1098,23 +1125,197 @@ def lossfunction_axelrod(en_ev, nne, nnetot):
     return get_Lelec_axelrod(en_ev, nne, nnetot, 1)
 
 
-def workfunction_tests(args):
+def e_s_test(ax, ionpot_ev, J, arr_en_ev, shellstr, color):
+    e_p = arr_en_ev[-1]
+    npts = 100000
+    # ionpot_ev = 280
+
+    J = ionpot_ev * 0.6
+    # epsilon_lower = ionpot_ev
+    # epsilon_upper = (ionpot_ev + e_p) / 2.
+    # delta_eps = (epsilon_upper - epsilon_lower) / npts
+    # print(f'{delta_eps=}')
+    # prob_sum = 0.
+    # eps_avg = 0.
+    # prob = np.zeros(npts)
+    # epsilon = np.zeros(npts)
+    # for i in range(npts):
+    #     epsilon[i] = epsilon_lower + i * delta_eps
+    #     prob[i] = Psecondary(e_p, ionpot_ev, J, epsilon=epsilon[i]) * delta_eps
+    #     prob_sum += prob[i]
+    #     eps_avg = epsilon[i] * prob[i]
+    # print(f'{prob_sum=:.1e}')
+    # print(f'{eps_avg=:.1e}')
+    # # ax.plot(epsilon, prob, label=shellstr + ' dP / d_epsilon')
+
+    e_s_lower = 0
+    e_s_upper = (e_p - ionpot_ev) / 2.
+    delta_e_s = (e_s_upper - e_s_lower) / npts
+    prob_sum = 0.
+    e_s_avg = 0.
+    prob = np.zeros(npts)
+    e_s = np.zeros(npts)
+    prob_e_s_can_ionise = 0.
+    prob_e_s_cannot_ionise = 0.
+    for i in range(npts):
+        e_s[i] = e_s_lower + i * delta_e_s
+        prob[i] = Psecondary(e_p, ionpot_ev, J, e_s=e_s[i]) * delta_e_s
+        prob_sum += prob[i]
+        e_s_avg = e_s[i] * prob[i]
+        if e_s[i] >= ionpot_ev:
+            prob_e_s_can_ionise += prob[i]
+        else:
+            prob_e_s_cannot_ionise += prob[i]
+
+    print(f'{prob_sum=:.2f}')
+    print(f'{e_s_avg=:.1e}')
+    print(f'{prob_e_s_can_ionise=:.2f}')
+    print(f'{prob_e_s_cannot_ionise=:.2f}')
+    ax.plot(e_s, prob, label=shellstr + ' dP / d_e_s', color=color)
+    # ax.vlines(ionpot_ev, ymin=0., ymax=max(prob), color=color)
+
+
+def get_epsilon_avg(e_p, J, ionpot_ev):
+    # average energy loss of the primary electron per ionisation in eV
+    npts = 1000000
+
+    epsilon_lower = ionpot_ev
+    epsilon_upper = (ionpot_ev + e_p) / 2.
+    if epsilon_upper <= epsilon_lower:
+        return 0.
+    delta_eps = (epsilon_upper - epsilon_lower) / npts
+    # print(f'{delta_eps=}')
+    # print(f'{epsilon_lower} {epsilon_upper} {delta_eps} {e_p}')
+    prob_sum = 0.
+    eps_avg = 0.
+    for i in range(npts):
+        epsilon = epsilon_lower + i * delta_eps
+        prob = Psecondary(e_p, ionpot_ev, J, epsilon=epsilon) * delta_eps
+        prob_sum += prob
+        eps_avg = epsilon * prob
+    # print(f'{prob_sum=:.3f}')
+    assert(abs(prob_sum - 1.) < 0.30)
+    # print(f'{eps_avg=:.1e}')
+    return eps_avg
+
+
+def get_fij_ln_en_ionisation(emax_ev, J, shell):
+    npts = 1000
+    e_p_lower = shell.ionpot_ev
+    e_p_upper = emax_ev
+    delta_e_p = (e_p_upper - e_p_lower) / npts
+    sum = 0.
+    for i in range(npts):
+        e_p = e_p_lower + i * delta_e_p
+        print(i, e_p)
+
+        sigma = at.nonthermal.ar_xs(e_p, shell.ionpot_ev, shell.A, shell.B, shell.C, shell.D)
+        eps_avg = get_epsilon_avg(e_p, J, shell.ionpot_ev)
+        if eps_avg > 0:
+            sum += ME * CLIGHT / math.pi / (QE ** 2) / H * sigma * math.log(eps_avg) * delta_e_p
+
+    return sum
+
+
+def calculate_Latom_ionisation(ions, ionpopdict, adata, dfcollion, electron_binding,
+                               nntot, nnetot, nne, en_ev, Zboundbar, Zbar):
+    L_atom_sum = 0.
+    for Z, ionstage in ions:
+        nnion = ionpopdict[(Z, ionstage)]
+        dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
+        ionpot_valence_ev = dfcollion_thision.ionpot_ev.min()
+        # ln_I_sum = 0.
+        # ion = adata.query('Z == @Z and ion_stage == @ionstage').iloc[0]
+        # dftransitions_ion = ion.transitions
+        # # dftransitions_ion.query('collstr >= 0 or forbidden == False', inplace=True)
+        # dftransitions_ion.query('A >= 0', inplace=True)
+        # dftransitions_ion.eval(
+        #     'epsilon_trans_ev = '
+        #     '@ion.levels.loc[upper].energy_ev.values - @ion.levels.loc[lower].energy_ev.values', inplace=True)
+        # dftransitions_ion.eval(
+        #     'g_ratio = '
+        #     '@ion.levels.loc[upper].g.values / @ion.levels.loc[lower].g.values', inplace=True)
+        # h_ev_s = 4.1357e-15  # eV seconds
+        # for _, row in dftransitions_ion.iterrows():
+        #     if row.A > 0:
+        #         # nnlevel = row.lower_pop
+        #         epsilon_trans_ev = row.epsilon_trans_ev
+        #         nu_trans = epsilon_trans_ev / h_ev_s
+        #         g_ratio = row.g_ratio
+        #         A_ul = row.A
+        #         f_ul = g_ratio * ME * pow(CLIGHT, 3) / (8 * pow(QE * nu_trans * PI, 2)) * A_ul
+        #         lnI_contrib = f_ul * math.log(epsilon_trans_ev)
+        #         ln_I_sum += lnI_contrib
+        #         # vec_xs_excitation_nnlevel_deltae = nnlevel * deltaen * get_xs_excitation_vector(engrid, row)
+        #
+        # print(f'ln I: {ln_I_sum:.2e} (before ionisiation)')
+        # print(f'I: {math.exp(ln_I_sum):.2e} (before ionisiation)')
+
+        ionpot_valence_ev = dfcollion_thision.ionpot_ev.min()
+
+        # for _, shell in dfcollion_thision.iterrows():
+        #     J = get_J(Z, ionstage, shell.ionpot_ev)
+        #
+        #     eps_avg = get_epsilon_avg(en_ev, J, shell.ionpot_ev)
+        #     if eps_avg > 0:
+        #         # sigma = get_lotz_xs_ionisation(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence_ev, en_ev=en_ev)
+        #         sigma = at.nonthermal.ar_xs(en_ev, shell.ionpot_ev, shell.A, shell.B, shell.C, shell.D)
+        #         # L_atom_sum += ME * CLIGHT / math.pi / (QE ** 2) * sigma * eps_avg * nnion / nntot
+        #         L_atom_sum += sigma * eps_avg * EV * nnion
+
+        J = get_J(Z, ionstage, ionpot_valence_ev)
+        eps_avg = get_epsilon_avg(en_ev, J, ionpot_valence_ev)
+        if eps_avg > 0:
+            sigma = get_lotz_xs_ionisation(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence_ev, en_ev=en_ev)
+            # sigma = at.nonthermal.ar_xs(en_ev, shell.ionpot_ev, shell.A, shell.B, shell.C, shell.D)
+            # L_atom_sum += ME * CLIGHT / math.pi / (QE ** 2) * sigma * eps_avg * nnion / nntot
+            # nnebound = nnetot - nne
+            # 1e-4 = EV * 2 * 3.14 * 1e7
+            L_atom_sum += sigma * eps_avg * 1e-4 * nnion / nntot
+        # print(f'ln I: {ln_I_sum:.2e} (after ionsiation)')
+        # print(f'I: {math.exp(ln_I_sum):.2e} (after ionisation)')
+    return L_atom_sum
+
+
+def workfunction_tests(modelpath, args):
     electron_binding = read_binding_energies()
     dfcollion = at.nonthermal.read_colliondata()
 
     fig, axes = plt.subplots(nrows=1, ncols=1, sharex=True,
-                             figsize=(6, 5), tight_layout={"pad": 0.3, "w_pad": 0.0, "h_pad": 0.0})
+                             figsize=(6*.7, 5*.7), tight_layout={"pad": 0.3, "w_pad": 0.0, "h_pad": 0.0})
     axes = [axes]
 
-    ions = [(26, 2)]
-    x_e = 2.
-    nne = 1e6
-    nntot = nne / x_e
+    ionpopdict = {
+        (16, 2): 3e5,
+        (26, 10): 1e5,
+    }
 
-    Zbar = 26  # average atomic number
-    Zboundbar = 26 - x_e  # average bound electrons
-    nnetot = Zbar * nntot  # total electrons: free and bound included
+    ions = []
+    for key in ionpopdict.keys():
+        # keep only the ion populations, not element or total populations
+        if isinstance(key, tuple) and len(key) == 2:
+            ions.append(key)
+
+    ions.sort()
+
+    nntot = get_nntot(ions=ions, ionpopdict=ionpopdict)
+    nnetot = get_nnetot(ions=ions, ionpopdict=ionpopdict)  # total electrons: free and bound included
+    nne = get_nne(ions=ions, ionpopdict=ionpopdict)
     nnebound = nnetot - nne
+    # x_e = nne / nntot
+    Zbar = get_Zbar(ions=ions, ionpopdict=ionpopdict)  # average atomic number
+    Zboundbar = get_Zboundbar(ions=ions, ionpopdict=ionpopdict)  # average bound electrons per nucleus
+    print(f'{nntot=:.1e}')
+    print(f'{nnetot=:.1e}')
+    print(f'{nne=:.1e}')
+    print(f'{nnebound=:.1e}')
+    print(f'{Zbar=:.1e}')
+    print(f'{Zboundbar=:.1e}')
+
+    hbar_ev_s = 6.58211951e-16  # in eV seconds
+    omegap = 5.6e4 * math.sqrt(nne)  # in per second
+    print(f'hbar * omegap = {hbar_ev_s * omegap:.2e} eV')
+
     en_min_ev = args.emin
     en_max_ev = args.emax
     print(f'{en_min_ev=:.1f} eV')
@@ -1139,22 +1340,48 @@ def workfunction_tests(args):
     # print(f'{Lelec_axelrod[-1]=}')
     # print(f'{Lelec_kf92[-1]=}')
 
+    Latom_axelrod = np.array([get_Latom_axelrod(en_ev=en_ev, Zboundbar=Zboundbar) for en_ev in arr_en_ev])
+
+    # adata = at.get_levels(modelpath, get_transitions=False, ionlist=tuple(ions))
+    adata = None
+    arr_Latom_summed = np.zeros_like(arr_en_ev)
+    for i, en_ev in enumerate(arr_en_ev):
+        arr_Latom_summed[i] = calculate_Latom_ionisation(
+            ions, ionpopdict, adata, dfcollion, electron_binding,
+            nntot=nntot, nnetot=nnetot, nne=nne, en_ev=en_ev, Zboundbar=Zboundbar, Zbar=Zbar)
+
+        print(f'{en_ev:.2f} eV L_atom_summed: {arr_Latom_summed[i]:.3e} (ionisation only) '
+              f'Latom_axelrod: {Latom_axelrod[i]:.3e} ratio: {arr_Latom_summed[i] / Latom_axelrod[i]:.2e}')
+
     for Z, ionstage in ions:
+        # ionstr = at.get_ionstring(Z, ionstage, spectral=True, nospace=False)
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
+
         # dfcollion_thision.query('n == 3 and l == 2', inplace=True)
         # dfcollion_thision.eval('A = 0', inplace=True)
         # dfcollion_thision.eval('B = 0', inplace=True)
         # # dfcollion_thision.eval('C = 0', inplace=True)
         # dfcollion_thision.eval('D = 0', inplace=True)
+
+        # shellindex = 0
+        # for _, shell in dfcollion_thision.iterrows():
+        #     shellstr = f'\nn {shell.n} l {shell.l} ionpot {shell.ionpot_ev} eV'
+        #     print(shellstr)
+        #     e_p = arr_en_ev[-1]
+        #     J = get_J(Z, ionstage, shell.ionpot_ev)
+        #
+        #     e_s_test(axes[-1], shell.ionpot_ev, J, arr_en_ev, shellstr, color=f'C{shellindex}')
+        #     shellindex += 1
+
         ionpot_valence_ev = dfcollion_thision.ionpot_ev.min()
         print(f'\n===> ion {Z=} {ionstage=} {ionpot_valence_ev=}')
-        print(dfcollion_thision)
+        # print(dfcollion_thision)
 
         Aconst = 1.33e-14 * EV * EV
         binding = get_mean_binding_energy(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence_ev)  # binding in erg
         oneoverW_limit_sim = Aconst * binding / Zbar / (2 * 3.14159 * pow(QE, 4))  # per erg
         workfn_limit_ev_sim = 1. / oneoverW_limit_sim / EV
-        print(f'\n {workfn_limit_ev_sim=:.2f}')
+        print(f'\n workfn_limit_ev_sim {workfn_limit_ev_sim:.2f} eV')
         print(f'   eta_ion  {ionpot_valence_ev / workfn_limit_ev_sim:.3f}')
         print(f'   eta_heat {1 - ionpot_valence_ev / workfn_limit_ev_sim:.3f}')
         arr_workfn_limit_sim = np.array([workfn_limit_ev_sim for x in arr_en_ev])
@@ -1166,19 +1393,15 @@ def workfunction_tests(args):
             get_lotz_xs_ionisation(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence_ev, en_ev=en_ev)
             for en_ev in arr_en_ev])
 
-        Latom_axelrod = np.array([get_Latom_axelrod(en_ev=en_ev, Zboundbar=Zboundbar, ionpot_ev=ionpot_valence_ev) for en_ev in arr_en_ev])
+        axes[-1].plot(arr_en_ev, Latom_axelrod, label='Latom_axelrod')
 
         # Axelrod 1980 Eq 3.20, (Latom part).
         # This assumes that the every bound electron cross section is included!
-        Latom_ionisation_lotz = np.array([
-            get_lotz_xs_ionisation(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence_ev,
-                                   en_ev=en_ev, addepsilontransfactor=True) for en_ev in arr_en_ev])
-        # alternative - less accurate
-        # Latom_ionisation_lotz = arr_xs_lotz * (ionpot_valence_ev * EV)
+        Latom_ionisation_lotz = arr_xs_lotz * (ionpot_valence_ev * EV)
 
         L_over_sigma = (Lelec_axelrod_nne[-1] + Latom_axelrod[-1]) / arr_xs_lotz[-1]
         workfn_limit_axelrod = L_over_sigma / EV
-        print(f'\n {workfn_limit_axelrod=:.2f}')
+        print(f'\n workfn_limit_axelrod: {workfn_limit_axelrod:.2f} eV')
         print(f'   eta_ion  {ionpot_valence_ev / workfn_limit_axelrod:.3f}')
         print(f'   eta_heat {1 - ionpot_valence_ev / workfn_limit_axelrod:.3f}')
         arr_workfn_limit_axelrod = np.array([workfn_limit_axelrod for x in arr_en_ev])
@@ -1194,6 +1417,8 @@ def workfunction_tests(args):
         # axes[-1].plot(arr_en_ev, arr_xs_ar92, label=r'$\sigma_{AR92}$')
         # axes[-1].plot(arr_en_ev, arr_xs_latom, label=r'$\sigma$=$L_{atom}/I$', linestyle='dashed')
 
+        axes[-1].plot(arr_en_ev, arr_Latom_summed, label=r'Latom_summed')
+
         # Lelec = Lelec_kf92_nne
         # Lelec = Lelec_kf92_nnetot
         # Lelec = Lelec_kf92_nnebound
@@ -1206,10 +1431,6 @@ def workfunction_tests(args):
         # axes[-1].plot(arr_en_ev, Lelec_kf92_nne / Latom_axelrod, label='Lelec_kf92 / Latom_axelrod')
         # axes[-1].plot(arr_en_ev, Lelec_axelrod / Latom_axelrod, label='Lelec_axelrod / Latom_axelrod')
 
-        hbar_ev_s = 6.58211951e-16  # in eV seconds
-        omegap = 5.6e4 * math.sqrt(nne)  # in per second
-        print(f'hbar * omegap = {hbar_ev_s * omegap} eV')
-
         # arr_Lelec_over_Latom = [x_e / (Zbar - x_e) * (math.log(4 * en_ev / (hbar_ev_s * omegap)) / math.log(4 * en_ev / 300)) for en_ev in arr_en_ev]
         # axes[-1].plot(arr_en_ev, arr_Lelec_over_Latom, label='Lelec_axelrod / Latom_axelrod analytic')
 
@@ -1219,13 +1440,15 @@ def workfunction_tests(args):
 
         # arr_xs = arr_xs_lotz
         arr_xs = arr_xs_ar92
+        # axes[-1].plot(arr_en_ev, arr_xs_ar92 * 1e18, label=ionstr + ' Arnaud & Rotherflug 1992', linewidth=2)
+        # axes[-1].plot(arr_en_ev, arr_xs_lotz * 1e18, label=ionstr + ' Lotz (1967)', linewidth=2)
 
         L = Lelec + Latom
 
         with np.errstate(divide='ignore'):
             workfn_limit = L / EV / arr_xs
 
-        print(f'\n workfn_limit at Emax: {workfn_limit[-1]:.2f}')
+        print(f'\n workfn_limit at Emax: {workfn_limit[-1]:.2f} eV')
         print(f'   eta_ion  {ionpot_valence_ev / workfn_limit[-1]:.3f}')
         print(f'   eta_heat {1 - ionpot_valence_ev / workfn_limit[-1]:.3f}')
 
@@ -1235,14 +1458,14 @@ def workfunction_tests(args):
         with np.errstate(divide='ignore'):
             arr_workfn_integrated = [arr_en_ev[i] / (sum((integrand * delta_en_ev)[:i])) for i in range(len(arr_en_ev))]
 
-        print(f'\n workfn_integral_Emin_Emax: {arr_workfn_integrated[-1]:.2f}')
+        print(f'\n workfn_integral_Emin_Emax: {arr_workfn_integrated[-1]:.2f} eV')
         print(f'   eta_ion  {ionpot_valence_ev / arr_workfn_integrated[-1]:.3f}')
         print(f'   eta_heat {1 - ionpot_valence_ev / arr_workfn_integrated[-1]:.3f}')
 
-        axes[-1].plot(arr_en_ev, arr_workfn_limit_axelrod, label='workfn limit E->inf (Axelrod)')
-        axes[-1].plot(arr_en_ev, arr_workfn_limit_sim, label='workfn limit E->inf (Sim)')
-        axes[-1].plot(arr_en_ev, workfn_limit, label='workfn integrated near Emax', color='C2')
-        axes[-1].plot(arr_en_ev, arr_workfn_integrated, label='workfn integrated Emin to Emax', color='C3')
+        # axes[-1].plot(arr_en_ev, arr_workfn_limit_axelrod, label='workfn limit E->inf (Axelrod)')
+        # axes[-1].plot(arr_en_ev, arr_workfn_limit_sim, label='workfn limit E->inf (Sim)')
+        # axes[-1].plot(arr_en_ev, workfn_limit, label='workfn integrated near Emax', color='C2')
+        # axes[-1].plot(arr_en_ev, arr_workfn_integrated, label='workfn integrated Emin to Emax', color='C3')
 
         # arr = [lossfunction(en_ev, nne, nnetot) / arr_xs_ar92[i] for i, en_ev in enumerate(arr_en_ev)]
         # arr = [Latom_axelrod[i] / arr_xs_ar92[i] for i, en_ev in enumerate(arr_en_ev)]
@@ -1251,18 +1474,20 @@ def workfunction_tests(args):
         # print(min(arr), max(arr))
         # axes[-1].plot(arr_en_ev, arr, label='lossfunc / sigma', color='C3')
 
-    axes[-1].set_ylim(0., 2000)
+    axes[-1].set_xlabel(r'Energy [eV]')
+    axes[-1].set_xscale('log')
+    # axes[-1].set_xlim(0., 500)
+    # axes[-1].set_ylim(0., 2000)
     # axes[-1].set_ylim(bottom=1e-3, top=1e-2)
     # axes[-1].set_ylim(bottom=min(arr) / 2., top=max(arr) * 2.)
-    axes[-1].set_xlabel(r'Emax [eV]')
-    # axes[-1].set_ylabel(r'$\sigma$ [cm$^{2}$]')
+    # axes[-1].set_ylabel(r'cross section [cm$^{2}$]')
+    # axes[-1].set_ylabel(r'Cross Section $[10^{-18}$ cm$^{2}]$')
     # axes[-1].set_ylabel(r'Ionisation fraction of deposited energy')
-    # axes[-1].set_yscale('log')
-    axes[-1].set_xscale('log')
+    axes[-1].set_yscale('log')
     # axes[-1].set_ylabel(r'log y(E) [s$^{-1}$ cm$^{-2}$ eV$^{-1}$]', fontsize=fs)
     # axes[-1].yaxis.set_minor_locator(ticker.MultipleLocator(base=5))
-    axes[-1].legend()
-    outputfilename = 'lotz_xs.pdf'
+    axes[-1].legend(frameon=False, loc='upper right')
+    outputfilename = 'plot.pdf'
     print(f"Saving '{outputfilename}'")
     fig.savefig(str(outputfilename), format='pdf')
     plt.close()
@@ -1329,13 +1554,13 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
+    modelpath = Path(args.modelpath)
+
     if args.workfn:
-        return workfunction_tests(args)
+        return workfunction_tests(modelpath, args)
 
     if Path(args.outputfile).is_dir():
         args.outputfile = Path(args.outputfile, defaultoutputfile)
-
-    modelpath = Path(args.modelpath)
 
     # if args.timedays:
     #     args.timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
