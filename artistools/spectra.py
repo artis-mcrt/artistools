@@ -352,8 +352,8 @@ def make_virtual_spectra_summed_file(modelpath):
     mpiranklist = at.get_mpiranklist(modelpath)
     vspecpol_data_old = []  # virtual packet spectra for each observer (all directions and opacity choices)
     vpktconfig = at.get_vpkt_config(modelpath)
-    indexmax = vpktconfig['nobsdirections'] * vpktconfig['nspectraperobs']
-    print(f"nobsdirections {vpktconfig['nobsdirections']} nspectraperobs {vpktconfig['nspectraperobs']} (total observers: {indexmax})")
+    nindicies_used = vpktconfig['nobsdirections'] * vpktconfig['nspectraperobs']
+    print(f"nobsdirections {vpktconfig['nobsdirections']} nspectraperobs {vpktconfig['nspectraperobs']} (total observers: {nindicies_used})")
     for mpirank in mpiranklist:
         print(f"Reading rank {mpirank}")
         vspecpolfilename = f'vspecpol_{mpirank}-0.out'
@@ -368,7 +368,7 @@ def make_virtual_spectra_summed_file(modelpath):
         # find duplicated header lines
         index_to_split = vspecpolfile.index[vspecpolfile.iloc[:, 1] == vspecpolfile.iloc[0, 1]]
         vspecpol_data = []
-        for i, index_value in enumerate(index_to_split[:indexmax]):
+        for i, index_value in enumerate(index_to_split[:nindicies_used]):
             if index_value != index_to_split[-1]:
                 chunk = vspecpolfile.iloc[index_value:index_to_split[i+1], :]
             else:
