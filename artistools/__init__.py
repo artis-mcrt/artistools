@@ -400,7 +400,9 @@ def get_2d_modeldata(modelpath):
 
 
 def get_3d_modeldata(modelpath):
-    model = pd.read_csv(os.path.join(modelpath[0], 'model.txt'), delim_whitespace=True, header=None, skiprows=3, dtype=np.float64)
+    model = pd.read_csv(
+        os.path.join(modelpath[0], 'model.txt'), delim_whitespace=True, header=None, skiprows=3, dtype=np.float64)
+
     columns = ['inputcellid', 'cellpos_in[z]', 'cellpos_in[y]', 'cellpos_in[x]', 'rho_model',
                'ffe', 'fni', 'fco', 'ffe52', 'fcr48']
     model = pd.DataFrame(model.values.reshape(-1, 10))
@@ -1258,6 +1260,84 @@ def get_mpirankofcell(modelgridindex, modelpath):
     assert modelgridindex in get_cellsofmpirank(mpirank, modelpath)
 
     return mpirank
+
+
+def get_artisoptions(modelpath=None, srcpath=None, printdefs=False):
+    # get artis options specifed in artistoptions.h preprocessor macro definitions
+    if not srcpath:
+        srcpath = Path(modelpath, 'artis')
+        if not modelpath:
+            raise ValueError('Either modelpath or srcpath must be specified in call to get_defines()')
+
+    optionfilepath = Path(srcpath, 'artisoptions.h')
+
+    return parse_cdefines(srcfilepath=optionfilepath, printdefs=printdefs)
+
+
+def parse_cdefines(srcfilepath=None, printdefs=False):
+    # adapted from h2py.py in Python source
+    import re
+
+    # p_define = re.compile('^[\t ]*#[\t ]*define[\t ]+([a-zA-Z0-9_]+)[\t ]+')
+    p_define = re.compile('^[\t ]*#[\t ]*define[\t ]+([a-zA-Z0-9_]+)+')
+
+    p_comment = re.compile(r'/\*([^*]+|\*+[^/])*(\*+/)?')
+    p_cpp_comment = re.compile('//.*')
+
+    ignores = [p_comment, p_cpp_comment]
+
+    p_char = re.compile(r"'(\\.[^\\]*|[^\\])'")
+
+    p_hex = re.compile(r"0x([0-9a-fA-F]+)L?")
+
+    def pytify(body):
+        # replace ignored patterns by spaces
+        for p in ignores:
+            body = p.sub(' ', body)
+        # replace char literals by ord(...)
+        body = p_char.sub('ord(\\0)', body)
+        # Compute negative hexadecimal constants
+        start = 0
+        UMAX = 2*(sys.maxsize+1)
+        while 1:
+            m = p_hex.search(body, start)
+            if not m:
+                break
+            s, e = m.span()
+            val = int(body[slice(*m.span(1))], 16)
+            if val > sys.maxsize:
+                val -= UMAX
+                body = body[:s] + "(" + str(val) + ")" + body[e:]
+            start = s + 1
+        return body
+
+    definedict = {}
+    lineno = 0
+    with open(srcfilepath, 'r') as optfile:
+        while 1:
+            line = optfile.readline()
+            if not line:
+                break
+            lineno = lineno + 1
+            match = p_define.match(line)
+            if match:
+                # gobble up continuation lines
+                while line[-2:] == '\\\n':
+                    nextline = optfile.readline()
+                    if not nextline:
+                        break
+                    lineno = lineno + 1
+                    line = line + nextline
+                name = match.group(1)
+                body = line[match.end():]
+                body = pytify(body)
+                definedict[name] = body.strip()
+
+    if printdefs:
+        for k in definedict:
+            print(f"{k} = '{definedict[k]}'")
+
+    return definedict
 
 
 def addargs(parser):
