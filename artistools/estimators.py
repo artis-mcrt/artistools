@@ -1074,7 +1074,7 @@ def addargs(parser):
     parser.add_argument('-timemax', type=float,
                         help='Upper time in days')
 
-    parser.add_argument('-multiplot', action='store_true',
+    parser.add_argument('--multiplot', action='store_true',
                         help='Make multiple plots for timesteps in range')
 
     parser.add_argument('-x',
@@ -1113,7 +1113,7 @@ def addargs(parser):
     parser.add_argument('-scalefigwidth', type=float, default=1.,
                         help='Scale factor for plot width.')
 
-    parser.add_argument('-show', action='store_true',
+    parser.add_argument('--show', action='store_true',
                         help='Show plot before quitting')
 
     parser.add_argument('--write_data', action='store_true',
@@ -1122,7 +1122,7 @@ def addargs(parser):
     parser.add_argument('-o', action='store', dest='outputfile', type=Path, default=Path(),
                         help='Filename for PDF file')
 
-    parser.add_argument('-colorbyion', action='store_true',
+    parser.add_argument('--colorbyion', action='store_true',
                         help='Populations plots colored by ion rather than element')
 
     parser.add_argument('--classicartis', action='store_true',
