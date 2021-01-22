@@ -1059,7 +1059,7 @@ def addargs(parser):
     parser.add_argument('--recombrates', action='store_true',
                         help='Make a recombination rate plot')
 
-    parser.add_argument('-modelgridindex', '-cell', type=int, default=-1,
+    parser.add_argument('-modelgridindex', '-cell', '-mgi', type=int, default=-1,
                         help='Modelgridindex for time evolution plot')
 
     parser.add_argument('-timestep', '-ts', nargs='?',
