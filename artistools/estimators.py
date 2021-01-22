@@ -322,8 +322,8 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_value
                 # dropping the lowest timestep is normal for restarts. Only warn about other cases
                 if k[0] != dupekeys[0][0]:
                     filepath = Path(folderpath, f'estimators_{mpirank:04d}.out')
-                    print('WARNING: Duplicate estimator block for (timestep, mgi) key {k}. '
-                          'Dropping block from {filepath}')
+                    print(f'WARNING: Duplicate estimator block for (timestep, mgi) key {k}. '
+                          f'Dropping block from {filepath}')
 
                 del estimators_thisfile[k]
 
