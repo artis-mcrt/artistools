@@ -929,7 +929,6 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
 
     for ax, plotitems in zip(axes, plotlist):
         ax.set_xlim(left=xmin, right=xmax)
-        ax.tick_params(which='both', direction='in')
         plot_subplot(ax, timestepslist, xlist, plotitems, mgilist,
                      modelpath, estimators, dfalldata=dfalldata, args=args, **plotkwargs)
 
@@ -1160,8 +1159,11 @@ def main(args=None, argsraw=None, **kwargs):
         estimators = read_estimators(modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included))
 
     for ts in reversed(timesteps_included):
-        if (ts, 0) not in estimators:
-            timesteps_included.remove(ts)
+        tswithdata = [ts for (ts, mgi) in estimators.keys()]
+        for ts in timesteps_included:
+            if ts not in tswithdata:
+                timesteps_included.remove(ts)
+                print(f"ts {ts} requested but no data found. Removing.")
 
     if not timesteps_included:
         print("No timesteps with data are included")
@@ -1204,14 +1206,8 @@ def main(args=None, argsraw=None, **kwargs):
         plot_recombrates(modelpath, estimators, 28, [3, 4, 5])
     else:
         modeldata, _ = at.get_modeldata(modelpath)
-        if args.classicartis:
-            allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
-                                  if (timesteps_included[0], modelgridindex) in estimators]
-        else:
-            allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
-                                  if not estimators[(timesteps_included[0], modelgridindex)]['emptycell']]
 
-        if args.modelgridindex > -1 or args.x == 'time':
+        if args.modelgridindex > -1 or args.x in ['time', 'timestep']:
             # plot time evolution in specific cell
             if not args.x:
                 args.x = 'time'
@@ -1223,6 +1219,13 @@ def main(args=None, argsraw=None, **kwargs):
 
             if not args.x:
                 args.x = 'velocity_outer'
+
+            if args.classicartis:
+                allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
+                                      if (timesteps_included[0], modelgridindex) in estimators]
+            else:
+                allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
+                                      if not estimators[(timesteps_included[0], modelgridindex)]['emptycell']]
 
             if args.multiplot:
                 pdf_list = []
