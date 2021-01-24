@@ -81,6 +81,7 @@ def get_specdata(modelpath, args):
         else:
             specdata = stokes_params['I']
     else:
+        print(f"Reading {specfilename}")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         specdata = specdata.rename(columns={'0': 'nu'})
 
@@ -97,10 +98,6 @@ def get_spectrum(
     specdata = get_specdata(modelpath, args)
 
     nu = specdata.loc[:, 'nu'].values
-    polarisationdata = False
-    if Path(modelpath, 'specpol.out').is_file():
-        specfilename = Path(modelpath) / "specpol.out"
-        polarisationdata = True
     arr_tmid = at.get_timestep_times_float(modelpath, loc='mid')
 
     def timefluxscale(timestep):
@@ -421,9 +418,12 @@ def make_averaged_vspecfiles(args):
 
 def get_polarisation(angle=None, modelpath=None, specdata=None):
     if specdata is None:
-        specfilename = at.firstexisting([f'vspecpol_averaged-{angle}.out', f'vspecpol_total-{angle}.out',
-                                         'specpol.out'], path=modelpath)
-        print(f"reading {specfilename}")
+        if angle is None:
+            specfilename = Path(modelpath, 'specpol.out')
+        else:
+            specfilename = at.firstexisting([f'vspecpol_averaged-{angle}.out', f'vspecpol_total-{angle}.out'],
+                                            path=modelpath)
+        print(f"Reading {specfilename}")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         specdata = specdata.rename(columns={specdata.keys()[0]: 'nu'})
 
