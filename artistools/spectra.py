@@ -1935,14 +1935,14 @@ def addargs(parser):
     parser.add_argument('--averagevspecpolfiles', action='store_true',
                         help='Average the vspecpol-total files for multiple simulations')
 
-    parser.add_argument('--plotvspecpol', type=int, nargs='+',
+    parser.add_argument('-plotvspecpol', type=int, nargs='+',
                         help='Plot viewing angles from vspecpol virtual packets. '
                              'Expects int for angle = spec number in vspecpol files')
 
-    parser.add_argument('--stokesparam', type=str, default='I',
+    parser.add_argument('-stokesparam', type=str, default='I',
                         help='Stokes param to plot. Default I. Expects I, Q or U')
 
-    parser.add_argument('--plotviewingangle', type=int, nargs='+',
+    parser.add_argument('-plotviewingangle', type=int, nargs='+',
                         help='Plot viewing angles. Expects int for angle number in specpol_res.out')
 
     parser.add_argument('--averagespecpolres', action='store_true',
