@@ -421,8 +421,12 @@ def get_polarisation(angle=None, modelpath=None, specdata=None):
         if angle is None:
             specfilename = Path(modelpath, 'specpol.out')
         else:
-            specfilename = at.firstexisting([f'vspecpol_averaged-{angle}.out', f'vspecpol_total-{angle}.out'],
-                                            path=modelpath)
+            # alternatively use f'vspecpol_averaged-{angle}.out' ?
+            specfilename = Path(modelpath, f'vspecpol_total-{angle}.out')
+            if not specfilename.exists():
+                print(f"{specfilename} does not exist. Generating all-rank summed vspec files..")
+                make_virtual_spectra_summed_file(modelpath=modelpath)
+
         print(f"Reading {specfilename}")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         specdata = specdata.rename(columns={specdata.keys()[0]: 'nu'})
