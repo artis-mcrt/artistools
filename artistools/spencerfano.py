@@ -1643,8 +1643,8 @@ def main(args=None, argsraw=None, **kwargs):
     # KF1992 D. The Oxygen-Carbon Zone
     # ionpopdict[(at.get_atomic_number('C'), 1)] = 0.16 * nntot
     # ionpopdict[(at.get_atomic_number('C'), 2)] = 0.16 * nntot * x_e
-    # ionpopdict[(at.get_atomic_number('O'), 1)] = 0.86 * nntot
-    # ionpopdict[(at.get_atomic_number('O'), 2)] = 0.86 * nntot * x_e
+    # ionpopdict[(at.get_atomic_number('O'), 1)] = 0.82 * nntot
+    # ionpopdict[(at.get_atomic_number('O'), 2)] = 0.82 * nntot * x_e
     # ionpopdict[(at.get_atomic_number('Ne'), 1)] = 0.016 * nntot
 
     # # KF1992 G. The Silicon-Calcium Zone
