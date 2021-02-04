@@ -89,7 +89,6 @@ def plot_3d_initial_abundances(modelpath, args):
     # cbar.ax.tick_params(labelsize='x-large')
     plt.xlabel(fr"v$_{plotaxis1}$ in 10$^3$ km/s", fontsize='x-large')#, fontweight='bold')
     plt.ylabel(fr"v$_{plotaxis2}$ in 10$^3$ km/s", fontsize='x-large')#, fontweight='bold')
-    plt.text(20, 25, args.ion, color='white', fontweight='bold', fontsize='x-large')
 
     ymin, ymax = ax.get_ylim()
     xmin, xmax = ax.get_xlim()
