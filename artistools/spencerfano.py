@@ -1749,8 +1749,7 @@ def main(args=None, argsraw=None, **kwargs):
     for key in ionpopdict.keys():
         # keep only the ion populations, not element or total populations
         if isinstance(key, tuple) and len(key) == 2 and ionpopdict[key] / nntot >= minionfraction:
-            if key[0] >= 26:  # TODO: remove
-                ions.append(key)
+            ions.append(key)
 
     ions.sort()
 
