@@ -67,11 +67,6 @@ def main():
     fig.savefig('plotartisstats.pdf', format='pdf')
     plt.close()
 
-    # plt.setp(plt.getp(ax, 'xticklabels'), fontsize=fsticklabel)
-    # plt.setp(plt.getp(ax, 'yticklabels'), fontsize=fsticklabel)
-    # for axis in ['top','bottom','left','right']:
-    #    ax.spines[axis].set_linewidth(framewidth)
-
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()

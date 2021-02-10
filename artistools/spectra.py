@@ -1656,11 +1656,6 @@ def make_plot(args):
                 col = col[0]
             text.set_color(col)
 
-    # plt.setp(plt.getp(axis, 'xticklabels'), fontsize=fsticklabel)
-    # plt.setp(plt.getp(axis, 'yticklabels'), fontsize=fsticklabel)
-    # for axis in ['top', 'bottom', 'left', 'right']:
-    #    axis.spines[axis].set_linewidth(framewidth)
-
     if args.ymin is not None:
         axes[-1].set_ylim(bottom=args.ymin)
     if args.ymax is not None:
