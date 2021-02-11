@@ -861,10 +861,6 @@ def make_plot(
 
     etatot_int = etaion_int + etaexc_int + etaheat_int
 
-    #    plt.setp(plt.getp(ax, 'xticklabels'), fontsize=fsticklabel)
-    #    plt.setp(plt.getp(ax, 'yticklabels'), fontsize=fsticklabel)
-    #    for axis in ['top','bottom','left','right']:
-    #        ax.spines[axis].set_linewidth(framewidth)
     #    ax.annotate(modellabel, xy=(0.97, 0.95), xycoords='axes fraction', horizontalalignment='right',
     #                verticalalignment='top', fontsize=fs)
     # ax.set_yscale('log')
