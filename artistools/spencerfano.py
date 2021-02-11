@@ -916,7 +916,6 @@ def solve_spencerfano_differentialform(
         sfmatrix[i, i] -= (lossfunction(en + deltaen, nne, nnetot, ions=ions, ionpopdict=ionpopdict) - lossfngrid[i]) / deltaen
 
     dftransitions = {}
-
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
         print(f'  including Z={Z} ion_stage {ionstage} ({at.get_ionstring(Z, ionstage)}) nnion={nnion=:.2e} ionisation')
@@ -930,8 +929,6 @@ def solve_spencerfano_differentialform(
             differentialsfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix)
 
         assert noexcitation
-
-        print()
 
     print()
     lu_and_piv = linalg.lu_factor(sfmatrix, overwrite_a=False)
@@ -983,7 +980,6 @@ def solve_spencerfano(
             dfpops_thision = dfpops.query('Z==@Z & ion_stage==@ionstage')
             popdict = {x.level: x['n_NLTE'] for _, x in dfpops_thision.iterrows()}
 
-            print('   and excitation')
             ion = adata.query('Z == @Z and ion_stage == @ionstage').iloc[0]
             groundlevelnoj = ion.levels.iloc[0].levelname.split('[')[0]
             topgmlevel = ion.levels[ion.levels.levelname.str.startswith(groundlevelnoj)].index.max()
@@ -991,7 +987,7 @@ def solve_spencerfano(
             topgmlevel = 4
             dftransitions[(Z, ionstage)] = ion.transitions.query('lower <= @topgmlevel', inplace=False).copy()
 
-            print(f'with {len(dftransitions[(Z, ionstage)])} transitions from lower <= {topgmlevel}', end='')
+            print(f'    and excitation with {len(dftransitions[(Z, ionstage)])} transitions from lower <= {topgmlevel}')
 
             if not dftransitions[(Z, ionstage)].empty:
                 dftransitions[(Z, ionstage)].query('collstr >= 0 or forbidden == False', inplace=True)
