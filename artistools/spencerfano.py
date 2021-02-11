@@ -64,10 +64,8 @@ def get_lte_pops(adata, ions, ionpopdict, temperature):
 
 
 def read_binding_energies(modelpath=None):
-    if modelpath:
-        collionfilename = os.path.join(modelpath, 'binding_energies.txt')
-    else:
-        collionfilename = os.path.join(at.PYDIR, 'data', 'binding_energies.txt')
+    collionfilename = at.firstexisting([os.path.join(modelpath, 'binding_energies.txt'),
+                                        os.path.join(at.PYDIR, 'data', 'binding_energies.txt')])
 
     with open(collionfilename, "r") as f:
         nt_shells, n_z_binding = [int(x) for x in f.readline().split()]
