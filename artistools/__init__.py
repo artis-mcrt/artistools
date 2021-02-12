@@ -410,6 +410,19 @@ def get_3d_modeldata(modelpath):
     return model
 
 
+def gather_res_data(res_df):
+    index_to_split = res_df.index[res_df.iloc[:, 1] == res_df.iloc[0, 1]]
+    res_data = []
+    for i, index_value in enumerate(index_to_split):
+        if index_value != index_to_split[-1]:
+            chunk = res_df.iloc[index_to_split[i]:index_to_split[i + 1], :]
+        else:
+            chunk = res_df.iloc[index_to_split[i]:, :]
+        res_data.append(chunk)
+
+    return res_data
+
+
 def get_vpkt_config(modelpath):
     filename = Path(modelpath, 'vpkt.txt')
     vpkt_config = {}
