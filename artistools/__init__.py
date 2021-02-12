@@ -410,8 +410,12 @@ def get_3d_modeldata(modelpath):
     return model
 
 
-def gather_res_data(res_df):
-    index_to_split = res_df.index[res_df.iloc[:, 1] == res_df.iloc[0, 1]]
+def gather_res_data(res_df, index_of_repeated_value=1):
+    """res files repeat output for each angle.
+    index_of_repeated_value is the value to look for repeating eg. time of ts 0.
+    In spec_res files it's 1, but in lc_res file it's 0"""
+    index_to_split = res_df.index[res_df.iloc[:, index_of_repeated_value]
+                                  == res_df.iloc[0, index_of_repeated_value]]
     res_data = []
     for i, index_value in enumerate(index_to_split):
         if index_value != index_to_split[-1]:
@@ -419,7 +423,6 @@ def gather_res_data(res_df):
         else:
             chunk = res_df.iloc[index_to_split[i]:, :]
         res_data.append(chunk)
-
     return res_data
 
 
