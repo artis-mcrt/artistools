@@ -29,11 +29,17 @@ from matplotlib.legend_handler import HandlerTuple
 color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
 
 
-def readfile(filepath_or_buffer):
+def readfile(filepath_or_buffer, args=None):
     lcdata = pd.read_csv(filepath_or_buffer, delim_whitespace=True, header=None, names=['time', 'lum', 'lum_cmf'])
-    # the light_curve.dat file repeats x values, so keep the first half only
-    lcdata = lcdata.iloc[:len(lcdata) // 2]
-    lcdata.index.name = 'timestep'
+
+    if args is not None and args.plotviewingangle is not None:
+        # get a list of dfs with light curves at each viewing angle
+        lcdata = at.gather_res_data(lcdata, index_of_repeated_value=0)
+
+    else:
+        # the light_curve.dat file repeats x values, so keep the first half only
+        lcdata = lcdata.iloc[:len(lcdata) // 2]
+        lcdata.index.name = 'timestep'
     return lcdata
 
 
@@ -94,6 +100,11 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
         modelname = at.get_model_name(modelpath)
         print(f"====> {modelname}")
         lcname = 'gamma_light_curve.out' if (escape_type == 'TYPE_GAMMA' and not frompackets) else 'light_curve.out'
+        if args.plotviewingangle and lcname == 'light_curve.out':
+            lcname = 'light_curve_res.out'
+        elif args.plotviewingangle:
+            print("If you're trying to plot gamma_res - sorry haven't written that yet")
+            quit()
         try:
             lcpath = at.firstexisting([lcname + '.xz', lcname + '.gz', lcname], path=modelpath)
         except FileNotFoundError:
@@ -106,7 +117,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
             lcdata = at.lightcurve.get_from_packets(
                 modelpath, lcpath, packet_type=args.packet_type, escape_type=escape_type, maxpacketfiles=maxpacketfiles)
         else:
-            lcdata = at.lightcurve.readfile(lcpath)
+            lcdata = at.lightcurve.readfile(lcpath, args)
 
         plotkwargs = {}
         if args.label[seriesindex] is None:
@@ -120,6 +131,10 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
             plotkwargs['dashes'] = args.dashes[seriesindex]
         if args.linewidth[seriesindex]:
             plotkwargs['linewidth'] = args.linewidth[seriesindex]
+
+        if args.plotviewingangle:
+            lcdata = lcdata[args.plotviewingangle[0]]
+
         axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
         if args.print_data:
             print(lcdata[['time', 'lum', 'lum_cmf']].to_string(index=False))
