@@ -40,14 +40,16 @@ def plothesmaresspec(fig, ax):
     for specfilename in specfiles:
         specdata = pd.read_csv(specfilename, delim_whitespace=True, header=None, dtype=np.float64)
 
-        index_to_split = specdata.index[specdata.iloc[:, 1] == specdata.iloc[0, 1]]
-        res_specdata = []
-        for i, index_value in enumerate(index_to_split):
-            if index_value != index_to_split[-1]:
-                chunk = specdata.iloc[index_to_split[i]:index_to_split[i + 1], :]
-            else:
-                chunk = specdata.iloc[index_to_split[i]:, :]
-            res_specdata.append(chunk)
+        # index_to_split = specdata.index[specdata.iloc[:, 1] == specdata.iloc[0, 1]]
+        # res_specdata = []
+        # for i, index_value in enumerate(index_to_split):
+        #     if index_value != index_to_split[-1]:
+        #         chunk = specdata.iloc[index_to_split[i]:index_to_split[i + 1], :]
+        #     else:
+        #         chunk = specdata.iloc[index_to_split[i]:, :]
+        #     res_specdata.append(chunk)
+
+        res_specdata = at.gather_res_data(specdata)
 
         column_names = res_specdata[0].iloc[0]
         column_names[0] = 'lambda'

@@ -258,15 +258,17 @@ def read_specpol_res(modelpath, angle=None, args=None):
 
     specdata = pd.read_csv(specfilename, delim_whitespace=True, header=None, dtype=str)
 
-    index_to_split = specdata.index[specdata.iloc[:, 1] == specdata.iloc[0, 1]]
-    # print(len(index_to_split))
-    res_specdata = []
-    for i, index_value in enumerate(index_to_split):
-        if index_value != index_to_split[-1]:
-            chunk = specdata.iloc[index_to_split[i]:index_to_split[i + 1], :]
-        else:
-            chunk = specdata.iloc[index_to_split[i]:, :]
-        res_specdata.append(chunk)
+    res_specdata = at.gather_res_data(specdata)
+
+    # index_to_split = specdata.index[specdata.iloc[:, 1] == specdata.iloc[0, 1]]
+    # # print(len(index_to_split))
+    # res_specdata = []
+    # for i, index_value in enumerate(index_to_split):
+    #     if index_value != index_to_split[-1]:
+    #         chunk = specdata.iloc[index_to_split[i]:index_to_split[i + 1], :]
+    #     else:
+    #         chunk = specdata.iloc[index_to_split[i]:, :]
+    #     res_specdata.append(chunk)
     # print(res_specdata[0])
 
     columns = res_specdata[0].iloc[0]
@@ -366,6 +368,7 @@ def make_virtual_spectra_summed_file(modelpath):
         index_to_split = vspecpolfile.index[vspecpolfile.iloc[:, 1] == vspecpolfile.iloc[0, 1]]
         vspecpol_data = []
         for i, index_value in enumerate(index_to_split[:nindicies_used]):
+            # todo: this is different to at.gather_res_data() -- could be made to be same format to not repeat code
             if index_value != index_to_split[-1]:
                 chunk = vspecpolfile.iloc[index_value:index_to_split[i+1], :]
             else:
