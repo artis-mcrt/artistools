@@ -1172,24 +1172,24 @@ def addargs(parser):
     parser.add_argument('--magnitude', action='store_true',
                         help='Plot synthetic magnitudes')
 
-    parser.add_argument('--filter', type=str, nargs='+',
+    parser.add_argument('-filter', type=str, nargs='+',
                         help='Choose filter eg. bol U B V R I. Default B. '
                         'WARNING: filter names are not case sensitive eg. sloan-r is not r, it is rs')
 
-    parser.add_argument('--colour_evolution', nargs='*',
+    parser.add_argument('-colour_evolution', nargs='*',
                         help='Plot of colour evolution. Give two filters eg. B-V')
 
     parser.add_argument('--print_data', action='store_true',
                         help='Print plotted data')
 
-    parser.add_argument('--plot_hesma_model', action='store', type=Path, default=False,
+    parser.add_argument('-plot_hesma_model', action='store', type=Path, default=False,
                         help='Plot hesma model on top of lightcurve plot. '
                         'Enter model name saved in data/hesma directory')
 
-    parser.add_argument('--plotvspecpol', type=int, nargs='+',
+    parser.add_argument('-plotvspecpol', type=int, nargs='+',
                         help='Plot vspecpol. Expects int for spec number in vspecpol files')
 
-    parser.add_argument('--plotviewingangle', type=int, nargs='+',
+    parser.add_argument('-plotviewingangle', type=int, nargs='+',
                         help='Plot viewing angles. Expects int for angle number in specpol_res.out'
                         'use args = -1 to select all the viewing angles')
 
@@ -1272,7 +1272,7 @@ def addargs(parser):
     parser.add_argument('--average_every_tenth_viewing_angle', action='store_true',
                         help='average every tenth viewing angle to reduce noise')
 
-    parser.add_argument('--calculate_costheta_phi_from_viewing_angle_numbers', type=int, nargs='+',
+    parser.add_argument('-calculate_costheta_phi_from_viewing_angle_numbers', type=int, nargs='+',
                         help='calculate costheta and phi for each viewing angle given the number of the viewing angle'
                              'Expects ints for angle number supplied from the argument of plot viewing angle'
                              'use args = -1 to select all viewing angles'
