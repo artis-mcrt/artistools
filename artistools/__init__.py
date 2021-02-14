@@ -88,7 +88,7 @@ commandlist = {
     'artistools-radfield': ('artistools.radfield', 'main'),
 
     'plotartisspectrum': ('artistools.spectra', 'main'),
-    'artistools-plotspec': ('artistools.spectra', 'main'),
+    'artistools-spectrum': ('artistools.spectra', 'main'),
 
     'plotartistransitions': ('artistools.transitions', 'main'),
     'artistools-transitions': ('artistools.transitions', 'main'),
