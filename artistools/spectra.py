@@ -1892,7 +1892,7 @@ def addargs(parser):
     parser.add_argument('-figscale', type=float, default=1.8,
                         help='Scale factor for plot area. 1.0 is for single-column')
 
-    parser.add_argument('-logscale', action='store_true',
+    parser.add_argument('--logscale', action='store_true',
                         help='Use log scale')
 
     parser.add_argument('--hidenetspectrum', action='store_true',
