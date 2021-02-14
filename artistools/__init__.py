@@ -45,10 +45,16 @@ enable_diskcache = True
 figwidth = 5
 
 commandlist = {
-    'writeartiscomparisondata': ('artistools.writecomparisondata', 'main'),
-    'getartismodeldeposition': ('artistools.deposition', 'main_analytical'),
+    'artistools-writecodecomparisondata': ('artistools.writecomparisondata', 'main'),
+
+    'artistools-modeldeposition': ('artistools.deposition', 'main_analytical'),
+
     'getartisspencerfano': ('artistools.spencerfano', 'main'),
+    'artistools-spencerfano': ('artistools.spencerfano', 'main'),
+
     'listartistimesteps': ('artistools', 'showtimesteptimes'),
+    'artistools-timesteptimes': ('artistools', 'showtimesteptimes'),
+
     'makeartismodel1dslicefrom3d': ('artistools.makemodel.1dslicefrom3d', 'main'),
     'makeartismodel1dslicefromcone': ('artistools.makemodel.1dslicefromconein3dmodel', 'main'),
     'makeartismodelbotyanski2017': ('artistools.makemodel.botyanski2017', 'main'),
@@ -56,17 +62,39 @@ commandlist = {
     'makeartismodelfromlapuente': ('artistools.makemodel.lapuente', 'main'),
     'makeartismodelscalevelocity': ('artistools.makemodel.scalevelocity', 'main'),
     'makeartismodelfullymixed': ('artistools.makemodel.fullymixed', 'main'),
+
     'plotartisdeposition': ('artistools.deposition', 'main'),
+    'artistools-deposition': ('artistools.deposition', 'main'),
+
     'plotartisestimators': ('artistools.estimators', 'main'),
+    'artistools-estimators': ('artistools.estimators', 'main'),
+
     'plotartislightcurve': ('artistools.lightcurve', 'main'),
+    'artistools-lightcurve': ('artistools.lightcurve', 'main'),
+
     'plotartislinefluxes': ('artistools.linefluxes', 'main'),
+    'artistools-linefluxes': ('artistools.linefluxes', 'main'),
+
     'plotartisnltepops': ('artistools.nltepops', 'main'),
+    'artistools-nltepops': ('artistools.nltepops', 'main'),
+
     'plotartismacroatom': ('artistools.macroatom', 'main'),
+    'artistools-macroatom': ('artistools.macroatom', 'main'),
+
     'plotartisnonthermal': ('artistools.nonthermal', 'main'),
+    'artistools-nonthermal': ('artistools.nonthermal', 'main'),
+
     'plotartisradfield': ('artistools.radfield', 'main'),
+    'artistools-radfield': ('artistools.radfield', 'main'),
+
     'plotartisspectrum': ('artistools.spectra', 'main'),
+    'artistools-plotspec': ('artistools.spectra', 'main'),
+
     'plotartistransitions': ('artistools.transitions', 'main'),
+    'artistools-transitions': ('artistools.transitions', 'main'),
+
     'plotartisinitialcomposition': ('artistools.initial_composition', 'main'),
+    'artistools-initialcomposition': ('artistools.initial_composition', 'main'),
 }
 
 console_scripts = [f'{command} = {submodulename}:{funcname}'
