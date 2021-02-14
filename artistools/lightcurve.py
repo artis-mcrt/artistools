@@ -159,6 +159,9 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
         lum_suffix = r'_{\mathrm{' + escape_type.replace("_", r"\_") + '}}'
     axis.set_ylabel(r'$\mathrm{L} ' + lum_suffix + r'/ \mathrm{L}_\odot$')
 
+    if args.logscaley:
+        axis.set_yscale('log')
+
     fig.savefig(str(filenameout), format='pdf')
     print(f'Saved {filenameout}')
     plt.close()
@@ -1211,6 +1214,9 @@ def addargs(parser):
     parser.add_argument('-timemin', type=float, default=None,
                         help='Time min to plot')
 
+    parser.add_argument('--logscaley', action='store_true',
+                        help='Use log scale for vertial axis')
+
     parser.add_argument('-reflightcurves', type=str, nargs='+', dest='reflightcurves',
                         help='Also plot reference lightcurves from these files')
 
@@ -1312,7 +1318,7 @@ def main(args=None, argsraw=None, **kwargs):
         args.escape_type = 'TYPE_GAMMA'
 
     if args.magnitude:
-        defaultoutputfile = f'plotlightcurves.pdf'
+        defaultoutputfile = 'plotlightcurves.pdf'
     elif args.colour_evolution:
         defaultoutputfile = 'plot_colour_evolution.pdf'
     elif args.escape_type == 'TYPE_GAMMA':
