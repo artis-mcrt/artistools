@@ -154,7 +154,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
                 plotkwargs['linewidth'] = 1
                 plotkwargs['label'] += ' (cmf)'
                 plotkwargs['color'] = 'tab:orange'
-                axis.plot(lcdata.time, lcdata['lum_cmf']*3.826e33, **plotkwargs)
+                axis.plot(lcdata.time, lcdata['lum_cmf'], **plotkwargs)
 
     if args.xmin:
         axis.set_xlim(left=args.xmin)
