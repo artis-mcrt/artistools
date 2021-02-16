@@ -133,20 +133,37 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
             plotkwargs['linewidth'] = args.linewidth[seriesindex]
 
         if args.plotviewingangle:
-            lcdata = lcdata[args.plotviewingangle[0]]
+            angles = args.plotviewingangle
+            lcdataframes = lcdata
+        else:
+            angles = [None]
 
-        axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
-        if args.print_data:
-            print(lcdata[['time', 'lum', 'lum_cmf']].to_string(index=False))
-        if args.plotcmf:
-            plotkwargs['linewidth'] = 1
-            plotkwargs['label'] += ' (cmf)'
-            axis.plot(lcdata.time, lcdata['lum_cmf'], **plotkwargs)
+        for angleindex, angle in enumerate(angles):
+            if args.plotviewingangle:
+                lcdata = lcdataframes[angle]
+                plotkwargs['color'] = color_list[angleindex]
+                plotkwargs['label'] = f'angle {angle}'
+
+            # lcdata['lum'] = lcdata['lum']*3.826e33 #Luminosity in erg/s
+            axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
+            # lcdata['mag'] = 4.74 - (2.5 * np.log10(lcdata['lum'] / const.L_sun.to('erg/s').value))
+            # axis.plot(lcdata['time'], lcdata['mag'], **plotkwargs)
+            if args.print_data:
+                print(lcdata[['time', 'lum', 'lum_cmf']].to_string(index=False))
+            if args.plotcmf:
+                plotkwargs['linewidth'] = 1
+                plotkwargs['label'] += ' (cmf)'
+                plotkwargs['color'] = 'tab:orange'
+                axis.plot(lcdata.time, lcdata['lum_cmf']*3.826e33, **plotkwargs)
 
     if args.xmin:
         axis.set_xlim(left=args.xmin)
     if args.xmax:
         axis.set_xlim(right=args.xmax)
+    if args.ymin:
+        axis.set_ylim(bottom=args.ymin)
+    if args.ymax:
+        axis.set_ylim(top=args.ymax)
     # axis.set_ylim(bottom=-0.1, top=1.3)
 
     axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
