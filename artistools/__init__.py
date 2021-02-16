@@ -868,7 +868,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
     if get_photoionisations:
         phixs_filename = Path(modelpath, 'phixsdata_v2.txt')
 
-        print(f'Reading {phixs_filename.relative_to(modelpath.parent)}')
+        print(f'Reading {phixs_filename.relative_to(Path(modelpath).parent)}')
         with zopen(phixs_filename, 'rt') as fphixs:
             for (Z, upperionstage, upperionlevel, lowerionstage,
                  lowerionlevel, phixstargetlist, phixstable) in parse_phixsdata(fphixs, ionlist):
@@ -878,7 +878,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
     iontuple = namedtuple('ion', 'Z ion_stage level_count ion_pot levels transitions')
 
     with zopen(adatafilename, 'rt') as fadata:
-        print(f'Reading {adatafilename.relative_to(modelpath.parent)}')
+        print(f'Reading {adatafilename.relative_to(Path(modelpath).parent)}')
 
         for Z, ionstage, level_count, ionisation_energy_ev, dflevels in parse_adata(fadata, phixsdict, ionlist):
             translist = transitionsdict.get((Z, ionstage), pd.DataFrame())
