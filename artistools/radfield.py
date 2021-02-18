@@ -257,7 +257,7 @@ def evaluate_phixs(modelpath, atomic_number, lower_ion_stage, lowerlevelindex, n
             # return 0.
             return phixstable[-1, 1] * math.pow(phixstable[-1, 0] / nu_factor, 3)
 
-        # return np.interp(nu_factor, phixstable[:, 0], phixstable[:, 1], left=0.)
+        # return interp(nu_factor, phixstable[:, 0], phixstable[:, 1], left=0.)
         return interp_sigma_bf(nu)
 
     return np.array([sigma_bf(nu) for nu in arr_nu_hz])

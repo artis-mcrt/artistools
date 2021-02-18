@@ -565,7 +565,7 @@ def get_initialabundances(modelpath):
 
 def save_initialabundances(dfabundances, abundancefilename):
     """Save a DataFrame (same format as get_initialabundances) to model.txt."""
-    dfabundances['inputcellid'] = dfabundances['inputcellid'].astype(np.int)
+    dfabundances['inputcellid'] = dfabundances['inputcellid'].astype(int)
     dfabundances.to_csv(abundancefilename, header=False, sep=' ', index=False)
 
 
