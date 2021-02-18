@@ -2,6 +2,7 @@
 
 > Artistools is collection of plotting, analysis, and file format conversion tools for the ARTIS radiative transfer code.
 
+![GitHub Build and test status](https://github.com/lukeshingles/artistools/workflows/Build%20and%20test/badge.svg)
 [![Build Status](https://travis-ci.com/lukeshingles/artistools.svg?branch=master)](https://travis-ci.com/lukeshingles/artistools)
 [![Coverage Status](https://coveralls.io/repos/github/lukeshingles/artistools/badge.svg?branch=master)](https://coveralls.io/github/lukeshingles/artistools?branch=master)
 
