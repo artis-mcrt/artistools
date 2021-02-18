@@ -203,7 +203,7 @@ def get_spectrum_from_packets(
 
     array_energysum = np.zeros_like(array_lambda, dtype=float)  # total packet energy sum of each bin
     if getpacketcount:
-        array_pktcount = np.zeros_like(array_lambda, dtype=np.int)  # number of packets in each bin
+        array_pktcount = np.zeros_like(array_lambda, dtype=int)  # number of packets in each bin
 
     timelow = timelowdays * u.day.to('s')
     timehigh = timehighdays * u.day.to('s')
