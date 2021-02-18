@@ -1881,7 +1881,7 @@ def main(args=None, argsraw=None, **kwargs):
 
         if step == 0 and args.ostat:
             with open(args.ostat, 'w') as fstat:
-                strheader = '#emin emax npts x_e frac_excitation frac_ionization frac_heating'
+                strheader = '#emin emax npts x_e frac_sum frac_excitation frac_ionization frac_heating'
                 for atomic_number, ion_stage in ions:
                     strheader += ' frac_ionization_' + at.get_ionstring(atomic_number, ion_stage, nospace=True)
                 fstat.write(strheader + '\n')
@@ -1933,7 +1933,8 @@ def main(args=None, argsraw=None, **kwargs):
 
         if args.ostat:
             with open(args.ostat, 'a') as fstat:
-                strlineout = f'{emin} {emax} {npts} {x_e} {frac_excitation:.3f} {frac_ionization:.3f} {frac_heating:.3f}'
+                frac_sum = frac_ionization + frac_excitation + frac_heating
+                strlineout = f'{emin} {emax} {npts} {x_e} {frac_sum:.3f} {frac_excitation:.3f} {frac_ionization:.3f} {frac_heating:.3f}'
                 for atomic_number, ion_stage in ions:
                     strlineout += f' {frac_ionization_ion[(atomic_number, ion_stage)]:.4f}'
                 fstat.write(strlineout + '\n')
