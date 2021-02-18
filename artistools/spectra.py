@@ -56,7 +56,7 @@ def get_exspec_bins():
 def stackspectra(spectra_and_factors):
     factor_sum = sum([factor for _, factor in spectra_and_factors])
 
-    stackedspectrum = np.zeros_like(spectra_and_factors[0][0], dtype=np.float)
+    stackedspectrum = np.zeros_like(spectra_and_factors[0][0], dtype=float)
     for spectrum, factor in spectra_and_factors:
         stackedspectrum += spectrum * factor / factor_sum
 
@@ -201,7 +201,7 @@ def get_spectrum_from_packets(
     else:
         array_lambdabinedges, array_lambda, delta_lambda = get_exspec_bins()
 
-    array_energysum = np.zeros_like(array_lambda, dtype=np.float)  # total packet energy sum of each bin
+    array_energysum = np.zeros_like(array_lambda, dtype=float)  # total packet energy sum of each bin
     if getpacketcount:
         array_pktcount = np.zeros_like(array_lambda, dtype=np.int)  # number of packets in each bin
 
@@ -624,7 +624,7 @@ def get_flux_contributions(
     else:
         absorptiondata = None
 
-    array_flambda_emission_total = np.zeros_like(arraylambda, dtype=np.float)
+    array_flambda_emission_total = np.zeros_like(arraylambda, dtype=float)
     contribution_list = []
     if filterfunc:
         print("Applying filter to ARTIS spectrum")
@@ -649,7 +649,7 @@ def get_flux_contributions(
                           arr_tdelta[timestep])
                          for timestep in range(timestepmin, timestepmax + 1)])
                 else:
-                    array_fnu_emission = np.zeros_like(arraylambda, dtype=np.float)
+                    array_fnu_emission = np.zeros_like(arraylambda, dtype=float)
 
                 if absorptiondata is not None and selectedcolumn < nelements * maxion:  # bound-bound process
                     array_fnu_absorption = stackspectra(
@@ -657,7 +657,7 @@ def get_flux_contributions(
                           arr_tdelta[timestep])
                          for timestep in range(timestepmin, timestepmax + 1)])
                 else:
-                    array_fnu_absorption = np.zeros_like(arraylambda, dtype=np.float)
+                    array_fnu_absorption = np.zeros_like(arraylambda, dtype=float)
 
                 # best to use the filter on fnu (because it hopefully has regular sampling)
                 if filterfunc:
@@ -767,7 +767,7 @@ def get_flux_contributions_from_packets(
 
     linelist = at.get_linelist(modelpath)
 
-    energysum_spectrum_emission_total = np.zeros_like(array_lambda, dtype=np.float)
+    energysum_spectrum_emission_total = np.zeros_like(array_lambda, dtype=float)
     array_energysum_spectra = {}
 
     timelow = timelowerdays * u.day.to('s')
@@ -855,7 +855,7 @@ def get_flux_contributions_from_packets(
 
                 if emprocesskey not in array_energysum_spectra:
                     array_energysum_spectra[emprocesskey] = (
-                        np.zeros_like(array_lambda, dtype=np.float), np.zeros_like(array_lambda, dtype=np.float))
+                        np.zeros_like(array_lambda, dtype=float), np.zeros_like(array_lambda, dtype=float))
 
                 array_energysum_spectra[emprocesskey][0][xindex] += pkt_en
 
@@ -869,7 +869,7 @@ def get_flux_contributions_from_packets(
 
                     if absprocesskey not in array_energysum_spectra:
                         array_energysum_spectra[absprocesskey] = (
-                            np.zeros_like(array_lambda, dtype=np.float), np.zeros_like(array_lambda, dtype=np.float))
+                            np.zeros_like(array_lambda, dtype=float), np.zeros_like(array_lambda, dtype=float))
 
                     array_energysum_spectra[absprocesskey][1][xindexabsorbed] += pkt_en
 
@@ -926,8 +926,8 @@ def sort_and_reduce_flux_contribution_list(
     contribution_list = sorted(contribution_list_in, key=sortkey)
 
     # combine the items past maxseriescount or not in manual list into a single item
-    remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=np.float)
-    remainder_flambda_absorption = np.zeros_like(arraylambda_angstroms, dtype=np.float)
+    remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=float)
+    remainder_flambda_absorption = np.zeros_like(arraylambda_angstroms, dtype=float)
     remainder_fluxcontrib = 0
 
     if greyscale:
