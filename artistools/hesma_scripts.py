@@ -14,7 +14,7 @@ from astropy import units as u
 def plot_hesma_spectrum(timeavg, axes):
 
     hesma_file = Path("/Users/ccollins/Downloads/hesma_files/M2a/hesma_specseq.dat")
-    hesma_spec = pd.read_csv(hesma_file, comment="#", delim_whitespace=True, dtype=np.float64)
+    hesma_spec = pd.read_csv(hesma_file, comment="#", delim_whitespace=True, dtype=float)
     # print(hesma_spec)
 
     def match_closest_time(reftime):
@@ -38,7 +38,7 @@ def plothesmaresspec(fig, ax):
     specfiles = ["/Users/ccollins/Downloads/hesma_files/M2a/hesma_virtualspecseq_theta.dat"]
 
     for specfilename in specfiles:
-        specdata = pd.read_csv(specfilename, delim_whitespace=True, header=None, dtype=np.float64)
+        specdata = pd.read_csv(specfilename, delim_whitespace=True, header=None, dtype=float)
 
         # index_to_split = specdata.index[specdata.iloc[:, 1] == specdata.iloc[0, 1]]
         # res_specdata = []

@@ -429,7 +429,7 @@ def get_2d_modeldata(modelpath):
 
 def get_3d_modeldata(modelpath):
     model = pd.read_csv(
-        os.path.join(modelpath[0], 'model.txt'), delim_whitespace=True, header=None, skiprows=3, dtype=np.float64)
+        os.path.join(modelpath[0], 'model.txt'), delim_whitespace=True, header=None, skiprows=3, dtype=float)
 
     columns = ['inputcellid', 'cellpos_in[z]', 'cellpos_in[y]', 'cellpos_in[x]', 'rho_model',
                'ffe', 'fni', 'fco', 'ffe52', 'fcr48']
@@ -938,6 +938,7 @@ def get_model_name(path):
 
 
 def get_atomic_number(elsymbol):
+    assert elsymbol is not None
     if elsymbol.title() in elsymbols:
         return elsymbols.index(elsymbol.title())
     return -1
