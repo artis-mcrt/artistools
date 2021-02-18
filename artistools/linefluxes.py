@@ -302,9 +302,9 @@ def make_flux_ratio_plot(args):
         for amodelname, alabel in [
                 ('w7', 'W7'),
                 # ('subch', 'S0'),
-                ('subch_shen2018', '1M$_\odot$ (Shen+18)'),
+                ('subch_shen2018', r'1M$_\odot$ (Shen+18)'),
                 # ('subch_shen2018_electronlossboost4x', '1M$_\odot$ (Shen+18) 4x e- loss'),
-                ('subch_shen2018_electronlossboost8x', '1M$_\odot$ (Shen+18) 8x e- loss'),
+                ('subch_shen2018_electronlossboost8x', r'1M$_\odot$ (Shen+18) 8x e- loss'),
                 # ('subch_shen2018_electronlossboost12x', '1M$_\odot$ (Shen+18) 12x e- loss'),
                 ]:
             xlist, ylist = amodels[amodelname]
