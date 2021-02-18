@@ -55,7 +55,7 @@ def get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles
 def calculate_timebinned_packet_sum(dfpackets, timearrayplusend):
     binned = pd.cut(dfpackets['t_arrive_d'], timearrayplusend, labels=False, include_lowest=True)
 
-    binnedenergysums = np.zeros_like(timearrayplusend[:-1], dtype=np.float)
+    binnedenergysums = np.zeros_like(timearrayplusend[:-1], dtype=float)
     for binindex, e_rf_sum in dfpackets.groupby(binned)['e_rf'].sum().iteritems():
         binnedenergysums[int(binindex)] = e_rf_sum
 
@@ -85,7 +85,7 @@ def get_line_fluxes_from_packets(emtypecolumn, emfeatures, modelpath, maxpacketf
             modelpath, emtypecolumn, linelistindices_allfeatures, maxpacketfiles=maxpacketfiles)
 
     for feature in emfeatures:
-        # dictlcdata[feature.colname] = np.zeros_like(arr_tstart, dtype=np.float)
+        # dictlcdata[feature.colname] = np.zeros_like(arr_tstart, dtype=float)
 
         dfpackets_selected = dfpackets.query(f'{emtypecolumn} in @feature.linelistindices', inplace=False)
 
@@ -125,7 +125,7 @@ def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=No
     dictlcdata = {'time': arr_tmid}
 
     for feature in emfeatures:
-        fluxdata = np.zeros_like(arr_tmid, dtype=np.float)
+        fluxdata = np.zeros_like(arr_tmid, dtype=float)
 
         dfnltepops = at.nltepops.read_files(
             modelpath,
