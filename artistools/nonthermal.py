@@ -154,7 +154,7 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
         if elpop <= 1e-4 * totalpop:
             continue
 
-        arr_ionisation_element = np.zeros(len(arr_enev), dtype=np.float)
+        arr_ionisation_element = np.zeros(len(arr_enev), dtype=float)
         frac_ionisation_element = 0.
 
         nions = elementlist.nions[element]
@@ -166,7 +166,7 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
 
             # print(at.get_ionstring(Z, ionstage), ionpop)
 
-            arr_ionisation_ion = np.zeros(len(arr_enev), dtype=np.float)
+            arr_ionisation_ion = np.zeros(len(arr_enev), dtype=float)
             frac_ionisation_ion = 0.
 
             for index, row in dfcollion_thision.iterrows():
