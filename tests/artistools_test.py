@@ -168,7 +168,7 @@ def test_spectra_get_flux_contributions():
 
 
 def test_spencerfano():
-    at.spencerfano.main(modelpath=modelpath, timedays=300, makeplot=True, npts=200, outputfile=outputpath)
+    at.spencerfano.main(modelpath=modelpath, timedays=300, makeplot=True, npts=200, noexcitation=True, outputfile=outputpath)
 
 
 def test_transitions():
