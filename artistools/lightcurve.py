@@ -539,10 +539,10 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                         args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
 
                     if args.filter and len(args.filter) > 1:
-                        if linestyle == 'dashed':
-                            alpha = 0.6
-                        else:
-                            alpha = 1
+                        # if linestyle == 'dashed':
+                        #     alpha = 0.6
+                        # else:
+                        alpha = 1
 
                         if len(angles) > 1 or (args.plotviewingangle and os.path.isfile(modelpath / 'specpol_res.out')):
                             ax[plotnumber].plot(time, magnitude, label=linelabel, linewidth=4, linestyle=linestyle,
