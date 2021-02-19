@@ -1021,7 +1021,6 @@ def print_floers_line_ratio(modelpath, timedays, arr_f_lambda, arr_lambda_angstr
 
 @lru_cache(maxsize=24)
 def get_file_metadata(filepath):
-    metadata = {}
     filepath = Path(filepath)
 
     # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
