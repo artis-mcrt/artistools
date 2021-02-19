@@ -1081,6 +1081,7 @@ def get_file_metadata(filepath):
 
     return {}
 
+
 def get_filterfunc(args, mode='interp'):
     """Using command line arguments to determine the appropriate filter function."""
 
