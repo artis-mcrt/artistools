@@ -1019,13 +1019,27 @@ def print_floers_line_ratio(modelpath, timedays, arr_f_lambda, arr_lambda_angstr
             f.write(f'{timedays:.1f} {fratio:.3e}\n')
 
 
-@lru_cache(maxsize=4)
-def load_yaml_path(folderpath):
-    yamlpath = Path(folderpath, 'metadata.yml')
-    if yamlpath.exists():
-        with yamlpath.open('r') as yamlfile:
+@lru_cache(maxsize=24)
+def get_file_metadata(filepath):
+    metadata = {}
+
+    # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
+    individualmetafile = filepath.with_suffix(filepath.suffix + '.meta.yml')
+    if individualmetafile.exist():
+        with individualmetafile.open('r') as yamlfile:
             metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
+
         return metadata
+
+    # check if the metadata is in the big combined metadata file (todo: eliminate this file)
+    combinedmetafile = Path(filepath.parent.resolve(), 'metadata.yml')
+    if combinedmetafile.exists():
+        with combinedmetafile.open('r') as yamlfile:
+            combined_metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
+        metadata = combined_metadata.get(str(filepath), {})
+
+        return metadata
+
     return {}
 
 
@@ -1036,8 +1050,7 @@ def get_reference_spectrum(filename):
     else:
         filepath = Path(at.PYDIR, 'data', 'refspectra', filename)
 
-    metadata_all = load_yaml_path(filepath.parent.resolve())
-    metadata = metadata_all.get(str(filename), {})
+    metadata = get_file_metadata(filename)
 
     flambdaindex = metadata.get('f_lambda_columnindex', 1)
 
