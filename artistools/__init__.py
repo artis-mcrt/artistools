@@ -1057,6 +1057,30 @@ def firstexisting(filelist, path=Path('.')):
     raise FileNotFoundError(f'None of these files exist: {", ".join([str(x) for x in fullpaths])}')
 
 
+@lru_cache(maxsize=24)
+def get_file_metadata(filepath):
+    import yaml
+    filepath = Path(filepath)
+
+    # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
+    individualmetafile = filepath.with_suffix(filepath.suffix + '.meta.yml')
+    if individualmetafile.exists():
+        with individualmetafile.open('r') as yamlfile:
+            metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
+
+        return metadata
+
+    # check if the metadata is in the big combined metadata file (todo: eliminate this file)
+    combinedmetafile = Path(filepath.parent.resolve(), 'metadata.yml')
+    if combinedmetafile.exists():
+        with combinedmetafile.open('r') as yamlfile:
+            combined_metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
+        metadata = combined_metadata.get(str(filepath), {})
+
+        return metadata
+
+    return {}
+
 def get_filterfunc(args, mode='interp'):
     """Using command line arguments to determine the appropriate filter function."""
 

@@ -15,7 +15,6 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
 import pandas as pd
-import yaml
 from astropy import constants as const
 from astropy import units as u
 import re
@@ -1019,30 +1018,6 @@ def print_floers_line_ratio(modelpath, timedays, arr_f_lambda, arr_lambda_angstr
             f.write(f'{timedays:.1f} {fratio:.3e}\n')
 
 
-@lru_cache(maxsize=24)
-def get_file_metadata(filepath):
-    filepath = Path(filepath)
-
-    # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
-    individualmetafile = filepath.with_suffix(filepath.suffix + '.meta.yml')
-    if individualmetafile.exists():
-        with individualmetafile.open('r') as yamlfile:
-            metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
-
-        return metadata
-
-    # check if the metadata is in the big combined metadata file (todo: eliminate this file)
-    combinedmetafile = Path(filepath.parent.resolve(), 'metadata.yml')
-    if combinedmetafile.exists():
-        with combinedmetafile.open('r') as yamlfile:
-            combined_metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
-        metadata = combined_metadata.get(str(filepath), {})
-
-        return metadata
-
-    return {}
-
-
 def get_reference_spectrum(filename):
 
     if Path(filename).is_file():
@@ -1050,7 +1025,7 @@ def get_reference_spectrum(filename):
     else:
         filepath = Path(at.PYDIR, 'data', 'refspectra', filename)
 
-    metadata = get_file_metadata(filepath)
+    metadata = at.get_file_metadata(filepath)
     print(filepath, metadata)
 
     flambdaindex = metadata.get('f_lambda_columnindex', 1)
