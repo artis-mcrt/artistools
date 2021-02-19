@@ -848,6 +848,10 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
         args.xmax = 80
     if args.xmin is None:
         args.xmin = 5
+    if args.timemax is None:
+        args.timemax = args.xmax + 5
+    if args.timemin is None:
+        args.timemin = args.xmin - 5
 
     if len(args.colour_evolution) > 1:
         rows = 1
