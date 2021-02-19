@@ -33,13 +33,56 @@ PSNJ11492548_20160202_3Ang.txt:  # (Maguire et al. 2018)
   z: 0.0056
 
 SN2011fe_-10_num5.dat:
-  label: 'SN 2011fe -10d'
+  label: 'SN 2011fe'
+  #'SN 2011fe -10d'
   t: -10.7
+  dist_mpc: 6.40
+  z: 0.0056
+#  scale_factor: 10
+  scale_factor: 15
+
+SN2011fe_-9_8_num6.dat:
+  label: 'SN 2011fe'
+  t: -9.8
+  dist_mpc: 6.40
+  z: 0.0056
+
+SN2011fe_-9_num9.dat:
+  label: 'SN 2011fe'
+  t: -9.0
+  dist_mpc: 6.40
+  z: 0.0056
+#  scale_factor: 4.5
+
+SN2011fe_-7_7_num12.dat:
+  label: 'SN 2011fe'
+  t: -7.7
+  dist_mpc: 6.40
+  z: 0.0056
+
+SN2011fe_-7_num13.dat:
+  label: 'SN 2011fe'
+  t: -7
+  dist_mpc: 6.40
+  z: 0.0056
+
+SN2011fe_-6_num17.dat:
+  label: 'SN 2011fe'
+  #'SN 2011fe -5d'
+  t: -6
   dist_mpc: 6.40
   z: 0.0056
 
 SN2011fe_-5_num20.dat:
-  label: 'SN 2011fe -5d'
+  label: 'SN 2011fe'
+  #'SN 2011fe -5d'
+  t: -5
+  dist_mpc: 6.40
+  z: 0.0056
+
+SN2011fe_-3_num24.dat:
+  label: 'SN 2011fe -3d'
+  #'SN 2011fe -5d'
   t: -5
   dist_mpc: 6.40
   z: 0.0056
@@ -56,6 +99,32 @@ SN2011fe_-0_8_num27.dat:
   dist_mpc: 6.40
   z: 0.0056
 
+SN2011fe_+1_num28.dat:
+  label: 'SN 2011fe'
+  t: +1
+  dist_mpc: 6.40
+  z: 0.0056
+
+SN2011fe_+10_num45.dat:
+  label: 'SN 2011fe'
+  t: +10
+  dist_mpc: 6.40
+  z: 0.0056
+
+SN2011fe_+11_num46.dat:
+  label: ''
+  #'SN 2011fe +11'
+  t: +11
+  dist_mpc: 6.40
+  z: 0.0056
+  scale_factor: 0.000000000000001
+
+SN2011fe_+11_2_num47.dat:
+  label: 'SN 2011fe'
+  t: +11.2
+  dist_mpc: 6.40
+  z: 0.0056
+
 SN2011fe_+18_2_num51.dat:
   label: 'SN 2011fe +18.2d'
   t: 18.2
@@ -63,7 +132,8 @@ SN2011fe_+18_2_num51.dat:
   z: 0.0056
 
 SN2011fe_+21_num53.dat:
-  label: 'SN 2011fe +21d'
+  label: 'SN 2011fe'
+  #'SN 2011fe +21d'
   t: 21
   dist_mpc: 6.40
   z: 0.0056
@@ -74,15 +144,24 @@ SN2011fe_+28.2_num59.dat:
   dist_mpc: 6.40
   z: 0.0056
 
+SN2011fe_+31_num60.dat:
+  label: 'SN 2011fe +31d'
+  t: 31
+  dist_mpc: 6.40
+  z: 0.0056
+
 SN2012fr_-10_num8.dat:
   label: 'SN2011fr -10d before maximum'
   t: 0.0
   dist_mpc: 17.9
 
 SN2012fr_+0_num46.dat:
-  label: 'SN2011fr at maximum'
+  label: 'SN2012fr'
   t: 0.0
   dist_mpc: 17.9
+  scale_factor: 15
+  e_bminusv: 0.03
+  r_v: 3.1
 
 PTF11kly_20120402_norm.dat.txt:
   label: 'SN2011fe +223d'
@@ -134,15 +213,16 @@ SN2013cs_20140325_3Ang.txt:  # (Maguire et al. 2016)
   z: 0.066304
   a_v: 0.032
   r_v: 3.1
-  scale_factor: 0.5
+#  scale_factor: 0.5
 
 2018byg_2018-05-14_Keck1_LRIS_None.ascii:
-  label: 'SN 2018byg -5d'
+  label: 'SN 2018byg'
   t: -5
   dist_mpc: 278.82235323
   z: 0.066304
   a_v: 0.032
   r_v: 3.1
+#  scale_factor: 0.5
 
 2018byg_2018-05-17_P200_DBSP_None.ascii:
   label: 'SN 2018byg -2d'
@@ -151,7 +231,7 @@ SN2013cs_20140325_3Ang.txt:  # (Maguire et al. 2016)
   z: 0.066304
   a_v: 0.032
   r_v: 3.1
-  scale_factor: 2.5
+#  scale_factor: 2.5
 
 2018byg_2018-06-03_Keck1_MOSFIRE_None.ascii:
   label: 'SN 2018byg +18d MOSFIRE'
@@ -202,7 +282,8 @@ SN2013cs_20140325_3Ang.txt:  # (Maguire et al. 2016)
   t: 18
   dist_mpc: 546.5
 #  z: 0.11737 #Already redshift corrected?
-  scale_factor: 3.5
+#  scale_factor: 3.5
+#  scale_factor: 1.5
 
 2016jhr_29.33d_num1.dat:  #From open SNe catalog
   label: 'SN 2016jhr +47 days'
@@ -447,3 +528,67 @@ N100L_def_25.03_days.txt:
   label: 'N100L +25.0d'
   t: 0
   dist_mpc: 0.00001
+
+iPTF13ebh_20131114-12_8d.dat:
+  label: 'iPTF13ebh'
+  t: -12.8
+  dist_mpc: 57.9 #33.63
+  z: 0.0133
+  e_bminusv: 0.05
+  r_v: 3.1
+  scale_factor: 0.4
+
+iPTF13ebh_20131116-10_7d.dat:
+  label: 'iPTF13ebh'
+  t: -10.7
+  dist_mpc: 57.9 #33.63
+  z: 0.0133
+  e_bminusv: 0.05
+  r_v: 3.1
+  scale_factor: 0.2
+
+iPTF13ebh_20131116-11.1d-optical.dat:
+  label: 'iPTF13ebh'
+  t: -10.7
+  dist_mpc: 57.9 # dist modulus = 33.63
+  z: 0.0133
+  e_bminusv: 0.05
+  r_v: 3.1
+
+
+iPTF13ebh_20131120-6_8d.dat:
+  label: 'iPTF13ebh'
+  t: -6.8
+  dist_mpc: 57.9 #33.63
+  z: 0.0133
+  e_bminusv: 0.05
+  r_v: 3.1
+  scale_factor: 0.045
+
+
+SN2019yvq-2020-01-04-7days.dat:
+  label: 'SN 2019yvq'
+  t: 7
+  dist_mpc: 42.5
+  z: 0.0094
+  r_v: 3.1
+  e_bminusv: 0.018
+  scale_factor: 0.000000000000001
+
+SN2019yvq-2020-01-12-15days.dat:
+  label: 'SN 2019yvq'
+  t: 15
+  dist_mpc: 42.5
+  z: 0.0094
+  r_v: 3.1
+  e_bminusv: 0.018
+
+CMFGEN_18days.dat:
+  label: 'CMFGEN'
+  t: 18
+  dist_mpc: 1
+
+CMFGEN_12.1days.dat:
+  label: 'CMFGEN'
+  t: 12
+  dist_mpc: 1
