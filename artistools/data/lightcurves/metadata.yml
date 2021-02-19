@@ -1,5 +1,5 @@
 SN2011fe.dat:
-  label: 'SN 2011fe'
+  label: 'SN 2011fe (normal)'
   timecorrection: 55796.687  #explosion date of August 23.687 ± 0.014 UT #  #55797.9261  #54975.239 + 822.6870999999956
   dist_mpc: 6.4
 
@@ -255,4 +255,70 @@ n100def_2014_I_band.txt:
   label: 'n100'
   timecorrection: 0.0
   dist_mpc: 0.00001
+
+SN2005cf.dat:
+  label: 'SN 2005cf'
+  timecorrection: 53517 # 53520.7389 + 12.7 (time of first detection after explosion)
+  dist_mpc: 25
+  z: 0.006461
+  e_bminusv: 0.0841
+  r_v: 3.1
+
+SN2015F.dat:
+  label: 'SN 2015F'
+  timecorrection: 57090 # 57092 (approx time first detection)
+  dist_mpc: 24.04
+  z: 0.00541
+#  e_bminusv: 0.1749
+#  r_v: 3.1
+
+SN1999by.dat:
+  label: 'SN 1999by (91bg-like)'
+  timecorrection: 51291.87
+  dist_mpc: 13.1
+  z: 0.002128
+  e_bminusv: 0.0134
+  r_v: 3.1
+
+SN2012cg.dat:
+  label: 'SN 2012cg'
+  timecorrection: 56064.24
+  dist_mpc: 6.4598
+  z: 0.001458
+  e_bminusv: 0.0179
+  r_v: 3.1
+
+SN2012dn.dat:
+  label: 'SN 2012dn'
+  timecorrection: 56120.7
+  dist_mpc: 45.4355
+  z: 0.010187
+  e_bminusv: 0.0519
+  r_v: 3.1
+
+SN2014J.dat:
+  label: 'SN 2014J'
+  timecorrection: 56673.38
+  dist_mpc: 2.998
+  z: 0.000677
+  e_bminusv: 0.1358
+  r_v: 3.1
+
+iPTF13ebh.dat:
+  label: 'iPTF13ebh'
+  timecorrection: 56604.13
+#  dist_mpc: 57.9 #53.21  # distance modulus ﻿33.63
+  z: 0.0133
+  e_bminusv: 0.05
+  r_v: 3.1
+  dist_modulus: 33.63
+
+
+#SN1999dq.dat:
+#  label: 'SN 1999dq'
+#  timecorrection: 51422.5
+#  dist_mpc: 47  This distance isn't right. meant to be overluminous, but is normal
+#  z: 0.01433
+#  e_bminusv: 0.0936
+#  r_v: 3.1
 
