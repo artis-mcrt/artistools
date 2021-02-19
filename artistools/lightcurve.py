@@ -348,7 +348,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
         rows = 1
         cols = 1
     fig, ax = plt.subplots(nrows=rows, ncols=cols, sharex=True, sharey=True,
-                           figsize=(at.figwidth * 1.6 * cols, at.figwidth * 1.1 * rows*1.75),
+                           figsize=(at.figwidth * 1.6 * cols, at.figwidth * 1.1 * rows*1.5),
                            tight_layout={"pad": 3.0, "w_pad": 0.6, "h_pad": 0.6})  # (6.2 * 3, 9.4 * 3)
     if args.filter and len(args.filter) > 1:
         ax = ax.flatten()
@@ -502,7 +502,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                 else:
                     text_key = key
                 if args.filter and len(args.filter) > 1:
-                    ax[plotnumber].text(args.xmax * 0.1, args.ymax * 0.97, text_key)
+                    ax[plotnumber].text(args.xmax * 0.8, args.ymax * 0.97, text_key)
                 # else:
                 #     ax.text(args.xmax * 0.75, args.ymax * 0.95, text_key)
 
@@ -559,7 +559,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                         # elif 'M2a' in str(modelpath):
                         #     ax.plot(time, magnitude, label=linelabel, linewidth=3, color='k')
                         # else:
-                        ax.plot(time, magnitude, label=linelabel, linewidth=3)  # color=color, linestyle=linestyle)
+                        ax.plot(time, magnitude, label=linelabel, linewidth=3.5)  # color=color, linestyle=linestyle)
 
         # Saving viewing angle data so it can be read in and plotted later on without re-running the script
         #    as it is quite time consuming
@@ -666,7 +666,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     # f.set_figwidth(7)
     if not args.nolegend:
         if args.filter and len(args.filter) > 1:
-            ax[0].legend(loc='best', frameon=True, fontsize='xx-small', ncol=1)
+            ax[0].legend(loc='best', frameon=True, fontsize='x-small', ncol=1)
         else:
             ax.legend(loc='best', frameon=False, fontsize='small', ncol=1, handlelength=0.7)
     if args.filter and len(filters_dict) == 1:
