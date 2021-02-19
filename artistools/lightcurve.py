@@ -1026,8 +1026,7 @@ def read_hesma_lightcurve(args):
 
 def read_lightcurve_data(lightcurvefilename):
     filepath = Path(at.PYDIR, 'data', 'lightcurves', lightcurvefilename)
-    metadata_all = at.spectra.load_yaml_path(filepath.parent.resolve())
-    metadata = metadata_all.get(str(lightcurvefilename), {})
+    metadata = get_file_metadata(lightcurvefilename))
 
     data_path = os.path.join(at.PYDIR, f"data/lightcurves/{lightcurvefilename}")
     lightcurve_data = pd.read_csv(data_path, comment='#')

@@ -1,0 +1,4 @@
+dist_mpc: 10
+f_lambda_columnindex: 2
+label: SUMO W7 +330d
+reference: Fransson & Jerkstrand (2015)
