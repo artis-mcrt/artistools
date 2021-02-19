@@ -190,7 +190,7 @@ SN2013aa_20140216_3Ang.txt:
   z: 0.003999
 
 SN2013ct_20131119_3Ang.txt:  # (Maguire et al. 2016)
-  label: 'SN2013ct +229d'
+  label: 'SN2013ct (Maguire+16) +229d'
   t: 229
   dist_mpc: 12.1
   r_v: 3.1
