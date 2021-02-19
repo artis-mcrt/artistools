@@ -1332,16 +1332,44 @@ def get_mpirankofcell(modelgridindex, modelpath):
     return mpirank
 
 
-def get_artisoptions(modelpath=None, srcpath=None, printdefs=False):
-    # get artis options specifed in artistoptions.h preprocessor macro definitions
+def get_artis_constants(modelpath=None, srcpath=None, printdefs=False):
+    # get artis options specified as preprocessor macro definitions in artisoptions.h and other header files
     if not srcpath:
         srcpath = Path(modelpath, 'artis')
         if not modelpath:
             raise ValueError('Either modelpath or srcpath must be specified in call to get_defines()')
 
-    optionfilepath = Path(srcpath, 'artisoptions.h')
+    cfiles = [
+        # Path(srcpath, 'constants.h'),
+        # Path(srcpath, 'decay.h'),
+        Path(srcpath, 'artisoptions.h'),
+        # Path(srcpath, 'sn3d.h'),
+    ]
+    definedict = {
+        'true': True,
+        'false':  False,
+    }
+    for filepath in cfiles:
+        definedict.update(parse_cdefines(srcfilepath=filepath))
 
-    return parse_cdefines(srcfilepath=optionfilepath, printdefs=printdefs)
+    # evaluate booleans, numbers, and references to other constants
+    for k, strvalue in definedict.copy().items():
+        try:
+            # definedict[k] = eval(strvalue, definedict)
+            # print(f"{k} = '{strvalue}' = {definedict[k]}")
+            pass
+        except SyntaxError:
+            pass
+            # print(f"{k} = '{strvalue}' = (COULD NOT EVALUATE)")
+        except TypeError:
+            pass
+            # print(f"{k} = '{strvalue}' = (COULD NOT EVALUATE)")
+
+    # if printdefs:
+    #     for k in definedict:
+    #         print(f"{k} = '{definedict[k]}'")
+
+    return definedict
 
 
 def parse_cdefines(srcfilepath=None, printdefs=False):
@@ -1350,6 +1378,8 @@ def parse_cdefines(srcfilepath=None, printdefs=False):
 
     # p_define = re.compile('^[\t ]*#[\t ]*define[\t ]+([a-zA-Z0-9_]+)[\t ]+')
     p_define = re.compile('^[\t ]*#[\t ]*define[\t ]+([a-zA-Z0-9_]+)+')
+
+    p_const = re.compile('(?:\w+\s+)([a-zA-Z_=][a-zA-Z0-9_=]*)*(?<!=)=(?!=)')
 
     p_comment = re.compile(r'/\*([^*]+|\*+[^/])*(\*+/)?')
     p_cpp_comment = re.compile('//.*')
@@ -1402,6 +1432,12 @@ def parse_cdefines(srcfilepath=None, printdefs=False):
                 body = line[match.end():]
                 body = pytify(body)
                 definedict[name] = body.strip()
+            match = p_const.match(line)
+            if match:
+                print('CONST', tuple(p_const.findall(line)))
+            # if '=' in line and ';' in line:
+            #     tokens = line.replace('==', 'IGNORE').replace('=', ' = ').split()
+            #     varname = tokens.indexof('=')[-1]
 
     if printdefs:
         for k in definedict:
