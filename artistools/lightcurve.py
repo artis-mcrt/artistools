@@ -218,9 +218,11 @@ def get_magnitudes(modelpath, args, angle=None, modelnumber=None):
 
     for filter_name in filters_list:
         if filter_name == 'bol':
+            times, bol_magnitudes = bolometric_magnitude(modelpath, timearray, args, angle=angle,
+                                                         res_specdata=res_specdata)
             filters_dict['bol'] = [
-                (float(time), bol_magnitude) for time, bol_magnitude in
-                zip(timearray, bolometric_magnitude(modelpath, timearray, args, angle=angle, res_specdata=res_specdata))
+                (time, bol_magnitude) for time, bol_magnitude in
+                zip(times, bol_magnitudes)
                 if math.isfinite(bol_magnitude)]
         elif filter_name not in filters_dict:
             filters_dict[filter_name] = []
@@ -235,50 +237,58 @@ def get_magnitudes(modelpath, args, angle=None, modelnumber=None):
 
         for timestep, time in enumerate(timearray):
             time = float(time)
-            wavelength_from_spectrum, flux = \
-                get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle,
-                                             res_specdata=res_specdata, modelnumber=modelnumber)
+            if args.timemin < time < args.timemax:
+                wavelength_from_spectrum, flux = \
+                    get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle,
+                                                 res_specdata=res_specdata, modelnumber=modelnumber)
 
-            if len(wavelength_from_spectrum) > len(wavefilter):
-                interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.)
-                wavefilter = np.linspace(min(wavelength_from_spectrum), int(max(wavelength_from_spectrum)),
-                                         len(wavelength_from_spectrum))
-                transmission = interpolate_fn(wavefilter)
-            else:
-                interpolate_fn = interp1d(wavelength_from_spectrum, flux, bounds_error=False, fill_value=0.)
-                wavelength_from_spectrum = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
-                flux = interpolate_fn(wavelength_from_spectrum)
+                if len(wavelength_from_spectrum) > len(wavefilter):
+                    interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.)
+                    wavefilter = np.linspace(min(wavelength_from_spectrum), int(max(wavelength_from_spectrum)),
+                                             len(wavelength_from_spectrum))
+                    transmission = interpolate_fn(wavefilter)
+                else:
+                    interpolate_fn = interp1d(wavelength_from_spectrum, flux, bounds_error=False, fill_value=0.)
+                    wavelength_from_spectrum = np.linspace(wavefilter_min, wavefilter_max, len(wavefilter))
+                    flux = interpolate_fn(wavelength_from_spectrum)
 
-            phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux)
+                phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux)
 
-            # print(time, phot_filtobs_sn)
-            # if phot_filtobs_sn != 0.0:
-            phot_filtobs_sn = phot_filtobs_sn - 25  # Absolute magnitude
-            filters_dict[filter_name].append((time, phot_filtobs_sn))
+                # print(time, phot_filtobs_sn)
+                # if phot_filtobs_sn != 0.0:
+                phot_filtobs_sn = phot_filtobs_sn - 25  # Absolute magnitude
+                filters_dict[filter_name].append((time, phot_filtobs_sn))
 
     return filters_dict
 
 
 def bolometric_magnitude(modelpath, timearray, args, angle=None, res_specdata=None):
     magnitudes = []
+    times = []
     for timestep, time in enumerate(timearray):
-        if angle is not None:
-            if args.plotvspecpol:
-                spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
+        time = float(time)
+        if args.timemin < time < args.timemax:
+            if angle is not None:
+                if args.plotvspecpol:
+                    spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
+                else:
+                    if res_specdata is None:
+                        res_specdata = at.spectra.read_specpol_res(modelpath, angle=angle)
+                    spectrum = at.spectra.get_res_spectrum(modelpath, timestep, timestep, angle=angle,
+                                                           res_specdata=res_specdata)
             else:
-                if res_specdata is None:
-                    res_specdata = at.spectra.read_specpol_res(modelpath, angle=angle)
-                spectrum = at.spectra.get_res_spectrum(modelpath, timestep, timestep, angle=angle,
-                                                       res_specdata=res_specdata)
-        else:
-            spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep)
+                spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep)
 
-        integrated_flux = np.trapz(spectrum['f_lambda'], spectrum['lambda_angstroms'])
-        integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to('cm'), 2)
-        magnitude = 4.74 - (2.5 * np.log10(integrated_luminosity / const.L_sun.to('erg/s').value))
-        magnitudes.append(magnitude)
+            integrated_flux = np.trapz(spectrum['f_lambda'], spectrum['lambda_angstroms'])
+            integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to('cm'), 2)
+            Mbol_sun = 4.74
+            magnitude = Mbol_sun - (2.5 * np.log10(integrated_luminosity / const.L_sun.to('erg/s').value))
+            magnitudes.append(magnitude)
+            times.append(time)
+            # print(const.L_sun.to('erg/s').value)
+            # quit()
 
-    return magnitudes
+    return times, magnitudes
 
 
 def get_filter_data(filterdir, filter_name):
@@ -353,9 +363,9 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     if args.xmin is None:
         args.xmin = 0
     if args.timemax is None:
-        args.timemax = args.xmax
+        args.timemax = args.xmax + 5
     if args.timemin is None:
-        args.timemin = args.xmin
+        args.timemin = args.xmin - 5
 
     band_risetime_polyfit = []
     band_peakmag_polyfit = []
