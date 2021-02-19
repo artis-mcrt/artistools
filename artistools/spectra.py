@@ -1022,10 +1022,11 @@ def print_floers_line_ratio(modelpath, timedays, arr_f_lambda, arr_lambda_angstr
 @lru_cache(maxsize=24)
 def get_file_metadata(filepath):
     metadata = {}
+    filepath = Path(filepath)
 
     # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
     individualmetafile = filepath.with_suffix(filepath.suffix + '.meta.yml')
-    if individualmetafile.exist():
+    if individualmetafile.exists():
         with individualmetafile.open('r') as yamlfile:
             metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
 
@@ -1050,7 +1051,8 @@ def get_reference_spectrum(filename):
     else:
         filepath = Path(at.PYDIR, 'data', 'refspectra', filename)
 
-    metadata = get_file_metadata(filename)
+    metadata = get_file_metadata(filepath)
+    print(filepath, metadata)
 
     flambdaindex = metadata.get('f_lambda_columnindex', 1)
 
