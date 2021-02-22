@@ -36,6 +36,26 @@ def get_bol_lc_from_spec(modelpath):
     return lightcurvedataframe
 
 
+def get_bol_lc_from_lightcurveout(modelpath):
+    lcdata = pd.read_csv(modelpath / "light_curve_res.out", delim_whitespace=True, header=None, names=['time', 'lum', 'lum_cmf'])
+    lcdataframes = at.gather_res_data(lcdata, index_of_repeated_value=0)
+
+    times = lcdataframes[0]['time']
+    lightcurvedata = {'time': times}
+
+    for angle in range(len(lcdataframes)):
+        lcdata = lcdataframes[angle]
+        bol_luminosity = np.array(lcdata['lum']) * 3.826e33  # Luminosity in erg/s
+
+        lightcurvedata[f'angle={angle}'] = np.log10(bol_luminosity)
+
+    lightcurvedataframe = pd.DataFrame(lightcurvedata)
+    lightcurvedataframe = lightcurvedataframe.replace([np.inf, -np.inf], 0)
+    print(lightcurvedataframe)
+
+    return lightcurvedataframe
+
+
 # modelnames = ['M08_03', 'M08_05', 'M08_10', 'M09_03', 'M09_05', 'M09_10',
 #               'M10_02_end55', 'M10_03', 'M10_05', 'M10_10', 'M11_05_1']
 modelnames = ['M2a']
@@ -45,7 +65,8 @@ for modelname in modelnames:
     modelpath = Path("/Users/ccollins/harddrive4TB/Gronow2020") / Path(modelname)
     outfilepath = Path("/Users/ccollins/Desktop/bollightcurvedata")
 
-    lightcurvedataframe = get_bol_lc_from_spec(modelpath)
+    # lightcurvedataframe = get_bol_lc_from_spec(modelpath)
+    lightcurvedataframe = get_bol_lc_from_lightcurveout(modelpath)
 
     lightcurvedataframe.to_csv(outfilepath / f"bol_lightcurvedata_{modelname}.txt", sep=' ', index=False, header=False)
 
