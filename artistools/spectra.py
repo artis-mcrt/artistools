@@ -282,7 +282,7 @@ def read_specpol_res(modelpath, angle=None, args=None):
 
     # Averages over 10 bins to reduce noise
 
-    if args.average_every_tenth_viewing_angle:
+    if args and args.average_every_tenth_viewing_angle:
         for start_bin in np.arange(start=0, stop=100, step=10):
             # print(start_bin)
             for bin_number in range(start_bin+1, start_bin+10):
