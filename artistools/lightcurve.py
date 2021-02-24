@@ -138,6 +138,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
             else:
                 angles = args.plotviewingangle
             lcdataframes = lcdata
+            angle_definition = calculate_costheta_phi_for_viewing_angles(angles, modelpath)
         else:
             angles = [None]
 
@@ -145,7 +146,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
             if args.plotviewingangle:
                 lcdata = lcdataframes[angle]
                 plotkwargs['color'] = None # color_list[angleindex]
-                plotkwargs['label'] = f'angle {angle}'
+                plotkwargs['label'] = f'{angle_definition[angle]}'
 
             # lcdata['lum'] = lcdata['lum']*3.826e33 #Luminosity in erg/s
             axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
@@ -809,11 +810,14 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, colours, 
 
 
 def calculate_costheta_phi_for_viewing_angles(viewing_angles, modelpath):
+    modelpath = Path(modelpath)
     if os.path.isfile(modelpath / 'absorptionpol_res_99.out') \
             and os.path.isfile(modelpath / 'absorptionpol_res_100.out'):
         print("Too many viewing angle bins (MABINS) for this method to work, it only works for MABINS = 100")
         exit()
-    elif os.path.isfile(modelpath / 'absorptionpol_res_99.out'):
+    elif os.path.isfile(modelpath / 'light_curve_res.out'):
+        angle_definition = {}
+
         costheta_viewing_angle_bins = ['-1.0 \u2264 cos(\u03B8) < -0.8', '-0.8 \u2264 cos(\u03B8) < -0.6',
                                        '-0.6 \u2264 cos(\u03B8) < -0.4', '-0.4 \u2264 cos(\u03B8) < -0.2',
                                        '-0.2 \u2264 cos(\u03B8) < 0', '0 \u2264 cos(\u03B8) < 0.2',
@@ -824,18 +828,19 @@ def calculate_costheta_phi_for_viewing_angles(viewing_angles, modelpath):
                                   '4\u03c0/5 \u2264 \u03D5 < \u03c0', '9\u03c0/5 < \u03D5 < 2\u03c0',
                                   '8\u03c0/5 < \u03D5 \u2264 9\u03c0/5', '7\u03c0/5 < \u03D5 \u2264 8\u03c0/5',
                                   '6\u03c0/5 < \u03D5 \u2264 7\u03c0/5', '\u03c0 < \u03D5 \u2264 6\u03c0/5']
-        for i in viewing_angles:
+        for angle in viewing_angles:
             MABINS = 100
             phibins = int(math.sqrt(MABINS))
-            costheta_index = i // phibins
-            phi_index = i % phibins
+            costheta_index = angle // phibins
+            phi_index = angle % phibins
 
-            print(f"{i:4d}   {costheta_viewing_angle_bins[costheta_index]}   {phi_viewing_angle_bins[phi_index]}")
+            angle_definition[angle] = f'{costheta_viewing_angle_bins[costheta_index]}, {phi_viewing_angle_bins[phi_index]}'
+            print(f"{angle:4d}   {costheta_viewing_angle_bins[costheta_index]}   {phi_viewing_angle_bins[phi_index]}")
+
+        return angle_definition
     else:
         print("Too few viewing angle bins (MABINS) for this method to work, it only works for MABINS = 100")
         exit()
-
-    exit()
 
 
 def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
