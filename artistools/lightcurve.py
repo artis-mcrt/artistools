@@ -133,7 +133,10 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
             plotkwargs['linewidth'] = args.linewidth[seriesindex]
 
         if args.plotviewingangle:
-            angles = args.plotviewingangle
+            if args.plotviewingangle[0] < 0:
+                angles = np.arange(0, 100)
+            else:
+                angles = args.plotviewingangle
             lcdataframes = lcdata
         else:
             angles = [None]
@@ -141,7 +144,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
         for angleindex, angle in enumerate(angles):
             if args.plotviewingangle:
                 lcdata = lcdataframes[angle]
-                plotkwargs['color'] = color_list[angleindex]
+                plotkwargs['color'] = None # color_list[angleindex]
                 plotkwargs['label'] = f'angle {angle}'
 
             # lcdata['lum'] = lcdata['lum']*3.826e33 #Luminosity in erg/s
