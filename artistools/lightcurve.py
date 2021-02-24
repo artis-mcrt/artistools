@@ -278,7 +278,7 @@ def bolometric_magnitude(modelpath, timearray, args, angle=None, res_specdata=No
                     spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
                 else:
                     if res_specdata is None:
-                        res_specdata = at.spectra.read_specpol_res(modelpath, angle=angle)
+                        res_specdata = at.spectra.read_specpol_res(modelpath, angle=angle, args=args)
                     spectrum = at.spectra.get_res_spectrum(modelpath, timestep, timestep, angle=angle,
                                                            res_specdata=res_specdata)
             else:
