@@ -169,7 +169,8 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
         axis.set_ylim(top=args.ymax)
     # axis.set_ylim(bottom=-0.1, top=1.3)
 
-    axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
+    if not args.nolegend:
+        axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
     axis.set_xlabel(r'Time (days)')
     if escape_type == 'TYPE_GAMMA':
         lum_suffix = r'_\gamma'
