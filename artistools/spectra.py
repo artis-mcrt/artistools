@@ -1467,7 +1467,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
     if scale_to_peak:
         axis.set_ylabel(r'Scaled F$_\lambda$')
     elif args.internalpackets:
-        if args.yscale:
+        if args.logscale:
                 # don't include the {} that will be replaced with the power of 10 by the custom formatter
             axis.set_ylabel(r'J$_\lambda$ [erg/s/cm$^2$/$\mathrm{{\AA}}$]')
         else:
@@ -1589,7 +1589,7 @@ def make_plot(args):
 
     dfalldata = pd.DataFrame()
 
-    if args.yscale:
+    if args.logscale:
         # don't include the {} that will be replaced with the power of 10 by the custom formatter
         axes[-1].set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\mathrm{{\AA}}$]')
     else:
