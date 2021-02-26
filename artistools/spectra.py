@@ -1467,7 +1467,11 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
     if scale_to_peak:
         axis.set_ylabel(r'Scaled F$_\lambda$')
     elif args.internalpackets:
-        axis.set_ylabel(r'J$_\lambda$ [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]')
+        if args.yscale:
+                # don't include the {} that will be replaced with the power of 10 by the custom formatter
+            axis.set_ylabel(r'J$_\lambda$ [erg/s/cm$^2$/$\mathrm{{\AA}}$]')
+        else:
+            axis.set_ylabel(r'J$_\lambda$ [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]')
 
     if args.showbinedges:
         radfielddata = at.radfield.read_files(modelpath, timestep=timestepmax, modelgridindex=30)
@@ -1585,7 +1589,12 @@ def make_plot(args):
 
     dfalldata = pd.DataFrame()
 
-    axes[-1].set_ylabel(r'F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]')
+    if args.yscale:
+        # don't include the {} that will be replaced with the power of 10 by the custom formatter
+        axes[-1].set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\mathrm{{\AA}}$]')
+    else:
+        axes[-1].set_ylabel(r'F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]')
+
     for index, axis in enumerate(axes):
         if args.logscale:
             axis.set_yscale('log')
@@ -1655,7 +1664,7 @@ def make_plot(args):
     for ax in axes:
         # ax.xaxis.set_major_formatter(plt.NullFormatter())
 
-        if '{' in ax.get_ylabel():
+        if '{' in ax.get_ylabel() and not args.logscale:
             ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True, decimalplaces=1))
 
         if args.hidexticklabels:
