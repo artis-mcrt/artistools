@@ -1026,7 +1026,6 @@ def get_reference_spectrum(filename):
         filepath = Path(at.PYDIR, 'data', 'refspectra', filename)
 
     metadata = at.get_file_metadata(filepath)
-    print(filepath, metadata)
 
     flambdaindex = metadata.get('f_lambda_columnindex', 1)
 
