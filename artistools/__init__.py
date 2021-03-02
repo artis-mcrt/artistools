@@ -379,7 +379,7 @@ def get_modeldata(filename):
     Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
 
     Returns (modeldata, t_model_init_days)
-        - modeldata: a list of named tuples (one for each model grid cell)
+        - modeldata: a pandas DataFrame with a row for each model grid cell
         - t_model_init_days: the time in days at which the snapshot is defined
     """
 
