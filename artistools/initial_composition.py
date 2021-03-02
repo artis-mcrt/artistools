@@ -50,7 +50,7 @@ def plot_2d_initial_abundances(modelpath, args):
 
 
 def plot_3d_initial_abundances(modelpath, args):
-    model = at.get_3d_modeldata(modelpath[0])
+    model = at.inputmodel.get_3d_modeldata(modelpath[0])
     abundances = at.inputmodel.get_initialabundances(modelpath[0])
 
     abundances['inputcellid'] = abundances['inputcellid'].apply(lambda x: float(x))
@@ -127,7 +127,7 @@ def get_model_abundances_Msun_1D(modelpath):
 
 
 def plot_most_abundant(modelpath, args):
-    model = at.get_3d_modeldata(modelpath[0])
+    model = at.inputmodel.get_3d_modeldata(modelpath[0])
     abundances = at.inputmodel.get_initialabundances(modelpath[0])
 
     merge_dfs = model.merge(abundances, how='inner', on='inputcellid')
