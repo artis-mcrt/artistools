@@ -22,7 +22,6 @@ import re
 import artistools as at
 import artistools.radfield
 import artistools.packets
-from artistools.spectra.plot import hatches
 
 fluxcontributiontuple = namedtuple(
     'fluxcontribution', 'fluxcontrib linelabel array_flambda_emission array_flambda_absorption color')
@@ -929,6 +928,7 @@ def sort_and_reduce_flux_contribution_list(
     remainder_fluxcontrib = 0
 
     if greyscale:
+        hatches = artistools.spectra.plot.hatches
         seriescount = len(fixedionlist) if fixedionlist else maxseriescount
         colorcount = math.ceil(seriescount / 1. / len(hatches))
         greylist = [str(x) for x in np.linspace(0.4, 0.9, colorcount, endpoint=True)]
