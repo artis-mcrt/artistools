@@ -21,7 +21,6 @@ import scipy.signal
 from astropy import constants as const
 
 import artistools as at
-import artistools.initial_composition
 import artistools.nltepops
 
 
