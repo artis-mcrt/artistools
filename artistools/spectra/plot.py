@@ -713,61 +713,6 @@ def make_plot(args):
     plt.close()
 
 
-def write_flambda_spectra(modelpath, args):
-    """Write out spectra to text files.
-
-    Writes lambda_angstroms and f_lambda to .txt files for all timesteps and create
-    a text file containing the time in days for each timestep.
-    """
-    outdirectory = Path(modelpath, 'spectra')
-
-    outdirectory.mkdir(parents=True, exist_ok=True)
-
-    if Path(modelpath, 'specpol.out').is_file():
-        specfilename = modelpath / 'specpol.out'
-        specdata = pd.read_csv(specfilename, delim_whitespace=True)
-        timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
-    else:
-        specfilename = at.firstexisting(['spec.out.xz', 'spec.out.gz', 'spec.out'], path=modelpath)
-        specdata = pd.read_csv(specfilename, delim_whitespace=True)
-        timearray = specdata.columns.values[1:]
-
-    number_of_timesteps = len(timearray)
-
-    if not args.timestep:
-        args.timestep = f'0-{number_of_timesteps - 1}'
-
-    (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
-        modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
-
-    with open(outdirectory / 'spectra_list.txt', 'w+') as spectra_list:
-
-        arr_tmid = at.get_timestep_times_float(modelpath, loc='mid')
-
-        for timestep in range(timestepmin, timestepmax + 1):
-
-            dfspectrum = get_spectrum(modelpath, timestep, timestep)
-            tmid = arr_tmid[timestep]
-
-            outfilepath = outdirectory / f'spectrum_ts{timestep:02.0f}_{tmid:.0f}d.txt'
-
-            with open(outfilepath, 'w') as spec_file:
-
-                spec_file.write(f'#lambda f_lambda_1Mpc\n')
-                spec_file.write(f'#[A] [erg/s/cm2/A]\n')
-
-                dfspectrum.to_csv(spec_file, header=False, sep=' ', index=False,
-                                  columns=["lambda_angstroms", "f_lambda"])
-
-            spectra_list.write(str(outfilepath.absolute()) + '\n')
-
-    with open(outdirectory / 'time_list.txt', 'w+') as time_list:
-        for time in arr_tmid:
-            time_list.write(f'{str(time)} \n')
-
-    print(f'Saved in {outdirectory}')
-
-
 def addargs(parser):
     parser.add_argument('-specpath', default=[], nargs='*', action=at.AppendPath,
                         help='Paths to ARTIS folders or reference spectra filenames')
