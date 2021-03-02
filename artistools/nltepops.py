@@ -88,7 +88,7 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
         Z = int(row.Z)
         ion_stage = int(row.ion_stage)
 
-        ionlevels = at.get_levels(modelpath).query('Z == @Z and ion_stage == @ion_stage').iloc[0].levels
+        ionlevels = at.io.get_levels(modelpath).query('Z == @Z and ion_stage == @ion_stage').iloc[0].levels
 
         gs_g = ionlevels.iloc[0].g
         gs_energy = ionlevels.iloc[0].energy_ev
@@ -493,7 +493,7 @@ def make_plot_levelpop_over_time(modelpaths, args):
 def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, args):
     """Plot level populations for chosens ions of an element in a cell and timestep of an ARTIS model."""
     modelname = at.get_model_name(modelpath)
-    adata = at.get_levels(modelpath, get_transitions=args.gettransitions)
+    adata = at.io.get_levels(modelpath, get_transitions=args.gettransitions)
 
     time_days = float(at.get_timestep_time(modelpath, timestep))
     modelname = at.get_model_name(modelpath)
