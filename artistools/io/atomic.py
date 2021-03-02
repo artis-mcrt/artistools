@@ -1,5 +1,6 @@
 from functools import lru_cache
 import pandas as pd
+import numpy as np
 from collections import namedtuple
 from pathlib import Path
 import artistools
