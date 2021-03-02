@@ -438,7 +438,7 @@ def get_grid_mapping(modelpath):
 
 def get_wid_init(modelpath):
     tmin = get_timestep_times_float(modelpath, loc='start')[0] * u.day.to('s')
-    vmax = get_modeldata(modelpath)[0]['velocity_outer'].iloc[-1] * 1e5
+    vmax = artistools.inputmodel.get_modeldata(modelpath)[0]['velocity_outer'].iloc[-1] * 1e5
 
     rmax = vmax * tmin
 
