@@ -239,7 +239,7 @@ def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=Non
 
 @lru_cache(maxsize=128)
 def evaluate_phixs(modelpath, atomic_number, lower_ion_stage, lowerlevelindex, nu_threshold, arr_nu_hz):
-    adata = at.io.get_levels(modelpath, get_photoionisations=True)
+    adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
     lower_ion_data = adata.query('Z == @atomic_number and ion_stage == @lower_ion_stage').iloc[0]
     lowerlevel = lower_ion_data.levels.iloc[lowerlevelindex]
 
@@ -265,7 +265,7 @@ def evaluate_phixs(modelpath, atomic_number, lower_ion_stage, lowerlevelindex, n
 
 def get_kappa_bf_ion(
         atomic_number, lower_ion_stage, modelgridindex, timestep, modelpath, arr_nu_hz, max_levels):
-    adata = at.io.get_levels(modelpath, get_photoionisations=True)
+    adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     T_e = estimators[(timestep, modelgridindex)]['Te']
 
@@ -297,7 +297,7 @@ def get_kappa_bf_ion(
 
 def get_recombination_emission(
         atomic_number, upper_ion_stage, arr_nu_hz, modelgridindex, timestep, modelpath, max_levels, use_lte_pops=False):
-    adata = at.io.get_levels(modelpath, get_photoionisations=True)
+    adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
 
     lower_ion_stage = upper_ion_stage - 1
     upperionstr = at.get_ionstring(atomic_number, upper_ion_stage)
@@ -378,7 +378,7 @@ def get_recombination_emission(
     print(f'  {upperionstr} Alpha_R = {alpha_ion:.2e}   Alpha_R*nne = {nne*alpha_ion:.2e}')
     print(f'  {upperionstr} Alpha_R2 = {alpha_ion2:.2e} Alpha_R2*nne = {nne*alpha_ion2:.2e}')
     # c_cgs = const.c.to('cm/s').value
-    # vmax = at.get_modeldata(modelpath)[0]['velocity_outer'].iloc[-1] * 1e5
+    # vmax = at.inputmodel.get_modeldata(modelpath)[0]['velocity_outer'].iloc[-1] * 1e5
     # t_seconds = at.get_timestep_times_float(modelpath, loc='start')[timestep] * u.day.to('s')
 
     # mean_free_path = vmax * t_seconds
@@ -394,7 +394,7 @@ def get_ion_gamma_dnu(modelpath, modelgridindex, timestep, atomic_number, ion_st
     T_e = estimators[(timestep, modelgridindex)]['Te']
     T_R = estimators[(timestep, modelgridindex)]['TR']
 
-    adata = at.io.get_levels(modelpath, get_photoionisations=True)
+    adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
     ion_data = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0]
     upper_ion_data = adata.query('Z == @atomic_number and ion_stage == (@ion_stage + 1)').iloc[0]
     ionstr = at.get_ionstring(atomic_number, ion_stage)
@@ -443,7 +443,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
     recomblowerionlist = ((26, 3),)
     photoionlist = ((26, 2),)
     kappalowerionlist = ((26, 2), (26, 3),)
-    adata = at.io.get_levels(modelpath, get_photoionisations=True)
+    adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
 
     fieldlist = []
 
@@ -633,7 +633,7 @@ def plot_celltimestep(
     if not args.nospec:
         plotkwargs = {}
         if not normalised:
-            modeldata, _t_model_init = at.get_modeldata(modelpath)
+            modeldata, _t_model_init = at.inputmodel.get_modeldata(modelpath)
             # outer velocity
             v_surface = modeldata.loc[int(radfielddata.modelgridindex.max())].velocity_outer * u.km / u.s
             r_surface = (time_days * u.day * v_surface).to('km')
@@ -653,7 +653,7 @@ def plot_celltimestep(
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5,
                     color='red', label='', zorder=-1, alpha=0.4)
 
-    velocity = at.get_modeldata(modelpath)[0]['velocity_outer'][modelgridindex]
+    velocity = at.inputmodel.get_modeldata(modelpath)[0]['velocity_outer'][modelgridindex]
 
     figure_title = f'{modelname} {velocity:.0f} km/s at {time_days:.0f}d'
     # figure_title += '\ncell {modelgridindex} timestep {timestep}'

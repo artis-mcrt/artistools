@@ -1,11 +1,11 @@
 import os.path
 from functools import lru_cache
+import numpy as np
 import pandas as pd
 from collections import namedtuple
 import math
 from pathlib import Path
 import artistools
-
 
 @lru_cache(maxsize=8)
 def get_modeldata(filename=Path()):
@@ -98,3 +98,44 @@ def save_modeldata(dfmodeldata, t_model_init_days, filename):
                 if 'X_Co57' in dfmodeldata.columns:
                     fmodel.write(f' {cell.X_Co57:10.4e}')
             fmodel.write('\n')
+
+
+def get_mgi_of_velocity_kms(modelpath, velocity, mgilist=None):
+    """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
+    If mgilist is given, then chose from these cells only"""
+    modeldata, _ = get_modeldata(modelpath)
+
+    if not mgilist:
+        mgilist = [mgi for mgi in modeldata.index]
+        arr_vouter = modeldata['velocity_outer'].values
+    else:
+        arr_vouter = np.array([modeldata['velocity_outer'][mgi] for mgi in mgilist])
+
+    index_closestvouter = np.abs(arr_vouter - velocity).argmin()
+
+    if velocity < arr_vouter[index_closestvouter] or index_closestvouter + 1 >= len(mgilist):
+        return mgilist[index_closestvouter]
+    elif velocity < arr_vouter[index_closestvouter + 1]:
+        return mgilist[index_closestvouter + 1]
+    elif np.isnan(velocity):
+        return float('nan')
+    else:
+        print(f"Can't find cell with velocity of {velocity}. Velocity list: {arr_vouter}")
+        assert(False)
+
+
+@lru_cache(maxsize=8)
+def get_initialabundances(modelpath):
+    """Return a list of mass fractions."""
+    abundancefilepath = artistools.firstexisting(['abundances.txt.xz', 'abundances.txt.gz', 'abundances.txt'], path=modelpath)
+
+    columns = ['inputcellid', *['X_' + artistools.elsymbols[x] for x in range(1, 31)]]
+    abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, names=columns)
+    abundancedata.index.name = 'modelgridindex'
+    return abundancedata
+
+
+def save_initialabundances(dfabundances, abundancefilename):
+    """Save a DataFrame (same format as get_initialabundances) to model.txt."""
+    dfabundances['inputcellid'] = dfabundances['inputcellid'].astype(int)
+    dfabundances.to_csv(abundancefilename, header=False, sep=' ', index=False)

@@ -14,7 +14,7 @@ import scipy.interpolate
 
 def plot_2d_initial_abundances(modelpath, args):
     model = at.get_2d_modeldata(modelpath[0])
-    abundances = at.get_initialabundances(modelpath[0])
+    abundances = at.inputmodel.get_initialabundances(modelpath[0])
 
     abundances['inputcellid'] = abundances['inputcellid'].apply(lambda x: float(x))
 
@@ -51,7 +51,7 @@ def plot_2d_initial_abundances(modelpath, args):
 
 def plot_3d_initial_abundances(modelpath, args):
     model = at.get_3d_modeldata(modelpath[0])
-    abundances = at.get_initialabundances(modelpath[0])
+    abundances = at.inputmodel.get_initialabundances(modelpath[0])
 
     abundances['inputcellid'] = abundances['inputcellid'].apply(lambda x: float(x))
 
@@ -104,8 +104,8 @@ def plot_3d_initial_abundances(modelpath, args):
 
 def get_model_abundances_Msun_1D(modelpath):
     filename = modelpath / 'model.txt'
-    modeldata, t_model_init_days = at.get_modeldata(filename)
-    abundancedata = at.get_initialabundances(modelpath)
+    modeldata, t_model_init_days = at.inputmodel.get_modeldata(filename)
+    abundancedata = at.inputmodel.get_initialabundances(modelpath)
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
 
@@ -128,7 +128,7 @@ def get_model_abundances_Msun_1D(modelpath):
 
 def plot_most_abundant(modelpath, args):
     model = at.get_3d_modeldata(modelpath[0])
-    abundances = at.get_initialabundances(modelpath[0])
+    abundances = at.inputmodel.get_initialabundances(modelpath[0])
 
     merge_dfs = model.merge(abundances, how='inner', on='inputcellid')
     elements = [x for x in merge_dfs.keys() if 'X_' in x]

@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 
-import argparse
 # import glob
 # import itertools
 import math
-import multiprocessing
 import os
 # import sys
 from pathlib import Path
@@ -17,10 +15,8 @@ from astropy import units as u
 
 import artistools as at
 import artistools.spectra
-from extinction import apply, ccm89
 
 from scipy.interpolate import interp1d
-from textwrap import wrap
 
 
 def readfile(filepath_or_buffer, args=None):
@@ -47,7 +43,7 @@ def get_from_packets(modelpath, lcpath, packet_type='TYPE_ESCAPE', escape_type='
     timearray = at.get_timestep_times_float(modelpath=modelpath, loc='mid')
     arr_timedelta = at.get_timestep_times_float(modelpath=modelpath, loc='delta')
     # timearray = np.arange(250, 350, 0.1)
-    model, _ = at.get_modeldata(modelpath)
+    model, _ = at.inputmodel.get_modeldata(modelpath)
     vmax = model.iloc[-1].velocity_outer * u.km / u.s
     betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 

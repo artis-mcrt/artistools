@@ -63,8 +63,8 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, seriestype,
     assert len(xlist) - 1 == len(mgilist)
 
     if seriestype == 'initabundances':
-        modeldata, _ = at.get_modeldata(modelpath)
-        abundancedata = at.get_initialabundances(modelpath)
+        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+        abundancedata = at.inputmodel.get_initialabundances(modelpath)
         mergemodelabundata = modeldata.merge(abundancedata, how='inner', on='inputcellid')
     elif seriestype == 'initmasses':
         mergemodelabundata = at.initial_composition.get_model_abundances_Msun_1D(modelpath)
@@ -619,7 +619,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
     axes[-1].set_xlabel(f'T_e in kelvins')
 
-    recombcalibrationdata = at.io.atomic.get_ionrecombratecalibration(modelpath)
+    recombcalibrationdata = at.atomic.get_ionrecombratecalibration(modelpath)
 
     for ax, ion_stage in zip(axes, ion_stage_list):
 
@@ -787,7 +787,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     if args.classicartis:
         import artistools.estimators.data_classic
-        modeldata, _ = at.get_modeldata(modelpath)
+        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
         estimators = artistools.estimators.data_classic.read_classic_estimators(modelpath, modeldata)
     else:
         estimators = read_estimators(modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included))
@@ -839,7 +839,7 @@ def main(args=None, argsraw=None, **kwargs):
         plot_recombrates(modelpath, estimators, 27, [3, 4])
         plot_recombrates(modelpath, estimators, 28, [3, 4, 5])
     else:
-        modeldata, _ = at.get_modeldata(modelpath)
+        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
 
         if args.modelgridindex > -1 or args.x in ['time', 'timestep']:
             # plot time evolution in specific cell

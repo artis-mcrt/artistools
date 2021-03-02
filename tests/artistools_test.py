@@ -8,7 +8,9 @@ from astropy import constants as const
 from pathlib import Path
 
 import artistools as at
+import artistools.atomic
 import artistools.deposition
+import artistools.inputmodel
 import artistools.lightcurve
 import artistools.macroatom
 import artistools.makemodel.botyanski2017
@@ -45,6 +47,10 @@ def test_estimator_snapshot():
 
 def test_estimator_timeevolution():
     at.estimators.main(modelpath=modelpath, outputfile=outputpath, modelgridindex=0, x='time')
+
+
+def test_get_modeldata():
+    at.inputmodel.get_modeldata(modelpath)
 
 
 def test_lightcurve():
@@ -88,7 +94,7 @@ def test_radfield():
 
 
 def test_get_ionrecombratecalibration():
-    at.io.atomic.get_ionrecombratecalibration(modelpath=modelpath)
+    at.atomic.get_ionrecombratecalibration(modelpath=modelpath)
 
 
 def test_spectraplot():

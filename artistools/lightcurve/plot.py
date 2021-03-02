@@ -12,17 +12,12 @@ from typing import Iterable
 
 import numpy as np
 import pandas as pd
-from astropy import constants as const
-from astropy import units as u
 
 import artistools as at
 import artistools.spectra
 import matplotlib.pyplot as plt
 import matplotlib
 from extinction import apply, ccm89
-
-from scipy.interpolate import interp1d
-from textwrap import wrap
 
 from matplotlib.legend_handler import HandlerTuple
 from artistools.lightcurve.data import *

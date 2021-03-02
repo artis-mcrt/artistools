@@ -30,9 +30,9 @@ import numpy as np
 import pandas as pd
 from astropy import units as u
 from astropy import constants as const
-from PyPDF2 import PdfFileMerger
-import artistools.io
-from artistools.io.model import get_modeldata, get_2d_modeldata, get_3d_modeldata, save_modeldata
+
+import artistools.inputmodel
+
 if sys.version_info < (3,):
     print("Python 2 not supported")
 
@@ -449,47 +449,6 @@ def get_wid_init(modelpath):
     return wid_init
 
 
-def get_mgi_of_velocity_kms(modelpath, velocity, mgilist=None):
-    """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
-    If mgilist is given, then chose from these cells only"""
-    modeldata, _ = get_modeldata(modelpath)
-
-    if not mgilist:
-        mgilist = [mgi for mgi in modeldata.index]
-        arr_vouter = modeldata['velocity_outer'].values
-    else:
-        arr_vouter = np.array([modeldata['velocity_outer'][mgi] for mgi in mgilist])
-
-    index_closestvouter = np.abs(arr_vouter - velocity).argmin()
-
-    if velocity < arr_vouter[index_closestvouter] or index_closestvouter + 1 >= len(mgilist):
-        return mgilist[index_closestvouter]
-    elif velocity < arr_vouter[index_closestvouter + 1]:
-        return mgilist[index_closestvouter + 1]
-    elif np.isnan(velocity):
-        return float('nan')
-    else:
-        print(f"Can't find cell with velocity of {velocity}. Velocity list: {arr_vouter}")
-        assert(False)
-
-
-@lru_cache(maxsize=8)
-def get_initialabundances(modelpath):
-    """Return a list of mass fractions."""
-    abundancefilepath = firstexisting(['abundances.txt.xz', 'abundances.txt.gz', 'abundances.txt'], path=modelpath)
-
-    columns = ['inputcellid', *['X_' + elsymbols[x] for x in range(1, 31)]]
-    abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, names=columns)
-    abundancedata.index.name = 'modelgridindex'
-    return abundancedata
-
-
-def save_initialabundances(dfabundances, abundancefilename):
-    """Save a DataFrame (same format as get_initialabundances) to model.txt."""
-    dfabundances['inputcellid'] = dfabundances['inputcellid'].astype(int)
-    dfabundances.to_csv(abundancefilename, header=False, sep=' ', index=False)
-
-
 @lru_cache(maxsize=16)
 def get_nu_grid(modelpath):
     """Get an array of frequencies at which the ARTIS spectra are binned by exspec."""
@@ -849,6 +808,7 @@ def get_filterfunc(args, mode='interp'):
 
 
 def join_pdf_files(pdf_list, modelpath_list):
+    from PyPDF2 import PdfFileMerger
 
     merger = PdfFileMerger()
 
