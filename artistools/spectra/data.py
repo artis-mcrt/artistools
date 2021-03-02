@@ -22,7 +22,7 @@ import re
 import artistools as at
 import artistools.radfield
 import artistools.packets
-
+from artistools.spectra.plot import hatches
 
 fluxcontributiontuple = namedtuple(
     'fluxcontribution', 'fluxcontrib linelabel array_flambda_emission array_flambda_absorption color')
