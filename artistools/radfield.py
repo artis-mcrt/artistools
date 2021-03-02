@@ -239,7 +239,7 @@ def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=Non
 
 @lru_cache(maxsize=128)
 def evaluate_phixs(modelpath, atomic_number, lower_ion_stage, lowerlevelindex, nu_threshold, arr_nu_hz):
-    adata = at.get_levels(modelpath, get_photoionisations=True)
+    adata = at.io.get_levels(modelpath, get_photoionisations=True)
     lower_ion_data = adata.query('Z == @atomic_number and ion_stage == @lower_ion_stage').iloc[0]
     lowerlevel = lower_ion_data.levels.iloc[lowerlevelindex]
 
@@ -265,7 +265,7 @@ def evaluate_phixs(modelpath, atomic_number, lower_ion_stage, lowerlevelindex, n
 
 def get_kappa_bf_ion(
         atomic_number, lower_ion_stage, modelgridindex, timestep, modelpath, arr_nu_hz, max_levels):
-    adata = at.get_levels(modelpath, get_photoionisations=True)
+    adata = at.io.get_levels(modelpath, get_photoionisations=True)
     estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     T_e = estimators[(timestep, modelgridindex)]['Te']
 
@@ -297,7 +297,7 @@ def get_kappa_bf_ion(
 
 def get_recombination_emission(
         atomic_number, upper_ion_stage, arr_nu_hz, modelgridindex, timestep, modelpath, max_levels, use_lte_pops=False):
-    adata = at.get_levels(modelpath, get_photoionisations=True)
+    adata = at.io.get_levels(modelpath, get_photoionisations=True)
 
     lower_ion_stage = upper_ion_stage - 1
     upperionstr = at.get_ionstring(atomic_number, upper_ion_stage)
@@ -394,7 +394,7 @@ def get_ion_gamma_dnu(modelpath, modelgridindex, timestep, atomic_number, ion_st
     T_e = estimators[(timestep, modelgridindex)]['Te']
     T_R = estimators[(timestep, modelgridindex)]['TR']
 
-    adata = at.get_levels(modelpath, get_photoionisations=True)
+    adata = at.io.get_levels(modelpath, get_photoionisations=True)
     ion_data = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0]
     upper_ion_data = adata.query('Z == @atomic_number and ion_stage == (@ion_stage + 1)').iloc[0]
     ionstr = at.get_ionstring(atomic_number, ion_stage)
@@ -443,7 +443,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
     recomblowerionlist = ((26, 3),)
     photoionlist = ((26, 2),)
     kappalowerionlist = ((26, 2), (26, 3),)
-    adata = at.get_levels(modelpath, get_photoionisations=True)
+    adata = at.io.get_levels(modelpath, get_photoionisations=True)
 
     fieldlist = []
 

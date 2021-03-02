@@ -50,7 +50,8 @@ def get_modeldata(filename=Path()):
     dfmodeldata.index.name = 'cellid'
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
-    dfmodeldata.eval('shellmass_grams = 10 ** logrho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)'
+    piconst = math.pi
+    dfmodeldata.eval('shellmass_grams = 10 ** logrho * 4. / 3. * @piconst * (velocity_outer ** 3 - velocity_inner ** 3)'
                      '* (1e5 * @t_model_init_seconds) ** 3', inplace=True)
 
     return dfmodeldata, t_model_init_days

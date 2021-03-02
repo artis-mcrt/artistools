@@ -88,7 +88,7 @@ def test_radfield():
 
 
 def test_get_ionrecombratecalibration():
-    at.get_ionrecombratecalibration(modelpath=modelpath)
+    at.io.atomic.get_ionrecombratecalibration(modelpath=modelpath)
 
 
 def test_spectraplot():

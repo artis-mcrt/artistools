@@ -627,7 +627,7 @@ def get_flux_contributions_from_packets(
     assert groupby in [None, 'ion', 'line', 'upperterm', 'terms']
 
     if groupby in ['terms', 'upperterm']:
-        adata = at.get_levels(modelpath)
+        adata = at.io.get_levels(modelpath)
 
     def get_emprocesslabel(emtype):
         if emtype >= 0:
