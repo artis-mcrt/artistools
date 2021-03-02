@@ -141,7 +141,7 @@ def get_ylabel(variable):
 
 def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcooling=True):
     """Generate timestep, modelgridindex, dict from estimator file."""
-    itstep = at.get_inputparams(modelpath)['itstep']
+    # itstep = at.get_inputparams(modelpath)['itstep']
 
     with at.zopen(estfilepath, 'rt') as estimfile:
         timestep = -1
@@ -158,11 +158,11 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
                     yield timestep, modelgridindex, estimblock
 
                 timestep = int(row[1])
-                if timestep > itstep:
-                    print(f"Dropping estimator data from timestep {timestep} and later (> itstep {itstep})")
-                    # itstep in input.txt is updated by ARTIS at every timestep, so the data beyond here
-                    # could be half-written to disk and cause parsing errors
-                    return
+                # if timestep > itstep:
+                #     print(f"Dropping estimator data from timestep {timestep} and later (> itstep {itstep})")
+                #     # itstep in input.txt is updated by ARTIS at every timestep, so the data beyond here
+                #     # could be half-written to disk and cause parsing errors
+                #     return
 
                 modelgridindex = int(row[3])
                 # print(f'Timestep {timestep} cell {modelgridindex}')
@@ -1180,8 +1180,8 @@ def main(args=None, argsraw=None, **kwargs):
             # ['heating_gamma/gamma_dep'],
             # ['nne'],
             ['Te', 'TR'],
-            [['averageionisation', ['Fe', 'Ni']]],
-            [['averageexcitation', ['Fe II', 'Fe III']]],
+            # [['averageionisation', ['Fe', 'Ni']]],
+            # [['averageexcitation', ['Fe II', 'Fe III']]],
             # [['populations', ['He I', 'He II', 'He III']]],
             # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
             # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
@@ -1193,9 +1193,9 @@ def main(args=None, argsraw=None, **kwargs):
             [['populations', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
             # [['populations', ['Fe II', 'Fe III', 'Co II', 'Co III', 'Ni II', 'Ni III']]],
             # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
-            [['RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V']]],
-            [['RRC_LTE_Nahar', ['Co II', 'Co III', 'Co IV', 'Co V']]],
-            [['RRC_LTE_Nahar', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
+            # [['RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V']]],
+            # [['RRC_LTE_Nahar', ['Co II', 'Co III', 'Co IV', 'Co V']]],
+            # [['RRC_LTE_Nahar', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
             # [['Alpha_R / RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni III']]],
             # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
         ]
