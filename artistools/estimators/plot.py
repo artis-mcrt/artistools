@@ -23,7 +23,6 @@ import scipy.signal
 from astropy import constants as const
 
 import artistools as at
-import artistools.classic_estimators
 import artistools.initial_composition
 import artistools.nltepops
 from artistools.estimators.data import *
@@ -224,7 +223,8 @@ def plot_multi_ion_series(
     plotted_something = False
 
     if args.classicartis:
-        compositiondata = at.classic_estimators.get_atomic_composition(modelpath)
+        import artistools.estimators.data_classic
+        compositiondata = artistools.estimators.data_classic.get_atomic_composition(modelpath)
     else:
         compositiondata = at.get_composition_data(modelpath)
 
@@ -786,8 +786,9 @@ def main(args=None, argsraw=None, **kwargs):
     timesteps_included = list(range(timestepmin, timestepmax + 1))
 
     if args.classicartis:
+        import artistools.estimators.data_classic
         modeldata, _ = at.get_modeldata(modelpath)
-        estimators = at.classic_estimators.read_classic_estimators(modelpath, modeldata)
+        estimators = artistools.estimators.data_classic.read_classic_estimators(modelpath, modeldata)
     else:
         estimators = read_estimators(modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included))
 
