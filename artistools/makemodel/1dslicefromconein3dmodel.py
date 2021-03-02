@@ -13,7 +13,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 
 def get_model_data(args):
-    model = at.get_3d_modeldata(args.modelpath)
+    model = at.inputmodel.get_3d_modeldata(args.modelpath)
     abundances = at.inputmodel.get_initialabundances(args.modelpath[0])
 
     with open(os.path.join(args.modelpath[0], 'model.txt'), 'r') as fmodelin:
