@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Functions for reading and plotting estimator files.
+"""Functions for reading and processing estimator files.
 
-Examples are temperatures, populations, heating/cooling rates.
+Examples are temperatures, populations, and heating/cooling rates.
 """
 # import math
 import argparse

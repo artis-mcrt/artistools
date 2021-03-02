@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Functions for reading and plotting estimator files.
+"""Functions for plotting artis estimators and internal structure.
 
 Examples are temperatures, populations, heating/cooling rates.
 """
