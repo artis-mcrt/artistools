@@ -10,10 +10,10 @@ from astropy import units as u
 import matplotlib
 import numpy as np
 import scipy.interpolate
-
+import artistools.inputmodel
 
 def plot_2d_initial_abundances(modelpath, args):
-    model = at.get_2d_modeldata(modelpath[0])
+    model = at.inputmodel.get_2d_modeldata(modelpath[0])
     abundances = at.inputmodel.get_initialabundances(modelpath[0])
 
     abundances['inputcellid'] = abundances['inputcellid'].apply(lambda x: float(x))
