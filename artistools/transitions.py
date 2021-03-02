@@ -286,7 +286,7 @@ def main(args=None, argsraw=None, **kwargs):
     plot_resolution = max(1, int((args.xmax - args.xmin) / 1000))
 
     if args.atomicdatabase == 'artis':
-        adata = at.get_levels(modelpath, tuple(ionlist), get_transitions=True)
+        adata = at.io.get_levels(modelpath, tuple(ionlist), get_transitions=True)
 
     if from_model:
         dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
