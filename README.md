@@ -19,19 +19,17 @@ pip install -e .
 ```
 
 ## Usage
-Artistools provides the following commands:
-  - getartismodeldeposition
-  - getartisspencerfano
-  - makeartismodel1dslicefrom3d
-  - makeartismodelbotyanski
-  - plotartisestimators
-  - plotartislightcurve
-  - plotartisnltepops
-  - plotartismacroatom
-  - plotartisnonthermal
-  - plotartisradfield
-  - plotartisspectrum
-  - plotartistransitions
+Artistools provides commands including:
+  - artistools-deposition
+  - artistools-spencerfano
+  - artistools-make1dslicefrom3dmodel
+  - artistools-estimators
+  - artistools-lightcurve
+  - artistools-nltepops
+  - artistools-nonthermal
+  - artistools-radfield
+  - artistools-spectrum
+  - artistools-transitions
 
 Use the -h option to get a list of command-line arguments for each subcommand. Most of these commands would usually be run from within an ARTIS simulation folder.
 
