@@ -1482,7 +1482,7 @@ def workfunction_tests(modelpath, args):
 
     Latom_axelrod = np.array([get_Latom_axelrod(en_ev=en_ev, Zboundbar=Zboundbar) for en_ev in arr_en_ev])
 
-    # adata = at.get_levels(modelpath, get_transitions=False, ionlist=tuple(ions))
+    # adata = at.io.get_levels(modelpath, get_transitions=False, ionlist=tuple(ions))
     adata = None
     arr_Latom_summed = np.zeros_like(arr_en_ev)
     for i, en_ev in enumerate(arr_en_ev):
@@ -1876,7 +1876,7 @@ def main(args=None, argsraw=None, **kwargs):
             adata = None
             dfpops = None
         else:
-            adata = at.get_levels(modelpath, get_transitions=True, ionlist=tuple(ions))
+            adata = at.io.get_levels(modelpath, get_transitions=True, ionlist=tuple(ions))
             dfpops = get_lte_pops(adata, ions, ionpopdict, temperature=6000)
 
         if step == 0 and args.ostat:
