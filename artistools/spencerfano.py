@@ -782,6 +782,7 @@ def make_ntstats_plot(ntstatfile):
         norm_factors = 1. / dfstats['frac_sum']
     else:
         norm_factors = 1.0
+    pd.set_option("display.max_rows", 120)
     print(dfstats)
 
     xarr = np.log10(dfstats.x_e)
@@ -1482,7 +1483,7 @@ def workfunction_tests(modelpath, args):
 
     Latom_axelrod = np.array([get_Latom_axelrod(en_ev=en_ev, Zboundbar=Zboundbar) for en_ev in arr_en_ev])
 
-    # adata = at.io.get_levels(modelpath, get_transitions=False, ionlist=tuple(ions))
+    # adata = at.atomic.get_levels(modelpath, get_transitions=False, ionlist=tuple(ions))
     adata = None
     arr_Latom_summed = np.zeros_like(arr_en_ev)
     for i, en_ev in enumerate(arr_en_ev):
@@ -1731,7 +1732,7 @@ def main(args=None, argsraw=None, **kwargs):
             print("A time or timestep must be specified.")
             sys.exit()
 
-        modeldata, _ = at.get_modeldata(modelpath)
+        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
         if args.velocity >= 0.:
             args.modelgridindex = at.get_mgi_of_velocity_kms(modelpath, args.velocity)
         else:
@@ -1876,7 +1877,7 @@ def main(args=None, argsraw=None, **kwargs):
             adata = None
             dfpops = None
         else:
-            adata = at.io.get_levels(modelpath, get_transitions=True, ionlist=tuple(ions))
+            adata = at.atomic.get_levels(modelpath, get_transitions=True, ionlist=tuple(ions))
             dfpops = get_lte_pops(adata, ions, ionpopdict, temperature=6000)
 
         if step == 0 and args.ostat:
@@ -1889,7 +1890,8 @@ def main(args=None, argsraw=None, **kwargs):
         nne = get_nne(ions, ionpopdict)
         nnetot = get_nnetot(ions, ionpopdict)
         x_e = nne / nntot
-        print('---')
+        if step > 0:
+            print('\n---')
         print(f'     nntot: {nntot:.2e} [cm-3]')
         print(f'       nne: {nne:.2e} [cm-3]')
         print(f'       x_e: {x_e:.2e} [cm-3]')

@@ -503,7 +503,7 @@ def make_contrib_plot(axes, modelpath, densityplotyvars, args):
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
 
-    modeldata, _ = at.get_modeldata(modelpath)
+    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
 
     estimators = at.estimators.read_estimators(modelpath=modelpath)
     allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index

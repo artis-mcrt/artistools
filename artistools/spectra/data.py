@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Artistools - spectra related functions."""
-import argparse
 import math
 import multiprocessing
 from collections import namedtuple
@@ -179,7 +178,7 @@ def get_spectrum_from_packets(
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
 
     if use_comovingframe:
-        modeldata, _ = at.get_modeldata(Path(packetsfiles[0]).parent)
+        modeldata, _ = at.inputmodel.get_modeldata(Path(packetsfiles[0]).parent)
         vmax = modeldata.iloc[-1].velocity_outer * u.km / u.s
         betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
     else:
@@ -627,7 +626,7 @@ def get_flux_contributions_from_packets(
     assert groupby in [None, 'ion', 'line', 'upperterm', 'terms']
 
     if groupby in ['terms', 'upperterm']:
-        adata = at.io.get_levels(modelpath)
+        adata = at.atomic.get_levels(modelpath)
 
     def get_emprocesslabel(emtype):
         if emtype >= 0:
@@ -688,7 +687,7 @@ def get_flux_contributions_from_packets(
         array_lambdabinedges, array_lambda, delta_lambda = get_exspec_bins()
 
     if use_comovingframe:
-        modeldata, _ = at.get_modeldata(modelpath)
+        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
         vmax = modeldata.iloc[-1].velocity_outer * u.km / u.s
         betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
@@ -720,11 +719,11 @@ def get_flux_contributions_from_packets(
             t_seconds = at.get_timestep_times_float(modelpath, loc='start')[-1] * u.day.to('s')
 
             if modelgridindex is not None:
-                v_inner = at.get_modeldata(modelpath)[0]['velocity_inner'].iloc[modelgridindex] * 1e5
-                v_outer = at.get_modeldata(modelpath)[0]['velocity_outer'].iloc[modelgridindex] * 1e5
+                v_inner = at.inputmodel.get_modeldata(modelpath)[0]['velocity_inner'].iloc[modelgridindex] * 1e5
+                v_outer = at.inputmodel.get_modeldata(modelpath)[0]['velocity_outer'].iloc[modelgridindex] * 1e5
             else:
                 v_inner = 0.
-                v_outer = at.get_modeldata(modelpath)[0]['velocity_outer'].iloc[-1] * 1e5
+                v_outer = at.inputmodel.get_modeldata(modelpath)[0]['velocity_outer'].iloc[-1] * 1e5
 
             r_inner = t_seconds * v_inner
             r_outer = t_seconds * v_outer

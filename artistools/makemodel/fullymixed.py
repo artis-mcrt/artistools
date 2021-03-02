@@ -39,9 +39,9 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    dfmodeldata, t_model_init_days = at.get_modeldata(args.inputpath)
+    dfmodeldata, t_model_init_days = at.inputmodel.get_modeldata(args.inputpath)
     print(f'Read model.txt')
-    dfabundances = at.get_initialabundances(args.inputpath)
+    dfabundances = at.inputmodel.get_initialabundances(args.inputpath)
     print(f'Read abundances.txt')
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
@@ -73,7 +73,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     print(f'Saved {modeloutfilename}')
 
     abundoutfilename = "abundances_fullymixed.txt"
-    at.save_initialabundances(dfabundances, Path(args.outputpath, abundoutfilename))
+    at.inputmodel.save_initialabundances(dfabundances, Path(args.outputpath, abundoutfilename))
     print(f'Saved {abundoutfilename}')
 
 

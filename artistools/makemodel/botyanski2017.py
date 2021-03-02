@@ -9,6 +9,7 @@ import pandas as pd
 from astropy import units as u
 
 import artistools as at
+import artistools.inputmodel
 
 
 def min_dist(listin, number):
@@ -102,8 +103,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         v_inner = v_outer
     print(f'M_tot = {m_tot:.3f} solMass')
 
-    at.save_modeldata(dfmodel, t_model_init_days, os.path.join(args.outputpath, 'model.txt'))
-    at.save_initialabundances(dfabundances, os.path.join(args.outputpath, 'abundances.txt'))
+    at.inputmodel.save_modeldata(dfmodel, t_model_init_days, os.path.join(args.outputpath, 'model.txt'))
+    at.inputmodel.save_initialabundances(dfabundances, os.path.join(args.outputpath, 'abundances.txt'))
 
 
 if __name__ == "__main__":

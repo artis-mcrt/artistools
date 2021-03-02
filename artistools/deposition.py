@@ -26,7 +26,7 @@ def main_analytical(args=None, argsraw=None, **kwargs):
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
-    dfmodel, t_model_init = at.get_modeldata(args.modelpath)
+    dfmodel, t_model_init = at.inputmodel.get_modeldata(args.modelpath)
 
     t_init = t_model_init * u.day
 
@@ -41,7 +41,7 @@ def main_analytical(args=None, argsraw=None, **kwargs):
     print(f't_now = {t_now.to("d")}')
     print('The following assumes that all 56Ni has decayed to 56Co and all energy comes from emitted positrons')
 
-    adata = at.io.get_levels(args.modelpath, get_photoionisations=True)
+    adata = at.atomic.get_levels(args.modelpath, get_photoionisations=True)
     timestep = at.get_timestep_of_timedays(args.modelpath, args.timedays)
     dfnltepops = at.nltepops.read_files(
         args.modelpath, timestep=timestep).query('Z == 26')

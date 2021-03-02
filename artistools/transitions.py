@@ -245,7 +245,7 @@ def main(args=None, argsraw=None, **kwargs):
         else:
             timestep = args.timestep
 
-        modeldata, _ = at.get_modeldata(Path(modelpath, 'model.txt'))
+        modeldata, _ = at.inputmodel.get_modeldata(Path(modelpath, 'model.txt'))
         estimators_all = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
         if not estimators_all:
             return -1
@@ -286,7 +286,7 @@ def main(args=None, argsraw=None, **kwargs):
     plot_resolution = max(1, int((args.xmax - args.xmin) / 1000))
 
     if args.atomicdatabase == 'artis':
-        adata = at.io.get_levels(modelpath, tuple(ionlist), get_transitions=True)
+        adata = at.atomic.get_levels(modelpath, tuple(ionlist), get_transitions=True)
 
     if from_model:
         dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)

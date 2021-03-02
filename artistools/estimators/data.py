@@ -269,7 +269,7 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_value
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
 
-    modeldata, _ = at.get_modeldata(modelpath)
+    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
     arr_velocity_outer = tuple(list([float(v) for v in modeldata['velocity_outer'].values]))
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex)
@@ -369,7 +369,7 @@ def get_averageionisation(populations, atomic_number):
 def get_averageexcitation(modelpath, modelgridindex, timestep, atomic_number, ion_stage, T_exc):
     import artistools.nltepops
     dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
-    adata = at.io.get_levels(modelpath)
+    adata = at.atomic.get_levels(modelpath)
     ionlevels = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0].levels
 
     energypopsum = 0

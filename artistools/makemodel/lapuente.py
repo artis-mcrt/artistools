@@ -92,7 +92,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     print(f'M_Ni56 = {tot_ni56mass /  u.solMass.to("g"):.3f} solMass')
 
     at.save_modeldata(dfmodel, t_model_init_days, Path(args.outputpath, 'model.txt'))
-    at.save_initialabundances(dfabundances, Path(args.outputpath, 'abundances.txt'))
+    at.inputmodel.save_initialabundances(dfabundances, Path(args.outputpath, 'abundances.txt'))
 
 
 if __name__ == "__main__":
