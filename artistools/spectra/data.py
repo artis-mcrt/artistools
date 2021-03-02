@@ -9,10 +9,7 @@ from functools import partial
 from pathlib import Path
 import os
 
-import matplotlib.ticker as ticker
-import matplotlib.patches as mpatches
-import matplotlib.pyplot as plt
-import matplotlib as mpl
+import matplotlib.pyplot as plt  # needed to get the color map
 import numpy as np
 import pandas as pd
 from astropy import constants as const
@@ -496,71 +493,6 @@ def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
     dfspectrum.eval('f_lambda = f_nu * nu / lambda_angstroms', inplace=True)
 
     return dfspectrum
-
-
-def plot_polarisation(modelpath, args):
-    angle = args.plotviewingangle[0]
-    stokes_params = get_polarisation(angle=angle, modelpath=modelpath)
-    stokes_params[args.stokesparam].eval(
-        'lambda_angstroms = @c / nu', local_dict={'c': const.c.to('angstrom/s').value}, inplace=True)
-
-    timearray = stokes_params[args.stokesparam].keys()[1:-1]
-    (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
-                    modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
-    timeavg = (args.timemin + args.timemax) / 2.
-
-    def match_closest_time(reftime):
-        return str("{0:.4f}".format(min([float(x) for x in timearray], key=lambda x: abs(x - reftime))))
-
-    timeavg = match_closest_time(timeavg)
-
-    filterfunc = at.get_filterfunc(args)
-    if filterfunc is not None:
-        print("Applying filter to ARTIS spectrum")
-        stokes_params[args.stokesparam][timeavg] = filterfunc(stokes_params[args.stokesparam][timeavg])
-
-    vpkt_config = at.get_vpkt_config(modelpath)
-
-    if args.plotvspecpol:
-        linelabel = fr"{timeavg} days, cos($\theta$) = {vpkt_config['cos_theta'][angle[0]]}"
-    else:
-        linelabel = f"{timeavg} days"
-
-    if args.binflux:
-        new_lambda_angstroms = []
-        binned_flux = []
-
-        wavelengths = stokes_params[args.stokesparam]['lambda_angstroms']
-        fluxes = stokes_params[args.stokesparam][timeavg]
-        nbins = 5
-
-        for i in np.arange(0, len(wavelengths-nbins), nbins):
-            new_lambda_angstroms.append(wavelengths[i + int(nbins/2)])
-            sum_flux = 0
-            for j in range(i, i+nbins):
-                sum_flux += fluxes[j]
-            binned_flux.append(sum_flux/nbins)
-
-        fig = plt.plot(new_lambda_angstroms, binned_flux)
-    else:
-        fig = stokes_params[args.stokesparam].plot(x='lambda_angstroms', y=timeavg, label=linelabel)
-
-    if args.ymax is None:
-        args.ymax = 0.5
-    if args.ymin is None:
-        args.ymin = -0.5
-    if args.xmax is None:
-        args.xmax = 10000
-    if args.xmin is None:
-        args.xmin = 0
-    plt.ylim(args.ymin, args.ymax)
-    plt.xlim(args.xmin, args.xmax)
-
-    plt.ylabel(f"{args.stokesparam}")
-    plt.xlabel(r'Wavelength ($\mathrm{{\AA}}$)')
-    figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
-    plt.savefig(modelpath / figname, format='pdf')
-    print(f"Saved {figname}")
 
 
 @lru_cache(maxsize=4)
