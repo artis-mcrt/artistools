@@ -375,7 +375,14 @@ def get_composition_data_from_outputfile(modelpath):
 
 @lru_cache(maxsize=8)
 def get_modeldata(filename):
-    """Return a list containing named tuples for all model grid cells."""
+    """
+    Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
+
+    Returns (modeldata, t_model_init_days)
+        - modeldata: a list of named tuples (one for each model grid cell)
+        - t_model_init_days: the time in days at which the snapshot is defined
+    """
+
     if os.path.isdir(filename):
         filename = firstexisting(['model.txt.xz', 'model.txt.gz', 'model.txt'], path=filename)
 
