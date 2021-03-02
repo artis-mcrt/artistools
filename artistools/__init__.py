@@ -70,8 +70,8 @@ commandlist = {
     'plotartisestimators': ('artistools.estimators', 'main'),
     'artistools-estimators': ('artistools.estimators', 'main'),
 
-    'plotartislightcurve': ('artistools.lightcurve', 'main'),
-    'artistools-lightcurve': ('artistools.lightcurve', 'main'),
+    'plotartislightcurve': ('artistools.lightcurve.plot', 'main'),
+    'artistools-lightcurve': ('artistools.lightcurve.plot', 'main'),
 
     'plotartislinefluxes': ('artistools.linefluxes', 'main'),
     'artistools-linefluxes': ('artistools.linefluxes', 'main'),
@@ -88,8 +88,8 @@ commandlist = {
     'plotartisradfield': ('artistools.radfield', 'main'),
     'artistools-radfield': ('artistools.radfield', 'main'),
 
-    'plotartisspectrum': ('artistools.spectra', 'main'),
-    'artistools-spectrum': ('artistools.spectra', 'main'),
+    'plotartisspectrum': ('artistools.spectra.plot', 'main'),
+    'artistools-spectrum': ('artistools.spectra.plot', 'main'),
 
     'plotartistransitions': ('artistools.transitions', 'main'),
     'artistools-transitions': ('artistools.transitions', 'main'),
