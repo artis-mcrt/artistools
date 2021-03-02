@@ -9,6 +9,7 @@ from functools import partial
 from pathlib import Path
 import os
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt  # needed to get the color map
 import numpy as np
 import pandas as pd
