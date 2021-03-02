@@ -1129,3 +1129,4 @@ def write_flambda_spectra(modelpath, args):
             time_list.write(f'{str(time)} \n')
 
     print(f'Saved in {outdirectory}')
+
