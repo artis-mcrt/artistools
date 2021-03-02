@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 import artistools
 
+
 @lru_cache(maxsize=8)
 def get_modeldata(filename=Path()):
     """
@@ -127,7 +128,8 @@ def get_mgi_of_velocity_kms(modelpath, velocity, mgilist=None):
 @lru_cache(maxsize=8)
 def get_initialabundances(modelpath):
     """Return a list of mass fractions."""
-    abundancefilepath = artistools.firstexisting(['abundances.txt.xz', 'abundances.txt.gz', 'abundances.txt'], path=modelpath)
+    abundancefilepath = artistools.firstexisting(
+        ['abundances.txt.xz', 'abundances.txt.gz', 'abundances.txt'], path=modelpath)
 
     columns = ['inputcellid', *['X_' + artistools.elsymbols[x] for x in range(1, 31)]]
     abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, names=columns)
