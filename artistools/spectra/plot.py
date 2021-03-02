@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Artistools - spectra related functions."""
+"""Artistools - spectra plotting functions."""
 import argparse
 import math
 import multiprocessing
