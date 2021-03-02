@@ -378,15 +378,15 @@ def get_modeldata(filename):
     """
     Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
 
-    Returns (modeldata, t_model_init_days)
-        - modeldata: a pandas DataFrame with a row for each model grid cell
+    Returns (dfmodeldata, t_model_init_days)
+        - dfmodeldata: a pandas DataFrame with a row for each model grid cell
         - t_model_init_days: the time in days at which the snapshot is defined
     """
 
     if os.path.isdir(filename):
         filename = firstexisting(['model.txt.xz', 'model.txt.gz', 'model.txt'], path=filename)
 
-    modeldata = pd.DataFrame()
+    dfmodeldata = pd.DataFrame()
 
     gridcelltuple = None
     velocity_inner = 0.
@@ -402,19 +402,24 @@ def get_modeldata(filename):
                     'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57'][:len(row) + 1])
 
             celltuple = gridcelltuple(int(row[0]), velocity_inner, *(map(float, row[1:])))
-            modeldata = modeldata.append([celltuple], ignore_index=True)
+            dfmodeldata = dfmodeldata.append([celltuple], ignore_index=True)
 
             # next inner is the current outer
             velocity_inner = celltuple.velocity_outer
 
             # the model.txt file may contain more shells, but we should ignore them
             # if we have already read in the specified number of shells
-            if len(modeldata) == gridcellcount:
+            if len(dfmodeldata) == gridcellcount:
                 break
 
-    assert len(modeldata) <= gridcellcount
-    modeldata.index.name = 'cellid'
-    return modeldata, t_model_init_days
+    assert len(dfmodeldata) <= gridcellcount
+    dfmodeldata.index.name = 'cellid'
+
+    t_model_init_seconds = t_model_init_days * 24 * 60 * 60
+    dfmodeldata.eval('shellmass_grams = 10 ** logrho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)'
+                     '* (1e5 * @t_model_init_seconds) ** 3', inplace=True)
+
+    return dfmodeldata, t_model_init_days
 
 
 def get_2d_modeldata(modelpath):
