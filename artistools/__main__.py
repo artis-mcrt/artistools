@@ -2,6 +2,7 @@ import argparse
 
 import artistools
 
+
 def addargs(parser):
     pass
 
