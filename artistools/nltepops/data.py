@@ -21,8 +21,6 @@ import matplotlib as mpl
 
 import artistools as at
 
-defaultoutputfile = 'plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
-
 
 def texifyterm(strterm):
     """Replace a term string with TeX notation equivalent."""
@@ -205,13 +203,3 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryv
     dfpop = pd.concat(arr_dfnltepop).copy()
 
     return dfpop
-
-
-def annotate_emission_line(ax, y, upperlevel, lowerlevel, label):
-    ax.annotate('', xy=(lowerlevel, y), xycoords=('data', 'axes fraction'),
-                xytext=(upperlevel, y), textcoords=('data', 'axes fraction'),
-                arrowprops=dict(
-                    facecolor='black', width=0.1, headwidth=6))
-
-    ax.annotate(label, xy=((upperlevel + lowerlevel) / 2, y), xycoords=('data', 'axes fraction'),
-                size=10, va="bottom", ha="center",)
