@@ -457,6 +457,7 @@ def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
 
     arr_tmid = [float(i) for i in vspecdata.columns.values[1:] if i[-2] != '.']
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1])] + [arr_tmid[-1] - arr_tmid[-2]]
+
     def match_closest_time(reftime):
         return str("{}".format(min([float(x) for x in arr_tmid], key=lambda x: abs(x - reftime))))
 
