@@ -17,7 +17,7 @@ def main(argsraw=None):
     subparsers = parser.add_subparsers(dest='subcommand')
     subparsers.required = False
 
-    for command, (submodulename, funcname) in sorted(commandlist.items()):
+    for command, (submodulename, funcname) in sorted(artistools.commandlist.items()):
         submodule = importlib.import_module(submodulename, package='artistools')
         subparser = subparsers.add_parser(command)
         submodule.addargs(subparser)
@@ -35,7 +35,7 @@ def main(argsraw=None):
         #     command = script.split('=')[0].strip()
         #     print(f'  {command}')
 
-        for command in sorted(commandlist):
+        for command in sorted(artistools.commandlist):
             print(f'  {command}')
 
 
