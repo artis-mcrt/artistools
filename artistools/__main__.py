@@ -8,7 +8,6 @@ def addargs(parser):
 def main(argsraw=None):
     """Show a list of available artistools commands."""
     import argcomplete
-    import argparse
     import importlib
 
     parser = argparse.ArgumentParser()
