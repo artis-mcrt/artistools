@@ -5,7 +5,6 @@ A collection of plotting, analysis, and file format conversion tools for the ART
 """
 
 import sys
-
 from .__main__ import main, addargs
 from .misc import *
 
