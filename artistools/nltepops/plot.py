@@ -22,7 +22,7 @@ import matplotlib as mpl
 import artistools as at
 import artistools.atomic
 import artistools.estimators
-from .data import *
+
 
 defaultoutputfile = 'plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
 
@@ -112,7 +112,7 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
     if not args.hide_lte_tr:
         lte_columns.append(('n_LTE_T_R', T_R))
 
-    dfpopthision = add_lte_pops(modelpath, dfpopthision, lte_columns, noprint=False, maxlevel=args.maxlevel)
+    dfpopthision = at.nltepops.add_lte_pops(modelpath, dfpopthision, lte_columns, noprint=False, maxlevel=args.maxlevel)
 
     if args.maxlevel >= 0:
         dfpopthision.query('level <= @args.maxlevel', inplace=True)
@@ -129,14 +129,14 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
 
     configlist = ion_data.levels.iloc[:max(dfpopthision.level) + 1].levelname
 
-    configtexlist = [texifyconfiguration(configlist[0])]
+    configtexlist = [at.nltepops.texifyconfiguration(configlist[0])]
     for i in range(1, len(configlist)):
         prevconfignoterm = configlist[i - 1].rsplit('_', maxsplit=1)[0]
         confignoterm = configlist[i].rsplit('_', maxsplit=1)[0]
         if confignoterm == prevconfignoterm:
-            configtexlist.append('" ' + texifyterm(configlist[i].rsplit('_', maxsplit=1)[1]))
+            configtexlist.append('" ' + at.nltepops.texifyterm(configlist[i].rsplit('_', maxsplit=1)[1]))
         else:
-            configtexlist.append(texifyconfiguration(configlist[i]))
+            configtexlist.append(at.nltepops.texifyconfiguration(configlist[i]))
 
     dfpopthision['config'] = [configlist[level] for level in dfpopthision.level]
     dfpopthision['texname'] = [configtexlist[level] for level in dfpopthision.level]
@@ -268,7 +268,7 @@ def make_plot_levelpop_over_time(modelpaths, args):
         populationsLTE = {}
 
         for timestep in timesteps:
-            dfpop = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
+            dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
             try:
                 timesteppops = dfpop.loc[(dfpop['Z'] == Z) & (dfpop['ion_stage'] == ionstage)]
             except KeyError:
@@ -317,7 +317,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
     time_days = float(at.get_timestep_time(modelpath, timestep))
     modelname = at.get_model_name(modelpath)
 
-    dfpop = read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0]).copy()
+    dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgilist[0]).copy()
 
     if dfpop.empty:
         print(f'No NLTE population data for modelgrid cell {mgilist[0]} timestep {timestep}')
@@ -373,7 +373,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
             T_e = args.exc_temperature
             T_R = args.exc_temperature
 
-        dfpop = read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex).copy()
+        dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex).copy()
 
         if dfpop.empty:
             print(f'No NLTE population data for modelgrid cell {modelgridindex} timestep {timestep}')
