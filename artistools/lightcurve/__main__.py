@@ -1,3 +1,3 @@
-import artistools.lightcurve
+from .plot import main
 
-artistools.lightcurve.plot.main()
+main()

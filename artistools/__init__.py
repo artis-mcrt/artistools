@@ -67,7 +67,7 @@ commandlist = {
     'plotartisdeposition': ('artistools.deposition', 'main'),
     'artistools-deposition': ('artistools.deposition', 'main'),
 
-    'plotartisestimators': ('artistools.estimators', 'main'),
+    'plotartisestimators': ('artistools.estimators.plot', 'main'),
     'artistools-estimators': ('artistools.estimators', 'main'),
 
     'plotartislightcurve': ('artistools.lightcurve.plot', 'main'),
@@ -89,7 +89,7 @@ commandlist = {
     'artistools-radfield': ('artistools.radfield', 'main'),
 
     'plotartisspectrum': ('artistools.spectra.plot', 'main'),
-    'artistools-spectrum': ('artistools.spectra.plot', 'main'),
+    'artistools-spectrum': ('artistools.spectra', 'main'),
 
     'plotartistransitions': ('artistools.transitions', 'main'),
     'artistools-transitions': ('artistools.transitions', 'main'),
@@ -1184,7 +1184,7 @@ def main(argsraw=None):
         #     command = script.split('=')[0].strip()
         #     print(f'  {command}')
 
-        for command in commandlist:
+        for command in sorted(commandlist):
             print(f'  {command}')
 
 
