@@ -20,7 +20,7 @@ import matplotlib
 from extinction import apply, ccm89
 
 from matplotlib.legend_handler import HandlerTuple
-from artistools.lightcurve.data import *
+from .data import *
 
 color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
 
