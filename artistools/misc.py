@@ -28,6 +28,8 @@ import pandas as pd
 from astropy import units as u
 from astropy import constants as const
 
+import artistools
+
 # num_processes = 1
 # num_processes = multiprocessing.cpu_count() - 1
 num_processes = max(1, int(multiprocessing.cpu_count() / 2))
@@ -68,7 +70,7 @@ commandlist = {
     'plotartislinefluxes': ('artistools.linefluxes', 'main'),
     'artistools-linefluxes': ('artistools.linefluxes', 'main'),
 
-    'plotartisnltepops': ('artistools.nltepops', 'main'),
+    'plotartisnltepops': ('artistools.nltepops.plot', 'main'),
     'artistools-nltepops': ('artistools.nltepops', 'main'),
 
     'plotartismacroatom': ('artistools.macroatom', 'main'),
