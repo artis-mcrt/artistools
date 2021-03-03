@@ -8,17 +8,6 @@ from astropy import constants as const
 from pathlib import Path
 
 import artistools as at
-import artistools.atomic
-import artistools.deposition
-import artistools.inputmodel
-import artistools.lightcurve
-import artistools.macroatom
-import artistools.makemodel.botyanski2017
-import artistools.nltepops
-import artistools.nonthermal
-import artistools.radfield
-import artistools.spectra
-import artistools.transitions
 
 modelpath = Path(os.path.dirname(os.path.abspath(__file__)), 'data')
 outputpath = Path(os.path.dirname(os.path.abspath(__file__)), 'output')
