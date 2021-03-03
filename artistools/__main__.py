@@ -1,3 +1,3 @@
-import artistools
+from .__init__ import main
 
-artistools.main()
+main()

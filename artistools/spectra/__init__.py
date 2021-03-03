@@ -3,5 +3,5 @@
 
 # import artistools as at
 
-from artistools.spectra.plot import main, addargs
-from artistools.spectra.data import *
+from .plot import main, addargs
+from .data import *

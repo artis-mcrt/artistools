@@ -1,3 +1,3 @@
-import artistools.spectra
+from .plot import main
 
-artistools.spectra.plot.main()
+main()
