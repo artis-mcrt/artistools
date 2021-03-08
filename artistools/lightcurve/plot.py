@@ -582,6 +582,9 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, colours, 
                      xerr=np.std(band_delta_m15_viewing_angles),
                      yerr=np.std(band_peak_mag_viewing_angles), ecolor=colours[ii], capsize=2)
 
+    # a0, label = at.lightcurve.get_sn_sample_bol()
+    # plotvalues.append((a0, a0))
+
     plt.legend(plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
                loc='upper right', fontsize=8, ncol=2, columnspacing=1)
     plt.xlabel(r'Decline Rate ($\Delta$m$_{15}$)', fontsize=14)

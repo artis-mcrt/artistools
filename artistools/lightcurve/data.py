@@ -300,3 +300,41 @@ def read_lightcurve_data(lightcurvefilename):
 
     return lightcurve_data, metadata
 
+
+def get_sn_sample_bol():
+    datafilepath = Path(at.PYDIR, 'data', 'lightcurves', 'SNsample', 'bololc.txt')
+    sn_data = pd.read_csv(datafilepath, delim_whitespace=True, comment='#')
+
+    print(sn_data)
+    bol_luminosity = sn_data['Lmax'].astype(float)
+    bol_magnitude = 4.74 - (2.5 * np.log10((10**bol_luminosity) / const.L_sun.to('erg/s').value))  # 𝑀𝑏𝑜𝑙,𝑠𝑢𝑛 = 4.74
+
+    bol_magnitude_error_upper = bol_magnitude - (4.74 - (2.5 * np.log10((10**(bol_luminosity + sn_data['+/-.2'].astype(float))) / const.L_sun.to('erg/s').value)))
+    # bol_magnitude_error_lower = (4.74 - (2.5 * np.log10((10**(bol_luminosity - sn_data['+/-.2'].astype(float))) / const.L_sun.to('erg/s').value))) - bol_magnitude
+    # print(bol_magnitude_error_upper, "============")
+    # print(bol_magnitude_error_lower, "============")
+    # print(bol_magnitude_error_upper == bol_magnitude_error_lower)
+
+    # a0 = plt.errorbar(x=sn_data['dm15'].astype(float), y=sn_data['Lmax'].astype(float),
+    #                   yerr=sn_data['+/-.2'].astype(float), xerr=sn_data['+/-'].astype(float),
+    #                   color='grey', marker='o', ls='None')
+    #
+    sn_data['bol_mag'] = bol_magnitude
+    print(sn_data[['name', 'bol_mag', 'dm15', 'dm40']])
+    sn_data[['name', 'bol_mag', 'dm15', 'dm40']].to_csv('boldata.txt', sep=' ', index=False)
+    a0 = plt.errorbar(x=sn_data['dm15'].astype(float), y=bol_magnitude,
+                      yerr=bol_magnitude_error_upper, xerr=sn_data['+/-'].astype(float),
+                      color='k', marker='o', ls='None')
+
+
+    # a0 = plt.errorbar(x=sn_data['dm15'].astype(float), y=sn_data['dm40'].astype(float),
+    #                   yerr=sn_data['+/-.1'].astype(float), xerr=sn_data['+/-'].astype(float),
+    #                   color='k', marker='o', ls='None')
+
+    # a0 = plt.scatter(sn_data['dm15'].astype(float), bol_magnitude, s=80, color='k', marker='o')
+    # plt.gca().invert_yaxis()
+    # plt.show()
+
+    label = 'Bolometric data (Scalzo et al. 2019)'
+    return a0, label
+
