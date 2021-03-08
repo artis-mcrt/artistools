@@ -506,6 +506,7 @@ def get_flux_contributions(
     arraynu = at.get_nu_grid(modelpath)
     arraylambda = const.c.to('angstrom/s').value / arraynu
     if not Path(modelpath, 'compositiondata.txt').is_file():
+        print('WARNING: compositiondata.txt not found. Using output*.txt instead')
         elementlist = at.get_composition_data_from_outputfile(modelpath)
     else:
         elementlist = at.get_composition_data(modelpath)
