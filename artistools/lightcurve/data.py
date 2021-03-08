@@ -338,3 +338,20 @@ def get_sn_sample_bol():
     label = 'Bolometric data (Scalzo et al. 2019)'
     return a0, label
 
+
+def get_phillips_relation_data():
+    datafilepath = Path(at.PYDIR, 'data', 'lightcurves', 'SNsample', 'CfA3_Phillips.dat')
+    sn_data = pd.read_csv(datafilepath, delim_whitespace=True, comment='#')
+    print(sn_data)
+
+    deltam_15B = sn_data['dm15(B)'].astype(float)
+    M_B = sn_data['MB'].astype(float)
+
+
+    label = 'Observed (Hicken et al. 2009)'
+    # a0 = plt.scatter(deltam_15B, M_B, s=80, color='grey', marker='o', label=label)
+    a0 = plt.errorbar(x=deltam_15B, y=M_B, yerr=sn_data['err_MB'], xerr=sn_data['err_dm15(B)'],
+                      color='k', alpha=0.9, marker='.', capsize=2, label=label, ls='None', zorder=5)
+    # plt.gca().invert_yaxis()
+    # plt.show()
+    return a0, label

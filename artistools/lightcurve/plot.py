@@ -583,6 +583,7 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, colours, 
                      yerr=np.std(band_peak_mag_viewing_angles), ecolor=colours[ii], capsize=2)
 
     # a0, label = at.lightcurve.get_sn_sample_bol()
+    # a0, label = at.lightcurve.get_phillips_relation_data()
     # plotvalues.append((a0, a0))
 
     plt.legend(plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
