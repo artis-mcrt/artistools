@@ -3,5 +3,5 @@
 
 # import artistools as at
 
-from .plot import main, addargs
-from .data import *
+from .plotlightcurve import main, addargs
+from .lightcurve import *

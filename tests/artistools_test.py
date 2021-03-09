@@ -85,6 +85,7 @@ def test_radfield():
 def test_get_ionrecombratecalibration():
     at.atomic.get_ionrecombratecalibration(modelpath=modelpath)
 
+
 def test_spencerfano():
     at.spencerfano.main(modelpath=modelpath, timedays=300, makeplot=True, npts=200, noexcitation=True, outputfile=outputpath)
 

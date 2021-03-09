@@ -25,7 +25,7 @@ from astropy import constants as const
 import artistools as at
 import artistools.initial_composition
 import artistools.nltepops
-from artistools.estimators.data import *
+from .estimators import *
 
 colors_tab10 = list(plt.get_cmap('tab10')(np.linspace(0, 1.0, 10)))
 
@@ -223,8 +223,8 @@ def plot_multi_ion_series(
     plotted_something = False
 
     if args.classicartis:
-        import artistools.estimators.data_classic
-        compositiondata = artistools.estimators.data_classic.get_atomic_composition(modelpath)
+        import artistools.estimators.estimators_classic
+        compositiondata = artistools.estimators.estimators_classic.get_atomic_composition(modelpath)
     else:
         compositiondata = at.get_composition_data(modelpath)
 
@@ -786,9 +786,9 @@ def main(args=None, argsraw=None, **kwargs):
     timesteps_included = list(range(timestepmin, timestepmax + 1))
 
     if args.classicartis:
-        import artistools.estimators.data_classic
+        import artistools.estimators.estimators_classic
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-        estimators = artistools.estimators.data_classic.read_classic_estimators(modelpath, modeldata)
+        estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
     else:
         estimators = read_estimators(modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included))
 

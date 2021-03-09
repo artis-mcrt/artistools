@@ -61,16 +61,16 @@ commandlist = {
     'plotartisdeposition': ('artistools.deposition', 'main'),
     'artistools-deposition': ('artistools.deposition', 'main'),
 
-    'plotartisestimators': ('artistools.estimators.plot', 'main'),
+    'plotartisestimators': ('artistools.estimators.plotestimators', 'main'),
     'artistools-estimators': ('artistools.estimators', 'main'),
 
-    'plotartislightcurve': ('artistools.lightcurve.plot', 'main'),
-    'artistools-lightcurve': ('artistools.lightcurve.plot', 'main'),
+    'plotartislightcurve': ('artistools.lightcurve.plotlightcurve', 'main'),
+    'artistools-lightcurve': ('artistools.lightcurve', 'main'),
 
     'plotartislinefluxes': ('artistools.linefluxes', 'main'),
     'artistools-linefluxes': ('artistools.linefluxes', 'main'),
 
-    'plotartisnltepops': ('artistools.nltepops.plot', 'main'),
+    'plotartisnltepops': ('artistools.nltepops.plotnltepops', 'main'),
     'artistools-nltepops': ('artistools.nltepops', 'main'),
 
     'plotartismacroatom': ('artistools.macroatom', 'main'),
