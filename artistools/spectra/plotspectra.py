@@ -22,7 +22,7 @@ import re
 import artistools as at
 import artistools.radfield
 import artistools.packets
-from artistools.spectra.data import *
+from artistools.spectra.spectra import *
 
 hatches = ['', 'x', '-', '\\', '+', 'O', '.', '', 'x', '*', '\\', '+', 'O', '.']  # ,
 

@@ -15,6 +15,7 @@ modelpath = Path(at.PYDIR, '..', 'tests', 'data')
 outputpath = Path(at.PYDIR, '..', 'tests', 'output')
 at.enable_diskcache = False
 
+
 def test_spectraplot():
     at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320)
 
