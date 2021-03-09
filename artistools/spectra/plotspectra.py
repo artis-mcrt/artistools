@@ -211,7 +211,7 @@ def plot_artis_spectrum(
             statpath = Path(args.outputfile).resolve().parent
     else:
         spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
-                                reftime=timeavg, args=args)
+                                reftime=timeavg)
         if args.plotviewingangle:  # read specpol res.
             angles = args.plotviewingangle
             viewinganglespectra = {}
