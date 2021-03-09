@@ -57,7 +57,8 @@ def stackspectra(spectra_and_factors):
     return stackedspectrum
 
 
-def get_specdata(modelpath, args):
+@lru_cache(maxsize=16)
+def get_specdata(modelpath, stokesparam=None):
     polarisationdata = False
     if Path(modelpath, 'specpol.out').is_file():
         specfilename = Path(modelpath) / "specpol.out"
@@ -70,11 +71,12 @@ def get_specdata(modelpath, args):
     if polarisationdata:
         # angle = args.plotviewingangle[0]
         stokes_params = get_polarisation(angle=None, modelpath=modelpath)
-        if args is not None and 'stokesparam' in args:
-            specdata = stokes_params[args.stokesparam]
+        if stokesparam is not None:
+            specdata = stokes_params[stokesparam]
         else:
             specdata = stokes_params['I']
     else:
+        assert stokesparam is None
         print(f"Reading {specfilename}")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         specdata = specdata.rename(columns={'0': 'nu'})
@@ -82,14 +84,15 @@ def get_specdata(modelpath, args):
     return specdata
 
 
+@lru_cache(maxsize=16)
 def get_spectrum(
         modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None,
-        reftime=None, modelnumber=None, args=None):
+        reftime=None, modelnumber=None):
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax < 0:
         timestepmax = timestepmin
 
-    specdata = get_specdata(modelpath, args)
+    specdata = get_specdata(modelpath)
 
     nu = specdata.loc[:, 'nu'].values
     arr_tmid = at.get_timestep_times_float(modelpath, loc='mid')
@@ -137,9 +140,9 @@ def get_spectrum_at_time(modelpath, timestep, time, args, angle=None, res_specda
         elif os.path.isfile(modelpath/'specpol_res.out'):
             spectrum = get_res_spectrum(modelpath, timestep, timestep, angle=angle, res_specdata=res_specdata)
         else:
-            spectrum = get_spectrum(modelpath, timestep, timestep, modelnumber=modelnumber, args=args)
+            spectrum = get_spectrum(modelpath, timestep, timestep, modelnumber=modelnumber)
     else:
-        spectrum = get_spectrum(modelpath, timestep, timestep, modelnumber=modelnumber, args=args)
+        spectrum = get_spectrum(modelpath, timestep, timestep, modelnumber=modelnumber)
 
     return spectrum
 

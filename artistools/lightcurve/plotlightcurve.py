@@ -1095,7 +1095,6 @@ def main(args=None, argsraw=None, **kwargs):
     filternames_conversion_dict = {'rs': 'r', 'gs': 'g', 'is': 'i'}
     if args.magnitude:
         make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
-        print(f'Saved figure: {args.outputfile}')
 
     elif args.colour_evolution:
         colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
