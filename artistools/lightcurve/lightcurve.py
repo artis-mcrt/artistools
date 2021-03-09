@@ -131,7 +131,7 @@ def get_magnitudes(modelpath, args, angle=None, modelnumber=None):
             time = float(time)
             if args.timemin < time < args.timemax:
                 wavelength_from_spectrum, flux = \
-                    get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle,
+                    get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, angle,
                                                  res_specdata=res_specdata, modelnumber=modelnumber)
 
                 if len(wavelength_from_spectrum) > len(wavefilter):
@@ -204,10 +204,11 @@ def get_filter_data(filterdir, filter_name):
     return zeropointenergyflux, np.array(wavefilter), np.array(transmission), wavefilter_min, wavefilter_max
 
 
-def get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, args, angle=None,
+def get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, angle=None,
                                  res_specdata=None, modelnumber=None, spectrum=None):
     if spectrum is None:
-        spectrum = at.spectra.get_spectrum_at_time(modelpath, timestep, time, args, angle, res_specdata, modelnumber)
+        spectrum = at.spectra.get_spectrum_at_time(
+            modelpath, timestep, time, angle, res_specdata, modelnumber)
 
     wavelength_from_spectrum, flux = [], []
     for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
