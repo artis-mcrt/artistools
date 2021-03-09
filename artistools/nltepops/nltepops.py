@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
 """Artistools - NLTE population related functions."""
-import argparse
 import math
 import multiprocessing
-import os
+# import os
 import re
 # import sys
 from functools import lru_cache
 from functools import partial
 from pathlib import Path
-from itertools import chain
+# from itertools import chain
 
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
+# import matplotlib.pyplot as plt
+# import matplotlib.ticker as ticker
 # import numpy as np
 import pandas as pd
 from astropy import constants as const
-import numpy as np
-import matplotlib as mpl
+# import numpy as np
+# import matplotlib as mpl
 
 import artistools as at
 
