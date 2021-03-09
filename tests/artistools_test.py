@@ -2,6 +2,7 @@
 
 import math
 import numpy as np
+import os
 import os.path
 import pandas as pd
 from astropy import constants as const
@@ -12,6 +13,14 @@ import artistools as at
 modelpath = Path(os.path.dirname(os.path.abspath(__file__)), 'data')
 outputpath = Path(os.path.dirname(os.path.abspath(__file__)), 'output')
 at.enable_diskcache = False
+
+
+def test_commands():
+    import importlib
+    # ensure that the commands are pointing to valid submodule.function() targets
+    for command, (submodulename, funcname) in sorted(at.commandlist.items()):
+        submodule = importlib.import_module(submodulename, package='artistools')
+        assert hasattr(submodule, funcname)
 
 
 def test_timestep_times():
@@ -87,7 +96,8 @@ def test_get_ionrecombratecalibration():
 
 
 def test_spencerfano():
-    at.spencerfano.main(modelpath=modelpath, timedays=300, makeplot=True, npts=200, noexcitation=True, outputfile=outputpath)
+    at.spencerfano.main(modelpath=modelpath, timedays=300, makeplot=True, npts=200,
+                        noexcitation=True, outputfile=outputpath)
 
 
 def test_transitions():

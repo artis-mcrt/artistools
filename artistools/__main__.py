@@ -20,7 +20,7 @@ def main(argsraw=None):
 
     for command, (submodulename, funcname) in sorted(artistools.commandlist.items()):
         submodule = importlib.import_module(submodulename, package='artistools')
-        subparser = subparsers.add_parser(command)
+        subparser = subparsers.add_parser(command.replace('artistools-', ''))
         submodule.addargs(subparser)
         subparser.set_defaults(func=getattr(submodule, funcname))
 
