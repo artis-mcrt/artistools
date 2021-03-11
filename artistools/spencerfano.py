@@ -965,7 +965,7 @@ def solve_spencerfano_differentialform(
     dftransitions = {}
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
-        print(f'  including Z={Z} ion_stage {ionstage} ({at.get_ionstring(Z, ionstage)}) nnion={nnion=:.2e} ionisation')
+        print(f'  including Z={Z} ion_stage {ionstage} ({at.get_ionstring(Z, ionstage)}) nnion={nnion:.2e} ionisation')
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
         # print(dfcollion_thision)
 
@@ -1309,10 +1309,10 @@ def e_s_test(ax, ionpot_ev, J, arr_en_ev, shellstr, color):
         else:
             prob_e_s_cannot_ionise += prob[i]
 
-    print(f'{prob_sum=:.2f}')
-    print(f'{e_s_avg=:.1e}')
-    print(f'{prob_e_s_can_ionise=:.2f}')
-    print(f'{prob_e_s_cannot_ionise=:.2f}')
+    print(f'prob_sum={prob_sum:.2f}')
+    print(f'e_s_avg={e_s_avg:.1e}')
+    print(f'prob_e_s_can_ionise={prob_e_s_can_ionise:.2f}')
+    print(f'prob_e_s_cannot_ionise={prob_e_s_cannot_ionise:.2f}')
     # ax.plot(e_s, prob, label=shellstr + ' dP / d_e_s', color=color)
     # ax.vlines(ionpot_ev, ymin=0., ymax=max(prob), color=color)
 
@@ -1443,12 +1443,12 @@ def workfunction_tests(modelpath, args):
     # x_e = nne / nntot
     Zbar = get_Zbar(ions=ions, ionpopdict=ionpopdict)  # average atomic number
     Zboundbar = get_Zboundbar(ions=ions, ionpopdict=ionpopdict)  # average bound electrons per nucleus
-    print(f'{nntot=:.1e}')
-    print(f'{nnetot=:.1e}')
-    print(f'{nne=:.1e}')
-    print(f'{nnebound=:.1e}')
-    print(f'{Zbar=:.1e}')
-    print(f'{Zboundbar=:.1e}')
+    print(f'nntot: {nntot:.1e}')
+    print(f'nnetot:{nnetot:.1e}')
+    print(f'nne: {nne:.1e}')
+    print(f'nnebound: {nnebound:.1e}')
+    print(f'Zbar: {Zbar:.1e}')
+    print(f'Zboundbar: {Zboundbar:.1e}')
 
     hbar_ev_s = 6.58211951e-16  # in eV seconds
     omegap = 5.6e4 * math.sqrt(nne)  # in per second
@@ -1456,14 +1456,17 @@ def workfunction_tests(modelpath, args):
 
     en_min_ev = args.emin
     en_max_ev = args.emax
-    print(f'{en_min_ev=:.1f} eV')
-    print(f'{en_max_ev=:.1f} eV')
+    print(f'en_min_ev: {en_min_ev:.1f} eV')
+    print(f'en_max_ev: {en_max_ev:.1f} eV')
     # arr_en_ev = np.linspace(en_min_ev, en_max_ev, 2000)
     # delta_en_ev = arr_en_ev[1] - arr_en_ev[0]
-    arr_en_ev = np.logspace(start=math.log10(en_min_ev), stop=math.log10(en_max_ev), base=10, num=args.npts, endpoint=True)
+    arr_en_ev = np.logspace(
+        start=math.log10(en_min_ev), stop=math.log10(en_max_ev), base=10, num=args.npts, endpoint=True
+    )
+
     global Psecondary_e_s_max
     Psecondary_e_s_max = arr_en_ev[2]
-    print(f'{Psecondary_e_s_max=}')
+    print(f'Psecondary_e_s_max: {Psecondary_e_s_max}')
 
     delta_en_ev = arr_en_ev[1:] - arr_en_ev[:-1]
     arr_en_ev = arr_en_ev[:-1]  # remove the endpoint, now that we've used it to calculate detla_en_ev
@@ -1516,7 +1519,7 @@ def workfunction_tests(modelpath, args):
         #     shellindex += 1
 
         ionpot_valence_ev = dfcollion_thision.ionpot_ev.min()
-        print(f'\n===> ion {Z=} {ionstage=} {ionpot_valence_ev=}')
+        print(f'\n===> ion Z {Z} ionstage {ionstage} ionpot_valence_ev {ionpot_valence_ev}')
         # print(dfcollion_thision)
 
         binding_alt = get_mean_binding_energy_alt(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence_ev)  # binding in erg
