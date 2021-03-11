@@ -22,10 +22,14 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
+    - name: Checkout Code
+      uses: actions/checkout@v2.3.4
+
     - name: Get pip cache dir
       id: pip-cache
       run: |
         echo "::set-output name=dir::$(pip cache dir)"
+
     - name: Cache pip
       uses: actions/cache@v2
       with:
@@ -33,9 +37,6 @@ jobs:
         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
         restore-keys: |
          ${{ runner.os }}-pip-
-
-    - name: Checkout Code
-      uses: actions/checkout@v2.3.4
 
     - name: Install dependencies
       run: |
