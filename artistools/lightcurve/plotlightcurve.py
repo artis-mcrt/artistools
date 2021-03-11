@@ -809,6 +809,8 @@ def plot_lightcurve_from_data(
 
             filter_data[filter_name]['magnitude'] = 2.5 * np.log10(
                 clightinangstroms / (filter_data[filter_name]['dered'] * lambda0 ** 2)) - 48.6
+        else:
+            print("WARNING: did not correct for reddening")
         if len(filter_names) > 1:
             ax[plotnumber].plot(filter_data[filter_name]['time'], filter_data[filter_name]['magnitude'], marker,
                                 label=linename, color=color)
