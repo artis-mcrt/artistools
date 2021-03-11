@@ -1075,9 +1075,9 @@ def parse_cdefines(srcfilepath=None, printdefs=False):
     import re
 
     # p_define = re.compile('^[\t ]*#[\t ]*define[\t ]+([a-zA-Z0-9_]+)[\t ]+')
-    p_define = re.compile('^[\t ]*#[\t ]*define[\t ]+([a-zA-Z0-9_]+)+')
+    p_define = re.compile(r'^[\t ]*#[\t ]*define[\t ]+([a-zA-Z0-9_]+)+')
 
-    p_const = re.compile('(?:\w+\s+)([a-zA-Z_=][a-zA-Z0-9_=]*)*(?<!=)=(?!=)')
+    p_const = re.compile(r'(?:\w+\s+)([a-zA-Z_=][a-zA-Z0-9_=]*)*(?<!=)=(?!=)')
 
     p_comment = re.compile(r'/\*([^*]+|\*+[^/])*(\*+/)?')
     p_cpp_comment = re.compile('//.*')
