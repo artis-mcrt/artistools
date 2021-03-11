@@ -1344,10 +1344,10 @@ def get_epsilon_avg(e_p, J, ionpot_ev):
             prob_e_s_cannot_ionise += prob
     # print(f'{prob_sum=:.3f}')
     assert(abs(prob_sum - 1.) < 0.30)
-    print(f'{e_p=:.1e}')
-    print(f'{eps_avg=:.1e}')
-    print(f'{prob_e_s_can_ionise=:.2f}')
-    print(f'{prob_e_s_cannot_ionise=:.2f}')
+    print(f'e_p: {e_p:.1e}')
+    print(f'eps_avg: {eps_avg:.1e}')
+    print(f'prob_e_s_can_ionise: {prob_e_s_can_ionise:.2f}')
+    print(f'prob_e_s_cannot_ionise: {prob_e_s_cannot_ionise:.2f}')
     return eps_avg
 
 
