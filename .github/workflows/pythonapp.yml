@@ -45,7 +45,7 @@ jobs:
 
     - name: Install artistools
       run: |
-        python -m pip -e .
+        python -m pip install -e .
 
     - name: Lint with flake8
       run: |
