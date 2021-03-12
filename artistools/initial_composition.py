@@ -12,6 +12,7 @@ import numpy as np
 import scipy.interpolate
 import artistools.inputmodel
 
+
 def plot_2d_initial_abundances(modelpath, args):
     model = at.inputmodel.get_2d_modeldata(modelpath[0])
     abundances = at.inputmodel.get_initialabundances(modelpath[0])
@@ -50,7 +51,10 @@ def plot_2d_initial_abundances(modelpath, args):
 
 
 def plot_3d_initial_abundances(modelpath, args):
-    model = at.inputmodel.get_3d_modeldata(modelpath[0])
+
+    # t_model is in days and vmax is in cm/s
+    model, t_model, vmax = at.inputmodel.get_modeldata(modelpath[0], dimensions=3)
+
     abundances = at.inputmodel.get_initialabundances(modelpath[0])
 
     abundances['inputcellid'] = abundances['inputcellid'].apply(lambda x: float(x))
@@ -58,27 +62,22 @@ def plot_3d_initial_abundances(modelpath, args):
     merge_dfs = model.merge(abundances, how='inner', on='inputcellid')
     # merge_dfs = plot_most_abundant(modelpath, args)
 
-    with open(os.path.join(modelpath[0], 'model.txt'), 'r') as fmodelin:
-        fmodelin.readline()  # npts_model3d
-        t_model = float(fmodelin.readline())  # days
-        vmax = float(fmodelin.readline())  # v_max in [cm/s]
-
     plotaxis1 = 'y'
     plotaxis2 = 'z'
     sliceaxis = 'x'
-    sliceposition = merge_dfs.iloc[(merge_dfs['cellpos_in[x]']).abs().argsort()][:1]['cellpos_in[x]'].item()
+    sliceposition = merge_dfs.iloc[(merge_dfs['pos_x']).abs().argsort()][:1]['pos_x'].item()
     # Choose position to slice. This gets minimum absolute value as the closest to 0
     ion = f'X_{args.ion}'
 
-    plotvals = (merge_dfs.loc[merge_dfs[f'cellpos_in[{sliceaxis}]'] == sliceposition])
+    plotvals = (merge_dfs.loc[merge_dfs[f'pos_{sliceaxis}'] == sliceposition])
     print(plotvals.keys())
 
     font = {'weight': 'bold',
             'size': 18}
 
     matplotlib.rc('font', **font)
-    x = plotvals[f'cellpos_in[{plotaxis1}]'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
-    y = plotvals[f'cellpos_in[{plotaxis2}]'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
+    x = plotvals[f'pos_{plotaxis1}'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
+    y = plotvals[f'pos_{plotaxis2}'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
     # fig = plt.figure(figsize=(5, 5))
     ax = plt.subplot(111)
     im = ax.scatter(x, y, c=plotvals[ion], marker="8", rasterized=True)  # cmap=plt.get_cmap('PuOr')
@@ -127,7 +126,7 @@ def get_model_abundances_Msun_1D(modelpath):
 
 
 def plot_most_abundant(modelpath, args):
-    model = at.inputmodel.get_3d_modeldata(modelpath[0])
+    model, _, _ = at.inputmodel.get_modeldata(modelpath[0], dimensions=3)
     abundances = at.inputmodel.get_initialabundances(modelpath[0])
 
     merge_dfs = model.merge(abundances, how='inner', on='inputcellid')

@@ -9,7 +9,7 @@ import artistools
 
 
 @lru_cache(maxsize=8)
-def get_modeldata(filename=Path()):
+def get_modeldata(filename=Path(), dimensions=1):
     """
     Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
 
@@ -18,44 +18,114 @@ def get_modeldata(filename=Path()):
         - t_model_init_days: the time in days at which the snapshot is defined
     """
 
+    assert dimensions in [1, 3]
     if os.path.isdir(filename):
         filename = artistools.firstexisting(['model.txt.xz', 'model.txt.gz', 'model.txt'], path=filename)
-
-    dfmodeldata = pd.DataFrame()
 
     gridcelltuple = None
     velocity_inner = 0.
     with open(filename, 'r') as fmodel:
         gridcellcount = int(fmodel.readline())
         t_model_init_days = float(fmodel.readline())
+        t_model_init_seconds = t_model_init_days * 24 * 60 * 60
+
+        if dimensions == 3:
+            ncoordgridx = round(gridcellcount ** (1./3.))  # number of grid cell steps along an axis (same for xyz)
+            ncoordgridy = round(gridcellcount ** (1./3.))
+            ncoordgridz = round(gridcellcount ** (1./3.))
+
+            assert (ncoordgridx * ncoordgridy * ncoordgridz) == gridcellcount
+            vmax_cmps = float(fmodel.readline())  # velocity max in cm/s
+            xmax_tmodel = vmax_cmps * t_model_init_seconds  # xmax = ymax = zmax
+
+        continuedfromrow = None
+        lastinputcellid = 0
+        recordlist = []
         for line in fmodel:
             row = line.split()
 
-            if gridcelltuple is None:
-                gridcelltuple = namedtuple('gridcell', [
-                    'inputcellid', 'velocity_inner', 'velocity_outer', 'logrho',
-                    'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57'][:len(row) + 1])
+            if continuedfromrow is not None:
+                row = continuedfromrow + row
+                continuedfromrow = None
 
-            celltuple = gridcelltuple(int(row[0]), velocity_inner, *(map(float, row[1:])))
-            dfmodeldata = dfmodeldata.append([celltuple], ignore_index=True)
+            if len(row) <= 5:  # rows are split across multiple lines
+                continuedfromrow = row
+                continue
 
-            # next inner is the current outer
-            velocity_inner = celltuple.velocity_outer
+            inputcellid = int(row[0])
+            assert inputcellid == lastinputcellid + 1
+            lastinputcellid = inputcellid
 
-            # the model.txt file may contain more shells, but we should ignore them
-            # if we have already read in the specified number of shells
-            if len(dfmodeldata) == gridcellcount:
-                break
+            if dimensions == 1:
+                if gridcelltuple is None:
+                    gridcelltuple = namedtuple('gridcell', [
+                        'inputcellid', 'velocity_inner', 'velocity_outer', 'logrho',
+                        'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57'][:len(row) + 1])
+
+                assert len(row) >= 8
+                celltuple = gridcelltuple(inputcellid, velocity_inner, *(map(float, row[1:])))
+                recordlist.append(celltuple)
+
+                # next inner is the current outer
+                velocity_inner = celltuple.velocity_outer
+
+                # the model.txt file may contain more shells, but we should ignore them
+                # if we have already read in the specified number of shells
+                if len(recordlist) == gridcellcount:
+                    break
+
+            elif dimensions == 3:
+                assert len(row) >= 10  # can be 10 to 12 depending on presence of Ni57 and Co57 abundances
+
+                if gridcelltuple is None:
+                    # inputpos_a/b/c are used (instead of x/y/z) because these columns are used
+                    # inconsistently between different scripts, and ignored by artis anyway
+                    gridcelltuple = namedtuple('gridcell', [
+                        'inputcellid', 'pos_x', 'pos_y', 'pos_z', 'inputpos_a', 'inputpos_b', 'inputpos_c', 'rho',
+                        'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57'][:len(row) + 3])
+
+                # increment x first, then y, then z
+                # here inputcellid starts counting from one, so needs to be corrected
+                cellid = inputcellid - 1
+                xindex = cellid % ncoordgridx
+                yindex = (cellid // ncoordgridx) % ncoordgridy
+                zindex = (cellid // (ncoordgridx * ncoordgridy)) % ncoordgridz
+
+                pos_x = -xmax_tmodel + 2 * xindex * xmax_tmodel / ncoordgridx
+                pos_y = -xmax_tmodel + 2 * yindex * xmax_tmodel / ncoordgridy
+                pos_z = -xmax_tmodel + 2 * zindex * xmax_tmodel / ncoordgridz
+
+                celltuple = gridcelltuple(inputcellid, pos_x, pos_y, pos_z, *(map(float, row[1:])))
+                recordlist.append(celltuple)
+
+    dfmodeldata = pd.DataFrame.from_records(recordlist, columns=gridcelltuple._fields)
 
     assert len(dfmodeldata) <= gridcellcount
     dfmodeldata.index.name = 'cellid'
 
-    t_model_init_seconds = t_model_init_days * 24 * 60 * 60
-    piconst = math.pi
-    dfmodeldata.eval('shellmass_grams = 10 ** logrho * 4. / 3. * @piconst * (velocity_outer ** 3 - velocity_inner ** 3)'
-                     '* (1e5 * @t_model_init_seconds) ** 3', inplace=True)
+    if dimensions == 1:
+        piconst = math.pi
+        dfmodeldata.eval(
+            'shellmass_grams = 10 ** logrho * 4. / 3. * @piconst * (velocity_outer ** 3 - velocity_inner ** 3)'
+            '* (1e5 * @t_model_init_seconds) ** 3', inplace=True)
 
-    return dfmodeldata, t_model_init_days
+        return dfmodeldata, t_model_init_days
+
+    elif dimensions == 3:
+        indexlist = [0, ncoordgridx - 1, (ncoordgridx - 1) * (ncoordgridy - 1),
+                     (ncoordgridx - 1) * (ncoordgridy - 1) * (ncoordgridz - 1)]
+        for index in indexlist:
+            cell = dfmodeldata.iloc[index]
+            xclose = np.isclose(cell.pos_x, cell.inputpos_a, atol=0.5 * xmax_tmodel / ncoordgridx)
+            yclose = np.isclose(cell.pos_y, cell.inputpos_b, atol=0.5 * xmax_tmodel / ncoordgridy)
+            zclose = np.isclose(cell.pos_z, cell.inputpos_c, atol=0.5 * xmax_tmodel / ncoordgridz)
+            if not all([xclose, yclose, zclose]):
+                print("WARNING: model.txt coordinate position mismatch between calculated and"
+                      " input value (showing first mismatch only) (check xyz vs zyx)")
+                print(cell.to_frame().T)
+                break
+
+        return dfmodeldata, t_model_init_days, vmax_cmps
 
 
 def get_2d_modeldata(modelpath):
@@ -72,17 +142,6 @@ def get_2d_modeldata(modelpath):
     column_names = ['inputcellid', 'cellpos_mid[r]', 'cellpos_mid[z]', 'rho_model',
                     'ffe', 'fni', 'fco', 'ffe52', 'fcr48']
     model.columns = column_names
-    return model
-
-
-def get_3d_modeldata(modelpath):
-    model = pd.read_csv(
-        os.path.join(modelpath[0], 'model.txt'), delim_whitespace=True, header=None, skiprows=3, dtype=float)
-
-    columns = ['inputcellid', 'cellpos_in[z]', 'cellpos_in[y]', 'cellpos_in[x]', 'rho_model',
-               'ffe', 'fni', 'fco', 'ffe52', 'fcr48']
-    model = pd.DataFrame(model.values.reshape(-1, 10))
-    model.columns = columns
     return model
 
 
