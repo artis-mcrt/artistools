@@ -13,7 +13,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 
 def get_model_data(args):
-    model = at.inputmodel.get_3d_modeldata(args.modelpath)
+    model = at.inputmodel.get_modeldata(args.modelpath, dimensions=3)
     abundances = at.inputmodel.get_initialabundances(args.modelpath[0])
 
     with open(os.path.join(args.modelpath[0], 'model.txt'), 'r') as fmodelin:
@@ -37,14 +37,14 @@ def make_cone(args):
     merge_dfs = get_model_data(args)
 
     if args.positive_axis:
-        cone = (merge_dfs.loc[merge_dfs[f'cellpos_in[{args.slice_along_axis}]'] >= 1 / (np.tan(theta))
-                              * np.sqrt((merge_dfs[f'cellpos_in[{args.other_axis2}]']) ** 2
-                                        + (merge_dfs[f'cellpos_in[{args.other_axis1}]']) ** 2)])  # positive axis
+        cone = (merge_dfs.loc[merge_dfs[f'pos_{args.slice_along_axis}'] >= 1 / (np.tan(theta))
+                              * np.sqrt((merge_dfs[f'pos_{args.other_axis2}']) ** 2
+                                        + (merge_dfs[f'pos_{args.other_axis1}']) ** 2)])  # positive axis
     else:
-        cone = (merge_dfs.loc[merge_dfs[f'cellpos_in[{args.slice_along_axis}]'] <= -1/(np.tan(theta))
-                              * np.sqrt((merge_dfs[f'cellpos_in[{args.other_axis2}]'])**2
-                                        + (merge_dfs[f'cellpos_in[{args.other_axis1}]'])**2)])  # negative axis
-    # print(cone.loc[:, :[f'cellpos_in[{slice_on_axis}]']])
+        cone = (merge_dfs.loc[merge_dfs[f'pos_{args.slice_along_axis}'] <= -1/(np.tan(theta))
+                              * np.sqrt((merge_dfs[f'pos_{args.other_axis2}'])**2
+                                        + (merge_dfs[f'pos_{args.other_axis1}'])**2)])  # negative axis
+    # print(cone.loc[:, :[f'pos_{slice_on_axis}']])
 
     return cone
 
@@ -55,16 +55,16 @@ def get_profile_along_axis(args=None):
     merge_dfs = get_model_data(args)
 
     position_closest_to_axis = merge_dfs.iloc[
-        (merge_dfs[f'cellpos_in[{args.other_axis2}]']).abs().argsort()][:1][f'cellpos_in[{args.other_axis2}]'].item()
+        (merge_dfs[f'pos_{args.other_axis2}']).abs().argsort()][:1][f'pos_{args.other_axis2}'].item()
 
     if args.positive_axis:
-        profile1D = merge_dfs.loc[(merge_dfs[f'cellpos_in[{args.other_axis1}]'] == position_closest_to_axis)
-                                  & (merge_dfs[f'cellpos_in[{args.other_axis2}]'] == position_closest_to_axis)
-                                  & (merge_dfs[f'cellpos_in[{args.slice_along_axis}]'] > 0)]
+        profile1D = merge_dfs.loc[(merge_dfs[f'pos_{args.other_axis1}'] == position_closest_to_axis)
+                                  & (merge_dfs[f'pos_{args.other_axis2}'] == position_closest_to_axis)
+                                  & (merge_dfs[f'pos_{args.slice_along_axis}'] > 0)]
     else:
-        profile1D = merge_dfs.loc[(merge_dfs[f'cellpos_in[{args.other_axis1}]'] == position_closest_to_axis)
-                                  & (merge_dfs[f'cellpos_in[{args.other_axis2}]'] == position_closest_to_axis)
-                                  & (merge_dfs[f'cellpos_in[{args.slice_along_axis}]'] < 0)]
+        profile1D = merge_dfs.loc[(merge_dfs[f'pos_{args.other_axis1}'] == position_closest_to_axis)
+                                  & (merge_dfs[f'pos_{args.other_axis2}'] == position_closest_to_axis)
+                                  & (merge_dfs[f'pos_{args.slice_along_axis}'] < 0)]
 
     return profile1D.reset_index(drop=True)
 
@@ -73,18 +73,18 @@ def make_1D_profile(args):
     if args.makefromcone:
         cone = make_cone(args)
 
-        slice1D = cone.groupby([f'cellpos_in[{args.slice_along_axis}]'], as_index=False).mean()
+        slice1D = cone.groupby([f'pos_{args.slice_along_axis}'], as_index=False).mean()
         # where more than 1 X value, average rows eg. (1,0,0) (1,1,0) (1,1,1)
 
     else:  # make from along chosen axis
         slice1D = get_profile_along_axis(args)
 
-    slice1D[f'cellpos_in[{args.slice_along_axis}]'] = slice1D[f'cellpos_in[{args.slice_along_axis}]'].apply(
+    slice1D[f'pos_{args.slice_along_axis}'] = slice1D[f'pos_{args.slice_along_axis}'].apply(
         lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))  # Convert positions to velocities
-    slice1D = slice1D.rename(columns={f'cellpos_in[{args.slice_along_axis}]': 'vout_kmps'})
+    slice1D = slice1D.rename(columns={f'pos_{args.slice_along_axis}]': 'vout_kmps'})
     # Convert position to velocity
 
-    slice1D = slice1D.drop(['inputcellid', f'cellpos_in[{args.other_axis1}]', f'cellpos_in[{args.other_axis2}]'],
+    slice1D = slice1D.drop(['inputcellid', f'pos_{args.other_axis1}]', f'pos_{args.other_axis2}'],
                            axis=1)  # Remove columns we don't need
 
     slice1D['rho_model'] = slice1D['rho_model'].apply(lambda x: np.log10(x) if x != 0 else -100)
@@ -109,8 +109,8 @@ def make_1D_profile(args):
 def make_1D_model_files(args):
     slice1D = make_1D_profile(args)
     query_abundances_positions = slice1D.columns.str.startswith('X_')
-    model_df = slice1D.loc[:,~query_abundances_positions]
-    abundances_df = slice1D.loc[:,query_abundances_positions]
+    model_df = slice1D.loc[:, ~query_abundances_positions]
+    abundances_df = slice1D.loc[:, query_abundances_positions]
 
     # with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # Print all rows in df
     #     print(model_df)
@@ -132,8 +132,8 @@ def make_1D_model_files(args):
 
 # print(cone)
 
-# cone = (merge_dfs.loc[merge_dfs[f'cellpos_in[{args.other_axis2}]'] <= - (1/(np.tan(theta))
-# * np.sqrt((merge_dfs[f'cellpos_in[{slice_on_axis}]'])**2 + (merge_dfs[f'cellpos_in[{args.other_axis1}]'])**2))])
+# cone = (merge_dfs.loc[merge_dfs[f'pos_{args.other_axis2}'] <= - (1/(np.tan(theta))
+# * np.sqrt((merge_dfs[f'pos_{slice_on_axis}'])**2 + (merge_dfs[f'pos_{args.other_axis1}'])**2))])
 # cone = merge_dfs
 # cone = cone.loc[cone['rho_model'] > 0.0]
 
@@ -148,9 +148,9 @@ def make_plot(args):
     # print(cone['rho_model'])
 
     # set up for big model. For scaled down artis input model switch x and z
-    x = cone[f'cellpos_in[z]'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
-    y = cone[f'cellpos_in[y]'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
-    z = cone[f'cellpos_in[x]'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
+    x = cone['pos_z'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
+    y = cone['pos_y'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
+    z = cone['pos_x'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
 
     surf = ax.scatter3D(x, y, z, c=-cone['fni'], cmap=plt.get_cmap('viridis'))
 
@@ -160,7 +160,7 @@ def make_plot(args):
     ax.set_ylabel(r'y [10$^3$ km/s]')
     ax.set_zlabel(r'z [10$^3$ km/s]')
 
-    # plt.scatter(cone[f'cellpos_in[x]']/1e11, cone[f'cellpos_in[y]']/1e11)
+    # plt.scatter(cone[f'pos_x']/1e11, cone[f'pos_y']/1e11)
     plt.show()
 
 
@@ -181,7 +181,7 @@ def main(args=None, argsraw=None, **kwargs):
     if not args.modelpath:
         args.modelpath = [Path('.')]
 
-    #TODO: make command line args
+    # TODO: make command line args
     args.slice_along_axis = 'x'  # Cone made around this axis
     args.other_axis1 = 'z'
     args.other_axis2 = 'y'
