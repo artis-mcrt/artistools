@@ -40,15 +40,15 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
     gridcelltuple = None
     velocity_inner = 0.
     with open(filename, 'r') as fmodel:
-        gridcellcount = int(fmodel.readline())
-        t_model_init_days = float(fmodel.readline())
+        gridcellcount = int(artistools.readnoncommentline(fmodel))
+        t_model_init_days = float(artistools.readnoncommentline(fmodel))
         t_model_init_seconds = t_model_init_days * 24 * 60 * 60
 
         filepos = fmodel.tell()
         # if the next line is a single float then the model is 3D
         try:
 
-            vmax_cmps = float(fmodel.readline())  # velocity max in cm/s
+            vmax_cmps = float(artistools.readnoncommentline(fmodel))  # velocity max in cm/s
             xmax_tmodel = vmax_cmps * t_model_init_seconds  # xmax = ymax = zmax
             if dimensions is None:
                 print("Detected 3D model file")
@@ -78,7 +78,7 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
         continuedfromrow = None
         lastinputcellid = 0
         recordlist = []
-        for line in fmodel:
+        for line in filter(lambda line: line.strip() and not line.strip().lstrip().startswith('#'), fmodel):
             row = line.split()
 
             if continuedfromrow is not None:

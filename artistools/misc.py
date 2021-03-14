@@ -755,6 +755,17 @@ def firstexisting(filelist, path=Path('.')):
     raise FileNotFoundError(f'None of these files exist: {", ".join([str(x) for x in fullpaths])}')
 
 
+def readnoncommentline(file):
+    """Read a line from the text file, skipping blank and comment lines that begin with #"""
+
+    line = ''
+
+    while not line.strip() or line.strip().lstrip().startswith('#'):
+        line = file.readline()
+
+    return line
+
+
 @lru_cache(maxsize=24)
 def get_file_metadata(filepath):
     import yaml
@@ -898,26 +909,26 @@ def get_inputparams(modelpath):
     """Return parameters specified in input.txt."""
     params = {}
     with Path(modelpath, 'input.txt').open('r') as inputfile:
-        params['pre_zseed'] = int(inputfile.readline().split('#')[0])
+        params['pre_zseed'] = int(readnoncommentline(inputfile).split('#')[0])
 
         # number of time steps
-        params['ntstep'] = int(inputfile.readline().split('#')[0])
+        params['ntstep'] = int(readnoncommentline(inputfile).split('#')[0])
 
         # number of start and end time step
-        params['itstep'], params['ftstep'] = [int(x) for x in inputfile.readline().split('#')[0].split()]
+        params['itstep'], params['ftstep'] = [int(x) for x in readnoncommentline(inputfile).split('#')[0].split()]
 
-        params['tmin'], params['tmax'] = [float(x) for x in inputfile.readline().split('#')[0].split()]
+        params['tmin'], params['tmax'] = [float(x) for x in readnoncommentline(inputfile).split('#')[0].split()]
 
         params['nusyn_min'], params['nusyn_max'] = [
-            (float(x) * u.MeV / const.h).to('Hz') for x in inputfile.readline().split('#')[0].split()]
+            (float(x) * u.MeV / const.h).to('Hz') for x in readnoncommentline(inputfile).split('#')[0].split()]
 
         # number of times for synthesis
-        params['nsyn_time'] = int(inputfile.readline().split('#')[0])
+        params['nsyn_time'] = int(readnoncommentline(inputfile).split('#')[0])
 
         # start and end times for synthesis
-        params['nsyn_time_start'], params['nsyn_time_end'] = [float(x) for x in inputfile.readline().split('#')[0].split()]
+        params['nsyn_time_start'], params['nsyn_time_end'] = [float(x) for x in readnoncommentline(inputfile).split('#')[0].split()]
 
-        params['n_dimensions'] = int(inputfile.readline().split('#')[0])
+        params['n_dimensions'] = int(readnoncommentline(inputfile).split('#')[0])
 
         # there are more parameters in the file that are not read yet...
 
