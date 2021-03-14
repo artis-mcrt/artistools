@@ -103,7 +103,7 @@ def plot_3d_initial_abundances(modelpath, args):
 
 def get_model_abundances_Msun_1D(modelpath):
     filename = modelpath / 'model.txt'
-    modeldata, t_model_init_days = at.inputmodel.get_modeldata(filename)
+    modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata(filename)
     abundancedata = at.inputmodel.get_initialabundances(modelpath)
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60

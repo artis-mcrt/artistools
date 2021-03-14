@@ -44,7 +44,7 @@ def get_from_packets(modelpath, lcpath, packet_type='TYPE_ESCAPE', escape_type='
     timearray = at.get_timestep_times_float(modelpath=modelpath, loc='mid')
     arr_timedelta = at.get_timestep_times_float(modelpath=modelpath, loc='delta')
     # timearray = np.arange(250, 350, 0.1)
-    model, _ = at.inputmodel.get_modeldata(modelpath)
+    model, _, _ = at.inputmodel.get_modeldata(modelpath)
     vmax = model.iloc[-1].velocity_outer * u.km / u.s
     betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 

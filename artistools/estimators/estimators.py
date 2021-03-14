@@ -269,7 +269,7 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_value
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
 
-    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+    modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
     arr_velocity_outer = tuple(list([float(v) for v in modeldata['velocity_outer'].values]))
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex)

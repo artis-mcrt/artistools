@@ -181,7 +181,7 @@ def get_spectrum_from_packets(
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
 
     if use_comovingframe:
-        modeldata, _ = at.inputmodel.get_modeldata(Path(packetsfiles[0]).parent)
+        modeldata, _, _ = at.inputmodel.get_modeldata(Path(packetsfiles[0]).parent)
         vmax = modeldata.iloc[-1].velocity_outer * u.km / u.s
         betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
     else:
@@ -692,7 +692,7 @@ def get_flux_contributions_from_packets(
         array_lambdabinedges, array_lambda, delta_lambda = get_exspec_bins()
 
     if use_comovingframe:
-        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+        modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
         vmax = modeldata.iloc[-1].velocity_outer * u.km / u.s
         betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
