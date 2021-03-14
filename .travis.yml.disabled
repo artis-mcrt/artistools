@@ -1,7 +1,7 @@
 language: python
 arch:
   - amd64
-  - arm64
+  # - arm64
 os: linux
 python: 3.8
 
