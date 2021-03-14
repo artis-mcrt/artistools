@@ -1000,7 +1000,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     elif args.output_spectra:
         for modelpath in args.modelpath:
-            write_flambda_spectra(modelpath, args)
+            at.spectra.write_flambda_spectra(modelpath, args)
 
     else:
         if args.emissionabsorption:

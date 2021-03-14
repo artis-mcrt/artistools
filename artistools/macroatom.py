@@ -19,8 +19,6 @@ defaultoutputfile = 'plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf'
 def addargs(parser):
     parser.add_argument('--modelpath', nargs='?', default='',
                         help='Path to ARTIS folder')
-    parser.add_argument('-listtimesteps', action='store_true',
-                        help='Show the times at each timestep')
     parser.add_argument('-timestep', type=int, default=10,
                         help='Timestep number to plot, or -1 for last')
     parser.add_argument('-timestepmax', type=int, default=-1,
@@ -51,44 +49,41 @@ def main(args=None, argsraw=None, **kwargs):
     if os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
-    if args.listtimesteps:
-        at.showtimesteptimes(modelpath=args.modelpath)
+    try:
+        atomic_number = next(Z for Z, elsymb in enumerate(at.elsymbols) if elsymb.lower() == args.element.lower())
+    except StopIteration:
+        print(f"Could not find element '{args.element}'")
+        return
+
+    timestepmin = args.timestep
+
+    if not args.timestepmax or args.timestepmax < 0:
+        timestepmax = timestepmin
     else:
-        try:
-            atomic_number = next(Z for Z, elsymb in enumerate(at.elsymbols) if elsymb.lower() == args.element.lower())
-        except StopIteration:
-            print(f"Could not find element '{args.element}'")
-            return
+        timestepmax = args.timestepmax
 
-        timestepmin = args.timestep
+    input_files = (
+        glob.glob(os.path.join(args.modelpath, 'macroatom_????.out*'), recursive=True) +
+        glob.glob(os.path.join(args.modelpath, '*/macroatom_????.out*'), recursive=True))
 
-        if not args.timestepmax or args.timestepmax < 0:
-            timestepmax = timestepmin
-        else:
-            timestepmax = args.timestepmax
+    if not input_files:
+        print("No macroatom files found")
+        return 1
+    else:
+        dfall = read_files(input_files, args.modelgridindex, timestepmin, timestepmax, atomic_number)
 
-        input_files = (
-            glob.glob(os.path.join(args.modelpath, 'macroatom_????.out*'), recursive=True) +
-            glob.glob(os.path.join(args.modelpath, '*/macroatom_????.out*'), recursive=True))
+    specfilename = os.path.join(args.modelpath, 'spec.out')
 
-        if not input_files:
-            print("No macroatom files found")
-            return 1
-        else:
-            dfall = read_files(input_files, args.modelgridindex, timestepmin, timestepmax, atomic_number)
+    if not os.path.isfile(specfilename):
+        specfilename = os.path.join(args.modelpath, '../example_run/spec.out')
 
-        specfilename = os.path.join(args.modelpath, 'spec.out')
+    if not os.path.isfile(specfilename):
+        print(f'Could not find {specfilename}')
+        return 1
 
-        if not os.path.isfile(specfilename):
-            specfilename = os.path.join(args.modelpath, '../example_run/spec.out')
-
-        if not os.path.isfile(specfilename):
-            print(f'Could not find {specfilename}')
-            return 1
-
-        outputfile = args.outputfile.format(args.modelgridindex, timestepmin, timestepmax)
-        make_plot(dfall, args.modelpath, specfilename, timestepmin, timestepmax, outputfile,
-                  xmin=args.xmin, xmax=args.xmax, modelgridindex=args.modelgridindex)
+    outputfile = args.outputfile.format(args.modelgridindex, timestepmin, timestepmax)
+    make_plot(dfall, args.modelpath, specfilename, timestepmin, timestepmax, outputfile,
+              xmin=args.xmin, xmax=args.xmax, modelgridindex=args.modelgridindex)
 
     return 0
 

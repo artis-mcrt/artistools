@@ -1735,7 +1735,7 @@ def main(args=None, argsraw=None, **kwargs):
             print("A time or timestep must be specified.")
             sys.exit()
 
-        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+        modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
         if args.velocity >= 0.:
             args.modelgridindex = at.get_mgi_of_velocity_kms(modelpath, args.velocity)
         else:
@@ -1932,7 +1932,8 @@ def main(args=None, argsraw=None, **kwargs):
             make_plot(engrid, yvec, ions, ionpopdict, dfcollion, dftransitions, nne, nnetot, sourcevec,
                       deposition_density_ev, outputfilename, noexcitation=args.noexcitation)
 
-        (frac_excitation, frac_ionization, frac_heating, frac_excitation_ion, frac_ionization_ion, gamma_nt) = analyse_ntspectrum(
+        (frac_excitation, frac_ionization, frac_heating,
+         frac_excitation_ion, frac_ionization_ion, gamma_nt) = analyse_ntspectrum(
             engrid, yvec, ions, ionpopdict, nntot, nne, deposition_density_ev,
             dfcollion, dftransitions, noexcitation=args.noexcitation, modelpath=modelpath)
 
