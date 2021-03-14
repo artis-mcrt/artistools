@@ -48,6 +48,12 @@ def test_estimator_timeevolution():
     at.estimators.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, modelgridindex=0, x='time')
 
 
+def test_get_inputparams():
+    inputparams = at.get_inputparams(modelpath)
+    dicthash = hashlib.sha256(str(sorted(inputparams.items())).encode('utf-8')).hexdigest()
+    assert dicthash == 'ce7d04d6944207673a105cba8d2430055d0b53b7f3e92db3964d2dca285a3adb'
+
+
 def test_get_modeldata():
     dfmodeldata, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath, get_abundances=True)
     assert np.isclose(t_model_init_days, 0.00115740740741, rtol=0.0001)
