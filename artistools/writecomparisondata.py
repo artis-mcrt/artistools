@@ -48,14 +48,14 @@ def write_spectra(modelpath, model_id, selected_timesteps, outfile):
 
 def write_ntimes_nvel(f, selected_timesteps, modelpath):
     times = at.get_timestep_times_float(modelpath)
-    modeldata, t_model_init_days = at.inputmodel.get_modeldata(modelpath)
+    modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata(modelpath)
     f.write(f'#NTIMES: {len(selected_timesteps)}\n')
     f.write(f'#NVEL {len(modeldata)}\n')
     f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
 
 
 def write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, outfile, keyname):
-    modeldata, t_model_init_days = at.inputmodel.get_modeldata(modelpath)
+    modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata(modelpath)
     with open(outfile, "w") as f:
         write_ntimes_nvel(f, selected_timesteps, modelpath)
         if keyname == 'totaldep':
@@ -82,7 +82,7 @@ def write_single_estimator(modelpath, selected_timesteps, estimators, allnonempt
 
 def write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, outputpath):
     times = at.get_timestep_times_float(modelpath)
-    modeldata, t_model_init_days = at.inputmodel.get_modeldata(modelpath)
+    modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata(modelpath)
     elementlist = at.get_composition_data(modelpath)
     nelements = len(elementlist)
     for element in range(nelements):
@@ -114,7 +114,7 @@ def write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnone
 
 def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, outputpath):
     times = at.get_timestep_times_float(modelpath)
-    modeldata, t_model_init_days = at.inputmodel.get_modeldata(modelpath)
+    modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata(modelpath)
     with open(Path(outputpath, f'phys_{model_id}_artisnebular.txt'), 'w') as f:
         f.write(f'#NTIMES: {len(selected_timesteps)}\n')
         f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
@@ -195,7 +195,7 @@ def main(args=None, argsraw=None, **kwargs):
     for modelpath in modelpathlist:
         model_id = str(modelpath.name).split('_')[0]
 
-        modeldata, t_model_init_days = at.inputmodel.get_modeldata(modelpath)
+        modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata(modelpath)
         estimators = at.estimators.read_estimators(modelpath=modelpath)
         allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
                               if not estimators[(selected_timesteps[0], modelgridindex)]['emptycell']]

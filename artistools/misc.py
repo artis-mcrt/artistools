@@ -431,8 +431,9 @@ def get_grid_mapping(modelpath):
 
 
 def get_wid_init(modelpath):
+    # cell width in cm at time tmin
     tmin = get_timestep_times_float(modelpath, loc='start')[0] * u.day.to('s')
-    vmax = artistools.inputmodel.get_modeldata(modelpath)[0]['velocity_outer'].iloc[-1] * 1e5
+    _, _, vmax = artistools.inputmodel.get_modeldata(modelpath)
 
     rmax = vmax * tmin
 

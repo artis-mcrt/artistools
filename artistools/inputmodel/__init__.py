@@ -4,23 +4,38 @@ import numpy as np
 import pandas as pd
 from collections import namedtuple
 import math
+import errno
+import os
 from pathlib import Path
 import artistools
 
 
 @lru_cache(maxsize=8)
-def get_modeldata(filename=Path(), dimensions=1):
+def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
     """
     Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
+
+    Arguments:
+        - inputpath: either a path to model.txt file, or a folder containing model.txt
+        - dimensions: number of dimensions in input file, or None for automatic
+        - get_abundances: also read elemental abundances (abundances.txt) and
+            merge with the output DataFrame
 
     Returns (dfmodeldata, t_model_init_days)
         - dfmodeldata: a pandas DataFrame with a row for each model grid cell
         - t_model_init_days: the time in days at which the snapshot is defined
     """
 
-    assert dimensions in [1, 3]
-    if os.path.isdir(filename):
-        filename = artistools.firstexisting(['model.txt.xz', 'model.txt.gz', 'model.txt'], path=filename)
+    assert dimensions in [1, 3, None]
+
+    if os.path.isdir(inputpath):
+        modelpath = inputpath
+        filename = artistools.firstexisting(['model.txt.xz', 'model.txt.gz', 'model.txt'], path=inputpath)
+    elif os.path.isfile(inputpath):  # passed in a filename instead of the modelpath
+        filename = inputpath
+        modelpath = Path(inputpath).parent
+    else:
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
     gridcelltuple = None
     velocity_inner = 0.
@@ -29,14 +44,36 @@ def get_modeldata(filename=Path(), dimensions=1):
         t_model_init_days = float(fmodel.readline())
         t_model_init_seconds = t_model_init_days * 24 * 60 * 60
 
+        filepos = fmodel.tell()
+        # if the next line is a single float then the model is 3D
+        try:
+
+            vmax_cmps = float(fmodel.readline())  # velocity max in cm/s
+            xmax_tmodel = vmax_cmps * t_model_init_seconds  # xmax = ymax = zmax
+            if dimensions is None:
+                print("Detected 3D model file")
+                dimensions = 3
+            elif dimensions != 3:
+                print(f" {dimensions} were specified but file appears to be 3D")
+                assert False
+
+        except ValueError:
+
+            if dimensions is None:
+                print("Detected 1D model file")
+                dimensions = 1
+            elif dimensions != 1:
+                print(f" {dimensions} were specified but file appears to be 3D")
+                assert False
+
+            fmodel.seek(filepos)  # undo the readline() and go back
+
         if dimensions == 3:
             ncoordgridx = round(gridcellcount ** (1./3.))  # number of grid cell steps along an axis (same for xyz)
             ncoordgridy = round(gridcellcount ** (1./3.))
             ncoordgridz = round(gridcellcount ** (1./3.))
 
             assert (ncoordgridx * ncoordgridy * ncoordgridz) == gridcellcount
-            vmax_cmps = float(fmodel.readline())  # velocity max in cm/s
-            xmax_tmodel = vmax_cmps * t_model_init_seconds  # xmax = ymax = zmax
 
         continuedfromrow = None
         lastinputcellid = 0
@@ -103,29 +140,46 @@ def get_modeldata(filename=Path(), dimensions=1):
     assert len(dfmodeldata) <= gridcellcount
     dfmodeldata.index.name = 'cellid'
 
+    if get_abundances:
+        abundancedata = get_initialabundances(modelpath)
+        dfmodeldata = dfmodeldata.merge(abundancedata, how='inner', on='inputcellid')
+
     if dimensions == 1:
         piconst = math.pi
         dfmodeldata.eval(
             'shellmass_grams = 10 ** logrho * 4. / 3. * @piconst * (velocity_outer ** 3 - velocity_inner ** 3)'
             '* (1e5 * @t_model_init_seconds) ** 3', inplace=True)
-
-        return dfmodeldata, t_model_init_days
+        vmax_cmps = dfmodeldata.velocity_outer.max() * 1e5
 
     elif dimensions == 3:
+        def vectormatch(vec1, vec2):
+            xclose = np.isclose(vec1[0], vec2[0], atol=xmax_tmodel / ncoordgridx)
+            yclose = np.isclose(vec1[1], vec2[1], atol=xmax_tmodel / ncoordgridy)
+            zclose = np.isclose(vec1[2], vec2[2], atol=xmax_tmodel / ncoordgridz)
+
+            return all([xclose, yclose, zclose])
+
+        posmatch_xyz = True
+        posmatch_zyx = True
+        # important cell numbers to check for coordinate column order
         indexlist = [0, ncoordgridx - 1, (ncoordgridx - 1) * (ncoordgridy - 1),
                      (ncoordgridx - 1) * (ncoordgridy - 1) * (ncoordgridz - 1)]
         for index in indexlist:
             cell = dfmodeldata.iloc[index]
-            xclose = np.isclose(cell.pos_x, cell.inputpos_a, atol=0.5 * xmax_tmodel / ncoordgridx)
-            yclose = np.isclose(cell.pos_y, cell.inputpos_b, atol=0.5 * xmax_tmodel / ncoordgridy)
-            zclose = np.isclose(cell.pos_z, cell.inputpos_c, atol=0.5 * xmax_tmodel / ncoordgridz)
-            if not all([xclose, yclose, zclose]):
-                print("WARNING: model.txt coordinate position mismatch between calculated and"
-                      " input value (showing first mismatch only) (check xyz vs zyx)")
-                print(cell.to_frame().T)
-                break
+            if not vectormatch([cell.inputpos_a, cell.inputpos_b, cell.inputpos_c],
+                               [cell.pos_x, cell.pos_y, cell.pos_z]):
+                posmatch_xyz = False
+            if not vectormatch([cell.inputpos_a, cell.inputpos_b, cell.inputpos_c],
+                               [cell.pos_z, cell.pos_y, cell.pos_x]):
+                posmatch_zyx = False
 
-        return dfmodeldata, t_model_init_days, vmax_cmps
+        assert posmatch_xyz != posmatch_zyx  # one option must match
+        if posmatch_xyz:
+            print("Cell positions in model.txt are consistent with calculated values when x-y-z column order")
+        if posmatch_zyx:
+            print("Cell positions in model.txt are consistent with calculated values when z-y-x column order")
+
+    return dfmodeldata, t_model_init_days, vmax_cmps
 
 
 def get_2d_modeldata(modelpath):
@@ -163,7 +217,7 @@ def save_modeldata(dfmodeldata, t_model_init_days, filename):
 def get_mgi_of_velocity_kms(modelpath, velocity, mgilist=None):
     """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
     If mgilist is given, then chose from these cells only"""
-    modeldata, _ = get_modeldata(modelpath)
+    modeldata, _, _ = get_modeldata(modelpath)
 
     if not mgilist:
         mgilist = [mgi for mgi in modeldata.index]

@@ -12,20 +12,6 @@ import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
 
 
-def get_model_data(args):
-    model = at.inputmodel.get_modeldata(args.modelpath, dimensions=3)
-    abundances = at.inputmodel.get_initialabundances(args.modelpath[0])
-
-    with open(os.path.join(args.modelpath[0], 'model.txt'), 'r') as fmodelin:
-        fmodelin.readline()  # npts_model3d
-        args.t_model = float(fmodelin.readline())  # days
-        args.vmax = float(fmodelin.readline())  # v_max in [cm/s]
-
-    print(model.keys())
-
-    merge_dfs = model.merge(abundances, how='inner', on='inputcellid')
-    return merge_dfs
-
 
 def make_cone(args):
     print("Making cone")
@@ -34,7 +20,7 @@ def make_cone(args):
 
     theta = np.radians([angle_of_cone / 2])  # angle between line of sight and edge is half angle of cone
 
-    merge_dfs = get_model_data(args)
+    merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata(args.modelpath, dimensions=3, get_abundances=True)
 
     if args.positive_axis:
         cone = (merge_dfs.loc[merge_dfs[f'pos_{args.slice_along_axis}'] >= 1 / (np.tan(theta))
@@ -52,7 +38,7 @@ def make_cone(args):
 def get_profile_along_axis(args=None):
     print("Getting profile along axis")
 
-    merge_dfs = get_model_data(args)
+    merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata(args.modelpath, dimensions=3, get_abundances=True)
 
     position_closest_to_axis = merge_dfs.iloc[
         (merge_dfs[f'pos_{args.other_axis2}']).abs().argsort()][:1][f'pos_{args.other_axis2}'].item()
