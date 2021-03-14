@@ -25,7 +25,7 @@ def main(argsraw=None):
         subparser.set_defaults(func=getattr(submodule, funcname))
 
     argcomplete.autocomplete(parser)
-    args = parser.parse_args()
+    args = parser.parse_args(argsraw)
     if args.func is not None:
         args.func(args=args)
     else:
