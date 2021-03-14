@@ -15,27 +15,26 @@ modelpath = Path(at.PYDIR, '..', 'tests', 'data')
 outputpath = Path(at.PYDIR, '..', 'tests', 'output')
 at.enable_diskcache = False
 
-
 def test_spectraplot():
-    at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320)
+    at.spectra.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320)
 
 
 def test_spectra_frompackets():
-    at.spectra.main(modelpath=modelpath, outputfile=os.path.join(outputpath, 'spectrum_from_packets.pdf'),
+    at.spectra.main(argsraw=[], modelpath=modelpath, outputfile=os.path.join(outputpath, 'spectrum_from_packets.pdf'),
                     timemin=290, timemax=320, frompackets=True)
 
 
 def test_spectra_outputtext():
-    at.spectra.main(modelpath=modelpath, output_spectra=True)
+    at.spectra.main(argsraw=[], modelpath=modelpath, output_spectra=True)
 
 
 def test_spectraemissionplot():
-    at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320,
+    at.spectra.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320,
                     emissionabsorption=True)
 
 
 def test_spectraemissionplot_nostack():
-    at.spectra.main(modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320,
+    at.spectra.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320,
                     emissionabsorption=True, nostack=True)
 
 
