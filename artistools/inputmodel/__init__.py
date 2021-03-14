@@ -78,7 +78,10 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
         continuedfromrow = None
         lastinputcellid = 0
         recordlist = []
-        for line in filter(lambda line: line.strip() and not line.strip().lstrip().startswith('#'), fmodel):
+        for line in fmodel:
+            if not line.strip() or line.lstrip().startswith('#'):
+                continue
+
             row = line.split()
 
             if continuedfromrow is not None:
