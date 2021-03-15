@@ -740,9 +740,9 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
         plt.tight_layout()
     if not args.nolegend:
         if len(args.colour_evolution) > 1:
-            ax[1].legend(loc='best', frameon=True, fontsize='x-small', ncol=1, handlelength=1)
+            ax[1].legend(loc='best', frameon=False, fontsize='x-small', ncol=1, handlelength=1)
         else:
-            ax.legend(loc='best', frameon=True, fontsize='x-small', ncol=1, handlelength=1)
+            ax.legend(loc='best', frameon=False, fontsize='x-small', ncol=1, handlelength=1)
 
     if len(args.colour_evolution) > 1:
         for axis in ax:
@@ -762,7 +762,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
     for i in range(2):
         if filter_names[i] in filternames_conversion_dict:
             filter_names[i] = filternames_conversion_dict[filter_names[i]]
-    plt.text(10, args.ymax - 0.5, f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
+    # plt.text(10, args.ymax - 0.5, f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
 
     if args.show:
         plt.show()
