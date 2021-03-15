@@ -132,7 +132,7 @@ def get_magnitudes(modelpath, args, angle=None, modelnumber=None):
             if args.timemin < time < args.timemax:
                 wavelength_from_spectrum, flux = \
                     get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, angle,
-                                                 res_specdata=res_specdata, modelnumber=modelnumber)
+                                                 res_specdata=res_specdata, modelnumber=modelnumber, args=args)
 
                 if len(wavelength_from_spectrum) > len(wavefilter):
                     interpolate_fn = interp1d(wavefilter, transmission, bounds_error=False, fill_value=0.)
@@ -205,10 +205,11 @@ def get_filter_data(filterdir, filter_name):
 
 
 def get_spectrum_in_filter_range(modelpath, timestep, time, wavefilter_min, wavefilter_max, angle=None,
-                                 res_specdata=None, modelnumber=None, spectrum=None):
+                                 res_specdata=None, modelnumber=None, spectrum=None, args=None):
     if spectrum is None:
         spectrum = at.spectra.get_spectrum_at_time(
-            modelpath, timestep, time, angle, res_specdata, modelnumber)
+            modelpath, timestep=timestep, time=time, args=args,
+            angle=angle, res_specdata=res_specdata, modelnumber=modelnumber)
 
     wavelength_from_spectrum, flux = [], []
     for wavelength, flambda in zip(spectrum['lambda_angstroms'], spectrum['f_lambda']):
