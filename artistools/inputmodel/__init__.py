@@ -63,7 +63,7 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
                 print("Detected 1D model file")
                 dimensions = 1
             elif dimensions != 1:
-                print(f" {dimensions} were specified but file appears to be 3D")
+                print(f" {dimensions} were specified but file appears to be 1D")
                 assert False
 
             fmodel.seek(filepos)  # undo the readline() and go back
