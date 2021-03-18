@@ -48,11 +48,8 @@ Distributed under the MIT license. See ``LICENSE`` for more information.
 -----------------------
 This is also a bit of a testing ground for GitHub integrations:
 
-[![Code Climate](https://codeclimate.com/github/artis-mcrt/artistools/badges/gpa.svg)](https://codeclimate.com/github/artis-mcrt/artistools)
 
-[![Test Coverage](https://codeclimate.com/github/artis-mcrt/artistools/badges/coverage.svg)](https://codeclimate.com/github/artis-mcrt/artistools/coverage)
-
-[![Issue Count](https://codeclimate.com/github/artis-mcrt/artistools/badges/issue_count.svg)](https://codeclimate.com/github/artis-mcrt/artistools)
+[![codecov](https://codecov.io/gh/artis-mcrt/artistools/branch/main/graph/badge.svg?token=XFlarJqeZd)](https://codecov.io/gh/artis-mcrt/artistools)
 
 <!---
 [![Code Health](https://landscape.io/github/artis-mcrt/artistools/main/landscape.svg?style=flat)](https://landscape.io/github/artis-mcrt/artistools/main)
