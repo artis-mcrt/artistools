@@ -54,9 +54,13 @@ def test_get_inputparams():
     assert dicthash == 'ce7d04d6944207673a105cba8d2430055d0b53b7f3e92db3964d2dca285a3adb'
 
 
+def test_get_levels():
+    at.atomic.get_levels(modelpath, get_transitions=True, get_photoionisations=True)
+
+
 def test_get_modeldata():
     # expect a 3D model but read 1D
-    with pytest.raises(Exception) as e_info:
+    with pytest.raises(Exception):
         dfmodeldata, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(
             modelpath, get_abundances=True, dimensions=3)
 
