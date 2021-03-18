@@ -51,12 +51,6 @@ This is also a bit of a testing ground for GitHub integrations:
 
 [![codecov](https://codecov.io/gh/artis-mcrt/artistools/branch/main/graph/badge.svg?token=XFlarJqeZd)](https://codecov.io/gh/artis-mcrt/artistools)
 
-<!---
-[![Code Health](https://landscape.io/github/artis-mcrt/artistools/main/landscape.svg?style=flat)](https://landscape.io/github/artis-mcrt/artistools/main)
--->
-
 [![CodeFactor](https://www.codefactor.io/repository/github/artis-mcrt/artistools/badge)](https://www.codefactor.io/repository/github/artis-mcrt/artistools)
-
-[![codebeat badge](https://codebeat.co/badges/ace84544-8781-4e3f-b86b-b21fb3f9fc87)](https://codebeat.co/projects/github-com-lukeshingles-artistools-main)
 
 
