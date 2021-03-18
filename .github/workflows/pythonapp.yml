@@ -73,7 +73,8 @@ jobs:
         verbose: true
 
     - name: Upload output files
+      if: matrix.python-version == 3.9
       uses: actions/upload-artifact@v2
       with:
-        name: codecov_report.txt
+        name: codecov_report_${{ matrix.os }}_${{ matrix.python-version }}.txt
         path: ./coverage/codecov_report.txt
