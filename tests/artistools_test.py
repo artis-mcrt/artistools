@@ -6,7 +6,7 @@ import numpy as np
 import os
 import os.path
 import pandas as pd
-from astropy import constants as const
+import pytest
 from pathlib import Path
 
 import artistools as at
@@ -55,6 +55,11 @@ def test_get_inputparams():
 
 
 def test_get_modeldata():
+    # expect a 3D model but read 1D
+    with pytest.raises(Exception) as e_info:
+        dfmodeldata, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(
+            modelpath, get_abundances=True, dimensions=3)
+
     dfmodeldata, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath, get_abundances=True)
     assert np.isclose(t_model_init_days, 0.00115740740741, rtol=0.0001)
     assert np.isclose(vmax_cmps, 800000000., rtol=0.0001)
