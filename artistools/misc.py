@@ -229,7 +229,7 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
         #         sourcehash.update(inspect.getsource(funcdepends).encode('utf-8'))
         #
         # sourcehash_strhex = sourcehash.hexdigest()
-        str_funcversion = f'funcversion_{funcversion}' if funcversion else f'funcversion_none'
+        str_funcversion = f'funcversion_{funcversion}' if funcversion else 'funcversion_none'
 
         return wrapper if enable_diskcache else func
 

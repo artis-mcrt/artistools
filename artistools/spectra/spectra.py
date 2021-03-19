@@ -742,7 +742,7 @@ def get_flux_contributions_from_packets(
                 # dfpackets.eval(f'velocity = sqrt(posx ** 2 + posy ** 2 + posz ** 2) / @t_seconds', inplace=True)
                 # dfpackets.query(f'@v_inner <= velocity <= @v_outer',
                 #                 inplace=True)
-                dfpackets.query(f'where in @assoc_cells[@modelgridindex]', inplace=True)
+                dfpackets.query('where in @assoc_cells[@modelgridindex]', inplace=True)
             print(f"  {len(dfpackets)} internal r-packets matching frequency range")
         else:
             dfpackets = at.packets.readfile(packetsfile, type='TYPE_ESCAPE', escape_type='TYPE_RPKT')
