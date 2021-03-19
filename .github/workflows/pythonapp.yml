@@ -27,13 +27,14 @@ jobs:
     - name: Get pip cache dir
       id: pip-cache
       run: |
+        pip list > piplist.txt
         echo "::set-output name=dir::$(pip cache dir)"
 
     - name: Cache pip
       uses: actions/cache@v2.1.4
       with:
         path: ${{ steps.pip-cache.outputs.dir }}
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        key: ${{ runner.os }}-pip-${{ hashFiles('piplist.txt') }}
         restore-keys: |
          ${{ runner.os }}-pip-
 
