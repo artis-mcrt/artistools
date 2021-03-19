@@ -91,7 +91,7 @@ def test_macroatom():
 
 
 def test_makemodel():
-    at.makemodel.botyanski2017.main(argsraw=[], outputpath=outputpath)
+    at.inputmodel.botyanski2017.main(argsraw=[], outputpath=outputpath)
 
 
 def test_menu():
