@@ -140,7 +140,7 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
 
     dfmodeldata = pd.DataFrame.from_records(recordlist, columns=gridcelltuple._fields)
 
-    assert len(dfmodeldata) <= gridcellcount
+    assert len(dfmodeldata) == gridcellcount
     dfmodeldata.index.name = 'cellid'
 
     if get_abundances:
