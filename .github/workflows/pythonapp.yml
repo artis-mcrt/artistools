@@ -50,6 +50,7 @@ jobs:
         python -m pip install -e .
 
     - name: Lint with flake8
+      working-directory: artistools/
       run: |
         pip install flake8
         # stop the build if there are Python syntax errors or undefined names
