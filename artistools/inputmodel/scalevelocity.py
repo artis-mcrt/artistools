@@ -11,15 +11,18 @@ import artistools as at
 
 
 def addargs(parser):
-    parser.add_argument('-kescalefactor', '-s',
-                        default=0.5,
+
+    parser.add_argument('-kescale', '-k', default=None,
                         help='Kinetic energy scale factor')
-    parser.add_argument('-inputfile', '-i',
-                        default='model.txt',
+
+    parser.add_argument('-velscale', '-v', default=None,
+                        help='Velocity scale factor')
+
+    parser.add_argument('-inputfile', '-i', default='model.txt',
                         help='Path of input file')
-    parser.add_argument('-outputfile', '-o',
-                        default='model_velscale.txt',
-                        help='Path of output file')
+
+    parser.add_argument('-outputfile', '-o', default='model_velscale{velscale:.2f}.txt',
+                        help='Path of output model file')
 
 
 def eval_mshell(dfmodeldata, t_model_init_seconds):
@@ -46,10 +49,19 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     print(dfmodeldata)
 
-    velocityscalefactor = math.sqrt(args.kescalefactor)
+    assert (args.kescale is None) != (args.velscale is None)  # kescale or velscale must be specfied
 
-    dfmodeldata.velocity_inner *= velocityscalefactor
-    dfmodeldata.velocity_outer *= velocityscalefactor
+    if args.kescale is not None:
+        kescale = float(args.kescale)
+        velscale = math.sqrt(kescale)
+    elif args.velscale is not None:
+        velscale = float(args.velscale)
+        kescale = velscale ** 2
+
+    print(f"Applying velocity factor of {velscale} (kinetic energy factor {kescale}) and conserving shell masses")
+
+    dfmodeldata.velocity_inner *= velscale
+    dfmodeldata.velocity_outer *= velscale
 
     dfmodeldata.eval('logrho = log10(shellmass_grams / ('
                      '4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)'
@@ -59,8 +71,10 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     print(dfmodeldata)
 
-    at.save_modeldata(dfmodeldata, t_model_init_days, args.outputfile)
-    print(f'Saved {args.outputfile}')
+    outputfile = args.outputfile.format(velscale=velscale, kescale=kescale)
+
+    at.inputmodel.save_modeldata(dfmodeldata, t_model_init_days, outputfile)
+    print(f'Saved {outputfile}')
 
 
 if __name__ == "__main__":
