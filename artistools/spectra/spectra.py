@@ -522,6 +522,12 @@ def get_flux_contributions(
             emissionfilenames = ['emissiontrue.out.xz', 'emissiontrue.out.gz', 'emissiontrue.out']
 
         emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
+
+        if 'pol' in str(emissionfilename):
+            print("This artis run contains polarisation data")
+            ## File contains I, Q and U and so times are repeated 3 times
+            arr_tmid = np.array(arr_tmid.tolist() * 3)
+
         try:
             emissionfilesize = Path(emissionfilename).stat().st_siplze / 1024 / 1024
             print(f' Reading {emissionfilename} ({emissionfilesize:.2f} MiB)')
