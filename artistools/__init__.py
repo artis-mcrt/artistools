@@ -14,7 +14,6 @@ import artistools.estimators
 import artistools.inputmodel
 import artistools.lightcurve
 import artistools.macroatom
-import artistools.makemodel
 import artistools.nltepops
 import artistools.nonthermal
 import artistools.packets
