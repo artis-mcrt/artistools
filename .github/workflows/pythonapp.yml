@@ -27,7 +27,7 @@ jobs:
     - name: Get pip cache dir
       id: pip-cache
       run: |
-        pip list > piplist.txt
+        pip list --format=freeze > piplist.txt
         echo "::set-output name=dir::$(pip cache dir)"
 
     - name: Cache pip
