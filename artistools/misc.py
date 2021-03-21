@@ -30,15 +30,6 @@ from astropy import constants as const
 
 import artistools
 
-# num_processes = 1
-# num_processes = multiprocessing.cpu_count() - 1
-num_processes = max(1, int(multiprocessing.cpu_count() / 2))
-# print(f'Using {num_processes} processes')
-
-enable_diskcache = True
-
-figwidth = 5
-
 commandlist = {
     'artistools-writecodecomparisondata': ('artistools.writecomparisondata', 'main'),
 
@@ -100,7 +91,6 @@ console_scripts.append('artistools = artistools:main')
 PYDIR = os.path.dirname(os.path.abspath(__file__))
 
 plt.style.use('file://' + PYDIR + '/matplotlibrc')
-
 
 elsymbols = ['n'] + list(pd.read_csv(os.path.join(PYDIR, 'data', 'elements.csv'))['symbol'].values)
 

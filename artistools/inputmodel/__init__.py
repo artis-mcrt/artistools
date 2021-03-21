@@ -28,6 +28,8 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
 
     assert dimensions in [1, 3, None]
 
+    inputpath = Path(inputpath)
+
     if os.path.isdir(inputpath):
         modelpath = inputpath
         filename = artistools.firstexisting(['model.txt.xz', 'model.txt.gz', 'model.txt'], path=inputpath)
