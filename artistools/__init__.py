@@ -10,6 +10,7 @@ from .misc import *
 from .config import config, num_processes, figwidth, enable_diskcache
 
 import artistools.atomic
+import artistools.codecomparison
 import artistools.deposition
 import artistools.estimators
 import artistools.inputmodel
