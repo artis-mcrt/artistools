@@ -470,6 +470,12 @@ def get_timestep_times(modelpath):
 def get_timestep_times_float(modelpath, loc='mid'):
     """Return a list of the time in days of each timestep."""
 
+    modelpath = Path(modelpath)
+
+    # virtual path to code comparison workshop models
+    if not modelpath.exists() and modelpath.parts[0] == '_codecomparison':
+        return artistools.codecomparison.get_timestep_times_float(modelpath=modelpath, loc=loc)
+
     # custom timestep file
     tsfilepath = Path(modelpath, 'timesteps.out')
     if tsfilepath.exists():
@@ -613,6 +619,10 @@ def get_model_name(path):
 
     Name will be either from a special plotlabel.txt file if it exists or the enclosing directory name
     """
+
+    if not Path(path).exists() and Path(path).parts[0] == '_codecomparison':
+        return str(path)
+
     abspath = os.path.abspath(path)
 
     modelpath = abspath if os.path.isdir(abspath) else os.path.dirname(abspath)

@@ -36,6 +36,10 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
     elif os.path.isfile(inputpath):  # passed in a filename instead of the modelpath
         filename = inputpath
         modelpath = Path(inputpath).parent
+    elif not inputpath.exists() and inputpath.parts[0] == '_codecomparison':
+        modelpath = inputpath
+        _, inputmodel, _ = modelpath.parts
+        filename = Path(artistools.config['codecomparisonmodelartismodelpath'], inputmodel, 'model.txt')
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 

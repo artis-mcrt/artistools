@@ -220,12 +220,6 @@ def plot_multi_ion_series(
 
     plotted_something = False
 
-    if args.classicartis:
-        import artistools.estimators.estimators_classic
-        compositiondata = artistools.estimators.estimators_classic.get_atomic_composition(modelpath)
-    else:
-        compositiondata = at.get_composition_data(modelpath)
-
     # decoded into numeric form, e.g., [(26, 1), (26, 2)]
     iontuplelist = [
         (at.get_atomic_number(ionstr.split(' ')[0]), at.decode_roman_numeral(ionstr.split(' ')[1]))
@@ -235,12 +229,25 @@ def plot_multi_ion_series(
     print(f'Subplot with ions: {iontuplelist}')
 
     missingions = set()
-    for atomic_number, ion_stage in iontuplelist:
-        if ion_stage != 'ALL' and not args.classicartis and compositiondata.query(
-                'Z == @atomic_number '
-                '& lowermost_ionstage <= @ion_stage '
-                '& uppermost_ionstage >= @ion_stage').empty:
-            missingions.add((atomic_number, ion_stage))
+    try:
+        if args.classicartis:
+            import artistools.estimators.estimators_classic
+            compositiondata = artistools.estimators.estimators_classic.get_atomic_composition(modelpath)
+        else:
+            compositiondata = at.get_composition_data(modelpath)
+        for atomic_number, ion_stage in iontuplelist:
+            if ion_stage != 'ALL' and not args.classicartis and compositiondata.query(
+                    'Z == @atomic_number '
+                    '& lowermost_ionstage <= @ion_stage '
+                    '& uppermost_ionstage >= @ion_stage').empty:
+                missingions.add((atomic_number, ion_stage))
+
+    except FileNotFoundError:
+        print("WARNING: Could not read an ARTIS compositiondata.txt file")
+        for atomic_number, ion_stage in iontuplelist:
+            mgits = (timestepslist[0][0], mgilist[0])
+            if (atomic_number, ion_stage) not in estimators[mgits]['populations']:
+                missingions.add((atomic_number, ion_stage))
 
     if missingions:
         print(f" Warning: Can't plot {seriestype} for {missingions} "
@@ -684,7 +691,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
 
 def addargs(parser):
     parser.add_argument('-modelpath', default='.',
-                        help='Path to ARTIS folder')
+                        help='Paths to ARTIS folder (or virtual path e.g. _codecomparison/ddc10/cmfgen)')
 
     parser.add_argument('--recombrates', action='store_true',
                         help='Make a recombination rate plot')
