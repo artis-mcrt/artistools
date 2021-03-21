@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from astropy import constants as const
+from collections import namedtuple
 from scipy import linalg
 from pathlib import Path
 # from bigfloat import *
@@ -316,6 +317,31 @@ def get_J(Z, ionstage, ionpot_ev):
     return 0.6 * ionpot_ev
 
 
+def ar_xs(energy_ev, ionpot_ev, A, B, C, D):
+    u = energy_ev / ionpot_ev
+    if u <= 1:
+        return 0
+
+    return 1e-14 * (
+        A * (1 - 1 / u) + B * pow((1 - 1 / u), 2) + C * math.log(u) + D * math.log(u) / u) / (u * pow(ionpot_ev, 2))
+
+
+def get_arxs_array_shell(arr_enev, shell):
+    ar_xs_array = np.array(
+        [ar_xs(energy_ev, shell.ionpot_ev, shell.A, shell.B, shell.C, shell.D) for energy_ev in arr_enev])
+
+    return ar_xs_array
+
+
+def get_arxs_array_ion(arr_enev, dfcollion, Z, ionstage):
+    ar_xs_array = np.zeros(len(arr_enev))
+    dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage')
+    for index, shell in dfcollion_thision.iterrows():
+        ar_xs_array += get_arxs_array_shell(arr_enev, shell)
+
+    return ar_xs_array
+
+
 def get_xs_excitation_vector(engrid, row):
     A_naught_squared = 2.800285203e-17  # Bohr radius squared in cm^2
     deltaen = engrid[1] - engrid[0]
@@ -366,6 +392,19 @@ def get_xs_excitation_vector(engrid, row):
         xs_excitation_vec[startindex:] = 0.
 
     return xs_excitation_vec
+
+
+def read_colliondata(collionfilename='collion.txt', modelpath=Path(at.PYDIR, 'data')):
+
+    collionrow = namedtuple('collionrow', ['Z', 'nelec', 'n', 'l', 'ionpot_ev', 'A', 'B', 'C', 'D'])
+
+    with open(Path(modelpath, collionfilename), 'r') as collionfile:
+        print(f'Collionfile: expecting {collionfile.readline().strip()} rows')
+        dfcollion = pd.read_csv(
+            collionfile, delim_whitespace=True, header=None, names=collionrow._fields)
+    dfcollion.eval('ionstage = Z - nelec + 1', inplace=True)
+
+    return dfcollion
 
 
 def calculate_nt_frac_excitation(engrid, dftransitions, yvec, deposition_density_ev):

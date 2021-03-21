@@ -118,8 +118,9 @@ def test_get_ionrecombratecalibration():
 
 
 def test_spencerfano():
-    at.spencerfano.main(argsraw=[], modelpath=modelpath, timedays=300, makeplot=True, npts=200,
-                        noexcitation=True, outputfile=outputpath)
+    at.nonthermal.spencerfano.main(
+        argsraw=[], modelpath=modelpath, timedays=300, makeplot=True, npts=200,
+        noexcitation=True, outputfile=outputpath)
 
 
 def test_transitions():

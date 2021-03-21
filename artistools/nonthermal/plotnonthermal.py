@@ -16,7 +16,7 @@ import pandas as pd
 from astropy import units as u
 
 import artistools as at
-import artistools.spencerfano
+import artistools.nonthermal
 
 DEFAULTSPECPATH = '../example_run/spec.out'
 defaultoutputfile = 'plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf'
@@ -60,15 +60,6 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
     return nonthermaldata
 
 
-def ar_xs(energy_ev, ionpot_ev, A, B, C, D):
-    u = energy_ev / ionpot_ev
-    if u <= 1:
-        return 0
-
-    return 1e-14 * (
-        A * (1 - 1 / u) + B * pow((1 - 1 / u), 2) + C * math.log(u) + D * math.log(u) / u) / (u * pow(ionpot_ev, 2))
-
-
 def xs_fe2_old(energy):
     # AR1985
     shell_a = ar_xs(energy, 16.2, 90.0, -60.0, 0.2, -86)
@@ -77,45 +68,16 @@ def xs_fe2_old(energy):
     return shell_a + shell_b + shell_c
 
 
-def get_arxs_array_shell(arr_enev, shell):
-    ar_xs_array = np.array(
-        [ar_xs(energy_ev, shell.ionpot_ev, shell.A, shell.B, shell.C, shell.D) for energy_ev in arr_enev])
-
-    return ar_xs_array
-
-
-def get_arxs_array_ion(arr_enev, dfcollion, Z, ionstage):
-    ar_xs_array = np.zeros(len(arr_enev))
-    dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage')
-    for index, shell in dfcollion_thision.iterrows():
-        ar_xs_array += get_arxs_array_shell(arr_enev, shell)
-
-    return ar_xs_array
-
-
-def read_colliondata(collionfilename='collion.txt', modelpath=Path(at.PYDIR, 'data')):
-
-    collionrow = namedtuple('collionrow', ['Z', 'nelec', 'n', 'l', 'ionpot_ev', 'A', 'B', 'C', 'D'])
-
-    with open(Path(modelpath, collionfilename), 'r') as collionfile:
-        print(f'Collionfile: expecting {collionfile.readline().strip()} rows')
-        dfcollion = pd.read_csv(
-            collionfile, delim_whitespace=True, header=None, names=collionrow._fields)
-    dfcollion.eval('ionstage = Z - nelec + 1', inplace=True)
-
-    return dfcollion
-
-
 def make_xs_plot(axis, nonthermaldata, args):
-    dfcollion = read_colliondata()
+    dfcollion = at.nonthermal.read_colliondata()
 
     arr_en = nonthermaldata['energy_ev'].unique()
 
     # arr_xs_old = [xs_fe2_old(en) for en in arr_en]
     # arr_xs_times_y = [xs_fe1(en) * y for en, y in zip(nonthermaldata['energy_ev'], nonthermaldata['y'])]
 
-    axis.plot(arr_en, get_arxs_array_ion(arr_en, dfcollion, 26, 2), linewidth=2.0, label='Fe II')
-    axis.plot(arr_en, get_arxs_array_ion(arr_en, dfcollion, 28, 2), linewidth=2.0, label='Ni II')
+    axis.plot(arr_en, at.nonthermal.get_arxs_array_ion(arr_en, dfcollion, 26, 2), linewidth=2.0, label='Fe II')
+    axis.plot(arr_en, at.nonthermal.get_arxs_array_ion(arr_en, dfcollion, 28, 2), linewidth=2.0, label='Ni II')
 
     axis.set_ylabel(r'cross section (cm2)')
 
@@ -142,7 +104,7 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
 
     frac_ionisation = 0.
 
-    dfcollion = read_colliondata()
+    dfcollion = at.nonthermal.read_colliondata()
 
     elementlist = at.get_composition_data(modelpath)
     totalpop = estimators[(timestep, modelgridindex)]['populations']['total']
@@ -170,7 +132,7 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
             frac_ionisation_ion = 0.
 
             for index, row in dfcollion_thision.iterrows():
-                arr_xs = get_arxs_array_shell(arr_enev, row)
+                arr_xs = at.nonthermal.get_arxs_array_shell(arr_enev, row)
                 arr_ionisation_shell = ionpop * arr_y * arr_xs * row.ionpot_ev / total_depev
                 arr_ionisation_ion += arr_ionisation_shell
 
@@ -186,7 +148,7 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
             axis.plot(arr_enev, arr_ionisation_element, label=f'Ionisation Z={Z}')
 
     nne = estimators[(timestep, modelgridindex)]['nne']
-    arr_heating = np.array([at.spencerfano.lossfunction(enev, nne) / total_depev for enev in arr_enev])
+    arr_heating = np.array([at.nonthermal.lossfunction(enev, nne) / total_depev for enev in arr_enev])
 
     frac_heating = np.trapz(x=arr_enev, y=arr_heating)
 
