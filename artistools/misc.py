@@ -34,8 +34,8 @@ commandlist = {
 
     'artistools-modeldeposition': ('artistools.deposition', 'main_analytical'),
 
-    'getartisspencerfano': ('artistools.spencerfano', 'main'),
-    'artistools-spencerfano': ('artistools.spencerfano', 'main'),
+    'getartisspencerfano': ('artistools.nonthermal.spencerfano', 'main'),
+    'artistools-spencerfano': ('artistools.nonthermal.spencerfano', 'main'),
 
     'listartistimesteps': ('artistools', 'showtimesteptimes'),
     'artistools-timesteptimes': ('artistools', 'showtimesteptimes'),
