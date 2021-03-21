@@ -62,9 +62,9 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
 
 def xs_fe2_old(energy):
     # AR1985
-    shell_a = ar_xs(energy, 16.2, 90.0, -60.0, 0.2, -86)
-    shell_b = ar_xs(energy, 17.5, 18.6, -5.9, 0.6, -9)
-    shell_c = ar_xs(energy, 81, 69.9, -23.7, 9.5, -51.7)
+    shell_a = at.nothermal.ar_xs(energy, 16.2, 90.0, -60.0, 0.2, -86)
+    shell_b = at.nothermal.ar_xs(energy, 17.5, 18.6, -5.9, 0.6, -9)
+    shell_c = at.nothermal.ar_xs(energy, 81, 69.9, -23.7, 9.5, -51.7)
     return shell_a + shell_b + shell_c
 
 
