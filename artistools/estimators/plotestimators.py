@@ -344,8 +344,10 @@ def plot_multi_ion_series(
             dashes = ()
             linewidth = 1.0
         else:
-            dashes = [(3, 1, 1, 1), (), (1.5, 1.5), (6, 3), (1, 3)][ion_stage - 1]
-            linewidth = [1.0, 1.0, 1.0, 0.7, 0.7][ion_stage - 1]
+            dashes_list = [(3, 1, 1, 1), (), (1.5, 1.5), (6, 3), (1, 3)]
+            dashes = dashes_list[(ion_stage - 1) % len(dashes_list)]
+            linewidth_list = [1.0, 1.0, 1.0, 0.7, 0.7]
+            linewidth = linewidth_list[(ion_stage - 1) % len(linewidth_list)]
             # color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][ion_stage - 1]
 
         # assert colorindex < 10
