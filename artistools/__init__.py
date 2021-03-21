@@ -7,6 +7,7 @@ A collection of plotting, analysis, and file format conversion tools for the ART
 import sys
 from .__main__ import main, addargs
 from .misc import *
+from .config import config, num_processes, figwidth, enable_diskcache
 
 import artistools.atomic
 import artistools.deposition
