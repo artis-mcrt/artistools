@@ -7,7 +7,6 @@ import hashlib
 # import inspect
 import lzma
 import math
-import multiprocessing
 import os.path
 import pickle
 import sys
@@ -221,7 +220,7 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
         # sourcehash_strhex = sourcehash.hexdigest()
         str_funcversion = f'funcversion_{funcversion}' if funcversion else 'funcversion_none'
 
-        return wrapper if enable_diskcache else func
+        return wrapper if artistools.enable_diskcache else func
 
     return diskcacheinner
 
