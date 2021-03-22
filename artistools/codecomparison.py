@@ -1,5 +1,6 @@
 import artistools as at
 import numpy as np
+import pandas as pd
 from pathlib import Path
 
 
@@ -12,12 +13,14 @@ def get_timestep_times_float(modelpath, loc='mid'):
     with open(filepath, "r") as fphys:
         ntimes = int(fphys.readline().replace('#NTIMES:', ''))
         tmids = np.array([float(x) for x in fphys.readline().replace('#TIMES[d]:', '').split()])
+
     tstarts = np.zeros_like(tmids)
-    tstarts[0] = tmids[0] / 2.
     tstarts[1:] = (tmids[1:] + tmids[:-1]) / 2.
+    tstarts[0] = tmids[0] - (tstarts[1] - tmids[0])
+
     tends = np.zeros_like(tmids)
-    tends[-1] = tmids[-1] / 2.
     tends[:-1] = (tmids[:-1] + tmids[1:]) / 2.
+    tends[-1] = tmids[-1] + (tmids[-1] - tstarts[-1])
 
     if loc == 'mid':
         return tmids
@@ -38,7 +41,7 @@ def read_reference_estimators(modelpath, modelgridindex=None, timestep=None):
     """
 
     virtualfolder, inputmodel, codename = modelpath.parts
-    assert virtualfolder == '_codecomparison'
+    assert virtualfolder == 'codecomparison'
 
     inputmodelfolder = Path(at.config['codecomparisondata1path'], inputmodel)
 
@@ -156,3 +159,38 @@ def read_reference_estimators(modelpath, modelgridindex=None, timestep=None):
                     assert estimators[key]['vel_mid']
 
     return estimators
+
+
+def get_spectra(modelpath):
+    modelpath = Path(modelpath)
+    virtualfolder, inputmodel, codename = modelpath.parts
+    assert virtualfolder == 'codecomparison'
+
+    inputmodelfolder = Path(at.config['codecomparisondata1path'], inputmodel)
+
+    specfilepath = Path(inputmodelfolder, f"spectra_{inputmodel}_{codename}.txt")
+
+    with open(specfilepath, "r") as fspec:
+        ntimes = int(fspec.readline().replace('#NTIMES:', ''))
+        nwave = int(fspec.readline().replace('#NWAVE:', ''))
+        arr_timedays = np.array([float(x) for x in fspec.readline().split()[1:]])
+        assert len(arr_timedays) == ntimes
+
+        dfspectra = pd.read_csv(fspec, delim_whitespace=True, header=None, names=['lambda'] + list(arr_timedays),
+                                comment='#')
+
+    return dfspectra, arr_timedays
+
+
+def plot_spectrum(modelpath, timedays, ax):
+    dfspectra, arr_timedays = get_spectra(modelpath)
+    # print(dfspectra)
+    timeindex = (np.abs(arr_timedays - float(timedays))).argmin()
+    timedays_found = dfspectra.columns[timeindex + 1]
+
+    assert np.isclose(arr_timedays[timeindex], float(timedays_found), rtol=0.01)  # check columns match
+    assert np.isclose(float(timedays), float(timedays_found), rtol=0.1)  # found a detect match to requested time
+    print(f"{modelpath}: requested spectrum at {timedays} days. Closest matching spectrum is at {timedays_found} days")
+    # print(dfspectra[['lambda', timedays_found]])
+    label = str(modelpath).lstrip('_') + f" {timedays_found}d"
+    dfspectra.plot(x='lambda', y=dfspectra.columns[timeindex + 1], ax=ax, label=label)

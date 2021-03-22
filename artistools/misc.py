@@ -473,7 +473,7 @@ def get_timestep_times_float(modelpath, loc='mid'):
     modelpath = Path(modelpath)
 
     # virtual path to code comparison workshop models
-    if not modelpath.exists() and modelpath.parts[0] == '_codecomparison':
+    if not modelpath.exists() and modelpath.parts[0] == 'codecomparison':
         return artistools.codecomparison.get_timestep_times_float(modelpath=modelpath, loc=loc)
 
     # custom timestep file
@@ -620,7 +620,7 @@ def get_model_name(path):
     Name will be either from a special plotlabel.txt file if it exists or the enclosing directory name
     """
 
-    if not Path(path).exists() and Path(path).parts[0] == '_codecomparison':
+    if not Path(path).exists() and Path(path).parts[0] == 'codecomparison':
         return str(path)
 
     abspath = os.path.abspath(path)

@@ -693,7 +693,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
 
 def addargs(parser):
     parser.add_argument('-modelpath', default='.',
-                        help='Paths to ARTIS folder (or virtual path e.g. _codecomparison/ddc10/cmfgen)')
+                        help='Paths to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)')
 
     parser.add_argument('--recombrates', action='store_true',
                         help='Make a recombination rate plot')
