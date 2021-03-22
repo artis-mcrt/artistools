@@ -268,7 +268,7 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_value
     else:
         match_timestep = tuple(timestep) if hasattr(timestep, '__iter__') else (timestep,)
 
-    if not modelpath.exists() and modelpath.parts[0] == '_codecomparison':
+    if not modelpath.exists() and modelpath.parts[0] == 'codecomparison':
         return artistools.codecomparison.read_reference_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
