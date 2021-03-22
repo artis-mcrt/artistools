@@ -427,7 +427,7 @@ def main(args=None, argsraw=None, **kwargs):
             dfpops = None
         else:
             adata = at.atomic.get_levels(modelpath, get_transitions=True, ionlist=tuple(ions))
-            dfpops = get_lte_pops(adata, ions, ionpopdict, temperature=6000)
+            dfpops = at.nonthermal.get_lte_pops(adata, ions, ionpopdict, temperature=6000)
 
         if step == 0 and args.ostat:
             with open(args.ostat, 'w') as fstat:
