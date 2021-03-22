@@ -603,6 +603,7 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, colours, 
 def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
     font = {'size': 24}
     matplotlib.rc('font', **font)
+    angle_counter = 0
 
     # colours = ['k', 'darkmagenta', 'darkred']
 
@@ -638,7 +639,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
 
         if args.plotvspecpol:
             angles = args.plotvspecpol
-        elif args.plotviewingangle and os.path.isfile(modelpath/'specpol_res.out'):
+        elif args.plotviewingangle and os.path.isfile(Path(modelpath)/'specpol_res.out'):
             angles = args.plotviewingangle
         else:
             angles = [None]
@@ -682,7 +683,15 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                 if linelabel is None:
                     linelabel = f'{modelname}'
 
-                if args.color:
+                if args.color and args.plotviewingangle:
+                    print("WARNING: -color argument will not work with viewing angles for colour evolution plots,"
+                          "colours are taken from color_list array instead")
+                    color = color_list[angle_counter]
+                    angle_counter += 1
+                elif args.plotviewingangle and not args.color:
+                    color = color_list[angle_counter]
+                    angle_counter += 1
+                elif args.color:
                     color = args.color[modelnumber]
                 if args.linestyle:
                     linestyle = args.linestyle[modelnumber]
