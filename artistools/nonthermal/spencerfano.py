@@ -269,7 +269,7 @@ def main(args=None, argsraw=None, **kwargs):
     modelpath = Path(args.modelpath)
 
     if args.workfn:
-        return workfunction_tests(modelpath, args)
+        return at.nonthermal.workfunction_tests(modelpath, args)
 
     if Path(args.outputfile).is_dir():
         args.outputfile = Path(args.outputfile, defaultoutputfile)
