@@ -106,16 +106,6 @@ def get_units_string(variable):
     return ''
 
 
-def get_ylabel(variable):
-    if variable in variablelongunits:
-        return variablelongunits[variable]
-    elif variable in variableunits:
-        return f'[{variableunits[variable]}]'
-    elif variable.split('_')[0] in variableunits:
-        return f'[{variableunits[variable.split("_")[0]]}]'
-    return ''
-
-
 def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcooling=True):
     """Generate timestep, modelgridindex, dict from estimator file."""
     # itstep = at.get_inputparams(modelpath)['itstep']
