@@ -11,7 +11,7 @@ from pathlib import Path
 
 import artistools as at
 
-modelpath = Path(os.path.dirname(os.path.abspath(__file__)), 'data')
+modelpath = at.config['path_testartismodel']
 outputpath = Path(os.path.dirname(os.path.abspath(__file__)), 'output')
 at.enable_diskcache = False
 

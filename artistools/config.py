@@ -13,3 +13,7 @@ figwidth = 5
 config = {}
 config['codecomparisondata1path'] = Path('/Volumes/GoogleDrive/My Drive/GitHub/sn-rad-trans/data1')
 config['codecomparisonmodelartismodelpath'] = Path('/Volumes/GoogleDrive/My Drive/artis_runs/weizmann/')
+
+config['path_artistools_repository'] = Path(__file__).absolute().parent.parent
+config['path_artistools_sourcedir'] = Path(__file__).absolute().parent
+config['path_testartismodel'] = Path(config['path_artistools_repository'], 'tests', 'data', 'artismodel')
