@@ -63,7 +63,7 @@ jobs:
       uses: actions/cache@v2.1.4
       id: cache-atomicdata
       with:
-          path: "tests/testmodel.tar.xz"
+          path: "tests/data/testmodel.tar.xz"
           key: "https://psweb.mp.qub.ac.uk/artis/artistools/testmodel.tar.xz"
 
     - name: Download atomic data
