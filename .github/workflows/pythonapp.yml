@@ -74,6 +74,7 @@ jobs:
 
     - name: Test with pytest
       run: |
+        mkdir -p tests/data/artismodel/
         tar -xvf tests/data/testmodel.tar.xz --directory tests/data/artismodel/
         pytest --cov=./ --cov-report=xml --durations=0
 
