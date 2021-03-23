@@ -16,4 +16,4 @@ config['codecomparisonmodelartismodelpath'] = Path('/Volumes/GoogleDrive/My Driv
 
 config['path_artistools_repository'] = Path(__file__).absolute().parent.parent
 config['path_artistools_sourcedir'] = Path(__file__).absolute().parent
-config['path_testartismodel'] = Path(config['path_artistools_repository'], 'tests', 'data', 'artismodel')
+config['path_testartismodel'] = Path(config['path_artistools_repository'], 'tests', 'data', 'testmodel')
