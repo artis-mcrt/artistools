@@ -1,4 +1,4 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 
 if [ ! -f testmodel.tar.xz ]; then curl -O https://psweb.mp.qub.ac.uk/artis/artistools/testmodel.tar.xz; fi
 
