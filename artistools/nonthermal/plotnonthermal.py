@@ -31,12 +31,7 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
     for folderpath in at.get_runfolders(modelpath, timestep=timestep):
         for mpirank in mpiranklist:
             nonthermalfile = f'nonthermalspec_{mpirank:04d}.out'
-            filepath = Path(folderpath, nonthermalfile)
-            if not filepath.is_file():
-                filepath = Path(folderpath, nonthermalfile + '.gz')
-                if not filepath.is_file():
-                    print(f'Warning: Could not find {filepath.relative_to(modelpath.parent)}')
-                    continue
+            filepath = at.firstexisting([nonthermalfile, nonthermalfile + '.xz', nonthermalfile + '.gz'], path=folderpath)
 
             if modelgridindex > -1:
                 filesize = Path(filepath).stat().st_size / 1024 / 1024
