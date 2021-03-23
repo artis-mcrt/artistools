@@ -133,9 +133,13 @@ def read_file(nltefilepath):
     """Read NLTE populations from one file."""
 
     if not nltefilepath.is_file():
-        nltefilepath = Path(str(nltefilepath) + '.gz')
-        print(nltefilepath)
-        if not nltefilepath.is_file():
+        nltefilepathgz = Path(str(nltefilepath) + '.gz')
+        nltefilepathxz = Path(str(nltefilepath) + '.xz')
+        if nltefilepathxz.is_file():
+            nltefilepath = nltefilepathxz
+        elif nltefilepathgz.is_file():
+            nltefilepath = nltefilepathgz
+        else:
             # if the first file is not found in the folder, then skip the folder
             print(f'Warning: Could not find {nltefilepath}')
             return pd.DataFrame()
