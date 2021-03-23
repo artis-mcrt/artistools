@@ -6,3 +6,5 @@ if [ ! -f testmodel.tar.xz ]; then curl -O https://psweb.mp.qub.ac.uk/artis/arti
 
 mkdir -p artismodel/
 tar -xf testmodel.tar.xz --directory artismodel/
+
+set +x
