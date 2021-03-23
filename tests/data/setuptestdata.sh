@@ -4,7 +4,9 @@ set -x
 
 if [ ! -f testmodel.tar.xz ]; then curl -O https://psweb.mp.qub.ac.uk/artis/artistools/testmodel.tar.xz; fi
 
-mkdir -p artismodel/
-tar -xf testmodel.tar.xz --directory artismodel/
+rm -rf testmodel/
+mkdir -p testmodel/
+tar -xf testmodel.tar.xz --directory testmodel/
+# find testmodel -size +1M -exec xz -v {} \;
 
 set +x
