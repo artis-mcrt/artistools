@@ -63,18 +63,18 @@ jobs:
       uses: actions/cache@v2.1.4
       id: cache-atomicdata
       with:
-          path: "tests/data/atomicdata_feconi.tar.xz"
-          key: "tests/data/atomicdata_feconi.tar.xz"
+          path: "tests/data/atomicdata_feco.tar.xz"
+          key: "https://psweb.mp.qub.ac.uk/artis/artistools/atomicdata_feco.tar.xz"
 
     - name: Download atomic data
       if: steps.cache-atomicdata.outputs.cache-hit != 'true'
       working-directory: tests/data/
       run: |
-          curl -O https://psweb.mp.qub.ac.uk/artis/tests/atomicdata_feconi.tar.xz
+          curl -O https://psweb.mp.qub.ac.uk/artis/artistools/atomicdata_feco.tar.xz
 
     - name: Test with pytest
       run: |
-        tar -xvf tests/data/atomicdata_feconi.tar.xz --directory tests/data/
+        tar -xvf tests/data/atomicdata_feco.tar.xz --directory tests/data/
         pytest --cov=./ --cov-report=xml --durations=0
 
     - name: Upload coverage to Codecov
