@@ -11,9 +11,10 @@ import artistools as at
 import artistools.spectra
 import artistools.transitions
 
-modelpath = Path(at.PYDIR, '..', 'tests', 'data')
+modelpath = at.config['path_testartismodel']
 outputpath = Path(at.PYDIR, '..', 'tests', 'output')
 at.enable_diskcache = False
+
 
 def test_spectraplot():
     at.spectra.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320)
