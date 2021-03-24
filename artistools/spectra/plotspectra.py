@@ -720,7 +720,7 @@ def make_plot(args):
 
 
 def addargs(parser):
-    parser.add_argument('-specpath', default=[], nargs='*', action=at.AppendPath,
+    parser.add_argument('specpath', default=[], nargs='*', action=at.AppendPath,
                         help='Paths to ARTIS folders or reference spectra filenames')
 
     parser.add_argument('-label', default=[], nargs='*',
