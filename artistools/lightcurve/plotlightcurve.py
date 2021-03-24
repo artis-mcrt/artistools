@@ -897,7 +897,7 @@ def plot_color_evolution_from_data(filter_names, lightcurvefilename, color, mark
 
 
 def addargs(parser):
-    parser.add_argument('-modelpath', default=[], nargs='*', action=at.AppendPath,
+    parser.add_argument('modelpath', default=[], nargs='*', action=at.AppendPath,
                         help='Path(s) to ARTIS folders with light_curve.out or packets files'
                         ' (may include wildcards such as * and **)')
 
