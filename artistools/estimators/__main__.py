@@ -1,3 +1,3 @@
-from .plot import main
+from .plotestimators import main
 
 main()
