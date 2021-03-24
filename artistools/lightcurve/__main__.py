@@ -1,3 +1,3 @@
-from .plotplotcurve import main
+from .plotlightcurve import main
 
 main()
