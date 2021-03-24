@@ -551,9 +551,6 @@ def get_time_range(modelpath, timestep_range_str, timemin, timemax, timedays_ran
         return -1, -1, timemin, timemax
 
     if timestep_range_str is not None:
-        if timedays_is_specified:
-            raise ValueError("Cannot specify both time in days and timestep numbers.")
-
         if isinstance(timestep_range_str, str) and '-' in timestep_range_str:
             timestepmin, timestepmax = [int(nts) for nts in timestep_range_str.split('-')]
         else:
