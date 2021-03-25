@@ -295,6 +295,7 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
     artisindex = 0
     refspecindex = 0
     for seriesindex, specpath in enumerate(speclist):
+        specpath = Path(specpath)
         plotkwargs = {}
         plotkwargs['alpha'] = 0.95
 
@@ -305,7 +306,7 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
         if args.linewidth[seriesindex]:
             plotkwargs['linewidth'] = args.linewidth[seriesindex]
 
-        if Path(specpath).is_dir() or Path(specpath).name == 'spec.out':
+        if specpath.is_dir() or specpath.name == 'spec.out':
             # ARTIS model spectrum
             # plotkwargs['dash_capstyle'] = dash_capstyleList[artisindex]
             if 'linewidth' not in plotkwargs:
