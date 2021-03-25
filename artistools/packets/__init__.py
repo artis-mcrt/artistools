@@ -51,6 +51,7 @@ columns = (
     'originated_from_positron',
     'true_emission_velocity',
     'trueem_time',
+    'pellet_nucindex',
 )
 
 
