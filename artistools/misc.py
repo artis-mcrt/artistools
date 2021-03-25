@@ -974,19 +974,33 @@ def get_runfolders(modelpath, timestep=None, timesteps=None):
     return [folderpath for folderpath in folderlist_all if get_runfolder_timesteps(folderpath)]
 
 
-def get_mpiranklist(modelpath, modelgridindex=None):
+def get_mpiranklist(modelpath, modelgridindex=None, only_ranks_withgridcells=False):
+    """
+        Get a list of rank ids. Parameters:
+        - modelpath:
+            pathlib.Path() to ARTIS model folder
+        - modelgridindex:
+            give a cell number to only return the rank number that updates this cell (and outputs its estimators)
+        - only_ranks_withgridcells:
+            set True to skip ranks that only update packets (i.e. that don't update any grid cells/output estimators)
+    """
     if modelgridindex is None or modelgridindex == []:
-        return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
+        if only_ranks_withgridcells:
+            return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
+        return range(get_nprocs(modelpath))
     else:
         try:
             mpiranklist = set()
             for mgi in modelgridindex:
                 if mgi < 0:
-                    return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
+                    if only_ranks_withgridcells:
+                        return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
+                    return range(get_nprocs(modelpath))
                 else:
                     mpiranklist.add(get_mpirankofcell(mgi, modelpath=modelpath))
 
             return sorted(list(mpiranklist))
+
         except TypeError:
             # in case modelgridindex is a single number rather than an iterable
             if modelgridindex < 0:
