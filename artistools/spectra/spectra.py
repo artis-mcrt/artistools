@@ -345,12 +345,13 @@ def get_res_spectrum(
 
 
 def make_virtual_spectra_summed_file(modelpath):
-    mpiranklist = at.get_mpiranklist(modelpath)
+    nprocs = at.get_nprocs(modelpath)
+    print("nprocs", nprocs)
     vspecpol_data_old = []  # virtual packet spectra for each observer (all directions and opacity choices)
     vpktconfig = at.get_vpkt_config(modelpath)
     nindicies_used = vpktconfig['nobsdirections'] * vpktconfig['nspectraperobs']
     print(f"nobsdirections {vpktconfig['nobsdirections']} nspectraperobs {vpktconfig['nspectraperobs']} (total observers: {nindicies_used})")
-    for mpirank in mpiranklist:
+    for mpirank in range(nprocs):
         print(f"Reading rank {mpirank}")
         vspecpolfilename = f'vspecpol_{mpirank}-0.out'
         vspecpolpath = Path(modelpath, vspecpolfilename)
