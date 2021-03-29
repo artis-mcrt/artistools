@@ -113,6 +113,24 @@ def make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax):
     lightcurvedataframe.to_csv(outpath / outfilename, sep=' ', index=False, header=False)
 
 
+def make_hesma_peakmag_dm15_dm40(pathtofiles, modelname, outpath):
+
+    dm15filename = f"bolband_{modelname}_viewing_angle_data.txt"
+    dm40filename = f"bolband_{modelname}_viewing_angle_data_deltam40.txt"
+
+    dm15data = pd.read_csv(pathtofiles / dm15filename, delim_whitespace=True, header=None, names=['peakmag', 'risetime', 'dm15'], skiprows=1)
+    dm40data = pd.read_csv(pathtofiles / dm40filename, delim_whitespace=True, header=None, names=['peakmag', 'risetime', 'dm40'], skiprows=1)
+
+    outdata = {}
+    outdata['peakmag'] = dm15data['peakmag']  # dm15 peak mag probably more accurate - shorter time window
+    outdata['dm15'] = dm15data['dm15']
+    outdata['dm40'] = dm40data['dm40']
+
+    outdataframe = pd.DataFrame(outdata)
+    outdataframe = outdataframe.round(decimals=4)
+    outdataframe.to_csv(outpath / f"doubledet_2021_bol_dm_{modelname}.dat", sep=' ', index=False, header=True)
+
+
 def main():
     pathtomodel = Path("/home/localadmin_ccollins/harddrive4TB/parameterstudy/")
     modelnames = ['M08_03', 'M08_05', 'M08_10', 'M09_03', 'M09_05', 'M09_10',
