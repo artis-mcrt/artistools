@@ -36,22 +36,32 @@ def get_bol_lc_from_spec(modelpath):
     return lightcurvedataframe
 
 
-def get_bol_lc_from_lightcurveout(modelpath):
-    lcdata = pd.read_csv(modelpath / "light_curve_res.out", delim_whitespace=True, header=None, names=['time', 'lum', 'lum_cmf'])
+def get_bol_lc_from_lightcurveout(modelpath, res=False):
+    if res:
+        lcfilename = "light_curve_res.out"
+    else:
+        lcfilename = "light_curve.out"
+    lcdata = pd.read_csv(modelpath / lcfilename, delim_whitespace=True, header=None, names=['time', 'lum', 'lum_cmf'])
     lcdataframes = at.gather_res_data(lcdata, index_of_repeated_value=0)
 
     times = lcdataframes[0]['time']
     lightcurvedata = {'time': times}
 
-    for angle in range(len(lcdataframes)):
+    nangles = len(lcdataframes)
+    if not res:
+        nangles = 1
+    for angle in range(nangles):
         lcdata = lcdataframes[angle]
         bol_luminosity = np.array(lcdata['lum']) * 3.826e33  # Luminosity in erg/s
 
-        lightcurvedata[f'angle={angle}'] = np.log10(bol_luminosity)
+        # lightcurvedata[f'angle={angle}'] = np.log10(bol_luminosity)
+        columnname = 'lum (erg/s)'
+        if res:
+            columnname = f'angle={angle}'
+        lightcurvedata[columnname] = bol_luminosity
 
     lightcurvedataframe = pd.DataFrame(lightcurvedata)
     lightcurvedataframe = lightcurvedataframe.replace([np.inf, -np.inf], 0)
-    print(lightcurvedataframe)
 
     return lightcurvedataframe
 
