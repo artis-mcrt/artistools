@@ -2,6 +2,7 @@
 
 import artistools as at
 # import artistools.spectra
+import artistools.lightcurve.writebollightcurvedata
 
 from pathlib import Path
 import pandas as pd
@@ -98,5 +99,31 @@ def make_hesma_vspecfiles(modelpath):
             vspecdata.to_csv(modelpath / 'hesma_virtualspecseq_theta.dat', mode='a', sep=' ', index=False)
 
 
-# modelpath = Path("/Users/ccollins/My Passport/SabrinaModels/M2a")
-# make_hesma_vspecfiles(modelpath)
+def make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax):
+    """UVOIR bolometric light curve (angle-averaged)"""
+
+    lightcurvedataframe = at.lightcurve.writebollightcurvedata.get_bol_lc_from_lightcurveout(modelpath)
+    print(lightcurvedataframe)
+    lightcurvedataframe = lightcurvedataframe[lightcurvedataframe.time > timemin]
+    lightcurvedataframe = lightcurvedataframe[lightcurvedataframe.time < timemax]
+
+    modelname = at.get_model_name(modelpath)
+    outfilename = f'doubledet_2021_{modelname}.dat'
+
+    lightcurvedataframe.to_csv(outpath / outfilename, sep=' ', index=False, header=False)
+
+
+def main():
+    pathtomodel = Path("/home/localadmin_ccollins/harddrive4TB/parameterstudy/")
+    modelnames = ['M08_03', 'M08_05', 'M08_10', 'M09_03', 'M09_05', 'M09_10',
+                  'M10_02_end55', 'M10_03', 'M10_05', 'M10_10', 'M11_05_1']
+    outpath = Path("/home/localadmin_ccollins/harddrive4TB/parameterstudy/hesma_lc")
+    timemin = 5
+    timemax = 70
+    for modelname in modelnames:
+        modelpath = pathtomodel / modelname
+        make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax)
+
+
+if __name__ == '__main__':
+    main()
