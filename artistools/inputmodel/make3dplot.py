@@ -12,7 +12,7 @@ modelpath = Path("/home/localadmin_ccollins/Documents/kilonova_inputfiles/test3d
 model, t_model, vmax = at.inputmodel.get_modeldata(modelpath, dimensions=3, get_abundances=False)
 
 # choose what surface will be coloured by - eg rho
-coloursurfaceby = np.array(model['rho'])
+coloursurfaceby = 'rho'
 
 # generate grid from data
 grid = round(len(model['rho']) ** (1./3.))
@@ -23,7 +23,7 @@ i = 0
 for z in range(0, grid):
     for y in range(0, grid):
         for x in range(0, grid):
-            surfacecolorscale[x, y, z] = coloursurfaceby[i]
+            surfacecolorscale[x, y, z] = np.array(model[coloursurfaceby])[i]
             xgrid[x] = -vmax + 2 * x * vmax / grid
             i += 1
 
@@ -32,12 +32,12 @@ x,y,z = np.meshgrid(xgrid,xgrid,xgrid)
 mesh = pv.StructuredGrid(x,y,z)
 print(mesh) # tells you the properties of the mesh
 
-mesh['surfacecolorscale'] = surfacecolorscale.ravel(order='F') # add data to the mesh
+mesh[coloursurfaceby] = surfacecolorscale.ravel(order='F') # add data to the mesh
 # mesh.plot()
 
 surfacepositions = [1, 50, 100, 300, 500, 800, 1000, 1100, 1200, 1300, 1400, 1450, 1500] # choose these
 
-surf = mesh.contour(surfacepositions,scalars='surfacecolorscale') # create isosurfaces
+surf = mesh.contour(surfacepositions,scalars=coloursurfaceby) # create isosurfaces
 
 surf.plot(opacity='linear', screenshot='bla.png')    # plot surfaces and save screenshot
 
