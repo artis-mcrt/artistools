@@ -209,9 +209,18 @@ def get_2d_modeldata(modelpath):
 
 
 def save_modeldata(dfmodeldata, t_model_init_days, filename):
-    """Save a pandas DataFrame into ARTIS model.txt"""
+    """Save a pandas DataFrame and snapshot time into ARTIS model.txt"""
+
+    standardcols = ['inputcellid', 'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57']
+    customcols = False
+    for col in dfmodeldata.columns:
+        if col not in standardcols:
+            customcols = True
+            break
+
     with open(filename, 'w') as fmodel:
         fmodel.write(f'{len(dfmodeldata)}\n{t_model_init_days:f}\n')
+        fmodel.write('#' + "  ".join(dfmodeldata.columns) + '\n')        
         for _, cell in dfmodeldata.iterrows():
             fmodel.write(f'{cell.inputcellid:6.0f}   {cell.velocity_outer:9.2f}   {cell.logrho:10.8f} '
                          f'{cell.X_Fegroup:10.4e} {cell.X_Ni56:10.4e} {cell.X_Co56:10.4e} '
@@ -261,5 +270,7 @@ def get_initialabundances(modelpath):
 
 def save_initialabundances(dfabundances, abundancefilename):
     """Save a DataFrame (same format as get_initialabundances) to model.txt."""
+    if Path(abundancefilename).is_dir():
+        abundancefilename = Path(abundancefilename) / 'abundances.txt'
     dfabundances['inputcellid'] = dfabundances['inputcellid'].astype(int)
     dfabundances.to_csv(abundancefilename, header=False, sep=' ', index=False)
