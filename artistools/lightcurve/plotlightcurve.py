@@ -151,9 +151,8 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
     plt.close()
 
 
-def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
-    labelfontsize = 22
-    font = {'size': labelfontsize}
+def create_axes(args):
+    font = {'size': args.labelfontsize}
     matplotlib.rc('font', **font)
     if args.filter and len(args.filter) > 1:
         rows = 2
@@ -180,6 +179,13 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
         args.timemax = args.xmax + 5
     if args.timemin is None:
         args.timemin = args.xmin - 5
+
+    return fig, ax
+
+
+def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
+    args.labelfontsize = 22  #todo: make command line arg
+    fig, ax = create_axes(args)
 
     band_risetime_polyfit = []
     band_peakmag_polyfit = []
@@ -440,15 +446,15 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
             # axis.set_xscale('log')
             axis.minorticks_on()
             axis.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2,
-                             labelsize=labelfontsize, direction='in')
+                             labelsize=args.labelfontsize, direction='in')
             axis.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2,
-                             labelsize=labelfontsize, direction='in')
+                             labelsize=args.labelfontsize, direction='in')
 
     else:
         ax.minorticks_on()
-        ax.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=labelfontsize,
+        ax.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=args.labelfontsize,
                        direction='in')
-        ax.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=labelfontsize,
+        ax.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=args.labelfontsize,
                        direction='in')
 
     if args.filter and len(args.filter) > 1:
@@ -457,8 +463,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     elif key in filternames_conversion_dict:
         ax.set_ylabel(f'{filternames_conversion_dict[key]} Magnitude', fontsize=labelfontsize)
     else:
-        ax.set_ylabel(f'{key} Magnitude', fontsize=labelfontsize)  # r'M$_{\mathrm{bol}}$'
-        ax.set_xlabel('Time Since Explosion [days]', fontsize=labelfontsize)
+        ax.set_ylabel(f'{key} Magnitude', fontsize=args.labelfontsize)  # r'M$_{\mathrm{bol}}$'
+        ax.set_xlabel('Time Since Explosion [days]', fontsize=args.labelfontsize)
 
     plt.ylim(args.ymin, args.ymax)
     plt.xlim(args.xmin, args.xmax)
