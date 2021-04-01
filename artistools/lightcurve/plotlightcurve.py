@@ -183,6 +183,35 @@ def create_axes(args):
     return fig, ax
 
 
+def get_angle_stuff(modelpath, args):
+    viewing_angles = None
+    if args.plotvspecpol and os.path.isfile(modelpath / 'vpkt.txt'):
+        angles = args.plotvspecpol
+    elif args.plotviewingangle and args.plotviewingangle[0] == -1 and os.path.isfile(modelpath / 'specpol_res.out'):
+        angles = np.arange(0, 100, 1, dtype=int)
+    elif args.plotviewingangle and os.path.isfile(modelpath / 'specpol_res.out'):
+        angles = args.plotviewingangle
+    elif args.calculate_costheta_phi_from_viewing_angle_numbers and \
+            args.calculate_costheta_phi_from_viewing_angle_numbers[0] == -1:
+        viewing_angles = np.arange(0, 100, 1, dtype=int)
+        calculate_costheta_phi_for_viewing_angles(viewing_angles, modelpath)
+    elif args.calculate_costheta_phi_from_viewing_angle_numbers:
+        viewing_angles = args.calculate_costheta_phi_from_viewing_angle_numbers
+        calculate_costheta_phi_for_viewing_angles(viewing_angles, modelpath)
+    else:
+        angles = [None]
+
+    angle_definition = None
+    if angles[0]:
+        angle_definition = calculate_costheta_phi_for_viewing_angles(angles, modelpath)
+        if args.average_every_tenth_viewing_angle:
+            for key in angle_definition.keys():
+                costheta_label = angle_definition[key].split(',')[0]
+                angle_definition[key] = costheta_label
+
+    return angles, viewing_angles, angle_definition
+
+
 def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
     args.labelfontsize = 22  #todo: make command line arg
     fig, ax = create_axes(args)
@@ -201,30 +230,9 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     # plt.style.use('dark_background')
 
     for modelnumber, modelpath in enumerate(modelpaths):
-        modelpath = Path(modelpath)
-        if args.plotvspecpol and os.path.isfile(modelpath / 'vpkt.txt'):
-            angles = args.plotvspecpol
-        elif args.plotviewingangle and args.plotviewingangle[0] == -1 and os.path.isfile(modelpath / 'specpol_res.out'):
-            angles = np.arange(0, 100, 1, dtype=int)
-        elif args.plotviewingangle and os.path.isfile(modelpath / 'specpol_res.out'):
-            angles = args.plotviewingangle
-        elif args.calculate_costheta_phi_from_viewing_angle_numbers and \
-                args.calculate_costheta_phi_from_viewing_angle_numbers[0] == -1:
-            viewing_angles = np.arange(0, 100, 1, dtype=int)
-            calculate_costheta_phi_for_viewing_angles(viewing_angles, modelpath)
-        elif args.calculate_costheta_phi_from_viewing_angle_numbers:
-            viewing_angles = args.calculate_costheta_phi_from_viewing_angle_numbers
-            calculate_costheta_phi_for_viewing_angles(viewing_angles, modelpath)
-        else:
-            angles = [None]
-        # angles.append(None)
+        modelpath = Path(modelpath)  ## Make sure modelpath is defined as path. May not be necessary
 
-        if angles:
-            angle_definition = calculate_costheta_phi_for_viewing_angles(angles, modelpath)
-            if args.average_every_tenth_viewing_angle:
-                for key in angle_definition.keys():
-                    costheta_label = angle_definition[key].split(',')[0]
-                    angle_definition[key] = costheta_label
+        angles, viewing_angles, angle_definition = get_angle_stuff(modelpath, args) #todo: could probably be in an if
 
         for index, angle in enumerate(angles):
             linenames = []
@@ -255,7 +263,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                 if args.plotvspecpol and angle is not None and os.path.isfile(modelpath / 'vpkt.txt'):
                     vpkt_config = at.get_vpkt_config(modelpath)
                     viewing_angle = round(math.degrees(math.acos(vpkt_config['cos_theta'][angle])))
-                    linelabel = fr"$\theta$ = {viewing_angle}"
+                    linelabel = fr"$\theta$ = {viewing_angle}"  # todo: update to be consistent with res definition
                 elif args.plotviewingangle and angle is not None and os.path.isfile(modelpath / 'specpol_res.out'):
                     linelabel = fr"{modelname} {angle_definition[angle]}"
                     # linelabel = None
