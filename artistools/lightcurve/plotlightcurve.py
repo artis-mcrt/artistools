@@ -270,7 +270,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
             modelname = at.get_model_name(modelpath)
             linenames.append(modelname)
             print(f'Reading spectra: {modelname}')
-            filters_dict = get_band_lightcurve_data(modelpath, args, angle, modelnumber=modelnumber)
+            band_lightcurve_data = get_band_lightcurve_data(modelpath, args, angle, modelnumber=modelnumber)
 
             if modelnumber == 0 and args.plot_hesma_model:
                 hesma_model = read_hesma_lightcurve(args)
@@ -280,11 +280,11 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                 if linename not in linenames:
                     linenames.append(linename)
 
-            for plotnumber, key in enumerate(filters_dict):
+            for plotnumber, key in enumerate(band_lightcurve_data):
                 time = []
                 magnitude = []
 
-                for t, mag in filters_dict[key]:
+                for t, mag in band_lightcurve_data[key]:
                     # adjusting plot range for artis simulation (x-axis)
                     if (args.timemin < t < args.timemax):
                         time.append(t)
@@ -335,7 +335,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                             define_colours_list = args.refspeccolors
                             markers = args.refspecmarkers
                             for i, reflightcurve in enumerate(args.reflightcurves):
-                                plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, define_colours_list[i], markers[i],
+                                plot_lightcurve_from_data(band_lightcurve_data.keys(), reflightcurve, define_colours_list[i], markers[i],
                                                           filternames_conversion_dict, ax, plotnumber)
 
                 if args.color:
@@ -483,7 +483,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
             ax[0].legend(loc='lower left', frameon=True, fontsize='x-small', ncol=1)
         else:
             ax.legend(loc='best', frameon=False, fontsize='small', ncol=1, handlelength=0.7)
-    if args.filter and len(filters_dict) == 1:
+    if args.filter and len(band_lightcurve_data) == 1:
         args.outputfile = os.path.join(outputfolder, f'plot{key}lightcurves.pdf')
     if args.show:
         plt.show()
