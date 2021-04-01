@@ -248,6 +248,14 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     band_peakmag_angle_averaged_polyfit = []
     band_delta_m15_angle_averaged_polyfit = []
 
+    calculate_peak_time_mag_deltam15_bool = False
+    if (args.calculate_peakmag_risetime_delta_m15
+            or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
+            or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
+            or args.make_viewing_angle_peakmag_risetime_scatter_plot
+            or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
+        calculate_peak_time_mag_deltam15_bool = True
+
     # angle_names = [0, 45, 90, 180]
     # plt.style.use('dark_background')
 
@@ -290,11 +298,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                     magnitude = filterfunc(magnitude)
 
                 # Calculating band peak time, peak magnitude and delta m15
-                if (args.calculate_peakmag_risetime_delta_m15
-                        or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
-                        or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-                        or args.make_viewing_angle_peakmag_risetime_scatter_plot
-                        or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
+                if calculate_peak_time_mag_deltam15_bool:
                     band_risetime_polyfit, band_peakmag_polyfit, band_deltam15_polyfit = \
                         calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, band_risetime_polyfit,
                                                          band_peakmag_polyfit, band_deltam15_polyfit,
@@ -302,20 +306,6 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
 
                 if args.plotviewingangle and args.plotviewingangles_lightcurves:
                     plt.plot(time, magnitude, label=modelname, color=define_colours_list[angle], linewidth=3)
-
-                # if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
-                #     # print('time before', time)
-                #     # print('z', args.redshifttoz[modelnumber])
-                #     time = np.array(time) * (1 + args.redshifttoz[modelnumber])
-                #     print(f'Correcting for time dilation at redshift {args.redshifttoz[modelnumber]}')
-                #     # print('time after', time)
-                #     linestyle = '--'
-                #     color = 'darkmagenta'
-                #     linelabel=args.label[1]
-                # else:
-                #     linestyle = '-'
-                #     color='k'
-                # plt.plot(time, magnitude, label=linelabel, linewidth=3)
 
                 if modelnumber == 0 and args.plot_hesma_model and key in hesma_model.keys():
                     ax.plot(hesma_model.t, hesma_model[key], color='black')
@@ -499,6 +489,21 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
         plt.show()
     plt.savefig(args.outputfile, format='pdf')
     print(f'Saved figure: {args.outputfile}')
+
+## Incase this code is needed again...
+# if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
+#     # print('time before', time)
+#     # print('z', args.redshifttoz[modelnumber])
+#     time = np.array(time) * (1 + args.redshifttoz[modelnumber])
+#     print(f'Correcting for time dilation at redshift {args.redshifttoz[modelnumber]}')
+#     # print('time after', time)
+#     linestyle = '--'
+#     color = 'darkmagenta'
+#     linelabel=args.label[1]
+# else:
+#     linestyle = '-'
+#     color='k'
+# plt.plot(time, magnitude, label=linelabel, linewidth=3)
 
 
 def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, band_risetime_polyfit,
