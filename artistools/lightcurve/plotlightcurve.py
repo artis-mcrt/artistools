@@ -209,6 +209,10 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
 
         if angles:
             angle_definition = calculate_costheta_phi_for_viewing_angles(angles, modelpath)
+            if args.average_every_tenth_viewing_angle:
+                for key in angle_definition.keys():
+                    costheta_label = angle_definition[key].split(',')[0]
+                    angle_definition[key] = costheta_label
 
         for index, angle in enumerate(angles):
             linenames = []
@@ -241,7 +245,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                     viewing_angle = round(math.degrees(math.acos(vpkt_config['cos_theta'][angle])))
                     linelabel = fr"$\theta$ = {viewing_angle}"
                 elif args.plotviewingangle and angle is not None and os.path.isfile(modelpath / 'specpol_res.out'):
-                    linelabel = fr"{modelname} {angle_definition[angle]}"  # todo: not right for averaged angles - fix
+                    linelabel = fr"{modelname} {angle_definition[angle]}"
                     # linelabel = None
                     # linelabel = fr"{modelname} $\theta$ = {angle_names[index]}$^\circ$"
                     # plt.plot(time, magnitude, label=linelabel, linewidth=3)
