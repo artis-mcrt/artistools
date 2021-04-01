@@ -291,7 +291,7 @@ def set_lightcurve_plot_labels(fig, ax, band_name, filternames_conversion_dict, 
     return fig, ax
 
 
-def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
+def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
     args.labelfontsize = 22  #todo: make command line arg
     fig, ax = create_axes(args)
 
@@ -1147,7 +1147,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     filternames_conversion_dict = {'rs': 'r', 'gs': 'g', 'is': 'i'}
     if args.magnitude and args.filter:
-        make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
+        make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
 
     elif args.colour_evolution:
         colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
