@@ -86,7 +86,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
             if args.plotviewingangle:
                 lcdata = lcdataframes[angle]
                 plotkwargs['color'] = None # color_list[angleindex]
-                plotkwargs['label'] = f'{angle_definition[angle]}'
+                plotkwargs['label'] = f'{modelname}\n{angle_definition[angle]}'
 
             # lcdata['lum'] = lcdata['lum']*3.826e33 #Luminosity in erg/s
             axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
@@ -207,6 +207,9 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
             angles = [None]
         # angles.append(None)
 
+        if angles:
+            angle_definition = calculate_costheta_phi_for_viewing_angles(angles, modelpath)
+
         for index, angle in enumerate(angles):
             linenames = []
 
@@ -238,7 +241,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                     viewing_angle = round(math.degrees(math.acos(vpkt_config['cos_theta'][angle])))
                     linelabel = fr"$\theta$ = {viewing_angle}"
                 elif args.plotviewingangle and angle is not None and os.path.isfile(modelpath / 'specpol_res.out'):
-                    linelabel = fr"bin number = {angle}"
+                    linelabel = fr"{modelname} {angle_definition[angle]}"  # todo: not right for averaged angles - fix
                     # linelabel = None
                     # linelabel = fr"{modelname} $\theta$ = {angle_names[index]}$^\circ$"
                     # plt.plot(time, magnitude, label=linelabel, linewidth=3)
@@ -458,7 +461,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     # f.set_figwidth(7)
     if not args.nolegend:
         if args.filter and len(args.filter) > 1:
-            ax[0].legend(loc='best', frameon=True, fontsize='x-small', ncol=1)
+            ax[0].legend(loc='lower left', frameon=True, fontsize='x-small', ncol=1)
         else:
             ax.legend(loc='best', frameon=False, fontsize='small', ncol=1, handlelength=0.7)
     if args.filter and len(filters_dict) == 1:
