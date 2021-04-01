@@ -212,6 +212,28 @@ def get_angle_stuff(modelpath, args):
     return angles, viewing_angles, angle_definition
 
 
+def get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args):
+    if args.plotvspecpol and angle is not None and os.path.isfile(modelpath / 'vpkt.txt'):
+        vpkt_config = at.get_vpkt_config(modelpath)
+        viewing_angle = round(math.degrees(math.acos(vpkt_config['cos_theta'][angle])))
+        linelabel = fr"$\theta$ = {viewing_angle}"  # todo: update to be consistent with res definition
+    elif args.plotviewingangle and angle is not None and os.path.isfile(modelpath / 'specpol_res.out'):
+        linelabel = fr"{modelname} {angle_definition[angle]}"
+        # linelabel = None
+        # linelabel = fr"{modelname} $\theta$ = {angle_names[index]}$^\circ$"
+        # plt.plot(time, magnitude, label=linelabel, linewidth=3)
+    elif args.label:
+        linelabel = fr'{args.label[modelnumber]}'
+    else:
+        linelabel = f'{modelname}'
+        # linelabel = 'Angle averaged'
+
+    if linelabel == 'None' or linelabel is None:
+        linelabel = f'{modelname}'
+
+    return linelabel
+
+
 def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
     args.labelfontsize = 22  #todo: make command line arg
     fig, ax = create_axes(args)
@@ -260,25 +282,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                         time.append(t)
                         magnitude.append(mag)
 
-                if args.plotvspecpol and angle is not None and os.path.isfile(modelpath / 'vpkt.txt'):
-                    vpkt_config = at.get_vpkt_config(modelpath)
-                    viewing_angle = round(math.degrees(math.acos(vpkt_config['cos_theta'][angle])))
-                    linelabel = fr"$\theta$ = {viewing_angle}"  # todo: update to be consistent with res definition
-                elif args.plotviewingangle and angle is not None and os.path.isfile(modelpath / 'specpol_res.out'):
-                    linelabel = fr"{modelname} {angle_definition[angle]}"
-                    # linelabel = None
-                    # linelabel = fr"{modelname} $\theta$ = {angle_names[index]}$^\circ$"
-                    # plt.plot(time, magnitude, label=linelabel, linewidth=3)
-                elif args.label:
-                    linelabel = fr'{args.label[modelnumber]}'
-                else:
-                    linelabel = f'{modelname}'
-                    # linelabel = 'Angle averaged'
-
-                if linelabel == 'None' or linelabel is None:
-                    linelabel = f'{modelname}'
-
-                # linelabel = '\n'.join(wrap(linelabel, 40))
+                linelabel = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
+                # linelabel = '\n'.join(wrap(linelabel, 40))  # todo: could be arg? wraps text in label
 
                 filterfunc = at.get_filterfunc(args)
                 if filterfunc is not None:
