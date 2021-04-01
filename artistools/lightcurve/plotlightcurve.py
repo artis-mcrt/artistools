@@ -246,10 +246,56 @@ def get_band_lightcurve_data_to_plot(band_lightcurve_data, band_name, args):
     return time, brightness_in_mag
 
 
+def set_axis_properties(ax, args):
+    if args.filter and len(args.filter) > 1:
+        for axis in ax:
+            # axis.set_xscale('log')
+            axis.minorticks_on()
+            axis.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2,
+                             labelsize=args.labelfontsize, direction='in')
+            axis.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2,
+                             labelsize=args.labelfontsize, direction='in')
+
+    else:
+        ax.minorticks_on()
+        ax.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=args.labelfontsize,
+                       direction='in')
+        ax.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=args.labelfontsize,
+                       direction='in')
+
+    plt.ylim(args.ymin, args.ymax)
+    plt.xlim(args.xmin, args.xmax)
+
+    plt.minorticks_on()
+    return ax
+
+
+def set_lightcurveplot_legend(ax, args):
+    if not args.nolegend:
+        if args.filter and len(args.filter) > 1:
+            ax[0].legend(loc='lower left', frameon=True, fontsize='x-small', ncol=1)
+        else:
+            ax.legend(loc='best', frameon=False, fontsize='small', ncol=1, handlelength=0.7)
+    return ax
+
+
+def set_lightcurve_plot_labels(fig, ax, band_name, filternames_conversion_dict, args):
+    if args.filter and len(args.filter) > 1:
+        fig.text(0.5, 0.025, 'Time Since Explosion [days]', ha='center', va='center')
+        fig.text(0.02, 0.5, 'Absolute Magnitude', ha='center', va='center', rotation='vertical')
+    elif band_name in filternames_conversion_dict:
+        ax.set_ylabel(f'{filternames_conversion_dict[band_name]} Magnitude', fontsize=args.labelfontsize)
+    else:
+        ax.set_ylabel(f'{band_name} Magnitude', fontsize=args.labelfontsize)  # r'M$_{\mathrm{bol}}$'
+        ax.set_xlabel('Time Since Explosion [days]', fontsize=args.labelfontsize)
+    return fig, ax
+
+
 def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
     args.labelfontsize = 22  #todo: make command line arg
     fig, ax = create_axes(args)
 
+    #todo: make these a dataframe or something
     band_risetime_polyfit = []
     band_peakmag_polyfit = []
     band_deltam15_polyfit = []
@@ -438,41 +484,10 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     #             plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, colours[i], markers[i],
     #                                       filternames_conversion_dict)
 
-    if args.filter and len(args.filter) > 1:
-        for axis in ax:
-            # axis.set_xscale('log')
-            axis.minorticks_on()
-            axis.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2,
-                             labelsize=args.labelfontsize, direction='in')
-            axis.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2,
-                             labelsize=args.labelfontsize, direction='in')
+    ax = set_axis_properties(ax, args)
+    fig, ax = set_lightcurve_plot_labels(fig, ax, band_name, filternames_conversion_dict, args)
+    ax = set_lightcurveplot_legend(ax, args)
 
-    else:
-        ax.minorticks_on()
-        ax.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=args.labelfontsize,
-                       direction='in')
-        ax.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=args.labelfontsize,
-                       direction='in')
-
-    if args.filter and len(args.filter) > 1:
-        fig.text(0.5, 0.025, 'Time Since Explosion [days]', ha='center', va='center')
-        fig.text(0.02, 0.5, 'Absolute Magnitude', ha='center', va='center', rotation='vertical')
-    elif band_name in filternames_conversion_dict:
-        ax.set_ylabel(f'{filternames_conversion_dict[band_name]} Magnitude', fontsize=labelfontsize)
-    else:
-        ax.set_ylabel(f'{band_name} Magnitude', fontsize=args.labelfontsize)  # r'M$_{\mathrm{bol}}$'
-        ax.set_xlabel('Time Since Explosion [days]', fontsize=args.labelfontsize)
-
-    plt.ylim(args.ymin, args.ymax)
-    plt.xlim(args.xmin, args.xmax)
-
-    plt.minorticks_on()
-
-    if not args.nolegend:
-        if args.filter and len(args.filter) > 1:
-            ax[0].legend(loc='lower left', frameon=True, fontsize='x-small', ncol=1)
-        else:
-            ax.legend(loc='best', frameon=False, fontsize='small', ncol=1, handlelength=0.7)
     if args.filter and len(band_lightcurve_data) == 1:
         args.outputfile = os.path.join(outputfolder, f'plot{band_name}lightcurves.pdf')
     if args.show:
