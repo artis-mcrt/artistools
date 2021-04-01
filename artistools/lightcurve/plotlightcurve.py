@@ -202,7 +202,7 @@ def get_angle_stuff(modelpath, args):
         angles = [None]
 
     angle_definition = None
-    if angles[0]:
+    if angles[0] is not None:
         angle_definition = calculate_costheta_phi_for_viewing_angles(angles, modelpath)
         if args.average_every_tenth_viewing_angle:
             for key in angle_definition.keys():
@@ -240,7 +240,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
             modelname = at.get_model_name(modelpath)
             linenames.append(modelname)
             print(f'Reading spectra: {modelname}')
-            filters_dict = get_magnitudes(modelpath, args, angle, modelnumber=modelnumber)
+            filters_dict = get_band_lightcurve_data(modelpath, args, angle, modelnumber=modelnumber)
 
             if modelnumber == 0 and args.plot_hesma_model:
                 hesma_model = read_hesma_lightcurve(args)
@@ -677,7 +677,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
 
                 filter_names = args.colour_evolution[plotnumber].split('-')
                 args.filter = filter_names
-                filters_dict = get_magnitudes(modelpath, args, angle=angle, modelnumber=modelnumber)
+                filters_dict = get_band_lightcurve_data(modelpath, args, angle=angle, modelnumber=modelnumber)
 
                 time_dict_1 = {}
                 time_dict_2 = {}
