@@ -234,6 +234,18 @@ def get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, ar
     return linelabel
 
 
+def get_band_lightcurve_data_to_plot(band_lightcurve_data, key, args):
+    time = []
+    magnitude = []
+
+    for t, mag in band_lightcurve_data[key]:
+        # adjusting plot range for artis simulation (x-axis)
+        if (args.timemin < t < args.timemax):
+            time.append(t)
+            magnitude.append(mag)
+    return time, magnitude
+
+
 def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
     args.labelfontsize = 22  #todo: make command line arg
     fig, ax = create_axes(args)
@@ -275,14 +287,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
             #     linelabel = str(args.plot_hesma_model).split('_')[:3]
 
             for plotnumber, key in enumerate(band_lightcurve_data):
-                time = []
-                magnitude = []
-
-                for t, mag in band_lightcurve_data[key]:
-                    # adjusting plot range for artis simulation (x-axis)
-                    if (args.timemin < t < args.timemax):
-                        time.append(t)
-                        magnitude.append(mag)
+                time, magnitude = get_band_lightcurve_data_to_plot(band_lightcurve_data, key, args)
 
                 linelabel = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
                 # linelabel = '\n'.join(wrap(linelabel, 40))  # todo: could be arg? wraps text in label
