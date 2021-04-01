@@ -322,11 +322,8 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
 
                 if (args.magnitude or args.plotviewingangles_lightcurves) and not (
                         args.calculate_peakmag_risetime_delta_m15
-                        or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-                        or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
-                        or args.test_viewing_angle_fit
-                        or args.make_viewing_angle_peakmag_risetime_scatter_plot
-                        or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
+                        or calculate_peak_time_mag_deltam15_bool  ##Finn does this still work??
+                        or args.test_viewing_angle_fit):
 
                     if args.reflightcurves and modelnumber == 0:
                         if len(angles) > 1 and index > 0:
@@ -346,17 +343,14 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                     linestyle = args.linestyle[modelnumber]
 
                 if args.magnitude and not (
-                        args.calculate_peakmag_risetime_delta_m15 or
-                        args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-                        or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file or args.test_viewing_angle_fit
-                        or args.make_viewing_angle_peakmag_risetime_scatter_plot or
-                        args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
+                        args.test_viewing_angle_fit
+                        or calculate_peak_time_mag_deltam15_bool):  ##Finn: does this still work?
 
                     if args.filter and len(args.filter) > 1:
                         # if linestyle == 'dashed':
                         #     alpha = 0.6
                         # else:
-                        alpha = 1
+                        alpha = 1  # todo: set command line arg for this
 
                         if len(angles) > 1 or (args.plotviewingangle and os.path.isfile(modelpath / 'specpol_res.out')):
                             ax[plotnumber].plot(time, brightness_in_mag, label=linelabel, linewidth=4, linestyle=linestyle,
