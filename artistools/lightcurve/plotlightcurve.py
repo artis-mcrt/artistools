@@ -265,20 +265,14 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
         angles, viewing_angles, angle_definition = get_angle_stuff(modelpath, args) #todo: could probably be in an if
 
         for index, angle in enumerate(angles):
-            linenames = []
 
             modelname = at.get_model_name(modelpath)
-            linenames.append(modelname)
             print(f'Reading spectra: {modelname}')
             band_lightcurve_data = get_band_lightcurve_data(modelpath, args, angle, modelnumber=modelnumber)
 
-            if modelnumber == 0 and args.plot_hesma_model:
-                hesma_model = read_hesma_lightcurve(args)
-                linename = str(args.plot_hesma_model).split('_')[:3]
-                linename = "_".join(linename)
-
-                if linename not in linenames:
-                    linenames.append(linename)
+            # if modelnumber == 0 and args.plot_hesma_model:  # Todo: does this work?
+            #     hesma_model = read_hesma_lightcurve(args)
+            #     linelabel = str(args.plot_hesma_model).split('_')[:3]
 
             for plotnumber, key in enumerate(band_lightcurve_data):
                 time = []
@@ -473,11 +467,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     plt.xlim(args.xmin, args.xmax)
 
     plt.minorticks_on()
-    # f.suptitle(f'{modelname}')
-    # f.legend(labels=linenames, frameon=True, fontsize='xx-small')
-    # plt.tight_layout()
-    # f.set_figheight(8)
-    # f.set_figwidth(7)
+
     if not args.nolegend:
         if args.filter and len(args.filter) > 1:
             ax[0].legend(loc='lower left', frameon=True, fontsize='x-small', ncol=1)
