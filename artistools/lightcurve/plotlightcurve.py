@@ -169,7 +169,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     band_peakmag_angle_averaged_polyfit = []
     band_delta_m15_angle_averaged_polyfit = []
 
-    colours = ['k', 'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange', 'tab:pink', 'tab:gray', 'gold',
+    define_colours_list = ['k', 'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange', 'tab:pink', 'tab:gray', 'gold',
                'tab:cyan', 'darkblue', 'bisque', 'yellow', 'k', 'tab:blue', 'tab:red', 'tab:green', 'purple',
                'tab:orange', 'tab:pink', 'tab:gray', 'gold', 'tab:cyan', 'darkblue', 'bisque', 'yellow', 'k',
                'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange', 'tab:pink', 'tab:gray', 'gold', 'tab:cyan',
@@ -182,7 +182,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange', 'tab:pink', 'tab:gray', 'gold', 'tab:cyan',
                'darkblue', 'bisque', 'yellow']
 
-    colours2 = ['gray', 'lightblue', 'pink', 'yellowgreen', 'mediumorchid', 'sandybrown', 'plum', 'lightgray',
+    define_colours_list2 = ['gray', 'lightblue', 'pink', 'yellowgreen', 'mediumorchid', 'sandybrown', 'plum', 'lightgray',
                 'wheat', 'paleturquoise']
 
     # angle_names = [0, 45, 90, 180]
@@ -276,7 +276,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                                                          filternames_conversion_dict, args)
 
                 if args.plotviewingangle and args.plotviewingangles_lightcurves:
-                    plt.plot(time, magnitude, label=modelname, color=colours[angle], linewidth=3)
+                    plt.plot(time, magnitude, label=modelname, color=define_colours_list[angle], linewidth=3)
 
                 # if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
                 #     # print('time before', time)
@@ -317,16 +317,16 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                         if len(angles) > 1 and index > 0:
                             print('already plotted reflightcurve')
                         else:
-                            colours = args.refspeccolors
+                            define_colours_list = args.refspeccolors
                             markers = args.refspecmarkers
                             for i, reflightcurve in enumerate(args.reflightcurves):
-                                plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, colours[i], markers[i],
+                                plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, define_colours_list[i], markers[i],
                                                           filternames_conversion_dict, ax, plotnumber)
 
                 if args.color:
                     color = args.color[modelnumber]
                 else:
-                    color = colours[modelnumber]
+                    color = define_colours_list[modelnumber]
                 if args.linestyle:
                     linestyle = args.linestyle[modelnumber]
 
@@ -407,12 +407,12 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
 
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_risetime_angle_averaged_polyfit,
-                                                         band_peakmag_angle_averaged_polyfit, colours, colours2,
+                                                         band_peakmag_angle_averaged_polyfit, define_colours_list, define_colours_list2,
                                                          plotvalues, key)
         return
 
     elif args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
-        make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, colours, colours2,
+        make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, define_colours_list, define_colours_list2,
                                                           band_delta_m15_angle_averaged_polyfit,
                                                           band_peakmag_angle_averaged_polyfit, plotvalues)
         return
