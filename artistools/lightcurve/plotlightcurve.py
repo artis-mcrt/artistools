@@ -234,16 +234,16 @@ def get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, ar
     return linelabel
 
 
-def get_band_lightcurve_data_to_plot(band_lightcurve_data, key, args):
+def get_band_lightcurve_data_to_plot(band_lightcurve_data, band_name, args):
     time = []
-    magnitude = []
+    brightness_in_mag = []
 
-    for t, mag in band_lightcurve_data[key]:
+    for t, brightness in band_lightcurve_data[band_name]:  #Todo: does this need to be a loop...?
         # adjusting plot range for artis simulation (x-axis)
         if (args.timemin < t < args.timemax):
             time.append(t)
-            magnitude.append(mag)
-    return time, magnitude
+            brightness_in_mag.append(brightness)
+    return time, brightness_in_mag
 
 
 def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
@@ -282,38 +282,39 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
             print(f'Reading spectra: {modelname}')
             band_lightcurve_data = get_band_lightcurve_data(modelpath, args, angle, modelnumber=modelnumber)
 
-            # if modelnumber == 0 and args.plot_hesma_model:  # Todo: does this work?
-            #     hesma_model = read_hesma_lightcurve(args)
-            #     linelabel = str(args.plot_hesma_model).split('_')[:3]
+            if modelnumber == 0 and args.plot_hesma_model:  # Todo: does this work?
+                hesma_model = read_hesma_lightcurve(args)
+                linelabel = str(args.plot_hesma_model).split('_')[:3]
 
-            for plotnumber, key in enumerate(band_lightcurve_data):
-                time, magnitude = get_band_lightcurve_data_to_plot(band_lightcurve_data, key, args)
+            for plotnumber, band_name in enumerate(band_lightcurve_data):
+                time, brightness_in_mag = get_band_lightcurve_data_to_plot(band_lightcurve_data, band_name, args)
 
                 linelabel = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
                 # linelabel = '\n'.join(wrap(linelabel, 40))  # todo: could be arg? wraps text in label
 
                 filterfunc = at.get_filterfunc(args)
                 if filterfunc is not None:
-                    magnitude = filterfunc(magnitude)
+                    brightness_in_mag = filterfunc(brightness_in_mag)
 
                 # Calculating band peak time, peak magnitude and delta m15
                 if calculate_peak_time_mag_deltam15_bool:
                     band_risetime_polyfit, band_peakmag_polyfit, band_deltam15_polyfit = \
-                        calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, band_risetime_polyfit,
+                        calculate_peak_time_mag_deltam15(time, brightness_in_mag, modelname, angle, band_name,
+                                                         band_risetime_polyfit,
                                                          band_peakmag_polyfit, band_deltam15_polyfit,
                                                          filternames_conversion_dict, args)
 
                 if args.plotviewingangle and args.plotviewingangles_lightcurves:
-                    plt.plot(time, magnitude, label=modelname, color=define_colours_list[angle], linewidth=3)
+                    plt.plot(time, brightness_in_mag, label=modelname, color=define_colours_list[angle], linewidth=3)
 
-                if modelnumber == 0 and args.plot_hesma_model and key in hesma_model.keys():
-                    ax.plot(hesma_model.t, hesma_model[key], color='black')
+                if modelnumber == 0 and args.plot_hesma_model and band_name in hesma_model.keys():  #todo: see if this works
+                    ax.plot(hesma_model.t, hesma_model[band_name], color='black')
 
                 # axarr[plotnumber].axis([0, 60, -16, -19.5])
-                if key in filternames_conversion_dict:
-                    text_key = filternames_conversion_dict[key]
+                if band_name in filternames_conversion_dict:
+                    text_key = filternames_conversion_dict[band_name]
                 else:
-                    text_key = key
+                    text_key = band_name
                 if args.filter and len(args.filter) > 1:
                     ax[plotnumber].text(args.xmax * 0.8, args.ymax * 0.97, text_key)
                 # else:
@@ -358,10 +359,10 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                         alpha = 1
 
                         if len(angles) > 1 or (args.plotviewingangle and os.path.isfile(modelpath / 'specpol_res.out')):
-                            ax[plotnumber].plot(time, magnitude, label=linelabel, linewidth=4, linestyle=linestyle,
+                            ax[plotnumber].plot(time, brightness_in_mag, label=linelabel, linewidth=4, linestyle=linestyle,
                                                 alpha=alpha)
                         else:
-                            ax[plotnumber].plot(time, magnitude, label=linelabel, linewidth=4, color=color,
+                            ax[plotnumber].plot(time, brightness_in_mag, label=linelabel, linewidth=4, color=color,
                                                 linestyle=linestyle, alpha=alpha)
                             # if key is not 'bol':
                             #     ax[plotnumber].plot(
@@ -372,12 +373,12 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
                         # elif 'M2a' in str(modelpath):
                         #     ax.plot(time, magnitude, label=linelabel, linewidth=3, color='k')
                         # else:
-                        ax.plot(time, magnitude, label=linelabel, linewidth=3.5)  # color=color, linestyle=linestyle)
+                        ax.plot(time, brightness_in_mag, label=linelabel, linewidth=3.5)  # color=color, linestyle=linestyle)
 
         # Saving viewing angle data so it can be read in and plotted later on without re-running the script
         #    as it is quite time consuming
         if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
-            np.savetxt(key + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
+            np.savetxt(band_name + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
                        np.c_[band_peakmag_polyfit, band_risetime_polyfit, band_deltam15_polyfit],
                        delimiter=' ', header='peak_mag_polyfit risetime_polyfit deltam15_polyfit', comments='')
 
@@ -412,21 +413,21 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     if (args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
             or args.make_viewing_angle_peakmag_risetime_scatter_plot
             or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
-        np.savetxt(key + "band_" + f'{modelname}' + "_angle_averaged_all_models_data.txt",
+        np.savetxt(band_name + "band_" + f'{modelname}' + "_angle_averaged_all_models_data.txt",
                    np.c_[modelnames, band_risetime_angle_averaged_polyfit, band_peakmag_angle_averaged_polyfit,
                          band_delta_m15_angle_averaged_polyfit],
                    delimiter=' ', fmt='%s',
-                   header="object " + str(key) + "_band_risetime " + str(key) + "_band_peakmag " + str(
-                       key) + "_band_deltam15 ", comments='')
+                   header="object " + str(band_name) + "_band_risetime " + str(band_name) + "_band_peakmag " + str(
+                       band_name) + "_band_deltam15 ", comments='')
 
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_risetime_angle_averaged_polyfit,
                                                          band_peakmag_angle_averaged_polyfit, define_colours_list, define_colours_list2,
-                                                         plotvalues, key)
+                                                         plotvalues, band_name)
         return
 
     elif args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
-        make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, define_colours_list, define_colours_list2,
+        make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, band_name, define_colours_list, define_colours_list2,
                                                           band_delta_m15_angle_averaged_polyfit,
                                                           band_peakmag_angle_averaged_polyfit, plotvalues)
         return
@@ -462,10 +463,10 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
     if args.filter and len(args.filter) > 1:
         fig.text(0.5, 0.025, 'Time Since Explosion [days]', ha='center', va='center')
         fig.text(0.02, 0.5, 'Absolute Magnitude', ha='center', va='center', rotation='vertical')
-    elif key in filternames_conversion_dict:
-        ax.set_ylabel(f'{filternames_conversion_dict[key]} Magnitude', fontsize=labelfontsize)
+    elif band_name in filternames_conversion_dict:
+        ax.set_ylabel(f'{filternames_conversion_dict[band_name]} Magnitude', fontsize=labelfontsize)
     else:
-        ax.set_ylabel(f'{key} Magnitude', fontsize=args.labelfontsize)  # r'M$_{\mathrm{bol}}$'
+        ax.set_ylabel(f'{band_name} Magnitude', fontsize=args.labelfontsize)  # r'M$_{\mathrm{bol}}$'
         ax.set_xlabel('Time Since Explosion [days]', fontsize=args.labelfontsize)
 
     plt.ylim(args.ymin, args.ymax)
@@ -479,7 +480,7 @@ def make_magnitudes_plot(modelpaths, filternames_conversion_dict, outputfolder, 
         else:
             ax.legend(loc='best', frameon=False, fontsize='small', ncol=1, handlelength=0.7)
     if args.filter and len(band_lightcurve_data) == 1:
-        args.outputfile = os.path.join(outputfolder, f'plot{key}lightcurves.pdf')
+        args.outputfile = os.path.join(outputfolder, f'plot{band_name}lightcurves.pdf')
     if args.show:
         plt.show()
     plt.savefig(args.outputfile, format='pdf')
