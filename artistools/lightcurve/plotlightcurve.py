@@ -670,8 +670,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
         for index, angle in enumerate(angles):
 
             for plotnumber, filters in enumerate(args.colour_evolution):
-
-                filter_names = args.colour_evolution[plotnumber].split('-')
+                filter_names = filters.split('-')
                 args.filter = filter_names
                 filters_dict = get_band_lightcurve_data(modelpath, args, angle=angle, modelnumber=modelnumber)
 
