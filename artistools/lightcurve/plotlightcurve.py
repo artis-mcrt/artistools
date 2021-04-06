@@ -690,20 +690,6 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                         plot_times.append(time)
                         diff.append(time_dict_1[time] - time_dict_2[time])
 
-                # if args.plotvspecpol and angle is not None:
-                #     vpkt_config = at.get_vpkt_config(modelpath)
-                #     viewing_angle = round(math.degrees(math.acos(vpkt_config['cos_theta'][angle])))
-                #     linelabel = fr"$\theta$ = {viewing_angle}"
-                # elif args.plotviewingangle and angle is not None:
-                #     linelabel = f"bin number = {angle}"
-                #     # linelabel = fr"$\theta$ = {angle_names[index]}$^\circ$"
-                # elif args.label:
-                #     linelabel = args.label[modelnumber]
-                # else:
-                #     linelabel = f'{modelname}'
-                #
-                # if linelabel is None:
-                #     linelabel = f'{modelname}'
                 linelabel = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
 
                 if args.color and args.plotviewingangle:
