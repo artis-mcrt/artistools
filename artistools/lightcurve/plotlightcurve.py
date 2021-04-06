@@ -692,6 +692,10 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
 
                 linelabel = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
 
+                filterfunc = at.get_filterfunc(args)
+                if filterfunc is not None:
+                    diff = filterfunc(diff)
+
                 if args.color and args.plotviewingangle:
                     print("WARNING: -color argument will not work with viewing angles for colour evolution plots,"
                           "colours are taken from color_list array instead")
@@ -706,16 +710,13 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                     linestyle = args.linestyle[modelnumber]
 
                 if args.reflightcurves and modelnumber == 0:
-                    colours = args.refspeccolors
-                    markers = args.refspecmarkers
-                    for i, reflightcurve in enumerate(args.reflightcurves):
-                        plot_color_evolution_from_data(
-                            filter_names, reflightcurve, colours[i], markers[i], filternames_conversion_dict,
-                            ax, plotnumber, args)
-
-                filterfunc = at.get_filterfunc(args)
-                if filterfunc is not None:
-                    diff = filterfunc(diff)
+                    if len(angles) > 1 and index > 0:
+                        print('already plotted reflightcurve')
+                    else:
+                        for i, reflightcurve in enumerate(args.reflightcurves):
+                            plot_color_evolution_from_data(
+                                filter_names, reflightcurve, args.refspeccolors[i], args.refspecmarkers[i],
+                                filternames_conversion_dict, ax, plotnumber, args)
 
                 if args.subplots:
                     ax[plotnumber].plot(plot_times, diff, label=linelabel, linewidth=4, linestyle=linestyle,
