@@ -298,6 +298,7 @@ def set_lightcurve_plot_labels(fig, ax, band_name, filternames_conversion_dict, 
 
 def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
 
+    # determine if this will be a scatter plot or not
     calculate_peak_time_mag_deltam15_bool = False
     if (args.calculate_peakmag_risetime_delta_m15
             or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
@@ -310,7 +311,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                   "This will give a stupid result. Specify args.timemin and args.timemax")
             quit()
 
-    if calculate_peak_time_mag_deltam15_bool:
+    if calculate_peak_time_mag_deltam15_bool:  # If there's viewing angle scatter plot stuff define some arrays
         args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
 
         args.band_risetime_polyfit = []
@@ -331,7 +332,8 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     for modelnumber, modelpath in enumerate(modelpaths):
         modelpath = Path(modelpath)  ## Make sure modelpath is defined as path. May not be necessary
 
-        angles, viewing_angles, angle_definition = get_angle_stuff(modelpath, args) #todo: could probably be in an if
+        # check if doing viewing angle stuff, and if so define which data to use
+        angles, viewing_angles, angle_definition = get_angle_stuff(modelpath, args)
 
         for index, angle in enumerate(angles):
 
