@@ -298,9 +298,6 @@ def set_lightcurve_plot_labels(fig, ax, band_name, filternames_conversion_dict, 
 
 def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
 
-    #todo: make these a dataframe or something
-    modelnames = [] # save names of models
-
     calculate_peak_time_mag_deltam15_bool = False
     if (args.calculate_peakmag_risetime_delta_m15
             or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
@@ -314,7 +311,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
             quit()
 
     if calculate_peak_time_mag_deltam15_bool:
-        plotvalues = []  # a0 and p0 values for viewing angle scatter plots
+        args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
 
         band_risetime_polyfit = []
         band_peakmag_polyfit = []
@@ -327,6 +324,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     # angle_names = [0, 45, 90, 180]
     # plt.style.use('dark_background')
 
+    modelnames = [] # save names of models
     args.labelfontsize = 22  #todo: make command line arg
     fig, ax = create_axes(args)
 
@@ -465,14 +463,13 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_risetime_angle_averaged_polyfit,
-                                                         band_peakmag_angle_averaged_polyfit,
-                                                         plotvalues, band_name)
+                                                         band_peakmag_angle_averaged_polyfit, band_name, args)
         return
 
     elif args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
         make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, band_name,
                                                           band_delta_m15_angle_averaged_polyfit,
-                                                          band_peakmag_angle_averaged_polyfit, plotvalues)
+                                                          band_peakmag_angle_averaged_polyfit, args)
         return
 
     # if (args.magnitude or args.plotviewingangles_lightcurves) and not (
@@ -578,8 +575,7 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, ban
 
 
 def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_risetime_angle_averaged_polyfit,
-                                                     band_peakmag_angle_averaged_polyfit,
-                                                     plotvalues, key):
+                                                     band_peakmag_angle_averaged_polyfit, key, args):
     for ii, modelname in enumerate(modelnames):
         viewing_angle_plot_data = pd.read_csv(key + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
                                               delimiter=" ")
@@ -589,12 +585,12 @@ def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_risetime_a
         a0 = plt.scatter(band_risetime_viewing_angles, band_peak_mag_viewing_angles, marker='x', color=define_colours_list2[ii])
         p0 = plt.scatter(band_risetime_angle_averaged_polyfit[ii], band_peakmag_angle_averaged_polyfit[ii],
                          marker='o', color=define_colours_list[ii], s=40)
-        plotvalues.append((a0, p0))
+        args.plotvalues.append((a0, p0))
         plt.errorbar(band_risetime_angle_averaged_polyfit[ii], band_peakmag_angle_averaged_polyfit[ii],
                      xerr=np.std(band_risetime_viewing_angles),
                      yerr=np.std(band_peak_mag_viewing_angles), ecolor=define_colours_list[ii], capsize=2)
 
-    plt.legend(plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
+    plt.legend(args.plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
                loc='upper right', fontsize=8, ncol=2, columnspacing=1)
     plt.xlabel('Rise Time in Days', fontsize=14)
     plt.ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
@@ -610,7 +606,7 @@ def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_risetime_a
 
 def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key,
                                                       band_delta_m15_angle_averaged_polyfit,
-                                                      band_peakmag_angle_averaged_polyfit, plotvalues):
+                                                      band_peakmag_angle_averaged_polyfit, args):
     for ii, modelname in enumerate(modelnames):
         viewing_angle_plot_data = pd.read_csv(key + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
                                               delimiter=" ")
@@ -622,16 +618,16 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key,
                          color=define_colours_list2[ii])
         p0 = plt.scatter(band_delta_m15_angle_averaged_polyfit[ii], band_peakmag_angle_averaged_polyfit[ii],
                          marker='o', color=define_colours_list[ii], s=40)
-        plotvalues.append((a0, p0))
+        args.plotvalues.append((a0, p0))
         plt.errorbar(band_delta_m15_angle_averaged_polyfit[ii], band_peakmag_angle_averaged_polyfit[ii],
                      xerr=np.std(band_delta_m15_viewing_angles),
                      yerr=np.std(band_peak_mag_viewing_angles), ecolor=define_colours_list[ii], capsize=2)
 
     # a0, label = at.lightcurve.get_sn_sample_bol()
     # a0, label = at.lightcurve.get_phillips_relation_data()
-    # plotvalues.append((a0, a0))
+    # args.plotvalues.append((a0, a0))
 
-    plt.legend(plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
+    plt.legend(args.plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
                loc='upper right', fontsize=8, ncol=2, columnspacing=1)
     plt.xlabel(r'Decline Rate ($\Delta$m$_{15}$)', fontsize=14)
     plt.ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
