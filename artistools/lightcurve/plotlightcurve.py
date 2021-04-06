@@ -672,7 +672,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
             for plotnumber, filters in enumerate(args.colour_evolution):
                 filter_names = filters.split('-')
                 args.filter = filter_names
-                filters_dict = get_band_lightcurve_data(modelpath, args, angle=angle, modelnumber=modelnumber)
+                band_lightcurve_data = get_band_lightcurve_data(modelpath, args, angle=angle, modelnumber=modelnumber)
 
                 time_dict_1 = {}
                 time_dict_2 = {}
@@ -680,7 +680,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                 plot_times = []
                 diff = []
 
-                for filter_1, filter_2 in zip(filters_dict[filter_names[0]], filters_dict[filter_names[1]]):
+                for filter_1, filter_2 in zip(band_lightcurve_data[filter_names[0]], band_lightcurve_data[filter_names[1]]):
                     # Make magnitude dictionaries where time is the key
                     time_dict_1[float(filter_1[0])] = filter_1[1]
                     time_dict_2[float(filter_2[0])] = filter_2[1]
@@ -690,20 +690,21 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                         plot_times.append(time)
                         diff.append(time_dict_1[time] - time_dict_2[time])
 
-                if args.plotvspecpol and angle is not None:
-                    vpkt_config = at.get_vpkt_config(modelpath)
-                    viewing_angle = round(math.degrees(math.acos(vpkt_config['cos_theta'][angle])))
-                    linelabel = fr"$\theta$ = {viewing_angle}"
-                elif args.plotviewingangle and angle is not None:
-                    linelabel = f"bin number = {angle}"
-                    # linelabel = fr"$\theta$ = {angle_names[index]}$^\circ$"
-                elif args.label:
-                    linelabel = args.label[modelnumber]
-                else:
-                    linelabel = f'{modelname}'
-
-                if linelabel is None:
-                    linelabel = f'{modelname}'
+                # if args.plotvspecpol and angle is not None:
+                #     vpkt_config = at.get_vpkt_config(modelpath)
+                #     viewing_angle = round(math.degrees(math.acos(vpkt_config['cos_theta'][angle])))
+                #     linelabel = fr"$\theta$ = {viewing_angle}"
+                # elif args.plotviewingangle and angle is not None:
+                #     linelabel = f"bin number = {angle}"
+                #     # linelabel = fr"$\theta$ = {angle_names[index]}$^\circ$"
+                # elif args.label:
+                #     linelabel = args.label[modelnumber]
+                # else:
+                #     linelabel = f'{modelname}'
+                #
+                # if linelabel is None:
+                #     linelabel = f'{modelname}'
+                linelabel = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
 
                 if args.color and args.plotviewingangle:
                     print("WARNING: -color argument will not work with viewing angles for colour evolution plots,"
