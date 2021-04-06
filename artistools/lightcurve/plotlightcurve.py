@@ -301,14 +301,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     fig, ax = create_axes(args)
 
     #todo: make these a dataframe or something
-    band_risetime_polyfit = []
-    band_peakmag_polyfit = []
-    band_deltam15_polyfit = []
-    plotvalues = []
-    modelnames = []
-    band_risetime_angle_averaged_polyfit = []
-    band_peakmag_angle_averaged_polyfit = []
-    band_delta_m15_angle_averaged_polyfit = []
+    modelnames = [] # save names of models
 
     calculate_peak_time_mag_deltam15_bool = False
     if (args.calculate_peakmag_risetime_delta_m15
@@ -317,6 +310,17 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
             or args.make_viewing_angle_peakmag_risetime_scatter_plot
             or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
         calculate_peak_time_mag_deltam15_bool = True
+
+    if calculate_peak_time_mag_deltam15_bool:
+        plotvalues = []  # a0 and p0 values for viewing angle scatter plots
+
+        band_risetime_polyfit = []
+        band_peakmag_polyfit = []
+        band_deltam15_polyfit = []
+
+        band_risetime_angle_averaged_polyfit = []
+        band_peakmag_angle_averaged_polyfit = []
+        band_delta_m15_angle_averaged_polyfit = []
 
     # angle_names = [0, 45, 90, 180]
     # plt.style.use('dark_background')
