@@ -665,12 +665,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
         modelname = at.get_model_name(modelpath)
         print(f'Reading spectra: {modelname}')
 
-        if args.plotvspecpol:
-            angles = args.plotvspecpol
-        elif args.plotviewingangle and os.path.isfile(Path(modelpath)/'specpol_res.out'):
-            angles = args.plotviewingangle
-        else:
-            angles = [None]
+        angles, viewing_angles, angle_definition = get_angle_stuff(modelpath, args)
 
         for index, angle in enumerate(angles):
 
