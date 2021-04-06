@@ -146,20 +146,20 @@ def read_hesma_peakmag_dm15_dm40(pathtofiles):
     plt.show()
 
 
-def main():
-    # pathtomodel = Path("/home/localadmin_ccollins/harddrive4TB/parameterstudy/")
-    # modelnames = ['M08_03', 'M08_05', 'M08_10', 'M09_03', 'M09_05', 'M09_10',
-    #               'M10_02_end55', 'M10_03', 'M10_05', 'M10_10', 'M11_05_1']
-    # outpath = Path("/home/localadmin_ccollins/harddrive4TB/parameterstudy/hesma_lc")
-    # timemin = 5
-    # timemax = 70
-    # for modelname in modelnames:
-    #     modelpath = pathtomodel / modelname
-    #     make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax)
-
-    # pathtofiles = Path("/home/localadmin_ccollins/harddrive4TB/parameterstudy/declinerate")
-    # read_hesma_peakmag_dm15_dm40(pathtofiles)
-
-
-if __name__ == '__main__':
-    main()
+# def main():
+#     # pathtomodel = Path("/home/localadmin_ccollins/harddrive4TB/parameterstudy/")
+#     # modelnames = ['M08_03', 'M08_05', 'M08_10', 'M09_03', 'M09_05', 'M09_10',
+#     #               'M10_02_end55', 'M10_03', 'M10_05', 'M10_10', 'M11_05_1']
+#     # outpath = Path("/home/localadmin_ccollins/harddrive4TB/parameterstudy/hesma_lc")
+#     # timemin = 5
+#     # timemax = 70
+#     # for modelname in modelnames:
+#     #     modelpath = pathtomodel / modelname
+#     #     make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax)
+#
+#     # pathtofiles = Path("/home/localadmin_ccollins/harddrive4TB/parameterstudy/declinerate")
+#     # read_hesma_peakmag_dm15_dm40(pathtofiles)
+#
+#
+# if __name__ == '__main__':
+#     main()
