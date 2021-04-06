@@ -985,7 +985,7 @@ def addargs(parser):
     parser.add_argument('--magnitude', action='store_true',
                         help='Plot synthetic magnitudes')
 
-    parser.add_argument('-filter', type=str, nargs='+',
+    parser.add_argument('-filter', '-band', dest='filter', type=str, nargs='+',
                         help='Choose filter eg. bol U B V R I. Default B. '
                         'WARNING: filter names are not case sensitive eg. sloan-r is not r, it is rs')
 
