@@ -713,23 +713,11 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                             filter_names, reflightcurve, colours[i], markers[i], filternames_conversion_dict,
                             ax, plotnumber, args)
 
-                # if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
-                #     plot_times = np.array(plot_times) * (1 + args.redshifttoz[modelnumber])
-                #     print(f'Correcting for time dilation at redshift {args.redshifttoz[modelnumber]}')
-                #     linestyle = '--'
-                #     color='darkmagenta'
-                #     linelabel = args.label[1]
-                # else:
-                #     linestyle = '-'
-                #     color='k'
-                #     color='k'
-
                 filterfunc = at.get_filterfunc(args)
                 if filterfunc is not None:
                     diff = filterfunc(diff)
 
-                if len(args.colour_evolution) > 1:
-
+                if args.subplots:
                     ax[plotnumber].plot(plot_times, diff, label=linelabel, linewidth=4, linestyle=linestyle,
                                         color=color)
                 else:
@@ -785,6 +773,19 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
     if args.show:
         plt.show()
     plt.savefig(args.outputfile, format='pdf')
+
+## Just incase it's needed...
+
+# if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
+#     plot_times = np.array(plot_times) * (1 + args.redshifttoz[modelnumber])
+#     print(f'Correcting for time dilation at redshift {args.redshifttoz[modelnumber]}')
+#     linestyle = '--'
+#     color='darkmagenta'
+#     linelabel = args.label[1]
+# else:
+#     linestyle = '-'
+#     color='k'
+#     color='k'
 
 
 def plot_lightcurve_from_data(
