@@ -317,9 +317,9 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
         args.band_peakmag_polyfit = []
         args.band_deltam15_polyfit = []
 
-        band_risetime_angle_averaged_polyfit = []
-        band_peakmag_angle_averaged_polyfit = []
-        band_delta_m15_angle_averaged_polyfit = []
+        args.band_risetime_angle_averaged_polyfit = []
+        args.band_peakmag_angle_averaged_polyfit = []
+        args.band_delta_m15_angle_averaged_polyfit = []
 
     # angle_names = [0, 45, 90, 180]
     # plt.style.use('dark_background')
@@ -431,9 +431,9 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
               or args.make_viewing_angle_peakmag_risetime_scatter_plot
               or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
 
-            band_risetime_angle_averaged_polyfit.append(args.band_risetime_polyfit)
-            band_peakmag_angle_averaged_polyfit.append(args.band_peakmag_polyfit)
-            band_delta_m15_angle_averaged_polyfit.append(args.band_deltam15_polyfit)
+            args.band_risetime_angle_averaged_polyfit.append(args.band_risetime_polyfit)
+            args.band_peakmag_angle_averaged_polyfit.append(args.band_peakmag_polyfit)
+            args.band_delta_m15_angle_averaged_polyfit.append(args.band_deltam15_polyfit)
 
         args.band_risetime_polyfit = []
         args.band_peakmag_polyfit = []
@@ -453,21 +453,18 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
             or args.make_viewing_angle_peakmag_risetime_scatter_plot
             or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
         np.savetxt(band_name + "band_" + f'{modelname}' + "_angle_averaged_all_models_data.txt",
-                   np.c_[modelnames, band_risetime_angle_averaged_polyfit, band_peakmag_angle_averaged_polyfit,
-                         band_delta_m15_angle_averaged_polyfit],
+                   np.c_[modelnames, args.band_risetime_angle_averaged_polyfit, args.band_peakmag_angle_averaged_polyfit,
+                         args.band_delta_m15_angle_averaged_polyfit],
                    delimiter=' ', fmt='%s',
                    header="object " + str(band_name) + "_band_risetime " + str(band_name) + "_band_peakmag " + str(
                        band_name) + "_band_deltam15 ", comments='')
 
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
-        make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_risetime_angle_averaged_polyfit,
-                                                         band_peakmag_angle_averaged_polyfit, band_name, args)
+        make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_name, args)
         return
 
     elif args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
-        make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, band_name,
-                                                          band_delta_m15_angle_averaged_polyfit,
-                                                          band_peakmag_angle_averaged_polyfit, args)
+        make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, band_name, args)
         return
 
     # if (args.magnitude or args.plotviewingangles_lightcurves) and not (
@@ -569,8 +566,7 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, fil
         plt.close()
 
 
-def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_risetime_angle_averaged_polyfit,
-                                                     band_peakmag_angle_averaged_polyfit, key, args):
+def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
     for ii, modelname in enumerate(modelnames):
         viewing_angle_plot_data = pd.read_csv(key + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
                                               delimiter=" ")
@@ -578,10 +574,10 @@ def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_risetime_a
         band_risetime_viewing_angles = viewing_angle_plot_data["risetime_polyfit"].values
 
         a0 = plt.scatter(band_risetime_viewing_angles, band_peak_mag_viewing_angles, marker='x', color=define_colours_list2[ii])
-        p0 = plt.scatter(band_risetime_angle_averaged_polyfit[ii], band_peakmag_angle_averaged_polyfit[ii],
+        p0 = plt.scatter(args.band_risetime_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
                          marker='o', color=define_colours_list[ii], s=40)
         args.plotvalues.append((a0, p0))
-        plt.errorbar(band_risetime_angle_averaged_polyfit[ii], band_peakmag_angle_averaged_polyfit[ii],
+        plt.errorbar(args.band_risetime_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
                      xerr=np.std(band_risetime_viewing_angles),
                      yerr=np.std(band_peak_mag_viewing_angles), ecolor=define_colours_list[ii], capsize=2)
 
@@ -599,9 +595,7 @@ def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_risetime_a
     plt.close()
 
 
-def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key,
-                                                      band_delta_m15_angle_averaged_polyfit,
-                                                      band_peakmag_angle_averaged_polyfit, args):
+def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
     for ii, modelname in enumerate(modelnames):
         viewing_angle_plot_data = pd.read_csv(key + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
                                               delimiter=" ")
@@ -611,10 +605,10 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key,
 
         a0 = plt.scatter(band_delta_m15_viewing_angles, band_peak_mag_viewing_angles, marker='x',
                          color=define_colours_list2[ii])
-        p0 = plt.scatter(band_delta_m15_angle_averaged_polyfit[ii], band_peakmag_angle_averaged_polyfit[ii],
+        p0 = plt.scatter(args.band_delta_m15_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
                          marker='o', color=define_colours_list[ii], s=40)
         args.plotvalues.append((a0, p0))
-        plt.errorbar(band_delta_m15_angle_averaged_polyfit[ii], band_peakmag_angle_averaged_polyfit[ii],
+        plt.errorbar(args.band_delta_m15_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
                      xerr=np.std(band_delta_m15_viewing_angles),
                      yerr=np.std(band_peak_mag_viewing_angles), ecolor=define_colours_list[ii], capsize=2)
 
