@@ -157,9 +157,13 @@ def create_axes(args):
 
     args.subplots = False  # todo: set as command line arg
 
-    if (args.filter and len(args.filter) > 1) or args.subplots is True:
+    if args.filter and (len(args.filter) > 1 or args.subplots is True):
         args.subplots = True
         rows = 2
+        cols = 3
+    elif args.colour_evolution and (len(args.colour_evolution) > 1 or args.subplots is True):
+        args.subplots = True
+        rows = 1
         cols = 3
     else:
         args.subplots = False
@@ -171,11 +175,19 @@ def create_axes(args):
     if args.subplots:
         ax = ax.flatten()
 
-    plt.gca().invert_yaxis()
-    if args.ymax is None:
-        args.ymax = -20
-    if args.ymin is None:
-        args.ymin = -14
+    if args.filter:
+        plt.gca().invert_yaxis()
+        if args.ymax is None:
+            args.ymax = -20
+        if args.ymin is None:
+            args.ymin = -14
+
+    if args.colour_evolution:
+        if args.ymax is None:
+            args.ymax = 1
+        if args.ymin is None:
+            args.ymin = -1
+
     if args.xmax is None:
         args.xmax = 100
     if args.xmin is None:
@@ -644,37 +656,10 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
 
 
 def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
-    font = {'size': 24}
-    matplotlib.rc('font', **font)
+    args.labelfontsize = 24  #todo: make command line arg
     angle_counter = 0
 
-    # colours = ['k', 'darkmagenta', 'darkred']
-
-    if args.ymax is None:
-        args.ymax = 1
-    if args.ymin is None:
-        args.ymin = -1
-    if args.xmax is None:
-        args.xmax = 80
-    if args.xmin is None:
-        args.xmin = 5
-    if args.timemax is None:
-        args.timemax = args.xmax + 5
-    if args.timemin is None:
-        args.timemin = args.xmin - 5
-
-    if len(args.colour_evolution) > 1:
-        rows = 1
-        cols = 3
-    else:
-        rows = 1
-        cols = 1
-    fig, ax = plt.subplots(nrows=rows, ncols=cols, sharex=True, sharey=True,
-                           figsize=(at.figwidth * 1.3 * cols, at.figwidth * 1.25 * rows),
-                           tight_layout={"pad": 2.0, "w_pad": 0.2, "h_pad": 0.2})
-
-    if len(args.colour_evolution) > 1:
-        ax = ax.flatten()
+    fig, ax = create_axes(args)
 
     for modelnumber, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
