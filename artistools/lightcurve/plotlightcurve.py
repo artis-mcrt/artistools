@@ -725,7 +725,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                     ax.plot(plot_times, diff, label=linelabel, linewidth=3, linestyle=linestyle,
                             color=color)
 
-                if len(args.colour_evolution) > 1:
+                if args.subplots:
                     ax[plotnumber].text(10, args.ymax - 0.5, f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
                 else:
                     ax.text(60, args.ymax * 0.8, f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
@@ -738,32 +738,16 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
         # print(f'{filter_names[0]} - {filter_names[1]} at t_Bmax ({tmax_B}) = '
         #       f'{diff[plot_times.index(tmax_B)]}')
 
-    if len(args.colour_evolution) > 1:
+    if args.subplots:
         fig.text(0.5, 0.025, 'Time Since Explosion [days]', ha='center', va='center')
         fig.text(0.02, 0.5, r'$\Delta$m', ha='center', va='center', rotation='vertical')
     else:
         plt.ylabel(r'$\Delta$m')
         plt.xlabel('Time Since Explosion [days]')
         plt.tight_layout()
-    if not args.nolegend:
-        if len(args.colour_evolution) > 1:
-            ax[1].legend(loc='best', frameon=False, fontsize='x-small', ncol=1, handlelength=1)
-        else:
-            ax.legend(loc='best', frameon=False, fontsize='x-small', ncol=1, handlelength=1)
 
-    if len(args.colour_evolution) > 1:
-        for axis in ax:
-            # axis.set_xscale('log')
-            axis.minorticks_on()
-            axis.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18, direction='in')
-            axis.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=18, direction='in')
-    else:
-        ax.minorticks_on()
-        ax.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18, direction='in')
-        ax.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=18, direction='in')
-
-    plt.ylim(args.ymin, args.ymax)
-    plt.xlim(args.xmin, args.xmax)
+    ax = set_axis_properties(ax, args)
+    ax = set_lightcurveplot_legend(ax, args)
 
     args.outputfile = os.path.join(outputfolder, f'plotcolorevolution{filter_names[0]}-{filter_names[1]}.pdf')
     for i in range(2):
