@@ -306,7 +306,6 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     band_deltam15_polyfit = []
     plotvalues = []
     modelnames = []
-    modelnumbers = []
     band_risetime_angle_averaged_polyfit = []
     band_peakmag_angle_averaged_polyfit = []
     band_delta_m15_angle_averaged_polyfit = []
@@ -330,6 +329,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
         for index, angle in enumerate(angles):
 
             modelname = at.get_model_name(modelpath)
+            modelnames.append(modelname)  # save for later
             print(f'Reading spectra: {modelname}')
             band_lightcurve_data = get_band_lightcurve_data(modelpath, args, angle, modelnumber=modelnumber)
 
@@ -433,12 +433,6 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
         band_risetime_polyfit = []
         band_peakmag_polyfit = []
         band_deltam15_polyfit = []
-
-        # Saving the information required to make the viewing angle scatter plots to arrays
-        if (args.make_viewing_angle_peakmag_risetime_scatter_plot
-                or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
-            modelnames.append(modelname)
-            modelnumbers.append(modelnumber)
 
         # if args.magnitude and not (
         #         args.calculate_peakmag_risetime_delta_m15 or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
