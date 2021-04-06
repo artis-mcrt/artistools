@@ -47,7 +47,9 @@ define_colours_list2 = ['gray', 'lightblue', 'pink', 'yellowgreen', 'mediumorchi
                         'wheat', 'paleturquoise']
 
 
-def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type=False, maxpacketfiles=None, args=None):
+def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, frompackets=False,
+                                                   escape_type=False, maxpacketfiles=None, args=None):
+    """Use light_curve.out or light_curve_res.out files to plot light curve"""
     fig, axis = plt.subplots(
         nrows=1, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
@@ -1119,8 +1121,8 @@ def main(args=None, argsraw=None, **kwargs):
         colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
         print(f'Saved figure: {args.outputfile}')
     else:
-        make_lightcurve_plot(args.modelpath, args.outputfile, args.frompackets,
-                             args.escape_type, maxpacketfiles=args.maxpacketfiles, args=args)
+        make_lightcurve_plot_from_lightcurve_out_files(args.modelpath, args.outputfile, args.frompackets,
+                                                       args.escape_type, maxpacketfiles=args.maxpacketfiles, args=args)
 
 
 if __name__ == "__main__":
