@@ -148,8 +148,12 @@ def make_3d_plot(modelpath, args):
 
     model, t_model, vmax = at.inputmodel.get_modeldata(modelpath, dimensions=3, get_abundances=False)
 
-    # choose what surface will be coloured by - eg rho
-    coloursurfaceby = 'rho'
+    # choose what surface will be coloured by
+    if args.rho:
+        coloursurfaceby = 'rho'
+    else:
+        print(f"Colours set by X_{args.ion}")
+        coloursurfaceby = f'X_{args.ion}'
 
     # generate grid from data
     grid = round(len(model['rho']) ** (1./3.))
@@ -175,10 +179,11 @@ def make_3d_plot(modelpath, args):
     # mesh.plot()
     if not args.surfaces3d:
         surfacepositions = np.linspace(min(mesh[coloursurfaceby]), max(mesh[coloursurfaceby]), num=10)
+        print(f"Using default surfaces {surfacepositions} \n define these with -surfaces3d for better results")
     else:
         surfacepositions = args.surfaces3d
     # surfacepositions = [1, 50, 100, 300, 500, 800, 1000, 1100, 1200, 1300, 1400, 1450, 1500] # choose these
-    print(surfacepositions)
+
     surf = mesh.contour(surfacepositions,scalars=coloursurfaceby) # create isosurfaces
 
     surf.plot(opacity='linear', screenshot=modelpath / '3Dplot.png')    # plot surfaces and save screenshot
@@ -191,6 +196,9 @@ def addargs(parser):
 
     parser.add_argument('-ion', type=str, default='Fe',
                         help='Choose ion to plot. Default is Fe')
+
+    parser.add_argument('--rho', action='store_true',
+                        help='Plot rho instead of ion')
 
     parser.add_argument('-modeldim', type=int, default=None,
                         help='Choose how many dimensions. 3 for 3D, 2 for 2D')
