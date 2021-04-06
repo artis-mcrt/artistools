@@ -313,9 +313,9 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     if calculate_peak_time_mag_deltam15_bool:
         args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
 
-        band_risetime_polyfit = []
-        band_peakmag_polyfit = []
-        band_deltam15_polyfit = []
+        args.band_risetime_polyfit = []
+        args.band_peakmag_polyfit = []
+        args.band_deltam15_polyfit = []
 
         band_risetime_angle_averaged_polyfit = []
         band_peakmag_angle_averaged_polyfit = []
@@ -356,10 +356,8 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 
                 # Calculating band peak time, peak magnitude and delta m15
                 if calculate_peak_time_mag_deltam15_bool:
-                    band_risetime_polyfit, band_peakmag_polyfit, band_deltam15_polyfit = \
-                        calculate_peak_time_mag_deltam15(time, brightness_in_mag, modelname, angle, band_name,
-                                                         band_risetime_polyfit, band_peakmag_polyfit,
-                                                         band_deltam15_polyfit, filternames_conversion_dict, args)
+                    calculate_peak_time_mag_deltam15(time, brightness_in_mag, modelname, angle, band_name,
+                                                     filternames_conversion_dict, args)
 
                 if args.plotviewingangle and args.plotviewingangles_lightcurves:
                     plt.plot(time, brightness_in_mag, label=modelname, color=define_colours_list[angle], linewidth=3)
@@ -426,20 +424,20 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
         #    as it is quite time consuming
         if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
             np.savetxt(band_name + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
-                       np.c_[band_peakmag_polyfit, band_risetime_polyfit, band_deltam15_polyfit],
+                       np.c_[args.band_peakmag_polyfit, args.band_risetime_polyfit, args.band_deltam15_polyfit],
                        delimiter=' ', header='peak_mag_polyfit risetime_polyfit deltam15_polyfit', comments='')
 
         elif (args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
               or args.make_viewing_angle_peakmag_risetime_scatter_plot
               or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
 
-            band_risetime_angle_averaged_polyfit.append(band_risetime_polyfit)
-            band_peakmag_angle_averaged_polyfit.append(band_peakmag_polyfit)
-            band_delta_m15_angle_averaged_polyfit.append(band_deltam15_polyfit)
+            band_risetime_angle_averaged_polyfit.append(args.band_risetime_polyfit)
+            band_peakmag_angle_averaged_polyfit.append(args.band_peakmag_polyfit)
+            band_delta_m15_angle_averaged_polyfit.append(args.band_deltam15_polyfit)
 
-        band_risetime_polyfit = []
-        band_peakmag_polyfit = []
-        band_deltam15_polyfit = []
+        args.band_risetime_polyfit = []
+        args.band_peakmag_polyfit = []
+        args.band_deltam15_polyfit = []
 
         # if args.magnitude and not (
         #         args.calculate_peakmag_risetime_delta_m15 or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
@@ -511,8 +509,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 # plt.plot(time, magnitude, label=linelabel, linewidth=3)
 
 
-def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, band_risetime_polyfit,
-                                     band_peakmag_polyfit, band_deltam15_polyfit, filternames_conversion_dict, args):
+def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, filternames_conversion_dict, args):
     """Calculating band peak time, peak magnitude and delta m15"""
     zfit = np.polyfit(x=time, y=magnitude, deg=10)
     xfit = np.linspace(args.timemin + 1, args.timemax - 1, num=1000)
@@ -540,9 +537,9 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, ban
     print(f'{key}_max polyfit = {min(fxfit)} at time = {tmax_polyfit}')
     print(f'deltam15 polyfit = {min(fxfit) - mag_after15days_polyfit}')
 
-    band_risetime_polyfit.append(tmax_polyfit)
-    band_peakmag_polyfit.append(min(fxfit))
-    band_deltam15_polyfit.append((min(fxfit) - mag_after15days_polyfit) * -1)
+    args.band_risetime_polyfit.append(tmax_polyfit)
+    args.band_peakmag_polyfit.append(min(fxfit))
+    args.band_deltam15_polyfit.append((min(fxfit) - mag_after15days_polyfit) * -1)
 
     # Plotting the lightcurves for all viewing angles specified in the command line along with the
     # polynomial fit and peak mag, risetime to peak and delta m15 marked on the plots to check the
@@ -570,8 +567,6 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, ban
         plt.tight_layout()
         plt.savefig(f'{key}' + "_band_" + f'{modelname}' + "_viewing_angle" + str(angle) + ".png")
         plt.close()
-
-    return band_risetime_polyfit, band_peakmag_polyfit, band_deltam15_polyfit
 
 
 def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_risetime_angle_averaged_polyfit,
