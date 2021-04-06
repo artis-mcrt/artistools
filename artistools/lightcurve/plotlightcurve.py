@@ -438,18 +438,6 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
         make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, band_name, args)
         return
 
-    # if (args.magnitude or args.plotviewingangles_lightcurves) and not (
-    #         args.calculate_peakmag_risetime_delta_m15 or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-    #         or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file or args.test_viewing_angle_fit
-    #         or args.make_viewing_angle_peakmag_risetime_scatter_plot or
-    #         args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
-    #     if args.reflightcurves:
-    #         colours = args.refspeccolors
-    #         markers = args.refspecmarkers
-    #         for i, reflightcurve in enumerate(args.reflightcurves):
-    #             plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, colours[i], markers[i],
-    #                                       filternames_conversion_dict)
-
     ax = set_axis_properties(ax, args)
     fig, ax = set_lightcurve_plot_labels(fig, ax, band_name, filternames_conversion_dict, args)
     ax = set_lightcurveplot_legend(ax, args)
@@ -462,6 +450,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     print(f'Saved figure: {args.outputfile}')
 
 ## Incase this code is needed again...
+
 # if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
 #     # print('time before', time)
 #     # print('z', args.redshifttoz[modelnumber])
@@ -475,6 +464,19 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 #     linestyle = '-'
 #     color='k'
 # plt.plot(time, magnitude, label=linelabel, linewidth=3)
+
+
+    # if (args.magnitude or args.plotviewingangles_lightcurves) and not (
+    #         args.calculate_peakmag_risetime_delta_m15 or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
+    #         or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file or args.test_viewing_angle_fit
+    #         or args.make_viewing_angle_peakmag_risetime_scatter_plot or
+    #         args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
+    #     if args.reflightcurves:
+    #         colours = args.refspeccolors
+    #         markers = args.refspecmarkers
+    #         for i, reflightcurve in enumerate(args.reflightcurves):
+    #             plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, colours[i], markers[i],
+    #                                       filternames_conversion_dict)
 
 
 def save_viewing_angle_data_for_plotting(band_name, modelname, args):
