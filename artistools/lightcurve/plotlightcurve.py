@@ -154,16 +154,21 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
 def create_axes(args):
     font = {'size': args.labelfontsize}
     matplotlib.rc('font', **font)
-    if args.filter and len(args.filter) > 1:
+
+    args.subplots = False  # todo: set as command line arg
+
+    if (args.filter and len(args.filter) > 1) or args.subplots is True:
+        args.subplots = True
         rows = 2
         cols = 3
     else:
+        args.subplots = False
         rows = 1
         cols = 1
     fig, ax = plt.subplots(nrows=rows, ncols=cols, sharex=True, sharey=True,
                            figsize=(at.figwidth * 1.6 * cols, at.figwidth * 1.1 * rows*1.5),
                            tight_layout={"pad": 3.0, "w_pad": 0.6, "h_pad": 0.6})  # (6.2 * 3, 9.4 * 3)
-    if args.filter and len(args.filter) > 1:
+    if args.subplots:
         ax = ax.flatten()
 
     plt.gca().invert_yaxis()
@@ -247,7 +252,7 @@ def get_band_lightcurve_data_to_plot(band_lightcurve_data, band_name, args):
 
 
 def set_axis_properties(ax, args):
-    if args.filter and len(args.filter) > 1:
+    if args.subplots:
         for axis in ax:
             # axis.set_xscale('log')
             axis.minorticks_on()
@@ -272,7 +277,7 @@ def set_axis_properties(ax, args):
 
 def set_lightcurveplot_legend(ax, args):
     if not args.nolegend:
-        if args.filter and len(args.filter) > 1:
+        if args.subplots:
             ax[0].legend(loc='lower left', frameon=True, fontsize='x-small', ncol=1)
         else:
             ax.legend(loc='best', frameon=False, fontsize='small', ncol=1, handlelength=0.7)
@@ -280,7 +285,7 @@ def set_lightcurveplot_legend(ax, args):
 
 
 def set_lightcurve_plot_labels(fig, ax, band_name, filternames_conversion_dict, args):
-    if args.filter and len(args.filter) > 1:
+    if args.subplots:
         fig.text(0.5, 0.025, 'Time Since Explosion [days]', ha='center', va='center')
         fig.text(0.02, 0.5, 'Absolute Magnitude', ha='center', va='center', rotation='vertical')
     elif band_name in filternames_conversion_dict:
@@ -346,9 +351,8 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 if calculate_peak_time_mag_deltam15_bool:
                     band_risetime_polyfit, band_peakmag_polyfit, band_deltam15_polyfit = \
                         calculate_peak_time_mag_deltam15(time, brightness_in_mag, modelname, angle, band_name,
-                                                         band_risetime_polyfit,
-                                                         band_peakmag_polyfit, band_deltam15_polyfit,
-                                                         filternames_conversion_dict, args)
+                                                         band_risetime_polyfit, band_peakmag_polyfit,
+                                                         band_deltam15_polyfit, filternames_conversion_dict, args)
 
                 if args.plotviewingangle and args.plotviewingangles_lightcurves:
                     plt.plot(time, brightness_in_mag, label=modelname, color=define_colours_list[angle], linewidth=3)
@@ -361,7 +365,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                     text_key = filternames_conversion_dict[band_name]
                 else:
                     text_key = band_name
-                if args.filter and len(args.filter) > 1:
+                if args.subplots:
                     ax[plotnumber].text(args.xmax * 0.8, args.ymax * 0.97, text_key)
                 # else:
                 #     ax.text(args.xmax * 0.75, args.ymax * 0.95, text_key)
@@ -387,7 +391,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 
                 if not (args.test_viewing_angle_fit or calculate_peak_time_mag_deltam15_bool):  ##Finn: does this still work?
 
-                    if args.filter and len(args.filter) > 1:
+                    if args.subplots:
                         # if linestyle == 'dashed':
                         #     alpha = 0.6
                         # else:
@@ -396,6 +400,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                         if len(angles) > 1 or (args.plotviewingangle and os.path.isfile(modelpath / 'specpol_res.out')):
                             ax[plotnumber].plot(time, brightness_in_mag, label=linelabel, linewidth=4, linestyle=linestyle,
                                                 alpha=alpha)
+                        # I think this was just to have a different line style for viewing angles....
                         else:
                             ax[plotnumber].plot(time, brightness_in_mag, label=linelabel, linewidth=4, color=color,
                                                 linestyle=linestyle, alpha=alpha)
