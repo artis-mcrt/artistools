@@ -730,7 +730,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                     for i, reflightcurve in enumerate(args.reflightcurves):
                         plot_color_evolution_from_data(
                             filter_names, reflightcurve, colours[i], markers[i], filternames_conversion_dict,
-                            ax, plotnumber)
+                            ax, plotnumber, args)
 
                 # if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
                 #     plot_times = np.array(plot_times) * (1 + args.redshifttoz[modelnumber])
@@ -875,7 +875,8 @@ def plot_lightcurve_from_data(
     return linename
 
 
-def plot_color_evolution_from_data(filter_names, lightcurvefilename, color, marker, filternames_conversion_dict, ax, plotnumber):
+def plot_color_evolution_from_data(filter_names, lightcurvefilename, color, marker, filternames_conversion_dict,
+                                   ax, plotnumber, args):
     lightcurve_from_data, metadata = read_lightcurve_data(lightcurvefilename)
     filterdir = os.path.join(at.PYDIR, 'data/filters/')
 
@@ -916,7 +917,7 @@ def plot_color_evolution_from_data(filter_names, lightcurvefilename, color, mark
     #         filter_data[i]['time'] = filter_data[i]['time'].apply(lambda x: round(float(x)))  # round to nearest day
 
     merge_dataframes = filter_data[0].merge(filter_data[1], how='inner', on=['time'])
-    if len(filter_names) > 2:
+    if args.subplots:
         ax[plotnumber].plot(merge_dataframes['time'], merge_dataframes['magnitude_x'] - merge_dataframes['magnitude_y'], marker,
                             label=metadata['label'], color=color, linewidth=4)
     else:
