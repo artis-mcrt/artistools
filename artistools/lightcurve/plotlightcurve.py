@@ -296,15 +296,27 @@ def set_lightcurveplot_legend(ax, args):
     return ax
 
 
-def set_lightcurve_plot_labels(fig, ax, band_name, filternames_conversion_dict, args):
+def set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_name=None):
+    ylabel = None
     if args.subplots:
+        if args.filter:
+            ylabel = 'Absolute Magnitude'
+        if args.colour_evolution:
+            ylabel = r'$\Delta$m'
         fig.text(0.5, 0.025, 'Time Since Explosion [days]', ha='center', va='center')
-        fig.text(0.02, 0.5, 'Absolute Magnitude', ha='center', va='center', rotation='vertical')
-    elif band_name in filternames_conversion_dict:
-        ax.set_ylabel(f'{filternames_conversion_dict[band_name]} Magnitude', fontsize=args.labelfontsize)
+        fig.text(0.02, 0.5, ylabel , ha='center', va='center', rotation='vertical')
     else:
-        ax.set_ylabel(f'{band_name} Magnitude', fontsize=args.labelfontsize)  # r'M$_{\mathrm{bol}}$'
+        if args.filter and band_name in filternames_conversion_dict:
+            ylabel = f'{filternames_conversion_dict[band_name]} Magnitude'
+        elif args.filter:
+            ylabel = f'{band_name} Magnitude'
+        elif args.colour_evolution:
+            ylabel = r'$\Delta$m'
+        ax.set_ylabel(ylabel, fontsize=args.labelfontsize)  # r'M$_{\mathrm{bol}}$'
         ax.set_xlabel('Time Since Explosion [days]', fontsize=args.labelfontsize)
+    if ylabel is None:
+        print("failed to set ylabel")
+        quit()
     return fig, ax
 
 
@@ -453,7 +465,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
         return
 
     ax = set_axis_properties(ax, args)
-    fig, ax = set_lightcurve_plot_labels(fig, ax, band_name, filternames_conversion_dict, args)
+    fig, ax = set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_name=band_name)
     ax = set_lightcurveplot_legend(ax, args)
 
     if args.filter and len(band_lightcurve_data) == 1:
@@ -744,14 +756,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
         # print(f'{filter_names[0]} - {filter_names[1]} at t_Bmax ({tmax_B}) = '
         #       f'{diff[plot_times.index(tmax_B)]}')
 
-    if args.subplots:
-        fig.text(0.5, 0.025, 'Time Since Explosion [days]', ha='center', va='center')
-        fig.text(0.02, 0.5, r'$\Delta$m', ha='center', va='center', rotation='vertical')
-    else:
-        plt.ylabel(r'$\Delta$m')
-        plt.xlabel('Time Since Explosion [days]')
-        plt.tight_layout()
-
+    fig, ax = set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args)
     ax = set_axis_properties(ax, args)
     ax = set_lightcurveplot_legend(ax, args)
 
