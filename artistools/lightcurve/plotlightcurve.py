@@ -422,42 +422,13 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 
         # Saving viewing angle data so it can be read in and plotted later on without re-running the script
         #    as it is quite time consuming
-        if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
-            np.savetxt(band_name + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
-                       np.c_[args.band_peakmag_polyfit, args.band_risetime_polyfit, args.band_deltam15_polyfit],
-                       delimiter=' ', header='peak_mag_polyfit risetime_polyfit deltam15_polyfit', comments='')
-
-        elif (args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-              or args.make_viewing_angle_peakmag_risetime_scatter_plot
-              or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
-
-            args.band_risetime_angle_averaged_polyfit.append(args.band_risetime_polyfit)
-            args.band_peakmag_angle_averaged_polyfit.append(args.band_peakmag_polyfit)
-            args.band_delta_m15_angle_averaged_polyfit.append(args.band_deltam15_polyfit)
-
-        args.band_risetime_polyfit = []
-        args.band_peakmag_polyfit = []
-        args.band_deltam15_polyfit = []
-
-        # if args.magnitude and not (
-        #         args.calculate_peakmag_risetime_delta_m15 or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-        #         or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file or args.test_viewing_angle_fit
-        #         or args.make_viewing_angle_peakmag_risetime_scatter_plot or
-        #         args.make_viewing_angle_peakmag_delta_m15_scatter_plot or args.plotviewingangle):
-        #     plt.plot(time, magnitude, label=modelname, color=colours[modelnumber], linewidth=3)
+        if calculate_peak_time_mag_deltam15_bool:
+            save_viewing_angle_data_for_plotting(band_name, modelname, args)
 
     # Saving all this viewing angle info for each model to a file so that it is available to plot if required again
     # as it takes relatively long to run this for all viewing angles
-
-    if (args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-            or args.make_viewing_angle_peakmag_risetime_scatter_plot
-            or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
-        np.savetxt(band_name + "band_" + f'{modelname}' + "_angle_averaged_all_models_data.txt",
-                   np.c_[modelnames, args.band_risetime_angle_averaged_polyfit, args.band_peakmag_angle_averaged_polyfit,
-                         args.band_delta_m15_angle_averaged_polyfit],
-                   delimiter=' ', fmt='%s',
-                   header="object " + str(band_name) + "_band_risetime " + str(band_name) + "_band_peakmag " + str(
-                       band_name) + "_band_deltam15 ", comments='')
+    if calculate_peak_time_mag_deltam15_bool:
+        write_viewing_angle_data(band_name, modelname, modelnames, args)
 
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_name, args)
@@ -504,6 +475,44 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 #     linestyle = '-'
 #     color='k'
 # plt.plot(time, magnitude, label=linelabel, linewidth=3)
+
+
+def save_viewing_angle_data_for_plotting(band_name, modelname, args):
+    if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
+        np.savetxt(band_name + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
+                   np.c_[args.band_peakmag_polyfit, args.band_risetime_polyfit, args.band_deltam15_polyfit],
+                   delimiter=' ', header='peak_mag_polyfit risetime_polyfit deltam15_polyfit', comments='')
+
+    elif (args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
+          or args.make_viewing_angle_peakmag_risetime_scatter_plot
+          or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
+
+        args.band_risetime_angle_averaged_polyfit.append(args.band_risetime_polyfit)
+        args.band_peakmag_angle_averaged_polyfit.append(args.band_peakmag_polyfit)
+        args.band_delta_m15_angle_averaged_polyfit.append(args.band_deltam15_polyfit)
+
+    args.band_risetime_polyfit = []
+    args.band_peakmag_polyfit = []
+    args.band_deltam15_polyfit = []
+
+    # if args.magnitude and not (
+    #         args.calculate_peakmag_risetime_delta_m15 or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
+    #         or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file or args.test_viewing_angle_fit
+    #         or args.make_viewing_angle_peakmag_risetime_scatter_plot or
+    #         args.make_viewing_angle_peakmag_delta_m15_scatter_plot or args.plotviewingangle):
+    #     plt.plot(time, magnitude, label=modelname, color=colours[modelnumber], linewidth=3)
+
+
+def write_viewing_angle_data(band_name, modelname, modelnames, args):
+    if (args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
+            or args.make_viewing_angle_peakmag_risetime_scatter_plot
+            or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
+        np.savetxt(band_name + "band_" + f'{modelname}' + "_angle_averaged_all_models_data.txt",
+                   np.c_[modelnames, args.band_risetime_angle_averaged_polyfit, args.band_peakmag_angle_averaged_polyfit,
+                         args.band_delta_m15_angle_averaged_polyfit],
+                   delimiter=' ', fmt='%s',
+                   header="object " + str(band_name) + "_band_risetime " + str(band_name) + "_band_peakmag " + str(
+                       band_name) + "_band_deltam15 ", comments='')
 
 
 def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, filternames_conversion_dict, args):
