@@ -678,7 +678,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                 time_dict_2 = {}
 
                 plot_times = []
-                diff = []
+                colour_delta_mag = []
 
                 for filter_1, filter_2 in zip(band_lightcurve_data[filter_names[0]], band_lightcurve_data[filter_names[1]]):
                     # Make magnitude dictionaries where time is the key
@@ -688,13 +688,13 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                 for time in time_dict_1.keys():
                     if time in time_dict_2.keys():  # Test if time has a magnitude for both filters
                         plot_times.append(time)
-                        diff.append(time_dict_1[time] - time_dict_2[time])
+                        colour_delta_mag.append(time_dict_1[time] - time_dict_2[time])
 
                 linelabel = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
 
                 filterfunc = at.get_filterfunc(args)
                 if filterfunc is not None:
-                    diff = filterfunc(diff)
+                    colour_delta_mag = filterfunc(colour_delta_mag)
 
                 if args.color and args.plotviewingangle:
                     print("WARNING: -color argument will not work with viewing angles for colour evolution plots,"
@@ -719,10 +719,10 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                                 filternames_conversion_dict, ax, plotnumber, args)
 
                 if args.subplots:
-                    ax[plotnumber].plot(plot_times, diff, label=linelabel, linewidth=4, linestyle=linestyle,
+                    ax[plotnumber].plot(plot_times, colour_delta_mag, label=linelabel, linewidth=4, linestyle=linestyle,
                                         color=color)
                 else:
-                    ax.plot(plot_times, diff, label=linelabel, linewidth=3, linestyle=linestyle,
+                    ax.plot(plot_times, colour_delta_mag, label=linelabel, linewidth=3, linestyle=linestyle,
                             color=color)
 
                 if args.subplots:
