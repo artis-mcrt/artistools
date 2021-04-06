@@ -386,6 +386,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                                                      filternames_conversion_dict, args)
 
                 if args.plotviewingangle and args.plotviewingangles_lightcurves:
+                    global define_colours_list
                     plt.plot(time, brightness_in_mag, label=modelname, color=define_colours_list[angle], linewidth=3)
 
                 if modelnumber == 0 and args.plot_hesma_model and band_name in hesma_model.keys():  #todo: see if this works
