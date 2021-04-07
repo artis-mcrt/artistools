@@ -84,7 +84,6 @@ def get_specdata(modelpath, stokesparam=None):
     return specdata
 
 
-@lru_cache(maxsize=16)
 def get_spectrum(
         modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None,
         reftime=None, modelnumber=None):
