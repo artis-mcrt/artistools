@@ -177,91 +177,88 @@ def plot_artis_spectrum(
 
     if plotpacketcount:
         from_packets = True
-
-    (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
-        modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
-
-    modelname = at.get_model_name(modelpath)
-    if timestepmin == timestepmax == -1:
-        return
-
-    timeavg = (args.timemin + args.timemax) / 2.
-    timedelta = (args.timemax - args.timemin) / 2
-    if linelabel is None:
-        if len(modelname) < 70:
-            linelabel = f'{modelname}'
-        else:
-            linelabel = f'...{modelname[-67:]}'
-
-        if not args.hidemodeltime and not args.multiplot:  #todo: fix this for multiplot - use args.showtime for now
-            linelabel += f' +{timeavg:.0f}d'
-        if not args.hidemodeltimerange and not args.multiplot:
-            linelabel += r' ($\pm$ ' + f'{timedelta:.0f}d)'
-    else:
-        linelabel = linelabel.format(**locals())
-
-    if from_packets:
-        spectrum = get_spectrum_from_packets(
-            modelpath, args.timemin, args.timemax, lambda_min=args.xmin, lambda_max=args.xmax,
-            use_comovingframe=args.use_comovingframe, maxpacketfiles=args.maxpacketfiles,
-            delta_lambda=args.deltalambda, useinternalpackets=args.internalpackets, getpacketcount=plotpacketcount)
-        if args.outputfile is None:
-            statpath = Path()
-        else:
-            statpath = Path(args.outputfile).resolve().parent
-    else:
-        spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
-                                reftime=timeavg)
-        if args.plotviewingangle:  # read specpol res.
-            angles = args.plotviewingangle
-            viewinganglespectra = {}
-            for angle in angles:
-                viewinganglespectra[angle] = get_res_spectrum(modelpath, timestepmin, timestepmax, angle=angle,
-                                                              fnufilterfunc=filterfunc, reftime=timeavg, args=args)
-        elif args.plotvspecpol is not None and os.path.isfile(modelpath/'vpkt.txt'):
-            # read virtual packet files (after running plotartisspectrum --makevspecpol)
-            vpkt_config = at.get_vpkt_config(modelpath)
-            if (vpkt_config['time_limits_enabled'] and (
-                    args.timemin < vpkt_config['initial_time'] or args.timemax > vpkt_config['final_time'])):
-                print(f"Timestep out of range of virtual packets: start time {vpkt_config['initial_time']} days "
-                      f"end time {vpkt_config['final_time']} days")
-                quit()
-            angles = args.plotvspecpol
-            viewinganglespectra = {}
-            for angle in angles:
-                viewinganglespectra[angle] = get_vspecpol_spectrum(
-                    modelpath, timeavg, angle, args, fnufilterfunc=filterfunc)
-
-    spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
-
-    print(f"Plotting '{linelabel}' timesteps {timestepmin} to {timestepmax} "
-          f'({args.timemin:.3f} to {args.timemax:.3f}d)')
-    print(f" modelpath {modelname}")
-    print_integrated_flux(spectrum['f_lambda'], spectrum['lambda_angstroms'])
-
-    if scale_to_peak:
-        spectrum['f_lambda_scaled'] = spectrum['f_lambda'] / spectrum['f_lambda'].max() * scale_to_peak
-        if args.plotvspecpol is not None:
-            for angle in args.plotvspecpol:
-                viewinganglespectra[angle]['f_lambda_scaled'] = (
-                    viewinganglespectra[angle]['f_lambda'] / viewinganglespectra[angle]['f_lambda'].max() *
-                    scale_to_peak)
-
-        ycolumnname = 'f_lambda_scaled'
-    else:
-        ycolumnname = 'f_lambda'
-
-    if plotpacketcount:
-        ycolumnname = 'packetcount'
-
     for index, axis in enumerate(axes):
-        supxmin, supxmax = axis.get_xlim()
-
-        if args.multiplot and index > 0:
-            (ts_lower, ts_upper, timemin, timemax) = at.get_time_range(
+        if args.multiplot:
+            (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
                 modelpath, timedays_range_str=args.timedayslist[index])
-            print(ts_lower, ts_upper, timemin, timemax, modelpath, index)
-            spectrum = get_spectrum(modelpath, ts_lower, ts_upper)
+        else:
+            (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+                modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
+
+        modelname = at.get_model_name(modelpath)
+        if timestepmin == timestepmax == -1:
+            return
+
+        timeavg = (args.timemin + args.timemax) / 2.
+        timedelta = (args.timemax - args.timemin) / 2
+        if linelabel is None:
+            if len(modelname) < 70:
+                linelabel = f'{modelname}'
+            else:
+                linelabel = f'...{modelname[-67:]}'
+
+            if not args.hidemodeltime and not args.multiplot:  #todo: fix this for multiplot - use args.showtime for now
+                linelabel += f' +{timeavg:.0f}d'
+            if not args.hidemodeltimerange and not args.multiplot:
+                linelabel += r' ($\pm$ ' + f'{timedelta:.0f}d)'
+        else:
+            linelabel = linelabel.format(**locals())
+
+        if from_packets:
+            spectrum = get_spectrum_from_packets(
+                modelpath, args.timemin, args.timemax, lambda_min=args.xmin, lambda_max=args.xmax,
+                use_comovingframe=args.use_comovingframe, maxpacketfiles=args.maxpacketfiles,
+                delta_lambda=args.deltalambda, useinternalpackets=args.internalpackets, getpacketcount=plotpacketcount)
+            if args.outputfile is None:
+                statpath = Path()
+            else:
+                statpath = Path(args.outputfile).resolve().parent
+        else:
+            spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
+                                    reftime=timeavg)
+            if args.plotviewingangle:  # read specpol res.
+                angles = args.plotviewingangle
+                viewinganglespectra = {}
+                for angle in angles:
+                    viewinganglespectra[angle] = get_res_spectrum(modelpath, timestepmin, timestepmax, angle=angle,
+                                                                  fnufilterfunc=filterfunc, reftime=timeavg, args=args)
+            elif args.plotvspecpol is not None and os.path.isfile(modelpath/'vpkt.txt'):
+                # read virtual packet files (after running plotartisspectrum --makevspecpol)
+                vpkt_config = at.get_vpkt_config(modelpath)
+                if (vpkt_config['time_limits_enabled'] and (
+                        args.timemin < vpkt_config['initial_time'] or args.timemax > vpkt_config['final_time'])):
+                    print(f"Timestep out of range of virtual packets: start time {vpkt_config['initial_time']} days "
+                          f"end time {vpkt_config['final_time']} days")
+                    quit()
+                angles = args.plotvspecpol
+                viewinganglespectra = {}
+                for angle in angles:
+                    viewinganglespectra[angle] = get_vspecpol_spectrum(
+                        modelpath, timeavg, angle, args, fnufilterfunc=filterfunc)
+
+        spectrum.query('@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax', inplace=True)
+
+        print(f"Plotting '{linelabel}' timesteps {timestepmin} to {timestepmax} "
+              f'({args.timemin:.3f} to {args.timemax:.3f}d)')
+        print(f" modelpath {modelname}")
+        print_integrated_flux(spectrum['f_lambda'], spectrum['lambda_angstroms'])
+
+        if scale_to_peak:
+            spectrum['f_lambda_scaled'] = spectrum['f_lambda'] / spectrum['f_lambda'].max() * scale_to_peak
+            if args.plotvspecpol is not None:
+                for angle in args.plotvspecpol:
+                    viewinganglespectra[angle]['f_lambda_scaled'] = (
+                        viewinganglespectra[angle]['f_lambda'] / viewinganglespectra[angle]['f_lambda'].max() *
+                        scale_to_peak)
+
+            ycolumnname = 'f_lambda_scaled'
+        else:
+            ycolumnname = 'f_lambda'
+
+        if plotpacketcount:
+            ycolumnname = 'packetcount'
+
+        supxmin, supxmax = axis.get_xlim()
 
         if (args.plotvspecpol is not None and os.path.isfile(modelpath/'vpkt.txt')) or args.plotviewingangle:
             for angle in angles:
@@ -606,7 +603,6 @@ def make_plot(args):
 
     if args.multiplot:
         nrows = len(args.timedayslist)
-        print(nrows)
     else:
         nrows = 1 + len(densityplotyvars)
     fig, axes = plt.subplots(
@@ -988,6 +984,7 @@ def main(args=None, argsraw=None, **kwargs):
     args.specpath = at.flatten_list(args.specpath)
 
     if args.timedayslist:
+        args.multiplot = True
         args.timedays = args.timedayslist[0]
 
     requiredlength = len(args.specpath)
