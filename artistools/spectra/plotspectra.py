@@ -193,9 +193,9 @@ def plot_artis_spectrum(
         else:
             linelabel = f'...{modelname[-67:]}'
 
-        if not args.hidemodeltime:
+        if not args.hidemodeltime and not args.multiplot:  #todo: fix this for multiplot - use args.showtime for now
             linelabel += f' +{timeavg:.0f}d'
-        if not args.hidemodeltimerange:
+        if not args.hidemodeltimerange and not args.multiplot:
             linelabel += r' ($\pm$ ' + f'{timedelta:.0f}d)'
     else:
         linelabel = linelabel.format(**locals())
@@ -256,6 +256,13 @@ def plot_artis_spectrum(
 
     for index, axis in enumerate(axes):
         supxmin, supxmax = axis.get_xlim()
+
+        if args.multiplot and index > 0:
+            (ts_lower, ts_upper, timemin, timemax) = at.get_time_range(
+                modelpath, timedays_range_str=args.timedayslist[index])
+            print(ts_lower, ts_upper, timemin, timemax, modelpath, index)
+            spectrum = get_spectrum(modelpath, ts_lower, ts_upper)
+
         if (args.plotvspecpol is not None and os.path.isfile(modelpath/'vpkt.txt')) or args.plotviewingangle:
             for angle in angles:
                 if args.binflux:
@@ -329,12 +336,19 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
             if 'linewidth' not in plotkwargs:
                 plotkwargs['linewidth'] = 1.1
 
-            for _, axis in enumerate(axes):
-                supxmin, supxmax = axis.get_xlim()
+            if args.multiplot:
+                print(len(axes), refspecindex)
+                supxmin, supxmax = axes[refspecindex].get_xlim()
                 plot_reference_spectrum(
-                    specpath, axis, supxmin, supxmax,
-                    filterfunc, scale_to_peak, scaletoreftime=None,
-                    **plotkwargs)
+                    specpath, axes[refspecindex], supxmin, supxmax,
+                    filterfunc, scale_to_peak, scaletoreftime=args.scaletoreftime, **plotkwargs)
+            else:
+                for _, axis in enumerate(axes):
+                    supxmin, supxmax = axis.get_xlim()
+                    plot_reference_spectrum(
+                        specpath, axis, supxmin, supxmax,
+                        filterfunc, scale_to_peak, scaletoreftime=None,
+                        **plotkwargs)
             refspecindex += 1
 
     for axis in axes:
@@ -590,7 +604,11 @@ def make_plot(args):
     # densityplotyvars = ['emission_velocity', 'Te', 'nne']
     # densityplotyvars = ['true_emission_velocity', 'emission_velocity', 'Te', 'nne']
 
-    nrows = 1 + len(densityplotyvars)
+    if args.multiplot:
+        nrows = len(args.timedayslist)
+        print(nrows)
+    else:
+        nrows = 1 + len(densityplotyvars)
     fig, axes = plt.subplots(
         nrows=nrows, ncols=1, sharey=False, sharex=True, squeeze=True,
         figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * (0.25 + nrows * 0.4)),
@@ -611,7 +629,11 @@ def make_plot(args):
 
     dfalldata = pd.DataFrame()
 
-    if args.logscale:
+    if args.multiplot:
+        for ax in axes:
+            ax.set_ylabel(r'F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]')
+
+    elif args.logscale:
         # don't include the {} that will be replaced with the power of 10 by the custom formatter
         axes[-1].set_ylabel(r'F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\mathrm{{\AA}}$]')
     else:
@@ -651,8 +673,12 @@ def make_plot(args):
         legendncol = 1
         defaultoutputfile = Path("plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
-        make_spectrum_plot(args.specpath, [axes[-1]], filterfunc, args, scale_to_peak=scale_to_peak)
-        plotobjects, plotobjectlabels = axes[-1].get_legend_handles_labels()
+        if args.multiplot:
+            make_spectrum_plot(args.specpath, axes, filterfunc, args, scale_to_peak=scale_to_peak)
+            plotobjects, plotobjectlabels = axes[0].get_legend_handles_labels()
+        else:
+            make_spectrum_plot(args.specpath, [axes[-1]], filterfunc, args, scale_to_peak=scale_to_peak)
+            plotobjects, plotobjectlabels = axes[-1].get_legend_handles_labels()
 
     if not args.nolegend:
         if args.reverselegendorder:
@@ -683,7 +709,7 @@ def make_plot(args):
     if args.ymax is not None:
         axes[-1].set_ylim(top=args.ymax)
 
-    for ax in axes:
+    for index, ax in enumerate(axes):
         # ax.xaxis.set_major_formatter(plt.NullFormatter())
 
         if '{' in ax.get_ylabel() and not args.logscale:
@@ -695,6 +721,10 @@ def make_plot(args):
                            labelbottom=False)
         ax.set_xlabel('')
 
+        if args.multiplot and args.showtime:
+            ymin, ymax = ax.get_ylim()
+            ax.text(5500, ymax * 0.9, f'{args.timedayslist[index]} days')  # multiplot text
+
     axes[-1].set_xlabel(args.xlabel)
 
     if not args.outputfile:
@@ -704,6 +734,14 @@ def make_plot(args):
 
     filenameout = str(args.outputfile).format(time_days_min=args.timemin, time_days_max=args.timemax)
     # plt.text(6000, (args.ymax * 0.9), f'{round(args.timemin) + 1} days', fontsize='large')
+
+    if args.showtime and not args.multiplot:
+        if not args.ymax:
+            ymin, ymax = ax.get_ylim()
+        else:
+            ymax = args.ymax
+        plt.text(5500, (ymax * 0.9), f'{int(round(args.timemin) + 1)} days', fontsize='large')
+
     if args.write_data:
         print(dfalldata)
         datafilenameout = Path(filenameout).with_suffix('.txt')
@@ -920,6 +958,15 @@ def addargs(parser):
     parser.add_argument('--showfilterfunctions', action='store_true',
                         help='Plot Bessell filter functions over spectrum. Also use --normalised')
 
+    parser.add_argument('--multiplot', action='store_true',
+                        help='Plot multiple spectra in subplots - expects timedayslist')
+
+    parser.add_argument('-timedayslist', nargs='+',
+                        help='List of times in days for time sequence subplots')
+
+    parser.add_argument('--showtime', action='store_true',
+                        help='Write time on plot')
+
 
 def main(args=None, argsraw=None, **kwargs):
     """Plot spectra from ARTIS and reference data."""
@@ -939,6 +986,9 @@ def main(args=None, argsraw=None, **kwargs):
 
     args.modelpath = at.flatten_list(args.modelpath)
     args.specpath = at.flatten_list(args.specpath)
+
+    if args.timedayslist:
+        args.timedays = args.timedayslist[0]
 
     args.color, args.label, args.linestyle, args.dashes = at.trim_or_pad(
         len(args.specpath), args.color, args.label, args.linestyle, args.dashes)

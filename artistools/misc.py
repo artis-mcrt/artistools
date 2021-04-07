@@ -535,7 +535,7 @@ def get_timestep_of_timedays(modelpath, timedays):
     return
 
 
-def get_time_range(modelpath, timestep_range_str, timemin, timemax, timedays_range_str):
+def get_time_range(modelpath, timestep_range_str=None, timemin=None, timemax=None, timedays_range_str=None):
     """Handle a time range specified in either days or timesteps."""
     # assertions make sure time is specified either by timesteps or times in days, but not both!
     tstarts = get_timestep_times_float(modelpath, loc='start')
