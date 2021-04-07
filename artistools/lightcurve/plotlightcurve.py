@@ -253,18 +253,6 @@ def get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, ar
     return linelabel
 
 
-def get_band_lightcurve_data_to_plot(band_lightcurve_data, band_name, args):
-    time = []
-    brightness_in_mag = []
-
-    for t, brightness in band_lightcurve_data[band_name]:  #Todo: does this need to be a loop...?
-        # adjusting plot range for artis simulation (x-axis)
-        if (args.timemin < t < args.timemax):
-            time.append(t)
-            brightness_in_mag.append(brightness)
-    return time, brightness_in_mag
-
-
 def set_axis_properties(ax, args):
     if args.subplots:
         for axis in ax:
@@ -668,26 +656,6 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
     plt.savefig(key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf", format="pdf")
     print("saving " + key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf")
     plt.close()
-
-
-def get_colour_delta_mag(band_lightcurve_data, filter_names):
-    time_dict_1 = {}
-    time_dict_2 = {}
-
-    plot_times = []
-    colour_delta_mag = []
-
-    for filter_1, filter_2 in zip(band_lightcurve_data[filter_names[0]], band_lightcurve_data[filter_names[1]]):
-        # Make magnitude dictionaries where time is the key
-        time_dict_1[float(filter_1[0])] = filter_1[1]
-        time_dict_2[float(filter_2[0])] = filter_2[1]
-
-    for time in time_dict_1.keys():
-        if time in time_dict_2.keys():  # Test if time has a magnitude for both filters
-            plot_times.append(time)
-            colour_delta_mag.append(time_dict_1[time] - time_dict_2[time])
-
-    return plot_times, colour_delta_mag
 
 
 def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
