@@ -337,7 +337,7 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
                 plotkwargs['linewidth'] = 1.1
 
             if args.multiplot:
-                print(len(axes), refspecindex)
+                plotkwargs['color'] = 'k'
                 supxmin, supxmax = axes[refspecindex].get_xlim()
                 plot_reference_spectrum(
                     specpath, axes[refspecindex], supxmin, supxmax,
