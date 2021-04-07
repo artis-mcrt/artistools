@@ -990,8 +990,11 @@ def main(args=None, argsraw=None, **kwargs):
     if args.timedayslist:
         args.timedays = args.timedayslist[0]
 
+    requiredlength = len(args.specpath)
+    if requiredlength == 0:
+        requiredlength = len(args.modelpath)
     args.color, args.label, args.linestyle, args.dashes = at.trim_or_pad(
-        len(args.specpath), args.color, args.label, args.linestyle, args.dashes)
+        requiredlength, args.color, args.label, args.linestyle, args.dashes)
 
     args.modellabels, args.modelcolors = at.trim_or_pad(
         len(args.modelpath), args.modellabels, args.modelcolors)
