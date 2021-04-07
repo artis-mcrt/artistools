@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 from astropy import units as u
 import matplotlib
 import numpy as np
-import pyvista as pv
 
 # import scipy.interpolate
 # import artistools.inputmodel
@@ -144,6 +143,7 @@ def plot_most_abundant(modelpath, args):
 
 
 def make_3d_plot(modelpath, args):
+    import pyvista as pv
     pv.set_plot_theme("document")  # set white background
 
     model, t_model, vmax = at.inputmodel.get_modeldata(modelpath, dimensions=3, get_abundances=False)
