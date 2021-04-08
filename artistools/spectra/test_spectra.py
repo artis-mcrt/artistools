@@ -91,3 +91,8 @@ def test_spectra_get_flux_contributions():
     print(f'Max f_lambda difference {max(diff) / integrated_flux_specout}')
     assert max(diff) / integrated_flux_specout < 2e-3
 
+
+def test_spectra_timeseries_subplots():
+    timedayslist = [295, 300]
+    at.spectra.main(argsraw=[], modelpath=modelpath, outputfile=outputpath,
+                    timedayslist=timedayslist, multispecplot=True)
