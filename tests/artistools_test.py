@@ -87,7 +87,7 @@ def test_band_lightcurve_plot():
 
 
 def test_band_lightcurve_subplots():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, filter=['bol', 'U', 'B', 'V', 'R', 'I'], outputfile=outputpath)
+    at.lightcurve.main(argsraw=[], modelpath=modelpath, filter=['bol', 'B'], outputfile=outputpath)
 
 
 def test_colour_evolution_plot():
@@ -95,7 +95,7 @@ def test_colour_evolution_plot():
 
 
 def test_colour_evolution_subplots():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, colour_evolution=['U-B', 'B-V', 'V-R'], outputfile=outputpath)
+    at.lightcurve.main(argsraw=[], modelpath=modelpath, colour_evolution=['U-B', 'B-V'], outputfile=outputpath)
 
 
 def test_macroatom():
