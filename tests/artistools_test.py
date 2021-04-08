@@ -82,11 +82,11 @@ def test_lightcurve_frompackets():
                        outputfile=os.path.join(outputpath, 'lightcurve_from_packets.pdf'))
 
 
-def test_lightcurve_band_lightcurve_plot():
+def test_band_lightcurve_plot():
     at.lightcurve.main(argsraw=[], modelpath=modelpath, filter=['B'], outputfile=outputpath)
 
 
-def test_lightcurve_band_lightcurve_subplots():
+def test_band_lightcurve_subplots():
     at.lightcurve.main(argsraw=[], modelpath=modelpath, filter=['bol', 'U', 'B', 'V', 'R', 'I'], outputfile=outputpath)
 
 
