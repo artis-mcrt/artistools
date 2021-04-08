@@ -161,6 +161,9 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
         vmax_cmps = dfmodeldata.velocity_outer.max() * 1e5
 
     elif dimensions == 3:
+        wid_init = artistools.get_wid_init_at_tmodel(modelpath, gridcellcount, t_model_init_days, xmax_tmodel)
+        dfmodeldata.eval('shellmass_grams = rho * @wid_init ** 3', inplace=True)
+
         def vectormatch(vec1, vec2):
             xclose = np.isclose(vec1[0], vec2[0], atol=xmax_tmodel / ncoordgridx)
             yclose = np.isclose(vec1[1], vec2[1], atol=xmax_tmodel / ncoordgridy)
