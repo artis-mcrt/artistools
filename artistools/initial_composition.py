@@ -47,7 +47,7 @@ def plot_2d_initial_abundances(modelpath, args):
     # ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
 
-    outfilename = f'plot_composition{args.ion}.pdf'
+    outfilename = f'plotcomposition{args.ion}.pdf'
     plt.savefig(Path(modelpath[0]) / outfilename, format='pdf')
     print(f'Saved {outfilename}')
 
@@ -98,7 +98,7 @@ def plot_3d_initial_abundances(modelpath, args):
     # ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
 
-    outfilename = f'plot_composition{args.ion}.pdf'
+    outfilename = f'plotcomposition{args.ion}.pdf'
     plt.savefig(Path(modelpath[0]) / outfilename, format='pdf')
     print(f'Saved {outfilename}')
 
