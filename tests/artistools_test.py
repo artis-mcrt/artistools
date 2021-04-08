@@ -90,8 +90,12 @@ def test_macroatom():
     at.macroatom.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=10)
 
 
-def test_makemodel():
+def test_makemodel_botyanski2017():
     at.inputmodel.botyanski2017.main(argsraw=[], outputpath=outputpath)
+
+
+def test_makemodel():
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath)
 
 
 def test_menu():
