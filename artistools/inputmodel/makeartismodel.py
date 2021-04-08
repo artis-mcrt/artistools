@@ -3,6 +3,8 @@ import argparse
 import artistools as at
 import artistools.inputmodel.downscale3dgrid
 import artistools.inputmodel.makeenergyinputfiles
+import artistools.inputmodel.modelfromarepo
+import artistools.inputmodel.makeopacityinputfile
 
 
 def addargs(parser):
@@ -11,6 +13,18 @@ def addargs(parser):
 
     parser.add_argument('--downscale3dgrid', action='store_true',
                         help='Downscale a 3D ARTIS model to smaller grid size')
+
+    parser.add_argument('--makemodelfromarepo', action='store_true',
+                        help='Make ARTIS model files from arepo grid.dat file')
+
+    parser.add_argument('-pathtogriddata', default='.',
+                        help='Path to arepo grid.dat file')
+    
+    parser.add_argument('--fillcentralhole', action='store_true',
+                        help='Fill hole in middle of ejecta from arepo kilonova model')
+    
+    parser.add_argument('--getcellopacityfromYe', action='store_true',
+                        help='Make opacity.txt where opacity is set in each cell by Ye from arepo model')
 
     parser.add_argument('--makeenergyinputfiles', action='store_true',
                         help='Downscale a 3D ARTIS model to smaller grid size')
@@ -40,6 +54,18 @@ def main(args=None, argsraw=None, **kwargs):
         at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(modelpath=Path(args.modelpath[0]))
         return
 
+    if args.makemodelfromarepo:
+        griddata, t_model, vmax = at.inputmodel.modelfromarepo.read_griddat_file(args.pathtogriddata)
+        if args.fillcentralhole:
+            griddata = at.inputmodel.modelfromarepo.fill_central_hole(griddata, t_model)
+        
+        if args.getcellopacityfromYe:
+            at.inputmodel.makeopacityinputfile.opacity_by_Ye(args.modelpath[0], griddata)
+
+        at.inputmodel.save_3d_modeldata(args.modelpath[0], griddata, t_model=t_model, vmax=vmax, radioactives=False)
+        ngrid = len(griddata['rho'])
+        at.inputmodel.save_empty_abundance_file(ngrid)
+
     if args.makeenergyinputfiles:
         model, t_model, vmax = at.inputmodel.get_modeldata(args.modelpath[0])
         if args.modeldim == 1:
@@ -52,7 +78,6 @@ def main(args=None, argsraw=None, **kwargs):
         print(f"total mass { Mtot_grams / 1.989e33} Msun")
 
         at.inputmodel.makeenergyinputfiles.make_energy_files(rho, Mtot_grams)
-        return
 
 
 if __name__ == '__main__':
