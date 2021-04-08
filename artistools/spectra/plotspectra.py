@@ -178,7 +178,7 @@ def plot_artis_spectrum(
     if plotpacketcount:
         from_packets = True
     for index, axis in enumerate(axes):
-        if args.multiplot:
+        if args.multispecplot:
             (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
                 modelpath, timedays_range_str=args.timedayslist[index])
         else:
@@ -197,9 +197,9 @@ def plot_artis_spectrum(
             else:
                 linelabel = f'...{modelname[-67:]}'
 
-            if not args.hidemodeltime and not args.multiplot:  #todo: fix this for multiplot - use args.showtime for now
+            if not args.hidemodeltime and not args.multispecplot:  #todo: fix this for multispecplot - use args.showtime for now
                 linelabel += f' +{timeavg:.0f}d'
-            if not args.hidemodeltimerange and not args.multiplot:
+            if not args.hidemodeltimerange and not args.multispecplot:
                 linelabel += r' ($\pm$ ' + f'{timedelta:.0f}d)'
         else:
             linelabel = linelabel.format(**locals())
@@ -333,7 +333,7 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
             if 'linewidth' not in plotkwargs:
                 plotkwargs['linewidth'] = 1.1
 
-            if args.multiplot:
+            if args.multispecplot:
                 plotkwargs['color'] = 'k'
                 supxmin, supxmax = axes[refspecindex].get_xlim()
                 plot_reference_spectrum(
@@ -601,7 +601,7 @@ def make_plot(args):
     # densityplotyvars = ['emission_velocity', 'Te', 'nne']
     # densityplotyvars = ['true_emission_velocity', 'emission_velocity', 'Te', 'nne']
 
-    if args.multiplot:
+    if args.multispecplot:
         nrows = len(args.timedayslist)
     else:
         nrows = 1 + len(densityplotyvars)
@@ -625,7 +625,7 @@ def make_plot(args):
 
     dfalldata = pd.DataFrame()
 
-    if args.multiplot:
+    if args.multispecplot:
         for ax in axes:
             ax.set_ylabel(r'F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]')
 
@@ -669,7 +669,7 @@ def make_plot(args):
         legendncol = 1
         defaultoutputfile = Path("plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
-        if args.multiplot:
+        if args.multispecplot:
             make_spectrum_plot(args.specpath, axes, filterfunc, args, scale_to_peak=scale_to_peak)
             plotobjects, plotobjectlabels = axes[0].get_legend_handles_labels()
         else:
@@ -717,9 +717,9 @@ def make_plot(args):
                            labelbottom=False)
         ax.set_xlabel('')
 
-        if args.multiplot and args.showtime:
+        if args.multispecplot and args.showtime:
             ymin, ymax = ax.get_ylim()
-            ax.text(5500, ymax * 0.9, f'{args.timedayslist[index]} days')  # multiplot text
+            ax.text(5500, ymax * 0.9, f'{args.timedayslist[index]} days')  # multispecplot text
 
     axes[-1].set_xlabel(args.xlabel)
 
@@ -731,7 +731,7 @@ def make_plot(args):
     filenameout = str(args.outputfile).format(time_days_min=args.timemin, time_days_max=args.timemax)
     # plt.text(6000, (args.ymax * 0.9), f'{round(args.timemin) + 1} days', fontsize='large')
 
-    if args.showtime and not args.multiplot:
+    if args.showtime and not args.multispecplot:
         if not args.ymax:
             ymin, ymax = ax.get_ylim()
         else:
@@ -954,7 +954,7 @@ def addargs(parser):
     parser.add_argument('--showfilterfunctions', action='store_true',
                         help='Plot Bessell filter functions over spectrum. Also use --normalised')
 
-    parser.add_argument('--multiplot', action='store_true',
+    parser.add_argument('--multispecplot', action='store_true',
                         help='Plot multiple spectra in subplots - expects timedayslist')
 
     parser.add_argument('-timedayslist', nargs='+',
@@ -984,7 +984,7 @@ def main(args=None, argsraw=None, **kwargs):
     args.specpath = at.flatten_list(args.specpath)
 
     if args.timedayslist:
-        args.multiplot = True
+        args.multispecplot = True
         args.timedays = args.timedayslist[0]
 
     requiredlength = len(args.specpath)
