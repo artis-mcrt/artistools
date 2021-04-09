@@ -788,7 +788,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
 def plot_lightcurve_from_data(
         filter_names, lightcurvefilename, color, marker, filternames_conversion_dict, ax, plotnumber):
 
-    lightcurve_data, metadata = read_lightcurve_data(lightcurvefilename)
+    lightcurve_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
     linename = metadata['label'] if plotnumber == 0 else None
     filterdir = os.path.join(at.PYDIR, 'data/filters/')
 
@@ -855,7 +855,7 @@ def plot_lightcurve_from_data(
 
 
 def plot_color_evolution_from_data(filter_names, lightcurvefilename, color, marker, filternames_conversion_dict, ax, plotnumber):
-    lightcurve_from_data, metadata = read_lightcurve_data(lightcurvefilename)
+    lightcurve_from_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
     filterdir = os.path.join(at.PYDIR, 'data/filters/')
 
     filter_data = []
