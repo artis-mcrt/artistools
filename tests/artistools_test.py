@@ -99,7 +99,7 @@ def test_makemodel():
 
 
 def test_makemodel_energyfiles():
-    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, makeenergyinputfiles=True)
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, makeenergyinputfiles=True, modeldim=1)
 
 
 def test_menu():
