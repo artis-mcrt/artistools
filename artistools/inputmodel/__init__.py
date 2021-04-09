@@ -161,6 +161,9 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
         vmax_cmps = dfmodeldata.velocity_outer.max() * 1e5
 
     elif dimensions == 3:
+        wid_init = artistools.get_wid_init_at_tmodel(modelpath, gridcellcount, t_model_init_days, xmax_tmodel)
+        dfmodeldata.eval('shellmass_grams = rho * @wid_init ** 3', inplace=True)
+
         def vectormatch(vec1, vec2):
             xclose = np.isclose(vec1[0], vec2[0], atol=xmax_tmodel / ncoordgridx)
             yclose = np.isclose(vec1[1], vec2[1], atol=xmax_tmodel / ncoordgridy)
@@ -232,6 +235,38 @@ def save_modeldata(dfmodeldata, t_model_init_days, filename):
             fmodel.write('\n')
 
 
+def save_3d_modeldata(modelpath, griddata, t_model, vmax, radioactives=True):
+    ngridpoints = len(griddata['gridindex'])  # xgrid * ygrid * zgrid
+    gridsize = round(ngridpoints ** (1 / 3))
+    print('grid size', gridsize)
+
+    if not radioactives:
+        ffe = 0.0
+        fni = 0.0
+        fco = 0.0
+        ffe52 = 0.0
+        fcr48 = 0.0
+
+    with open(Path(modelpath) / 'model.txt', 'w') as fmodel:
+        fmodel.write(f'{ngridpoints}\n')
+        fmodel.write(f'{t_model}\n')
+        fmodel.write(f'{vmax}\n')
+
+        for i in griddata['gridindex']:
+            line1 = [i, griddata['posx'][i - 1], griddata['posy'][i - 1], griddata['posz'][i - 1],
+                     griddata['rho'][i - 1]]
+            if not radioactives:
+                line2 = [ffe, fni, fco, ffe52, fcr48]
+            else:
+                line2 = [griddata['ffe'][i - 1], griddata['fni'][i - 1], griddata['fco'][i - 1],
+                         griddata['ffe52'][i - 1], griddata['fcr48'][i - 1]]
+
+            fmodel.writelines("%s " % item for item in line1)
+            fmodel.writelines("\n")
+            fmodel.writelines("%s " % item for item in line2)
+            fmodel.writelines("\n")
+
+
 def get_mgi_of_velocity_kms(modelpath, velocity, mgilist=None):
     """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
     If mgilist is given, then chose from these cells only"""
@@ -274,3 +309,18 @@ def save_initialabundances(dfabundances, abundancefilename):
         abundancefilename = Path(abundancefilename) / 'abundances.txt'
     dfabundances['inputcellid'] = dfabundances['inputcellid'].astype(int)
     dfabundances.to_csv(abundancefilename, header=False, sep=' ', index=False)
+
+
+def save_empty_abundance_file(ngrid):
+    """Dummy abundance file with only zeros"""
+    Z_atomic = np.arange(1, 31)
+
+    abundancedata = {'cellid': range(1, ngrid+1)}
+    for atomic_number in Z_atomic:
+        abundancedata[f'Z={atomic_number}'] = np.zeros(ngrid)
+
+    # abundancedata['Z=28'] = np.ones(ngrid)
+
+    abundancedata = pd.DataFrame(data=abundancedata)
+    abundancedata = abundancedata.round(decimals=5)
+    abundancedata.to_csv('abundances.txt', header=False, sep='\t', index=False)

@@ -427,7 +427,7 @@ def get_grid_mapping(modelpath):
     return assoc_cells, mgi_of_propcells
 
 
-def get_wid_init(modelpath):
+def get_wid_init_at_tmin(modelpath):
     # cell width in cm at time tmin
     tmin = get_timestep_times_float(modelpath, loc='start')[0] * u.day.to('s')
     _, _, vmax = artistools.inputmodel.get_modeldata(modelpath)
@@ -438,6 +438,21 @@ def get_wid_init(modelpath):
     ncoordgrid0 = 50
 
     wid_init = 2 * coordmax0 / ncoordgrid0
+    return wid_init
+
+
+def get_wid_init_at_tmodel(modelpath, ngridpoints=None, t_model=None, xmax=None):
+    if ngridpoints is None or t_model is None or xmax is None:
+        model, t_model, vmax = artistools.inputmodel.get_modeldata(modelpath)
+        ngridpoints = len(model['inputcellid'])
+        xmax = vmax * t_model
+
+    ncoordgridx = round(ngridpoints ** (1. / 3.))
+
+    wid_init = 2 * xmax / ncoordgridx
+
+    print(xmax, t_model, wid_init)
+
     return wid_init
 
 
