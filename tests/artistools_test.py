@@ -122,9 +122,7 @@ def test_save3Dmodel():
                 'cellYe': [0, 0.1]}
     tmodel = 100
     vmax = 1000
-    radioactiveslist = [True, False]
-    for radioactives in radioactiveslist:
-        at.inputmodel.save_3d_modeldata(modelpath, griddata, tmodel, vmax, radioactives=radioactives)
+    at.inputmodel.save_3d_modeldata(modelpath, griddata, tmodel, vmax, radioactives=False)
 
 
 def test_menu():
