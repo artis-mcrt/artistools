@@ -25,7 +25,7 @@ def read_arepo_out(pathtosnapshot):
 def get_snapshot_time(pathtogriddata):
     import glob
 
-    snapshotinfofile = glob.glob(str(Path(pathtogriddata) / "sfho_info.dat*"))
+    snapshotinfofile = glob.glob(str(Path(pathtogriddata) / "*_info.dat*"))
 
     if len(snapshotinfofile) > 1:
         print('Too many sfho_info.dat files found')
