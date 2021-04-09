@@ -965,11 +965,6 @@ def main(args=None, argsraw=None, **kwargs):
         args.multispecplot = True
         args.timedays = args.timedayslist[0]
 
-    requiredlength = len(args.specpath)
-
-    args.color, args.label, args.linestyle, args.dashes = at.trim_or_pad(
-        requiredlength, args.color, args.label, args.linestyle, args.dashes)
-
     args.color, args.label, args.linestyle, args.dashes, args.linewidth = at.trim_or_pad(
         len(args.specpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth)
 
