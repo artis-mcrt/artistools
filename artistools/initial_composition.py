@@ -4,11 +4,13 @@ import math
 import os
 from pathlib import Path
 import pandas as pd
-import artistools as at
 import matplotlib.pyplot as plt
 from astropy import units as u
 import matplotlib
 import numpy as np
+
+import artistools as at
+import artistools.inputmodel.opacityinputfile
 
 # import scipy.interpolate
 # import artistools.inputmodel
@@ -151,6 +153,9 @@ def make_3d_plot(modelpath, args):
     # choose what surface will be coloured by
     if args.rho:
         coloursurfaceby = 'rho'
+    elif args.opacity:
+        model['opacity'] = at.inputmodel.opacityinputfile.get_opacity_from_file(modelpath)
+        coloursurfaceby = 'opacity'
     else:
         print(f"Colours set by X_{args.ion}")
         coloursurfaceby = f'X_{args.ion}'
@@ -202,6 +207,9 @@ def addargs(parser):
 
     parser.add_argument('--rho', action='store_true',
                         help='Plot rho instead of ion')
+
+    parser.add_argument('--opacity', action='store_true',
+                        help='Plot opacity from opacity.txt (if available for model)')
 
     parser.add_argument('-modeldim', type=int, default=None,
                         help='Choose how many dimensions. 3 for 3D, 2 for 2D')
