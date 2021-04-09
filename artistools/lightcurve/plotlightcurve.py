@@ -117,7 +117,6 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
             axis.scatter(bollightcurve_data['time_days'], bollightcurve_data['luminosity_erg/s'],
                          label=metadata['label'], color='k')
 
-    axis.set_xlim(left=0)
     if args.xmin:
         axis.set_xlim(left=args.xmin)
     if args.xmax:
