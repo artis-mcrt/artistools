@@ -17,25 +17,25 @@ at.enable_diskcache = False
 
 
 def test_spectraplot():
-    at.spectra.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320)
+    at.spectra.main(argsraw=[], specpath=modelpath, outputfile=outputpath, timemin=290, timemax=320)
 
 
 def test_spectra_frompackets():
-    at.spectra.main(argsraw=[], modelpath=modelpath, outputfile=os.path.join(outputpath, 'spectrum_from_packets.pdf'),
+    at.spectra.main(argsraw=[], specpath=modelpath, outputfile=os.path.join(outputpath, 'spectrum_from_packets.pdf'),
                     timemin=290, timemax=320, frompackets=True)
 
 
 def test_spectra_outputtext():
-    at.spectra.main(argsraw=[], modelpath=modelpath, output_spectra=True)
+    at.spectra.main(argsraw=[], specpath=modelpath, output_spectra=True)
 
 
 def test_spectraemissionplot():
-    at.spectra.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320,
+    at.spectra.main(argsraw=[], specpath=modelpath, outputfile=outputpath, timemin=290, timemax=320,
                     emissionabsorption=True)
 
 
 def test_spectraemissionplot_nostack():
-    at.spectra.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timemin=290, timemax=320,
+    at.spectra.main(argsraw=[], specpath=modelpath, outputfile=outputpath, timemin=290, timemax=320,
                     emissionabsorption=True, nostack=True)
 
 
@@ -94,5 +94,5 @@ def test_spectra_get_flux_contributions():
 
 def test_spectra_timeseries_subplots():
     timedayslist = [295, 300]
-    at.spectra.main(argsraw=[], modelpath=modelpath, outputfile=outputpath,
+    at.spectra.main(argsraw=[], specpath=modelpath, outputfile=outputpath,
                     timedayslist=timedayslist, multispecplot=True)
