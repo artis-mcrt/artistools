@@ -107,7 +107,8 @@ def test_make_empty_abundance_file():
 
 
 def test_opacity_by_Ye_file():
-    griddata = {'cellYe': [0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.5]}
+    griddata = {'cellYe': [0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.5],
+                'gridindex': range(1, 9)}
     at.inputmodel.makeopacityinputfile.opacity_by_Ye(modelpath, griddata=griddata)
 
 
