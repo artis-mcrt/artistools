@@ -18,6 +18,7 @@ import artistools.spectra
 import matplotlib.pyplot as plt
 import matplotlib
 from extinction import apply, ccm89
+from astropy import constants as const
 
 from matplotlib.legend_handler import HandlerTuple
 from .lightcurve import *
@@ -88,24 +89,35 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
                 plotkwargs['color'] = None # color_list[angleindex]
                 plotkwargs['label'] = f'{modelname}\n{angle_definition[angle]}'
 
-            # lcdata['lum'] = lcdata['lum']*3.826e33 #Luminosity in erg/s
-            axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
-            # lcdata['mag'] = 4.74 - (2.5 * np.log10(lcdata['lum'] / const.L_sun.to('erg/s').value))
-            # axis.plot(lcdata['time'], lcdata['mag'], **plotkwargs)
-            if args.print_data:
-                print(lcdata[['time', 'lum', 'lum_cmf']].to_string(index=False))
-            if args.plotcmf:
-                plotkwargs['linewidth'] = 1
-                plotkwargs['label'] += ' (cmf)'
-                plotkwargs['color'] = 'tab:orange'
-                axis.plot(lcdata.time, lcdata['lum_cmf'], **plotkwargs)
+            if args.ergs or args.magnitude:
+                lcdata['lum'] = lcdata['lum']*3.826e33  # Luminosity in erg/s
+
+            if args.magnitude:
+                # convert to bol magnitude
+                lcdata['mag'] = 4.74 - (2.5 * np.log10(lcdata['lum'] / const.L_sun.to('erg/s').value))
+                axis.plot(lcdata['time'], lcdata['mag'], **plotkwargs)
+                plt.gca().invert_yaxis()
+            else:
+                axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
+
+                if args.print_data:
+                    print(lcdata[['time', 'lum', 'lum_cmf']].to_string(index=False))
+                if args.plotcmf:
+                    plotkwargs['linewidth'] = 1
+                    plotkwargs['label'] += ' (cmf)'
+                    plotkwargs['color'] = 'tab:orange'
+                    axis.plot(lcdata.time, lcdata['lum_cmf'], **plotkwargs)
 
     if args.reflightcurves:
         for bolreflightcurve in args.reflightcurves:
+            if not args.ergs:
+                print("Check units - trying to plot ref light curve in erg/s")
+                quit()
             bollightcurve_data, metadata = read_bol_reflightcurve_data(bolreflightcurve)
             axis.scatter(bollightcurve_data['time_days'], bollightcurve_data['luminosity_erg/s'],
                          label=metadata['label'], color='k')
 
+    axis.set_xlim(left=0)
     if args.xmin:
         axis.set_xlim(left=args.xmin)
     if args.xmax:
@@ -119,13 +131,20 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
     if not args.nolegend:
         axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
     axis.set_xlabel(r'Time (days)')
-    if escape_type == 'TYPE_GAMMA':
-        lum_suffix = r'_\gamma'
-    elif escape_type == 'TYPE_RPKT':
-        lum_suffix = r'_{\mathrm{OVOIR}}'
+
+    if args.magnitude:
+        axis.set_ylabel('Absolute Bolometric Magnitude')
+
+    elif args.ergs:
+        axis.set_ylabel('erg/s')
     else:
-        lum_suffix = r'_{\mathrm{' + escape_type.replace("_", r"\_") + '}}'
-    axis.set_ylabel(r'$\mathrm{L} ' + lum_suffix + r'/ \mathrm{L}_\odot$')
+        if escape_type == 'TYPE_GAMMA':
+            lum_suffix = r'_\gamma'
+        elif escape_type == 'TYPE_RPKT':
+            lum_suffix = r'_{\mathrm{OVOIR}}'
+        else:
+            lum_suffix = r'_{\mathrm{' + escape_type.replace("_", r"\_") + '}}'
+        axis.set_ylabel(r'$\mathrm{L} ' + lum_suffix + r'/ \mathrm{L}_\odot$')
 
     if args.logscaley:
         axis.set_yscale('log')
@@ -956,6 +975,9 @@ def addargs(parser):
     parser.add_argument('--magnitude', action='store_true',
                         help='Plot light curves in magnitudes')
 
+    parser.add_argument('--ergs', action='store_true',
+                        help='Plot light curves in erg/s')
+
     parser.add_argument('-filter', type=str, nargs='+',
                         help='Choose filter eg. bol U B V R I. Default B. '
                         'WARNING: filter names are not case sensitive eg. sloan-r is not r, it is rs')
@@ -1098,7 +1120,7 @@ def main(args=None, argsraw=None, **kwargs):
     if args.gamma:
         args.escape_type = 'TYPE_GAMMA'
 
-    if args.magnitude:
+    if args.filter:
         defaultoutputfile = 'plotlightcurves.pdf'
     elif args.colour_evolution:
         defaultoutputfile = 'plot_colour_evolution.pdf'
