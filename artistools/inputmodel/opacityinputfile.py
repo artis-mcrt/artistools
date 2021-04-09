@@ -42,3 +42,10 @@ def opacity_by_Ye(modelpath, griddata):
     with open(Path(modelpath) / 'opacity.txt', 'w') as fopacity:
         fopacity.write(f'{len(griddata["gridindex"])}\n')
         griddata[['gridindex', 'opacity']].to_csv(fopacity, sep='\t', index=False, header=False, float_format='%.10f')
+
+
+def get_opacity_from_file(modelpath):
+    opacity_file_contents = np.loadtxt(Path(modelpath) / "opacity.txt", unpack=True, skiprows=1)
+    opacity = opacity_file_contents[1]
+
+    return opacity

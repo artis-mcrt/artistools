@@ -4,7 +4,7 @@ import artistools as at
 import artistools.inputmodel.downscale3dgrid
 import artistools.inputmodel.makeenergyinputfiles
 import artistools.inputmodel.modelfromarepo
-import artistools.inputmodel.makeopacityinputfile
+import artistools.inputmodel.opacityinputfile
 
 
 def addargs(parser):
@@ -68,7 +68,7 @@ def main(args=None, argsraw=None, **kwargs):
             griddata = at.inputmodel.modelfromarepo.fill_central_hole(griddata, t_model)
         
         if args.getcellopacityfromYe:
-            at.inputmodel.makeopacityinputfile.opacity_by_Ye(args.modelpath[0], griddata)
+            at.inputmodel.opacityinputfile.opacity_by_Ye(args.modelpath[0], griddata)
 
         at.inputmodel.save_3d_modeldata(args.modelpath[0], griddata, t_model=t_model, vmax=vmax, radioactives=False)
         ngrid = len(griddata['rho'])
