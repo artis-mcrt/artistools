@@ -102,6 +102,10 @@ def test_makemodel_energyfiles():
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, makeenergyinputfiles=True, modeldim=1)
 
 
+def test_make_empty_abundance_file():
+    at.inputmodel.save_empty_abundance_file(ngrid=50)
+
+
 def test_menu():
     at.main(argsraw=[])
     at.showtimesteptimes(modelpath=modelpath)
