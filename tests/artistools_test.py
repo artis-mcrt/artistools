@@ -113,6 +113,20 @@ def test_opacity_by_Ye_file():
     at.inputmodel.makeopacityinputfile.opacity_by_Ye(modelpath, griddata=griddata)
 
 
+def test_save3Dmodel():
+    griddata = {'gridindex': [1,2],
+                'posx': [1,2],
+                'posy': [1,2],
+                'posz': [1,2],
+                'rho': [0, 2],
+                'cellYe': [0, 0.1]}
+    tmodel = 100
+    vmax = 1000
+    radioactiveslist = [True, False]
+    for radioactives in radioactiveslist:
+        at.inputmodel.save_3d_modeldata(modelpath, griddata, tmodel, vmax, radioactives=radioactives)
+
+
 def test_menu():
     at.main(argsraw=[])
     at.showtimesteptimes(modelpath=modelpath)
