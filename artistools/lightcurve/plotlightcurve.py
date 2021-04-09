@@ -100,6 +100,12 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
                 plotkwargs['color'] = 'tab:orange'
                 axis.plot(lcdata.time, lcdata['lum_cmf'], **plotkwargs)
 
+    if args.reflightcurves:
+        for bolreflightcurve in args.reflightcurves:
+            bollightcurve_data, metadata = read_bol_reflightcurve_data(bolreflightcurve)
+            axis.scatter(bollightcurve_data['time_days'], bollightcurve_data['luminosity_erg/s'],
+                         label=metadata['label'], color='k')
+
     if args.xmin:
         axis.set_xlim(left=args.xmin)
     if args.xmax:

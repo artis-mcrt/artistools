@@ -304,6 +304,18 @@ def read_reflightcurve_band_data(lightcurvefilename):
     return lightcurve_data, metadata
 
 
+def read_bol_reflightcurve_data(lightcurvefilename):
+    data_path = os.path.join(at.PYDIR, f"data/lightcurves/bollightcurves/{lightcurvefilename}")
+    metadata = at.get_file_metadata(data_path)
+
+    bollightcurve_data = pd.read_csv(data_path, comment='#', delim_whitespace=True, header=None)
+
+    bollightcurve_data = bollightcurve_data.rename(columns={0: 'time_days'})  # days
+    bollightcurve_data = bollightcurve_data.rename(columns={1: 'luminosity_erg/s'})  # erg/s
+
+    return bollightcurve_data, metadata
+
+
 def get_sn_sample_bol():
     datafilepath = Path(at.PYDIR, 'data', 'lightcurves', 'SNsample', 'bololc.txt')
     sn_data = pd.read_csv(datafilepath, delim_whitespace=True, comment='#')
