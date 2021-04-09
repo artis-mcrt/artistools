@@ -954,7 +954,7 @@ def addargs(parser):
                         help='Plot comoving frame light curve')
 
     parser.add_argument('--magnitude', action='store_true',
-                        help='Plot synthetic magnitudes')
+                        help='Plot light curves in magnitudes')
 
     parser.add_argument('-filter', type=str, nargs='+',
                         help='Choose filter eg. bol U B V R I. Default B. '
