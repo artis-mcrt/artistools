@@ -98,6 +98,33 @@ def test_makemodel():
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath)
 
 
+def test_makemodel_energyfiles():
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, makeenergyinputfiles=True, modeldim=1)
+
+
+def test_make_empty_abundance_file():
+    at.inputmodel.save_empty_abundance_file(ngrid=50)
+
+
+def test_opacity_by_Ye_file():
+    griddata = {'cellYe': [0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.5],
+                'rho': [0, 99, 99, 99, 99, 99, 99, 99],
+                'gridindex': range(1, 9)}
+    at.inputmodel.makeopacityinputfile.opacity_by_Ye(modelpath, griddata=griddata)
+
+
+def test_save3Dmodel():
+    griddata = {'gridindex': [1,2],
+                'posx': [1,2],
+                'posy': [1,2],
+                'posz': [1,2],
+                'rho': [0, 2],
+                'cellYe': [0, 0.1]}
+    tmodel = 100
+    vmax = 1000
+    at.inputmodel.save_3d_modeldata(modelpath, griddata, tmodel, vmax, radioactives=False)
+
+
 def test_menu():
     at.main(argsraw=[])
     at.showtimesteptimes(modelpath=modelpath)
