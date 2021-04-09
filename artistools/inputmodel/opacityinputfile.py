@@ -13,7 +13,7 @@ def all_cells_same_opacity(modelpath, ngrid):
             fopacity.write(f'{cellid+1}    {opacity}\n')
 
 
-def opacity_by_Ye(modelpath, griddata):
+def opacity_by_Ye(outputfilepath, griddata):
     """Opacities from Table 1 Tanaka 2020"""
     griddata = pd.DataFrame(griddata)
 
@@ -39,7 +39,7 @@ def opacity_by_Ye(modelpath, griddata):
 
     griddata['opacity'] = cell_opacities
 
-    with open(Path(modelpath) / 'opacity.txt', 'w') as fopacity:
+    with open(Path(outputfilepath) / 'opacity.txt', 'w') as fopacity:
         fopacity.write(f'{len(griddata["gridindex"])}\n')
         griddata[['gridindex', 'opacity']].to_csv(fopacity, sep='\t', index=False, header=False, float_format='%.10f')
 

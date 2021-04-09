@@ -311,7 +311,7 @@ def save_initialabundances(dfabundances, abundancefilename):
     dfabundances.to_csv(abundancefilename, header=False, sep=' ', index=False)
 
 
-def save_empty_abundance_file(ngrid):
+def save_empty_abundance_file(ngrid, outputfilepath='.'):
     """Dummy abundance file with only zeros"""
     Z_atomic = np.arange(1, 31)
 
@@ -323,4 +323,4 @@ def save_empty_abundance_file(ngrid):
 
     abundancedata = pd.DataFrame(data=abundancedata)
     abundancedata = abundancedata.round(decimals=5)
-    abundancedata.to_csv('abundances.txt', header=False, sep='\t', index=False)
+    abundancedata.to_csv(Path(outputfilepath) / 'abundances.txt', header=False, sep='\t', index=False)
