@@ -56,6 +56,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     if args.makemodelfromarepo:
         griddata, t_model, vmax = at.inputmodel.modelfromarepo.read_griddat_file(args.pathtogriddata)
+
         if args.fillcentralhole:
             griddata = at.inputmodel.modelfromarepo.fill_central_hole(griddata, t_model)
         

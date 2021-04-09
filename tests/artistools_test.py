@@ -98,6 +98,10 @@ def test_makemodel():
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath)
 
 
+def test_makemodel_energyfiles():
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, makeenergyinputfiles=True)
+
+
 def test_menu():
     at.main(argsraw=[])
     at.showtimesteptimes(modelpath=modelpath)
