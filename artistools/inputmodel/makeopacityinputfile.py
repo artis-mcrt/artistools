@@ -17,8 +17,6 @@ def opacity_by_Ye(modelpath, griddata):
     """Opacities from Table 1 Tanaka 2020"""
     griddata = pd.DataFrame(griddata)
 
-    griddata['cellYe'] = griddata['cellYe']
-
     cell_opacities = np.zeros_like(griddata['cellYe'])
 
     for index, Ye in enumerate(griddata['cellYe']):
