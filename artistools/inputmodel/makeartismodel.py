@@ -14,6 +14,12 @@ def addargs(parser):
     parser.add_argument('--downscale3dgrid', action='store_true',
                         help='Downscale a 3D ARTIS model to smaller grid size')
 
+    parser.add_argument('-inputgridsize', default=200,
+                        help='Size of big model grid for downscale script')
+
+    parser.add_argument('-outputgridsize', default=50,
+                        help='Size of small model grid for downscale script')
+
     parser.add_argument('--makemodelfromarepo', action='store_true',
                         help='Make ARTIS model files from arepo grid.dat file')
 
@@ -51,7 +57,8 @@ def main(args=None, argsraw=None, **kwargs):
     args.modelpath = at.flatten_list(args.modelpath)
 
     if args.downscale3dgrid:
-        at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(modelpath=Path(args.modelpath[0]))
+        at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(modelpath=Path(args.modelpath[0]),
+                                                  inputgridsize=args.inputgridsize, outputgridsize=args.outputgridsize)
         return
 
     if args.makemodelfromarepo:
