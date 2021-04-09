@@ -1,4 +1,5 @@
 from pathlib import Path
+import os.path
 import pandas as pd
 from astropy import units as u
 import numpy as np
@@ -21,10 +22,34 @@ def read_arepo_out(pathtosnapshot):
     return arepo_out_dat
 
 
+def get_snapshot_time(pathtogriddata):
+    import glob
+
+    snapshotinfofile = glob.glob(str(Path(pathtogriddata) / "sfho_info.dat*"))
+
+    if len(snapshotinfofile) > 1:
+        print('Too many sfho_info.dat files found')
+        quit()
+    snapshotinfofile = snapshotinfofile[0]
+
+    if os.path.isfile(snapshotinfofile):
+        with open(snapshotinfofile, "r") as fsnapshotinfo:
+            line1 = fsnapshotinfo.readline()
+            simulation_end_time_geomunits = float(line1.split()[2])
+            print(f"Found simulation snapshot time to be {simulation_end_time_geomunits}")
+
+    else:
+        print("Could not find snapshot info file to get simulation time")
+        quit()
+
+    return simulation_end_time_geomunits
+
+
 def read_griddat_file(pathtogriddata):
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
-    simulation_end_time_geomunits = 5813.694  # todo: figure out how to reads this in
-    print("WARNING: Simulation end time needs changed")
+
+    # Get simulation time for ejecta snapshot
+    simulation_end_time_geomunits = get_snapshot_time(pathtogriddata)
 
     gridindex, posx, posy, posz, rho, cellYe = np.loadtxt(griddatfilepath, skiprows=3, unpack=True)
     cellYe = np.nan_to_num(cellYe, nan=0.)
