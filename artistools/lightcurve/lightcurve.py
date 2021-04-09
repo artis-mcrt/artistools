@@ -286,7 +286,7 @@ def read_hesma_lightcurve(args):
     return hesma_model
 
 
-def read_lightcurve_data(lightcurvefilename):
+def read_reflightcurve_band_data(lightcurvefilename):
     filepath = Path(at.PYDIR, 'data', 'lightcurves', lightcurvefilename)
     metadata = at.get_file_metadata(filepath)
 
