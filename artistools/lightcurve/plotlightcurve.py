@@ -1065,7 +1065,7 @@ def main(args=None, argsraw=None, **kwargs):
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-            description='Plot ARTIS radiation field.')
+            description='Plot ARTIS light curve.')
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
