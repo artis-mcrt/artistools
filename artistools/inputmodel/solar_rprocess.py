@@ -29,8 +29,12 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         args = parser.parse_args(argsraw)
 
     dfsolarabund = pd.read_csv(at.config['path_datadir'] / 'solar_r_abundance_pattern.txt',
-                             delim_whitespace=True, comment='#')
+                               delim_whitespace=True, comment='#')
 
+    dfbetaminus = pd.read_csv(at.config['path_datadir'] / 'betaminusdecays.txt',
+                              delim_whitespace=True, comment='#',
+                              names=['A', 'Z', 'Q[MeV]', 'Egamma[MeV]', 'Eelec[MeV]',
+                                     'Eneutrino[MeV]', 'tau[s]'])
     normfactor = dfsolarabund.numberfrac.sum()  # convert number fractions in solar to fractions of r-process
     dfsolarabund.eval('numberfrac = numberfrac / @normfactor', inplace=True)
 
@@ -39,13 +43,25 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     dfsolarabund.eval('massfrac = massfrac / @massfracnormfactor', inplace=True)
 
     print(dfsolarabund)
+
+    def undecayed_z(row):
+        dfmasschain = dfbetaminus.query('A == @row.A', inplace=False)
+        if not dfmasschain.empty:
+            return int(dfmasschain.Z.min())
+        else:
+            return int(row.Z)
+
+    dfsolarabund_undecayed = dfsolarabund.copy()
+    dfsolarabund_undecayed['Z'] = dfsolarabund_undecayed.apply(undecayed_z, axis=1)
+    print(dfsolarabund_undecayed)
+
     # print(dfsolarabund.numberfrac.sum())
     # print(dfsolarabund.massfrac.sum())
 
     dictelemabund = {'inputcellid': 1}
     for atomic_number in range(1, dfsolarabund.Z.max() + 1):
         dictelemabund[f'X_{at.elsymbols[atomic_number]}'] = (
-            dfsolarabund.query('Z == @atomic_number', inplace=False).massfrac.sum())
+            dfsolarabund_undecayed.query('Z == @atomic_number', inplace=False).massfrac.sum())
 
     dfabundances = pd.DataFrame(dictelemabund, index=[0])
     print(dfabundances)
@@ -66,7 +82,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     t_model_init_days = 0.000231481
 
-    for _, row in dfsolarabund.iterrows():
+    for _, row in dfsolarabund_undecayed.iterrows():
         modeldict[f'X_{at.elsymbols[int(row.Z)]}{int(row.A)}'] = row.massfrac
 
     dfmodel = pd.DataFrame(modeldict, index=[0])
