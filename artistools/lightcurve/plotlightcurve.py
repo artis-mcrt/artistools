@@ -209,6 +209,10 @@ def create_axes(args):
     if args.subplots:
         ax = ax.flatten()
 
+    return fig, ax
+
+
+def set_axis_limit_args(args):
     if args.filter:
         plt.gca().invert_yaxis()
         if args.ymax is None:
@@ -231,8 +235,6 @@ def create_axes(args):
             args.timemax = args.xmax + 5
         if args.timemin is None:
             args.timemin = args.xmin - 5
-
-    return fig, ax
 
 
 def get_angle_stuff(modelpath, args):
@@ -379,6 +381,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     modelnames = [] # save names of models
     args.labelfontsize = 22  #todo: make command line arg
     fig, ax = create_axes(args)
+    set_axis_limit_args(args)
 
     for modelnumber, modelpath in enumerate(modelpaths):
         modelpath = Path(modelpath)  ## Make sure modelpath is defined as path. May not be necessary
@@ -700,6 +703,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
     angle_counter = 0
 
     fig, ax = create_axes(args)
+    set_axis_limit_args(args)
 
     for modelnumber, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
