@@ -2,7 +2,7 @@
 
 import artistools as at
 # import artistools.spectra
-import artistools.lightcurve.writebollightcurvedata
+# import artistools.lightcurve.writebollightcurvedata
 
 from pathlib import Path
 import pandas as pd
@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from astropy import constants as const
 from astropy import units as u
+import os
 
 
 def plot_hesma_spectrum(timeavg, axes):
@@ -131,17 +132,34 @@ def make_hesma_peakmag_dm15_dm40(pathtofiles, modelname, outpath):
     outdataframe.to_csv(outpath / f"doubledet_2021_bol_dm_{modelname}.dat", sep=' ', index=False, header=True)
 
 
-def main():
-    pathtomodel = Path("/home/localadmin_ccollins/harddrive4TB/parameterstudy/")
-    modelnames = ['M08_03', 'M08_05', 'M08_10', 'M09_03', 'M09_05', 'M09_10',
-                  'M10_02_end55', 'M10_03', 'M10_05', 'M10_10', 'M11_05_1']
-    outpath = Path("/home/localadmin_ccollins/harddrive4TB/parameterstudy/hesma_lc")
-    timemin = 5
-    timemax = 70
-    for modelname in modelnames:
-        modelpath = pathtomodel / modelname
-        make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax)
+def read_hesma_peakmag_dm15_dm40(pathtofiles):
+    data = []
+    for filename in os.listdir(pathtofiles):
+        print(filename)
+        data.append(pd.read_csv(pathtofiles / filename, delim_whitespace=True))
+    print(data[0])
+
+    for df in data:
+        print(df)
+        plt.scatter(df['dm15'], df['peakmag'])
+    plt.gca().invert_yaxis()
+    plt.show()
 
 
-if __name__ == '__main__':
-    main()
+# def main():
+#     # pathtomodel = Path("/home/localadmin_ccollins/harddrive4TB/parameterstudy/")
+#     # modelnames = ['M08_03', 'M08_05', 'M08_10', 'M09_03', 'M09_05', 'M09_10',
+#     #               'M10_02_end55', 'M10_03', 'M10_05', 'M10_10', 'M11_05_1']
+#     # outpath = Path("/home/localadmin_ccollins/harddrive4TB/parameterstudy/hesma_lc")
+#     # timemin = 5
+#     # timemax = 70
+#     # for modelname in modelnames:
+#     #     modelpath = pathtomodel / modelname
+#     #     make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax)
+#
+#     # pathtofiles = Path("/home/localadmin_ccollins/harddrive4TB/parameterstudy/declinerate")
+#     # read_hesma_peakmag_dm15_dm40(pathtofiles)
+#
+#
+# if __name__ == '__main__':
+#     main()

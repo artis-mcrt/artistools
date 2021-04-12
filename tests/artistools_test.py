@@ -82,8 +82,20 @@ def test_lightcurve_frompackets():
                        outputfile=os.path.join(outputpath, 'lightcurve_from_packets.pdf'))
 
 
-def test_lightcurve_magnitudes_plot():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, magnitude=True, outputfile=outputpath)
+def test_band_lightcurve_plot():
+    at.lightcurve.main(argsraw=[], modelpath=modelpath, filter=['B'], outputfile=outputpath)
+
+
+def test_band_lightcurve_subplots():
+    at.lightcurve.main(argsraw=[], modelpath=modelpath, filter=['bol', 'B'], outputfile=outputpath)
+
+
+def test_colour_evolution_plot():
+    at.lightcurve.main(argsraw=[], modelpath=modelpath, colour_evolution=['B-V'], outputfile=outputpath)
+
+
+def test_colour_evolution_subplots():
+    at.lightcurve.main(argsraw=[], modelpath=modelpath, colour_evolution=['U-B', 'B-V'], outputfile=outputpath)
 
 
 def test_macroatom():
