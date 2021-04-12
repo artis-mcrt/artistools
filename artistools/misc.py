@@ -48,6 +48,7 @@ commandlist = {
     'makeartismodelscalevelocity': ('artistools.inputmodel.scalevelocity', 'main'),
     'makeartismodelfullymixed': ('artistools.inputmodel.fullymixed', 'main'),
     'makeartismodelsolar_rprocess': ('artistools.inputmodel.solar_rprocess', 'main'),
+    'makeartismodel': ('artistools.inputmodel.makeartismodel', 'main'),
 
     'plotartisdeposition': ('artistools.deposition', 'main'),
     'artistools-deposition': ('artistools.deposition', 'main'),
@@ -231,8 +232,14 @@ class AppendPath(argparse.Action):
         # if getattr(args, self.dest) is None:
         #     setattr(args, self.dest, [])
         if isinstance(values, Iterable):
-            for pathstr in values:
-                getattr(args, self.dest).append(Path(pathstr))
+            pathlist = getattr(args, self.dest)
+            # not pathlist avoids repeated appending of the same items when called from Python
+            # instead of from the command line
+            if not pathlist:
+                for pathstr in values:
+                    # print(f"pathstr {pathstr}")
+                    # if Path(pathstr) not in pathlist:
+                    pathlist.append(Path(pathstr))
         else:
             setattr(args, self.dest, Path(values))
 
@@ -420,7 +427,7 @@ def get_grid_mapping(modelpath):
     return assoc_cells, mgi_of_propcells
 
 
-def get_wid_init(modelpath):
+def get_wid_init_at_tmin(modelpath):
     # cell width in cm at time tmin
     tmin = get_timestep_times_float(modelpath, loc='start')[0] * u.day.to('s')
     _, _, vmax = artistools.inputmodel.get_modeldata(modelpath)
@@ -431,6 +438,21 @@ def get_wid_init(modelpath):
     ncoordgrid0 = 50
 
     wid_init = 2 * coordmax0 / ncoordgrid0
+    return wid_init
+
+
+def get_wid_init_at_tmodel(modelpath, ngridpoints=None, t_model=None, xmax=None):
+    if ngridpoints is None or t_model is None or xmax is None:
+        model, t_model, vmax = artistools.inputmodel.get_modeldata(modelpath)
+        ngridpoints = len(model['inputcellid'])
+        xmax = vmax * t_model
+
+    ncoordgridx = round(ngridpoints ** (1. / 3.))
+
+    wid_init = 2 * xmax / ncoordgridx
+
+    print(xmax, t_model, wid_init)
+
     return wid_init
 
 
@@ -535,7 +557,7 @@ def get_timestep_of_timedays(modelpath, timedays):
     return
 
 
-def get_time_range(modelpath, timestep_range_str, timemin, timemax, timedays_range_str):
+def get_time_range(modelpath, timestep_range_str=None, timemin=None, timemax=None, timedays_range_str=None):
     """Handle a time range specified in either days or timesteps."""
     # assertions make sure time is specified either by timesteps or times in days, but not both!
     tstarts = get_timestep_times_float(modelpath, loc='start')

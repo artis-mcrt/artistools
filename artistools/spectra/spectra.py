@@ -84,7 +84,6 @@ def get_specdata(modelpath, stokesparam=None):
     return specdata
 
 
-@lru_cache(maxsize=16)
 def get_spectrum(
         modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None,
         reftime=None, modelnumber=None):
@@ -819,7 +818,7 @@ def get_flux_contributions_from_packets(
         if modelgridindex:
             volume_shells = volume
             assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
-            volume = (at.get_wid_init(modelpath) * t_seconds / (
+            volume = (at.get_wid_init_at_tmin(modelpath) * t_seconds / (
                 at.get_inputparams(modelpath)['tmin'] * u.day.to('s'))) ** 3 * len(assoc_cells[modelgridindex])
             print('volume', volume, 'shell volume', volume_shells, '-------------------------------------------------')
         normfactor = c_cgs / 4 / math.pi / delta_lambda / volume / nprocs_read

@@ -4,13 +4,17 @@ import math
 import os
 from pathlib import Path
 import pandas as pd
-import artistools as at
 import matplotlib.pyplot as plt
 from astropy import units as u
 import matplotlib
 import numpy as np
-import scipy.interpolate
-import artistools.inputmodel
+
+import artistools as at
+import artistools.inputmodel.opacityinputfile
+
+# import scipy.interpolate
+# import artistools.inputmodel
+# from mpl_toolkits.mplot3d import Axes3D
 
 
 def plot_2d_initial_abundances(modelpath, args):
@@ -45,7 +49,7 @@ def plot_2d_initial_abundances(modelpath, args):
     # ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
 
-    outfilename = f'plot_composition{args.ion}.pdf'
+    outfilename = f'plotcomposition{args.ion}.pdf'
     plt.savefig(Path(modelpath[0]) / outfilename, format='pdf')
     print(f'Saved {outfilename}')
 
@@ -96,7 +100,7 @@ def plot_3d_initial_abundances(modelpath, args):
     # ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
 
-    outfilename = f'plot_composition{args.ion}.pdf'
+    outfilename = f'plotcomposition{args.ion}.pdf'
     plt.savefig(Path(modelpath[0]) / outfilename, format='pdf')
     print(f'Saved {outfilename}')
 
@@ -140,6 +144,59 @@ def plot_most_abundant(modelpath, args):
     return merge_dfs
 
 
+def make_3d_plot(modelpath, args):
+    import pyvista as pv
+    pv.set_plot_theme("document")  # set white background
+
+    model, t_model, vmax = at.inputmodel.get_modeldata(modelpath, dimensions=3, get_abundances=False)
+
+    # choose what surface will be coloured by
+    if args.rho:
+        coloursurfaceby = 'rho'
+    elif args.opacity:
+        model['opacity'] = at.inputmodel.opacityinputfile.get_opacity_from_file(modelpath)
+        coloursurfaceby = 'opacity'
+    else:
+        print(f"Colours set by X_{args.ion}")
+        coloursurfaceby = f'X_{args.ion}'
+
+    # generate grid from data
+    grid = round(len(model['rho']) ** (1./3.))
+    surfacecolorscale = np.zeros((grid, grid, grid))  # needs 3D array
+    xgrid = np.zeros(grid)
+
+    surfacearr = np.array(model[coloursurfaceby])
+
+    i = 0
+    for z in range(0, grid):
+        for y in range(0, grid):
+            for x in range(0, grid):
+                surfacecolorscale[x, y, z] = surfacearr[i]
+                xgrid[x] = -vmax + 2 * x * vmax / grid
+                i += 1
+
+    x,y,z = np.meshgrid(xgrid,xgrid,xgrid)
+
+    mesh = pv.StructuredGrid(x,y,z)
+    print(mesh) # tells you the properties of the mesh
+
+    mesh[coloursurfaceby] = surfacecolorscale.ravel(order='F') # add data to the mesh
+    # mesh.plot()
+
+    print(f"{coloursurfaceby} minumin {min(mesh[coloursurfaceby])}, maximum {max(mesh[coloursurfaceby])}")
+
+    if not args.surfaces3d:
+        surfacepositions = np.linspace(min(mesh[coloursurfaceby]), max(mesh[coloursurfaceby]), num=10)
+        print(f"Using default surfaces {surfacepositions} \n define these with -surfaces3d for better results")
+    else:
+        surfacepositions = args.surfaces3d
+    # surfacepositions = [1, 50, 100, 300, 500, 800, 1000, 1100, 1200, 1300, 1400, 1450, 1500] # choose these
+
+    surf = mesh.contour(surfacepositions,scalars=coloursurfaceby) # create isosurfaces
+
+    surf.plot(opacity='linear', screenshot=modelpath / '3Dplot.png')    # plot surfaces and save screenshot
+
+
 def addargs(parser):
     parser.add_argument('-modelpath', default=[], nargs='*', action=at.AppendPath,
                         help='Path(s) to ARTIS folder'
@@ -148,8 +205,20 @@ def addargs(parser):
     parser.add_argument('-ion', type=str, default='Fe',
                         help='Choose ion to plot. Default is Fe')
 
+    parser.add_argument('--rho', action='store_true',
+                        help='Plot rho instead of ion')
+
+    parser.add_argument('--opacity', action='store_true',
+                        help='Plot opacity from opacity.txt (if available for model)')
+
     parser.add_argument('-modeldim', type=int, default=None,
                         help='Choose how many dimensions. 3 for 3D, 2 for 2D')
+
+    parser.add_argument('--plot3d', action='store_true',
+                        help='Make 3D plot')
+
+    parser.add_argument('-surfaces3d', type=float, nargs='+',
+                        help='define positions of surfaces for 3D plots')
 
 
 def main(args=None, argsraw=None, **kwargs):
@@ -165,6 +234,10 @@ def main(args=None, argsraw=None, **kwargs):
         args.modelpath = ['.']
 
     args.modelpath = at.flatten_list(args.modelpath)
+
+    if args.plot3d:
+        make_3d_plot(Path(args.modelpath[0]), args)
+        return
 
     if not args.modeldim:
         inputparams = at.get_inputparams(args.modelpath[0])

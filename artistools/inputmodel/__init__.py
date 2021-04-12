@@ -161,6 +161,9 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
         vmax_cmps = dfmodeldata.velocity_outer.max() * 1e5
 
     elif dimensions == 3:
+        wid_init = artistools.get_wid_init_at_tmodel(modelpath, gridcellcount, t_model_init_days, xmax_tmodel)
+        dfmodeldata.eval('shellmass_grams = rho * @wid_init ** 3', inplace=True)
+
         def vectormatch(vec1, vec2):
             xclose = np.isclose(vec1[0], vec2[0], atol=xmax_tmodel / ncoordgridx)
             yclose = np.isclose(vec1[1], vec2[1], atol=xmax_tmodel / ncoordgridy)
@@ -211,16 +214,20 @@ def get_2d_modeldata(modelpath):
 def save_modeldata(dfmodeldata, t_model_init_days, filename):
     """Save a pandas DataFrame and snapshot time into ARTIS model.txt"""
 
-    standardcols = ['inputcellid', 'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57']
-    customcols = False
+    standardcols = ['inputcellid',
+                    'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52',
+                    'X_Cr48', 'X_Ni57', 'X_Co57']
+    customcols = []
     for col in dfmodeldata.columns:
         if col not in standardcols:
-            customcols = True
-            break
+            customcols.append(col)
 
     with open(filename, 'w') as fmodel:
         fmodel.write(f'{len(dfmodeldata)}\n{t_model_init_days:f}\n')
-        fmodel.write('#' + "  ".join(dfmodeldata.columns) + '\n')        
+        fmodel.write('#' + "  ".join(standardcols))
+        if customcols:
+            fmodel.write("  " + "  ".join(customcols))
+        fmodel.write('\n')
         for _, cell in dfmodeldata.iterrows():
             fmodel.write(f'{cell.inputcellid:6.0f}   {cell.velocity_outer:9.2f}   {cell.logrho:10.8f} '
                          f'{cell.X_Fegroup:10.4e} {cell.X_Ni56:10.4e} {cell.X_Co56:10.4e} '
@@ -229,7 +236,43 @@ def save_modeldata(dfmodeldata, t_model_init_days, filename):
                 fmodel.write(f' {cell.X_Ni57:10.4e}')
                 if 'X_Co57' in dfmodeldata.columns:
                     fmodel.write(f' {cell.X_Co57:10.4e}')
+            if customcols:
+                for col in customcols:
+                    fmodel.write(f' {cell[col]:10.4e}')
+
             fmodel.write('\n')
+
+
+def save_3d_modeldata(modelpath, griddata, t_model, vmax, radioactives=True):
+    ngridpoints = len(griddata['gridindex'])  # xgrid * ygrid * zgrid
+    gridsize = round(ngridpoints ** (1 / 3))
+    print('grid size', gridsize)
+
+    if not radioactives:
+        ffe = 0.0
+        fni = 0.0
+        fco = 0.0
+        ffe52 = 0.0
+        fcr48 = 0.0
+
+    with open(Path(modelpath) / 'model.txt', 'w') as fmodel:
+        fmodel.write(f'{ngridpoints}\n')
+        fmodel.write(f'{t_model}\n')
+        fmodel.write(f'{vmax}\n')
+
+        for i in griddata['gridindex']:
+            line1 = [i, griddata['posx'][i - 1], griddata['posy'][i - 1], griddata['posz'][i - 1],
+                     griddata['rho'][i - 1]]
+            if not radioactives:
+                line2 = [ffe, fni, fco, ffe52, fcr48]
+            else:
+                line2 = [griddata['ffe'][i - 1], griddata['fni'][i - 1], griddata['fco'][i - 1],
+                         griddata['ffe52'][i - 1], griddata['fcr48'][i - 1]]
+
+            fmodel.writelines("%s " % item for item in line1)
+            fmodel.writelines("\n")
+            fmodel.writelines("%s " % item for item in line2)
+            fmodel.writelines("\n")
 
 
 def get_mgi_of_velocity_kms(modelpath, velocity, mgilist=None):
@@ -274,3 +317,18 @@ def save_initialabundances(dfabundances, abundancefilename):
         abundancefilename = Path(abundancefilename) / 'abundances.txt'
     dfabundances['inputcellid'] = dfabundances['inputcellid'].astype(int)
     dfabundances.to_csv(abundancefilename, header=False, sep=' ', index=False)
+
+
+def save_empty_abundance_file(ngrid, outputfilepath='.'):
+    """Dummy abundance file with only zeros"""
+    Z_atomic = np.arange(1, 31)
+
+    abundancedata = {'cellid': range(1, ngrid+1)}
+    for atomic_number in Z_atomic:
+        abundancedata[f'Z={atomic_number}'] = np.zeros(ngrid)
+
+    # abundancedata['Z=28'] = np.ones(ngrid)
+
+    abundancedata = pd.DataFrame(data=abundancedata)
+    abundancedata = abundancedata.round(decimals=5)
+    abundancedata.to_csv(Path(outputfilepath) / 'abundances.txt', header=False, sep='\t', index=False)

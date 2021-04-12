@@ -1027,7 +1027,7 @@ def analyse_ntspectrum(
                 engrid, dftransitions[(Z, ionstage)], yvec, deposition_density_ev)
             if frac_excitation_ion[(Z, ionstage)] > 1:
                 frac_excitation_ion[(Z, ionstage)] = 0.
-                print('Ignoring frac_excitation_ion of {frac_excitation_ion[(Z, ionstage)]}.')
+                print(f'Ignoring frac_excitation_ion of {frac_excitation_ion[(Z, ionstage)]}.')
             frac_excitation += frac_excitation_ion[(Z, ionstage)]
             print(f'     frac_excitation: {frac_excitation_ion[(Z, ionstage)]:.4f}')
         else:
