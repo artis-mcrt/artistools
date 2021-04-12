@@ -757,7 +757,7 @@ def addargs(parser):
     parser.add_argument('-label', default=[], nargs='*',
                         help='List of series label overrides')
 
-    parser.add_argument('-color', '-colors', dest='color', default=[f'C{i}' for i in range(10)], nargs='*',
+    parser.add_argument('-color', '-colors', dest='color', default=[], nargs='*',
                         help='List of line colors')
 
     parser.add_argument('-linestyle', default=[], nargs='*',
@@ -966,6 +966,20 @@ def main(args=None, argsraw=None, **kwargs):
     if args.timedayslist:
         args.multispecplot = True
         args.timedays = args.timedayslist[0]
+
+    if not args.color:
+        args.color = []
+        artismodelcolors = [f'C{i}' for i in range(10)]
+        refspeccolors = ['0.0', '0.3', '0.5', '0.7']
+        refspecnum = 0
+        artismodelnum = 0
+        for filepath in args.specpath:
+            if Path(filepath).is_dir() or Path(filepath).name == 'spec.out':
+                args.color.append(artismodelcolors[artismodelnum])
+                artismodelnum += 1
+            else:
+                args.color.append(refspeccolors[refspecnum])
+                refspecnum += 1
 
     args.color, args.label, args.linestyle, args.dashes, args.linewidth = at.trim_or_pad(
         len(args.specpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth)
