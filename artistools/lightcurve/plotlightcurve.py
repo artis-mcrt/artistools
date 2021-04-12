@@ -103,11 +103,23 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
         if args.plotviewingangle:
             lcdataframes = lcdata
 
+            if args.colorbarcostheta or args.colorbarphi:
+                costheta_viewing_angle_bins, phi_viewing_angle_bins = get_viewinganglebin_definitions()
+                scaledmap = make_colorbar_viewingangles_colormap()
+
         for angleindex, angle in enumerate(angles):
             if args.plotviewingangle:
                 lcdata = lcdataframes[angle]
-                plotkwargs['color'] = None # color_list[angleindex]
-                plotkwargs['label'] = f'{modelname}\n{angle_definition[angle]}'
+
+                if args.colorbarcostheta or args.colorbarphi:
+                    plotkwargs['alpha'] = 0.75
+                    # Update plotkwargs with viewing angle colour
+                    plotkwargs = get_viewinganglecolor_for_colorbar(angle_definition, angle,
+                                                        costheta_viewing_angle_bins, phi_viewing_angle_bins,
+                                                        scaledmap, plotkwargs, args)
+                else:
+                    plotkwargs['color'] = None
+                    plotkwargs['label'] = f'{modelname}\n{angle_definition[angle]}'
 
             filterfunc = at.get_filterfunc(args)
             if filterfunc is not None:
@@ -170,6 +182,9 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
         else:
             lum_suffix = r'_{\mathrm{' + escape_type.replace("_", r"\_") + '}}'
         axis.set_ylabel(r'$\mathrm{L} ' + lum_suffix + r'/ \mathrm{L}_\odot$')
+
+    if args.colorbarcostheta or args.colorbarphi:
+        make_colorbar_viewingangles(costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, args)
 
     if args.logscaley:
         axis.set_yscale('log')
@@ -269,6 +284,36 @@ def get_angle_stuff(modelpath, args):
                 angle_definition[key] = costheta_label
 
     return angles, viewing_angles, angle_definition
+
+
+def make_colorbar_viewingangles_colormap():
+    norm = matplotlib.colors.Normalize(vmin=0, vmax=9)
+    scaledmap = matplotlib.cm.ScalarMappable(cmap='inferno', norm=norm)
+    scaledmap.set_array([])
+    return scaledmap
+
+
+def get_viewinganglecolor_for_colorbar(angle_definition, angle, costheta_viewing_angle_bins, phi_viewing_angle_bins,
+                                       scaledmap, plotkwargs, args):
+    if args.colorbarcostheta:
+        colorindex = costheta_viewing_angle_bins.index(angle_definition[angle].split(', ')[0])
+        plotkwargs['color'] = scaledmap.to_rgba(colorindex)
+    if args.colorbarphi:
+        colorindex = phi_viewing_angle_bins.index(angle_definition[angle].split(', ')[1])
+        plotkwargs['color'] = scaledmap.to_rgba(colorindex)
+    return plotkwargs
+
+
+def make_colorbar_viewingangles(costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, args):
+    if args.colorbarcostheta:
+        ticklabels = costheta_viewing_angle_bins
+    if args.colorbarphi:
+        ticklabels = phi_viewing_angle_bins
+    cbar = plt.colorbar(scaledmap)
+    ticklocs = np.arange(0, 10)
+    cbar.locator = matplotlib.ticker.FixedLocator(ticklocs)
+    cbar.formatter = matplotlib.ticker.FixedFormatter(ticklabels)
+    cbar.update_ticks()
 
 
 def get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args):
@@ -1075,6 +1120,12 @@ def addargs(parser):
                              'use args = -1 to select all viewing angles'
                              'Note: this method will only work if the number of angle bins (MABINS) = 100'
                              'if this is not the case an error will be printed')
+
+    parser.add_argument('--colorbarcostheta', action='store_true',
+                        help='Colour viewing angles by cos theta and show color bar')
+
+    parser.add_argument('--colorbarphi', action='store_true',
+                        help='Colour viewing angles by phi and show color bar')
 
 
 def main(args=None, argsraw=None, **kwargs):
