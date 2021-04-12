@@ -787,6 +787,17 @@ def readnoncommentline(file):
 
 @lru_cache(maxsize=24)
 def get_file_metadata(filepath):
+    def add_derived_metadata(metadata):
+
+        if 'a_v' in metadata and 'e_bminusv' in metadata and 'r_v' not in metadata:
+            metadata['r_v'] = metadata['a_v'] / metadata['e_bminusv']
+        elif 'e_bminusv' in metadata and 'r_v' in metadata and 'a_v' not in metadata:
+            metadata['a_v'] = metadata['e_bminusv'] * metadata['r_v']
+        elif 'a_v' in metadata and 'r_v' in metadata and 'e_bminusv' not in metadata:
+            metadata['e_bminusv'] = metadata['a_v'] / metadata['r_v']
+
+        return metadata
+
     import yaml
     filepath = Path(filepath)
 
@@ -796,7 +807,7 @@ def get_file_metadata(filepath):
         with individualmetafile.open('r') as yamlfile:
             metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
 
-        return metadata
+        return add_derived_metadata(metadata)
 
     # check if the metadata is in the big combined metadata file (todo: eliminate this file)
     combinedmetafile = Path(filepath.parent.resolve(), 'metadata.yml')
@@ -805,7 +816,7 @@ def get_file_metadata(filepath):
             combined_metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
         metadata = combined_metadata.get(str(filepath), {})
 
-        return metadata
+        return add_derived_metadata(metadata)
 
     return {}
 
