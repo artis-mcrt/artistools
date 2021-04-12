@@ -7,6 +7,7 @@ from collections import namedtuple
 from functools import lru_cache
 from functools import partial
 from pathlib import Path
+from typing import Iterable
 import os
 
 import matplotlib.ticker as ticker
@@ -197,7 +198,8 @@ def plot_artis_spectrum(
             else:
                 linelabel = f'...{modelname[-67:]}'
 
-            if not args.hidemodeltime and not args.multispecplot:  #todo: fix this for multispecplot - use args.showtime for now
+            if not args.hidemodeltime and not args.multispecplot:
+                # todo: fix this for multispecplot - use args.showtime for now
                 linelabel += f' +{timeavg:.0f}d'
             if not args.hidemodeltimerange and not args.multispecplot:
                 linelabel += r' ($\pm$ ' + f'{timedelta:.0f}d)'
@@ -365,6 +367,7 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
 
 def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_to_peak=None):
     """Plot the emission and absorption by ion for an ARTIS model."""
+    print(modelpath)
     arraynu = at.get_nu_grid(modelpath)
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
@@ -414,7 +417,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
 
     scalefactor = (scale_to_peak / max_flambda_emission_total if scale_to_peak else 1.)
 
-    if (args.refspecfiles is None or args.refspecfiles == []) and not args.hidenetspectrum:
+    if not args.hidenetspectrum:
         plotobjectlabels.append('Net spectrum')
         line = axis.plot(arraylambda_angstroms, array_flambda_emission_total * scalefactor,
                          linewidth=1.5, color='black', zorder=100)
@@ -471,20 +474,21 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
     # print(len(plotobjectlabels), len(plotobjects))
 
     ymaxrefall = 0.
-    if args.refspecfiles is not None:
-        plotkwargs = {}
-        for index, filename in enumerate(args.refspecfiles):
-            if index < len(args.refspeccolors):
-                plotkwargs['color'] = args.refspeccolors[index]
+    plotkwargs = {}
+    for index, filepath in enumerate(args.specpath):
+        if Path(filepath).is_dir() or Path(filepath).name == 'spec.out':
+            continue
+        if index < len(args.color):
+            plotkwargs['color'] = args.color[index]
 
-            supxmin, supxmax = axis.get_xlim()
-            plotobj, serieslabel, ymaxref = plot_reference_spectrum(
-                filename, axis, supxmin, supxmax,
-                filterfunc, scale_to_peak, scaletoreftime=args.scaletoreftime, **plotkwargs)
-            ymaxrefall = max(ymaxrefall, ymaxref)
+        supxmin, supxmax = axis.get_xlim()
+        plotobj, serieslabel, ymaxref = plot_reference_spectrum(
+            filepath, axis, supxmin, supxmax,
+            filterfunc, scale_to_peak, scaletoreftime=args.scaletoreftime, **plotkwargs)
+        ymaxrefall = max(ymaxrefall, ymaxref)
 
-            plotobjects.append(plotobj)
-            plotobjectlabels.append(serieslabel)
+        plotobjects.append(plotobj)
+        plotobjectlabels.append(serieslabel)
 
     axis.axhline(color='white', linewidth=0.5)
 
@@ -501,7 +505,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
         axis.set_ylabel(r'Scaled F$_\lambda$')
     elif args.internalpackets:
         if args.logscale:
-                # don't include the {} that will be replaced with the power of 10 by the custom formatter
+            # don't include the {} that will be replaced with the power of 10 by the custom formatter
             axis.set_ylabel(r'J$_\lambda$ [erg/s/cm$^2$/$\mathrm{{\AA}}$]')
         else:
             axis.set_ylabel(r'J$_\lambda$ [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]')
@@ -617,12 +621,6 @@ def make_plot(args):
 
     scale_to_peak = 1.0 if args.normalised else None
 
-    if args.refspecfiles is not None:
-        if isinstance(args.refspecfiles, str):
-            args.refspecfiles = [args.refspecfiles]
-    else:
-        args.refspecfiles = []
-
     dfalldata = pd.DataFrame()
 
     if args.multispecplot:
@@ -651,11 +649,9 @@ def make_plot(args):
             axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
 
     if densityplotyvars:
-        make_contrib_plot(axes[:-1], args.modelpath[0], densityplotyvars, args)
+        make_contrib_plot(axes[:-1], args.specpath[0], densityplotyvars, args)
 
     if args.showemission or args.showabsorption:
-        if len(args.modelpath) > 1:
-            raise ValueError("ERROR: emission/absorption plot can only take one input model", args.modelpath)
         legendncol = 2
         if args.internalpackets:
             defaultoutputfile = Path("plotspecinternalemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
@@ -663,7 +659,7 @@ def make_plot(args):
             defaultoutputfile = Path("plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
         plotobjects, plotobjectlabels, dfaxisdata = make_emissionabsorption_plot(
-            args.modelpath[0], axes[0], filterfunc, args=args, scale_to_peak=scale_to_peak)
+            args.specpath[0], axes[0], filterfunc, args=args, scale_to_peak=scale_to_peak)
         dfalldata = dfalldata.append(dfaxisdata)
     else:
         legendncol = 1
@@ -761,7 +757,7 @@ def addargs(parser):
     parser.add_argument('-label', default=[], nargs='*',
                         help='List of series label overrides')
 
-    parser.add_argument('-color', default=[f'C{i}' for i in range(10)], nargs='*',
+    parser.add_argument('-color', '-colors', dest='color', default=[], nargs='*',
                         help='List of line colors')
 
     parser.add_argument('-linestyle', default=[], nargs='*',
@@ -772,15 +768,6 @@ def addargs(parser):
 
     parser.add_argument('-dashes', default=[], nargs='*',
                         help='Dashes property of lines')
-
-    parser.add_argument('-modelpath', default=[], nargs='*', action=at.AppendPath,
-                        help='Paths to ARTIS folders with spec.out or packets files')
-
-    parser.add_argument('-modellabels', default=[], nargs='*',
-                        help='Model name overrides')
-
-    parser.add_argument('-modelcolors', default=[f'C{i}' for i in range(10)], nargs='*',
-                        help='List of colors for ARTIS models')
 
     parser.add_argument('--greyscale', action='store_true',
                         help='Plot in greyscale')
@@ -874,9 +861,6 @@ def addargs(parser):
     parser.add_argument('-obsspec', '-refspecfiles', action='append', dest='refspecfiles',
                         help='Also plot reference spectrum from this file')
 
-    parser.add_argument('-refspeccolors', default=['0.0', '0.3', '0.5'], nargs='*',
-                        help='Set a list of color for reference spectra')
-
     parser.add_argument('-fluxdistmpc', type=float,
                         help=('Plot flux at this distance in megaparsec. Default is the distance to '
                               'first reference spectrum if this is known, or otherwise 1 Mpc'))
@@ -913,9 +897,6 @@ def addargs(parser):
 
     parser.add_argument('-xlabel', default=r'Wavelength $\left[\mathrm{{\AA}}\right]$',
                         help=('Label for the x axis'))
-
-    parser.add_argument('--refspecafterartis', action='store_true',
-                        help='Plot reference spectra after artis spectra')
 
     parser.add_argument('--write_data', action='store_true',
                         help='Save data used to generate the plot in a CSV file')
@@ -975,50 +956,30 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    if not args.modelpath and not args.specpath:
-        args.modelpath = [Path('.')]
-    elif isinstance(args.modelpath, (str, Path)):
-        args.modelpath = [args.modelpath]
+    if not args.specpath:
+        args.specpath = [Path('.')]
+    elif isinstance(args.specpath, (str, Path)):  # or not not isinstance(args.specpath, Iterable)
+        args.specpath = [args.specpath]
 
-    args.modelpath = at.flatten_list(args.modelpath)
     args.specpath = at.flatten_list(args.specpath)
 
     if args.timedayslist:
         args.multispecplot = True
         args.timedays = args.timedayslist[0]
 
-    requiredlength = len(args.specpath)
-    if requiredlength == 0:
-        requiredlength = len(args.modelpath)
-    args.color, args.label, args.linestyle, args.dashes = at.trim_or_pad(
-        requiredlength, args.color, args.label, args.linestyle, args.dashes)
-
-    args.modellabels, args.modelcolors = at.trim_or_pad(
-        len(args.modelpath), args.modellabels, args.modelcolors)
-
-    if args.refspecfiles is None:
-        args.refspecfiles = []
-    args.refspeccolors = at.trim_or_pad(len(args.refspecfiles), args.refspeccolors)
-
-    if not args.refspecafterartis:
-        if args.refspecfiles:
-            args.specpath.extend(args.refspecfiles)
-            args.label.extend([None for x in args.refspecfiles])
-            args.color.extend(args.refspeccolors)
-
-        if args.modelpath:
-            args.specpath.extend(args.modelpath)
-            args.label.extend(args.modellabels)
-            args.color.extend(args.modelcolors)
-    else:
-        if args.modelpath:
-            args.specpath.extend(args.modelpath)
-            args.label.extend(args.modellabels)
-            args.color.extend(args.modelcolors)
-
-        if args.refspecfiles:
-            args.specpath.extend(args.refspecfiles)
-            args.color.extend(args.refspeccolors)
+    if not args.color:
+        args.color = []
+        artismodelcolors = [f'C{i}' for i in range(10)]
+        refspeccolors = ['0.0', '0.3', '0.5', '0.7']
+        refspecnum = 0
+        artismodelnum = 0
+        for filepath in args.specpath:
+            if Path(filepath).is_dir() or Path(filepath).name == 'spec.out':
+                args.color.append(artismodelcolors[artismodelnum])
+                artismodelnum += 1
+            else:
+                args.color.append(refspeccolors[refspecnum])
+                refspecnum += 1
 
     args.color, args.label, args.linestyle, args.dashes, args.linewidth = at.trim_or_pad(
         len(args.specpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth)
@@ -1027,7 +988,7 @@ def main(args=None, argsraw=None, **kwargs):
         args.frompackets = True
 
     if args.makevspecpol:
-        make_virtual_spectra_summed_file(args.modelpath[0])
+        make_virtual_spectra_summed_file(args.specpath[0])
         return
 
     if args.averagevspecpolfiles:
@@ -1035,28 +996,14 @@ def main(args=None, argsraw=None, **kwargs):
         return
 
     if '/' in args.stokesparam:
-        plot_polarisation(args.modelpath[0], args)
+        plot_polarisation(args.specpath[0], args)
         return
 
-    args.modelpath = []
-    args.modellabels = []
-    args.modelcolors = []
-    args.refspecfiles = []
-    args.refspeccolors = []
-    for specpath, linelabel, linecolor in zip(args.specpath, args.label, args.color):
-        if Path(specpath).is_dir() or Path(specpath).name == 'spec.out':
-            args.modelpath.append(specpath)
-            args.modellabels.append(linelabel)
-            args.modelcolors.append(linecolor)
-        else:
-            args.refspecfiles.append(specpath)
-            args.refspeccolors.append(linecolor)
-
     if args.listtimesteps:
-        at.showtimesteptimes(modelpath=args.modelpath[0])
+        at.showtimesteptimes(modelpath=args.specpath[0])
 
     elif args.output_spectra:
-        for modelpath in args.modelpath:
+        for modelpath in args.specpath:
             at.spectra.write_flambda_spectra(modelpath, args)
 
     else:
