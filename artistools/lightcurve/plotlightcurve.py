@@ -336,6 +336,36 @@ def set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_
     return fig, ax
 
 
+def make_colorbar_viewingangles_colormap():
+    norm = matplotlib.colors.Normalize(vmin=0, vmax=9)
+    scaledmap = matplotlib.cm.ScalarMappable(cmap='inferno', norm=norm)
+    scaledmap.set_array([])
+    return scaledmap
+
+
+def get_viewinganglecolor_for_colorbar(angle_definition, angle, costheta_viewing_angle_bins, phi_viewing_angle_bins,
+                                       scaledmap, plotkwargs, args):
+    if args.colorbarcostheta:
+        colorindex = costheta_viewing_angle_bins.index(angle_definition[angle].split(', ')[0])
+        plotkwargs['color'] = scaledmap.to_rgba(colorindex)
+    if args.colorbarphi:
+        colorindex = phi_viewing_angle_bins.index(angle_definition[angle].split(', ')[1])
+        plotkwargs['color'] = scaledmap.to_rgba(colorindex)
+    return plotkwargs
+
+
+def make_colorbar_viewingangles(costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, args):
+    if args.colorbarcostheta:
+        ticklabels = costheta_viewing_angle_bins
+    if args.colorbarphi:
+        ticklabels = phi_viewing_angle_bins
+    cbar = plt.colorbar(scaledmap)
+    ticklocs = np.arange(0, 10)
+    cbar.locator = matplotlib.ticker.FixedLocator(ticklocs)
+    cbar.formatter = matplotlib.ticker.FixedFormatter(ticklabels)
+    cbar.update_ticks()
+
+
 def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
 
     # determine if this will be a scatter plot or not
