@@ -532,29 +532,22 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
             ar_xs_array = at.nonthermal.get_arxs_array_shell(engrid, shell)
 
             # integral from ionpot to enlambda
-            # delta_endash = engrid[1] - engrid[0]
-
             delta_endash = (enlambda - ionpot_ev) / 100.
             if delta_endash >= 0:
                 endashlist = np.arange(ionpot_ev, enlambda, delta_endash)
                 for endash in endashlist:
                     if energy_ev + endash >= engrid[0]:
-                        i = get_energyindex_lteq(en_ev=energy_ev + endash, engrid=engrid)
+                        i = get_energyindex_gteq(en_ev=energy_ev + endash, engrid=engrid)
                         N_e_ion += (
                             yvec[i] * ar_xs_array[i] *
                             Psecondary(e_p=energy_ev + endash, epsilon=endash, ionpot_ev=ionpot_ev, J=J) * delta_endash)
 
-            # // integral from 2E + I up to E_max
-            delta_endash = (engrid[-1] - (2 * energy_ev + ionpot_ev)) / 100.
-            if delta_endash >= 0:
-                endashlist = np.arange(2 * energy_ev + ionpot_ev, engrid[-1], delta_endash)
-                for endash in endashlist:
-                    if endash >= engrid[0]:
-                        i = get_energyindex_lteq(en_ev=endash, engrid=engrid)
-                        N_e_ion += (
-                            yvec[i] * ar_xs_array[i] *
-                            Psecondary(e_p=endash, epsilon=energy_ev + ionpot_ev, ionpot_ev=ionpot_ev, J=J) * delta_endash)
-                        # print(endash, energy_ev + ionpot_ev, Psecondary(e_p=endash, epsilon=energy_ev + ionpot_ev, ionpot_ev=ionpot_ev, J=J))
+            # integral from 2E + I up to E_max
+            integral2startindex = get_energyindex_lteq(en_ev=2 * energy_ev + ionpot_ev, engrid=engrid)
+            N_e_ion += deltaen * sum([
+                yvec[i] * ar_xs_array[i] *
+                Psecondary(e_p=engrid[i], epsilon=energy_ev + ionpot_ev, ionpot_ev=ionpot_ev, J=J)
+                for i in range(integral2startindex, len(engrid))])
 
         N_e += nnion * N_e_ion
 
@@ -582,18 +575,23 @@ def calculate_frac_heating(
     E_0 = engrid[0]
 
     deltaen = engrid[1] - engrid[0]
-    npts = len(engrid)
-    for i, en_ev in enumerate(engrid):
-        frac_heating += lossfunction(en_ev, nne, nnetot, ions=ions, ionpopdict=ionpopdict) * yvec[i] * deltaen / deposition_density_ev
+    frac_heating += deltaen / deposition_density_ev * sum([
+        lossfunction(en_ev, nne, nnetot, ions=ions, ionpopdict=ionpopdict) * yvec[i]
+        for i, en_ev in enumerate(engrid)])
 
-    frac_heating += E_0 * yvec[0] * lossfunction(E_0, nne, nnetot, ions=ions, ionpopdict=ionpopdict) / deposition_density_ev
-    print(f"            frac_heating E_0 * y * l(E_0) part: {E_0 * yvec[0] * lossfunction(E_0, nne, nnetot, ions=ions, ionpopdict=ionpopdict) / deposition_density_ev}")
+    frac_heating += (
+        E_0 * yvec[0] *
+        lossfunction(E_0, nne, nnetot, ions=ions, ionpopdict=ionpopdict) / deposition_density_ev)
+
+    print("            frac_heating E_0 * y * l(E_0) part: "
+          f"{E_0 * yvec[0] * lossfunction(E_0, nne, nnetot, ions=ions, ionpopdict=ionpopdict) / deposition_density_ev}")
 
     frac_heating_N_e = 0.
-    delta_en = E_0 / 20.
-    for en_ev in np.arange(0., E_0, delta_en):
-        N_e = calculate_N_e(en_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransitions, noexcitation=noexcitation)
-        frac_heating_N_e += N_e * en_ev * delta_en / deposition_density_ev
+    delta_en = E_0 / 100.
+    frac_heating_N_e += delta_en / deposition_density_ev * sum([
+        en_ev * calculate_N_e(en_ev, engrid, ions, ionpopdict, dfcollion,
+                              yvec, dftransitions, noexcitation=noexcitation)
+        for en_ev in np.arange(0., E_0, delta_en)])
 
     print(f"            frac_heating N_e part: {frac_heating_N_e}")
     frac_heating += frac_heating_N_e

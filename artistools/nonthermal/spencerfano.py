@@ -43,7 +43,8 @@ def make_ntstats_plot(ntstatfile):
         norm_factors = 1. / dfstats['frac_sum']
     else:
         norm_factors = 1.0
-    pd.set_option("display.max_rows", 120)
+    pd.set_option("display.max_rows", 600)
+    pd.options.display.max_rows = 600
     print(dfstats)
 
     xarr = np.log10(dfstats.x_e)
