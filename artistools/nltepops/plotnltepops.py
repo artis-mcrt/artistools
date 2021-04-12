@@ -217,15 +217,16 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
                     label=f'{ionstr} LTE T$_R$ = {T_R:.0f} K', linestyle='None', marker='*')
 
         # comparison to Andeas Floers
-        # if atomic_number == 26 and ion_stage in [2, 3]:
-        #     floersfilename = (
-        #         'andreas_level_populations_fe2.txt' if ion_stage == 2 else 'andreas_level_populations_fe3.txt')
-        #     floers_levelpops = pd.read_csv(floersfilename, comment='#', delim_whitespace = True)
-        #     floers_levelpops.sort_values(by='energypercm', inplace=True)
-        #     levelnums = list(range(len(floers_levelpops)))
-        #     floers_levelpop_values = floers_levelpops['frac_ionpop'].values * dfpopthision['n_NLTE'].sum()
-        #     axis.plot(levelnums, floers_levelpop_values, linewidth=1.5,
-        #               label=f'Floers NLTE', linestyle='None', marker='*')
+        if atomic_number == 26 and ion_stage in [2, 3]:
+            floersfilename = (
+                'andreas_level_populations_fe2.txt' if ion_stage == 2 else 'andreas_level_populations_fe3.txt')
+            if os.path.isfile(floersfilename):
+                floers_levelpops = pd.read_csv(floersfilename, comment='#', delim_whitespace=True)
+                floers_levelpops.sort_values(by='energypercm', inplace=True)
+                levelnums = list(range(len(floers_levelpops)))
+                floers_levelpop_values = floers_levelpops['frac_ionpop'].values * dfpopthision['n_NLTE'].sum()
+                ax.plot(levelnums, floers_levelpop_values, linewidth=1.5,
+                        label=f'Floers NLTE', linestyle='None', marker='*')
 
     ax.plot(dfpopthision['level'], dfpopthision[ycolumnname], linewidth=1.5,
             linestyle='None', marker='x', label=f'{ionstr} ARTIS NLTE', color='black')
