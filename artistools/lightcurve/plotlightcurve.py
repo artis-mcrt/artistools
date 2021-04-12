@@ -52,9 +52,8 @@ define_colours_list2 = ['gray', 'lightblue', 'pink', 'yellowgreen', 'mediumorchi
 def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, frompackets=False,
                                                    escape_type=False, maxpacketfiles=None, args=None):
     """Use light_curve.out or light_curve_res.out files to plot light curve"""
-    args.figwidth = 8
-    args.figheight = 5
-    fig, axis = create_axes(args)
+    fig, axis = plt.subplots(
+        nrows=1, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if not frompackets and escape_type not in ['TYPE_RPKT', 'TYPE_GAMMA']:
         print(f'Escape_type of {escape_type} not one of TYPE_RPKT or TYPE_GAMMA, so frompackets must be enabled')
