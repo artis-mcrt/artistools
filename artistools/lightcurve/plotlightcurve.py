@@ -183,6 +183,9 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
             lum_suffix = r'_{\mathrm{' + escape_type.replace("_", r"\_") + '}}'
         axis.set_ylabel(r'$\mathrm{L} ' + lum_suffix + r'/ \mathrm{L}_\odot$')
 
+    if args.title:
+        axis.set_title(modelname)
+
     if args.colorbarcostheta or args.colorbarphi:
         make_colorbar_viewingangles(costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, args)
 
@@ -969,6 +972,9 @@ def addargs(parser):
 
     parser.add_argument('--nolegend', action='store_true',
                         help='Suppress the legend from the plot')
+
+    parser.add_argument('--title', action='store_true',
+                        help='Show title of plot')
 
     parser.add_argument('-color', default=[f'C{i}' for i in range(10)], nargs='*',
                         help='List of line colors')
