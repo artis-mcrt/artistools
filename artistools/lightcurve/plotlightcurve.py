@@ -430,7 +430,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 # Calculating band peak time, peak magnitude and delta m15
                 if calculate_peak_time_mag_deltam15_bool:
                     calculate_peak_time_mag_deltam15(time, brightness_in_mag, modelname, angle, band_name,
-                                                     filternames_conversion_dict, args)
+                                                     args, filternames_conversion_dict=filternames_conversion_dict)
 
                 if args.plotviewingangle and args.plotviewingangles_lightcurves:
                     global define_colours_list
