@@ -29,7 +29,6 @@ minionfraction = 0.  # minimum number fraction of the total population to includ
 defaultoutputfile = 'spencerfano_cell{cell:03d}_ts{timestep:02d}_{timedays:.0f}d.pdf'
 
 
-
 def make_ntstats_plot(ntstatfile):
     fig, ax = plt.subplots(nrows=1, ncols=1, sharex=True,
                            figsize=(4, 3), tight_layout={"pad": 0.5, "w_pad": 0.3, "h_pad": 0.3})
