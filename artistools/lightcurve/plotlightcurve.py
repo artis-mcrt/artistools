@@ -120,7 +120,6 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
                 # convert to bol magnitude
                 lcdata['mag'] = 4.74 - (2.5 * np.log10(lcdata['lum'] / const.L_sun.to('erg/s').value))
                 axis.plot(lcdata['time'], lcdata['mag'], **plotkwargs)
-                plt.gca().invert_yaxis()
             else:
                 axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
 
@@ -156,6 +155,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
     axis.set_xlabel(r'Time (days)')
 
     if args.magnitude:
+        plt.gca().invert_yaxis()
         axis.set_ylabel('Absolute Bolometric Magnitude')
 
     elif args.ergs:
