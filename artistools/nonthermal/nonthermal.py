@@ -391,7 +391,6 @@ def get_arxs_array_ion(arr_enev, dfcollion, Z, ionstage):
 
 def get_xs_excitation_vector(engrid, row):
     A_naught_squared = 2.800285203e-17  # Bohr radius squared in cm^2
-    deltaen = engrid[1] - engrid[0]
     npts = len(engrid)
     xs_excitation_vec = np.empty(npts)
 
@@ -399,7 +398,7 @@ def get_xs_excitation_vector(engrid, row):
     epsilon_trans = row.epsilon_trans_ev * EV
     epsilon_trans_ev = row.epsilon_trans_ev
 
-    startindex = math.ceil((epsilon_trans_ev - engrid[0]) / deltaen)
+    startindex = get_energyindex_gteq(en_ev=epsilon_trans_ev, engrid=engrid)
     xs_excitation_vec[:startindex] = 0.
 
     if (coll_str >= 0):
@@ -517,7 +516,6 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
 
     N_e = 0.
 
-    E_0 = engrid[0]
     deltaen = engrid[1] - engrid[0]
 
     for Z, ionstage in ions:
@@ -689,23 +687,16 @@ def sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
             int_eps_upper = atan((epsilon_upper - ionpot_ev) / J)
 
             epsilon_lower = max(endash - en, ionpot_ev)
-            int_eps_lower = atan((epsilon_lower - ionpot_ev) / J)
-            # if epsilon_lower > epsilon_upper:
-            # #     # print(j, jstart, epsilon_lower, epsilon_upper, int_eps_lower, int_eps_upper)
-            #     epsilon_lower, epsilon_upper = epsilon_upper, epsilon_lower
-            #     int_eps_lower, int_eps_upper = int_eps_upper, int_eps_lower
-            # assert epsilon_lower <= epsilon_upper
-            if int_eps_lower <= int_eps_upper:
+            if epsilon_lower <= epsilon_upper:
+                int_eps_lower = atan((epsilon_lower - ionpot_ev) / J)
                 sfmatrix[i, j] += prefactor * (int_eps_upper - int_eps_lower)
 
             epsilon_lower2 = en + ionpot_ev
             # epsilon_upper = min((endash + ionpot_ev) / 2, endash)
             # endash ranges from 2 * en + ionpot_ev to SF_EMAX
             if j >= secondintegralstartindex:
-                # int_eps_upper = atan((epsilon_upper - ionpot_ev) / J)
-                int_eps_lower2 = atan((epsilon_lower2 - ionpot_ev) / J)
-                # assert int_eps_lower2 <= int_eps_upper
-                if int_eps_lower2 <= int_eps_upper:
+                if epsilon_lower2 <= epsilon_upper:
+                    int_eps_lower2 = atan((epsilon_lower2 - ionpot_ev) / J)
                     sfmatrix[i, j] -= prefactor * (int_eps_upper - int_eps_lower2)
 
 
