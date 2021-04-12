@@ -233,11 +233,15 @@ def create_axes(args):
 
 def get_angle_stuff(modelpath, args):
     viewing_angles = None
+    viewing_angle_data = False
+    if len(glob.glob(str(Path(modelpath) / '*_res.out'))) > 1:
+        viewing_angle_data = True
+
     if args.plotvspecpol and os.path.isfile(modelpath / 'vpkt.txt'):
         angles = args.plotvspecpol
-    elif args.plotviewingangle and args.plotviewingangle[0] == -1 and os.path.isfile(modelpath / 'specpol_res.out'):
+    elif args.plotviewingangle and args.plotviewingangle[0] == -1 and viewing_angle_data:
         angles = np.arange(0, 100, 1, dtype=int)
-    elif args.plotviewingangle and len(glob.glob(str(Path(modelpath) / '*_res.out'))) > 1:
+    elif args.plotviewingangle and viewing_angle_data:
         angles = args.plotviewingangle
     elif args.calculate_costheta_phi_from_viewing_angle_numbers and \
             args.calculate_costheta_phi_from_viewing_angle_numbers[0] == -1:
