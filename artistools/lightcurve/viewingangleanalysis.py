@@ -126,7 +126,7 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, fil
 
     # Taking line_min and line_max from the limits set for the lightcurve being plotted
     fxfit = []
-    for j in range(len(xfit)):
+    for j, _ in enumerate(xfit):
         fxfit.append(zfit[0] * (xfit[j] ** 10) + zfit[1] * (xfit[j] ** 9) + zfit[2] * (xfit[j] ** 8) +
                      zfit[3] * (xfit[j] ** 7) + zfit[4] * (xfit[j] ** 6) + zfit[5] * (xfit[j] ** 5) +
                      zfit[6] * (xfit[j] ** 4) + zfit[7] * (xfit[j] ** 3) + zfit[8] * (xfit[j] ** 2) +
