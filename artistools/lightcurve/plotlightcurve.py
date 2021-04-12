@@ -110,6 +110,10 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
                 plotkwargs['color'] = None # color_list[angleindex]
                 plotkwargs['label'] = f'{modelname}\n{angle_definition[angle]}'
 
+            filterfunc = at.get_filterfunc(args)
+            if filterfunc is not None:
+                lcdata['lum'] = filterfunc(lcdata['lum'])
+
             if args.ergs or args.magnitude:
                 lcdata['lum'] = lcdata['lum']*3.826e33  # Luminosity in erg/s
 
