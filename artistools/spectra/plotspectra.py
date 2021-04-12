@@ -476,8 +476,8 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
     plotkwargs = {}
     for index, filepath in enumerate(args.specpath[1:]):
         assert not (Path(filepath).is_dir() or Path(filepath).name == 'spec.out')
-        if index < len(args.colors):
-            plotkwargs['color'] = args.colors[index]
+        if index < len(args.color):
+            plotkwargs['color'] = args.color[index]
 
         supxmin, supxmax = axis.get_xlim()
         plotobj, serieslabel, ymaxref = plot_reference_spectrum(
@@ -755,7 +755,7 @@ def addargs(parser):
     parser.add_argument('-label', default=[], nargs='*',
                         help='List of series label overrides')
 
-    parser.add_argument('-color', default=[f'C{i}' for i in range(10)], nargs='*',
+    parser.add_argument('-color', '-colors', dest='color', default=[f'C{i}' for i in range(10)], nargs='*',
                         help='List of line colors')
 
     parser.add_argument('-linestyle', default=[], nargs='*',
