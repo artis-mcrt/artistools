@@ -43,8 +43,9 @@ def make_ntstats_plot(ntstatfile):
         norm_factors = 1. / dfstats['frac_sum']
     else:
         norm_factors = 1.0
-    pd.set_option("display.max_rows", 600)
-    pd.options.display.max_rows = 600
+    # pd.set_option("display.max_rows", 600)
+    pd.options.display.max_rows = 50
+    pd.options.display.width = 250
     print(dfstats)
 
     xarr = np.log10(dfstats.x_e)
@@ -486,7 +487,7 @@ def main(args=None, argsraw=None, **kwargs):
         if args.ostat:
             with open(args.ostat, 'a') as fstat:
                 frac_sum = frac_ionization + frac_excitation + frac_heating
-                strlineout = f'{emin} {emax} {npts} {x_e} {frac_sum:.3f} {frac_excitation:.3f} {frac_ionization:.3f} {frac_heating:.3f}'
+                strlineout = f'{emin} {emax} {npts} {x_e:7.2e} {frac_sum:6.3f} {frac_excitation:6.3f} {frac_ionization:6.3f} {frac_heating:6.3f}'
                 for atomic_number, ion_stage in ions:
                     strlineout += f' {frac_ionization_ion[(atomic_number, ion_stage)]:.4f}'
                 fstat.write(strlineout + '\n')
