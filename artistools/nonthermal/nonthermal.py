@@ -33,6 +33,7 @@ CLIGHT = 2.99792458e+10
 PI = math.pi
 
 experiment_use_Latom_in_spencerfano = False
+use_collstrengths = False
 
 
 def get_nntot(ions, ionpopdict):
@@ -389,6 +390,47 @@ def get_arxs_array_ion(arr_enev, dfcollion, Z, ionstage):
     return ar_xs_array
 
 
+def get_xs_excitation(en_ev, row):
+    A_naught_squared = 2.800285203e-17  # Bohr radius squared in cm^2
+
+    coll_str = row.collstr
+    epsilon_trans = row.epsilon_trans_ev * EV
+    epsilon_trans_ev = row.epsilon_trans_ev
+
+    if en_ev < epsilon_trans_ev:
+        return 0.
+
+    if coll_str >= 0 and use_collstrengths:
+        # collision strength is available, so use it
+        # Li et al. 2012 equation 11
+        constantfactor = pow(H_ionpot, 2) / row.lower_g * coll_str * math.pi * A_naught_squared
+
+        return constantfactor * (en_ev * EV) ** -2
+
+    elif not row.forbidden:
+
+        nu_trans = epsilon_trans / H
+        g = row.upper_g / row.lower_g
+        fij = g * ME * pow(CLIGHT, 3) / (8 * pow(QE * nu_trans * math.pi, 2)) * row.A
+        # permitted E1 electric dipole transitions
+
+        g_bar = 0.2
+
+        A = 0.28
+        B = 0.15
+
+        prefactor = 45.585750051
+        # Eq 4 of Mewe 1972, possibly from Seaton 1962?
+        constantfactor = prefactor * A_naught_squared * pow(H_ionpot / epsilon_trans, 2) * fij
+
+        U = en_ev / epsilon_trans_ev
+        g_bar = A * np.log(U) + B
+
+        return constantfactor * g_bar / U
+
+    return 0.
+
+
 def get_xs_excitation_vector(engrid, row):
     A_naught_squared = 2.800285203e-17  # Bohr radius squared in cm^2
     npts = len(engrid)
@@ -401,7 +443,7 @@ def get_xs_excitation_vector(engrid, row):
     startindex = get_energyindex_gteq(en_ev=epsilon_trans_ev, engrid=engrid)
     xs_excitation_vec[:startindex] = 0.
 
-    if (coll_str >= 0):
+    if coll_str >= 0 and use_collstrengths:
         # collision strength is available, so use it
         # Li et al. 2012 equation 11
         constantfactor = pow(H_ionpot, 2) / row.lower_g * coll_str * math.pi * A_naught_squared
@@ -558,9 +600,8 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
                 # nnlevel = nnion
                 epsilon_trans_ev = row.epsilon_trans_ev
                 if epsilon_trans_ev >= engrid[0]:
-                    i = get_energyindex_lteq(en_ev=energy_ev + epsilon_trans_ev, engrid=engrid)
-                    xsvec = get_xs_excitation_vector(engrid, row)
-                    N_e += nnlevel * epsilon_trans_ev * xsvec[i] * yvec[i]
+                    i = get_energyindex_gteq(en_ev=energy_ev + epsilon_trans_ev, engrid=engrid)
+                    N_e += nnlevel * epsilon_trans_ev * yvec[i] * get_xs_excitation(energy_ev + epsilon_trans_ev, row)
 
     # source term not here because it should be zero at the low end anyway
     N_e_cache[energy_ev] = N_e
@@ -584,7 +625,7 @@ def calculate_frac_heating(
         lossfunction(E_0, nne, nnetot, ions=ions, ionpopdict=ionpopdict) / deposition_density_ev)
 
     print("            frac_heating E_0 * y * l(E_0) part: "
-          f"{E_0 * yvec[0] * lossfunction(E_0, nne, nnetot, ions=ions, ionpopdict=ionpopdict) / deposition_density_ev}")
+          f"{E_0 * yvec[0] * lossfunction(E_0, nne, nnetot, ions=ions, ionpopdict=ionpopdict) / deposition_density_ev:.5f}")
 
     frac_heating_N_e = 0.
     delta_en = E_0 / 100.
@@ -593,7 +634,7 @@ def calculate_frac_heating(
                               yvec, dftransitions, noexcitation=noexcitation)
         for en_ev in np.arange(0., E_0, delta_en)])
 
-    print(f"            frac_heating N_e part: {frac_heating_N_e}")
+    print(f"            frac_heating N_e part: {frac_heating_N_e:.5f}")
     frac_heating += frac_heating_N_e
 
     return frac_heating
