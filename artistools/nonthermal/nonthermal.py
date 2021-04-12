@@ -611,13 +611,13 @@ def sfmatrix_add_excitation(engrid, dftransitions_ion, nnion, sfmatrix):
         epsilon_trans_ev = row.epsilon_trans_ev
         if epsilon_trans_ev >= engrid[0]:
             vec_xs_excitation_nnlevel_deltae = nnlevel * deltaen * get_xs_excitation_vector(engrid, row)
-            xsstartindex = get_energyindex_gteq(en_ev=epsilon_trans_ev, engrid=engrid)
+            xsstartindex = get_energyindex_lteq(en_ev=epsilon_trans_ev, engrid=engrid)
 
             for i, en in enumerate(engrid):
-                stopindex = get_energyindex_gteq(en_ev=en + epsilon_trans_ev, engrid=engrid)
+                stopindex = get_energyindex_lteq(en_ev=en + epsilon_trans_ev, engrid=engrid)
 
                 startindex = i if i > xsstartindex else xsstartindex
-                for j in range(startindex, stopindex + 1):
+                for j in range(startindex, stopindex):
                     sfmatrix[i, j] += vec_xs_excitation_nnlevel_deltae[j]
 
 
@@ -695,9 +695,8 @@ def sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
             #     epsilon_lower, epsilon_upper = epsilon_upper, epsilon_lower
             #     int_eps_lower, int_eps_upper = int_eps_upper, int_eps_lower
             # assert epsilon_lower <= epsilon_upper
-            # if epsilon_upper < epsilon_lower:
-            #     continue
-            sfmatrix[i, j] += prefactor * (int_eps_upper - int_eps_lower)
+            if int_eps_lower <= int_eps_upper:
+                sfmatrix[i, j] += prefactor * (int_eps_upper - int_eps_lower)
 
             epsilon_lower2 = en + ionpot_ev
             # epsilon_upper = min((endash + ionpot_ev) / 2, endash)
