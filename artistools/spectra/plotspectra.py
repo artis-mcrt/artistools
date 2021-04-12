@@ -367,6 +367,7 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
 
 def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_to_peak=None):
     """Plot the emission and absorption by ion for an ARTIS model."""
+    print(modelpath)
     arraynu = at.get_nu_grid(modelpath)
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
@@ -474,14 +475,15 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
 
     ymaxrefall = 0.
     plotkwargs = {}
-    for index, filepath in enumerate(args.specpath[1:]):
-        assert not (Path(filepath).is_dir() or Path(filepath).name == 'spec.out')
+    for index, filepath in enumerate(args.specpath):
+        if Path(filepath).is_dir() or Path(filepath).name == 'spec.out':
+            continue
         if index < len(args.color):
             plotkwargs['color'] = args.color[index]
 
         supxmin, supxmax = axis.get_xlim()
         plotobj, serieslabel, ymaxref = plot_reference_spectrum(
-            filename, axis, supxmin, supxmax,
+            filepath, axis, supxmin, supxmax,
             filterfunc, scale_to_peak, scaletoreftime=args.scaletoreftime, **plotkwargs)
         ymaxrefall = max(ymaxrefall, ymaxref)
 
