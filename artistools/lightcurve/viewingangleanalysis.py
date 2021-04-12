@@ -119,9 +119,9 @@ def write_viewing_angle_data(band_name, modelname, modelnames, args):
                        band_name) + "_band_deltam15 ", comments='')
 
 
-def calculate_peak_time_mag_deltam15(time, brightness, modelname, angle, key, args, filternames_conversion_dict=None):
+def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, args, filternames_conversion_dict=None):
     """Calculating band peak time, peak magnitude and delta m15"""
-    zfit = np.polyfit(x=time, y=brightness, deg=10)
+    zfit = np.polyfit(x=time, y=magnitude, deg=10)
     xfit = np.linspace(args.timemin + 1, args.timemax - 1, num=1000)
 
     # Taking line_min and line_max from the limits set for the lightcurve being plotted
@@ -155,7 +155,7 @@ def calculate_peak_time_mag_deltam15(time, brightness, modelname, angle, key, ar
     # polynomial fit and peak mag, risetime to peak and delta m15 marked on the plots to check the
     # fit is working correctly
     if args.test_viewing_angle_fit:
-        make_plot_test_viewing_angle_fit(time, brightness, xfit, fxfit, filternames_conversion_dict, key,
+        make_plot_test_viewing_angle_fit(time, magnitude, xfit, fxfit, filternames_conversion_dict, key,
                                          mag_after15days_polyfit, tmax_polyfit, time_after15days_polyfit,
                                          modelname, angle)
 
