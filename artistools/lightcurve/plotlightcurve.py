@@ -140,6 +140,9 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
             axis.scatter(bollightcurve_data['time_days'], bollightcurve_data['luminosity_erg/s'],
                          label=metadata['label'], color='k')
 
+    if args.magnitude:
+        plt.gca().invert_yaxis()
+
     if args.xmin is not None:
         axis.set_xlim(left=args.xmin)
     if args.xmax:
@@ -155,7 +158,6 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
     axis.set_xlabel(r'Time (days)')
 
     if args.magnitude:
-        plt.gca().invert_yaxis()
         axis.set_ylabel('Absolute Bolometric Magnitude')
 
     elif args.ergs:
