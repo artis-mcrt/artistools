@@ -1003,10 +1003,6 @@ def get_reference_spectrum(filename):
     if 'a_v' in metadata or 'e_bminusv' in metadata:
         print('Correcting for reddening')
         from extinction import apply, ccm89
-        if 'r_v' not in metadata:
-            metadata['r_v'] = metadata['a_v'] / metadata['e_bminusv']
-        elif 'a_v' not in metadata:
-            metadata['a_v'] = metadata['e_bminusv'] * metadata['r_v']
 
         specdata['f_lambda'] = apply(
             ccm89(specdata['lambda_angstroms'].values, a_v=-metadata['a_v'], r_v=metadata['r_v'], unit='aa'),

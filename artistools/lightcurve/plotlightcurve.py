@@ -867,8 +867,6 @@ def plot_lightcurve_from_data(
 
         if 'a_v' in metadata or 'e_bminusv' in metadata:
             print('Correcting for reddening')
-            metadata.setdefault('r_v', metadata['a_v'] / metadata['e_bminusv'])
-            metadata.setdefault('a_v', metadata['e_bminusv'] * metadata['r_v'])
 
             clightinangstroms = 3e+18
             # Convert to flux, deredden, then convert back to magnitudes
