@@ -52,8 +52,6 @@ define_colours_list2 = ['gray', 'lightblue', 'pink', 'yellowgreen', 'mediumorchi
 def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, frompackets=False,
                                                    escape_type=False, maxpacketfiles=None, args=None):
     """Use light_curve.out or light_curve_res.out files to plot light curve"""
-    # fig, axis = plt.subplots(
-    #     nrows=1, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
     args.figwidth = 8
     args.figheight = 5
     fig, axis = create_axes(args)
@@ -239,7 +237,6 @@ def get_angle_stuff(modelpath, args):
         angles = args.plotvspecpol
     elif args.plotviewingangle and args.plotviewingangle[0] == -1 and os.path.isfile(modelpath / 'specpol_res.out'):
         angles = np.arange(0, 100, 1, dtype=int)
-    # elif args.plotviewingangle and os.path.isfile(modelpath / 'specpol_res.out'):
     elif args.plotviewingangle and len(glob.glob(str(Path(modelpath) / '*_res.out'))) > 1:
         angles = args.plotviewingangle
     elif args.calculate_costheta_phi_from_viewing_angle_numbers and \
