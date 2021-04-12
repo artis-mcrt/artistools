@@ -22,6 +22,7 @@ from astropy import constants as const
 
 from matplotlib.legend_handler import HandlerTuple
 from .lightcurve import *
+import glob
 
 color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
 
@@ -100,15 +101,10 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
         if args.linewidth[seriesindex]:
             plotkwargs['linewidth'] = args.linewidth[seriesindex]
 
+        # check if doing viewing angle stuff, and if so define which data to use
+        angles, viewing_angles, angle_definition = get_angle_stuff(modelpath, args)
         if args.plotviewingangle:
-            if args.plotviewingangle[0] < 0:
-                angles = np.arange(0, 100)
-            else:
-                angles = args.plotviewingangle
             lcdataframes = lcdata
-            angle_definition = calculate_costheta_phi_for_viewing_angles(angles, modelpath)
-        else:
-            angles = [None]
 
         for angleindex, angle in enumerate(angles):
             if args.plotviewingangle:
@@ -243,7 +239,8 @@ def get_angle_stuff(modelpath, args):
         angles = args.plotvspecpol
     elif args.plotviewingangle and args.plotviewingangle[0] == -1 and os.path.isfile(modelpath / 'specpol_res.out'):
         angles = np.arange(0, 100, 1, dtype=int)
-    elif args.plotviewingangle and os.path.isfile(modelpath / 'specpol_res.out'):
+    # elif args.plotviewingangle and os.path.isfile(modelpath / 'specpol_res.out'):
+    elif args.plotviewingangle and len(glob.glob(str(Path(modelpath) / '*_res.out'))) > 1:
         angles = args.plotviewingangle
     elif args.calculate_costheta_phi_from_viewing_angle_numbers and \
             args.calculate_costheta_phi_from_viewing_angle_numbers[0] == -1:
