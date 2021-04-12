@@ -51,8 +51,11 @@ define_colours_list2 = ['gray', 'lightblue', 'pink', 'yellowgreen', 'mediumorchi
 def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, frompackets=False,
                                                    escape_type=False, maxpacketfiles=None, args=None):
     """Use light_curve.out or light_curve_res.out files to plot light curve"""
-    fig, axis = plt.subplots(
-        nrows=1, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    # fig, axis = plt.subplots(
+    #     nrows=1, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+    args.figwidth = 8
+    args.figheight = 5
+    fig, axis = create_axes(args)
 
     if not frompackets and escape_type not in ['TYPE_RPKT', 'TYPE_GAMMA']:
         print(f'Escape_type of {escape_type} not one of TYPE_RPKT or TYPE_GAMMA, so frompackets must be enabled')
@@ -178,8 +181,9 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
 
 
 def create_axes(args):
-    font = {'size': args.labelfontsize}
-    matplotlib.rc('font', **font)
+    if 'labelfontsize' in args:
+        font = {'size': args.labelfontsize}
+        matplotlib.rc('font', **font)
 
     args.subplots = False  # todo: set as command line arg
 
@@ -195,8 +199,14 @@ def create_axes(args):
         args.subplots = False
         rows = 1
         cols = 1
+
+    if 'figwidth' not in args:
+        args.figwidth = at.figwidth * 1.6 * cols
+    if 'figheight' not in args:
+        args.figheight = at.figwidth * 1.1 * rows*1.5
+
     fig, ax = plt.subplots(nrows=rows, ncols=cols, sharex=True, sharey=True,
-                           figsize=(at.figwidth * 1.6 * cols, at.figwidth * 1.1 * rows*1.5),
+                           figsize=(args.figwidth, args.figheight),
                            tight_layout={"pad": 3.0, "w_pad": 0.6, "h_pad": 0.6})  # (6.2 * 3, 9.4 * 3)
     if args.subplots:
         ax = ax.flatten()
@@ -214,14 +224,15 @@ def create_axes(args):
         if args.ymin is None:
             args.ymin = -1
 
-    if args.xmax is None:
-        args.xmax = 100
-    if args.xmin is None:
-        args.xmin = 0
-    if args.timemax is None:
-        args.timemax = args.xmax + 5
-    if args.timemin is None:
-        args.timemin = args.xmin - 5
+    if args.filter or args.colour_evolution:
+        if args.xmax is None:
+            args.xmax = 100
+        if args.xmin is None:
+            args.xmin = 0
+        if args.timemax is None:
+            args.timemax = args.xmax + 5
+        if args.timemin is None:
+            args.timemin = args.xmin - 5
 
     return fig, ax
 
