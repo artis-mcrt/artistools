@@ -373,7 +373,7 @@ def make_virtual_spectra_summed_file(modelpath):
             vspecpol_data.append(chunk)
 
         if len(vspecpol_data_old) > 0:
-            for i in range(len(vspecpol_data)):
+            for i, _ in enumerate(vspecpol_data):
                 dftmp = vspecpol_data[i].copy()
                 dftmp.iloc[1:, 1:] += vspecpol_data_old[i].iloc[1:, 1:]
                 vspecpol_data[i] = dftmp
