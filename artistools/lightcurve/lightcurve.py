@@ -263,46 +263,6 @@ def get_colour_delta_mag(band_lightcurve_data, filter_names):
     return plot_times, colour_delta_mag
 
 
-def get_viewinganglebin_definitions():
-    costheta_viewing_angle_bins = ['-1.0 \u2264 cos(\u03B8) < -0.8', '-0.8 \u2264 cos(\u03B8) < -0.6',
-                                   '-0.6 \u2264 cos(\u03B8) < -0.4', '-0.4 \u2264 cos(\u03B8) < -0.2',
-                                   '-0.2 \u2264 cos(\u03B8) < 0', '0 \u2264 cos(\u03B8) < 0.2',
-                                   '0.2 \u2264 cos(\u03B8) < 0.4', '0.4 \u2264 cos(\u03B8) < 0.6',
-                                   '0.6 \u2264 cos(\u03B8) < 0.8', '0.8 \u2264 cos(\u03B8) < 1']
-    phi_viewing_angle_bins = ['0 \u2264 \u03D5 < \u03c0/5', '\u03c0/5 \u2264 \u03D5 < 2\u03c0/5',
-                              '2\u03c0/5 \u2264 \u03D5 < 3\u03c0/5', '3\u03c0/5 \u2264 \u03D5 < 4\u03c0/5',
-                              '4\u03c0/5 \u2264 \u03D5 < \u03c0', '9\u03c0/5 < \u03D5 < 2\u03c0',
-                              '8\u03c0/5 < \u03D5 \u2264 9\u03c0/5', '7\u03c0/5 < \u03D5 \u2264 8\u03c0/5',
-                              '6\u03c0/5 < \u03D5 \u2264 7\u03c0/5', '\u03c0 < \u03D5 \u2264 6\u03c0/5']
-    return costheta_viewing_angle_bins, phi_viewing_angle_bins
-
-
-def calculate_costheta_phi_for_viewing_angles(viewing_angles, modelpath):
-    modelpath = Path(modelpath)
-    if os.path.isfile(modelpath / 'absorptionpol_res_99.out') \
-            and os.path.isfile(modelpath / 'absorptionpol_res_100.out'):
-        print("Too many viewing angle bins (MABINS) for this method to work, it only works for MABINS = 100")
-        exit()
-    elif os.path.isfile(modelpath / 'light_curve_res.out'):
-        angle_definition = {}
-
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = get_viewinganglebin_definitions()
-
-        for angle in viewing_angles:
-            MABINS = 100
-            phibins = int(math.sqrt(MABINS))
-            costheta_index = angle // phibins
-            phi_index = angle % phibins
-
-            angle_definition[angle] = f'{costheta_viewing_angle_bins[costheta_index]}, {phi_viewing_angle_bins[phi_index]}'
-            print(f"{angle:4d}   {costheta_viewing_angle_bins[costheta_index]}   {phi_viewing_angle_bins[phi_index]}")
-
-        return angle_definition
-    else:
-        print("Too few viewing angle bins (MABINS) for this method to work, it only works for MABINS = 100")
-        exit()
-
-
 def read_hesma_lightcurve(args):
     hesma_directory = os.path.join(at.PYDIR, 'data/hesma')
     filename = args.plot_hesma_model

@@ -5,3 +5,4 @@
 
 from .plotlightcurve import main, addargs
 from .lightcurve import *
+from .viewingangleanalysis import *
