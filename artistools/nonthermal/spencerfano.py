@@ -489,7 +489,7 @@ def main(args=None, argsraw=None, **kwargs):
                 frac_sum = frac_ionization + frac_excitation + frac_heating
                 strlineout = f'{emin} {emax} {npts} {x_e:7.2e} {frac_sum:6.3f} {frac_excitation:6.3f} {frac_ionization:6.3f} {frac_heating:6.3f}'
                 for atomic_number, ion_stage in ions:
-                    strlineout += f' {frac_ionization_ion[(atomic_number, ion_stage)]:.4f}'
+                    strlineout += f' {frac_ionization_ion.get((atomic_number, ion_stage), 0.):.4f}'
                 fstat.write(strlineout + '\n')
 
     if args.ostat:
