@@ -368,15 +368,7 @@ def make_colorbar_viewingangles(costheta_viewing_angle_bins, phi_viewing_angle_b
 
 def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
 
-    # determine if this will be a scatter plot or not
-    calculate_peak_time_mag_deltam15_bool = False
-    if (args.calculate_peakmag_risetime_delta_m15
-            or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
-            or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-            or args.make_viewing_angle_peakmag_risetime_scatter_plot
-            or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
-        calculate_peak_time_mag_deltam15_bool = True
-    if calculate_peak_time_mag_deltam15_bool:  # If there's viewing angle scatter plot stuff define some arrays
+    if args.calculate_peak_time_mag_deltam15_bool:  # If there's viewing angle scatter plot stuff define some arrays
         args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
 
         args.band_risetime_polyfit = []
@@ -423,7 +415,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                     brightness_in_mag = filterfunc(brightness_in_mag)
 
                 # Calculating band peak time, peak magnitude and delta m15
-                if calculate_peak_time_mag_deltam15_bool:
+                if args.calculate_peak_time_mag_deltam15_bool:
                     calculate_peak_time_mag_deltam15(time, brightness_in_mag, modelname, angle, band_name,
                                                      args, filternames_conversion_dict=filternames_conversion_dict)
 
@@ -444,7 +436,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 # else:
                 #     ax.text(args.xmax * 0.75, args.ymax * 0.95, text_key)
 
-                if not calculate_peak_time_mag_deltam15_bool:  ##Finn does this still work??
+                if not args.calculate_peak_time_mag_deltam15_bool:
 
                     if args.reflightcurves and modelnumber == 0:
                         if len(angles) > 1 and index > 0:
@@ -463,7 +455,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 if args.linestyle:
                     linestyle = args.linestyle[modelnumber]
 
-                if not (args.test_viewing_angle_fit or calculate_peak_time_mag_deltam15_bool):  ##Finn: does this still work?
+                if not (args.test_viewing_angle_fit or args.calculate_peak_time_mag_deltam15_bool):
 
                     if args.subplots:
                         # if linestyle == 'dashed':
@@ -491,12 +483,12 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 
         # Saving viewing angle data so it can be read in and plotted later on without re-running the script
         #    as it is quite time consuming
-        if calculate_peak_time_mag_deltam15_bool:
+        if args.calculate_peak_time_mag_deltam15_bool:
             save_viewing_angle_data_for_plotting(band_name, modelname, args)
 
     # Saving all this viewing angle info for each model to a file so that it is available to plot if required again
     # as it takes relatively long to run this for all viewing angles
-    if calculate_peak_time_mag_deltam15_bool:
+    if args.calculate_peak_time_mag_deltam15_bool:
         write_viewing_angle_data(band_name, modelname, modelnames, args)
 
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
@@ -1045,6 +1037,15 @@ def main(args=None, argsraw=None, **kwargs):
     elif os.path.isdir(args.outputfile):
         outputfolder = Path(args.outputfile)
         args.outputfile = os.path.join(outputfolder, defaultoutputfile)
+
+    # determine if this will be a scatter plot or not
+    args.calculate_peak_time_mag_deltam15_bool = False
+    if (args.calculate_peakmag_risetime_delta_m15
+            or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
+            or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
+            or args.make_viewing_angle_peakmag_risetime_scatter_plot
+            or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
+        args.calculate_peak_time_mag_deltam15_bool = True
 
     filternames_conversion_dict = {'rs': 'r', 'gs': 'g', 'is': 'i'}
     if args.filter:
