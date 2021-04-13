@@ -585,6 +585,8 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
 
     if not noexcitation:
         for Z, ion_stage in ions:
+            if not (Z, ion_stage) in dftransitions:
+                continue
             for _, row in dftransitions[(Z, ion_stage)].iterrows():
                 nnlevel = row.lower_pop
                 epsilon_trans_ev = row.epsilon_trans_ev
@@ -671,54 +673,46 @@ def sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
         print('WARNING: atomic loss function is in use, but the ionisation loss rate is not correctly '
               'neglected from the integral form of the Spencer-Fano equation')
 
+    # J * atan[(epsilon - ionpot_ev) / J] is the indefinite integral of
+    # 1/(1 + (epsilon - ionpot_ev)^2/ J^2) d_epsilon
+    # in Kozma & Fransson 1992 equation 4
+
     prefactors = [nnion * ar_xs_array[j] / atan((engrid[j] - ionpot_ev) / 2. / J) * deltaen for j in range(npts)]
     epsilon_uppers = [min((engrid[j] + ionpot_ev) / 2, engrid[j]) for j in range(npts)]
     int_eps_uppers = [atan((epsilon_upper - ionpot_ev) / J) for epsilon_upper in epsilon_uppers]
 
-    for i, en in enumerate(engrid):
-        # P_sum = 0.
-        # if en >= ionpot_ev:
-        #     e_s_min = 0.
-        #     e_s_max = (en - ionpot_ev) / 2.
-        #     delta_e_s = (e_s_max - e_s_min) / 1000.
-        #     for e_s in np.arange(e_s_min, e_s_max, delta_e_s):
-        #         P_sum += Psecondary(e_p=en, e_s=e_s, ionpot_ev=ionpot_ev, J=J) * delta_e_s
-        #
-        #     epsilon_upper = e_s_max + ionpot_ev
-        #     epsilon_lower = e_s_min + ionpot_ev
-        #     P_int = 1. / atan((en - ionpot_ev) / 2. / J) * (atan((epsilon_upper - ionpot_ev) / J) - atan((epsilon_lower - ionpot_ev) / J))
-        #
-        #     print(f"E_p {en} eV, prob integral e_s from {e_s_min:5.2f} eV to {e_s_max:5.2f}: {P_sum:5.2f} analytical {P_int:5.2f}")
+    # for the resulting arrays, use index j - i corresponding to energy endash - en
+    epsilon_lowers1 = [max(engrid[j] - engrid[0], ionpot_ev) for j in range(npts)]
+    int_eps_lowers1 = [atan((epsilon_lower - ionpot_ev) / J) for epsilon_lower in epsilon_lowers1]
 
-        # // endash ranges from en to SF_EMAX, but skip over the zero-cross section points
+    for i, en in enumerate(engrid):
+        # endash ranges from en to SF_EMAX, but skip over the zero-cross section points
         jstart = max(i, xsstartindex)
+
+        # KF 92 limit
+        # at each endash, the integral in epsilon ranges from
+        # epsilon_lower = max(endash - en, ionpot_ev)
+        # epsilon_upper = min((endash + ionpot_ev) / 2, endash)]
+
+        # integral/J of 1/[1 + (epsilon - ionpot_ev) / J] for epsilon = en + ionpot_ev
+        for j in range(jstart, npts):
+            # j is the matrix column index which corresponds to the piece of the
+            # integral at y(E') where E' >= E and E' = engrid[j]
+
+            if epsilon_lowers1[j - i] <= epsilon_uppers[j]:
+                sfmatrix[i, j] += prefactors[j] * (int_eps_uppers[j] - int_eps_lowers1[j - i])
+
         if 2 * en + ionpot_ev < engrid[-1] + (engrid[1] - engrid[0]):
             secondintegralstartindex = get_energyindex_lteq(2 * en + ionpot_ev, engrid)
         else:
             secondintegralstartindex = npts + 1
 
-        # KF 92 limit
-        # assert all(not np.isnan(prefactor)
-        # assert not np.isinf(prefactor)
-
-        # integral/J of 1/[1 + (epsilon - ionpot_ev) / J] for epsilon = en + ionpot_ev
-        for j in range(jstart, npts):
-            # j is the matrix column index which corresponds to the piece of the
-            # integral at y(E') where E' >= E and E' = envec(j)
-
-            # J * atan[(epsilon - ionpot_ev) / J] is the indefinite integral of
-            # 1/(1 + (epsilon - ionpot_ev)^2/ J^2) d_epsilon
-            # in Kozma & Fransson 1992 equation 4
-
-            epsilon_lower = max(engrid[j] - en, ionpot_ev)
-            if epsilon_lower <= epsilon_uppers[j]:
-                int_eps_lower = atan((epsilon_lower - ionpot_ev) / J)
-                sfmatrix[i, j] += prefactors[j] * (int_eps_uppers[j] - int_eps_lower)
-
+        # endash ranges from 2 * en + ionpot_ev to SF_EMAX
+        # at each endash, the integral in epsilon ranges from
+        # epsilon_lower = en + ionpot_ev
+        # epsilon_upper = min((endash + ionpot_ev) / 2, endash)]
+        epsilon_lower2 = en + ionpot_ev
         for j in range(secondintegralstartindex, npts):
-            epsilon_lower2 = en + ionpot_ev
-            # epsilon_upper = min((endash + ionpot_ev) / 2, endash)
-            # endash ranges from 2 * en + ionpot_ev to SF_EMAX
             if epsilon_lower2 <= epsilon_uppers[j]:
                 int_eps_lower2 = atan((epsilon_lower2 - ionpot_ev) / J)
                 sfmatrix[i, j] -= prefactors[j] * (int_eps_uppers[j] - int_eps_lower2)
@@ -811,6 +805,8 @@ def get_d_etaexcitation_by_d_en_vec(engrid, yvec, ions, dftransitions, depositio
     part_integrand = np.zeros(npts)
 
     for Z, ion_stage in ions:
+        if not (Z, ion_stage) in dftransitions:
+            continue
         for _, row in dftransitions[(Z, ion_stage)].iterrows():
             nnlevel = row.lower_pop
             # nnlevel = nnion
@@ -977,7 +973,7 @@ def solve_spencerfano(
                     dftransitions[(Z, ionstage)]['lower_pop'] = dftransitions[(Z, ionstage)].apply(
                         lambda x: popdict.get(x.lower, 0.), axis=1)
 
-                lowerstr = f" from lower <={maxlowerlevel}" if maxlowerlevel >= 0 else ""
+                lowerstr = f" from lower <= {maxlowerlevel}" if maxlowerlevel >= 0 else ""
                 print(f'    and excitation with {len(dftransitions[(Z, ionstage)])} transitions{lowerstr}')
 
                 sfmatrix_add_excitation(engrid, dftransitions[(Z, ionstage)], nnion, sfmatrix)
