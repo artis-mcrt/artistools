@@ -194,7 +194,8 @@ def get_mean_binding_energy(atomic_number, ion_stage, electron_binding, ionpot_e
             if (electron_loop != 8):
                 # For some reason in the Lotz data, this is no energy for the M5 shell before Ni. So if the complaint
                 # is for 8 (corresponding to that shell) then just use the M4 value
-                print(f"WARNING: I'm trying to use a binding energy when I have no data. element {atomic_number} ionstage {ion_stage}\n")
+                print("WARNING: I'm trying to use a binding energy when I have no data. "
+                      f"element {atomic_number} ionstage {ion_stage}\n")
                 assert(electron_loop == 8)
                 # print("Z = %d, ion_stage = %d\n", get_element(element), get_ionstage(element, ion));
         if (use2 < use3):
@@ -226,7 +227,8 @@ def get_mean_binding_energy_alt(atomic_number, ion_stage, electron_binding, ionp
             if (electron_loop != 8):
                 # For some reason in the Lotz data, this is no energy for the M5 shell before Ni. So if the complaint
                 # is for 8 (corresponding to that shell) then just use the M4 value
-                print(f"WARNING: I'm trying to use a binding energy when I have no data. element {atomic_number} ionstage {ion_stage}\n")
+                print("WARNING: I'm trying to use a binding energy when I have no data. "
+                      f"element {atomic_number} ionstage {ion_stage}\n")
                 assert(electron_loop == 8)
                 # print("Z = %d, ion_stage = %d\n", get_element(element), get_ionstage(element, ion));
         if (use2 < use3):
@@ -258,13 +260,14 @@ def get_lotz_xs_ionisation(atomic_number, ion_stage, electron_binding, ionpot_ev
             use2 = electron_binding[atomic_number - 1][electron_loop]
             use3 = ionpot_ev * EV
         if (use2 <= 0):
-            use2 = electron_binding[atomic_number - 1][electron_loop-1]
+            use2 = electron_binding[atomic_number - 1][electron_loop - 1]
             # to get total += electronsinshell/electron_binding[get_element(element)-1][electron_loop-1];
             # set use3 = 0.
             if (electron_loop != 8):
                 # For some reason in the Lotz data, this is no energy for the M5 shell before Ni. So if the complaint
                 # is for 8 (corresponding to that shell) then just use the M4 value
-                print(f"WARNING: I'm trying to use a binding energy when I have no data. element {atomic_number} ionstage {ion_stage}\n")
+                print("WARNING: I'm trying to use a binding energy when I have no data. "
+                      f"element {atomic_number} ionstage {ion_stage}\n")
                 assert(electron_loop == 8)
                 # print("Z = %d, ion_stage = %d\n", get_element(element), get_ionstage(element, ion));
 
@@ -648,6 +651,11 @@ def sfmatrix_add_excitation(engrid, dftransitions_ion, nnion, sfmatrix):
                 # for j in range(startindex, stopindex):
                 sfmatrix[i, startindex:stopindex] += vec_xs_excitation_nnlevel_deltae[startindex:stopindex]
 
+                # do the last bit separately because we're not using the full deltaen interval
+
+                delta_en_actual = (en + epsilon_trans_ev - engrid[stopindex])
+                sfmatrix[i, stopindex] += vec_xs_excitation_nnlevel_deltae[stopindex] * delta_en_actual / deltaen
+
 
 def sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
     # this code has been optimised and is now an almost unreadable form, but it contains the terms
@@ -949,13 +957,21 @@ def solve_spencerfano(
 
             filterquery = 'collstr >= 0 or forbidden == False'
 
+            maxnlevelslower = None
+            maxnlevelsupper = None
+
             # find the highest ground multiplet level
             # groundlevelnoj = ion.levels.iloc[0].levelname.split('[')[0]
-            # maxlowerlevel = ion.levels[ion.levels.levelname.str.startswith(groundlevelnoj)].index.max()
+            # maxnlevelslower = ion.levels[ion.levels.levelname.str.startswith(groundlevelnoj)].index.max()
 
-            maxlowerlevel = -1
-            if maxlowerlevel >= 0:
-                filterquery += ' and lower <= @maxlowerlevel'
+            # match ARTIS defaults
+            # maxnlevelslower = 5
+            # maxnlevelsupper = 250
+
+            if maxnlevelslower is not None:
+                filterquery += ' and lower < @maxnlevelslower'
+            if maxnlevelsupper is not None:
+                filterquery += ' and upper < @maxnlevelsupper'
 
             dftransitions[(Z, ionstage)] = ion.transitions.query(
                 filterquery, inplace=False).copy()
@@ -973,8 +989,8 @@ def solve_spencerfano(
                     dftransitions[(Z, ionstage)]['lower_pop'] = dftransitions[(Z, ionstage)].apply(
                         lambda x: popdict.get(x.lower, 0.), axis=1)
 
-                lowerstr = f" from lower <= {maxlowerlevel}" if maxlowerlevel >= 0 else ""
-                print(f'    and excitation with {len(dftransitions[(Z, ionstage)])} transitions{lowerstr}')
+                print(f'    and excitation with {len(dftransitions[(Z, ionstage)])} transitions '
+                      f'(maxnlevelslower {maxnlevelslower}, maxnlevelsupper {maxnlevelsupper})')
 
                 sfmatrix_add_excitation(engrid, dftransitions[(Z, ionstage)], nnion, sfmatrix)
 
