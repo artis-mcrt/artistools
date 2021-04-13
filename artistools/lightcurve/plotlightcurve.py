@@ -367,18 +367,6 @@ def make_colorbar_viewingangles(costheta_viewing_angle_bins, phi_viewing_angle_b
 
 
 def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
-
-    if args.calculate_peak_time_mag_deltam15_bool:  # If there's viewing angle scatter plot stuff define some arrays
-        args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
-
-        args.band_risetime_polyfit = []
-        args.band_peakmag_polyfit = []
-        args.band_deltam15_polyfit = []
-
-        args.band_risetime_angle_averaged_polyfit = []
-        args.band_peakmag_angle_averaged_polyfit = []
-        args.band_delta_m15_angle_averaged_polyfit = []
-
     # angle_names = [0, 45, 90, 180]
     # plt.style.use('dark_background')
 
@@ -1046,6 +1034,17 @@ def main(args=None, argsraw=None, **kwargs):
             or args.make_viewing_angle_peakmag_risetime_scatter_plot
             or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
         args.calculate_peak_time_mag_deltam15_bool = True
+
+    # if args.calculate_peak_time_mag_deltam15_bool:  # If there's viewing angle scatter plot stuff define some arrays
+        args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
+
+        args.band_risetime_polyfit = []
+        args.band_peakmag_polyfit = []
+        args.band_deltam15_polyfit = []
+
+        args.band_risetime_angle_averaged_polyfit = []
+        args.band_peakmag_angle_averaged_polyfit = []
+        args.band_delta_m15_angle_averaged_polyfit = []
 
     filternames_conversion_dict = {'rs': 'r', 'gs': 'g', 'is': 'i'}
     if args.filter:
