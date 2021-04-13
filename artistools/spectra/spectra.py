@@ -245,13 +245,14 @@ def get_spectrum_from_packets(
     return pd.DataFrame(dfdict)
 
 
-def read_specpol_res(modelpath, angle=None, args=None):
+def read_specpol_res(modelpath):
     """Return specpol_res data for a given angle"""
     if Path(modelpath, 'specpol_res.out').is_file():
         specfilename = Path(modelpath) / "specpol_res.out"
     else:
         specfilename = modelpath
 
+    print(f"Reading {specfilename} (in read_specpol_res)")
     specdata = pd.read_csv(specfilename, delim_whitespace=True, header=None, dtype=str)
 
     res_specdata = at.gather_res_data(specdata)
@@ -277,6 +278,14 @@ def read_specpol_res(modelpath, angle=None, args=None):
         res_specdata[i] = res_specdata[i].astype(float)
         res_specdata[i] = res_specdata[i].to_numpy()
 
+    for i, res_spec in enumerate(res_specdata):
+        res_specdata[i] = pd.DataFrame(data=res_specdata[i], columns=columns[:numberofIvalues])
+        res_specdata[i] = res_specdata[i].rename(columns={'0': 'nu'})
+
+    return res_specdata
+
+
+def average_angle_bins(res_specdata, angle, args):
     # Averages over 10 bins to reduce noise
 
     if args and args.average_every_tenth_viewing_angle:
@@ -290,11 +299,6 @@ def read_specpol_res(modelpath, angle=None, args=None):
 
         if angle and angle % 10 == 0:
             print(f"Bin number {angle} is the average of 10 angle bins")
-
-    for i, res_spec in enumerate(res_specdata):
-        res_specdata[i] = pd.DataFrame(data=res_specdata[i], columns=columns[:numberofIvalues])
-        res_specdata[i] = res_specdata[i].rename(columns={'0': 'nu'})
-
     return res_specdata
 
 
@@ -313,7 +317,9 @@ def get_res_spectrum(
 
     if res_specdata is None:
         print("Reading specpol_res.out")
-        res_specdata = read_specpol_res(modelpath, angle)
+        res_specdata = read_specpol_res(modelpath)
+        if args and args.average_every_tenth_viewing_angle:
+            at.spectra.average_angle_bins(res_specdata, angle, args)
 
     nu = res_specdata[angle].loc[:, 'nu'].values
     arr_tmid = at.get_timestep_times_float(modelpath, loc='mid')
