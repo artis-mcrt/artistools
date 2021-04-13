@@ -121,6 +121,11 @@ def write_viewing_angle_data(band_name, modelname, modelnames, args):
 
 def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, args, filternames_conversion_dict=None):
     """Calculating band peak time, peak magnitude and delta m15"""
+    if args.timemin is None or args.timemax is None:
+        print("Trying to calculate peak time / dm15 / rise time with no time range. "
+              "This will give a stupid result. Specify args.timemin and args.timemax")
+        quit()
+
     zfit = np.polyfit(x=time, y=magnitude, deg=10)
     xfit = np.linspace(args.timemin + 1, args.timemax - 1, num=1000)
 

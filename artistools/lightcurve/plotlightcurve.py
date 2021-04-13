@@ -376,11 +376,6 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
             or args.make_viewing_angle_peakmag_risetime_scatter_plot
             or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
         calculate_peak_time_mag_deltam15_bool = True
-        if args.timemin is None or args.timemax is None:
-            print("Trying to calculate peak time / dm15 / rise time with no time range. "
-                  "This will give a stupid result. Specify args.timemin and args.timemax")
-            quit()
-
     if calculate_peak_time_mag_deltam15_bool:  # If there's viewing angle scatter plot stuff define some arrays
         args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
 
