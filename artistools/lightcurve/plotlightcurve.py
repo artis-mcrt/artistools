@@ -20,34 +20,11 @@ import matplotlib
 from extinction import apply, ccm89
 from astropy import constants as const
 
-from matplotlib.legend_handler import HandlerTuple
 from .lightcurve import *
 from .viewingangleanalysis import *
 import glob
 
 color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
-
-define_colours_list = ['k', 'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange', 'tab:pink', 'tab:gray', 'gold',
-                       'tab:cyan', 'darkblue', 'bisque', 'yellow', 'k', 'tab:blue', 'tab:red', 'tab:green', 'purple',
-                       'tab:orange', 'tab:pink', 'tab:gray', 'gold', 'tab:cyan', 'darkblue', 'bisque', 'yellow', 'k',
-                       'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange', 'tab:pink', 'tab:gray', 'gold',
-                       'tab:cyan',
-                       'darkblue', 'bisque', 'yellow', 'k', 'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange',
-                       'tab:pink', 'tab:gray', 'gold', 'tab:cyan', 'darkblue', 'bisque', 'yellow', 'k', 'tab:blue',
-                       'tab:red',
-                       'tab:green', 'purple', 'tab:orange', 'tab:pink', 'tab:gray', 'gold', 'tab:cyan', 'darkblue',
-                       'bisque',
-                       'yellow', 'k', 'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange', 'tab:pink',
-                       'tab:gray',
-                       'gold', 'tab:cyan', 'darkblue', 'bisque', 'yellow', 'k', 'tab:blue', 'tab:red', 'tab:green',
-                       'purple',
-                       'tab:orange', 'tab:pink', 'tab:gray', 'gold', 'tab:cyan', 'darkblue', 'bisque', 'yellow', 'k',
-                       'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange', 'tab:pink', 'tab:gray', 'gold',
-                       'tab:cyan',
-                       'darkblue', 'bisque', 'yellow']
-
-define_colours_list2 = ['gray', 'lightblue', 'pink', 'yellowgreen', 'mediumorchid', 'sandybrown', 'plum', 'lightgray',
-                        'wheat', 'paleturquoise']
 
 
 def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, frompackets=False,
@@ -370,7 +347,6 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     # angle_names = [0, 45, 90, 180]
     # plt.style.use('dark_background')
 
-    modelnames = [] # save names of models
     args.labelfontsize = 22  #todo: make command line arg
     fig, ax = create_axes(args)
     set_axis_limit_args(args)
@@ -384,7 +360,6 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
         for index, angle in enumerate(angles):
 
             modelname = at.get_model_name(modelpath)
-            modelnames.append(modelname)  # save for later
             print(f'Reading spectra: {modelname}')
             band_lightcurve_data = get_band_lightcurve_data(modelpath, args, angle, modelnumber=modelnumber)
 
@@ -402,14 +377,10 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 if filterfunc is not None:
                     brightness_in_mag = filterfunc(brightness_in_mag)
 
-                # Calculating band peak time, peak magnitude and delta m15
-                if args.calculate_peak_time_mag_deltam15_bool:
-                    calculate_peak_time_mag_deltam15(time, brightness_in_mag, modelname, angle, band_name,
-                                                     args, filternames_conversion_dict=filternames_conversion_dict)
-
-                if args.plotviewingangle and args.plotviewingangles_lightcurves:
-                    global define_colours_list
-                    plt.plot(time, brightness_in_mag, label=modelname, color=define_colours_list[angle], linewidth=3)
+                # This does the same thing as below -- leaving code in case I'm wrong (CC)
+                # if args.plotviewingangle and args.plotviewingangles_lightcurves:
+                #     global define_colours_list
+                #     plt.plot(time, brightness_in_mag, label=modelname, color=define_colours_list[angle], linewidth=3)
 
                 if modelnumber == 0 and args.plot_hesma_model and band_name in hesma_model.keys():  #todo: see if this works
                     ax.plot(hesma_model.t, hesma_model[band_name], color='black')
@@ -424,17 +395,17 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 # else:
                 #     ax.text(args.xmax * 0.75, args.ymax * 0.95, text_key)
 
-                if not args.calculate_peak_time_mag_deltam15_bool:
+                # if not args.calculate_peak_time_mag_deltam15_bool:
 
-                    if args.reflightcurves and modelnumber == 0:
-                        if len(angles) > 1 and index > 0:
-                            print('already plotted reflightcurve')
-                        else:
-                            define_colours_list = args.refspeccolors
-                            markers = args.refspecmarkers
-                            for i, reflightcurve in enumerate(args.reflightcurves):
-                                plot_lightcurve_from_data(band_lightcurve_data.keys(), reflightcurve, define_colours_list[i], markers[i],
-                                                          filternames_conversion_dict, ax, plotnumber)
+                if args.reflightcurves and modelnumber == 0:
+                    if len(angles) > 1 and index > 0:
+                        print('already plotted reflightcurve')
+                    else:
+                        define_colours_list = args.refspeccolors
+                        markers = args.refspecmarkers
+                        for i, reflightcurve in enumerate(args.reflightcurves):
+                            plot_lightcurve_from_data(band_lightcurve_data.keys(), reflightcurve, define_colours_list[i], markers[i],
+                                                      filternames_conversion_dict, ax, plotnumber)
 
                 if args.color:
                     color = args.color[modelnumber]
@@ -443,49 +414,31 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 if args.linestyle:
                     linestyle = args.linestyle[modelnumber]
 
-                if not (args.test_viewing_angle_fit or args.calculate_peak_time_mag_deltam15_bool):
+                # if not (args.test_viewing_angle_fit or args.calculate_peak_time_mag_deltam15_bool):
 
-                    if args.subplots:
-                        # if linestyle == 'dashed':
-                        #     alpha = 0.6
-                        # else:
-                        alpha = 1  # todo: set command line arg for this
+                if args.subplots:
+                    # if linestyle == 'dashed':
+                    #     alpha = 0.6
+                    # else:
+                    alpha = 1  # todo: set command line arg for this
 
-                        if len(angles) > 1 or (args.plotviewingangle and os.path.isfile(modelpath / 'specpol_res.out')):
-                            ax[plotnumber].plot(time, brightness_in_mag, label=linelabel, linewidth=4, linestyle=linestyle,
-                                                alpha=alpha)
-                        # I think this was just to have a different line style for viewing angles....
-                        else:
-                            ax[plotnumber].plot(time, brightness_in_mag, label=linelabel, linewidth=4, color=color,
-                                                linestyle=linestyle, alpha=alpha)
-                            # if key is not 'bol':
-                            #     ax[plotnumber].plot(
-                            #         cmfgen_mags['time[d]'], cmfgen_mags[key], label='CMFGEN', color='k', linewidth=3)
+                    if len(angles) > 1 or (args.plotviewingangle and os.path.isfile(modelpath / 'specpol_res.out')):
+                        ax[plotnumber].plot(time, brightness_in_mag, label=linelabel, linewidth=4, linestyle=linestyle,
+                                            alpha=alpha)
+                    # I think this was just to have a different line style for viewing angles....
                     else:
-                        # if 'FM3' in str(modelpath):
-                        #     ax.plot(time, magnitude, label=linelabel, linewidth=3, color='darkblue')
-                        # elif 'M2a' in str(modelpath):
-                        #     ax.plot(time, magnitude, label=linelabel, linewidth=3, color='k')
-                        # else:
-                        ax.plot(time, brightness_in_mag, label=linelabel, linewidth=3.5)  # color=color, linestyle=linestyle)
-
-        # Saving viewing angle data so it can be read in and plotted later on without re-running the script
-        #    as it is quite time consuming
-        if args.calculate_peak_time_mag_deltam15_bool:
-            save_viewing_angle_data_for_plotting(band_name, modelname, args)
-
-    # Saving all this viewing angle info for each model to a file so that it is available to plot if required again
-    # as it takes relatively long to run this for all viewing angles
-    if args.calculate_peak_time_mag_deltam15_bool:
-        write_viewing_angle_data(band_name, modelname, modelnames, args)
-
-    if args.make_viewing_angle_peakmag_risetime_scatter_plot:
-        make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_name, args)
-        return
-
-    elif args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
-        make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, band_name, args)
-        return
+                        ax[plotnumber].plot(time, brightness_in_mag, label=linelabel, linewidth=4, color=color,
+                                            linestyle=linestyle, alpha=alpha)
+                        # if key is not 'bol':
+                        #     ax[plotnumber].plot(
+                        #         cmfgen_mags['time[d]'], cmfgen_mags[key], label='CMFGEN', color='k', linewidth=3)
+                else:
+                    # if 'FM3' in str(modelpath):
+                    #     ax.plot(time, magnitude, label=linelabel, linewidth=3, color='darkblue')
+                    # elif 'M2a' in str(modelpath):
+                    #     ax.plot(time, magnitude, label=linelabel, linewidth=3, color='k')
+                    # else:
+                    ax.plot(time, brightness_in_mag, label=linelabel, linewidth=3.5)  # color=color, linestyle=linestyle)
 
     ax = set_axis_properties(ax, args)
     fig, ax = set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_name=band_name)
@@ -526,70 +479,6 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     #         for i, reflightcurve in enumerate(args.reflightcurves):
     #             plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, colours[i], markers[i],
     #                                       filternames_conversion_dict)
-
-
-def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
-    for ii, modelname in enumerate(modelnames):
-        viewing_angle_plot_data = pd.read_csv(key + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
-                                              delimiter=" ")
-        band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].values
-        band_risetime_viewing_angles = viewing_angle_plot_data["risetime_polyfit"].values
-
-        a0 = plt.scatter(band_risetime_viewing_angles, band_peak_mag_viewing_angles, marker='x', color=define_colours_list2[ii])
-        p0 = plt.scatter(args.band_risetime_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
-                         marker='o', color=define_colours_list[ii], s=40)
-        args.plotvalues.append((a0, p0))
-        plt.errorbar(args.band_risetime_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
-                     xerr=np.std(band_risetime_viewing_angles),
-                     yerr=np.std(band_peak_mag_viewing_angles), ecolor=define_colours_list[ii], capsize=2)
-
-    plt.legend(args.plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
-               loc='upper right', fontsize=8, ncol=2, columnspacing=1)
-    plt.xlabel('Rise Time in Days', fontsize=14)
-    plt.ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
-    # plt.gca().invert_yaxis()
-    plt.minorticks_on()
-    plt.tick_params(axis='both', which='minor', top=False, right=False, length=5, width=2, labelsize=12)
-    plt.tick_params(axis='both', which='major', top=False, right=False, length=8, width=2, labelsize=12)
-    plt.tight_layout()
-    plt.savefig(key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf", format="pdf")
-    print("saving " + key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf")
-    plt.close()
-
-
-def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
-    for ii, modelname in enumerate(modelnames):
-        viewing_angle_plot_data = pd.read_csv(key + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
-                                              delimiter=" ")
-
-        band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].values
-        band_delta_m15_viewing_angles = viewing_angle_plot_data["deltam15_polyfit"].values
-
-        a0 = plt.scatter(band_delta_m15_viewing_angles, band_peak_mag_viewing_angles, marker='x',
-                         color=define_colours_list2[ii])
-        p0 = plt.scatter(args.band_delta_m15_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
-                         marker='o', color=define_colours_list[ii], s=40)
-        args.plotvalues.append((a0, p0))
-        plt.errorbar(args.band_delta_m15_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
-                     xerr=np.std(band_delta_m15_viewing_angles),
-                     yerr=np.std(band_peak_mag_viewing_angles), ecolor=define_colours_list[ii], capsize=2)
-
-    # a0, label = at.lightcurve.get_sn_sample_bol()
-    # a0, label = at.lightcurve.get_phillips_relation_data()
-    # args.plotvalues.append((a0, a0))
-
-    plt.legend(args.plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
-               loc='upper right', fontsize=8, ncol=2, columnspacing=1)
-    plt.xlabel(r'Decline Rate ($\Delta$m$_{15}$)', fontsize=14)
-    plt.ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
-    # plt.gca().invert_yaxis()
-    plt.minorticks_on()
-    plt.tick_params(axis='both', which='minor', top=False, right=False, length=5, width=2, labelsize=12)
-    plt.tick_params(axis='both', which='major', top=False, right=False, length=8, width=2, labelsize=12)
-    plt.tight_layout()
-    plt.savefig(key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf", format="pdf")
-    print("saving " + key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf")
-    plt.close()
 
 
 def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
@@ -1026,6 +915,8 @@ def main(args=None, argsraw=None, **kwargs):
         outputfolder = Path(args.outputfile)
         args.outputfile = os.path.join(outputfolder, defaultoutputfile)
 
+    filternames_conversion_dict = {'rs': 'r', 'gs': 'g', 'is': 'i'}
+
     # determine if this will be a scatter plot or not
     args.calculate_peak_time_mag_deltam15_bool = False
     if (    #args.calculate_peakmag_risetime_delta_m15 or
@@ -1034,19 +925,9 @@ def main(args=None, argsraw=None, **kwargs):
             or args.make_viewing_angle_peakmag_risetime_scatter_plot
             or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
         args.calculate_peak_time_mag_deltam15_bool = True
+        peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, args)
+        return
 
-    # if args.calculate_peak_time_mag_deltam15_bool:  # If there's viewing angle scatter plot stuff define some arrays
-        args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
-
-        args.band_risetime_polyfit = []
-        args.band_peakmag_polyfit = []
-        args.band_deltam15_polyfit = []
-
-        args.band_risetime_angle_averaged_polyfit = []
-        args.band_peakmag_angle_averaged_polyfit = []
-        args.band_delta_m15_angle_averaged_polyfit = []
-
-    filternames_conversion_dict = {'rs': 'r', 'gs': 'g', 'is': 'i'}
     if args.filter:
         make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
 

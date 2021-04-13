@@ -6,6 +6,33 @@ import glob
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
+from matplotlib.legend_handler import HandlerTuple
+
+import artistools as at
+from .lightcurve import *
+
+
+define_colours_list = ['k', 'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange', 'tab:pink', 'tab:gray', 'gold',
+                       'tab:cyan', 'darkblue', 'bisque', 'yellow', 'k', 'tab:blue', 'tab:red', 'tab:green', 'purple',
+                       'tab:orange', 'tab:pink', 'tab:gray', 'gold', 'tab:cyan', 'darkblue', 'bisque', 'yellow', 'k',
+                       'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange', 'tab:pink', 'tab:gray', 'gold',
+                       'tab:cyan',
+                       'darkblue', 'bisque', 'yellow', 'k', 'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange',
+                       'tab:pink', 'tab:gray', 'gold', 'tab:cyan', 'darkblue', 'bisque', 'yellow', 'k', 'tab:blue',
+                       'tab:red',
+                       'tab:green', 'purple', 'tab:orange', 'tab:pink', 'tab:gray', 'gold', 'tab:cyan', 'darkblue',
+                       'bisque',
+                       'yellow', 'k', 'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange', 'tab:pink',
+                       'tab:gray',
+                       'gold', 'tab:cyan', 'darkblue', 'bisque', 'yellow', 'k', 'tab:blue', 'tab:red', 'tab:green',
+                       'purple',
+                       'tab:orange', 'tab:pink', 'tab:gray', 'gold', 'tab:cyan', 'darkblue', 'bisque', 'yellow', 'k',
+                       'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange', 'tab:pink', 'tab:gray', 'gold',
+                       'tab:cyan',
+                       'darkblue', 'bisque', 'yellow']
+
+define_colours_list2 = ['gray', 'lightblue', 'pink', 'yellowgreen', 'mediumorchid', 'sandybrown', 'plum', 'lightgray',
+                        'wheat', 'paleturquoise']
 
 
 def get_angle_stuff(modelpath, args):
@@ -190,3 +217,126 @@ def make_plot_test_viewing_angle_fit(time, magnitude, xfit, fxfit, filternames_c
     plt.tight_layout()
     plt.savefig(f'{key}' + "_band_" + f'{modelname}' + "_viewing_angle" + str(angle) + ".png")
     plt.close()
+
+
+def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
+    for ii, modelname in enumerate(modelnames):
+        viewing_angle_plot_data = pd.read_csv(key + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
+                                              delimiter=" ")
+        band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].values
+        band_risetime_viewing_angles = viewing_angle_plot_data["risetime_polyfit"].values
+
+        a0 = plt.scatter(band_risetime_viewing_angles, band_peak_mag_viewing_angles, marker='x', color=define_colours_list2[ii])
+        p0 = plt.scatter(args.band_risetime_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
+                         marker='o', color=define_colours_list[ii], s=40)
+        args.plotvalues.append((a0, p0))
+        plt.errorbar(args.band_risetime_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
+                     xerr=np.std(band_risetime_viewing_angles),
+                     yerr=np.std(band_peak_mag_viewing_angles), ecolor=define_colours_list[ii], capsize=2)
+
+    plt.legend(args.plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
+               loc='upper right', fontsize=8, ncol=2, columnspacing=1)
+    plt.xlabel('Rise Time in Days', fontsize=14)
+    plt.ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
+    # plt.gca().invert_yaxis()
+    plt.minorticks_on()
+    plt.tick_params(axis='both', which='minor', top=False, right=False, length=5, width=2, labelsize=12)
+    plt.tick_params(axis='both', which='major', top=False, right=False, length=8, width=2, labelsize=12)
+    plt.tight_layout()
+    plt.savefig(key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf", format="pdf")
+    print("saving " + key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf")
+    plt.close()
+
+
+def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
+    for ii, modelname in enumerate(modelnames):
+        viewing_angle_plot_data = pd.read_csv(key + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
+                                              delimiter=" ")
+
+        band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].values
+        band_delta_m15_viewing_angles = viewing_angle_plot_data["deltam15_polyfit"].values
+
+        a0 = plt.scatter(band_delta_m15_viewing_angles, band_peak_mag_viewing_angles, marker='x',
+                         color=define_colours_list2[ii])
+        p0 = plt.scatter(args.band_delta_m15_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
+                         marker='o', color=define_colours_list[ii], s=40)
+        args.plotvalues.append((a0, p0))
+        plt.errorbar(args.band_delta_m15_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
+                     xerr=np.std(band_delta_m15_viewing_angles),
+                     yerr=np.std(band_peak_mag_viewing_angles), ecolor=define_colours_list[ii], capsize=2)
+
+    # a0, label = at.lightcurve.get_sn_sample_bol()
+    # a0, label = at.lightcurve.get_phillips_relation_data()
+    # args.plotvalues.append((a0, a0))
+
+    plt.legend(args.plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
+               loc='upper right', fontsize=8, ncol=2, columnspacing=1)
+    plt.xlabel(r'Decline Rate ($\Delta$m$_{15}$)', fontsize=14)
+    plt.ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
+    # plt.gca().invert_yaxis()
+    plt.minorticks_on()
+    plt.tick_params(axis='both', which='minor', top=False, right=False, length=5, width=2, labelsize=12)
+    plt.tick_params(axis='both', which='major', top=False, right=False, length=8, width=2, labelsize=12)
+    plt.tight_layout()
+    plt.savefig(key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf", format="pdf")
+    print("saving " + key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf")
+    plt.close()
+
+
+def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, args):
+
+    # if args.calculate_peak_time_mag_deltam15_bool:  # If there's viewing angle scatter plot stuff define some arrays
+    args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
+
+    args.band_risetime_polyfit = []
+    args.band_peakmag_polyfit = []
+    args.band_deltam15_polyfit = []
+
+    args.band_risetime_angle_averaged_polyfit = []
+    args.band_peakmag_angle_averaged_polyfit = []
+    args.band_delta_m15_angle_averaged_polyfit = []
+
+    modelnames = [] # save names of models
+
+    for modelnumber, modelpath in enumerate(modelpaths):
+        modelpath = Path(modelpath)
+
+        # check if doing viewing angle stuff, and if so define which data to use
+        angles, viewing_angles, angle_definition = get_angle_stuff(modelpath, args)
+
+        for index, angle in enumerate(angles):
+
+            modelname = at.get_model_name(modelpath)
+            modelnames.append(modelname)  # save for later
+            print(f'Reading spectra: {modelname}')
+            band_lightcurve_data = get_band_lightcurve_data(modelpath, args, angle, modelnumber=modelnumber)
+
+            for plotnumber, band_name in enumerate(band_lightcurve_data):
+                time, brightness_in_mag = get_band_lightcurve_data_to_plot(band_lightcurve_data, band_name, args)
+
+                # Calculating band peak time, peak magnitude and delta m15
+                if args.calculate_peak_time_mag_deltam15_bool:
+                    calculate_peak_time_mag_deltam15(time, brightness_in_mag, modelname, angle, band_name,
+                                                     args, filternames_conversion_dict=filternames_conversion_dict)
+
+                if args.color:
+                    color = args.color[modelnumber]
+                else:
+                    color = define_colours_list[modelnumber]
+        # Saving viewing angle data so it can be read in and plotted later on without re-running the script
+        #    as it is quite time consuming
+        if args.calculate_peak_time_mag_deltam15_bool:
+            save_viewing_angle_data_for_plotting(band_name, modelname, args)
+
+    # Saving all this viewing angle info for each model to a file so that it is available to plot if required again
+    # as it takes relatively long to run this for all viewing angles
+    if args.calculate_peak_time_mag_deltam15_bool:
+        write_viewing_angle_data(band_name, modelname, modelnames, args)
+
+    if args.make_viewing_angle_peakmag_risetime_scatter_plot:
+        make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_name, args)
+        return
+
+    elif args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
+        make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, band_name, args)
+        return
