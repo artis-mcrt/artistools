@@ -540,21 +540,12 @@ def get_energyindex_gteq(en_ev, engrid):
         return index
 
 
-N_e_cache = {}
-
-
 def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransitions, noexcitation):
     # Kozma & Fransson equation 6.
     # Something related to a number of electrons, needed to calculate the heating fraction in equation 3
     # not valid for energy > E_0
     if energy_ev == 0.:
         return 0.
-
-    if energy_ev in N_e_cache:
-        # print("returning cached value for", energy_ev)
-        return N_e_cache[energy_ev]
-    # else:
-    #     print("Cache miss for", energy_ev)
 
     N_e = 0.
 
@@ -574,15 +565,14 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
             ar_xs_array = at.nonthermal.get_arxs_array_shell(engrid, shell)
 
             # integral from ionpot to enlambda
-            delta_endash = (enlambda - ionpot_ev) / 100.
-            if delta_endash >= 0:
-                endashlist = np.arange(ionpot_ev, enlambda, delta_endash)
-                for endash in endashlist:
-                    if energy_ev + endash >= engrid[0]:
-                        i = get_energyindex_gteq(en_ev=energy_ev + endash, engrid=engrid)
-                        N_e_ion += (
-                            yvec[i] * ar_xs_array[i] *
-                            Psecondary(e_p=energy_ev + endash, epsilon=endash, ionpot_ev=ionpot_ev, J=J) * delta_endash)
+            integral1startindex = get_energyindex_lteq(en_ev=ionpot_ev, engrid=engrid)
+            integral2stopindex = get_energyindex_lteq(en_ev=enlambda, engrid=engrid)
+
+            # endash = engrid[i]
+            N_e_ion += deltaen * sum([
+                yvec[i] * ar_xs_array[i] *
+                Psecondary(e_p=energy_ev + engrid[i], epsilon=engrid[i], ionpot_ev=ionpot_ev, J=J)
+                for i in range(integral1startindex, integral2stopindex)])
 
             # integral from 2E + I up to E_max
             integral2startindex = get_energyindex_lteq(en_ev=2 * energy_ev + ionpot_ev, engrid=engrid)
@@ -597,14 +587,12 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
         for Z, ion_stage in ions:
             for _, row in dftransitions[(Z, ion_stage)].iterrows():
                 nnlevel = row.lower_pop
-                # nnlevel = nnion
                 epsilon_trans_ev = row.epsilon_trans_ev
-                if epsilon_trans_ev >= engrid[0]:
-                    i = get_energyindex_gteq(en_ev=energy_ev + epsilon_trans_ev, engrid=engrid)
-                    N_e += nnlevel * epsilon_trans_ev * yvec[i] * get_xs_excitation(energy_ev + epsilon_trans_ev, row)
+                i = get_energyindex_lteq(en_ev=energy_ev + epsilon_trans_ev, engrid=engrid)
+                N_e += nnlevel * epsilon_trans_ev * yvec[i] * get_xs_excitation(engrid[i], row)
 
     # source term not here because it should be zero at the low end anyway
-    N_e_cache[energy_ev] = N_e
+
     return N_e
 
 
@@ -628,11 +616,13 @@ def calculate_frac_heating(
           f"{E_0 * yvec[0] * lossfunction(E_0, nne, nnetot, ions=ions, ionpopdict=ionpopdict) / deposition_density_ev:.5f}")
 
     frac_heating_N_e = 0.
-    delta_en = E_0 / 100.
+    npts_integral = math.ceil(E_0 / deltaen) * 10
+    print(f'N_e npts_integral: {npts_integral}')
+    arr_en, delta_en = np.linspace(0., E_0, num=npts_integral, retstep=True, endpoint=False)
     frac_heating_N_e += delta_en / deposition_density_ev * sum([
         en_ev * calculate_N_e(en_ev, engrid, ions, ionpopdict, dfcollion,
                               yvec, dftransitions, noexcitation=noexcitation)
-        for en_ev in np.arange(0., E_0, delta_en)])
+        for en_ev in arr_en])
 
     print(f"            frac_heating N_e part: {frac_heating_N_e:.5f}")
     frac_heating += frac_heating_N_e
@@ -642,7 +632,6 @@ def calculate_frac_heating(
 
 def sfmatrix_add_excitation(engrid, dftransitions_ion, nnion, sfmatrix):
     deltaen = engrid[1] - engrid[0]
-    npts = len(engrid)
     for _, row in dftransitions_ion.iterrows():
         nnlevel = row.lower_pop
         epsilon_trans_ev = row.epsilon_trans_ev
@@ -654,8 +643,8 @@ def sfmatrix_add_excitation(engrid, dftransitions_ion, nnion, sfmatrix):
                 stopindex = get_energyindex_lteq(en_ev=en + epsilon_trans_ev, engrid=engrid)
 
                 startindex = i if i > xsstartindex else xsstartindex
-                for j in range(startindex, stopindex):
-                    sfmatrix[i, j] += vec_xs_excitation_nnlevel_deltae[j]
+                # for j in range(startindex, stopindex):
+                sfmatrix[i, startindex:stopindex] += vec_xs_excitation_nnlevel_deltae[startindex:stopindex]
 
 
 def sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
@@ -676,11 +665,15 @@ def sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
             if ar_xs_array[i] > 0.:
                 xsstartindex = i
                 break
-        # xsstartindex = get_energyindex_gteq(en_ev=ionpot_ev, engrid=engrid)
+        xsstartindex = get_energyindex_gteq(en_ev=ionpot_ev, engrid=engrid)
 
     if experiment_use_Latom_in_spencerfano:
         print('WARNING: atomic loss function is in use, but the ionisation loss rate is not correctly '
               'neglected from the integral form of the Spencer-Fano equation')
+
+    prefactors = [nnion * ar_xs_array[j] / atan((engrid[j] - ionpot_ev) / 2. / J) * deltaen for j in range(npts)]
+    epsilon_uppers = [min((engrid[j] + ionpot_ev) / 2, engrid[j]) for j in range(npts)]
+    int_eps_uppers = [atan((epsilon_upper - ionpot_ev) / J) for epsilon_upper in epsilon_uppers]
 
     for i, en in enumerate(engrid):
         # P_sum = 0.
@@ -698,45 +691,37 @@ def sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
         #     print(f"E_p {en} eV, prob integral e_s from {e_s_min:5.2f} eV to {e_s_max:5.2f}: {P_sum:5.2f} analytical {P_int:5.2f}")
 
         # // endash ranges from en to SF_EMAX, but skip over the zero-cross section points
-        jstart = i if i > xsstartindex else xsstartindex
+        jstart = max(i, xsstartindex)
         if 2 * en + ionpot_ev < engrid[-1] + (engrid[1] - engrid[0]):
             secondintegralstartindex = get_energyindex_lteq(2 * en + ionpot_ev, engrid)
         else:
             secondintegralstartindex = npts + 1
 
+        # KF 92 limit
+        # assert all(not np.isnan(prefactor)
+        # assert not np.isinf(prefactor)
+
         # integral/J of 1/[1 + (epsilon - ionpot_ev) / J] for epsilon = en + ionpot_ev
         for j in range(jstart, npts):
             # j is the matrix column index which corresponds to the piece of the
             # integral at y(E') where E' >= E and E' = envec(j)
-            endash = engrid[j]
-            prefactor = nnion * ar_xs_array[j] / atan((endash - ionpot_ev) / 2. / J) * deltaen
-            assert not np.isnan(prefactor)
-            assert not np.isinf(prefactor)
-            # assert prefactor >= 0
 
             # J * atan[(epsilon - ionpot_ev) / J] is the indefinite integral of
             # 1/(1 + (epsilon - ionpot_ev)^2/ J^2) d_epsilon
             # in Kozma & Fransson 1992 equation 4
 
-            # KF 92 limit
-            epsilon_upper = min((endash + ionpot_ev) / 2, endash)
-            # Li+2012 limit
-            # epsilon_upper = (endash + en) / 2
-
-            int_eps_upper = atan((epsilon_upper - ionpot_ev) / J)
-
-            epsilon_lower = max(endash - en, ionpot_ev)
-            if epsilon_lower <= epsilon_upper:
+            epsilon_lower = max(engrid[j] - en, ionpot_ev)
+            if epsilon_lower <= epsilon_uppers[j]:
                 int_eps_lower = atan((epsilon_lower - ionpot_ev) / J)
-                sfmatrix[i, j] += prefactor * (int_eps_upper - int_eps_lower)
+                sfmatrix[i, j] += prefactors[j] * (int_eps_uppers[j] - int_eps_lower)
 
+        for j in range(secondintegralstartindex, npts):
             epsilon_lower2 = en + ionpot_ev
             # epsilon_upper = min((endash + ionpot_ev) / 2, endash)
             # endash ranges from 2 * en + ionpot_ev to SF_EMAX
-            if j >= secondintegralstartindex:
-                if epsilon_lower2 <= epsilon_upper:
-                    int_eps_lower2 = atan((epsilon_lower2 - ionpot_ev) / J)
-                    sfmatrix[i, j] -= prefactor * (int_eps_upper - int_eps_lower2)
+            if epsilon_lower2 <= epsilon_uppers[j]:
+                int_eps_lower2 = atan((epsilon_lower2 - ionpot_ev) / J)
+                sfmatrix[i, j] -= prefactors[j] * (int_eps_uppers[j] - int_eps_lower2)
 
 
 def differentialsfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
@@ -927,7 +912,7 @@ def solve_spencerfano(
     print(f'\nSetting up Spencer-Fano equation with {npts} energy points from {engrid[0]} to {engrid[-1]} eV...')
 
     E_init_ev = np.dot(engrid, sourcevec) * deltaen
-    print(f'    E_init: {E_init_ev:7.2f} eV/s/cm3')
+    print(f'  E_init: {E_init_ev:7.2f} [eV/s/cm3]')
 
     constvec = np.zeros(npts)
     for i in range(npts):
@@ -946,6 +931,9 @@ def solve_spencerfano(
 
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
+        if nnion == 0.:
+            print(f'   skipping Z={Z} ion_stage {ionstage} due to nnion={nnion:.1e}')
+            continue
         print(f'  including Z={Z} ion_stage {ionstage} ({at.get_ionstring(Z, ionstage)}) nnion={nnion:.1e} ionization')
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
         # print(dfcollion_thision)
@@ -955,32 +943,42 @@ def solve_spencerfano(
             sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix)
 
         if not noexcitation:
-            dfpops_thision = dfpops.query('Z==@Z & ion_stage==@ionstage')
+            dfpops_thision = dfpops.query('Z==@Z and ion_stage==@ionstage')
             popdict = {x.level: x['n_NLTE'] for _, x in dfpops_thision.iterrows()}
 
             assert len(adata) > 0  # check if ion exists in the adata file
             ionquery = adata.query('Z == @Z and ion_stage == @ionstage')
             assert len(ionquery) > 0
             ion = ionquery.iloc[0]
-            groundlevelnoj = ion.levels.iloc[0].levelname.split('[')[0]
-            topgmlevel = ion.levels[ion.levels.levelname.str.startswith(groundlevelnoj)].index.max()
-            # topgmlevel = float('inf')
-            topgmlevel = 9999999
-            dftransitions[(Z, ionstage)] = ion.transitions.query('lower <= @topgmlevel', inplace=False).copy()
 
-            print(f'    and excitation with {len(dftransitions[(Z, ionstage)])} transitions from lower <= {topgmlevel}')
+            filterquery = 'collstr >= 0 or forbidden == False'
+
+            # find the highest ground multiplet level
+            # groundlevelnoj = ion.levels.iloc[0].levelname.split('[')[0]
+            # maxlowerlevel = ion.levels[ion.levels.levelname.str.startswith(groundlevelnoj)].index.max()
+
+            maxlowerlevel = -1
+            if maxlowerlevel >= 0:
+                filterquery += ' and lower <= @maxlowerlevel'
+
+            dftransitions[(Z, ionstage)] = ion.transitions.query(
+                filterquery, inplace=False).copy()
 
             if not dftransitions[(Z, ionstage)].empty:
-                dftransitions[(Z, ionstage)].query('collstr >= 0 or forbidden == False', inplace=True)
                 dftransitions[(Z, ionstage)].eval(
                     'epsilon_trans_ev = '
                     '@ion.levels.loc[upper].energy_ev.values - @ion.levels.loc[lower].energy_ev.values',
                     inplace=True)
                 dftransitions[(Z, ionstage)].query('epsilon_trans_ev >= @engrid[0]', inplace=True)
-                dftransitions[(Z, ionstage)].eval('lower_g = @ion.levels.loc[lower].g.values', inplace=True)
-                dftransitions[(Z, ionstage)].eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
-                dftransitions[(Z, ionstage)]['lower_pop'] = dftransitions[(Z, ionstage)].apply(
-                    lambda x: popdict.get(x.lower, 0.), axis=1)
+
+                if not dftransitions[(Z, ionstage)].empty:
+                    dftransitions[(Z, ionstage)].eval('lower_g = @ion.levels.loc[lower].g.values', inplace=True)
+                    dftransitions[(Z, ionstage)].eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
+                    dftransitions[(Z, ionstage)]['lower_pop'] = dftransitions[(Z, ionstage)].apply(
+                        lambda x: popdict.get(x.lower, 0.), axis=1)
+
+                lowerstr = f" from lower <={maxlowerlevel}" if maxlowerlevel >= 0 else ""
+                print(f'    and excitation with {len(dftransitions[(Z, ionstage)])} transitions{lowerstr}')
 
                 sfmatrix_add_excitation(engrid, dftransitions[(Z, ionstage)], nnion, sfmatrix)
 
@@ -1027,15 +1025,18 @@ def analyse_ntspectrum(
 
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
+        if nnion == 0.:
+            print(f'skipping Z={Z:2d} ion_stage {ionstage} due to nnion = {nnion}')
+            continue
         X_ion = nnion / nntot
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
         # if dfcollion.empty:
         #     continue
         ionpot_valence = dfcollion_thision.ionpot_ev.min()
 
-        print(f'====> Z={Z:2d} {at.get_ionstring(Z, ionstage)} (valence potential {ionpot_valence:.1f} eV)')
+        print(f'====> Z={Z:2d} ion_stage {ionstage} {at.get_ionstring(Z, ionstage)} (valence potential {ionpot_valence:.1f} eV)')
 
-        print(f'               nnion: {nnion:.2e} /cm3')
+        print(f'               nnion: {nnion:.2e} [/cm3]')
         print(f'         nnion/nntot: {X_ion:.5f}')
 
         frac_ionization_ion[(Z, ionstage)] = 0.
@@ -1064,27 +1065,30 @@ def analyse_ntspectrum(
 
         eff_ionpot_2 = X_ion / eta_over_ionpot_sum if eta_over_ionpot_sum else float('inf')
 
-        try:
-            eff_ionpot = ionpot_valence * X_ion / frac_ionization_ion[(Z, ionstage)]
-        except ZeroDivisionError:
-            eff_ionpot = float('inf')
+        eff_ionpot = (
+            ionpot_valence * X_ion / frac_ionization_ion[(Z, ionstage)]
+            if frac_ionization_ion[(Z, ionstage)] > 0. else float('inf'))
 
         print(f'     frac_ionization: {frac_ionization_ion[(Z, ionstage)]:.4f}')
         if not noexcitation:
-            frac_excitation_ion[(Z, ionstage)] = calculate_nt_frac_excitation(
-                engrid, dftransitions[(Z, ionstage)], yvec, deposition_density_ev)
+            if nnion > 0.:
+                frac_excitation_ion[(Z, ionstage)] = calculate_nt_frac_excitation(
+                    engrid, dftransitions[(Z, ionstage)], yvec, deposition_density_ev)
+            else:
+                frac_excitation_ion[(Z, ionstage)] = 0.
+
             if frac_excitation_ion[(Z, ionstage)] > 1:
                 frac_excitation_ion[(Z, ionstage)] = 0.
-                print(f'Ignoring frac_excitation_ion of {frac_excitation_ion[(Z, ionstage)]}.')
+                print(f'Ignoring invalid frac_excitation_ion of {frac_excitation_ion[(Z, ionstage)]}.')
             frac_excitation += frac_excitation_ion[(Z, ionstage)]
             print(f'     frac_excitation: {frac_excitation_ion[(Z, ionstage)]:.4f}')
         else:
             frac_excitation_ion[(Z, ionstage)] = 0.
 
-        print(f' eff_ionpot_shellpot: {eff_ionpot_2:.2f} eV')
-        print(f'  eff_ionpot_valence: {eff_ionpot:.2f} eV')
+        print(f' eff_ionpot_shellpot: {eff_ionpot_2:.2f} [eV]')
+        print(f'  eff_ionpot_valence: {eff_ionpot:.2f} [eV]')
         gamma_nt[(Z, ionstage)] = deposition_density_ev / nntot / eff_ionpot
-        print(f'  Spencer-Fano Gamma: {gamma_nt[(Z, ionstage)]:.2e}')
+        print(f'  Spencer-Fano Gamma: {gamma_nt[(Z, ionstage)]:.2e} [/s]')
         # print(f'Alternative Gamma: {integralgamma:.2e}')
 
         binding = get_mean_binding_energy(Z, ionstage, electron_binding, ionpot_ev=ionpot_valence)  # binding in erg
@@ -1094,7 +1098,7 @@ def analyse_ntspectrum(
         # to get the non-thermal ionization rate we need to divide the energy deposited
         # per unit volume per unit time in the grid cell (sum of terms above)
         # by the total ion number density and the "work per ion pair"
-        print(f"       work function: {1. / oneoverW / EV:.2f} eV")
+        print(f"       work function: {1. / oneoverW / EV:.2f} [eV]")
         print(f"   work fn ratecoeff: {deposition_density_erg / nntot * oneoverW:.2e}")
         # Axelrod 1980 Eq 3.225 with E0 = E = E_max
         # xs = lossfunction(engrid[-1], nne, nnetot) * EV * oneoverW / nntot

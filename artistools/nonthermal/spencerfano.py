@@ -43,10 +43,10 @@ def make_ntstats_plot(ntstatfile):
         norm_factors = 1. / dfstats['frac_sum']
     else:
         norm_factors = 1.0
-    # pd.set_option("display.max_rows", 600)
     pd.options.display.max_rows = 50
     pd.options.display.width = 250
-    print(dfstats)
+    pd.set_option("display.width", 250)
+    print(dfstats.to_string())
 
     xarr = np.log10(dfstats.x_e)
     ax.plot(xarr, dfstats.frac_ionization * norm_factors, label='Ionisation')
@@ -442,11 +442,11 @@ def main(args=None, argsraw=None, **kwargs):
         x_e = nne / nntot
         if step > 0:
             print('\n---')
-        print(f'     nntot: {nntot:.2e} [cm-3]')
-        print(f'       nne: {nne:.2e} [cm-3]')
-        print(f'       x_e: {x_e:.2e} [cm-3]')
-        print(f'    nnetot: {nnetot:.2e} [cm-3]')
-        print(f'deposition: {deposition_density_ev:7.2f} [eV/s/cm3]')
+        print(f'     nntot: {nntot:.2e} [/cm3]')
+        print(f'       nne: {nne:.2e} [/cm3]')
+        print(f'       x_e: {x_e:.2e} [/cm3]')
+        print(f'    nnetot: {nnetot:.2e} [/cm3]')
+        print(f'deposition: {deposition_density_ev:7.2f}  [eV/s/cm3]')
 
         engrid = np.linspace(emin, emax, num=npts, endpoint=True)
         deltaen = engrid[1] - engrid[0]
