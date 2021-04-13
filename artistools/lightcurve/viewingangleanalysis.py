@@ -319,10 +319,6 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
                     calculate_peak_time_mag_deltam15(time, brightness_in_mag, modelname, angle, band_name,
                                                      args, filternames_conversion_dict=filternames_conversion_dict)
 
-                if args.color:
-                    color = args.color[modelnumber]
-                else:
-                    color = define_colours_list[modelnumber]
         # Saving viewing angle data so it can be read in and plotted later on without re-running the script
         #    as it is quite time consuming
         if args.calculate_peak_time_mag_deltam15_bool:
