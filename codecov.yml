@@ -11,8 +11,8 @@ coverage:
         paths:
           - "src"
        # advanced settings
-        branches:
-          - main
+        # branches:
+        #   - main/
         if_ci_failed: ignore #success, failure, error, ignore
         informational: true
         only_pulls: false
