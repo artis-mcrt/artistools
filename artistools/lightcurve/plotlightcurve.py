@@ -934,10 +934,10 @@ def addargs(parser):
     parser.add_argument('--show', action='store_true', default=False,
                         help='Show plot before saving')
 
-    parser.add_argument('--calculate_peakmag_risetime_delta_m15', action='store_true',
-                        help='Calculate band risetime, peak mag and delta m15 values for '
-                        'the models specified using a polynomial fitting method and '
-                        'print to screen')
+    # parser.add_argument('--calculate_peakmag_risetime_delta_m15', action='store_true',
+    #                     help='Calculate band risetime, peak mag and delta m15 values for '
+    #                     'the models specified using a polynomial fitting method and '
+    #                     'print to screen')
 
     parser.add_argument('--save_angle_averaged_peakmag_risetime_delta_m15_to_file', action='store_true',
                         help='Save the band risetime, peak mag and delta m15 values for '
@@ -1040,8 +1040,8 @@ def main(args=None, argsraw=None, **kwargs):
 
     # determine if this will be a scatter plot or not
     args.calculate_peak_time_mag_deltam15_bool = False
-    if (args.calculate_peakmag_risetime_delta_m15
-            or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
+    if (    #args.calculate_peakmag_risetime_delta_m15 or
+            args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
             or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
             or args.make_viewing_angle_peakmag_risetime_scatter_plot
             or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
