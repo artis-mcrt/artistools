@@ -232,14 +232,11 @@ def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointe
 
 
 def get_band_lightcurve_data_to_plot(band_lightcurve_data, band_name, args):
-    time = []
-    brightness_in_mag = []
 
-    for t, brightness in band_lightcurve_data[band_name]:  #Todo: does this need to be a loop...?
-        # adjusting plot range for artis simulation (x-axis)
-        if (args.timemin < t < args.timemax):
-            time.append(t)
-            brightness_in_mag.append(brightness)
+    time = [t for t, _ in band_lightcurve_data[band_name] if (args.timemin < t < args.timemax)]
+    brightness_in_mag = [brightness for t, brightness in band_lightcurve_data[band_name]
+                         if (args.timemin < t < args.timemax)]
+
     return time, brightness_in_mag
 
 
