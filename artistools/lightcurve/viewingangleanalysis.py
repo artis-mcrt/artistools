@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib.legend_handler import HandlerTuple
+from astropy import constants as const
 
 import artistools as at
 from .lightcurve import *
@@ -154,7 +155,7 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, arg
         quit()
 
     zfit = np.polyfit(x=time, y=magnitude, deg=10)
-    xfit = np.linspace(args.timemin + 1, args.timemax - 1, num=1000)
+    xfit = np.linspace(args.timemin, args.timemax, num=1000)
 
     # Taking line_min and line_max from the limits set for the lightcurve being plotted
     fxfit = []
@@ -301,22 +302,50 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
     for modelnumber, modelpath in enumerate(modelpaths):
         modelpath = Path(modelpath)
 
+        if not args.filter:
+            if args.plotviewingangle:
+                lcname = 'light_curve_res.out'
+            else:
+                lcname = 'light_curve.out'
+            lcpath = at.firstexisting([lcname + '.xz', lcname + '.gz', lcname], path=modelpath)
+            print(f"Reading {lcname}")
+            lightcurve_data = at.lightcurve.readfile(lcpath, args)
+
         # check if doing viewing angle stuff, and if so define which data to use
         angles, viewing_angles, angle_definition = get_angle_stuff(modelpath, args)
+        if not args.filter and args.plotviewingangle:
+            lcdataframes = lightcurve_data
 
         for index, angle in enumerate(angles):
 
             modelname = at.get_model_name(modelpath)
             modelnames.append(modelname)  # save for later
             print(f'Reading spectra: {modelname}')
-            band_lightcurve_data = get_band_lightcurve_data(modelpath, args, angle, modelnumber=modelnumber)
+            if args.filter:
+                lightcurve_data = get_band_lightcurve_data(modelpath, args, angle, modelnumber=modelnumber)
+                plottinglist = args.filter
+            elif args.plotviewingangle:
+                lightcurve_data = lcdataframes[angle]
+            if not args.filter:
+                plottinglist = ['lightcurve']
 
-            for plotnumber, band_name in enumerate(band_lightcurve_data):
-                time, brightness_in_mag = get_band_lightcurve_data_to_plot(band_lightcurve_data, band_name, args)
+            for plotnumber, band_name in enumerate(plottinglist):
+                if args.filter:
+                    time, brightness = get_band_lightcurve_data_to_plot(lightcurve_data, band_name, args)
+                else:
+                    lightcurve_data = lightcurve_data.loc[(lightcurve_data['time'] > args.timemin) &
+                                                          (lightcurve_data['time'] < args.timemax)]
+                    time = lightcurve_data['time']
+                    lightcurve_data['mag'] = 4.74 - (2.5 * np.log10((lightcurve_data['lum'] * 3.826e33)
+                                                                    / const.L_sun.to('erg/s').value))
+
+                    lightcurve_data = lightcurve_data.replace([np.inf, -np.inf], 0)
+                    brightness = [mag for mag in lightcurve_data['mag'] if mag != 0]
+                    time = [t for t, mag in zip(lightcurve_data['time'], lightcurve_data['mag']) if mag != 0]
 
                 # Calculating band peak time, peak magnitude and delta m15
                 if args.calculate_peak_time_mag_deltam15_bool:
-                    calculate_peak_time_mag_deltam15(time, brightness_in_mag, modelname, angle, band_name,
+                    calculate_peak_time_mag_deltam15(time, brightness, modelname, angle, band_name,
                                                      args, filternames_conversion_dict=filternames_conversion_dict)
 
         # Saving viewing angle data so it can be read in and plotted later on without re-running the script
