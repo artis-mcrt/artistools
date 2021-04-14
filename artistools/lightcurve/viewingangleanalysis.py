@@ -220,7 +220,7 @@ def make_plot_test_viewing_angle_fit(time, magnitude, xfit, fxfit, filternames_c
     plt.close()
 
 
-def set_scatterplot_plotkwargs(modelnumber):
+def set_scatterplot_plotkwargs(modelnumber, args):
     plotkwargsviewingangles = {}
     plotkwargsviewingangles['marker'] = 'x'
     plotkwargsviewingangles['color'] = define_colours_list2[modelnumber]
@@ -230,7 +230,27 @@ def set_scatterplot_plotkwargs(modelnumber):
     plotkwargsangleaveraged['color'] = define_colours_list[modelnumber]
     plotkwargsangleaveraged['s'] = 40
 
+    if args.colorbarcostheta or args.colorbarphi:
+        update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args)
+
     return plotkwargsviewingangles, plotkwargsangleaveraged
+
+
+def update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args):
+
+    costheta_viewing_angle_bins, phi_viewing_angle_bins = get_viewinganglebin_definitions()
+    scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
+
+    angles = np.arange(0, 100)
+    angle_definition = calculate_costheta_phi_for_viewing_angles(angles, args.modelpath[0])
+    colors = []
+    for angle in angles:
+        _, colorindex = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(angle_definition, angle,
+                                                    costheta_viewing_angle_bins, phi_viewing_angle_bins,
+                                                    scaledmap, plotkwargsviewingangles, args)
+        colors.append(scaledmap.to_rgba(colorindex))
+    plotkwargsviewingangles['color'] = colors
+    return plotkwargsviewingangles
 
 
 def set_scatterplot_plot_params(args):
@@ -242,6 +262,12 @@ def set_scatterplot_plot_params(args):
     plt.tick_params(axis='both', which='major', top=False, right=False, length=8, width=2, labelsize=12)
     plt.tight_layout()
 
+    if args.colorbarcostheta or args.colorbarphi:
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = get_viewinganglebin_definitions()
+        scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
+        at.lightcurve.plotlightcurve.make_colorbar_viewingangles(costheta_viewing_angle_bins, phi_viewing_angle_bins,
+                                                                 scaledmap, args)
+
 
 def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
     for ii, modelname in enumerate(modelnames):
@@ -250,7 +276,7 @@ def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
         band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].values
         band_risetime_viewing_angles = viewing_angle_plot_data["risetime_polyfit"].values
 
-        plotkwargsviewingangles, plotkwargsangleaveraged = set_scatterplot_plotkwargs(ii)
+        plotkwargsviewingangles, plotkwargsangleaveraged = set_scatterplot_plotkwargs(ii, args)
 
         a0 = plt.scatter(band_risetime_viewing_angles, band_peak_mag_viewing_angles, **plotkwargsviewingangles)
         p0 = plt.scatter(args.band_risetime_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
@@ -279,7 +305,7 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
         band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].values
         band_delta_m15_viewing_angles = viewing_angle_plot_data["deltam15_polyfit"].values
 
-        plotkwargsviewingangles, plotkwargsangleaveraged = set_scatterplot_plotkwargs(ii)
+        plotkwargsviewingangles, plotkwargsangleaveraged = set_scatterplot_plotkwargs(ii, args)
 
         a0 = plt.scatter(band_delta_m15_viewing_angles, band_peak_mag_viewing_angles, **plotkwargsviewingangles)
         p0 = plt.scatter(args.band_delta_m15_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
