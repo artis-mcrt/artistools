@@ -231,9 +231,10 @@ def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
         p0 = plt.scatter(args.band_risetime_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
                          marker='o', color=define_colours_list[ii], s=40)
         args.plotvalues.append((a0, p0))
-        plt.errorbar(args.band_risetime_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
-                     xerr=np.std(band_risetime_viewing_angles),
-                     yerr=np.std(band_peak_mag_viewing_angles), ecolor=define_colours_list[ii], capsize=2)
+        if not args.noerrorbars:
+            plt.errorbar(args.band_risetime_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
+                         xerr=np.std(band_risetime_viewing_angles),
+                         yerr=np.std(band_peak_mag_viewing_angles), ecolor=define_colours_list[ii], capsize=2)
 
     plt.legend(args.plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
                loc='upper right', fontsize=8, ncol=2, columnspacing=1)
@@ -262,9 +263,10 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
         p0 = plt.scatter(args.band_delta_m15_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
                          marker='o', color=define_colours_list[ii], s=40)
         args.plotvalues.append((a0, p0))
-        plt.errorbar(args.band_delta_m15_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
-                     xerr=np.std(band_delta_m15_viewing_angles),
-                     yerr=np.std(band_peak_mag_viewing_angles), ecolor=define_colours_list[ii], capsize=2)
+        if not args.noerrorbars:
+            plt.errorbar(args.band_delta_m15_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
+                         xerr=np.std(band_delta_m15_viewing_angles),
+                         yerr=np.std(band_peak_mag_viewing_angles), ecolor=define_colours_list[ii], capsize=2)
 
     # a0, label = at.lightcurve.get_sn_sample_bol()
     # a0, label = at.lightcurve.get_phillips_relation_data()
