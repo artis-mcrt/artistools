@@ -244,8 +244,8 @@ def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
     plt.tick_params(axis='both', which='minor', top=False, right=False, length=5, width=2, labelsize=12)
     plt.tick_params(axis='both', which='major', top=False, right=False, length=8, width=2, labelsize=12)
     plt.tight_layout()
-    plt.savefig(key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf", format="pdf")
-    print("saving " + key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf")
+    plt.savefig(key + "_band_" + f'{modelnames[0]}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf", format="pdf")
+    print("saving " + key + "_band_" + f'{modelnames[0]}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf")
     plt.close()
 
 
@@ -279,8 +279,8 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
     plt.tick_params(axis='both', which='minor', top=False, right=False, length=5, width=2, labelsize=12)
     plt.tick_params(axis='both', which='major', top=False, right=False, length=8, width=2, labelsize=12)
     plt.tight_layout()
-    plt.savefig(key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf", format="pdf")
-    print("saving " + key + "_band_" + f'{modelname}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf")
+    plt.savefig(key + "_band_" + f'{modelnames[0]}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf", format="pdf")
+    print("saving " + key + "_band_" + f'{modelnames[0]}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf")
     plt.close()
 
 
