@@ -159,6 +159,11 @@ def get_band_lightcurve_data(modelpath, args, angle=None, modelnumber=None):
 def bolometric_magnitude(modelpath, timearray, args, angle=None, res_specdata=None):
     magnitudes = []
     times = []
+
+    if args.timemin is None or args.timemax is None:  # todo: either make it so these are define or aren't needed
+        print("args.timemin or args.timemax not defined")
+        quit()
+
     for timestep, time in enumerate(timearray):
         time = float(time)
         if args.timemin < time < args.timemax:
