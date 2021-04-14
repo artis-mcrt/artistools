@@ -1,17 +1,18 @@
 coverage:
   status:
-    # project:
-    #   default:
-    #     target: auto
-    #     threshold: 0%
-    #     base: auto
-    #     if_ci_failed: ignore #success, failure, error, ignore
-    #     informational: true
-    #     only_pulls: true
-    patch:
+    project:
       default:
         target: auto
         threshold: 0%
         base: auto
+        if_ci_failed: failure #success, failure, error, ignore
+        informational: false
+        only_pulls: true
+    patch:
+      default:
+        target: auto
+        # threshold: auto
+        base: auto
         if_ci_failed: ignore #success, failure, error, ignore
+        informational: true
         only_pulls: true
