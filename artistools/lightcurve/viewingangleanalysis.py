@@ -362,6 +362,6 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
         make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_name, args)
         return
 
-    elif args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
+    if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
         make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, band_name, args)
         return
