@@ -92,7 +92,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
                 if args.colorbarcostheta or args.colorbarphi:
                     plotkwargs['alpha'] = 0.75
                     # Update plotkwargs with viewing angle colour
-                    plotkwargs = get_viewinganglecolor_for_colorbar(angle_definition, angle,
+                    plotkwargs, _ = get_viewinganglecolor_for_colorbar(angle_definition, angle,
                                                         costheta_viewing_angle_bins, phi_viewing_angle_bins,
                                                         scaledmap, plotkwargs, args)
                 else:
@@ -315,7 +315,7 @@ def set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_
 
 def make_colorbar_viewingangles_colormap():
     norm = matplotlib.colors.Normalize(vmin=0, vmax=9)
-    scaledmap = matplotlib.cm.ScalarMappable(cmap='inferno', norm=norm)
+    scaledmap = matplotlib.cm.ScalarMappable(cmap='tab10', norm=norm)
     scaledmap.set_array([])
     return scaledmap
 
@@ -329,6 +329,7 @@ def get_viewinganglecolor_for_colorbar(angle_definition, angle, costheta_viewing
         colorindex = phi_viewing_angle_bins.index(angle_definition[angle].split(', ')[1])
         plotkwargs['color'] = scaledmap.to_rgba(colorindex)
     return plotkwargs
+    return plotkwargs, colorindex
 
 
 def make_colorbar_viewingangles(costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, args):
