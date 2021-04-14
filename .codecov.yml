@@ -1,3 +1,6 @@
+codecov:
+  branch: main
+  strict_yaml_branch: main  # only use the latest copy on master branch
 coverage:
   status:
     # project:
