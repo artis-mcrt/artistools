@@ -294,9 +294,11 @@ def lossfunction(energy_ev, nne_cgs, nnetot_cgs, use_nnetot=False, ions=None, io
 
     # return math.log(energy_ev) / energy_ev
     nne_selected_cgs = nnetot_cgs if use_nnetot else nne_cgs
+    if nne_selected_cgs == 0:
+        return 0.
 
-    nne = nne_selected_cgs   # convert from cm^-3 to m^-3
-    energy = energy_ev * EV  # convert eV to J
+    nne = nne_selected_cgs
+    energy = energy_ev * EV  # convert eV to erg
 
     # omegap = math.sqrt(4 * math.pi * nne_selected_cgs * pow(QE, 2) / ME)
     omegap = 5.64e4 * math.sqrt(nne_selected_cgs)
