@@ -14,7 +14,8 @@ from .lightcurve import *
 
 
 define_colours_list = ['k', 'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange', 'tab:pink', 'tab:gray', 'gold',
-                       'tab:cyan', 'darkblue', 'bisque', 'yellow', 'k', 'tab:blue', 'tab:red', 'tab:green', 'purple',
+                       'tab:cyan', 'darkblue', 'darkgreen', 'maroon', 'mediumvioletred', 'saddlebrown', 'darkslategrey',
+                       'bisque', 'yellow', 'k', 'tab:blue', 'tab:red', 'tab:green', 'purple',
                        'tab:orange', 'tab:pink', 'tab:gray', 'gold', 'tab:cyan', 'darkblue', 'bisque', 'yellow', 'k',
                        'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange', 'tab:pink', 'tab:gray', 'gold',
                        'tab:cyan',
@@ -33,7 +34,7 @@ define_colours_list = ['k', 'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:o
                        'darkblue', 'bisque', 'yellow']
 
 define_colours_list2 = ['gray', 'lightblue', 'pink', 'yellowgreen', 'mediumorchid', 'sandybrown', 'plum', 'lightgray',
-                        'wheat', 'paleturquoise']
+                        'wheat', 'paleturquoise', 'royalblue', 'springgreen', 'r', 'deeppink', 'sandybrown', 'teal']
 
 
 def get_angle_stuff(modelpath, args):
@@ -288,7 +289,7 @@ def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
                          yerr=np.std(band_peak_mag_viewing_angles), ecolor=define_colours_list[ii], capsize=2)
 
     plt.legend(args.plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
-               loc='upper right', fontsize=8, ncol=2, columnspacing=1)
+               loc='upper left', fontsize=8, ncol=2, columnspacing=1, frameon=False)
     plt.xlabel('Rise Time in Days', fontsize=14)
     plt.ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
     set_scatterplot_plot_params(args)
@@ -321,7 +322,7 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
     # args.plotvalues.append((a0, a0))
 
     plt.legend(args.plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
-               loc='upper right', fontsize=8, ncol=2, columnspacing=1)
+               loc='upper right', fontsize=8, ncol=2, columnspacing=1, frameon=False)
     plt.xlabel(r'Decline Rate ($\Delta$m$_{15}$)', fontsize=14)
     plt.ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
     set_scatterplot_plot_params(args)
