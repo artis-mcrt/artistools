@@ -328,7 +328,6 @@ def get_viewinganglecolor_for_colorbar(angle_definition, angle, costheta_viewing
     if args.colorbarphi:
         colorindex = phi_viewing_angle_bins.index(angle_definition[angle].split(', ')[1])
         plotkwargs['color'] = scaledmap.to_rgba(colorindex)
-    return plotkwargs
     return plotkwargs, colorindex
 
 
