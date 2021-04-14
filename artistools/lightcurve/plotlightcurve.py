@@ -846,6 +846,9 @@ def addargs(parser):
                         'averaged values being the solid dot and the error bars representing '
                         'the standard deviation of the viewing angle distribution')
 
+    parser.add_argument('--noerrorbars', action='store_true',
+                        help="Don't plot error bars on viewing angle scatter plots")
+
     parser.add_argument('--plotviewingangles_lightcurves', action='store_true',
                         help='Make lightcurve plots for the viewing angles and models specified')
 
