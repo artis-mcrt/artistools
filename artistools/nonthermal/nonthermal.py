@@ -596,7 +596,7 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
                 nnlevel = row.lower_pop
                 epsilon_trans_ev = row.epsilon_trans_ev
                 i = get_energyindex_lteq(en_ev=energy_ev + epsilon_trans_ev, engrid=engrid)
-                N_e += nnlevel * epsilon_trans_ev * yvec[i] * get_xs_excitation(engrid[i], row)
+                N_e += nnlevel * yvec[i] * get_xs_excitation(engrid[i], row)
 
     # source term not here because it should be zero at the low end anyway
 
