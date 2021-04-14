@@ -135,11 +135,11 @@ def save_viewing_angle_data_for_plotting(band_name, modelname, args):
     #     plt.plot(time, magnitude, label=modelname, color=colours[modelnumber], linewidth=3)
 
 
-def write_viewing_angle_data(band_name, modelname, modelnames, args):
+def write_viewing_angle_data(band_name, modelnames, args):
     if (args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
             or args.make_viewing_angle_peakmag_risetime_scatter_plot
             or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
-        np.savetxt(band_name + "band_" + f'{modelname}' + "_angle_averaged_all_models_data.txt",
+        np.savetxt(band_name + "band_" + f'{modelnames[0]}' + "_angle_averaged_all_models_data.txt",
                    np.c_[modelnames, args.band_risetime_angle_averaged_polyfit, args.band_peakmag_angle_averaged_polyfit,
                          args.band_delta_m15_angle_averaged_polyfit],
                    delimiter=' ', fmt='%s',
@@ -351,17 +351,17 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
         # Saving viewing angle data so it can be read in and plotted later on without re-running the script
         #    as it is quite time consuming
         if args.calculate_peak_time_mag_deltam15_bool:
-            save_viewing_angle_data_for_plotting(band_name, modelname, args)
+            save_viewing_angle_data_for_plotting(plottinglist[0], modelname, args)
 
     # Saving all this viewing angle info for each model to a file so that it is available to plot if required again
     # as it takes relatively long to run this for all viewing angles
     if args.calculate_peak_time_mag_deltam15_bool:
-        write_viewing_angle_data(band_name, modelname, modelnames, args)
+        write_viewing_angle_data(plottinglist[0], modelnames, args)
 
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
-        make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, band_name, args)
+        make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, plottinglist[0], args)
         return
 
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
-        make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, band_name, args)
+        make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, plottinglist[0], args)
         return
