@@ -220,6 +220,19 @@ def make_plot_test_viewing_angle_fit(time, magnitude, xfit, fxfit, filternames_c
     plt.close()
 
 
+def set_scatterplot_plotkwargs(modelnumber):
+    plotkwargsviewingangles = {}
+    plotkwargsviewingangles['marker'] = 'x'
+    plotkwargsviewingangles['color'] = define_colours_list2[modelnumber]
+
+    plotkwargsangleaveraged = {}
+    plotkwargsangleaveraged['marker'] = 'o'
+    plotkwargsangleaveraged['color'] = define_colours_list[modelnumber]
+    plotkwargsangleaveraged['s'] = 40
+
+    return plotkwargsviewingangles, plotkwargsangleaveraged
+
+
 def set_scatterplot_plot_params(args):
     plt.gca().invert_yaxis()
     plt.xlim(args.xmin, args.xmax)
@@ -237,9 +250,11 @@ def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
         band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].values
         band_risetime_viewing_angles = viewing_angle_plot_data["risetime_polyfit"].values
 
-        a0 = plt.scatter(band_risetime_viewing_angles, band_peak_mag_viewing_angles, marker='x', color=define_colours_list2[ii])
+        plotkwargsviewingangles, plotkwargsangleaveraged = set_scatterplot_plotkwargs(ii)
+
+        a0 = plt.scatter(band_risetime_viewing_angles, band_peak_mag_viewing_angles, **plotkwargsviewingangles)
         p0 = plt.scatter(args.band_risetime_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
-                         marker='o', color=define_colours_list[ii], s=40)
+                         **plotkwargsangleaveraged)
         args.plotvalues.append((a0, p0))
         if not args.noerrorbars:
             plt.errorbar(args.band_risetime_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
@@ -264,10 +279,11 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
         band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].values
         band_delta_m15_viewing_angles = viewing_angle_plot_data["deltam15_polyfit"].values
 
-        a0 = plt.scatter(band_delta_m15_viewing_angles, band_peak_mag_viewing_angles, marker='x',
-                         color=define_colours_list2[ii])
+        plotkwargsviewingangles, plotkwargsangleaveraged = set_scatterplot_plotkwargs(ii)
+
+        a0 = plt.scatter(band_delta_m15_viewing_angles, band_peak_mag_viewing_angles, **plotkwargsviewingangles)
         p0 = plt.scatter(args.band_delta_m15_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
-                         marker='o', color=define_colours_list[ii], s=40)
+                         **plotkwargsangleaveraged)
         args.plotvalues.append((a0, p0))
         if not args.noerrorbars:
             plt.errorbar(args.band_delta_m15_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
