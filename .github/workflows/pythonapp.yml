@@ -9,7 +9,7 @@ jobs:
       matrix:
         # os: [ubuntu-latest, macos-latest]
         os: [ubuntu-latest]
-        python-version: [3.6, 3.7, 3.8, 3.9]
+        python-version: [3.6, 3.7, 3.8]  # 3.9 is unusually slow when pip installing requirements (>3 mins)
     env:
       OS: ${{ matrix.os }}
       PYTHON: ${{ matrix.python-version }}
@@ -44,7 +44,7 @@ jobs:
         python3 -m pip install -r requirements.txt
 
         # upgrade all installed packages to their latest versions
-        # python3 -m pip list --format=freeze --outdated | cut -d '=' -f1 | xargs -n1 python3 -m pip install --upgrade
+        python3 -m pip list --format=freeze --outdated | cut -d '=' -f1 | xargs -n1 python3 -m pip install --upgrade
 
     - name: Install artistools
       run: |
