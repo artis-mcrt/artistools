@@ -155,7 +155,7 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, arg
         quit()
 
     zfit = np.polyfit(x=time, y=magnitude, deg=10)
-    xfit = np.linspace(args.timemin, args.timemax, num=1000)
+    xfit = np.linspace(args.timemin + 0.5, args.timemax - 0.5, num=1000)
 
     # Taking line_min and line_max from the limits set for the lightcurve being plotted
     fxfit = []
