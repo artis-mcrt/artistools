@@ -220,6 +220,16 @@ def make_plot_test_viewing_angle_fit(time, magnitude, xfit, fxfit, filternames_c
     plt.close()
 
 
+def set_scatterplot_plot_params(args):
+    plt.gca().invert_yaxis()
+    plt.xlim(args.xmin, args.xmax)
+    plt.ylim(args.ymin, args.ymax)
+    plt.minorticks_on()
+    plt.tick_params(axis='both', which='minor', top=False, right=False, length=5, width=2, labelsize=12)
+    plt.tick_params(axis='both', which='major', top=False, right=False, length=8, width=2, labelsize=12)
+    plt.tight_layout()
+
+
 def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
     for ii, modelname in enumerate(modelnames):
         viewing_angle_plot_data = pd.read_csv(key + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
@@ -240,11 +250,7 @@ def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
                loc='upper right', fontsize=8, ncol=2, columnspacing=1)
     plt.xlabel('Rise Time in Days', fontsize=14)
     plt.ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
-    plt.gca().invert_yaxis()
-    plt.minorticks_on()
-    plt.tick_params(axis='both', which='minor', top=False, right=False, length=5, width=2, labelsize=12)
-    plt.tick_params(axis='both', which='major', top=False, right=False, length=8, width=2, labelsize=12)
-    plt.tight_layout()
+    set_scatterplot_plot_params(args)
     plt.savefig(key + "_band_" + f'{modelnames[0]}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf", format="pdf")
     print("saving " + key + "_band_" + f'{modelnames[0]}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf")
     plt.close()
@@ -276,11 +282,7 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
                loc='upper right', fontsize=8, ncol=2, columnspacing=1)
     plt.xlabel(r'Decline Rate ($\Delta$m$_{15}$)', fontsize=14)
     plt.ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
-    plt.gca().invert_yaxis()
-    plt.minorticks_on()
-    plt.tick_params(axis='both', which='minor', top=False, right=False, length=5, width=2, labelsize=12)
-    plt.tick_params(axis='both', which='major', top=False, right=False, length=8, width=2, labelsize=12)
-    plt.tight_layout()
+    set_scatterplot_plot_params(args)
     plt.savefig(key + "_band_" + f'{modelnames[0]}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf", format="pdf")
     print("saving " + key + "_band_" + f'{modelnames[0]}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf")
     plt.close()
