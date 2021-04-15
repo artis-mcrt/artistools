@@ -23,11 +23,11 @@ def make_cone(args):
     merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata(args.modelpath, dimensions=3, get_abundances=True)
 
     if args.positive_axis:
-        cone = (merge_dfs.loc[merge_dfs[f'pos_{args.slice_along_axis}'] >= 1 / (np.tan(theta))
+        cone = (merge_dfs.loc[merge_dfs[f'pos_{args.sliceaxis}'] >= 1 / (np.tan(theta))
                               * np.sqrt((merge_dfs[f'pos_{args.other_axis2}']) ** 2
                                         + (merge_dfs[f'pos_{args.other_axis1}']) ** 2)])  # positive axis
     else:
-        cone = (merge_dfs.loc[merge_dfs[f'pos_{args.slice_along_axis}'] <= -1/(np.tan(theta))
+        cone = (merge_dfs.loc[merge_dfs[f'pos_{args.sliceaxis}'] <= -1/(np.tan(theta))
                               * np.sqrt((merge_dfs[f'pos_{args.other_axis2}'])**2
                                         + (merge_dfs[f'pos_{args.other_axis1}'])**2)])  # negative axis
     # print(cone.loc[:, :[f'pos_{slice_on_axis}']])
@@ -46,11 +46,11 @@ def get_profile_along_axis(args=None):
     if args.positive_axis:
         profile1D = merge_dfs.loc[(merge_dfs[f'pos_{args.other_axis1}'] == position_closest_to_axis)
                                   & (merge_dfs[f'pos_{args.other_axis2}'] == position_closest_to_axis)
-                                  & (merge_dfs[f'pos_{args.slice_along_axis}'] > 0)]
+                                  & (merge_dfs[f'pos_{args.sliceaxis}'] > 0)]
     else:
         profile1D = merge_dfs.loc[(merge_dfs[f'pos_{args.other_axis1}'] == position_closest_to_axis)
                                   & (merge_dfs[f'pos_{args.other_axis2}'] == position_closest_to_axis)
-                                  & (merge_dfs[f'pos_{args.slice_along_axis}'] < 0)]
+                                  & (merge_dfs[f'pos_{args.sliceaxis}'] < 0)]
 
     return profile1D.reset_index(drop=True)
 
@@ -59,15 +59,15 @@ def make_1D_profile(args):
     if args.makefromcone:
         cone = make_cone(args)
 
-        slice1D = cone.groupby([f'pos_{args.slice_along_axis}'], as_index=False).mean()
+        slice1D = cone.groupby([f'pos_{args.sliceaxis}'], as_index=False).mean()
         # where more than 1 X value, average rows eg. (1,0,0) (1,1,0) (1,1,1)
 
     else:  # make from along chosen axis
         slice1D = get_profile_along_axis(args)
 
-    slice1D[f'pos_{args.slice_along_axis}'] = slice1D[f'pos_{args.slice_along_axis}'].apply(
+    slice1D[f'pos_{args.sliceaxis}'] = slice1D[f'pos_{args.sliceaxis}'].apply(
         lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))  # Convert positions to velocities
-    slice1D = slice1D.rename(columns={f'pos_{args.slice_along_axis}]': 'vout_kmps'})
+    slice1D = slice1D.rename(columns={f'pos_{args.sliceaxis}]': 'vout_kmps'})
     # Convert position to velocity
 
     slice1D = slice1D.drop(['inputcellid', f'pos_{args.other_axis1}]', f'pos_{args.other_axis2}'],
@@ -154,12 +154,16 @@ def addargs(parser):
     parser.add_argument('-modelpath', default=[], nargs='*', action=at.AppendPath,
                         help='Path to ARTIS model folders with model.txt and abundances.txt')
 
+    parser.add_argument('-sliceaxis', type=str, default='x',
+                        help='Choose x, y or z. The 1D model will be made based on this axis.'
+                             'If cone then cone made around sliceaxis. Otherwise model along axis.')
+
 
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-            description='Make 1D model from cone in 3D model.')
+            description='Make 1D model from cone in 3D model. Call with "makeartismodel1dslicefromcone"')
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
@@ -167,10 +171,15 @@ def main(args=None, argsraw=None, **kwargs):
     if not args.modelpath:
         args.modelpath = [Path('.')]
 
-    # TODO: make command line args
-    args.slice_along_axis = 'x'  # Cone made around this axis
-    args.other_axis1 = 'z'
-    args.other_axis2 = 'y'
+    args.other_axis1 = None
+    args.other_axis2 = None
+    axes = ['x', 'y', 'z']
+    for ax in axes:
+        if args.other_axis1 is None and ax != args.sliceaxis:
+            args.other_axis1 = ax
+        elif args.other_axis2 is None and ax != args.sliceaxis:
+            args.other_axis2 = ax
+
     # remember: models before scaling down to artis input have x and z axis swapped compared to artis input files
 
     args.positive_axis = True  # Cone made around positive axis True/False (False is negative axis)
