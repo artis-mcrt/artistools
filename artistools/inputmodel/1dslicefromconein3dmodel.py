@@ -10,7 +10,7 @@ from astropy import units as u
 import matplotlib
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
-
+import gc
 
 
 def make_cone(args):
@@ -20,17 +20,21 @@ def make_cone(args):
 
     theta = np.radians([angle_of_cone / 2])  # angle between line of sight and edge is half angle of cone
 
-    merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata(args.modelpath[0], dimensions=3, get_abundances=True)
+    # merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata(args.modelpath[0], dimensions=3, get_abundances=True)
+    merge_dfs = at.inputmodel.get_3d_model_data_merged_model_and_abundances_minimal(args)
 
     if args.positive_axis:
-        cone = (merge_dfs.loc[merge_dfs[f'pos_{args.sliceaxis}'] >= 1 / (np.tan(theta))
-                              * np.sqrt((merge_dfs[f'pos_{args.other_axis2}']) ** 2
-                                        + (merge_dfs[f'pos_{args.other_axis1}']) ** 2)])  # positive axis
+        cone = (merge_dfs.loc[merge_dfs[f'cellpos_in[{args.sliceaxis}]'] >= 1 / (np.tan(theta))
+                              * np.sqrt((merge_dfs[f'cellpos_in[{args.other_axis2}]']) ** 2
+                                        + (merge_dfs[f'cellpos_in[{args.other_axis1}]']) ** 2)])  # positive axis
     else:
-        cone = (merge_dfs.loc[merge_dfs[f'pos_{args.sliceaxis}'] <= -1/(np.tan(theta))
-                              * np.sqrt((merge_dfs[f'pos_{args.other_axis2}'])**2
-                                        + (merge_dfs[f'pos_{args.other_axis1}'])**2)])  # negative axis
+        cone = (merge_dfs.loc[merge_dfs[f'cellpos_in[{args.sliceaxis}]'] <= -1/(np.tan(theta))
+                              * np.sqrt((merge_dfs[f'cellpos_in[{args.other_axis2}]'])**2
+                                        + (merge_dfs[f'cellpos_in[{args.other_axis1}]'])**2)])  # negative axis
     # print(cone.loc[:, :[f'pos_{slice_on_axis}']])
+
+    del merge_dfs  # merge_dfs not needed anymore so free memory
+    gc.collect()
 
     return cone
 
@@ -59,18 +63,18 @@ def make_1D_profile(args):
     if args.makefromcone:
         cone = make_cone(args)
 
-        slice1D = cone.groupby([f'pos_{args.sliceaxis}'], as_index=False).mean()
+        slice1D = cone.groupby([f'cellpos_in[{args.sliceaxis}]'], as_index=False).mean()
         # where more than 1 X value, average rows eg. (1,0,0) (1,1,0) (1,1,1)
 
     else:  # make from along chosen axis
         slice1D = get_profile_along_axis(args)
 
-    slice1D[f'pos_{args.sliceaxis}'] = slice1D[f'pos_{args.sliceaxis}'].apply(
+    slice1D[f'cellpos_in[{args.sliceaxis}]'] = slice1D[f'cellpos_in[{args.sliceaxis}]'].apply(
         lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))  # Convert positions to velocities
-    slice1D = slice1D.rename(columns={f'pos_{args.sliceaxis}': 'vout_kmps'})
+    slice1D = slice1D.rename(columns={f'cellpos_in[{args.sliceaxis}]': 'vout_kmps'})
     # Convert position to velocity
 
-    slice1D = slice1D.drop(['inputcellid', f'pos_{args.other_axis1}', f'pos_{args.other_axis2}'],
+    slice1D = slice1D.drop(['inputcellid', f'cellpos_in[{args.other_axis1}]', f'cellpos_in[{args.other_axis2}]'],
                            axis=1)  # Remove columns we don't need
 
     slice1D['rho_model'] = slice1D['rho_model'].apply(lambda x: np.log10(x) if x != 0 else -100)
