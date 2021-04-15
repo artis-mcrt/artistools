@@ -20,7 +20,7 @@ def make_cone(args):
 
     theta = np.radians([angle_of_cone / 2])  # angle between line of sight and edge is half angle of cone
 
-    merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata(args.modelpath, dimensions=3, get_abundances=True)
+    merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata(args.modelpath[0], dimensions=3, get_abundances=True)
 
     if args.positive_axis:
         cone = (merge_dfs.loc[merge_dfs[f'pos_{args.sliceaxis}'] >= 1 / (np.tan(theta))
