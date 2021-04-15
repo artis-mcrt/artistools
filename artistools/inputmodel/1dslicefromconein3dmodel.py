@@ -158,6 +158,13 @@ def addargs(parser):
                         help='Choose x, y or z. The 1D model will be made based on this axis.'
                              'If cone then cone made around sliceaxis. Otherwise model along axis.')
 
+    parser.add_argument('--positive_axis', action='store', default=True,
+                        help='Make 1D model from positive axis. Default is True')
+
+    parser.add_argument('--makefromcone', action='store', default=True,
+                        help='Make 1D model from cone around axis. Default is True.'
+                             'If False uses points along axis.')
+
 
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
@@ -179,12 +186,7 @@ def main(args=None, argsraw=None, **kwargs):
             args.other_axis1 = ax
         elif args.other_axis2 is None and ax != args.sliceaxis:
             args.other_axis2 = ax
-
     # remember: models before scaling down to artis input have x and z axis swapped compared to artis input files
-
-    args.positive_axis = True  # Cone made around positive axis True/False (False is negative axis)
-
-    args.makefromcone = True  # If false uses points along the axis to make the 1D model instead of a cone
 
     make_1D_model_files(args)
 
