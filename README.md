@@ -11,9 +11,9 @@ First clone the repository, for example:
 ```sh
 git clone https://github.com/artis-mcrt/artistools.git
 ```
-Then from the repo directory run:
+Then from within the repository directory run:
 ```sh
-pip install -e .
+python3 -m pip install -e .
 ```
 
 ## Usage
