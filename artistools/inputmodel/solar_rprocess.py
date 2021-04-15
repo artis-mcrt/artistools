@@ -31,10 +31,11 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     dfsolarabund = pd.read_csv(at.config['path_datadir'] / 'solar_r_abundance_pattern.txt',
                                delim_whitespace=True, comment='#')
 
-    dfbetaminus = pd.read_csv(at.config['path_datadir'] / 'betaminusdecays.txt',
-                              delim_whitespace=True, comment='#',
-                              names=['A', 'Z', 'Q[MeV]', 'Egamma[MeV]', 'Eelec[MeV]',
-                                     'Eneutrino[MeV]', 'tau[s]'])
+    dfsolarabund['radioactive'] = True
+    dfsolarabund = dfsolarabund.append({'Z': 26, 'A': 58, 'numberfrac': 0.005, 'radioactive': False}, ignore_index=True)
+    dfsolarabund = dfsolarabund.append({'Z': 27, 'A': 59, 'numberfrac': 0.005, 'radioactive': False}, ignore_index=True)
+    dfsolarabund = dfsolarabund.append({'Z': 28, 'A': 58, 'numberfrac': 0.005, 'radioactive': False}, ignore_index=True)
+
     normfactor = dfsolarabund.numberfrac.sum()  # convert number fractions in solar to fractions of r-process
     dfsolarabund.eval('numberfrac = numberfrac / @normfactor', inplace=True)
 
@@ -44,19 +45,20 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     print(dfsolarabund)
 
+    dfbetaminus = pd.read_csv(at.config['path_datadir'] / 'betaminusdecays.txt',
+                              delim_whitespace=True, comment='#',
+                              names=['A', 'Z', 'Q[MeV]', 'Egamma[MeV]', 'Eelec[MeV]',
+                                     'Eneutrino[MeV]', 'tau[s]'])
     def undecayed_z(row):
         dfmasschain = dfbetaminus.query('A == @row.A', inplace=False)
         if not dfmasschain.empty:
-            return int(dfmasschain.Z.min())
+            return int(dfmasschain.Z.min())  # decay to top of chain
         else:
             return int(row.Z)
 
     dfsolarabund_undecayed = dfsolarabund.copy()
     dfsolarabund_undecayed['Z'] = dfsolarabund_undecayed.apply(undecayed_z, axis=1)
     print(dfsolarabund_undecayed)
-
-    # print(dfsolarabund.numberfrac.sum())
-    # print(dfsolarabund.massfrac.sum())
 
     dictelemabund = {'inputcellid': 1}
     for atomic_number in range(1, dfsolarabund.Z.max() + 1):
@@ -70,7 +72,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     modeldict = {
         'inputcellid': 1,
         'velocity_outer': 6.e4,
-        'logrho': -2.,
+        'logrho': -3.,
         'X_Fegroup': 1.,
         'X_Ni56': 0.,
         'X_Co56': 0.,
@@ -82,7 +84,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     t_model_init_days = 0.000231481
 
-    for _, row in dfsolarabund_undecayed.iterrows():
+    for _, row in dfsolarabund_undecayed.query('radioactive == True').iterrows():
         modeldict[f'X_{at.elsymbols[int(row.Z)]}{int(row.A)}'] = row.massfrac
 
     dfmodel = pd.DataFrame(modeldict, index=[0])
