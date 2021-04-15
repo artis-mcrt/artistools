@@ -82,7 +82,7 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
 
             assert (ncoordgridx * ncoordgridy * ncoordgridz) == gridcellcount
         # skiprows = 3 if dimensions == 3 else 2
-        dfmodeldata = pd.read_csv(fmodel, delim_whitespace=True, header=None, dtype=np.float64)
+        dfmodeldata = pd.read_csv(fmodel, delim_whitespace=True, header=None, dtype=np.float64, comment='#')
         if dimensions == 1:
             columns = ['inputcellid', 'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56',
                        'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57']
@@ -219,7 +219,6 @@ def get_3d_modeldata_minimal(modelpath):
 
 def save_modeldata(dfmodeldata, t_model_init_days, filename):
     """Save a pandas DataFrame and snapshot time into ARTIS model.txt"""
-
     standardcols = ['inputcellid',
                     'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52',
                     'X_Cr48', 'X_Ni57', 'X_Co57']
