@@ -67,10 +67,10 @@ def make_1D_profile(args):
 
     slice1D[f'pos_{args.sliceaxis}'] = slice1D[f'pos_{args.sliceaxis}'].apply(
         lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))  # Convert positions to velocities
-    slice1D = slice1D.rename(columns={f'pos_{args.sliceaxis}]': 'vout_kmps'})
+    slice1D = slice1D.rename(columns={f'pos_{args.sliceaxis}': 'vout_kmps'})
     # Convert position to velocity
 
-    slice1D = slice1D.drop(['inputcellid', f'pos_{args.other_axis1}]', f'pos_{args.other_axis2}'],
+    slice1D = slice1D.drop(['inputcellid', f'pos_{args.other_axis1}', f'pos_{args.other_axis2}'],
                            axis=1)  # Remove columns we don't need
 
     slice1D['rho_model'] = slice1D['rho_model'].apply(lambda x: np.log10(x) if x != 0 else -100)
