@@ -46,7 +46,7 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
 
     gridcelltuple = None
     velocity_inner = 0.
-    with open(filename, 'r') as fmodel:
+    with artistools.zopen(filename, 'rt') as fmodel:
         gridcellcount = int(artistools.readnoncommentline(fmodel))
         t_model_init_days = float(artistools.readnoncommentline(fmodel))
         t_model_init_seconds = t_model_init_days * 24 * 60 * 60
@@ -81,80 +81,32 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
             ncoordgridz = round(gridcellcount ** (1./3.))
 
             assert (ncoordgridx * ncoordgridy * ncoordgridz) == gridcellcount
+        # skiprows = 3 if dimensions == 3 else 2
+        dfmodeldata = pd.read_csv(fmodel, delim_whitespace=True, header=None, dtype=np.float64)
+        if dimensions == 1:
+            columns = ['inputcellid', 'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56',
+                       'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57']
 
-        continuedfromrow = None
-        lastinputcellid = 0
-        recordlist = []
-        for line in fmodel:
-            if not line.strip() or line.lstrip().startswith('#'):
-                continue
+        elif dimensions == 3:
+            columns = ['inputcellid', 'inputpos_a', 'inputpos_b', 'inputpos_c', 'rho',
+                       'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57']
 
-            row = line.split()
+            try:
+                dfmodeldata = pd.DataFrame(dfmodeldata.values.reshape(-1, 12))
+            except ValueError:
+                dfmodeldata = pd.DataFrame(dfmodeldata.values.reshape(-1, 10))  # No Ni57 or Co57 columnss
 
-            if continuedfromrow is not None:
-                row = continuedfromrow + row
-                continuedfromrow = None
+        dfmodeldata.columns = columns[:len(dfmodeldata.columns)]
 
-            if len(row) <= 5:  # rows are split across multiple lines
-                continuedfromrow = row
-                continue
-
-            inputcellid = int(row[0])
-            assert inputcellid == lastinputcellid + 1
-            lastinputcellid = inputcellid
-
-            if dimensions == 1:
-                if gridcelltuple is None:
-                    gridcelltuple = namedtuple('gridcell', [
-                        'inputcellid', 'velocity_inner', 'velocity_outer', 'logrho',
-                        'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57'][:len(row) + 1])
-
-                assert len(row) >= 8
-                celltuple = gridcelltuple(inputcellid, velocity_inner, *(map(float, row[1:])))
-                recordlist.append(celltuple)
-
-                # next inner is the current outer
-                velocity_inner = celltuple.velocity_outer
-
-                # the model.txt file may contain more shells, but we should ignore them
-                # if we have already read in the specified number of shells
-                if len(recordlist) == gridcellcount:
-                    break
-
-            elif dimensions == 3:
-                assert len(row) >= 10  # can be 10 to 12 depending on presence of Ni57 and Co57 abundances
-
-                if gridcelltuple is None:
-                    # inputpos_a/b/c are used (instead of x/y/z) because these columns are used
-                    # inconsistently between different scripts, and ignored by artis anyway
-                    gridcelltuple = namedtuple('gridcell', [
-                        'inputcellid', 'pos_x', 'pos_y', 'pos_z', 'inputpos_a', 'inputpos_b', 'inputpos_c', 'rho',
-                        'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57'][:len(row) + 3])
-
-                # increment x first, then y, then z
-                # here inputcellid starts counting from one, so needs to be corrected
-                cellid = inputcellid - 1
-                xindex = cellid % ncoordgridx
-                yindex = (cellid // ncoordgridx) % ncoordgridy
-                zindex = (cellid // (ncoordgridx * ncoordgridy)) % ncoordgridz
-
-                pos_x = -xmax_tmodel + 2 * xindex * xmax_tmodel / ncoordgridx
-                pos_y = -xmax_tmodel + 2 * yindex * xmax_tmodel / ncoordgridy
-                pos_z = -xmax_tmodel + 2 * zindex * xmax_tmodel / ncoordgridz
-
-                celltuple = gridcelltuple(inputcellid, pos_x, pos_y, pos_z, *(map(float, row[1:])))
-                recordlist.append(celltuple)
-
-    dfmodeldata = pd.DataFrame.from_records(recordlist, columns=gridcelltuple._fields)
+    dfmodeldata = dfmodeldata.iloc[:gridcellcount]
 
     assert len(dfmodeldata) == gridcellcount
-    dfmodeldata.index.name = 'cellid'
 
-    if get_abundances:
-        abundancedata = get_initialabundances(modelpath)
-        dfmodeldata = dfmodeldata.merge(abundancedata, how='inner', on='inputcellid')
+    dfmodeldata.index.name = 'cellid'
+    # dfmodeldata.drop('inputcellid', axis=1, inplace=True)
 
     if dimensions == 1:
+        dfmodeldata['velocity_inner'] = np.concatenate([[0.], dfmodeldata['velocity_outer'].values[:-1]])
         piconst = math.pi
         dfmodeldata.eval(
             'shellmass_grams = 10 ** logrho * 4. / 3. * @piconst * (velocity_outer ** 3 - velocity_inner ** 3)'
@@ -162,8 +114,17 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
         vmax_cmps = dfmodeldata.velocity_outer.max() * 1e5
 
     elif dimensions == 3:
+        cellid = dfmodeldata.index.values
+        xindex = cellid % ncoordgridx
+        yindex = (cellid // ncoordgridx) % ncoordgridy
+        zindex = (cellid // (ncoordgridx * ncoordgridy)) % ncoordgridz
+
+        dfmodeldata['pos_x'] = -xmax_tmodel + 2 * xindex * xmax_tmodel / ncoordgridx
+        dfmodeldata['pos_y'] = -xmax_tmodel + 2 * yindex * xmax_tmodel / ncoordgridy
+        dfmodeldata['pos_z'] = -xmax_tmodel + 2 * zindex * xmax_tmodel / ncoordgridz
+
         wid_init = artistools.get_wid_init_at_tmodel(modelpath, gridcellcount, t_model_init_days, xmax_tmodel)
-        dfmodeldata.eval('shellmass_grams = rho * @wid_init ** 3', inplace=True)
+        dfmodeldata.eval('cellmass_grams = rho * @wid_init ** 3', inplace=True)
 
         def vectormatch(vec1, vec2):
             xclose = np.isclose(vec1[0], vec2[0], atol=xmax_tmodel / ncoordgridx)
@@ -191,6 +152,12 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
             print("Cell positions in model.txt are consistent with calculated values when x-y-z column order")
         if posmatch_zyx:
             print("Cell positions in model.txt are consistent with calculated values when z-y-x column order")
+
+    if get_abundances:
+        if dimensions == 3:
+            print('Getting abundances')
+        abundancedata = get_initialabundances(modelpath)
+        dfmodeldata = dfmodeldata.merge(abundancedata, how='inner', on='inputcellid')
 
     return dfmodeldata, t_model_init_days, vmax_cmps
 
@@ -347,8 +314,9 @@ def get_initialabundances(modelpath):
     columns = ['inputcellid', *['X_' + artistools.elsymbols[x] for x in range(1, 31)]]
     abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, names=columns)
     abundancedata.index.name = 'modelgridindex'
-    print(f'abundancedata memory usage:')
-    abundancedata.info(verbose=False, memory_usage="deep")
+    if len(abundancedata) > 100000:
+        print('abundancedata memory usage:')
+        abundancedata.info(verbose=False, memory_usage="deep")
     return abundancedata
 
 
