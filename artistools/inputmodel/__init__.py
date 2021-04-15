@@ -8,6 +8,7 @@ import errno
 import os
 from pathlib import Path
 import artistools
+import gc
 
 
 @lru_cache(maxsize=8)
@@ -211,6 +212,44 @@ def get_2d_modeldata(modelpath):
     return model
 
 
+def get_3d_model_data_merged_model_and_abundances_minimal(args):
+    """Get 3D data without generating all the extra columns in standard routine.
+    Needed for large (eg. 200^3) models"""
+    model = get_3d_modeldata_minimal(args.modelpath)
+    abundances = get_initialabundances(args.modelpath[0])
+
+    with open(os.path.join(args.modelpath[0], 'model.txt'), 'r') as fmodelin:
+        fmodelin.readline()  # npts_model3d
+        args.t_model = float(fmodelin.readline())  # days
+        args.vmax = float(fmodelin.readline())  # v_max in [cm/s]
+
+    print(model.keys())
+
+    merge_dfs = model.merge(abundances, how='inner', on='inputcellid')
+
+    del model
+    del abundances
+    gc.collect()
+
+    merge_dfs.info(verbose=False, memory_usage="deep")
+
+    return merge_dfs
+
+
+def get_3d_modeldata_minimal(modelpath):
+    """Read 3D model without generating all the extra columns in standard routine.
+    Needed for large (eg. 200^3) models"""
+    model = pd.read_csv(os.path.join(modelpath[0], 'model.txt'), delim_whitespace=True, header=None, skiprows=3, dtype=np.float64)
+    columns = ['inputcellid', 'cellpos_in[z]', 'cellpos_in[y]', 'cellpos_in[x]', 'rho_model',
+               'ffe', 'fni', 'fco', 'ffe52', 'fcr48']
+    model = pd.DataFrame(model.values.reshape(-1, 10))
+    model.columns = columns
+
+    print('model.txt memory usage:')
+    model.info(verbose=False, memory_usage="deep")
+    return model
+
+
 def save_modeldata(dfmodeldata, t_model_init_days, filename):
     """Save a pandas DataFrame and snapshot time into ARTIS model.txt"""
 
@@ -308,6 +347,8 @@ def get_initialabundances(modelpath):
     columns = ['inputcellid', *['X_' + artistools.elsymbols[x] for x in range(1, 31)]]
     abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, names=columns)
     abundancedata.index.name = 'modelgridindex'
+    print(f'abundancedata memory usage:')
+    abundancedata.info(verbose=False, memory_usage="deep")
     return abundancedata
 
 
