@@ -51,21 +51,17 @@ def read_griddat_file(pathtogriddata):
     # Get simulation time for ejecta snapshot
     simulation_end_time_geomunits = get_snapshot_time(pathtogriddata)
 
-    gridindex, posx, posy, posz, rho, cellYe = np.loadtxt(griddatfilepath, skiprows=3, unpack=True)
-    cellYe = np.nan_to_num(cellYe, nan=0.)
+    griddata = pd.read_csv(griddatfilepath, delim_whitespace=True, comment='#', skiprows=3)
 
-    griddata = {}
-
-    griddata['gridindex'] = np.array([int(i) for i in gridindex])
+    griddata['cellYe'] = np.nan_to_num(griddata['cellYe'], nan=0.)
+    griddata['rho'] = np.nan_to_num(griddata['rho'], nan=0.)
 
     factor_position = 1.478  # in km
-    griddata['posx'] = (posx * factor_position) * (u.km).to(u.cm)
-    griddata['posy'] = (posy * factor_position) * (u.km).to(u.cm)
-    griddata['posz'] = (posz * factor_position) * (u.km).to(u.cm)
+    griddata['posx'] = (griddata['posx'] * factor_position) * (u.km).to(u.cm)
+    griddata['posy'] = (griddata['posy'] * factor_position) * (u.km).to(u.cm)
+    griddata['posz'] = (griddata['posz'] * factor_position) * (u.km).to(u.cm)
 
-    griddata['rho'] = rho * 6.176e17  # g/cm3
-
-    griddata['cellYe'] = cellYe
+    griddata['rho'] = griddata['rho'] * 6.176e17  # g/cm3
 
     with open(griddatfilepath, 'r') as gridfile:
         ngrid = int(gridfile.readline().split()[0])
