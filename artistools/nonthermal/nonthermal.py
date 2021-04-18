@@ -623,20 +623,20 @@ def calculate_frac_heating(
         lossfunction(en_ev, nne, nnetot, ions=ions, ionpopdict=ionpopdict) * yvec[i]
         for i, en_ev in enumerate(engrid)])
 
-    frac_heating += (
-        E_0 * yvec[0] *
-        lossfunction(E_0, nne, nnetot, ions=ions, ionpopdict=ionpopdict) / deposition_density_ev)
+    frac_heating_E_0_part = (
+        E_0 * yvec[0] * lossfunction(E_0, nne, nnetot, ions=ions, ionpopdict=ionpopdict) / deposition_density_ev)
 
-    print("            frac_heating E_0 * y * l(E_0) part: "
-          f"{E_0 * yvec[0] * lossfunction(E_0, nne, nnetot, ions=ions, ionpopdict=ionpopdict) / deposition_density_ev:.5f}")
+    frac_heating += frac_heating_E_0_part
+
+    print(f"            frac_heating E_0 * y * l(E_0) part: {frac_heating_E_0_part:.5f}")
 
     frac_heating_N_e = 0.
-    npts_integral = math.ceil(E_0 / deltaen) * 26 + 1
+    npts_integral = math.ceil(E_0 / deltaen) * 10
     print(f'N_e npts_integral: {npts_integral}')
-    arr_en, delta_en = np.linspace(0., E_0, num=npts_integral, retstep=True, endpoint=False)
+    arr_en, deltaen2 = np.linspace(0., E_0, num=npts_integral, retstep=True, endpoint=False)
     arr_en_N_e = [en_ev * calculate_N_e(en_ev, engrid, ions, ionpopdict, dfcollion,
                                         yvec, dftransitions, noexcitation=noexcitation) for en_ev in arr_en]
-    frac_heating_N_e += 1. / deposition_density_ev * sum(arr_en_N_e) * delta_en
+    frac_heating_N_e += 1. / deposition_density_ev * sum(arr_en_N_e) * deltaen2
 
     print(f"            frac_heating N_e part: {frac_heating_N_e:.5f}")
 
