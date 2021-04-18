@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
-import argparse
 import math
-import multiprocessing
 import os
-import sys
 
-import matplotlib.ticker as ticker
+# import matplotlib.ticker as ticker
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -13,7 +10,6 @@ from astropy import constants as const
 from collections import namedtuple
 from scipy import linalg
 from pathlib import Path
-# from bigfloat import *
 from math import atan
 # import numba
 # from numpy import arctan as atan
@@ -559,6 +555,21 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
     for Z, ionstage in ions:
         N_e_ion = 0.
         nnion = ionpopdict[(Z, ionstage)]
+
+        if not noexcitation:
+            if (Z, ionstage) in dftransitions:
+                for _, row in dftransitions[(Z, ionstage)].iterrows():
+                    nnlevel = row.lower_pop
+                    epsilon_trans_ev = row.epsilon_trans_ev
+                    if energy_ev + epsilon_trans_ev >= engrid[0]:
+                        i = get_energyindex_lteq(en_ev=energy_ev + epsilon_trans_ev, engrid=engrid)
+                        N_e_ion += (nnlevel / nnion) * yvec[i] * get_xs_excitation(engrid[i], row)
+                        # enbelow = engrid[i]
+                        # enabove = engrid[i + 1]
+                        # x = (energy_ev - enbelow) / (enabove - enbelow)
+                        # yvecinterp = (1 - x) * yvec[i] + x * yvec[i + 1]
+                        # N_e_ion += (nnlevel / nnion) * yvecinterp * get_xs_excitation(energy_ev + epsilon_trans_ev, row)
+
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
 
         for index, shell in dfcollion_thision.iterrows():
@@ -573,30 +584,27 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
             integral1startindex = get_energyindex_lteq(en_ev=ionpot_ev, engrid=engrid)
             integral2stopindex = get_energyindex_lteq(en_ev=enlambda, engrid=engrid)
 
-            # endash = engrid[i]
-            N_e_ion += deltaen * sum([
-                yvec[i] * ar_xs_array[i] *
-                Psecondary(e_p=energy_ev + engrid[i], epsilon=engrid[i], ionpot_ev=ionpot_ev, J=J)
-                for i in range(integral1startindex, integral2stopindex)])
+            for j in range(integral1startindex, integral2stopindex + 1):
+                endash = engrid[j]
+                k = get_energyindex_lteq(en_ev=energy_ev + endash, engrid=engrid)
+                N_e_ion += deltaen * yvec[k] * ar_xs_array[k] * Psecondary(e_p=engrid[k], epsilon=endash, ionpot_ev=ionpot_ev, J=J)
+
+                # interpolate the y value
+                # xs = ar_xs(energy_ev + endash, shell.ionpot_ev, shell.A, shell.B, shell.C, shell.D)
+                # enbelow = engrid[k]
+                # enabove = engrid[k + 1]
+                # x = (energy_ev - enbelow) / (enabove - enbelow)
+                # yvecinterp = (1 - x) * yvec[k] + x * yvec[k + 1]
+                # N_e_ion += deltaen * yvecinterp * xs * Psecondary(e_p=energy_ev + endash, epsilon=endash, ionpot_ev=ionpot_ev, J=J)
 
             # integral from 2E + I up to E_max
             integral2startindex = get_energyindex_lteq(en_ev=2 * energy_ev + ionpot_ev, engrid=engrid)
             N_e_ion += deltaen * sum([
-                yvec[i] * ar_xs_array[i] *
-                Psecondary(e_p=engrid[i], epsilon=energy_ev + ionpot_ev, ionpot_ev=ionpot_ev, J=J)
-                for i in range(integral2startindex, len(engrid))])
+                yvec[j] * ar_xs_array[j] *
+                Psecondary(e_p=engrid[j], epsilon=energy_ev + ionpot_ev, ionpot_ev=ionpot_ev, J=J)
+                for j in range(integral2startindex, len(engrid))])
 
         N_e += nnion * N_e_ion
-
-    if not noexcitation:
-        for Z, ion_stage in ions:
-            if not (Z, ion_stage) in dftransitions:
-                continue
-            for _, row in dftransitions[(Z, ion_stage)].iterrows():
-                nnlevel = row.lower_pop
-                epsilon_trans_ev = row.epsilon_trans_ev
-                i = get_energyindex_lteq(en_ev=energy_ev + epsilon_trans_ev, engrid=engrid)
-                N_e += nnlevel * yvec[i] * get_xs_excitation(engrid[i], row)
 
     # source term not here because it should be zero at the low end anyway
 
@@ -623,15 +631,15 @@ def calculate_frac_heating(
           f"{E_0 * yvec[0] * lossfunction(E_0, nne, nnetot, ions=ions, ionpopdict=ionpopdict) / deposition_density_ev:.5f}")
 
     frac_heating_N_e = 0.
-    npts_integral = math.ceil(E_0 / deltaen) * 10
+    npts_integral = math.ceil(E_0 / deltaen) * 26 + 1
     print(f'N_e npts_integral: {npts_integral}')
     arr_en, delta_en = np.linspace(0., E_0, num=npts_integral, retstep=True, endpoint=False)
-    frac_heating_N_e += delta_en / deposition_density_ev * sum([
-        en_ev * calculate_N_e(en_ev, engrid, ions, ionpopdict, dfcollion,
-                              yvec, dftransitions, noexcitation=noexcitation)
-        for en_ev in arr_en])
+    arr_en_N_e = [en_ev * calculate_N_e(en_ev, engrid, ions, ionpopdict, dfcollion,
+                                        yvec, dftransitions, noexcitation=noexcitation) for en_ev in arr_en]
+    frac_heating_N_e += 1. / deposition_density_ev * sum(arr_en_N_e) * delta_en
 
     print(f"            frac_heating N_e part: {frac_heating_N_e:.5f}")
+
     frac_heating += frac_heating_N_e
 
     return frac_heating
@@ -967,8 +975,8 @@ def solve_spencerfano(
             # maxnlevelslower = ion.levels[ion.levels.levelname.str.startswith(groundlevelnoj)].index.max()
 
             # match ARTIS defaults
-            # maxnlevelslower = 5
-            # maxnlevelsupper = 250
+            maxnlevelslower = 5
+            maxnlevelsupper = 250
 
             if maxnlevelslower is not None:
                 filterquery += ' and lower < @maxnlevelslower'
