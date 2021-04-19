@@ -1,7 +1,10 @@
+import math
+
 import artistools as at
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from astropy import units as u
 
 
 def get_timestep_times_float(modelpath, loc='mid'):
@@ -182,7 +185,7 @@ def get_spectra(modelpath):
     return dfspectra, arr_timedays
 
 
-def plot_spectrum(modelpath, timedays, ax):
+def plot_spectrum(modelpath, timedays, ax, **plotkwargs):
     dfspectra, arr_timedays = get_spectra(modelpath)
     # print(dfspectra)
     timeindex = (np.abs(arr_timedays - float(timedays))).argmin()
@@ -193,4 +196,7 @@ def plot_spectrum(modelpath, timedays, ax):
     print(f"{modelpath}: requested spectrum at {timedays} days. Closest matching spectrum is at {timedays_found} days")
     # print(dfspectra[['lambda', timedays_found]])
     label = str(modelpath).lstrip('_') + f" {timedays_found}d"
-    dfspectra.plot(x='lambda', y=dfspectra.columns[timeindex + 1], ax=ax, label=label)
+
+    arr_flux = dfspectra[dfspectra.columns[timeindex + 1]] / 4 / math.pi / (u.megaparsec.to('cm') ** 2)
+
+    ax.plot(dfspectra['lambda'], arr_flux, label=label, **plotkwargs)
