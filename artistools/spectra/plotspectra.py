@@ -329,7 +329,8 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
             (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
                 specpath, args.timestep, args.timemin, args.timemax, args.timedays)
             timeavg = args.timedays
-            artistools.codecomparison.plot_spectrum(specpath, timedays=timeavg, ax=axes[0])
+            artistools.codecomparison.plot_spectrum(specpath, timedays=timeavg, ax=axes[0], **plotkwargs)
+            refspecindex += 1
         else:
             # reference spectrum
             if 'linewidth' not in plotkwargs:
@@ -970,7 +971,7 @@ def main(args=None, argsraw=None, **kwargs):
     if not args.color:
         args.color = []
         artismodelcolors = [f'C{i}' for i in range(10)]
-        refspeccolors = ['0.0', '0.3', '0.5', '0.7']
+        refspeccolors = ['0.0', '0.4', '0.6', '0.7']
         refspecnum = 0
         artismodelnum = 0
         for filepath in args.specpath:
