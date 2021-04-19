@@ -127,7 +127,10 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
             cachefolder = Path(modelpath, '__artistoolscache__.nosync')
 
             if cachefolder.is_dir():
-                xattr.setxattr(cachefolder, "com.dropbox.ignored", b'1')
+                try:
+                    xattr.setxattr(cachefolder, "com.dropbox.ignored", b'1')
+                except OSError:
+                    pass
 
             namearghash = hashlib.sha1()
             namearghash.update(func.__module__.encode('utf-8'))
@@ -194,7 +197,10 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
                 # if the cache folder doesn't exist, create it
                 if not cachefolder.is_dir():
                     cachefolder.mkdir(parents=True, exist_ok=True)
+                try:
                     xattr.setxattr(cachefolder, "com.dropbox.ignored", b'1')
+                except OSError:
+                    pass
 
                 if filename_nogz.exists():
                     filename_nogz.unlink()
