@@ -647,7 +647,7 @@ def plot_lightcurve_from_data(
 
 
 def plot_color_evolution_from_data(filter_names, lightcurvefilename, color, marker,
-                                   filternames_conversion_dict, ax, plotnumber):
+                                   filternames_conversion_dict, ax, plotnumber, args):
     lightcurve_from_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
     filterdir = os.path.join(at.PYDIR, 'data/filters/')
 
