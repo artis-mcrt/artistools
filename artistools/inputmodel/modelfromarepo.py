@@ -78,6 +78,11 @@ def read_griddat_file(pathtogriddata):
     t_model = t_model / (24. * 3600)  # in days
     print("t_model in days", t_model)
 
+    print("Ignoring cells with < 10 tracer particles")
+    griddata.loc[griddata.tracercount < 10, ['rho', 'cellYe']] = 0, 0
+
+    print(f"Max tracers in a cell {max(griddata['tracercount'])}")
+
     return griddata, t_model, vmax
 
 
