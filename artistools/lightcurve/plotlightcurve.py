@@ -361,7 +361,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 
             modelname = at.get_model_name(modelpath)
             print(f'Reading spectra: {modelname}')
-            band_lightcurve_data = get_band_lightcurve_data(modelpath, args, angle, modelnumber=modelnumber)
+            band_lightcurve_data = generate_band_lightcurve_data(modelpath, args, angle, modelnumber=modelnumber)
 
             if modelnumber == 0 and args.plot_hesma_model:  # Todo: does this work?
                 hesma_model = read_hesma_lightcurve(args)
@@ -499,7 +499,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
             for plotnumber, filters in enumerate(args.colour_evolution):
                 filter_names = filters.split('-')
                 args.filter = filter_names
-                band_lightcurve_data = get_band_lightcurve_data(modelpath, args, angle=angle, modelnumber=modelnumber)
+                band_lightcurve_data = generate_band_lightcurve_data(modelpath, args, angle=angle, modelnumber=modelnumber)
 
                 plot_times, colour_delta_mag = get_colour_delta_mag(band_lightcurve_data, filter_names)
 

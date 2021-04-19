@@ -76,7 +76,7 @@ def get_from_packets(modelpath, lcpath, packet_type='TYPE_ESCAPE', escape_type='
     return lcdata
 
 
-def get_band_lightcurve_data(modelpath, args, angle=None, modelnumber=None):
+def generate_band_lightcurve_data(modelpath, args, angle=None, modelnumber=None):
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
     if args and args.plotvspecpol and os.path.isfile(modelpath / 'vpkt.txt'):
         print("Found vpkt.txt, using vitual packets")
