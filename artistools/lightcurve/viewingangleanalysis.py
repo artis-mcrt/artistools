@@ -155,17 +155,7 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, arg
               "This will give a stupid result. Specify args.timemin and args.timemax")
         quit()
 
-    zfit = np.polyfit(x=time, y=magnitude, deg=10)
-    xfit = np.linspace(args.timemin + 0.5, args.timemax - 0.5, num=1000)
-
-    # Taking line_min and line_max from the limits set for the lightcurve being plotted
-    fxfit = []
-    for j, _ in enumerate(xfit):
-        fxfit.append(zfit[0] * (xfit[j] ** 10) + zfit[1] * (xfit[j] ** 9) + zfit[2] * (xfit[j] ** 8) +
-                     zfit[3] * (xfit[j] ** 7) + zfit[4] * (xfit[j] ** 6) + zfit[5] * (xfit[j] ** 5) +
-                     zfit[6] * (xfit[j] ** 4) + zfit[7] * (xfit[j] ** 3) + zfit[8] * (xfit[j] ** 2) +
-                     zfit[9] * (xfit[j]) + zfit[10])
-        # polynomial with 10 degrees of freedom used here but change as required if it improves the fit
+    fxfit, xfit = lightcurve_polyfit(time, magnitude, args)
 
     def match_closest_time_polyfit(reftime_polyfit):
         return str("{}".format(min([float(x) for x in xfit], key=lambda x: abs(x - reftime_polyfit))))
@@ -192,6 +182,21 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, arg
         make_plot_test_viewing_angle_fit(time, magnitude, xfit, fxfit, filternames_conversion_dict, key,
                                          mag_after15days_polyfit, tmax_polyfit, time_after15days_polyfit,
                                          modelname, angle)
+
+
+def lightcurve_polyfit(time, magnitude, args):
+    zfit = np.polyfit(x=time, y=magnitude, deg=10)
+    xfit = np.linspace(args.timemin + 0.5, args.timemax - 0.5, num=1000)
+
+    # Taking line_min and line_max from the limits set for the lightcurve being plotted
+    fxfit = []
+    for j, _ in enumerate(xfit):
+        fxfit.append(zfit[0] * (xfit[j] ** 10) + zfit[1] * (xfit[j] ** 9) + zfit[2] * (xfit[j] ** 8) +
+                     zfit[3] * (xfit[j] ** 7) + zfit[4] * (xfit[j] ** 6) + zfit[5] * (xfit[j] ** 5) +
+                     zfit[6] * (xfit[j] ** 4) + zfit[7] * (xfit[j] ** 3) + zfit[8] * (xfit[j] ** 2) +
+                     zfit[9] * (xfit[j]) + zfit[10])
+        # polynomial with 10 degrees of freedom used here but change as required if it improves the fit
+    return fxfit, xfit
 
 
 def make_plot_test_viewing_angle_fit(time, magnitude, xfit, fxfit, filternames_conversion_dict, key,
