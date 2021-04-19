@@ -240,7 +240,7 @@ def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointe
     return phot_filtobs_sn
 
 
-def get_band_lightcurve_data_to_plot(band_lightcurve_data, band_name, args):
+def get_band_lightcurve(band_lightcurve_data, band_name, args):
 
     time = [t for t, _ in band_lightcurve_data[band_name] if (args.timemin < t < args.timemax)]
     brightness_in_mag = [brightness for t, brightness in band_lightcurve_data[band_name]

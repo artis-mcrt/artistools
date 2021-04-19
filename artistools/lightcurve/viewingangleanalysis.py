@@ -383,7 +383,7 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
 
             for plotnumber, band_name in enumerate(plottinglist):
                 if args.filter:
-                    time, brightness = get_band_lightcurve_data_to_plot(lightcurve_data, band_name, args)
+                    time, brightness = get_band_lightcurve(lightcurve_data, band_name, args)
                 else:
                     lightcurve_data = lightcurve_data.loc[(lightcurve_data['time'] > args.timemin) &
                                                           (lightcurve_data['time'] < args.timemax)]
