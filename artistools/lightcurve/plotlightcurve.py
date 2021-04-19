@@ -368,7 +368,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 linelabel = str(args.plot_hesma_model).split('_')[:3]
 
             for plotnumber, band_name in enumerate(band_lightcurve_data):
-                time, brightness_in_mag = get_band_lightcurve_data_to_plot(band_lightcurve_data, band_name, args)
+                time, brightness_in_mag = get_band_lightcurve(band_lightcurve_data, band_name, args)
 
                 linelabel = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
                 # linelabel = '\n'.join(wrap(linelabel, 40))  # todo: could be arg? wraps text in label
