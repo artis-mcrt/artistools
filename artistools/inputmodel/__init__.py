@@ -237,9 +237,9 @@ def save_modeldata(dfmodeldata, t_model_init_days, filename):
             fmodel.write(f'{cell.inputcellid:6.0f}   {cell.velocity_outer:9.2f}   {cell.logrho:10.8f} '
                          f'{cell.X_Fegroup:10.4e} {cell.X_Ni56:10.4e} {cell.X_Co56:10.4e} '
                          f'{cell.X_Fe52:10.4e} {cell.X_Cr48:10.4e}')
-            if 'X_Ni57' in dfmodeldata.columns:
+            if 'X_Ni57' in dfmodeldata.columns or customcols:
                 fmodel.write(f' {cell.X_Ni57:10.4e}')
-                if 'X_Co57' in dfmodeldata.columns:
+                if 'X_Co57' in dfmodeldata.columns or customcols:
                     fmodel.write(f' {cell.X_Co57:10.4e}')
             if customcols:
                 for col in customcols:
