@@ -374,7 +374,7 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
             modelnames.append(modelname)  # save for later
             print(f'Reading spectra: {modelname}')
             if args.filter:
-                lightcurve_data = get_band_lightcurve_data(modelpath, args, angle, modelnumber=modelnumber)
+                lightcurve_data = generate_band_lightcurve_data(modelpath, args, angle, modelnumber=modelnumber)
                 plottinglist = args.filter
             elif args.plotviewingangle:
                 lightcurve_data = lcdataframes[angle]
