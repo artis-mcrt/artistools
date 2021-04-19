@@ -387,12 +387,12 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
                 else:
                     lightcurve_data = lightcurve_data.loc[(lightcurve_data['time'] > args.timemin) &
                                                           (lightcurve_data['time'] < args.timemax)]
-                    time = lightcurve_data['time']
+
                     lightcurve_data['mag'] = 4.74 - (2.5 * np.log10((lightcurve_data['lum'] * 3.826e33)
                                                                     / const.L_sun.to('erg/s').value))
 
                     lightcurve_data = lightcurve_data.replace([np.inf, -np.inf], 0)
-                    brightness = [mag for mag in lightcurve_data['mag'] if mag != 0]
+                    brightness = [mag for mag in lightcurve_data['mag'] if mag != 0]  # drop times with 0 brightness
                     time = [t for t, mag in zip(lightcurve_data['time'], lightcurve_data['mag']) if mag != 0]
 
                 # Calculating band peak time, peak magnitude and delta m15
