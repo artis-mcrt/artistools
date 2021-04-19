@@ -298,6 +298,12 @@ def read_reflightcurve_band_data(lightcurvefilename):
     lightcurve_data = pd.read_csv(data_path, comment='#')
     lightcurve_data['time'] = lightcurve_data['time'].apply(lambda x: x - (metadata['timecorrection']))
     # m - M = 5log(d) - 5  Get absolute magnitude
+    if 'dist_mpc' not in metadata and 'z' in metadata:
+        from astropy import cosmology
+        cosmo = cosmology.FlatLambdaCDM(H0=70, Om0=0.3)
+        metadata['dist_mpc'] = cosmo.luminosity_distance(metadata['z']).value
+        print(f"luminosity distance from redshift = {metadata['dist_mpc']} for {metadata['label']}")
+
     if 'dist_mpc' in metadata:
         lightcurve_data['magnitude'] = lightcurve_data['magnitude'].apply(lambda x: (
             x - 5 * np.log10(metadata['dist_mpc'] * 10 ** 6) + 5))
