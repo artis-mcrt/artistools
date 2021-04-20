@@ -191,9 +191,9 @@ def plot_spectrum(modelpath, timedays, ax, **plotkwargs):
     timeindex = (np.abs(arr_timedays - float(timedays))).argmin()
     timedays_found = dfspectra.columns[timeindex + 1]
 
+    print(f"{modelpath}: requested spectrum at {timedays} days. Closest matching spectrum is at {timedays_found} days")
     assert np.isclose(arr_timedays[timeindex], float(timedays_found), rtol=0.01)  # check columns match
     assert np.isclose(float(timedays), float(timedays_found), rtol=0.1)  # found a detect match to requested time
-    print(f"{modelpath}: requested spectrum at {timedays} days. Closest matching spectrum is at {timedays_found} days")
     # print(dfspectra[['lambda', timedays_found]])
     label = str(modelpath).lstrip('_') + f" {timedays_found}d"
 
