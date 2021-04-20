@@ -319,7 +319,7 @@ def get_res_spectrum(
     if res_specdata is None:
         print("Reading specpol_res.out")
         res_specdata = read_specpol_res(modelpath)
-        if args and args.average_every_tenth_viewing_angle:
+        if args and 'average_every_tenth_viewing_angle' in args:
             at.spectra.average_angle_bins(res_specdata, angle, args)
 
     nu = res_specdata[angle].loc[:, 'nu'].values
