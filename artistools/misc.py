@@ -387,6 +387,11 @@ def gather_res_data(res_df, index_of_repeated_value=1):
     return res_data
 
 
+def match_closest_time(reftime, searchtimes):
+    """Get time closest to reftime in list of times (searchtimes)"""
+    return str("{}".format(min([float(x) for x in searchtimes], key=lambda x: abs(x - reftime))))
+
+
 def get_vpkt_config(modelpath):
     filename = Path(modelpath, 'vpkt.txt')
     vpkt_config = {}
