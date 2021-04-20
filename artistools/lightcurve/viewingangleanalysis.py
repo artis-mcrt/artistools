@@ -260,7 +260,8 @@ def update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args):
 
 
 def set_scatterplot_plot_params(args):
-    plt.gca().invert_yaxis()
+    if not args.colouratpeak:
+        plt.gca().invert_yaxis()
     plt.xlim(args.xmin, args.xmax)
     plt.ylim(args.ymin, args.ymax)
     plt.minorticks_on()
@@ -365,10 +366,14 @@ def make_peak_colour_viewing_angle_plot(args):
 
         plotkwargsviewingangles, _ = set_scatterplot_plotkwargs(modelnumber, args)
         plotkwargsviewingangles['label'] = modelname
-        a0 = plt.scatter(data[f"time_{bands[0]}max"], data['peakcolour'], **plotkwargsviewingangles)
+        plt.scatter(data[f"{bands[0]}max"], data['peakcolour'], **plotkwargsviewingangles)
+
+    sn_data, label = get_phillips_relation_data()
+    plt.errorbar(x=sn_data['MB'], y=sn_data['(B-V)Bmax'], xerr=sn_data['err_MB'], yerr=sn_data['err_(B-V)Bmax'],
+                      color='k', alpha=0.9, marker='.', capsize=2, label=label, ls='None', zorder=5)
 
     plt.legend(loc='upper right', fontsize=8, ncol=2, columnspacing=1, frameon=False)
-    plt.xlabel(f'Time of {bands[0]} max [days]', fontsize=14)
+    plt.xlabel(f'{bands[0]}max', fontsize=14)
     plt.ylabel(f'{bands[0]}-{bands[1]} at {bands[0]}max', fontsize=14)
     set_scatterplot_plot_params(args)
     plotname = f'plotviewinganglecolour{bands[0]}-{bands[1]}.pdf'
