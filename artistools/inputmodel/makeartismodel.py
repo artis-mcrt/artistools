@@ -3,7 +3,7 @@ import argparse
 import artistools as at
 import artistools.inputmodel.downscale3dgrid
 import artistools.inputmodel.makeenergyinputfiles
-import artistools.inputmodel.modelfromarepo
+import artistools.inputmodel.modelfromhydro
 import artistools.inputmodel.opacityinputfile
 
 
@@ -62,10 +62,10 @@ def main(args=None, argsraw=None, **kwargs):
         return
 
     if args.makemodelfromarepo:
-        griddata, t_model, vmax = at.inputmodel.modelfromarepo.read_griddat_file(args.pathtogriddata)
+        griddata, t_model, vmax = at.inputmodel.modelfromhydro.read_griddat_file(args.pathtogriddata)
 
         if args.fillcentralhole:
-            griddata = at.inputmodel.modelfromarepo.fill_central_hole(griddata, t_model)
+            griddata = at.inputmodel.modelfromhydro.fill_central_hole(griddata, t_model)
         
         if args.getcellopacityfromYe:
             at.inputmodel.opacityinputfile.opacity_by_Ye(args.modelpath[0], griddata)
