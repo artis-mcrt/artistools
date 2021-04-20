@@ -94,6 +94,11 @@ def fill_central_hole(griddata, t_model):
     mass_hole = [3e-4, 3e-4, 2e-4, 1e-4, 2e-5, 1e-5, 1e-9]
     mass_intergrated = np.trapz(y=mass_hole, x=vel_hole)  # Msun
 
+    # # Just (2021) Fig. 16 4th down, left panel
+    # vel_hole = [0, 0.02, 0.05, 0.1, 0.15, 0.16]
+    # mass_hole = [4e-3, 2e-3, 1e-3, 1e-4, 6e-6, 1e-9]
+    # mass_intergrated = np.trapz(y=mass_hole, x=vel_hole)  # Msun
+
     v_outer_hole = 0.1 * CLIGHT  # cm/s
     pos_outer_hole = v_outer_hole * t_model * (24. * 3600)  # cm
     vol_hole = 4 / 3 * np.pi * pos_outer_hole ** 3  # cm^3
@@ -104,12 +109,13 @@ def fill_central_hole(griddata, t_model):
         # if pos < 0.1 c
         if ((np.sqrt(griddata['posx'][i] ** 2 + griddata['posy'][i] ** 2 + griddata['posz'][i] ** 2)) /
                 (t_model * (24. * 3600)) / CLIGHT) < 0.1:
-            if griddata['rho'][i] == 0:
-                print("Inner empty cells")
-                print(cellid, griddata['posx'][i], griddata['posy'][i], griddata['posz'][i], griddata['rho'][i])
-                griddata['rho'][i] = density_hole
-                griddata['cellYe'] = 0.4
-                print("Inner empty cells filled")
-                print(cellid, griddata['posx'][i], griddata['posy'][i], griddata['posz'][i], griddata['rho'][i])
+            # if griddata['rho'][i] == 0:
+            print("Inner empty cells")
+            print(cellid, griddata['posx'][i], griddata['posy'][i], griddata['posz'][i], griddata['rho'][i])
+            griddata['rho'][i] += density_hole
+            if griddata['cellYe'][i] < 0.4:
+                griddata['cellYe'][i] = 0.4
+            # print("Inner empty cells filled")
+            print(cellid, griddata['posx'][i], griddata['posy'][i], griddata['posz'][i], griddata['rho'][i])
 
     return griddata
