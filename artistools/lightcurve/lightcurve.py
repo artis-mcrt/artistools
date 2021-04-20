@@ -208,7 +208,7 @@ def get_filter_data(filterdir, filter_name):
         transmission.append(float(row.split()[1]))
 
     wavefilter_min = min(wavefilter)
-    wavefilter_max = int(max(wavefilter))  # integer is needed for a sharper cut-off
+    wavefilter_max = int(max(wavefilter))
 
     return zeropointenergyflux, np.array(wavefilter), np.array(transmission), wavefilter_min, wavefilter_max
 
