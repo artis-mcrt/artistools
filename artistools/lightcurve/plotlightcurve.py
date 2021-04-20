@@ -868,6 +868,9 @@ def addargs(parser):
     parser.add_argument('--colorbarphi', action='store_true',
                         help='Colour viewing angles by phi and show color bar')
 
+    parser.add_argument('--colouratpeak', action='store_true',
+                        help='Make scatter plot of colour at peak for viewing angles')
+
 
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
@@ -929,6 +932,10 @@ def main(args=None, argsraw=None, **kwargs):
             or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
         args.calculate_peak_time_mag_deltam15_bool = True
         peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, args)
+        return
+
+    if args.colouratpeak:  # make scatter plot of colour at peak, eg. B-V at Bmax
+        make_peak_colour_viewing_angle_plot(args)
         return
 
     if args.filter:

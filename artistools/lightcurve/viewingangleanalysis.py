@@ -336,6 +336,71 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
     plt.close()
 
 
+def make_peak_colour_viewing_angle_plot(args):
+
+    for modelnumber, modelpath in enumerate(args.modelpath):
+        modelname = at.get_model_name(modelpath)
+
+        bands = [args.filter[0], args.filter[1]]
+
+        data = {}
+
+        datafilename = bands[0] + "band_" + f'{modelname}' + "_viewing_angle_data.txt"
+        viewing_angle_plot_data = pd.read_csv(datafilename, delimiter=" ")
+        data[f"{bands[0]}max"] = viewing_angle_plot_data["peak_mag_polyfit"].values
+        data[f"time_{bands[0]}max"] = viewing_angle_plot_data["risetime_polyfit"].values
+
+        # Get brightness in second band at time of peak in first band
+        if len(data[f"time_{bands[0]}max"]) != 100:
+            print(f"All 100 angles are not in file {datafilename}. Quitting")
+            quit()
+
+        second_band_brightness = second_band_brightness_at_peak_first_band(data, bands, modelpath, modelnumber, args)
+
+        data[f"{bands[1]}at{bands[0]}max"] = second_band_brightness
+
+        data = pd.DataFrame(data)
+        data['peakcolour'] = data[f"{bands[0]}max"] - data[f"{bands[1]}at{bands[0]}max"]
+        print(data['peakcolour'], data[f"{bands[0]}max"], data[f"{bands[1]}at{bands[0]}max"])
+
+        plotkwargsviewingangles, _ = set_scatterplot_plotkwargs(modelnumber, args)
+        plotkwargsviewingangles['label'] = modelname
+        a0 = plt.scatter(data[f"time_{bands[0]}max"], data['peakcolour'], **plotkwargsviewingangles)
+
+    plt.legend(loc='upper right', fontsize=8, ncol=2, columnspacing=1, frameon=False)
+    plt.xlabel(f'Time of {bands[0]} max [days]', fontsize=14)
+    plt.ylabel(f'{bands[0]}-{bands[1]} at {bands[0]}max', fontsize=14)
+    set_scatterplot_plot_params(args)
+    plotname = f'plotviewinganglecolour{bands[0]}-{bands[1]}.pdf'
+    plt.savefig(plotname, format="pdf")
+    print(f"saving {plotname}")
+    plt.close()
+
+
+at.diskcache(savegzipped=True)
+def second_band_brightness_at_peak_first_band(data, bands, modelpath, modelnumber, args):
+    second_band_brightness = []
+    for anglenumber, time in enumerate(data[f"time_{bands[0]}max"]):
+        lightcurve_data = generate_band_lightcurve_data(modelpath, args, anglenumber, modelnumber=modelnumber)
+        time, brightness_in_mag = get_band_lightcurve(lightcurve_data, bands[1], args)
+
+        fxfit, xfit = lightcurve_polyfit(time, brightness_in_mag, args)
+
+        closest_list_time_to_first_band_peak \
+            = at.match_closest_time(reftime=data[f"time_{bands[0]}max"][anglenumber], searchtimes=xfit)
+
+        for ii, xfits in enumerate(xfit):
+            if float(xfits) == float(closest_list_time_to_first_band_peak):
+                index_at_max = ii
+                break
+
+        brightness_in_second_band_at_first_band_peak = fxfit[index_at_max]
+        print(brightness_in_second_band_at_first_band_peak)
+        second_band_brightness.append(brightness_in_second_band_at_first_band_peak)
+
+    return second_band_brightness
+
+
 def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, args):
 
     # if args.calculate_peak_time_mag_deltam15_bool:  # If there's viewing angle scatter plot stuff define some arrays
