@@ -16,7 +16,7 @@ import pandas as pd
 from astropy import units as u
 
 import artistools as at
-from artistools.nonthermal.spencerfano import *
+# from artistools.nonthermal.spencerfano import *
 
 DEFAULTSPECPATH = '../example_run/spec.out'
 defaultoutputfile = 'plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf'
