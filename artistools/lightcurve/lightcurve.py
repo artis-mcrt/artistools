@@ -369,13 +369,19 @@ def get_phillips_relation_data():
     sn_data = pd.read_csv(datafilepath, delim_whitespace=True, comment='#')
     print(sn_data)
 
-    deltam_15B = sn_data['dm15(B)'].astype(float)
-    M_B = sn_data['MB'].astype(float)
-
+    sn_data['dm15(B)'] = sn_data['dm15(B)'].astype(float)
+    sn_data['MB'] = sn_data['MB'].astype(float)
 
     label = 'Observed (Hicken et al. 2009)'
+    return sn_data, label
+
+
+def plot_phillips_relation_data():
+    sn_data, label = get_phillips_relation_data()
+
+
     # a0 = plt.scatter(deltam_15B, M_B, s=80, color='grey', marker='o', label=label)
-    a0 = plt.errorbar(x=deltam_15B, y=M_B, yerr=sn_data['err_MB'], xerr=sn_data['err_dm15(B)'],
+    a0 = plt.errorbar(x=sn_data['dm15(B)'], y=sn_data['MB'], yerr=sn_data['err_MB'], xerr=sn_data['err_dm15(B)'],
                       color='k', alpha=0.9, marker='.', capsize=2, label=label, ls='None', zorder=5)
     # plt.gca().invert_yaxis()
     # plt.show()
