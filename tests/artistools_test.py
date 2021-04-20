@@ -161,7 +161,7 @@ def test_get_ionrecombratecalibration():
 
 
 def test_spencerfano():
-    at.nonthermal.spencerfano.main(
+    at.nonthermal.solvespencerfanocmd.main(
         argsraw=[], modelpath=modelpath, timedays=300, makeplot=True, npts=200,
         noexcitation=True, outputfile=outputpath)
 
