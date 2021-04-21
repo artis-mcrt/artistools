@@ -4,13 +4,13 @@
 """Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code."""
 
 import datetime
-import os
 import sys
 
+from pathlib import Path
 from setuptools import find_packages, setup
 from setuptools.command.test import test as TestCommand
 
-from artistools import console_scripts
+from artistools.commands import console_scripts
 
 
 class PyTest(TestCommand):
@@ -40,14 +40,12 @@ setup(
     url="https://www.github.com/lukeshingles/artistools/",
     license="MIT",
     description="Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code.",
-    long_description=open(
-        os.path.join(os.path.dirname(__file__), "README.md")).read(),
-    install_requires=open(
-        os.path.join(os.path.dirname(__file__), "requirements.txt")).read().splitlines(),
+    long_description=(Path(__file__).absolute().parent / "README.md").open('rt').read(),
+    install_requires=(Path(__file__).absolute().parent / "requirements.txt").open('rt').read().splitlines(),
     entry_points={
         'console_scripts': console_scripts
     },
-    python_requires='>==3.8',
+    python_requires='>==3.6',
     # test_suite='tests',
     setup_requires=['coveralls', 'pytest', 'pytest-runner', 'pytest-cov'],
     tests_require=['coveralls', 'pytest', 'pytest-runner', 'pytest-cov'],
