@@ -43,7 +43,7 @@ setup(
     long_description=open(
         os.path.join(os.path.dirname(__file__), "README.md")).read(),
     install_requires=open(
-        os.path.join(os.path.dirname(__file__), "requirements.txt")).read(),
+        os.path.join(os.path.dirname(__file__), "requirements.txt")).read().splitline(),
     entry_points={
         'console_scripts': console_scripts
     },
