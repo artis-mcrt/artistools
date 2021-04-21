@@ -124,6 +124,7 @@ def read_binding_energies(modelpath=None):
 
 
 def get_electronoccupancy(atomic_number, ion_stage, nt_shells):
+    # adapted from ARTIS code
     q = np.zeros(nt_shells)
 
     ioncharge = ion_stage - 1
@@ -173,7 +174,7 @@ def get_electronoccupancy(atomic_number, ion_stage, nt_shells):
 
 
 def get_mean_binding_energy(atomic_number, ion_stage, electron_binding, ionpot_ev):
-    # LJS: this came from artis and I'm not sure what this actually is - inverse binding energy? electrons per erg?
+    # LJS: this came from ARTIS and I'm not sure what this actually is - inverse binding energy? electrons per erg?
     n_z_binding, nt_shells = electron_binding.shape
     q = get_electronoccupancy(atomic_number, ion_stage, nt_shells)
 
