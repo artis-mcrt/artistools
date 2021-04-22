@@ -32,12 +32,12 @@ class PyTest(TestCommand):
 print(datetime.datetime.now().isoformat())
 setup(
     name="artistools",
-    version="0.1.dev0",
+    version="2021.04.22",
     # version=datetime.datetime.now().isoformat(),
-    author="Luke Shingles",
+    author="ARTIS Collaboration",
     author_email="luke.shingles@gmail.com",
     packages=find_packages(),
-    url="https://www.github.com/lukeshingles/artistools/",
+    url="https://www.github.com/artis-mcrt/artistools/",
     license="MIT",
     description="Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code.",
     long_description=(Path(__file__).absolute().parent / "README.md").open('rt').read(),
