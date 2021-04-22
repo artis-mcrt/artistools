@@ -10,7 +10,8 @@ from pathlib import Path
 from setuptools import find_packages, setup
 from setuptools.command.test import test as TestCommand
 
-from artistools.commands import console_scripts
+sys.path.append('artistools/')
+from commands import console_scripts
 
 
 class PyTest(TestCommand):
