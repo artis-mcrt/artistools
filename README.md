@@ -29,9 +29,9 @@ Use the -h option to get a list of command-line arguments for each command. Most
 
 ## Example output
 
-![Emission plot](images/fig-emission.png)
-![NLTE plot](images/fig-nlte-Ni.png)
-![Estimator plot](images/fig-estimators.png)
+![Emission plot](https://github.com/artis-mcrt/artistools/raw/main/images/fig-emission.png)
+![NLTE plot](https://github.com/artis-mcrt/artistools/raw/main/images/fig-nlte-Ni.png)
+![Estimator plot](https://github.com/artis-mcrt/artistools/raw/main/images/fig-estimators.png)
 
 ## Meta
 
