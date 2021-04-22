@@ -7,6 +7,7 @@ matplotlib>=3.3.4
 numpy>=1.19.4
 pandas>=1.1
 pypdf2>=1.26.0
+pynonthermal>=2021.04.21
 pytest>=6.2.2
 pytest-cov>=2.10.1
 pytest-runner>=5.2
@@ -14,4 +15,3 @@ PyYAML>=5.3.1
 scipy>=1.5.4
 wheel>=0.36
 xattr>=0.9.7
-
