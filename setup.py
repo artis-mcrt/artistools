@@ -42,6 +42,7 @@ setup(
     license="MIT",
     description="Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code.",
     long_description=(Path(__file__).absolute().parent / "README.md").open('rt').read(),
+    long_desription_type='text/markdown',
     install_requires=(Path(__file__).absolute().parent / "requirements.txt").open('rt').read().splitlines(),
     entry_points={
         'console_scripts': console_scripts

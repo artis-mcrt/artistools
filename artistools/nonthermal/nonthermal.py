@@ -32,6 +32,25 @@ experiment_use_Latom_in_spencerfano = False
 use_collstrengths = False
 
 
+def get_nntot(ions, ionpopdict):
+    # total number density of all nuclei [cm^-3]
+    nntot = 0.
+    for Z, ionstage in ions:
+        nntot += ionpopdict[(Z, ionstage)]
+    return nntot
+
+
+def get_nne(ions, ionpopdict):
+    # number density of free electrons [cm-^3]
+    nne = 0.
+    for Z, ionstage in ions:
+        charge = ionstage - 1
+        assert(charge >= 0)
+        nne += charge * ionpopdict[(Z, ionstage)]
+
+    return nne
+
+
 def get_Zbar(ions, ionpopdict):
     # number density-weighted average atomic number
     # i.e. protons per nucleus
