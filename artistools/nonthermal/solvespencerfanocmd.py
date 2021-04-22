@@ -14,9 +14,10 @@ from collections import namedtuple
 from scipy import linalg
 from pathlib import Path
 # from bigfloat import *
-from math import atan
 # import numba
 # from numpy import arctan as atan
+
+import pynonthermal as pynt
 
 import artistools as at
 import artistools.estimators
@@ -65,125 +66,6 @@ def make_ntstats_plot(ntstatfile):
     outputfilename = Path(ntstatfile).with_suffix('.pdf')
     fig.savefig(outputfilename, format='pdf')
     print(f"Saved '{outputfilename}'")
-    plt.close()
-
-
-def make_plot(
-        engrid, yvec, ions, ionpopdict, dfcollion, dftransitions, nne, nnetot,
-        sourcevec, deposition_density_ev, outputfilename, noexcitation):
-
-    fs = 12
-    fig, axes = plt.subplots(nrows=2, ncols=1, sharex=True,
-                             figsize=(4.5, 5), tight_layout={"pad": 0.5, "w_pad": 0.3, "h_pad": 0.3})
-
-    npts = len(engrid)
-    E_0 = engrid[0]
-
-    # E_init_ev = np.dot(engrid, sourcevec) * deltaen
-    # d_etasource_by_d_en_vec = engrid * sourcevec / E_init_ev
-    # axes[0].plot(engrid[1:], d_etasource_by_d_en_vec[1:], marker="None", lw=1.5, color='blue', label='Source')
-
-    d_etaion_by_d_en_vec = at.nonthermal.get_d_etaion_by_d_en_vec(engrid, yvec, ions, ionpopdict, dfcollion, deposition_density_ev)
-
-    if not noexcitation:
-        d_etaexc_by_d_en_vec = at.nonthermal.get_d_etaexcitation_by_d_en_vec(engrid, yvec, ions, dftransitions, deposition_density_ev)
-    else:
-        d_etaexc_by_d_en_vec = np.zeros(npts)
-
-    d_etaheat_by_d_en_vec = [at.nonthermal.lossfunction(engrid[i], nne, nnetot, ions=ions, ionpopdict=ionpopdict) * yvec[i] / deposition_density_ev for i in range(len(engrid))]
-
-    axes[0].plot(engrid, np.log10(yvec * engrid), marker="None", lw=1.5, color='black')
-    axes[0].set_ylabel(r'log d(E y(E))/dE', fontsize=fs)
-    # axes[0].plot(engrid, np.log10(yvec), marker="None", lw=1.5, color='black')
-    # axes[0].set_ylabel(r'log y(E) [s$^{-1}$ cm$^{-2}$ eV$^{-1}$]', fontsize=fs)
-    axes[0].set_ylim(bottom=15.5, top=19.)
-
-
-    deltaen = engrid[1:] - engrid[:-1]
-    etaion_int = np.zeros(npts)
-    etaexc_int = np.zeros(npts)
-    etaheat_int = np.zeros(npts)
-    for i in reversed(range(len(engrid) - 1)):
-        etaion_int[i] = etaion_int[i + 1] + d_etaion_by_d_en_vec[i] * deltaen[i]
-        etaexc_int[i] = etaexc_int[i + 1] + d_etaexc_by_d_en_vec[i] * deltaen[i]
-        etaheat_int[i] = etaheat_int[i + 1] + d_etaheat_by_d_en_vec[i] * deltaen[i]
-
-    etaheat_int[0] += E_0 * yvec[0] * at.nonthermal.lossfunction(E_0, nne, nnetot, ions=ions, ionpopdict=ionpopdict) / deposition_density_ev
-
-    etatot_int = etaion_int + etaexc_int + etaheat_int
-
-    # go below E_0
-    deltaen = E_0 / 20.
-    engrid_low = np.arange(0., E_0, deltaen)
-    npts_low = len(engrid_low)
-    d_etaheat_by_d_en_low = np.zeros(len(engrid_low))
-    etaheat_int_low = np.zeros(len(engrid_low))
-    etaion_int_low = np.zeros(len(engrid_low))
-    etaexc_int_low = np.zeros(len(engrid_low))
-    x = 0
-    for i in reversed(range(len(engrid_low))):
-        en_ev = engrid_low[i]
-        N_e = at.nonthermal.calculate_N_e(en_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransitions, noexcitation=noexcitation)
-        d_etaheat_by_d_en_low[i] += N_e * en_ev / deposition_density_ev  # + (yvec[0] * lossfunction(E_0, nne, nnetot) / deposition_density_ev)
-        etaheat_int_low[i] = (
-            (etaheat_int_low[i + 1] if i < len(engrid_low) - 1 else etaheat_int[0]) +
-            d_etaheat_by_d_en_low[i] * deltaen)
-
-        etaion_int_low[i] = etaion_int[0]  # cross sections start above E_0
-        etaexc_int_low[i] = etaexc_int[0]
-
-    etatot_int_low = etaion_int_low + etaexc_int_low + etaheat_int_low
-    engridfull = np.append(engrid_low, engrid)
-
-    # axes[0].plot(engridfull, np.append(etaion_int_low, etaion_int), marker="None", lw=1.5, color='C0', label='Ionisation')
-    #
-    # if not noexcitation:
-    #     axes[0].plot(engridfull, np.append(etaexc_int_low, etaexc_int), marker="None", lw=1.5,
-    #                  color='C1', label='Excitation')
-    #
-    # axes[0].plot(engridfull, np.append(etaheat_int_low, etaheat_int), marker="None", lw=1.5,
-    #              color='C2', label='Heating')
-    #
-    # axes[0].plot(engridfull, np.append(etatot_int_low, etatot_int), marker="None", lw=1.5, color='black', label='Total')
-    #
-    # axes[0].set_ylim(bottom=0)
-    # axes[0].legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 10})
-    # axes[0].set_ylabel(r'$\eta$ E to Emax', fontsize=fs)
-
-    # delta_E_y_on_dE = np.zeros(npts)
-    # for i in range(len(engrid) - 1):
-    #     # delta_E_y_on_dE[i] = ((yvec[i + 1] * engrid[i + 1]) - (yvec[i] * engrid[i])) / (engrid[i + 1] - engrid[i])
-    #     delta_E_y_on_dE[i] = yvec[i] * engrid[i]
-    # axes[0].plot(engrid, np.log10(delta_E_y_on_dE), marker="None", lw=1.5, color='black', label='')
-    # axes[0].set_ylabel(r'log d(E y(E)) / dE', fontsize=fs)
-
-    axis = axes[1]
-
-    detaymax = max(d_etaion_by_d_en_vec * engrid)
-    axis.plot(engridfull, np.append(np.zeros(npts_low), d_etaion_by_d_en_vec) * engridfull / detaymax, marker="None", lw=1.5, color='C0', label='Ionisation')
-
-    if not noexcitation:
-        axis.plot(engridfull, np.append(np.zeros(npts_low), d_etaexc_by_d_en_vec) * engridfull / detaymax, marker="None", lw=1.5, color='C1', label='Excitation')
-
-    # axis.plot(engridfull, np.append(d_etaheat_by_d_en_low, d_etaheat_by_d_en_vec) * engridfull / detaymax,
-    #           marker="None", lw=1.5, color='C2', label='Heating')
-    axis.plot(engrid, d_etaheat_by_d_en_vec * engrid / detaymax, marker="None", lw=1.5, color='C2', label='Heating')
-
-    axis.set_ylim(bottom=0, top=1.)
-    axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 10})
-    axis.set_ylabel(r'd $\eta$ / dE [eV$^{-1}$]', fontsize=fs)
-
-    etatot_int = etaion_int + etaexc_int + etaheat_int
-
-    #    ax.annotate(modellabel, xy=(0.97, 0.95), xycoords='axes fraction', horizontalalignment='right',
-    #                verticalalignment='top', fontsize=fs)
-    axes[-1].set_xscale('log')
-    # ax.set_yscale('log')
-    axes[-1].set_xlim(left=1.)
-    axes[-1].set_xlim(right=engrid[-1] * 1.)
-    axes[-1].set_xlabel(r'Electron energy [eV]', fontsize=fs)
-    print(f"Saving '{outputfilename}'")
-    fig.savefig(str(outputfilename), format='pdf')
     plt.close()
 
 
@@ -352,8 +234,8 @@ def main(args=None, argsraw=None, **kwargs):
     # nntot = 1.
     # ionpopdict = {}
     # dfpops = {}
-    # ionpopdict[(compelement_atomicnumber, 1)] = nntot * (1. - x_e)
-    # ionpopdict[(compelement_atomicnumber, 2)] = nntot * x_e
+    # ionpopdict[(at.get_atomic_number('He'), 1)] = nntot * (1. - x_e)
+    # ionpopdict[(at.get_atomic_number('He'), 2)] = nntot * x_e
 
     # KF1992 Figure 5. Pure-Iron Plasma
     # x_e = 1.e-2
@@ -382,9 +264,6 @@ def main(args=None, argsraw=None, **kwargs):
     # ionpopdict[(at.get_atomic_number('Ca'), 1)] = 0.026 * nntot
     # ionpopdict[(at.get_atomic_number('Fe'), 1)] = 0.012 * nntot
 
-    dfcollion = at.nonthermal.read_colliondata(
-        collionfilename=('collion-AR1985.txt' if args.ar1985 else 'collion.txt'))
-
     stepcount = 9 if args.vary else 1
     for step in range(stepcount):
 
@@ -411,6 +290,7 @@ def main(args=None, argsraw=None, **kwargs):
             x_e = (args.x_e * 10 ** (0.5 * step)) if args.vary == 'x_e' else args.x_e
             ionpopdict = {}
             dfpops = {}
+            T_e = 3000
             assert x_e <= 1.
             ionpopdict[(compelement_atomicnumber, 1)] = nntot * (1. - x_e)
             ionpopdict[(compelement_atomicnumber, 2)] = nntot * x_e
@@ -428,7 +308,6 @@ def main(args=None, argsraw=None, **kwargs):
             dfpops = None
         else:
             adata = at.atomic.get_levels(modelpath, get_transitions=True, ionlist=tuple(ions))
-            dfpops = at.nonthermal.get_lte_pops(adata, ions, ionpopdict, temperature=6000)
 
         if step == 0 and args.ostat:
             with open(args.ostat, 'w') as fstat:
@@ -437,60 +316,42 @@ def main(args=None, argsraw=None, **kwargs):
                     strheader += ' frac_ionization_' + at.get_ionstring(atomic_number, ion_stage, nospace=True)
                 fstat.write(strheader + '\n')
 
-        nne = at.nonthermal.get_nne(ions, ionpopdict)
-        nnetot = at.nonthermal.get_nnetot(ions, ionpopdict)
-        x_e = nne / nntot
-        if step > 0:
-            print('\n---')
-        print(f'     nntot: {nntot:.2e} [/cm3]')
-        print(f'       nne: {nne:.2e} [/cm3]')
-        print(f'       x_e: {x_e:.2e} [/cm3]')
-        print(f'    nnetot: {nnetot:.2e} [/cm3]')
-        print(f'deposition: {deposition_density_ev:7.2f}  [eV/s/cm3]')
+        with pynt.SpencerFanoSolver(
+                emin_ev=emin, emax_ev=emax, npts=npts, verbose=True) as sf:
 
-        engrid = np.linspace(emin, emax, num=npts, endpoint=True)
-        deltaen = engrid[1] - engrid[0]
+            for Z, ionstage in ions:
+                nnion = ionpopdict[(Z, ionstage)]
+                if nnion == 0.:
+                    print(f'   skipping Z={Z} ion_stage {ionstage} due to nnion={nnion:.1e}')
+                    continue
 
-        sourcevec = np.zeros(engrid.shape)
-        # source_spread_pts = math.ceil(npts / 10.)
-        source_spread_pts = math.ceil(npts * 0.1)
-        for s in range(npts):
-            # spread the source over some energy width
-            if (s < npts - source_spread_pts):
-                sourcevec[s] = 0.
-            elif (s < npts):
-                sourcevec[s] = 1. / (deltaen * source_spread_pts)
-        # sourcevec[-1] = 1.
-        # sourcevec[-3] = 1.
+                sf.add_ionisation(Z, ionstage, nnion)
+                if not args.noexcitation:
+                    sf.add_ion_ltepopexcitation(Z, ionstage, nnion, adata=adata, temperature=T_e)
 
-        if args.differentialform:
-            yvec, dftransitions = at.nonthermal.solve_spencerfano_differentialform(
-                ions, ionpopdict, dfpops, nne, deposition_density_ev, engrid, sourcevec, dfcollion, args,
-                adata=adata, noexcitation=args.noexcitation)
-        else:
-            yvec, dftransitions = at.nonthermal.solve_spencerfano(
-                ions, ionpopdict, dfpops, nne, deposition_density_ev, engrid, sourcevec, dfcollion, args,
-                adata=adata, noexcitation=args.noexcitation)
+            sf.solve(depositionratedensity_ev=deposition_density_ev)
 
-        if args.makeplot:
-            # outputfilename = str(args.outputfile).format(
-            #     cell=args.modelgridindex, timestep=args.timestep, timedays=args.timedays)
-            outputfilename = 'spencerfano.pdf'
-            make_plot(engrid, yvec, ions, ionpopdict, dfcollion, dftransitions, nne, nnetot, sourcevec,
-                      deposition_density_ev, outputfilename, noexcitation=args.noexcitation)
+            sf.analyse_ntspectrum()
 
-        (frac_excitation, frac_ionization, frac_heating,
-         frac_excitation_ion, frac_ionization_ion, gamma_nt) = at.nonthermal.analyse_ntspectrum(
-            engrid, yvec, ions, ionpopdict, nntot, nne, deposition_density_ev,
-            dfcollion, dftransitions, noexcitation=args.noexcitation, modelpath=modelpath)
+            if args.makeplot:
+                # outputfilename = str(args.outputfile).format(
+                #     cell=args.modelgridindex, timestep=args.timestep, timedays=args.timedays)
+                outputfilename = 'spencerfano.pdf'
+                sf.plot_spec_channels(outputfilename=outputfilename)
 
-        if args.ostat:
-            with open(args.ostat, 'a') as fstat:
-                frac_sum = frac_ionization + frac_excitation + frac_heating
-                strlineout = f'{emin} {emax} {npts} {x_e:7.2e} {frac_sum:6.4f} {frac_excitation:6.3f} {frac_ionization:6.3f} {frac_heating:6.3f}'
-                for atomic_number, ion_stage in ions:
-                    strlineout += f' {frac_ionization_ion.get((atomic_number, ion_stage), 0.):.4f}'
-                fstat.write(strlineout + '\n')
+            if args.ostat:
+                with open(args.ostat, 'a') as fstat:
+                    strlineout = (f'{emin} {emax} {npts} {x_e:7.2e} {sf.get_frac_sum():6.3f} '
+                                  f'{sf.get_frac_excitation_tot():6.3f} {sf.get_frac_ionisation_tot():6.3f} '
+                                  f' {sf.get_frac_heating():6.3f}')
+                    for atomic_number, ionstage in ions:
+                        nnion = ionpopdict[(atomic_number, ionstage)]
+                        if nnion > 0.:
+                            frac_ionis_ion = sf.get_frac_ionisation_ion(atomic_number, ionstage)
+                        else:
+                            frac_ionis_ion = 0.
+                        strlineout += f' {frac_ionis_ion:.4f}'
+                    fstat.write(strlineout + '\n')
 
     if args.ostat:
         make_ntstats_plot(args.ostat)

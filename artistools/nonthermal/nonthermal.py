@@ -32,14 +32,6 @@ experiment_use_Latom_in_spencerfano = False
 use_collstrengths = False
 
 
-def get_nntot(ions, ionpopdict):
-    # total number density of all nuclei [cm^-3]
-    nntot = 0.
-    for Z, ionstage in ions:
-        nntot += ionpopdict[(Z, ionstage)]
-    return nntot
-
-
 def get_Zbar(ions, ionpopdict):
     # number density-weighted average atomic number
     # i.e. protons per nucleus
@@ -71,42 +63,6 @@ def get_nnetot(ions, ionpopdict):
         nnetot += Z * ionpopdict[(Z, ionstage)]
 
     return nnetot
-
-
-def get_nne(ions, ionpopdict):
-    # number density of free electrons [cm-^3]
-    nne = 0.
-    for Z, ionstage in ions:
-        charge = ionstage - 1
-        assert(charge >= 0)
-        nne += charge * ionpopdict[(Z, ionstage)]
-
-    return nne
-
-
-def get_lte_pops(adata, ions, ionpopdict, temperature):
-    poplist = []
-
-    K_B = const.k_B.to('eV / K').value
-
-    for _, ion in adata.iterrows():
-        ionid = (ion.Z, ion.ion_stage)
-        if ionid in ions:
-            Z = ion.Z
-            ionstage = ion.ion_stage
-            nnion = ionpopdict[(Z, ionstage)]
-
-            ltepartfunc = ion.levels.eval('g * exp(-energy_ev / @K_B / @temperature)').sum()
-
-            for levelindex, level in ion.levels.iterrows():
-                ion_popfrac = 1. / ltepartfunc * level.g * math.exp(-level.energy_ev / K_B / temperature)
-                nnlevel = nnion * ion_popfrac
-
-                poprow = (Z, ionstage, levelindex, nnlevel, nnlevel, ion_popfrac)
-                poplist.append(poprow)
-
-    dfpop = pd.DataFrame(poplist, columns=['Z', 'ion_stage', 'level', 'n_LTE', 'n_NLTE', 'ion_popfrac'])
-    return dfpop
 
 
 def read_binding_energies(modelpath=None):
@@ -819,42 +775,6 @@ def differentialsfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
             sfmatrix[i, i_endash_lower:] -= prefactor * ar_xs_array[i_endash_lower:] * oneoveratangrid[i_endash_lower:]
 
 
-def get_d_etaexcitation_by_d_en_vec(engrid, yvec, ions, dftransitions, deposition_density_ev):
-    npts = len(engrid)
-    part_integrand = np.zeros(npts)
-
-    for Z, ion_stage in ions:
-        if not (Z, ion_stage) in dftransitions:
-            continue
-        for _, row in dftransitions[(Z, ion_stage)].iterrows():
-            nnlevel = row.lower_pop
-            # nnlevel = nnion
-            epsilon_trans_ev = row.epsilon_trans_ev
-            if epsilon_trans_ev >= engrid[0]:
-                xsvec = get_xs_excitation_vector(engrid, row)
-                part_integrand += (nnlevel * epsilon_trans_ev * xsvec / deposition_density_ev)
-
-    return yvec * part_integrand
-
-
-def get_d_etaion_by_d_en_vec(engrid, yvec, ions, ionpopdict, dfcollion, deposition_density_ev):
-    npts = len(engrid)
-    part_integrand = np.zeros(npts)
-
-    for Z, ionstage in ions:
-        nnion = ionpopdict[(Z, ionstage)]
-        dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
-        # print(dfcollion_thision)
-
-        for index, shell in dfcollion_thision.iterrows():
-            J = get_J(shell.Z, shell.ionstage, shell.ionpot_ev)
-            xsvec = at.nonthermal.get_arxs_array_shell(engrid, shell)
-
-            part_integrand += (nnion * shell.ionpot_ev * xsvec / deposition_density_ev)
-
-    return yvec * part_integrand
-
-
 def solve_spencerfano_differentialform(
         ions, ionpopdict, dfpops, nne, deposition_density_ev, engrid, sourcevec, dfcollion, args,
         adata=None, noexcitation=False):
@@ -907,103 +827,6 @@ def solve_spencerfano_differentialform(
             differentialsfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix)
 
         assert noexcitation
-
-    print()
-    lu_and_piv = linalg.lu_factor(sfmatrix, overwrite_a=False)
-    yvec_reference = linalg.lu_solve(lu_and_piv, constvec, trans=0)
-    yvec = yvec_reference * deposition_density_ev / E_init_ev
-
-    return yvec, dftransitions
-
-
-def solve_spencerfano(
-        ions, ionpopdict, dfpops, nne, deposition_density_ev, engrid, sourcevec, dfcollion, args,
-        adata=None, noexcitation=False):
-
-    deltaen = engrid[1] - engrid[0]
-    npts = len(engrid)
-    nnetot = get_nnetot(ions, ionpopdict)
-
-    print(f'\nSetting up Spencer-Fano equation with {npts} energy points from {engrid[0]} to {engrid[-1]} eV...')
-
-    E_init_ev = np.dot(engrid, sourcevec) * deltaen
-    print(f'  E_init: {E_init_ev:7.2f} [eV/s/cm3]')
-
-    constvec = np.zeros(npts)
-    for i in range(npts):
-        for j in range(i, npts):
-            constvec[i] += sourcevec[j] * deltaen
-
-    sfmatrix = np.zeros((npts, npts))
-    for i in range(npts):
-        en = engrid[i]
-        sfmatrix[i, i] += lossfunction(en, nne, nnetot, ions=ions, ionpopdict=ionpopdict)
-        # EV = 1.6021772e-12  # in erg
-        # print(f"electron loss rate nne={nne:.3e} and {i:d} {en:.2e} eV is {lossfunction(en, nne):.2e} or '
-        #       f'{lossfunction_ergs(en * EV, nne) / EV:.2e}")
-
-    dftransitions = {}
-
-    for Z, ionstage in ions:
-        nnion = ionpopdict[(Z, ionstage)]
-        if nnion == 0.:
-            print(f'   skipping Z={Z} ion_stage {ionstage} due to nnion={nnion:.1e}')
-            continue
-        print(f'  including Z={Z} ion_stage {ionstage} ({at.get_ionstring(Z, ionstage)}) nnion={nnion:.1e} ionization')
-        dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
-        # print(dfcollion_thision)
-
-        for index, shell in dfcollion_thision.iterrows():
-            assert shell.ionpot_ev >= engrid[0]
-            sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix)
-
-        if not noexcitation:
-            dfpops_thision = dfpops.query('Z==@Z and ion_stage==@ionstage')
-            popdict = {x.level: x['n_NLTE'] for _, x in dfpops_thision.iterrows()}
-
-            assert len(adata) > 0  # check if ion exists in the adata file
-            ionquery = adata.query('Z == @Z and ion_stage == @ionstage')
-            assert len(ionquery) > 0
-            ion = ionquery.iloc[0]
-
-            filterquery = 'collstr >= 0 or forbidden == False'
-
-            maxnlevelslower = None
-            maxnlevelsupper = None
-
-            # find the highest ground multiplet level
-            # groundlevelnoj = ion.levels.iloc[0].levelname.split('[')[0]
-            # maxnlevelslower = ion.levels[ion.levels.levelname.str.startswith(groundlevelnoj)].index.max()
-
-            # match ARTIS defaults
-            maxnlevelslower = 5
-            maxnlevelsupper = 250
-
-            if maxnlevelslower is not None:
-                filterquery += ' and lower < @maxnlevelslower'
-            if maxnlevelsupper is not None:
-                filterquery += ' and upper < @maxnlevelsupper'
-
-            dftransitions[(Z, ionstage)] = ion.transitions.query(
-                filterquery, inplace=False).copy()
-
-            if not dftransitions[(Z, ionstage)].empty:
-                dftransitions[(Z, ionstage)].eval(
-                    'epsilon_trans_ev = '
-                    '@ion.levels.loc[upper].energy_ev.values - @ion.levels.loc[lower].energy_ev.values',
-                    inplace=True)
-                dftransitions[(Z, ionstage)].query('epsilon_trans_ev >= @engrid[0]', inplace=True)
-
-                if not dftransitions[(Z, ionstage)].empty:
-                    dftransitions[(Z, ionstage)].eval('lower_g = @ion.levels.loc[lower].g.values', inplace=True)
-                    dftransitions[(Z, ionstage)].eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
-                    dftransitions[(Z, ionstage)]['lower_pop'] = dftransitions[(Z, ionstage)].apply(
-                        lambda x: popdict.get(x.lower, 0.), axis=1)
-
-                print(f'    and excitation with {len(dftransitions[(Z, ionstage)])} transitions '
-                      f'(maxnlevelslower {maxnlevelslower}, maxnlevelsupper {maxnlevelsupper})')
-
-                sfmatrix_add_excitation(engrid, dftransitions[(Z, ionstage)], nnion, sfmatrix)
 
     print()
     lu_and_piv = linalg.lu_factor(sfmatrix, overwrite_a=False)

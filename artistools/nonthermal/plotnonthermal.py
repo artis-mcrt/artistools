@@ -55,14 +55,6 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
     return nonthermaldata
 
 
-def xs_fe2_old(energy):
-    # AR1985
-    shell_a = at.nothermal.ar_xs(energy, 16.2, 90.0, -60.0, 0.2, -86)
-    shell_b = at.nothermal.ar_xs(energy, 17.5, 18.6, -5.9, 0.6, -9)
-    shell_c = at.nothermal.ar_xs(energy, 81, 69.9, -23.7, 9.5, -51.7)
-    return shell_a + shell_b + shell_c
-
-
 def make_xs_plot(axis, nonthermaldata, args):
     dfcollion = at.nonthermal.read_colliondata()
 
@@ -71,8 +63,8 @@ def make_xs_plot(axis, nonthermaldata, args):
     # arr_xs_old = [xs_fe2_old(en) for en in arr_en]
     # arr_xs_times_y = [xs_fe1(en) * y for en, y in zip(nonthermaldata['energy_ev'], nonthermaldata['y'])]
 
-    axis.plot(arr_en, at.nonthermal.get_arxs_array_ion(arr_en, dfcollion, 26, 2), linewidth=2.0, label='Fe II')
-    axis.plot(arr_en, at.nonthermal.get_arxs_array_ion(arr_en, dfcollion, 28, 2), linewidth=2.0, label='Ni II')
+    axis.plot(arr_en, pynonthermal.collion.get_arxs_array_ion(arr_en, dfcollion, 26, 2), linewidth=2.0, label='Fe II')
+    axis.plot(arr_en, pynonthermal.collion.get_arxs_array_ion(arr_en, dfcollion, 28, 2), linewidth=2.0, label='Ni II')
 
     axis.set_ylabel(r'cross section (cm2)')
 
