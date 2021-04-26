@@ -3,9 +3,9 @@ codecov:
   strict_yaml_branch: main  # only use the latest copy on master branch
 coverage:
   status:
-    # project:
-    #   default:
-    #     threshold: 1%
+    project:
+      default:
+        threshold: 1%
     #     target: auto
     #     if_ci_failed: failure #success, failure, error, ignore
     #     informational: false
