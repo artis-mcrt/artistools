@@ -788,7 +788,7 @@ def addargs(parser):
     parser.add_argument('--showabsorption', action='store_true',
                         help='Plot the absorption spectra by ion/process')
 
-    parser.add_argument('--emissionvelocitycut', type=float,
+    parser.add_argument('-emissionvelocitycut', type=float,
                         help=('Only show contributions to emission plots where emission velocity '
                               'is greater than some velocity (km/s) eg. --emissionvelocitycut 15000'))
 
