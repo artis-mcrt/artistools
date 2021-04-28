@@ -77,9 +77,9 @@ def make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams):
     return energydistdata
 
 
-def make_energy_files(rho, Mtot_grams):
+def make_energy_files(rho, Mtot_grams, outputpath=None):
     times_and_rate, E_tot_per_gram = rprocess_const_and_powerlaw()
     energydistributiondata = make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams)
 
-    write_energydistribution_file(energydistributiondata)
-    write_energyrate_file(times_and_rate)
+    write_energydistribution_file(energydistributiondata, outputfilepath=outputpath)
+    write_energyrate_file(times_and_rate, outputfilepath=outputpath)

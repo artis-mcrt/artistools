@@ -20,7 +20,6 @@ def addargs(parser):
 
 
 def main(args=None, argsraw=None, **kwargs):
-    print('starting')
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
