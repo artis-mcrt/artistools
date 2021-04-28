@@ -33,7 +33,7 @@ class PyTest(TestCommand):
 print(datetime.datetime.now().isoformat())
 setup(
     name="artistools",
-    version="2021.04.23dev",
+    version="2021.04.24dev",
     # version=datetime.datetime.now().isoformat(),
     author="ARTIS Collaboration",
     author_email="luke.shingles@gmail.com",
@@ -49,6 +49,6 @@ setup(
     },
     python_requires='>==3.6',
     # test_suite='tests',
-    setup_requires=['coveralls', 'pytest', 'pytest-runner', 'pytest-cov'],
-    tests_require=['coveralls', 'pytest', 'pytest-runner', 'pytest-cov'],
+    setup_requires=['pytest', 'pytest-runner', 'pytest-cov'],
+    tests_require=['pytest', 'pytest-runner', 'pytest-cov'],
     include_package_data=True)
