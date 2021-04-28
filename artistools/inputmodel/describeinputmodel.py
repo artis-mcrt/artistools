@@ -29,7 +29,7 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    dfmodeldata, t_model_init_days, _ = artistools.inputmodel.get_modeldata(args.inputfile, get_abundances=True)
+    dfmodeldata, t_model_init_days, _ = artistools.inputmodel.get_modeldata(args.inputfile, get_abundances=args.getabundances)
     print(f'Read {args.inputfile}')
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
