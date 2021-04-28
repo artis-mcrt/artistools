@@ -10,6 +10,10 @@ from pathlib import Path
 import artistools
 import gc
 
+import artistools.inputmodel.botyanski2017
+import artistools.inputmodel.describeinputmodel
+import artistools.inputmodel.makeartismodel
+
 
 @lru_cache(maxsize=8)
 def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):

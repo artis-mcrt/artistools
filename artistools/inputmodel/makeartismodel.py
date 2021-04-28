@@ -25,10 +25,10 @@ def addargs(parser):
 
     parser.add_argument('-pathtogriddata', default='.',
                         help='Path to arepo grid.dat file')
-    
+
     parser.add_argument('--fillcentralhole', action='store_true',
                         help='Fill hole in middle of ejecta from arepo kilonova model')
-    
+
     parser.add_argument('--getcellopacityfromYe', action='store_true',
                         help='Make opacity.txt where opacity is set in each cell by Ye from arepo model')
 
@@ -37,6 +37,9 @@ def addargs(parser):
 
     parser.add_argument('-modeldim', type=int, default=None,
                         help='Choose how many dimensions input model has. 1, 2 or 3')
+
+    parser.add_argument('-outputpath', '-o', default='.',
+                        help='Folder for output')
 
 
 def main(args=None, argsraw=None, **kwargs):
@@ -66,7 +69,7 @@ def main(args=None, argsraw=None, **kwargs):
 
         if args.fillcentralhole:
             griddata = at.inputmodel.modelfromhydro.fill_central_hole(griddata, t_model)
-        
+
         if args.getcellopacityfromYe:
             at.inputmodel.opacityinputfile.opacity_by_Ye(args.modelpath[0], griddata)
 
@@ -87,7 +90,7 @@ def main(args=None, argsraw=None, **kwargs):
             Mtot_grams = model['cellmass_grams'].sum()
         print(f"total mass { Mtot_grams / 1.989e33} Msun")
 
-        at.inputmodel.makeenergyinputfiles.make_energy_files(rho, Mtot_grams)
+        at.inputmodel.makeenergyinputfiles.make_energy_files(rho, Mtot_grams, outputpath=args.outputpath)
 
 
 if __name__ == '__main__':
