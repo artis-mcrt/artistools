@@ -22,6 +22,8 @@ commandlist = {
     'plotartisdeposition': ('artistools.deposition', 'main'),
     'artistools-deposition': ('artistools.deposition', 'main'),
 
+    'artistools-describeinputmodel': ('artistools.inputmodel.describeinputmodel', 'main'),
+
     'plotartisestimators': ('artistools.estimators.plotestimators', 'main'),
     'artistools-estimators': ('artistools.estimators', 'main'),
 
