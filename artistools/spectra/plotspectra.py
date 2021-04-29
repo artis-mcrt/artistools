@@ -295,11 +295,15 @@ def plot_artis_spectrum(
                 x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
                 label=linelabel if index == 0 else None, **plotkwargs)
 
+        return spectrum[['lambda_angstroms', 'f_lambda']]
+
 
 def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
     """Plot reference spectra and ARTIS spectra."""
+    dfalldata = pd.DataFrame()
     artisindex = 0
     refspecindex = 0
+    seriesindex = 0
     for seriesindex, specpath in enumerate(speclist):
         specpath = Path(specpath)
         plotkwargs = {}
@@ -312,6 +316,8 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
         if args.linewidth[seriesindex]:
             plotkwargs['linewidth'] = args.linewidth[seriesindex]
 
+        seriesdata = pd.DataFrame()
+
         if specpath.is_dir() or specpath.name == 'spec.out':
             # ARTIS model spectrum
             # plotkwargs['dash_capstyle'] = dash_capstyleList[artisindex]
@@ -320,10 +326,12 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
 
             plotkwargs['linelabel'] = args.label[seriesindex]
 
-            plot_artis_spectrum(axes, specpath, args=args,
-                                scale_to_peak=scale_to_peak, from_packets=args.frompackets,
-                                filterfunc=filterfunc, plotpacketcount=args.plotpacketcount, **plotkwargs)
+            seriesdata = plot_artis_spectrum(
+                axes, specpath, args=args, scale_to_peak=scale_to_peak, from_packets=args.frompackets,
+                filterfunc=filterfunc, plotpacketcount=args.plotpacketcount, **plotkwargs)
+            seriesname = at.get_model_name(specpath)
             artisindex += 1
+
         elif not specpath.exists() and specpath.parts[0] == 'codecomparison':
             # timeavg = (args.timemin + args.timemax) / 2.
             (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
@@ -351,6 +359,18 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
                         **plotkwargs)
             refspecindex += 1
 
+        if not seriesdata.empty:
+            print(seriesdata)
+            print(dfalldata)
+            if dfalldata.empty:
+                dfalldata = pd.DataFrame(index=seriesdata['lambda_angstroms'].values)
+                dfalldata.index.name = 'lambda_angstroms'
+            else:
+                assert np.allclose(dfalldata.index.values, seriesdata['lambda_angstroms'].values)
+            dfalldata[f'f_lambda.{seriesname}'] = seriesdata['f_lambda'].values
+
+        seriesindex += 1
+
     for axis in axes:
         if args.showfilterfunctions:
             if not args.normalised:
@@ -364,6 +384,8 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
             axis.set_ylabel(r'Scaled F$_\lambda$')
         if args.plotpacketcount:
             axis.set_ylabel(r'Monte Carlo packets per bin')
+
+    return dfalldata
 
 
 def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_to_peak=None):
@@ -659,18 +681,17 @@ def make_plot(args):
         else:
             defaultoutputfile = Path("plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
-        plotobjects, plotobjectlabels, dfaxisdata = make_emissionabsorption_plot(
+        plotobjects, plotobjectlabels, dfalldata = make_emissionabsorption_plot(
             args.specpath[0], axes[0], filterfunc, args=args, scale_to_peak=scale_to_peak)
-        dfalldata = dfalldata.append(dfaxisdata)
     else:
         legendncol = 1
         defaultoutputfile = Path("plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
 
         if args.multispecplot:
-            make_spectrum_plot(args.specpath, axes, filterfunc, args, scale_to_peak=scale_to_peak)
+            dfalldata = make_spectrum_plot(args.specpath, axes, filterfunc, args, scale_to_peak=scale_to_peak)
             plotobjects, plotobjectlabels = axes[0].get_legend_handles_labels()
         else:
-            make_spectrum_plot(args.specpath, [axes[-1]], filterfunc, args, scale_to_peak=scale_to_peak)
+            dfalldata = make_spectrum_plot(args.specpath, [axes[-1]], filterfunc, args, scale_to_peak=scale_to_peak)
             plotobjects, plotobjectlabels = axes[-1].get_legend_handles_labels()
 
     if not args.nolegend:
@@ -735,7 +756,7 @@ def make_plot(args):
             ymax = args.ymax
         plt.text(5500, (ymax * 0.9), f'{int(round(args.timemin) + 1)} days', fontsize='large')
 
-    if args.write_data:
+    if args.write_data and not dfalldata.empty:
         print(dfalldata)
         datafilenameout = Path(filenameout).with_suffix('.txt')
         dfalldata.to_csv(datafilenameout)
