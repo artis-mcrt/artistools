@@ -283,9 +283,9 @@ def set_axis_properties(ax, args):
 def set_lightcurveplot_legend(ax, args):
     if not args.nolegend:
         if args.subplots:
-            ax[0].legend(loc='lower left', frameon=True, fontsize='x-small', ncol=1)
+            ax[args.legendsubplotnumber].legend(loc=args.legendposition, frameon=True, fontsize='x-small', ncol=1)
         else:
-            ax.legend(loc='best', frameon=False, fontsize='small', ncol=1, handlelength=0.7)
+            ax.legend(loc=args.legendposition, frameon=False, fontsize='small', ncol=1, handlelength=0.7)
     return ax
 
 
@@ -870,6 +870,12 @@ def addargs(parser):
 
     parser.add_argument('--colouratpeak', action='store_true',
                         help='Make scatter plot of colour at peak for viewing angles')
+
+    parser.add_argument('-legendsubplotnumber', type=int, default=1,
+                        help='Subplot number to place legend in. Default is subplot[1]')
+
+    parser.add_argument('-legendposition', type=str, default='best',
+                        help='Position of legend in plot. Default is best')
 
 
 def main(args=None, argsraw=None, **kwargs):
