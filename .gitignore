@@ -57,3 +57,5 @@ artistools/data/lightcurves/SNsample/*.txt
 
 spencerfano.pdf
 plotlightcurve.pdf
+
+plottingscripts/*
