@@ -144,7 +144,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
     # axis.set_ylim(bottom=-0.1, top=1.3)
 
     if not args.nolegend:
-        axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, prop={'size': 9})
+        axis.legend(loc='best', handlelength=2, frameon=args.legendframeon, numpoints=1, prop={'size': 9})
     axis.set_xlabel(r'Time (days)')
 
     if args.magnitude:
@@ -286,10 +286,10 @@ def set_axis_properties(ax, args):
 def set_lightcurveplot_legend(ax, args):
     if not args.nolegend:
         if args.subplots:
-            ax[args.legendsubplotnumber].legend(loc=args.legendposition, frameon=True,
+            ax[args.legendsubplotnumber].legend(loc=args.legendposition, frameon=args.legendframeon,
                                                 fontsize='x-small', ncol=args.ncolslegend)
         else:
-            ax.legend(loc=args.legendposition, frameon=False, fontsize='small', ncol=args.ncolslegend, handlelength=0.7)
+            ax.legend(loc=args.legendposition, frameon=args.legendframeon, fontsize='small', ncol=args.ncolslegend, handlelength=0.7)
     return ax
 
 
@@ -886,6 +886,9 @@ def addargs(parser):
 
     parser.add_argument('-ncolslegend', type=int, default=1,
                         help='Number of columns in legend')
+
+    parser.add_argument('--legendframeon', action='store_true',
+                        help='Frame on in legend')
 
 
 def main(args=None, argsraw=None, **kwargs):
