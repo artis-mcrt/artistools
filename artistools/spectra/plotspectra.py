@@ -362,9 +362,7 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
                         **plotkwargs)
             refspecindex += 1
 
-        if not seriesdata.empty:
-            print(seriesdata)
-            print(dfalldata)
+        if args.write_data and not seriesdata.empty:
             if dfalldata.empty:
                 dfalldata = pd.DataFrame(index=seriesdata['lambda_angstroms'].values)
                 dfalldata.index.name = 'lambda_angstroms'
