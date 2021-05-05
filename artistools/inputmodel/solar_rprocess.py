@@ -32,7 +32,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
                                delim_whitespace=True, comment='#')
 
     dfsolarabund['radioactive'] = True
-    dfsolarabund = dfsolarabund.append({'Z': 26, 'A': 58, 'numberfrac': 0.005, 'radioactive': False}, ignore_index=True)
+    dfsolarabund = dfsolarabund.append({'Z': 26, 'A': 56, 'numberfrac': 0.005, 'radioactive': False}, ignore_index=True)
     dfsolarabund = dfsolarabund.append({'Z': 27, 'A': 59, 'numberfrac': 0.005, 'radioactive': False}, ignore_index=True)
     dfsolarabund = dfsolarabund.append({'Z': 28, 'A': 58, 'numberfrac': 0.005, 'radioactive': False}, ignore_index=True)
 
@@ -49,9 +49,10 @@ def main(args=None, argsraw=None, **kwargs) -> None:
                               delim_whitespace=True, comment='#',
                               names=['A', 'Z', 'Q[MeV]', 'Egamma[MeV]', 'Eelec[MeV]',
                                      'Eneutrino[MeV]', 'tau[s]'])
+
     def undecayed_z(row):
         dfmasschain = dfbetaminus.query('A == @row.A', inplace=False)
-        if not dfmasschain.empty:
+        if not dfmasschain.empty and row.Z in dfmasschain.Z.values:
             return int(dfmasschain.Z.min())  # decay to top of chain
         else:
             return int(row.Z)
