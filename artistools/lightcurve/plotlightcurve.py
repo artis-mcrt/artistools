@@ -240,7 +240,10 @@ def get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, ar
         viewing_angle = round(math.degrees(math.acos(vpkt_config['cos_theta'][angle])))
         linelabel = fr"$\theta$ = {viewing_angle}"  # todo: update to be consistent with res definition
     elif args.plotviewingangle and angle is not None and os.path.isfile(modelpath / 'specpol_res.out'):
-        linelabel = fr"{modelname} {angle_definition[angle]}"
+        if args.nomodelname:
+            linelabel = fr"{angle_definition[angle]}"
+        else:
+            linelabel = fr"{modelname} {angle_definition[angle]}"
         # linelabel = None
         # linelabel = fr"{modelname} $\theta$ = {angle_names[index]}$^\circ$"
         # plt.plot(time, magnitude, label=linelabel, linewidth=3)
@@ -871,6 +874,9 @@ def addargs(parser):
 
     parser.add_argument('--colouratpeak', action='store_true',
                         help='Make scatter plot of colour at peak for viewing angles')
+
+    parser.add_argument('--nomodelname', action='store_true',
+                        help='Model name not added to linename in legend')
 
     parser.add_argument('-legendsubplotnumber', type=int, default=1,
                         help='Subplot number to place legend in. Default is subplot[1]')
