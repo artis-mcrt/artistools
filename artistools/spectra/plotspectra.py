@@ -282,8 +282,11 @@ def plot_artis_spectrum(
                     plt.plot(new_lambda_angstroms, binned_flux)
                 else:
                     if args.plotvspecpol:
-                        viewing_angle = round(math.degrees(math.acos(vpkt_config['cos_theta'][angle])))
-                        linelabel = fr"$\theta$ = {viewing_angle}$^\circ$" if index == 0 else None
+                        if args.viewinganglelabelunits == 'deg':
+                            viewing_angle = round(math.degrees(math.acos(vpkt_config['cos_theta'][angle])))
+                            linelabel = fr"$\theta$ = {viewing_angle}$^\circ$" if index == 0 else None
+                        elif args.viewinganglelabelunits == 'rad':
+                            linelabel = fr"cos($\theta$) = {vpkt_config['cos_theta'][angle]}" if index == 0 else None
                     else:
                         linelabel = f'bin number {angle}'
                     viewinganglespectra[angle].query(
@@ -965,6 +968,9 @@ def addargs(parser):
 
     parser.add_argument('--showtime', action='store_true',
                         help='Write time on plot')
+
+    parser.add_argument('-viewinganglelabelunits', type=str, default='deg',
+                        help='Choose viewing angle label in deg or rad')
 
 
 def main(args=None, argsraw=None, **kwargs):
