@@ -79,19 +79,29 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
 
             fmodel.seek(filepos)  # undo the readline() and go back
 
+        columns = None
+        filepos = fmodel.tell()
+        line = fmodel.readline()
+        if line.startswith('#'):
+            columns = line.lstrip('#').split()
+        else:
+            fmodel.seek(filepos)  # undo the readline() and go back
+
         if dimensions == 3:
             ncoordgridx = round(gridcellcount ** (1./3.))  # number of grid cell steps along an axis (same for xyz)
             ncoordgridy = round(gridcellcount ** (1./3.))
             ncoordgridz = round(gridcellcount ** (1./3.))
 
             assert (ncoordgridx * ncoordgridy * ncoordgridz) == gridcellcount
+
         # skiprows = 3 if dimensions == 3 else 2
         dfmodeldata = pd.read_csv(fmodel, delim_whitespace=True, header=None, dtype=np.float64, comment='#')
-        if dimensions == 1:
+
+        if dimensions == 1 and columns is None:
             columns = ['inputcellid', 'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56',
                        'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57']
 
-        elif dimensions == 3:
+        elif dimensions == 3 and columns is None:
             columns = ['inputcellid', 'inputpos_a', 'inputpos_b', 'inputpos_c', 'rho',
                        'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57']
 
@@ -314,9 +324,9 @@ def get_initialabundances(modelpath):
     abundancefilepath = artistools.firstexisting(
         ['abundances.txt.xz', 'abundances.txt.gz', 'abundances.txt'], path=modelpath)
 
-    columns = ['inputcellid', *['X_' + artistools.elsymbols[x] for x in range(1, 31)]]
-    abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, names=columns)
+    abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, dtype=np.float64)
     abundancedata.index.name = 'modelgridindex'
+    abundancedata.columns = ['inputcellid', *['X_' + artistools.elsymbols[x] for x in range(1, len(abundancedata.columns))]]
     if len(abundancedata) > 100000:
         print('abundancedata memory usage:')
         abundancedata.info(verbose=False, memory_usage="deep")
