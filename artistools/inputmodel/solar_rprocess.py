@@ -32,16 +32,6 @@ def main(args=None, argsraw=None, **kwargs) -> None:
                                delim_whitespace=True, comment='#')
 
     dfsolarabund['radioactive'] = True
-    dfsolarabund = dfsolarabund.append({'Z': 26, 'A': 56, 'numberfrac': 0.005, 'radioactive': False}, ignore_index=True)
-    dfsolarabund = dfsolarabund.append({'Z': 27, 'A': 59, 'numberfrac': 0.005, 'radioactive': False}, ignore_index=True)
-    dfsolarabund = dfsolarabund.append({'Z': 28, 'A': 58, 'numberfrac': 0.005, 'radioactive': False}, ignore_index=True)
-
-    normfactor = dfsolarabund.numberfrac.sum()  # convert number fractions in solar to fractions of r-process
-    dfsolarabund.eval('numberfrac = numberfrac / @normfactor', inplace=True)
-
-    dfsolarabund.eval('massfrac = numberfrac * A', inplace=True)
-    massfracnormfactor = dfsolarabund.massfrac.sum()
-    dfsolarabund.eval('massfrac = massfrac / @massfracnormfactor', inplace=True)
 
     print(dfsolarabund)
 
@@ -52,17 +42,32 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     def undecayed_z(row):
         dfmasschain = dfbetaminus.query('A == @row.A', inplace=False)
-        if not dfmasschain.empty and row.Z in dfmasschain.Z.values:
+        if not dfmasschain.empty:
             return int(dfmasschain.Z.min())  # decay to top of chain
         else:
             return int(row.Z)
 
     dfsolarabund_undecayed = dfsolarabund.copy()
     dfsolarabund_undecayed['Z'] = dfsolarabund_undecayed.apply(undecayed_z, axis=1)
+
+    dfsolarabund_undecayed = dfsolarabund_undecayed.append(
+        {'Z': 26, 'A': 56, 'numberfrac': 0.005, 'radioactive': False}, ignore_index=True)
+    dfsolarabund_undecayed = dfsolarabund_undecayed.append(
+        {'Z': 27, 'A': 59, 'numberfrac': 0.005, 'radioactive': False}, ignore_index=True)
+    dfsolarabund_undecayed = dfsolarabund_undecayed.append(
+        {'Z': 28, 'A': 58, 'numberfrac': 0.005, 'radioactive': False}, ignore_index=True)
+
+    normfactor = dfsolarabund_undecayed.numberfrac.sum()  # convert number fractions in solar to fractions of r-process
+    dfsolarabund_undecayed.eval('numberfrac = numberfrac / @normfactor', inplace=True)
+
+    dfsolarabund_undecayed.eval('massfrac = numberfrac * A', inplace=True)
+    massfracnormfactor = dfsolarabund_undecayed.massfrac.sum()
+    dfsolarabund_undecayed.eval('massfrac = massfrac / @massfracnormfactor', inplace=True)
+
     print(dfsolarabund_undecayed)
 
     dictelemabund = {'inputcellid': 1}
-    for atomic_number in range(1, dfsolarabund.Z.max() + 1):
+    for atomic_number in range(1, dfsolarabund_undecayed.Z.max() + 1):
         dictelemabund[f'X_{at.elsymbols[atomic_number]}'] = (
             dfsolarabund_undecayed.query('Z == @atomic_number', inplace=False).massfrac.sum())
 
