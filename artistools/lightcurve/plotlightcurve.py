@@ -337,11 +337,18 @@ def get_viewinganglecolor_for_colorbar(angle_definition, angle, costheta_viewing
 
 def make_colorbar_viewingangles(costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, args):
     if args.colorbarcostheta:
-        ticklabels = costheta_viewing_angle_bins
+        # ticklabels = costheta_viewing_angle_bins
+        ticklabels = ['-1', '-0.8', '-0.6', '-0.4', '-0.2', '0', '0.2', '0.4', '0.6', '0.8', '1']
+        ticklocs = np.linspace(0, 9, num=11)
+        label = 'cos(\u03B8)'
     if args.colorbarphi:
         ticklabels = phi_viewing_angle_bins
+        ticklocs = np.arange(0, 10)
+        label = None
+
     cbar = plt.colorbar(scaledmap)
-    ticklocs = np.arange(0, 10)
+    if label:
+        cbar.set_label(label, rotation=90)
     cbar.locator = matplotlib.ticker.FixedLocator(ticklocs)
     cbar.formatter = matplotlib.ticker.FixedFormatter(ticklabels)
     cbar.update_ticks()
