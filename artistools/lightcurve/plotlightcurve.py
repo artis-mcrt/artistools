@@ -338,7 +338,7 @@ def get_viewinganglecolor_for_colorbar(angle_definition, angle, costheta_viewing
 def make_colorbar_viewingangles(costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, args):
     if args.colorbarcostheta:
         # ticklabels = costheta_viewing_angle_bins
-        ticklabels = ['-1', '-0.8', '-0.6', '-0.4', '-0.2', '0', '0.2', '0.4', '0.6', '0.8', '1']
+        ticklabels = [' -1', ' -0.8', ' -0.6', ' -0.4', ' -0.2', ' 0', ' 0.2', ' 0.4', ' 0.6', ' 0.8', ' 1']
         ticklocs = np.linspace(0, 9, num=11)
         label = 'cos(\u03B8)'
     if args.colorbarphi:
