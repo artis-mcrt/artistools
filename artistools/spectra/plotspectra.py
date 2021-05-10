@@ -298,7 +298,7 @@ def plot_artis_spectrum(
                 x='lambda_angstroms', y=ycolumnname, ax=axis, legend=None,
                 label=linelabel if index == 0 else None, **plotkwargs)
 
-        return spectrum[['lambda_angstroms', 'f_lambda']]
+    return spectrum[['lambda_angstroms', 'f_lambda']]
 
 
 def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
