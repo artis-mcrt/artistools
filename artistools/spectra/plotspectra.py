@@ -30,7 +30,7 @@ hatches = ['', 'x', '-', '\\', '+', 'O', '.', '', 'x', '*', '\\', '+', 'O', '.']
 
 def plot_polarisation(modelpath, args):
     angle = args.plotviewingangle[0]
-    stokes_params = get_polarisation(angle=angle, modelpath=modelpath)
+    stokes_params = get_specpol_data(angle=angle, modelpath=modelpath)
     stokes_params[args.stokesparam].eval(
         'lambda_angstroms = @c / nu', local_dict={'c': const.c.to('angstrom/s').value}, inplace=True)
 

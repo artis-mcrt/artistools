@@ -80,7 +80,7 @@ def generate_band_lightcurve_data(modelpath, args, angle=None, modelnumber=None)
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
     if args and args.plotvspecpol and os.path.isfile(modelpath / 'vpkt.txt'):
         print("Found vpkt.txt, using vitual packets")
-        stokes_params = at.spectra.get_polarisation(angle, modelpath)
+        stokes_params = at.spectra.get_specpol_data(angle, modelpath)
         vspecdata = stokes_params['I']
         timearray = vspecdata.keys()[1:]
     elif args and args.plotviewingangle and os.path.isfile(modelpath / 'specpol_res.out'):
