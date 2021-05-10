@@ -87,14 +87,18 @@ def generate_band_lightcurve_data(modelpath, args, angle=None, modelnumber=None)
         specfilename = os.path.join(modelpath, "specpol_res.out")
         specdataresdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdataresdata.columns.values[1:] if i[-2] != '.']
-    elif Path(modelpath, 'specpol.out').is_file():
-        specfilename = os.path.join(modelpath, "specpol.out")
-        specdata = pd.read_csv(specfilename, delim_whitespace=True)
-        timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
+    # elif Path(modelpath, 'specpol.out').is_file():
+    #     specfilename = os.path.join(modelpath, "specpol.out")
+    #     specdata = pd.read_csv(specfilename, delim_whitespace=True)
+    #     timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
     else:
-        specfilename = at.firstexisting(['spec.out.xz', 'spec.out.gz', 'spec.out'], path=modelpath)
-        specdata = pd.read_csv(specfilename, delim_whitespace=True)
-        timearray = specdata.columns.values[1:]
+        specfilename = at.firstexisting(['spec.out.xz', 'spec.out.gz', 'spec.out', 'specpol.out'], path=modelpath)
+        if 'specpol.out' in str(specfilename):
+            specdata = pd.read_csv(specfilename, delim_whitespace=True)
+            timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']  # Ignore Q and U values in pol file
+        else:
+            specdata = pd.read_csv(specfilename, delim_whitespace=True)
+            timearray = specdata.columns.values[1:]
 
     filters_dict = {}
     if not args.filter:
