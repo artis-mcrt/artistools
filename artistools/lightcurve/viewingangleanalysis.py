@@ -60,7 +60,7 @@ def get_angle_stuff(modelpath, args):
         angles = [None]
 
     angle_definition = None
-    if angles[0] is not None:
+    if angles[0] is not None and not args.plotvspecpol:
         angle_definition = calculate_costheta_phi_for_viewing_angles(angles, modelpath)
         if args.average_every_tenth_viewing_angle:
             for key in angle_definition.keys():
