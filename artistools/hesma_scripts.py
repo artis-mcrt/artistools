@@ -75,7 +75,7 @@ def make_hesma_vspecfiles(modelpath):
     angles = [0, 1, 2, 3, 4]
 
     for angle in angles:
-        vspecdata_all = at.spectra.get_polarisation(angle=angle, modelpath=modelpath)
+        vspecdata_all = at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
         vspecdata = vspecdata_all['I']
 
         timearray = vspecdata.columns.values[1:]

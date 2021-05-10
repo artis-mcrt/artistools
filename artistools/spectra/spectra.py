@@ -70,7 +70,7 @@ def get_specdata(modelpath, stokesparam=None):
 
     if polarisationdata:
         # angle = args.plotviewingangle[0]
-        stokes_params = get_polarisation(angle=None, modelpath=modelpath)
+        stokes_params = get_specpol_data(angle=None, modelpath=modelpath)
         if stokesparam is not None:
             specdata = stokes_params[stokesparam]
         else:
@@ -423,7 +423,7 @@ def make_averaged_vspecfiles(args):
                             sep=' ', index=False, header=False)
 
 
-def get_polarisation(angle=None, modelpath=None, specdata=None):
+def get_specpol_data(angle=None, modelpath=None, specdata=None):
     if specdata is None:
         if angle is None:
             specfilename = Path(modelpath, 'specpol.out')
@@ -458,7 +458,7 @@ def get_polarisation(angle=None, modelpath=None, specdata=None):
 
 
 def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
-    stokes_params = get_polarisation(angle, modelpath=modelpath)
+    stokes_params = get_specpol_data(angle, modelpath=modelpath)
     if 'stokesparam' not in args:
         args.stokesparam = 'I'
     vspecdata = stokes_params[args.stokesparam]
