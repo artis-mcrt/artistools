@@ -487,3 +487,40 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
         make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, plottinglist[0], args)
         return
+
+
+def plot_viewanglebrightness_at_fixed_time(modelpath, args):
+    fig, axis = plt.subplots(
+        nrows=1, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+
+    angles, viewing_angles, angle_definition = at.lightcurve.get_angle_stuff(modelpath, args)
+
+    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.lightcurve.get_viewinganglebin_definitions()
+    scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
+
+    plotkwargs = {}
+
+    lcdataframes = at.lightcurve.readfile(modelpath / 'light_curve_res.out', args)
+
+    timetoplot = at.match_closest_time(reftime=args.timedays, searchtimes=lcdataframes[0]['time'])
+    print(timetoplot)
+
+    for angleindex, lcdata in enumerate(lcdataframes):
+        angle = angleindex
+        plotkwargs, _ = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(angle_definition, angle,
+                                                           costheta_viewing_angle_bins, phi_viewing_angle_bins,
+                                                           scaledmap, plotkwargs, args)
+
+        rowattime = lcdata.loc[lcdata['time'] == float(timetoplot)]
+        brightness = (rowattime['lum'].item()) * 3.826e33
+        axis.scatter(angleindex, brightness, **plotkwargs)
+
+    at.lightcurve.plotlightcurve.make_colorbar_viewingangles(costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, args)
+
+    axis.set_xlabel('Angle')
+    axis.set_ylabel('erg/s')
+    axis.set_yscale('log')
+
+    axis.set_title(f'time = {args.timedays} days')
+
+    plt.show()
