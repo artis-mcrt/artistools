@@ -2,7 +2,7 @@ from pathlib import Path
 import argparse
 import artistools as at
 import artistools.inputmodel.downscale3dgrid
-import artistools.inputmodel.makeenergyinputfiles
+import artistools.inputmodel.energyinputfiles
 import artistools.inputmodel.modelfromhydro
 import artistools.inputmodel.opacityinputfile
 
@@ -90,7 +90,7 @@ def main(args=None, argsraw=None, **kwargs):
             Mtot_grams = model['cellmass_grams'].sum()
         print(f"total mass { Mtot_grams / 1.989e33} Msun")
 
-        at.inputmodel.makeenergyinputfiles.make_energy_files(rho, Mtot_grams, outputpath=args.outputpath)
+        at.inputmodel.energyinputfiles.make_energy_files(rho, Mtot_grams, outputpath=args.outputpath)
 
 
 if __name__ == '__main__':
