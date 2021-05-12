@@ -220,11 +220,17 @@ def plot_multi_ion_series(
 
     plotted_something = False
 
-    # decoded into numeric form, e.g., [(26, 1), (26, 2)]
-    iontuplelist = [
-        (at.get_atomic_number(ionstr.split(' ')[0]), at.decode_roman_numeral(ionstr.split(' ')[1]))
-        if ' ' in ionstr else (at.get_atomic_number(ionstr), 'ALL')
-        for ionstr in ionlist]
+    def get_iontuple(ionstr):
+        if ionstr in at.elsymbols:
+            return (at.get_atomic_number(ionstr), 'ALL')
+        elif ' ' in ionstr:
+            return (at.get_atomic_number(ionstr.split(' ')[0]), at.decode_roman_numeral(ionstr.split(' ')[1]))
+        else:
+            atomic_number = at.get_atomic_number(ionstr.rstrip('0123456789'))
+            return (atomic_number, ionstr)
+
+    # decoded into atomic number and parameter, e.g., [(26, 1), (26, 2), (26, 'ALL'), (26, 'Fe56')]
+    iontuplelist = [get_iontuple(ionstr) for ionstr in ionlist]
     iontuplelist.sort()
     print(f'Subplot with ions: {iontuplelist}')
 
@@ -236,7 +242,7 @@ def plot_multi_ion_series(
         else:
             compositiondata = at.get_composition_data(modelpath)
         for atomic_number, ion_stage in iontuplelist:
-            if ion_stage != 'ALL' and not args.classicartis and compositiondata.query(
+            if not hasattr(ion_stage, 'lower') and not args.classicartis and compositiondata.query(
                     'Z == @atomic_number '
                     '& lowermost_ionstage <= @ion_stage '
                     '& uppermost_ionstage >= @ion_stage').empty:
@@ -290,6 +296,8 @@ def plot_multi_ion_series(
                     continue
                 if ion_stage == 'ALL':
                     nionpop = estimpop.get((atomic_number), 0.)
+                elif hasattr(ion_stage, 'lower') and ion_stage.startswith(at.elsymbols[atomic_number]):
+                    nionpop = estimpop.get(ion_stage, 0.)
                 else:
                     nionpop = estimpop.get((atomic_number, ion_stage), 0.)
 
@@ -337,28 +345,38 @@ def plot_multi_ion_series(
                     yvalue = float('NaN')
                 ylist.append(yvalue)
 
-        plotlabel = at.get_ionstring(atomic_number, ion_stage, spectral=False)
+        if hasattr(ion_stage, 'lower') and ion_stage != 'ALL':
+            plotlabel = ion_stage
+        else:
+            plotlabel = at.get_ionstring(atomic_number, ion_stage, spectral=False)
+
+        color = get_elemcolor(atomic_number=atomic_number)
 
         # linestyle = ['-.', '-', '--', (0, (4, 1, 1, 1)), ':'] + [(0, x) for x in dashes_list][ion_stage - 1]
         if ion_stage == 'ALL':
             dashes = ()
             linewidth = 1.0
         else:
+            if hasattr(ion_stage, 'lower'):
+                # isotopic abundance, use the mass number
+                index = int(ion_stage.lstrip(at.elsymbols[atomic_number]))
+            else:
+                index = ion_stage
+
             dashes_list = [(3, 1, 1, 1), (), (1.5, 1.5), (6, 3), (1, 3)]
-            dashes = dashes_list[(ion_stage - 1) % len(dashes_list)]
+            dashes = dashes_list[(index - 1) % len(dashes_list)]
             linewidth_list = [1.0, 1.0, 1.0, 0.7, 0.7]
-            linewidth = linewidth_list[(ion_stage - 1) % len(linewidth_list)]
-            # color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][ion_stage - 1]
+            linewidth = linewidth_list[(index - 1) % len(linewidth_list)]
+            # color = ['blue', 'green', 'red', 'cyan', 'purple', 'grey', 'brown', 'orange'][index - 1]
+
+            if args.colorbyion:
+                color = f'C{index - 1 % 10}'
+                # plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
+                dashes = ()
 
         # assert colorindex < 10
         # color = f'C{colorindex}'
-        color = get_elemcolor(atomic_number=atomic_number)
         # or ax.step(where='pre', )
-
-        if args.colorbyion:
-            color = f'C{ion_stage - 1}'
-            plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
-            dashes = ()
 
         if dfalldata is not None:
             elsym = at.elsymbols[atomic_number].lower()
@@ -823,6 +841,8 @@ def main(args=None, argsraw=None, **kwargs):
             ['Te', 'TR'],
             # [['averageionisation', ['Fe', 'Ni']]],
             # [['averageexcitation', ['Fe II', 'Fe III']]],
+            # [['populations', ['Sr89', 'Sr90', 'Sr91', 'Sr92', 'Sr93', 'Sr94', 'Sr95']]],
+            # [['populations', ['Ni', 'Sr']]],
             # [['populations', ['He I', 'He II', 'He III']]],
             # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
             # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
