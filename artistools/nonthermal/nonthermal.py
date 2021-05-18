@@ -6,7 +6,6 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from astropy import constants as const
 from collections import namedtuple
 from scipy import linalg
 from pathlib import Path
@@ -84,7 +83,7 @@ def get_nnetot(ions, ionpopdict):
     return nnetot
 
 
-def read_binding_energies(modelpath=None):
+def read_binding_energies(modelpath='.'):
     collionfilename = at.firstexisting([os.path.join(modelpath, 'binding_energies.txt'),
                                         os.path.join(at.PYDIR, 'data', 'binding_energies.txt')])
 

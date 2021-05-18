@@ -4,21 +4,15 @@
 Examples are temperatures, populations, and heating/cooling rates.
 """
 # import math
-import argparse
 import math
 import multiprocessing
-import os
-# import re
 import sys
 from collections import namedtuple
 from functools import lru_cache, partial, reduce
 # from itertools import chain
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
-import scipy.signal
-from astropy import constants as const
 
 import artistools as at
 import artistools.nltepops
@@ -378,7 +372,7 @@ def get_averageexcitation(modelpath, modelgridindex, timestep, atomic_number, io
         dfnltepops_ion = dfnltepops.query(
             'modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number & ion_stage==@ion_stage')
 
-        k_b = const.k_B.to('eV / K').value
+        k_b = 8.617333262145179e-05  # eV / K
 
         ionpopsum = dfnltepops_ion.n_NLTE.sum()
         energypopsum = dfnltepops_ion[dfnltepops_ion.level >= 0].eval(
