@@ -4,6 +4,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.integrate import quad
 
+import artistools as at
+import artistools.inputmodel
+
 
 DAY = 86400  # day in seconds
 MSUN = 1.989e33  # solar mass in grams
