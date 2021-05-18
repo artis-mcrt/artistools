@@ -225,8 +225,11 @@ def plot_multi_ion_series(
             return (at.get_atomic_number(ionstr), 'ALL')
         elif ' ' in ionstr:
             return (at.get_atomic_number(ionstr.split(' ')[0]), at.decode_roman_numeral(ionstr.split(' ')[1]))
+        elif ionstr.rstrip('-0123456789') in at.elsymbols:
+            atomic_number = at.get_atomic_number(ionstr.rstrip('-0123456789'))
+            return (atomic_number, ionstr)
         else:
-            atomic_number = at.get_atomic_number(ionstr.rstrip('0123456789'))
+            atomic_number = at.get_atomic_number(ionstr.split('_')[0])
             return (atomic_number, ionstr)
 
     # decoded into atomic number and parameter, e.g., [(26, 1), (26, 2), (26, 'ALL'), (26, 'Fe56')]
@@ -270,12 +273,12 @@ def plot_multi_ion_series(
 
         if seriestype == 'populations':
             if args.ionpoptype == 'absolute':
-                ax.set_ylabel('X$_{ion}$ [/cm3]')
+                ax.set_ylabel('X$_{i}$ [/cm3]')
             elif args.ionpoptype == 'elpop':
                 # elsym = at.elsymbols[atomic_number]
-                ax.set_ylabel('X$_{ion}$/X$_{element}$')
+                ax.set_ylabel('X$_{i}$/X$_{element}$')
             elif args.ionpoptype == 'totalpop':
-                ax.set_ylabel('X$_{ion}$/X$_{tot}$')
+                ax.set_ylabel('X$_{i}$/X$_{tot}$')
             else:
                 assert False
         else:
@@ -294,6 +297,7 @@ def plot_multi_ion_series(
                 except KeyError:
                     ylist.append(float('nan'))
                     continue
+
                 if ion_stage == 'ALL':
                     nionpop = estimpop.get((atomic_number), 0.)
                 elif hasattr(ion_stage, 'lower') and ion_stage.startswith(at.elsymbols[atomic_number]):
@@ -357,7 +361,9 @@ def plot_multi_ion_series(
             dashes = ()
             linewidth = 1.0
         else:
-            if hasattr(ion_stage, 'lower'):
+            if hasattr(ion_stage, 'lower') and ion_stage.endswith('stable'):
+                index = 8
+            elif hasattr(ion_stage, 'lower'):
                 # isotopic abundance, use the mass number
                 index = int(ion_stage.lstrip(at.elsymbols[atomic_number]))
             else:
@@ -737,10 +743,10 @@ def addargs(parser):
     parser.add_argument('-x',
                         help='Horizontal axis variable, e.g. cellid, velocity, timestep, or time')
 
-    parser.add_argument('-xmin', type=int, default=-1,
+    parser.add_argument('-xmin', type=float, default=-1,
                         help='Plot range: minimum x value')
 
-    parser.add_argument('-xmax', type=int, default=-1,
+    parser.add_argument('-xmax', type=float, default=-1,
                         help='Plot range: maximum x value')
 
     parser.add_argument('-yscale', default='log', choices=['log', 'linear'],
