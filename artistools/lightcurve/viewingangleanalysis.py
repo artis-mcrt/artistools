@@ -272,8 +272,7 @@ def set_scatterplot_plot_params(args):
     if args.colorbarcostheta or args.colorbarphi:
         costheta_viewing_angle_bins, phi_viewing_angle_bins = get_viewinganglebin_definitions()
         scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
-        at.lightcurve.plotlightcurve.make_colorbar_viewingangles(costheta_viewing_angle_bins, phi_viewing_angle_bins,
-                                                                 scaledmap, args)
+        at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args)
 
 
 def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
@@ -523,7 +522,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath, args):
         axis.scatter(xvalues, brightness, **plotkwargs)
         plt.xticks(ticks=np.arange(0, 10), labels=xlabels, rotation=30, ha='right')
 
-    at.lightcurve.plotlightcurve.make_colorbar_viewingangles(costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, args)
+    at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args)
 
     axis.set_xlabel('Angle bin')
     axis.set_ylabel('erg/s')
