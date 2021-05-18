@@ -513,11 +513,19 @@ def plot_viewanglebrightness_at_fixed_time(modelpath, args):
 
         rowattime = lcdata.loc[lcdata['time'] == float(timetoplot)]
         brightness = (rowattime['lum'].item()) * 3.826e33
-        axis.scatter(angleindex, brightness, **plotkwargs)
+        if args.colorbarphi:
+            xvalues = int(angleindex/10)
+            xlabels = costheta_viewing_angle_bins
+        if args.colorbarcostheta:
+            xvalues = angleindex % 10
+            xlabels = phi_viewing_angle_bins
+
+        axis.scatter(xvalues, brightness, **plotkwargs)
+        plt.xticks(ticks=np.arange(0, 10), labels=xlabels, rotation=30, ha='right')
 
     at.lightcurve.plotlightcurve.make_colorbar_viewingangles(costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, args)
 
-    axis.set_xlabel('Angle')
+    axis.set_xlabel('Angle bin')
     axis.set_ylabel('erg/s')
     axis.set_yscale('log')
 
