@@ -331,6 +331,10 @@ def get_viewinganglecolor_for_colorbar(angle_definition, angle, costheta_viewing
         plotkwargs['color'] = scaledmap.to_rgba(colorindex)
     if args.colorbarphi:
         colorindex = phi_viewing_angle_bins.index(angle_definition[angle].split(', ')[1])
+        reorderphibins = {5: 9, 6: 8, 7:7, 8: 6, 9: 5}
+        print("Reordering phi bins")
+        if colorindex in reorderphibins.keys():
+            colorindex = reorderphibins[colorindex]
         plotkwargs['color'] = scaledmap.to_rgba(colorindex)
     return plotkwargs, colorindex
 
@@ -342,9 +346,13 @@ def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args):
         ticklocs = np.linspace(0, 9, num=11)
         label = 'cos(\u03B8)'
     if args.colorbarphi:
-        ticklabels = phi_viewing_angle_bins
-        ticklocs = np.arange(0, 10)
-        label = None
+        print('reordered phi bins')
+        phi_viewing_angle_bins_reordered = ['0', '\u03c0/5', '2\u03c0/5', '3\u03c0/5', '4\u03c0/5', '\u03c0',
+                                    '6\u03c0/5', '7\u03c0/5', '8\u03c0/5', '9\u03c0/5', '2\u03c0']
+        ticklabels = phi_viewing_angle_bins_reordered
+        # ticklabels = phi_viewing_angle_bins
+        ticklocs = np.linspace(0, 9, num=11)
+        label = '\u03D5 bin'
 
     cbar = plt.colorbar(scaledmap)
     if label:
