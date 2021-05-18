@@ -90,8 +90,8 @@ def get_line_fluxes_from_packets(emtypecolumn, emfeatures, modelpath, maxpacketf
         dfpackets_selected = dfpackets.query(f'{emtypecolumn} in @feature.linelistindices', inplace=False)
 
         normfactor = 1. / nprocs_read
-
-        # normfactor = 1. / 4 / math.pi / (u.megaparsec.to('cm') ** 2) / nprocs_read
+        # mpc_to_cm = 3.085677581491367e+24  # 1 megaparsec in cm
+        # normfactor = 1. / 4 / math.pi / (mpc_to_cm ** 2) / nprocs_read
 
         energysumsreduced = calculate_timebinned_packet_sum(dfpackets_selected, timearrayplusend)
         # print(energysumsreduced, arr_timedelta)

@@ -7,9 +7,6 @@ import artistools as at
 from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
-import numpy as np
-from astropy import constants as const
-from astropy import units as u
 import os
 
 
@@ -80,7 +77,7 @@ def make_hesma_vspecfiles(modelpath):
 
         timearray = vspecdata.columns.values[1:]
         vspecdata.sort_values(by='nu', ascending=False, inplace=True)
-        vspecdata.eval('lambda_angstroms = @c / nu', local_dict={'c': const.c.to('angstrom/s').value}, inplace=True)
+        vspecdata.eval('lambda_angstroms = 2.99792458e+18 / nu', inplace=True)
         for time in timearray:
             vspecdata[time] = vspecdata[time] * vspecdata['nu'] / vspecdata['lambda_angstroms']
             vspecdata[time] = vspecdata[time] * (1e5) ** 2  # Scale to 10 pc (1 Mpc/10 pc) ** 2
