@@ -51,7 +51,11 @@ def rprocess_const_and_powerlaw():
 
     rate = energy_per_gram_cumulative / E_tot
 
-    times_and_rate = {'times': times/DAY, 'rate': rate}
+    nuclear_heating_power = []
+    for time in times:
+        nuclear_heating_power.append(integrand(time, t0, epsilon0, sigma, alpha, thermalisation_factor))
+
+    times_and_rate = {'times': times/DAY, 'rate': rate, 'nuclear_heating_power': nuclear_heating_power}
     times_and_rate = pd.DataFrame(data=times_and_rate)
 
     return times_and_rate, E_tot
@@ -83,3 +87,10 @@ def make_energy_files(rho, Mtot_grams, outputpath=None):
 
     write_energydistribution_file(energydistributiondata, outputfilepath=outputpath)
     write_energyrate_file(times_and_rate, outputfilepath=outputpath)
+def plot_energy_rate(modelpath):
+    times_and_rate, E_tot = at.inputmodel.energyinputfiles.rprocess_const_and_powerlaw()
+    model, _, _ = at.inputmodel.get_modeldata(modelpath)
+    Mtot_grams = model['cellmass_grams'].sum()
+    plt.plot(times_and_rate['times'], np.array(times_and_rate['nuclear_heating_power'])*Mtot_grams,
+             color='k', zorder=10)
+
