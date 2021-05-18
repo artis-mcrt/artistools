@@ -3,7 +3,6 @@ import argparse
 import math
 # import numpy as np
 from astropy import units as u
-# from astropy import constants as c
 import artistools as at
 import artistools.nltepops
 
