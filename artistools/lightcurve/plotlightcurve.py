@@ -895,6 +895,12 @@ def addargs(parser):
     parser.add_argument('--colouratpeak', action='store_true',
                         help='Make scatter plot of colour at peak for viewing angles')
 
+    parser.add_argument('--brightnessattime', action='store_true',
+                        help='Make scatter plot of light curve brightness at a given time (requires timedays)')
+
+    parser.add_argument('-timedays', '-time', '-t', type=float,
+                        help='Time in days to plot')
+
     parser.add_argument('--nomodelname', action='store_true',
                         help='Model name not added to linename in legend')
 
@@ -975,6 +981,13 @@ def main(args=None, argsraw=None, **kwargs):
 
     if args.colouratpeak:  # make scatter plot of colour at peak, eg. B-V at Bmax
         make_peak_colour_viewing_angle_plot(args)
+        return
+
+    if args.brightnessattime:
+        if args.timedays is None:
+            print('Specify timedays')
+            quit()
+        plot_viewanglebrightness_at_fixed_time(Path(modelpaths[0]), args)
         return
 
     if args.filter:
