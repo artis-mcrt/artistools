@@ -306,7 +306,11 @@ def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
     plt.legend(args.plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
                loc='upper left', fontsize=8, ncol=2, columnspacing=1, frameon=False)
     plt.xlabel('Rise Time in Days', fontsize=14)
-    plt.ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
+    if args.filter:
+        ylabel = 'Peak ' + key + ' Band Magnitude'
+    else:
+        ylabel = 'Peak Magnitude'
+    plt.ylabel(ylabel, fontsize=14)
     set_scatterplot_plot_params(args)
     plt.savefig(key + "_band_" + f'{modelnames[0]}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf", format="pdf")
     print("saving " + key + "_band_" + f'{modelnames[0]}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf")
