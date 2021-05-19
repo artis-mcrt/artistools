@@ -868,6 +868,9 @@ def addargs(parser):
     parser.add_argument('--noerrorbars', action='store_true',
                         help="Don't plot error bars on viewing angle scatter plots")
 
+    parser.add_argument('--noangleaveraged', action='store_true',
+                        help="Don't plot angle averaged values on viewing angle scatter plots")
+
     parser.add_argument('--plotviewingangles_lightcurves', action='store_true',
                         help='Make lightcurve plots for the viewing angles and models specified')
 
