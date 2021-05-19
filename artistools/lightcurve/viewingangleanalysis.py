@@ -316,6 +316,8 @@ def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
         ylabel = 'Peak Magnitude'
     plt.ylabel(ylabel, fontsize=14)
     set_scatterplot_plot_params(args)
+    if args.show:
+        plt.show()
     plt.savefig(key + "_band_" + f'{modelnames[0]}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf", format="pdf")
     print("saving " + key + "_band_" + f'{modelnames[0]}' + "_viewing_angle_peakmag_risetime_scatter_plot.pdf")
     plt.close()
@@ -549,5 +551,5 @@ def plot_viewanglebrightness_at_fixed_time(modelpath, args):
     axis.set_yscale('log')
 
     axis.set_title(f'time = {args.timedays} days')
-
-    plt.show()
+    if args.show:
+        plt.show()
