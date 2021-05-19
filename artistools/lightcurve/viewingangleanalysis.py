@@ -351,6 +351,8 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
 
 
 def make_peak_colour_viewing_angle_plot(args):
+    fig, ax = plt.subplots(nrows=1, ncols=1, sharex=True,
+                           figsize=(8, 6), tight_layout={"pad": 0.5, "w_pad": 1.5, "h_pad": 0.3})
 
     for modelnumber, modelpath in enumerate(args.modelpath):
         modelname = at.get_model_name(modelpath)
@@ -379,15 +381,15 @@ def make_peak_colour_viewing_angle_plot(args):
 
         plotkwargsviewingangles, _ = set_scatterplot_plotkwargs(modelnumber, args)
         plotkwargsviewingangles['label'] = modelname
-        plt.scatter(data[f"{bands[0]}max"], data['peakcolour'], **plotkwargsviewingangles)
+        ax.scatter(data['peakcolour'], data[f"{bands[0]}max"], **plotkwargsviewingangles)
 
     sn_data, label = get_phillips_relation_data()
-    plt.errorbar(x=sn_data['MB'], y=sn_data['(B-V)Bmax'], xerr=sn_data['err_MB'], yerr=sn_data['err_(B-V)Bmax'],
-                      color='k', alpha=0.9, marker='.', capsize=2, label=label, ls='None', zorder=5)
+    ax.errorbar(x=sn_data['(B-V)Bmax'], y=sn_data['MB'], xerr=sn_data['err_(B-V)Bmax'], yerr=sn_data['err_MB'],
+                      color='k', alpha=0.9, marker='.', capsize=2, label=label, ls='None', zorder=-1)
 
-    plt.legend(loc='upper right', fontsize=8, ncol=2, columnspacing=1, frameon=False)
-    plt.xlabel(f'{bands[0]}max', fontsize=14)
-    plt.ylabel(f'{bands[0]}-{bands[1]} at {bands[0]}max', fontsize=14)
+    ax.legend(loc='upper right', fontsize=8, ncol=1, columnspacing=1, frameon=False)
+    ax.set_xlabel(f'{bands[0]}-{bands[1]} at {bands[0]}max', fontsize=14)
+    ax.set_ylabel(f'{bands[0]}max', fontsize=14)
     set_scatterplot_plot_params(args)
     plotname = f'plotviewinganglecolour{bands[0]}-{bands[1]}.pdf'
     plt.savefig(plotname, format="pdf")
