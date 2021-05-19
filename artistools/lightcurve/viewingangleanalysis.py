@@ -81,6 +81,13 @@ def get_viewinganglebin_definitions():
                               '4\u03c0/5 \u2264 \u03D5 < \u03c0', '9\u03c0/5 < \u03D5 < 2\u03c0',
                               '8\u03c0/5 < \u03D5 \u2264 9\u03c0/5', '7\u03c0/5 < \u03D5 \u2264 8\u03c0/5',
                               '6\u03c0/5 < \u03D5 \u2264 7\u03c0/5', '\u03c0 < \u03D5 \u2264 6\u03c0/5']
+
+    # label orders changed so that bins are in order. Not used yet.
+    # phi_viewing_angle_bins_reordered = ['0 \u2264 \u03D5 < \u03c0/5', '\u03c0/5 \u2264 \u03D5 < 2\u03c0/5',
+    #                                     '2\u03c0/5 \u2264 \u03D5 < 3\u03c0/5', '3\u03c0/5 \u2264 \u03D5 < 4\u03c0/5',
+    #                                     '4\u03c0/5 \u2264 \u03D5 < \u03c0', '\u03c0 < \u03D5 \u2264 6\u03c0/5',
+    #                                     '6\u03c0/5 < \u03D5 \u2264 7\u03c0/5', '7\u03c0/5 < \u03D5 \u2264 8\u03c0/5',
+    #                                     '8\u03c0/5 < \u03D5 \u2264 9\u03c0/5', '9\u03c0/5 < \u03D5 < 2\u03c0']
     return costheta_viewing_angle_bins, phi_viewing_angle_bins
 
 
@@ -229,7 +236,10 @@ def make_plot_test_viewing_angle_fit(time, magnitude, xfit, fxfit, filternames_c
 def set_scatterplot_plotkwargs(modelnumber, args):
     plotkwargsviewingangles = {}
     plotkwargsviewingangles['marker'] = 'x'
-    plotkwargsviewingangles['color'] = define_colours_list2[modelnumber]
+    if args.colorbarcostheta or args.colorbarphi:
+        update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles,args)
+    else:
+        plotkwargsviewingangles['color'] = define_colours_list2[modelnumber]
 
     plotkwargsangleaveraged = {}
     plotkwargsangleaveraged['marker'] = 'o'
