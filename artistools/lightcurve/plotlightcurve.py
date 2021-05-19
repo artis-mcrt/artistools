@@ -987,6 +987,10 @@ def main(args=None, argsraw=None, **kwargs):
         if args.timedays is None:
             print('Specify timedays')
             quit()
+        if not args.plotviewingangle:
+            args.plotviewingangle=[-1]
+        if not args.colorbarcostheta and not args.colorbarphi:
+            args.colorbarphi=True
         plot_viewanglebrightness_at_fixed_time(Path(modelpaths[0]), args)
         return
 
