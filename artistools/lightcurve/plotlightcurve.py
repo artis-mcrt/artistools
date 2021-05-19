@@ -170,6 +170,8 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
     if args.logscaley:
         axis.set_yscale('log')
 
+    if args.show:
+        plt.show()
     fig.savefig(str(filenameout), format='pdf')
     print(f'Saved {filenameout}')
     plt.close()
