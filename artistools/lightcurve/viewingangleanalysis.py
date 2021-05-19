@@ -295,16 +295,20 @@ def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
         plotkwargsviewingangles, plotkwargsangleaveraged = set_scatterplot_plotkwargs(ii, args)
 
         a0 = plt.scatter(band_risetime_viewing_angles, band_peak_mag_viewing_angles, **plotkwargsviewingangles)
-        p0 = plt.scatter(args.band_risetime_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
-                         **plotkwargsangleaveraged)
-        args.plotvalues.append((a0, p0))
+        if not args.noangleaveraged:
+            p0 = plt.scatter(args.band_risetime_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
+                             **plotkwargsangleaveraged)
+            args.plotvalues.append((a0, p0))
+        else:
+            args.plotvalues.append((a0, a0))
         if not args.noerrorbars:
             plt.errorbar(args.band_risetime_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
                          xerr=np.std(band_risetime_viewing_angles),
                          yerr=np.std(band_peak_mag_viewing_angles), ecolor=define_colours_list[ii], capsize=2)
 
-    plt.legend(args.plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
-               loc='upper left', fontsize=8, ncol=2, columnspacing=1, frameon=False)
+    if not args.nolegend:
+        plt.legend(args.plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
+                   loc='upper left', fontsize=8, ncol=2, columnspacing=1, frameon=False)
     plt.xlabel('Rise Time in Days', fontsize=14)
     if args.filter:
         ylabel = 'Peak ' + key + ' Band Magnitude'
