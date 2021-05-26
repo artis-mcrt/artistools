@@ -58,7 +58,8 @@ def rprocess_const_and_powerlaw():
     for time in times:
         nuclear_heating_power.append(integrand(time, t0, epsilon0, sigma, alpha, thermalisation_factor))
 
-    times_and_rate = {'times': times/DAY, 'rate': rate, 'nuclear_heating_power': nuclear_heating_power}
+    # times_and_rate = {'times': times/DAY, 'rate': rate, 'nuclear_heating_power': nuclear_heating_power}
+    times_and_rate = {'times': times/DAY, 'rate': rate}
     times_and_rate = pd.DataFrame(data=times_and_rate)
 
     return times_and_rate, E_tot
