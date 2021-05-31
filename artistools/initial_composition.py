@@ -182,8 +182,8 @@ def make_3d_plot(modelpath, args):
 
     mesh[coloursurfaceby] = surfacecolorscale.ravel(order='F') # add data to the mesh
     # mesh.plot()
-
-    print(f"{coloursurfaceby} minumin {min(mesh[coloursurfaceby])}, maximum {max(mesh[coloursurfaceby])}")
+    minval = np.min(mesh[coloursurfaceby][np.nonzero(mesh[coloursurfaceby])])  # minimum non zero value
+    print(f"{coloursurfaceby} minumin {minval}, maximum {max(mesh[coloursurfaceby])}")
 
     if not args.surfaces3d:
         surfacepositions = np.linspace(min(mesh[coloursurfaceby]), max(mesh[coloursurfaceby]), num=10)
