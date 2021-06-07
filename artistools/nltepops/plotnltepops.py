@@ -247,7 +247,8 @@ def make_plot_levelpop_over_time(modelpaths, args):
     font = {'size': 16}
     mpl.rc('font', **font)
 
-    ionlevels = [1, 3]
+    # ionlevels = [1, 3]
+    ionlevels = args.levels
     timesteps = [time for time in range(14, 40)]
 
     modelgridindex = int(args.modelgridindex[0])
@@ -482,6 +483,9 @@ def addargs(parser):
         '-ionstages',
         help='Ion stage range, 1 is neutral, 2 is 1+')
 
+    parser.add_argument('-levels', type=int, nargs='+',
+                        help='Choose levels to plot') # currently only for -levelpopsovertime
+
     parser.add_argument(
         '-maxlevel', default=-1, type=int,
         help='Maximum level to plot')
@@ -542,6 +546,9 @@ def main(args=None, argsraw=None, **kwargs):
             quit()
         if not args.ionstages:
             print("Please specify ionstage")
+            quit()
+        if not args.levels:
+            print("Please specify levels")
             quit()
     else:
         modelpath = args.modelpath
