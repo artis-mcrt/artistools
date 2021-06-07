@@ -449,7 +449,7 @@ def addargs(parser):
         help='Path to ARTIS folder')
 
     # arg to give multiple model paths - can use for levelpopsovertime but breaks other plots
-    # parser.add_argument('-modelpath', default=[], nargs='*', action=at.AppendPath,
+    # parser.add_argument('-modelpath', default=[Path('.')], nargs='*', action=at.AppendPath,
     #                     help='Paths to ARTIS folders')
 
     timegroup = parser.add_mutually_exclusive_group()
@@ -531,8 +531,18 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     if args.levelpopsovertime:
-        if len(args.modelpath) == 1:
-            modelpath = args.modelpath
+        # if len(args.modelpath) == 1:
+        #     modelpath = args.modelpath
+        args.modelpath = [args.modelpath]
+
+        args.timestep = 0  # for now just plots all times
+        print("Warning: time range doesn't work. Setting ts to 0")
+        if not args.modelgridindex:
+            print("Please specify modelgridindex")
+            quit()
+        if not args.ionstages:
+            print("Please specify ionstage")
+            quit()
     else:
         modelpath = args.modelpath
 
