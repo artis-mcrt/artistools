@@ -449,7 +449,7 @@ def addargs(parser):
         '-modelpath', default=Path(),  type=Path,
         help='Path to ARTIS folder')
 
-    # arg to give multiple model paths - can use for levelpopsovertime but breaks other plots
+    # arg to give multiple model paths - can use for x axis = time but breaks other plots
     # parser.add_argument('-modelpath', default=[Path('.')], nargs='*', action=at.AppendPath,
     #                     help='Paths to ARTIS folders')
 
@@ -476,7 +476,7 @@ def addargs(parser):
         help='Default if no estimator data')
 
     parser.add_argument(
-        '-x', choices=['index', 'config'], default='index',
+        '-x', choices=['index', 'config', 'time'], default='index',
         help='Horizontal axis variable')
 
     parser.add_argument(
@@ -484,7 +484,7 @@ def addargs(parser):
         help='Ion stage range, 1 is neutral, 2 is 1+')
 
     parser.add_argument('-levels', type=int, nargs='+',
-        help='Choose levels to plot') # currently only for -levelpopsovertime
+        help='Choose levels to plot') # currently only for x axis = time
 
     parser.add_argument(
         '-maxlevel', default=-1, type=int,
@@ -522,9 +522,6 @@ def addargs(parser):
         '-outputfile', '-o', type=Path, default=defaultoutputfile,
         help='path/filename for PDF file')
 
-    parser.add_argument('-levelpopsovertime', action='store_true',
-                        help='Plot the populations of a level in a given cell over time')
-
 
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
@@ -534,7 +531,7 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    if args.levelpopsovertime:
+    if args.x == 'time':
         # if len(args.modelpath) == 1:
         #     modelpath = args.modelpath
         args.modelpath = [args.modelpath]
@@ -582,7 +579,7 @@ def main(args=None, argsraw=None, **kwargs):
     if not mgilist:
         mgilist.append(0)
 
-    if args.levelpopsovertime:
+    if args.x == 'time':
         make_plot_levelpop_over_time(args.modelpath, args)
         return
 
