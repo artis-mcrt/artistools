@@ -842,6 +842,7 @@ def main(args=None, argsraw=None, **kwargs):
             # ['heating_gamma', 'heating_coll', 'heating_bf', 'heating_ff'],
             # ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff'],
             [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
+            # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
             # ['heating_gamma/gamma_dep'],
             # ['nne'],
             ['Te', 'TR'],

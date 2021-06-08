@@ -492,7 +492,7 @@ def addargs(parser):
         help='Plotted modelgrid cell(s)')
 
     cellgroup.add_argument(
-        '-velocity', '-v', nargs='?', default=[],
+        '-velocity', '-v', nargs='?', default=[], type=float,
         help='Specify cell by velocity')
 
     parser.add_argument(
@@ -594,7 +594,7 @@ def main(args=None, argsraw=None, **kwargs):
     if isinstance(args.elements, str):
         args.elements = [args.elements]
 
-    if isinstance(args.velocity, float):
+    if isinstance(args.velocity, float) or isinstance(args.velocity, int):
         args.velocity = [args.velocity]
 
     mgilist = []
