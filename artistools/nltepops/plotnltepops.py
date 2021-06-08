@@ -247,11 +247,26 @@ def make_plot_levelpop_over_time(modelpaths, args):
     font = {'size': 16}
     mpl.rc('font', **font)
 
-    # ionlevels = [1, 3]
     ionlevels = args.levels
-    timesteps = [time for time in range(args.timestepmin, args.timestepmax)]
 
-    modelgridindex = int(args.modelgridindex[0])
+    if args.x == 'time':
+        timesteps = [time for time in range(args.timestepmin, args.timestepmax)]
+
+        if not args.modelgridindex:
+            print("Please specify modelgridindex")
+            quit()
+
+        modelgridindex_list = np.ones_like(timesteps)
+        modelgridindex_list = modelgridindex_list * int(args.modelgridindex[0])
+
+    if args.x == 'velocity':
+        modeldata, _, _ = at.inputmodel.get_modeldata(modelpaths[0])  # todo: move into modelpath loop
+        velocity = modeldata['velocity_outer']
+        modelgridindex_list = [mgi for mgi, _ in enumerate(velocity)]
+
+        timesteps = np.ones_like(modelgridindex_list)
+        timesteps = timesteps * args.timestep
+
     Z = int(at.get_atomic_number(args.elements[0]))
     ionstage = int(args.ionstages[0])
 
@@ -269,44 +284,53 @@ def make_plot_levelpop_over_time(modelpaths, args):
         populations = {}
         populationsLTE = {}
 
-        for timestep in timesteps:
-            dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=modelgridindex)
+        for timestep, mgi in zip(timesteps, modelgridindex_list):
+            dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgi)
             try:
                 timesteppops = dfpop.loc[(dfpop['Z'] == Z) & (dfpop['ion_stage'] == ionstage)]
             except KeyError:
                 continue
             for ionlevel in ionlevels:
-                populations[(timestep, ionlevel)] = (timesteppops.loc[timesteppops['level']
+                populations[(timestep, ionlevel, mgi)] = (timesteppops.loc[timesteppops['level']
                                                                       == ionlevel]['n_NLTE'].values[0])
                 # populationsLTE[(timestep, ionlevel)] = (timesteppops.loc[timesteppops['level']
                 #                                                          == ionlevel]['n_LTE'].values[0])
 
         for ionlevel in ionlevels:
-            plottimesteps = np.array([int(ts) for ts, level in populations.keys() if level == ionlevel])
+            plottimesteps = np.array([int(ts) for ts, level, mgi in populations.keys() if level == ionlevel])
             timedays = [float(at.get_timestep_time(modelpath, ts)) for ts in plottimesteps]
-            plotpopulations = np.array([float(populations[ts, level]) for ts, level in populations.keys()
+            plotpopulations = np.array([float(populations[ts, level, mgi]) for ts, level, mgi in populations.keys()
                                         if level == ionlevel])
             # plotpopulationsLTE = np.array([float(populationsLTE[ts, level]) for ts, level in populationsLTE.keys()
             #                             if level == ionlevel])
 
-            ax.plot(timedays, plotpopulations, marker=markers[modelnumber],
-                     label=f'level {ionlevel} {modelname}')
+            if args.x == 'time':
+                ax.plot(timedays, plotpopulations, marker=markers[modelnumber],
+                         label=f'level {ionlevel} {modelname}')
+
+            if args.x == 'velocity':
+                ax.plot(velocity, plotpopulations, marker=markers[modelnumber],
+                         label=f'level {ionlevel} {modelname}')
             # plt.plot(timedays, plotpopulationsLTE, marker=markers[modelnumber+1],
             #          label=f'level {ionlevel} {modelname} LTE')
 
     ax.set_yscale('log')
     labelfontsize = 24
-    ax.set_xlabel('Time Since Explosion [days]', fontsize=labelfontsize)
+    if args.x == 'time':
+        xlabel = 'Time Since Explosion [days]'
+    if args.x == 'velocity':
+        xlabel = 'Zone outer velocity [km/s]'
+    ax.set_xlabel(xlabel, fontsize=labelfontsize)
     ax.set_ylabel('Level population', fontsize=labelfontsize)
     ax.legend(loc='best', frameon=True, fontsize='x-small', ncol=1)
     if not args.notitle:
-        plt.title(f"Z={Z} ionstage={ionstage} cell {modelgridindex}")
+        plt.title(f"Z={Z} ionstage={ionstage} cell {mgi}")
 
     ax.minorticks_on()
     ax.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18, direction='in')
     ax.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=18, direction='in')
 
-    figname = f"plotnltelevelpopsZ{Z}cell{modelgridindex}level{ionlevels[0]}.pdf"
+    figname = f"plotnltelevelpopsZ{Z}cell{mgi}level{ionlevels[0]}.pdf"
     plt.savefig(modelpaths[0] / figname, format='pdf')
     print(f"Saved {figname}")
 
@@ -476,7 +500,7 @@ def addargs(parser):
         help='Default if no estimator data')
 
     parser.add_argument(
-        '-x', choices=['index', 'config', 'time'], default='index',
+        '-x', choices=['index', 'config', 'time', 'velocity'], default='index',
         help='Horizontal axis variable')
 
     parser.add_argument(
@@ -531,18 +555,15 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    if args.x == 'time':
+    if args.x in ['time', 'velocity']:
         # if len(args.modelpath) == 1:
         #     modelpath = args.modelpath
         modelpath = args.modelpath
         args.modelpath = [args.modelpath]
 
-        if not args.timedays:
-            print("Please specify time range with -timedays")
-            quit()
-        if not args.modelgridindex:
-            print("Please specify modelgridindex")
-            quit()
+        # if not args.timedays:
+            # print("Please specify time range with -timedays")
+            # quit()
         if not args.ionstages:
             print("Please specify ionstage")
             quit()
@@ -557,7 +578,8 @@ def main(args=None, argsraw=None, **kwargs):
             args.timestepmin, args.timestepmax, time_days_lower, time_days_upper = \
                 at.get_time_range(modelpath, timedays_range_str=args.timedays)
         else:
-            timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
+            timestep = at.get_timestep_of_timedays(modelpath, args.timedays)  # todo: use args.timestep instead
+            args.timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
     else:
         timestep = int(args.timestep)
 
@@ -580,12 +602,12 @@ def main(args=None, argsraw=None, **kwargs):
         mgilist.append(int(mgi))
 
     for vel in args.velocity:
-        mgilist.append(at.get_mgi_of_velocity_kms(modelpath, vel))
+        mgilist.append(at.inputmodel.get_mgi_of_velocity_kms(modelpath, vel))
 
     if not mgilist:
         mgilist.append(0)
 
-    if args.x == 'time':
+    if args.x in ['time', 'velocity']:
         make_plot_levelpop_over_time(args.modelpath, args)
         return
 
