@@ -299,6 +299,8 @@ def get_mgi_of_velocity_kms(modelpath, velocity, mgilist=None):
     If mgilist is given, then chose from these cells only"""
     modeldata, _, _ = get_modeldata(modelpath)
 
+    velocity = float(velocity)
+
     if not mgilist:
         mgilist = [mgi for mgi in modeldata.index]
         arr_vouter = modeldata['velocity_outer'].values
