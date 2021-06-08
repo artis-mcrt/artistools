@@ -249,7 +249,7 @@ def make_plot_levelpop_over_time(modelpaths, args):
 
     # ionlevels = [1, 3]
     ionlevels = args.levels
-    timesteps = [time for time in range(14, 40)]
+    timesteps = [time for time in range(args.timestepmin, args.timestepmax)]
 
     modelgridindex = int(args.modelgridindex[0])
     Z = int(at.get_atomic_number(args.elements[0]))
@@ -534,10 +534,12 @@ def main(args=None, argsraw=None, **kwargs):
     if args.x == 'time':
         # if len(args.modelpath) == 1:
         #     modelpath = args.modelpath
+        modelpath = args.modelpath
         args.modelpath = [args.modelpath]
 
-        args.timestep = 0  # for now just plots all times
-        print("Warning: time range doesn't work. Setting ts to 0")
+        if not args.timedays:
+            print("Please specify time range with -timedays")
+            quit()
         if not args.modelgridindex:
             print("Please specify modelgridindex")
             quit()
@@ -551,7 +553,11 @@ def main(args=None, argsraw=None, **kwargs):
         modelpath = args.modelpath
 
     if args.timedays:
-        timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
+        if '-' in args.timedays:
+            args.timestepmin, args.timestepmax, time_days_lower, time_days_upper = \
+                at.get_time_range(modelpath, timedays_range_str=args.timedays)
+        else:
+            timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
     else:
         timestep = int(args.timestep)
 
