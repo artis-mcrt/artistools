@@ -243,7 +243,7 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
             dfpopthision, args, annotatelines=lastsubplot)
 
 
-def make_plot_levelpop_over_time(modelpaths, args):
+def make_plot_populations_with_time_or_velocity(modelpaths, args):
     font = {'size': 16}
     mpl.rc('font', **font)
 
@@ -608,7 +608,7 @@ def main(args=None, argsraw=None, **kwargs):
         mgilist.append(0)
 
     if args.x in ['time', 'velocity']:
-        make_plot_levelpop_over_time(args.modelpath, args)
+        make_plot_populations_with_time_or_velocity(args.modelpath, args)
         return
 
     for el_in in args.elements:
