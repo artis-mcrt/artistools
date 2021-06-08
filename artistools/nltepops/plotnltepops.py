@@ -484,7 +484,7 @@ def addargs(parser):
         help='Ion stage range, 1 is neutral, 2 is 1+')
 
     parser.add_argument('-levels', type=int, nargs='+',
-                        help='Choose levels to plot') # currently only for -levelpopsovertime
+        help='Choose levels to plot') # currently only for -levelpopsovertime
 
     parser.add_argument(
         '-maxlevel', default=-1, type=int,
