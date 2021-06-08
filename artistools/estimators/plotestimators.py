@@ -848,7 +848,6 @@ def main(args=None, argsraw=None, **kwargs):
             # [['averageionisation', ['Fe', 'Ni']]],
             # [['averageexcitation', ['Fe II', 'Fe III']]],
             # [['populations', ['Sr89', 'Sr90', 'Sr91', 'Sr92', 'Sr93', 'Sr94', 'Sr95']]],
-            # [['populations', ['Ni', 'Sr']]],
             # [['populations', ['He I', 'He II', 'He III']]],
             # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
             # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
