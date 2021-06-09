@@ -22,6 +22,7 @@ import matplotlib as mpl
 import artistools as at
 import artistools.atomic
 import artistools.estimators
+import artistools.plottools
 
 
 defaultoutputfile = 'plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
