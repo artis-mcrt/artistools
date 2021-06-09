@@ -2,9 +2,9 @@ import matplotlib.pyplot as plt
 
 
 def set_axis_properties(ax, args):
-    if 'subplots' not  in args:
+    if 'subplots' not in args:
         args.subplots = False
-    if 'labelfontsize' not  in args:
+    if 'labelfontsize' not in args:
         args.labelfontsize = 18
 
     if args.subplots:
