@@ -250,7 +250,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     mpl.rc('font', **font)
 
     ionlevels = args.levels
-
+    velocity = []
     if args.x == 'time':
         timesteps = [time for time in range(args.timestepmin, args.timestepmax)]
 
@@ -272,15 +272,47 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     Z = int(at.get_atomic_number(args.elements[0]))
     ionstage = int(args.ionstages[0])
 
-
-    markers = ['o', 'x', '^', 's', '8']
-    # labels = ['no super level Fe', 'no super level Co', 'no super level Ni', 'no super levels', 'standard case']
+    adata = at.atomic.get_levels(args.modelpath[0], get_transitions=True)
+    ion_data = adata.query('Z == @Z and ion_stage == @ionstage').iloc[0]
+    levelconfignames = ion_data['levels']['levelname']
+    # levelconfignames = [at.nltepops.texifyconfiguration(name) for name in levelconfignames]
 
     rows = 1
     cols = 1
     fig, ax = plt.subplots(nrows=rows, ncols=cols, sharex=True, sharey=True,
                            figsize=(at.figwidth * 1.3 * cols, at.figwidth * 1.4 * rows),
                            tight_layout={"pad": 2.0, "w_pad": 0.2, "h_pad": 0.2})
+
+    plot_populations_with_time_or_velocity(ax, modelpaths, timesteps, modelgridindex_list, velocity,
+                                           ionstage, ionlevels, Z, levelconfignames, args)
+
+    ax.set_yscale('log')
+    labelfontsize = 24
+    if args.x == 'time':
+        xlabel = 'Time Since Explosion [days]'
+    if args.x == 'velocity':
+        xlabel = r'Zone outer velocity [km s$^{-1}$]'
+    ax.set_xlabel(xlabel, fontsize=labelfontsize)
+    ax.set_ylabel(r'Level population [cm$^{-3}$]', fontsize=labelfontsize)
+    ax.legend(loc='best', frameon=True, fontsize='x-small', ncol=1)
+    if not args.notitle:
+        title = f"Z={Z}, ionstage={ionstage}"
+        if args.x == 'time':
+            title = title + f', mgi = {args.modelgridindex[0]}'
+        if args.x == 'velocity':
+            title = title + f', {args.timedays} days'
+        plt.title(title)
+
+    at.plottools.set_axis_properties(ax, args)
+
+    figname = f"plotnltelevelpopsZ{Z}.pdf"
+    plt.savefig(modelpaths[0] / figname, format='pdf')
+    print(f"Saved {figname}")
+
+
+def plot_populations_with_time_or_velocity(ax, modelpaths, timesteps, modelgridindex_list, velocity,
+                                           ionstage, ionlevels, Z, levelconfignames, args):
+    markers = ['o', 'x', '^', 's', '8']
     for modelnumber, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
 
@@ -306,36 +338,18 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
                                         if level == ionlevel])
             # plotpopulationsLTE = np.array([float(populationsLTE[ts, level]) for ts, level in populationsLTE.keys()
             #                             if level == ionlevel])
-
             linelabel = fr'{levelconfignames[ionlevel]}'
-            print(linelabel)
+            # linelabel = f'level {ionlevel} {modelname}'
+
             if args.x == 'time':
                 ax.plot(timedays, plotpopulations, marker=markers[modelnumber],
-                         label=f'level {ionlevel} {modelname}')
+                         label=linelabel)
 
             if args.x == 'velocity':
                 ax.plot(velocity, plotpopulations, marker=markers[modelnumber],
-                         label=f'level {ionlevel} {modelname}')
+                         label=linelabel)
             # plt.plot(timedays, plotpopulationsLTE, marker=markers[modelnumber+1],
             #          label=f'level {ionlevel} {modelname} LTE')
-
-    ax.set_yscale('log')
-    labelfontsize = 24
-    if args.x == 'time':
-        xlabel = 'Time Since Explosion [days]'
-    if args.x == 'velocity':
-        xlabel = 'Zone outer velocity [km/s]'
-    ax.set_xlabel(xlabel, fontsize=labelfontsize)
-    ax.set_ylabel('Level population', fontsize=labelfontsize)
-    ax.legend(loc='best', frameon=True, fontsize='x-small', ncol=1)
-    if not args.notitle:
-        plt.title(f"Z={Z} ionstage={ionstage} cell {mgi}")
-
-    at.plottools.set_axis_properties(ax, args)
-
-    figname = f"plotnltelevelpopsZ{Z}cell{mgi}level{ionlevels[0]}.pdf"
-    plt.savefig(modelpaths[0] / figname, format='pdf')
-    print(f"Saved {figname}")
 
 
 def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, args):
