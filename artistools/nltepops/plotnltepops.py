@@ -195,6 +195,7 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
 
         print("\nTop radiative decays")
         print(dftrans[:10].to_string(index=False))
+        print(dftrans[:50].to_string(index=False))
 
     ax.set_yscale('log')
 
@@ -270,6 +271,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     Z = int(at.get_atomic_number(args.elements[0]))
     ionstage = int(args.ionstages[0])
 
+
     markers = ['o', 'x', '^', 's', '8']
     # labels = ['no super level Fe', 'no super level Co', 'no super level Ni', 'no super levels', 'standard case']
 
@@ -304,6 +306,8 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
             # plotpopulationsLTE = np.array([float(populationsLTE[ts, level]) for ts, level in populationsLTE.keys()
             #                             if level == ionlevel])
 
+            linelabel = fr'{levelconfignames[ionlevel]}'
+            print(linelabel)
             if args.x == 'time':
                 ax.plot(timedays, plotpopulations, marker=markers[modelnumber],
                          label=f'level {ionlevel} {modelname}')
@@ -326,9 +330,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     if not args.notitle:
         plt.title(f"Z={Z} ionstage={ionstage} cell {mgi}")
 
-    ax.minorticks_on()
-    ax.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=18, direction='in')
-    ax.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=18, direction='in')
+    at.plottools.set_axis_properties(ax, args)
 
     figname = f"plotnltelevelpopsZ{Z}cell{mgi}level{ionlevels[0]}.pdf"
     plt.savefig(modelpaths[0] / figname, format='pdf')

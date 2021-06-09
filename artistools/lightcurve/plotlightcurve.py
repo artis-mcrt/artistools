@@ -15,6 +15,7 @@ import pandas as pd
 
 import artistools as at
 import artistools.spectra
+import artistools.plottools
 import matplotlib.pyplot as plt
 import matplotlib
 from extinction import apply, ccm89
@@ -261,30 +262,6 @@ def get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, ar
     return linelabel
 
 
-def set_axis_properties(ax, args):
-    if args.subplots:
-        for axis in ax:
-            # axis.set_xscale('log')
-            axis.minorticks_on()
-            axis.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2,
-                             labelsize=args.labelfontsize, direction='in')
-            axis.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2,
-                             labelsize=args.labelfontsize, direction='in')
-
-    else:
-        ax.minorticks_on()
-        ax.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=args.labelfontsize,
-                       direction='in')
-        ax.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=args.labelfontsize,
-                       direction='in')
-
-    plt.ylim(args.ymin, args.ymax)
-    plt.xlim(args.xmin, args.xmax)
-
-    plt.minorticks_on()
-    return ax
-
-
 def set_lightcurveplot_legend(ax, args):
     if not args.nolegend:
         if args.subplots:
@@ -461,7 +438,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                     # else:
                     ax.plot(time, brightness_in_mag, label=linelabel, linewidth=3.5)  # color=color, linestyle=linestyle)
 
-    ax = set_axis_properties(ax, args)
+    ax = at.plottools.set_axis_properties(ax, args)
     fig, ax = set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_name=band_name)
     ax = set_lightcurveplot_legend(ax, args)
 
@@ -573,7 +550,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
         #       f'{diff[plot_times.index(tmax_B)]}')
 
     fig, ax = set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args)
-    ax = set_axis_properties(ax, args)
+    ax = at.plottools.set_axis_properties(ax, args)
     ax = set_lightcurveplot_legend(ax, args)
 
     args.outputfile = os.path.join(outputfolder, f'plotcolorevolution{filter_names[0]}-{filter_names[1]}.pdf')
