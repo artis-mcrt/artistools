@@ -31,3 +31,11 @@ def set_axis_properties(ax, args):
     plt.minorticks_on()
     return ax
 
+
+def set_axis_labels(fig, ax, xlabel, ylabel, labelfontsize, args):
+    if args.subplots:
+        fig.text(0.5, 0.025, xlabel, ha='center', va='center')
+        fig.text(0.02, 0.5, ylabel, ha='center', va='center', rotation='vertical')
+    else:
+        ax.set_xlabel(xlabel, fontsize=labelfontsize)
+        ax.set_ylabel(ylabel, fontsize=labelfontsize)
