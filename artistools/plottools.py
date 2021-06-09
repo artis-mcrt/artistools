@@ -9,7 +9,6 @@ def set_axis_properties(ax, args):
 
     if args.subplots:
         for axis in ax:
-            # axis.set_xscale('log')
             axis.minorticks_on()
             axis.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2,
                              labelsize=args.labelfontsize, direction='in')
@@ -34,7 +33,7 @@ def set_axis_properties(ax, args):
 
 def set_axis_labels(fig, ax, xlabel, ylabel, labelfontsize, args):
     if args.subplots:
-        fig.text(0.5, 0.025, xlabel, ha='center', va='center')
+        fig.text(0.5, 0.02, xlabel, ha='center', va='center')
         fig.text(0.02, 0.5, ylabel, ha='center', va='center', rotation='vertical')
     else:
         ax.set_xlabel(xlabel, fontsize=labelfontsize)
