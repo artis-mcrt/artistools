@@ -250,24 +250,6 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     mpl.rc('font', **font)
 
     ionlevels = args.levels
-    velocity = []
-    if args.x == 'time':
-        timesteps = [time for time in range(args.timestepmin, args.timestepmax)]
-
-        if not args.modelgridindex:
-            print("Please specify modelgridindex")
-            quit()
-
-        modelgridindex_list = np.ones_like(timesteps)
-        modelgridindex_list = modelgridindex_list * int(args.modelgridindex[0])
-
-    if args.x == 'velocity':
-        modeldata, _, _ = at.inputmodel.get_modeldata(modelpaths[0])  # todo: move into modelpath loop
-        velocity = modeldata['velocity_outer']
-        modelgridindex_list = [mgi for mgi, _ in enumerate(velocity)]
-
-        timesteps = np.ones_like(modelgridindex_list)
-        timesteps = timesteps * args.timestep
 
     Z = int(at.get_atomic_number(args.elements[0]))
     ionstage = int(args.ionstages[0])
@@ -283,8 +265,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
                            figsize=(at.figwidth * 1.3 * cols, at.figwidth * 1.4 * rows),
                            tight_layout={"pad": 2.0, "w_pad": 0.2, "h_pad": 0.2})
 
-    plot_populations_with_time_or_velocity(ax, modelpaths, timesteps, modelgridindex_list, velocity,
-                                           ionstage, ionlevels, Z, levelconfignames, args)
+    plot_populations_with_time_or_velocity(ax, modelpaths, ionstage, ionlevels, Z, levelconfignames, args)
 
     ax.set_yscale('log')
     labelfontsize = 24
@@ -310,8 +291,26 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     print(f"Saved {figname}")
 
 
-def plot_populations_with_time_or_velocity(ax, modelpaths, timesteps, modelgridindex_list, velocity,
-                                           ionstage, ionlevels, Z, levelconfignames, args):
+def plot_populations_with_time_or_velocity(ax, modelpaths, ionstage, ionlevels, Z, levelconfignames, args):
+
+    if args.x == 'time':
+        timesteps = [time for time in range(args.timestepmin, args.timestepmax)]
+
+        if not args.modelgridindex:
+            print("Please specify modelgridindex")
+            quit()
+
+        modelgridindex_list = np.ones_like(timesteps)
+        modelgridindex_list = modelgridindex_list * int(args.modelgridindex[0])
+
+    if args.x == 'velocity':
+        modeldata, _, _ = at.inputmodel.get_modeldata(modelpaths[0])  # todo: move into modelpath loop
+        velocity = modeldata['velocity_outer']
+        modelgridindex_list = [mgi for mgi, _ in enumerate(velocity)]
+
+        timesteps = np.ones_like(modelgridindex_list)
+        timesteps = timesteps * args.timestep
+
     markers = ['o', 'x', '^', 's', '8']
     for modelnumber, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
