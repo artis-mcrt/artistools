@@ -246,7 +246,7 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
 
 
 def make_plot_populations_with_time_or_velocity(modelpaths, args):
-    font = {'size': 16}
+    font = {'size': 18}
     mpl.rc('font', **font)
 
     ionlevels = args.levels
@@ -259,23 +259,46 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     levelconfignames = ion_data['levels']['levelname']
     # levelconfignames = [at.nltepops.texifyconfiguration(name) for name in levelconfignames]
 
-    rows = 1
+    if not args.timedayslist:
+        rows = 1
+        timedayslist = [args.timestep]
+        args.subplots = False
+    else:
+        rows = len(args.timedayslist)
+        timedayslist = args.timedayslist
+        args.subplots = True
+
     cols = 1
     fig, ax = plt.subplots(nrows=rows, ncols=cols, sharex=True, sharey=True,
-                           figsize=(at.figwidth * 1.3 * cols, at.figwidth * 1.4 * rows),
+                           figsize=(at.figwidth * 2 * cols, at.figwidth * 0.9 * rows),
                            tight_layout={"pad": 2.0, "w_pad": 0.2, "h_pad": 0.2})
+    if args.subplots:
+        ax = ax.flatten()
 
-    plot_populations_with_time_or_velocity(ax, modelpaths, ionstage, ionlevels, Z, levelconfignames, args)
+    for plotnumber, timedays in enumerate(timedayslist):
+        if args.subplots:
+            axis = ax[plotnumber]
+        else:
+            axis = ax
+        plot_populations_with_time_or_velocity(axis, modelpaths, timedays, ionstage, ionlevels, Z,
+                                               levelconfignames, args)
 
-    ax.set_yscale('log')
-    labelfontsize = 24
+    labelfontsize = 20
     if args.x == 'time':
         xlabel = 'Time Since Explosion [days]'
     if args.x == 'velocity':
         xlabel = r'Zone outer velocity [km s$^{-1}$]'
-    ax.set_xlabel(xlabel, fontsize=labelfontsize)
-    ax.set_ylabel(r'Level population [cm$^{-3}$]', fontsize=labelfontsize)
-    ax.legend(loc='best', frameon=True, fontsize='x-small', ncol=1)
+    ylabel = r'Level population [cm$^{-3}$]'
+
+    at.plottools.set_axis_labels(fig, ax, xlabel, ylabel, labelfontsize, args)
+    if args.subplots:
+        for axis in ax:
+            axis.set_yscale('log')
+        ax[0].legend(loc='best', frameon=True, fontsize='x-small', ncol=1)
+    else:
+        ax.legend(loc='best', frameon=True, fontsize='x-small', ncol=1)
+        ax.set_yscale('log')
+
     if not args.notitle:
         title = f"Z={Z}, ionstage={ionstage}"
         if args.x == 'time':
@@ -291,7 +314,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     print(f"Saved {figname}")
 
 
-def plot_populations_with_time_or_velocity(ax, modelpaths, ionstage, ionlevels, Z, levelconfignames, args):
+def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ionstage, ionlevels, Z, levelconfignames, args):
 
     if args.x == 'time':
         timesteps = [time for time in range(args.timestepmin, args.timestepmax)]
@@ -309,7 +332,7 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, ionstage, ionlevels, 
         modelgridindex_list = [mgi for mgi, _ in enumerate(velocity)]
 
         timesteps = np.ones_like(modelgridindex_list)
-        timesteps = timesteps * args.timestep
+        timesteps = timesteps * at.get_timestep_of_timedays(modelpaths[0], timedays)
 
     markers = ['o', 'x', '^', 's', '8']
     for modelnumber, modelpath in enumerate(modelpaths):
@@ -498,6 +521,9 @@ def addargs(parser):
         '-timedays', '-time', '-t',
         help='Time in days to plot')
 
+    timegroup.add_argument('-timedayslist', nargs='+',
+        help='List of times in days for time sequence subplots')
+
     timegroup.add_argument(
         '-timestep', '-ts', type=int,
         help='Timestep number to plot')
@@ -596,6 +622,8 @@ def main(args=None, argsraw=None, **kwargs):
         else:
             timestep = at.get_timestep_of_timedays(modelpath, args.timedays)  # todo: use args.timestep instead
             args.timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
+    elif args.timedayslist:
+        print(args.timedayslist)
     else:
         timestep = int(args.timestep)
 
