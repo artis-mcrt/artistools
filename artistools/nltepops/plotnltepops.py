@@ -270,7 +270,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
 
     cols = 1
     fig, ax = plt.subplots(nrows=rows, ncols=cols, sharex=True, sharey=True,
-                           figsize=(at.figwidth * 2 * cols, at.figwidth * 0.9 * rows),
+                           figsize=(at.figwidth * 2 * cols, at.figwidth * 0.85 * rows),
                            tight_layout={"pad": 2.0, "w_pad": 0.2, "h_pad": 0.2})
     if args.subplots:
         ax = ax.flatten()
@@ -292,8 +292,12 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
 
     at.plottools.set_axis_labels(fig, ax, xlabel, ylabel, labelfontsize, args)
     if args.subplots:
-        for axis in ax:
+        for plotnumber, axis in enumerate(ax):
             axis.set_yscale('log')
+            if args.timedayslist:
+                ymin, ymax = axis.get_ylim()
+                xmin, xmax = axis.get_xlim()
+                axis.text(xmax*0.85, ymin * 50, f'{args.timedayslist[plotnumber]} days')
         ax[0].legend(loc='best', frameon=True, fontsize='x-small', ncol=1)
     else:
         ax.legend(loc='best', frameon=True, fontsize='x-small', ncol=1)
