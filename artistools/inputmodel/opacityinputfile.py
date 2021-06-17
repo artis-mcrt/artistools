@@ -50,3 +50,11 @@ def get_opacity_from_file(modelpath):
     opacity = opacity_file_contents[1]
 
     return opacity
+
+
+def write_Ye_file(outputfilepath, griddata):
+    with open(Path(outputfilepath) / 'Ye.txt', 'w') as fYe:
+        fYe.write(f'{len(griddata["gridindex"])}\n')
+        griddata[['gridindex', 'cellYe']].to_csv(fYe, sep='\t', index=False, header=False, float_format='%.10f')
+
+    print("Saved Ye.txt")

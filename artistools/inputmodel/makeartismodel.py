@@ -32,6 +32,9 @@ def addargs(parser):
     parser.add_argument('--getcellopacityfromYe', action='store_true',
                         help='Make opacity.txt where opacity is set in each cell by Ye from arepo model')
 
+    parser.add_argument('--writemodelYe', action='store_true',
+                        help='Make Ye.txt where cell Ye is written out with artis cellid')
+
     parser.add_argument('--makeenergyinputfiles', action='store_true',
                         help='Downscale a 3D ARTIS model to smaller grid size')
 
@@ -65,6 +68,7 @@ def main(args=None, argsraw=None, **kwargs):
         return
 
     if args.makemodelfromarepo:
+        print(args)
         griddata, t_model, vmax = at.inputmodel.modelfromhydro.read_griddat_file(args.pathtogriddata)
 
         if args.fillcentralhole:
@@ -72,6 +76,8 @@ def main(args=None, argsraw=None, **kwargs):
 
         if args.getcellopacityfromYe:
             at.inputmodel.opacityinputfile.opacity_by_Ye(args.modelpath[0], griddata)
+        if args.writemodelYe:
+            at.inputmodel.opacityinputfile.write_Ye_file(args.modelpath[0], griddata)
 
         at.inputmodel.save_3d_modeldata(args.modelpath[0], griddata, t_model=t_model, vmax=vmax, radioactives=False)
         ngrid = len(griddata['rho'])
