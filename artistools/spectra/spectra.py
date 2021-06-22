@@ -355,11 +355,11 @@ def make_virtual_spectra_summed_file(modelpath):
     print("nprocs", nprocs)
     vspecpol_data_old = []  # virtual packet spectra for each observer (all directions and opacity choices)
     vpktconfig = at.get_vpkt_config(modelpath)
-    nindicies_used = vpktconfig['nobsdirections'] * vpktconfig['nspectraperobs']
-    print(f"nobsdirections {vpktconfig['nobsdirections']} nspectraperobs {vpktconfig['nspectraperobs']} (total observers: {nindicies_used})")
+    nvirtual_spectra = vpktconfig['nobsdirections'] * vpktconfig['nspectraperobs']
+    print(f"nobsdirections {vpktconfig['nobsdirections']} nspectraperobs {vpktconfig['nspectraperobs']} (total observers: {nvirtual_spectra})")
     for mpirank in range(nprocs):
-        print(f"Reading rank {mpirank}")
         vspecpolfilename = f'vspecpol_{mpirank}-0.out'
+        print(f"Reading rank {mpirank} filename {vspecpolfilename}")
         vspecpolpath = Path(modelpath, vspecpolfilename)
         if not vspecpolpath.is_file():
             vspecpolpath = Path(modelpath, vspecpolfilename + '.gz')
@@ -368,23 +368,27 @@ def make_virtual_spectra_summed_file(modelpath):
                 continue
 
         vspecpolfile = pd.read_csv(vspecpolpath, delim_whitespace=True, header=None)
-        # find duplicated header lines
-        index_to_split = vspecpolfile.index[vspecpolfile.iloc[:, 1] == vspecpolfile.iloc[0, 1]]
-        vspecpol_data = []
-        for i, index_value in enumerate(index_to_split[:nindicies_used]):
+        # Where times of timesteps are written out a new virtual spectrum starts
+        # Find where the time in row 0, column 1 repeats in any column 1
+        index_of_new_spectrum = vspecpolfile.index[vspecpolfile.iloc[:, 1] == vspecpolfile.iloc[0, 1]]
+        vspecpol_data = []  # list of all predefined vspectra
+        for i, index_spectrum_starts in enumerate(index_of_new_spectrum[:nvirtual_spectra]):
             # todo: this is different to at.gather_res_data() -- could be made to be same format to not repeat code
-            if index_value != index_to_split[-1]:
-                chunk = vspecpolfile.iloc[index_value:index_to_split[i+1], :]
+            if index_spectrum_starts != index_of_new_spectrum[-1]:
+                chunk = vspecpolfile.iloc[index_spectrum_starts:index_of_new_spectrum[i+1], :]
             else:
-                chunk = vspecpolfile.iloc[index_value:, :]
+                chunk = vspecpolfile.iloc[index_spectrum_starts:, :]
             vspecpol_data.append(chunk)
 
         if len(vspecpol_data_old) > 0:
             for i, _ in enumerate(vspecpol_data):
-                dftmp = vspecpol_data[i].copy()
+                dftmp = vspecpol_data[i].copy()  # copy of vspectrum number i in a file
+                # add copy to the same spectrum number from previous file
+                # (don't need to copy row 1 = time or column 1 = freq)
                 dftmp.iloc[1:, 1:] += vspecpol_data_old[i].iloc[1:, 1:]
+                # spectrum i then equals the sum of all previous files spectrum number i
                 vspecpol_data[i] = dftmp
-
+        # update array containing sum of previous files
         vspecpol_data_old = vspecpol_data
 
     for spec_index, vspecpol in enumerate(vspecpol_data):
