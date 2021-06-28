@@ -358,7 +358,7 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
                     supxmin, supxmax = axis.get_xlim()
                     plot_reference_spectrum(
                         specpath, axis, supxmin, supxmax,
-                        filterfunc, scale_to_peak, scaletoreftime=None,
+                        filterfunc, scale_to_peak, scaletoreftime=args.scaletoreftime,
                         **plotkwargs)
             refspecindex += 1
 
