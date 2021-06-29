@@ -349,6 +349,8 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     fig, ax = create_axes(args)
     set_axis_limit_args(args)
 
+    plotkwargs = {}
+
     for modelnumber, modelpath in enumerate(modelpaths):
         modelpath = Path(modelpath)  ## Make sure modelpath is defined as path. May not be necessary
 
@@ -363,13 +365,13 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 
             if modelnumber == 0 and args.plot_hesma_model:  # Todo: does this work?
                 hesma_model = read_hesma_lightcurve(args)
-                linelabel = str(args.plot_hesma_model).split('_')[:3]
+                plotkwargs['label'] = str(args.plot_hesma_model).split('_')[:3]
 
             for plotnumber, band_name in enumerate(band_lightcurve_data):
                 time, brightness_in_mag = get_band_lightcurve(band_lightcurve_data, band_name, args)
 
-                linelabel = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
-                # linelabel = '\n'.join(wrap(linelabel, 40))  # todo: could be arg? wraps text in label
+                plotkwargs['label'] = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
+                # plotkwargs['label'] = '\n'.join(wrap(linelabel, 40))  # todo: could be arg? wraps text in label
 
                 filterfunc = at.get_filterfunc(args)
                 if filterfunc is not None:
@@ -406,27 +408,19 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                                                       filternames_conversion_dict, ax, plotnumber)
 
                 if args.color:
-                    color = args.color[modelnumber]
+                    plotkwargs['color'] = args.color[modelnumber]
                 else:
-                    color = define_colours_list[modelnumber]
+                    plotkwargs['color'] = define_colours_list[modelnumber]
                 if args.linestyle:
-                    linestyle = args.linestyle[modelnumber]
+                    plotkwargs['linestyle'] = args.linestyle[modelnumber]
 
                 # if not (args.test_viewing_angle_fit or args.calculate_peak_time_mag_deltam15_bool):
 
-                if args.subplots:
-                    # if linestyle == 'dashed':
-                    #     alpha = 0.6
-                    # else:
-                    alpha = 1  # todo: set command line arg for this
-
                     if len(angles) > 1 or (args.plotviewingangle and os.path.isfile(modelpath / 'specpol_res.out')):
-                        ax[plotnumber].plot(time, brightness_in_mag, label=linelabel, linewidth=4, linestyle=linestyle,
-                                            alpha=alpha)
+                        ax[plotnumber].plot(time, brightness_in_mag, linewidth=4, **plotkwargs)
                     # I think this was just to have a different line style for viewing angles....
                     else:
-                        ax[plotnumber].plot(time, brightness_in_mag, label=linelabel, linewidth=4, color=color,
-                                            linestyle=linestyle, alpha=alpha)
+                        ax[plotnumber].plot(time, brightness_in_mag, linewidth=4, **plotkwargs)
                         # if key is not 'bol':
                         #     ax[plotnumber].plot(
                         #         cmfgen_mags['time[d]'], cmfgen_mags[key], label='CMFGEN', color='k', linewidth=3)
@@ -436,7 +430,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                     # elif 'M2a' in str(modelpath):
                     #     ax.plot(time, magnitude, label=linelabel, linewidth=3, color='k')
                     # else:
-                    ax.plot(time, brightness_in_mag, label=linelabel, linewidth=3.5)  # color=color, linestyle=linestyle)
+                    ax.plot(time, brightness_in_mag, linewidth=3.5, **plotkwargs)  # color=color, linestyle=linestyle)
 
     ax = at.plottools.set_axis_properties(ax, args)
     fig, ax = set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_name=band_name)
