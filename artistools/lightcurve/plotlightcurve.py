@@ -495,6 +495,8 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
     fig, ax = create_axes(args)
     set_axis_limit_args(args)
 
+    plotkwargs = {}
+
     for modelnumber, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
         print(f'Reading spectra: {modelname}')
@@ -510,7 +512,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
 
                 plot_times, colour_delta_mag = get_colour_delta_mag(band_lightcurve_data, filter_names)
 
-                linelabel = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
+                plotkwargs['label'] = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
 
                 filterfunc = at.get_filterfunc(args)
                 if filterfunc is not None:
@@ -519,15 +521,15 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                 if args.color and args.plotviewingangle:
                     print("WARNING: -color argument will not work with viewing angles for colour evolution plots,"
                           "colours are taken from color_list array instead")
-                    color = color_list[angle_counter]
+                    plotkwargs['color'] = color_list[angle_counter]  ## index instaed of angle_counter??
                     angle_counter += 1
                 elif args.plotviewingangle and not args.color:
-                    color = color_list[angle_counter]
+                    plotkwargs['color'] = color_list[angle_counter]
                     angle_counter += 1
                 elif args.color:
-                    color = args.color[modelnumber]
+                    plotkwargs['color'] = args.color[modelnumber]
                 if args.linestyle:
-                    linestyle = args.linestyle[modelnumber]
+                    plotkwargs['linestyle'] = args.linestyle[modelnumber]
 
                 if args.reflightcurves and modelnumber == 0:
                     if len(angles) > 1 and index > 0:
@@ -539,11 +541,9 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                                 filternames_conversion_dict, ax, plotnumber, args)
 
                 if args.subplots:
-                    ax[plotnumber].plot(plot_times, colour_delta_mag, label=linelabel, linewidth=4, linestyle=linestyle,
-                                        color=color)
+                    ax[plotnumber].plot(plot_times, colour_delta_mag, linewidth=4, **plotkwargs)
                 else:
-                    ax.plot(plot_times, colour_delta_mag, label=linelabel, linewidth=3, linestyle=linestyle,
-                            color=color)
+                    ax.plot(plot_times, colour_delta_mag, linewidth=3, **plotkwargs)
 
                 if args.subplots:
                     ax[plotnumber].text(10, args.ymax - 0.5, f'{filter_names[0]}-{filter_names[1]}', fontsize='x-large')
