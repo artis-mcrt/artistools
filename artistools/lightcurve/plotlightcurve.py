@@ -318,7 +318,7 @@ def get_viewinganglecolor_for_colorbar(angle_definition, angle, costheta_viewing
     return plotkwargs, colorindex
 
 
-def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args):
+def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=None, ax=None):
     if args.colorbarcostheta:
         # ticklabels = costheta_viewing_angle_bins
         ticklabels = [' -1', ' -0.8', ' -0.6', ' -0.4', ' -0.2', ' 0', ' 0.2', ' 0.4', ' 0.6', ' 0.8', ' 1']
@@ -350,6 +350,10 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     set_axis_limit_args(args)
 
     plotkwargs = {}
+
+    if args.colorbarcostheta or args.colorbarphi:
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = get_viewinganglebin_definitions()
+        scaledmap = make_colorbar_viewingangles_colormap()
 
     for modelnumber, modelpath in enumerate(modelpaths):
         modelpath = Path(modelpath)  ## Make sure modelpath is defined as path. May not be necessary
@@ -411,6 +415,14 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                     plotkwargs['color'] = args.color[modelnumber]
                 else:
                     plotkwargs['color'] = define_colours_list[modelnumber]
+
+                if args.colorbarcostheta or args.colorbarphi:
+                    # Update plotkwargs with viewing angle colour
+                    plotkwargs['label'] = None
+                    plotkwargs, _ = get_viewinganglecolor_for_colorbar(angle_definition, angle,
+                                                        costheta_viewing_angle_bins, phi_viewing_angle_bins,
+                                                        scaledmap, plotkwargs, args)
+
                 if args.linestyle:
                     plotkwargs['linestyle'] = args.linestyle[modelnumber]
 
@@ -435,6 +447,9 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     ax = at.plottools.set_axis_properties(ax, args)
     fig, ax = set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_name=band_name)
     ax = set_lightcurveplot_legend(ax, args)
+
+    if args.colorbarcostheta or args.colorbarphi:
+        make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=fig, ax=ax)
 
     if args.filter and len(band_lightcurve_data) == 1:
         args.outputfile = os.path.join(outputfolder, f'plot{band_name}lightcurves.pdf')
