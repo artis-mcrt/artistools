@@ -8,18 +8,18 @@ MSUN = 1.989e33
 CLIGHT = 2.99792458e10
 
 
-def read_arepo_out(pathtosnapshot):
+def read_sph_out(pathtosnapshot):
     arepo_out_file = Path(pathtosnapshot) / "ejectasnapshot.dat"
 
-    column_names = ['write(1744,*)h (i)', 'x (i)', 'y (i)', 'z (i)', 'vx (i)', 'vy (i)', 'vz (i)', 'vstx (i)',
+    column_names = ['h (i)', 'x (i)', 'y (i)', 'z (i)', 'vx (i)', 'vy (i)', 'vz (i)', 'vstx (i)',
                     'vsty (i)',
                     'vstz (i)', 'u (i)', 'psi(i)', 'alpha(i)', 'pmass (i)', 'rho (i)', 'p(i)', 'rst(i)',
                     'tau (i)', 'av (i)', 'ye(i)', 'temp(i)']
     # Everything is in geometric units here
-    arepo_out_dat = pd.read_csv(arepo_out_file, delim_whitespace=True, header=None, names=column_names)
-    print("total mass", sum(arepo_out_dat['pmass (i)']))
+    sph_out_dat = pd.read_csv(arepo_out_file, delim_whitespace=True, header=None, names=column_names)
+    print("total mass", sum(sph_out_dat['pmass (i)']))
 
-    return arepo_out_dat
+    return sph_out_dat
 
 
 def get_snapshot_time(pathtogriddata):
