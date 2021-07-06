@@ -1,8 +1,10 @@
+import tarfile
 from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.integrate import quad
+import os
 
 import artistools as at
 import artistools.inputmodel
