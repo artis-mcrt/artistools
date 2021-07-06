@@ -65,6 +65,63 @@ def rprocess_const_and_powerlaw():
     return times_and_rate, E_tot
 
 
+def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
+
+    index_time_greaterthan = energy_thermo_data[energy_thermo_data['time/s'] > 1e7].index  # 1e7 seconds = 116 days
+    energy_thermo_data.drop(index_time_greaterthan, inplace=True)
+    # print("Dropping times later than 116 days")
+
+    skipfirstnrows = 0  # not sure first values look sensible -- check this
+    times = energy_thermo_data['time/s'][skipfirstnrows:]
+    qdot = energy_thermo_data['Qdot'][skipfirstnrows:]
+
+    E_tot = np.trapz(y=qdot, x=times)  # erg / g
+
+    if get_rate:
+        print(f"E_tot {E_tot} erg/g")
+
+        import scipy.integrate
+        cumulative_integrated_energy = scipy.integrate.cumulative_trapezoid(y=qdot, x=times)
+        cumulative_integrated_energy = np.insert(cumulative_integrated_energy, 0, 0)
+
+        rate = cumulative_integrated_energy / E_tot
+
+        times_and_rate = {'times': times/DAY, 'rate': rate}
+        times_and_rate = pd.DataFrame(data=times_and_rate)
+
+        return times_and_rate, E_tot
+
+    else:
+        return E_tot
+
+
+def get_rprocess_calculation_files():
+    path = Path("/home/localadmin_ccollins/Documents/kilonova_inputfiles/rprocessdata/Mergers")
+    tarfiles = [file for file in os.listdir(path) if file.endswith(".tar.xz")]
+
+    trajectory_ids = []
+    trajectory_E_tot = []
+
+    energy_thermo_filepath = "./Run_rprocess/energy_thermo.dat"
+    for file in tarfiles:
+        trajectory_id = file.split('.')[0]
+        tar = tarfile.open(path / file, mode='r:*')
+        energythermo_file = tar.extractfile(member=energy_thermo_filepath)
+
+        energy_thermo_data = pd.read_csv(energythermo_file, delim_whitespace=True)
+        # print(energy_thermo_data['Qdot'])
+        # print(energy_thermo_data['time/s'])
+
+        E_tot = energy_from_rprocess_calculation(energy_thermo_data, get_rate=False)
+
+        trajectory_ids.append(trajectory_id)
+        trajectory_E_tot.append(E_tot)
+
+    trajectory_energy = {'id': trajectory_ids, 'E_tot': trajectory_E_tot}
+    trajectory_energy = pd.DataFrame.from_dict(trajectory_energy)
+    print(trajectory_energy)
+
+
 def make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams):
 
     Etot = E_tot_per_gram * Mtot_grams
