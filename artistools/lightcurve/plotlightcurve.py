@@ -437,11 +437,6 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                         #     ax[plotnumber].plot(
                         #         cmfgen_mags['time[d]'], cmfgen_mags[key], label='CMFGEN', color='k', linewidth=3)
                 else:
-                    # if 'FM3' in str(modelpath):
-                    #     ax.plot(time, magnitude, label=linelabel, linewidth=3, color='darkblue')
-                    # elif 'M2a' in str(modelpath):
-                    #     ax.plot(time, magnitude, label=linelabel, linewidth=3, color='k')
-                    # else:
                     ax.plot(time, brightness_in_mag, linewidth=3.5, **plotkwargs)  # color=color, linestyle=linestyle)
 
     ax = at.plottools.set_axis_properties(ax, args)
