@@ -265,7 +265,7 @@ def save_modeldata(dfmodeldata, t_model_init_days, filename):
 def save_3d_modeldata(modelpath, griddata, t_model, vmax, radioactives=True):
     ngridpoints = len(griddata['gridindex'])  # xgrid * ygrid * zgrid
     gridsize = round(ngridpoints ** (1 / 3))
-    print('grid size', gridsize)
+    print(f'grid size {gridsize}^3')
 
     if not radioactives:
         ffe = 0.0
