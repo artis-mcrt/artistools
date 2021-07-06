@@ -121,7 +121,9 @@ def get_rprocess_calculation_files():
 
     trajectory_energy = {'id': trajectory_ids, 'E_tot': trajectory_E_tot}
     trajectory_energy = pd.DataFrame.from_dict(trajectory_energy)
+    trajectory_energy = trajectory_energy.sort_values(by='id')
     print(trajectory_energy)
+    trajectory_energy.to_csv(path / 'trajectoryQ.dat', sep=' ', index=False)
 
 
 def make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams):
