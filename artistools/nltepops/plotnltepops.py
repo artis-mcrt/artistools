@@ -588,6 +588,18 @@ def addargs(parser):
         '--nolegend', action='store_true',
         help='Suppress the legend from the plot')
 
+    parser.add_argument('-xmin', type=float, default=None,
+        help='Plot range: x-axis')
+
+    parser.add_argument('-xmax', type=float, default=None,
+        help='Plot range: x-axis')
+
+    parser.add_argument('-ymin', type=float, default=None,
+        help='Plot range: y-axis')
+
+    parser.add_argument('-ymax', type=float, default=None,
+        help='Plot range: y-axis')
+
     parser.add_argument(
         '-outputfile', '-o', type=Path, default=defaultoutputfile,
         help='path/filename for PDF file')
