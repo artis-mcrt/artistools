@@ -26,6 +26,9 @@ def get_snapshot_time(pathtogriddata):
     import glob
 
     snapshotinfofile = glob.glob(str(Path(pathtogriddata) / "*_info.dat*"))
+    if not snapshotinfofile:
+        print("No info file found for dumpstep")
+        quit()
 
     if len(snapshotinfofile) > 1:
         print('Too many sfho_info.dat files found')
