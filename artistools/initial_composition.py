@@ -149,6 +149,12 @@ def make_3d_plot(modelpath, args):
     pv.set_plot_theme("document")  # set white background
 
     model, t_model, vmax = at.inputmodel.get_modeldata(modelpath, dimensions=3, get_abundances=False)
+    abundances = at.inputmodel.get_initialabundances(modelpath)
+
+    abundances['inputcellid'] = abundances['inputcellid'].apply(lambda x: float(x))
+
+    merge_dfs = model.merge(abundances, how='inner', on='inputcellid')
+    model = merge_dfs
 
     # choose what surface will be coloured by
     if args.rho:
