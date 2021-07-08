@@ -76,6 +76,10 @@ def plot_3d_initial_abundances(modelpath, args):
     plotvals = (merge_dfs.loc[merge_dfs[f'pos_{sliceaxis}'] == sliceposition])
     print(plotvals.keys())
 
+    colorscale = plotvals[ion]
+    # colorscale = np.log10(colorscale)
+    colorscale = np.ma.masked_where(colorscale == 0., colorscale)
+
     font = {'weight': 'bold',
             'size': 18}
 
@@ -84,7 +88,7 @@ def plot_3d_initial_abundances(modelpath, args):
     y = plotvals[f'pos_{plotaxis2}'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
     # fig = plt.figure(figsize=(5, 5))
     ax = plt.subplot(111)
-    im = ax.scatter(x, y, c=plotvals[ion], marker="8", rasterized=True)  # cmap=plt.get_cmap('PuOr')
+    im = ax.scatter(x, y, c=colorscale, marker="8", rasterized=True)  # cmap=plt.get_cmap('PuOr')
 
     cbar = plt.colorbar(im)
     # cbar.set_label(label=ion, size='x-large') #, fontweight='bold')
