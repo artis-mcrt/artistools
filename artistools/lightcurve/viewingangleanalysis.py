@@ -237,15 +237,25 @@ def make_plot_test_viewing_angle_fit(time, magnitude, xfit, fxfit, filternames_c
 def set_scatterplot_plotkwargs(modelnumber, args):
     plotkwargsviewingangles = {}
     plotkwargsviewingangles['marker'] = 'x'
+    plotkwargsviewingangles['zorder'] = 0
+    plotkwargsviewingangles['alpha'] = 0.8
     if args.colorbarcostheta or args.colorbarphi:
         update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles,args)
     else:
-        plotkwargsviewingangles['color'] = define_colours_list2[modelnumber]
+        if args.color:
+            plotkwargsviewingangles['color'] = args.color[modelnumber]
+        else:
+            plotkwargsviewingangles['color'] = define_colours_list2[modelnumber]
 
     plotkwargsangleaveraged = {}
     plotkwargsangleaveraged['marker'] = 'o'
-    plotkwargsangleaveraged['color'] = define_colours_list[modelnumber]
-    plotkwargsangleaveraged['s'] = 40
+    plotkwargsangleaveraged['zorder'] = 10
+    plotkwargsangleaveraged['edgecolor'] = 'k'
+    plotkwargsangleaveraged['s'] = 120
+    if args.color:
+        plotkwargsangleaveraged['color'] = args.color[modelnumber]
+    else:
+        plotkwargsangleaveraged['color'] = define_colours_list[modelnumber]
 
     if args.colorbarcostheta or args.colorbarphi:
         update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args)
@@ -339,9 +349,13 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
                          **plotkwargsangleaveraged)
         args.plotvalues.append((a0, p0))
         if not args.noerrorbars:
+            if args.color:
+                ecolor = args.color
+            else:
+                ecolor = define_colours_list
             plt.errorbar(args.band_delta_m15_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
                          xerr=np.std(band_delta_m15_viewing_angles),
-                         yerr=np.std(band_peak_mag_viewing_angles), ecolor=define_colours_list[ii], capsize=2)
+                         yerr=np.std(band_peak_mag_viewing_angles), ecolor=ecolor[ii], capsize=2)
 
     # a0, label = at.lightcurve.get_sn_sample_bol()
     # a0, label = at.lightcurve.plot_phillips_relation_data()
