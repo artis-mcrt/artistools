@@ -365,9 +365,10 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
     else:
         linelabels = modelnames
 
-    # a0, label = at.lightcurve.get_sn_sample_bol()
-    # a0, label = at.lightcurve.plot_phillips_relation_data()
+    # a0, datalabel = at.lightcurve.get_sn_sample_bol()
+    # a0, datalabel = at.lightcurve.plot_phillips_relation_data()
     # args.plotvalues.append((a0, a0))
+    # linelabels.append(datalabel)
 
     ax.legend(args.plotvalues, linelabels, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
                loc='upper right', fontsize=8, ncol=args.ncolslegend, columnspacing=1, frameon=False)
