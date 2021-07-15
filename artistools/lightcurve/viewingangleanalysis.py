@@ -360,12 +360,17 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
                          xerr=np.std(band_delta_m15_viewing_angles),
                          yerr=np.std(band_peak_mag_viewing_angles), ecolor=ecolor[ii], capsize=2)
 
+    if args.label:
+        linelabels = args.label
+    else:
+        linelabels = modelnames
+
     # a0, label = at.lightcurve.get_sn_sample_bol()
     # a0, label = at.lightcurve.plot_phillips_relation_data()
     # args.plotvalues.append((a0, a0))
 
-    ax.legend(args.plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
-               loc='upper right', fontsize=8, ncol=2, columnspacing=1, frameon=False)
+    ax.legend(args.plotvalues, linelabels, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
+               loc='upper right', fontsize=8, ncol=args.ncolslegend, columnspacing=1, frameon=False)
     ax.set_xlabel(r'Decline Rate ($\Delta$m$_{15}$)', fontsize=14)
     ax.set_ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
     set_scatterplot_plot_params(args)
