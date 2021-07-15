@@ -335,6 +335,9 @@ def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
 
 
 def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
+    fig, ax = plt.subplots(nrows=1, ncols=1, sharex=True,
+                           figsize=(8, 6), tight_layout={"pad": 0.5, "w_pad": 1.5, "h_pad": 0.3})
+
     for ii, modelname in enumerate(modelnames):
         viewing_angle_plot_data = pd.read_csv(key + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
                                               delimiter=" ")
@@ -344,8 +347,8 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
 
         plotkwargsviewingangles, plotkwargsangleaveraged = set_scatterplot_plotkwargs(ii, args)
 
-        a0 = plt.scatter(band_delta_m15_viewing_angles, band_peak_mag_viewing_angles, **plotkwargsviewingangles)
-        p0 = plt.scatter(args.band_delta_m15_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
+        a0 = ax.scatter(band_delta_m15_viewing_angles, band_peak_mag_viewing_angles, **plotkwargsviewingangles)
+        p0 = ax.scatter(args.band_delta_m15_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
                          **plotkwargsangleaveraged)
         args.plotvalues.append((a0, p0))
         if not args.noerrorbars:
@@ -353,7 +356,7 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
                 ecolor = args.color
             else:
                 ecolor = define_colours_list
-            plt.errorbar(args.band_delta_m15_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
+            ax.errorbar(args.band_delta_m15_angle_averaged_polyfit[ii], args.band_peakmag_angle_averaged_polyfit[ii],
                          xerr=np.std(band_delta_m15_viewing_angles),
                          yerr=np.std(band_peak_mag_viewing_angles), ecolor=ecolor[ii], capsize=2)
 
@@ -361,10 +364,10 @@ def make_viewing_angle_peakmag_delta_m15_scatter_plot(modelnames, key, args):
     # a0, label = at.lightcurve.plot_phillips_relation_data()
     # args.plotvalues.append((a0, a0))
 
-    plt.legend(args.plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
+    ax.legend(args.plotvalues, modelnames, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
                loc='upper right', fontsize=8, ncol=2, columnspacing=1, frameon=False)
-    plt.xlabel(r'Decline Rate ($\Delta$m$_{15}$)', fontsize=14)
-    plt.ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
+    ax.set_xlabel(r'Decline Rate ($\Delta$m$_{15}$)', fontsize=14)
+    ax.set_ylabel('Peak ' + key + ' Band Magnitude', fontsize=14)
     set_scatterplot_plot_params(args)
     plt.savefig(key + "_band_" + f'{modelnames[0]}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf", format="pdf")
     print("saving " + key + "_band_" + f'{modelnames[0]}' + "_viewing_angle_peakmag_delta_m15_scatter_plot.pdf")
