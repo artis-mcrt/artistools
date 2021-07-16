@@ -78,7 +78,7 @@ def plot_3d_initial_abundances(modelpath, args):
 
     colorscale = plotvals[ion]
     # colorscale = np.log10(colorscale)
-    colorscale = np.ma.masked_where(colorscale == 0., colorscale)
+    # colorscale = np.ma.masked_where(colorscale == 0., colorscale)
 
     font = {'weight': 'bold',
             'size': 18}
