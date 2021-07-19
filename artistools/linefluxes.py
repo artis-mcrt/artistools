@@ -286,7 +286,7 @@ def make_flux_ratio_plot(args):
             ax.plot(arr_tdays, arr_floersfit, color='black', label='Flörs et al. (2019) best fit', lw=2.)
 
         femis = pd.read_csv(
-            "/Users/luke/Dropbox/Papers (first-author)/2020 Artis ionisation/"
+            "/Users/luke/Dropbox/Papers (first-author)/2021 Artis ionisation/"
             "generateplots/floers_model_NIR_VIS_ratio_20201126.csv")
 
         amodels = {}
@@ -294,8 +294,9 @@ def make_flux_ratio_plot(args):
             modelname = row.file.replace("fig-nne_Te_allcells-", "").replace(f"-{row.epoch}d.txt", "")
             if modelname not in amodels:
                 amodels[modelname] = ([], [])
-            amodels[modelname][0].append(row.epoch)
-            amodels[modelname][1].append(row.NIR_VIS_ratio)
+            if int(row.epoch) != 263:
+                amodels[modelname][0].append(row.epoch)
+                amodels[modelname][1].append(row.NIR_VIS_ratio)
 
         aindex = 0
         # for amodelname, (xlist, ylist) in amodels.items():
