@@ -165,9 +165,13 @@ def plot_levelpop(
         ax, xlist, seriestype, params, timestepslist, mgilist,
         estimators, modelpath, dfalldata=None, args=None, **plotkwargs):
     if seriestype == 'levelpopulation':
-        ax.set_ylabel('Level population density [cm$^{-3}$]')
+        ax.set_ylabel('dN/dV [{} km$^{{-1}} s$]')
+        ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))
     else:
         raise ValueError()
+
+    modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
+    modeldata.eval('modelcellvolume = shellmass_grams / (10 ** logrho)', inplace=True)
 
     arr_tdelta = at.get_timestep_times_float(modelpath, loc='delta')
     for paramvalue in params:
@@ -196,11 +200,12 @@ def plot_levelpop(
                 valuesum += levelpop * arr_tdelta[timestep]
                 tdeltasum += arr_tdelta[timestep]
 
-            ylist.append(valuesum / tdeltasum)
+            deltav = modeldata.loc[modelgridindex].velocity_outer - modeldata.loc[modelgridindex].velocity_inner
+            ylist.append(valuesum / tdeltasum * modeldata.loc[modelgridindex].modelcellvolume / deltav)
 
         if dfalldata is not None:
             elsym = at.elsymbols[atomic_number].lower()
-            colname = f'nnlevel_{elsym}_ionstage{ion_stage}_level{levelindex}'
+            colname = f'nnlevel_on_dv_{elsym}_ionstage{ion_stage}_level{levelindex}'
             dfalldata[colname] = ylist
 
         ylist.insert(0, ylist[0])
