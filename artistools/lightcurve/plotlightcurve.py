@@ -374,6 +374,22 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
             for plotnumber, band_name in enumerate(band_lightcurve_data):
                 time, brightness_in_mag = get_band_lightcurve(band_lightcurve_data, band_name, args)
 
+                if args.print_data or args.write_data:
+                    txtlinesout = []
+                    txtlinesout.append(f'# band: {band_name}')
+                    txtlinesout.append(f'# model: {modelname}')
+                    txtlinesout.append(f'# time_days magnitude')
+                    for t, m in zip(time, brightness_in_mag):
+                        txtlinesout.append(f'{t} {m}')
+                    txtout = '\n'.join(txtlinesout)
+                    if args.write_data:
+                        bandoutfile = Path(f'band_{band_name}.txt')
+                        with bandoutfile.open('w') as f:
+                            f.write(txtout)
+                        print(f'Saved {bandoutfile}')
+                    if args.print_data:
+                        print(txtout)
+
                 plotkwargs['label'] = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
                 # plotkwargs['label'] = '\n'.join(wrap(linelabel, 40))  # todo: could be arg? wraps text in label
 
@@ -419,9 +435,10 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 if args.colorbarcostheta or args.colorbarphi:
                     # Update plotkwargs with viewing angle colour
                     plotkwargs['label'] = None
-                    plotkwargs, _ = get_viewinganglecolor_for_colorbar(angle_definition, angle,
-                                                        costheta_viewing_angle_bins, phi_viewing_angle_bins,
-                                                        scaledmap, plotkwargs, args)
+                    plotkwargs, _ = get_viewinganglecolor_for_colorbar(
+                        angle_definition, angle,
+                        costheta_viewing_angle_bins, phi_viewing_angle_bins,
+                        scaledmap, plotkwargs, args)
 
                 if args.linestyle:
                     plotkwargs['linestyle'] = args.linestyle[modelnumber]
@@ -760,6 +777,9 @@ def addargs(parser):
 
     parser.add_argument('--print_data', action='store_true',
                         help='Print plotted data')
+
+    parser.add_argument('--write_data', action='store_true',
+                        help='Save data used to generate the plot in a text file')
 
     parser.add_argument('-plot_hesma_model', action='store', type=Path, default=False,
                         help='Plot hesma model on top of lightcurve plot. '
