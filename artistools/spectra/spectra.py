@@ -475,12 +475,12 @@ def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
     def match_closest_time(reftime):
         return str("{}".format(min([float(x) for x in arr_tmid], key=lambda x: abs(x - reftime))))
 
-    if 'timemin' and 'timemax' in args:
-        timelower = match_closest_time(args.timemin)
-        timeupper = match_closest_time(args.timemax)
-    else:
-        timelower = timeavg
-        timeupper = timeavg
+    # if 'timemin' and 'timemax' in args:
+    #     timelower = match_closest_time(args.timemin)  # how timemin, timemax are used changed at some point
+    #     timeupper = match_closest_time(args.timemax)  # to average over multiple timesteps needs to fix this
+    # else:
+    timelower = match_closest_time(timeavg)
+    timeupper = match_closest_time(timeavg)
     timestepmin = vspecdata.columns.get_loc(timelower)
     timestepmax = vspecdata.columns.get_loc(timeupper)
 
