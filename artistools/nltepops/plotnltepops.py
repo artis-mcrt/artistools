@@ -99,6 +99,10 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
             annotate_emission_line(ax=ax, y=0.15, upperlevel=6, lowerlevel=2, label=r'1.939 $\mu$m')
             annotate_emission_line(ax=ax, y=0.26, upperlevel=7, lowerlevel=1, label=r'7412$~\mathrm{{\AA}}$')
 
+    if annotatelines and atomic_number == 26 and ion_stage == 2:
+        annotate_emission_line(ax=ax, y=.66, upperlevel=9, lowerlevel=0, label=r'12570$~\mathrm{{\AA}}$')
+        annotate_emission_line(ax=ax, y=.53, upperlevel=16, lowerlevel=5, label=r'7155$~\mathrm{{\AA}}$')
+
 
 def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, estimators,
                     T_e, T_R, modelgridindex, timestep, args, lastsubplot):
@@ -222,13 +226,15 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
         if atomic_number == 26 and ion_stage in [2, 3]:
             floersfilename = (
                 'andreas_level_populations_fe2.txt' if ion_stage == 2 else 'andreas_level_populations_fe3.txt')
-            if os.path.isfile(floersfilename):
-                floers_levelpops = pd.read_csv(floersfilename, comment='#', delim_whitespace=True)
+            if os.path.isfile(modelpath / floersfilename):
+                print(f'reading {floersfilename}')
+                floers_levelpops = pd.read_csv(modelpath / floersfilename, comment='#', delim_whitespace=True)
+                # levelnums = floers_levelpops['index'].values - 1
                 floers_levelpops.sort_values(by='energypercm', inplace=True)
                 levelnums = list(range(len(floers_levelpops)))
                 floers_levelpop_values = floers_levelpops['frac_ionpop'].values * dfpopthision['n_NLTE'].sum()
                 ax.plot(levelnums, floers_levelpop_values, linewidth=1.5,
-                        label=f'Floers NLTE', linestyle='None', marker='*')
+                        label='Flörs NLTE', linestyle='None', marker='*')
 
     ax.plot(dfpopthision['level'], dfpopthision[ycolumnname], linewidth=1.5,
             linestyle='None', marker='x', label=f'{ionstr} ARTIS NLTE', color='black')
@@ -242,7 +248,7 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
     if args.plotrefdata:
         plot_reference_data(
             ax, atomic_number, ion_stage, estimators[(timestep, modelgridindex)],
-            dfpopthision, args, annotatelines=lastsubplot)
+            dfpopthision, args, annotatelines=True)
 
 
 def make_plot_populations_with_time_or_velocity(modelpaths, args):
@@ -489,6 +495,14 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
             ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=1))
 
             ax.set_xlim(left=-1)
+            if args.xmin is not None:
+                ax.set_xlim(left=args.xmin)
+            if args.xmax is not None:
+                ax.set_xlim(right=args.xmax)
+            if args.ymin is not None:
+                ax.set_ylim(bottom=args.ymin)
+            if args.ymax is not None:
+                ax.set_ylim(top=args.ymax)
 
             if not args.nolegend and prev_ion_stage != ion_stage:
                 ax.legend(
@@ -525,7 +539,8 @@ def addargs(parser):
         '-timedays', '-time', '-t',
         help='Time in days to plot')
 
-    timegroup.add_argument('-timedayslist', nargs='+',
+    timegroup.add_argument(
+        '-timedayslist', nargs='+',
         help='List of times in days for time sequence subplots')
 
     timegroup.add_argument(
@@ -553,7 +568,8 @@ def addargs(parser):
         '-ionstages',
         help='Ion stage range, 1 is neutral, 2 is 1+')
 
-    parser.add_argument('-levels', type=int, nargs='+',
+    parser.add_argument(
+        '-levels', type=int, nargs='+',
         help='Choose levels to plot') # currently only for x axis = time
 
     parser.add_argument(
@@ -588,16 +604,20 @@ def addargs(parser):
         '--nolegend', action='store_true',
         help='Suppress the legend from the plot')
 
-    parser.add_argument('-xmin', type=float, default=None,
+    parser.add_argument(
+        '-xmin', type=float, default=None,
         help='Plot range: x-axis')
 
-    parser.add_argument('-xmax', type=float, default=None,
+    parser.add_argument(
+        '-xmax', type=float, default=None,
         help='Plot range: x-axis')
 
-    parser.add_argument('-ymin', type=float, default=None,
+    parser.add_argument(
+        '-ymin', type=float, default=None,
         help='Plot range: y-axis')
 
-    parser.add_argument('-ymax', type=float, default=None,
+    parser.add_argument(
+        '-ymax', type=float, default=None,
         help='Plot range: y-axis')
 
     parser.add_argument(
