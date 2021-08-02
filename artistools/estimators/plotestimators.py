@@ -173,13 +173,22 @@ def plot_levelpop(
     modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
     modeldata.eval('modelcellvolume = shellmass_grams / (10 ** logrho)', inplace=True)
 
+    adata = at.atomic.get_levels(modelpath)
+
     arr_tdelta = at.get_timestep_times_float(modelpath, loc='delta')
     for paramvalue in params:
-        print(f'plot_levelpop {paramvalue}')
         paramsplit = paramvalue.split(' ')
         atomic_number = at.get_atomic_number(paramsplit[0])
         ion_stage = at.decode_roman_numeral(paramsplit[1])
         levelindex = int(paramsplit[2])
+
+        ionlevels = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0].levels
+        levelname = ionlevels.iloc[levelindex].levelname
+        label = (
+            f'{at.get_ionstring(atomic_number, ion_stage, spectral=False)} level {levelindex}:'
+            f' {at.nltepops.texifyconfiguration(levelname)}')
+
+        print(f'plot_levelpop {label}')
 
         # level index query goes outside for caching granularity reasons
         dfnltepops = at.nltepops.read_files(
@@ -212,7 +221,7 @@ def plot_levelpop(
 
         xlist, ylist = apply_filters(xlist, ylist, args)
 
-        ax.plot(xlist, ylist, label=paramvalue, **plotkwargs)
+        ax.plot(xlist, ylist, label=label, **plotkwargs)
 
 
 def plot_multi_ion_series(
