@@ -100,8 +100,6 @@ def plot_3d_initial_abundances(modelpath, args):
     merge_dfs, t_model = get_merged_model_abundances(modelpath)
     # merge_dfs = plot_most_abundant(modelpath, args)
 
-    ion = f'X_{args.ion}'
-
     plotaxis1 = 'y'
     plotaxis2 = 'z'
     sliceaxis = 'x'
@@ -111,6 +109,7 @@ def plot_3d_initial_abundances(modelpath, args):
     # fig = plt.figure(figsize=(5, 5))
     ax = plt.subplot(111)
 
+    ion = f'X_{args.ion}'
     im = plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model)
 
     cbar = plt.colorbar(im)
