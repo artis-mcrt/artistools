@@ -157,8 +157,12 @@ def plot_3d_initial_abundances(modelpath, args=None):
     # ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
 
-    outfilename = f'plotcomposition{ion}.pdf'
-    plt.savefig(Path(modelpath[0]) / outfilename, format='pdf')
+    if args.outputfile:
+        outfilename = args. outputfile
+    else:
+        outfilename = f'plotcomposition{ion}.pdf'
+    # plt.savefig(Path(modelpath[0]) / outfilename, format='pdf')
+    plt.savefig(outfilename, format='pdf')
     print(f'Saved {outfilename}')
 
 
@@ -264,6 +268,9 @@ def addargs(parser):
     parser.add_argument('-modelpath', default=[], nargs='*', action=at.AppendPath,
                         help='Path(s) to ARTIS folder'
                         ' (may include wildcards such as * and **)')
+
+    parser.add_argument('-o', action='store', dest='outputfile', type=Path, default=Path(),
+                        help='Filename for PDF file')
 
     parser.add_argument('-ion', type=str, default=['Fe'], nargs='+',
                         help='Choose ion to plot. Default is Fe')
