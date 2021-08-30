@@ -93,7 +93,7 @@ def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model):
     ymin, ymax = ax.get_ylim()
     xmin, xmax = ax.get_xlim()
     ax.text(xmax*0.6, ymax*0.7, ion.split('_')[1], color='k', fontweight='bold')
-    return im
+    return im, scaledmap
 
 
 def plot_3d_initial_abundances(modelpath, args=None):
@@ -134,7 +134,7 @@ def plot_3d_initial_abundances(modelpath, args=None):
         ion = f'X_{ion}'
         if subplots:
             ax = axes[index]
-        im = plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model)
+        im, scaledmap = plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model)
 
     xlabel = fr"v$_{plotaxis1}$ in 10$^3$ km/s"
     ylabel = fr"v$_{plotaxis2}$ in 10$^3$ km/s"
@@ -144,7 +144,7 @@ def plot_3d_initial_abundances(modelpath, args=None):
         plt.xlabel(xlabel, fontsize='x-large')#, fontweight='bold')
         plt.ylabel(ylabel, fontsize='x-large')#, fontweight='bold')
     else:
-        cbar = fig.colorbar(im, ax=axes, shrink=cols*0.08, location='top', pad=0.8, anchor=(0.5, 3.))
+        cbar = fig.colorbar(scaledmap, ax=axes, shrink=cols*0.08, location='top', pad=0.8, anchor=(0.5, 3.))
         fig.text(0.5, 0.15, xlabel, ha='center', va='center')
         fig.text(0.05, 0.5, ylabel, ha='center', va='center', rotation='vertical')
 
