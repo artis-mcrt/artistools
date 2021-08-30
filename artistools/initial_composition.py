@@ -89,6 +89,10 @@ def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model):
     y = plotvals[f'pos_{plotaxis2}'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
 
     im = ax.scatter(x, y, c=colorscale, marker="8", rasterized=True)  # cmap=plt.get_cmap('PuOr')
+
+    ymin, ymax = ax.get_ylim()
+    xmin, xmax = ax.get_xlim()
+    plt.text(xmax*0.6, ymax*0.7, ion, color='white', fontweight='bold', fontsize='x-large')
     return im
 
 
@@ -119,9 +123,6 @@ def plot_3d_initial_abundances(modelpath, args):
     plt.xlabel(fr"v$_{plotaxis1}$ in 10$^3$ km/s", fontsize='x-large')#, fontweight='bold')
     plt.ylabel(fr"v$_{plotaxis2}$ in 10$^3$ km/s", fontsize='x-large')#, fontweight='bold')
 
-    ymin, ymax = ax.get_ylim()
-    xmin, xmax = ax.get_xlim()
-    plt.text(xmax*0.6, ymax*0.7, args.ion, color='white', fontweight='bold', fontsize='x-large')
     plt.tight_layout()
     # ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
