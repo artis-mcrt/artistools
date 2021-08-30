@@ -75,9 +75,27 @@ def get_2D_slice_through_3d_model(merge_dfs, sliceaxis):
     return plotvals
 
 
+def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model):
+    colorscale = plotvals[ion]
+    # colorscale = np.log10(colorscale)
+    # colorscale = np.ma.masked_where(colorscale == 0., colorscale)
+
+    norm = matplotlib.colors.Normalize(vmin=0, vmax=1)
+    scaledmap = matplotlib.cm.ScalarMappable(cmap='viridis', norm=norm)
+    scaledmap.set_array([])
+    colorscale = scaledmap.to_rgba(colorscale)  # colorscale fixed between 0 and 1
+
+    x = plotvals[f'pos_{plotaxis1}'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
+    y = plotvals[f'pos_{plotaxis2}'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
+
+    im = ax.scatter(x, y, c=colorscale, marker="8", rasterized=True)  # cmap=plt.get_cmap('PuOr')
+    return im
+
+
 def plot_3d_initial_abundances(modelpath, args):
     font = {'weight': 'bold',
             'size': 18}
+    matplotlib.rc('font', **font)
 
     merge_dfs, t_model = get_merged_model_abundances(modelpath)
     # merge_dfs = plot_most_abundant(modelpath, args)
@@ -90,21 +108,10 @@ def plot_3d_initial_abundances(modelpath, args):
 
     plotvals = get_2D_slice_through_3d_model(merge_dfs, sliceaxis)
 
-    colorscale = plotvals[ion]
-    # colorscale = np.log10(colorscale)
-    # colorscale = np.ma.masked_where(colorscale == 0., colorscale)
-
-    norm = matplotlib.colors.Normalize(vmin=0, vmax=1)
-    scaledmap = matplotlib.cm.ScalarMappable(cmap='viridis', norm=norm)
-    scaledmap.set_array([])
-    colorscale = scaledmap.to_rgba(colorscale)  # colorscale fixed between 0 and 1
-
-    matplotlib.rc('font', **font)
-    x = plotvals[f'pos_{plotaxis1}'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
-    y = plotvals[f'pos_{plotaxis2}'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
     # fig = plt.figure(figsize=(5, 5))
     ax = plt.subplot(111)
-    im = ax.scatter(x, y, c=colorscale, marker="8", rasterized=True)  # cmap=plt.get_cmap('PuOr')
+
+    im = plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model)
 
     cbar = plt.colorbar(im)
     # cbar.set_label(label=ion, size='x-large') #, fontweight='bold')
