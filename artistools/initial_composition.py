@@ -66,19 +66,29 @@ def get_merged_model_abundances(modelpath):
     return merge_dfs, t_model
 
 
+def get_2D_slice_through_3d_model(merge_dfs, sliceaxis):
+    sliceposition = merge_dfs.iloc[(merge_dfs['pos_x']).abs().argsort()][:1]['pos_x'].item()
+    # Choose position to slice. This gets minimum absolute value as the closest to 0
+
+    plotvals = (merge_dfs.loc[merge_dfs[f'pos_{sliceaxis}'] == sliceposition])
+    print(plotvals.keys())
+    return plotvals
+
+
 def plot_3d_initial_abundances(modelpath, args):
+    font = {'weight': 'bold',
+            'size': 18}
+
     merge_dfs, t_model = get_merged_model_abundances(modelpath)
     # merge_dfs = plot_most_abundant(modelpath, args)
+
+    ion = f'X_{args.ion}'
 
     plotaxis1 = 'y'
     plotaxis2 = 'z'
     sliceaxis = 'x'
-    sliceposition = merge_dfs.iloc[(merge_dfs['pos_x']).abs().argsort()][:1]['pos_x'].item()
-    # Choose position to slice. This gets minimum absolute value as the closest to 0
-    ion = f'X_{args.ion}'
 
-    plotvals = (merge_dfs.loc[merge_dfs[f'pos_{sliceaxis}'] == sliceposition])
-    print(plotvals.keys())
+    plotvals = get_2D_slice_through_3d_model(merge_dfs, sliceaxis)
 
     colorscale = plotvals[ion]
     # colorscale = np.log10(colorscale)
@@ -88,9 +98,6 @@ def plot_3d_initial_abundances(modelpath, args):
     scaledmap = matplotlib.cm.ScalarMappable(cmap='viridis', norm=norm)
     scaledmap.set_array([])
     colorscale = scaledmap.to_rgba(colorscale)  # colorscale fixed between 0 and 1
-
-    font = {'weight': 'bold',
-            'size': 18}
 
     matplotlib.rc('font', **font)
     x = plotvals[f'pos_{plotaxis1}'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
