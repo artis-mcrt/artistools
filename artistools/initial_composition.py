@@ -80,6 +80,11 @@ def plot_3d_initial_abundances(modelpath, args):
     # colorscale = np.log10(colorscale)
     # colorscale = np.ma.masked_where(colorscale == 0., colorscale)
 
+    norm = matplotlib.colors.Normalize(vmin=0, vmax=1)
+    scaledmap = matplotlib.cm.ScalarMappable(cmap='viridis', norm=norm)
+    scaledmap.set_array([])
+    colorscale = scaledmap.to_rgba(colorscale)  # colorscale fixed between 0 and 1
+
     font = {'weight': 'bold',
             'size': 18}
 
