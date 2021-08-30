@@ -54,8 +54,7 @@ def plot_2d_initial_abundances(modelpath, args):
     print(f'Saved {outfilename}')
 
 
-def plot_3d_initial_abundances(modelpath, args):
-
+def get_merged_model_abundances(modelpath):
     # t_model is in days and vmax is in cm/s
     model, t_model, vmax = at.inputmodel.get_modeldata(modelpath[0], dimensions=3)
 
@@ -64,6 +63,11 @@ def plot_3d_initial_abundances(modelpath, args):
     abundances['inputcellid'] = abundances['inputcellid'].apply(lambda x: float(x))
 
     merge_dfs = model.merge(abundances, how='inner', on='inputcellid')
+    return merge_dfs, t_model
+
+
+def plot_3d_initial_abundances(modelpath, args):
+    merge_dfs, t_model = get_merged_model_abundances(modelpath)
     # merge_dfs = plot_most_abundant(modelpath, args)
 
     plotaxis1 = 'y'
