@@ -77,8 +77,8 @@ def get_2D_slice_through_3d_model(merge_dfs, sliceaxis):
 
 def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model):
     colorscale = plotvals[ion]
-    # colorscale = np.log10(colorscale)
     # colorscale = np.ma.masked_where(colorscale == 0., colorscale)
+    # colorscale = np.log10(colorscale)
 
     norm = matplotlib.colors.Normalize(vmin=0, vmax=1)
     scaledmap = matplotlib.cm.ScalarMappable(cmap='viridis', norm=norm)
@@ -92,13 +92,15 @@ def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model):
 
     ymin, ymax = ax.get_ylim()
     xmin, xmax = ax.get_xlim()
-    plt.text(xmax*0.6, ymax*0.7, ion, color='white', fontweight='bold', fontsize='x-large')
+    ax.text(xmax*0.6, ymax*0.7, ion.split('_')[1], color='k', fontweight='bold')
     return im
 
 
-def plot_3d_initial_abundances(modelpath, args):
-    font = {'weight': 'bold',
-            'size': 18}
+def plot_3d_initial_abundances(modelpath, args=None):
+    font = {
+        # 'weight': 'bold',
+        'size': 18
+    }
     matplotlib.rc('font', **font)
 
     merge_dfs, t_model = get_merged_model_abundances(modelpath)
@@ -110,24 +112,52 @@ def plot_3d_initial_abundances(modelpath, args):
 
     plotvals = get_2D_slice_through_3d_model(merge_dfs, sliceaxis)
 
-    # fig = plt.figure(figsize=(5, 5))
-    ax = plt.subplot(111)
+    subplots = False
+    if len(args.ion) > 1:
+        subplots = True
 
-    ion = f'X_{args.ion}'
-    im = plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model)
+    if not subplots:
+        fig = plt.figure(figsize=(8, 7))
+        ax = plt.subplot(111, aspect='equal')
+    else:
+        rows = 1
+        cols = len(args.ion)
 
-    cbar = plt.colorbar(im)
+        fig, axes = plt.subplots(nrows=rows, ncols=cols, sharex=True, sharey=True,
+                                 figsize=(at.figwidth * cols,
+                                          at.figwidth * 1.4),
+                                 tight_layout={"pad": 5.0, "w_pad": 0.0, "h_pad": 0.0})
+        for ax in axes:
+            ax.set(aspect='equal')
+
+    for index, ion in enumerate(args.ion):
+        ion = f'X_{ion}'
+        if subplots:
+            ax = axes[index]
+        im = plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model)
+
+    xlabel = fr"v$_{plotaxis1}$ in 10$^3$ km/s"
+    ylabel = fr"v$_{plotaxis2}$ in 10$^3$ km/s"
+
+    if not subplots:
+        cbar = plt.colorbar(im)
+        plt.xlabel(xlabel, fontsize='x-large')#, fontweight='bold')
+        plt.ylabel(ylabel, fontsize='x-large')#, fontweight='bold')
+    else:
+        cbar = fig.colorbar(im, ax=axes, shrink=cols*0.08, location='top', pad=0.8, anchor=(0.5, 3.))
+        fig.text(0.5, 0.15, xlabel, ha='center', va='center')
+        fig.text(0.05, 0.5, ylabel, ha='center', va='center', rotation='vertical')
+
+
     # cbar.set_label(label=ion, size='x-large') #, fontweight='bold')
     # cbar.ax.set_title(f'{args.ion}', size='small')
     # cbar.ax.tick_params(labelsize='x-large')
-    plt.xlabel(fr"v$_{plotaxis1}$ in 10$^3$ km/s", fontsize='x-large')#, fontweight='bold')
-    plt.ylabel(fr"v$_{plotaxis2}$ in 10$^3$ km/s", fontsize='x-large')#, fontweight='bold')
 
-    plt.tight_layout()
+    # plt.tight_layout()
     # ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
 
-    outfilename = f'plotcomposition{args.ion}.pdf'
+    outfilename = f'plotcomposition{ion}.pdf'
     plt.savefig(Path(modelpath[0]) / outfilename, format='pdf')
     print(f'Saved {outfilename}')
 
@@ -235,7 +265,7 @@ def addargs(parser):
                         help='Path(s) to ARTIS folder'
                         ' (may include wildcards such as * and **)')
 
-    parser.add_argument('-ion', type=str, default='Fe',
+    parser.add_argument('-ion', type=str, default=['Fe'], nargs='+',
                         help='Choose ion to plot. Default is Fe')
 
     parser.add_argument('--rho', action='store_true',
