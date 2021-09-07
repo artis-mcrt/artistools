@@ -365,7 +365,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
         for index, angle in enumerate(angles):
 
             modelname = at.get_model_name(modelpath)
-            print(f'Reading spectra: {modelname}')
+            print(f'Reading spectra: {modelname} (angle {angle})')
             band_lightcurve_data = generate_band_lightcurve_data(modelpath, args, angle, modelnumber=modelnumber)
 
             if modelnumber == 0 and args.plot_hesma_model:  # Todo: does this work?
