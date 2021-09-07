@@ -92,6 +92,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
 
                 if args.colorbarcostheta or args.colorbarphi:
                     plotkwargs['alpha'] = 0.75
+                    plotkwargs['label'] = None
                     # Update plotkwargs with viewing angle colour
                     plotkwargs, _ = get_viewinganglecolor_for_colorbar(angle_definition, angle,
                                                         costheta_viewing_angle_bins, phi_viewing_angle_bins,
