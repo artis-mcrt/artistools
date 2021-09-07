@@ -967,6 +967,8 @@ def main(args=None, argsraw=None, **kwargs):
     elif os.path.isdir(args.outputfile):
         outputfolder = Path(args.outputfile)
         args.outputfile = os.path.join(outputfolder, defaultoutputfile)
+    else:
+        outputfolder = Path()
 
     filternames_conversion_dict = {'rs': 'r', 'gs': 'g', 'is': 'i'}
 
