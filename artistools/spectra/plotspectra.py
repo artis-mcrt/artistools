@@ -927,8 +927,8 @@ def addargs(parser):
     parser.add_argument('-outputfile', '-o', action='store', dest='outputfile', type=Path,
                         help='path/filename for PDF file')
 
-    parser.add_argument('--output_spectra', action='store_true',
-                        help='Write out spectra to text files')
+    parser.add_argument('--output_spectra', '--write_spectra', action='store_true',
+                        help='Write out all timestep spectra to text files')
 
     # Combines all vspecpol files into one file which can then be read by artistools
     parser.add_argument('--makevspecpol', action='store_true',
