@@ -33,7 +33,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     dfsolarabund['radioactive'] = True
 
-    print(dfsolarabund)
+    # print(dfsolarabund)
 
     dfbetaminus = pd.read_csv(at.config['path_datadir'] / 'betaminusdecays.txt',
                               delim_whitespace=True, comment='#',
@@ -64,21 +64,49 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     massfracnormfactor = dfsolarabund_undecayed.massfrac.sum()
     dfsolarabund_undecayed.eval('massfrac = massfrac / @massfracnormfactor', inplace=True)
 
-    print(dfsolarabund_undecayed)
+    # print(dfsolarabund_undecayed)
 
-    dictelemabund = {'inputcellid': 1}
+    t_model_init_days = 0.000231481
+    t_model_init_seconds = t_model_init_days * 24 * 60 * 60
+
+    wollager_profilename = 'wollager_ejectaprofile_10bins.txt'
+    if Path(wollager_profilename).exists():
+        t_model_init_days_in = float(Path(wollager_profilename).open('rt').readline().strip().removesuffix(' day'))
+        dfdensities = pd.read_csv(wollager_profilename, delim_whitespace=True, skiprows=1, names=['cellid', 'velocity_outer', 'rho'])
+        dfdensities['cellid'] = dfdensities['cellid'].astype(int)
+        dfdensities['velocity_inner'] = np.concatenate(([0.], dfdensities['velocity_outer'].values[:-1]))
+
+        t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
+        dfdensities.eval('shellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)'
+                         '* (1e5 * @t_model_init_seconds_in) ** 3', inplace=True)
+
+        # now replace the density at the input time with the density at required time
+
+        dfdensities.eval('rho = shellmass_grams / ('
+                         '4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)'
+                         ' * (1e5 * @t_model_init_seconds) ** 3)', inplace=True)
+    else:
+        dfdensities = pd.DataFrame(dict(rho=10 ** -3, velocity_outer=6.e4), index=[0])
+
+    print(dfdensities)
+    cellcount = len(dfdensities)
+    # write abundances.txt
+
+    dictelemabund = {}
     for atomic_number in range(1, dfsolarabund_undecayed.Z.max() + 1):
         dictelemabund[f'X_{at.elsymbols[atomic_number]}'] = (
             dfsolarabund_undecayed.query('Z == @atomic_number', inplace=False).massfrac.sum())
 
-    dfabundances = pd.DataFrame(dictelemabund, index=[0])
-    print(dfabundances)
+    dfabundances = pd.DataFrame([dict(inputcellid=mgi + 1, **dictelemabund) for mgi in range(cellcount)])
+    # print(dfabundances)
     at.inputmodel.save_initialabundances(dfabundances=dfabundances, abundancefilename=args.outputpath)
 
-    modeldict = {
-        'inputcellid': 1,
-        'velocity_outer': 6.e4,
-        'logrho': -3.,
+    # write model.txt
+
+    rowdict = {
+        # 'inputcellid': 1,
+        # 'velocity_outer': 6.e4,
+        # 'logrho': -3.,
         'X_Fegroup': 1.,
         'X_Ni56': 0.,
         'X_Co56': 0.,
@@ -88,15 +116,18 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         'X_Co57': 0.,
     }
 
-    t_model_init_days = 0.000231481
 
     for _, row in dfsolarabund_undecayed.query('radioactive == True').iterrows():
-        modeldict[f'X_{at.elsymbols[int(row.Z)]}{int(row.A)}'] = row.massfrac
+        rowdict[f'X_{at.elsymbols[int(row.Z)]}{int(row.A)}'] = row.massfrac
 
-    dfmodel = pd.DataFrame(modeldict, index=[0])
-    dfmodel.index.name = 'cellid'
-    print(dfmodel)
+    modeldata = []
+    for mgi, densityrow in dfdensities.iterrows():
+        print(mgi, densityrow)
+        modeldata.append(dict(inputcellid=mgi + 1, velocity_outer=densityrow['velocity_outer'], logrho=math.log10(densityrow['rho']), **rowdict))
+    print(modeldata)
 
+    dfmodel = pd.DataFrame(modeldata)
+    # print(dfmodel)
     at.inputmodel.save_modeldata(dfmodel, t_model_init_days, Path(args.outputpath, 'model.txt'))
 
 
