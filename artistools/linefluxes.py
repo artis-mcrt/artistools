@@ -301,11 +301,11 @@ def make_flux_ratio_plot(args):
         aindex = 0
         # for amodelname, (xlist, ylist) in amodels.items():
         for amodelname, alabel in [
-                ('w7', 'W7'),
+                # ('w7', 'W7'),
                 # ('subch', 'S0'),
-                ('subch_shen2018', r'1M$_\odot$'),
+                # ('subch_shen2018', r'1M$_\odot$'),
                 # ('subch_shen2018_electronlossboost4x', '1M$_\odot$ (Shen+18) 4x e- loss'),
-                ('subch_shen2018_electronlossboost8x', r'1M$_\odot$ heatboost8'),
+                # ('subch_shen2018_electronlossboost8x', r'1M$_\odot$ heatboost8'),
                 # ('subch_shen2018_electronlossboost12x', '1M$_\odot$ (Shen+18) 12x e- loss'),
                 ]:
             xlist, ylist = amodels[amodelname]
@@ -557,8 +557,13 @@ def make_emitting_regions_plot(args):
                 axis.plot(refdatapoints[refdataindex][timeindex]['ne'], refdatapoints[refdataindex][timeindex]['temp'],
                           color=refdatacolors[refdataindex], lw=2, label=f'{refdatalabels[refdataindex]} {refdatakeys[refdataindex][timeindex]}d')
 
+                timeindexb = np.abs(refdatatimes[refdataindex] - tmid - 50).argmin()
+                if timeindexb < len(refdatakeys[refdataindex]):
+                    axis.plot(refdatapoints[refdataindex][timeindexb]['ne'], refdatapoints[refdataindex][timeindexb]['temp'],
+                              color='0.4', lw=2, label=f'{refdatalabels[refdataindex]} {refdatakeys[refdataindex][timeindexb]}d')
+
             if modeltag == 'all':
-                for bars in [False, True]:
+                for bars in [False, ]:  # [False, True]
                     for truemodelindex in range(modelindex):
                         emfeatures = get_labelandlineindices(args.modelpath[truemodelindex], args.emfeaturesearch)
 
@@ -592,7 +597,7 @@ def make_emitting_regions_plot(args):
                 axis.scatter(log10nnedata_all[modelindex][tmid], Tedata_all[modelindex][tmid], s=1.0, marker='o',
                              color='0.4', lw=0, edgecolors='none', label='All cells')
 
-                for bars in [False, True]:
+                for bars in [False, ]:  # [False, True]
                     for featureindex, feature in enumerate(emfeatures):
                         emdata = emdata_all[modelindex][(tmid, feature.colname)]
 
