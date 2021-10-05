@@ -203,8 +203,10 @@ def plot_artis_spectrum(
                 linelabel += f' +{timeavg:.0f}d'
             if not args.hidemodeltimerange and not args.multispecplot:
                 linelabel += r' ($\pm$ ' + f'{timedelta:.0f}d)'
-        else:
-            linelabel = linelabel.format(**locals())
+        # Luke: disabled below because line label has already been formatted with e.g. timeavg values
+        # formatting for a second time makes it impossible to use curly braces in line labels (needed for LaTeX math)
+        # else:
+        #     linelabel = linelabel.format(**locals())
 
         if from_packets:
             spectrum = get_spectrum_from_packets(
