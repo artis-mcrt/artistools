@@ -236,6 +236,36 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
                 ax.plot(levelnums, floers_levelpop_values, linewidth=1.5,
                         label='Flörs NLTE', linestyle='None', marker='*')
 
+            floersmultizonefilename = None
+            if modelpath.stem.startswith('w7_'):
+                print('W7 detected')
+                floersmultizonefilename = 'level_pops_w7-247d.csv'
+
+            elif modelpath.stem.startswith('subchdet_shen2018_') and 'lossboost' not in modelpath.stem:
+                print('Shen2018 SubMch detected')
+                floersmultizonefilename = 'level_pops_subch_shen2018-247d.csv'
+
+            elif modelpath.stem.startswith('subchdet_shen2018_') and 'lossboost8x' in modelpath.stem:
+                print('Shen2018 SubMch lossboost8x detected')
+                floersmultizonefilename = 'level_pops_subch_shen2018_electronlossboost8x-247d.csv'
+
+            if floersmultizonefilename and os.path.isfile(floersmultizonefilename):
+                modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)  # todo: move into modelpath loop
+                vel_outer = modeldata.iloc[modelgridindex].velocity_outer
+                print(f'  reading {floersmultizonefilename}', vel_outer, T_e)
+                dffloers = pd.read_csv(floersmultizonefilename)
+                for _, row in dffloers.iterrows():
+                    if abs(row['vel_outer'] - vel_outer) < 0.5:
+                        print(f"  ARTIS cell vel_outter: {vel_outer}, Floersfile: {row['vel_outer']}")
+                        print(f"  ARTIS cell Te: {T_e}, Floersfile: {row['Te']}")
+                        floers_levelpops = row.values[4:]
+                        if len(dfpopthision['level']) < len(floers_levelpops):
+                            floers_levelpops = floers_levelpops[:len(dfpopthision['level'])]
+                        levelnums = list(range(len(floers_levelpops)))
+                        floers_levelpop_values = floers_levelpops * (dfpopthision['n_NLTE'].sum() / sum(floers_levelpops))
+                        ax.plot(levelnums, floers_levelpop_values, linewidth=1.5,
+                                label='Flörs NLTE', linestyle='None', marker='*')
+
     ax.plot(dfpopthision['level'], dfpopthision[ycolumnname], linewidth=1.5,
             linestyle='None', marker='x', label=f'{ionstr} ARTIS NLTE', color='black')
 
