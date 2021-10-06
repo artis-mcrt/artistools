@@ -159,6 +159,8 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
                 rotation=60,
                 horizontalalignment='right',
                 rotation_mode='anchor')
+    elif args.x == 'none':
+        ax.set_xticklabels('' for _ in configtexlist)
 
     print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a summed '
           f'level population of {ionpopulation:.1f} (from estimator file ion pop = {ionpopulation_fromest})')
@@ -234,18 +236,19 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
                 levelnums = list(range(len(floers_levelpops)))
                 floers_levelpop_values = floers_levelpops['frac_ionpop'].values * dfpopthision['n_NLTE'].sum()
                 ax.plot(levelnums, floers_levelpop_values, linewidth=1.5,
-                        label='Flörs NLTE', linestyle='None', marker='*')
+                        label=f'{ionstr} Flörs NLTE', linestyle='None', marker='*')
 
             floersmultizonefilename = None
+            print('--', modelpath.stem)
             if modelpath.stem.startswith('w7_'):
                 print('W7 detected')
                 floersmultizonefilename = 'level_pops_w7-247d.csv'
 
-            elif modelpath.stem.startswith('subchdet_shen2018_') and 'lossboost' not in modelpath.stem:
+            elif modelpath.stem.startswith('subchdet_shen2018_') and 'lossboost' not in modelpath.parts[-1]:
                 print('Shen2018 SubMch detected')
                 floersmultizonefilename = 'level_pops_subch_shen2018-247d.csv'
 
-            elif modelpath.stem.startswith('subchdet_shen2018_') and 'lossboost8x' in modelpath.stem:
+            elif modelpath.stem.startswith('subchdet_shen2018_') and 'lossboost8x' in modelpath.parts[-1]:
                 print('Shen2018 SubMch lossboost8x detected')
                 floersmultizonefilename = 'level_pops_subch_shen2018_electronlossboost8x-247d.csv'
 
@@ -264,7 +267,7 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
                         levelnums = list(range(len(floers_levelpops)))
                         floers_levelpop_values = floers_levelpops * (dfpopthision['n_NLTE'].sum() / sum(floers_levelpops))
                         ax.plot(levelnums, floers_levelpop_values, linewidth=1.5,
-                                label='Flörs NLTE', linestyle='None', marker='*')
+                                label=f'{ionstr} Flörs NLTE', linestyle='None', marker='*')
 
     ax.plot(dfpopthision['level'], dfpopthision[ycolumnname], linewidth=1.5,
             linestyle='None', marker='x', label=f'{ionstr} ARTIS NLTE', color='black')
@@ -405,11 +408,10 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ionstage, i
 
             if args.x == 'time':
                 ax.plot(timedays, plotpopulations, marker=markers[modelnumber],
-                         label=linelabel)
-
-            if args.x == 'velocity':
+                        label=linelabel)
+            elif args.x == 'velocity':
                 ax.plot(velocity, plotpopulations, marker=markers[modelnumber],
-                         label=linelabel)
+                        label=linelabel)
             # plt.plot(timedays, plotpopulationsLTE, marker=markers[modelnumber+1],
             #          label=f'level {ionlevel} {modelname} LTE')
 
@@ -591,7 +593,7 @@ def addargs(parser):
         help='Default if no estimator data')
 
     parser.add_argument(
-        '-x', choices=['index', 'config', 'time', 'velocity'], default='index',
+        '-x', choices=['index', 'config', 'time', 'velocity', 'none'], default='index',
         help='Horizontal axis variable')
 
     parser.add_argument(
