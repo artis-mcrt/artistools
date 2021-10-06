@@ -283,7 +283,7 @@ def make_flux_ratio_plot(args):
         arr_tdays = np.linspace(tmin, tmax, 3)
         arr_floersfit = [10 ** (0.0043 * timedays - 1.65) for timedays in arr_tdays]
         for ax in axes:
-            ax.plot(arr_tdays, arr_floersfit, color='black', label='Flörs et al. (2019) best fit', lw=2.)
+            ax.plot(arr_tdays, arr_floersfit, color='black', label='Flörs+2020 fit', lw=2.)
 
         femis = pd.read_csv(
             "/Users/luke/Dropbox/Papers (first-author)/2021 Artis ionisation/"
@@ -457,7 +457,7 @@ def make_emitting_regions_plot(args):
     # matplotlib.rc('font', **font)
     # 'floers_te_nne.json',
     refdatafilenames = ['floers_te_nne.json', ]  # , 'floers_te_nne_CMFGEN.json', 'floers_te_nne_Smyth.json']
-    refdatalabels = ['Floers et al. (2019)', ]  # , 'Floers CMFGEN', 'Floers Smyth']
+    refdatalabels = ['Flörs+2020', ]  # , 'Floers CMFGEN', 'Floers Smyth']
     refdatacolors = ['0.0', 'C1', 'C2', 'C4']
     refdatakeys = [None for _ in refdatafilenames]
     refdatatimes = [None for _ in refdatafilenames]
@@ -577,9 +577,10 @@ def make_emitting_regions_plot(args):
 
                         normtotalpackets = len(em_log10nne) * 8.  # circles have more area than triangles, so decrease
                         modelcolor = args.color[truemodelindex]
+                        label = args.label[truemodelindex].format(timeavg=tmid, modeltag=modeltag)
                         if not bars:
                             plot_nne_te_points(
-                                axis, args.label[truemodelindex], em_log10nne, em_Te, normtotalpackets, modelcolor)
+                                axis, label, em_log10nne, em_Te, normtotalpackets, modelcolor)
                         else:
                             plot_nne_te_bars(axis, args.label[truemodelindex], em_log10nne, em_Te, modelcolor)
             else:
@@ -604,7 +605,9 @@ def make_emitting_regions_plot(args):
                         if not bars:
                             print(f'   {len(emdata["em_log10nne"])} points plotted for {feature.featurelabel}')
 
-                        serieslabel = modellabel + ' ' + feature.featurelabel.replace('Å', r' $\mathrm{\AA}$')
+                        serieslabel = (
+                            modellabel + ' ' + feature.featurelabel).format(
+                            timeavg=tmid, modeltag=modeltag).replace('Å', r' $\mathrm{\AA}$')
 
                         if not bars:
                             plot_nne_te_points(
@@ -614,18 +617,18 @@ def make_emitting_regions_plot(args):
                             plot_nne_te_bars(
                                 axis, serieslabel, emdata['em_log10nne'], emdata['em_Te'], featurecolours[featureindex])
 
-            axis.legend(loc='upper left', frameon=False, handlelength=1, ncol=1,
+            axis.legend(loc='best', frameon=False, handlelength=1, ncol=1,
                         numpoints=1, fontsize='small', markerscale=3.)
 
             axis.set_ylim(ymin=3000)
             axis.set_ylim(ymax=10000)
-            axis.set_xlim(xmin=5., xmax=7.)
+            axis.set_xlim(xmin=4.5, xmax=7)
 
             axis.set_xlabel(r'log$_{10}$(n$_{\mathrm{e}}$ [cm$^{-3}$])')
             axis.set_ylabel(r'Electron Temperature [K]')
 
-            axis.annotate(f'{tmid:.0f}d', xy=(0.98, 0.96), xycoords='axes fraction',
-                          horizontalalignment='right', verticalalignment='top', fontsize=16)
+            # axis.annotate(f'{tmid:.0f}d', xy=(0.98, 0.5), xycoords='axes fraction',
+            #               horizontalalignment='right', verticalalignment='center', fontsize=16)
 
             outputfile = str(args.outputfile).format(timeavg=tmid, modeltag=modeltag)
             fig.savefig(outputfile, format='pdf')
