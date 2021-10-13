@@ -260,6 +260,7 @@ def save_modeldata(dfmodeldata, t_model_init_days, filename):
                     fmodel.write(f' {cell[col]:10.4e}')
 
             fmodel.write('\n')
+    print(f'Saved {filename}')
 
 
 def save_3d_modeldata(modelpath, griddata, t_model, vmax, radioactives=True):
@@ -341,6 +342,7 @@ def save_initialabundances(dfabundances, abundancefilename):
         abundancefilename = Path(abundancefilename) / 'abundances.txt'
     dfabundances['inputcellid'] = dfabundances['inputcellid'].astype(int)
     dfabundances.to_csv(abundancefilename, header=False, sep=' ', index=False)
+    print(f'Saved {abundancefilename}')
 
 
 def save_empty_abundance_file(ngrid, outputfilepath='.'):
