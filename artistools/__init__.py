@@ -6,9 +6,9 @@ A collection of plotting, analysis, and file format conversion tools for the ART
 
 import sys
 from .__main__ import main, addargs
-from .misc import *
 from .commands import commandlist
 from .config import config, num_processes, figwidth, enable_diskcache
+from .misc import *
 from .inputmodel import get_mgi_of_velocity_kms
 
 import artistools.atomic

@@ -27,6 +27,8 @@ commandlist = {
     'plotartisestimators': ('artistools.estimators.plotestimators', 'main'),
     'artistools-estimators': ('artistools.estimators', 'main'),
 
+    'artistools-exportmassfractions': ('artistools.estimators.exportmassfractions', 'main'),
+
     'plotartislightcurve': ('artistools.lightcurve.plotlightcurve', 'main'),
     'artistools-lightcurve': ('artistools.lightcurve', 'main'),
 
