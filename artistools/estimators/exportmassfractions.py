@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import numpy as np
 
 from pathlib import Path
@@ -7,11 +8,26 @@ import artistools as at
 import artistools.estimators
 
 
-def main():
+def addargs(parser):
+    parser.add_argument('-outputpath', '-o',
+                        default='massfracs.txt',
+                        help='Path to output file of mass fractions')
+
+
+def main(args=None, argsraw=None, **kwargs) -> None:
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            description='Create solar r-process pattern in ARTIS format.')
+
+        addargs(parser)
+        parser.set_defaults(**kwargs)
+        args = parser.parse_args(argsraw)
+
     modelpath = Path('.')
     timestep = 14
     elmass = {el.Z: el.mass for _, el in at.get_composition_data(modelpath).iterrows()}
-    outfilename = 'massfracs.txt'
+    outfilename = args.outputpath
     with open(outfilename, 'wt') as fout:
         modelgridindexlist = range(10)
         estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindexlist)
