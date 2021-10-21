@@ -555,12 +555,12 @@ def make_emitting_regions_plot(args):
             for refdataindex, f in enumerate(refdatafilenames):
                 timeindex = np.abs(refdatatimes[refdataindex] - tmid).argmin()
                 axis.plot(refdatapoints[refdataindex][timeindex]['ne'], refdatapoints[refdataindex][timeindex]['temp'],
-                          color=refdatacolors[refdataindex], lw=2, label=f'{refdatalabels[refdataindex]} {refdatakeys[refdataindex][timeindex]}d')
+                          color=refdatacolors[refdataindex], lw=2, label=f'{refdatalabels[refdataindex]} +{refdatakeys[refdataindex][timeindex]}d')
 
                 timeindexb = np.abs(refdatatimes[refdataindex] - tmid - 50).argmin()
                 if timeindexb < len(refdatakeys[refdataindex]):
                     axis.plot(refdatapoints[refdataindex][timeindexb]['ne'], refdatapoints[refdataindex][timeindexb]['temp'],
-                              color='0.4', lw=2, label=f'{refdatalabels[refdataindex]} {refdatakeys[refdataindex][timeindexb]}d')
+                              color='0.4', lw=2, label=f'{refdatalabels[refdataindex]} +{refdatakeys[refdataindex][timeindexb]}d')
 
             if modeltag == 'all':
                 for bars in [False, ]:  # [False, True]
