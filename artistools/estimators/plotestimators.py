@@ -10,8 +10,8 @@ import multiprocessing
 import os
 # import re
 import sys
-from collections import namedtuple
-from functools import lru_cache, partial, reduce
+# from collections import namedtuple
+# from functools import lru_cache, partial, reduce
 # from itertools import chain
 from pathlib import Path
 
@@ -19,8 +19,8 @@ import matplotlib.pyplot as plt
 # import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
-import scipy.signal
-from astropy import constants as const
+# import scipy.signal
+# from astropy import constants as const
 
 import artistools as at
 import artistools.initial_composition
@@ -164,8 +164,11 @@ def plot_average_ionisation_excitation(
 def plot_levelpop(
         ax, xlist, seriestype, params, timestepslist, mgilist,
         estimators, modelpath, dfalldata=None, args=None, **plotkwargs):
-    if seriestype == 'levelpopulation':
-        ax.set_ylabel('dN/dV [{} km$^{{-1}} s$]')
+    if seriestype == 'levelpopulation_dn_on_dvel':
+        ax.set_ylabel('dN/dV [{}km$^{{-1}}$ s]')
+        ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))
+    elif seriestype == 'levelpopulation':
+        ax.set_ylabel('X$_{i}$ [/cm3]')
         ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))
     else:
         raise ValueError()
@@ -209,12 +212,18 @@ def plot_levelpop(
                 valuesum += levelpop * arr_tdelta[timestep]
                 tdeltasum += arr_tdelta[timestep]
 
-            deltav = modeldata.loc[modelgridindex].velocity_outer - modeldata.loc[modelgridindex].velocity_inner
-            ylist.append(valuesum / tdeltasum * modeldata.loc[modelgridindex].modelcellvolume / deltav)
+            if seriestype == 'levelpopulation_dn_on_dvel':
+                deltav = modeldata.loc[modelgridindex].velocity_outer - modeldata.loc[modelgridindex].velocity_inner
+                ylist.append(valuesum / tdeltasum * modeldata.loc[modelgridindex].modelcellvolume / deltav)
+            else:
+                ylist.append(valuesum / tdeltasum)
 
         if dfalldata is not None:
             elsym = at.elsymbols[atomic_number].lower()
-            colname = f'nnlevel_on_dv_{elsym}_ionstage{ion_stage}_level{levelindex}'
+            if seriestype == 'levelpopulation_dn_on_dvel':
+                colname = f'nlevel_on_dv_{elsym}_ionstage{ion_stage}_level{levelindex}'
+            else:
+                colname = f'nnlevel_{elsym}_ionstage{ion_stage}_level{levelindex}'
             dfalldata[colname] = ylist
 
         ylist.insert(0, ylist[0])
@@ -290,13 +299,13 @@ def plot_multi_ion_series(
                 ax.set_ylabel('X$_{i}$ [/cm3]')
             elif args.ionpoptype == 'elpop':
                 # elsym = at.elsymbols[atomic_number]
-                ax.set_ylabel('X$_{i}$/X$_{element}$')
+                ax.set_ylabel(r'X$_{i}$/X$_{\rm element}$')
             elif args.ionpoptype == 'totalpop':
-                ax.set_ylabel('X$_{i}$/X$_{tot}$')
+                ax.set_ylabel(r'X$_{i}$/X$_{rm tot}$')
             else:
                 assert False
         else:
-            ax.set_ylabel(seriestype)
+            ax.set_ylabel(dictlabelreplacements.get(seriestype, seriestype))
 
         ylist = []
         for modelgridindex, timesteps in zip(mgilist, timestepslist):
@@ -546,7 +555,7 @@ def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath,
             if seriestype in ['initabundances', 'initmasses']:
                 plot_init_abundances(ax, xlist, params, mgilist, modelpath, seriestype, dfalldata=dfalldata, args=args)
 
-            elif seriestype == 'levelpopulation':
+            elif seriestype == 'levelpopulation' or seriestype.startswith('levelpopulation_'):
                 plot_levelpop(
                     ax, xlist, seriestype, params, timestepslist, mgilist, estimators, modelpath,
                     dfalldata=dfalldata, args=args)

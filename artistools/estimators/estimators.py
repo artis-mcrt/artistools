@@ -20,6 +20,8 @@ import artistools.nltepops
 
 variableunits = {
     'time': 'days',
+    'gamma_NT': '/s',
+    'gamma_R_bfest': '/s',
     'TR': 'K',
     'Te': 'K',
     'TJ': 'K',
@@ -32,6 +34,7 @@ variableunits = {
 }
 
 variablelongunits = {
+    'heating_dep/total_dep': '',
     'TR': 'Temperature [K]',
     'Te': 'Temperature [K]',
     'TJ': 'Temperature [K]',
@@ -40,7 +43,10 @@ variablelongunits = {
 dictlabelreplacements = {
     'lognne': 'Log nne',
     'Te': 'T$_e$',
-    'TR': 'T$_R$'
+    'TR': 'T$_R$',
+    'gamma_NT': r'$\Gamma_{\rm non-thermal}$ [s$^{-1}$]',
+    'gamma_R_bfest': r'$\Gamma_{\rm phot}$ [s$^{-1}$]',
+    'heating_dep/total_dep': 'Heating fraction',
 }
 
 
