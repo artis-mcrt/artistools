@@ -168,7 +168,7 @@ def plot_levelpop(
         ax.set_ylabel('dN/dV [{}km$^{{-1}}$ s]')
         ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))
     elif seriestype == 'levelpopulation':
-        ax.set_ylabel('X$_{i}$ [/cm3]')
+        ax.set_ylabel('X$_{{i}}$ [{}/cm3]')
         ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))
     else:
         raise ValueError()
