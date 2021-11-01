@@ -12,7 +12,6 @@ import numpy as np
 import artistools as at
 import artistools.inputmodel.opacityinputfile
 
-# import scipy.interpolate
 # import artistools.inputmodel
 # from mpl_toolkits.mplot3d import Axes3D
 

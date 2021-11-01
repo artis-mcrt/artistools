@@ -224,7 +224,7 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
             ax.plot(dfpopthision['level'], dfpopthision['n_LTE_T_R_normed'], linewidth=1.5,
                     label=f'{ionstr} LTE T$_R$ = {T_R:.0f} K', linestyle='None', marker='*')
 
-        # comparison to Andeas Floers
+        # comparison to Andeas Floers's NLTE pops for Shingles et al. (2021)
         if atomic_number == 26 and ion_stage in [2, 3]:
             floersfilename = (
                 'andreas_level_populations_fe2.txt' if ion_stage == 2 else 'andreas_level_populations_fe3.txt')
@@ -239,18 +239,23 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
                         label=f'{ionstr} Flörs NLTE', linestyle='None', marker='*')
 
             floersmultizonefilename = None
-            print('--', modelpath.stem)
             if modelpath.stem.startswith('w7_'):
-                print('W7 detected')
-                floersmultizonefilename = 'level_pops_w7-247d.csv'
+                if 'workfn' not in modelpath.parts[-1]:
+                    floersmultizonefilename = 'level_pops_w7_workfn-247d.csv'
+                elif 'lossboost' not in modelpath.parts[-1]:
+                    floersmultizonefilename = 'level_pops_w7-247d.csv'
 
-            elif modelpath.stem.startswith('subchdet_shen2018_') and 'lossboost' not in modelpath.parts[-1]:
-                print('Shen2018 SubMch detected')
-                floersmultizonefilename = 'level_pops_subch_shen2018-247d.csv'
-
-            elif modelpath.stem.startswith('subchdet_shen2018_') and 'lossboost8x' in modelpath.parts[-1]:
-                print('Shen2018 SubMch lossboost8x detected')
-                floersmultizonefilename = 'level_pops_subch_shen2018_electronlossboost8x-247d.csv'
+            elif modelpath.stem.startswith('subchdet_shen2018_'):
+                if 'workfn' in modelpath.parts[-1]:
+                    floersmultizonefilename = 'level_pops_subch_shen2018_workfn-247d.csv'
+                elif 'lossboost4x' in modelpath.parts[-1]:
+                    floersmultizonefilename = 'level_pops_subch_shen2018_electronlossboost4x-247d.csv'
+                elif 'lossboost8x' in modelpath.parts[-1]:
+                    print('Shen2018 SubMch lossboost8x detected')
+                    floersmultizonefilename = 'level_pops_subch_shen2018_electronlossboost8x-247d.csv'
+                elif 'lossboost' not in modelpath.parts[-1]:
+                    print('Shen2018 SubMch detected')
+                    floersmultizonefilename = 'level_pops_subch_shen2018-247d.csv'
 
             if floersmultizonefilename and os.path.isfile(floersmultizonefilename):
                 modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)  # todo: move into modelpath loop

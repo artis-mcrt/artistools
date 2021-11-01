@@ -18,7 +18,7 @@ def addargs(parser):
                         help='Path for output files')
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+def main(args=None, argsraw=None, **kwargs):
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -50,6 +50,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     dfsolarabund_undecayed = dfsolarabund.copy()
     dfsolarabund_undecayed['Z'] = dfsolarabund_undecayed.apply(undecayed_z, axis=1)
 
+    # Andreas uses 90% Fe and the rest solar
     dfsolarabund_undecayed = dfsolarabund_undecayed.append(
         {'Z': 26, 'A': 56, 'numberfrac': 0.005, 'radioactive': False}, ignore_index=True)
     dfsolarabund_undecayed = dfsolarabund_undecayed.append(
@@ -88,7 +89,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     else:
         dfdensities = pd.DataFrame(dict(rho=10 ** -3, velocity_outer=6.e4), index=[0])
 
-    print(dfdensities)
+    # print(dfdensities)
     cellcount = len(dfdensities)
     # write abundances.txt
 
@@ -122,9 +123,9 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     modeldata = []
     for mgi, densityrow in dfdensities.iterrows():
-        print(mgi, densityrow)
+        # print(mgi, densityrow)
         modeldata.append(dict(inputcellid=mgi + 1, velocity_outer=densityrow['velocity_outer'], logrho=math.log10(densityrow['rho']), **rowdict))
-    print(modeldata)
+    # print(modeldata)
 
     dfmodel = pd.DataFrame(modeldata)
     # print(dfmodel)
