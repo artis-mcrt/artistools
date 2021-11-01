@@ -15,7 +15,6 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 from astropy import units as u
-from scipy import interpolate
 
 import artistools as at
 import artistools.packets
@@ -355,6 +354,7 @@ def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, t
     # arr_velocity_mid = tuple(list([(float(v1) + float(v2)) * 0.5 for v1, v2 in zip(
     #     modeldata['velocity_inner'].values, modeldata['velocity_outer'].values)]))
 
+    # from scipy.interpolate import interp1d
     # interp_log10nne, interp_te = {}, {}
     # for ts in range(len(model_tmids)):
     #     arr_v = np.zeros_like(allnonemptymgilist, dtype='float')
@@ -365,9 +365,9 @@ def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, t
     #         arr_log10nne[i] = math.log10(float(estimators[(ts, mgi)]['nne']))
     #         arr_te[i] = estimators[(ts, mgi)]['Te']
     #
-    #     interp_log10nne[ts] = interpolate.interp1d(arr_v.copy(), arr_log10nne.copy(),
+    #     interp_log10nne[ts] =interp1d(arr_v.copy(), arr_log10nne.copy(),
     #                                                kind='linear', fill_value='extrapolate')
-    #     interp_te[ts] = interpolate.interp1d(arr_v.copy(), arr_te.copy(), kind='linear', fill_value='extrapolate')
+    #     interp_te[ts] = interp1d(arr_v.copy(), arr_te.copy(), kind='linear', fill_value='extrapolate')
 
     em_mgicolumn = 'em_modelgridindex' if emtypecolumn == 'emissiontype' else 'emtrue_modelgridindex'
 
