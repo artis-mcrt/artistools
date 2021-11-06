@@ -9,7 +9,7 @@ jobs:
       matrix:
         # os: [ubuntu-latest, macos-latest]
         os: [ubuntu-latest]
-        python-version: [3.6, 3.7, 3.8, 3.9, 3.10]  # 3.10.0 not working yet as of 2021-10-06 (ImportErrors in pytest)
+        python-version: [3.6, 3.7, 3.8, 3.9, 3.10.0]  # 3.10.0 not working yet as of 2021-10-06 (ImportErrors in pytest)
     env:
       OS: ${{ matrix.os }}
       PYTHON: ${{ matrix.python-version }}
