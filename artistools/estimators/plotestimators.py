@@ -504,7 +504,7 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timestepslist, modelpat
         xlist = [np.mean([timearray[ts] for ts in tslist]) for tslist in timestepslist]
         timestepslist_out = timestepslist
     else:
-        xlist = []
+        xlist = [0.] if xvariable.startswith('velocity') else []
         mgilist_out = []
         timestepslist_out = []
         for modelgridindex, timesteps in zip(allnonemptymgilist, timestepslist):
@@ -608,8 +608,6 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
     dfalldata = pd.DataFrame(index=mgilist)
     dfalldata.index.name = "modelgridindex"
     dfalldata[xvariable] = xlist
-
-    xlist = np.insert(xlist, 0, 0.)
 
     xmin = args.xmin if args.xmin > 0 else min(xlist)
     xmax = args.xmax if args.xmax > 0 else max(xlist)
