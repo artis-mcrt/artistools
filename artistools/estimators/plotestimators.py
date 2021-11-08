@@ -614,6 +614,8 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
 
     if xvariable.startswith('velocity'):
         xlist = np.insert(xlist, 0, 0.)
+    else:
+        xlist = np.insert(xlist, 0, xlist[0])
 
     for ax, plotitems in zip(axes, plotlist):
         ax.set_xlim(left=xmin, right=xmax)
