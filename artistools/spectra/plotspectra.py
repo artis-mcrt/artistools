@@ -173,7 +173,7 @@ def plot_artis_spectrum(
         linelabel=None, plotpacketcount=False, **plotkwargs):
     """Plot an ARTIS output spectrum."""
     if not Path(modelpath, 'input.txt').exists():
-        print(f"Skipping '{modelpath}' (not an ARTIS folder?)")
+        print(f"Skipping '{modelpath}' (no input.txt found. Not an ARTIS folder?)")
         return
 
     if plotpacketcount:
