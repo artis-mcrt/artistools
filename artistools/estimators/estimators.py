@@ -270,7 +270,7 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_value
     modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
     arr_velocity_outer = tuple(list([float(v) for v in modeldata['velocity_outer'].values]))
 
-    mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex)
+    mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex, only_ranks_withgridcells=True)
 
     printfilename = len(mpiranklist) < 10
 
