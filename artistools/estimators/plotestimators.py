@@ -614,7 +614,7 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
     else:
         xlist = np.insert(xlist, 0, xlist[0])
 
-    xmin = args.xmin if args.xmin > 0 else min(xlist)
+    xmin = args.xmin if args.xmin >= 0 else min(xlist)
     xmax = args.xmax if args.xmax > 0 else max(xlist)
 
     for ax, plotitems in zip(axes, plotlist):
