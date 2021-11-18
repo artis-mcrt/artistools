@@ -609,13 +609,13 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
     dfalldata.index.name = "modelgridindex"
     dfalldata[xvariable] = xlist
 
-    xmin = args.xmin if args.xmin > 0 else min(xlist)
-    xmax = args.xmax if args.xmax > 0 else max(xlist)
-
     if xvariable.startswith('velocity'):
         xlist = np.insert(xlist, 0, 0.)
     else:
         xlist = np.insert(xlist, 0, xlist[0])
+
+    xmin = args.xmin if args.xmin > 0 else min(xlist)
+    xmax = args.xmax if args.xmax > 0 else max(xlist)
 
     for ax, plotitems in zip(axes, plotlist):
         ax.set_xlim(left=xmin, right=xmax)
