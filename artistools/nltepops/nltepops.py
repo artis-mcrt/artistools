@@ -158,7 +158,7 @@ def read_file(nltefilepath):
 def read_file_filtered(nltefilepath, strquery=None, dfqueryvars=None):
     dfpopfile = read_file(nltefilepath)
 
-    if strquery:
+    if strquery and not dfpopfile.empty:
         dfpopfile.query(strquery, local_dict=dfqueryvars, inplace=True)
 
     return dfpopfile
