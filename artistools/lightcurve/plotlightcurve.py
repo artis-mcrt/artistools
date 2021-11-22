@@ -94,9 +94,10 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
                     plotkwargs['alpha'] = 0.75
                     plotkwargs['label'] = None
                     # Update plotkwargs with viewing angle colour
-                    plotkwargs, _ = get_viewinganglecolor_for_colorbar(angle_definition, angle,
-                                                        costheta_viewing_angle_bins, phi_viewing_angle_bins,
-                                                        scaledmap, plotkwargs, args)
+                    plotkwargs, _ = get_viewinganglecolor_for_colorbar(
+                        angle_definition, angle,
+                        costheta_viewing_angle_bins, phi_viewing_angle_bins,
+                        scaledmap, plotkwargs, args)
                 else:
                     plotkwargs['color'] = None
                     plotkwargs['label'] = f'{modelname}\n{angle_definition[angle]}'
@@ -120,7 +121,8 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
                 if args.plotcmf:
                     plotkwargs['linewidth'] = 1
                     plotkwargs['label'] += ' (cmf)'
-                    plotkwargs['color'] = 'tab:orange'
+                    plotkwargs['linestyle'] = 'dashed'
+                    # plotkwargs['color'] = 'tab:orange'
                     axis.plot(lcdata.time, lcdata['lum_cmf'], **plotkwargs)
 
     if args.reflightcurves:
