@@ -52,8 +52,7 @@ def main():
     steps = 0
     while True:
         steps += 1
-        delta_energy = -0.1 * CONST_EV_IN_J
-        energy += delta_energy
+        delta_energy = -.5 * CONST_EV_IN_J
         dE_on_dx = calculate_dE_on_dx(energy, n_e_bound)
         x += delta_energy / dE_on_dx
         mean_free_path += -x * delta_energy / E_0
