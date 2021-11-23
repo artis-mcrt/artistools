@@ -42,9 +42,10 @@ def calculate_dE_on_dx(energy, n_e_bound):
 
 def main():
     E_0 = 1e6 * CONST_EV_IN_J  # initial energy [J]
-    print(f'initial energy: {E_0 / CONST_EV_IN_J:.1e} eV')
     n_e_bound_cgs = 1e5 * 26  # density of bound electrons in [cm-3]
-    n_e_bound = n_e_bound_cgs * 1e6 [m^-3]
+    n_e_bound = n_e_bound_cgs * 1e6  # [m^-3]
+    print(f'initial energy: {E_0 / CONST_EV_IN_J:.1e} [eV]')
+    print(f'n_e_bound: {n_e_bound_cgs:.1e} [/cm]')
     energy = E_0
     mean_free_path = 0.
     x = 0  # distance moved [m]
