@@ -4,8 +4,8 @@ CONST_EV_IN_J = 1.602176634e-19  # 1 eV [J]
 
 
 def calculate_dE_on_dx(energy, n_e_bound):
-    # Barnes et al. (2016)
-    # [J / m]
+    # Barnes et al. (2016) electron loss rate to ionisation and excitation
+    # in [J / m] (will always be negative)
 
     assert(energy > 0)
     # r_e = 2.8179403262e-13  # classical electron radius [cm]
