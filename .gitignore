@@ -55,8 +55,7 @@ artistools/data/refspectra/N1*
 artistools/data/refspectra/ZTF18abc*
 artistools/data/lightcurves/SNsample/*.txt
 
-spencerfano.pdf
-plotlightcurve.pdf
+*.pdf
 
 plottingscripts/*
 plottingscripts/
