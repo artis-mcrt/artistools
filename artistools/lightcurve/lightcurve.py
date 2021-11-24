@@ -20,10 +20,13 @@ import artistools.spectra
 from scipy.interpolate import interp1d
 
 
-def readfile(filepath_or_buffer, args=None):
+def readfile(filepath_or_buffer, modelpath=None, args=None):
     lcdata = pd.read_csv(filepath_or_buffer, delim_whitespace=True, header=None, names=['time', 'lum', 'lum_cmf'])
 
-    if args is not None and args.plotviewingangle is not None:
+    if args is not None and args.gamma and modelpath is not None and at.get_inputparams(modelpath)['n_dimensions'] == 3:
+        lcdata = read_3d_gammalightcurve(filepath_or_buffer)
+
+    elif args is not None and args.plotviewingangle is not None:
         # get a list of dfs with light curves at each viewing angle
         lcdata = at.gather_res_data(lcdata, index_of_repeated_value=0)
 
@@ -32,6 +35,22 @@ def readfile(filepath_or_buffer, args=None):
         lcdata = lcdata.iloc[:len(lcdata) // 2]
         lcdata.index.name = 'timestep'
     return lcdata
+
+
+def read_3d_gammalightcurve(filepath_or_buffer):
+    columns = ['time']
+    columns.extend(np.arange(0, 100))
+    lcdata = pd.read_csv(filepath_or_buffer, delim_whitespace=True, header=None)
+    lcdata.columns = columns
+    # lcdata = lcdata.rename(columns={0: 'time', 1: 'lum', 2: 'lum_cmf'})
+
+    res_data = []
+    for angle in np.arange(0, 100):
+        res_data.append(lcdata[['time', angle]].copy())
+        res_data[angle] = res_data[angle].rename(columns={angle: 'lum'})
+    print(res_data)
+
+    return res_data
 
 
 def get_from_packets(modelpath, lcpath, packet_type='TYPE_ESCAPE', escape_type='TYPE_RPKT', maxpacketfiles=None):
