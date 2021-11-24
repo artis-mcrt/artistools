@@ -45,11 +45,8 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
         modelname = at.get_model_name(modelpath)
         print(f"====> {modelname}")
         lcname = 'gamma_light_curve.out' if (escape_type == 'TYPE_GAMMA' and not frompackets) else 'light_curve.out'
-        if args.plotviewingangle and lcname == 'light_curve.out':
+        if args.plotviewingangle is not None and lcname == 'light_curve.out':
             lcname = 'light_curve_res.out'
-        elif args.plotviewingangle:
-            print("If you're trying to plot gamma_res - sorry haven't written that yet")
-            quit()
         try:
             lcpath = at.firstexisting([lcname + '.xz', lcname + '.gz', lcname], path=modelpath)
         except FileNotFoundError:
@@ -62,8 +59,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
             lcdata = at.lightcurve.get_from_packets(
                 modelpath, lcpath, packet_type=args.packet_type, escape_type=escape_type, maxpacketfiles=maxpacketfiles)
         else:
-            lcdata = at.lightcurve.readfile(lcpath, args)
-
+            lcdata = at.lightcurve.readfile(lcpath, modelpath, args)
         plotkwargs = {}
         if args.label[seriesindex] is None:
             plotkwargs['label'] = modelname
