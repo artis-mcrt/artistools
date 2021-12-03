@@ -69,8 +69,8 @@ def main_analytical(args=None, argsraw=None, **kwargs):
     print(f't_now = {t_now.to("d")}')
     print('The following assumes that all 56Ni has decayed to 56Co and all energy comes from emitted positrons')
 
-    adata = at.atomic.get_levels(args.modelpath, get_photoionisations=True)
-    timestep = at.get_timestep_of_timedays(args.modelpath, args.timedays)
+    # adata = at.atomic.get_levels(args.modelpath, get_photoionisations=True)
+    # timestep = at.get_timestep_of_timedays(args.modelpath, args.timedays)
     # dfnltepops = at.nltepops.read_files(
     #     args.modelpath, timestep=timestep).query('Z == 26')
 
@@ -92,7 +92,8 @@ def main_analytical(args=None, argsraw=None, **kwargs):
         mco56_init = row['X_Co56'] * (volume_init * rho_init).to('solMass')
         mfe56_init = 0
         # mco56_now = mco56_init * math.exp(- (t_now - t_init) / meanlife_co56)
-        mni56_now, mco56_now, mfe56_now = forward_doubledecay(mni56_init, mco56_init, mfe56_init, t_now - t_init, meanlife_ni56, meanlife_co56)
+        mni56_now, mco56_now, mfe56_now = forward_doubledecay(
+            mni56_init, mco56_init, mfe56_init, t_now - t_init, meanlife_ni56, meanlife_co56)
 
         co56_positron_dep = (0.19 * 0.610 * u.MeV * (mco56_now / (55.9398393 * u.u)) / meanlife_co56).to('erg/s')
         v48_positron_dep = 0
