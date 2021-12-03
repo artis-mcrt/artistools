@@ -802,7 +802,7 @@ def addargs(parser):
                         help='Show the times at each timestep')
 
     parser.add_argument('--frompackets', action='store_true',
-                        help='Read packets files for photoionrates')
+                        help='Read packets files for interal radiation field')
 
     parser.add_argument('-maxpacketfiles', type=int, default=None,
                         help='Limit the number of packet files read')
