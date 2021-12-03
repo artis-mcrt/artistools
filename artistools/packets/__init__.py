@@ -81,6 +81,9 @@ def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None)
     def em_timestep(packet):
         return at.get_timestep_of_timedays(modelpath, packet.em_time * u.s.to('day'))
 
+    def emtrue_timestep(packet):
+        return at.get_timestep_of_timedays(modelpath, packet.trueem_time * u.s.to('day'))
+
     if 'emission_velocity' in colnames:
         dfpackets.eval(
             "emission_velocity = sqrt(em_posx ** 2 + em_posy ** 2 + em_posz ** 2) / em_time",
