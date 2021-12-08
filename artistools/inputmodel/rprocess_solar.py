@@ -6,7 +6,6 @@ import math
 
 import numpy as np
 import pandas as pd
-from astropy import units as u
 from pathlib import Path
 
 import artistools as at
