@@ -17,7 +17,7 @@ commandlist = {
     'makeartismodelscalevelocity': ('artistools.inputmodel.scalevelocity', 'main'),
     'makeartismodelfullymixed': ('artistools.inputmodel.fullymixed', 'main'),
     'makeartismodelsolar_rprocess': ('artistools.inputmodel.rprocess_solar', 'main'),
-    'makeartismodel_rprocesstrajectory': ('artistools.inputmodel.rprocess_solar', 'main'),
+    'makeartismodel_rprocesstrajectory': ('artistools.inputmodel.rprocess_from_trajectory', 'main'),
     'makeartismodel': ('artistools.inputmodel.makeartismodel', 'main'),
 
     'plotartisdeposition': ('artistools.deposition', 'main'),
