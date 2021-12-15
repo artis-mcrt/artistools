@@ -271,8 +271,8 @@ def set_lightcurveplot_legend(ax, args):
             ax[args.legendsubplotnumber].legend(loc=args.legendposition, frameon=args.legendframeon,
                                                 fontsize='x-small', ncol=args.ncolslegend)
         else:
-            ax.legend(loc=args.legendposition, frameon=args.legendframeon, fontsize='small', ncol=args.ncolslegend, handlelength=0.7)
-    return ax
+            ax.legend(loc=args.legendposition, frameon=args.legendframeon,
+                      fontsize='small', ncol=args.ncolslegend, handlelength=0.7)
 
 
 def set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_name=None):
@@ -283,7 +283,7 @@ def set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_
         if args.colour_evolution:
             ylabel = r'$\Delta$m'
         fig.text(0.5, 0.025, 'Time Since Explosion [days]', ha='center', va='center')
-        fig.text(0.02, 0.5, ylabel , ha='center', va='center', rotation='vertical')
+        fig.text(0.02, 0.5, ylabel, ha='center', va='center', rotation='vertical')
     else:
         if args.filter and band_name in filternames_conversion_dict:
             ylabel = f'{filternames_conversion_dict[band_name]} Magnitude'
@@ -313,7 +313,7 @@ def get_viewinganglecolor_for_colorbar(angle_definition, angle, costheta_viewing
         plotkwargs['color'] = scaledmap.to_rgba(colorindex)
     if args.colorbarphi:
         colorindex = phi_viewing_angle_bins.index(angle_definition[angle].split(', ')[1])
-        reorderphibins = {5: 9, 6: 8, 7:7, 8: 6, 9: 5}
+        reorderphibins = {5: 9, 6: 8, 7: 7, 8: 6, 9: 5}
         print("Reordering phi bins")
         if colorindex in reorderphibins.keys():
             colorindex = reorderphibins[colorindex]
@@ -329,8 +329,9 @@ def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=Non
         label = 'cos(\u03B8)'
     if args.colorbarphi:
         print('reordered phi bins')
-        phi_viewing_angle_bins_reordered = ['0', '\u03c0/5', '2\u03c0/5', '3\u03c0/5', '4\u03c0/5', '\u03c0',
-                                    '6\u03c0/5', '7\u03c0/5', '8\u03c0/5', '9\u03c0/5', '2\u03c0']
+        phi_viewing_angle_bins_reordered = [
+            '0', '\u03c0/5', '2\u03c0/5', '3\u03c0/5', '4\u03c0/5', '\u03c0',
+            '6\u03c0/5', '7\u03c0/5', '8\u03c0/5', '9\u03c0/5', '2\u03c0']
         ticklabels = phi_viewing_angle_bins_reordered
         # ticklabels = phi_viewing_angle_bins
         ticklocs = np.linspace(0, 9, num=11)
@@ -348,7 +349,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     # angle_names = [0, 45, 90, 180]
     # plt.style.use('dark_background')
 
-    args.labelfontsize = 22  #todo: make command line arg
+    args.labelfontsize = 22  # todo: make command line arg
     fig, ax = create_axes(args)
     set_axis_limit_args(args)
 
@@ -359,7 +360,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
         scaledmap = make_colorbar_viewingangles_colormap()
 
     for modelnumber, modelpath in enumerate(modelpaths):
-        modelpath = Path(modelpath)  ## Make sure modelpath is defined as path. May not be necessary
+        modelpath = Path(modelpath)  # Make sure modelpath is defined as path. May not be necessary
 
         # check if doing viewing angle stuff, and if so define which data to use
         angles, viewing_angles, angle_definition = get_angle_stuff(modelpath, args)
@@ -405,7 +406,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 #     global define_colours_list
                 #     plt.plot(time, brightness_in_mag, label=modelname, color=define_colours_list[angle], linewidth=3)
 
-                if modelnumber == 0 and args.plot_hesma_model and band_name in hesma_model.keys():  #todo: see if this works
+                if modelnumber == 0 and args.plot_hesma_model and band_name in hesma_model.keys():  # todo: see if this works
                     ax.plot(hesma_model.t, hesma_model[band_name], color='black')
 
                 # axarr[plotnumber].axis([0, 60, -16, -19.5])
@@ -427,8 +428,9 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                         define_colours_list = args.refspeccolors
                         markers = args.refspecmarkers
                         for i, reflightcurve in enumerate(args.reflightcurves):
-                            plot_lightcurve_from_data(band_lightcurve_data.keys(), reflightcurve, define_colours_list[i], markers[i],
-                                                      filternames_conversion_dict, ax, plotnumber)
+                            plot_lightcurve_from_data(
+                                band_lightcurve_data.keys(), reflightcurve, define_colours_list[i], markers[i],
+                                filternames_conversion_dict, ax, plotnumber)
 
                 if args.color:
                     plotkwargs['color'] = args.color[modelnumber]
@@ -447,6 +449,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                     plotkwargs['linestyle'] = args.linestyle[modelnumber]
 
                 # if not (args.test_viewing_angle_fit or args.calculate_peak_time_mag_deltam15_bool):
+
                 if args.subplots:
                     if len(angles) > 1 or (args.plotviewingangle and os.path.isfile(modelpath / 'specpol_res.out')):
                         ax[plotnumber].plot(time, brightness_in_mag, linewidth=4, **plotkwargs)
@@ -473,7 +476,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     plt.savefig(args.outputfile, format='pdf')
     print(f'Saved figure: {args.outputfile}')
 
-## Incase this code is needed again...
+# In case this code is needed again...
 
 # if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
 #     # print('time before', time)
@@ -504,7 +507,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 
 
 def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
-    args.labelfontsize = 24  #todo: make command line arg
+    args.labelfontsize = 24  # todo: make command line arg
     angle_counter = 0
 
     fig, ax = create_axes(args)
@@ -762,7 +765,8 @@ def addargs(parser):
     parser.add_argument('-o', action='store', dest='outputfile', type=Path,
                         help='Filename for PDF file')
 
-    parser.add_argument('--plotcmf', action='store_true',
+    parser.add_argument('--plotcmf', '--plot_cmf', '--showcmf', '--show_cmf',
+                        action='store_true',
                         help='Plot comoving frame light curve')
 
     parser.add_argument('--magnitude', action='store_true',
