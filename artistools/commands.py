@@ -10,7 +10,7 @@ commandlist = {
     'artistools-timesteptimes': ('artistools', 'showtimesteptimes'),
 
     'artistools-make1dslicefrom3dmodel': ('artistools.inputmodel.1dslicefrom3d', 'main'),
-    'makeartismodel1dslicefromcone': ('artistools.inputmodel.1dslicefromconein3dmodel', 'main'),
+    'makeartismodel1dslicefromcone': ('artistools.inputmodel.slice1Dfromconein3dmodel', 'main'),
     'makeartismodelbotyanski2017': ('artistools.inputmodel.botyanski2017', 'main'),
     'makeartismodelfromshen2018': ('artistools.inputmodel.shen2018', 'main'),
     'makeartismodelfromlapuente': ('artistools.inputmodel.lapuente', 'main'),
