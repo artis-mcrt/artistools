@@ -512,6 +512,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
     plotkwargs = {}
 
     for modelnumber, modelpath in enumerate(modelpaths):
+        modelpath = Path(modelpath)
         modelname = at.get_model_name(modelpath)
         print(f'Reading spectra: {modelname}')
 
