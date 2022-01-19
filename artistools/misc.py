@@ -417,9 +417,9 @@ def get_wid_init_at_tmin(modelpath):
 def get_wid_init_at_tmodel(modelpath, ngridpoints=None, t_model=None, xmax=None):
     if ngridpoints is None or t_model is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
-        dfmodel, t_model, vmax = artistools.inputmodel.get_modeldata(modelpath)
+        dfmodel, t_model_days, vmax = artistools.inputmodel.get_modeldata(modelpath)
         ngridpoints = len(dfmodel)
-        xmax = vmax * t_model
+        xmax = vmax * t_model_days * (24 * 60 * 60)
 
     ncoordgridx = round(ngridpoints ** (1. / 3.))
 
