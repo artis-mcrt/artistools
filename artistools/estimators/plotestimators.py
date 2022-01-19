@@ -580,12 +580,12 @@ def plot_subplot(ax, timestepslist, xlist, plotitems, mgilist, modelpath,
                                       modelpath, dfalldata, args, **plotkwargs)
 
     ax.tick_params(right=True)
-    if showlegend:
+    if showlegend and not args.nolegend:
         if plotitems[0][0] == 'populations' and args.yscale == 'log':
-            ax.legend(loc='upper right', handlelength=2, ncol=math.ceil(len(plotitems[0][1]) / 2.),
+            ax.legend(loc='best', handlelength=2, ncol=math.ceil(len(plotitems[0][1]) / 2.),
                       frameon=False, numpoints=1)
         else:
-            ax.legend(loc='upper right', handlelength=2,
+            ax.legend(loc='best', handlelength=2,
                       frameon=False, numpoints=1,)  # prop={'size': 9})
 
 
@@ -600,8 +600,8 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
         axes = [axes]
 
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
-
-    axes[-1].set_xlabel(f'{xvariable}{get_units_string(xvariable)}')
+    if not args.hidexlabel:
+        axes[-1].set_xlabel(f'{xvariable}{get_units_string(xvariable)}')
     xlist, mgilist, timestepslist = get_xlist(
         xvariable, allnonemptymgilist, estimators, timestepslist_unfiltered, modelpath, args)
 
@@ -778,6 +778,9 @@ def addargs(parser):
     parser.add_argument('-yscale', default='log', choices=['log', 'linear'],
                         help='Set yscale to log or linear (default log)')
 
+    parser.add_argument('--hidexlabel', action='store_true',
+                        help='Hide the bottom horizontal axis label')
+
     parser.add_argument('-filtermovingavg', type=int, default=0,
                         help='Smoothing length (1 is same as none)')
 
@@ -793,8 +796,11 @@ def addargs(parser):
 
     parser.add_argument('-ionpoptype', default='elpop', choices=['absolute', 'totalpop', 'elpop'],
                         help=(
-                            'Plot absolutely ion populations, or ion populations as a'
+                            'Plot absolute ion populations, or ion populations as a'
                             ' fraction of total or element population'))
+
+    parser.add_argument('--nolegend', action='store_true',
+                        help='Suppress the legend from the plot')
 
     parser.add_argument('-figscale', type=float, default=1.,
                         help='Scale factor for plot area. 1.0 is for single-column')
@@ -847,7 +853,7 @@ def main(args=None, argsraw=None, **kwargs):
         modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
         estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
     else:
-        estimators = read_estimators(modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included))
+        estimators = read_estimators(modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included))
 
     for ts in reversed(timesteps_included):
         tswithdata = [ts for (ts, mgi) in estimators.keys()]
