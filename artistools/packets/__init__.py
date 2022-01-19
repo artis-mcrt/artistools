@@ -104,7 +104,7 @@ def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None)
     return dfpackets
 
 
-@at.diskcache(savegzipped=True)
+@at.diskcache(savezipped=True)
 def readfile(packetsfile, type=None, escape_type=None):
     """Read a packet file into a pandas DataFrame."""
     filesize = Path(packetsfile).stat().st_size / 1024 / 1024

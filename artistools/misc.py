@@ -39,7 +39,7 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
 
 
-def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savegzipped=False,
+def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savezipped=False,
               funcdepends=None, funcversion=None):
     def printopt(*args, **kwargs):
         if not quiet:
@@ -51,18 +51,26 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
         @wraps(func)
         def wrapper(*args, **kwargs):
             # save cached files in the folder of the first file/folder specified in the arguments
-            modelpath = Path()
-            if 'modelpath' in kwargs:
-                modelpath = kwargs['modelpath']
-            else:
-                for arg in args:
-                    if os.path.isdir(arg):
-                        modelpath = arg
-                        break
+            modelpath = None
+            for arg in [*args, *kwargs.values()]:
+                if modelpath is None:
+                    try:
+                        if os.path.isfile(arg):
+                            modelpath = Path(arg).parent
 
-                    if os.path.isfile(arg):
-                        modelpath = Path(arg).parent
-                        break
+                    except TypeError:
+                        pass
+
+            for arg in [*args, *kwargs.values()]:
+                if modelpath is None:
+                    try:
+                        if os.path.isdir(arg):
+                            modelpath = arg
+                    except TypeError:
+                        pass
+
+            if modelpath is None:
+                modelpath = Path()  # use current folder
 
             cachefolder = Path(modelpath, '__artistoolscache__.nosync')
 
@@ -83,16 +91,28 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
 
             namearghash_strhex = namearghash.hexdigest()
 
+            # make sure modifications to any file paths in the arguments will trigger an update
+            argfilesmodifiedhash = hashlib.sha1()
+            for arg in args:
+                try:
+                    if os.path.isfile(arg):
+                        argfilesmodifiedhash.update(str(os.path.getmtime(arg)).encode('utf-8'))
+                except TypeError:
+                    pass
+            argfilesmodifiedhash_strhex = '_filesmodifiedhash_' + argfilesmodifiedhash.hexdigest()
+
             filename_nogz = Path(cachefolder, f'cached-{func.__module__}.{func.__qualname__}-{namearghash_strhex}.tmp')
-            filename_gz = Path(cachefolder, f'cached-{func.__module__}.{func.__qualname__}-{namearghash_strhex}.tmp.gz')
+            filename_xz = filename_nogz.with_suffix('.tmp.xz')
+            filename_gz = filename_nogz.with_suffix('.tmp.gz')
 
             execfunc = True
             saveresult = False
             functime = -1
 
-            if (filename_nogz.exists() or filename_gz.exists()) and not saveonly:
+            if (filename_nogz.exists() or filename_xz.exists() or filename_gz.exists()) and not saveonly:
                 # found a candidate file, so load it
-                filename = filename_nogz if filename_nogz.exists() else filename_gz
+                filename = (
+                    filename_nogz if filename_nogz.exists() else filename_gz if filename_gz.exists() else filename_xz)
 
                 filesize = Path(filename).stat().st_size / 1024 / 1024
 
@@ -102,14 +122,14 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
                     with zopen(filename, 'rb') as f:
                         result, version_filein = pickle.load(f)
 
-                    if version_filein == str_funcversion:
+                    if version_filein == str_funcversion + argfilesmodifiedhash_strhex:
                         execfunc = False
                     elif (not funcversion) and (not version_filein.startswith('funcversion_')):
                         execfunc = False
                     # elif version_filein == sourcehash_strhex:
                     #     execfunc = False
                     else:
-                        printopt(f"diskcache: Overwriting '{filename}' (function version mismatch)")
+                        printopt(f"diskcache: Overwriting '{filename}' (function version mismatch or file modified)")
 
                 except Exception as ex:
                     # ex = sys.exc_info()[0]
@@ -128,9 +148,9 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
                 # check if we need to replace the gzipped or non-gzipped file with the correct one
                 # if we so, need to save the new file even though functime is unknown since we read
                 # from disk version instead of executing the function
-                if savegzipped and filename_nogz.exists():
+                if savezipped and filename_nogz.exists():
                     saveresult = True
-                elif not savegzipped and filename_gz.exists():
+                elif not savezipped and filename_xz.exists():
                     saveresult = True
 
             if saveresult:
@@ -146,10 +166,12 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, saveg
                     filename_nogz.unlink()
                 if filename_gz.exists():
                     filename_gz.unlink()
+                if filename_xz.exists():
+                    filename_xz.unlink()
 
-                fopen, filename = (gzip.open, filename_gz) if savegzipped else (open, filename_nogz)
+                fopen, filename = (lzma.open, filename_xz) if savezipped else (open, filename_nogz)
                 with fopen(filename, 'wb') as f:
-                    pickle.dump((result, str_funcversion), f, protocol=pickle.HIGHEST_PROTOCOL)
+                    pickle.dump((result, str_funcversion + argfilesmodifiedhash_strhex), f, protocol=pickle.HIGHEST_PROTOCOL)
 
                 filesize = Path(filename).stat().st_size / 1024 / 1024
                 printopt(f"diskcache: Saved '{filename}' ({filesize:.1f} MiB, functime {functime:.1f}s)")
@@ -417,15 +439,25 @@ def get_nu_grid(modelpath):
 
 
 def get_deposition(modelpath):
-    times = get_timestep_times_float(modelpath)
-    depdata = pd.read_csv(Path(modelpath, 'deposition.out'), delim_whitespace=True, header=None, names=[
-        'time', 'gammadep_over_Lsun', 'posdep_over_Lsun', 'total_dep_over_Lsun'])
+    ts_mids = get_timestep_times_float(modelpath, loc='mid')
+    depfilepath = Path(modelpath, 'deposition.out')
+    with open(depfilepath, 'r') as fdep:
+        filepos = fdep.tell()
+        line = fdep.readline()
+        if line.startswith('#'):
+            columns = line.lstrip('#').split()
+        else:
+            fdep.seek(filepos)  # undo the readline() and go back
+            columns = ['tmid_days', 'gammadep_Lsun', 'positrondep_Lsun', 'total_dep_Lsun']
+
+        depdata = pd.read_csv(fdep, delim_whitespace=True, header=None, names=columns)
+
     depdata.index.name = 'timestep'
 
-    # no timesteps are given in deposition.out, so ensure that
+    # no timesteps are given in the old format of deposition.out, so ensure that
     # the times in days match up with the times of our assumed timesteps
     for timestep, row in depdata.iterrows():
-        assert(abs(times[timestep] / row['time'] - 1) < 0.01)
+        assert(abs(ts_mids[timestep] / row['tmid_days'] - 1) < 0.01)
 
     return depdata
 

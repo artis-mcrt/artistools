@@ -245,7 +245,7 @@ def get_spectrum_from_packets(
     return pd.DataFrame(dfdict)
 
 
-@at.diskcache(savegzipped=True)
+@at.diskcache(savezipped=True)
 def read_specpol_res(modelpath):
     """Return specpol_res data for a given angle"""
     if Path(modelpath, 'specpol_res.out').is_file():

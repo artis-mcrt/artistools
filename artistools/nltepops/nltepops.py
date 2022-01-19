@@ -36,7 +36,8 @@ def texifyterm(strterm):
             passed_term_Lchar = True
         elif re.match('[eo]', termpiece) is not None and passed_term_Lchar:
             # odd flag, but don't want to confuse it with the energy index (e.g. o4Fo[2])
-            strtermtex += r'$^{\rm ' + termpiece + r'}$'
+            if termpiece != 'e':  # even is assumed by default (and looks neater with all the 'e's)
+                strtermtex += r'$^{\rm ' + termpiece + r'}$'
         elif re.match(r'[0-9]?.*\]', termpiece) is not None:
             # J value
             strtermtex += termpiece.split('[')[0] + r'$_{' + termpiece.lstrip('0123456789').strip('[]') + r'}$'
@@ -128,7 +129,7 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
     return dfpop
 
 
-@at.diskcache(savegzipped=True)
+@at.diskcache(savezipped=True)
 def read_file(nltefilepath):
     """Read NLTE populations from one file."""
 
@@ -140,8 +141,7 @@ def read_file(nltefilepath):
         elif nltefilepathgz.is_file():
             nltefilepath = nltefilepathgz
         else:
-            # if the first file is not found in the folder, then skip the folder
-            print(f'Warning: Could not find {nltefilepath}')
+            # print(f'Warning: Could not find {nltefilepath}')
             return pd.DataFrame()
 
     filesize = Path(nltefilepath).stat().st_size / 1024 / 1024
@@ -165,7 +165,7 @@ def read_file_filtered(nltefilepath, strquery=None, dfqueryvars=None):
 
 
 @lru_cache(maxsize=2)
-@at.diskcache(savegzipped=True, funcversion="2020-07-03.1327", saveonly=False)
+@at.diskcache(savezipped=True, funcversion="2020-07-03.1327", saveonly=False)
 def read_files(modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryvars={}):
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
 

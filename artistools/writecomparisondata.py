@@ -50,7 +50,7 @@ def write_ntimes_nvel(f, selected_timesteps, modelpath):
     times = at.get_timestep_times_float(modelpath)
     modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata(modelpath)
     f.write(f'#NTIMES: {len(selected_timesteps)}\n')
-    f.write(f'#NVEL {len(modeldata)}\n')
+    f.write(f'#NVEL: {len(modeldata)}\n')
     f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
 
 
@@ -58,7 +58,7 @@ def write_single_estimator(modelpath, selected_timesteps, estimators, allnonempt
     modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata(modelpath)
     with open(outfile, "w") as f:
         write_ntimes_nvel(f, selected_timesteps, modelpath)
-        if keyname == 'totaldep':
+        if keyname == 'total_dep':
             f.write('#vel_mid[km/s] Edep_t0[erg/s/cm^3] Edep_t1[erg/s/cm^3] ... Edep_tn[erg/s/cm^3]\n')
         elif keyname == 'nne':
             f.write('#vel_mid[km/s] ne_t0[/cm^3] ne_t1[/cm^3] … ne_tn[/cm^3]\n')
@@ -76,7 +76,7 @@ def write_single_estimator(modelpath, selected_timesteps, estimators, allnonempt
                 # except KeyError:
                 #     cellvalue = (estimators[(timestep - 1, modelgridindex)][keyname]
                 #                  + estimators[(timestep + 1, modelgridindex)][keyname]) / 2.
-                f.write(f' {cellvalue:.2e}')
+                f.write(f' {cellvalue:.3e}')
             f.write('\n')
 
 
@@ -155,7 +155,7 @@ def write_lbol_edep(modelpath, model_id, selected_timesteps, estimators, outputp
         for timestep, row in df.iterrows():
             if timestep not in selected_timesteps:
                 continue
-            f.write(f"{row.time:.2f} {row.lum * 3.826e33:.2e} {row.total_dep_over_Lsun * 3.826e33:.2e}\n")
+            f.write(f"{row.time:.2f} {row.lum * 3.826e33:.2e} {row.total_dep_Lsun * 3.826e33:.2e}\n")
 
     f.close()
 

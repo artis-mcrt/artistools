@@ -460,7 +460,7 @@ def make_peak_colour_viewing_angle_plot(args):
     plt.close()
 
 
-at.diskcache(savegzipped=True)
+at.diskcache(savezipped=True)
 def second_band_brightness_at_peak_first_band(data, bands, modelpath, modelnumber, args):
     second_band_brightness = []
     for anglenumber, time in enumerate(data[f"time_{bands[0]}max"]):
