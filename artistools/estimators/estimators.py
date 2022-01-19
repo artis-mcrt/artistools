@@ -211,8 +211,8 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
         yield timestep, modelgridindex, estimblock
 
 
-@at.diskcache(ignorekwargs=['printfilename'], quiet=False, funcdepends=parse_estimfile, savegzipped=True)
-def read_estimators_from_file(modelpath, folderpath, arr_velocity_outer, mpirank, printfilename=False,
+@at.diskcache(ignorekwargs=['printfilename'], quiet=False, funcdepends=parse_estimfile, savezipped=True)
+def read_estimators_from_file(folderpath, modelpath, arr_velocity_outer, mpirank, printfilename=False,
                               get_ion_values=True, get_heatingcooling=True):
 
     estimators_thisfile = {}
@@ -221,7 +221,8 @@ def read_estimators_from_file(modelpath, folderpath, arr_velocity_outer, mpirank
     if not estfilepath.is_file():
         estfilepath = Path(folderpath, estimfilename + '.gz')
         if not estfilepath.is_file():
-            print(f'Warning: Could not find {estfilepath.relative_to(modelpath.parent)}')
+            # not worth printing and error, because ranks with no cells to update do not produce an estimator file
+            # print(f'Warning: Could not find {estfilepath.relative_to(modelpath.parent)}')
             return {}
 
     if printfilename:
@@ -240,7 +241,7 @@ def read_estimators_from_file(modelpath, folderpath, arr_velocity_outer, mpirank
 
 
 @lru_cache(maxsize=16)
-@at.diskcache(savegzipped=True, funcdepends=[read_estimators_from_file, parse_estimfile])
+@at.diskcache(savezipped=True, funcdepends=[read_estimators_from_file, parse_estimfile])
 def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_values=True, get_heatingcooling=True):
     """Read estimator files into a nested dictionary structure.
 
@@ -278,7 +279,7 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_value
     for folderpath in at.get_runfolders(modelpath, timesteps=match_timestep):
         print(f'Reading {len(list(mpiranklist))} estimator files in {folderpath.relative_to(Path(modelpath).parent)}')
 
-        processfile = partial(read_estimators_from_file, modelpath, folderpath, arr_velocity_outer,
+        processfile = partial(read_estimators_from_file, folderpath, modelpath, arr_velocity_outer,
                               get_ion_values=get_ion_values, get_heatingcooling=get_heatingcooling,
                               printfilename=printfilename)
 

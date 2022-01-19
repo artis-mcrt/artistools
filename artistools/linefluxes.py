@@ -27,7 +27,7 @@ def get_packets_with_emtype_onefile(emtypecolumn, lineindices, packetsfile):
     return dfpackets.query(f'{emtypecolumn} in @lineindices', inplace=False).copy()
 
 
-@at.diskcache(savegzipped=True)
+@at.diskcache(savezipped=True)
 def get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles=None):
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
@@ -341,7 +341,7 @@ def make_flux_ratio_plot(args):
     plt.close()
 
 
-@at.diskcache(savegzipped=True)
+@at.diskcache(savezipped=True)
 def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, tstart, tend, maxpacketfiles=None):
     estimators = at.estimators.read_estimators(modelpath, get_ion_values=False, get_heatingcooling=False)
 

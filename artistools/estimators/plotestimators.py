@@ -72,7 +72,7 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, seriestype,
         elsymbol = splitvariablename[0].strip('0123456789')
         atomic_number = at.get_atomic_number(elsymbol)
         if seriestype == 'initabundances':
-            ax.set_ylim(0., 1.0)
+            ax.set_ylim(1e-20, 1.0)
             ax.set_ylabel('Initial mass fraction')
             valuetype = 'X_'
         elif seriestype == 'initmasses':
