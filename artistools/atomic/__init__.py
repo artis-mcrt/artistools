@@ -113,15 +113,15 @@ def parse_phixsdata(fphixs, ionlist):
 
 
 @lru_cache(maxsize=8)
-def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisations=False):
+def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisations=False, quiet=False):
     """Return a list of lists of levels."""
     adatafilename = Path(modelpath, 'adata.txt')
 
     transitionsdict = {}
     if get_transitions:
         transition_filename = Path(modelpath, 'transitiondata.txt')
-
-        print(f'Reading {transition_filename.relative_to(modelpath.parent)}')
+        if not quiet:
+            print(f'Reading {transition_filename.relative_to(modelpath.parent)}')
         with artistools.zopen(transition_filename, 'rt') as ftransitions:
             transitionsdict = {
                 (Z, ionstage): dftransitions
@@ -131,7 +131,8 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
     if get_photoionisations:
         phixs_filename = Path(modelpath, 'phixsdata_v2.txt')
 
-        print(f'Reading {phixs_filename.relative_to(Path(modelpath).parent)}')
+        if not quiet:
+            print(f'Reading {phixs_filename.relative_to(Path(modelpath).parent)}')
         with artistools.zopen(phixs_filename, 'rt') as fphixs:
             for (Z, upperionstage, upperionlevel, lowerionstage,
                  lowerionlevel, phixstargetlist, phixstable) in parse_phixsdata(fphixs, ionlist):
@@ -141,7 +142,8 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
     iontuple = namedtuple('ion', 'Z ion_stage level_count ion_pot levels transitions')
 
     with artistools.zopen(adatafilename, 'rt') as fadata:
-        print(f'Reading {adatafilename.relative_to(Path(modelpath).parent)}')
+        if not quiet:
+            print(f'Reading {adatafilename.relative_to(Path(modelpath).parent)}')
 
         for Z, ionstage, level_count, ionisation_energy_ev, dflevels in parse_adata(fadata, phixsdict, ionlist):
             translist = transitionsdict.get((Z, ionstage), pd.DataFrame())
