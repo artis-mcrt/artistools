@@ -430,6 +430,21 @@ def get_wid_init_at_tmodel(modelpath, ngridpoints=None, t_model=None, xmax=None)
     return wid_init
 
 
+def dot(x, y):
+    return (x[0] * y[0]) + (x[1] * y[1]) + (x[2] * y[2])
+
+
+def cross_prod(v1, v2, v3):
+    v3[0] = (v1[1] * v2[2]) - (v2[1] * v1[2])
+    v3[1] = (v1[2] * v2[0]) - (v2[2] * v1[0])
+    v3[2] = (v1[0] * v2[1]) - (v2[0] * v1[1])
+    return v3
+
+
+def vec_len(vec):
+    return np.sqrt(vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2)
+
+
 @lru_cache(maxsize=16)
 def get_nu_grid(modelpath):
     """Get an array of frequencies at which the ARTIS spectra are binned by exspec."""
