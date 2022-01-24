@@ -91,6 +91,60 @@ def read_griddat_file(pathtogriddata):
 
 def fill_central_hole(griddata, t_model):
     print(griddata)
+def mirror_model_in_axis(griddata):
+    grid = round(len(griddata) ** (1. / 3.))
+
+    rho = np.zeros((grid, grid, grid))
+    cellYe = np.zeros((grid, grid, grid))
+    tracercount = np.zeros((grid, grid, grid))
+    Q = np.zeros((grid, grid, grid))
+
+    i=0
+    for z in range(0, grid):
+        for y in range(0, grid):
+            for x in range(0, grid):
+                rho[x, y, z] = griddata['rho'][i]
+                cellYe[x, y, z] = griddata['cellYe'][i]
+                tracercount[x, y, z] = griddata['tracercount'][i]
+                Q[x, y, z] = griddata['Q'][i]
+                i += 1
+
+    for z in range(0, grid):
+        z_mirror = grid-1 - z
+        for y in range(0, grid):
+            for x in range(0, grid):
+                if z < 50:
+                    rho[x, y, z] = rho[x, y, z]
+                    cellYe[x, y, z] = cellYe[x, y, z]
+                    tracercount[x, y, z] = tracercount[x, y, z]
+                    Q[x, y, z] = Q[x, y, z]
+                if z >= 50:
+                    rho[x, y, z] = rho[x, y, z_mirror]
+                    cellYe[x, y, z] = cellYe[x, y, z_mirror]
+                    tracercount[x, y, z] = tracercount[x, y, z_mirror]
+                    Q[x, y, z] = Q[x, y, z_mirror]
+
+    rho_1d_array = np.zeros(len(griddata))
+    cellYe_1d_array = np.zeros(len(griddata))
+    tracercount_1d_array = np.zeros(len(griddata))
+    Q_1d_array = np.zeros(len(griddata))
+    i=0
+    for z in range(0, grid):
+        for y in range(0, grid):
+            for x in range(0, grid):
+                rho_1d_array[i] = rho[x, y, z]
+                cellYe_1d_array[i] = cellYe[x, y, z]
+                tracercount_1d_array[i] = tracercount[x, y, z]
+                Q_1d_array[i] = Q[x, y, z]
+                i += 1
+
+    griddata['rho'] = rho_1d_array
+    griddata['cellYe'] = cellYe_1d_array
+    griddata['tracercount'] = tracercount_1d_array
+    griddata['Q'] = Q_1d_array
+
+    return griddata
+
 
     # Just (2021) Fig. 16 top left panel
     vel_hole = [0, 0.02, 0.05, 0.07, 0.09, 0.095, 0.1]
