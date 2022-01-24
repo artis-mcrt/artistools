@@ -70,7 +70,7 @@ def get_first_ts_in_run_directory(modelpath):
     return first_timesteps_in_dir
 
 
-def read_classic_estimators(modelpath, modeldata):
+def read_classic_estimators(modelpath, modeldata, readonly_mgi=False, readonly_timestep=False):
     estimfiles = get_estimator_files(modelpath)
     if not estimfiles:
         print("No estimator files found")
@@ -79,6 +79,9 @@ def read_classic_estimators(modelpath, modeldata):
 
     first_timesteps_in_dir = get_first_ts_in_run_directory(modelpath)
     atomic_composition = get_atomic_composition(modelpath)
+
+    inputparams = at.get_inputparams(modelpath)
+    ndimensions = inputparams['n_dimensions']
 
     estimators = {}
     for estfile in estimfiles:
@@ -99,42 +102,45 @@ def read_classic_estimators(modelpath, modeldata):
                     timestep += 1
                 modelgridindex = int(row[0])
 
-                estimators[(timestep, modelgridindex)] = {}
-                # This will only work in 1D for now
-                estimators[(timestep, modelgridindex)]['velocity_outer'] = modeldata['velocity_outer'][modelgridindex]
+                if readonly_mgi is False or modelgridindex in readonly_mgi:
+                    if readonly_timestep is False or timestep in readonly_timestep:
+                        estimators[(timestep, modelgridindex)] = {}
 
-                estimators[(timestep, modelgridindex)]['TR'] = float(row[1])
-                estimators[(timestep, modelgridindex)]['Te'] = float(row[2])
-                estimators[(timestep, modelgridindex)]['W'] = float(row[3])
-                estimators[(timestep, modelgridindex)]['TJ'] = float(row[4])
+                        if ndimensions == 1:
+                            estimators[(timestep, modelgridindex)]['velocity_outer'] = modeldata['velocity_outer'][modelgridindex]
 
-                parse_ion_row_classic(row, estimators[(timestep, modelgridindex)], atomic_composition)
+                        estimators[(timestep, modelgridindex)]['TR'] = float(row[1])
+                        estimators[(timestep, modelgridindex)]['Te'] = float(row[2])
+                        estimators[(timestep, modelgridindex)]['W'] = float(row[3])
+                        estimators[(timestep, modelgridindex)]['TJ'] = float(row[4])
 
-                # heatingrates[tid].ff, heatingrates[tid].bf, heatingrates[tid].collisional, heatingrates[tid].gamma,
-                # coolingrates[tid].ff, coolingrates[tid].fb, coolingrates[tid].collisional, coolingrates[tid].adiabatic)
+                        parse_ion_row_classic(row, estimators[(timestep, modelgridindex)], atomic_composition)
 
-                estimators[(timestep, modelgridindex)]['heating_ff'] = float(row[-9])
-                estimators[(timestep, modelgridindex)]['heating_bf'] = float(row[-8])
-                estimators[(timestep, modelgridindex)]['heating_coll'] = float(row[-7])
-                estimators[(timestep, modelgridindex)]['heating_dep'] = float(row[-6])
+                        # heatingrates[tid].ff, heatingrates[tid].bf, heatingrates[tid].collisional, heatingrates[tid].gamma,
+                        # coolingrates[tid].ff, coolingrates[tid].fb, coolingrates[tid].collisional, coolingrates[tid].adiabatic)
 
-                estimators[(timestep, modelgridindex)]['cooling_ff'] = float(row[-5])
-                estimators[(timestep, modelgridindex)]['cooling_fb'] = float(row[-4])
-                estimators[(timestep, modelgridindex)]['cooling_coll'] = float(row[-3])
-                estimators[(timestep, modelgridindex)]['cooling_adiabatic'] = float(row[-2])
+                        estimators[(timestep, modelgridindex)]['heating_ff'] = float(row[-9])
+                        estimators[(timestep, modelgridindex)]['heating_bf'] = float(row[-8])
+                        estimators[(timestep, modelgridindex)]['heating_coll'] = float(row[-7])
+                        estimators[(timestep, modelgridindex)]['heating_dep'] = float(row[-6])
 
-                estimators[(timestep, modelgridindex)]['cooling_coll - heating_coll'] = \
-                    estimators[(timestep, modelgridindex)]['cooling_coll'] - estimators[(timestep, modelgridindex)]['heating_coll']
+                        estimators[(timestep, modelgridindex)]['cooling_ff'] = float(row[-5])
+                        estimators[(timestep, modelgridindex)]['cooling_fb'] = float(row[-4])
+                        estimators[(timestep, modelgridindex)]['cooling_coll'] = float(row[-3])
+                        estimators[(timestep, modelgridindex)]['cooling_adiabatic'] = float(row[-2])
 
-                estimators[(timestep, modelgridindex)]['cooling_fb - heating_bf'] = \
-                    estimators[(timestep, modelgridindex)]['cooling_fb'] - estimators[(timestep, modelgridindex)]['heating_bf']
+                        # estimators[(timestep, modelgridindex)]['cooling_coll - heating_coll'] = \
+                        #     estimators[(timestep, modelgridindex)]['cooling_coll'] - estimators[(timestep, modelgridindex)]['heating_coll']
+                        #
+                        # estimators[(timestep, modelgridindex)]['cooling_fb - heating_bf'] = \
+                        #     estimators[(timestep, modelgridindex)]['cooling_fb'] - estimators[(timestep, modelgridindex)]['heating_bf']
+                        #
+                        # estimators[(timestep, modelgridindex)]['cooling_ff - heating_ff'] = \
+                        #     estimators[(timestep, modelgridindex)]['cooling_ff'] - estimators[(timestep, modelgridindex)]['heating_ff']
+                        #
+                        # estimators[(timestep, modelgridindex)]['cooling_adiabatic - heating_dep'] = \
+                        #     estimators[(timestep, modelgridindex)]['cooling_adiabatic'] - estimators[(timestep, modelgridindex)]['heating_dep']
 
-                estimators[(timestep, modelgridindex)]['cooling_ff - heating_ff'] = \
-                    estimators[(timestep, modelgridindex)]['cooling_ff'] - estimators[(timestep, modelgridindex)]['heating_ff']
-
-                estimators[(timestep, modelgridindex)]['cooling_adiabatic - heating_dep'] = \
-                    estimators[(timestep, modelgridindex)]['cooling_adiabatic'] - estimators[(timestep, modelgridindex)]['heating_dep']
-
-                estimators[(timestep, modelgridindex)]['energy_deposition'] = float(row[-1])
+                        estimators[(timestep, modelgridindex)]['energy_deposition'] = float(row[-1])
 
     return estimators
