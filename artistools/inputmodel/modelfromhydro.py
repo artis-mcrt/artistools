@@ -89,8 +89,6 @@ def read_griddat_file(pathtogriddata):
     return griddata, t_model, vmax
 
 
-def fill_central_hole(griddata, t_model):
-    print(griddata)
 def mirror_model_in_axis(griddata):
     grid = round(len(griddata) ** (1. / 3.))
 
@@ -145,6 +143,9 @@ def mirror_model_in_axis(griddata):
 
     return griddata
 
+
+def fill_central_hole(griddata, t_model):
+    print(griddata)
 
     # Just (2021) Fig. 16 top left panel
     vel_hole = [0, 0.02, 0.05, 0.07, 0.09, 0.095, 0.1]
