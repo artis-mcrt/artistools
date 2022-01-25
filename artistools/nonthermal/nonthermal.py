@@ -27,7 +27,6 @@ H_ionpot = 13.5979996 * EV
 CLIGHT = 2.99792458e+10
 PI = math.pi
 
-experiment_use_Latom_in_spencerfano = False
 use_collstrengths = False
 
 
@@ -258,7 +257,7 @@ def get_lotz_xs_ionisation(atomic_number, ion_stage, electron_binding, ionpot_ev
     return sigma
 
 
-def lossfunction(energy_ev, nne_cgs, nnetot_cgs, use_nnetot=False, ions=None, ionpopdict=None):
+def lossfunction(energy_ev, nne_cgs, nnetot_cgs=None, use_nnetot=False, ions=None, ionpopdict=None):
     # free-electron plasma loss rate (as in Kozma & Fransson 1992)
     # - dE / dX [eV / cm]
     # returns a positive number
@@ -282,16 +281,6 @@ def lossfunction(energy_ev, nne_cgs, nnetot_cgs, use_nnetot=False, ions=None, io
         v = math.sqrt(2 * energy / ME)  # velocity in m/s
         eulergamma = 0.577215664901532
         lossfunc = nne * 2 * math.pi * QE ** 4 / energy * math.log(ME * pow(v, 3) / (eulergamma * pow(QE, 2) * omegap))
-
-    if experiment_use_Latom_in_spencerfano:
-        # EXPERIMENTAL: add the axelrod atom loss rate to the plasma loss rate
-        assert ions and ionpopdict
-        Zboundbar = get_Zboundbar(ions, ionpopdict)
-        nntot = get_nntot(ions, ionpopdict)
-        losselec = lossfunc
-        lossatom = get_Latom_axelrod(Zboundbar, energy_ev) * nntot
-        lossfunc += get_Latom_axelrod(Zboundbar, energy_ev) * nntot
-        # print(f'en_ev: {energy_ev:.1f} atom: {lossatom:.1e} elec: {losselec:.1e} (atom+elec)/elec: {lossfunc / losselec:.1f}')
 
     # lossfunc is now [erg / cm]
     return lossfunc / EV  # return as [eV / cm]
@@ -339,6 +328,9 @@ def get_J(Z, ionstage, ionpot_ev):
             return 10.0
 
     return 0.6 * ionpot_ev
+    # return 2.0 * ionpot_ev
+    # return 16.0 * ionpot_ev
+    # return 500
 
 
 def ar_xs(energy_ev, ionpot_ev, A, B, C, D):
@@ -462,10 +454,14 @@ def read_colliondata(collionfilename='collion.txt', modelpath=Path(at.PYDIR, 'da
 
     collionrow = namedtuple('collionrow', ['Z', 'nelec', 'n', 'l', 'ionpot_ev', 'A', 'B', 'C', 'D'])
 
+    nrows = -1
     with open(Path(modelpath, collionfilename), 'r') as collionfile:
-        print(f'Collionfile: expecting {collionfile.readline().strip()} rows')
+        nrows = int(collionfile.readline().strip())
+        # print(f'Collionfile: expecting {nrows} rows')
         dfcollion = pd.read_csv(
             collionfile, delim_whitespace=True, header=None, names=collionrow._fields)
+
+    # assert len(dfcollion) == nrows  # artis enforces this, but last 10 rows were not inportant anyway (high ionized Ni)
     dfcollion.eval('ionstage = Z - nelec + 1', inplace=True)
 
     return dfcollion
@@ -662,10 +658,6 @@ def sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
                 break
         xsstartindex = get_energyindex_gteq(en_ev=ionpot_ev, engrid=engrid)
 
-    if experiment_use_Latom_in_spencerfano:
-        print('WARNING: atomic loss function is in use, but the ionisation loss rate is not correctly '
-              'neglected from the integral form of the Spencer-Fano equation')
-
     # J * atan[(epsilon - ionpot_ev) / J] is the indefinite integral of
     # 1/(1 + (epsilon - ionpot_ev)^2/ J^2) d_epsilon
     # in Kozma & Fransson 1992 equation 4
@@ -735,27 +727,26 @@ def differentialsfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
 
         # integral of xs_ion(e_p=en, epsilon) with epsilon from I to (I + E) / 2
 
-        if not experiment_use_Latom_in_spencerfano:
-            epsilon_upper = (ionpot_ev + en) / 2.
-            if (epsilon_lower_a < epsilon_upper):
-                # P_int = 0.
-                # eps_npts = 1000
-                # delta_eps = (epsilon_upper - epsilon_lower) / eps_npts
-                # for j in range(eps_npts):
-                #     epsilon = epsilon_lower + j * delta_eps
-                #     P_int += Psecondary(e_p=en, epsilon=epsilon, ionpot_ev=ionpot_ev, J=J) * delta_eps
-                #
-                # J * atan[(epsilon - ionpot_ev) / J] is the indefinite integral of
-                # 1/(1 + (epsilon - ionpot_ev)^2/ J^2) d_epsilon
+        epsilon_upper = (ionpot_ev + en) / 2.
+        if (epsilon_lower_a < epsilon_upper):
+            # P_int = 0.
+            # eps_npts = 1000
+            # delta_eps = (epsilon_upper - epsilon_lower) / eps_npts
+            # for j in range(eps_npts):
+            #     epsilon = epsilon_lower + j * delta_eps
+            #     P_int += Psecondary(e_p=en, epsilon=epsilon, ionpot_ev=ionpot_ev, J=J) * delta_eps
+            #
+            # J * atan[(epsilon - ionpot_ev) / J] is the indefinite integral of
+            # 1/(1 + (epsilon - ionpot_ev)^2/ J^2) d_epsilon
 
-                int_eps_upper = atan((epsilon_upper - ionpot_ev) / J)
-                P_int = 1. / atan((en - ionpot_ev) / 2. / J) * (int_eps_upper - int_eps_lower_a)
-                # if int_eps_lower == int_eps_upper and epsilon_upper != epsilon_lower:
-                # if (abs(P_int2 / P_int - 1.) > 0.2):
-                #     print("warning eps low high int low high", epsilon_lower, epsilon_upper, int_eps_lower, int_eps_upper)
-                #     print(f'{P_int=:.2e} {P_int2=:.2e} Ratio: {P_int2 / P_int:.2f}')
+            int_eps_upper = atan((epsilon_upper - ionpot_ev) / J)
+            P_int = 1. / atan((en - ionpot_ev) / 2. / J) * (int_eps_upper - int_eps_lower_a)
+            # if int_eps_lower == int_eps_upper and epsilon_upper != epsilon_lower:
+            # if (abs(P_int2 / P_int - 1.) > 0.2):
+            #     print("warning eps low high int low high", epsilon_lower, epsilon_upper, int_eps_lower, int_eps_upper)
+            #     print(f'{P_int=:.2e} {P_int2=:.2e} Ratio: {P_int2 / P_int:.2f}')
 
-                sfmatrix[i, i] += nnion * ar_xs_array[i] * P_int
+            sfmatrix[i, i] += nnion * ar_xs_array[i] * P_int
 
         enlambda = min(engrid[-1] - en, en + ionpot_ev)
         epsilon_lower = ionpot_ev
@@ -1111,7 +1102,7 @@ def e_s_test(ax, ionpot_ev, J, arr_en_ev, shellstr, color):
     # ax.vlines(ionpot_ev, ymin=0., ymax=max(prob), color=color)
 
 
-def get_epsilon_avg(e_p, J, ionpot_ev):
+def get_epsilon_avg(e_p, J, ionpot_ev, quiet=True):
     # average energy loss of the primary electron per ionisation in eV
     npts = 1000000
 
@@ -1140,49 +1131,64 @@ def get_epsilon_avg(e_p, J, ionpot_ev):
             prob_e_s_cannot_ionise += prob
     # print(f'{prob_sum=:.3f}')
     assert(abs(prob_sum - 1.) < 0.30)
-    print(f'e_p: {e_p:.1e}')
-    print(f'eps_avg: {eps_avg:.1e}')
-    print(f'e_s_avg: {e_s_avg:.1e}')
-    print(f'prob_e_s_can_ionise: {prob_e_s_can_ionise:.2f}')
-    print(f'prob_e_s_cannot_ionise: {prob_e_s_cannot_ionise:.2f}')
+    if not quiet:
+        print(f'e_p: {e_p:.1e}')
+        print(f'eps_avg: {eps_avg:.1e}')
+        print(f'e_s_avg: {e_s_avg:.1e}')
+        print(f'prob_e_s_can_ionise: {prob_e_s_can_ionise:.2f}')
+        print(f'prob_e_s_cannot_ionise: {prob_e_s_cannot_ionise:.2f}')
     return eps_avg
 
 
-def calculate_Latom_ionisation(ions, ionpopdict, adata, dfcollion, electron_binding,
-                               nntot, nnetot, nne, en_ev, Zboundbar, Zbar):
+def calculate_Latom_excitation(ions, ionpopdict, nntot, en_ev, adata, T_exc=5000):
+    L_atom_sum = 0.
+    for Z, ionstage in ions:
+        nnion = ionpopdict[(Z, ionstage)]
+
+        ion = adata.query('Z == @Z and ion_stage == @ionstage').iloc[0]
+        dftransitions_ion = ion.transitions
+
+        maxnlevelslower = 5
+        maxnlevelsupper = 250
+
+        # filterquery = 'collstr >= 0 or forbidden == False'
+        filterquery = 'collstr != -999'
+        if maxnlevelslower is not None:
+            filterquery += ' and lower < @maxnlevelslower'
+        if maxnlevelsupper is not None:
+            filterquery += ' and upper < @maxnlevelsupper'
+
+        dftransitions_ion = dftransitions_ion.query(
+            filterquery, inplace=False).copy()
+
+        k_b = 8.617333262145179e-05  # eV / K
+        energy_boltzfac_sum = ion.levels.eval(
+            'energy_ev * g * exp(- energy_ev / @k_b / @T_exc)').sum()
+
+        populations = ion.levels.eval('g * exp(- energy_ev / @k_b / @T_exc)').values / energy_boltzfac_sum
+
+        dftransitions_ion.eval(
+            'epsilon_trans_ev = '
+            '@ion.levels.loc[upper].energy_ev.values - @ion.levels.loc[lower].energy_ev.values', inplace=True)
+
+        dftransitions_ion.eval('upper_g = @ion.levels.loc[upper].g.values', inplace=True)
+        dftransitions_ion.eval('lower_g = @ion.levels.loc[lower].g.values', inplace=True)
+
+        for _, row in dftransitions_ion.iterrows():
+            nnlevel = populations[row.lower] * nnion
+            epsilon_trans_ev = row.epsilon_trans_ev
+            sigma = get_xs_excitation(en_ev, row)
+            L_atom_sum += sigma * epsilon_trans_ev * EV * nnlevel / nntot
+
+    return L_atom_sum
+
+
+def calculate_Latom_ionisation(ions, ionpopdict, dfcollion, nntot, nne, en_ev, nnetot=None, electron_binding=None):
     L_atom_sum = 0.
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
         dfcollion_thision = dfcollion.query('Z == @Z and ionstage == @ionstage', inplace=False)
-        ionpot_valence_ev = dfcollion_thision.ionpot_ev.min()
-        # ln_I_sum = 0.
-        # ion = adata.query('Z == @Z and ion_stage == @ionstage').iloc[0]
-        # dftransitions_ion = ion.transitions
-        # # dftransitions_ion.query('collstr >= 0 or forbidden == False', inplace=True)
-        # dftransitions_ion.query('A >= 0', inplace=True)
-        # dftransitions_ion.eval(
-        #     'epsilon_trans_ev = '
-        #     '@ion.levels.loc[upper].energy_ev.values - @ion.levels.loc[lower].energy_ev.values', inplace=True)
-        # dftransitions_ion.eval(
-        #     'g_ratio = '
-        #     '@ion.levels.loc[upper].g.values / @ion.levels.loc[lower].g.values', inplace=True)
-        # h_ev_s = 4.1357e-15  # eV seconds
-        # for _, row in dftransitions_ion.iterrows():
-        #     if row.A > 0:
-        #         # nnlevel = row.lower_pop
-        #         epsilon_trans_ev = row.epsilon_trans_ev
-        #         nu_trans = epsilon_trans_ev / h_ev_s
-        #         g_ratio = row.g_ratio
-        #         A_ul = row.A
-        #         f_ul = g_ratio * ME * pow(CLIGHT, 3) / (8 * pow(QE * nu_trans * PI, 2)) * A_ul
-        #         lnI_contrib = f_ul * math.log(epsilon_trans_ev)
-        #         ln_I_sum += lnI_contrib
-        #         # vec_xs_excitation_nnlevel_deltae = nnlevel * deltaen * get_xs_excitation_vector(engrid, row)
-        #
-        # print(f'ln I: {ln_I_sum:.2e} (before ionisiation)')
-        # print(f'I: {math.exp(ln_I_sum):.2e} (before ionisiation)')
-
-        ionpot_valence_ev = dfcollion_thision.ionpot_ev.min()
+        # ionpot_valence_ev = dfcollion_thision.ionpot_ev.min()
 
         for _, shell in dfcollion_thision.iterrows():
             J = get_J(Z, ionstage, shell.ionpot_ev)
@@ -1209,6 +1215,7 @@ def calculate_Latom_ionisation(ions, ionpopdict, adata, dfcollion, electron_bind
 
         # print(f'ln I: {ln_I_sum:.2e} (after ionsiation)')
         # print(f'I: {math.exp(ln_I_sum):.2e} (after ionisation)')
+
     return L_atom_sum
 
 
@@ -1284,17 +1291,17 @@ def workfunction_tests(modelpath, args):
     Latom_axelrod = np.array([get_Latom_axelrod(en_ev=en_ev, Zboundbar=Zboundbar) for en_ev in arr_en_ev])
 
     # adata = at.atomic.get_levels(modelpath, get_transitions=False, ionlist=tuple(ions))
-    adata = None
+    # adata = None
     arr_Latom_summed = np.zeros_like(arr_en_ev)
     for i, en_ev in enumerate(arr_en_ev):
-        # arr_Latom_summed[i] = calculate_Latom_ionisation(
-        #     ions, ionpopdict, adata, dfcollion, electron_binding,
-        #     nntot=nntot, nnetot=nnetot, nne=nne, en_ev=en_ev, Zboundbar=Zboundbar, Zbar=Zbar)
+        arr_Latom_summed[i] = calculate_Latom_ionisation(
+            ions=ions, ionpopdict=ionpopdict, dfcollion=dfcollion, nntot=nntot, nne=nne,
+            en_ev=en_ev, nnetot=nnetot, electron_binding=electron_binding)
 
-        # print(f'{en_ev:.2f} eV L_atom_summed: {arr_Latom_summed[i]:.3e} (ionisation only) '
-        #       f'Latom_axelrod: {Latom_axelrod[i]:.3e} ratio(sum/axelrod): {arr_Latom_summed[i] / Latom_axelrod[i]:.2e} ratio(axelrod/sum) {Latom_axelrod[i] / arr_Latom_summed[i]:.2e}')
-        print(f'{en_ev:.2f} eV L_elec_axelrod: {Lelec_axelrod_nne[i]:.3e} (ionisation only) '
-              f'Latom_axelrod: {Latom_axelrod[i]:.3e} ratio(elec/atom): {Lelec_axelrod_nne[i] / Latom_axelrod[i]:.2e} ratio(atom/elec) {Latom_axelrod[i] / Lelec_axelrod_nne[i]:.2e} bound/free {nnebound/nne:.2e}')
+        print(f'{en_ev:.2f} eV L_atom_summed: {arr_Latom_summed[i]:.3e} (ionisation only) '
+              f'Latom_axelrod: {Latom_axelrod[i]:.3e} ratio(sum/axelrod): {arr_Latom_summed[i] / Latom_axelrod[i]:.2e} ratio(axelrod/sum) {Latom_axelrod[i] / arr_Latom_summed[i]:.2e} [erg cm2]')
+        # print(f'{en_ev:.2f} eV L_elec_axelrod: {Lelec_axelrod_nne[i]:.3e} '
+        #       f'Latom_axelrod: {Latom_axelrod[i]:.3e} ratio(elec/atom): {Lelec_axelrod_nne[i] / Latom_axelrod[i]:.2e} ratio(atom/elec) {Latom_axelrod[i] / Lelec_axelrod_nne[i]:.2e} bound/free {nnebound/nne:.2e}')
 
     for Z, ionstage in ions:
         # ionstr = at.get_ionstring(Z, ionstage, spectral=True, nospace=False)
@@ -1435,4 +1442,3 @@ def workfunction_tests(modelpath, args):
     print(f"Saving '{outputfilename}'")
     fig.savefig(str(outputfilename), format='pdf')
     plt.close()
-
