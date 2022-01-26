@@ -65,13 +65,18 @@ def get_merged_model_abundances(modelpath):
     return merge_dfs, t_model
 
 
-def get_2D_slice_through_3d_model(merge_dfs, sliceaxis):
-    sliceposition = merge_dfs.iloc[(merge_dfs['pos_x']).abs().argsort()][:1]['pos_x'].item()
-    # Choose position to slice. This gets minimum absolute value as the closest to 0
+def get_2D_slice_through_3d_model(merge_dfs, sliceaxis, sliceindex=None):
+    if not sliceindex:
+        # get midpoint
+        sliceposition = merge_dfs.iloc[(merge_dfs['pos_x']).abs().argsort()][:1]['pos_x'].item()
+        # Choose position to slice. This gets minimum absolute value as the closest to 0
+    else:
+        cell_boundaries = []
+        [cell_boundaries.append(x) for x in merge_dfs[f'pos_{sliceaxis}'] if x not in cell_boundaries]
+        sliceposition = cell_boundaries[sliceindex]
 
-    plotvals = (merge_dfs.loc[merge_dfs[f'pos_{sliceaxis}'] == sliceposition])
-    print(plotvals.keys())
-    return plotvals
+    slicedf = (merge_dfs.loc[merge_dfs[f'pos_{sliceaxis}'] == sliceposition])
+    return slicedf
 
 
 def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model):
