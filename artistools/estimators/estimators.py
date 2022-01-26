@@ -110,8 +110,6 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
     """Generate timestep, modelgridindex, dict from estimator file."""
     # itstep = at.get_inputparams(modelpath)['itstep']
 
-    COOLING_MINUS_HEATING = False
-
     with at.zopen(estfilepath, 'rt') as estimfile:
         timestep = -1
         modelgridindex = -1
@@ -207,12 +205,6 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
             elif row[0] == 'cooling:' and get_heatingcooling:
                 for coolingtype, value in zip(row[1::2], row[2::2]):
                     estimblock['cooling_' + coolingtype] = float(value)
-
-                if COOLING_MINUS_HEATING:
-                    estimblock['cooling_coll - heating_coll'] = estimblock['cooling_coll'] - estimblock['heating_coll']
-                    estimblock['cooling_fb - heating_bf'] = estimblock['cooling_fb'] - estimblock['heating_bf']
-                    estimblock['cooling_ff - heating_ff'] = estimblock['cooling_ff'] - estimblock['heating_ff']
-                    estimblock['cooling_adiabatic - heating_dep'] = estimblock['cooling_adiabatic'] - estimblock['heating_dep']
 
     # reached the end of file
     if timestep >= 0 and modelgridindex >= 0:
