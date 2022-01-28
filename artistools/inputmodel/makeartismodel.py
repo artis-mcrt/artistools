@@ -72,7 +72,7 @@ def main(args=None, argsraw=None, **kwargs):
         griddata, t_model, vmax = at.inputmodel.modelfromhydro.read_griddat_file(args.pathtogriddata)
 
         if args.fillcentralhole:
-            griddata = at.inputmodel.modelfromhydro.fill_central_hole(griddata, t_model)
+            griddata = at.inputmodel.modelfromhydro.add_mass_to_center(griddata, t_model, vmax, args)
 
         if args.getcellopacityfromYe:
             at.inputmodel.opacityinputfile.opacity_by_Ye(args.modelpath[0], griddata)

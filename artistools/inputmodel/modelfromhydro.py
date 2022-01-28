@@ -144,7 +144,7 @@ def mirror_model_in_axis(griddata):
     return griddata
 
 
-def fill_central_hole(griddata, t_model):
+def add_mass_to_center(griddata, t_model_in_days, vmax, args):
     print(griddata)
 
     # Just (2021) Fig. 16 top left panel
