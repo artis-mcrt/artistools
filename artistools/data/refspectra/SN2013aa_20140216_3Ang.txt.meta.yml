@@ -1,6 +1,6 @@
 dist_mpc: 18.1
 e_bminusv: 0.169
-label: SN2013aa +360d
+label: SN2013aa (Maguire+16) +360d
 r_v: 3.1
 reference: Maguire et al. (2016)
 t: 360
