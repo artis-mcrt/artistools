@@ -290,8 +290,7 @@ def get_composition_data(filename):
     columns = ('Z,nions,lowermost_ionstage,uppermost_ionstage,nlevelsmax_readin,'
                'abundance,mass,startindex').split(',')
 
-    compdf = pd.DataFrame()
-
+    rowdfs = []
     with open(filename, 'r') as fcompdata:
         nelements = int(fcompdata.readline())
         fcompdata.readline()  # T_preset
@@ -302,10 +301,11 @@ def get_composition_data(filename):
             linesplit = line.split()
             row_list = list(map(int, linesplit[:5])) + list(map(float, linesplit[5:])) + [startindex]
 
-            rowdf = pd.DataFrame([row_list], columns=columns)
-            compdf = compdf.append(rowdf, ignore_index=True)
+            rowdfs.append(pd.DataFrame([row_list], columns=columns))
 
-            startindex += int(rowdf['nions'])
+            startindex += int(rowdfs[-1]['nions'])
+
+    compdf = pd.concat(rowdfs, ignore_index=True)
 
     return compdf
 
