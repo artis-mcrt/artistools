@@ -257,21 +257,20 @@ def get_lotz_xs_ionisation(atomic_number, ion_stage, electron_binding, ionpot_ev
     return sigma
 
 
-def lossfunction(energy_ev, nne_cgs, nnetot_cgs=None, use_nnetot=False, ions=None, ionpopdict=None):
+def lossfunction(energy_ev, nne_cgs):
     # free-electron plasma loss rate (as in Kozma & Fransson 1992)
     # - dE / dX [eV / cm]
     # returns a positive number
 
     # return math.log(energy_ev) / energy_ev
-    nne_selected_cgs = nnetot_cgs if use_nnetot else nne_cgs
-    if nne_selected_cgs == 0:
+    if nne_cgs == 0:
         return 0.
 
-    nne = nne_selected_cgs
+    nne = nne_cgs
     energy = energy_ev * EV  # convert eV to erg
 
     # omegap = math.sqrt(4 * math.pi * nne_selected_cgs * pow(QE, 2) / ME)
-    omegap = 5.64e4 * math.sqrt(nne_selected_cgs)
+    omegap = 5.64e4 * math.sqrt(nne_cgs)
     zetae = H * omegap / 2 / math.pi
 
     if energy_ev > 14:
