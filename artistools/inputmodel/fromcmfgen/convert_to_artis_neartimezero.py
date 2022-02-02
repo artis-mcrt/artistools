@@ -180,8 +180,8 @@ spectoz = [
 ]
 ige_index = (np.array(spectoz) > 20)
 
-def convert_model(filename):
 
+def convert_model(filename):
     a = rd_sn_hydro_data(filename, reverse='true')
 
     atomicnumberoflabel = {}
