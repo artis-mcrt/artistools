@@ -421,8 +421,7 @@ def plot_nne_te_points(axis, serieslabel, em_log10nne, em_Te, normtotalpackets, 
     # axis.scatter(arr_log10nne, arr_te, s=arr_weight * 20, marker=marker, color=color_adj, lw=0, alpha=1.0,
     #              edgecolors='none')
     alpha = 0.8
-    axis.scatter(arr_log10nne, arr_te, s=arr_size, marker=marker, color=color_adj, lw=0, alpha=alpha,
-                 edgecolors='none')
+    axis.scatter(arr_log10nne, arr_te, s=arr_size, marker=marker, color=color_adj, lw=0, alpha=alpha)
 
     # make an invisible plot series to appear in the legend with a fixed marker size
     axis.plot([0], [0], marker=marker, markersize=3, color=color_adj, linestyle='None', label=serieslabel, alpha=alpha)
