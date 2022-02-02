@@ -426,8 +426,8 @@ def plot_multi_ion_series(
         plotted_something = True
 
     if plotted_something:
+        ax.set_yscale(args.yscale)
         if args.yscale == 'log':
-            ax.set_yscale('log')
             ymin, ymax = ax.get_ylim()
             new_ymax = ymax * 10 ** (0.3 * math.log10(ymax / ymin))
             if ymin > 0 and new_ymax > ymin and np.isfinite(new_ymax):
