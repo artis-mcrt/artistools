@@ -179,8 +179,9 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
 
     pd.set_option('display.max_columns', 150)
     if len(dfpopthision) < 30:
-        print(dfpopthision[
-            ['Z', 'ion_stage', 'level', 'config', 'departure_coeff', 'texname']].to_string(index=False))
+        # print(dfpopthision[
+        #     ['Z', 'ion_stage', 'level', 'config', 'departure_coeff', 'texname']].to_string(index=False))
+        print(dfpopthision.loc[:, [c not in ['timestep', 'modelgridindex', 'Z', 'parity', 'texname'] for c in dfpopthision.columns]].to_string(index=False))
 
     if not ion_data.transitions.empty:
         dftrans = ion_data.transitions.query('upper <= @maxlevel',
