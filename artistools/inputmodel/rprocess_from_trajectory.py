@@ -29,8 +29,7 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     trajtar = Path(
-        '/Users/luke/Library/Mobile Documents/com~apple~CloudDocs/Archive/Astronomy Projects',
-        'Mergers/SFHo/88969.tar.xz')
+        '/Volumes/GoogleDrive/My Drive/Archive/Astronomy Downloads/Mergers/SFHo/88969.tar.xz')
 
     tar = tarfile.open(trajtar, mode='r:*')
     trajfile = tar.extractfile(member='./Run_rprocess/tday_nz-plane')
@@ -42,29 +41,22 @@ def main(args=None, argsraw=None, **kwargs):
     print('time', t_model_init_seconds)
 
     dfnucabund = pd.read_csv(trajfile, delim_whitespace=True, comment='#', names=[
-        "N", "Z", "log10numberfrac", "S1n", "S2n"])
-    dfnucabund.eval('numberfrac = 10 ** log10numberfrac', inplace=True)
+        "N", "Z", "log10abund", "S1n", "S2n"])
+    dfnucabund.eval('abund = 10 ** log10abund', inplace=True)
     dfnucabund.eval('A = N + Z', inplace=True)
+    dfnucabund.eval('massfrac = A * abund', inplace=True)
     dfnucabund.query('Z >= 1', inplace=True)
-    dfnucabund.query('numberfrac > 0.', inplace=True)
+    dfnucabund.query('abund > 0.', inplace=True)
     print(dfnucabund)
 
     dfnucabund['radioactive'] = True
 
-    # Andreas uses 90% Fe and the rest solar
-    # dfnucabund = dfnucabund.append(
-    #     {'Z': 26, 'A': 56, 'numberfrac': 0.005, 'radioactive': False}, ignore_index=True)
-    # dfnucabund = dfnucabund.append(
-    #     {'Z': 27, 'A': 59, 'numberfrac': 0.005, 'radioactive': False}, ignore_index=True)
-    # dfnucabund = dfnucabund.append(
-    #     {'Z': 28, 'A': 58, 'numberfrac': 0.005, 'radioactive': False}, ignore_index=True)
+    normfactor = dfnucabund.abund.sum()  # convert number fractions in solar to fractions of r-process
+    print(f'abund sum: {normfactor}')
+    dfnucabund.eval('numberfrac = abund / @normfactor', inplace=True)
 
-    normfactor = dfnucabund.numberfrac.sum()  # convert number fractions in solar to fractions of r-process
-    print(f'numberfrac sum: {normfactor}')
-    dfnucabund.eval('numberfrac = numberfrac / @normfactor', inplace=True)
-
-    dfnucabund.eval('massfrac = numberfrac * A', inplace=True)
     massfracnormfactor = dfnucabund.massfrac.sum()
+    print(f'massfrac sum: {massfracnormfactor}')
     dfnucabund.eval('massfrac = massfrac / @massfracnormfactor', inplace=True)
 
     # print(dfsolarabund_undecayed)
