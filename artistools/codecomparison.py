@@ -157,7 +157,6 @@ def read_reference_estimators(modelpath, modelgridindex=None, timestep=None):
                         except ValueError:
                             estimators[tsmgi]['populations'][(atomic_number, ion_stage)] = float('NaN')
 
-
                     assert np.isclose(float(row[0]), estimators[tsmgi]['vel_mid'], rtol=0.01)
                     assert estimators[key]['vel_mid']
 

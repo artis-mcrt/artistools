@@ -21,8 +21,12 @@ import artistools.packets
 
 
 def get_packets_with_emtype_onefile(emtypecolumn, lineindices, packetsfile):
-    # print(packetsfile)
-    dfpackets = at.packets.readfile(packetsfile, type='TYPE_ESCAPE', escape_type='TYPE_RPKT')
+    import gzip
+    try:
+        dfpackets = at.packets.readfile(packetsfile, type='TYPE_ESCAPE', escape_type='TYPE_RPKT')
+    except gzip.BadGzipFile:
+        print(f'Bad file: {packetsfile}')
+        raise gzip.BadGzipFile
 
     return dfpackets.query(f'{emtypecolumn} in @lineindices', inplace=False).copy()
 
@@ -269,8 +273,8 @@ def make_flux_ratio_plot(args):
 
         print(dflcdata)
 
-        axis.plot(dflcdata.time, dflcdata['fratio'], label=modellabel, marker='o', lw=0,
-                  markersize=10, markeredgewidth=1,
+        axis.plot(dflcdata.time, dflcdata['fratio'], label=modellabel, marker='x', lw=0,
+                  markersize=10, markeredgewidth=2,
                   color=modelcolor, alpha=0.8, fillstyle='none')
 
         tmin = dflcdata.time.min()
@@ -285,7 +289,7 @@ def make_flux_ratio_plot(args):
             ax.plot(arr_tdays, arr_floersfit, color='black', label='Flörs+2020 fit', lw=2.)
 
         femis = pd.read_csv(
-            "/Users/luke/Dropbox/Papers (first-author)/2021 Artis ionisation/"
+            "/Users/luke/Dropbox/Papers (first-author)/2022 Artis ionisation/"
             "generateplots/floers_model_NIR_VIS_ratio_20201126.csv")
 
         amodels = {}
@@ -540,6 +544,9 @@ def make_emitting_regions_plot(args):
                             log10nnedata_all[modelindex][tmid].append(math.log10(estimators[(timestep, modelgridindex)]['nne']))
                         except KeyError:
                             pass
+
+        if modeltag != 'all':
+            continue
 
         for timeindex, tmid in enumerate(times_days):
             print(f'  Plot at {tmid} days')
