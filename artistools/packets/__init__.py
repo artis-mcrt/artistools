@@ -137,7 +137,7 @@ def readfile_text(packetsfile):
     return dfpackets
 
 
-# @at.diskcache(savezipped=True)
+@at.diskcache(savezipped=True)
 def readfile(packetsfile, type=None, escape_type=None):
     """Read a packet file into a pandas DataFrame."""
     packetsfile = Path(packetsfile)
@@ -148,12 +148,11 @@ def readfile(packetsfile, type=None, escape_type=None):
         dfpackets = pd.read_feather(packetsfile)
     elif packetsfile.suffixes in [['.out'], ['.out', '.gz'], ['.out', '.xz']]:
         dfpackets = readfile_text(packetsfile)
-        # dfpackets.to_parquet(at.stripallsuffixes(packetsfile).with_suffix('.out.parquet'), compression='brotli')
-        # dfpackets.to_feather(at.stripallsuffixes(packetsfile).with_suffix('.out.feather'))
+        # dfpackets.to_parquet(at.stripallsuffixes(packetsfile).with_suffix('.out.parquet'),
+        #                      compression='brotli', compression_level=99)
     else:
         print('ERROR')
         sys.exit(1)
-
     filesize = Path(packetsfile).stat().st_size / 1024 / 1024
     print(f'Reading {packetsfile} ({filesize:.1f} MiB)', end='')
 
