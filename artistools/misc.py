@@ -773,6 +773,15 @@ def firstexisting(filelist, path=Path('.')):
     raise FileNotFoundError(f'None of these files exist: {", ".join([str(x) for x in fullpaths])}')
 
 
+def stripallsuffixes(f):
+    """Take a file path (e.g. packets00_0000.out.gz) and return the Path with no suffixes (e.g. packets)"""
+    f_nosuffixes = Path(f)
+    for _ in f.suffixes:
+        f_nosuffixes = f_nosuffixes.with_suffix('')  # each call removes only one suffix
+
+    return f_nosuffixes
+
+
 def readnoncommentline(file):
     """Read a line from the text file, skipping blank and comment lines that begin with #"""
 

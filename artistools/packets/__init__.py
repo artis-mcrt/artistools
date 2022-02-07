@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import math
-import glob
 import gzip
 # import multiprocessing
 import sys
@@ -76,7 +75,8 @@ def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None)
                                           mgilist=allnonemptymgilist)
 
     def emtrue_modelgridindex(packet):
-        return at.get_mgi_of_velocity_kms(modelpath, packet.true_emission_velocity * cm_to_km, mgilist=allnonemptymgilist)
+        return at.get_mgi_of_velocity_kms(modelpath, packet.true_emission_velocity * cm_to_km,
+                                          mgilist=allnonemptymgilist)
 
     def em_timestep(packet):
         return at.get_timestep_of_timedays(modelpath, packet.em_time / day_in_s)
@@ -104,12 +104,7 @@ def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None)
     return dfpackets
 
 
-@at.diskcache(savezipped=True)
-def readfile(packetsfile, type=None, escape_type=None):
-    """Read a packet file into a pandas DataFrame."""
-    filesize = Path(packetsfile).stat().st_size / 1024 / 1024
-
-    print(f'Reading {packetsfile} ({filesize:.1f} MiB)', end='')
+def readfile_text(packetsfile):
     try:
         inputcolumncount = len(pd.read_csv(packetsfile, nrows=1, delim_whitespace=True, header=None).columns)
         if inputcolumncount < 3:
@@ -134,6 +129,34 @@ def readfile(packetsfile, type=None, escape_type=None):
         print(f'ERROR: {ex}')
         sys.exit(1)
 
+    if usecols_nodata:
+        print(f'WARNING: no data in packets file for columns: {usecols_nodata}')
+        for col in usecols_nodata:
+            dfpackets[col] = float('NaN')
+
+    return dfpackets
+
+
+# @at.diskcache(savezipped=True)
+def readfile(packetsfile, type=None, escape_type=None):
+    """Read a packet file into a pandas DataFrame."""
+    packetsfile = Path(packetsfile)
+
+    if packetsfile.suffixes == ['.out', '.parquet']:
+        dfpackets = pd.read_parquet(packetsfile)
+    elif packetsfile.suffixes == ['.out', '.feather']:
+        dfpackets = pd.read_feather(packetsfile)
+    elif packetsfile.suffixes in [['.out'], ['.out', '.gz'], ['.out', '.xz']]:
+        dfpackets = readfile_text(packetsfile)
+        # dfpackets.to_parquet(at.stripallsuffixes(packetsfile).with_suffix('.out.parquet'), compression='brotli')
+        # dfpackets.to_feather(at.stripallsuffixes(packetsfile).with_suffix('.out.feather'))
+    else:
+        print('ERROR')
+        sys.exit(1)
+
+    filesize = Path(packetsfile).stat().st_size / 1024 / 1024
+    print(f'Reading {packetsfile} ({filesize:.1f} MiB)', end='')
+
     print(f' ({len(dfpackets):.1e} packets', end='')
 
     if escape_type is not None and escape_type != '' and escape_type != 'ALL':
@@ -150,11 +173,6 @@ def readfile(packetsfile, type=None, escape_type=None):
     # dfpackets['type'] = dfpackets['type_id'].map(lambda x: types.get(x, x))
     # dfpackets['escape_type'] = dfpackets['escape_type_id'].map(lambda x: types.get(x, x))
 
-    if usecols_nodata:
-        print(f'WARNING: no data in packets file for columns: {usecols_nodata}')
-        for col in usecols_nodata:
-            dfpackets[col] = float('NaN')
-
     # # neglect light travel time correction
     # dfpackets.eval("t_arrive_d = escape_time / 86400", inplace=True)
 
@@ -166,9 +184,27 @@ def readfile(packetsfile, type=None, escape_type=None):
 
 @lru_cache(maxsize=16)
 def get_packetsfilepaths(modelpath, maxpacketfiles=None):
+
+    def preferred_alternative(f, files):
+        f_nosuffixes = at.stripallsuffixes(f)
+
+        suffix_priority = [['.out', '.gz'], ['.out', '.xz'], ['.out', '.feather'], ['.out', '.parquet']]
+        if f.suffixes in suffix_priority:
+            startindex = suffix_priority.index(f.suffixes) + 1
+        else:
+            startindex = 0
+
+        if any(f_nosuffixes.with_suffix(''.join(s)).is_file() for s in suffix_priority[startindex:]):
+            return True
+        return False
+
     packetsfiles = sorted(
-        glob.glob(str(Path(modelpath, 'packets00_*.out*'))) +
-        glob.glob(str(Path(modelpath, 'packets', 'packets00_*.out*'))))
+        list(Path(modelpath).glob('packets00_*.out*')) +
+        list(Path(modelpath, 'packets').glob('packets00_*.out*')))
+
+    # strip out duplicates in the case that some are stored as binary and some are text files
+    packetsfiles = [f for f in packetsfiles if not preferred_alternative(f, packetsfiles)]
+
     if maxpacketfiles is not None and maxpacketfiles > 0 and len(packetsfiles) > maxpacketfiles:
         print(f'Using only the first {maxpacketfiles} of {len(packetsfiles)} packets files')
         packetsfiles = packetsfiles[:maxpacketfiles]
@@ -212,7 +248,7 @@ def get_escaping_packet_angle_bin(modelpath, dfpackets):
             phibin = (math.acos(cosphi) / 2. / np.pi * np.sqrt(MABINS))
         else:
             phibin = ((math.acos(cosphi) + np.pi) / 2. / np.pi * np.sqrt(MABINS))
-        na = (thetabin * np.sqrt(MABINS)) + phibin  ## think na is angle number???
+        na = (thetabin * np.sqrt(MABINS)) + phibin  # think na is angle number???
         angle_number[pkt_index] = int(na)
 
     dfpackets['angle_bin'] = angle_number
