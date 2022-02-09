@@ -7,6 +7,7 @@ import math
 import numpy as np
 # import pandas as pd
 
+from artistools import CustomArgHelpFormatter
 import artistools.inputmodel
 
 
@@ -22,7 +23,7 @@ def addargs(parser):
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter,
+            formatter_class=CustomArgHelpFormatter,
             description='Scale the velocity of an ARTIS model, keeping mass constant and saving back to ARTIS format.')
 
         addargs(parser)
