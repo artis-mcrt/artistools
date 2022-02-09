@@ -5,6 +5,7 @@ import os
 import sys
 
 import matplotlib.pyplot as plt
+from artistools import CustomArgHelpFormatter
 
 
 def addargs(parser):
@@ -24,7 +25,7 @@ def addargs(parser):
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter,
+            formatter_class=CustomArgHelpFormatter,
             description='Covert abundances.txt and model.txt from 3D to a one dimensional slice.')
         addargs(parser)
         parser.set_defaults(**kwargs)
