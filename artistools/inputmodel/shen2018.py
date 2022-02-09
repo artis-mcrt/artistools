@@ -23,7 +23,7 @@ def addargs(parser):
 def main(args=None, argsraw=None, **kwargs) -> None:
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            formatter_class=at.CustomArgHelpFormatter,
             description='Convert Shen et al. 2018 models to ARTIS format.')
 
         addargs(parser)

@@ -622,7 +622,7 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
         plot_subplot(ax, timestepslist, xlist, plotitems, mgilist,
                      modelpath, estimators, dfalldata=dfalldata, args=args, **plotkwargs)
 
-    if len(set(mgilist)) == 1:  # single grid cell plot
+    if len(set(mgilist)) == 1 and len(timestepslist[0]) > 1:  # single grid cell versus time plot
         figure_title = f'{modelname}\nCell {mgilist[0]}'
 
         defaultoutputfile = Path('plotestimators_cell{modelgridindex:03d}.pdf')
@@ -827,7 +827,7 @@ def addargs(parser):
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            formatter_class=at.CustomArgHelpFormatter,
             description='Plot ARTIS estimators.')
         addargs(parser)
         parser.set_defaults(**kwargs)

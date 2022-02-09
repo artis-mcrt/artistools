@@ -977,7 +977,7 @@ def main(args=None, argsraw=None, **kwargs):
     """Plot spectra from ARTIS and reference data."""
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            formatter_class=at.CustomArgHelpFormatter,
             description='Plot ARTIS model spectra by finding spec.out files '
                         'in the current directory or subdirectories.')
         addargs(parser)

@@ -33,7 +33,7 @@ def addargs(parser):
 def main(args=None, argsraw=None, **kwargs) -> None:
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            formatter_class=at.CustomArgHelpFormatter,
             description='Create Botyanski et al. 2017 .')
 
         addargs(parser)

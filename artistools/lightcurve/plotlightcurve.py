@@ -925,7 +925,7 @@ def addargs(parser):
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            formatter_class=at.CustomArgHelpFormatter,
             description='Plot ARTIS light curve.')
         addargs(parser)
         parser.set_defaults(**kwargs)

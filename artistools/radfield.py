@@ -860,7 +860,7 @@ def main(args=None, argsraw=None, **kwargs):
     """Plot the radiation field estimators."""
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            formatter_class=at.CustomArgHelpFormatter,
             description='Plot ARTIS internal radiation field estimators.')
         addargs(parser)
         parser.set_defaults(**kwargs)

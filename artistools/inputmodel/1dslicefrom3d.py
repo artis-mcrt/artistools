@@ -24,7 +24,7 @@ def addargs(parser):
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            formatter_class=at.CustomArgHelpFormatter,
             description='Covert abundances.txt and model.txt from 3D to a one dimensional slice.')
         addargs(parser)
         parser.set_defaults(**kwargs)
