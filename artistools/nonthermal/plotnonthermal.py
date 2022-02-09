@@ -287,7 +287,7 @@ def main(args=None, argsraw=None, **kwargs):
     """Plot the electron energy distribution."""
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            formatter_class=at.CustomArgHelpFormatter,
             description='Plot ARTIS non-thermal electron energy spectrum.')
 
         addargs(parser)

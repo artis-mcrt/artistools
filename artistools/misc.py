@@ -195,6 +195,19 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savez
     return diskcacheinner
 
 
+class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
+    def add_arguments(self, actions):
+        def my_sort(arg):
+            opstr = arg.option_strings[0] if len(arg.option_strings) > 0 else ''
+            # chars = 'abcdefghijklmnopqrstuvwxyz-'
+            opstr = opstr.upper().replace('-', 'z')  # push dash chars below alphabet
+
+            return opstr
+
+        actions = sorted(actions, key=my_sort)
+        super(CustomArgHelpFormatter, self).add_arguments(actions)
+
+
 class AppendPath(argparse.Action):
     def __call__(self, parser, args, values, option_string=None):
         # if getattr(args, self.dest) is None:

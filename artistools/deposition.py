@@ -48,7 +48,7 @@ def main_analytical(args=None, argsraw=None, **kwargs):
 
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            formatter_class=at.CustomArgHelpFormatter,
             description='Plot deposition rate of a model at time t (days).')
         addargs(parser)
         parser.set_defaults(**kwargs)
@@ -118,7 +118,7 @@ def main(args=None, argsraw=None, **kwargs):
     main_analytical(args=args, argsraw=argsraw, **kwargs)
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            formatter_class=at.CustomArgHelpFormatter,
             description='Plot deposition rate of a model at time t (days).')
         addargs(parser)
         parser.set_defaults(**kwargs)

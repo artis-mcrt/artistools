@@ -174,7 +174,7 @@ def addargs(parser):
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            formatter_class=at.CustomArgHelpFormatter,
             description='Make 1D model from cone in 3D model. Call with "makeartismodel1dslicefromcone"')
         addargs(parser)
         parser.set_defaults(**kwargs)
