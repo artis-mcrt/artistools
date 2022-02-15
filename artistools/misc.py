@@ -137,9 +137,9 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savez
                     pass
 
             if execfunc:
-                timestart = time.time()
+                timestart = time.perf_counter()
                 result = func(*args, **kwargs)
-                functime = time.time() - timestart
+                functime = time.perf_counter() - timestart
 
             if functime > 1:
                 # slow functions are worth saving to disk
@@ -469,6 +469,7 @@ def get_nu_grid(modelpath):
 def get_deposition(modelpath):
     ts_mids = get_timestep_times_float(modelpath, loc='mid')
     depfilepath = Path(modelpath, 'deposition.out')
+
     with open(depfilepath, 'r') as fdep:
         filepos = fdep.tell()
         line = fdep.readline()
