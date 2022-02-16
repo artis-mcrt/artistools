@@ -784,7 +784,7 @@ def firstexisting(filelist, path=Path('.')):
         if fullpath.exists():
             return fullpath
 
-    raise FileNotFoundError(f'None of these files exist: {", ".join([str(x) for x in fullpaths])}')
+    raise FileNotFoundError(f'None of these files exist in {path}: {", ".join([str(x) for x in fullpaths])}')
 
 
 def stripallsuffixes(f):
