@@ -221,9 +221,11 @@ def read_estimators_from_file(folderpath, modelpath, arr_velocity_outer, mpirank
     if not estfilepath.is_file():
         estfilepath = Path(folderpath, estimfilename + '.gz')
         if not estfilepath.is_file():
-            # not worth printing and error, because ranks with no cells to update do not produce an estimator file
-            # print(f'Warning: Could not find {estfilepath.relative_to(modelpath.parent)}')
-            return {}
+            estfilepath = Path(folderpath, estimfilename + '.xz')
+            if not estfilepath.is_file():
+                # not worth printing and error, because ranks with no cells to update do not produce an estimator file
+                # print(f'Warning: Could not find {estfilepath.relative_to(modelpath.parent)}')
+                return {}
 
     if printfilename:
         filesize = Path(estfilepath).stat().st_size / 1024 / 1024
