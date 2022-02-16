@@ -5,8 +5,8 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50):
     """Should be same as downscale_3d_grid.pro
     Expects a 3D model with grid^3 cells and outputs 3D model with smallgrid^3 cells"""
 
-    grid = inputgridsize
-    smallgrid = outputgridsize
+    grid = int(inputgridsize)
+    smallgrid = int(outputgridsize)
 
     merge = grid / smallgrid
     merge = int(merge)
