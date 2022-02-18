@@ -158,7 +158,7 @@ def add_mass_to_center(griddata, t_model_in_days, vmax, args):
     # mass_intergrated = np.trapz(y=mass_hole, x=vel_hole)  # Msun
 
     v_outer_hole = 0.1 * CLIGHT  # cm/s
-    pos_outer_hole = v_outer_hole * t_model * (24. * 3600)  # cm
+    pos_outer_hole = v_outer_hole * t_model_in_days * (24. * 3600)  # cm
     vol_hole = 4 / 3 * np.pi * pos_outer_hole ** 3  # cm^3
     density_hole = (mass_intergrated * MSUN) / vol_hole  # g / cm^3
     print(density_hole)
@@ -166,7 +166,7 @@ def add_mass_to_center(griddata, t_model_in_days, vmax, args):
     for i, cellid in enumerate(griddata['gridindex']):
         # if pos < 0.1 c
         if ((np.sqrt(griddata['posx'][i] ** 2 + griddata['posy'][i] ** 2 + griddata['posz'][i] ** 2)) /
-                (t_model * (24. * 3600)) / CLIGHT) < 0.1:
+                (t_model_in_days * (24. * 3600)) / CLIGHT) < 0.1:
             # if griddata['rho'][i] == 0:
             print("Inner empty cells")
             print(cellid, griddata['posx'][i], griddata['posy'][i], griddata['posz'][i], griddata['rho'][i])
