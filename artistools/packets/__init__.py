@@ -229,31 +229,19 @@ def get_escaping_packet_angle_bin(modelpath, dfpackets):
     with open(modelpath / 'syn_dir.txt', 'r') as syn_dir_file:
         syn_dir = [int(x) for x in syn_dir_file.readline().split()]
 
-    def dot(x, y):
-        return (x[0] * y[0]) + (x[1] * y[1]) + (x[2] * y[2])
-
-    def cross_prod(v1, v2, v3):
-        v3[0] = (v1[1] * v2[2]) - (v2[1] * v1[2])
-        v3[1] = (v1[2] * v2[0]) - (v2[2] * v1[0])
-        v3[2] = (v1[0] * v2[1]) - (v2[0] * v1[1])
-        return v3
-
-    def vec_len(vec):
-        return np.sqrt(vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2)
-
     angle_number = np.zeros(len(dfpackets))
     for pkt_index, _ in dfpackets.iterrows():
         pkt_dir = [dfpackets['dirx'][pkt_index], dfpackets['diry'][pkt_index], dfpackets['dirz'][pkt_index]]
-        costheta = dot(pkt_dir, syn_dir)
+        costheta = at.dot(pkt_dir, syn_dir)
         thetabin = ((costheta + 1.0) * np.sqrt(MABINS) / 2.0)
         vec1 = vec2 = vec3 = [0, 0, 0]
         xhat = [1, 0, 0]
-        vec1 = cross_prod(pkt_dir, syn_dir, vec1)
-        vec2 = cross_prod(xhat, syn_dir, vec2)
-        cosphi = dot(vec1, vec2) / vec_len(vec1) / vec_len(vec2)
+        vec1 = at.cross_prod(pkt_dir, syn_dir, vec1)
+        vec2 = at.cross_prod(xhat, syn_dir, vec2)
+        cosphi = at.dot(vec1, vec2) / at.vec_len(vec1) / at.vec_len(vec2)
 
-        vec3 = cross_prod(vec2, syn_dir, vec3)
-        testphi = dot(vec1, vec3)
+        vec3 = at.cross_prod(vec2, syn_dir, vec3)
+        testphi = at.dot(vec1, vec3)
 
         if testphi > 0:
             phibin = (math.acos(cosphi) / 2. / np.pi * np.sqrt(MABINS))
