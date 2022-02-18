@@ -247,7 +247,9 @@ def get_escaping_packet_angle_bin(modelpath, dfpackets):
             phibin = (math.acos(cosphi) / 2. / np.pi * np.sqrt(MABINS))
         else:
             phibin = ((math.acos(cosphi) + np.pi) / 2. / np.pi * np.sqrt(MABINS))
-        na = (thetabin * np.sqrt(MABINS)) + phibin  # think na is angle number???
+        na = (thetabin * np.sqrt(MABINS)) + phibin  ## think na is angle number???
+        if na >= 100:
+            print(f'error bin number too high {na}')
         angle_number[pkt_index] = int(na)
 
     dfpackets['angle_bin'] = angle_number
