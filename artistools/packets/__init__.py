@@ -15,6 +15,8 @@ from functools import lru_cache
 
 import artistools as at
 
+CLIGHT = 2.99792458e10
+DAY = 86400
 
 columns = (
     'number',
@@ -87,6 +89,16 @@ def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None)
     if 'emission_velocity' in colnames:
         dfpackets.eval(
             "emission_velocity = sqrt(em_posx ** 2 + em_posy ** 2 + em_posz ** 2) / em_time",
+            inplace=True)
+
+        dfpackets.eval(
+            "em_velx = em_posx / em_time",
+            inplace=True)
+        dfpackets.eval(
+            "em_vely = em_posy / em_time",
+            inplace=True)
+        dfpackets.eval(
+            "em_velz = em_posz / em_time",
             inplace=True)
 
     if 'em_modelgridindex' in colnames:
@@ -252,3 +264,106 @@ def get_escaping_packet_angle_bin(modelpath, dfpackets):
 
     dfpackets['angle_bin'] = angle_number
     return dfpackets
+
+
+def make_3d_histogram_from_packets(modelpath, timestep):
+    modeldata, _, vmax_cms = at.inputmodel.get_modeldata(modelpath)
+
+    timeminarray = at.get_timestep_times_float(modelpath=modelpath, loc='start')
+    timedeltaarray = at.get_timestep_times_float(modelpath=modelpath, loc='delta')
+    timemaxarray = at.get_timestep_times_float(modelpath=modelpath, loc='end')
+
+    # timestep = 63 # 82 73 #63 #54 46 #27
+    print([(ts, time) for ts, time in enumerate(timeminarray)])
+
+    packetsfiles = at.packets.get_packetsfilepaths(modelpath)
+
+    emission_position3d = [[], [], []]
+    e_rf = []
+
+    for npacketfile in range(0, len(packetsfiles)):
+        # for npacketfile in range(0, 1):
+        dfpackets = at.packets.readfile(packetsfiles[npacketfile])
+        at.packets.add_derived_columns(dfpackets, modelpath, ['emission_velocity'])
+        dfpackets = dfpackets.dropna(subset=['emission_velocity'])  # drop rows where emission_vel is NaN
+
+        # print(dfpackets[['emission_velocity', 'em_velx', 'em_vely', 'em_velz']])
+        # select only type escape and type r-pkt (don't include gamma-rays)
+        dfpackets.query(f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids["TYPE_RPKT"]}',
+                        inplace=True)
+        dfpackets.query('@timeminarray[@timestep] < escape_time/@DAY < @timemaxarray[@timestep]', inplace=True)
+
+        emission_position3d[0].extend([em_velx / CLIGHT for em_velx in dfpackets['em_velx']])
+        emission_position3d[1].extend([em_vely / CLIGHT for em_vely in dfpackets['em_vely']])
+        emission_position3d[2].extend([em_velz / CLIGHT for em_velz in dfpackets['em_velz']])
+
+        e_rf.extend([e_rf for e_rf in dfpackets['e_rf']])
+
+    emission_position3d = np.array(emission_position3d)
+    e_rf = np.array(e_rf)
+    print(emission_position3d.shape)
+    print(emission_position3d[0].shape)
+
+    # print(emission_position3d)
+    grid_3d, _, _, _ = make_3d_grid(modeldata, vmax_cms)
+    print(grid_3d)
+    # https://stackoverflow.com/questions/49861468/binning-random-data-to-regular-3d-grid-with-unequal-axis-lengths
+    hist, _ = np.histogramdd(emission_position3d.T, [np.append(ax, np.inf) for ax in grid_3d], weights=e_rf)
+
+    # print(hist.shape)
+    hist = hist / len(packetsfiles) / timedeltaarray[timestep]  # histogram weighted by energy
+    # - need to divide by number of processes
+    # and length of timestep
+    return hist
+
+
+def make_3d_grid(modeldata, vmax_cms):
+    # modeldata, _, vmax_cms = at.inputmodel.get_modeldata(modelpath)
+    grid = round(len(modeldata['inputcellid']) ** (1. / 3.))
+    xgrid = np.zeros(grid)
+    vmax = vmax_cms / CLIGHT
+    i = 0
+    for z in range(0, grid):
+        for y in range(0, grid):
+            for x in range(0, grid):
+                xgrid[x] = -vmax + 2 * x * vmax / grid
+                i += 1
+
+    x, y, z = np.meshgrid(xgrid, xgrid, xgrid)
+    grid_3d = np.array([xgrid, xgrid, xgrid])
+    # grid_Te = np.zeros((grid, grid, grid))
+    # print(grid_Te.shape)
+    return grid_3d, x, y, z
+
+
+def make_packets_plot(modelpath, timestep):
+    import pyvista as pv
+    modeldata, _, vmax_cms = at.inputmodel.get_modeldata(modelpath)
+    _, x, y, z = make_3d_grid(modeldata, vmax_cms)
+    mesh = pv.StructuredGrid(x, y, z)
+
+    hist = make_3d_histogram_from_packets(modelpath, timestep)
+
+    mesh['energy [erg/s]'] = hist.ravel(order='F')
+    # print(max(mesh['energy [erg/s]']))
+
+    sargs = dict(height=0.75, vertical=True, position_x=0.04, position_y=0.1,
+                 title_font_size=22, label_font_size=25)
+
+    pv.set_plot_theme("document")  # set white background
+    p = pv.Plotter()
+    p.set_scale(1.5, 1.5, 1.5)
+    # single_slice = mesh.slice(normal='y')
+    single_slice = mesh.slice(normal='z')
+    p.add_mesh(single_slice, scalar_bar_args=sargs)
+    p.show_bounds(grid=False, xlabel='vx / c', ylabel='vy / c', zlabel='vz / c',
+                  ticks='inside', minor_ticks=False, use_2d=True, font_size=26, bold=False)
+    # labels = dict(xlabel='vx / c', ylabel='vy / c', zlabel='vz / c')
+    # p.show_grid(**labels)
+    p.camera_position = 'xy'
+    timeminarray = at.get_timestep_times_float(modelpath=modelpath, loc='start')
+    time = timeminarray[timestep]
+    p.add_title(f'{time:.2f} - {timeminarray[timestep + 1]:.2f} days')
+    print(pv.global_theme)
+
+    p.show(screenshot=modelpath / f'3Dplot_pktsemitted{time:.1f}days_disk.png')
