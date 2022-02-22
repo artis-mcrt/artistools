@@ -54,9 +54,12 @@ def read_griddat_file(pathtogriddata):
     simulation_end_time_geomunits = get_snapshot_time(pathtogriddata)
 
     griddata = pd.read_csv(griddatfilepath, delim_whitespace=True, comment='#', skiprows=3)
-
-    griddata['cellYe'] = np.nan_to_num(griddata['cellYe'], nan=0.)
     griddata['rho'] = np.nan_to_num(griddata['rho'], nan=0.)
+
+    if 'cellYe' in griddata:
+        griddata['cellYe'] = np.nan_to_num(griddata['cellYe'], nan=0.)
+    if 'Q' in griddata:
+        griddata['Q'] = np.nan_to_num(griddata['Q'], nan=0.)
 
     factor_position = 1.478  # in km
     griddata['posx'] = (griddata['posx'] * factor_position) * (u.km).to(u.cm)
