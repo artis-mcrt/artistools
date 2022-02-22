@@ -20,7 +20,7 @@ def addargs(parser):
     parser.add_argument('-outputgridsize', default=50,
                         help='Size of small model grid for downscale script')
 
-    parser.add_argument('--makemodelfromarepo', action='store_true',
+    parser.add_argument('--makemodelfromgriddata', action='store_true',
                         help='Make ARTIS model files from arepo grid.dat file')
 
     parser.add_argument('-pathtogriddata', default='.',
@@ -67,7 +67,7 @@ def main(args=None, argsraw=None, **kwargs):
                                                   inputgridsize=args.inputgridsize, outputgridsize=args.outputgridsize)
         return
 
-    if args.makemodelfromarepo:
+    if args.makemodelfromgriddata:
         print(args)
         griddata, t_model, vmax = at.inputmodel.modelfromhydro.read_griddat_file(args.pathtogriddata)
 
