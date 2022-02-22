@@ -8,18 +8,17 @@ MSUN = 1.989e33
 CLIGHT = 2.99792458e10
 
 
-def read_sph_out(pathtosnapshot):
-    arepo_out_file = Path(pathtosnapshot) / "ejectasnapshot.dat"
+def read_ejectasnapshot(pathtosnapshot):
 
-    column_names = ['h (i)', 'x (i)', 'y (i)', 'z (i)', 'vx (i)', 'vy (i)', 'vz (i)', 'vstx (i)',
-                    'vsty (i)',
-                    'vstz (i)', 'u (i)', 'psi(i)', 'alpha(i)', 'pmass (i)', 'rho (i)', 'p(i)', 'rst(i)',
-                    'tau (i)', 'av (i)', 'ye(i)', 'temp(i)']
+    column_names = ['id', 'h', 'x', 'y', 'z', 'vx', 'vy', 'vz', 'vstx', 'vsty', 'vstz', 'u',
+                    'psi', 'alpha', 'pmass', 'rho', 'p', 'rst', 'tau', 'av', 'ye', 'temp',
+                    'prev_rho(i)', 'ynue(i)', 'yanue(i)', 'enuetrap(i)', 'eanuetrap(i)',
+                    'enuxtrap(i)', 'iwasequil(i, 1)', 'iwasequil(i, 2)', 'iwasequil(i, 3)']
+    ejectasnapshot = pd.read_csv(pathtosnapshot / "ejectasnapshot.dat", delim_whitespace=True, header=None, dtype=float,
+                                 names=column_names)
     # Everything is in geometric units here
-    sph_out_dat = pd.read_csv(arepo_out_file, delim_whitespace=True, header=None, names=column_names)
-    print("total mass", sum(sph_out_dat['pmass (i)']))
 
-    return sph_out_dat
+    return ejectasnapshot
 
 
 def get_snapshot_time(pathtogriddata):
