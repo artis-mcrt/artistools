@@ -54,6 +54,7 @@ def read_griddat_file(pathtogriddata):
     simulation_end_time_geomunits = get_snapshot_time(pathtogriddata)
 
     griddata = pd.read_csv(griddatfilepath, delim_whitespace=True, comment='#', skiprows=3)
+    # griddata in geom units
     griddata['rho'] = np.nan_to_num(griddata['rho'], nan=0.)
 
     if 'cellYe' in griddata:
@@ -66,7 +67,7 @@ def read_griddat_file(pathtogriddata):
     griddata['posy'] = (griddata['posy'] * factor_position) * (u.km).to(u.cm)
     griddata['posz'] = (griddata['posz'] * factor_position) * (u.km).to(u.cm)
 
-    griddata['rho'] = griddata['rho'] * 6.176e17  # g/cm3
+    griddata['rho'] = griddata['rho'] * 6.176e17  # convert to g/cm3
 
     with open(griddatfilepath, 'r') as gridfile:
         ngrid = int(gridfile.readline().split()[0])
