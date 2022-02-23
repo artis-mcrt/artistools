@@ -29,7 +29,7 @@ type_ids = dict((v, k) for k, v in types.items())
 
 
 @lru_cache(maxsize=16)
-def get_column_names(modelpath):
+def get_column_names_artiscode(modelpath):
     modelpath = Path(modelpath)
     if Path(modelpath, 'artis').is_dir():
         print('detected artis code directory')
@@ -48,57 +48,26 @@ def get_column_names(modelpath):
             packet_properties[i] = element.split('.')[1].split(')')[0]
 
         columns = packet_properties
-        replacements_dict = {'type': 'type_id',
-                             'pos[0]': 'posx', 'pos[1]': 'posy', 'pos[2]': 'posz',
-                             'dir[0]': 'dirx', 'dir[1]': 'diry', 'dir[2]': 'dirz',
-                             'escape_type': 'escape_type_id',
-                             'em_pos[0]': 'em_posx', 'em_pos[1]': 'em_posy', 'em_pos[2]': 'em_posz',
-                             'absorptiontype': 'absorption_type', 'absorptionfreq': 'absorption_freq',
-                             'absorptiondir[0]': 'absorptiondirx', 'absorptiondir[1]': 'absorptiondiry', 'absorptiondir[2]': 'absorptiondirz',
-                             'stokes[0]': 'stokes1', 'stokes[1]': 'stokes2', 'stokes[2]': 'stokes3',
-                             'pol_dir[0]': 'pol_dirx', 'pol_dir[1]': 'pol_diry', 'pol_dir[2]': 'pol_dirz'}
+        replacements_dict = {
+            'type': 'type_id',
+            'pos[0]': 'posx', 'pos[1]': 'posy', 'pos[2]': 'posz',
+            'dir[0]': 'dirx', 'dir[1]': 'diry', 'dir[2]': 'dirz',
+            'escape_type': 'escape_type_id',
+            'em_pos[0]': 'em_posx', 'em_pos[1]': 'em_posy', 'em_pos[2]': 'em_posz',
+            'absorptiontype': 'absorption_type', 'absorptionfreq': 'absorption_freq',
+            'absorptiondir[0]': 'absorptiondirx', 'absorptiondir[1]': 'absorptiondiry',
+            'absorptiondir[2]': 'absorptiondirz',
+            'stokes[0]': 'stokes1', 'stokes[1]': 'stokes2', 'stokes[2]': 'stokes3',
+            'pol_dir[0]': 'pol_dirx', 'pol_dir[1]': 'pol_diry', 'pol_dir[2]': 'pol_dirz'
+        }
+
         for i, column_name in enumerate(columns):
             if column_name in replacements_dict:
                 columns[i] = replacements_dict[column_name]
-        inputcolumncount = len(columns)
 
-    else:
-        columns = (
-            'number',
-            'where',
-            'type_id',
-            'posx', 'posy', 'posz',
-            'dirx', 'diry', 'dirz',
-            'last_cross',
-            'tdecay',
-            'e_cmf',
-            'e_rf',
-            'nu_cmf',
-            'nu_rf',
-            'escape_type_id',
-            'escape_time',
-            'scat_count',
-            'next_trans',
-            'interactions',
-            'last_event',
-            'emissiontype',
-            'trueemissiontype',
-            'em_posx', 'em_posy', 'em_posz',
-            'absorption_type',
-            'absorption_freq',
-            'nscatterings',
-            'em_time',
-            'absorptiondirx',
-            'absorptiondiry',
-            'absorptiondirz', 'stokes1', 'stokes2', 'stokes3', 'pol_dirx', 'pol_diry',
-            'pol_dirz',
-            'originated_from_positron',
-            'true_emission_velocity',
-            'trueem_time',
-            'pellet_nucindex',
-        )
-        inputcolumncount = None
-    return columns, inputcolumncount
+        return columns
+
+    return False
 
 
 def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None):
@@ -154,30 +123,66 @@ def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None)
 
 
 def readfile_text(packetsfile, modelpath=Path('.')):
-    columns, inputcolumncount = get_column_names(modelpath)
-    length_dfpackets = len(pd.read_csv(packetsfile, nrows=1, delim_whitespace=True, header=None).columns)
-    if inputcolumncount:
-        assert length_dfpackets == inputcolumncount
+    try:
+        inputcolumncount = len(pd.read_csv(packetsfile, nrows=1, delim_whitespace=True, header=None).columns)
+    except gzip.BadGzipFile:
+        print(f"\nBad Gzip File: {packetsfile}")
+        raise gzip.BadGzipFile
+
+    if inputcolumncount < 3:
+        print("\nWARNING: packets file has no columns!")
+        print(open(packetsfile, "r").readlines())
+
+    usecols_nodata = None  # print a warning for missing columns if the source code columns can't be read
+    column_names = get_column_names_artiscode(modelpath)
+    if column_names:  # found them in the artis code files
+        assert len(column_names) == inputcolumncount
     else:
-        try:
-            inputcolumncount = length_dfpackets
-            if inputcolumncount < 3:
-                print("\nWARNING: packets file has no columns!")
-                print(open(packetsfile, "r").readlines())
+        # new artis added extra columns to the end of this list, but they may be absent in older versions
+        # the packets file may have a truncated set of columns, but we assume that they
+        # are only truncated, i.e. the columns with the same index have the same meaning
+        columns_full = (
+            'number',
+            'where',
+            'type_id',
+            'posx', 'posy', 'posz',
+            'dirx', 'diry', 'dirz',
+            'last_cross',
+            'tdecay',
+            'e_cmf',
+            'e_rf',
+            'nu_cmf',
+            'nu_rf',
+            'escape_type_id',
+            'escape_time',
+            'scat_count',
+            'next_trans',
+            'interactions',
+            'last_event',
+            'emissiontype',
+            'trueemissiontype',
+            'em_posx', 'em_posy', 'em_posz',
+            'absorption_type',
+            'absorption_freq',
+            'nscatterings',
+            'em_time',
+            'absorptiondirx',
+            'absorptiondiry',
+            'absorptiondirz', 'stokes1', 'stokes2', 'stokes3', 'pol_dirx', 'pol_diry',
+            'pol_dirz',
+            'originated_from_positron',
+            'true_emission_velocity',
+            'trueem_time',
+            'pellet_nucindex',
+        )
 
-        except gzip.BadGzipFile:
-            print(f"\nBad Gzip File: {packetsfile}")
-            raise gzip.BadGzipFile
-
-    # the packets file may have a truncated set of columns, but we assume that they
-    # are only truncated, i.e. the columns with the same index have the same meaning
-    usecols_nodata = [n for n in columns if columns.index(n) >= inputcolumncount]
-    # usecols_actual = [n for n in columns if columns.index(n) < inputcolumncount]
+        assert len(columns_full >= inputcolumncount)
+        usecols_nodata = [n for n in columns_full if columns_full.index(n) >= inputcolumncount]
+        column_names = columns_full[:inputcolumncount]
 
     try:
-        dfpackets = pd.read_csv(
-            packetsfile, delim_whitespace=True,
-            names=columns[:inputcolumncount], header=None)
+        dfpackets = pd.read_csv(packetsfile, delim_whitespace=True, names=column_names, header=None)
+
     except Exception as ex:
         print(f'Problem with file {packetsfile}')
         print(f'ERROR: {ex}')
