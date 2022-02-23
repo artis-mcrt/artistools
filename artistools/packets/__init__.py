@@ -28,10 +28,10 @@ types = {
 type_ids = dict((v, k) for k, v in types.items())
 
 
-@at.diskcache(savezipped=True)
+@lru_cache(maxsize=16)
 def get_column_names(modelpath):
     modelpath = Path(modelpath)
-    if Path('artis').is_dir():
+    if Path(modelpath, 'artis').is_dir():
         print('detected artis code directory')
         packet_properties = []
         inputfilename = at.firstexisting(
