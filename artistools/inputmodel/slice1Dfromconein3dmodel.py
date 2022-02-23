@@ -39,23 +39,24 @@ def make_cone(args):
     return cone
 
 
-def get_profile_along_axis(args=None):
+def get_profile_along_axis(args=None, modeldata=None):
     print("Getting profile along axis")
 
     # merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata(args.modelpath, dimensions=3, get_abundances=True)
-    merge_dfs, _, _ = at.inputmodel.get_modeldata(args.modelpath, dimensions=3, get_abundances=True)
+    if modeldata is None:
+        modeldata, _, _ = at.inputmodel.get_modeldata(args.modelpath, dimensions=3, get_abundances=True)
 
-    position_closest_to_axis = merge_dfs.iloc[
-        (merge_dfs[f'pos_{args.other_axis2}']).abs().argsort()][:1][f'pos_{args.other_axis2}'].item()
+    position_closest_to_axis = modeldata.iloc[
+        (modeldata[f'pos_{args.other_axis2}']).abs().argsort()][:1][f'pos_{args.other_axis2}'].item()
 
     if args.positive_axis:
-        profile1D = merge_dfs.loc[(merge_dfs[f'pos_{args.other_axis1}'] == position_closest_to_axis)
-                                  & (merge_dfs[f'pos_{args.other_axis2}'] == position_closest_to_axis)
-                                  & (merge_dfs[f'pos_{args.sliceaxis}'] > 0)]
+        profile1D = modeldata.loc[(modeldata[f'pos_{args.other_axis1}'] == position_closest_to_axis)
+                                  & (modeldata[f'pos_{args.other_axis2}'] == position_closest_to_axis)
+                                  & (modeldata[f'pos_{args.sliceaxis}'] > 0)]
     else:
-        profile1D = merge_dfs.loc[(merge_dfs[f'pos_{args.other_axis1}'] == position_closest_to_axis)
-                                  & (merge_dfs[f'pos_{args.other_axis2}'] == position_closest_to_axis)
-                                  & (merge_dfs[f'pos_{args.sliceaxis}'] < 0)]
+        profile1D = modeldata.loc[(modeldata[f'pos_{args.other_axis1}'] == position_closest_to_axis)
+                                  & (modeldata[f'pos_{args.other_axis2}'] == position_closest_to_axis)
+                                  & (modeldata[f'pos_{args.sliceaxis}'] < 0)]
 
     return profile1D.reset_index(drop=True)
 
