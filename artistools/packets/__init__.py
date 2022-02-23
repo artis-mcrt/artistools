@@ -123,8 +123,24 @@ def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None)
 
 
 def readfile_text(packetsfile, modelpath=Path('.')):
+    column_names = None
     try:
-        inputcolumncount = len(pd.read_csv(packetsfile, nrows=1, delim_whitespace=True, header=None).columns)
+        fpackets = at.zopen(packetsfile, 'rt')
+
+        datastartpos = fpackets.tell()  # will be updated if this was actually the start of a header
+        firstline = fpackets.readline()
+
+        if firstline.lstrip().startswith('#'):
+            column_names = firstline.lstrip('#').split()
+            # get the column count from the first data line to check header matched
+            datastartpos = fpackets.tell()
+            dataline = fpackets.readline()
+            inputcolumncount = len(dataline.split())
+        else:
+            inputcolumncount = len(firstline.split())
+
+        fpackets.seek(datastartpos)  # go to first data line
+
     except gzip.BadGzipFile:
         print(f"\nBad Gzip File: {packetsfile}")
         raise gzip.BadGzipFile
@@ -134,59 +150,65 @@ def readfile_text(packetsfile, modelpath=Path('.')):
         print(open(packetsfile, "r").readlines())
 
     usecols_nodata = None  # print a warning for missing columns if the source code columns can't be read
-    column_names = get_column_names_artiscode(modelpath)
-    if column_names:  # found them in the artis code files
+    if column_names:  # found a header in the file
         assert len(column_names) == inputcolumncount
     else:
-        # new artis added extra columns to the end of this list, but they may be absent in older versions
-        # the packets file may have a truncated set of columns, but we assume that they
-        # are only truncated, i.e. the columns with the same index have the same meaning
-        columns_full = (
-            'number',
-            'where',
-            'type_id',
-            'posx', 'posy', 'posz',
-            'dirx', 'diry', 'dirz',
-            'last_cross',
-            'tdecay',
-            'e_cmf',
-            'e_rf',
-            'nu_cmf',
-            'nu_rf',
-            'escape_type_id',
-            'escape_time',
-            'scat_count',
-            'next_trans',
-            'interactions',
-            'last_event',
-            'emissiontype',
-            'trueemissiontype',
-            'em_posx', 'em_posy', 'em_posz',
-            'absorption_type',
-            'absorption_freq',
-            'nscatterings',
-            'em_time',
-            'absorptiondirx',
-            'absorptiondiry',
-            'absorptiondirz', 'stokes1', 'stokes2', 'stokes3', 'pol_dirx', 'pol_diry',
-            'pol_dirz',
-            'originated_from_positron',
-            'true_emission_velocity',
-            'trueem_time',
-            'pellet_nucindex',
-        )
+        column_names = get_column_names_artiscode(modelpath)
+        if column_names:  # found them in the artis code files
+            assert len(column_names) == inputcolumncount
+        else:  # infer from positions
+            # new artis added extra columns to the end of this list, but they may be absent in older versions
+            # the packets file may have a truncated set of columns, but we assume that they
+            # are only truncated, i.e. the columns with the same index have the same meaning
+            columns_full = (
+                'number',
+                'where',
+                'type_id',
+                'posx', 'posy', 'posz',
+                'dirx', 'diry', 'dirz',
+                'last_cross',
+                'tdecay',
+                'e_cmf',
+                'e_rf',
+                'nu_cmf',
+                'nu_rf',
+                'escape_type_id',
+                'escape_time',
+                'scat_count',
+                'next_trans',
+                'interactions',
+                'last_event',
+                'emissiontype',
+                'trueemissiontype',
+                'em_posx', 'em_posy', 'em_posz',
+                'absorption_type',
+                'absorption_freq',
+                'nscatterings',
+                'em_time',
+                'absorptiondirx',
+                'absorptiondiry',
+                'absorptiondirz', 'stokes1', 'stokes2', 'stokes3', 'pol_dirx', 'pol_diry',
+                'pol_dirz',
+                'originated_from_positron',
+                'true_emission_velocity',
+                'trueem_time',
+                'pellet_nucindex',
+            )
 
-        assert len(columns_full) >= inputcolumncount
-        usecols_nodata = [n for n in columns_full if columns_full.index(n) >= inputcolumncount]
-        column_names = columns_full[:inputcolumncount]
+            assert len(columns_full) >= inputcolumncount
+            usecols_nodata = [n for n in columns_full if columns_full.index(n) >= inputcolumncount]
+            column_names = columns_full[:inputcolumncount]
 
     try:
-        dfpackets = pd.read_csv(packetsfile, delim_whitespace=True, names=column_names, header=None)
+        dfpackets = pd.read_csv(fpackets, delim_whitespace=True, names=column_names, header=None)
 
     except Exception as ex:
         print(f'Problem with file {packetsfile}')
         print(f'ERROR: {ex}')
+        fpackets.close()
         sys.exit(1)
+
+    fpackets.close()
 
     if usecols_nodata:
         print(f'WARNING: no data in packets file for columns: {usecols_nodata}')
