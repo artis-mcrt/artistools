@@ -176,7 +176,7 @@ def readfile_text(packetsfile, modelpath=Path('.')):
             'pellet_nucindex',
         )
 
-        assert len(columns_full >= inputcolumncount)
+        assert len(columns_full) >= inputcolumncount
         usecols_nodata = [n for n in columns_full if columns_full.index(n) >= inputcolumncount]
         column_names = columns_full[:inputcolumncount]
 
