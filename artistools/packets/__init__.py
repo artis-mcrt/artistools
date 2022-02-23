@@ -18,42 +18,6 @@ import artistools as at
 CLIGHT = 2.99792458e10
 DAY = 86400
 
-columns = (
-    'number',
-    'where',
-    'type_id',
-    'posx', 'posy', 'posz',
-    'dirx', 'diry', 'dirz',
-    'last_cross',
-    'tdecay',
-    'e_cmf',
-    'e_rf',
-    'nu_cmf',
-    'nu_rf',
-    'escape_type_id',
-    'escape_time',
-    'scat_count',
-    'next_trans',
-    'interactions',
-    'last_event',
-    'emissiontype',
-    'trueemissiontype',
-    'em_posx', 'em_posy', 'em_posz',
-    'absorption_type',
-    'absorption_freq',
-    'nscatterings',
-    'em_time',
-    'absorptiondirx',
-    'absorptiondiry',
-    'absorptiondirz', 'stokes1', 'stokes2', 'stokes3', 'pol_dirx', 'pol_diry',
-    'pol_dirz',
-    'originated_from_positron',
-    'true_emission_velocity',
-    'trueem_time',
-    'pellet_nucindex',
-)
-
-
 types = {
     10: 'TYPE_GAMMA',
     11: 'TYPE_RPKT',
@@ -62,6 +26,77 @@ types = {
 }
 
 type_ids = dict((v, k) for k, v in types.items())
+
+
+@at.diskcache(savezipped=True)
+def get_column_names(modelpath):
+    modelpath = Path(modelpath)
+    if Path('artis').is_dir():
+        print('detected artis code directory')
+        packet_properties = []
+        inputfilename = at.firstexisting(
+            ['packet_init.cc', 'packet_init.c'], path=(modelpath / 'artis'))
+        print(f'found {inputfilename}: getting packet column names from artis code')
+        with open(inputfilename) as inputfile:
+            packet_print_lines = [line.split(',') for line in inputfile if 'fprintf(packets_file,' in line]
+            for line in packet_print_lines:
+                for element in line:
+                    if 'pkt[i].' in element:
+                        packet_properties.append(element)
+
+        for i, element in enumerate(packet_properties):
+            packet_properties[i] = element.split('.')[1].split(')')[0]
+
+        columns = packet_properties
+        replacements_dict = {'type': 'type_id',
+                             'pos[0]': 'posx', 'pos[1]': 'posy', 'pos[2]': 'posz',
+                             'dir[0]': 'dirx', 'dir[1]': 'diry', 'dir[2]': 'dirz',
+                             'escape_type': 'escape_type_id',
+                             'em_pos[0]': 'em_posx', 'em_pos[1]': 'em_posy', 'em_pos[2]': 'em_posz',
+                             'absorptiontype': 'absorption_type', 'absorptionfreq': 'absorption_freq',
+                             'absorptiondir[0]': 'absorptiondirx', 'absorptiondir[1]': 'absorptiondiry', 'absorptiondir[2]': 'absorptiondirz',
+                             'stokes[0]': 'stokes1', 'stokes[1]': 'stokes2', 'stokes[2]': 'stokes3',
+                             'pol_dir[0]': 'pol_dirx', 'pol_dir[1]': 'pol_diry', 'pol_dir[2]': 'pol_dirz'}
+        for i, column_name in enumerate(columns):
+            if column_name in replacements_dict:
+                columns[i] = replacements_dict[column_name]
+
+    else:
+        columns = (
+            'number',
+            'where',
+            'type_id',
+            'posx', 'posy', 'posz',
+            'dirx', 'diry', 'dirz',
+            'last_cross',
+            'tdecay',
+            'e_cmf',
+            'e_rf',
+            'nu_cmf',
+            'nu_rf',
+            'escape_type_id',
+            'escape_time',
+            'scat_count',
+            'next_trans',
+            'interactions',
+            'last_event',
+            'emissiontype',
+            'trueemissiontype',
+            'em_posx', 'em_posy', 'em_posz',
+            'absorption_type',
+            'absorption_freq',
+            'nscatterings',
+            'em_time',
+            'absorptiondirx',
+            'absorptiondiry',
+            'absorptiondirz', 'stokes1', 'stokes2', 'stokes3', 'pol_dirx', 'pol_diry',
+            'pol_dirz',
+            'originated_from_positron',
+            'true_emission_velocity',
+            'trueem_time',
+            'pellet_nucindex',
+        )
+    return columns
 
 
 def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None):
@@ -116,7 +151,8 @@ def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None)
     return dfpackets
 
 
-def readfile_text(packetsfile):
+def readfile_text(packetsfile, modelpath=Path('.')):
+    columns = get_column_names(modelpath)
     try:
         inputcolumncount = len(pd.read_csv(packetsfile, nrows=1, delim_whitespace=True, header=None).columns)
         if inputcolumncount < 3:
