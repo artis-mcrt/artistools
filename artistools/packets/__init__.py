@@ -60,6 +60,7 @@ def get_column_names(modelpath):
         for i, column_name in enumerate(columns):
             if column_name in replacements_dict:
                 columns[i] = replacements_dict[column_name]
+        inputcolumncount = len(columns)
 
     else:
         columns = (
@@ -96,7 +97,8 @@ def get_column_names(modelpath):
             'trueem_time',
             'pellet_nucindex',
         )
-    return columns
+        inputcolumncount = None
+    return columns, inputcolumncount
 
 
 def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None):
@@ -152,16 +154,20 @@ def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None)
 
 
 def readfile_text(packetsfile, modelpath=Path('.')):
-    columns = get_column_names(modelpath)
-    try:
-        inputcolumncount = len(pd.read_csv(packetsfile, nrows=1, delim_whitespace=True, header=None).columns)
-        if inputcolumncount < 3:
-            print("\nWARNING: packets file has no columns!")
-            print(open(packetsfile, "r").readlines())
+    columns, inputcolumncount = get_column_names(modelpath)
+    length_dfpackets = len(pd.read_csv(packetsfile, nrows=1, delim_whitespace=True, header=None).columns)
+    if inputcolumncount:
+        assert length_dfpackets == inputcolumncount
+    else:
+        try:
+            inputcolumncount = length_dfpackets
+            if inputcolumncount < 3:
+                print("\nWARNING: packets file has no columns!")
+                print(open(packetsfile, "r").readlines())
 
-    except gzip.BadGzipFile:
-        print(f"\nBad Gzip File: {packetsfile}")
-        raise gzip.BadGzipFile
+        except gzip.BadGzipFile:
+            print(f"\nBad Gzip File: {packetsfile}")
+            raise gzip.BadGzipFile
 
     # the packets file may have a truncated set of columns, but we assume that they
     # are only truncated, i.e. the columns with the same index have the same meaning
