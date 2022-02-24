@@ -1,1 +1,0 @@
-/Volumes/GoogleDrive/Shared drives/ARTIS/maptogrid.py
