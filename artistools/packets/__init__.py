@@ -408,7 +408,7 @@ def make_3d_grid(modeldata, vmax_cms):
     return grid_3d, x, y, z
 
 
-def make_packets_plot(modelpath, timestep):
+def make_2d_packets_plot(modelpath, timestep):
     import pyvista as pv
     modeldata, _, vmax_cms = at.inputmodel.get_modeldata(modelpath)
     _, x, y, z = make_3d_grid(modeldata, vmax_cms)
