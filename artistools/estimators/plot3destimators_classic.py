@@ -123,21 +123,29 @@ def get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, 
                 i += 1
 
     return grid_Te, xgrid
+
+
+def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
     # PYVISTA
-    x,y,z = np.meshgrid(xgrid,xgrid,xgrid)
+    x,y,z = np.meshgrid(xgrid, xgrid, xgrid)
     mesh = pv.StructuredGrid(x,y,z)
     mesh['Te [K]'] = grid_Te.ravel(order='F')
 
-    sargs = dict(height=0.75, vertical=True, position_x=0.05, position_y=0.1,
-                 title_font_size=22, label_font_size=22)
+    sargs = dict(height=0.75, vertical=True, position_x=0.02, position_y=0.1,
+                 title_font_size=22, label_font_size=25)
 
     pv.set_plot_theme("document")  # set white background
     p = pv.Plotter()
-    p.set_scale(0.95, 0.95, 0.95)
-    single_slice = mesh.slice(normal='y')
-    actor = p.add_mesh(single_slice, clim=[100, 60000], scalar_bar_args=sargs)
+    p.set_scale(1.5, 1.5, 1.5)
+    single_slice = mesh.slice(normal='z')
+    actor = p.add_mesh(single_slice, scalar_bar_args=sargs) # , clim=[100, 60000]
     actor = p.show_bounds(grid=False, xlabel='vx / c', ylabel='vy / c', zlabel='vz / c',
-                        ticks='inside', minor_ticks=False, use_2d=True, font_size=22)
+                        ticks='inside', minor_ticks=False, use_2d=True, font_size=26, bold=False)
+
+    p.camera_position = 'xy'
+    p.add_title(f'{time:.1f} days')
+    p.show(screenshot=modelpath / f'3Dplot_Te{time:.1f}days_disk.png')
+
 
     p.camera_position = 'xz'
     p.add_title(f'{time:.2f} days')
