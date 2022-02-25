@@ -39,7 +39,7 @@ def get_modelgridcells_along_axis(modelpath):
 
 
 def get_modelgridcells_2D_slice(modeldata, modelpath):
-    sliceaxis = 'x'
+    sliceaxis = 'z'
 
     slice = at.initial_composition.get_2D_slice_through_3d_model(modeldata, sliceaxis)
     readonly_mgi = get_mgi_of_modeldata(slice, modelpath)
