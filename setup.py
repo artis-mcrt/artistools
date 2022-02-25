@@ -10,8 +10,9 @@ from pathlib import Path
 from setuptools import find_packages, setup
 from setuptools.command.test import test as TestCommand
 
-sys.path.append('artistools/')
-from commands import console_scripts
+# sys.path.append('artistools/')
+# from commands import console_scripts
+from artistools.commands import console_scripts
 
 
 class PyTest(TestCommand):
@@ -30,11 +31,17 @@ class PyTest(TestCommand):
         sys.exit(pytest.main(self.test_args))
 
 
-print(datetime.datetime.now().isoformat())
+def get_version():
+    utcnow = datetime.datetime.utcnow()
+    strversion = f'{utcnow.year}.{utcnow.month}.{utcnow.day}.'
+    strversion += f'{utcnow.hour:02d}{utcnow.minute:02d}{utcnow.second:02d}.'
+    strversion += 'dev'
+    return strversion
+
+
 setup(
     name="artistools",
-    version="2021.04.24dev",
-    # version=datetime.datetime.now().isoformat(),
+    version=get_version(),
     author="ARTIS Collaboration",
     author_email="luke.shingles@gmail.com",
     packages=find_packages(),
