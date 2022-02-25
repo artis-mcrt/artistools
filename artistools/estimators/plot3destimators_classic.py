@@ -94,7 +94,7 @@ def plot_Te_vs_velocity(modelpath, modeldata, estimators, readonly_mgi):
     plt.show()
 
 
-def plot_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, timestep):
+def get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, timestep):
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
     times = at.get_timestep_times_float(modelpath)
     print([(ts, time) for ts, time in enumerate(times)])
@@ -122,6 +122,7 @@ def plot_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi,
                 xgrid[x] = -vmax + 2 * x * vmax / grid
                 i += 1
 
+    return grid_Te, xgrid
     # PYVISTA
     x,y,z = np.meshgrid(xgrid,xgrid,xgrid)
     mesh = pv.StructuredGrid(x,y,z)
