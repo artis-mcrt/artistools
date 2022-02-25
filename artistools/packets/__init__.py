@@ -359,7 +359,13 @@ def make_3d_histogram_from_packets(modelpath, timestep):
         e_rf.extend([e_rf for e_rf in dfpackets['e_rf']])
 
     emission_position3d = np.array(emission_position3d)
-    e_rf = np.array(e_rf)
+    weight_by_energy = False
+    if weight_by_energy:
+        e_rf = np.array(e_rf)
+        weights = e_rf
+    else:
+        weights = None
+
     print(emission_position3d.shape)
     print(emission_position3d[0].shape)
 
@@ -367,12 +373,19 @@ def make_3d_histogram_from_packets(modelpath, timestep):
     grid_3d, _, _, _ = make_3d_grid(modeldata, vmax_cms)
     print(grid_3d)
     # https://stackoverflow.com/questions/49861468/binning-random-data-to-regular-3d-grid-with-unequal-axis-lengths
-    hist, _ = np.histogramdd(emission_position3d.T, [np.append(ax, np.inf) for ax in grid_3d], weights=e_rf)
-
+    hist, _ = np.histogramdd(emission_position3d.T, [np.append(ax, np.inf) for ax in grid_3d], weights=weights)
     # print(hist.shape)
-    hist = hist / len(packetsfiles) / timedeltaarray[timestep]  # histogram weighted by energy
+    if weight_by_energy:
+        # Divide binned energies by number of processes and by length of timestep
+        hist = hist / len(packetsfiles) / timedeltaarray[timestep]  # histogram weighted by energy
     # - need to divide by number of processes
     # and length of timestep
+
+    # # print histogram coordinates
+    # coords = np.nonzero(hist)
+    # for i, j, k in zip(*coords):
+    #     print(f'({grid_3d[0][i]}, {grid_3d[1][j]}, {grid_3d[2][k]}): {hist[i][j][k]}')
+
     return hist
 
 
