@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
+from pathlib import Path
 
 import artistools as at
 import artistools.estimators.estimators_classic
@@ -147,7 +148,26 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
     p.show(screenshot=modelpath / f'3Dplot_Te{time:.1f}days_disk.png')
 
 
-    p.camera_position = 'xz'
-    p.add_title(f'{time:.2f} days')
-    p.show(screenshot=modelpath / '3Dplot.png')
+
+
+def main():
+    modelpath = Path(".")
+    modeldata, _, vmax = at.inputmodel.get_modeldata(modelpath)
+
+    # # Get mgi of grid cells along axis for 1D plot
+    # # readonly_mgi = get_modelgridcells_along_axis(modelpath)
+    readonly_mgi = get_modelgridcells_2D_slice(modeldata, modelpath)
+    #
+    timestep = 82
+    times = at.get_timestep_times_float(modelpath)
+    time = times[timestep]
+    estimators = read_selected_mgi(modelpath, readonly_mgi=readonly_mgi, readonly_timestep=[timestep])
+    grid_Te, xgrid = get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, timestep)
+    grid = round(len(modeldata['inputcellid']) ** (1./3.))
+    make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time)
+
+
+if __name__ == '__main__':
+    main()
+
 
