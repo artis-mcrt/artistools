@@ -32,7 +32,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
                                                    escape_type=False, maxpacketfiles=None, args=None):
     """Use light_curve.out or light_curve_res.out files to plot light curve"""
     fig, axis = plt.subplots(
-        nrows=1, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+        nrows=1, ncols=1, sharey=True, figsize=(args.figscale * at.figwidth * 1.6, args.figscale * at.figwidth), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if not frompackets and escape_type not in ['TYPE_RPKT', 'TYPE_GAMMA']:
         print(f'Escape_type of {escape_type} not one of TYPE_RPKT or TYPE_GAMMA, so frompackets must be enabled')
@@ -743,6 +743,9 @@ def addargs(parser):
 
     parser.add_argument('-dashes', default=[], nargs='*',
                         help='Dashes property of lines')
+
+    parser.add_argument('-figscale', type=float, default=1.,
+                        help='Scale factor for plot area. 1.0 is for single-column')
 
     parser.add_argument('--frompackets', action='store_true',
                         help='Read packets files instead of light_curve.out')
