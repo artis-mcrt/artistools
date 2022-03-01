@@ -33,12 +33,7 @@ Use the -h option to get a list of command-line arguments for each command. Most
 ![NLTE plot](https://github.com/artis-mcrt/artistools/raw/main/images/fig-nlte-Ni.png)
 ![Estimator plot](https://github.com/artis-mcrt/artistools/raw/main/images/fig-estimators.png)
 
-## Meta
-
-Distributed under the MIT license. See ``LICENSE`` for more information.
+## License
+Distributed under the MIT license. See [LICENSE](https://github.com/artis-mcrt/artistools/blob/main/LICENSE) for more information.
 
 [https://github.com/artis-mcrt/artistools](https://github.com/artis-mcrt/artistools)
-
-
-
-
