@@ -16,7 +16,7 @@ import artistools.inputmodel.makeartismodel
 
 
 @lru_cache(maxsize=8)
-def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
+def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, derived_cols=False):
     """
     Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
 
@@ -173,7 +173,34 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False):
         abundancedata = get_initialabundances(modelpath)
         dfmodeldata = dfmodeldata.merge(abundancedata, how='inner', on='inputcellid')
 
+    if derived_cols:
+        add_derived_cols_to_modeldata(dfmodeldata, derived_cols, dimensions, t_model_init_seconds, wid_init, modelpath)
+
     return dfmodeldata, t_model_init_days, vmax_cmps
+
+
+def add_derived_cols_to_modeldata(dfmodeldata, derived_cols, dimensions=None, t_model_init_seconds=None, wid_init=None,
+                                  modelpath=None):
+    """add columns to modeldata using e.g. derived_cols = ('velocity', 'Ye')"""
+    if dimensions == 3 and 'velocity' in derived_cols:
+        dfmodeldata['vel_x'] = dfmodeldata['pos_x'] / t_model_init_seconds
+        dfmodeldata['vel_y'] = dfmodeldata['pos_y'] / t_model_init_seconds
+        dfmodeldata['vel_z'] = dfmodeldata['pos_z'] / t_model_init_seconds
+
+        dfmodeldata['vel_x_outer'] = (dfmodeldata['pos_x'] + wid_init) / t_model_init_seconds
+        dfmodeldata['vel_y_outer'] = (dfmodeldata['pos_y'] + wid_init) / t_model_init_seconds
+        dfmodeldata['vel_z_outer'] = (dfmodeldata['pos_z'] + wid_init) / t_model_init_seconds
+
+        dfmodeldata['vel_x_mid'] = (dfmodeldata['pos_x'] + (0.5 * wid_init)) / t_model_init_seconds
+        dfmodeldata['vel_y_mid'] = (dfmodeldata['pos_y'] + (0.5 * wid_init)) / t_model_init_seconds
+        dfmodeldata['vel_z_mid'] = (dfmodeldata['pos_z'] + (0.5 * wid_init)) / t_model_init_seconds
+
+    if 'Ye' in derived_cols and os.path.isfile(modelpath / 'Ye.txt'):
+        dfmodeldata['Ye'] = artistools.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
+    if 'Q' in derived_cols and os.path.isfile(modelpath / 'Q_energy.txt'):
+        dfmodeldata['Q'] = artistools.inputmodel.energyinputfiles.get_Q_energy_from_file(modelpath)
+
+    return dfmodeldata
 
 
 def get_2d_modeldata(modelpath):
