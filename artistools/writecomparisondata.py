@@ -106,7 +106,8 @@ def write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnone
                     elabund = estimators[(timestep, modelgridindex)]['populations'].get(atomic_number, 0)
                     for ion in range(nions):
                         ion_stage = ion + elementlist.lowermost_ionstage[element]
-                        ionabund = estimators[(timestep, modelgridindex)]['populations'].get((atomic_number, ion_stage), 0)
+                        ionabund = estimators[(timestep, modelgridindex)]['populations'].get(
+                            (atomic_number, ion_stage), 0)
                         ionfrac = ionabund / elabund if elabund > 0 else 0
                         f.write(' {:.4e}'.format(ionfrac))
                     f.write('\n')
@@ -199,15 +200,20 @@ def main(args=None, argsraw=None, **kwargs):
         allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index
                               if not estimators[(selected_timesteps[0], modelgridindex)]['emptycell']]
 
-        write_lbol_edep(modelpath, model_id, selected_timesteps, estimators, Path(args.outputpath, "lbol_edep_" + model_id + "_artisnebular.txt"))
+        write_lbol_edep(modelpath, model_id, selected_timesteps, estimators,
+                        Path(args.outputpath, "lbol_edep_" + model_id + "_artisnebular.txt"))
 
-        write_spectra(modelpath, model_id, selected_timesteps, Path(args.outputpath, "spectra_" + model_id + "_artisnebular.txt"))
+        write_spectra(modelpath, model_id, selected_timesteps,
+                      Path(args.outputpath, "spectra_" + model_id + "_artisnebular.txt"))
 
-        write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, Path(args.outputpath, "eden_" + model_id + "_artisnebular.txt"), keyname='nne')
+        write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist,
+                               Path(args.outputpath, "eden_" + model_id + "_artisnebular.txt"), keyname='nne')
 
-        write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, Path(args.outputpath, "edep_" + model_id + "_artisnebular.txt"), keyname='total_dep')
+        write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist,
+                               Path(args.outputpath, "edep_" + model_id + "_artisnebular.txt"), keyname='total_dep')
 
-        write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, Path(args.outputpath, "tgas_" + model_id + "_artisnebular.txt"), keyname='Te')
+        write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist,
+                               Path(args.outputpath, "tgas_" + model_id + "_artisnebular.txt"), keyname='Te')
 
         write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputpath)
         write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputpath)

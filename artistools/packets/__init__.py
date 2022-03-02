@@ -467,11 +467,14 @@ def get_mean_packet_emission_velocity_per_ts(modelpath, packet_type='TYPE_ESCAPE
         if i == 0:  # make new df
             dfpackets_escape_velocity_and_arrive_time = dfpackets[['t_arrive_d', 'emission_velocity']]
         else:  # append to df
-            dfpackets_escape_velocity_and_arrive_time = dfpackets_escape_velocity_and_arrive_time.append(dfpackets[['t_arrive_d', 'emission_velocity']], ignore_index=True)
+            dfpackets_escape_velocity_and_arrive_time = dfpackets_escape_velocity_and_arrive_time.append(
+                dfpackets[['t_arrive_d', 'emission_velocity']], ignore_index=True)
 
     print(dfpackets_escape_velocity_and_arrive_time)
-    binned = pd.cut(dfpackets_escape_velocity_and_arrive_time['t_arrive_d'], timearrayplusend, labels=False, include_lowest=True)
-    for binindex, emission_velocity in dfpackets_escape_velocity_and_arrive_time.groupby(binned)['emission_velocity'].mean().iteritems():
+    binned = pd.cut(dfpackets_escape_velocity_and_arrive_time['t_arrive_d'], timearrayplusend,
+                    labels=False, include_lowest=True)
+    for binindex, emission_velocity in dfpackets_escape_velocity_and_arrive_time.groupby(binned)[
+            'emission_velocity'].mean().iteritems():
         emission_data['mean_emission_velocity'][binindex] += emission_velocity  # / 2.99792458e10
 
     return emission_data
