@@ -40,8 +40,7 @@ def main(args=None, argsraw=None, **kwargs):
     t_model_init_seconds = float(str_t_model_init_seconds)
     print('time', t_model_init_seconds)
 
-    dfnucabund = pd.read_csv(trajfile, delim_whitespace=True, comment='#', names=[
-        "N", "Z", "log10abund", "S1n", "S2n"])
+    dfnucabund = pd.read_csv(trajfile, delim_whitespace=True, comment='#', names=["N", "Z", "log10abund", "S1n", "S2n"])
     dfnucabund.eval('abund = 10 ** log10abund', inplace=True)
     dfnucabund.eval('A = N + Z', inplace=True)
     dfnucabund.eval('massfrac = A * abund', inplace=True)
@@ -66,7 +65,8 @@ def main(args=None, argsraw=None, **kwargs):
     wollager_profilename = 'wollager_ejectaprofile_10bins.txt'
     if Path(wollager_profilename).exists():
         t_model_init_days_in = float(Path(wollager_profilename).open('rt').readline().strip().removesuffix(' day'))
-        dfdensities = pd.read_csv(wollager_profilename, delim_whitespace=True, skiprows=1, names=['cellid', 'velocity_outer', 'rho'])
+        dfdensities = pd.read_csv(wollager_profilename, delim_whitespace=True, skiprows=1,
+                                  names=['cellid', 'velocity_outer', 'rho'])
         dfdensities['cellid'] = dfdensities['cellid'].astype(int)
         dfdensities['velocity_inner'] = np.concatenate(([0.], dfdensities['velocity_outer'].values[:-1]))
 
@@ -110,14 +110,14 @@ def main(args=None, argsraw=None, **kwargs):
         'X_Co57': 0.,
     }
 
-
     for _, row in dfnucabund.query('radioactive == True').iterrows():
         rowdict[f'X_{at.elsymbols[int(row.Z)]}{int(row.A)}'] = row.massfrac
 
     modeldata = []
     for mgi, densityrow in dfdensities.iterrows():
         # print(mgi, densityrow)
-        modeldata.append(dict(inputcellid=mgi + 1, velocity_outer=densityrow['velocity_outer'], logrho=math.log10(densityrow['rho']), **rowdict))
+        modeldata.append(dict(inputcellid=mgi + 1, velocity_outer=densityrow['velocity_outer'],
+                         logrho=math.log10(densityrow['rho']), **rowdict))
     # print(modeldata)
 
     dfmodel = pd.DataFrame(modeldata)

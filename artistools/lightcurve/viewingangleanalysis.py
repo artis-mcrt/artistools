@@ -273,9 +273,9 @@ def update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args):
     angle_definition = calculate_costheta_phi_for_viewing_angles(angles, args.modelpath[0])
     colors = []
     for angle in angles:
-        _, colorindex = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(angle_definition, angle,
-                                                    costheta_viewing_angle_bins, phi_viewing_angle_bins,
-                                                    scaledmap, plotkwargsviewingangles, args)
+        _, colorindex = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(
+            angle_definition, angle, costheta_viewing_angle_bins, phi_viewing_angle_bins,
+            scaledmap, plotkwargsviewingangles, args)
         colors.append(scaledmap.to_rgba(colorindex))
     plotkwargsviewingangles['color'] = colors
     return plotkwargsviewingangles
