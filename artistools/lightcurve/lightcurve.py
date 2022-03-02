@@ -374,7 +374,6 @@ def get_sn_sample_bol():
                       yerr=bol_magnitude_error_upper, xerr=sn_data['+/-'].astype(float),
                       color='k', marker='o', ls='None')
 
-
     # a0 = plt.errorbar(x=sn_data['dm15'].astype(float), y=sn_data['dm40'].astype(float),
     #                   yerr=sn_data['+/-.1'].astype(float), xerr=sn_data['+/-'].astype(float),
     #                   color='k', marker='o', ls='None')
@@ -401,7 +400,6 @@ def get_phillips_relation_data():
 
 def plot_phillips_relation_data():
     sn_data, label = get_phillips_relation_data()
-
 
     # a0 = plt.scatter(deltam_15B, M_B, s=80, color='grey', marker='o', label=label)
     a0 = plt.errorbar(x=sn_data['dm15(B)'], y=sn_data['MB'], yerr=sn_data['err_MB'], xerr=sn_data['err_dm15(B)'],

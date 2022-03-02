@@ -122,7 +122,7 @@ def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptym
         for timestep in selected_timesteps:
             f.write(f'#TIME: {times[timestep]:.2f}\n')
             f.write(f'#NVEL {len(modeldata)}\n')
-            f.write(f'#vel_mid[km/s] temp[K] rho[gcc] ne[/cm^3] natom[/cm^3]\n')
+            f.write('#vel_mid[km/s] temp[K] rho[gcc] ne[/cm^3] natom[/cm^3]\n')
             for modelgridindex, cell in modeldata.iterrows():
                 if modelgridindex not in allnonemptymgilist:
                     continue
