@@ -107,7 +107,8 @@ def read_classic_estimators(modelpath, modeldata, readonly_mgi=False, readonly_t
                         estimators[(timestep, modelgridindex)] = {}
 
                         if ndimensions == 1:
-                            estimators[(timestep, modelgridindex)]['velocity_outer'] = modeldata['velocity_outer'][modelgridindex]
+                            estimators[(timestep, modelgridindex)]['velocity_outer'] = modeldata[
+                                'velocity_outer'][modelgridindex]
 
                         estimators[(timestep, modelgridindex)]['TR'] = float(row[1])
                         estimators[(timestep, modelgridindex)]['Te'] = float(row[2])
