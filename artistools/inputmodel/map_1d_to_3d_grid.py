@@ -7,9 +7,9 @@ CLIGHT = 2.99792458e10
 
 
 def change_cell_positions_to_new_time(dfgriddata, t_model_1d):
-    dfgriddata['posx'] = dfgriddata['vel_x'] * t_model_1d
-    dfgriddata['posy'] = dfgriddata['vel_y'] * t_model_1d
-    dfgriddata['posz'] = dfgriddata['vel_z'] * t_model_1d
+    dfgriddata['posx'] = dfgriddata['vel_x_min'] * t_model_1d
+    dfgriddata['posy'] = dfgriddata['vel_y_min'] * t_model_1d
+    dfgriddata['posz'] = dfgriddata['vel_z_min'] * t_model_1d
 
     ngridcells = len(dfgriddata['posx'])
     ncoordgridx = round(ngridcells ** (1. / 3.))
