@@ -443,7 +443,8 @@ def make_2d_packets_plot(modelpath, timestep):
     p.show(screenshot=modelpath / f'3Dplot_pktsemitted{time:.1f}days_disk.png')
 
 
-def get_mean_packet_emission_velocity_per_ts(modelpath, packet_type='TYPE_ESCAPE', escape_type='TYPE_RPKT', maxpacketfiles=None):
+def get_mean_packet_emission_velocity_per_ts(modelpath, packet_type='TYPE_ESCAPE', escape_type='TYPE_RPKT',
+                                             maxpacketfiles=None, escape_angles=None):
 
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
@@ -460,6 +461,9 @@ def get_mean_packet_emission_velocity_per_ts(modelpath, packet_type='TYPE_ESCAPE
     for i, packetsfile in enumerate(packetsfiles):
         dfpackets = at.packets.readfile(packetsfile, type=packet_type, escape_type=escape_type)
         at.packets.add_derived_columns(dfpackets, modelpath, ['emission_velocity'])
+        if escape_angles is not None:
+            dfpackets = at.packets.get_escaping_packet_angle_bin(modelpath, dfpackets)
+            dfpackets.query(f'angle_bin == @escape_angles', inplace=True)
 
         if i == 0:  # make new df
             dfpackets_escape_velocity_and_arrive_time = dfpackets[['t_arrive_d', 'emission_velocity']]
