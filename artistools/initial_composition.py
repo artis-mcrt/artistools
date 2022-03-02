@@ -3,14 +3,14 @@ import argparse
 import math
 import os
 from pathlib import Path
-import pandas as pd
-import matplotlib.pyplot as plt
-from astropy import units as u
-import matplotlib
-import numpy as np
 
 import artistools as at
 import artistools.inputmodel.opacityinputfile
+import matplotlib
+# import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from astropy import units as u
 
 # import artistools.inputmodel
 # from mpl_toolkits.mplot3d import Axes3D
@@ -29,7 +29,7 @@ def plot_2d_initial_abundances(modelpath, args):
         t_model = float(fmodelin.readline())  # days
         vmax = float(fmodelin.readline())  # v_max in [cm/s]
 
-    r = merge_dfs['cellpos_mid[r]'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
+    r = merge_dfs['cellpos_mid[r]'] / t_model * (u.cm / u.day).to('km/s') / 10 ** 3
     z = merge_dfs['cellpos_mid[z]'] / t_model * (u.cm / u.day).to('km/s') / 10 ** 3
 
     ion = f'X_{args.ion}'
@@ -41,8 +41,8 @@ def plot_2d_initial_abundances(modelpath, args):
     im = ax.scatter(r, z, c=merge_dfs[ion], marker="8")
 
     f.colorbar(im)
-    plt.xlabel(fr"v$_x$ in 10$^3$ km/s", fontsize='x-large')#, fontweight='bold')
-    plt.ylabel(fr"v$_z$ in 10$^3$ km/s", fontsize='x-large')#, fontweight='bold')
+    plt.xlabel(r"v$_x$ in 10$^3$ km/s", fontsize='x-large')  # , fontweight='bold')
+    plt.ylabel(r"v$_z$ in 10$^3$ km/s", fontsize='x-large')  # , fontweight='bold')
     plt.text(20, 25, args.ion, color='white', fontweight='bold', fontsize='x-large')
     plt.tight_layout()
     # ax.labelsize: 'large'
@@ -89,14 +89,14 @@ def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model):
     scaledmap.set_array([])
     colorscale = scaledmap.to_rgba(colorscale)  # colorscale fixed between 0 and 1
 
-    x = plotvals[f'pos_{plotaxis1}'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
-    y = plotvals[f'pos_{plotaxis2}'] / t_model * (u.cm/u.day).to('km/s') / 10 ** 3
+    x = plotvals[f'pos_{plotaxis1}'] / t_model * (u.cm / u.day).to('km/s') / 10 ** 3
+    y = plotvals[f'pos_{plotaxis2}'] / t_model * (u.cm / u.day).to('km/s') / 10 ** 3
 
     im = ax.scatter(x, y, c=colorscale, marker="8", rasterized=True)  # cmap=plt.get_cmap('PuOr')
 
     ymin, ymax = ax.get_ylim()
     xmin, xmax = ax.get_xlim()
-    ax.text(xmax*0.6, ymax*0.7, ion.split('_')[1], color='k', fontweight='bold')
+    ax.text(xmax * 0.6, ymax * 0.7, ion.split('_')[1], color='k', fontweight='bold')
     return im, scaledmap
 
 
@@ -145,13 +145,12 @@ def plot_3d_initial_abundances(modelpath, args=None):
 
     if not subplots:
         cbar = plt.colorbar(im)
-        plt.xlabel(xlabel, fontsize='x-large')#, fontweight='bold')
-        plt.ylabel(ylabel, fontsize='x-large')#, fontweight='bold')
+        plt.xlabel(xlabel, fontsize='x-large')  # , fontweight='bold')
+        plt.ylabel(ylabel, fontsize='x-large')  # , fontweight='bold')
     else:
-        cbar = fig.colorbar(scaledmap, ax=axes, shrink=cols*0.08, location='top', pad=0.8, anchor=(0.5, 3.))
+        cbar = fig.colorbar(scaledmap, ax=axes, shrink=cols * 0.08, location='top', pad=0.8, anchor=(0.5, 3.))
         fig.text(0.5, 0.15, xlabel, ha='center', va='center')
         fig.text(0.05, 0.5, ylabel, ha='center', va='center', rotation='vertical')
-
 
     # cbar.set_label(label=ion, size='x-large') #, fontweight='bold')
     # cbar.ax.set_title(f'{args.ion}', size='small')
@@ -232,7 +231,7 @@ def make_3d_plot(modelpath, args):
         coloursurfaceby = f'X_{args.ion}'
 
     # generate grid from data
-    grid = round(len(model['rho']) ** (1./3.))
+    grid = round(len(model['rho']) ** (1. / 3.))
     surfacecolorscale = np.zeros((grid, grid, grid))  # needs 3D array
     xgrid = np.zeros(grid)
 
@@ -246,12 +245,12 @@ def make_3d_plot(modelpath, args):
                 xgrid[x] = -vmax + 2 * x * vmax / grid
                 i += 1
 
-    x,y,z = np.meshgrid(xgrid,xgrid,xgrid)
+    x, y, z = np.meshgrid(xgrid, xgrid, xgrid)
 
-    mesh = pv.StructuredGrid(x,y,z)
-    print(mesh) # tells you the properties of the mesh
+    mesh = pv.StructuredGrid(x, y, z)
+    print(mesh)  # tells you the properties of the mesh
 
-    mesh[coloursurfaceby] = surfacecolorscale.ravel(order='F') # add data to the mesh
+    mesh[coloursurfaceby] = surfacecolorscale.ravel(order='F')  # add data to the mesh
     # mesh.plot()
     minval = np.min(mesh[coloursurfaceby][np.nonzero(mesh[coloursurfaceby])])  # minimum non zero value
     print(f"{coloursurfaceby} minumin {minval}, maximum {max(mesh[coloursurfaceby])}")
@@ -263,7 +262,7 @@ def make_3d_plot(modelpath, args):
         surfacepositions = args.surfaces3d
     # surfacepositions = [1, 50, 100, 300, 500, 800, 1000, 1100, 1200, 1300, 1400, 1450, 1500] # choose these
 
-    surf = mesh.contour(surfacepositions,scalars=coloursurfaceby) # create isosurfaces
+    surf = mesh.contour(surfacepositions, scalars=coloursurfaceby)  # create isosurfaces
 
     surf.plot(opacity='linear', screenshot=modelpath / '3Dplot.png')    # plot surfaces and save screenshot
 

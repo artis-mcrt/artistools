@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Iterable
 
 import numpy as np
-import pandas as pd
+# import pandas as pd
 
 import artistools as at
 import artistools.spectra
@@ -23,7 +23,7 @@ from astropy import constants as const
 
 from .lightcurve import *
 from .viewingangleanalysis import *
-import glob
+# import glob
 
 color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
 
@@ -38,7 +38,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
         print(f'Escape_type of {escape_type} not one of TYPE_RPKT or TYPE_GAMMA, so frompackets must be enabled')
         assert False
     elif not frompackets and args.packet_type != 'TYPE_ESCAPE' and args.packet_type is not None:
-        print(f'Looking for non-escaped packets, so frompackets must be enabled')
+        print('Looking for non-escaped packets, so frompackets must be enabled')
         assert False
 
     for seriesindex, modelpath in enumerate(modelpaths):
@@ -378,7 +378,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                     txtlinesout = []
                     txtlinesout.append(f'# band: {band_name}')
                     txtlinesout.append(f'# model: {modelname}')
-                    txtlinesout.append(f'# time_days magnitude')
+                    txtlinesout.append('# time_days magnitude')
                     for t, m in zip(time, brightness_in_mag):
                         txtlinesout.append(f'{t} {m}')
                     txtout = '\n'.join(txtlinesout)
@@ -535,7 +535,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                 if args.color and args.plotviewingangle:
                     print("WARNING: -color argument will not work with viewing angles for colour evolution plots,"
                           "colours are taken from color_list array instead")
-                    plotkwargs['color'] = color_list[angle_counter]  ## index instaed of angle_counter??
+                    plotkwargs['color'] = color_list[angle_counter]  # index instaed of angle_counter??
                     angle_counter += 1
                 elif args.plotviewingangle and not args.color:
                     plotkwargs['color'] = color_list[angle_counter]
@@ -586,7 +586,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
         plt.show()
     plt.savefig(args.outputfile, format='pdf')
 
-## Just incase it's needed...
+# Just in case it's needed...
 
 # if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
 #     plot_times = np.array(plot_times) * (1 + args.redshifttoz[modelnumber])
@@ -710,8 +710,9 @@ def plot_color_evolution_from_data(filter_names, lightcurvefilename, color, mark
 
     merge_dataframes = filter_data[0].merge(filter_data[1], how='inner', on=['time'])
     if args.subplots:
-        ax[plotnumber].plot(merge_dataframes['time'], merge_dataframes['magnitude_x'] - merge_dataframes['magnitude_y'], marker,
-                            label=metadata['label'], color=color, linewidth=4)
+        ax[plotnumber].plot(
+            merge_dataframes['time'], merge_dataframes['magnitude_x'] - merge_dataframes['magnitude_y'],
+            marker, label=metadata['label'], color=color, linewidth=4)
     else:
         ax.plot(merge_dataframes['time'], merge_dataframes['magnitude_x'] - merge_dataframes['magnitude_y'], marker,
                 label=metadata['label'], color=color)
@@ -979,7 +980,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     # determine if this will be a scatter plot or not
     args.calculate_peak_time_mag_deltam15_bool = False
-    if (    #args.calculate_peakmag_risetime_delta_m15 or
+    if (    # args.calculate_peakmag_risetime_delta_m15 or
             args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
             or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
             or args.make_viewing_angle_peakmag_risetime_scatter_plot
@@ -997,9 +998,9 @@ def main(args=None, argsraw=None, **kwargs):
             print('Specify timedays')
             quit()
         if not args.plotviewingangle:
-            args.plotviewingangle=[-1]
+            args.plotviewingangle = [-1]
         if not args.colorbarcostheta and not args.colorbarphi:
-            args.colorbarphi=True
+            args.colorbarphi = True
         plot_viewanglebrightness_at_fixed_time(Path(modelpaths[0]), args)
         return
 

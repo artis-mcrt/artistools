@@ -23,7 +23,7 @@ def plot_hesma_spectrum(timeavg, axes):
     closest_time = f'{closest_time:.2f}'
     print(closest_time)
 
-    #Scale distance to 1 Mpc
+    # Scale distance to 1 Mpc
     dist_mpc = 1e-5  # HESMA specta at 10 pc
     hesma_spec[closest_time] = hesma_spec[closest_time] * (1e-5) ** 2  # refspecditance Mpc / 1 Mpc ** 2
 
@@ -63,7 +63,6 @@ def plothesmaresspec(fig, ax):
         ax.plot(res_specdata[3]['lambda'], res_specdata[3][11.7935] * (1e-5) ** 2, label="hesma 3")
         ax.plot(res_specdata[4]['lambda'], res_specdata[4][11.7935] * (1e-5) ** 2, label="hesma 4")
 
-
     fig.legend()
     # plt.show()
 
@@ -86,7 +85,6 @@ def make_hesma_vspecfiles(modelpath):
         vspecdata = vspecdata.drop(['nu'], axis=1)
 
         vspecdata = vspecdata.rename(columns={'lambda_angstroms': '0'})
-
 
         print(vspecdata)
 

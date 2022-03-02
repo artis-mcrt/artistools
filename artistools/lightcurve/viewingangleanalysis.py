@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib.legend_handler import HandlerTuple
+import pandas as pd
 from astropy import constants as const
 
 import artistools as at
@@ -240,7 +241,7 @@ def set_scatterplot_plotkwargs(modelnumber, args):
     plotkwargsviewingangles['zorder'] = 0
     plotkwargsviewingangles['alpha'] = 0.8
     if args.colorbarcostheta or args.colorbarphi:
-        update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles,args)
+        update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args)
     else:
         if args.color:
             plotkwargsviewingangles['color'] = args.color[modelnumber]
@@ -296,7 +297,7 @@ def set_scatterplot_plot_params(args):
         at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args)
 
 
-### COMBINED WITH DM15 plotting function now ###
+# COMBINED WITH DM15 plotting function now ###
 # def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
 #     for ii, modelname in enumerate(modelnames):
 #         viewing_angle_plot_data = pd.read_csv(key + "band_" + f'{modelname}' + "_viewing_angle_data.txt",
@@ -448,7 +449,7 @@ def make_peak_colour_viewing_angle_plot(args):
 
     sn_data, label = get_phillips_relation_data()
     ax.errorbar(x=sn_data['(B-V)Bmax'], y=sn_data['MB'], xerr=sn_data['err_(B-V)Bmax'], yerr=sn_data['err_MB'],
-                      color='k', alpha=0.9, marker='.', capsize=2, label=label, ls='None', zorder=-1)
+                color='k', alpha=0.9, marker='.', capsize=2, label=label, ls='None', zorder=-1)
 
     ax.legend(loc='upper right', fontsize=8, ncol=1, columnspacing=1, frameon=False)
     ax.set_xlabel(f'{bands[0]}-{bands[1]} at {bands[0]}max', fontsize=14)
@@ -460,7 +461,7 @@ def make_peak_colour_viewing_angle_plot(args):
     plt.close()
 
 
-at.diskcache(savezipped=True)
+@at.diskcache(savezipped=True)
 def second_band_brightness_at_peak_first_band(data, bands, modelpath, modelnumber, args):
     second_band_brightness = []
     for anglenumber, time in enumerate(data[f"time_{bands[0]}max"]):
@@ -497,7 +498,7 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
     args.band_peakmag_angle_averaged_polyfit = []
     args.band_delta_m15_angle_averaged_polyfit = []
 
-    modelnames = [] # save names of models
+    modelnames = []  # save names of models
 
     for modelnumber, modelpath in enumerate(modelpaths):
         modelpath = Path(modelpath)
@@ -585,9 +586,9 @@ def plot_viewanglebrightness_at_fixed_time(modelpath, args):
 
     for angleindex, lcdata in enumerate(lcdataframes):
         angle = angleindex
-        plotkwargs, _ = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(angle_definition, angle,
-                                                           costheta_viewing_angle_bins, phi_viewing_angle_bins,
-                                                           scaledmap, plotkwargs, args)
+        plotkwargs, _ = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(
+            angle_definition, angle, costheta_viewing_angle_bins, phi_viewing_angle_bins,
+            scaledmap, plotkwargs, args)
 
         rowattime = lcdata.loc[lcdata['time'] == float(timetoplot)]
         brightness = (rowattime['lum'].item()) * 3.826e33

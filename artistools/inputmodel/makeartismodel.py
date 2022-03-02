@@ -60,8 +60,8 @@ def main(args=None, argsraw=None, **kwargs):
     args.modelpath = at.flatten_list(args.modelpath)
 
     if args.downscale3dgrid:
-        at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(modelpath=Path(args.modelpath[0]),
-                                                  inputgridsize=args.inputgridsize, outputgridsize=args.outputgridsize)
+        at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(
+            modelpath=Path(args.modelpath[0]), inputgridsize=args.inputgridsize, outputgridsize=args.outputgridsize)
         return
 
     if args.makemodelfromgriddata:

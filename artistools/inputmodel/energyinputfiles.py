@@ -36,7 +36,7 @@ def rprocess_const_and_powerlaw():
 
     tmin = 0.01*DAY
     tmax = 50*DAY
-    t0 = 1.3 # seconds
+    t0 = 1.3  # seconds
     epsilon0 = 2e18
     sigma = 0.11
     alpha = 1.3
@@ -168,6 +168,8 @@ def make_energy_files(rho, Mtot_grams, outputpath=None):
 
     write_energydistribution_file(energydistributiondata, outputfilepath=outputpath)
     write_energyrate_file(times_and_rate, outputfilepath=outputpath)
+
+
 def plot_energy_rate(modelpath):
     times_and_rate, E_tot = at.inputmodel.energyinputfiles.rprocess_const_and_powerlaw()
     model, _, _ = at.inputmodel.get_modeldata(modelpath)

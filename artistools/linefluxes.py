@@ -6,7 +6,7 @@ import math
 import multiprocessing
 from collections import namedtuple
 # from functools import lru_cache
-# from functools import partial
+from functools import partial
 from pathlib import Path
 
 import matplotlib as mpl
@@ -557,7 +557,6 @@ def make_emitting_regions_plot(args):
                 nrows=nrows, ncols=1, sharey=False, sharex=False,
                 figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * (0.25 + nrows * 0.7)),
                 tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.2})
-
 
             for refdataindex, f in enumerate(refdatafilenames):
                 timeindex = np.abs(refdatatimes[refdataindex] - tmid).argmin()
