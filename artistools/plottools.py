@@ -17,10 +17,10 @@ def set_axis_properties(ax, args):
 
     else:
         ax.minorticks_on()
-        ax.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2, labelsize=args.labelfontsize,
-                       direction='in')
-        ax.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2, labelsize=args.labelfontsize,
-                       direction='in')
+        ax.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2,
+                       labelsize=args.labelfontsize, direction='in')
+        ax.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2,
+                       labelsize=args.labelfontsize, direction='in')
 
     if 'ymin' in args or 'ymax' in args:
         plt.ylim(args.ymin, args.ymax)

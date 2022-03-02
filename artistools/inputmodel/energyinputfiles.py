@@ -36,7 +36,7 @@ def rprocess_const_and_powerlaw():
 
     tmin = 0.01*DAY
     tmax = 50*DAY
-    t0 = 1.3 #seconds
+    t0 = 1.3 # seconds
     epsilon0 = 2e18
     sigma = 0.11
     alpha = 1.3
@@ -142,8 +142,6 @@ def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_tra
     trajectory_energy.to_csv(path_to_rprocess_calculation / 'trajectoryQ.dat', sep=' ', index=False)
 
 
-
-
 def make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams):
 
     Etot = E_tot_per_gram * Mtot_grams
@@ -176,4 +174,3 @@ def plot_energy_rate(modelpath):
     Mtot_grams = model['cellmass_grams'].sum()
     plt.plot(times_and_rate['times'], np.array(times_and_rate['nuclear_heating_power'])*Mtot_grams,
              color='k', zorder=10)
-

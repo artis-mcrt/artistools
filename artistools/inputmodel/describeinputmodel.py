@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
-import math
+# import math
 # import os.path
 
 import numpy as np

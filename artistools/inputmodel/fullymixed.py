@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
-import math
+# import math
 # import os.path
 
 from astropy import units as u
@@ -40,9 +40,9 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         args = parser.parse_args(argsraw)
 
     dfmodeldata, t_model_init_days, _ = at.inputmodel.get_modeldata(args.inputpath)
-    print(f'Read model.txt')
+    print('Read model.txt')
     dfabundances = at.inputmodel.get_initialabundances(args.inputpath)
-    print(f'Read abundances.txt')
+    print('Read abundances.txt')
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
 

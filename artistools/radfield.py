@@ -525,7 +525,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
             maxpacketfiles=args.maxpacketfiles,
             groupby='ion', delta_lambda=20,
             useinternalpackets=True)
-        axes[2].plot(arraylambda_angstrom_em, array_jlambda_emission_total, label=f'Internal radfield from packets')
+        axes[2].plot(arraylambda_angstrom_em, array_jlambda_emission_total, label='Internal radfield from packets')
 
         fieldlist += list([(arraylambda_angstrom_em, contribrow.array_flambda_emission, contribrow.linelabel)
                           for contribrow in contribution_list])
@@ -559,7 +559,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
             arr_gamma_dlambda = arr_gamma_dnu * arr_nu_hz / arraylambda_angstrom
 
             axes[1].plot(arraylambda_angstrom, arr_gamma_dlambda, lw=lw,
-                         label=r'd$\Gamma_R$(' + ionstr + f' due to ' + linelabel + r')/d$\lambda$')
+                         label=r'd$\Gamma_R$(' + ionstr + ' due to ' + linelabel + r')/d$\lambda$')
 
             gamma_r_ion = abs(np.trapz(arr_gamma_dlambda, x=arraylambda_angstrom))
             print(f'  Gamma_R({ionstr} due to {linelabel}): {gamma_r_ion:.2e}')
@@ -628,7 +628,7 @@ def plot_celltimestep(
     try:
         specfilename = at.firstexisting(['spec.out', 'spec.out.gz'], path=modelpath)
     except FileNotFoundError:
-        print(f'Could not find spec.out')
+        print('Could not find spec.out')
         args.nospec = True
 
     if not args.nospec:

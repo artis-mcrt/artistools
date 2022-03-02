@@ -674,7 +674,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
         nrows=len(ion_stage_list), ncols=1, sharex=True, figsize=(5, 8),
         tight_layout={"pad": 0.5, "w_pad": 0.0, "h_pad": 0.0})
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
-    axes[-1].set_xlabel(f'T_e in kelvins')
+    axes[-1].set_xlabel('T_e in kelvins')
 
     recombcalibrationdata = at.atomic.get_ionrecombratecalibration(modelpath)
 

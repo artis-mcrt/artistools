@@ -5,7 +5,7 @@ import numpy as np
 from rd_cmfgen import rd_sn_hydro_data
 # from rd_cmfgen import rd_nuc_decay_data
 from math import exp
-import math
+# import math
 
 msun = 1.989e33
 
@@ -196,10 +196,10 @@ def convert_model(filename):
 
     s = 50
     print("shell ", s)
-    print(a['time'], ": ni56 ", a['isofrac'][s, indexofisotope[(28, 56)]], " co56 ", a['isofrac'][s, indexofisotope[(27, 56)]], " fe56 ", a['isofrac'][s, indexofisotope[(26, 56)]] ," sum ", a['isofrac'][s, indexofisotope[(28, 56)]] + a['isofrac'][s, indexofisotope[(27, 56)]] + a['isofrac'][s, indexofisotope[(26, 56)]])
+    print(a['time'], ": ni56 ", a['isofrac'][s, indexofisotope[(28, 56)]], " co56 ", a['isofrac'][s, indexofisotope[(27, 56)]], " fe56 ", a['isofrac'][s, indexofisotope[(26, 56)]], " sum ", a['isofrac'][s, indexofisotope[(28, 56)]] + a['isofrac'][s, indexofisotope[(27, 56)]] + a['isofrac'][s, indexofisotope[(26, 56)]])
     # print("before: fe52 ", a['isofrac'][s, indexofisotope[(26, 52)]], " mn52 ", a['isofrac'][s, indexofisotope[(25, 52)]], " cr52 ", a['isofrac'][s, indexofisotope[(24, 52)]] ," sum ", a['isofrac'][s, indexofisotope[(26, 52)]] + a['isofrac'][s, indexofisotope[(25, 52)]] + a['isofrac'][s, indexofisotope[(24, 52)]])
     adjust_model_to_time_nearzero(a, indexofatomicnumber, indexofisotope)
-    print("   t0 : ni56 ", a['isofrac'][s, indexofisotope[(28, 56)]], " co56 ", a['isofrac'][s, indexofisotope[(27, 56)]], " fe56 ", a['isofrac'][s, indexofisotope[(26, 56)]] ," sum ", a['isofrac'][s, indexofisotope[(28, 56)]] + a['isofrac'][s, indexofisotope[(27, 56)]] + a['isofrac'][s, indexofisotope[(26, 56)]])
+    print("   t0 : ni56 ", a['isofrac'][s, indexofisotope[(28, 56)]], " co56 ", a['isofrac'][s, indexofisotope[(27, 56)]], " fe56 ", a['isofrac'][s, indexofisotope[(26, 56)]], " sum ", a['isofrac'][s, indexofisotope[(28, 56)]] + a['isofrac'][s, indexofisotope[(27, 56)]] + a['isofrac'][s, indexofisotope[(26, 56)]])
     # print(" after: fe52 ", a['isofrac'][s, indexofisotope[(26, 52)]], " mn52 ", a['isofrac'][s, indexofisotope[(25, 52)]], " cr52 ", a['isofrac'][s, indexofisotope[(24, 52)]] ," sum ", a['isofrac'][s, indexofisotope[(26, 52)]] + a['isofrac'][s, indexofisotope[(25, 52)]] + a['isofrac'][s, indexofisotope[(24, 52)]])
 
     # The radii/velocity in the CMFGEN files are zone zentered, while in ARTIS they represent

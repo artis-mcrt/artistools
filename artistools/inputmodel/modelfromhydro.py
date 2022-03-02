@@ -100,7 +100,7 @@ def mirror_model_in_axis(griddata):
     tracercount = np.zeros((grid, grid, grid))
     Q = np.zeros((grid, grid, grid))
 
-    i=0
+    i = 0
     for z in range(0, grid):
         for y in range(0, grid):
             for x in range(0, grid):
@@ -129,7 +129,7 @@ def mirror_model_in_axis(griddata):
     cellYe_1d_array = np.zeros(len(griddata))
     tracercount_1d_array = np.zeros(len(griddata))
     Q_1d_array = np.zeros(len(griddata))
-    i=0
+    i = 0
     for z in range(0, grid):
         for y in range(0, grid):
             for x in range(0, grid):

@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 
 import argparse
-import os
+# import os
 from pathlib import Path
-import pandas as pd
+# import pandas as pd
 import artistools as at
 import matplotlib.pyplot as plt
 from astropy import units as u
-import matplotlib
+# import matplotlib
 import numpy as np
-from mpl_toolkits.mplot3d import Axes3D
+# from mpl_toolkits.mplot3d import Axes3D
 import gc
 
 
