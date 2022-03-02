@@ -2,7 +2,7 @@ import os.path
 from functools import lru_cache
 import numpy as np
 import pandas as pd
-from collections import namedtuple
+# from collections import namedtuple
 import math
 import errno
 import os

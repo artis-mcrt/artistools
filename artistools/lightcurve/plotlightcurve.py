@@ -488,7 +488,6 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 #     color='k'
 # plt.plot(time, magnitude, label=linelabel, linewidth=3)
 
-
     # if (args.magnitude or args.plotviewingangles_lightcurves) and not (
     #         args.calculate_peakmag_risetime_delta_m15 or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
     #         or args.save_viewing_angle_peakmag_risetime_delta_m15_to_file or args.test_viewing_angle_fit

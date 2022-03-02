@@ -72,7 +72,8 @@ def main(args=None, argsraw=None, **kwargs):
     wollager_profilename = 'wollager_ejectaprofile_10bins.txt'
     if Path(wollager_profilename).exists():
         t_model_init_days_in = float(Path(wollager_profilename).open('rt').readline().strip().removesuffix(' day'))
-        dfdensities = pd.read_csv(wollager_profilename, delim_whitespace=True, skiprows=1, names=['cellid', 'velocity_outer', 'rho'])
+        dfdensities = pd.read_csv(wollager_profilename, delim_whitespace=True, skiprows=1,
+                                  names=['cellid', 'velocity_outer', 'rho'])
         dfdensities['cellid'] = dfdensities['cellid'].astype(int)
         dfdensities['velocity_inner'] = np.concatenate(([0.], dfdensities['velocity_outer'].values[:-1]))
 
@@ -116,14 +117,14 @@ def main(args=None, argsraw=None, **kwargs):
         'X_Co57': 0.,
     }
 
-
     for _, row in dfsolarabund_undecayed.query('radioactive == True').iterrows():
         rowdict[f'X_{at.elsymbols[int(row.Z)]}{int(row.A)}'] = row.massfrac
 
     modeldata = []
     for mgi, densityrow in dfdensities.iterrows():
         # print(mgi, densityrow)
-        modeldata.append(dict(inputcellid=mgi + 1, velocity_outer=densityrow['velocity_outer'], logrho=math.log10(densityrow['rho']), **rowdict))
+        modeldata.append(dict(inputcellid=mgi + 1, velocity_outer=densityrow['velocity_outer'],
+                         logrho=math.log10(densityrow['rho']), **rowdict))
     # print(modeldata)
 
     dfmodel = pd.DataFrame(modeldata)

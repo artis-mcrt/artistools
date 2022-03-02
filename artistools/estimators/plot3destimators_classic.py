@@ -119,7 +119,7 @@ def get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, 
             for x in range(0, grid):
                 grid_Te[x, y, z] = Te[i]
                 if modeldata['rho'][i] == 0.:
-                    grid_Te[x,y,z] = None
+                    grid_Te[x, y, z] = None
                 xgrid[x] = -vmax + 2 * x * vmax / grid
                 i += 1
 
@@ -128,8 +128,8 @@ def get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, 
 
 def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
     # PYVISTA
-    x,y,z = np.meshgrid(xgrid, xgrid, xgrid)
-    mesh = pv.StructuredGrid(x,y,z)
+    x, y, z = np.meshgrid(xgrid, xgrid, xgrid)
+    mesh = pv.StructuredGrid(x, y, z)
     mesh['Te [K]'] = grid_Te.ravel(order='F')
 
     sargs = dict(height=0.75, vertical=True, position_x=0.02, position_y=0.1,
@@ -139,15 +139,13 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
     p = pv.Plotter()
     p.set_scale(1.5, 1.5, 1.5)
     single_slice = mesh.slice(normal='z')
-    actor = p.add_mesh(single_slice, scalar_bar_args=sargs) # , clim=[100, 60000]
+    actor = p.add_mesh(single_slice, scalar_bar_args=sargs)  # , clim=[100, 60000]
     actor = p.show_bounds(grid=False, xlabel='vx / c', ylabel='vy / c', zlabel='vz / c',
-                        ticks='inside', minor_ticks=False, use_2d=True, font_size=26, bold=False)
+                          ticks='inside', minor_ticks=False, use_2d=True, font_size=26, bold=False)
 
     p.camera_position = 'xy'
     p.add_title(f'{time:.1f} days')
     p.show(screenshot=modelpath / f'3Dplot_Te{time:.1f}days_disk.png')
-
-
 
 
 def main():
@@ -169,5 +167,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-

@@ -316,7 +316,7 @@ def get_escaping_packet_angle_bin(modelpath, dfpackets):
             phibin = (math.acos(cosphi) / 2. / np.pi * np.sqrt(MABINS))
         else:
             phibin = ((math.acos(cosphi) + np.pi) / 2. / np.pi * np.sqrt(MABINS))
-        na = (thetabin * np.sqrt(MABINS)) + phibin  ## think na is angle number???
+        na = (thetabin * np.sqrt(MABINS)) + phibin  # think na is angle number???
         if na >= 100:
             print(f'error bin number too high {na}')
         angle_number[i] = int(na)
@@ -462,7 +462,7 @@ def get_mean_packet_emission_velocity_per_ts(modelpath, packet_type='TYPE_ESCAPE
         at.packets.add_derived_columns(dfpackets, modelpath, ['emission_velocity'])
         if escape_angles is not None:
             dfpackets = at.packets.get_escaping_packet_angle_bin(modelpath, dfpackets)
-            dfpackets.query(f'angle_bin == @escape_angles', inplace=True)
+            dfpackets.query('angle_bin == @escape_angles', inplace=True)
 
         if i == 0:  # make new df
             dfpackets_escape_velocity_and_arrive_time = dfpackets[['t_arrive_d', 'emission_velocity']]
@@ -472,6 +472,6 @@ def get_mean_packet_emission_velocity_per_ts(modelpath, packet_type='TYPE_ESCAPE
     print(dfpackets_escape_velocity_and_arrive_time)
     binned = pd.cut(dfpackets_escape_velocity_and_arrive_time['t_arrive_d'], timearrayplusend, labels=False, include_lowest=True)
     for binindex, emission_velocity in dfpackets_escape_velocity_and_arrive_time.groupby(binned)['emission_velocity'].mean().iteritems():
-        emission_data['mean_emission_velocity'][binindex] += emission_velocity #/ 2.99792458e10
+        emission_data['mean_emission_velocity'][binindex] += emission_velocity  # / 2.99792458e10
 
     return emission_data

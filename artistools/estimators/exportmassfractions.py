@@ -36,7 +36,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
             popdict = estimators[(timestep, modelgridindex)]['populations']
 
             numberdens = {}
-            totaldens = 0.  # number density times atomic mass summed over all elements
+            totaldens = 0.  # number density times atomic mass summed over all elements
             for key in popdict.keys():
                 try:
                     atomic_number = int(key)
