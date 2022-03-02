@@ -443,6 +443,12 @@ def get_wid_init_at_tmodel(modelpath, ngridpoints=None, t_model=None, xmax=None)
     return wid_init
 
 
+def get_syn_dir(modelpath):
+    with open(modelpath / 'syn_dir.txt', 'r') as syn_dir_file:
+        syn_dir = [int(x) for x in syn_dir_file.readline().split()]
+    return syn_dir
+
+
 def dot(x, y):
     return (x[0] * y[0]) + (x[1] * y[1]) + (x[2] * y[2])
 

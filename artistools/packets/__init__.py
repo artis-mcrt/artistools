@@ -295,8 +295,7 @@ def get_packetsfilepaths(modelpath, maxpacketfiles=None):
 def get_escaping_packet_angle_bin(modelpath, dfpackets):
     MABINS = 100
 
-    with open(modelpath / 'syn_dir.txt', 'r') as syn_dir_file:
-        syn_dir = [int(x) for x in syn_dir_file.readline().split()]
+    syn_dir = at.get_syn_dir(modelpath)
 
     angle_number = np.zeros(len(dfpackets))
     i = 0
