@@ -299,6 +299,7 @@ def get_escaping_packet_angle_bin(modelpath, dfpackets):
         syn_dir = [int(x) for x in syn_dir_file.readline().split()]
 
     angle_number = np.zeros(len(dfpackets))
+    i = 0
     for pkt_index, _ in dfpackets.iterrows():
         pkt_dir = [dfpackets['dirx'][pkt_index], dfpackets['diry'][pkt_index], dfpackets['dirz'][pkt_index]]
         costheta = at.dot(pkt_dir, syn_dir)
@@ -319,7 +320,8 @@ def get_escaping_packet_angle_bin(modelpath, dfpackets):
         na = (thetabin * np.sqrt(MABINS)) + phibin  ## think na is angle number???
         if na >= 100:
             print(f'error bin number too high {na}')
-        angle_number[pkt_index] = int(na)
+        angle_number[i] = int(na)
+        i += 1
 
     dfpackets['angle_bin'] = angle_number
     return dfpackets
