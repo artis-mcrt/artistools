@@ -296,7 +296,6 @@ def set_scatterplot_plot_params(args):
         scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
         at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args)
 
-
 # COMBINED WITH DM15 plotting function now ###
 # def make_viewing_angle_peakmag_risetime_scatter_plot(modelnames, key, args):
 #     for ii, modelname in enumerate(modelnames):
