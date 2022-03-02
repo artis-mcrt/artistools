@@ -608,7 +608,7 @@ def addargs(parser):
 
     parser.add_argument(
         '-levels', type=int, nargs='+',
-        help='Choose levels to plot') # currently only for x axis = time
+        help='Choose levels to plot')  # currently only for x axis = time
 
     parser.add_argument(
         '-maxlevel', default=-1, type=int,
