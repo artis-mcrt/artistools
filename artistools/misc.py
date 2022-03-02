@@ -200,7 +200,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         def my_sort(arg):
             opstr = arg.option_strings[0] if len(arg.option_strings) > 0 else ''
             # chars = 'abcdefghijklmnopqrstuvwxyz-'
-            opstr = opstr.upper().replace('-', 'z')  # push dash chars below alphabet
+            opstr = opstr.upper().replace('-', 'z')  # push dash chars below alphabet
 
             return opstr
 
@@ -1226,4 +1226,3 @@ def parse_cdefines(srcfilepath=None, printdefs=False):
             print(f"{k} = '{definedict[k]}'")
 
     return definedict
-

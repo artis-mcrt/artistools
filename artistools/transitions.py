@@ -15,7 +15,9 @@ from astropy import constants as const
 # from astropy import units as u
 
 import artistools as at
-from artistools import estimators, nltepops, spectra
+import artistools.estimators
+import artistools.nltepops
+import artistools.spectra
 
 defaultoutputfile = 'plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf'
 
@@ -385,7 +387,7 @@ def main(args=None, argsraw=None, **kwargs):
             else:
                 ltepartfunc = 1.0
 
-            dftransitions.eval(f'flux_factor = (upper_energy_ev - lower_energy_ev) * A', inplace=True)
+            dftransitions.eval('flux_factor = (upper_energy_ev - lower_energy_ev) * A', inplace=True)
             add_upper_lte_pop(dftransitions, vardict['Te'], ionpopdict[ionid], ltepartfunc, columnname='upper_pop_Te')
 
             for seriesindex, temperature in enumerate(temperature_list):
@@ -403,7 +405,7 @@ def main(args=None, argsraw=None, **kwargs):
 
                     popcolumnname = 'upper_pop_nlte'
                     dftransitions.eval(f'flux_factor_nlte = flux_factor * {popcolumnname}', inplace=True)
-                    dftransitions.eval(f'upper_departure = upper_pop_nlte / upper_pop_Te', inplace=True)
+                    dftransitions.eval('upper_departure = upper_pop_nlte / upper_pop_Te', inplace=True)
                     if ionid == (26, 2):
                         fe2depcoeff = dftransitions.query('upper == 16 and lower == 5').iloc[0].upper_departure
                     elif ionid == (28, 2):
