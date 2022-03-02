@@ -183,13 +183,13 @@ def add_derived_cols_to_modeldata(dfmodeldata, derived_cols, dimensions=None, t_
                                   modelpath=None):
     """add columns to modeldata using e.g. derived_cols = ('velocity', 'Ye')"""
     if dimensions == 3 and 'velocity' in derived_cols:
-        dfmodeldata['vel_x'] = dfmodeldata['pos_x'] / t_model_init_seconds
-        dfmodeldata['vel_y'] = dfmodeldata['pos_y'] / t_model_init_seconds
-        dfmodeldata['vel_z'] = dfmodeldata['pos_z'] / t_model_init_seconds
+        dfmodeldata['vel_x_min'] = dfmodeldata['pos_x'] / t_model_init_seconds
+        dfmodeldata['vel_y_min'] = dfmodeldata['pos_y'] / t_model_init_seconds
+        dfmodeldata['vel_z_min'] = dfmodeldata['pos_z'] / t_model_init_seconds
 
-        dfmodeldata['vel_x_outer'] = (dfmodeldata['pos_x'] + wid_init) / t_model_init_seconds
-        dfmodeldata['vel_y_outer'] = (dfmodeldata['pos_y'] + wid_init) / t_model_init_seconds
-        dfmodeldata['vel_z_outer'] = (dfmodeldata['pos_z'] + wid_init) / t_model_init_seconds
+        dfmodeldata['vel_x_max'] = (dfmodeldata['pos_x'] + wid_init) / t_model_init_seconds
+        dfmodeldata['vel_y_max'] = (dfmodeldata['pos_y'] + wid_init) / t_model_init_seconds
+        dfmodeldata['vel_z_max'] = (dfmodeldata['pos_z'] + wid_init) / t_model_init_seconds
 
         dfmodeldata['vel_x_mid'] = (dfmodeldata['pos_x'] + (0.5 * wid_init)) / t_model_init_seconds
         dfmodeldata['vel_y_mid'] = (dfmodeldata['pos_y'] + (0.5 * wid_init)) / t_model_init_seconds
