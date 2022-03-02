@@ -397,8 +397,8 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ionstage, i
             except KeyError:
                 continue
             for ionlevel in ionlevels:
-                populations[(timestep, ionlevel, mgi)] = (timesteppops.loc[timesteppops['level']
-                                                                      == ionlevel]['n_NLTE'].values[0])
+                populations[(timestep, ionlevel, mgi)] = (
+                    timesteppops.loc[timesteppops['level'] == ionlevel]['n_NLTE'].values[0])
                 # populationsLTE[(timestep, ionlevel)] = (timesteppops.loc[timesteppops['level']
                 #                                                          == ionlevel]['n_LTE'].values[0])
 
@@ -678,8 +678,8 @@ def main(args=None, argsraw=None, **kwargs):
         args.modelpath = [args.modelpath]
 
         # if not args.timedays:
-            # print("Please specify time range with -timedays")
-            # quit()
+        #     print("Please specify time range with -timedays")
+        #     quit()
         if not args.ionstages:
             print("Please specify ionstage")
             quit()

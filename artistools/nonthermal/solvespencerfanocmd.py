@@ -175,7 +175,7 @@ def main(args=None, argsraw=None, **kwargs):
         nntot = estim['populations']['total']
         nne = estim['nne']
         T_e = estim['Te']
-        print(f'WARNING: Use LTE pops at Te for now')
+        print('WARNING: Use LTE pops at Te for now')
         deposition_density_ev = estim['heating_dep'] / 1.6021772e-12  # convert erg to eV
         ionpopdict = estim['populations']
 

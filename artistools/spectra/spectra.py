@@ -536,7 +536,7 @@ def get_flux_contributions(
 
         if 'pol' in str(emissionfilename):
             print("This artis run contains polarisation data")
-            ## File contains I, Q and U and so times are repeated 3 times
+            # File contains I, Q and U and so times are repeated 3 times
             arr_tmid = np.array(arr_tmid.tolist() * 3)
 
         try:
@@ -677,7 +677,7 @@ def get_flux_contributions_from_packets(
                 return f'{at.get_ionstring(line.atomic_number, line.ionstage)} {upper_term_noj}'
             return f'{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound'
         elif emtype == -9999999:
-            return f'free-free'
+            return 'free-free'
 
         bflist = at.get_bflist(modelpath)
         bfindex = -emtype - 1
@@ -1066,8 +1066,8 @@ def write_flambda_spectra(modelpath, args):
 
             with open(outfilepath, 'w') as spec_file:
 
-                spec_file.write(f'#lambda f_lambda_1Mpc\n')
-                spec_file.write(f'#[A] [erg/s/cm2/A]\n')
+                spec_file.write('#lambda f_lambda_1Mpc\n')
+                spec_file.write('#[A] [erg/s/cm2/A]\n')
 
                 dfspectrum.to_csv(spec_file, header=False, sep=' ', index=False,
                                   columns=["lambda_angstroms", "f_lambda"])
@@ -1079,4 +1079,3 @@ def write_flambda_spectra(modelpath, args):
             time_list.write(f'{str(time)} \n')
 
     print(f'Saved in {outdirectory}')
-

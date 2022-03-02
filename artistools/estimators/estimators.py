@@ -402,4 +402,3 @@ def get_averageexcitation(modelpath, modelgridindex, timestep, atomic_number, io
             pass
 
     return energypopsum / ionpopsum
-
