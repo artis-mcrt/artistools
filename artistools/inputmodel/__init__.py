@@ -276,6 +276,7 @@ def save_modeldata(
         standardcols = ['inputcellid', 'posx', 'posy', 'posz', 'rho',  'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52',
                         'X_Cr48', 'X_Ni57', 'X_Co57']
 
+    dfmodel['inputcellid'] = dfmodel['inputcellid'].astype(int)
     customcols = [col for col in dfmodel.columns if col not in standardcols and col.startswith('X_')]
 
     # set missing radioabundance columns to zero
