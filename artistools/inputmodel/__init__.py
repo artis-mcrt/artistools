@@ -285,11 +285,11 @@ def save_modeldata(
 
     assert modelpath is not None or filename is not None
     if filename is None:
-        filename = 'model.txt'
+        modelfilepath = 'model.txt'
     if modelpath is not None:
         modelfilepath = Path(modelpath, filename)
     else:
-        filename = Path(modelpath, filename)
+        modelfilepath = filename
 
     with open(modelfilepath, 'w') as fmodel:
         fmodel.write(f'{len(dfmodeldata)}\n')
