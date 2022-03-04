@@ -32,7 +32,7 @@ def test_makemodel():
 
 def test_makemodel_energyfiles():
     at.inputmodel.makeartismodel.main(
-        argsraw=[], modelpath=outputpath, makeenergyinputfiles=True, modeldim=1, outputpath=outputpath)
+        argsraw=[], modelpath=modelpath, makeenergyinputfiles=True, modeldim=1, outputpath=outputpath)
 
 
 def test_make_empty_abundance_file():
