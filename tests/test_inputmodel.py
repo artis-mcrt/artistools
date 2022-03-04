@@ -47,14 +47,15 @@ def test_opacity_by_Ye_file():
 
 
 def test_save3Dmodel():
-    griddata = {'gridindex': [1, 2],
-                'posx': [1, 2],
-                'posy': [1, 2],
-                'posz': [1, 2],
-                'rho': [0, 2],
-                'cellYe': [0, 0.1]}
+    dfmodeldata = pd.DataFrame(
+        {'gridindex': [1, 2],
+         'posx': [1, 2],
+         'posy': [1, 2],
+         'posz': [1, 2],
+         'rho': [0, 2],
+         'cellYe': [0, 0.1]})
     tmodel = 100
     vmax = 1000
     at.inputmodel.save_modeldata(
-        modelpath=outputpath, dfmodeldata=griddata, t_model_init_days=tmodel,
+        modelpath=outputpath, dfmodeldata=dfmodeldata, t_model_init_days=tmodel,
         vmax=vmax, dimensions=3)
