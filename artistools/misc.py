@@ -686,6 +686,11 @@ def decode_roman_numeral(strin):
     return -1
 
 
+@np.vectorize
+def get_elsymbol(atomic_number):
+    return elsymbols[atomic_number]
+
+
 @lru_cache(maxsize=16)
 def get_ionstring(atomic_number, ionstage, spectral=True, nospace=False):
     if ionstage == 'ALL' or ionstage is None:

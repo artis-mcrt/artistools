@@ -47,8 +47,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
             'inputcellid', 'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48',
             'X_Ni57', 'X_Co57'])
     dfmodel.index.name = 'cellid'
-    dfabundances = pd.DataFrame(columns=['inputcellid', *['X_' + at.elsymbols[x] for x in range(1, 31)]])
-    dfabundances.index.name = 'cellid'
+    dfelabundances = pd.DataFrame(columns=['inputcellid', *['X_' + at.elsymbols[x] for x in range(1, 31)]])
+    dfelabundances.index.name = 'cellid'
 
     t_model_init_seconds = 10.
     t_model_init_days = t_model_init_seconds / 24 / 60 / 60
@@ -70,16 +70,16 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
         abundances = [0. for _ in range(31)]
 
-        X_fegroup = 0.
+        X_Fegroup = 0.
         for atomic_number in range(1, 31):
             abundances[atomic_number] = sum([float(shell[species]) for species in isotopesofelem[atomic_number]])
             if atomic_number >= 26:
-                X_fegroup += abundances[atomic_number]
+                X_Fegroup += abundances[atomic_number]
 
-        radioabundances = [X_fegroup, shell.ni56, shell.co56, shell.fe52, shell.cr48, shell.ni57, shell.co57]
+        radioabundances = [X_Fegroup, shell.ni56, shell.co56, shell.fe52, shell.cr48, shell.ni57, shell.co57]
 
         dfmodel.loc[cellid] = [cellid, v_outer, math.log10(rho), *radioabundances]
-        dfabundances.loc[cellid] = [cellid, *abundances[1:31]]
+        dfelabundances.loc[cellid] = [cellid, *abundances[1:31]]
 
         v_inner = v_outer
         m_enc_inner = m_enc_outer
@@ -88,7 +88,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     print(f'M_Ni56 = {tot_ni56mass /  u.solMass.to("g"):.3f} solMass')
 
     at.save_modeldata(dfmodel, t_model_init_days, os.path.join(args.outputpath, 'model.txt'))
-    at.inputmodel.save_initialabundances(dfabundances, os.path.join(args.outputpath, 'abundances.txt'))
+    at.inputmodel.save_initialabundances(dfelabundances, os.path.join(args.outputpath, 'abundances.txt'))
 
 
 if __name__ == "__main__":

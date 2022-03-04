@@ -68,8 +68,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     dfmodel = pd.DataFrame(
         columns=['inputcellid', 'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48'])
     dfmodel.index.name = 'cellid'
-    dfabundances = pd.DataFrame(columns=['inputcellid', *['X_' + at.elsymbols[x] for x in range(1, 31)]])
-    dfabundances.index.name = 'cellid'
+    dfelabundances = pd.DataFrame(columns=['inputcellid', *['X_' + at.elsymbols[x] for x in range(1, 31)]])
+    dfelabundances.index.name = 'cellid'
 
     fixed_points = [v_transition, v_ni56]
     regular_points = [v for v in np.arange(0, 14500, 1000)[1:] if min_dist(fixed_points, v) > 200]
@@ -93,7 +93,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
             abundances[20] = 0.01
 
         dfmodel.loc[cellid] = [cellid + 1, v_outer, math.log10(rho), *radioabundances]
-        dfabundances.loc[cellid] = [cellid + 1, *abundances[1:31]]
+        dfelabundances.loc[cellid] = [cellid + 1, *abundances[1:31]]
         r_inner, r_outer = [(v * u.km / u.s * t200 * 200 * u.day).to('cm').value for v in [v_inner, v_outer]]
 
         vol_shell = 4 * math.pi / 3 * (r_outer ** 3 - r_inner ** 3)
@@ -104,7 +104,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     print(f'M_tot = {m_tot:.3f} solMass')
 
     at.inputmodel.save_modeldata(dfmodel, t_model_init_days, os.path.join(args.outputpath, 'model.txt'))
-    at.inputmodel.save_initialabundances(dfabundances, os.path.join(args.outputpath, 'abundances.txt'))
+    at.inputmodel.save_initialabundances(dfelabundances, os.path.join(args.outputpath, 'abundances.txt'))
 
 
 if __name__ == "__main__":

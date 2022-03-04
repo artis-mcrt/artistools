@@ -31,7 +31,8 @@ def test_makemodel():
 
 
 def test_makemodel_energyfiles():
-    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=outputpath, makeenergyinputfiles=True, modeldim=1, outputpath=outputpath)
+    at.inputmodel.makeartismodel.main(
+        argsraw=[], modelpath=outputpath, makeenergyinputfiles=True, modeldim=1, outputpath=outputpath)
 
 
 def test_make_empty_abundance_file():
@@ -54,4 +55,6 @@ def test_save3Dmodel():
                 'cellYe': [0, 0.1]}
     tmodel = 100
     vmax = 1000
-    at.inputmodel.save_3d_modeldata(outputpath, griddata, tmodel, vmax, radioactives=False)
+    at.inputmodel.save_modeldata(
+        modelpath=outputpath, dfmodeldata=griddata, t_model_init_seconds=tmodel,
+        vmax=vmax, dimensions=3)

@@ -41,7 +41,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     dfmodeldata, t_model_init_days, _ = at.inputmodel.get_modeldata(args.inputpath)
     print('Read model.txt')
-    dfabundances = at.inputmodel.get_initialabundances(args.inputpath)
+    dfelabundances = at.inputmodel.get_initialabundances(args.inputpath)
     print('Read abundances.txt')
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
@@ -49,7 +49,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     eval_mshell(dfmodeldata, t_model_init_seconds)
 
     print(dfmodeldata)
-    print(dfabundances)
+    print(dfelabundances)
 
     model_mass_grams = dfmodeldata.shellmass_grams.sum()
     print(f"model mass: {model_mass_grams * u.g.to('solMass'):.3f} Msun")
@@ -59,21 +59,21 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         print(f"{column_name:>13s}: {global_massfrac:.3f}  ({integrated_mass_grams * u.g.to('solMass'):.3f} Msun)")
         dfmodeldata.eval(f'{column_name} = {global_massfrac}', inplace=True)
 
-    for column_name in [x for x in dfabundances.columns if x.startswith('X_')]:
-        integrated_mass_grams = (dfabundances[column_name] * dfmodeldata.shellmass_grams).sum()
+    for column_name in [x for x in dfelabundances.columns if x.startswith('X_')]:
+        integrated_mass_grams = (dfelabundances[column_name] * dfmodeldata.shellmass_grams).sum()
         global_massfrac = integrated_mass_grams / model_mass_grams
         print(f"{column_name:>13s}: {global_massfrac:.3f}  ({integrated_mass_grams * u.g.to('solMass'):.3f} Msun)")
-        dfabundances.eval(f'{column_name} = {global_massfrac}', inplace=True)
+        dfelabundances.eval(f'{column_name} = {global_massfrac}', inplace=True)
 
     print(dfmodeldata)
-    print(dfabundances)
+    print(dfelabundances)
 
     modeloutfilename = "model_fullymixed.txt"
     at.save_modeldata(dfmodeldata, t_model_init_days, Path(args.outputpath, modeloutfilename))
     print(f'Saved {modeloutfilename}')
 
     abundoutfilename = "abundances_fullymixed.txt"
-    at.inputmodel.save_initialabundances(dfabundances, Path(args.outputpath, abundoutfilename))
+    at.inputmodel.save_initialabundances(dfelabundances, Path(args.outputpath, abundoutfilename))
     print(f'Saved {abundoutfilename}')
 
 

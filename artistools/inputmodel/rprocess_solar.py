@@ -98,9 +98,9 @@ def main(args=None, argsraw=None, **kwargs):
         dictelemabund[f'X_{at.elsymbols[atomic_number]}'] = (
             dfsolarabund_undecayed.query('Z == @atomic_number', inplace=False).massfrac.sum())
 
-    dfabundances = pd.DataFrame([dict(inputcellid=mgi + 1, **dictelemabund) for mgi in range(cellcount)])
-    # print(dfabundances)
-    at.inputmodel.save_initialabundances(dfabundances=dfabundances, abundancefilename=args.outputpath)
+    dfelabundances = pd.DataFrame([dict(inputcellid=mgi + 1, **dictelemabund) for mgi in range(cellcount)])
+    # print(dfelabundances)
+    at.inputmodel.save_initialabundances(dfelabundances=dfelabundances, abundancefilename=args.outputpath)
 
     # write model.txt
 

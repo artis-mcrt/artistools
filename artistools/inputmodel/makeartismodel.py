@@ -66,21 +66,31 @@ def main(args=None, argsraw=None, **kwargs):
 
     if args.makemodelfromgriddata:
         print(args)
-        griddata, t_model, vmax = at.inputmodel.modelfromhydro.read_griddat_file(args.pathtogriddata)
+        dfmodeldata, t_model_days, vmax = at.inputmodel.modelfromhydro.read_griddat_file(args.pathtogriddata)
 
         if args.fillcentralhole:
-            griddata = at.inputmodel.modelfromhydro.add_mass_to_center(griddata, t_model, vmax, args)
+            dfmodeldata = at.inputmodel.modelfromhydro.add_mass_to_center(dfmodeldata, t_model_days, vmax, args)
 
         if args.getcellopacityfromYe:
-            at.inputmodel.opacityinputfile.opacity_by_Ye(args.modelpath[0], griddata)
-        if 'cellYe' in griddata:
-            at.inputmodel.opacityinputfile.write_Ye_file(args.modelpath[0], griddata)
-        if 'Q' in griddata:
-            at.inputmodel.energyinputfiles.write_Q_energy_file(args.modelpath[0], griddata)
+            at.inputmodel.opacityinputfile.opacity_by_Ye(args.modelpath[0], dfmodeldata)
+        if 'cellYe' in dfmodeldata:
+            at.inputmodel.opacityinputfile.write_Ye_file(args.modelpath[0], dfmodeldata)
+        if 'Q' in dfmodeldata:
+            at.inputmodel.energyinputfiles.write_Q_energy_file(args.modelpath[0], dfmodeldata)
 
-        at.inputmodel.save_3d_modeldata(args.modelpath[0], griddata, t_model=t_model, vmax=vmax, radioactives=False)
-        ngrid = len(griddata['rho'])
-        at.inputmodel.save_empty_abundance_file(ngrid)
+        if Path(args.pathtogriddata, 'gridcontributions.txt').is_file():
+            print('found gridcontributions.txt. Adding abundances... (will be slow)')
+            dfmodeldata, dfelabundances = at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
+                gridcontribpath=args.pathtogriddata, dfmodeldata=dfmodeldata, t_model_days=t_model_days)
+            print('Writing to abundances.txt...')
+            at.inputmodel.save_initialabundances(dfelabundances=dfelabundances, abundancefilename=args.pathtogriddata)
+        else:
+            ngrid = len(dfmodeldata['rho'])
+            at.inputmodel.save_empty_abundance_file(ngrid)
+
+        print('Writing to model.txt...')
+        at.inputmodel.save_modeldata(
+            modelpath=args.modelpath[0], dfmodeldata=dfmodeldata, t_model_init_days=t_model_days, dimensions=3, vmax=vmax)
 
     if args.makeenergyinputfiles:
         model, t_model, vmax = at.inputmodel.get_modeldata(args.modelpath[0])
