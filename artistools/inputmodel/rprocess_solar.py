@@ -129,7 +129,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     dfmodel = pd.DataFrame(modeldata)
     # print(dfmodel)
-    at.inputmodel.save_modeldata(dfmodel, t_model_init_days, Path(args.outputpath, 'model.txt'))
+    at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, modelpath=Path(args.outputpath))
 
 
 if __name__ == "__main__":

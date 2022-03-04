@@ -30,25 +30,25 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    dfmodeldata, t_model_init_days, _ = artistools.inputmodel.get_modeldata(args.inputfile, get_abundances=args.getabundances)
+    dfmodel, t_model_init_days, _ = artistools.inputmodel.get_modeldata(args.inputfile, get_abundances=args.getabundances)
     print(f'Read {args.inputfile}')
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
     print(f'Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)')
 
-    if 'velocity_outer' in dfmodeldata.columns:
-        vmax = dfmodeldata['velocity_outer'].max()
-        print(f'Model contains {len(dfmodeldata)} 1D spherical shells with vmax = {vmax} km/s')
+    if 'velocity_outer' in dfmodel.columns:
+        vmax = dfmodel['velocity_outer'].max()
+        print(f'Model contains {len(dfmodel)} 1D spherical shells with vmax = {vmax} km/s')
     else:
         assert False   # 3D mode not implemented yet
 
-    mass_msun = dfmodeldata['shellmass_grams'].sum() / 1.989e33
+    mass_msun = dfmodel['shellmass_grams'].sum() / 1.989e33
     print(f'M_{"tot":8s} {mass_msun:7.4f} Msun')
     speciesmasses = {}
-    for column in dfmodeldata.columns:
+    for column in dfmodel.columns:
         if column.startswith('X_'):
             species = column.replace('X_', '')
-            speciesmasses[species] = np.dot(dfmodeldata[column], dfmodeldata['shellmass_grams'])
+            speciesmasses[species] = np.dot(dfmodel[column], dfmodel['shellmass_grams'])
 
     for species, mass_g in speciesmasses.items():
         mass_msun = mass_g / 1.989e33

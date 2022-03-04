@@ -50,19 +50,19 @@ def get_trajectory_nuc_abund(particleid, memberfilename):
     return dfnucabund, t_model_init_seconds
 
 
-def add_abundancecontributions(gridcontribpath, dfmodeldata, t_model_days):
+def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
     """ contribute trajectory network calculation abundances to model cell abundances """
 
-    cellcount = len(dfmodeldata)
+    cellcount = len(dfmodel)
 
     t_model_s = t_model_days * 86400
-    if 'X_Fegroup' not in dfmodeldata.columns:
-        dfmodeldata = pd.concat([dfmodeldata, pd.DataFrame({'X_Fegroup': np.ones(cellcount)})], axis=1)
+    if 'X_Fegroup' not in dfmodel.columns:
+        dfmodel = pd.concat([dfmodel, pd.DataFrame({'X_Fegroup': np.ones(cellcount)})], axis=1)
 
     dfcontribs = pd.read_csv(Path(gridcontribpath, 'gridcontributions.txt'), delim_whitespace=True,
                              dtype={0: int, 1: int, 2: float})
 
-    dfelabundances = pd.DataFrame({'inputcellid': dfmodeldata.gridindex})
+    dfelabundances = pd.DataFrame({'inputcellid': dfmodel.gridindex})
     # dfcontribs = dfcontribs[:10]  # TODO: REMOVE!
     particleids = dfcontribs.particleid.unique()
     particle_count = len(particleids)
@@ -99,10 +99,10 @@ def add_abundancecontributions(gridcontribpath, dfmodeldata, t_model_days):
         print(f' contributing {len(dfnucabund)} abundances to {len(dfthisparticlecontribs)} cells')
 
         for contrib in dfthisparticlecontribs.itertuples():
-            newmodelcols = [colname for colname in dfnucabund.abundcolname.values if colname not in dfmodeldata.columns]
+            newmodelcols = [colname for colname in dfnucabund.abundcolname.values if colname not in dfmodel.columns]
             if newmodelcols:
                 dfabundcols = pd.DataFrame({colname: np.zeros(cellcount) for colname in newmodelcols})
-                dfmodeldata = pd.concat([dfmodeldata, dfabundcols], axis=1)
+                dfmodel = pd.concat([dfmodel, dfabundcols], axis=1)
 
             elemabundcols = [f'X_{at.get_elsymbol(Z)}' for Z in dfnucabund.Z]
             newelemabundcols = [colname for colname in elemabundcols if colname not in dfelabundances.columns]
@@ -111,12 +111,12 @@ def add_abundancecontributions(gridcontribpath, dfmodeldata, t_model_days):
                 dfelabundances = pd.concat([dfelabundances, dfabundcols], axis=1)
 
             for _, Z, abundcolname, massfrac in dfnucabund[['Z', 'abundcolname', 'massfrac']].itertuples():
-                dfmodeldata.at[contrib.cellindex - 1, abundcolname] += massfrac * contrib.frac_of_cellmass
+                dfmodel.at[contrib.cellindex - 1, abundcolname] += massfrac * contrib.frac_of_cellmass
                 dfelabundances.at[contrib.cellindex - 1, f'X_{at.get_elsymbol(Z)}'] += massfrac * contrib.frac_of_cellmass
 
-            # assert contrib.cellindex == dfmodeldata.at[contrib.cellindex - 1, 'gridindex']
+            # assert contrib.cellindex == dfmodel.at[contrib.cellindex - 1, 'gridindex']
 
-    return dfmodeldata, dfelabundances
+    return dfmodel, dfelabundances
 
 
 def addargs(parser):

@@ -47,7 +47,7 @@ def test_opacity_by_Ye_file():
 
 
 def test_save3Dmodel():
-    dfmodeldata = pd.DataFrame(
+    dfmodel = pd.DataFrame(
         {'gridindex': [1, 2],
          'posx': [1, 2],
          'posy': [1, 2],
@@ -57,5 +57,5 @@ def test_save3Dmodel():
     tmodel = 100
     vmax = 1000
     at.inputmodel.save_modeldata(
-        modelpath=outputpath, dfmodeldata=dfmodeldata, t_model_init_days=tmodel,
+        modelpath=outputpath, dfmodel=dfmodel, t_model_init_days=tmodel,
         vmax=vmax, dimensions=3)
