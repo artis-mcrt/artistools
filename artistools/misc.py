@@ -686,7 +686,6 @@ def decode_roman_numeral(strin):
     return -1
 
 
-@np.vectorize
 def get_elsymbol(atomic_number):
     return elsymbols[atomic_number]
 
