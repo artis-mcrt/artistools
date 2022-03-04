@@ -135,8 +135,8 @@ def main():
     # modelpath = Path(rundir, 'kilonova_rprocesstraj_testalphameantomweight')
     modelpath = Path(rundir, 'kilonova_rprocesstraj_testalphameanatomweight_redoqdot')
 
-    dfmodeldata, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath)
-    rho_init_cgs = 10 ** dfmodeldata.iloc[0].logrho
+    dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath)
+    rho_init_cgs = 10 ** dfmodel.iloc[0].logrho
     MH = 1.67352e-24  # g
 
     arr_time_artis = []

@@ -46,8 +46,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         columns=['inputcellid', 'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56', 'X_Co56',
                  'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57'])
     dfmodel.index.name = 'cellid'
-    dfabundances = pd.DataFrame(columns=['inputcellid', *['X_' + at.elsymbols[x] for x in range(1, 31)]])
-    dfabundances.index.name = 'cellid'
+    dfelabundances = pd.DataFrame(columns=['inputcellid', *['X_' + at.get_elsymbol(x) for x in range(1, 31)]])
+    dfelabundances.index.name = 'cellid'
 
     t_model_init_seconds = datain_structure['rad / cm'].iloc[0] / datain_structure['vel / cm/s'].iloc[0]
     t_model_init_days = t_model_init_seconds / 24 / 60 / 60
@@ -85,14 +85,14 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         radioabundances = [X_fegroup, shell.Ni56, shell.Co56, shell.Fe52, shell.Cr48, shell.Ni57, shell.Co57]
 
         dfmodel.loc[cellid] = [cellid, v_outer, math.log10(rho), *radioabundances]
-        dfabundances.loc[cellid] = [cellid, *abundances[1:31]]
+        dfelabundances.loc[cellid] = [cellid, *abundances[1:31]]
 
     print(f'M_tot  = {tot_mass /  u.solMass.to("g"):.3f} solMass (from sum of specified shell masses)')
     print(f'M_tot  = {tot_mass2 /  u.solMass.to("g"):.3f} solMass (from sum of element densities)')
     print(f'M_Ni56 = {tot_ni56mass /  u.solMass.to("g"):.3f} solMass')
 
     at.save_modeldata(dfmodel, t_model_init_days, Path(args.outputpath, 'model.txt'))
-    at.inputmodel.save_initialabundances(dfabundances, Path(args.outputpath, 'abundances.txt'))
+    at.inputmodel.save_initialabundances(dfelabundances, Path(args.outputpath, 'abundances.txt'))
 
 
 if __name__ == "__main__":

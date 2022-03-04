@@ -25,8 +25,8 @@ def addargs(parser):
                         help='Path of output model file')
 
 
-def eval_mshell(dfmodeldata, t_model_init_seconds):
-    dfmodeldata.eval('shellmass_grams = 10 ** logrho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)'
+def eval_mshell(dfmodel, t_model_init_seconds):
+    dfmodel.eval('shellmass_grams = 10 ** logrho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)'
                      '* (1e5 * @t_model_init_seconds) ** 3', inplace=True)
 
 
@@ -40,14 +40,14 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    dfmodeldata, t_model_init_days, _ = at.inputmodel.get_modeldata(args.inputfile)
+    dfmodel, t_model_init_days, _ = at.inputmodel.get_modeldata(args.inputfile)
     print(f'Read {args.inputfile}')
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
 
-    eval_mshell(dfmodeldata, t_model_init_seconds)
+    eval_mshell(dfmodel, t_model_init_seconds)
 
-    print(dfmodeldata)
+    print(dfmodel)
 
     assert (args.kescale is None) != (args.velscale is None)  # kescale or velscale must be specfied
 
@@ -60,20 +60,20 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     print(f"Applying velocity factor of {velscale} (kinetic energy factor {kescale}) and conserving shell masses")
 
-    dfmodeldata.velocity_inner *= velscale
-    dfmodeldata.velocity_outer *= velscale
+    dfmodel.velocity_inner *= velscale
+    dfmodel.velocity_outer *= velscale
 
-    dfmodeldata.eval('logrho = log10(shellmass_grams / ('
+    dfmodel.eval('logrho = log10(shellmass_grams / ('
                      '4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)'
                      ' * (1e5 * @t_model_init_seconds) ** 3))', inplace=True)
 
-    eval_mshell(dfmodeldata, t_model_init_seconds)
+    eval_mshell(dfmodel, t_model_init_seconds)
 
-    print(dfmodeldata)
+    print(dfmodel)
 
     outputfile = args.outputfile.format(velscale=velscale, kescale=kescale)
 
-    at.inputmodel.save_modeldata(dfmodeldata, t_model_init_days, outputfile)
+    at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, filename=outputfile)
     print(f'Saved {outputfile}')
 
 

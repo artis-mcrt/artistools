@@ -161,10 +161,10 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
                     try:
                         ion_stage = int(ion_stage_str.rstrip(':'))
                     except ValueError:
-                        if variablename == 'populations' and ion_stage_str.startswith(at.elsymbols[atomic_number]):
+                        if variablename == 'populations' and ion_stage_str.startswith(at.get_elsymbol(atomic_number)):
                             estimblock[variablename][ion_stage_str.rstrip(':')] = float(value)
                         else:
-                            print(ion_stage_str, at.elsymbols[atomic_number])
+                            print(ion_stage_str, at.get_elsymbol(atomic_number))
                             print(f'Cannot parse row: {row}')
                         continue
 

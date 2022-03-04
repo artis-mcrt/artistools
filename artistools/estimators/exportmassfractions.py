@@ -56,7 +56,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
             massfracsum = 0.
             for atomic_number in massfracs.keys():
                 massfracsum += massfracs[atomic_number]
-                fout.write(f'{atomic_number} {at.elsymbols[atomic_number]} {massfracs[atomic_number]}\n')
+                fout.write(f'{atomic_number} {at.get_elsymbol(atomic_number)} {massfracs[atomic_number]}\n')
 
             assert np.isclose(massfracsum, 1.0)
 
