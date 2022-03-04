@@ -49,8 +49,6 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
-    gridcelltuple = None
-    velocity_inner = 0.
     with artistools.zopen(filename, 'rt') as fmodel:
         gridcellcount = int(artistools.readnoncommentline(fmodel))
         t_model_init_days = float(artistools.readnoncommentline(fmodel))
