@@ -15,7 +15,7 @@ import artistools as at
 def get_elemabund_from_nucabund(dfnucabund):
     dictelemabund = {}
     for atomic_number in range(1, dfnucabund.Z.max() + 1):
-        dictelemabund[f'X_{at.elsymbols[atomic_number]}'] = (
+        dictelemabund[f'X_{at.get_elsymbol(atomic_number)}'] = (
             dfnucabund.query('Z == @atomic_number', inplace=False).massfrac.sum())
     return dictelemabund
 
@@ -192,7 +192,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     for _, row in dfnucabund.query('radioactive == True').iterrows():
         A = row.N + row.Z
-        rowdict[f'X_{at.elsymbols[row.Z]}{A}'] = row.massfrac
+        rowdict[f'X_{at.get_elsymbol(row.Z)}{A}'] = row.massfrac
 
     modeldata = []
     for mgi, densityrow in dfdensities.iterrows():

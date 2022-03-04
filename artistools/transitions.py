@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 import argparse
-import glob
+# import glob
 import math
 import multiprocessing
-import re
+# import re
 from collections import namedtuple
 from pathlib import Path
 
@@ -102,7 +102,8 @@ def generate_ion_spectrum(transitions, xvalues, popcolumn, plot_resolution, args
     return yvalues
 
 
-def make_plot(xvalues, yvalues, temperature_list, vardict, ionlist, ionpopdict, xmin, xmax, figure_title, outputfilename):
+def make_plot(
+        xvalues, yvalues, temperature_list, vardict, ionlist, ionpopdict, xmin, xmax, figure_title, outputfilename):
     # npanels = len(ionlist) + 1
     npanels = len(ionlist)
 
@@ -137,7 +138,7 @@ def make_plot(xvalues, yvalues, temperature_list, vardict, ionlist, ionpopdict, 
             peak_y_value = max(peak_y_value, max(yvalues_combined[seriesindex]))
 
     axislabels = [
-        f'{at.elsymbols[Z]} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[(Z, ion_stage)]:.1e}/cm3)'
+        f'{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[(Z, ion_stage)]:.1e}/cm3)'
         for (Z, ion_stage) in ionlist]
     axislabels += ['Total']
 
@@ -360,7 +361,7 @@ def main(args=None, argsraw=None, **kwargs):
         else:
             dftransitions = ion.transitions
 
-        print(f'\n======> {at.elsymbols[ion.Z]} {at.roman_numerals[ion.ion_stage]:3s} '
+        print(f'\n======> {at.get_elsymbol(ion.Z)} {at.roman_numerals[ion.ion_stage]:3s} '
               f'(pop={ionpopdict[ionid]:.2e} / cm3, {len(dftransitions):6d} transitions)')
 
         if not args.include_permitted and not dftransitions.empty:
@@ -373,7 +374,8 @@ def main(args=None, argsraw=None, **kwargs):
                 dftransitions.eval('lower_energy_ev = @ion.levels.loc[lower].energy_ev.values', inplace=True)
                 dftransitions.eval('lambda_angstroms = @hc / (upper_energy_ev - lower_energy_ev)', inplace=True)
 
-            dftransitions.query('lambda_angstroms >= @plot_xmin_wide & lambda_angstroms <= @plot_xmax_wide', inplace=True)
+            dftransitions.query('lambda_angstroms >= @plot_xmin_wide & lambda_angstroms <= @plot_xmax_wide',
+                                inplace=True)
 
             dftransitions.sort_values(by='lambda_angstroms', inplace=True)
 
@@ -433,7 +435,9 @@ def main(args=None, argsraw=None, **kwargs):
 
         if args.print_lines:
             print(dftransitions.columns)
-            print(dftransitions[['lower', 'upper', 'forbidden', 'A', 'lambda_angstroms', 'flux_factor_upper_pop_lte_3000K']].to_string(index=False))
+            print(dftransitions[[
+                'lower', 'upper', 'forbidden', 'A', 'lambda_angstroms', 'flux_factor_upper_pop_lte_3000K']].to_string(
+                    index=False))
     print()
 
     if from_model:
@@ -441,17 +445,19 @@ def main(args=None, argsraw=None, **kwargs):
 
         def get_strionfracs(atomic_number, ionstages):
             est_ionfracs = [
-                estimators['populations'][(atomic_number, ionstage)] / estimators['populations'][atomic_number] for ionstage in ionstages]
+                estimators['populations'][(atomic_number, ionstage)] / estimators['populations'][atomic_number]
+                for ionstage in ionstages]
             ionfracs_str = ' '.join([f'{pop:6.0e}' if pop < 0.01 else f'{pop:6.2f}' for pop in est_ionfracs])
             strions = ' '.join(
-                [f'{at.elsymbols[atomic_number]}{at.roman_numerals[ionstage]}'.rjust(6) for ionstage in feions])
+                [f'{at.get_elsymbol(atomic_number)}{at.roman_numerals[ionstage]}'.rjust(6) for ionstage in feions])
             return strions, ionfracs_str
 
         strfeions, est_fe_ionfracs_str = get_strionfracs(26, [2, 3])
 
         strniions, est_ni_ionfracs_str = get_strionfracs(28, [2, 3])
 
-        print(f'                     Fe II 7155             Ni II 7378  {strfeions}   /  {strniions}      T_e    Fe III/II       Ni III/II')
+        print(f'                     Fe II 7155             Ni II 7378  {strfeions}   /  {strniions}'
+              '      T_e    Fe III/II       Ni III/II')
 
         print(f'{velocity:5.0f} km/s({modelgridindex})      {fe2depcoeff:5.2f}                   '
               f'{ni2depcoeff:.2f}        '
@@ -464,7 +470,8 @@ def main(args=None, argsraw=None, **kwargs):
     else:
         outputfilename = 'plottransitions.pdf'
 
-    make_plot(xvalues, yvalues, temperature_list, vardict, ionlist, ionpopdict, args.xmin, args.xmax, figure_title, outputfilename)
+    make_plot(xvalues, yvalues, temperature_list, vardict, ionlist,
+              ionpopdict, args.xmin, args.xmax, figure_title, outputfilename)
 
 
 if __name__ == "__main__":

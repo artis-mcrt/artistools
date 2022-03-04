@@ -358,7 +358,11 @@ def get_initialabundances(modelpath):
 
 
 def save_initialabundances(dfelabundances, abundancefilename):
-    """Save a DataFrame (same format as get_initialabundances) to abundances.txt."""
+    """Save a DataFrame (same format as get_initialabundances) to abundances.txt.
+        columns must be:
+            - inputcellid: integer index to match model.txt (starting from 1)
+            - X_El: mass fraction of element with two-letter code 'El' (e.g., X_H, X_He, H_Li, ...)
+    """
     if Path(abundancefilename).is_dir():
         abundancefilename = Path(abundancefilename) / 'abundances.txt'
     dfelabundances['inputcellid'] = dfelabundances['inputcellid'].astype(int)
@@ -372,7 +376,6 @@ def save_initialabundances(dfelabundances, abundancefilename):
             for colname in elcolnames:
                 fabund.write(f' {getattr(row, colname, 0.):.3e}')
 
-    # dfelabundances.to_csv(abundancefilename, header=False, sep=' ', index=False)
     print(f'Saved {abundancefilename}')
 
 

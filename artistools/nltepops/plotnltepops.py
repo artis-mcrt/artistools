@@ -41,7 +41,7 @@ def annotate_emission_line(ax, y, upperlevel, lowerlevel, label):
 def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, dfpopthision, args, annotatelines):
     nne, Te, TR, W = [estimators_celltimestep[s] for s in ['nne', 'Te', 'TR', 'W']]
     # comparison to Chianti file
-    elsym = at.elsymbols[atomic_number]
+    elsym = at.get_elsymbol(atomic_number)
     elsymlower = elsym.lower()
     if Path('data', f'{elsymlower}_{ion_stage}-levelmap.txt').exists():
         # ax.set_ylim(bottom=2e-3)
@@ -162,7 +162,7 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
     elif args.x == 'none':
         ax.set_xticklabels('' for _ in configtexlist)
 
-    print(f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} has a summed '
+    print(f'{at.get_elsymbol(atomic_number)} {at.roman_numerals[ion_stage]} has a summed '
           f'level population of {ionpopulation:.1f} (from estimator file ion pop = {ionpopulation_fromest})')
 
     if args.departuremode:
@@ -465,7 +465,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         mgilastaxindex = mgilistindex + len(ion_stage_list) - 1
 
         estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
-        elsymbol = at.elsymbols[atomic_number]
+        elsymbol = at.get_elsymbol(atomic_number)
         print(f'Plotting NLTE pops for {modelname} modelgridindex {modelgridindex}, '
               f'timestep {timestep} (t={time_days}d)')
         print(f'Z={atomic_number} {elsymbol}')
@@ -552,7 +552,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         axes[-1].set_xlabel(r'Level index')
 
     outputfilename = str(args.outputfile).format(
-        elsymbol=at.elsymbols[atomic_number], cell=modelgridindex,
+        elsymbol=at.get_elsymbol(atomic_number), cell=modelgridindex,
         timestep=timestep, time_days=time_days)
     fig.savefig(str(outputfilename), format='pdf')
     print(f"Saved {outputfilename}")
@@ -732,7 +732,7 @@ def main(args=None, argsraw=None, **kwargs):
     for el_in in args.elements:
         try:
             atomic_number = int(el_in)
-            elsymbol = at.elsymbols[atomic_number]
+            elsymbol = at.get_elsymbol(atomic_number)
         except ValueError:
             try:
                 elsymbol = el_in

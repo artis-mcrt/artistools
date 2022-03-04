@@ -95,7 +95,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     dictelemabund = {}
     for atomic_number in range(1, dfsolarabund_undecayed.Z.max() + 1):
-        dictelemabund[f'X_{at.elsymbols[atomic_number]}'] = (
+        dictelemabund[f'X_{at.get_elsymbol(atomic_number)}'] = (
             dfsolarabund_undecayed.query('Z == @atomic_number', inplace=False).massfrac.sum())
 
     dfelabundances = pd.DataFrame([dict(inputcellid=mgi + 1, **dictelemabund) for mgi in range(cellcount)])

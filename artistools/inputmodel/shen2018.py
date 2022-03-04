@@ -47,7 +47,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
             'inputcellid', 'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48',
             'X_Ni57', 'X_Co57'])
     dfmodel.index.name = 'cellid'
-    dfelabundances = pd.DataFrame(columns=['inputcellid', *['X_' + at.elsymbols[x] for x in range(1, 31)]])
+    dfelabundances = pd.DataFrame(columns=['inputcellid', *['X_' + at.get_elsymbol(x) for x in range(1, 31)]])
     dfelabundances.index.name = 'cellid'
 
     t_model_init_seconds = 10.
