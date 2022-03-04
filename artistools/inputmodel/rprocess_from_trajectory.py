@@ -96,7 +96,7 @@ def add_abundancecontributions(gridcontribpath, dfmodeldata, t_model_days):
         print(f'    grid snapshot: {t_model_s:.2e} seconds')
         print(f' network timestep: {traj_time_s:.2e} seconds (timestep {nts})')
         assert np.isclose(t_model_s, traj_time_s, rtol=0.7, atol=1)
-        print(f' contributing abundances to {len(dfthisparticlecontribs)} cells')
+        print(f' contributing {len(dfnucabund)} abundances to {len(dfthisparticlecontribs)} cells')
 
         for contrib in dfthisparticlecontribs.itertuples():
             newmodelcols = [colname for colname in dfnucabund.abundcolname.values if colname not in dfmodeldata.columns]

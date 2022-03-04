@@ -56,5 +56,5 @@ def test_save3Dmodel():
     tmodel = 100
     vmax = 1000
     at.inputmodel.save_modeldata(
-        modelpath=outputpath, dfmodeldata=griddata, t_model_init_seconds=tmodel,
+        modelpath=outputpath, dfmodeldata=griddata, t_model_init_days=tmodel,
         vmax=vmax, dimensions=3)
