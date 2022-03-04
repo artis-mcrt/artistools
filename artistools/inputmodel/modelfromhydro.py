@@ -21,7 +21,7 @@ def read_ejectasnapshot(pathtosnapshot):
     return ejectasnapshot
 
 
-def get_snapshot_time(pathtogriddata):
+def get_snapshot_time_geomunits(pathtogriddata):
     import glob
 
     snapshotinfofile = glob.glob(str(Path(pathtogriddata) / "*_info.dat*"))
@@ -38,7 +38,8 @@ def get_snapshot_time(pathtogriddata):
         with open(snapshotinfofile, "r") as fsnapshotinfo:
             line1 = fsnapshotinfo.readline()
             simulation_end_time_geomunits = float(line1.split()[2])
-            print(f"Found simulation snapshot time to be {simulation_end_time_geomunits}")
+            print(f'Found simulation snapshot time to be {simulation_end_time_geomunits} '
+                  f'({simulation_end_time_geomunits * 4.926e-6} s)')
 
     else:
         print("Could not find snapshot info file to get simulation time")
@@ -51,7 +52,7 @@ def read_griddat_file(pathtogriddata):
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
 
     # Get simulation time for ejecta snapshot
-    simulation_end_time_geomunits = get_snapshot_time(pathtogriddata)
+    simulation_end_time_geomunits = get_snapshot_time_geomunits(pathtogriddata)
 
     griddata = pd.read_csv(griddatfilepath, delim_whitespace=True, comment='#', skiprows=3)
     # griddata in geom units
@@ -78,18 +79,18 @@ def read_griddat_file(pathtogriddata):
         xmax = abs(float(gridfile.readline().split()[0]))
         xmax = (xmax * factor_position) * (u.km).to(u.cm)
 
-    t_model = (simulation_end_time_geomunits + extratime_geomunits) * 4.926e-6  # in seconds
-    vmax = xmax / t_model  # cm/s
+    t_model_sec = (simulation_end_time_geomunits + extratime_geomunits) * 4.926e-6  # in seconds
+    vmax = xmax / t_model_sec  # cm/s
 
-    t_model = t_model / (24. * 3600)  # in days
-    print("t_model in days", t_model)
+    t_model_days = t_model_sec / (24. * 3600)  # in days
+    print(f"t_model in days {t_model_days} ({t_model_sec} s)")
 
     print("Ignoring cells with < 10 tracer particles")
     griddata.loc[griddata.tracercount < 10, ['rho', 'cellYe']] = 0, 0
 
     print(f"Max tracers in a cell {max(griddata['tracercount'])}")
 
-    return griddata, t_model, vmax
+    return griddata, t_model_days, vmax
 
 
 def mirror_model_in_axis(griddata):

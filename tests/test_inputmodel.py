@@ -31,7 +31,8 @@ def test_makemodel():
 
 
 def test_makemodel_energyfiles():
-    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=outputpath, makeenergyinputfiles=True, modeldim=1, outputpath=outputpath)
+    at.inputmodel.makeartismodel.main(
+        argsraw=[], modelpath=modelpath, makeenergyinputfiles=True, modeldim=1, outputpath=outputpath)
 
 
 def test_make_empty_abundance_file():
@@ -46,12 +47,15 @@ def test_opacity_by_Ye_file():
 
 
 def test_save3Dmodel():
-    griddata = {'gridindex': [1, 2],
-                'posx': [1, 2],
-                'posy': [1, 2],
-                'posz': [1, 2],
-                'rho': [0, 2],
-                'cellYe': [0, 0.1]}
+    dfmodel = pd.DataFrame(
+        {'gridindex': [1, 2],
+         'posx': [1, 2],
+         'posy': [1, 2],
+         'posz': [1, 2],
+         'rho': [0, 2],
+         'cellYe': [0, 0.1]})
     tmodel = 100
     vmax = 1000
-    at.inputmodel.save_3d_modeldata(outputpath, griddata, tmodel, vmax, radioactives=False)
+    at.inputmodel.save_modeldata(
+        modelpath=outputpath, dfmodel=dfmodel, t_model_init_days=tmodel,
+        vmax=vmax, dimensions=3)

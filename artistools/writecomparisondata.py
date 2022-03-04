@@ -87,7 +87,7 @@ def write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnone
     nelements = len(elementlist)
     for element in range(nelements):
         atomic_number = elementlist.Z[element]
-        elsymb = at.elsymbols[atomic_number].lower()
+        elsymb = at.get_elsymbol(atomic_number).lower()
         nions = elementlist.nions[element]
         with open(Path(outputpath, f'ionfrac_{elsymb}_{model_id}_artisnebular.txt'), 'w') as f:
             f.write(f'#NTIMES: {len(selected_timesteps)}\n')

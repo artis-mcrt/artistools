@@ -95,12 +95,12 @@ def main(args=None, argsraw=None, **kwargs):
 
     dictelemabund = {}
     for atomic_number in range(1, dfsolarabund_undecayed.Z.max() + 1):
-        dictelemabund[f'X_{at.elsymbols[atomic_number]}'] = (
+        dictelemabund[f'X_{at.get_elsymbol(atomic_number)}'] = (
             dfsolarabund_undecayed.query('Z == @atomic_number', inplace=False).massfrac.sum())
 
-    dfabundances = pd.DataFrame([dict(inputcellid=mgi + 1, **dictelemabund) for mgi in range(cellcount)])
-    # print(dfabundances)
-    at.inputmodel.save_initialabundances(dfabundances=dfabundances, abundancefilename=args.outputpath)
+    dfelabundances = pd.DataFrame([dict(inputcellid=mgi + 1, **dictelemabund) for mgi in range(cellcount)])
+    # print(dfelabundances)
+    at.inputmodel.save_initialabundances(dfelabundances=dfelabundances, abundancefilename=args.outputpath)
 
     # write model.txt
 
@@ -129,7 +129,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     dfmodel = pd.DataFrame(modeldata)
     # print(dfmodel)
-    at.inputmodel.save_modeldata(dfmodel, t_model_init_days, Path(args.outputpath, 'model.txt'))
+    at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, modelpath=Path(args.outputpath))
 
 
 if __name__ == "__main__":

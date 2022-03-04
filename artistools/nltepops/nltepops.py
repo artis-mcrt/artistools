@@ -117,7 +117,7 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
 
             if maxlevel < 0 or levelnumber_sl <= maxlevel:
                 if not noprint:
-                    print(f'{at.elsymbols[Z]} {at.roman_numerals[ion_stage]} '
+                    print(f'{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]} '
                           f'has a superlevel at level {levelnumber_sl}')
 
                 for columnname, T_exc in columntemperature_tuples:

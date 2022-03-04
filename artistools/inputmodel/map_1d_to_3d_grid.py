@@ -58,5 +58,5 @@ def map_1d_to_3d(dfgriddata, vmax, n_3d_gridcells, data_1d, t_model_1d, wid_init
     print(dfgriddata)
     print(sum(modelgrid_rho_3d * (wid_init ** 3))/CLIGHT)
 
-    at.inputmodel.save_3d_modeldata(modelpath='.', griddata=dfgriddata, t_model=t_model_1d/(24*60*60),
-                                    vmax=vmax*CLIGHT, radioactives=False)
+    at.inputmodel.save_modeldata(modelpath='.', dfmodel=dfgriddata, t_model_init_days=t_model_1d/(24*60*60),
+                                 dimensions=3, vmax=vmax*CLIGHT)

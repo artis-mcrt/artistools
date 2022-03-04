@@ -41,7 +41,7 @@ def get_elemcolor(atomic_number=None, elsymbol=None):
     """Get the colour of an element from the reserved color list (reserving a new one if needed)."""
     assert (atomic_number is None) != (elsymbol is None)
     if atomic_number is not None:
-        elsymbol = at.elsymbols[atomic_number]
+        elsymbol = at.get_elsymbol(atomic_number)
 
     # assign a new colour to this element if needed
 
@@ -219,7 +219,7 @@ def plot_levelpop(
                 ylist.append(valuesum / tdeltasum)
 
         if dfalldata is not None:
-            elsym = at.elsymbols[atomic_number].lower()
+            elsym = at.get_elsymbol(atomic_number).lower()
             if seriestype == 'levelpopulation_dn_on_dvel':
                 colname = f'nlevel_on_dv_{elsym}_ionstage{ion_stage}_level{levelindex}'
             else:
@@ -298,7 +298,7 @@ def plot_multi_ion_series(
             if args.ionpoptype == 'absolute':
                 ax.set_ylabel('X$_{i}$ [/cm3]')
             elif args.ionpoptype == 'elpop':
-                # elsym = at.elsymbols[atomic_number]
+                # elsym = at.get_elsymbol(atomic_number)
                 ax.set_ylabel(r'X$_{i}$/X$_{\rm element}$')
             elif args.ionpoptype == 'totalpop':
                 ax.set_ylabel(r'X$_{i}$/X$_{rm tot}$')
@@ -323,7 +323,7 @@ def plot_multi_ion_series(
 
                 if ion_stage == 'ALL':
                     nionpop = estimpop.get((atomic_number), 0.)
-                elif hasattr(ion_stage, 'lower') and ion_stage.startswith(at.elsymbols[atomic_number]):
+                elif hasattr(ion_stage, 'lower') and ion_stage.startswith(at.get_elsymbol(atomic_number)):
                     nionpop = estimpop.get(ion_stage, 0.)
                 else:
                     nionpop = estimpop.get((atomic_number, ion_stage), 0.)
@@ -388,7 +388,7 @@ def plot_multi_ion_series(
                 index = 8
             elif hasattr(ion_stage, 'lower'):
                 # isotopic abundance, use the mass number
-                index = int(ion_stage.lstrip(at.elsymbols[atomic_number]))
+                index = int(ion_stage.lstrip(at.get_elsymbol(atomic_number)))
             else:
                 index = ion_stage
 
@@ -400,7 +400,7 @@ def plot_multi_ion_series(
 
             if args.colorbyion:
                 color = f'C{index - 1 % 10}'
-                # plotlabel = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]}'
+                # plotlabel = f'{at.get_elsymbol(atomic_number)} {at.roman_numerals[ion_stage]}'
                 dashes = ()
 
         # assert colorindex < 10
@@ -408,7 +408,7 @@ def plot_multi_ion_series(
         # or ax.step(where='pre', )
 
         if dfalldata is not None:
-            elsym = at.elsymbols[atomic_number].lower()
+            elsym = at.get_elsymbol(atomic_number).lower()
             if args.ionpoptype == 'absolute':
                 colname = f'nnion_{elsym}_ionstage{ion_stage}'
             elif args.ionpoptype == 'elpop':
@@ -680,7 +680,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
 
     for ax, ion_stage in zip(axes, ion_stage_list):
 
-        ionstr = f'{at.elsymbols[atomic_number]} {at.roman_numerals[ion_stage]} to {at.roman_numerals[ion_stage - 1]}'
+        ionstr = f'{at.get_elsymbol(atomic_number)} {at.roman_numerals[ion_stage]} to {at.roman_numerals[ion_stage - 1]}'
 
         listT_e = []
         list_rrc = []
@@ -714,7 +714,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
 
         # rrcfiles = glob.glob(
         #     f'/Users/lshingles/Library/Mobile Documents/com~apple~CloudDocs/GitHub/'
-        #     f'artis-atomic/atomic-data-nahar/{at.elsymbols[atomic_number].lower()}{ion_stage - 1}.rrc*.txt')
+        #     f'artis-atomic/atomic-data-nahar/{at.get_elsymbol(atomic_number).lower()}{ion_stage - 1}.rrc*.txt')
         # if rrcfiles:
         #     dfrecombrates = get_ionrecombrates_fromfile(rrcfiles[0])
         #
@@ -734,7 +734,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
     # if time_days >= 0:
     #     plotlabel += f' (t={time_days:.2f}d)'
     # fig.suptitle(plotlabel, fontsize=12)
-    elsymbol = at.elsymbols[atomic_number]
+    elsymbol = at.get_elsymbol(atomic_number)
     outfilename = f"plotestimators_recombrates_{elsymbol}.pdf"
     fig.savefig(outfilename)
     print(f'Saved {outfilename}')

@@ -13,6 +13,7 @@ import gc
 import artistools.inputmodel.botyanski2017
 import artistools.inputmodel.describeinputmodel
 import artistools.inputmodel.makeartismodel
+import artistools.inputmodel.rprocess_from_trajectory
 
 
 @lru_cache(maxsize=8)
@@ -26,8 +27,8 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
         - get_abundances: also read elemental abundances (abundances.txt) and
             merge with the output DataFrame
 
-    Returns (dfmodeldata, t_model_init_days)
-        - dfmodeldata: a pandas DataFrame with a row for each model grid cell
+    Returns (dfmodel, t_model_init_days)
+        - dfmodel: a pandas DataFrame with a row for each model grid cell
         - t_model_init_days: the time in days at which the snapshot is defined
     """
 
@@ -48,8 +49,6 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
-    gridcelltuple = None
-    velocity_inner = 0.
     with artistools.zopen(filename, 'rt') as fmodel:
         gridcellcount = int(artistools.readnoncommentline(fmodel))
         t_model_init_days = float(artistools.readnoncommentline(fmodel))
@@ -95,7 +94,7 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
             assert (ncoordgridx * ncoordgridy * ncoordgridz) == gridcellcount
 
         # skiprows = 3 if dimensions == 3 else 2
-        dfmodeldata = pd.read_csv(fmodel, delim_whitespace=True, header=None, dtype=np.float64, comment='#')
+        dfmodel = pd.read_csv(fmodel, delim_whitespace=True, header=None, dtype=np.float64, comment='#')
 
         if dimensions == 1 and columns is None:
             columns = ['inputcellid', 'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56',
@@ -106,39 +105,39 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
                        'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57']
 
             try:
-                dfmodeldata = pd.DataFrame(dfmodeldata.values.reshape(-1, 12))
+                dfmodel = pd.DataFrame(dfmodel.values.reshape(-1, 12))
             except ValueError:
-                dfmodeldata = pd.DataFrame(dfmodeldata.values.reshape(-1, 10))  # No Ni57 or Co57 columnss
+                dfmodel = pd.DataFrame(dfmodel.values.reshape(-1, 10))  # No Ni57 or Co57 columnss
 
-        dfmodeldata.columns = columns[:len(dfmodeldata.columns)]
+        dfmodel.columns = columns[:len(dfmodel.columns)]
 
-    dfmodeldata = dfmodeldata.iloc[:gridcellcount]
+    dfmodel = dfmodel.iloc[:gridcellcount]
 
-    assert len(dfmodeldata) == gridcellcount
+    assert len(dfmodel) == gridcellcount
 
-    dfmodeldata.index.name = 'cellid'
-    # dfmodeldata.drop('inputcellid', axis=1, inplace=True)
+    dfmodel.index.name = 'cellid'
+    # dfmodel.drop('inputcellid', axis=1, inplace=True)
 
     if dimensions == 1:
-        dfmodeldata['velocity_inner'] = np.concatenate([[0.], dfmodeldata['velocity_outer'].values[:-1]])
+        dfmodel['velocity_inner'] = np.concatenate([[0.], dfmodel['velocity_outer'].values[:-1]])
         piconst = math.pi
-        dfmodeldata.eval(
+        dfmodel.eval(
             'shellmass_grams = 10 ** logrho * 4. / 3. * @piconst * (velocity_outer ** 3 - velocity_inner ** 3)'
             '* (1e5 * @t_model_init_seconds) ** 3', inplace=True)
-        vmax_cmps = dfmodeldata.velocity_outer.max() * 1e5
+        vmax_cmps = dfmodel.velocity_outer.max() * 1e5
 
     elif dimensions == 3:
-        cellid = dfmodeldata.index.values
+        cellid = dfmodel.index.values
         xindex = cellid % ncoordgridx
         yindex = (cellid // ncoordgridx) % ncoordgridy
         zindex = (cellid // (ncoordgridx * ncoordgridy)) % ncoordgridz
 
-        dfmodeldata['pos_x'] = -xmax_tmodel + 2 * xindex * xmax_tmodel / ncoordgridx
-        dfmodeldata['pos_y'] = -xmax_tmodel + 2 * yindex * xmax_tmodel / ncoordgridy
-        dfmodeldata['pos_z'] = -xmax_tmodel + 2 * zindex * xmax_tmodel / ncoordgridz
+        dfmodel['pos_x'] = -xmax_tmodel + 2 * xindex * xmax_tmodel / ncoordgridx
+        dfmodel['pos_y'] = -xmax_tmodel + 2 * yindex * xmax_tmodel / ncoordgridy
+        dfmodel['pos_z'] = -xmax_tmodel + 2 * zindex * xmax_tmodel / ncoordgridz
 
         wid_init = artistools.get_wid_init_at_tmodel(modelpath, gridcellcount, t_model_init_days, xmax_tmodel)
-        dfmodeldata.eval('cellmass_grams = rho * @wid_init ** 3', inplace=True)
+        dfmodel.eval('cellmass_grams = rho * @wid_init ** 3', inplace=True)
 
         def vectormatch(vec1, vec2):
             xclose = np.isclose(vec1[0], vec2[0], atol=xmax_tmodel / ncoordgridx)
@@ -153,7 +152,7 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
         indexlist = [0, ncoordgridx - 1, (ncoordgridx - 1) * (ncoordgridy - 1),
                      (ncoordgridx - 1) * (ncoordgridy - 1) * (ncoordgridz - 1)]
         for index in indexlist:
-            cell = dfmodeldata.iloc[index]
+            cell = dfmodel.iloc[index]
             if not vectormatch([cell.inputpos_a, cell.inputpos_b, cell.inputpos_c],
                                [cell.pos_x, cell.pos_y, cell.pos_z]):
                 posmatch_xyz = False
@@ -171,36 +170,36 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
         if dimensions == 3:
             print('Getting abundances')
         abundancedata = get_initialabundances(modelpath)
-        dfmodeldata = dfmodeldata.merge(abundancedata, how='inner', on='inputcellid')
+        dfmodel = dfmodel.merge(abundancedata, how='inner', on='inputcellid')
 
     if derived_cols:
-        add_derived_cols_to_modeldata(dfmodeldata, derived_cols, dimensions, t_model_init_seconds, wid_init, modelpath)
+        add_derived_cols_to_modeldata(dfmodel, derived_cols, dimensions, t_model_init_seconds, wid_init, modelpath)
 
-    return dfmodeldata, t_model_init_days, vmax_cmps
+    return dfmodel, t_model_init_days, vmax_cmps
 
 
-def add_derived_cols_to_modeldata(dfmodeldata, derived_cols, dimensions=None, t_model_init_seconds=None, wid_init=None,
+def add_derived_cols_to_modeldata(dfmodel, derived_cols, dimensions=None, t_model_init_seconds=None, wid_init=None,
                                   modelpath=None):
     """add columns to modeldata using e.g. derived_cols = ('velocity', 'Ye')"""
     if dimensions == 3 and 'velocity' in derived_cols:
-        dfmodeldata['vel_x_min'] = dfmodeldata['pos_x'] / t_model_init_seconds
-        dfmodeldata['vel_y_min'] = dfmodeldata['pos_y'] / t_model_init_seconds
-        dfmodeldata['vel_z_min'] = dfmodeldata['pos_z'] / t_model_init_seconds
+        dfmodel['vel_x_min'] = dfmodel['pos_x'] / t_model_init_seconds
+        dfmodel['vel_y_min'] = dfmodel['pos_y'] / t_model_init_seconds
+        dfmodel['vel_z_min'] = dfmodel['pos_z'] / t_model_init_seconds
 
-        dfmodeldata['vel_x_max'] = (dfmodeldata['pos_x'] + wid_init) / t_model_init_seconds
-        dfmodeldata['vel_y_max'] = (dfmodeldata['pos_y'] + wid_init) / t_model_init_seconds
-        dfmodeldata['vel_z_max'] = (dfmodeldata['pos_z'] + wid_init) / t_model_init_seconds
+        dfmodel['vel_x_max'] = (dfmodel['pos_x'] + wid_init) / t_model_init_seconds
+        dfmodel['vel_y_max'] = (dfmodel['pos_y'] + wid_init) / t_model_init_seconds
+        dfmodel['vel_z_max'] = (dfmodel['pos_z'] + wid_init) / t_model_init_seconds
 
-        dfmodeldata['vel_x_mid'] = (dfmodeldata['pos_x'] + (0.5 * wid_init)) / t_model_init_seconds
-        dfmodeldata['vel_y_mid'] = (dfmodeldata['pos_y'] + (0.5 * wid_init)) / t_model_init_seconds
-        dfmodeldata['vel_z_mid'] = (dfmodeldata['pos_z'] + (0.5 * wid_init)) / t_model_init_seconds
+        dfmodel['vel_x_mid'] = (dfmodel['pos_x'] + (0.5 * wid_init)) / t_model_init_seconds
+        dfmodel['vel_y_mid'] = (dfmodel['pos_y'] + (0.5 * wid_init)) / t_model_init_seconds
+        dfmodel['vel_z_mid'] = (dfmodel['pos_z'] + (0.5 * wid_init)) / t_model_init_seconds
 
     if 'Ye' in derived_cols and os.path.isfile(modelpath / 'Ye.txt'):
-        dfmodeldata['Ye'] = artistools.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
+        dfmodel['Ye'] = artistools.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
     if 'Q' in derived_cols and os.path.isfile(modelpath / 'Q_energy.txt'):
-        dfmodeldata['Q'] = artistools.inputmodel.energyinputfiles.get_Q_energy_from_file(modelpath)
+        dfmodel['Q'] = artistools.inputmodel.energyinputfiles.get_Q_energy_from_file(modelpath)
 
-    return dfmodeldata
+    return dfmodel
 
 
 def get_2d_modeldata(modelpath):
@@ -215,7 +214,7 @@ def get_2d_modeldata(modelpath):
 
     model = pd.concat([model1stlines, model2ndlines], axis=1)
     column_names = ['inputcellid', 'cellpos_mid[r]', 'cellpos_mid[z]', 'rho_model',
-                    'ffe', 'fni', 'fco', 'ffe52', 'fcr48']
+                    'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48']
     model.columns = column_names
     return model
 
@@ -249,7 +248,7 @@ def get_3d_modeldata_minimal(modelpath):
     Needed for large (eg. 200^3) models"""
     model = pd.read_csv(os.path.join(modelpath[0], 'model.txt'), delim_whitespace=True, header=None, skiprows=3, dtype=np.float64)
     columns = ['inputcellid', 'cellpos_in[z]', 'cellpos_in[y]', 'cellpos_in[x]', 'rho_model',
-               'ffe', 'fni', 'fco', 'ffe52', 'fcr48']
+               'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48']
     model = pd.DataFrame(model.values.reshape(-1, 10))
     model.columns = columns
 
@@ -258,68 +257,61 @@ def get_3d_modeldata_minimal(modelpath):
     return model
 
 
-def save_modeldata(dfmodeldata, t_model_init_days, filename):
+def save_modeldata(
+        dfmodel, t_model_init_days, filename=None, modelpath=None, vmax=None, dimensions=1, radioactives=True):
     """Save a pandas DataFrame and snapshot time into ARTIS model.txt"""
-    standardcols = ['inputcellid',
-                    'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52',
-                    'X_Cr48', 'X_Ni57', 'X_Co57']
-    customcols = []
-    for col in dfmodeldata.columns:
-        if col not in standardcols:
-            customcols.append(col)
 
-    with open(filename, 'w') as fmodel:
-        fmodel.write(f'{len(dfmodeldata)}\n{t_model_init_days:f}\n')
-        fmodel.write('#' + "  ".join(standardcols))
+    assert dimensions in [1, 3, None]
+    if dimensions == 1:
+        assert vmax is None
+        standardcols = ['inputcellid', 'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52',
+                        'X_Cr48', 'X_Ni57', 'X_Co57']
+    elif dimensions == 3:
+        dfmodel.rename(columns={"gridindex": "inputcellid"}, inplace=True)
+        gridsize = round(len(dfmodel) ** (1 / 3))
+        print(f'grid size {gridsize}^3')
+
+        standardcols = ['inputcellid', 'posx', 'posy', 'posz', 'rho',  'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52',
+                        'X_Cr48', 'X_Ni57', 'X_Co57']
+
+    dfmodel['inputcellid'] = dfmodel['inputcellid'].astype(int)
+    customcols = [col for col in dfmodel.columns if col not in standardcols and col.startswith('X_')]
+
+    # set missing radioabundance columns to zero
+    for col in standardcols:
+        if col not in dfmodel.columns and col.startswith('X_'):
+            dfmodel[col] = 0.0
+
+    assert modelpath is not None or filename is not None
+    if filename is None:
+        filename = 'model.txt'
+    if modelpath is not None:
+        modelfilepath = Path(modelpath, filename)
+    else:
+        modelfilepath = Path(filename)
+
+    with open(modelfilepath, 'w') as fmodel:
+        fmodel.write(f'{len(dfmodel)}\n')
+        fmodel.write(f'{t_model_init_days}\n')
+        if dimensions == 3:
+            fmodel.write(f'{vmax}\n')
+
         if customcols:
-            fmodel.write("  " + "  ".join(customcols))
-        fmodel.write('\n')
-        for _, cell in dfmodeldata.iterrows():
-            fmodel.write(f'{cell.inputcellid:6.0f}   {cell.velocity_outer:9.2f}   {cell.logrho:10.8f} '
-                         f'{cell.X_Fegroup:10.4e} {cell.X_Ni56:10.4e} {cell.X_Co56:10.4e} '
-                         f'{cell.X_Fe52:10.4e} {cell.X_Cr48:10.4e}')
-            if 'X_Ni57' in dfmodeldata.columns or customcols:
-                fmodel.write(f' {cell.X_Ni57:10.4e}')
-                if 'X_Co57' in dfmodeldata.columns or customcols:
-                    fmodel.write(f' {cell.X_Co57:10.4e}')
-            if customcols:
-                for col in customcols:
-                    fmodel.write(f' {cell[col]:10.4e}')
+            fmodel.write(f'#{"  ".join(standardcols)} {"  ".join(customcols)}')
+
+        abundcols = [*[col for col in standardcols if col.startswith('X_')], *customcols]
+
+        for cell in dfmodel.itertuples():
+            if dimensions == 1:
+                fmodel.write(f'{cell.inputcellid:6d}   {cell.velocity_outer:9.2f}   {cell.logrho:10.8f} ')
+            elif dimensions == 3:
+                fmodel.write(f"{cell.inputcellid:6d} {cell.posx} {cell.posy} {cell.posz} {cell.rho}\n")
+
+            for col in abundcols:
+                fmodel.write(f'{getattr(cell, col)} ')
 
             fmodel.write('\n')
     print(f'Saved {filename}')
-
-
-def save_3d_modeldata(modelpath, griddata, t_model, vmax, radioactives=True):
-    ngridpoints = len(griddata['gridindex'])  # xgrid * ygrid * zgrid
-    gridsize = round(ngridpoints ** (1 / 3))
-    print(f'grid size {gridsize}^3')
-
-    if not radioactives:
-        ffe = 0.0
-        fni = 0.0
-        fco = 0.0
-        ffe52 = 0.0
-        fcr48 = 0.0
-
-    with open(Path(modelpath) / 'model.txt', 'w') as fmodel:
-        fmodel.write(f'{ngridpoints}\n')
-        fmodel.write(f'{t_model}\n')
-        fmodel.write(f'{vmax}\n')
-
-        for i in griddata['gridindex']:
-            line1 = [i, griddata['posx'][i - 1], griddata['posy'][i - 1], griddata['posz'][i - 1],
-                     griddata['rho'][i - 1]]
-            if not radioactives:
-                line2 = [ffe, fni, fco, ffe52, fcr48]
-            else:
-                line2 = [griddata['ffe'][i - 1], griddata['fni'][i - 1], griddata['fco'][i - 1],
-                         griddata['ffe52'][i - 1], griddata['fcr48'][i - 1]]
-
-            fmodel.writelines("%s " % item for item in line1)
-            fmodel.writelines("\n")
-            fmodel.writelines("%s " % item for item in line2)
-            fmodel.writelines("\n")
 
 
 def get_mgi_of_velocity_kms(modelpath, velocity, mgilist=None):
@@ -356,19 +348,32 @@ def get_initialabundances(modelpath):
 
     abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, dtype=np.float64)
     abundancedata.index.name = 'modelgridindex'
-    abundancedata.columns = ['inputcellid', *['X_' + artistools.elsymbols[x] for x in range(1, len(abundancedata.columns))]]
+    abundancedata.columns = ['inputcellid', *['X_' + artistools.get_elsymbol(x) for x in range(1, len(abundancedata.columns))]]
     if len(abundancedata) > 100000:
         print('abundancedata memory usage:')
         abundancedata.info(verbose=False, memory_usage="deep")
     return abundancedata
 
 
-def save_initialabundances(dfabundances, abundancefilename):
-    """Save a DataFrame (same format as get_initialabundances) to model.txt."""
+def save_initialabundances(dfelabundances, abundancefilename):
+    """Save a DataFrame (same format as get_initialabundances) to abundances.txt.
+        columns must be:
+            - inputcellid: integer index to match model.txt (starting from 1)
+            - X_El: mass fraction of element with two-letter code 'El' (e.g., X_H, X_He, H_Li, ...)
+    """
     if Path(abundancefilename).is_dir():
         abundancefilename = Path(abundancefilename) / 'abundances.txt'
-    dfabundances['inputcellid'] = dfabundances['inputcellid'].astype(int)
-    dfabundances.to_csv(abundancefilename, header=False, sep=' ', index=False)
+    dfelabundances['inputcellid'] = dfelabundances['inputcellid'].astype(int)
+    atomic_numbers = [artistools.get_atomic_number(colname[2:])
+                      for colname in dfelabundances.columns if colname.startswith('X_')]
+    elcolnames = [f'X_{artistools.get_elsymbol(Z)}' for Z in range(max(atomic_numbers))]
+
+    with open(abundancefilename, 'w') as fabund:
+        for row in dfelabundances.itertuples():
+            fabund.write(f'{row.inputcellid}')
+            for colname in elcolnames:
+                fabund.write(f' {getattr(row, colname, 0.):.3e}')
+
     print(f'Saved {abundancefilename}')
 
 
