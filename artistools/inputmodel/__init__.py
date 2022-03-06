@@ -297,7 +297,7 @@ def save_modeldata(
             fmodel.write(f'{vmax}\n')
 
         if customcols:
-            fmodel.write(f'#{"  ".join(standardcols)} {"  ".join(customcols)}')
+            fmodel.write(f'#{"  ".join(standardcols)} {"  ".join(customcols)}\n')
 
         abundcols = [*[col for col in standardcols if col.startswith('X_')], *customcols]
 
@@ -311,6 +311,7 @@ def save_modeldata(
                 fmodel.write(f'{getattr(cell, col)} ')
 
             fmodel.write('\n')
+
     print(f'Saved {filename}')
 
 
