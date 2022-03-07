@@ -54,6 +54,7 @@ def get_trajectory_nuc_abund(particleid, memberfilename):
 def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
     """ contribute trajectory network calculation abundances to model cell abundances """
 
+    timefuncstart = time.perf_counter()
     t_model_s = t_model_days * 86400
     if 'X_Fegroup' not in dfmodel.columns:
         dfmodel = pd.concat([dfmodel, pd.DataFrame({'X_Fegroup': np.ones(len(dfmodel))})], axis=1)
@@ -63,15 +64,13 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
 
     active_inputcellids = dfcontribs.cellindex.unique()
     active_inputcellcount = len(active_inputcellids)
-    print(f'particles contribute to {active_inputcellcount} of {len(dfmodel)} model cells')
+    print(f'{active_inputcellcount} of {len(dfmodel)} model cells have particle contributions')
     dfnucabundances = pd.DataFrame({'inputcellid': active_inputcellids}, index=active_inputcellids, dtype=int)
 
     dfcontribs_groups = dfcontribs.groupby('particleid')
     particle_count = len(dfcontribs_groups)
 
     for n, (particleid, dfthisparticlecontribs) in enumerate(dfcontribs_groups, 1):
-        # if n > 1:
-        #     break
         timestart = time.perf_counter()
         print(f'\ntrajectory particle id {particleid} ('
               f'{n} of {particle_count}, {n / particle_count * 100:.1f}%)')
@@ -102,21 +101,19 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
         assert np.isclose(t_model_s, traj_time_s, rtol=0.7, atol=1)
         print(f' contributing {len(dftrajnucabund)} abundances to {len(dfthisparticlecontribs)} cells')
 
-        for contrib in dfthisparticlecontribs.itertuples():
-            newmodelcols = [colname for colname in dftrajnucabund.nucabundcolname.values
-                            if colname not in dfnucabundances.columns]
-            if newmodelcols:
-                dfabundcols = pd.DataFrame(
-                    {colname: np.zeros(len(dfnucabundances)) for colname in newmodelcols},
-                    index=dfnucabundances.index)
-                dfnucabundances = pd.concat([dfnucabundances, dfabundcols], axis=1, join='inner')
+        newnucabundcols = [colname for colname in dftrajnucabund.nucabundcolname.values
+                           if colname not in dfnucabundances.columns]
+        if newnucabundcols:
+            dfabundcols = pd.DataFrame(
+                {colname: np.zeros(len(dfnucabundances)) for colname in newnucabundcols}, index=dfnucabundances.index)
+            dfnucabundances = pd.concat([dfnucabundances, dfabundcols], axis=1, join='inner')
 
+        for contrib in dfthisparticlecontribs.itertuples():
             for _, Z, nucabundcolname, massfrac in dftrajnucabund[['Z', 'nucabundcolname', 'massfrac']].itertuples():
                 dfnucabundances.at[contrib.cellindex, nucabundcolname] += massfrac * contrib.frac_of_cellmass
-            dftrajnucabund.inputcellid = contrib.cellindex
 
-            # assert contrib.cellindex == dfmodel.at[contrib.cellindex - 1, 'inputcellid']
-        print(f' particle {n} contributions took {time.perf_counter() - timestart:.1f} seconds')
+        print(f' particle {n} contributions took {time.perf_counter() - timestart:.1f} seconds '
+              f'(total func time {time.perf_counter() - timefuncstart:.1f} s)')
 
     timestart = time.perf_counter()
     print('Adding up elemental abundances...', end='')
@@ -140,7 +137,6 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
 
     print('creating dfmodel')
     dfmodel = dfmodel.merge(dfnucabundances, how='left', left_on='inputcellid', right_on='inputcellid')
-    # dfmodel.fillna({colname: 0. for colname in dfnucabundances.columns if colname.startswith('X_')}, inplace=True)
     dfmodel.fillna(0., inplace=True)
     # print(dfmodel.iloc[61615:61625])
 
