@@ -48,12 +48,12 @@ def test_opacity_by_Ye_file():
 
 def test_save3Dmodel():
     dfmodel = pd.DataFrame(
-        {'inputcellid': [1, 2],
-         'posx': [1, 2],
-         'posy': [1, 2],
-         'posz': [1, 2],
-         'rho': [0, 2],
-         'cellYe': [0, 0.1]})
+        {'inputcellid': [1, 2, 3],
+         'posx': [-1, -1, -1],
+         'posy': [0, 0, 0],
+         'posz': [1, 1, 1],
+         'rho': [0, 2, 3],
+         'cellYe': [0, 0.1, 0.2]})
     tmodel = 100
     vmax = 1000
     at.inputmodel.save_modeldata(
