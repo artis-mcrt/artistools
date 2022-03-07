@@ -296,7 +296,7 @@ def save_modeldata(
     if dimensions == 1:
         assert vmax is None
         standardcols = ['inputcellid', 'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52',
-                        'X_Cr48', 'X_Ni57', 'X_Co57']
+                        'X_Cr48']
     elif dimensions == 3:
         dfmodel.rename(columns={'gridindex': 'inputcellid'}, inplace=True)
         griddimension = int(round(len(dfmodel) ** (1. / 3.)))
@@ -304,7 +304,14 @@ def save_modeldata(
         assert griddimension ** 3 == len(dfmodel)
 
         standardcols = ['inputcellid', 'posx', 'posy', 'posz', 'rho',  'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52',
-                        'X_Cr48', 'X_Ni57', 'X_Co57']
+                        'X_Cr48']
+
+    # these two columns are optional, but position is important and they must appear before any other custom cols
+    if 'X_Ni57' in dfmodel.columns:
+        standardcols.append('X_Ni57')
+
+    if 'X_Co57' in dfmodel.columns:
+        standardcols.append('X_Co57')
 
     dfmodel['inputcellid'] = dfmodel['inputcellid'].astype(int)
     customcols = [col for col in dfmodel.columns if col not in standardcols and col.startswith('X_')]
