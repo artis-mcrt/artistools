@@ -271,7 +271,7 @@ def save_modeldata(
                         'X_Cr48', 'X_Ni57', 'X_Co57']
     elif dimensions == 3:
         dfmodel.rename(columns={'gridindex': 'inputcellid'}, inplace=True)
-        griddimension = round(len(dfmodel) ** (1. / 3.))
+        griddimension = int(round(len(dfmodel) ** (1. / 3.)))
         print(f' grid size: {len(dfmodel)} ({griddimension}^3)')
         assert griddimension ** 3 == len(dfmodel)
 
