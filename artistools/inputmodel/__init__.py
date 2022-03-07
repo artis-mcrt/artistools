@@ -88,9 +88,9 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
             fmodel.seek(filepos)  # undo the readline() and go back
 
         if dimensions == 3:
-            ncoordgridx = round(gridcellcount ** (1. / 3.))  # number of grid cell steps along an axis (same for xyz)
-            ncoordgridy = round(gridcellcount ** (1. / 3.))
-            ncoordgridz = round(gridcellcount ** (1. / 3.))
+            ncoordgridx = int(round(gridcellcount ** (1. / 3.)))  # number of grid cell steps along an axis (same for xyz)
+            ncoordgridy = int(round(gridcellcount ** (1. / 3.)))
+            ncoordgridz = int(round(gridcellcount ** (1. / 3.)))
 
             assert (ncoordgridx * ncoordgridy * ncoordgridz) == gridcellcount
 
