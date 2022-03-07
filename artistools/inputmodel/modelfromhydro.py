@@ -55,6 +55,7 @@ def read_griddat_file(pathtogriddata):
     simulation_end_time_geomunits = get_snapshot_time_geomunits(pathtogriddata)
 
     griddata = pd.read_csv(griddatfilepath, delim_whitespace=True, comment='#', skiprows=3)
+    griddata.rename(columns={'gridindex': 'inputcellid'}, inplace=True)
     # griddata in geom units
     griddata['rho'] = np.nan_to_num(griddata['rho'], nan=0.)
 
@@ -72,7 +73,7 @@ def read_griddat_file(pathtogriddata):
 
     with open(griddatfilepath, 'r') as gridfile:
         ngrid = int(gridfile.readline().split()[0])
-        if ngrid != len(griddata['gridindex']):
+        if ngrid != len(griddata['inputcellid']):
             print("length of file and ngrid don't match")
             quit()
         extratime_geomunits = float(gridfile.readline().split()[0])
@@ -167,7 +168,7 @@ def add_mass_to_center(griddata, t_model_in_days, vmax, args):
     density_hole = (mass_intergrated * MSUN) / vol_hole  # g / cm^3
     print(density_hole)
 
-    for i, cellid in enumerate(griddata['gridindex']):
+    for i, cellid in enumerate(griddata['inputcellid']):
         # if pos < 0.1 c
         if ((np.sqrt(griddata['posx'][i] ** 2 + griddata['posy'][i] ** 2 + griddata['posz'][i] ** 2)) /
                 (t_model_in_days * (24. * 3600)) / CLIGHT) < 0.1:
