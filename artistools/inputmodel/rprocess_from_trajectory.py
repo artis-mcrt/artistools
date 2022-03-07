@@ -5,12 +5,9 @@ import math
 import tarfile
 import time
 from pathlib import Path
-
 import artistools as at
 import numpy as np
 import pandas as pd
-
-# import modin.pandas as pd
 
 
 def get_elemabund_from_nucabund(dfnucabund):
@@ -25,6 +22,17 @@ def get_traj_tarpath(particleid):
     return Path(f'/Users/luke/Dropbox/Archive/Mergers/SFHo/{particleid}.tar.xz')
 
 
+def get_closest_network_timestep(particleid, t_model_s):
+    if not get_traj_tarpath(particleid).is_file():
+        return None
+    with tarfile.open(get_traj_tarpath(particleid), mode='r:*') as tar:
+        evolfile = tar.extractfile(member='./Run_rprocess/evol.dat')
+        dfevol = pd.read_csv(evolfile, delim_whitespace=True, comment='#', usecols=[0, 1], names=['nstep', 'timesec'])
+        idx = np.abs(dfevol.timesec.values - t_model_s).argmin()
+        nts = dfevol.nstep.values[idx]
+    return nts
+
+
 def get_trajectory_nuc_abund(particleid, memberfilename):
     trajpath = get_traj_tarpath(particleid)
     with tarfile.open(trajpath, mode='r:*') as tar:
@@ -33,7 +41,6 @@ def get_trajectory_nuc_abund(particleid, memberfilename):
         # with open(trajfile) as ftraj:
         _, str_t_model_init_seconds, _, rho, _, _ = trajfile.readline().decode().split()
         t_model_init_seconds = float(str_t_model_init_seconds)
-
         dfnucabund = pd.read_csv(trajfile, delim_whitespace=True, comment='#',
                                  names=["N", "Z", "log10abund", "S1n", "S2n"], usecols=["N", "Z", "log10abund"],
                                  dtype={0: int, 1: int, 2: float})
@@ -53,7 +60,6 @@ def get_trajectory_nuc_abund(particleid, memberfilename):
 
 def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
     """ contribute trajectory network calculation abundances to model cell abundances """
-
     timefuncstart = time.perf_counter()
     t_model_s = t_model_days * 86400
     if 'X_Fegroup' not in dfmodel.columns:
@@ -71,6 +77,8 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
     particle_count = len(dfcontribs_groups)
 
     for n, (particleid, dfthisparticlecontribs) in enumerate(dfcontribs_groups, 1):
+        # if n > 1:
+        #     break
         timestart = time.perf_counter()
         print(f'\ntrajectory particle id {particleid} ('
               f'{n} of {particle_count}, {n / particle_count * 100:.1f}%)')
@@ -81,16 +89,12 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
             continue
 
         # find the closest timestep to the required time
-        with tarfile.open(get_traj_tarpath(particleid), mode='r:*') as tar:
-            evolfile = tar.extractfile(member='./Run_rprocess/evol.dat')
-            dfevol = pd.read_csv(
-                evolfile, delim_whitespace=True, comment='#', usecols=[0, 1], names=['nstep', 'timesec'])
-            idx = np.abs(dfevol.timesec.values - t_model_s).argmin()
-            nts = dfevol.nstep.values[idx]
+        nts = get_closest_network_timestep(particleid, t_model_s)
 
-        dftrajnucabund, traj_time_s = get_trajectory_nuc_abund(particleid, f'./Run_rprocess/nz-plane{nts:05d}')
+        dftrajnucabund, traj_time_s = get_trajectory_nuc_abund(
+            particleid, f'./Run_rprocess/nz-plane{nts:05d}')
         dftrajnucabund.query('Z >= 1', inplace=True)
-        dftrajnucabund['nucabundcolname'] = [f'X_{at.get_elsymbol(row.Z)}{row.N + row.Z}'
+        dftrajnucabund['nucabundcolname'] = [f'X_{at.get_elsymbol(int(row.Z))}{int(row.N + row.Z)}'
                                              for row in dftrajnucabund.itertuples()]
 
         massfracnormfactor = dftrajnucabund.massfrac.sum()
@@ -104,9 +108,9 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
         newnucabundcols = [colname for colname in dftrajnucabund.nucabundcolname.values
                            if colname not in dfnucabundances.columns]
         if newnucabundcols:
-            dfabundcols = pd.DataFrame(
+            dfnewnucabundcols = pd.DataFrame(
                 {colname: np.zeros(len(dfnucabundances)) for colname in newnucabundcols}, index=dfnucabundances.index)
-            dfnucabundances = pd.concat([dfnucabundances, dfabundcols], axis=1, join='inner')
+            dfnucabundances = pd.concat([dfnucabundances, dfnewnucabundcols], axis=1, join='inner')
 
         for contrib in dfthisparticlecontribs.itertuples():
             for _, Z, nucabundcolname, massfrac in dftrajnucabund[['Z', 'nucabundcolname', 'massfrac']].itertuples():
