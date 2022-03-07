@@ -196,12 +196,12 @@ def add_derived_cols_to_modeldata(dfmodel, derived_cols, dimensions=None, t_mode
         dfmodel['vel_z_mid'] = (dfmodel['pos_z'] + (0.5 * wid_init)) / t_model_init_seconds
 
     if dimensions == 3 and 'pos_mid' in derived_cols or 'angle_bin' in derived_cols:
-        dfmodeldata['pos_x_mid'] = (dfmodeldata['pos_x'] + (0.5 * wid_init))
-        dfmodeldata['pos_y_mid'] = (dfmodeldata['pos_y'] + (0.5 * wid_init))
-        dfmodeldata['pos_z_mid'] = (dfmodeldata['pos_z'] + (0.5 * wid_init))
+        dfmodel['pos_x_mid'] = (dfmodel['pos_x'] + (0.5 * wid_init))
+        dfmodel['pos_y_mid'] = (dfmodel['pos_y'] + (0.5 * wid_init))
+        dfmodel['pos_z_mid'] = (dfmodel['pos_z'] + (0.5 * wid_init))
 
     if 'angle_bin' in derived_cols:
-        get_cell_angle(dfmodeldata, modelpath)
+        get_cell_angle(dfmodel, modelpath)
 
     if 'Ye' in derived_cols and os.path.isfile(modelpath / 'Ye.txt'):
         dfmodel['Ye'] = artistools.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
@@ -211,24 +211,24 @@ def add_derived_cols_to_modeldata(dfmodel, derived_cols, dimensions=None, t_mode
     return dfmodel
 
 
-def get_cell_angle(dfmodeldata, modelpath):
+def get_cell_angle(dfmodel, modelpath):
     """get angle between cell midpoint and axis"""
     syn_dir = artistools.get_syn_dir(modelpath)
 
-    cos_theta = np.zeros(len(dfmodeldata))
+    cos_theta = np.zeros(len(dfmodel))
     i = 0
-    for _, cell in dfmodeldata.iterrows():
+    for _, cell in dfmodel.iterrows():
         mid_point = [cell['pos_x_mid'], cell['pos_y_mid'], cell['pos_z_mid']]
         cos_theta[i] = (artistools.dot(mid_point, syn_dir))\
                        / (artistools.vec_len(mid_point) * artistools.vec_len(syn_dir))
         i += 1
-    dfmodeldata['cos_theta'] = cos_theta
+    dfmodel['cos_theta'] = cos_theta
     cos_bins = [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1] # including end bin
     labels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90] # to agree with escaping packet bin numbers
-    dfmodeldata['cos_bin'] = pd.cut(dfmodeldata['cos_theta'], cos_bins, labels=labels)
-    # dfmodeldata['cos_bin'] = np.searchsorted(cos_bins, dfmodeldata['cos_theta'].values) -1
+    dfmodel['cos_bin'] = pd.cut(dfmodel['cos_theta'], cos_bins, labels=labels)
+    # dfmodel['cos_bin'] = np.searchsorted(cos_bins, dfmodel['cos_theta'].values) -1
 
-    return dfmodeldata
+    return dfmodel
 
 
 def get_2d_modeldata(modelpath):
