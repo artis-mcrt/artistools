@@ -386,13 +386,18 @@ def save_initialabundances(dfelabundances, abundancefilename):
     dfelabundances['inputcellid'] = dfelabundances['inputcellid'].astype(int)
     atomic_numbers = [artistools.get_atomic_number(colname[2:])
                       for colname in dfelabundances.columns if colname.startswith('X_')]
-    elcolnames = [f'X_{artistools.get_elsymbol(Z)}' for Z in range(max(atomic_numbers))]
+    elcolnames = [f'X_{artistools.get_elsymbol(Z)}' for Z in range(1, 1 + max(atomic_numbers))]
+
+    # set missing elemental abundance columns to zero
+    for col in elcolnames:
+        if col not in dfelabundances.columns:
+            dfelabundances[col] = 0.0
 
     with open(abundancefilename, 'w') as fabund:
-        for row in dfelabundances.itertuples():
+        for row in dfelabundances.itertuples(index=False):
             fabund.write(f'{row.inputcellid}')
-            for colname in elcolnames:
-                fabund.write(f' {getattr(row, colname, 0.):.3e}')
+            fabund.write(" ".join([f' {getattr(row, colname, 0.):.3e}' for colname in elcolnames]))
+            fabund.write("\n")
 
     print(f'Saved {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)')
 
