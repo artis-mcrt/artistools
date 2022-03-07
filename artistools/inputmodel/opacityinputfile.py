@@ -41,8 +41,8 @@ def opacity_by_Ye(outputfilepath, griddata):
     griddata['opacity'] = cell_opacities
 
     with open(Path(outputfilepath) / 'opacity.txt', 'w') as fopacity:
-        fopacity.write(f'{len(griddata["gridindex"])}\n')
-        griddata[['gridindex', 'opacity']].to_csv(fopacity, sep='\t', index=False, header=False, float_format='%.10f')
+        fopacity.write(f'{len(griddata["inputcellid"])}\n')
+        griddata[['inputcellid', 'opacity']].to_csv(fopacity, sep='\t', index=False, header=False, float_format='%.10f')
 
 
 def get_opacity_from_file(modelpath):
@@ -54,7 +54,7 @@ def get_opacity_from_file(modelpath):
 
 def write_Ye_file(outputfilepath, griddata):
     with open(Path(outputfilepath) / 'Ye.txt', 'w') as fYe:
-        fYe.write(f'{len(griddata["gridindex"])}\n')
-        griddata[['gridindex', 'cellYe']].to_csv(fYe, sep='\t', index=False, header=False, float_format='%.10f')
+        fYe.write(f'{len(griddata["inputcellid"])}\n')
+        griddata[['inputcellid', 'cellYe']].to_csv(fYe, sep='\t', index=False, header=False, float_format='%.10f')
 
     print("Saved Ye.txt")

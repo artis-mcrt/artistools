@@ -1,19 +1,20 @@
-import os.path
-from functools import lru_cache
-import numpy as np
-import pandas as pd
+import errno
+import gc
 # from collections import namedtuple
 import math
-import errno
 import os
+import os.path
+import time
+from functools import lru_cache
 from pathlib import Path
-import artistools
-import gc
 
+import artistools
 import artistools.inputmodel.botyanski2017
 import artistools.inputmodel.describeinputmodel
 import artistools.inputmodel.makeartismodel
 import artistools.inputmodel.rprocess_from_trajectory
+import numpy as np
+import pandas as pd
 
 
 @lru_cache(maxsize=8)
@@ -87,9 +88,9 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
             fmodel.seek(filepos)  # undo the readline() and go back
 
         if dimensions == 3:
-            ncoordgridx = round(gridcellcount ** (1./3.))  # number of grid cell steps along an axis (same for xyz)
-            ncoordgridy = round(gridcellcount ** (1./3.))
-            ncoordgridz = round(gridcellcount ** (1./3.))
+            ncoordgridx = round(gridcellcount ** (1. / 3.))  # number of grid cell steps along an axis (same for xyz)
+            ncoordgridy = round(gridcellcount ** (1. / 3.))
+            ncoordgridz = round(gridcellcount ** (1. / 3.))
 
             assert (ncoordgridx * ncoordgridy * ncoordgridz) == gridcellcount
 
@@ -246,7 +247,8 @@ def get_3d_model_data_merged_model_and_abundances_minimal(args):
 def get_3d_modeldata_minimal(modelpath):
     """Read 3D model without generating all the extra columns in standard routine.
     Needed for large (eg. 200^3) models"""
-    model = pd.read_csv(os.path.join(modelpath[0], 'model.txt'), delim_whitespace=True, header=None, skiprows=3, dtype=np.float64)
+    model = pd.read_csv(os.path.join(modelpath[0], 'model.txt'),
+                        delim_whitespace=True, header=None, skiprows=3, dtype=np.float64)
     columns = ['inputcellid', 'cellpos_in[z]', 'cellpos_in[y]', 'cellpos_in[x]', 'rho_model',
                'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48']
     model = pd.DataFrame(model.values.reshape(-1, 10))
@@ -261,15 +263,17 @@ def save_modeldata(
         dfmodel, t_model_init_days, filename=None, modelpath=None, vmax=None, dimensions=1, radioactives=True):
     """Save a pandas DataFrame and snapshot time into ARTIS model.txt"""
 
+    timestart = time.perf_counter()
     assert dimensions in [1, 3, None]
     if dimensions == 1:
         assert vmax is None
         standardcols = ['inputcellid', 'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52',
                         'X_Cr48', 'X_Ni57', 'X_Co57']
     elif dimensions == 3:
-        dfmodel.rename(columns={"gridindex": "inputcellid"}, inplace=True)
-        gridsize = round(len(dfmodel) ** (1 / 3))
-        print(f'grid size {gridsize}^3')
+        dfmodel.rename(columns={'gridindex': 'inputcellid'}, inplace=True)
+        griddimension = round(len(dfmodel) ** (1. / 3.))
+        print(f' grid size: {len(dfmodel)} ({griddimension}^3)')
+        assert griddimension ** 3 == len(dfmodel)
 
         standardcols = ['inputcellid', 'posx', 'posy', 'posz', 'rho',  'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52',
                         'X_Cr48', 'X_Ni57', 'X_Co57']
@@ -301,18 +305,32 @@ def save_modeldata(
 
         abundcols = [*[col for col in standardcols if col.startswith('X_')], *customcols]
 
-        for cell in dfmodel.itertuples():
-            if dimensions == 1:
+        # for cell in dfmodel.itertuples():
+        #     if dimensions == 1:
+        #         fmodel.write(f'{cell.inputcellid:6d}   {cell.velocity_outer:9.2f}   {cell.logrho:10.8f} ')
+        #     elif dimensions == 3:
+        #         fmodel.write(f"{cell.inputcellid:6d} {cell.posx} {cell.posy} {cell.posz} {cell.rho}\n")
+        #
+        #     fmodel.write(" ".join([f'{getattr(cell, col)}' for col in abundcols]))
+        #
+        #     fmodel.write('\n')
+        if dimensions == 1:
+
+            for cell in dfmodel.itertuples():
                 fmodel.write(f'{cell.inputcellid:6d}   {cell.velocity_outer:9.2f}   {cell.logrho:10.8f} ')
-            elif dimensions == 3:
-                fmodel.write(f"{cell.inputcellid:6d} {cell.posx} {cell.posy} {cell.posz} {cell.rho}\n")
+                fmodel.write(" ".join([f'{getattr(cell, col)}' for col in abundcols]))
+                fmodel.write('\n')
 
-            for col in abundcols:
-                fmodel.write(f'{getattr(cell, col)} ')
+        elif dimensions == 3:
 
-            fmodel.write('\n')
+            for inputcellid, posx, posy, posz, rho, *massfracs in dfmodel[
+                    ['inputcellid', 'posx', 'posy', 'posz', 'rho', *abundcols]].itertuples(index=False, name=None):
 
-    print(f'Saved {filename}')
+                fmodel.write(f"{inputcellid:6d} {posx} {posy} {posz} {rho}\n")
+                fmodel.write(" ".join([f'{abund}' for abund in massfracs]))
+                fmodel.write('\n')
+
+    print(f'Saved {filename} (took {time.perf_counter() - timestart:.1f} seconds)')
 
 
 def get_mgi_of_velocity_kms(modelpath, velocity, mgilist=None):
@@ -362,6 +380,7 @@ def save_initialabundances(dfelabundances, abundancefilename):
             - inputcellid: integer index to match model.txt (starting from 1)
             - X_El: mass fraction of element with two-letter code 'El' (e.g., X_H, X_He, H_Li, ...)
     """
+    timestart = time.perf_counter()
     if Path(abundancefilename).is_dir():
         abundancefilename = Path(abundancefilename) / 'abundances.txt'
     dfelabundances['inputcellid'] = dfelabundances['inputcellid'].astype(int)
@@ -375,14 +394,14 @@ def save_initialabundances(dfelabundances, abundancefilename):
             for colname in elcolnames:
                 fabund.write(f' {getattr(row, colname, 0.):.3e}')
 
-    print(f'Saved {abundancefilename}')
+    print(f'Saved {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)')
 
 
 def save_empty_abundance_file(ngrid, outputfilepath='.'):
     """Dummy abundance file with only zeros"""
     Z_atomic = np.arange(1, 31)
 
-    abundancedata = {'cellid': range(1, ngrid+1)}
+    abundancedata = {'cellid': range(1, ngrid + 1)}
     for atomic_number in Z_atomic:
         abundancedata[f'Z={atomic_number}'] = np.zeros(ngrid)
 

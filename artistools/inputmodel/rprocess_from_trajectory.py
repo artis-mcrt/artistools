@@ -3,13 +3,14 @@
 import argparse
 import math
 import tarfile
-# import os.path
-
-import numpy as np
-import pandas as pd
+import time
 from pathlib import Path
 
 import artistools as at
+import numpy as np
+import pandas as pd
+
+# import modin.pandas as pd
 
 
 def get_elemabund_from_nucabund(dfnucabund):
@@ -53,32 +54,34 @@ def get_trajectory_nuc_abund(particleid, memberfilename):
 def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
     """ contribute trajectory network calculation abundances to model cell abundances """
 
-    cellcount = len(dfmodel)
-
     t_model_s = t_model_days * 86400
     if 'X_Fegroup' not in dfmodel.columns:
-        dfmodel = pd.concat([dfmodel, pd.DataFrame({'X_Fegroup': np.ones(cellcount)})], axis=1)
+        dfmodel = pd.concat([dfmodel, pd.DataFrame({'X_Fegroup': np.ones(len(dfmodel))})], axis=1)
 
     dfcontribs = pd.read_csv(Path(gridcontribpath, 'gridcontributions.txt'), delim_whitespace=True,
                              dtype={0: int, 1: int, 2: float})
 
-    dfelabundances = pd.DataFrame({'inputcellid': dfmodel.gridindex})
-    # dfcontribs = dfcontribs[:10]  # TODO: REMOVE!
-    particleids = dfcontribs.particleid.unique()
-    particle_count = len(particleids)
+    active_inputcellids = dfcontribs.cellindex.unique()
+    active_inputcellcount = len(active_inputcellids)
+    print(f'particles contribute to {active_inputcellcount} of {len(dfmodel)} model cells')
+    dfnucabundances = pd.DataFrame({'inputcellid': active_inputcellids}, index=active_inputcellids, dtype=int)
 
-    for n, particleid in enumerate(particleids):
+    dfcontribs_groups = dfcontribs.groupby('particleid')
+    particle_count = len(dfcontribs_groups)
+
+    for n, (particleid, dfthisparticlecontribs) in enumerate(dfcontribs_groups, 1):
+        # if n > 1:
+        #     break
+        timestart = time.perf_counter()
         print(f'\ntrajectory particle id {particleid} ('
-              f'{n + 1} of {particle_count}, {(n + 1) / particle_count * 100:.1f}%)')
-        dfthisparticlecontribs = dfcontribs.query('particleid == @particleid', inplace=False)
+              f'{n} of {particle_count}, {n / particle_count * 100:.1f}%)')
 
         if not get_traj_tarpath(particleid).is_file():
-            # print(dfthisparticlecontribs)
             print(f' WARNING {get_traj_tarpath(particleid)} not found! '
                   f'Contributes up to {dfthisparticlecontribs.frac_of_cellmass.max() * 100:.1f}% mass of some cells')
             continue
 
-        # find the closest timestep to the require time
+        # find the closest timestep to the required time
         with tarfile.open(get_traj_tarpath(particleid), mode='r:*') as tar:
             evolfile = tar.extractfile(member='./Run_rprocess/evol.dat')
             dfevol = pd.read_csv(
@@ -86,36 +89,66 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
             idx = np.abs(dfevol.timesec.values - t_model_s).argmin()
             nts = dfevol.nstep.values[idx]
 
-        dfnucabund, traj_time_s = get_trajectory_nuc_abund(particleid, f'./Run_rprocess/nz-plane{nts:05d}')
-        dfnucabund.query('Z >= 1', inplace=True)
-        dfnucabund['abundcolname'] = [f'X_{at.get_elsymbol(row.Z)}{row.N + row.Z}' for row in dfnucabund.itertuples()]
+        dftrajnucabund, traj_time_s = get_trajectory_nuc_abund(particleid, f'./Run_rprocess/nz-plane{nts:05d}')
+        dftrajnucabund.query('Z >= 1', inplace=True)
+        dftrajnucabund['nucabundcolname'] = [f'X_{at.get_elsymbol(row.Z)}{row.N + row.Z}'
+                                             for row in dftrajnucabund.itertuples()]
 
-        massfracnormfactor = dfnucabund.massfrac.sum()
+        massfracnormfactor = dftrajnucabund.massfrac.sum()
         print(f' massfrac sum: {massfracnormfactor}')
 
         print(f'    grid snapshot: {t_model_s:.2e} seconds')
         print(f' network timestep: {traj_time_s:.2e} seconds (timestep {nts})')
         assert np.isclose(t_model_s, traj_time_s, rtol=0.7, atol=1)
-        print(f' contributing {len(dfnucabund)} abundances to {len(dfthisparticlecontribs)} cells')
+        print(f' contributing {len(dftrajnucabund)} abundances to {len(dfthisparticlecontribs)} cells')
 
         for contrib in dfthisparticlecontribs.itertuples():
-            newmodelcols = [colname for colname in dfnucabund.abundcolname.values if colname not in dfmodel.columns]
+            newmodelcols = [colname for colname in dftrajnucabund.nucabundcolname.values
+                            if colname not in dfnucabundances.columns]
             if newmodelcols:
-                dfabundcols = pd.DataFrame({colname: np.zeros(cellcount) for colname in newmodelcols})
-                dfmodel = pd.concat([dfmodel, dfabundcols], axis=1)
+                dfabundcols = pd.DataFrame(
+                    {colname: np.zeros(len(dfnucabundances)) for colname in newmodelcols},
+                    index=dfnucabundances.index)
+                dfnucabundances = pd.concat([dfnucabundances, dfabundcols], axis=1, join='inner')
 
-            elemabundcols = [f'X_{at.get_elsymbol(Z)}' for Z in dfnucabund.Z]
-            newelemabundcols = [colname for colname in elemabundcols if colname not in dfelabundances.columns]
-            if newelemabundcols:
-                dfabundcols = pd.DataFrame({colname: np.zeros(cellcount) for colname in newelemabundcols})
-                dfelabundances = pd.concat([dfelabundances, dfabundcols], axis=1)
+            for _, Z, nucabundcolname, massfrac in dftrajnucabund[['Z', 'nucabundcolname', 'massfrac']].itertuples():
+                dfnucabundances.at[contrib.cellindex, nucabundcolname] += massfrac * contrib.frac_of_cellmass
+            dftrajnucabund.inputcellid = contrib.cellindex
 
-            for _, Z, abundcolname, massfrac in dfnucabund[['Z', 'abundcolname', 'massfrac']].itertuples():
-                dfmodel.at[contrib.cellindex - 1, abundcolname] += massfrac * contrib.frac_of_cellmass
-                dfelabundances.at[contrib.cellindex - 1, f'X_{at.get_elsymbol(Z)}'] += massfrac * contrib.frac_of_cellmass
+            # assert contrib.cellindex == dfmodel.at[contrib.cellindex - 1, 'inputcellid']
+        print(f' particle {n} contributions took {time.perf_counter() - timestart:.1f} seconds')
 
-            # assert contrib.cellindex == dfmodel.at[contrib.cellindex - 1, 'gridindex']
+    timestart = time.perf_counter()
+    print('Adding up elemental abundances...', end='')
+    elemisotopes = {}
+    for colname in dfnucabundances.columns:
+        if not colname.startswith('X_'):
+            continue
+        atomic_number = at.get_atomic_number(colname[2:].rstrip('0123456789'))
+        if atomic_number in elemisotopes:
+            elemisotopes[atomic_number].append(colname)
+        else:
+            elemisotopes[atomic_number] = [colname]
 
+    # elcolnames = [f'X_{artistools.get_elsymbol(Z)}' for Z in range(max(atomic_numbers))]
+    dfelabundances = pd.DataFrame({
+        'inputcellid': dfnucabundances.index,
+        **{f'X_{at.get_elsymbol(atomic_number)}': dfnucabundances.eval(f'{" + ".join(elemisotopes[atomic_number])}')
+            if atomic_number in elemisotopes else np.zeros(len(active_inputcellids))
+            for atomic_number in range(1, max(elemisotopes.keys()) + 1)}}, index=dfnucabundances.index)
+    print(f' took {time.perf_counter() - timestart:.1f} seconds')
+
+    print('creating dfmodel')
+    dfmodel = dfmodel.merge(dfnucabundances, how='left', left_on='inputcellid', right_on='inputcellid')
+    # dfmodel.fillna({colname: 0. for colname in dfnucabundances.columns if colname.startswith('X_')}, inplace=True)
+    dfmodel.fillna(0., inplace=True)
+    # print(dfmodel.iloc[61615:61625])
+
+    print('creating dfelabundances')
+    # print(dfelabundances)
+    dfelabundances = dfmodel[['inputcellid']].merge(dfelabundances, how='left')  # add cells with no traj contributions
+    dfelabundances.fillna(0., inplace=True)
+    # print(dfelabundances.iloc[61615:61625])
     return dfmodel, dfelabundances
 
 
