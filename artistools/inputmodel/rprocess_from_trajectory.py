@@ -9,6 +9,8 @@ import artistools as at
 import numpy as np
 import pandas as pd
 
+traj_root = Path('/Users/luke/Dropbox/Archive/Mergers/SFHo/')
+
 
 def get_elemabund_from_nucabund(dfnucabund):
     dictelemabund = {}
@@ -19,27 +21,37 @@ def get_elemabund_from_nucabund(dfnucabund):
 
 
 def get_traj_tarpath(particleid):
-    return Path(f'/Users/luke/Dropbox/Archive/Mergers/SFHo/{particleid}.tar.xz')
+    return Path(traj_root, f'{particleid}.tar.xz')
+
+
+def open_tar_file_or_extracted(particleid, memberfilename):
+    """ file path is within the trajectory data folder, eg. ./Run_rprocess/evol.dat """
+    path_extracted_file = Path(traj_root, str(particleid), memberfilename)
+    if path_extracted_file.is_file():
+        return open(path_extracted_file, mode='r')
+    else:
+        return tarfile.open(get_traj_tarpath(particleid), mode='r:*').extractfile(member=memberfilename)
 
 
 def get_closest_network_timestep(particleid, t_model_s):
-    if not get_traj_tarpath(particleid).is_file():
+    try:
+        with open_tar_file_or_extracted(particleid, './Run_rprocess/evol.dat') as evolfile:
+            dfevol = pd.read_csv(
+                evolfile, delim_whitespace=True, comment='#', usecols=[0, 1], names=['nstep', 'timesec'])
+            idx = np.abs(dfevol.timesec.values - t_model_s).argmin()
+            nts = dfevol.nstep.values[idx]
+
+    except FileNotFoundError:
         return None
-    with tarfile.open(get_traj_tarpath(particleid), mode='r:*') as tar:
-        evolfile = tar.extractfile(member='./Run_rprocess/evol.dat')
-        dfevol = pd.read_csv(evolfile, delim_whitespace=True, comment='#', usecols=[0, 1], names=['nstep', 'timesec'])
-        idx = np.abs(dfevol.timesec.values - t_model_s).argmin()
-        nts = dfevol.nstep.values[idx]
+
     return nts
 
 
 def get_trajectory_nuc_abund(particleid, memberfilename):
-    trajpath = get_traj_tarpath(particleid)
-    with tarfile.open(trajpath, mode='r:*') as tar:
-        trajfile = tar.extractfile(member=memberfilename)
+    with open_tar_file_or_extracted(particleid, memberfilename) as trajfile:
 
         # with open(trajfile) as ftraj:
-        _, str_t_model_init_seconds, _, rho, _, _ = trajfile.readline().decode().split()
+        _, str_t_model_init_seconds, _, rho, _, _ = trajfile.readline().split()
         t_model_init_seconds = float(str_t_model_init_seconds)
         dfnucabund = pd.read_csv(trajfile, delim_whitespace=True, comment='#',
                                  names=["N", "Z", "log10abund", "S1n", "S2n"], usecols=["N", "Z", "log10abund"],
@@ -83,13 +95,13 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
         print(f'\ntrajectory particle id {particleid} ('
               f'{n} of {particle_count}, {n / particle_count * 100:.1f}%)')
 
-        if not get_traj_tarpath(particleid).is_file():
+        # find the closest timestep to the required time
+        nts = get_closest_network_timestep(particleid, t_model_s)
+
+        if nts is None:
             print(f' WARNING {get_traj_tarpath(particleid)} not found! '
                   f'Contributes up to {dfthisparticlecontribs.frac_of_cellmass.max() * 100:.1f}% mass of some cells')
             continue
-
-        # find the closest timestep to the required time
-        nts = get_closest_network_timestep(particleid, t_model_s)
 
         dftrajnucabund, traj_time_s = get_trajectory_nuc_abund(
             particleid, f'./Run_rprocess/nz-plane{nts:05d}')
