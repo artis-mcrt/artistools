@@ -96,12 +96,10 @@ def main(args=None, argsraw=None, **kwargs):
         model, t_model, vmax = at.inputmodel.get_modeldata(args.modelpath[0])
         if args.modeldim == 1:
             rho = 10**model['logrho']
+            Mtot_grams = model['shellmass_grams'].sum()
 
         else:
             rho = model['rho']
-        if args.modeldim == 1:
-            Mtot_grams = model['shellmass_grams'].sum()
-        else:
             Mtot_grams = model['cellmass_grams'].sum()
         print(f"total mass { Mtot_grams / 1.989e33} Msun")
 
