@@ -75,7 +75,7 @@ def main(args=None, argsraw=None, **kwargs):
             at.inputmodel.opacityinputfile.opacity_by_Ye(args.modelpath[0], dfmodel)
         if 'cellYe' in dfmodel:
             at.inputmodel.opacityinputfile.write_Ye_file(args.modelpath[0], dfmodel)
-        if 'Q' in dfmodel:
+        if 'Q' in dfmodel and args.makeenergyinputfiles:
             at.inputmodel.energyinputfiles.write_Q_energy_file(args.modelpath[0], dfmodel)
 
         if Path(args.pathtogriddata, 'gridcontributions.txt').is_file():
