@@ -24,6 +24,7 @@ import artistools.packets
 import artistools.radfield
 import artistools.spectra
 import artistools.transitions
+import artistools.plottools
 
 
 if sys.version_info < (3,):

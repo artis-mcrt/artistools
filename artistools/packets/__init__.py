@@ -409,39 +409,6 @@ def make_3d_grid(modeldata, vmax_cms):
     return grid_3d, x, y, z
 
 
-def make_2d_packets_plot(modelpath, timestep):
-    import pyvista as pv
-    modeldata, _, vmax_cms = at.inputmodel.get_modeldata(modelpath)
-    _, x, y, z = make_3d_grid(modeldata, vmax_cms)
-    mesh = pv.StructuredGrid(x, y, z)
-
-    hist = make_3d_histogram_from_packets(modelpath, timestep)
-
-    mesh['energy [erg/s]'] = hist.ravel(order='F')
-    # print(max(mesh['energy [erg/s]']))
-
-    sargs = dict(height=0.75, vertical=True, position_x=0.04, position_y=0.1,
-                 title_font_size=22, label_font_size=25)
-
-    pv.set_plot_theme("document")  # set white background
-    p = pv.Plotter()
-    p.set_scale(1.5, 1.5, 1.5)
-    # single_slice = mesh.slice(normal='y')
-    single_slice = mesh.slice(normal='z')
-    p.add_mesh(single_slice, scalar_bar_args=sargs)
-    p.show_bounds(grid=False, xlabel='vx / c', ylabel='vy / c', zlabel='vz / c',
-                  ticks='inside', minor_ticks=False, use_2d=True, font_size=26, bold=False)
-    # labels = dict(xlabel='vx / c', ylabel='vy / c', zlabel='vz / c')
-    # p.show_grid(**labels)
-    p.camera_position = 'xy'
-    timeminarray = at.get_timestep_times_float(modelpath=modelpath, loc='start')
-    time = timeminarray[timestep]
-    p.add_title(f'{time:.2f} - {timeminarray[timestep + 1]:.2f} days')
-    print(pv.global_theme)
-
-    p.show(screenshot=modelpath / f'3Dplot_pktsemitted{time:.1f}days_disk.png')
-
-
 def get_mean_packet_emission_velocity_per_ts(modelpath, packet_type='TYPE_ESCAPE', escape_type='TYPE_RPKT',
                                              maxpacketfiles=None, escape_angles=None):
 
