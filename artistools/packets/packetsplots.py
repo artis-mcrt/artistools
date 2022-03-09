@@ -78,7 +78,7 @@ def make_2d_packets_plot_pyvista(modelpath, timestep):
     p.show(screenshot=modelpath / f'3Dplot_pktsemitted{time:.1f}days_disk.png')
 
 
-def plot_packet_mean_emission_velocity(modelpath):
+def plot_packet_mean_emission_velocity(modelpath, write_emission_data=True):
     emission_data = at.packets.get_mean_packet_emission_velocity_per_ts(modelpath)
 
     plt.plot(emission_data['time'], emission_data['mean_emission_velocity'])
@@ -90,7 +90,8 @@ def plot_packet_mean_emission_velocity(modelpath):
     plt.ylabel('Mean emission velocity / c')
     plt.legend()
 
-    # emission_data.to_csv(Path(modelpath) / 'meanemissionvelocity.txt', sep=' ', index=False)
+    if write_emission_data:
+        emission_data.to_csv(Path(modelpath) / 'meanemissionvelocity.txt', sep=' ', index=False)
 
     outfilename = 'meanemissionvelocity.pdf'
     plt.savefig(Path(modelpath) / outfilename, format='pdf')
