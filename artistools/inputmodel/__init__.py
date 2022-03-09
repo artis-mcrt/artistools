@@ -195,9 +195,7 @@ def add_derived_cols_to_modeldata(dfmodel, derived_cols, dimensions=None, t_mode
         dfmodel['vel_y_mid'] = (dfmodel['pos_y'] + (0.5 * wid_init)) / t_model_init_seconds
         dfmodel['vel_z_mid'] = (dfmodel['pos_z'] + (0.5 * wid_init)) / t_model_init_seconds
 
-        dfmodel['vel_angle_ave'] = np.sqrt(np.array(dfmodel['vel_x_mid']) ** 2
-                                             + np.array(dfmodel['vel_y_mid']) ** 2
-                                             + np.array(dfmodel['vel_z_mid']) ** 2)
+        dfmodel.eval('vel_radial = sqrt(vel_x_mid ** 2 + vel_y_mid ** 2 + vel_z_mid ** 2', inplace=True)
 
     if dimensions == 3 and 'pos_mid' in derived_cols or 'angle_bin' in derived_cols:
         dfmodel['pos_x_mid'] = (dfmodel['pos_x'] + (0.5 * wid_init))
@@ -262,7 +260,7 @@ def get_mean_cell_properties_of_angle_bin(dfmodeldata, vmax_cmps, modelpath=None
         # get cells with bin number
         dfanglebin = dfmodeldata.query('cos_bin == @cos_bin_number', inplace=False)
 
-        binned = pd.cut(dfanglebin['vel_angle_ave'], velocity_bins, labels=False, include_lowest=True)
+        binned = pd.cut(dfanglebin['vel_radial'], velocity_bins, labels=False, include_lowest=True)
         i=0
         for binindex, mean_rho in dfanglebin.groupby(binned)['rho'].mean().iteritems():
             i+=1
