@@ -39,12 +39,13 @@ def make_cone(args):
     return cone
 
 
-def get_profile_along_axis(args=None, modeldata=None):
+def get_profile_along_axis(args=None, modeldata=None, derived_cols=False):
     print("Getting profile along axis")
 
     # merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata(args.modelpath, dimensions=3, get_abundances=True)
     if modeldata is None:
-        modeldata, _, _ = at.inputmodel.get_modeldata(args.modelpath, dimensions=3, get_abundances=True)
+        modeldata, _, _ = at.inputmodel.get_modeldata(args.modelpath, dimensions=3, get_abundances=True,
+                                                      derived_cols=derived_cols)
 
     position_closest_to_axis = modeldata.iloc[
         (modeldata[f'pos_{args.other_axis2}']).abs().argsort()][:1][f'pos_{args.other_axis2}'].item()
