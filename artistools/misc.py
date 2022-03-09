@@ -160,8 +160,11 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savez
                 if not cachefolder.is_dir():
                     cachefolder.mkdir(parents=True, exist_ok=True)
                 try:
+                    import xattr
                     xattr.setxattr(cachefolder, "com.dropbox.ignored", b'1')
                 except OSError:
+                    pass
+                except ModuleNotFoundError:
                     pass
 
                 if filename_nogz.exists():
