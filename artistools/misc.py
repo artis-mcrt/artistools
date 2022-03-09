@@ -11,7 +11,6 @@ import os.path
 import pickle
 import sys
 import time
-import xattr
 from collections import namedtuple
 from itertools import chain
 from functools import wraps
@@ -76,8 +75,11 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savez
 
             if cachefolder.is_dir():
                 try:
+                    import xattr
                     xattr.setxattr(cachefolder, "com.dropbox.ignored", b'1')
                 except OSError:
+                    pass
+                except ModuleNotFoundError:
                     pass
 
             namearghash = hashlib.sha1()
