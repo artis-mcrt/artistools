@@ -231,6 +231,52 @@ def get_cell_angle(dfmodel, modelpath):
     return dfmodel
 
 
+def get_mean_cell_properties_of_angle_bin(dfmodeldata, vmax_cmps, modelpath=None):
+    if 'cos_bin' not in dfmodeldata:
+        get_cell_angle(dfmodeldata, modelpath)
+
+    dfmodeldata['rho'][dfmodeldata['rho'] == 0] = None
+    dfmodeldata['rho']
+
+    cell_velocities = np.unique(dfmodeldata['vel_x_min'].values)
+    cell_velocities = cell_velocities[cell_velocities >= 0]
+    velocity_bins = np.append(cell_velocities, vmax_cmps)
+
+    mid_velocities = np.unique(dfmodeldata['vel_x_mid'].values)
+    mid_velocities = mid_velocities[mid_velocities >= 0]
+
+    mean_bin_properties = {}
+    import copy
+    for bin_number in range(10):
+        mean_bin_properties[bin_number] = pd.DataFrame({'velocity': mid_velocities,
+                                        'mean_rho': np.zeros_like(mid_velocities, dtype=float),
+                                        'mean_Ye': np.zeros_like(mid_velocities, dtype=float),
+                                        'mean_Q': np.zeros_like(mid_velocities, dtype=float),
+                                                        })
+
+    # cos_bin_number = 90
+    for bin_number in range(10):
+        cos_bin_number = bin_number * 10
+        dfanglebin = dfmodeldata.query(f'cos_bin == @cos_bin_number', inplace=False) #get cells with bin number
+
+        binned = pd.cut(dfanglebin['vel_angle_ave'], velocity_bins, labels=False, include_lowest=True)
+        i=0
+        for binindex, mean_rho in dfanglebin.groupby(binned)['rho'].mean().iteritems():
+            i+=1
+            mean_bin_properties[bin_number]['mean_rho'][binindex] += mean_rho
+        i=0
+        if 'Ye' in dfmodeldata.keys():
+            for binindex, mean_Ye in dfanglebin.groupby(binned)['Ye'].mean().iteritems():
+                i+=1
+                mean_bin_properties[bin_number]['mean_Ye'][binindex] += mean_Ye
+        if 'Q' in dfmodeldata.keys():
+            for binindex, mean_Q in dfanglebin.groupby(binned)['Q'].mean().iteritems():
+                i+=1
+                mean_bin_properties[bin_number]['mean_Q'][binindex] += mean_Q
+
+    return mean_bin_properties
+
+
 def get_2d_modeldata(modelpath):
     filepath = os.path.join(modelpath, 'model.txt')
     num_lines = sum(1 for line in open(filepath))
