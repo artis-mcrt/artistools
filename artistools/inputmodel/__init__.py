@@ -246,7 +246,6 @@ def get_mean_cell_properties_of_angle_bin(dfmodeldata, vmax_cmps, modelpath=None
     mid_velocities = mid_velocities[mid_velocities >= 0]
 
     mean_bin_properties = {}
-    import copy
     for bin_number in range(10):
         mean_bin_properties[bin_number] = pd.DataFrame({'velocity': mid_velocities,
                                         'mean_rho': np.zeros_like(mid_velocities, dtype=float),
@@ -257,7 +256,8 @@ def get_mean_cell_properties_of_angle_bin(dfmodeldata, vmax_cmps, modelpath=None
     # cos_bin_number = 90
     for bin_number in range(10):
         cos_bin_number = bin_number * 10
-        dfanglebin = dfmodeldata.query(f'cos_bin == @cos_bin_number', inplace=False) #get cells with bin number
+        # get cells with bin number
+        dfanglebin = dfmodeldata.query(f'cos_bin == @cos_bin_number', inplace=False)
 
         binned = pd.cut(dfanglebin['vel_angle_ave'], velocity_bins, labels=False, include_lowest=True)
         i=0
