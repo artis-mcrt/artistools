@@ -362,6 +362,7 @@ def save_modeldata(
 
     dfmodel['inputcellid'] = dfmodel['inputcellid'].astype(int)
     customcols = [col for col in dfmodel.columns if col not in standardcols and col.startswith('X_')]
+    customcols.sort(key=lambda col: artistools.get_z_a_nucname(col))  # sort columns by atomic number, mass number
 
     # set missing radioabundance columns to zero
     for col in standardcols:

@@ -678,6 +678,16 @@ def get_model_name(path):
         return os.path.basename(modelpath)
 
 
+def get_z_a_nucname(nucname):
+    """ return atomic number and mass number from a string like 'Pb208' (returns 92, 208) """
+    if nucname.startswith('X_'):
+        nucname = nucname[2:]
+    z = get_atomic_number(nucname.rstrip('0123456789'))
+    assert z > 0
+    a = int(nucname.lower().lstrip('abcdefghijklmnopqrstuvwxyz'))
+    return z, a
+
+
 def get_atomic_number(elsymbol):
     assert elsymbol is not None
     if elsymbol.title() in elsymbols:
