@@ -478,8 +478,8 @@ def save_initialabundances(dfelabundances, abundancefilename):
 
     with open(abundancefilename, 'w') as fabund:
         for row in dfelabundances.itertuples(index=False):
-            fabund.write(f'{row.inputcellid}')
-            fabund.write(" ".join([f' {getattr(row, colname, 0.)}' for colname in elcolnames]))
+            fabund.write(f' {row.inputcellid:6d} ')
+            fabund.write(" ".join([f'{getattr(row, colname, 0.)}' for colname in elcolnames]))
             fabund.write("\n")
 
     print(f'Saved {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)')
