@@ -93,9 +93,6 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
     dict_traj_nuc_abund = {}
     print('getting trajectory abundances...')
     for n, (particleid, dfthisparticlecontribs) in enumerate(dfcontribs_particlegroups, 1):
-        # if n > 1:
-        #     break
-
         # find the closest timestep to the required time
         nts = get_closest_network_timestep(particleid, t_model_s)
 
@@ -158,6 +155,7 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
     dfnucabundances = pd.DataFrame(listcellnucabundances)
     dfnucabundances.set_index('inputcellid', drop=False, inplace=True)
     dfnucabundances.index.name = None
+    dfnucabundances.fillna(0., inplace=True)
     print(f' took {time.perf_counter() - timestart:.1f} seconds')
 
     timestart = time.perf_counter()
@@ -172,8 +170,7 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
         else:
             elemisotopes[atomic_number] = [colname]
 
-    # elcolnames = [f'X_{artistools.get_elsymbol(Z)}' for Z in range(max(atomic_numbers))]
-    dfelabundances = pd.DataFrame({
+    dfelabundances_partial = pd.DataFrame({
         'inputcellid': dfnucabundances.inputcellid,
         **{f'X_{at.get_elsymbol(atomic_number)}': dfnucabundances.eval(f'{" + ".join(elemisotopes[atomic_number])}')
             if atomic_number in elemisotopes else np.zeros(len(dfnucabundances))
@@ -188,7 +185,11 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
 
     timestart = time.perf_counter()
     print('creating dfelabundances...', end='', flush=True)
-    dfelabundances = dfmodel[['inputcellid']].merge(dfelabundances, how='left')  # add cells with no traj contributions
+    # add cells with no traj contributions
+    dfelabundances = dfmodel[['inputcellid']].merge(
+        dfelabundances_partial, how='left', left_on='inputcellid', right_on='inputcellid')
+    dfnucabundances.set_index('inputcellid', drop=False, inplace=True)
+    dfnucabundances.index.name = None
     dfelabundances.fillna(0., inplace=True)
     print(f' took {time.perf_counter() - timestart:.1f} seconds')
 
