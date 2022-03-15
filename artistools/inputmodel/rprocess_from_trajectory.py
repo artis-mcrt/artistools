@@ -282,6 +282,10 @@ def main(args=None, argsraw=None, **kwargs):
     dfmodel = pd.DataFrame(modeldata)
     # print(dfmodel)
     at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, modelpath=Path(args.outputpath))
+    with open(Path(args.outputpath, 'gridcontributions.txt'), 'w') as fcontribs:
+        fcontribs.write('particleid cellindex frac_of_cellmass\n')
+        for cell in dfmodel.itertuples(index=False):
+            fcontribs.write(f'{particleid} {cell.inputcellid} {1.}\n')
 
 
 if __name__ == "__main__":
