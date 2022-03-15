@@ -399,7 +399,7 @@ def save_modeldata(
         #     fmodel.write('\n')
         if dimensions == 1:
 
-            for cell in dfmodel.itertuples():
+            for cell in dfmodel.itertuples(index=False):
                 fmodel.write(f'{cell.inputcellid:6d}   {cell.velocity_outer:9.2f}   {cell.logrho:10.8f} ')
                 fmodel.write(" ".join([f'{getattr(cell, col)}' for col in abundcols]))
                 fmodel.write('\n')
