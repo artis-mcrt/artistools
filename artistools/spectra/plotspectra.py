@@ -113,9 +113,8 @@ def plot_reference_spectrum(
         plotkwargs['label'] = metadata['label'] if 'label' in metadata else filename
 
     if scaletoreftime is not None:
-        assert scaletoreftime > 100
-        timefactor = math.exp(metadata['t'] / 133.) / math.exp(scaletoreftime / 133.)
-        print(f" Scale from time {metadata['t']} to {scaletoreftime}, factor {timefactor}")
+        timefactor = timeshift_fluxscale_co56law(scaletoreftime, float(metadata['t']))
+        print(f" Scale from time {metadata['t']} to {scaletoreftime}, factor {timefactor} using Co56 decay law")
         specdata['f_lambda'] *= timefactor
         plotkwargs['label'] += f' * {timefactor:.2f}'
     if 'scale_factor' in metadata:
@@ -218,14 +217,13 @@ def plot_artis_spectrum(
             else:
                 statpath = Path(args.outputfile).resolve().parent
         else:
-            spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc,
-                                    reftime=timeavg)
+            spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc)
             if args.plotviewingangle:  # read specpol res.
                 angles = args.plotviewingangle
                 viewinganglespectra = {}
                 for angle in angles:
                     viewinganglespectra[angle] = get_res_spectrum(modelpath, timestepmin, timestepmax, angle=angle,
-                                                                  fnufilterfunc=filterfunc, reftime=timeavg, args=args)
+                                                                  fnufilterfunc=filterfunc, args=args)
             elif args.plotvspecpol is not None and os.path.isfile(modelpath/'vpkt.txt'):
                 # read virtual packet files (after running plotartisspectrum --makevspecpol)
                 vpkt_config = at.get_vpkt_config(modelpath)
