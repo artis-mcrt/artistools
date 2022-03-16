@@ -24,6 +24,15 @@ fluxcontributiontuple = namedtuple(
     'fluxcontribution', 'fluxcontrib linelabel array_flambda_emission array_flambda_absorption color')
 
 
+def timeshift_fluxscale_co56law(scaletoreftime, spectime):
+    if scaletoreftime is not None:
+        # Co56 decay flux scaling
+        assert spectime > 150
+        return math.exp(float(spectime) / 113.7) / math.exp(scaletoreftime / 113.7)
+    else:
+        return 1.
+
+
 def get_exspec_bins():
     MNUBINS = 1000
     NU_MIN_R = 1e13
@@ -48,6 +57,9 @@ def get_exspec_bins():
 
 
 def stackspectra(spectra_and_factors):
+    """Add spectra using weighting factors, i.e., specout[nu] = spec1[nu] * factor1 + spec2[nu] * factor2 + ...
+    spectra_and_factors should be a list of tuples: spectra[], factor"""
+
     factor_sum = sum([factor for _, factor in spectra_and_factors])
 
     stackedspectrum = np.zeros_like(spectra_and_factors[0][0], dtype=float)
@@ -86,7 +98,7 @@ def get_specdata(modelpath, stokesparam=None):
 
 def get_spectrum(
         modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None,
-        reftime=None, modelnumber=None):
+        modelnumber=None):
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax < 0:
         timestepmax = timestepmin
@@ -94,18 +106,10 @@ def get_spectrum(
     specdata = get_specdata(modelpath)
 
     nu = specdata.loc[:, 'nu'].values
-    arr_tmid = at.get_timestep_times_float(modelpath, loc='mid')
-
-    def timefluxscale(timestep):
-        if reftime is not None:
-            return math.exp(float(arr_tmid[timestep]) / 133.) / math.exp(reftime / 133.)
-        else:
-            return 1.
-
     arr_tdelta = at.get_timestep_times_float(modelpath, loc='delta')
 
     f_nu = stackspectra([
-        (specdata[specdata.columns[timestep + 1]] * timefluxscale(timestep),
+        (specdata[specdata.columns[timestep + 1]],
          arr_tdelta[timestep])
         for timestep in range(timestepmin, timestepmax + 1)])
 
@@ -305,7 +309,7 @@ def average_angle_bins(res_specdata, angle, args):
 
 def get_res_spectrum(
         modelpath, timestepmin: int, timestepmax=-1, angle=None, res_specdata=None, fnufilterfunc=None,
-        reftime=None, args=None):
+        args=None):
 
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax < 0:
@@ -326,13 +330,8 @@ def get_res_spectrum(
     arr_tmid = at.get_timestep_times_float(modelpath, loc='mid')
     arr_tdelta = at.get_timestep_times_float(modelpath, loc='delta')
 
-    def timefluxscale(timestep):
-        if reftime is not None:
-            return math.exp(float(arr_tmid[timestep]) / 133.) / math.exp(reftime / 133.)
-        else:
-            return 1.
     # for angle in args.plotviewingangle:
-    f_nu = stackspectra([(res_specdata[angle][res_specdata[angle].columns[timestep + 1]] * timefluxscale(timestep),
+    f_nu = stackspectra([(res_specdata[angle][res_specdata[angle].columns[timestep + 1]],
                           arr_tdelta[timestep])
                          for timestep in range(timestepmin, timestepmax + 1)])
 
@@ -484,14 +483,8 @@ def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
     timestepmin = vspecdata.columns.get_loc(timelower)
     timestepmax = vspecdata.columns.get_loc(timeupper)
 
-    def timefluxscale(timestep):
-        if timeavg is not None:
-            return math.exp(float(arr_tmid[timestep]) / 133.) / math.exp(float(timeavg) / 133.)
-        else:
-            return 1.
-
     f_nu = stackspectra([
-        (vspecdata[vspecdata.columns[timestep + 1]] * timefluxscale(timestep),
+        (vspecdata[vspecdata.columns[timestep + 1]],
          arr_tdelta[timestep])
         for timestep in range(timestepmin-1, timestepmax)])
 
