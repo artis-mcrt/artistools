@@ -78,8 +78,8 @@ def get_trajectory_nuc_abund_group(t_model_s, particlegroup):
     nts = get_closest_network_timestep(particleid, t_model_s)
 
     if nts is None:
-        print(f' WARNING {get_traj_tarpath(particleid)} not found! '
-              f'Contributes up to {dfthisparticlecontribs.frac_of_cellmass.max() * 100:.1f}% mass of some cells')
+        # print(f' WARNING {get_traj_tarpath(particleid)} not found! '
+        #       f'Contributes up to {dfthisparticlecontribs.frac_of_cellmass.max() * 100:.1f}% mass of some cells')
         return None
 
     dftrajnucabund, traj_time_s = get_trajectory_nuc_abund(
@@ -104,8 +104,6 @@ def get_trajectory_nuc_abund_group(t_model_s, particlegroup):
 
 def get_cellmodelrow(dict_traj_nuc_abund, timefuncstart, active_inputcellcount, cellgroup):
     n, (cellindex, dfthiscellcontribs) = cellgroup
-    # if len(listcellnucabundances) > 20:
-    #     break
     if len(dfthiscellcontribs) < 10:
         return None
     contribparticles = [
@@ -114,22 +112,24 @@ def get_cellmodelrow(dict_traj_nuc_abund, timefuncstart, active_inputcellcount, 
             ['particleid', 'frac_of_cellmass']].itertuples(index=False)
         if particleid in dict_traj_nuc_abund]
 
-    nucabundcolnames = set([col for trajnucabund, _ in contribparticles for col in trajnucabund.keys()])
+    nucabundcolnames = set([
+        col for particleid in dfthiscellcontribs.particleid
+        for col in dict_traj_nuc_abund.get(particleid, {}).keys()])
 
-    row = {'inputcellid': cellindex}
-    for nucabundcolname in nucabundcolnames:
-        abund = sum(
-            [frac_of_cellmass * traj_nuc_abund.get(nucabundcolname, 0.)
-             for traj_nuc_abund, frac_of_cellmass in contribparticles])
-        row[nucabundcolname] = abund
+    row = {
+        nucabundcolname: sum([
+            frac_of_cellmass * traj_nuc_abund.get(nucabundcolname, 0.)
+            for traj_nuc_abund, frac_of_cellmass in contribparticles]
+        ) for nucabundcolname in nucabundcolnames}
+    row['inputcellid'] = cellindex
 
-    if n % 100 == 0:
-        functime = time.perf_counter() - timefuncstart
-        print(f'cell id {cellindex:6d} ('
-              f'{n:4d} of {active_inputcellcount:4d}, {n / active_inputcellcount * 100:4.1f}%) '
-              f' contributing {len(dfthiscellcontribs):4d} particles.'
-              f' total func time {functime:.1f} s, {n / functime:.1f} cell/s,'
-              f' expected time: {functime / n * active_inputcellcount:.1f}')
+    # if n % 100 == 0:
+    #     functime = time.perf_counter() - timefuncstart
+    #     print(f'cell id {cellindex:6d} ('
+    #           f'{n:4d} of {active_inputcellcount:4d}, {n / active_inputcellcount * 100:4.1f}%) '
+    #           f' contributing {len(dfthiscellcontribs):4d} particles.'
+    #           f' total func time {functime:.1f} s, {n / functime:.1f} cell/s,'
+    #           f' expected time: {functime / n * active_inputcellcount:.1f}')
     return row
 
 
@@ -153,19 +153,18 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
     dfcontribs_particlegroups = dfcontribs.groupby('particleid')
     particle_count = len(dfcontribs_particlegroups)
 
-    print(f'{active_inputcellcount} of {len(dfmodel)} model cells have >={minparticlesincell} particles contributing'
+    print(f'{active_inputcellcount} of {len(dfmodel)} model cells have >={minparticlesincell} particles contributing '
           f'({len(dfcontribs)} total contributions from {particle_count} particles after filter)')
 
     listcellnucabundances = []
-    print('getting trajectory abundances...')
+    print(f"Reading trajectory abundances with {at.num_processes} processes...")
+    timestart = time.perf_counter()
     trajnucabundworker = partial(get_trajectory_nuc_abund_group, t_model_s)
     if at.num_processes > 1:
-        print(f"Reading packets files with {at.num_processes} processes")
         with multiprocessing.Pool(processes=at.num_processes) as pool:
-            list_traj_nuc_abund = pool.map(trajnucabundworker, dfcontribs_particlegroups)
+            list_traj_nuc_abund = pool.imap(trajnucabundworker, dfcontribs_particlegroups)
             pool.close()
             pool.join()
-            # pool.terminate()
     else:
         list_traj_nuc_abund = [trajnucabundworker(particlegroup) for particlegroup in dfcontribs_particlegroups]
 
@@ -173,20 +172,23 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
         particleid: dftrajnucabund
         for particleid, dftrajnucabund in zip(dfcontribs_particlegroups.groups, list_traj_nuc_abund)
         if dftrajnucabund is not None}
+    print(f'getting trajectory abundances took {time.perf_counter() - timestart:.1f} seconds')
 
+    print(f"Generating cell abundances with {at.num_processes} processes")
+    timestart = time.perf_counter()
     dfcontribs_cellgroups = dfcontribs.groupby('cellindex')
     cellabundworker = partial(get_cellmodelrow, dict_traj_nuc_abund, timefuncstart, active_inputcellcount)
     if at.num_processes > 1:
-        print(f"Generating cell abundances with {at.num_processes} processes")
+        chunksize = math.ceil(len(dfcontribs_cellgroups) / at.num_processes)
         with multiprocessing.Pool(processes=at.num_processes) as pool:
-            listcellnucabundances = pool.map(cellabundworker, enumerate(dfcontribs_cellgroups, 1))
+            listcellnucabundances = pool.imap(cellabundworker, enumerate(dfcontribs_cellgroups, 1), chunksize=chunksize)
             pool.close()
             pool.join()
-            # pool.terminate()
     else:
         listcellnucabundances = [cellabundworker(n_cellgroup) for n_cellgroup in enumerate(dfcontribs_cellgroups, 1)]
 
     listcellnucabundances = [x for x in listcellnucabundances if x is not None]
+    print(f'getting model cell abundances took {time.perf_counter() - timestart:.1f} seconds')
 
     timestart = time.perf_counter()
     print('Creating dfnucabundances...', end='', flush=True)
@@ -199,7 +201,7 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
     timestart = time.perf_counter()
     print('Adding up elemental abundances...', end='', flush=True)
     elemisotopes = {}
-    for colname in dfnucabundances.columns:
+    for colname in sorted(dfnucabundances.columns):
         if not colname.startswith('X_'):
             continue
         atomic_number = at.get_atomic_number(colname[2:].rstrip('0123456789'))
