@@ -405,12 +405,13 @@ def save_modeldata(
                 fmodel.write('\n')
 
         elif dimensions == 3:
+            zeroabund = ' '.join(['0.0' for _ in abundcols])
 
             for inputcellid, posx, posy, posz, rho, *massfracs in dfmodel[
                     ['inputcellid', 'posx', 'posy', 'posz', 'rho', *abundcols]].itertuples(index=False, name=None):
 
                 fmodel.write(f"{inputcellid:6d} {posx} {posy} {posz} {rho}\n")
-                fmodel.write(" ".join([f'{abund}' for abund in massfracs]))
+                fmodel.write(" ".join([f'{abund}' for abund in massfracs]) if rho > 0. else zeroabund)
                 fmodel.write('\n')
 
     print(f'Saved {filename} (took {time.perf_counter() - timestart:.1f} seconds)')
