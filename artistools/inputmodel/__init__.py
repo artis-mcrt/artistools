@@ -261,18 +261,18 @@ def get_mean_cell_properties_of_angle_bin(dfmodeldata, vmax_cmps, modelpath=None
         dfanglebin = dfmodeldata.query('cos_bin == @cos_bin_number', inplace=False)
 
         binned = pd.cut(dfanglebin['vel_radial'], velocity_bins, labels=False, include_lowest=True)
-        i=0
+        i = 0
         for binindex, mean_rho in dfanglebin.groupby(binned)['rho'].mean().iteritems():
-            i+=1
+            i += 1
             mean_bin_properties[bin_number]['mean_rho'][binindex] += mean_rho
-        i=0
+        i = 0
         if 'Ye' in dfmodeldata.keys():
             for binindex, mean_Ye in dfanglebin.groupby(binned)['Ye'].mean().iteritems():
-                i+=1
+                i += 1
                 mean_bin_properties[bin_number]['mean_Ye'][binindex] += mean_Ye
         if 'Q' in dfmodeldata.keys():
             for binindex, mean_Q in dfanglebin.groupby(binned)['Q'].mean().iteritems():
-                i+=1
+                i += 1
                 mean_bin_properties[bin_number]['mean_Q'][binindex] += mean_Q
 
     return mean_bin_properties
@@ -451,7 +451,8 @@ def get_initialabundances(modelpath):
 
     abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, dtype=np.float64)
     abundancedata.index.name = 'modelgridindex'
-    abundancedata.columns = ['inputcellid', *['X_' + artistools.get_elsymbol(x) for x in range(1, len(abundancedata.columns))]]
+    abundancedata.columns = [
+        'inputcellid', *['X_' + artistools.get_elsymbol(x) for x in range(1, len(abundancedata.columns))]]
     if len(abundancedata) > 100000:
         print('abundancedata memory usage:')
         abundancedata.info(verbose=False, memory_usage="deep")
