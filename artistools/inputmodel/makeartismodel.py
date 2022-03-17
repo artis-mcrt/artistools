@@ -96,7 +96,7 @@ def main(args=None, argsraw=None, **kwargs):
         model, t_model, vmax = at.inputmodel.get_modeldata(args.modelpath[0])
         if args.modeldim == 1:
             rho = 10**model['logrho']
-            Mtot_grams = model['shellmass_grams'].sum()
+            Mtot_grams = model['cellmass_grams'].sum()
 
         else:
             rho = model['rho']

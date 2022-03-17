@@ -174,7 +174,7 @@ def plot_levelpop(
         raise ValueError()
 
     modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
-    modeldata.eval('modelcellvolume = shellmass_grams / (10 ** logrho)', inplace=True)
+    modeldata.eval('modelcellvolume = cellmass_grams / (10 ** logrho)', inplace=True)
 
     adata = at.atomic.get_levels(modelpath)
 
