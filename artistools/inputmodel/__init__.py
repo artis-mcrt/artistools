@@ -117,23 +117,17 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
         dfmodel = pd.read_csv(
             filename, delim_whitespace=True, header=None, names=columns, skiprows=headerrows, nrows=gridcellcount)
     else:
-        if ncols_file == 10:
-            dfmodel = pd.read_csv(
-                filename, delim_whitespace=True, header=None, names=columns, skiprows=headerrows, nrows=gridcellcount)
-            dfmodel = pd.DataFrame(dfmodel.values.reshape(-1, 10))
-            dfmodel.columns = columns[:len(dfmodel.columns)]
-        else:
-            dfmodel = pd.read_csv(
-                filename, delim_whitespace=True, header=None,
-                skiprows=lambda x: x < headerrows or (x - headerrows - 1) % 2 == 0, names=columns[:5],
-                nrows=gridcellcount)
-            dfmodeloddlines = pd.read_csv(
-                filename, delim_whitespace=True, header=None,
-                skiprows=lambda x: x < headerrows or (x - headerrows - 1) % 2 == 1, names=columns[5:],
-                nrows=gridcellcount)
-            assert len(dfmodel) == len(dfmodeloddlines)
-            dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
-            del dfmodeloddlines
+        dfmodel = pd.read_csv(
+            filename, delim_whitespace=True, header=None,
+            skiprows=lambda x: x < headerrows or (x - headerrows - 1) % 2 == 0, names=columns[:5],
+            nrows=gridcellcount)
+        dfmodeloddlines = pd.read_csv(
+            filename, delim_whitespace=True, header=None,
+            skiprows=lambda x: x < headerrows or (x - headerrows - 1) % 2 == 1, names=columns[5:],
+            nrows=gridcellcount)
+        assert len(dfmodel) == len(dfmodeloddlines)
+        dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
+        del dfmodeloddlines
 
     dfmodel = dfmodel.iloc[:gridcellcount]
 
