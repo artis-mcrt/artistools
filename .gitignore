@@ -59,4 +59,3 @@ artistools/data/lightcurves/SNsample/*.txt
 
 plottingscripts/*
 plottingscripts/
-artistools/inputmodel/maptogrid.py

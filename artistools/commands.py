@@ -20,7 +20,7 @@ commandlist = {
     'makeartismodel_rprocesstrajectory': ('artistools.inputmodel.rprocess_from_trajectory', 'main'),
     'makeartismodel': ('artistools.inputmodel.makeartismodel', 'main'),
 
-    # 'artistools-maptogrid': ('artistools.inputmodel.maptogrid', 'main'),
+    'artistools-maptogrid': ('artistools.inputmodel.maptogrid', 'main'),
 
     'plotartisdeposition': ('artistools.deposition', 'main'),
     'artistools-deposition': ('artistools.deposition', 'main'),
