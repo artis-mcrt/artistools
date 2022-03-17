@@ -1,9 +1,8 @@
-import multiprocessing
 import psutil
 from pathlib import Path
 
 # num_processes = 1
-num_processes = max(1, int(psutil.cpu_count(logical=False)))
+num_processes = max(1, int(psutil.cpu_count(logical=False)) - 1)
 # print(f'Using {num_processes} processes')
 
 enable_diskcache = True
