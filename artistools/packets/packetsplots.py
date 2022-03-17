@@ -81,7 +81,7 @@ def make_2d_packets_plot_pyvista(modelpath, timestep):
 def plot_packet_mean_emission_velocity(modelpath, write_emission_data=True):
     emission_data = at.packets.get_mean_packet_emission_velocity_per_ts(modelpath)
 
-    plt.plot(emission_data['time'], emission_data['mean_emission_velocity'])
+    plt.plot(emission_data['t_arrive_d'], emission_data['mean_emission_velocity'])
 
     plt.xlim(0.02, 30)
     plt.ylim(0.15, 0.35)
