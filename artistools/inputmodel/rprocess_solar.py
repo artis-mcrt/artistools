@@ -78,12 +78,12 @@ def main(args=None, argsraw=None, **kwargs):
         dfdensities['velocity_inner'] = np.concatenate(([0.], dfdensities['velocity_outer'].values[:-1]))
 
         t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
-        dfdensities.eval('shellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)'
+        dfdensities.eval('cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)'
                          '* (1e5 * @t_model_init_seconds_in) ** 3', inplace=True)
 
         # now replace the density at the input time with the density at required time
 
-        dfdensities.eval('rho = shellmass_grams / ('
+        dfdensities.eval('rho = cellmass_grams / ('
                          '4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)'
                          ' * (1e5 * @t_model_init_seconds) ** 3)', inplace=True)
     else:
