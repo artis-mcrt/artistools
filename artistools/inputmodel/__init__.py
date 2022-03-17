@@ -469,7 +469,7 @@ def get_initialabundances(modelpath):
     abundancefilepath = artistools.firstexisting(
         ['abundances.txt.xz', 'abundances.txt.gz', 'abundances.txt'], path=modelpath)
 
-    abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, dtype=np.float64)
+    abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None)
     abundancedata.index.name = 'modelgridindex'
     abundancedata.columns = [
         'inputcellid', *['X_' + artistools.get_elsymbol(x) for x in range(1, len(abundancedata.columns))]]
