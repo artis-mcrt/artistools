@@ -112,6 +112,8 @@ def get_cellmodelrow(dict_traj_nuc_abund, timefuncstart, active_inputcellcount, 
             ['particleid', 'frac_of_cellmass']].itertuples(index=False)
         if particleid in dict_traj_nuc_abund]
 
+    # todo: adjust frac_of_cellmass for missing particles
+
     nucabundcolnames = set([
         col for particleid in dfthiscellcontribs.particleid
         for col in dict_traj_nuc_abund.get(particleid, {}).keys()])
@@ -199,7 +201,7 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
     print(f' took {time.perf_counter() - timestart:.1f} seconds')
 
     timestart = time.perf_counter()
-    print('Adding up elemental abundances...', end='', flush=True)
+    print('Adding up isotopes for elemental abundances...', end='', flush=True)
     elemisotopes = {}
     for colname in sorted(dfnucabundances.columns):
         if not colname.startswith('X_'):
@@ -218,12 +220,6 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
     print(f' took {time.perf_counter() - timestart:.1f} seconds')
 
     timestart = time.perf_counter()
-    print('creating dfmodel...', end='', flush=True)
-    dfmodel = dfmodel.merge(dfnucabundances, how='left', left_on='inputcellid', right_on='inputcellid')
-    dfmodel.fillna(0., inplace=True)
-    print(f' took {time.perf_counter() - timestart:.1f} seconds')
-
-    timestart = time.perf_counter()
     print('creating dfelabundances...', end='', flush=True)
     # add cells with no traj contributions
     dfelabundances = dfmodel[['inputcellid']].merge(
@@ -231,6 +227,12 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
     dfnucabundances.set_index('inputcellid', drop=False, inplace=True)
     dfnucabundances.index.name = None
     dfelabundances.fillna(0., inplace=True)
+    print(f' took {time.perf_counter() - timestart:.1f} seconds')
+
+    timestart = time.perf_counter()
+    print('adding isotopic abundances to dfmodel...', end='', flush=True)
+    dfmodel = dfmodel.merge(dfnucabundances, how='left', left_on='inputcellid', right_on='inputcellid')
+    dfmodel.fillna(0., inplace=True)
     print(f' took {time.perf_counter() - timestart:.1f} seconds')
 
     return dfmodel, dfelabundances
