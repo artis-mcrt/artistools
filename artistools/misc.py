@@ -1110,10 +1110,27 @@ def get_cellsofmpirank(mpirank, modelpath):
     return list(range(nstart, nstart + ndo))
 
 
+@lru_cache(maxsize=16)
+def get_dfrankassignments(modelpath):
+    filerankassignments = Path(modelpath, 'modelgridrankassignments.out')
+    if filerankassignments.is_file():
+        df = pd.read_csv(filerankassignments, delim_whitespace=True)
+        df.rename(columns={df.columns[0]: df.columns[0].lstrip('#')}, inplace=True)
+        return df
+    return None
+
+
 def get_mpirankofcell(modelgridindex, modelpath):
     """Return the rank number of the MPI process responsible for handling a specified cell's updating and output."""
     npts_model = get_npts_model(modelpath)
     assert modelgridindex < npts_model
+
+    dfrankassignments = get_dfrankassignments(modelpath)
+    if dfrankassignments is not None:
+        dfselected = dfrankassignments.query(
+            'ndo > 0 and nstart <= @modelgridindex and (nstart + ndo - 1) >= @modelgridindex')
+        assert len(dfselected) == 1
+        return int(dfselected.iloc[0]['rank'])
 
     nprocs = get_nprocs(modelpath)
 
