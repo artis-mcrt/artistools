@@ -90,11 +90,10 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
         else:
             fmodel.seek(filepos)  # undo the readline() and go back
 
-        if dimensions == 1:
-            ncols_file = len(fmodel.readline().split()) + len(fmodel.readline().split())
-        else:
+        ncols_file = len(fmodel.readline().split())
+        if dimensions > 1:
             # columns split over two lines
-            ncols_file = len(fmodel.readline().split()) + len(fmodel.readline().split())
+            ncols_file += len(fmodel.readline().split())
 
         if columns is not None:
             assert ncols_file == len(columns)
