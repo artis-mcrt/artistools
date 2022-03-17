@@ -54,11 +54,11 @@ def main(args=None, argsraw=None, **kwargs):
             species = column.replace('X_', '')
             speciesabund_g = np.dot(dfmodel[column], dfmodel['cellmass_grams'])
 
-            mass_msun = speciesabund_g / 1.989e33
+            species_mass_msun = speciesabund_g / 1.989e33
             if species[-1].isdigit():
-                mass_msun_isotopes += mass_msun
+                mass_msun_isotopes += species_mass_msun
             elif species.lower() != 'fegroup':
-                mass_msun_elem += mass_msun
+                mass_msun_elem += species_mass_msun
 
             if speciesabund_g > 0.:
                 speciesmasses[species] = speciesabund_g
@@ -70,8 +70,9 @@ def main(args=None, argsraw=None, **kwargs):
     print(f'M_{"tot_iso":8s} {mass_msun_isotopes:7.4f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% of M_tot_rho, but can be small if stable isotopes not tracked)')
 
     for species, mass_g in speciesmasses.items():
-        mass_msun = mass_g / 1.989e33
-        print(f'M_{species:8s} {mass_msun:.3e} MSun')
+        species_mass_msun = mass_g / 1.989e33
+        massfrac = species_mass_msun / mass_msun_rho
+        print(f'{species:8s} {species_mass_msun:.3e} Msun    massfrac {massfrac:.3e}')
 
 
 if __name__ == "__main__":
