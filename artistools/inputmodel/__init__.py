@@ -50,17 +50,19 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
+    headerrows = 0
     with artistools.zopen(filename, 'rt') as fmodel:
-        gridcellcount = int(artistools.readnoncommentline(fmodel))
-        t_model_init_days = float(artistools.readnoncommentline(fmodel))
+        gridcellcount = int(fmodel.readline())
+        t_model_init_days = float(fmodel.readline())
+        headerrows += 2
         t_model_init_seconds = t_model_init_days * 24 * 60 * 60
 
         filepos = fmodel.tell()
         # if the next line is a single float then the model is 3D
         try:
-
-            vmax_cmps = float(artistools.readnoncommentline(fmodel))  # velocity max in cm/s
+            vmax_cmps = float(fmodel.readline())  # velocity max in cm/s
             xmax_tmodel = vmax_cmps * t_model_init_seconds  # xmax = ymax = zmax
+            headerrows += 1
             if dimensions is None:
                 print("Detected 3D model file")
                 dimensions = 3
@@ -83,34 +85,55 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
         filepos = fmodel.tell()
         line = fmodel.readline()
         if line.startswith('#'):
+            headerrows += 1
             columns = line.lstrip('#').split()
         else:
             fmodel.seek(filepos)  # undo the readline() and go back
 
-        if dimensions == 3:
-            ncoordgridx = int(round(gridcellcount ** (1. / 3.)))  # number of grid cell steps along an axis (same for xyz)
+        if dimensions == 1:
+            ncols_file = len(fmodel.readline().split()) + len(fmodel.readline().split())
+        else:
+            # columns split over two lines
+            ncols_file = len(fmodel.readline().split()) + len(fmodel.readline().split())
+
+        if columns is not None:
+            assert ncols_file == len(columns)
+        elif dimensions == 1:
+            columns = ['inputcellid', 'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56',
+                       'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57'][:ncols_file]
+
+        elif dimensions == 3:
+            columns = ['inputcellid', 'inputpos_a', 'inputpos_b', 'inputpos_c', 'rho',
+                       'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57'][:ncols_file]
+
+            # number of grid cell steps along an axis (same for xyz)
+            ncoordgridx = int(round(gridcellcount ** (1. / 3.)))
             ncoordgridy = int(round(gridcellcount ** (1. / 3.)))
             ncoordgridz = int(round(gridcellcount ** (1. / 3.)))
 
             assert (ncoordgridx * ncoordgridy * ncoordgridz) == gridcellcount
 
-        # skiprows = 3 if dimensions == 3 else 2
-        dfmodel = pd.read_csv(fmodel, delim_whitespace=True, header=None, dtype=np.float64, comment='#')
-
-        if dimensions == 1 and columns is None:
-            columns = ['inputcellid', 'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56',
-                       'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57']
-
-        elif dimensions == 3 and columns is None:
-            columns = ['inputcellid', 'inputpos_a', 'inputpos_b', 'inputpos_c', 'rho',
-                       'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48', 'X_Ni57', 'X_Co57']
-
-            try:
-                dfmodel = pd.DataFrame(dfmodel.values.reshape(-1, 12))
-            except ValueError:
-                dfmodel = pd.DataFrame(dfmodel.values.reshape(-1, 10))  # No Ni57 or Co57 columnss
-
-        dfmodel.columns = columns[:len(dfmodel.columns)]
+    if dimensions == 1:
+        dfmodel = pd.read_csv(
+            filename, delim_whitespace=True, header=None, names=columns, skiprows=headerrows, nrows=gridcellcount)
+    else:
+        if ncols_file == 10:
+            dfmodel = pd.read_csv(
+                filename, delim_whitespace=True, header=None, names=columns, skiprows=headerrows, nrows=gridcellcount)
+            dfmodel = pd.DataFrame(dfmodel.values.reshape(-1, 10))
+            dfmodel.columns = columns[:len(dfmodel.columns)]
+        else:
+            dfmodel = pd.read_csv(
+                filename, delim_whitespace=True, header=None,
+                skiprows=lambda x: x < headerrows or (x - headerrows - 1) % 2 == 0, names=columns[:5],
+                nrows=gridcellcount)
+            dfmodeloddlines = pd.read_csv(
+                filename, delim_whitespace=True, header=None,
+                skiprows=lambda x: x < headerrows or (x - headerrows - 1) % 2 == 1, names=columns[5:],
+                nrows=gridcellcount)
+            assert len(dfmodel) == len(dfmodeloddlines)
+            dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
+            del dfmodeloddlines
 
     dfmodel = dfmodel.iloc[:gridcellcount]
 
@@ -128,44 +151,47 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
         vmax_cmps = dfmodel.velocity_outer.max() * 1e5
 
     elif dimensions == 3:
-        cellid = dfmodel.index.values
-        xindex = cellid % ncoordgridx
-        yindex = (cellid // ncoordgridx) % ncoordgridy
-        zindex = (cellid // (ncoordgridx * ncoordgridy)) % ncoordgridz
-
-        dfmodel['pos_x'] = -xmax_tmodel + 2 * xindex * xmax_tmodel / ncoordgridx
-        dfmodel['pos_y'] = -xmax_tmodel + 2 * yindex * xmax_tmodel / ncoordgridy
-        dfmodel['pos_z'] = -xmax_tmodel + 2 * zindex * xmax_tmodel / ncoordgridz
-
         wid_init = artistools.get_wid_init_at_tmodel(modelpath, gridcellcount, t_model_init_days, xmax_tmodel)
         dfmodel.eval('cellmass_grams = rho * @wid_init ** 3', inplace=True)
 
-        def vectormatch(vec1, vec2):
-            xclose = np.isclose(vec1[0], vec2[0], atol=xmax_tmodel / ncoordgridx)
-            yclose = np.isclose(vec1[1], vec2[1], atol=xmax_tmodel / ncoordgridy)
-            zclose = np.isclose(vec1[2], vec2[2], atol=xmax_tmodel / ncoordgridz)
+        dfmodel.rename(columns={'posx': 'pos_x', 'posy': 'pos_y', 'posz': 'pos_z'}, inplace=True)
+        if 'pos_x' in dfmodel.columns:
+            print("Cell positions in model.txt are defined in the header")
+        else:
+            cellid = dfmodel.index.values
+            xindex = cellid % ncoordgridx
+            yindex = (cellid // ncoordgridx) % ncoordgridy
+            zindex = (cellid // (ncoordgridx * ncoordgridy)) % ncoordgridz
+            dfmodel['pos_x'] = -xmax_tmodel + 2 * xindex * xmax_tmodel / ncoordgridx
+            dfmodel['pos_y'] = -xmax_tmodel + 2 * yindex * xmax_tmodel / ncoordgridy
+            dfmodel['pos_z'] = -xmax_tmodel + 2 * zindex * xmax_tmodel / ncoordgridz
 
-            return all([xclose, yclose, zclose])
+            def vectormatch(vec1, vec2):
+                xclose = np.isclose(vec1[0], vec2[0], atol=xmax_tmodel / ncoordgridx)
+                yclose = np.isclose(vec1[1], vec2[1], atol=xmax_tmodel / ncoordgridy)
+                zclose = np.isclose(vec1[2], vec2[2], atol=xmax_tmodel / ncoordgridz)
 
-        posmatch_xyz = True
-        posmatch_zyx = True
-        # important cell numbers to check for coordinate column order
-        indexlist = [0, ncoordgridx - 1, (ncoordgridx - 1) * (ncoordgridy - 1),
-                     (ncoordgridx - 1) * (ncoordgridy - 1) * (ncoordgridz - 1)]
-        for index in indexlist:
-            cell = dfmodel.iloc[index]
-            if not vectormatch([cell.inputpos_a, cell.inputpos_b, cell.inputpos_c],
-                               [cell.pos_x, cell.pos_y, cell.pos_z]):
-                posmatch_xyz = False
-            if not vectormatch([cell.inputpos_a, cell.inputpos_b, cell.inputpos_c],
-                               [cell.pos_z, cell.pos_y, cell.pos_x]):
-                posmatch_zyx = False
+                return all([xclose, yclose, zclose])
 
-        assert posmatch_xyz != posmatch_zyx  # one option must match
-        if posmatch_xyz:
-            print("Cell positions in model.txt are consistent with calculated values when x-y-z column order")
-        if posmatch_zyx:
-            print("Cell positions in model.txt are consistent with calculated values when z-y-x column order")
+            posmatch_xyz = True
+            posmatch_zyx = True
+            # important cell numbers to check for coordinate column order
+            indexlist = [0, ncoordgridx - 1, (ncoordgridx - 1) * (ncoordgridy - 1),
+                         (ncoordgridx - 1) * (ncoordgridy - 1) * (ncoordgridz - 1)]
+            for index in indexlist:
+                cell = dfmodel.iloc[index]
+                if not vectormatch([cell.inputpos_a, cell.inputpos_b, cell.inputpos_c],
+                                   [cell.pos_x, cell.pos_y, cell.pos_z]):
+                    posmatch_xyz = False
+                if not vectormatch([cell.inputpos_a, cell.inputpos_b, cell.inputpos_c],
+                                   [cell.pos_z, cell.pos_y, cell.pos_x]):
+                    posmatch_zyx = False
+
+            assert posmatch_xyz != posmatch_zyx  # one option must match
+            if posmatch_xyz:
+                print("Cell positions in model.txt are consistent with calculated values when x-y-z column order")
+            if posmatch_zyx:
+                print("Cell positions in model.txt are consistent with calculated values when z-y-x column order")
 
     if get_abundances:
         if dimensions == 3:

@@ -30,30 +30,33 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    dfmodel, t_model_init_days, _ = artistools.inputmodel.get_modeldata(args.inputfile, get_abundances=args.getabundances)
-    print(f'Read {args.inputfile}')
+    print(f'Reading {args.inputfile}')
+    dfmodel, t_model_init_days, vmax = artistools.inputmodel.get_modeldata(
+        args.inputfile, get_abundances=args.getabundances)
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
     print(f'Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)')
 
-    if 'velocity_outer' in dfmodel.columns:
+    if 'pos_x' in dfmodel.columns:
+        print(f'Model contains {len(dfmodel)} Cartesian grid cells with vmax = {vmax} km/s')
+    else:
         vmax = dfmodel['velocity_outer'].max()
         print(f'Model contains {len(dfmodel)} 1D spherical shells with vmax = {vmax} km/s')
-    else:
-        print(f'Model contains {len(dfmodel)} Cartesian grid cells with vmax = {vmax} km/s')
 
     mass_msun = dfmodel['cellmass_grams'].sum() / 1.989e33
 
-    print(f'M_{"tot":8s} {mass_msun:7.4f} Msun')
+    print(f'M_{"tot":8s} {mass_msun:7.4f} MSun')
     speciesmasses = {}
     for column in dfmodel.columns:
         if column.startswith('X_'):
             species = column.replace('X_', '')
-            speciesmasses[species] = np.dot(dfmodel[column], dfmodel['cellmass_grams'])
+            speciesabund = np.dot(dfmodel[column], dfmodel['cellmass_grams'])
+            if speciesabund > 0.:
+                speciesmasses[species] = speciesabund
 
     for species, mass_g in speciesmasses.items():
         mass_msun = mass_g / 1.989e33
-        print(f'M_{species:8s} {mass_msun:7.4f} Msun')
+        print(f'M_{species:8s} {mass_msun:.3e} MSun')
 
 
 if __name__ == "__main__":

@@ -443,8 +443,6 @@ def get_wid_init_at_tmodel(modelpath, ngridpoints=None, t_model=None, xmax=None)
 
     wid_init = 2 * xmax / ncoordgridx
 
-    print(xmax, t_model, wid_init)
-
     return wid_init
 
 
