@@ -421,7 +421,7 @@ def get_mean_packet_emission_velocity_per_ts(modelpath, packet_type='TYPE_ESCAPE
     timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
 
     dfpackets_escape_velocity_and_arrive_time = pd.DataFrame
-    emission_data = pd.DataFrame({'time': timearray,
+    emission_data = pd.DataFrame({'t_arrive_d': timearray,
                                   'mean_emission_velocity': np.zeros_like(timearray, dtype=float)})
 
     for i, packetsfile in enumerate(packetsfiles):
