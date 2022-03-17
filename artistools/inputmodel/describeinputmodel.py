@@ -40,15 +40,16 @@ def main(args=None, argsraw=None, **kwargs):
         vmax = dfmodel['velocity_outer'].max()
         print(f'Model contains {len(dfmodel)} 1D spherical shells with vmax = {vmax} km/s')
     else:
-        assert False   # 3D mode not implemented yet
+        print(f'Model contains {len(dfmodel)} Cartesian grid cells with vmax = {vmax} km/s')
 
-    mass_msun = dfmodel['shellmass_grams'].sum() / 1.989e33
+    mass_msun = dfmodel['cellmass_grams'].sum() / 1.989e33
+
     print(f'M_{"tot":8s} {mass_msun:7.4f} Msun')
     speciesmasses = {}
     for column in dfmodel.columns:
         if column.startswith('X_'):
             species = column.replace('X_', '')
-            speciesmasses[species] = np.dot(dfmodel[column], dfmodel['shellmass_grams'])
+            speciesmasses[species] = np.dot(dfmodel[column], dfmodel['cellmass_grams'])
 
     for species, mass_g in speciesmasses.items():
         mass_msun = mass_g / 1.989e33
