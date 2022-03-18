@@ -148,7 +148,7 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
         dfmodel.eval('cellmass_grams = rho * @wid_init ** 3', inplace=True)
 
         dfmodel.rename(columns={
-            'posx': 'pos_x_min', 'pos_y_min': 'pos_y_min', 'posz': 'posz_min'
+            'posx': 'pos_x_min', 'pos_y_min': 'pos_y_min', 'posz': 'pos_z_min'
         }, inplace=True)
         if 'pos_x_min' in dfmodel.columns:
             print("Cell positions in model.txt are defined in the header")
@@ -159,7 +159,7 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
             zindex = (cellid // (ncoordgridx * ncoordgridy)) % ncoordgridz
             dfmodel['pos_x_min'] = -xmax_tmodel + 2 * xindex * xmax_tmodel / ncoordgridx
             dfmodel['pos_y_min'] = -xmax_tmodel + 2 * yindex * xmax_tmodel / ncoordgridy
-            dfmodel['posz_min'] = -xmax_tmodel + 2 * zindex * xmax_tmodel / ncoordgridz
+            dfmodel['pos_z_min'] = -xmax_tmodel + 2 * zindex * xmax_tmodel / ncoordgridz
 
             def vectormatch(vec1, vec2):
                 xclose = np.isclose(vec1[0], vec2[0], atol=xmax_tmodel / ncoordgridx)
@@ -209,22 +209,22 @@ def add_derived_cols_to_modeldata(dfmodel, derived_cols, dimensions=None, t_mode
     if dimensions == 3 and 'velocity' in derived_cols:
         dfmodel['vel_x_min'] = dfmodel['pos_x_min'] / t_model_init_seconds
         dfmodel['vel_y_min'] = dfmodel['pos_y_min'] / t_model_init_seconds
-        dfmodel['vel_z_min'] = dfmodel['posz_min'] / t_model_init_seconds
+        dfmodel['vel_z_min'] = dfmodel['pos_z_min'] / t_model_init_seconds
 
         dfmodel['vel_x_max'] = (dfmodel['pos_x_min'] + wid_init) / t_model_init_seconds
         dfmodel['vel_y_max'] = (dfmodel['pos_y_min'] + wid_init) / t_model_init_seconds
-        dfmodel['vel_z_max'] = (dfmodel['posz_min'] + wid_init) / t_model_init_seconds
+        dfmodel['vel_z_max'] = (dfmodel['pos_z_min'] + wid_init) / t_model_init_seconds
 
         dfmodel['vel_x_mid'] = (dfmodel['pos_x_min'] + (0.5 * wid_init)) / t_model_init_seconds
         dfmodel['vel_y_mid'] = (dfmodel['pos_y_min'] + (0.5 * wid_init)) / t_model_init_seconds
-        dfmodel['vel_z_mid'] = (dfmodel['posz_min'] + (0.5 * wid_init)) / t_model_init_seconds
+        dfmodel['vel_z_mid'] = (dfmodel['pos_z_min'] + (0.5 * wid_init)) / t_model_init_seconds
 
         dfmodel.eval('vel_mid_radial = sqrt(vel_x_mid ** 2 + vel_y_mid ** 2 + vel_z_mid ** 2)', inplace=True)
 
     if dimensions == 3 and 'pos_mid' in derived_cols or 'angle_bin' in derived_cols:
         dfmodel['pos_x_mid'] = (dfmodel['pos_x_min'] + (0.5 * wid_init))
         dfmodel['pos_y_mid'] = (dfmodel['pos_y_min'] + (0.5 * wid_init))
-        dfmodel['pos_z_mid'] = (dfmodel['posz_min'] + (0.5 * wid_init))
+        dfmodel['pos_z_mid'] = (dfmodel['pos_z_min'] + (0.5 * wid_init))
 
     if 'angle_bin' in derived_cols:
         get_cell_angle(dfmodel, modelpath)
@@ -373,7 +373,7 @@ def save_modeldata(
         print(f' grid size: {len(dfmodel)} ({griddimension}^3)')
         assert griddimension ** 3 == len(dfmodel)
 
-        standardcols = ['inputcellid', 'pos_x_min', 'pos_y_min', 'posz_min', 'rho',  'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52',
+        standardcols = ['inputcellid', 'pos_x_min', 'pos_y_min', 'pos_z_min', 'rho',  'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52',
                         'X_Cr48']
 
     # these two columns are optional, but position is important and they must appear before any other custom cols
@@ -430,10 +430,11 @@ def save_modeldata(
         elif dimensions == 3:
             zeroabund = ' '.join(['0.0' for _ in abundcols])
 
-            for inputcellid, posx, posy, posz, rho, *massfracs in dfmodel[
-                    ['inputcellid', 'posx', 'posy', 'posz', 'rho', *abundcols]].itertuples(index=False, name=None):
+            for inputcellid, posxmin, posymin, poszmin, rho, *massfracs in dfmodel[
+                    ['inputcellid', 'pos_x_min', 'pos_y_min', 'pos_z_min', 'rho', *abundcols]
+                    ].itertuples(index=False, name=None):
 
-                fmodel.write(f"{inputcellid:6d} {posx} {posy} {posz} {rho}\n")
+                fmodel.write(f"{inputcellid:6d} {posxmin} {posymin} {poszmin} {rho}\n")
                 fmodel.write(" ".join([f'{abund}' for abund in massfracs]) if rho > 0. else zeroabund)
                 fmodel.write('\n')
 
@@ -547,7 +548,8 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None):
         dfelabundances = dfelabundances.query('inputcellid in @dfmodel.inputcellid').copy()
     dfmodel = add_derived_cols_to_modeldata(
         dfmodel, ['velocity'], dimensions=3, t_model_init_seconds=t_model_init_seconds, wid_init=wid_init)
-
+    # print(dfmodel)
+    # print(dfelabundances)
     km_to_cm = 1e5
     velocity_bins = [vmax * n / ncoordgridx for n in range(ncoordgridx + 1)]  # cm/s
     outcells = []
@@ -562,7 +564,10 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None):
         if len(matchedcells) == 0:
             rhomean = 0.
         else:
-            rhomean = matchedcells.rho.mean()
+            shell_volume = (4 * math.pi / 3) * (
+                (velocity_outer * t_model_init_seconds) ** 3 - (velocity_inner * t_model_init_seconds) ** 3)
+            rhomean = matchedcells.rho.sum() * wid_init ** 3 / shell_volume
+
         if rhomean > 0.:
             highest_active_radialcellid = radialcellid
         logrho = math.log10(max(1e-99, rhomean))
@@ -582,8 +587,10 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None):
 
         outcells.append(dictcell)
         if dfelabundances is not None:
-            abund_matchedcells = dfelabundances.query('inputcellid in @matchedcells.inputcellid')
-            assert abund_matchedcells.inputcellid.values == matchedcells.inputcellid.values
+            if rhomean > 0.:
+                abund_matchedcells = dfelabundances.loc[matchedcells.index]
+            else:
+                abund_matchedcells = None
             dictcellabundances = {'inputcellid': radialcellid}
             for column in dfelabundances.columns:
                 if column.startswith('X_'):

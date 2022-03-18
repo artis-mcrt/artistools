@@ -62,7 +62,7 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
         'gridindex': 'inputcellid',
         'posx': 'pos_x_min',
         'posy': 'pos_y_min',
-        'posz': 'posz_min',
+        'posz': 'pos_z_min',
     }, inplace=True)
     # griddata in geom units
     griddata['rho'] = np.nan_to_num(griddata['rho'], nan=0.)
@@ -76,7 +76,7 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
     km_to_cm = 1e5
     griddata.eval('pos_x_min = pos_x_min * @factor_position * @km_to_cm', inplace=True)
     griddata.eval('pos_y_min = pos_y_min * @factor_position * @km_to_cm', inplace=True)
-    griddata.eval('posz_min = posz_min * @factor_position * @km_to_cm', inplace=True)
+    griddata.eval('pos_z_min = pos_z_min * @factor_position * @km_to_cm', inplace=True)
 
     griddata['rho'] = griddata['rho'] * 6.176e17  # convert to g/cm3
 
@@ -99,7 +99,7 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
         timefactor = targetmodeltime_days / t_model_days
         griddata.eval('pos_x_min = pos_x_min * @timefactor', inplace=True)
         griddata.eval('pos_y_min = pos_y_min * @timefactor', inplace=True)
-        griddata.eval('posz_min = posz_min * @timefactor', inplace=True)
+        griddata.eval('pos_z_min = pos_z_min * @timefactor', inplace=True)
         griddata.eval('rho = rho * @timefactor ** -3', inplace=True)
         print(f"Adjusting t_model to {targetmodeltime_days} days (factor {timefactor}) "
               "using homologous expansion of positions and densities")
