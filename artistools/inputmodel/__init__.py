@@ -148,7 +148,7 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
         dfmodel.eval('cellmass_grams = rho * @wid_init ** 3', inplace=True)
 
         dfmodel.rename(columns={
-            'posx': 'pos_x_min', 'pos_y_min': 'pos_y_min', 'posz': 'pos_z_min'
+            'pos_x_min': 'pos_x_min', 'pos_y_min': 'pos_y_min', 'pos_z_min': 'pos_z_min'
         }, inplace=True)
         if 'pos_x_min' in dfmodel.columns:
             print("Cell positions in model.txt are defined in the header")

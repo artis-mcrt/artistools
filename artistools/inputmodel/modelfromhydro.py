@@ -60,9 +60,9 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
     griddata = pd.read_csv(griddatfilepath, delim_whitespace=True, comment='#', skiprows=3)
     griddata.rename(columns={
         'gridindex': 'inputcellid',
-        'posx': 'pos_x_min',
-        'posy': 'pos_y_min',
-        'posz': 'pos_z_min',
+        'pos_x_min': 'pos_x_min',
+        'pos_y_min': 'pos_y_min',
+        'pos_z_min': 'pos_z_min',
     }, inplace=True)
     # griddata in geom units
     griddata['rho'] = np.nan_to_num(griddata['rho'], nan=0.)
@@ -198,16 +198,16 @@ def add_mass_to_center(griddata, t_model_in_days, vmax, args):
 
     for i, cellid in enumerate(griddata['inputcellid']):
         # if pos < 0.1 c
-        if ((np.sqrt(griddata['posx'][i] ** 2 + griddata['posy'][i] ** 2 + griddata['posz'][i] ** 2)) /
+        if ((np.sqrt(griddata['pos_x_min'][i] ** 2 + griddata['pos_y_min'][i] ** 2 + griddata['pos_z_min'][i] ** 2)) /
                 (t_model_in_days * (24. * 3600)) / CLIGHT) < 0.1:
             # if griddata['rho'][i] == 0:
             print("Inner empty cells")
-            print(cellid, griddata['posx'][i], griddata['posy'][i], griddata['posz'][i], griddata['rho'][i])
+            print(cellid, griddata['pos_x_min'][i], griddata['pos_y_min'][i], griddata['pos_z_min'][i], griddata['rho'][i])
             griddata['rho'][i] += density_hole
             if griddata['cellYe'][i] < 0.4:
                 griddata['cellYe'][i] = 0.4
             # print("Inner empty cells filled")
-            print(cellid, griddata['posx'][i], griddata['posy'][i], griddata['posz'][i], griddata['rho'][i])
+            print(cellid, griddata['pos_x_min'][i], griddata['pos_y_min'][i], griddata['pos_z_min'][i], griddata['rho'][i])
 
     return griddata
 
@@ -281,7 +281,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     gridfolderpath = args.inputpath
     if not Path(gridfolderpath, 'grid.dat').is_file() or not Path(gridfolderpath, 'gridcontributions.txt').is_file():
-        print('grid.dat and gridcontributions.txt are required')
+        print('grid.dat and gridcontributions.txt are required. Run artistools-maptogrid')
         return
         # at.inputmodel.maptogrid.main()
 
