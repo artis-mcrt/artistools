@@ -147,17 +147,19 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
         wid_init = artistools.get_wid_init_at_tmodel(modelpath, gridcellcount, t_model_init_days, xmax_tmodel)
         dfmodel.eval('cellmass_grams = rho * @wid_init ** 3', inplace=True)
 
-        dfmodel.rename(columns={'posx': 'pos_x', 'posy': 'pos_y', 'posz': 'pos_z'}, inplace=True)
-        if 'pos_x' in dfmodel.columns:
+        dfmodel.rename(columns={
+            'posx': 'pos_x_min', 'pos_y_min': 'pos_y_min', 'posz': 'posz_min'
+        }, inplace=True)
+        if 'pos_x_min' in dfmodel.columns:
             print("Cell positions in model.txt are defined in the header")
         else:
             cellid = dfmodel.index.values
             xindex = cellid % ncoordgridx
             yindex = (cellid // ncoordgridx) % ncoordgridy
             zindex = (cellid // (ncoordgridx * ncoordgridy)) % ncoordgridz
-            dfmodel['pos_x'] = -xmax_tmodel + 2 * xindex * xmax_tmodel / ncoordgridx
-            dfmodel['pos_y'] = -xmax_tmodel + 2 * yindex * xmax_tmodel / ncoordgridy
-            dfmodel['pos_z'] = -xmax_tmodel + 2 * zindex * xmax_tmodel / ncoordgridz
+            dfmodel['pos_x_min'] = -xmax_tmodel + 2 * xindex * xmax_tmodel / ncoordgridx
+            dfmodel['pos_y_min'] = -xmax_tmodel + 2 * yindex * xmax_tmodel / ncoordgridy
+            dfmodel['posz_min'] = -xmax_tmodel + 2 * zindex * xmax_tmodel / ncoordgridz
 
             def vectormatch(vec1, vec2):
                 xclose = np.isclose(vec1[0], vec2[0], atol=xmax_tmodel / ncoordgridx)
@@ -201,25 +203,28 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
 def add_derived_cols_to_modeldata(dfmodel, derived_cols, dimensions=None, t_model_init_seconds=None, wid_init=None,
                                   modelpath=None):
     """add columns to modeldata using e.g. derived_cols = ('velocity', 'Ye')"""
+    if dimensions is None:
+        dimensions = get_dfmodel_dimensions(dfmodel)
+
     if dimensions == 3 and 'velocity' in derived_cols:
-        dfmodel['vel_x_min'] = dfmodel['pos_x'] / t_model_init_seconds
-        dfmodel['vel_y_min'] = dfmodel['pos_y'] / t_model_init_seconds
-        dfmodel['vel_z_min'] = dfmodel['pos_z'] / t_model_init_seconds
+        dfmodel['vel_x_min'] = dfmodel['pos_x_min'] / t_model_init_seconds
+        dfmodel['vel_y_min'] = dfmodel['pos_y_min'] / t_model_init_seconds
+        dfmodel['vel_z_min'] = dfmodel['posz_min'] / t_model_init_seconds
 
-        dfmodel['vel_x_max'] = (dfmodel['pos_x'] + wid_init) / t_model_init_seconds
-        dfmodel['vel_y_max'] = (dfmodel['pos_y'] + wid_init) / t_model_init_seconds
-        dfmodel['vel_z_max'] = (dfmodel['pos_z'] + wid_init) / t_model_init_seconds
+        dfmodel['vel_x_max'] = (dfmodel['pos_x_min'] + wid_init) / t_model_init_seconds
+        dfmodel['vel_y_max'] = (dfmodel['pos_y_min'] + wid_init) / t_model_init_seconds
+        dfmodel['vel_z_max'] = (dfmodel['posz_min'] + wid_init) / t_model_init_seconds
 
-        dfmodel['vel_x_mid'] = (dfmodel['pos_x'] + (0.5 * wid_init)) / t_model_init_seconds
-        dfmodel['vel_y_mid'] = (dfmodel['pos_y'] + (0.5 * wid_init)) / t_model_init_seconds
-        dfmodel['vel_z_mid'] = (dfmodel['pos_z'] + (0.5 * wid_init)) / t_model_init_seconds
+        dfmodel['vel_x_mid'] = (dfmodel['pos_x_min'] + (0.5 * wid_init)) / t_model_init_seconds
+        dfmodel['vel_y_mid'] = (dfmodel['pos_y_min'] + (0.5 * wid_init)) / t_model_init_seconds
+        dfmodel['vel_z_mid'] = (dfmodel['posz_min'] + (0.5 * wid_init)) / t_model_init_seconds
 
-        dfmodel.eval('vel_radial = sqrt(vel_x_mid ** 2 + vel_y_mid ** 2 + vel_z_mid ** 2', inplace=True)
+        dfmodel.eval('vel_mid_radial = sqrt(vel_x_mid ** 2 + vel_y_mid ** 2 + vel_z_mid ** 2)', inplace=True)
 
     if dimensions == 3 and 'pos_mid' in derived_cols or 'angle_bin' in derived_cols:
-        dfmodel['pos_x_mid'] = (dfmodel['pos_x'] + (0.5 * wid_init))
-        dfmodel['pos_y_mid'] = (dfmodel['pos_y'] + (0.5 * wid_init))
-        dfmodel['pos_z_mid'] = (dfmodel['pos_z'] + (0.5 * wid_init))
+        dfmodel['pos_x_mid'] = (dfmodel['pos_x_min'] + (0.5 * wid_init))
+        dfmodel['pos_y_mid'] = (dfmodel['pos_y_min'] + (0.5 * wid_init))
+        dfmodel['pos_z_mid'] = (dfmodel['posz_min'] + (0.5 * wid_init))
 
     if 'angle_bin' in derived_cols:
         get_cell_angle(dfmodel, modelpath)
@@ -279,7 +284,7 @@ def get_mean_cell_properties_of_angle_bin(dfmodeldata, vmax_cmps, modelpath=None
         # get cells with bin number
         dfanglebin = dfmodeldata.query('cos_bin == @cos_bin_number', inplace=False)
 
-        binned = pd.cut(dfanglebin['vel_radial'], velocity_bins, labels=False, include_lowest=True)
+        binned = pd.cut(dfanglebin['vel_mid_radial'], velocity_bins, labels=False, include_lowest=True)
         i = 0
         for binindex, mean_rho in dfanglebin.groupby(binned)['rho'].mean().iteritems():
             i += 1
@@ -360,7 +365,6 @@ def save_modeldata(
     timestart = time.perf_counter()
     assert dimensions in [1, 3, None]
     if dimensions == 1:
-        assert vmax is None
         standardcols = ['inputcellid', 'velocity_outer', 'logrho', 'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52',
                         'X_Cr48']
     elif dimensions == 3:
@@ -369,7 +373,7 @@ def save_modeldata(
         print(f' grid size: {len(dfmodel)} ({griddimension}^3)')
         assert griddimension ** 3 == len(dfmodel)
 
-        standardcols = ['inputcellid', 'posx', 'posy', 'posz', 'rho',  'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52',
+        standardcols = ['inputcellid', 'pos_x_min', 'pos_y_min', 'posz_min', 'rho',  'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52',
                         'X_Cr48']
 
     # these two columns are optional, but position is important and they must appear before any other custom cols
@@ -519,3 +523,79 @@ def save_empty_abundance_file(ngrid, outputfilepath='.'):
     abundancedata = pd.DataFrame(data=abundancedata)
     abundancedata = abundancedata.round(decimals=5)
     abundancedata.to_csv(Path(outputfilepath) / 'abundances.txt', header=False, sep='\t', index=False)
+
+
+def get_dfmodel_dimensions(dfmodel):
+    if 'pos_x_min' in dfmodel.columns:
+        return 3
+
+    return 1
+
+
+def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None):
+    """Convert 3D Cartesian grid model to 1D spherical"""
+    t_model_init_seconds = t_model_init_days * 24 * 60 * 60
+    xmax = vmax * t_model_init_seconds
+    ngridpoints = len(dfmodel)
+    ncoordgridx = round(ngridpoints ** (1. / 3.))
+    wid_init = 2 * xmax / ncoordgridx
+
+    print(f'Spherically averaging 3D model with {ngridpoints} cells...')
+
+    dfmodel = dfmodel.copy()
+    if dfelabundances is not None:
+        dfelabundances = dfelabundances.query('inputcellid in @dfmodel.inputcellid').copy()
+    dfmodel = add_derived_cols_to_modeldata(
+        dfmodel, ['velocity'], dimensions=3, t_model_init_seconds=t_model_init_seconds, wid_init=wid_init)
+
+    km_to_cm = 1e5
+    velocity_bins = [vmax * n / ncoordgridx for n in range(ncoordgridx + 1)]  # cm/s
+    outcells = []
+    outcellabundances = []
+    # binned = pd.cut(dfmodel['vel_mid_radial'], velocity_bins, labels=False, include_lowest=True)
+    # for radialcellid, matchedcells in dfmodel.groupby(binned):
+    highest_active_radialcellid = -1
+    for radialcellid, (velocity_inner, velocity_outer) in enumerate(zip(velocity_bins[:-1], velocity_bins[1:]), 1):
+        assert velocity_outer > velocity_inner
+        matchedcells = dfmodel.query('vel_mid_radial > @velocity_inner and vel_mid_radial <= @velocity_outer')
+
+        if len(matchedcells) == 0:
+            rhomean = 0.
+        else:
+            rhomean = matchedcells.rho.mean()
+        if rhomean > 0.:
+            highest_active_radialcellid = radialcellid
+        logrho = math.log10(max(1e-99, rhomean))
+
+        dictcell = {
+            'inputcellid': radialcellid,
+            'velocity_outer': velocity_outer / km_to_cm,
+            'logrho': logrho,
+        }
+        for column in matchedcells.columns:
+            if column.startswith('X_'):
+                if rhomean > 0.:
+                    massfrac = np.dot(matchedcells[column], matchedcells['rho']) / matchedcells['rho'].sum()
+                else:
+                    massfrac = 0.
+                dictcell[column] = massfrac
+
+        outcells.append(dictcell)
+        if dfelabundances is not None:
+            abund_matchedcells = dfelabundances.query('inputcellid in @matchedcells.inputcellid')
+            assert abund_matchedcells.inputcellid.values == matchedcells.inputcellid.values
+            dictcellabundances = {'inputcellid': radialcellid}
+            for column in dfelabundances.columns:
+                if column.startswith('X_'):
+                    if rhomean > 0.:
+                        massfrac = np.dot(abund_matchedcells[column], matchedcells['rho']) / matchedcells['rho'].sum()
+                    else:
+                        massfrac = 0.
+                    dictcellabundances[column] = massfrac
+
+            outcellabundances.append(dictcellabundances)
+
+    dfmodel1d = pd.DataFrame(outcells[:highest_active_radialcellid])
+    dfabundances1d = pd.DataFrame(outcellabundances[:highest_active_radialcellid]) if outcellabundances else None
+
+    return dfmodel1d, dfabundances1d
