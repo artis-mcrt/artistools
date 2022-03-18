@@ -66,31 +66,8 @@ def main(args=None, argsraw=None, **kwargs):
 
     if args.makemodelfromgriddata:
         print(args)
-        dfmodel, t_model_days, vmax = at.inputmodel.modelfromhydro.read_griddat_file(args.pathtogriddata)
-
-        if args.fillcentralhole:
-            dfmodel = at.inputmodel.modelfromhydro.add_mass_to_center(dfmodel, t_model_days, vmax, args)
-
-        if args.getcellopacityfromYe:
-            at.inputmodel.opacityinputfile.opacity_by_Ye(args.modelpath[0], dfmodel)
-        if 'cellYe' in dfmodel:
-            at.inputmodel.opacityinputfile.write_Ye_file(args.modelpath[0], dfmodel)
-        if 'Q' in dfmodel and args.makeenergyinputfiles:
-            at.inputmodel.energyinputfiles.write_Q_energy_file(args.modelpath[0], dfmodel)
-
-        if Path(args.pathtogriddata, 'gridcontributions.txt').is_file():
-            print('found gridcontributions.txt. Adding abundances... (will be slow)')
-            dfmodel, dfelabundances = at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
-                gridcontribpath=args.pathtogriddata, dfmodel=dfmodel, t_model_days=t_model_days)
-            print('Writing to abundances.txt...')
-            at.inputmodel.save_initialabundances(dfelabundances=dfelabundances, abundancefilename=args.pathtogriddata)
-        else:
-            ngrid = len(dfmodel['rho'])
-            at.inputmodel.save_empty_abundance_file(ngrid)
-
-        print('Writing to model.txt...')
-        at.inputmodel.save_modeldata(
-            modelpath=args.modelpath[0], dfmodel=dfmodel, t_model_init_days=t_model_days, dimensions=3, vmax=vmax)
+        at.inputmodel.modelfromhydro.makemodelfromgriddata(
+            gridfolderpath=args.pathtogriddata, outputpath=args.modelpath[0], getabundances=False, args=args)
 
     if args.makeenergyinputfiles:
         model, t_model, vmax = at.inputmodel.get_modeldata(args.modelpath[0])
