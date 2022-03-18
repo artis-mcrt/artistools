@@ -4,6 +4,9 @@ import pandas as pd
 from astropy import units as u
 import numpy as np
 
+import argparse
+import artistools as at
+
 MSUN = 1.989e33
 CLIGHT = 2.99792458e10
 
@@ -48,7 +51,7 @@ def get_snapshot_time_geomunits(pathtogriddata):
     return simulation_end_time_geomunits
 
 
-def read_griddat_file(pathtogriddata):
+def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlespercell=0):
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
 
     # Get simulation time for ejecta snapshot
@@ -86,9 +89,27 @@ def read_griddat_file(pathtogriddata):
     t_model_days = t_model_sec / (24. * 3600)  # in days
     print(f"t_model in days {t_model_days} ({t_model_sec} s)")
 
-    print(f"Ignoring {len(griddata.loc[np.logical_and(griddata.tracercount < 10, griddata.rho > 0.)])} "
-          "nonempty cells because they have < 10 tracer particles")
-    griddata.loc[griddata.tracercount < 10, ['rho', 'cellYe']] = 0., 0.
+    if targetmodeltime_days is not None:
+        timefactor = targetmodeltime_days / t_model_days
+        griddata.eval('posx = posx * @timefactor', inplace=True)
+        griddata.eval('posy = posy * @timefactor', inplace=True)
+        griddata.eval('posz = posz * @timefactor', inplace=True)
+        griddata.eval('rho = rho * @timefactor ** -3', inplace=True)
+        print(f"Adjusting t_model to {targetmodeltime_days} days (factor {timefactor}) "
+              "using homologous expansion of positions and densities")
+        t_model_days = targetmodeltime_days
+
+    if minparticlespercell > 0:
+        ncoordgridx = round(len(griddata) ** (1. / 3.))
+        xmax = griddata.posx.max()
+        wid_init = 2 * xmax / ncoordgridx
+        filter = np.logical_and(griddata.tracercount < minparticlespercell, griddata.rho > 0.)
+        n_ignored = np.count_nonzero(filter)
+        mass_ignored = griddata.loc[filter].rho.sum() * wid_init ** 3 / 1.989e33
+        mass_orig = griddata.rho.sum() * wid_init ** 3 / 1.989e33
+
+        print(f"Ignoring {n_ignored} nonempty cells ({mass_ignored:.2e} Msun, {mass_ignored / mass_orig * 100:.2f}% of mass) because they have < {minparticlespercell} tracer particles")
+        griddata.loc[griddata.tracercount < minparticlespercell, ['rho', 'cellYe']] = 0., 0.
 
     print(f"Max tracers in a cell {max(griddata['tracercount'])}")
 
@@ -183,3 +204,66 @@ def add_mass_to_center(griddata, t_model_in_days, vmax, args):
             print(cellid, griddata['posx'][i], griddata['posy'][i], griddata['posz'][i], griddata['rho'][i])
 
     return griddata
+
+
+def makemodelfromgriddata(
+        gridfolderpath=Path(), outputpath=Path(), targetmodeltime_days=None,
+        minparticlespercell=10, getabundances=True, args=None):
+
+    dfmodel, t_model_days, vmax = at.inputmodel.modelfromhydro.read_griddat_file(
+        pathtogriddata=gridfolderpath, targetmodeltime_days=targetmodeltime_days, minparticlespercell=minparticlespercell)
+
+    if getattr(args, 'fillcentralhole', False):
+        dfmodel = at.inputmodel.modelfromhydro.add_mass_to_center(dfmodel, t_model_days, vmax, args)
+
+    if getattr(args, 'getcellopacityfromYe', False):
+        at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, dfmodel)
+    if 'cellYe' in dfmodel:
+        at.inputmodel.opacityinputfile.write_Ye_file(outputpath, dfmodel)
+    if 'Q' in dfmodel and args.makeenergyinputfiles:
+        at.inputmodel.energyinputfiles.write_Q_energy_file(outputpath, dfmodel)
+
+    if getabundances:
+        dfmodel, dfelabundances = at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
+            gridcontribpath=gridfolderpath, dfmodel=dfmodel, t_model_days=t_model_days,
+            minparticlespercell=minparticlespercell)
+        print('Writing to abundances.txt...')
+        at.inputmodel.save_initialabundances(dfelabundances=dfelabundances, abundancefilename=outputpath)
+    else:
+        ngrid = len(dfmodel['rho'])
+        at.inputmodel.save_empty_abundance_file(ngrid)
+
+    print('Writing to model.txt...')
+    at.inputmodel.save_modeldata(
+        modelpath=outputpath, dfmodel=dfmodel, t_model_init_days=t_model_days, dimensions=3, vmax=vmax)
+
+
+def addargs(parser):
+    parser.add_argument('-inputpath', '-i',
+                        default='.',
+                        help='Path of input files')
+    parser.add_argument('-minparticlespercell',
+                        default=10,
+                        help='Minimum number of SPH particles in each cell (otherwise set rho=0)')
+    parser.add_argument('-outputpath', '-o',
+                        default='.',
+                        help='Path for output model files')
+
+
+def main(args=None, argsraw=None, **kwargs):
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=at.CustomArgHelpFormatter,
+            description='Create ARTIS format model from grid.dat.')
+
+        addargs(parser)
+        parser.set_defaults(**kwargs)
+        args = parser.parse_args(argsraw)
+
+    makemodelfromgriddata(
+        gridfolderpath=args.inputpath, outputpath=args.outputpath, minparticlespercell=args.minparticlespercell,
+        targetmodeltime_days=1., getabundances=True)
+
+
+if __name__ == "__main__":
+    main()

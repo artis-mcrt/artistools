@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # adapted from Fortran maptogrid.f90 and kernelmodule.f90
-# original Fortran code possibly by Andreas Bauswein?
+# original Fortran code by Andreas Bauswein
 
 import argparse
 import math
@@ -81,24 +81,9 @@ def kernelvals2(rij2, hmean):  # ist schnell berechnet aber keine Gradienten
     return wtij
 
 
-def addargs(parser):
-    parser.add_argument('-outputpath', '-o',
-                        default='.',
-                        help='Path for output files')
-
-
-def main(args=None, argsraw=None, **kwargs):
-    if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=CustomArgHelpFormatter,
-            description='Map tracer particle trajectories to a Cartesian grid.')
-
-        addargs(parser)
-        parser.set_defaults(**kwargs)
-        args = parser.parse_args(argsraw)
-
-    if not Path('ejectasnapshot.dat').is_file():
-        print('ejectasnapshot.dat is required')
+def maptogrid(ejectasnapshotpath, outputpath):
+    if not ejectasnapshotpath.is_file():
+        print(f'{ejectasnapshotpath} not found')
         return
 
     snapshot_columns = [
@@ -108,7 +93,9 @@ def main(args=None, argsraw=None, **kwargs):
         'enuxtrap(i)', 'iwasequil(i, 1)', 'iwasequil(i, 2)', 'iwasequil(i, 3)']
     snapshot_columns_used = ['id', 'h', 'x', 'y', 'z', 'vx', 'vy', 'vz', 'pmass', 'rho', 'p', 'rst', 'ye']
     dfsnapshot = pd.read_csv(
-        'ejectasnapshot.dat', names=snapshot_columns, delim_whitespace=True, usecols=snapshot_columns_used)
+        ejectasnapshotpath, names=snapshot_columns,
+        delim_whitespace=True, usecols=snapshot_columns_used)
+
     print(dfsnapshot)
 
     assert len(dfsnapshot.columns) == len(snapshot_columns_used)
@@ -116,7 +103,7 @@ def main(args=None, argsraw=None, **kwargs):
     npart = len(dfsnapshot)
     print("number of particles", npart)
 
-    fpartanalysis = open(Path(args.outputpath, 'ejectapartanalysis.dat'), mode='w')
+    fpartanalysis = open(Path(outputpath, 'ejectapartanalysis.dat'), mode='w')
 
     totmass = 0.0
     rmax = 0.0
@@ -297,7 +284,7 @@ def main(args=None, argsraw=None, **kwargs):
         #             # if not norm[i, j, k] > 0:
         #             #     print(i, j, k, norm[i, j, k], gye[i, j, k] )
 
-        with open(Path(args.outputpath, 'gridcontributions.txt'), 'w') as fcontribs:
+        with open(Path(outputpath, 'gridcontributions.txt'), 'w') as fcontribs:
             fcontribs.write('particleid cellindex frac_of_cellmass\n')
             for (n, i, j, k), old_value in particlecontribs.items():
                 # particle_contribs[n, i, j, k] = old_value / norm[i, j, k]
@@ -341,7 +328,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     # output grid - adapt as you need output
 
-    with open(Path(args.outputpath, 'grid.dat'), 'w') as fgrid:
+    with open(Path(outputpath, 'grid.dat'), 'w') as fgrid:
 
         fgrid.write(f'{ngrid**3} # ngrid\n')
         fgrid.write(f'{dtextra} # extra time after explosion simulation ended (in geom units)\n')
@@ -359,6 +346,30 @@ def main(args=None, argsraw=None, **kwargs):
                     # gridindex2 = ((k - 1) * ngrid + (j - 1)) * ngrid + (i - 1) + 1
 
                     gridindex = gridindex + 1
+
+
+def addargs(parser):
+    parser.add_argument('-inputpath', '-i',
+                        default='.',
+                        help='Path to ejectasnapshot')
+    parser.add_argument('-outputpath', '-o',
+                        default='.',
+                        help='Path for output files')
+
+
+def main(args=None, argsraw=None, **kwargs):
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=CustomArgHelpFormatter,
+            description='Map tracer particle trajectories to a Cartesian grid.')
+
+        addargs(parser)
+        parser.set_defaults(**kwargs)
+        args = parser.parse_args(argsraw)
+
+    ejectasnapshotpath = Path(args.inputpath, 'ejectasnapshot.dat')
+
+    maptogrid(ejectasnapshotpath=ejectasnapshotpath, outputpath=args.outputpath)
 
 
 if __name__ == "__main__":

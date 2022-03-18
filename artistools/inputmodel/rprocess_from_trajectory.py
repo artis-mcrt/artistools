@@ -36,15 +36,11 @@ def open_tar_file_or_extracted(particleid, memberfilename):
 
 
 def get_closest_network_timestep(particleid, t_model_s):
-    try:
-        with open_tar_file_or_extracted(particleid, './Run_rprocess/evol.dat') as evolfile:
-            dfevol = pd.read_csv(
-                evolfile, delim_whitespace=True, comment='#', usecols=[0, 1], names=['nstep', 'timesec'])
-            idx = np.abs(dfevol.timesec.values - t_model_s).argmin()
-            nts = dfevol.nstep.values[idx]
-
-    except FileNotFoundError:
-        return None
+    with open_tar_file_or_extracted(particleid, './Run_rprocess/evol.dat') as evolfile:
+        dfevol = pd.read_csv(
+            evolfile, delim_whitespace=True, comment='#', usecols=[0, 1], names=['nstep', 'timesec'])
+        idx = np.abs(dfevol.timesec.values - t_model_s).argmin()
+        nts = dfevol.nstep.values[idx]
 
     return nts
 
@@ -74,16 +70,21 @@ def get_trajectory_nuc_abund(particleid, memberfilename):
 
 def get_trajectory_nuc_abund_group(t_model_s, particlegroup):
     particleid, dfthisparticlecontribs = particlegroup
-    # find the closest timestep to the required time
-    nts = get_closest_network_timestep(particleid, t_model_s)
 
-    if nts is None:
+    try:
+        if np.isclose(t_model_s, 86400, rtol=0.1):
+            memberfilename = './Run_rprocess/tday_nz-plane'
+        else:
+            # find the closest timestep to the required time
+            nts = get_closest_network_timestep(particleid, t_model_s)
+            memberfilename = f'./Run_rprocess/nz-plane{nts:05d}'
+
+        dftrajnucabund, traj_time_s = get_trajectory_nuc_abund(particleid, memberfilename)
+
+    except FileNotFoundError:
         # print(f' WARNING {get_traj_tarpath(particleid)} not found! '
         #       f'Contributes up to {dfthisparticlecontribs.frac_of_cellmass.max() * 100:.1f}% mass of some cells')
         return None
-
-    dftrajnucabund, traj_time_s = get_trajectory_nuc_abund(
-        particleid, f'./Run_rprocess/nz-plane{nts:05d}')
 
     massfractotal = dftrajnucabund.massfrac.sum()
     dftrajnucabund.query('Z >= 1', inplace=True)
@@ -97,22 +98,28 @@ def get_trajectory_nuc_abund_group(t_model_s, particlegroup):
     # print(f' grid snapshot: {t_model_s:.2e} s, network: {traj_time_s:.2e} s (timestep {nts})')
     assert np.isclose(massfractotal, 1., rtol=0.02)
     assert np.isclose(traj_time_s, t_model_s, rtol=0.2, atol=1.)
-    return {
-        nucabundcolname: massfrac
-        for nucabundcolname, massfrac in colmassfracs}
+
+    return {nucabundcolname: massfrac for nucabundcolname, massfrac in colmassfracs}
 
 
-def get_cellmodelrow(dict_traj_nuc_abund, timefuncstart, active_inputcellcount, cellgroup):
+def get_cellmodelrow(dict_traj_nuc_abund, minparticlespercell, cellgroup):
     n, (cellindex, dfthiscellcontribs) = cellgroup
-    if len(dfthiscellcontribs) < 10:
+
+    if len(dfthiscellcontribs) < minparticlespercell:
         return None
+
     contribparticles = [
         (dict_traj_nuc_abund[particleid], frac_of_cellmass)
         for particleid, frac_of_cellmass in dfthiscellcontribs[
             ['particleid', 'frac_of_cellmass']].itertuples(index=False)
         if particleid in dict_traj_nuc_abund]
 
-    # todo: adjust frac_of_cellmass for missing particles
+    # adjust frac_of_cellmass for missing particles
+    cell_frac_sum = sum([
+        frac_of_cellmass
+        for particleid, frac_of_cellmass in dfthiscellcontribs[
+            ['particleid', 'frac_of_cellmass']].itertuples(index=False)
+        if particleid in dict_traj_nuc_abund])
 
     nucabundcolnames = set([
         col for particleid in dfthiscellcontribs.particleid
@@ -120,7 +127,7 @@ def get_cellmodelrow(dict_traj_nuc_abund, timefuncstart, active_inputcellcount, 
 
     row = {
         nucabundcolname: sum([
-            frac_of_cellmass * traj_nuc_abund.get(nucabundcolname, 0.)
+            frac_of_cellmass * traj_nuc_abund.get(nucabundcolname, 0.) / cell_frac_sum
             for traj_nuc_abund, frac_of_cellmass in contribparticles]
         ) for nucabundcolname in nucabundcolnames}
     row['inputcellid'] = cellindex
@@ -135,7 +142,7 @@ def get_cellmodelrow(dict_traj_nuc_abund, timefuncstart, active_inputcellcount, 
     return row
 
 
-def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
+def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days, minparticlespercell=0):
     """ contribute trajectory network calculation abundances to model cell abundances """
     timefuncstart = time.perf_counter()
     t_model_s = t_model_days * 86400
@@ -145,45 +152,48 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
     dfcontribs = pd.read_csv(Path(gridcontribpath, 'gridcontributions.txt'), delim_whitespace=True,
                              dtype={0: int, 1: int, 2: float})
 
-    minparticlesincell = 10
     active_inputcellids = [
         cellindex for cellindex, dfthiscellcontribs in dfcontribs.groupby('cellindex')
-        if len(dfthiscellcontribs) >= minparticlesincell]
+        if len(dfthiscellcontribs) >= minparticlespercell]
     dfcontribs.query('cellindex in @active_inputcellids', inplace=True)
     active_inputcellids = dfcontribs.cellindex.unique()
     active_inputcellcount = len(active_inputcellids)
     dfcontribs_particlegroups = dfcontribs.groupby('particleid')
     particle_count = len(dfcontribs_particlegroups)
 
-    print(f'{active_inputcellcount} of {len(dfmodel)} model cells have >={minparticlesincell} particles contributing '
+    print(f'{active_inputcellcount} of {len(dfmodel)} model cells have >={minparticlespercell} particles contributing '
           f'({len(dfcontribs)} total contributions from {particle_count} particles after filter)')
 
     listcellnucabundances = []
     print(f"Reading trajectory abundances with {at.num_processes} processes...")
     timestart = time.perf_counter()
     trajnucabundworker = partial(get_trajectory_nuc_abund_group, t_model_s)
+
     if at.num_processes > 1:
         with multiprocessing.Pool(processes=at.num_processes) as pool:
-            list_traj_nuc_abund = pool.imap(trajnucabundworker, dfcontribs_particlegroups)
+            list_traj_nuc_abund = pool.map(trajnucabundworker, dfcontribs_particlegroups)
             pool.close()
             pool.join()
     else:
         list_traj_nuc_abund = [trajnucabundworker(particlegroup) for particlegroup in dfcontribs_particlegroups]
 
+    n_missing_particles = len([d for d in list_traj_nuc_abund if d is None])
+    print(f'  {n_missing_particles} particles are missing network abundance data')
     dict_traj_nuc_abund = {
         particleid: dftrajnucabund
         for particleid, dftrajnucabund in zip(dfcontribs_particlegroups.groups, list_traj_nuc_abund)
         if dftrajnucabund is not None}
-    print(f'getting trajectory abundances took {time.perf_counter() - timestart:.1f} seconds')
+    print(f'Reading trajectory abundances took {time.perf_counter() - timestart:.1f} seconds')
 
     print(f"Generating cell abundances with {at.num_processes} processes")
     timestart = time.perf_counter()
     dfcontribs_cellgroups = dfcontribs.groupby('cellindex')
-    cellabundworker = partial(get_cellmodelrow, dict_traj_nuc_abund, timefuncstart, active_inputcellcount)
+    cellabundworker = partial(get_cellmodelrow, dict_traj_nuc_abund, minparticlespercell)
+
     if at.num_processes > 1:
         chunksize = math.ceil(len(dfcontribs_cellgroups) / at.num_processes)
         with multiprocessing.Pool(processes=at.num_processes) as pool:
-            listcellnucabundances = pool.imap(cellabundworker, enumerate(dfcontribs_cellgroups, 1), chunksize=chunksize)
+            listcellnucabundances = pool.map(cellabundworker, enumerate(dfcontribs_cellgroups, 1), chunksize=chunksize)
             pool.close()
             pool.join()
     else:
@@ -201,7 +211,7 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
     print(f' took {time.perf_counter() - timestart:.1f} seconds')
 
     timestart = time.perf_counter()
-    print('Adding up isotopes for elemental abundances...', end='', flush=True)
+    print('Adding up isotopes for elemental abundances and creating dfelabundances...', end='', flush=True)
     elemisotopes = {}
     for colname in sorted(dfnucabundances.columns):
         if not colname.startswith('X_'):
@@ -217,11 +227,8 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
         **{f'X_{at.get_elsymbol(atomic_number)}': dfnucabundances.eval(f'{" + ".join(elemisotopes[atomic_number])}')
             if atomic_number in elemisotopes else np.zeros(len(dfnucabundances))
             for atomic_number in range(1, max(elemisotopes.keys()) + 1)}}, index=dfnucabundances.index)
-    print(f' took {time.perf_counter() - timestart:.1f} seconds')
 
-    timestart = time.perf_counter()
-    print('creating dfelabundances...', end='', flush=True)
-    # add cells with no traj contributions
+    # ensure cells with no traj contributions are included
     dfelabundances = dfmodel[['inputcellid']].merge(
         dfelabundances_partial, how='left', left_on='inputcellid', right_on='inputcellid')
     dfnucabundances.set_index('inputcellid', drop=False, inplace=True)
@@ -230,7 +237,7 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days):
     print(f' took {time.perf_counter() - timestart:.1f} seconds')
 
     timestart = time.perf_counter()
-    print('adding isotopic abundances to dfmodel...', end='', flush=True)
+    print('Merging isotopic abundances into dfmodel...', end='', flush=True)
     dfmodel = dfmodel.merge(dfnucabundances, how='left', left_on='inputcellid', right_on='inputcellid')
     dfmodel.fillna(0., inplace=True)
     print(f' took {time.perf_counter() - timestart:.1f} seconds')
