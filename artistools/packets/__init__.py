@@ -50,7 +50,7 @@ def get_column_names_artiscode(modelpath):
         columns = packet_properties
         replacements_dict = {
             'type': 'type_id',
-            'pos[0]': 'pos_x_min', 'pos[1]': 'pos_y_min', 'pos[2]': 'pos_z_min',
+            'pos[0]': 'posx', 'pos[1]': 'posy', 'pos[2]': 'posz',
             'dir[0]': 'dirx', 'dir[1]': 'diry', 'dir[2]': 'dirz',
             'escape_type': 'escape_type_id',
             'em_pos[0]': 'em_posx', 'em_pos[1]': 'em_posy', 'em_pos[2]': 'em_posz',
@@ -164,7 +164,7 @@ def readfile_text(packetsfile, modelpath=Path('.')):
                 'number',
                 'where',
                 'type_id',
-                'pos_x_min', 'pos_y_min', 'pos_z_min',
+                'posx', 'posy', 'posz',
                 'dirx', 'diry', 'dirz',
                 'last_cross',
                 'tdecay',
