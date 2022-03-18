@@ -141,7 +141,7 @@ def make_plot(args):
     # print(cone['rho_model'])
 
     # set up for big model. For scaled down artis input model switch x and z
-    x = cone['posz_min'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
+    x = cone['pos_z_min'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
     y = cone['pos_y_min'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
     z = cone['pos_x_min'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
 

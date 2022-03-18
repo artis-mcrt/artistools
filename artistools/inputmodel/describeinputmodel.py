@@ -63,11 +63,11 @@ def main(args=None, argsraw=None, **kwargs):
             if speciesabund_g > 0.:
                 speciesmasses[species] = speciesabund_g
 
-    print(f'M_{"tot_rho":8s} {mass_msun_rho:7.4f} MSun (density * volume)')
+    print(f'M_{"tot_rho":8s} {mass_msun_rho:8.5f} MSun (density * volume)')
     if mass_msun_elem > 0.:
-        print(f'M_{"tot_elem":8s} {mass_msun_elem:7.4f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)')
+        print(f'M_{"tot_elem":8s} {mass_msun_elem:8.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)')
 
-    print(f'M_{"tot_iso":8s} {mass_msun_isotopes:7.4f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% of M_tot_rho, but can be small if stable isotopes not tracked)')
+    print(f'M_{"tot_iso":8s} {mass_msun_isotopes:8.5f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% of M_tot_rho, but can be small if stable isotopes not tracked)')
 
     for species, mass_g in speciesmasses.items():
         species_mass_msun = mass_g / 1.989e33

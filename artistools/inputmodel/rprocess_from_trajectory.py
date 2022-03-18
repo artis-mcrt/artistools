@@ -85,6 +85,7 @@ def get_trajectory_nuc_abund_group(t_model_s, particleid):
 
     massfractotal = dftrajnucabund.massfrac.sum()
     dftrajnucabund.query('Z >= 1', inplace=True)
+
     dftrajnucabund['nucabundcolname'] = [f'X_{at.get_elsymbol(int(row.Z))}{int(row.N + row.Z)}'
                                          for row in dftrajnucabund.itertuples()]
 
@@ -96,7 +97,8 @@ def get_trajectory_nuc_abund_group(t_model_s, particleid):
     assert np.isclose(massfractotal, 1., rtol=0.02)
     assert np.isclose(traj_time_s, t_model_s, rtol=0.2, atol=1.)
 
-    return {nucabundcolname: massfrac for nucabundcolname, massfrac in colmassfracs}
+    dict_traj_nuc_abund = {nucabundcolname: massfrac / massfractotal for nucabundcolname, massfrac in colmassfracs}
+    return dict_traj_nuc_abund
 
 
 def get_cellmodelrow(dict_traj_nuc_abund, minparticlespercell, cellgroup):
@@ -167,7 +169,7 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days, minpartic
           f'({len(dfcontribs)} total contributions from {particle_count} particles after filter)')
 
     listcellnucabundances = []
-    print(f"Reading trajectory abundances with {at.num_processes} processes...")
+    print(f"Reading trajectory abundances...")
     timestart = time.perf_counter()
     trajnucabundworker = partial(get_trajectory_nuc_abund_group, t_model_s)
 
@@ -187,7 +189,7 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days, minpartic
         if dftrajnucabund is not None}
     print(f'Reading trajectory abundances took {time.perf_counter() - timestart:.1f} seconds')
 
-    print(f"Generating cell abundances with {at.num_processes} processes")
+    print('Generating cell abundances...')
     timestart = time.perf_counter()
     dfcontribs_cellgroups = dfcontribs.groupby('cellindex')
     cellabundworker = partial(get_cellmodelrow, dict_traj_nuc_abund, minparticlespercell)
@@ -202,7 +204,7 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days, minpartic
         listcellnucabundances = [cellabundworker(cellgroup) for cellgroup in dfcontribs_cellgroups]
 
     listcellnucabundances = [x for x in listcellnucabundances if x is not None]
-    print(f'getting model cell abundances took {time.perf_counter() - timestart:.1f} seconds')
+    print(f'Generating model cell abundances took {time.perf_counter() - timestart:.1f} seconds')
 
     timestart = time.perf_counter()
     print('Creating dfnucabundances...', end='', flush=True)
