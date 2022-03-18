@@ -68,7 +68,7 @@ def get_merged_model_abundances(modelpath):
 def get_2D_slice_through_3d_model(merge_dfs, sliceaxis, sliceindex=None):
     if not sliceindex:
         # get midpoint
-        sliceposition = merge_dfs.iloc[(merge_dfs['pos_x']).abs().argsort()][:1]['pos_x'].item()
+        sliceposition = merge_dfs.iloc[(merge_dfs['pos_x_min']).abs().argsort()][:1]['pos_x_min'].item()
         # Choose position to slice. This gets minimum absolute value as the closest to 0
     else:
         cell_boundaries = []

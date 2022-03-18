@@ -141,9 +141,9 @@ def make_plot(args):
     # print(cone['rho_model'])
 
     # set up for big model. For scaled down artis input model switch x and z
-    x = cone['pos_z'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
-    y = cone['pos_y'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
-    z = cone['pos_x'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
+    x = cone['posz_min'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
+    y = cone['pos_y_min'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
+    z = cone['pos_x_min'].apply(lambda x: x / args.t_model * (u.cm / u.day).to('km/s'))/1e3
 
     surf = ax.scatter3D(x, y, z, c=-cone['fni'], cmap=plt.get_cmap('viridis'))
 
@@ -153,7 +153,7 @@ def make_plot(args):
     ax.set_ylabel(r'y [10$^3$ km/s]')
     ax.set_zlabel(r'z [10$^3$ km/s]')
 
-    # plt.scatter(cone[f'pos_x']/1e11, cone[f'pos_y']/1e11)
+    # plt.scatter(cone[f'pos_x_min']/1e11, cone[f'pos_y_min']/1e11)
     plt.show()
 
 

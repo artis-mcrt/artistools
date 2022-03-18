@@ -58,7 +58,12 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
     simulation_end_time_geomunits = get_snapshot_time_geomunits(pathtogriddata)
 
     griddata = pd.read_csv(griddatfilepath, delim_whitespace=True, comment='#', skiprows=3)
-    griddata.rename(columns={'gridindex': 'inputcellid'}, inplace=True)
+    griddata.rename(columns={
+        'gridindex': 'inputcellid',
+        'posx': 'pos_x_min',
+        'posy': 'pos_y_min',
+        'posz': 'posz_min',
+    }, inplace=True)
     # griddata in geom units
     griddata['rho'] = np.nan_to_num(griddata['rho'], nan=0.)
 
@@ -68,9 +73,10 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
         griddata['Q'] = np.nan_to_num(griddata['Q'], nan=0.)
 
     factor_position = 1.478  # in km
-    griddata['posx'] = (griddata['posx'] * factor_position) * (u.km).to(u.cm)
-    griddata['posy'] = (griddata['posy'] * factor_position) * (u.km).to(u.cm)
-    griddata['posz'] = (griddata['posz'] * factor_position) * (u.km).to(u.cm)
+    km_to_cm = 1e5
+    griddata.eval('pos_x_min = pos_x_min * @factor_position * @km_to_cm', inplace=True)
+    griddata.eval('pos_y_min = pos_y_min * @factor_position * @km_to_cm', inplace=True)
+    griddata.eval('posz_min = posz_min * @factor_position * @km_to_cm', inplace=True)
 
     griddata['rho'] = griddata['rho'] * 6.176e17  # convert to g/cm3
 
@@ -91,9 +97,9 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
 
     if targetmodeltime_days is not None:
         timefactor = targetmodeltime_days / t_model_days
-        griddata.eval('posx = posx * @timefactor', inplace=True)
-        griddata.eval('posy = posy * @timefactor', inplace=True)
-        griddata.eval('posz = posz * @timefactor', inplace=True)
+        griddata.eval('pos_x_min = pos_x_min * @timefactor', inplace=True)
+        griddata.eval('pos_y_min = pos_y_min * @timefactor', inplace=True)
+        griddata.eval('posz_min = posz_min * @timefactor', inplace=True)
         griddata.eval('rho = rho * @timefactor ** -3', inplace=True)
         print(f"Adjusting t_model to {targetmodeltime_days} days (factor {timefactor}) "
               "using homologous expansion of positions and densities")
@@ -101,7 +107,7 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
 
     if minparticlespercell > 0:
         ncoordgridx = round(len(griddata) ** (1. / 3.))
-        xmax = griddata.posx.max()
+        xmax = - griddata.pos_x_min.min()
         wid_init = 2 * xmax / ncoordgridx
         filter = np.logical_and(griddata.tracercount < minparticlespercell, griddata.rho > 0.)
         n_ignored = np.count_nonzero(filter)
@@ -208,8 +214,9 @@ def add_mass_to_center(griddata, t_model_in_days, vmax, args):
 
 def makemodelfromgriddata(
         gridfolderpath=Path(), outputpath=Path(), targetmodeltime_days=None,
-        minparticlespercell=10, getabundances=True, args=None):
+        minparticlespercell=10, getabundances=True, dimensions=3, args=None):
 
+    assert dimensions in [1, 3]
     dfmodel, t_model_days, vmax = at.inputmodel.modelfromhydro.read_griddat_file(
         pathtogriddata=gridfolderpath, targetmodeltime_days=targetmodeltime_days, minparticlespercell=minparticlespercell)
 
@@ -227,15 +234,21 @@ def makemodelfromgriddata(
         dfmodel, dfelabundances = at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
             gridcontribpath=gridfolderpath, dfmodel=dfmodel, t_model_days=t_model_days,
             minparticlespercell=minparticlespercell)
+    else:
+        dfelabundances = None
+
+    if dimensions == 1:
+        dfmodel, dfelabundances = at.inputmodel.sphericalaverage(dfmodel, t_model_days, vmax, dfelabundances)
+
+    if getabundances:
         print('Writing to abundances.txt...')
         at.inputmodel.save_initialabundances(dfelabundances=dfelabundances, abundancefilename=outputpath)
     else:
-        ngrid = len(dfmodel['rho'])
-        at.inputmodel.save_empty_abundance_file(ngrid)
+        at.inputmodel.save_empty_abundance_file(len(dfmodel))
 
     print('Writing to model.txt...')
     at.inputmodel.save_modeldata(
-        modelpath=outputpath, dfmodel=dfmodel, t_model_init_days=t_model_days, dimensions=3, vmax=vmax)
+        modelpath=outputpath, dfmodel=dfmodel, t_model_init_days=t_model_days, dimensions=dimensions, vmax=vmax)
 
 
 def addargs(parser):
@@ -245,6 +258,11 @@ def addargs(parser):
     parser.add_argument('-minparticlespercell',
                         default=10,
                         help='Minimum number of SPH particles in each cell (otherwise set rho=0)')
+    parser.add_argument('-dimensions',
+                        default=3, type=int,
+                        help='Number of dimensions: 1 for spherically symmetric 1D, 3 for 3D Cartesian')
+    parser.add_argument('--noabundances', action='store_true',
+                        help='Skip trajectory abundance mapping (get densities only)')
     parser.add_argument('-outputpath', '-o',
                         default='.',
                         help='Path for output model files')
@@ -268,7 +286,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     makemodelfromgriddata(
         gridfolderpath=gridfolderpath, outputpath=args.outputpath, minparticlespercell=args.minparticlespercell,
-        targetmodeltime_days=1., getabundances=True)
+        targetmodeltime_days=1., getabundances=(not args.noabundances), dimensions=args.dimensions)
 
 
 if __name__ == "__main__":

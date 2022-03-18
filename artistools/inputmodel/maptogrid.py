@@ -333,7 +333,7 @@ def maptogrid(ejectasnapshotpath, outputpath):
         fgrid.write(f'{ngrid**3} # ngrid\n')
         fgrid.write(f'{dtextra} # extra time after explosion simulation ended (in geom units)\n')
         fgrid.write(f'{x0} # xmax\n')
-        fgrid.write(' gridindex    posx    posy    posz    rho    cellYe    tracercount\n')
+        fgrid.write(' gridindex    pos_x_min    pos_y_min    posz_min    rho    cellYe    tracercount\n')
         gridindex = 1
         for k in range(1, ngrid + 1):
             gz = z0 + dz * (k - 1)

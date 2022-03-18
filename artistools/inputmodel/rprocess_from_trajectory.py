@@ -68,9 +68,7 @@ def get_trajectory_nuc_abund(particleid, memberfilename):
     return dfnucabund, t_model_init_seconds
 
 
-def get_trajectory_nuc_abund_group(t_model_s, particlegroup):
-    particleid, dfthisparticlecontribs = particlegroup
-
+def get_trajectory_nuc_abund_group(t_model_s, particleid):
     try:
         if np.isclose(t_model_s, 86400, rtol=0.1):
             memberfilename = './Run_rprocess/tday_nz-plane'
@@ -82,8 +80,7 @@ def get_trajectory_nuc_abund_group(t_model_s, particlegroup):
         dftrajnucabund, traj_time_s = get_trajectory_nuc_abund(particleid, memberfilename)
 
     except FileNotFoundError:
-        # print(f' WARNING {get_traj_tarpath(particleid)} not found! '
-        #       f'Contributes up to {dfthisparticlecontribs.frac_of_cellmass.max() * 100:.1f}% mass of some cells')
+        # print(f' WARNING {get_traj_tarpath(particleid)} not found! ')
         return None
 
     massfractotal = dftrajnucabund.massfrac.sum()
@@ -103,7 +100,7 @@ def get_trajectory_nuc_abund_group(t_model_s, particlegroup):
 
 
 def get_cellmodelrow(dict_traj_nuc_abund, minparticlespercell, cellgroup):
-    n, (cellindex, dfthiscellcontribs) = cellgroup
+    cellindex, dfthiscellcontribs = cellgroup
 
     if len(dfthiscellcontribs) < minparticlespercell:
         return None
@@ -142,15 +139,20 @@ def get_cellmodelrow(dict_traj_nuc_abund, minparticlespercell, cellgroup):
     return row
 
 
+def get_gridparticlecontributions(gridcontribpath):
+    dfcontribs = pd.read_csv(Path(gridcontribpath, 'gridcontributions.txt'), delim_whitespace=True,
+                             dtype={0: int, 1: int, 2: float})
+
+    return dfcontribs
+
+
 def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days, minparticlespercell=0):
     """ contribute trajectory network calculation abundances to model cell abundances """
-    timefuncstart = time.perf_counter()
     t_model_s = t_model_days * 86400
     if 'X_Fegroup' not in dfmodel.columns:
         dfmodel = pd.concat([dfmodel, pd.DataFrame({'X_Fegroup': np.ones(len(dfmodel))})], axis=1)
 
-    dfcontribs = pd.read_csv(Path(gridcontribpath, 'gridcontributions.txt'), delim_whitespace=True,
-                             dtype={0: int, 1: int, 2: float})
+    dfcontribs = get_gridparticlecontributions(gridcontribpath)
 
     active_inputcellids = [
         cellindex for cellindex, dfthiscellcontribs in dfcontribs.groupby('cellindex')
@@ -171,11 +173,11 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days, minpartic
 
     if at.num_processes > 1:
         with multiprocessing.Pool(processes=at.num_processes) as pool:
-            list_traj_nuc_abund = pool.map(trajnucabundworker, dfcontribs_particlegroups)
+            list_traj_nuc_abund = pool.map(trajnucabundworker, dfcontribs_particlegroups.groups)
             pool.close()
             pool.join()
     else:
-        list_traj_nuc_abund = [trajnucabundworker(particlegroup) for particlegroup in dfcontribs_particlegroups]
+        list_traj_nuc_abund = [trajnucabundworker(particleid) for particleid in dfcontribs_particlegroups.groups]
 
     n_missing_particles = len([d for d in list_traj_nuc_abund if d is None])
     print(f'  {n_missing_particles} particles are missing network abundance data')
@@ -193,11 +195,11 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days, minpartic
     if at.num_processes > 1:
         chunksize = math.ceil(len(dfcontribs_cellgroups) / at.num_processes)
         with multiprocessing.Pool(processes=at.num_processes) as pool:
-            listcellnucabundances = pool.map(cellabundworker, enumerate(dfcontribs_cellgroups, 1), chunksize=chunksize)
+            listcellnucabundances = pool.map(cellabundworker, dfcontribs_cellgroups, chunksize=chunksize)
             pool.close()
             pool.join()
     else:
-        listcellnucabundances = [cellabundworker(n_cellgroup) for n_cellgroup in enumerate(dfcontribs_cellgroups, 1)]
+        listcellnucabundances = [cellabundworker(cellgroup) for cellgroup in dfcontribs_cellgroups]
 
     listcellnucabundances = [x for x in listcellnucabundances if x is not None]
     print(f'getting model cell abundances took {time.perf_counter() - timestart:.1f} seconds')
