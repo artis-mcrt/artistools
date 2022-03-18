@@ -7,24 +7,24 @@ CLIGHT = 2.99792458e10
 
 
 def change_cell_positions_to_new_time(dfgriddata, t_model_1d):
-    dfgriddata['posx'] = dfgriddata['vel_x_min'] * t_model_1d
-    dfgriddata['posy'] = dfgriddata['vel_y_min'] * t_model_1d
-    dfgriddata['posz'] = dfgriddata['vel_z_min'] * t_model_1d
+    dfgriddata['pos_x_min'] = dfgriddata['vel_x_min'] * t_model_1d
+    dfgriddata['pos_y_min'] = dfgriddata['vel_y_min'] * t_model_1d
+    dfgriddata['pos_z_min'] = dfgriddata['vel_z_min'] * t_model_1d
 
-    ngridcells = len(dfgriddata['posx'])
+    ngridcells = len(dfgriddata['pos_x_min'])
     ncoordgridx = round(ngridcells ** (1. / 3.))
-    wid_init = 2 * max(dfgriddata['posx']) / ncoordgridx
+    wid_init = 2 * max(dfgriddata['pos_x_min']) / ncoordgridx
     return dfgriddata, wid_init
 
 
 def get_cell_midpoints(dfgriddata, wid_init):
-    dfgriddata['posx_mid'] = dfgriddata['posx'] + (0.5 * wid_init)
-    dfgriddata['posy_mid'] = dfgriddata['posy'] + (0.5 * wid_init)
-    dfgriddata['posz_mid'] = dfgriddata['posz'] + (0.5 * wid_init)
+    dfgriddata['posx_mid'] = dfgriddata['pos_x_min'] + (0.5 * wid_init)
+    dfgriddata['posy_mid'] = dfgriddata['pos_y_min'] + (0.5 * wid_init)
+    dfgriddata['posz_mid'] = dfgriddata['pos_z_min'] + (0.5 * wid_init)
 
-    dfgriddata['posx_max'] = dfgriddata['posx'] + (wid_init)
-    dfgriddata['posy_max'] = dfgriddata['posy'] + (wid_init)
-    dfgriddata['posz_max'] = dfgriddata['posz'] + (wid_init)
+    dfgriddata['posx_max'] = dfgriddata['pos_x_min'] + (wid_init)
+    dfgriddata['posy_max'] = dfgriddata['pos_y_min'] + (wid_init)
+    dfgriddata['posz_max'] = dfgriddata['pos_z_min'] + (wid_init)
     return dfgriddata
 
 

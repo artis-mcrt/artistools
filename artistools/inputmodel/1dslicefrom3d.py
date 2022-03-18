@@ -70,7 +70,7 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
             cell = {}
             blocksplit = block[0].split(), block[1].split()
             if len(blocksplit[0]) == 5:
-                (cell['cellid'], cell['posx'], cell['posy'], cell['posz'], cell['rho']) = blocksplit[0]
+                (cell['cellid'], cell['pos_x_min'], cell['pos_y_min'], cell['pos_z_min'], cell['rho']) = blocksplit[0]
             else:
                 print("Wrong line size")
                 sys.exit()
@@ -81,11 +81,11 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
                 print("Wrong line size")
                 sys.exit()
 
-            if cell['posx'] != "0.0000000" and (chosenaxis != 'x' or float(cell['posx']) < 0.):
+            if cell['pos_x_min'] != "0.0000000" and (chosenaxis != 'x' or float(cell['pos_x_min']) < 0.):
                 pass
-            elif cell['posy'] != "0.0000000" and (chosenaxis != 'y' or float(cell['posy']) < 0.):
+            elif cell['pos_y_min'] != "0.0000000" and (chosenaxis != 'y' or float(cell['pos_y_min']) < 0.):
                 pass
-            elif cell['posz'] != "0.0000000" and (chosenaxis != 'z' or float(cell['posz']) < 0.):
+            elif cell['pos_z_min'] != "0.0000000" and (chosenaxis != 'z' or float(cell['pos_z_min']) < 0.):
                 pass
             else:
                 outcellid += 1
@@ -132,7 +132,7 @@ def slice_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid):
 
 
 def append_cell_to_output(cell, outcellid, t_model, listout, xlist, ylists):
-    dist = math.sqrt(float(cell['posx']) ** 2 + float(cell['posy']) ** 2 + float(cell['posz']) ** 2)
+    dist = math.sqrt(float(cell['pos_x_min']) ** 2 + float(cell['pos_y_min']) ** 2 + float(cell['pos_z_min']) ** 2)
     velocity = float(dist) / float(t_model) / 86400. / 1.e5
 
     listout.append(
