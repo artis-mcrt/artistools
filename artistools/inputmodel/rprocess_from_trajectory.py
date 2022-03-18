@@ -169,7 +169,7 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days, minpartic
           f'({len(dfcontribs)} total contributions from {particle_count} particles after filter)')
 
     listcellnucabundances = []
-    print(f"Reading trajectory abundances...")
+    print('Reading trajectory abundances...')
     timestart = time.perf_counter()
     trajnucabundworker = partial(get_trajectory_nuc_abund_group, t_model_s)
 

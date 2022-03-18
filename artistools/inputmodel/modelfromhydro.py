@@ -218,7 +218,8 @@ def makemodelfromgriddata(
 
     assert dimensions in [1, 3]
     dfmodel, t_model_days, vmax = at.inputmodel.modelfromhydro.read_griddat_file(
-        pathtogriddata=gridfolderpath, targetmodeltime_days=targetmodeltime_days, minparticlespercell=minparticlespercell)
+        pathtogriddata=gridfolderpath, targetmodeltime_days=targetmodeltime_days,
+        minparticlespercell=minparticlespercell)
 
     if getattr(args, 'fillcentralhole', False):
         dfmodel = at.inputmodel.modelfromhydro.add_mass_to_center(dfmodel, t_model_days, vmax, args)
