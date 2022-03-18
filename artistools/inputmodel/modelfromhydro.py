@@ -260,8 +260,14 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
+    gridfolderpath = args.inputpath
+    if not Path(gridfolderpath, 'grid.dat').is_file() or not Path(gridfolderpath, 'gridcontributions.txt').is_file():
+        print('grid.dat and gridcontributions.txt are required')
+        return
+        # at.inputmodel.maptogrid.main()
+
     makemodelfromgriddata(
-        gridfolderpath=args.inputpath, outputpath=args.outputpath, minparticlespercell=args.minparticlespercell,
+        gridfolderpath=gridfolderpath, outputpath=args.outputpath, minparticlespercell=args.minparticlespercell,
         targetmodeltime_days=1., getabundances=True)
 
 
