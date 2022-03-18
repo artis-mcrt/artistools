@@ -176,10 +176,10 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
             for index in indexlist:
                 cell = dfmodel.iloc[index]
                 if not vectormatch([cell.inputpos_a, cell.inputpos_b, cell.inputpos_c],
-                                   [cell.pos_x, cell.pos_y, cell.pos_z]):
+                                   [cell.pos_x_min, cell.pos_y_min, cell.pos_z_min]):
                     posmatch_xyz = False
                 if not vectormatch([cell.inputpos_a, cell.inputpos_b, cell.inputpos_c],
-                                   [cell.pos_z, cell.pos_y, cell.pos_x]):
+                                   [cell.pos_z_min, cell.pos_y_min, cell.pos_x_min]):
                     posmatch_zyx = False
 
             assert posmatch_xyz != posmatch_zyx  # one option must match
