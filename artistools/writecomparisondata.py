@@ -89,14 +89,16 @@ def write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnone
         atomic_number = elementlist.Z[element]
         elsymb = at.get_elsymbol(atomic_number).lower()
         nions = elementlist.nions[element]
-        with open(Path(outputpath, f'ionfrac_{elsymb}_{model_id}_artisnebular.txt'), 'w') as f:
+        pathfileout = Path(outputpath, f'ionfrac_{elsymb}_{model_id}_artisnebular.txt')
+        fileisallzeros = True  # will be changed when a non-zero is encountered
+        with open(pathfileout, 'w') as f:
             f.write(f'#NTIMES: {len(selected_timesteps)}\n')
-            f.write(f'#NSTAGES {nions}\n')
+            f.write(f'#NSTAGES: {nions}\n')
             f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
             f.write('#\n')
             for timestep in selected_timesteps:
                 f.write(f'#TIME: {times[timestep]:.2f}\n')
-                f.write(f'#NVEL {len(modeldata)}\n')
+                f.write(f'#NVEL: {len(allnonemptymgilist)}\n')
                 f.write(f'#vel_mid[km/s] {" ".join([f"{elsymb}{ion}" for ion in range(nions)])}\n')
                 for modelgridindex, cell in modeldata.iterrows():
                     if modelgridindex not in allnonemptymgilist:
@@ -109,8 +111,13 @@ def write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnone
                         ionabund = estimators[(timestep, modelgridindex)]['populations'].get(
                             (atomic_number, ion_stage), 0)
                         ionfrac = ionabund / elabund if elabund > 0 else 0
+                        if ionfrac > 0.:
+                            fileisallzeros = False
                         f.write(' {:.4e}'.format(ionfrac))
                     f.write('\n')
+        if fileisallzeros:
+            print(f'Deleting {pathfileout} because it is all zeros')
+            pathfileout.unlink()
 
 
 def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, outputpath):
@@ -206,14 +213,14 @@ def main(args=None, argsraw=None, **kwargs):
         write_spectra(modelpath, model_id, selected_timesteps,
                       Path(args.outputpath, "spectra_" + model_id + "_artisnebular.txt"))
 
-        write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist,
-                               Path(args.outputpath, "eden_" + model_id + "_artisnebular.txt"), keyname='nne')
+        # write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist,
+        #                        Path(args.outputpath, "eden_" + model_id + "_artisnebular.txt"), keyname='nne')
 
         write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist,
                                Path(args.outputpath, "edep_" + model_id + "_artisnebular.txt"), keyname='total_dep')
 
-        write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist,
-                               Path(args.outputpath, "tgas_" + model_id + "_artisnebular.txt"), keyname='Te')
+        # write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist,
+        #                        Path(args.outputpath, "tgas_" + model_id + "_artisnebular.txt"), keyname='Te')
 
         write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputpath)
         write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, args.outputpath)
