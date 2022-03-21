@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 """Functions for plotting artis estimators and internal structure.
 
 Examples are temperatures, populations, heating/cooling rates.
 """
 # import math
+import argcomplete
 import argparse
 import math
 import multiprocessing
@@ -831,6 +833,7 @@ def main(args=None, argsraw=None, **kwargs):
             description='Plot ARTIS estimators.')
         addargs(parser)
         parser.set_defaults(**kwargs)
+        argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
     modelpath = Path(args.modelpath)

@@ -52,8 +52,9 @@ setup(
     long_description_content_type='text/markdown',
     install_requires=(Path(__file__).absolute().parent / "requirements.txt").open('rt').read().splitlines(),
     entry_points={
-        'console_scripts': console_scripts
+        'console_scripts': console_scripts,
     },
+    scripts=['artistoolscompletions.sh'],
     python_requires='>==3.6',
     # test_suite='tests',
     setup_requires=['pytest', 'pytest-runner', 'pytest-cov'],
