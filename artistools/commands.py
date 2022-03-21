@@ -1,3 +1,5 @@
+import subprocess
+
 commandlist = {
     'artistools-writecodecomparisondata': ('artistools.writecomparisondata', 'main'),
 
@@ -65,3 +67,8 @@ console_scripts = [f'{command} = {submodulename}:{funcname}'
                    for command, (submodulename, funcname) in commandlist.items()]
 console_scripts.append('at = artistools:main')
 console_scripts.append('artistools = artistools:main')
+
+completioncommands = []
+for command in commandlist.keys():
+    result = subprocess.run(['register-python-argcomplete', command], stdout=subprocess.PIPE)
+    completioncommands.append(result.stdout.decode('utf-8') + '\n')
