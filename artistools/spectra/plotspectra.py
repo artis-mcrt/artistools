@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 """Artistools - spectra plotting functions."""
+import argcomplete
 import argparse
 import math
 import multiprocessing
@@ -980,6 +982,7 @@ def main(args=None, argsraw=None, **kwargs):
                         'in the current directory or subdirectories.')
         addargs(parser)
         parser.set_defaults(**kwargs)
+        argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
     if not args.specpath:

@@ -1,4 +1,7 @@
+#!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 from pathlib import Path
+import argcomplete
 import argparse
 import artistools as at
 import artistools.inputmodel.downscale3dgrid
@@ -50,6 +53,7 @@ def main(args=None, argsraw=None, **kwargs):
             description='Make ARTIS input model')
         addargs(parser)
         parser.set_defaults(**kwargs)
+        argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
     if not args.modelpath:
