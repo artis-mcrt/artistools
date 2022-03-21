@@ -533,7 +533,7 @@ def get_dfmodel_dimensions(dfmodel):
     return 1
 
 
-def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None):
+def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None, dfgridcontributions=None):
     """Convert 3D Cartesian grid model to 1D spherical"""
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
     xmax = vmax * t_model_init_seconds
@@ -556,10 +556,12 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None):
     outcellabundances = []
     # binned = pd.cut(dfmodel['vel_mid_radial'], velocity_bins, labels=False, include_lowest=True)
     # for radialcellid, matchedcells in dfmodel.groupby(binned):
+    cellid_3d_to_1d_map = {}
     highest_active_radialcellid = -1
     for radialcellid, (velocity_inner, velocity_outer) in enumerate(zip(velocity_bins[:-1], velocity_bins[1:]), 1):
         assert velocity_outer > velocity_inner
         matchedcells = dfmodel.query('vel_mid_radial > @velocity_inner and vel_mid_radial <= @velocity_outer')
+        cellid_3d_to_1d_map.update({cellid_3d: radialcellid for cellid_3d in matchedcells.inputcellid})
 
         if len(matchedcells) == 0:
             rhomean = 0.
@@ -605,4 +607,12 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None):
     dfmodel1d = pd.DataFrame(outcells[:highest_active_radialcellid])
     dfabundances1d = pd.DataFrame(outcellabundances[:highest_active_radialcellid]) if outcellabundances else None
 
-    return dfmodel1d, dfabundances1d
+    dfgridcontributions1d = dfgridcontributions.query('cellindex in @cellid_3d_to_1d_map').copy()
+    dfgridcontributions1d.rename(columns={"cellindex": "cellindex_3d"}, inplace=True)
+    dfgridcontributions1d['cellindex'] = dfgridcontributions1d['cellindex_3d'].map(cellid_3d_to_1d_map).astype(int)
+    dfgridcontributions1d.drop(columns='cellindex_3d', inplace=True)
+
+    # dfgridcontributions1d['cellindex'] = dfgridcontributions1d['cellindex'].astype(int)
+    dfgridcontributions1d = dfgridcontributions1d.groupby(['particleid', 'cellindex'], as_index=False).sum()
+
+    return dfmodel1d, dfabundances1d, dfgridcontributions1d
