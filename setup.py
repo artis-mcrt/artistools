@@ -12,7 +12,15 @@ from setuptools.command.test import test as TestCommand
 
 # sys.path.append('artistools/')
 # from commands import console_scripts
-from artistools.commands import console_scripts
+from artistools.commands import console_scripts, completioncommands
+
+
+# Add the following lines to your .zshrc file to get command completion:
+# autoload -U bashcompinit
+# bashcompinit
+# source artistoolscompletions.sh
+with open('artistoolscompletions.sh', 'w') as f:
+    f.write('\n'.join(completioncommands))
 
 
 class PyTest(TestCommand):
