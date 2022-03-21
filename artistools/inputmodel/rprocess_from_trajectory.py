@@ -101,7 +101,7 @@ def get_trajectory_nuc_abund_group(t_model_s, particleid):
     return dict_traj_nuc_abund
 
 
-def get_cellmodelrow(dict_traj_nuc_abund, minparticlespercell, cellgroup):
+def get_modelcellabundance(dict_traj_nuc_abund, minparticlespercell, cellgroup):
     cellindex, dfthiscellcontribs = cellgroup
 
     if len(dfthiscellcontribs) < minparticlespercell:
@@ -148,6 +148,13 @@ def get_gridparticlecontributions(gridcontribpath):
     return dfcontribs
 
 
+def save_gridparticlecontributions(dfcontribs, gridcontribpath):
+    gridcontribpath = Path(gridcontribpath)
+    if gridcontribpath.is_dir():
+        gridcontribpath = Path(gridcontribpath, 'gridcontributions.txt')
+    dfcontribs.to_csv(gridcontribpath, sep=' ', index=False)
+
+
 def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days, minparticlespercell=0):
     """ contribute trajectory network calculation abundances to model cell abundances """
     t_model_s = t_model_days * 86400
@@ -192,7 +199,7 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days, minpartic
     print('Generating cell abundances...')
     timestart = time.perf_counter()
     dfcontribs_cellgroups = dfcontribs.groupby('cellindex')
-    cellabundworker = partial(get_cellmodelrow, dict_traj_nuc_abund, minparticlespercell)
+    cellabundworker = partial(get_modelcellabundance, dict_traj_nuc_abund, minparticlespercell)
 
     if at.num_processes > 1:
         chunksize = math.ceil(len(dfcontribs_cellgroups) / at.num_processes)

@@ -1,10 +1,13 @@
+#!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
+import argcomplete
+import argparse
 from pathlib import Path
 import os.path
 import pandas as pd
 from astropy import units as u
 import numpy as np
 
-import argparse
 import artistools as at
 
 MSUN = 1.989e33
@@ -238,8 +241,16 @@ def makemodelfromgriddata(
     else:
         dfelabundances = None
 
+    dfgridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
+
     if dimensions == 1:
-        dfmodel, dfelabundances = at.inputmodel.sphericalaverage(dfmodel, t_model_days, vmax, dfelabundances)
+        dfmodel, dfelabundances, dfgridcontributions = at.inputmodel.sphericalaverage(
+            dfmodel, t_model_days, vmax, dfelabundances, dfgridcontributions)
+
+    dfgridcontributions.query('cellindex in @dfmodel.inputcellid.values', inplace=True)
+
+    at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(
+        dfgridcontributions, Path(outputpath, 'gridcontributions.txt'))
 
     if getabundances:
         print('Writing to abundances.txt...')
@@ -265,7 +276,7 @@ def addargs(parser):
     parser.add_argument('--noabundances', action='store_true',
                         help='Skip trajectory abundance mapping (get densities only)')
     parser.add_argument('-outputpath', '-o',
-                        default='.',
+                        default=None,
                         help='Path for output model files')
 
 
@@ -277,6 +288,7 @@ def main(args=None, argsraw=None, **kwargs):
 
         addargs(parser)
         parser.set_defaults(**kwargs)
+        argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
     gridfolderpath = args.inputpath
@@ -285,8 +297,15 @@ def main(args=None, argsraw=None, **kwargs):
         return
         # at.inputmodel.maptogrid.main()
 
+    if args.outputpath is None:
+        outputpath = Path(f'artismodel_{args.dimensions}d')
+    else:
+        outputpath = Path(args.outputpath)
+
+    outputpath.mkdir(parents=True, exist_ok=True)
+
     makemodelfromgriddata(
-        gridfolderpath=gridfolderpath, outputpath=args.outputpath, minparticlespercell=args.minparticlespercell,
+        gridfolderpath=gridfolderpath, outputpath=outputpath, minparticlespercell=args.minparticlespercell,
         targetmodeltime_days=1., getabundances=(not args.noabundances), dimensions=args.dimensions)
 
 
