@@ -234,8 +234,9 @@ def read_estimators_from_file(folderpath, modelpath, arr_velocity_outer, mpirank
     for fileblock_timestep, fileblock_modelgridindex, file_estimblock in parse_estimfile(
             estfilepath, modelpath, get_ion_values=get_ion_values, get_heatingcooling=get_heatingcooling):
 
-        file_estimblock['velocity_outer'] = arr_velocity_outer[fileblock_modelgridindex]
-        file_estimblock['velocity'] = file_estimblock['velocity_outer']
+        if arr_velocity_outer is not None:
+            file_estimblock['velocity_outer'] = arr_velocity_outer[fileblock_modelgridindex]
+            file_estimblock['velocity'] = file_estimblock['velocity_outer']
 
         estimators_thisfile[(fileblock_timestep, fileblock_modelgridindex)] = file_estimblock
 
@@ -271,7 +272,10 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_value
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
 
     modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
-    arr_velocity_outer = tuple(list([float(v) for v in modeldata['velocity_outer'].values]))
+    if 'velocity_outer' in modeldata.columns:
+        arr_velocity_outer = tuple(list([float(v) for v in modeldata['velocity_outer'].values]))
+    else:
+        arr_velocity_outer = None
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex, only_ranks_withgridcells=True)
 
