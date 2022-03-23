@@ -18,3 +18,5 @@ config['path_artistools_sourcedir'] = Path(__file__).absolute().parent
 config['path_datadir'] = Path(__file__).absolute().parent / 'data'
 config['path_testartismodel'] = Path(config['path_artistools_repository'], 'tests', 'data', 'testmodel')
 config['path_testoutput'] = Path(config['path_artistools_repository'], 'tests', 'output')
+
+config['gsimerger_trajroot'] = Path('/Users/luke/Dropbox/Archive/Mergers/SFHo/')
