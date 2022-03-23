@@ -1,7 +1,7 @@
 import subprocess
 
 commandlist = {
-    'artistools-writecodecomparisondata': ('artistools.writecomparisondata', 'main'),
+    'artistools-comparetogsinetwork': ('artistools.gsinetwork', 'main'),
 
     'artistools-modeldeposition': ('artistools.deposition', 'main_analytical'),
 
@@ -41,11 +41,11 @@ commandlist = {
     'plotartislinefluxes': ('artistools.linefluxes', 'main'),
     'artistools-linefluxes': ('artistools.linefluxes', 'main'),
 
-    'plotartisnltepops': ('artistools.nltepops.plotnltepops', 'main'),
-    'artistools-nltepops': ('artistools.nltepops', 'main'),
-
     'plotartismacroatom': ('artistools.macroatom', 'main'),
     'artistools-macroatom': ('artistools.macroatom', 'main'),
+
+    'plotartisnltepops': ('artistools.nltepops.plotnltepops', 'main'),
+    'artistools-nltepops': ('artistools.nltepops', 'main'),
 
     'plotartisnonthermal': ('artistools.nonthermal', 'main'),
     'artistools-nonthermal': ('artistools.nonthermal', 'main'),
@@ -61,6 +61,8 @@ commandlist = {
 
     'plotartisinitialcomposition': ('artistools.initial_composition', 'main'),
     'artistools-initialcomposition': ('artistools.initial_composition', 'main'),
+
+    'artistools-writecodecomparisondata': ('artistools.writecomparisondata', 'main'),
 }
 
 console_scripts = [f'{command} = {submodulename}:{funcname}'
