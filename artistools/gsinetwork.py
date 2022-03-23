@@ -295,10 +295,12 @@ def main(args=None, argsraw=None, **kwargs):
             massfracs_interp = np.interp(arr_time_artis_s, arr_time_s, arr_massfracs)
             arr_abund_gsi[strnuc] += massfracs_interp * thisparticledata['frac_of_cellmass'] / frac_of_cellmass_sum
 
-    plot_qdot(modelpath, particledata, arr_time_artis_s,
+    plot_qdot(
+        modelpath, particledata, arr_time_artis_s,
         pdfoutpath=Path(modelpath, f'gsinetwork_cell{mgi}-qdot.pdf'))
 
-    plot_abund(arr_time_artis, arr_strnuc, arr_abund_gsi, arr_abund_artis,
+    plot_abund(
+        arr_time_artis, arr_strnuc, arr_abund_gsi, arr_abund_artis,
         pdfoutpath=Path(modelpath, f'gsinetwork_cell{mgi}-abundance.pdf'))
 
 
