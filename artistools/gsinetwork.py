@@ -244,7 +244,6 @@ def main(args=None, argsraw=None, **kwargs):
                                         except ValueError:
                                             particledata[particleid][col][time_s] = float(row[col].replace('-', 'e-'))
 
-
         except FileNotFoundError:
             print(f'WARNING: Particle data not found for id {particleid}')
             continue
