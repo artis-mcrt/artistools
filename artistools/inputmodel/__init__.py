@@ -373,8 +373,9 @@ def save_modeldata(
         print(f' grid size: {len(dfmodel)} ({griddimension}^3)')
         assert griddimension ** 3 == len(dfmodel)
 
-        standardcols = ['inputcellid', 'pos_x_min', 'pos_y_min', 'pos_z_min', 'rho',  'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52',
-                        'X_Cr48']
+        standardcols = [
+            'inputcellid', 'pos_x_min', 'pos_y_min', 'pos_z_min', 'rho',
+            'X_Fegroup', 'X_Ni56', 'X_Co56', 'X_Fe52', 'X_Cr48']
 
     # these two columns are optional, but position is important and they must appear before any other custom cols
     if 'X_Ni57' in dfmodel.columns:
@@ -541,11 +542,16 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None, dfgr
     ncoordgridx = round(ngridpoints ** (1. / 3.))
     wid_init = 2 * xmax / ncoordgridx
 
-    print(f'Spherically averaging 3D model with {ngridpoints} cells...')
+    print(f'Spherically averaging 3D model with {ngridpoints} cells...', end='')
+    timestart = time.perf_counter()
 
+    cell_frac_sum = {}
+    for cellindex, dfcellcontribs in dfgridcontributions.groupby('cellindex'):
+        cell_frac_sum[cellindex] = dfcellcontribs.frac_of_cellmass.sum()
+
+    # dfmodel = dfmodel.query('rho > 0.').copy()
     dfmodel = dfmodel.copy()
-    if dfelabundances is not None:
-        dfelabundances = dfelabundances.query('inputcellid in @dfmodel.inputcellid').copy()
+
     dfmodel = add_derived_cols_to_modeldata(
         dfmodel, ['velocity'], dimensions=3, t_model_init_seconds=t_model_init_seconds, wid_init=wid_init)
     # print(dfmodel)
@@ -554,21 +560,39 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None, dfgr
     velocity_bins = [vmax * n / ncoordgridx for n in range(ncoordgridx + 1)]  # cm/s
     outcells = []
     outcellabundances = []
-    # binned = pd.cut(dfmodel['vel_mid_radial'], velocity_bins, labels=False, include_lowest=True)
-    # for radialcellid, matchedcells in dfmodel.groupby(binned):
-    cellid_3d_to_1d_map = {}
+    outgridcontributions = []
+
+    # cellidmap_3d_to_1d = {}
     highest_active_radialcellid = -1
     for radialcellid, (velocity_inner, velocity_outer) in enumerate(zip(velocity_bins[:-1], velocity_bins[1:]), 1):
         assert velocity_outer > velocity_inner
-        matchedcells = dfmodel.query('vel_mid_radial > @velocity_inner and vel_mid_radial <= @velocity_outer')
-        cellid_3d_to_1d_map.update({cellid_3d: radialcellid for cellid_3d in matchedcells.inputcellid})
+        matchedcells = dfmodel.query(
+            'rho > 0. and vel_mid_radial > @velocity_inner and vel_mid_radial <= @velocity_outer')
+        matchedcellrhosum = matchedcells.rho.sum()
+        # cellidmap_3d_to_1d.update({cellid_3d: radialcellid for cellid_3d in matchedcells.inputcellid})
 
         if len(matchedcells) == 0:
             rhomean = 0.
         else:
             shell_volume = (4 * math.pi / 3) * (
                 (velocity_outer * t_model_init_seconds) ** 3 - (velocity_inner * t_model_init_seconds) ** 3)
-            rhomean = matchedcells.rho.sum() * wid_init ** 3 / shell_volume
+            rhomean = matchedcellrhosum * wid_init ** 3 / shell_volume
+
+            if rhomean > 0. and dfgridcontributions is not None:
+                dfcellcont = dfgridcontributions.query('cellindex in @matchedcells.inputcellid.values')
+
+                for particleid, dfparticlecontribs in dfcellcont.groupby('particleid'):
+                    frac_of_cellmass_avg = 0.
+
+                    for inputcellid, rho in matchedcells[['inputcellid', 'rho']].itertuples(index=False):
+                        contrib = dfparticlecontribs.query('cellindex == @inputcellid').frac_of_cellmass.sum()
+                        frac_of_cellmass_avg += contrib / cell_frac_sum[inputcellid] * rho / matchedcellrhosum
+
+                    outgridcontributions.append({
+                        'particleid': particleid,
+                        'cellindex': radialcellid,
+                        'frac_of_cellmass': frac_of_cellmass_avg,
+                    })
 
         if rhomean > 0.:
             highest_active_radialcellid = radialcellid
@@ -582,7 +606,7 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None, dfgr
         for column in matchedcells.columns:
             if column.startswith('X_'):
                 if rhomean > 0.:
-                    massfrac = np.dot(matchedcells[column], matchedcells['rho']) / matchedcells['rho'].sum()
+                    massfrac = np.dot(matchedcells[column], matchedcells.rho) / matchedcellrhosum
                 else:
                     massfrac = 0.
                 dictcell[column] = massfrac
@@ -597,7 +621,7 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None, dfgr
             for column in dfelabundances.columns:
                 if column.startswith('X_'):
                     if rhomean > 0.:
-                        massfrac = np.dot(abund_matchedcells[column], matchedcells['rho']) / matchedcells['rho'].sum()
+                        massfrac = np.dot(abund_matchedcells[column], matchedcells.rho) / matchedcellrhosum
                     else:
                         massfrac = 0.
                     dictcellabundances[column] = massfrac
@@ -605,14 +629,11 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None, dfgr
             outcellabundances.append(dictcellabundances)
 
     dfmodel1d = pd.DataFrame(outcells[:highest_active_radialcellid])
-    dfabundances1d = pd.DataFrame(outcellabundances[:highest_active_radialcellid]) if outcellabundances else None
 
-    dfgridcontributions1d = dfgridcontributions.query('cellindex in @cellid_3d_to_1d_map').copy()
-    dfgridcontributions1d.rename(columns={"cellindex": "cellindex_3d"}, inplace=True)
-    dfgridcontributions1d['cellindex'] = dfgridcontributions1d['cellindex_3d'].map(cellid_3d_to_1d_map).astype(int)
-    dfgridcontributions1d.drop(columns='cellindex_3d', inplace=True)
+    dfabundances1d = (
+        pd.DataFrame(outcellabundances[:highest_active_radialcellid]) if outcellabundances else None)
 
-    # dfgridcontributions1d['cellindex'] = dfgridcontributions1d['cellindex'].astype(int)
-    dfgridcontributions1d = dfgridcontributions1d.groupby(['particleid', 'cellindex'], as_index=False).sum()
+    dfgridcontributions1d = pd.DataFrame(outgridcontributions) if outgridcontributions else None
+    print(f'took {time.perf_counter() - timestart:.1f} seconds')
 
     return dfmodel1d, dfabundances1d, dfgridcontributions1d

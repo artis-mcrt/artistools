@@ -234,20 +234,19 @@ def makemodelfromgriddata(
     if 'Q' in dfmodel and args.makeenergyinputfiles:
         at.inputmodel.energyinputfiles.write_Q_energy_file(outputpath, dfmodel)
 
+    dfgridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
+
     if getabundances:
-        dfmodel, dfelabundances = at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
-            gridcontribpath=gridfolderpath, dfmodel=dfmodel, t_model_days=t_model_days,
-            minparticlespercell=minparticlespercell)
+        dfmodel, dfelabundances, dfgridcontributions = (
+            at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
+                dfgridcontributions=dfgridcontributions, dfmodel=dfmodel, t_model_days=t_model_days,
+                minparticlespercell=minparticlespercell))
     else:
         dfelabundances = None
-
-    dfgridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
 
     if dimensions == 1:
         dfmodel, dfelabundances, dfgridcontributions = at.inputmodel.sphericalaverage(
             dfmodel, t_model_days, vmax, dfelabundances, dfgridcontributions)
-
-    dfgridcontributions.query('cellindex in @dfmodel.inputcellid.values', inplace=True)
 
     at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(
         dfgridcontributions, Path(outputpath, 'gridcontributions.txt'))

@@ -45,9 +45,21 @@ def get_dfevol(particleid):
     return dfevol
 
 
-def get_closest_network_timestep(particleid, t_model_s):
+def get_closest_network_timestep(particleid, timesec, cond='nearest'):
+    """
+        cond:
+            'lessthan': find highest timestep less than time_sec
+            'greaterthan': find lowest timestep greater than time_sec
+    """
     dfevol = get_dfevol(particleid)
-    idx = np.abs(dfevol.timesec.values - t_model_s).argmin()
+    if cond == 'nearest':
+        idx = np.abs(dfevol.timesec.values - timesec).argmin()
+    elif cond == 'greaterthan':
+        return dfevol.query('timesec > @timesec').nstep.min()
+    elif cond == 'lessthan':
+        return dfevol.query('timesec < @timesec').nstep.max()
+    else:
+        assert False
     nts = dfevol.nstep.values[idx]
 
     return nts
@@ -76,7 +88,10 @@ def get_trajectory_timestepfile_nuc_abund(particleid, memberfilename):
     return dfnucabund, t_model_init_seconds
 
 
-def get_trajectory_time_nuc_abund(particleid, t_model_s=None, nts=None):
+def get_trajectory_nuc_abund(particleid, t_model_s=None, nts=None):
+    """
+        nts: GSI network timestep number
+    """
     assert t_model_s is not None or nts is not None
     try:
         if nts is not None:
@@ -107,7 +122,8 @@ def get_trajectory_time_nuc_abund(particleid, t_model_s=None, nts=None):
     # print(f'trajectory particle id {particleid} massfrac sum: {massfractotal:.2f}')
     # print(f' grid snapshot: {t_model_s:.2e} s, network: {traj_time_s:.2e} s (timestep {nts})')
     assert np.isclose(massfractotal, 1., rtol=0.02)
-    assert np.isclose(traj_time_s, t_model_s, rtol=0.2, atol=1.)
+    if nts is None:
+        assert np.isclose(traj_time_s, t_model_s, rtol=0.2, atol=1.)
 
     dict_traj_nuc_abund = {nucabundcolname: massfrac / massfractotal for nucabundcolname, massfrac in colmassfracs}
     return dict_traj_nuc_abund
@@ -156,6 +172,32 @@ def get_gridparticlecontributions(gridcontribpath):
     return dfcontribs
 
 
+def filtermissinggridparticlecontributions(dfcontribs):
+    missing_particleids = []
+    for particleid in sorted(dfcontribs.particleid.unique()):
+        if not get_traj_tarpath(particleid).is_file():
+            missing_particleids.append(particleid)
+            # print(f' WARNING particle {particleid} not found!')
+
+    print(f'Removing grid contributions from {len(missing_particleids)} '
+          'particles with no abundance data and renormalising...', end='')
+    dfcontribs.query('particleid not in @missing_particleids', inplace=True)
+
+    cell_frac_sum = {}
+    for cellindex, dfparticlecontribs in dfcontribs.groupby('cellindex'):
+        cell_frac_sum[cellindex] = dfparticlecontribs.frac_of_cellmass.sum()
+
+    dfcontribs['frac_of_cellmass'] = [
+        row.frac_of_cellmass / cell_frac_sum[row.cellindex] for row in dfcontribs.itertuples()]
+
+    for cellindex, dfparticlecontribs in dfcontribs.groupby('cellindex'):
+        frac_sum = dfparticlecontribs.frac_of_cellmass.sum()
+        assert np.isclose(frac_sum, 1., rtol=0.02)
+    print('done')
+
+    return dfcontribs
+
+
 def save_gridparticlecontributions(dfcontribs, gridcontribpath):
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
@@ -163,20 +205,23 @@ def save_gridparticlecontributions(dfcontribs, gridcontribpath):
     dfcontribs.to_csv(gridcontribpath, sep=' ', index=False)
 
 
-def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days, minparticlespercell=0):
+def add_abundancecontributions(dfgridcontributions, dfmodel, t_model_days, minparticlespercell=0):
     """ contribute trajectory network calculation abundances to model cell abundances """
     t_model_s = t_model_days * 86400
+    dfcontribs = dfgridcontributions
+
     if 'X_Fegroup' not in dfmodel.columns:
         dfmodel = pd.concat([dfmodel, pd.DataFrame({'X_Fegroup': np.ones(len(dfmodel))})], axis=1)
-
-    dfcontribs = get_gridparticlecontributions(gridcontribpath)
 
     active_inputcellids = [
         cellindex for cellindex, dfthiscellcontribs in dfcontribs.groupby('cellindex')
         if len(dfthiscellcontribs) >= minparticlespercell]
+
     dfcontribs.query('cellindex in @active_inputcellids', inplace=True)
+    # dfcontribs = filtermissinggridparticlecontributions(dfcontribs)
     active_inputcellids = dfcontribs.cellindex.unique()
     active_inputcellcount = len(active_inputcellids)
+
     dfcontribs_particlegroups = dfcontribs.groupby('particleid')
     particle_count = len(dfcontribs_particlegroups)
 
@@ -186,7 +231,7 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days, minpartic
     listcellnucabundances = []
     print('Reading trajectory abundances...')
     timestart = time.perf_counter()
-    trajnucabundworker = partial(get_trajectory_time_nuc_abund, t_model_s=t_model_s)
+    trajnucabundworker = partial(get_trajectory_nuc_abund, t_model_s=t_model_s)
 
     if at.num_processes > 1:
         with multiprocessing.Pool(processes=at.num_processes) as pool:
@@ -261,7 +306,7 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days, minpartic
     dfmodel.fillna(0., inplace=True)
     print(f' took {time.perf_counter() - timestart:.1f} seconds')
 
-    return dfmodel, dfelabundances
+    return dfmodel, dfelabundances, dfcontribs
 
 
 def addargs(parser):
