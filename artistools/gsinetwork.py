@@ -17,7 +17,7 @@ import artistools as at
 # import artistools.estimators
 
 
-def plot_qdot(modelpath, particledata, arr_time_s):
+def plot_qdot(modelpath, particledata, arr_time_s, pdfoutpath):
     depdata = at.get_deposition(modelpath=modelpath)
 
     tstart = depdata['tmid_days'].min()
@@ -109,7 +109,40 @@ def plot_qdot(modelpath, particledata, arr_time_s):
     axis.legend(loc='best', frameon=False, handlelength=1, ncol=3,
                 numpoints=1)
 
-    plt.savefig(Path(modelpath, 'gsinetwork-qdot.pdf'), format='pdf')
+    plt.savefig(pdfoutpath, format='pdf')
+    print(f'Saved {pdfoutpath}')
+
+
+def plot_abund(arr_time_artis, arr_strnuc, arr_abund_gsi, arr_abund_artis, pdfoutpath):
+    fig, axes = plt.subplots(
+        nrows=len(arr_strnuc), ncols=1, sharex=False, sharey=False, figsize=(6, 1 + 2. * len(arr_strnuc)),
+        tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0})
+
+    # axis.set_xscale('log')
+
+    for axis, strnuc in zip(axes, arr_strnuc):
+        axis.set_xlim(left=1., right=arr_time_artis[-1])
+        axis.set_xlabel('Time [days]')
+        # axis.set_yscale('log')
+        # axis.set_ylabel(f'X({strnuc})')
+        axis.set_ylabel('Mass fraction')
+
+        axis.plot(arr_time_artis, arr_abund_gsi[strnuc],
+                  # linestyle='None',
+                  linewidth=2,
+                  marker='x', markersize=8,
+                  label=f'{strnuc} GSI Network', color='black')
+
+        axis.plot(arr_time_artis, arr_abund_artis[strnuc],
+                  linewidth=2,
+                  # linestyle='None',
+                  # marker='+', markersize=15,
+                  label=f'{strnuc} ARTIS', color='red')
+
+        axis.legend(loc='best', frameon=False, handlelength=1, ncol=1, numpoints=1)
+
+    plt.savefig(pdfoutpath, format='pdf')
+    print(f'Saved {pdfoutpath}')
 
 
 def addargs(parser):
@@ -183,18 +216,19 @@ def main(args=None, argsraw=None, **kwargs):
                 arr_abund_artis[strnuc] = []
             arr_abund_artis[strnuc].append(massfrac)
 
-    arr_time_gsi = []
+    arr_time_artis_s = np.array([t * 8.640000E+04 for t in arr_time_artis])
     arr_abund_gsi = {}
 
-    print('Reading trajectory data')
     dfpartcontrib = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
     dfpartcontrib.query('cellindex == @mgi + 1', inplace=True)
+    print(f'Reading trajectory data for {len(dfpartcontrib)} particles (mgi {mgi})')
 
     particledata = {}
     for particleid, frac_of_cellmass in dfpartcontrib[['particleid', 'frac_of_cellmass']].itertuples(index=False):
         trajtar = at.inputmodel.rprocess_from_trajectory.get_traj_tarpath(particleid)
         try:
             with tarfile.open(trajtar, mode='r:*') as tar:
+                print(f'Reading data for particle id {particleid}...')
                 particledata[particleid] = {
                     'frac_of_cellmass': frac_of_cellmass,
                     'Qdot': {},
@@ -204,8 +238,6 @@ def main(args=None, argsraw=None, **kwargs):
                     'hspof': {},
                     **{strnuc: {} for strnuc in arr_strnuc}
                 }
-                # for strnuc in arr_strnuc:
-                #     particledata[particleid][strnuc] = {}
 
                 # files in the compressed tarfile should be read in the natural order because seeking is extremely slow
                 for member in tar.getmembers():
@@ -215,6 +247,8 @@ def main(args=None, argsraw=None, **kwargs):
                                 header_str = f.readline().split()
                                 header = int(header_str[0]), *[float(x) for x in header_str[1:]]
                                 filecount, time, T9, rho, neutron_number_density, trajectory_mass = header
+                                # if time < 0.5 * arr_time_artis_s.min() or time > arr_time_artis_s * 2.:
+                                #     continue
 
                                 dfabund = pd.read_csv(
                                     f, delim_whitespace=True,
@@ -250,7 +284,6 @@ def main(args=None, argsraw=None, **kwargs):
 
     frac_of_cellmass_sum = sum([p['frac_of_cellmass'] for _, p in particledata.items()])
 
-    arr_time_artis_s = np.array([t * 8.640000E+04 for t in arr_time_artis])
     for strnuc in arr_strnuc:
         arr_abund_gsi[strnuc] = np.zeros_like(arr_time_artis_s)
 
@@ -262,38 +295,11 @@ def main(args=None, argsraw=None, **kwargs):
             massfracs_interp = np.interp(arr_time_artis_s, arr_time_s, arr_massfracs)
             arr_abund_gsi[strnuc] += massfracs_interp * thisparticledata['frac_of_cellmass'] / frac_of_cellmass_sum
 
-    plot_qdot(modelpath, particledata, arr_time_artis_s)
+    plot_qdot(modelpath, particledata, arr_time_artis_s,
+        pdfoutpath=Path(modelpath, f'gsinetwork_cell{mgi}-qdot.pdf'))
 
-    fig, axes = plt.subplots(
-        nrows=len(arr_strnuc), ncols=1, sharex=False, sharey=False, figsize=(6, 1 + 2. * len(arr_strnuc)),
-        tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0})
-
-    # axis.set_xscale('log')
-
-    for axis, strnuc in zip(axes, arr_strnuc):
-        axis.set_xlim(left=1., right=arr_time_artis[-1])
-        axis.set_xlabel('Time [days]')
-        # axis.set_yscale('log')
-        # axis.set_ylabel(f'X({strnuc})')
-        axis.set_ylabel('Mass fraction')
-
-        axis.plot(arr_time_artis, arr_abund_gsi[strnuc],
-                  # linestyle='None',
-                  linewidth=2,
-                  marker='x', markersize=8,
-                  label=f'{strnuc} GSI Network', color='black')
-
-        axis.plot(arr_time_artis, arr_abund_artis[strnuc],
-                  linewidth=2,
-                  # linestyle='None',
-                  # marker='+', markersize=15,
-                  label=f'{strnuc} ARTIS', color='red')
-
-        axis.legend(loc='best', frameon=False, handlelength=1, ncol=1, numpoints=1)
-
-    pdfoutpath = Path(modelpath, 'gsinetwork-abundance.pdf')
-    plt.savefig(pdfoutpath, format='pdf')
-    print(f'Saved {pdfoutpath}')
+    plot_abund(arr_time_artis, arr_strnuc, arr_abund_gsi, arr_abund_artis,
+        pdfoutpath=Path(modelpath, f'gsinetwork_cell{mgi}-abundance.pdf'))
 
 
 if __name__ == "__main__":

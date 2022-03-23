@@ -11,9 +11,9 @@ from pathlib import Path
 import artistools as at
 import numpy as np
 import pandas as pd
-from functools import partial
+from functools import lru_cache, partial
 
-traj_root = Path('/Users/luke/Dropbox/Archive/Mergers/SFHo/')
+traj_root = at.config['gsimerger_trajroot']
 
 
 def get_elemabund_from_nucabund(dfnucabund):
@@ -37,17 +37,23 @@ def open_tar_file_or_extracted(particleid, memberfilename):
         return tarfile.open(get_traj_tarpath(particleid), mode='r:*').extractfile(member=memberfilename)
 
 
-def get_closest_network_timestep(particleid, t_model_s):
+@lru_cache(maxsize=16)
+def get_dfevol(particleid):
     with open_tar_file_or_extracted(particleid, './Run_rprocess/evol.dat') as evolfile:
         dfevol = pd.read_csv(
             evolfile, delim_whitespace=True, comment='#', usecols=[0, 1], names=['nstep', 'timesec'])
-        idx = np.abs(dfevol.timesec.values - t_model_s).argmin()
-        nts = dfevol.nstep.values[idx]
+    return dfevol
+
+
+def get_closest_network_timestep(particleid, t_model_s):
+    dfevol = get_dfevol(particleid)
+    idx = np.abs(dfevol.timesec.values - t_model_s).argmin()
+    nts = dfevol.nstep.values[idx]
 
     return nts
 
 
-def get_trajectory_timestep_nuc_abund(particleid, memberfilename):
+def get_trajectory_timestepfile_nuc_abund(particleid, memberfilename):
     with open_tar_file_or_extracted(particleid, memberfilename) as trajfile:
 
         # with open(trajfile) as ftraj:
@@ -70,16 +76,20 @@ def get_trajectory_timestep_nuc_abund(particleid, memberfilename):
     return dfnucabund, t_model_init_seconds
 
 
-def get_trajectory_time_nuc_abund(t_model_s, particleid):
+def get_trajectory_time_nuc_abund(particleid, t_model_s=None, nts=None):
+    assert t_model_s is not None or nts is not None
     try:
-        if np.isclose(t_model_s, 86400, rtol=0.1):
-            memberfilename = './Run_rprocess/tday_nz-plane'
-        else:
-            # find the closest timestep to the required time
-            nts = get_closest_network_timestep(particleid, t_model_s)
+        if nts is not None:
             memberfilename = f'./Run_rprocess/nz-plane{nts:05d}'
+        else:
+            if np.isclose(t_model_s, 86400, rtol=0.1):
+                memberfilename = './Run_rprocess/tday_nz-plane'
+            else:
+                # find the closest timestep to the required time
+                nts = get_closest_network_timestep(particleid, t_model_s)
+                memberfilename = f'./Run_rprocess/nz-plane{nts:05d}'
 
-        dftrajnucabund, traj_time_s = get_trajectory_timestep_nuc_abund(particleid, memberfilename)
+        dftrajnucabund, traj_time_s = get_trajectory_timestepfile_nuc_abund(particleid, memberfilename)
 
     except FileNotFoundError:
         # print(f' WARNING {get_traj_tarpath(particleid)} not found! ')
@@ -176,7 +186,7 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days, minpartic
     listcellnucabundances = []
     print('Reading trajectory abundances...')
     timestart = time.perf_counter()
-    trajnucabundworker = partial(get_trajectory_time_nuc_abund, t_model_s)
+    trajnucabundworker = partial(get_trajectory_time_nuc_abund, t_model_s=t_model_s)
 
     if at.num_processes > 1:
         with multiprocessing.Pool(processes=at.num_processes) as pool:
