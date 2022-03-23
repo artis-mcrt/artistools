@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 
+import argcomplete
 import argparse
 import math
 import multiprocessing
@@ -45,7 +47,7 @@ def get_closest_network_timestep(particleid, t_model_s):
     return nts
 
 
-def get_trajectory_nuc_abund(particleid, memberfilename):
+def get_trajectory_timestep_nuc_abund(particleid, memberfilename):
     with open_tar_file_or_extracted(particleid, memberfilename) as trajfile:
 
         # with open(trajfile) as ftraj:
@@ -56,7 +58,7 @@ def get_trajectory_nuc_abund(particleid, memberfilename):
                                  dtype={0: int, 1: int, 2: float})
 
     # dfnucabund.eval('abund = 10 ** log10abund', inplace=True)
-    dfnucabund.eval('massfrac = (N + Z) * 10 ** log10abund', inplace=True)
+    dfnucabund.eval('massfrac = (N + Z) * (10 ** log10abund)', inplace=True)
     # dfnucabund.eval('A = N + Z', inplace=True)
     # dfnucabund.query('abund > 0.', inplace=True)
 
@@ -68,7 +70,7 @@ def get_trajectory_nuc_abund(particleid, memberfilename):
     return dfnucabund, t_model_init_seconds
 
 
-def get_trajectory_nuc_abund_group(t_model_s, particleid):
+def get_trajectory_time_nuc_abund(t_model_s, particleid):
     try:
         if np.isclose(t_model_s, 86400, rtol=0.1):
             memberfilename = './Run_rprocess/tday_nz-plane'
@@ -77,7 +79,7 @@ def get_trajectory_nuc_abund_group(t_model_s, particleid):
             nts = get_closest_network_timestep(particleid, t_model_s)
             memberfilename = f'./Run_rprocess/nz-plane{nts:05d}'
 
-        dftrajnucabund, traj_time_s = get_trajectory_nuc_abund(particleid, memberfilename)
+        dftrajnucabund, traj_time_s = get_trajectory_timestep_nuc_abund(particleid, memberfilename)
 
     except FileNotFoundError:
         # print(f' WARNING {get_traj_tarpath(particleid)} not found! ')
@@ -114,11 +116,7 @@ def get_modelcellabundance(dict_traj_nuc_abund, minparticlespercell, cellgroup):
         if particleid in dict_traj_nuc_abund]
 
     # adjust frac_of_cellmass for missing particles
-    cell_frac_sum = sum([
-        frac_of_cellmass
-        for particleid, frac_of_cellmass in dfthiscellcontribs[
-            ['particleid', 'frac_of_cellmass']].itertuples(index=False)
-        if particleid in dict_traj_nuc_abund])
+    cell_frac_sum = sum([frac_of_cellmass for _, frac_of_cellmass in contribparticles])
 
     nucabundcolnames = set([
         col for particleid in dfthiscellcontribs.particleid
@@ -178,7 +176,7 @@ def add_abundancecontributions(gridcontribpath, dfmodel, t_model_days, minpartic
     listcellnucabundances = []
     print('Reading trajectory abundances...')
     timestart = time.perf_counter()
-    trajnucabundworker = partial(get_trajectory_nuc_abund_group, t_model_s)
+    trajnucabundworker = partial(get_trajectory_time_nuc_abund, t_model_s)
 
     if at.num_processes > 1:
         with multiprocessing.Pool(processes=at.num_processes) as pool:
@@ -270,12 +268,13 @@ def main(args=None, argsraw=None, **kwargs):
 
         addargs(parser)
         parser.set_defaults(**kwargs)
+        argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
     # particleid = 88969  # Ye = 9.63284224E-02
     particleid = 133371  # Ye = 0.403913230
     print(f'trajectory particle id {particleid}')
-    dfnucabund, t_model_init_seconds = get_trajectory_nuc_abund(particleid, './Run_rprocess/tday_nz-plane')
+    dfnucabund, t_model_init_seconds = get_trajectory_timestep_nuc_abund(particleid, './Run_rprocess/tday_nz-plane')
     dfnucabund.query('Z >= 1', inplace=True)
     dfnucabund['radioactive'] = True
 
