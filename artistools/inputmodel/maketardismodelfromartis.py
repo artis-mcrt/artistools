@@ -6,7 +6,7 @@ import argparse
 from yaml import dump as yamldump
 
 from pathlib import Path
-from artistools import CustomArgHelpFormatter, get_model_name
+from artistools import CustomArgHelpFormatter, get_model_name, get_atomic_number
 from artistools.inputmodel import get_modeldata
 
 
@@ -20,6 +20,12 @@ def addargs(parser):
 
     parser.add_argument('-dilution_factor', '-W', default=1.,
                         help='Dilution factor to use in TARDIS file')
+
+    parser.add_argument('-abundtype', choices=['nuclear', 'elemental'], default='elemental',
+                        help='Output nuclear or elemental abundances')
+
+    parser.add_argument('-maxatomicnumber', default=92,
+                        help='Maximum atomic number for elemental abundances')
 
     parser.add_argument('-outputpath', '-o', default='.',
                         help='Path of output TARDIS model file')
@@ -41,14 +47,22 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     modelpath = Path(args.inputpath)
 
-    dfmodel, t_model_init_days, _ = get_modeldata(modelpath)
+    dfmodel, t_model_init_days, _ = get_modeldata(modelpath, get_abundances=(args.abundtype=='elemental'))
     dfmodel.eval('rho = 10 ** logrho', inplace=True)
 
-    listnuclei = [
-        col[2:] for col in dfmodel.columns
-        if col.startswith('X_') and col.upper() != 'X_FEGROUP' and col[-1].isdigit()]
+    if args.abundtype == 'nuclear':
+        # nuclide abundances
+        listspecies = [
+            col[2:] for col in dfmodel.columns
+            if col.startswith('X_') and col.upper() != 'X_FEGROUP' and col[-1].isdigit()]
+    else:
+        # nuclide abundances
+        listspecies = [
+            col[2:] for col in dfmodel.columns
+            if col.startswith('X_') and col.upper() != 'X_FEGROUP' and not col[-1].isdigit()]
 
-    # listnuclei = listnuclei[:10]  # for testing, avoid huge number of isotopes
+    if args.maxatomicnumber:
+        listspecies = [species for species in listspecies if get_atomic_number(species) <= args.maxatomicnumber]
 
     modelname = get_model_name(modelpath)
     outputfilepath = Path(args.outputpath, f'{modelname}.csvy')
@@ -71,7 +85,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
                  'desc': 'radiative temperature'},
                 {'name': 'dilution_factor',
                  'desc': 'dilution factor of shell'},
-                *[{'name': strnuc, 'desc': f'fractional {strnuc} abundance'} for strnuc in listnuclei]
+                *[{'name': strnuc, 'desc': f'fractional {strnuc} abundance'} for strnuc in listspecies]
             ]
         }
     }
@@ -79,13 +93,13 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         fileout.write('---\n')
         yamldump(dictmeta, fileout, sort_keys=False)
         fileout.write('---\n')
-        fileout.write(','.join(['velocity', 'density', 't_rad', 'dilution_factor', *listnuclei]))
+        fileout.write(','.join(['velocity', 'density', 't_rad', 'dilution_factor', *listspecies]))
         fileout.write('\n')
 
-        fileout.write(f'{0.},{0.:.4e},{0.},{0.},{",".join([f"{0.:.4e}" for _ in listnuclei])}\n')
+        fileout.write(f'{0.},{0.:.4e},{0.},{0.},{",".join([f"{0.:.4e}" for _ in listspecies])}\n')
 
         for cell in dfmodel.itertuples(index=False):
-            abundlist = [f'{getattr(cell, "X_" + strnuc):.4e}' for strnuc in listnuclei]
+            abundlist = [f'{getattr(cell, "X_" + strnuc):.4e}' for strnuc in listspecies]
             fileout.write(f'{cell.velocity_outer},{cell.rho:.4e},{temperature},{dilution_factor},{",".join(abundlist)}\n')
 
     print(f'Saved {outputfilepath}')

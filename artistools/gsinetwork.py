@@ -261,7 +261,7 @@ def do_modelcell(modelpath, mgi, arr_el_a):
     arr_el, arr_a = zip(*arr_el_a)
     arr_strnuc = [z + str(a) for z, a in arr_el_a]
 
-    # arr_z = [at.elsymbols.index(el) for el in arr_el]
+    # arr_z = [at.get_atomic_number(el) for el in arr_el]
 
     dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath)
     dfcell = dfmodel.iloc[mgi]
