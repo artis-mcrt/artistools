@@ -47,7 +47,9 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     modelpath = Path(args.inputpath)
 
-    dfmodel, t_model_init_days, _ = get_modeldata(modelpath, get_abundances=(args.abundtype=='elemental'))
+    dfmodel, t_model_init_days, _ = get_modeldata(
+        modelpath, get_abundances=(args.abundtype == 'elemental'), dimensions=1)
+
     dfmodel.eval('rho = 10 ** logrho', inplace=True)
 
     if args.abundtype == 'nuclear':
@@ -61,7 +63,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
             col[2:] for col in dfmodel.columns
             if col.startswith('X_') and col.upper() != 'X_FEGROUP' and not col[-1].isdigit()]
 
-    if args.maxatomicnumber:
+    if args.maxatomicnumber and args.maxatomicnumber > 0:
         listspecies = [species for species in listspecies if get_atomic_number(species) <= args.maxatomicnumber]
 
     modelname = get_model_name(modelpath)
@@ -100,7 +102,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
         for cell in dfmodel.itertuples(index=False):
             abundlist = [f'{getattr(cell, "X_" + strnuc):.4e}' for strnuc in listspecies]
-            fileout.write(f'{cell.velocity_outer},{cell.rho:.4e},{temperature},{dilution_factor},{",".join(abundlist)}\n')
+            fileout.write(
+                f'{cell.velocity_outer},{cell.rho:.4e},{temperature},{dilution_factor},{",".join(abundlist)}\n')
 
     print(f'Saved {outputfilepath}')
 
