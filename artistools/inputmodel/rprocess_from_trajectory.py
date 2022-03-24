@@ -264,7 +264,7 @@ def add_abundancecontributions(dfgridcontributions, dfmodel, t_model_days, minpa
         listcellnucabundances = [cellabundworker(cellgroup) for cellgroup in dfcontribs_cellgroups]
 
     listcellnucabundances = [x for x in listcellnucabundances if x is not None]
-    print(f'Generating model cell abundances took {time.perf_counter() - timestart:.1f} seconds')
+    print(f'  took {time.perf_counter() - timestart:.1f} seconds')
 
     timestart = time.perf_counter()
     print('Creating dfnucabundances...', end='', flush=True)

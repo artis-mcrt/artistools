@@ -248,8 +248,9 @@ def makemodelfromgriddata(
         dfmodel, dfelabundances, dfgridcontributions = at.inputmodel.sphericalaverage(
             dfmodel, t_model_days, vmax, dfelabundances, dfgridcontributions)
 
-    at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(
-        dfgridcontributions, Path(outputpath, 'gridcontributions.txt'))
+    if dfgridcontributions is not None:
+        at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(
+            dfgridcontributions, Path(outputpath, 'gridcontributions.txt'))
 
     if getabundances:
         print('Writing to abundances.txt...')

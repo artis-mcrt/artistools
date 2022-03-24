@@ -158,10 +158,11 @@ def plot_abund(
                       # marker='+', markersize=15,
                       label=f'{strnuc} ARTIS', color='red')
 
-        axis.plot(t_model_init_days, dfcell[f'X_{strnuc}'],
-                  marker='+', markersize=15, markeredgewidth=2,
-                  label=f'{strnuc} ARTIS inputmodel', color='blue')
-        print(strnuc, arr_abund_gsi[strnuc][0], dfcell[f'X_{strnuc}'])
+        if f'X_{strnuc}' in dfcell:
+            axis.plot(t_model_init_days, dfcell[f'X_{strnuc}'],
+                      marker='+', markersize=15, markeredgewidth=2,
+                      label=f'{strnuc} ARTIS inputmodel', color='blue')
+            print(strnuc, arr_abund_gsi[strnuc][0], dfcell[f'X_{strnuc}'])
 
         axis.legend(loc='best', frameon=False, handlelength=1, ncol=1, numpoints=1)
 
@@ -317,7 +318,7 @@ def main(args=None, argsraw=None, **kwargs):
             rho_init_cgs = 10 ** dfcell.logrho
             rho_cgs = rho_init_cgs * (t_model_init_days / time_days) ** 3
             for strnuc, a in zip(arr_strnuc, arr_a):
-                abund = estimators[(key_ts, key_mgi)]['populations'][strnuc]
+                abund = estimators[(key_ts, key_mgi)]['populations'].get(strnuc, 0.)
                 massfrac = abund * a * MH / rho_cgs
                 if strnuc not in arr_abund_artis:
                     arr_abund_artis[strnuc] = []

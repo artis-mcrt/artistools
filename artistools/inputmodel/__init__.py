@@ -542,15 +542,16 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None, dfgr
     ncoordgridx = round(ngridpoints ** (1. / 3.))
     wid_init = 2 * xmax / ncoordgridx
 
-    print(f'Spherically averaging 3D model with {ngridpoints} cells...', end='')
+    print(f'Spherically averaging 3D model with {ngridpoints} cells...')
     timestart = time.perf_counter()
-
-    cell_frac_sum = {}
-    for cellindex, dfcellcontribs in dfgridcontributions.groupby('cellindex'):
-        cell_frac_sum[cellindex] = dfcellcontribs.frac_of_cellmass.sum()
+    if dfgridcontributions is not None:
+        cell_frac_sum = {}
+        for cellindex, dfcellcontribs in dfgridcontributions.groupby('cellindex'):
+            cell_frac_sum[cellindex] = dfcellcontribs.frac_of_cellmass.sum()
 
     # dfmodel = dfmodel.query('rho > 0.').copy()
     dfmodel = dfmodel.copy()
+    celldensity = {cellindex: rho for cellindex, rho in dfmodel[['inputcellid', 'rho']].itertuples(index=False)}
 
     dfmodel = add_derived_cols_to_modeldata(
         dfmodel, ['velocity'], dimensions=3, t_model_init_seconds=t_model_init_seconds, wid_init=wid_init)
@@ -567,7 +568,7 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None, dfgr
     for radialcellid, (velocity_inner, velocity_outer) in enumerate(zip(velocity_bins[:-1], velocity_bins[1:]), 1):
         assert velocity_outer > velocity_inner
         matchedcells = dfmodel.query(
-            'rho > 0. and vel_mid_radial > @velocity_inner and vel_mid_radial <= @velocity_outer')
+            'vel_mid_radial > @velocity_inner and vel_mid_radial <= @velocity_outer')
         matchedcellrhosum = matchedcells.rho.sum()
         # cellidmap_3d_to_1d.update({cellid_3d: radialcellid for cellid_3d in matchedcells.inputcellid})
 
@@ -582,11 +583,10 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None, dfgr
                 dfcellcont = dfgridcontributions.query('cellindex in @matchedcells.inputcellid.values')
 
                 for particleid, dfparticlecontribs in dfcellcont.groupby('particleid'):
-                    frac_of_cellmass_avg = 0.
-
-                    for inputcellid, rho in matchedcells[['inputcellid', 'rho']].itertuples(index=False):
-                        contrib = dfparticlecontribs.query('cellindex == @inputcellid').frac_of_cellmass.sum()
-                        frac_of_cellmass_avg += contrib / cell_frac_sum[inputcellid] * rho / matchedcellrhosum
+                    frac_of_cellmass_avg = sum([
+                        (row.frac_of_cellmass / cell_frac_sum[cellindex] *
+                         celldensity[row.cellindex] / matchedcellrhosum)
+                        for row in dfparticlecontribs.itertuples(index=False)])
 
                     outgridcontributions.append({
                         'particleid': particleid,
@@ -603,6 +603,7 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None, dfgr
             'velocity_outer': velocity_outer / km_to_cm,
             'logrho': logrho,
         }
+
         for column in matchedcells.columns:
             if column.startswith('X_'):
                 if rhomean > 0.:
@@ -634,6 +635,6 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None, dfgr
         pd.DataFrame(outcellabundances[:highest_active_radialcellid]) if outcellabundances else None)
 
     dfgridcontributions1d = pd.DataFrame(outgridcontributions) if outgridcontributions else None
-    print(f'took {time.perf_counter() - timestart:.1f} seconds')
+    print(f'  took {time.perf_counter() - timestart:.1f} seconds')
 
     return dfmodel1d, dfabundances1d, dfgridcontributions1d
