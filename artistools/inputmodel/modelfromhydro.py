@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
+
 import argcomplete
 import argparse
 from pathlib import Path
@@ -268,11 +269,14 @@ def addargs(parser):
                         default='.',
                         help='Path of input files')
     parser.add_argument('-minparticlespercell',
-                        default=10,
+                        default=10, type=int,
                         help='Minimum number of SPH particles in each cell (otherwise set rho=0)')
     parser.add_argument('-dimensions',
                         default=3, type=int,
                         help='Number of dimensions: 1 for spherically symmetric 1D, 3 for 3D Cartesian')
+    parser.add_argument('-targetmodeltime_days', '-t', type=float,
+                        default=1.,
+                        help='Time in days for the output model snapshot')
     parser.add_argument('--noabundances', action='store_true',
                         help='Skip trajectory abundance mapping (get densities only)')
     parser.add_argument('-outputpath', '-o',
@@ -306,7 +310,8 @@ def main(args=None, argsraw=None, **kwargs):
 
     makemodelfromgriddata(
         gridfolderpath=gridfolderpath, outputpath=outputpath, minparticlespercell=args.minparticlespercell,
-        targetmodeltime_days=1., getabundances=(not args.noabundances), dimensions=args.dimensions)
+        targetmodeltime_days=args.targetmodeltime_days, getabundances=(not args.noabundances),
+        dimensions=args.dimensions)
 
 
 if __name__ == "__main__":

@@ -23,6 +23,8 @@ commandlist = {
     'makeartismodelfromparticlegridmap': ('artistools.inputmodel.modelfromhydro', 'main'),
     'makeartismodel': ('artistools.inputmodel.makeartismodel', 'main'),
 
+    'artistools-maketardismodelfromartis': ('artistools.inputmodel.maketardismodelfromartis', 'main'),
+
     'artistools-maptogrid': ('artistools.inputmodel.maptogrid', 'main'),
 
     'plotartisdeposition': ('artistools.deposition', 'main'),
