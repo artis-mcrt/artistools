@@ -12,7 +12,7 @@ from artistools.inputmodel import get_modeldata
 
 def addargs(parser):
 
-    parser.add_argument('-inputpath', '-i', default='model.txt',
+    parser.add_argument('-inputpath', '-i', default='.',
                         help='Path of input ARTIS model')
 
     parser.add_argument('-temperature', '-T', default=10000,
@@ -98,7 +98,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         fileout.write(','.join(['velocity', 'density', 't_rad', 'dilution_factor', *listspecies]))
         fileout.write('\n')
 
-        fileout.write(f'{0.},{0.:.4e},{0.},{0.},{",".join([f"{0.:.4e}" for _ in listspecies])}\n')
+        # fileout.write(f'{0.},{0.:.4e},{0.},{0.},{",".join([f"{0.:.4e}" for _ in listspecies])}\n')
 
         for cell in dfmodel.itertuples(index=False):
             abundlist = [f'{getattr(cell, "X_" + strnuc):.4e}' for strnuc in listspecies]
