@@ -17,12 +17,14 @@ import artistools as at
 # import artistools.estimators
 
 
-def plot_qdot(modelpath, particledata, arr_time_artis_days, arr_time_gsi_days, pdfoutpath):
+def plot_qdot(modelpath, particledata, arr_time_artis_days, arr_time_gsi_days, pdfoutpath, mgi):
     try:
         depdata = at.get_deposition(modelpath=modelpath)
     except FileNotFoundError:
         print("Can't do qdot plot because no deposition.out file")
         return
+
+    modelname = at.get_model_name(modelpath)
 
     tstart = depdata['tmid_days'].min()
     tend = depdata['tmid_days'].max()
@@ -110,13 +112,14 @@ def plot_qdot(modelpath, particledata, arr_time_artis_days, arr_time_gsi_days, p
     axis.legend(loc='best', frameon=False, handlelength=1, ncol=3,
                 numpoints=1)
 
+    fig.suptitle(f'{modelname} cell {mgi}', fontsize=10)
     plt.savefig(pdfoutpath, format='pdf')
     print(f'Saved {pdfoutpath}')
 
 
 def plot_abund(
-        particledata, arr_time_artis_days, arr_time_gsi_days, arr_strnuc, arr_abund_gsi, arr_abund_artis,
-        t_model_init_days, dfcell, pdfoutpath):
+        modelpath, particledata, arr_time_artis_days, arr_time_gsi_days, arr_strnuc, arr_abund_gsi, arr_abund_artis,
+        t_model_init_days, dfcell, pdfoutpath, mgi):
 
     frac_of_cellmass_sum = sum([p['frac_of_cellmass'] for _, p in particledata.items()])
     print(f'frac_of_cellmass_sum: {frac_of_cellmass_sum} (can be < 1.0 because of missing particles)')
@@ -132,15 +135,17 @@ def plot_abund(
     fig, axes = plt.subplots(
         nrows=len(arr_strnuc), ncols=1, sharex=False, sharey=False, figsize=(6, 1 + 2. * len(arr_strnuc)),
         tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0})
-
+    fig.subplots_adjust(top=0.8)
     # axis.set_xscale('log')
 
+    modelname = at.get_model_name(modelpath)
+
+    axes[-1].set_xlabel('Time [days]')
     for axis, strnuc in zip(axes, arr_strnuc):
         # print(arr_time_artis_days)
         xmin = arr_time_gsi_days.min() * 0.9
-        xmax = arr_time_gsi_days.max() * 1.1
+        xmax = arr_time_gsi_days.max() * 1.03
         axis.set_xlim(left=xmin, right=xmax)
-        axis.set_xlabel('Time [days]')
         # axis.set_yscale('log')
         # axis.set_ylabel(f'X({strnuc})')
         axis.set_ylabel('Mass fraction')
@@ -166,6 +171,7 @@ def plot_abund(
 
         axis.legend(loc='best', frameon=False, handlelength=1, ncol=1, numpoints=1)
 
+    fig.suptitle(f'{modelname} cell {mgi}', y=0.995, fontsize=10)
     plt.savefig(pdfoutpath, format='pdf')
     print(f'Saved {pdfoutpath}')
 
@@ -179,7 +185,7 @@ def get_particledata(arr_time_s, arr_strnuc, particleid_frac):
             particleid, timesec=max(arr_time_s), cond='greaterthan')
 
     except FileNotFoundError:
-        print(f'WARNING: Particle data not found for id {particleid}')
+        # print(f'WARNING: Particle data not found for id {particleid}')
         return None
 
     # print(f'Reading data for particle id {particleid}...')
@@ -288,9 +294,9 @@ def main(args=None, argsraw=None, **kwargs):
         ('Ac', 225),
         ('Th', 234),
         ('Pa', 233),
-        ('U', 235),
+        # ('U', 235),
     ]
-    arr_el_a.sort(key=lambda x: (-at.elsymbols.index(x[0]), -x[1]))
+    arr_el_a.sort(key=lambda x: (at.elsymbols.index(x[0]), -x[1]))
     arr_el, arr_a = zip(*arr_el_a)
     arr_strnuc = [z + str(a) for z, a in arr_el_a]
 
@@ -356,12 +362,12 @@ def main(args=None, argsraw=None, **kwargs):
         if particledata is not None}
 
     plot_qdot(
-        modelpath, allparticledata, arr_time_artis_days, arr_time_gsi_days,
+        modelpath, allparticledata, arr_time_artis_days, arr_time_gsi_days, mgi=mgi,
         pdfoutpath=Path(modelpath, f'gsinetwork_cell{mgi}-qdot.pdf'))
 
     plot_abund(
-        allparticledata, arr_time_artis_days, arr_time_gsi_days, arr_strnuc,
-        arr_abund_gsi, arr_abund_artis, t_model_init_days, dfcell,
+        modelpath, allparticledata, arr_time_artis_days, arr_time_gsi_days, arr_strnuc,
+        arr_abund_gsi, arr_abund_artis, t_model_init_days, dfcell, mgi=mgi,
         pdfoutpath=Path(modelpath, f'gsinetwork_cell{mgi}-abundance.pdf'))
 
 
