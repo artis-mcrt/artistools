@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
-import hashlib
-import math
-import numpy as np
+# import hashlib
+# import math
+# import numpy as np
 import os
-import os.path
+# import os.path
 import pandas as pd
-import pytest
+# import pytest
 from pathlib import Path
 
 import artistools as at
@@ -33,6 +33,11 @@ def test_makemodel():
 def test_makemodel_energyfiles():
     at.inputmodel.makeartismodel.main(
         argsraw=[], modelpath=modelpath, makeenergyinputfiles=True, modeldim=1, outputpath=outputpath)
+
+
+def test_maketardismodel():
+    at.inputmodel.maketardismodelfromartis.main(
+        argsraw=[], inputpath=modelpath, outputpath=outputpath)
 
 
 def test_make_empty_abundance_file():
