@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 # import math
 import multiprocessing
-from functools import partial
+from functools import partial, lru_cache
 from pathlib import Path
 import matplotlib.pyplot as plt
 
@@ -176,8 +176,9 @@ def plot_abund(
     print(f'Saved {pdfoutpath}')
 
 
-def get_particledata(arr_time_s, arr_strnuc, particleid_frac):
-    (particleid, frac_of_cellmass) = particleid_frac
+# @lru_cache(maxsize=128)
+def get_particledata(arr_time_s, arr_strnuc, particleid):
+
     try:
         nts_min = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(
             particleid, timesec=min(arr_time_s), cond='lessthan')
@@ -190,7 +191,6 @@ def get_particledata(arr_time_s, arr_strnuc, particleid_frac):
 
     # print(f'Reading data for particle id {particleid}...')
     particledata = {
-        'frac_of_cellmass': frac_of_cellmass,
         'Qdot': {},
         'hbeta': {},
         'halpha': {},
@@ -257,53 +257,11 @@ def get_particledata(arr_time_s, arr_strnuc, particleid_frac):
     return particledata
 
 
-def addargs(parser):
-    parser.add_argument('-modelpath',
-                        default='.',
-                        help='Path for ARTIS files')
-
-    parser.add_argument('-outputpath', '-o',
-                        default='.',
-                        help='Path for output files')
-
-    parser.add_argument('-modelgridindex', '-cell', '-mgi', type=int, default=0,
-                        help='Modelgridindex to plot')
-
-
-def main(args=None, argsraw=None, **kwargs):
-    if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter,
-            description='Create solar r-process pattern in ARTIS format.')
-
-        addargs(parser)
-        parser.set_defaults(**kwargs)
-        argcomplete.autocomplete(parser)
-        args = parser.parse_args(argsraw)
-
-    arr_el_a = [
-        ('Ga', 72),
-        ('Sr', 89),
-        ('Ba', 140),
-        ('Ce', 141),
-        ('Nd', 147),
-        ('Rn', 222),
-        ('Ra', 223),
-        ('Ra', 224),
-        ('Ra', 225),
-        ('Ac', 225),
-        ('Th', 234),
-        ('Pa', 233),
-        # ('U', 235),
-    ]
-    arr_el_a.sort(key=lambda x: (at.elsymbols.index(x[0]), -x[1]))
+def do_modelcell(modelpath, mgi, arr_el_a):
     arr_el, arr_a = zip(*arr_el_a)
     arr_strnuc = [z + str(a) for z, a in arr_el_a]
 
-    arr_z = [at.elsymbols.index(el) for el in arr_el]
-
-    modelpath = Path(args.modelpath)
-    mgi = int(args.modelgridindex)
+    # arr_z = [at.elsymbols.index(el) for el in arr_el]
 
     dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath)
     dfcell = dfmodel.iloc[mgi]
@@ -343,22 +301,24 @@ def main(args=None, argsraw=None, **kwargs):
     dfpartcontrib.query('cellindex == @mgi + 1', inplace=True)
     print(f'Reading trajectory data for {len(dfpartcontrib)} particles (mgi {mgi})')
 
-    fworker = partial(get_particledata, arr_time_gsi_s, arr_strnuc)
+    fworker = partial(get_particledata, tuple(arr_time_gsi_s), tuple(arr_strnuc))
+
     list_particleid_frac = [
         (particleid, frac_of_cellmass)
         for particleid, frac_of_cellmass in dfpartcontrib[['particleid', 'frac_of_cellmass']].itertuples(index=False)]
+    list_particleids = [particleid for particleid, _ in list_particleid_frac]
 
     if at.num_processes > 1:
         with multiprocessing.Pool(processes=at.num_processes) as pool:
-            list_particledata = pool.map(fworker, list_particleid_frac)
+            list_particledata = pool.map(fworker, list_particleids)
             pool.close()
             pool.join()
     else:
-        list_particledata = [fworker(particleid_frac) for particleid_frac in list_particleid_frac]
+        list_particledata = [fworker(particleid) for particleid in list_particleids]
 
     allparticledata = {
-        particleid: particledata
-        for (particleid, _), particledata in zip(list_particleid_frac, list_particledata)
+        particleid: dict(particledata, frac_of_cellmass=frac_of_cellmass)
+        for (particleid, frac_of_cellmass), particledata in zip(list_particleid_frac, list_particledata)
         if particledata is not None}
 
     plot_qdot(
@@ -369,6 +329,57 @@ def main(args=None, argsraw=None, **kwargs):
         modelpath, allparticledata, arr_time_artis_days, arr_time_gsi_days, arr_strnuc,
         arr_abund_gsi, arr_abund_artis, t_model_init_days, dfcell, mgi=mgi,
         pdfoutpath=Path(modelpath, f'gsinetwork_cell{mgi}-abundance.pdf'))
+
+
+def addargs(parser):
+    parser.add_argument('-modelpath',
+                        default='.',
+                        help='Path for ARTIS files')
+
+    parser.add_argument('-outputpath', '-o',
+                        default='.',
+                        help='Path for output files')
+
+    parser.add_argument('-modelgridindex', '-cell', '-mgi', default=0,
+                        help='Modelgridindex (zero-indexed) to plot or list such as 4,5,6')
+
+
+def main(args=None, argsraw=None, **kwargs):
+    if args is None:
+        parser = argparse.ArgumentParser(
+            formatter_class=at.CustomArgHelpFormatter,
+            description='Create solar r-process pattern in ARTIS format.')
+
+        addargs(parser)
+        parser.set_defaults(**kwargs)
+        argcomplete.autocomplete(parser)
+        args = parser.parse_args(argsraw)
+
+    arr_el_a = [
+        ('Ga', 72),
+        ('Sr', 89),
+        ('Ba', 140),
+        ('Ce', 141),
+        ('Nd', 147),
+        ('Rn', 222),
+        ('Ra', 223),
+        ('Ra', 224),
+        ('Ra', 225),
+        ('Ac', 225),
+        ('Th', 234),
+        ('Pa', 233),
+        # ('U', 235),
+    ]
+    arr_el_a.sort(key=lambda x: (at.elsymbols.index(x[0]), -x[1]))
+
+    modelpath = Path(args.modelpath)
+    if hasattr(args.modelgridindex, 'split'):
+        mgilist = [int(mgi) for mgi in args.modelgridindex.split(',')]
+    else:
+        mgi = [int(args.modelgridindex)]
+
+    for mgi in mgilist:
+        do_modelcell(modelpath, mgi, arr_el_a)
 
 
 if __name__ == "__main__":
