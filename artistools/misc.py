@@ -688,6 +688,10 @@ def get_z_a_nucname(nucname):
 
 def get_atomic_number(elsymbol):
     assert elsymbol is not None
+    if elsymbol.startswith('X_'):
+        elsymbol = elsymbol[2:]
+    elsymbol = elsymbol.rstrip('0123456789')
+
     if elsymbol.title() in elsymbols:
         return elsymbols.index(elsymbol.title())
     return -1
