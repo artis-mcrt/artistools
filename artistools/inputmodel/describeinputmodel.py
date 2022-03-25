@@ -16,6 +16,9 @@ def addargs(parser):
     parser.add_argument('-inputfile', '-i', default='model.txt',
                         help='Path of input file or folder containing model.txt')
 
+    parser.add_argument('-cell', '-mgi', default=None,
+                        help='Focus on particular cell number (0-indexed)')
+
     parser.add_argument('--getabundances', action='store_true',
                         help='Get elemental abundance masses')
 
@@ -43,6 +46,13 @@ def main(args=None, argsraw=None, **kwargs):
     else:
         vmax = dfmodel['velocity_outer'].max()
         print(f'Model contains {len(dfmodel)} 1D spherical shells with vmax = {vmax} km/s')
+
+    if args.cell is not None:
+        mgi = int(args.cell)
+        if mgi >= 0:
+            print(f'Selected single cell mgi {mgi}:')
+            dfmodel.query('inputcellid == (@mgi + 1)', inplace=True)
+            print(dfmodel)
 
     mass_msun_rho = dfmodel['cellmass_grams'].sum() / 1.989e33
 
