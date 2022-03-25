@@ -7,7 +7,7 @@ import argparse
 import numpy as np
 # import pandas as pd
 
-from artistools import CustomArgHelpFormatter
+from artistools import CustomArgHelpFormatter, get_atomic_number
 import artistools.inputmodel
 
 
@@ -52,7 +52,7 @@ def main(args=None, argsraw=None, **kwargs):
         if mgi >= 0:
             print(f'Selected single cell mgi {mgi}:')
             dfmodel.query('inputcellid == (@mgi + 1)', inplace=True)
-            print(dfmodel)
+            print(dfmodel.iloc[0])
 
     mass_msun_rho = dfmodel['cellmass_grams'].sum() / 1.989e33
 
@@ -65,7 +65,10 @@ def main(args=None, argsraw=None, **kwargs):
             speciesabund_g = np.dot(dfmodel[column], dfmodel['cellmass_grams'])
 
             species_mass_msun = speciesabund_g / 1.989e33
+            atomic_number = get_atomic_number(species)
             if species[-1].isdigit():
+                strtotiso = species.rstrip('0123456789') + '-isosum'
+                speciesmasses[strtotiso] = speciesmasses.get(strtotiso, 0.) + speciesabund_g
                 mass_msun_isotopes += species_mass_msun
             elif species.lower() != 'fegroup':
                 mass_msun_elem += species_mass_msun
@@ -73,16 +76,24 @@ def main(args=None, argsraw=None, **kwargs):
             if speciesabund_g > 0.:
                 speciesmasses[species] = speciesabund_g
 
-    print(f'M_{"tot_rho":8s} {mass_msun_rho:8.5f} MSun (density * volume)')
+    print(f'M_{"tot_rho":9s} {mass_msun_rho:8.5f} MSun (density * volume)')
     if mass_msun_elem > 0.:
-        print(f'M_{"tot_elem":8s} {mass_msun_elem:8.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)')
+        print(f'M_{"tot_elem":9s} {mass_msun_elem:8.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)')
 
-    print(f'M_{"tot_iso":8s} {mass_msun_isotopes:8.5f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% of M_tot_rho, but can be small if stable isotopes not tracked)')
+    print(f'M_{"tot_iso":9s} {mass_msun_isotopes:8.5f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% of M_tot_rho, but can be < 100% if stable isotopes not tracked)')
 
-    for species, mass_g in speciesmasses.items():
+    for species, mass_g in sorted(speciesmasses.items(), key=lambda x: (get_atomic_number(x[0]), x[0])):
         species_mass_msun = mass_g / 1.989e33
         massfrac = species_mass_msun / mass_msun_rho
-        print(f'{species:8s} {species_mass_msun:.3e} Msun    massfrac {massfrac:.3e}')
+        strcomment = ''
+        if species.endswith('-isosum'):
+            elsymb = species.replace('-isosum', '')
+            elem_mass = speciesmasses[elsymb]
+            strcomment += f' ({mass_g / elem_mass * 100:6.2f}% of {elsymb} element mass)'
+            if mass_g > elem_mass:
+                strcomment += ' ERROR! isotope sum is greater than element abundance'
+
+        print(f'{species:9s} {species_mass_msun:.3e} Msun    massfrac {massfrac:.3e}{strcomment}')
 
 
 if __name__ == "__main__":
