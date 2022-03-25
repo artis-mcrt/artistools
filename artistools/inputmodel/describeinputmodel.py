@@ -86,10 +86,11 @@ def main(args=None, argsraw=None, **kwargs):
         species_mass_msun = mass_g / 1.989e33
         massfrac = species_mass_msun / mass_msun_rho
         strcomment = ''
-        if species.endswith('-isosum'):
+        if species.endswith('-isosum') and args.getabundances:
             elsymb = species.replace('-isosum', '')
-            elem_mass = speciesmasses[elsymb]
-            strcomment += f' ({mass_g / elem_mass * 100:6.2f}% of {elsymb} element mass)'
+            elem_mass = speciesmasses.get(elsymb, 0.)
+            if elem_mass > 0.:
+                strcomment += f' ({mass_g / elem_mass * 100:6.2f}% of {elsymb} element mass)'
             if mass_g > elem_mass:
                 strcomment += ' ERROR! isotope sum is greater than element abundance'
 
