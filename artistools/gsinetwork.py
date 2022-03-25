@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 # import math
 import multiprocessing
+from functools import partial
 from pathlib import Path
 import matplotlib.pyplot as plt
 
@@ -327,20 +328,20 @@ def do_modelcells(modelpath, mgilist, arr_el_a):
             pool.close()
             pool.join()
     else:
-        list_particledata_withabund = [fworkerwithabund(fworkerwithabund) for particleid in list_particleids_withabund]
+        list_particledata_withabund = [fworkerwithabund(particleid) for particleid in list_particleids_withabund]
 
     list_particleids_noabund = [
         pid for pid in dfpartcontrib.particleid.unique() if pid not in list_particleids_withabund]
-    fworker = partial(get_particledata, arr_time_gsi_s, [])
+    fworkernoabund = partial(get_particledata, arr_time_gsi_s, [])
     print(f'Reading trajectory data for {len(list_particleids_noabund)} particles for Qdot/thermal data (no abundances)')
 
     if at.num_processes > 1:
         with multiprocessing.Pool(processes=at.num_processes) as pool:
-            list_particledata_noabund = pool.map(fworkerwithabund, list_particleids_noabund)
+            list_particledata_noabund = pool.map(fworkernoabund, list_particleids_noabund)
             pool.close()
             pool.join()
     else:
-        list_particledata_noabund = [fworker(fworkerwithabund) for particleid in list_particleids_noabund]
+        list_particledata_noabund = [fworkernoabund(particleid) for particleid in list_particleids_noabund]
 
     allparticledata = {
         particleid: data for particleid, data in (list_particledata_withabund + list_particledata_noabund)}
