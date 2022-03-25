@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 # import math
 import multiprocessing
-from functools import partial, lru_cache
 from pathlib import Path
 import matplotlib.pyplot as plt
 
@@ -17,7 +16,7 @@ import artistools as at
 # import artistools.estimators
 
 
-def plot_qdot(modelpath, particledata, arr_time_artis_days, arr_time_gsi_days, pdfoutpath, mgi):
+def plot_qdot(modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis_days, arr_time_gsi_days, pdfoutpath):
     try:
         depdata = at.get_deposition(modelpath=modelpath)
     except FileNotFoundError:
@@ -30,16 +29,23 @@ def plot_qdot(modelpath, particledata, arr_time_artis_days, arr_time_gsi_days, p
     tend = depdata['tmid_days'].max()
 
     arr_heat = {}
-    frac_of_cellmass_sum = sum([p['frac_of_cellmass'] for _, p in particledata.items()])
 
     heatcols = ['hbeta', 'halpha', 'hbfis', 'hspof']  # , 'Qdot'
-    # heatcols = ['hbeta', 'halpha']
+
     for col in heatcols:
         arr_heat[col] = np.zeros_like(arr_time_gsi_days)
 
-    for particleid, thisparticledata in particledata.items():
-        for col in heatcols:
-            arr_heat[col] += thisparticledata[col] * thisparticledata['frac_of_cellmass'] / frac_of_cellmass_sum
+    modelmass = dfmodel.cellmass_grams.sum()
+    dfpartcontrib = dfpartcontrib.query('particleid in @allparticledata.keys()')
+    for cellindex, dfpartcontrib in dfpartcontrib.groupby('cellindex'):
+        cell_mass_frac = dfmodel.iloc[cellindex - 1].cellmass_grams / modelmass
+        frac_of_cellmass_sum = dfpartcontrib.frac_of_cellmass.sum()
+
+        for particleid, frac_of_cellmass in dfpartcontrib[['particleid', 'frac_of_cellmass']].itertuples(index=False):
+            thisparticledata = allparticledata[particleid]
+            for col in heatcols:
+                arr_heat[col] += (
+                    thisparticledata[col] * cell_mass_frac * frac_of_cellmass / frac_of_cellmass_sum)
 
     fig, axis = plt.subplots(
         nrows=1, ncols=1, sharex=False, sharey=False, figsize=(6, 4),
@@ -112,25 +118,29 @@ def plot_qdot(modelpath, particledata, arr_time_artis_days, arr_time_gsi_days, p
     axis.legend(loc='best', frameon=False, handlelength=1, ncol=3,
                 numpoints=1)
 
-    fig.suptitle(f'{modelname} cell {mgi}', fontsize=10)
+    fig.suptitle(f'{modelname}', fontsize=10)
     plt.savefig(pdfoutpath, format='pdf')
     print(f'Saved {pdfoutpath}')
 
 
 def plot_abund(
-        modelpath, particledata, arr_time_artis_days, arr_time_gsi_days, arr_strnuc, arr_abund_gsi, arr_abund_artis,
-        t_model_init_days, dfcell, pdfoutpath, mgi):
+        modelpath, dfpartcontrib, allparticledata, arr_time_artis_days, arr_time_gsi_days,
+        arr_strnuc, arr_abund_gsi, arr_abund_artis, t_model_init_days, dfcell, pdfoutpath, mgi):
 
-    frac_of_cellmass_sum = sum([p['frac_of_cellmass'] for _, p in particledata.items()])
+    dfpartcontrib_thiscell = dfpartcontrib.query('cellindex == (@mgi + 1) and particleid in @allparticledata.keys()')
+    frac_of_cellmass_sum = dfpartcontrib_thiscell.frac_of_cellmass.sum()
     print(f'frac_of_cellmass_sum: {frac_of_cellmass_sum} (can be < 1.0 because of missing particles)')
 
     for strnuc in arr_strnuc:
         arr_abund_gsi[strnuc] = np.zeros_like(arr_time_gsi_days)
 
-    for particleid, thisparticledata in particledata.items():
+    for particleid, frac_of_cellmass in dfpartcontrib_thiscell[
+            ['particleid', 'frac_of_cellmass']].itertuples(index=False):
+        frac_of_cellmass = dfpartcontrib_thiscell.query('particleid == @particleid').frac_of_cellmass.sum()
+
         for strnuc in arr_strnuc:
             arr_abund_gsi[strnuc] += (
-                thisparticledata[strnuc] * thisparticledata['frac_of_cellmass'] / frac_of_cellmass_sum)
+                allparticledata[particleid][strnuc] * frac_of_cellmass / frac_of_cellmass_sum)
 
     fig, axes = plt.subplots(
         nrows=len(arr_strnuc), ncols=1, sharex=False, sharey=False, figsize=(6, 1 + 2. * len(arr_strnuc)),
@@ -187,7 +197,7 @@ def get_particledata(arr_time_s, arr_strnuc, particleid):
 
     except FileNotFoundError:
         # print(f'WARNING: Particle data not found for id {particleid}')
-        return None
+        return 'NONE', None
 
     # print(f'Reading data for particle id {particleid}...')
     particledata = {
@@ -240,53 +250,60 @@ def get_particledata(arr_time_s, arr_strnuc, particleid):
         for col in heatcols:
             particledata[col] = np.interp(arr_time_s, arr_time_s_source, heatrates_in[col])
 
-    arr_traj_time_s = []
-    arr_massfracs = {strnuc: [] for strnuc in arr_strnuc}
-    for nts in range(nts_min, nts_max + 1):
-        timesec = nstep_timesec[nts]
-        arr_traj_time_s.append(timesec)
-        # print(nts, timesec / 86400)
-        traj_nuc_abund = at.inputmodel.rprocess_from_trajectory.get_trajectory_nuc_abund(particleid, nts=nts)
+    if arr_strnuc:
+        arr_traj_time_s = []
+        arr_massfracs = {strnuc: [] for strnuc in arr_strnuc}
+        for nts in range(nts_min, nts_max + 1):
+            timesec = nstep_timesec[nts]
+            arr_traj_time_s.append(timesec)
+            # print(nts, timesec / 86400)
+            traj_nuc_abund = at.inputmodel.rprocess_from_trajectory.get_trajectory_nuc_abund(particleid, nts=nts)
+            for strnuc in arr_strnuc:
+                arr_massfracs[strnuc].append(traj_nuc_abund.get(f'X_{strnuc}', 0.))
+
         for strnuc in arr_strnuc:
-            arr_massfracs[strnuc].append(traj_nuc_abund.get(f'X_{strnuc}', 0.))
+            massfracs_interp = np.interp(arr_time_s, arr_traj_time_s, arr_massfracs[strnuc])
+            particledata[strnuc] = massfracs_interp
 
-    for strnuc in arr_strnuc:
-        massfracs_interp = np.interp(arr_time_s, arr_traj_time_s, arr_massfracs[strnuc])
-        particledata[strnuc] = massfracs_interp
-
-    return particledata
+    return particleid, particledata
 
 
-def do_modelcell(modelpath, mgi, arr_el_a):
+def do_modelcells(modelpath, mgilist, arr_el_a):
     arr_el, arr_a = zip(*arr_el_a)
     arr_strnuc = [z + str(a) for z, a in arr_el_a]
 
     # arr_z = [at.get_atomic_number(el) for el in arr_el]
 
     dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath)
-    dfcell = dfmodel.iloc[mgi]
     MH = 1.67352e-24  # g
 
     arr_time_artis_days = []
     arr_abund_artis = {}
 
     try:
-        estimators = at.estimators.read_estimators(modelpath, modelgridindex=mgi)
-        for key_ts, key_mgi in estimators.keys():
-            if key_mgi != mgi:
+        estimators = at.estimators.read_estimators(modelpath, modelgridindex=tuple(mgilist))
+        for nts, mgi in estimators.keys():
+            if mgi not in mgilist:
                 continue
 
-            time_days = float(estimators[(key_ts, key_mgi)]['tdays'])
-            arr_time_artis_days.append(time_days)
+            time_days = float(estimators[(nts, mgi)]['tdays'])
+            if mgi == mgilist[0]:
+                arr_time_artis_days.append(time_days)
 
-            rho_init_cgs = 10 ** dfcell.logrho
+            rho_init_cgs = 10 ** dfmodel.iloc[mgi].logrho
             rho_cgs = rho_init_cgs * (t_model_init_days / time_days) ** 3
             for strnuc, a in zip(arr_strnuc, arr_a):
-                abund = estimators[(key_ts, key_mgi)]['populations'].get(strnuc, 0.)
+                abund = estimators[(nts, mgi)]['populations'].get(strnuc, 0.)
                 massfrac = abund * a * MH / rho_cgs
-                if strnuc not in arr_abund_artis:
-                    arr_abund_artis[strnuc] = []
-                arr_abund_artis[strnuc].append(massfrac)
+
+                if mgi not in arr_abund_artis:
+                    arr_abund_artis[mgi] = {}
+
+                if strnuc not in arr_abund_artis[mgi]:
+                    arr_abund_artis[mgi][strnuc] = []
+
+                arr_abund_artis[mgi][strnuc].append(massfrac)
+
     except FileNotFoundError:
         pass
 
@@ -298,37 +315,45 @@ def do_modelcell(modelpath, mgi, arr_el_a):
     arr_time_gsi_days = arr_time_gsi_s / 86400
 
     dfpartcontrib = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
-    dfpartcontrib.query('cellindex == @mgi + 1', inplace=True)
-    print(f'Reading trajectory data for {len(dfpartcontrib)} particles (mgi {mgi})')
 
-    fworker = partial(get_particledata, tuple(arr_time_gsi_s), tuple(arr_strnuc))
+    list_particleids_withabund = dfpartcontrib.query('(cellindex - 1) in @mgilist').particleid.unique()
+    fworkerwithabund = partial(get_particledata, arr_time_gsi_s, arr_strnuc)
 
-    list_particleid_frac = [
-        (particleid, frac_of_cellmass)
-        for particleid, frac_of_cellmass in dfpartcontrib[['particleid', 'frac_of_cellmass']].itertuples(index=False)]
-    list_particleids = [particleid for particleid, _ in list_particleid_frac]
+    print(f'Reading trajectory data for {len(list_particleids_withabund)} particles with abundances')
 
     if at.num_processes > 1:
         with multiprocessing.Pool(processes=at.num_processes) as pool:
-            list_particledata = pool.map(fworker, list_particleids)
+            list_particledata_withabund = pool.map(fworkerwithabund, list_particleids_withabund)
             pool.close()
             pool.join()
     else:
-        list_particledata = [fworker(particleid) for particleid in list_particleids]
+        list_particledata_withabund = [fworkerwithabund(fworkerwithabund) for particleid in list_particleids_withabund]
+
+    list_particleids_noabund = [
+        pid for pid in dfpartcontrib.particleid.unique() if pid not in list_particleids_withabund]
+    fworker = partial(get_particledata, arr_time_gsi_s, [])
+    print(f'Reading trajectory data for {len(list_particleids_noabund)} particles for Qdot/thermal data (no abundances)')
+
+    if at.num_processes > 1:
+        with multiprocessing.Pool(processes=at.num_processes) as pool:
+            list_particledata_noabund = pool.map(fworkerwithabund, list_particleids_noabund)
+            pool.close()
+            pool.join()
+    else:
+        list_particledata_noabund = [fworker(fworkerwithabund) for particleid in list_particleids_noabund]
 
     allparticledata = {
-        particleid: dict(particledata, frac_of_cellmass=frac_of_cellmass)
-        for (particleid, frac_of_cellmass), particledata in zip(list_particleid_frac, list_particledata)
-        if particledata is not None}
+        particleid: data for particleid, data in (list_particledata_withabund + list_particledata_noabund)}
 
     plot_qdot(
-        modelpath, allparticledata, arr_time_artis_days, arr_time_gsi_days, mgi=mgi,
-        pdfoutpath=Path(modelpath, f'gsinetwork_cell{mgi}-qdot.pdf'))
+        modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis_days, arr_time_gsi_days,
+        pdfoutpath=Path(modelpath, 'gsinetwork_global-qdot.pdf'))
 
-    plot_abund(
-        modelpath, allparticledata, arr_time_artis_days, arr_time_gsi_days, arr_strnuc,
-        arr_abund_gsi, arr_abund_artis, t_model_init_days, dfcell, mgi=mgi,
-        pdfoutpath=Path(modelpath, f'gsinetwork_cell{mgi}-abundance.pdf'))
+    for mgi in mgilist:
+        plot_abund(
+            modelpath, dfpartcontrib, allparticledata, arr_time_artis_days, arr_time_gsi_days, arr_strnuc,
+            arr_abund_gsi, arr_abund_artis[mgi], t_model_init_days, dfmodel.iloc[mgi], mgi=mgi,
+            pdfoutpath=Path(modelpath, f'gsinetwork_cell{mgi}-abundance.pdf'))
 
 
 def addargs(parser):
@@ -361,10 +386,10 @@ def main(args=None, argsraw=None, **kwargs):
         ('Ba', 140),
         # ('Ce', 141),
         ('Nd', 147),
-        # ('Rn', 222),
-        # ('Ra', 223),
-        # ('Ra', 224),
-        # ('Ra', 225),
+        ('Rn', 222),
+        ('Ra', 223),
+        ('Ra', 224),
+        ('Ra', 225),
         ('Ac', 225),
         # ('Th', 234),
         # ('Pa', 233),
@@ -376,10 +401,9 @@ def main(args=None, argsraw=None, **kwargs):
     if hasattr(args.modelgridindex, 'split'):
         mgilist = [int(mgi) for mgi in args.modelgridindex.split(',')]
     else:
-        mgi = [int(args.modelgridindex)]
+        mgilist = [int(args.modelgridindex)]
 
-    for mgi in mgilist:
-        do_modelcell(modelpath, mgi, arr_el_a)
+    do_modelcells(modelpath, mgilist, arr_el_a)
 
 
 if __name__ == "__main__":
