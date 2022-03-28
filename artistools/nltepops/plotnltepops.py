@@ -105,6 +105,8 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
 
 
 def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, modelgridindex):
+    floers_levelnums, floers_levelpop_values = None, None
+
     # comparison to Andeas Floers's NLTE pops for Shingles et al. (2022)
     if atomic_number == 26 and ion_stage in [2, 3]:
         floersfilename = (
@@ -267,7 +269,7 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
         ycolumnname = 'departure_coeff'
 
         next(ax._get_lines.prop_cycler)  # skip one color, since T_e is not plotted in departure mode
-        if floers_levelnums:
+        if floers_levelnums is not None:
             ax.plot(floers_levelnums, floers_levelpop_values / dfpopthision['n_LTE_T_e_normed'], linewidth=1.5,
                     label=f'{ionstr} Flörs NLTE', linestyle='None', marker='*')
     else:
@@ -278,7 +280,7 @@ def make_ionsubplot(ax, modelpath, atomic_number, ion_stage, dfpop, ion_data, es
         ax.plot(dfpopthision['level'], dfpopthision['n_LTE_T_e_normed'], linewidth=1.5,
                 label=f'{ionstr} LTE T$_e$ = {T_e:.0f} K', linestyle='None', marker='*')
 
-        if floers_levelnums:
+        if floers_levelnums is not None:
             ax.plot(floers_levelnums, floers_levelpop_values, linewidth=1.5,
                     label=f'{ionstr} Flörs NLTE', linestyle='None', marker='*')
 
