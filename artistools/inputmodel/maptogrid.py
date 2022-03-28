@@ -186,7 +186,7 @@ def maptogrid(ejectasnapshotpath, outputpath):
 
     ngrid = 50
 
-    x0 = - 0.7 * rmax  # 90% is hand waving - choose #
+    x0 = - 0.6 * rmax  # 90% is hand waving - choose #
 
     # x0 = - rmean
 
@@ -318,7 +318,7 @@ def maptogrid(ejectasnapshotpath, outputpath):
 
     print("mass on grid and particles", gmass, totmass)
 
-    print("number of cells with zero rho, total num of cels, fraction of cells w rho=0",
+    print("number of cells with zero rho, total num of cells, fraction of cells w rho=0",
           nzero, ngrid**3, (nzero) / (ngrid**3))
 
     print("number of central cells (dis<rmean) with zero rho, ratio",
