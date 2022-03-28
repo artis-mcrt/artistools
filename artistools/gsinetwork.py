@@ -40,6 +40,8 @@ def plot_qdot(modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis
     dfpartcontrib = dfpartcontrib.query('particleid in @allparticledata.keys()')
     for cellindex, dfpartcontrib in dfpartcontrib.groupby('cellindex'):
         cell_mass_frac = dfmodel.iloc[cellindex - 1].cellmass_grams / modelmass
+        if cell_mass_frac == 0.:
+            continue
         frac_of_cellmass_sum = dfpartcontrib.frac_of_cellmass.sum()
 
         for particleid, frac_of_cellmass in dfpartcontrib[['particleid', 'frac_of_cellmass']].itertuples(index=False):
@@ -187,7 +189,6 @@ def plot_abund(
     print(f'Saved {pdfoutpath}')
 
 
-# @lru_cache(maxsize=128)
 def get_particledata(arr_time_s, arr_strnuc, particleid):
 
     try:

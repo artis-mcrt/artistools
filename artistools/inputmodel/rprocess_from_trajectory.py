@@ -326,7 +326,7 @@ def main(args=None, argsraw=None, **kwargs):
         argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
-    # particleid = 88969  # Ye = 9.63284224E-02
+    # particleid = 88969  # Ye = 0.0963284224
     particleid = 133371  # Ye = 0.403913230
     print(f'trajectory particle id {particleid}')
     dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(particleid, './Run_rprocess/tday_nz-plane')

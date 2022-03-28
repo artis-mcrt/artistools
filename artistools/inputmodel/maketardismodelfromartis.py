@@ -70,7 +70,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     outputfilepath = Path(args.outputpath, f'{modelname}.csvy')
     dictmeta = {
         'name': modelname,
-        'description': 'This model was converted from ARTIS format by artistools',
+        'description': 'This model was converted from ARTIS format with artistools',
         'model_density_time_0': f'{t_model_init_days} day',
         'model_isotope_time_0': f'{t_model_init_days} day',
         'tardis_model_config_version': 'v1.0',
