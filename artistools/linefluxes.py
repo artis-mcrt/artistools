@@ -332,7 +332,8 @@ def make_flux_ratio_plot(args):
 
     for ax in axes:
         ax.set_xlabel(r'Time [days]')
-        ax.legend(loc='upper right', frameon=False, handlelength=1, ncol=2, numpoints=1, prop={'size': 9})
+        if not args.nolegend:
+            ax.legend(loc='upper right', frameon=False, handlelength=1, ncol=2, numpoints=1, prop={'size': 9})
 
     defaultoutputfile = 'linefluxes.pdf'
     if not args.outputfile:
@@ -549,7 +550,7 @@ def make_emitting_regions_plot(args):
         if modeltag != 'all':
             continue
 
-        for timeindex, tmid in enumerate(times_days):
+        for tmid in times_days:
             print(f'  Plot at {tmid} days')
 
             nrows = 1
@@ -623,12 +624,13 @@ def make_emitting_regions_plot(args):
                             plot_nne_te_bars(
                                 axis, serieslabel, emdata['em_log10nne'], emdata['em_Te'], featurecolours[featureindex])
 
-            axis.legend(loc='best', frameon=False, handlelength=1, ncol=1,
-                        numpoints=1, fontsize='small', markerscale=3.)
+            if tmid == times_days[-1] and not args.nolegend:
+                axis.legend(loc='best', frameon=False, handlelength=1, ncol=1, borderpad=0,
+                            numpoints=1, fontsize=11, markerscale=2.5)
 
             axis.set_ylim(ymin=3000)
             axis.set_ylim(ymax=10000)
-            axis.set_xlim(xmin=4.5, xmax=7)
+            axis.set_xlim(xmin=4.5, xmax=7.15)
 
             axis.set_xlabel(r'log$_{10}$(n$_{\mathrm{e}}$ [cm$^{-3}$])')
             axis.set_ylabel(r'Electron Temperature [K]')
@@ -648,6 +650,9 @@ def addargs(parser):
 
     parser.add_argument('-label', default=[], nargs='*',
                         help='List of series label overrides')
+
+    parser.add_argument('--nolegend', action='store_true',
+                        help='Suppress the legend from the plot')
 
     parser.add_argument('-modeltag', default=[], nargs='*',
                         help='List of model tags for file names')
