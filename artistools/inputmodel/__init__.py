@@ -544,10 +544,6 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None, dfgr
 
     print(f'Spherically averaging 3D model with {ngridpoints} cells...')
     timestart = time.perf_counter()
-    if dfgridcontributions is not None:
-        cell_frac_sum = {}
-        for cellindex, dfcellcontribs in dfgridcontributions.groupby('cellindex'):
-            cell_frac_sum[cellindex] = dfcellcontribs.frac_of_cellmass.sum()
 
     # dfmodel = dfmodel.query('rho > 0.').copy()
     dfmodel = dfmodel.copy()
@@ -578,20 +574,28 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None, dfgr
             shell_volume = (4 * math.pi / 3) * (
                 (velocity_outer * t_model_init_seconds) ** 3 - (velocity_inner * t_model_init_seconds) ** 3)
             rhomean = matchedcellrhosum * wid_init ** 3 / shell_volume
+            # volumecorrection = len(matchedcells) * wid_init ** 3 / shell_volume
+            # print(radialcellid, volumecorrection)
 
             if rhomean > 0. and dfgridcontributions is not None:
                 dfcellcont = dfgridcontributions.query('cellindex in @matchedcells.inputcellid.values')
 
                 for particleid, dfparticlecontribs in dfcellcont.groupby('particleid'):
                     frac_of_cellmass_avg = sum([
-                        (row.frac_of_cellmass / cell_frac_sum[cellindex] *
-                         celldensity[row.cellindex] / matchedcellrhosum)
-                        for row in dfparticlecontribs.itertuples(index=False)])
+                        (row.frac_of_cellmass *
+                         celldensity[row.cellindex])
+                        for row in dfparticlecontribs.itertuples(index=False)]) / matchedcellrhosum
+
+                    frac_of_cellmass_includemissing_avg = sum([
+                        (row.frac_of_cellmass_includemissing *
+                         celldensity[row.cellindex])
+                        for row in dfparticlecontribs.itertuples(index=False)]) / matchedcellrhosum
 
                     outgridcontributions.append({
                         'particleid': particleid,
                         'cellindex': radialcellid,
                         'frac_of_cellmass': frac_of_cellmass_avg,
+                        'frac_of_cellmass_includemissing': frac_of_cellmass_includemissing_avg,
                     })
 
         if rhomean > 0.:
@@ -613,6 +617,7 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None, dfgr
                 dictcell[column] = massfrac
 
         outcells.append(dictcell)
+
         if dfelabundances is not None:
             if rhomean > 0.:
                 abund_matchedcells = dfelabundances.loc[matchedcells.index]

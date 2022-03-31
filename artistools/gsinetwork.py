@@ -37,8 +37,11 @@ def plot_qdot(modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis
         arr_heat[col] = np.zeros_like(arr_time_gsi_days)
 
     modelmass = dfmodel.cellmass_grams.sum()
+    print("model mass: {modelmass} g")
     dfpartcontrib = dfpartcontrib.query('particleid in @allparticledata.keys()')
     for cellindex, dfpartcontrib in dfpartcontrib.groupby('cellindex'):
+        if cellindex >= len(dfmodel):
+            continue
         cell_mass_frac = dfmodel.iloc[cellindex - 1].cellmass_grams / modelmass
         if cell_mass_frac == 0.:
             continue
@@ -270,26 +273,27 @@ def get_particledata(arr_time_s, arr_strnuc, particleid):
     return particleid, particledata
 
 
-def do_modelcells(modelpath, mgilist, arr_el_a):
+def do_modelcells(modelpath, mgiplotlist, arr_el_a):
     arr_el, arr_a = zip(*arr_el_a)
     arr_strnuc = [z + str(a) for z, a in arr_el_a]
 
     # arr_z = [at.get_atomic_number(el) for el in arr_el]
 
     dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath)
+    npts_model = len(dfmodel)
     MH = 1.67352e-24  # g
 
     arr_time_artis_days = []
     arr_abund_artis = {}
 
     try:
-        estimators = at.estimators.read_estimators(modelpath, modelgridindex=tuple(mgilist))
+        estimators = at.estimators.read_estimators(modelpath, modelgridindex=tuple(mgiplotlist))
         for nts, mgi in estimators.keys():
-            if mgi not in mgilist:
+            if mgi not in mgiplotlist:
                 continue
 
             time_days = float(estimators[(nts, mgi)]['tdays'])
-            if mgi == mgilist[0]:
+            if mgi == mgiplotlist[0]:
                 arr_time_artis_days.append(time_days)
 
             rho_init_cgs = 10 ** dfmodel.iloc[mgi].logrho
@@ -317,22 +321,23 @@ def do_modelcells(modelpath, mgilist, arr_el_a):
     arr_time_gsi_days = arr_time_gsi_s / 86400
 
     dfpartcontrib = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
+    dfpartcontrib.query('cellindex <= @npts_model', inplace=True)
 
-    list_particleids_withabund = dfpartcontrib.query('(cellindex - 1) in @mgilist').particleid.unique()
+    list_particleids_getabund = dfpartcontrib.query('(cellindex - 1) in @mgiplotlist').particleid.unique()
     fworkerwithabund = partial(get_particledata, arr_time_gsi_s, arr_strnuc)
 
-    print(f'Reading trajectory data for {len(list_particleids_withabund)} particles with abundances')
+    print(f'Reading trajectory data for {len(list_particleids_getabund)} particles with abundances')
 
     if at.num_processes > 1:
         with multiprocessing.Pool(processes=at.num_processes) as pool:
-            list_particledata_withabund = pool.map(fworkerwithabund, list_particleids_withabund)
+            list_particledata_withabund = pool.map(fworkerwithabund, list_particleids_getabund)
             pool.close()
             pool.join()
     else:
-        list_particledata_withabund = [fworkerwithabund(particleid) for particleid in list_particleids_withabund]
+        list_particledata_withabund = [fworkerwithabund(particleid) for particleid in list_particleids_getabund]
 
     list_particleids_noabund = [
-        pid for pid in dfpartcontrib.particleid.unique() if pid not in list_particleids_withabund]
+        pid for pid in dfpartcontrib.particleid.unique() if pid not in list_particleids_getabund]
     fworkernoabund = partial(get_particledata, arr_time_gsi_s, [])
     print(f'Reading trajectory data for {len(list_particleids_noabund)} particles for Qdot/thermal data (no abundances)')
 
@@ -351,10 +356,10 @@ def do_modelcells(modelpath, mgilist, arr_el_a):
         modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis_days, arr_time_gsi_days,
         pdfoutpath=Path(modelpath, 'gsinetwork_global-qdot.pdf'))
 
-    for mgi in mgilist:
+    for mgi in mgiplotlist:
         plot_abund(
             modelpath, dfpartcontrib, allparticledata, arr_time_artis_days, arr_time_gsi_days, arr_strnuc,
-            arr_abund_gsi, arr_abund_artis[mgi], t_model_init_days, dfmodel.iloc[mgi], mgi=mgi,
+            arr_abund_gsi, arr_abund_artis.get(mgi, []), t_model_init_days, dfmodel.iloc[mgi], mgi=mgi,
             pdfoutpath=Path(modelpath, f'gsinetwork_cell{mgi}-abundance.pdf'))
 
 
@@ -393,19 +398,19 @@ def main(args=None, argsraw=None, **kwargs):
         ('Ra', 224),
         ('Ra', 225),
         ('Ac', 225),
-        # ('Th', 234),
-        # ('Pa', 233),
-        # ('U', 235),
+        ('Th', 234),
+        ('Pa', 233),
+        ('U', 235),
     ]
     arr_el_a.sort(key=lambda x: (at.elsymbols.index(x[0]), -x[1]))
 
     modelpath = Path(args.modelpath)
     if hasattr(args.modelgridindex, 'split'):
-        mgilist = [int(mgi) for mgi in args.modelgridindex.split(',')]
+        mgiplotlist = [int(mgi) for mgi in args.modelgridindex.split(',')]
     else:
-        mgilist = [int(args.modelgridindex)]
+        mgiplotlist = [int(args.modelgridindex)]
 
-    do_modelcells(modelpath, mgilist, arr_el_a)
+    do_modelcells(modelpath, mgiplotlist, arr_el_a)
 
 
 if __name__ == "__main__":

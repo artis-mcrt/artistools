@@ -100,9 +100,9 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
 
     t_model_days = t_model_sec / (24. * 3600)  # in days
     print(f"t_model in days {t_model_days} ({t_model_sec} s)")
-    print(f"vmax {vmax:.2e} cm/s ({vmax / 29979245800:.2f} * c) per component")
     corner_vmax = math.sqrt(3 * vmax ** 2)
-    print(f"real corner vmax {corner_vmax:.2e} cm/s ({corner_vmax / 29979245800:.2f} * c)")
+    print(f"vmax {vmax:.2e} cm/s ({vmax / 29979245800:.2f} * c) per component "
+          f"real corner vmax {corner_vmax:.2e} cm/s ({corner_vmax / 29979245800:.2f} * c)")
 
     if targetmodeltime_days is not None:
         timefactor = targetmodeltime_days / t_model_days
