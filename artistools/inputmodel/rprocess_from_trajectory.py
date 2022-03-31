@@ -166,8 +166,9 @@ def get_modelcellabundance(dict_traj_nuc_abund, minparticlespercell, cellgroup):
 
 
 def get_gridparticlecontributions(gridcontribpath):
-    dfcontribs = pd.read_csv(Path(gridcontribpath, 'gridcontributions.txt'), delim_whitespace=True,
-                             dtype={0: int, 1: int, 2: float})
+    dfcontribs = pd.read_csv(
+        Path(gridcontribpath, 'gridcontributions.txt'), delim_whitespace=True,
+        dtype={0: int, 1: int, 2: float, 3: float})
 
     return dfcontribs
 
@@ -179,20 +180,40 @@ def filtermissinggridparticlecontributions(dfcontribs):
             missing_particleids.append(particleid)
             # print(f' WARNING particle {particleid} not found!')
 
-    print(f'Removing grid contributions from {len(missing_particleids)} '
-          'particles with no abundance data and renormalising...', end='')
-    dfcontribs.query('particleid not in @missing_particleids', inplace=True)
-
-    cell_frac_sum = {}
-    for cellindex, dfparticlecontribs in dfcontribs.groupby('cellindex'):
-        cell_frac_sum[cellindex] = dfparticlecontribs.frac_of_cellmass.sum()
+    print(f'Adding column that excludes contributions from {len(missing_particleids)} '
+          'particles without abundance data and renormalising...', end='')
+    # after filtering, frac_of_cellmass_includemissing will still include particles with rho but no abundance data
+    # frac_of_cellmass will exclude particles with no abundances
+    dfcontribs.eval('frac_of_cellmass_includemissing = frac_of_cellmass', inplace=True)
+    # dfcontribs.query('particleid not in @missing_particleids', inplace=True)
+    dfcontribs.loc[dfcontribs.eval('particleid in @missing_particleids'), 'frac_of_cellmass'] = 0.
 
     dfcontribs['frac_of_cellmass'] = [
-        row.frac_of_cellmass / cell_frac_sum[row.cellindex] for row in dfcontribs.itertuples()]
+        row.frac_of_cellmass if row.particleid not in missing_particleids else 0. for row in dfcontribs.itertuples()]
+
+    cell_frac_sum = {}
+    cell_frac_includemissing_sum = {}
+    for cellindex, dfparticlecontribs in dfcontribs.groupby('cellindex'):
+        cell_frac_sum[cellindex] = dfparticlecontribs.frac_of_cellmass.sum()
+        cell_frac_includemissing_sum[cellindex] = dfparticlecontribs.frac_of_cellmass_includemissing.sum()
+
+    dfcontribs['frac_of_cellmass'] = [
+        row.frac_of_cellmass / cell_frac_sum[row.cellindex]
+        if cell_frac_sum[row.cellindex] > 0. else 0.
+        for row in dfcontribs.itertuples()]
+
+    dfcontribs['frac_of_cellmass_includemissing'] = [
+        row.frac_of_cellmass_includemissing / cell_frac_includemissing_sum[row.cellindex]
+        if cell_frac_includemissing_sum[row.cellindex] > 0. else 0.
+        for row in dfcontribs.itertuples()]
 
     for cellindex, dfparticlecontribs in dfcontribs.groupby('cellindex'):
         frac_sum = dfparticlecontribs.frac_of_cellmass.sum()
-        assert np.isclose(frac_sum, 1., rtol=0.02)
+        assert frac_sum == 0. or np.isclose(frac_sum, 1., rtol=0.02)
+
+        cell_frac_includemissing_sum = dfparticlecontribs.frac_of_cellmass_includemissing.sum()
+        assert cell_frac_includemissing_sum == 0. or np.isclose(cell_frac_includemissing_sum, 1., rtol=0.02)
+
     print('done')
 
     return dfcontribs
@@ -218,7 +239,7 @@ def add_abundancecontributions(dfgridcontributions, dfmodel, t_model_days, minpa
         if len(dfthiscellcontribs) >= minparticlespercell]
 
     dfcontribs.query('cellindex in @active_inputcellids', inplace=True)
-    # dfcontribs = filtermissinggridparticlecontributions(dfcontribs)
+    dfcontribs = filtermissinggridparticlecontributions(dfcontribs)
     active_inputcellids = dfcontribs.cellindex.unique()
     active_inputcellcount = len(active_inputcellids)
 
