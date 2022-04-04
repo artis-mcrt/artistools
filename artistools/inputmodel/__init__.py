@@ -128,7 +128,8 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
         dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
         del dfmodeloddlines
 
-    dfmodel = dfmodel.iloc[:gridcellcount]
+    if len(dfmodel) > gridcellcount:
+        dfmodel = dfmodel.iloc[:gridcellcount]
 
     assert len(dfmodel) == gridcellcount
 
