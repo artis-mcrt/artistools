@@ -6,8 +6,7 @@ import argparse
 from yaml import dump as yamldump
 
 from pathlib import Path
-from artistools import CustomArgHelpFormatter, get_model_name, get_atomic_number
-from artistools.inputmodel import get_modeldata
+import artistools as at
 
 
 def addargs(parser):
@@ -34,7 +33,7 @@ def addargs(parser):
 def main(args=None, argsraw=None, **kwargs) -> None:
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=CustomArgHelpFormatter,
+            formatter_class=at.CustomArgHelpFormatter,
             description='Convert an ARTIS format model to TARDIS format.')
 
         addargs(parser)
@@ -47,7 +46,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     modelpath = Path(args.inputpath)
 
-    dfmodel, t_model_init_days, _ = get_modeldata(
+    dfmodel, t_model_init_days, _ = at.inputmodel.get_modeldata(
         modelpath, get_abundances=(args.abundtype == 'elemental'), dimensions=1)
 
     dfmodel.eval('rho = 10 ** logrho', inplace=True)
@@ -64,9 +63,10 @@ def main(args=None, argsraw=None, **kwargs) -> None:
             if col.startswith('X_') and col.upper() != 'X_FEGROUP' and not col[-1].isdigit()]
 
     if args.maxatomicnumber and args.maxatomicnumber > 0:
-        listspecies = [species for species in listspecies if get_atomic_number(species) <= args.maxatomicnumber]
+        listspecies = [species for species in listspecies
+                       if at.get_atomic_number(species) <= args.maxatomicnumber]
 
-    modelname = get_model_name(modelpath)
+    modelname = at.get_model_name(modelpath)
     outputfilepath = Path(args.outputpath, f'{modelname}.csvy')
     dictmeta = {
         'name': modelname,

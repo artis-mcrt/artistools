@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from pathlib import Path
-from artistools import CustomArgHelpFormatter
+import artistools as at
 
 itable = 40000  # wie fein Kernelfkt interpoliert wird
 itab = itable + 5
@@ -360,7 +360,7 @@ def addargs(parser):
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=CustomArgHelpFormatter,
+            formatter_class=at.CustomArgHelpFormatter,
             description='Map tracer particle trajectories to a Cartesian grid.')
 
         addargs(parser)

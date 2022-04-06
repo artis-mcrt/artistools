@@ -21,10 +21,6 @@ import matplotlib
 from extinction import apply, ccm89
 from astropy import constants as const
 
-from .lightcurve import *
-from .viewingangleanalysis import *
-# import glob
-
 color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
 
 
@@ -32,7 +28,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
                                                    escape_type=False, maxpacketfiles=None, args=None):
     """Use light_curve.out or light_curve_res.out files to plot light curve"""
     fig, axis = plt.subplots(
-        nrows=1, ncols=1, sharey=True, figsize=(args.figscale * at.figwidth * 1.6, args.figscale * at.figwidth), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+        nrows=1, ncols=1, sharey=True, figsize=(args.figscale * at.config['figwidth'] * 1.6, args.figscale * at.config['figwidth']), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if not frompackets and escape_type not in ['TYPE_RPKT', 'TYPE_GAMMA']:
         print(f'Escape_type of {escape_type} not one of TYPE_RPKT or TYPE_GAMMA, so frompackets must be enabled')
@@ -74,12 +70,12 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
             plotkwargs['linewidth'] = args.linewidth[seriesindex]
 
         # check if doing viewing angle stuff, and if so define which data to use
-        angles, viewing_angles, angle_definition = get_angle_stuff(modelpath, args)
+        angles, viewing_angles, angle_definition = at.lightcurve.get_angle_stuff(modelpath, args)
         if args.plotviewingangle:
             lcdataframes = lcdata
 
             if args.colorbarcostheta or args.colorbarphi:
-                costheta_viewing_angle_bins, phi_viewing_angle_bins = get_viewinganglebin_definitions()
+                costheta_viewing_angle_bins, phi_viewing_angle_bins = at.lightcurve.get_viewinganglebin_definitions()
                 scaledmap = make_colorbar_viewingangles_colormap()
 
         for angleindex, angle in enumerate(angles):
@@ -126,7 +122,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
             if not args.ergs:
                 print("Check units - trying to plot ref light curve in erg/s")
                 quit()
-            bollightcurve_data, metadata = read_bol_reflightcurve_data(bolreflightcurve)
+            bollightcurve_data, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
             axis.scatter(bollightcurve_data['time_days'], bollightcurve_data['luminosity_erg/s'],
                          label=metadata['label'], color='k')
 
@@ -198,9 +194,9 @@ def create_axes(args):
         cols = 1
 
     if 'figwidth' not in args:
-        args.figwidth = at.figwidth * 1.6 * cols
+        args.figwidth = at.config['figwidth'] * 1.6 * cols
     if 'figheight' not in args:
-        args.figheight = at.figwidth * 1.1 * rows*1.5
+        args.figheight = at.config['figwidth'] * 1.1 * rows*1.5
 
     fig, ax = plt.subplots(nrows=rows, ncols=cols, sharex=True, sharey=True,
                            figsize=(args.figwidth, args.figheight),
@@ -352,27 +348,28 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     plotkwargs = {}
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = get_viewinganglebin_definitions()
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.lightcurve.get_viewinganglebin_definitions()
         scaledmap = make_colorbar_viewingangles_colormap()
 
     for modelnumber, modelpath in enumerate(modelpaths):
         modelpath = Path(modelpath)  # Make sure modelpath is defined as path. May not be necessary
 
         # check if doing viewing angle stuff, and if so define which data to use
-        angles, viewing_angles, angle_definition = get_angle_stuff(modelpath, args)
+        angles, viewing_angles, angle_definition = at.lightcurve.get_angle_stuff(modelpath, args)
 
         for index, angle in enumerate(angles):
 
             modelname = at.get_model_name(modelpath)
             print(f'Reading spectra: {modelname} (angle {angle})')
-            band_lightcurve_data = generate_band_lightcurve_data(modelpath, args, angle, modelnumber=modelnumber)
+            band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
+                modelpath, args, angle, modelnumber=modelnumber)
 
             if modelnumber == 0 and args.plot_hesma_model:  # Todo: does this work?
-                hesma_model = read_hesma_lightcurve(args)
+                hesma_model = at.lightcurve.read_hesma_lightcurve(args)
                 plotkwargs['label'] = str(args.plot_hesma_model).split('_')[:3]
 
             for plotnumber, band_name in enumerate(band_lightcurve_data):
-                time, brightness_in_mag = get_band_lightcurve(band_lightcurve_data, band_name, args)
+                time, brightness_in_mag = at.lightcurve.get_band_lightcurve(band_lightcurve_data, band_name, args)
 
                 if args.print_data or args.write_data:
                     txtlinesout = []
@@ -515,16 +512,16 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
         modelname = at.get_model_name(modelpath)
         print(f'Reading spectra: {modelname}')
 
-        angles, viewing_angles, angle_definition = get_angle_stuff(modelpath, args)
+        angles, viewing_angles, angle_definition = at.lightcurve.get_angle_stuff(modelpath, args)
 
         for index, angle in enumerate(angles):
 
             for plotnumber, filters in enumerate(args.colour_evolution):
                 filter_names = filters.split('-')
                 args.filter = filter_names
-                band_lightcurve_data = generate_band_lightcurve_data(modelpath, args, angle=angle, modelnumber=modelnumber)
+                band_lightcurve_data = at.lightcurve.generate_band_lightcurve_data(modelpath, args, angle=angle, modelnumber=modelnumber)
 
-                plot_times, colour_delta_mag = get_colour_delta_mag(band_lightcurve_data, filter_names)
+                plot_times, colour_delta_mag = at.lightcurve.get_colour_delta_mag(band_lightcurve_data, filter_names)
 
                 plotkwargs['label'] = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
 
@@ -603,9 +600,9 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
 def plot_lightcurve_from_data(
         filter_names, lightcurvefilename, color, marker, filternames_conversion_dict, ax, plotnumber):
 
-    lightcurve_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
+    lightcurve_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
     linename = metadata['label'] if plotnumber == 0 else None
-    filterdir = os.path.join(at.PYDIR, 'data/filters/')
+    filterdir = os.path.join(at.config['path_artistools_dir'], 'data/filters/')
 
     filter_data = {}
     for plotnumber, filter_name in enumerate(filter_names):
@@ -669,8 +666,8 @@ def plot_lightcurve_from_data(
 
 def plot_color_evolution_from_data(filter_names, lightcurvefilename, color, marker,
                                    filternames_conversion_dict, ax, plotnumber, args):
-    lightcurve_from_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
-    filterdir = os.path.join(at.PYDIR, 'data/filters/')
+    lightcurve_from_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
+    filterdir = os.path.join(at.config['path_artistools_dir'], 'data/filters/')
 
     filter_data = []
     for i, filter_name in enumerate(filter_names):
@@ -986,11 +983,11 @@ def main(args=None, argsraw=None, **kwargs):
             or args.make_viewing_angle_peakmag_risetime_scatter_plot
             or args.make_viewing_angle_peakmag_delta_m15_scatter_plot):
         args.calculate_peak_time_mag_deltam15_bool = True
-        peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, args)
+        at.lightcurve.peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, args)
         return
 
     if args.colouratpeak:  # make scatter plot of colour at peak, eg. B-V at Bmax
-        make_peak_colour_viewing_angle_plot(args)
+        at.lightcurve.make_peak_colour_viewing_angle_plot(args)
         return
 
     if args.brightnessattime:
@@ -1001,7 +998,7 @@ def main(args=None, argsraw=None, **kwargs):
             args.plotviewingangle = [-1]
         if not args.colorbarcostheta and not args.colorbarphi:
             args.colorbarphi = True
-        plot_viewanglebrightness_at_fixed_time(Path(modelpaths[0]), args)
+        at.lightcurve.plot_viewanglebrightness_at_fixed_time(Path(modelpaths[0]), args)
         return
 
     if args.filter:

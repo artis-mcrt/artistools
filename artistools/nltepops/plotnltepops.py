@@ -22,6 +22,7 @@ import matplotlib as mpl
 import artistools as at
 import artistools.atomic
 import artistools.estimators
+import artistools.nltepops
 import artistools.plottools
 
 
@@ -330,7 +331,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
 
     cols = 1
     fig, ax = plt.subplots(nrows=rows, ncols=cols, sharex=True, sharey=True,
-                           figsize=(at.figwidth * 2 * cols, at.figwidth * 0.85 * rows),
+                           figsize=(at.config['figwidth'] * 2 * cols, at.config['figwidth'] * 0.85 * rows),
                            tight_layout={"pad": 2.0, "w_pad": 0.2, "h_pad": 0.2})
     if args.subplots:
         ax = ax.flatten()
@@ -467,8 +468,8 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
 
     nrows = len(ion_stage_list) * len(mgilist)
     fig, axes = plt.subplots(nrows=nrows, ncols=1, sharex=False,
-                             figsize=(args.figscale * at.figwidth,
-                                      args.figscale * at.figwidth * subplotheight * nrows),
+                             figsize=(args.figscale * at.config['figwidth'],
+                                      args.figscale * at.config['figwidth'] * subplotheight * nrows),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if nrows == 1:

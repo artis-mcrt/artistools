@@ -1,3 +1,3 @@
-from .plotestimators import main
+from artistools.estimators.plotestimators import main
 
 main()

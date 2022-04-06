@@ -193,8 +193,8 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryv
             dfquery_full = f'({dfquery_full}) and '
         dfquery_full += f'({dfquery})'
 
-    if at.num_processes > 1:
-        with multiprocessing.Pool(processes=at.num_processes) as pool:
+    if at.config['num_processes'] > 1:
+        with multiprocessing.Pool(processes=at.config['num_processes']) as pool:
             arr_dfnltepop = pool.map(partial(read_file_filtered, strquery=dfquery_full, dfqueryvars=dfqueryvars),
                                      nltefilepaths)
             pool.close()

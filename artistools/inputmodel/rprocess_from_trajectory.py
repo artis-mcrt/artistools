@@ -254,8 +254,8 @@ def add_abundancecontributions(dfgridcontributions, dfmodel, t_model_days, minpa
     timestart = time.perf_counter()
     trajnucabundworker = partial(get_trajectory_nuc_abund, t_model_s=t_model_s)
 
-    if at.num_processes > 1:
-        with multiprocessing.Pool(processes=at.num_processes) as pool:
+    if at.config['num_processes'] > 1:
+        with multiprocessing.Pool(processes=at.config['num_processes']) as pool:
             list_traj_nuc_abund = pool.map(trajnucabundworker, dfcontribs_particlegroups.groups)
             pool.close()
             pool.join()
@@ -275,9 +275,9 @@ def add_abundancecontributions(dfgridcontributions, dfmodel, t_model_days, minpa
     dfcontribs_cellgroups = dfcontribs.groupby('cellindex')
     cellabundworker = partial(get_modelcellabundance, dict_traj_nuc_abund, minparticlespercell)
 
-    if at.num_processes > 1:
-        chunksize = math.ceil(len(dfcontribs_cellgroups) / at.num_processes)
-        with multiprocessing.Pool(processes=at.num_processes) as pool:
+    if at.config['num_processes'] > 1:
+        chunksize = math.ceil(len(dfcontribs_cellgroups) / at.config['num_processes'])
+        with multiprocessing.Pool(processes=at.config['num_processes']) as pool:
             listcellnucabundances = pool.map(cellabundworker, dfcontribs_cellgroups, chunksize=chunksize)
             pool.close()
             pool.join()
