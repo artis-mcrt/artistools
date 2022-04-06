@@ -4,11 +4,9 @@
 """Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code."""
 
 import datetime
-import sys
 
 from pathlib import Path
 from setuptools import find_packages, setup
-from setuptools.command.test import test as TestCommand
 
 # sys.path.append('artistools/')
 # from commands import console_scripts
@@ -23,27 +21,11 @@ with open('artistoolscompletions.sh', 'w') as f:
     f.write('\n'.join(completioncommands))
 
 
-class PyTest(TestCommand):
-    """Setup the py.test test runner."""
-
-    def finalize_options(self):
-        """Set options for the command line."""
-        TestCommand.finalize_options(self)
-        self.test_args = []
-        self.test_suite = True
-
-    def run_tests(self):
-        """Execute the test runner command."""
-        # Import here, because outside the required eggs aren't loaded yet
-        import pytest
-        sys.exit(pytest.main(self.test_args))
-
-
 def get_version():
     utcnow = datetime.datetime.utcnow()
     strversion = f'{utcnow.year}.{utcnow.month}.{utcnow.day}.'
-    strversion += f'{utcnow.hour:02d}{utcnow.minute:02d}{utcnow.second:02d}.'
-    strversion += 'dev'
+    strversion += f'{utcnow.hour:02d}{utcnow.minute:02d}{utcnow.second:02d}'
+    # strversion += '.dev'
     return strversion
 
 
