@@ -17,7 +17,7 @@ jobs:
     steps:
 
     - name: Checkout Code
-      uses: actions/checkout@v2.3.4
+      uses: actions/checkout@v3
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
@@ -31,7 +31,7 @@ jobs:
         echo "::set-output name=dir::$(pip cache dir)"
 
     - name: Cache pip
-      uses: actions/cache@v2.1.4
+      uses: actions/cache@v3
       with:
         path: ${{ steps.pip-cache.outputs.dir }}
         key: ${{ runner.os }}-${{ runner.python-version }}-pip-${{ hashFiles('piplist.txt') }}
@@ -60,7 +60,7 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=130 --statistics
 
     - name: Cache test data
-      uses: actions/cache@v2.1.4
+      uses: actions/cache@v3
       id: cache-atomicdata
       with:
           path: "tests/data/testmodel.tar.xz"
@@ -77,7 +77,7 @@ jobs:
 
     - name: Upload coverage to Codecov
       # if: matrix.python-version == 3.9
-      uses: codecov/codecov-action@v1
+      uses: codecov/codecov-action@v3
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: ./coverage.xml
