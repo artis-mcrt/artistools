@@ -1,8 +1,10 @@
-import psutil
+import subprocess
+# import psutil
 from pathlib import Path
 
 # num_processes = 1
-num_processes = max(1, int(psutil.cpu_count(logical=False)) - 2)
+# count the cores (excluding the efficiency cores on ARM)
+num_processes = int(subprocess.check_output(['sysctl', '-n', 'hw.perflevel0.logicalcpu']))
 # print(f'Using {num_processes} processes')
 
 enable_diskcache = True
