@@ -243,7 +243,7 @@ def add_mass_to_center(griddata, t_model_in_days, vmax, args):
 
 def makemodelfromgriddata(
         gridfolderpath=Path(), outputpath=Path(), targetmodeltime_days=None,
-        minparticlespercell=10, getabundances=True, dimensions=3, args=None):
+        minparticlespercell=0, getabundances=True, dimensions=3, args=None):
 
     assert dimensions in [1, 3]
     dfmodel, t_model_days, vmax = at.inputmodel.modelfromhydro.read_griddat_file(
