@@ -15,6 +15,7 @@ import sys
 # from functools import lru_cache, partial, reduce
 # from itertools import chain
 from pathlib import Path
+import argcomplete
 
 import matplotlib.pyplot as plt
 # import matplotlib.ticker as ticker
@@ -26,7 +27,6 @@ import pandas as pd
 import artistools as at
 import artistools.initial_composition
 import artistools.nltepops
-import artistools.estimators
 
 colors_tab10 = list(plt.get_cmap('tab10')(np.linspace(0, 1.0, 10)))
 
@@ -52,9 +52,9 @@ def get_elemcolor(atomic_number=None, elsymbol=None):
 def get_ylabel(variable):
     if variable in at.estimators.variablelongunits:
         return at.estimators.variablelongunits[variable]
-    elif variable in at.estimators.variableunits:
+    if variable in at.estimators.variableunits:
         return f'[{at.estimators.variableunits[variable]}]'
-    elif variable.split('_')[0] in at.estimators.variableunits:
+    if variable.split('_')[0] in at.estimators.variableunits:
         return f'[{at.estimators.variableunits[variable.split("_")[0]]}]'
     return ''
 
