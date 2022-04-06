@@ -36,13 +36,13 @@ def plot_qdot(modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis
     for col in heatcols:
         arr_heat[col] = np.zeros_like(arr_time_gsi_days)
 
-    modelmass = dfmodel.cellmass_grams.sum()
-    print("model mass: {modelmass} g")
+    model_mass_grams = dfmodel.cellmass_grams.sum()
+    print(f"model mass: {model_mass_grams / 1.989e33:.3f} Msun")
     dfpartcontrib = dfpartcontrib.query('particleid in @allparticledata.keys()')
     for cellindex, dfpartcontrib in dfpartcontrib.groupby('cellindex'):
         if cellindex >= len(dfmodel):
             continue
-        cell_mass_frac = dfmodel.iloc[cellindex - 1].cellmass_grams / modelmass
+        cell_mass_frac = dfmodel.iloc[cellindex - 1].cellmass_grams / model_mass_grams
         if cell_mass_frac == 0.:
             continue
         frac_of_cellmass_sum = dfpartcontrib.frac_of_cellmass.sum()
@@ -57,8 +57,8 @@ def plot_qdot(modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis
         nrows=1, ncols=1, sharex=False, sharey=False, figsize=(6, 4),
         tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0})
 
-    axis.set_ylim(bottom=1e7, top=2e10)
-    axis.set_xlim(left=tstart, right=tend)
+    # axis.set_ylim(bottom=1e7, top=2e10)
+    # axis.set_xlim(left=tstart, right=tend)
 
     # axis.set_xscale('log')
 
@@ -313,11 +313,14 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
     except FileNotFoundError:
         pass
 
-    arr_time_artis_s = np.array([t * 8.640000E+04 for t in arr_time_artis_days])
+    arr_time_artis_days_alltimesteps = at.get_timestep_times_float(modelpath)
+    arr_time_artis_s_alltimesteps = np.array([t * 8.640000E+04 for t in arr_time_artis_days_alltimesteps])
+    if len(arr_time_artis_days) == 0:
+        arr_time_artis_days = arr_time_artis_days_alltimesteps
 
     arr_abund_gsi = {}
 
-    arr_time_gsi_s = np.array([t_model_init_days * 86400, *arr_time_artis_s])
+    arr_time_gsi_s = np.array([t_model_init_days * 86400, *arr_time_artis_s_alltimesteps])
     arr_time_gsi_days = arr_time_gsi_s / 86400
 
     dfpartcontrib = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
@@ -372,7 +375,7 @@ def addargs(parser):
                         default='.',
                         help='Path for output files')
 
-    parser.add_argument('-modelgridindex', '-cell', '-mgi', default=0,
+    parser.add_argument('-modelgridindex', '-cell', '-mgi', default=None,
                         help='Modelgridindex (zero-indexed) to plot or list such as 4,5,6')
 
 
@@ -405,7 +408,9 @@ def main(args=None, argsraw=None, **kwargs):
     arr_el_a.sort(key=lambda x: (at.elsymbols.index(x[0]), -x[1]))
 
     modelpath = Path(args.modelpath)
-    if hasattr(args.modelgridindex, 'split'):
+    if args.modelgridindex is None:
+        mgiplotlist = []
+    elif hasattr(args.modelgridindex, 'split'):
         mgiplotlist = [int(mgi) for mgi in args.modelgridindex.split(',')]
     else:
         mgiplotlist = [int(args.modelgridindex)]
