@@ -106,7 +106,8 @@ def main():
         arr_dE_on_dx_plasma.append(-dE_on_dx_plasma / CONST_EV_IN_J)
         dE_on_dx = dE_on_dx_ionexc
         if steps % 100000 == 0:
-            print(f'E: {energy / CONST_EV_IN_J:.1f} eV x: {x:.1e} dE_on_dx_ionexc: {dE_on_dx_ionexc}, dE_on_dx_plasma: {dE_on_dx_plasma}')
+            print(f'E: {energy / CONST_EV_IN_J:.1f} eV x: {x:.1e} dE_on_dx_ionexc: '
+                  f'{dE_on_dx_ionexc}, dE_on_dx_plasma: {dE_on_dx_plasma}')
         x += delta_energy / dE_on_dx
         mean_free_path += -x * delta_energy / E_0
         energy += delta_energy

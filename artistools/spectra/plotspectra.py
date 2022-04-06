@@ -17,11 +17,16 @@ from astropy import constants as const
 import artistools as at
 import artistools.radfield
 import artistools.packets
-from artistools.spectra import (
-    get_reference_spectrum, get_res_spectrum, get_specpol_data,
-    get_spectrum, get_spectrum_from_packets,
-    get_vspecpol_spectrum, make_averaged_vspecfiles,
-    make_virtual_spectra_summed_file, print_integrated_flux,
+from artistools.spectra.spectra import (
+    get_reference_spectrum,
+    get_res_spectrum,
+    get_specpol_data,
+    get_spectrum,
+    get_spectrum_from_packets,
+    get_vspecpol_spectrum,
+    make_averaged_vspecfiles,
+    make_virtual_spectra_summed_file,
+    print_integrated_flux,
     timeshift_fluxscale_co56law,
 )
 

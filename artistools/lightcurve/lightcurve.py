@@ -356,8 +356,10 @@ def get_sn_sample_bol():
     bol_luminosity = sn_data['Lmax'].astype(float)
     bol_magnitude = 4.74 - (2.5 * np.log10((10**bol_luminosity) / const.L_sun.to('erg/s').value))  # 𝑀𝑏𝑜𝑙,𝑠𝑢𝑛 = 4.74
 
-    bol_magnitude_error_upper = bol_magnitude - (4.74 - (2.5 * np.log10((10**(bol_luminosity + sn_data['+/-.2'].astype(float))) / const.L_sun.to('erg/s').value)))
-    # bol_magnitude_error_lower = (4.74 - (2.5 * np.log10((10**(bol_luminosity - sn_data['+/-.2'].astype(float))) / const.L_sun.to('erg/s').value))) - bol_magnitude
+    bol_magnitude_error_upper = bol_magnitude - (4.74 - (2.5 * np.log10(
+        (10**(bol_luminosity + sn_data['+/-.2'].astype(float))) / const.L_sun.to('erg/s').value)))
+    # bol_magnitude_error_lower = (4.74 - (2.5 * np.log10
+    #     10**(bol_luminosity - sn_data['+/-.2'].astype(float))) / const.L_sun.to('erg/s').value))) - bol_magnitude
     # print(bol_magnitude_error_upper, "============")
     # print(bol_magnitude_error_lower, "============")
     # print(bol_magnitude_error_upper == bol_magnitude_error_lower)

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Artistools.
 
-A collection of plotting, analysis, and file format conversion tools for the ARTIS radiative transfer code.
+A collection of plotting, analysis, and file format conversion tools
+for the ARTIS radiative transfer code.
 """
 
 import sys
@@ -26,6 +27,7 @@ from artistools.misc import (
     get_deposition,
     get_elsymbol,
     get_filterfunc,
+    get_grid_mapping,
     get_model_name,
     get_inputparams,
     get_ionstring,
