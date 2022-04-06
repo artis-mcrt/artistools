@@ -11,4 +11,3 @@ from artistools.spectra.spectra import (
 
 from artistools.spectra.plotspectra import main, addargs
 from artistools.spectra.plotspectra import main as plot
-
