@@ -13,8 +13,7 @@ import artistools as at
 import artistools.inputmodel
 
 modelpath = at.config['path_testartismodel']
-outputpath = Path(at.config['path_testoutput'])
-# outputpath.mkdir(parents=True, exist_ok=True)
+outputpath = at.config['path_testoutput']
 at.enable_diskcache = False
 
 

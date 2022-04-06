@@ -12,12 +12,14 @@ import artistools.spectra
 import artistools.transitions
 
 modelpath = at.config['path_testartismodel']
-outputpath = Path(at.PYDIR, '..', 'tests', 'output')
+outputpath = at.config['path_testoutput']
 at.enable_diskcache = False
 
 
 def test_spectraplot():
-    at.spectra.main(argsraw=[], specpath=[modelpath, 'sn2011fe_PTF11kly_20120822_norm.txt'], outputfile=outputpath, timemin=290, timemax=320)
+    at.spectra.main(
+        argsraw=[], specpath=[modelpath, 'sn2011fe_PTF11kly_20120822_norm.txt'],
+        outputfile=outputpath, timemin=290, timemax=320)
 
 
 def test_spectra_frompackets():
