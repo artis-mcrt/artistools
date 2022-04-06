@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-import artistools
+import artistools as at
 
 
 @lru_cache(maxsize=8)
@@ -36,19 +36,19 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
 
     if os.path.isdir(inputpath):
         modelpath = inputpath
-        filename = artistools.firstexisting(['model.txt.xz', 'model.txt.gz', 'model.txt'], path=inputpath)
+        filename = at.firstexisting(['model.txt.xz', 'model.txt.gz', 'model.txt'], path=inputpath)
     elif os.path.isfile(inputpath):  # passed in a filename instead of the modelpath
         filename = inputpath
         modelpath = Path(inputpath).parent
     elif not inputpath.exists() and inputpath.parts[0] == 'codecomparison':
         modelpath = inputpath
         _, inputmodel, _ = modelpath.parts
-        filename = Path(artistools.config['codecomparisonmodelartismodelpath'], inputmodel, 'model.txt')
+        filename = Path(at.config['codecomparisonmodelartismodelpath'], inputmodel, 'model.txt')
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
     headerrows = 0
-    with artistools.zopen(filename, 'rt') as fmodel:
+    with at.misc.zopen(filename, 'rt') as fmodel:
         gridcellcount = int(fmodel.readline())
         t_model_init_days = float(fmodel.readline())
         headerrows += 2
@@ -141,7 +141,7 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
         vmax_cmps = dfmodel.velocity_outer.max() * 1e5
 
     elif dimensions == 3:
-        wid_init = artistools.get_wid_init_at_tmodel(modelpath, gridcellcount, t_model_init_days, xmax_tmodel)
+        wid_init = at.misc.get_wid_init_at_tmodel(modelpath, gridcellcount, t_model_init_days, xmax_tmodel)
         dfmodel.eval('cellmass_grams = rho * @wid_init ** 3', inplace=True)
 
         dfmodel.rename(columns={
@@ -227,23 +227,23 @@ def add_derived_cols_to_modeldata(dfmodel, derived_cols, dimensions=None, t_mode
         get_cell_angle(dfmodel, modelpath)
 
     if 'Ye' in derived_cols and os.path.isfile(modelpath / 'Ye.txt'):
-        dfmodel['Ye'] = artistools.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
+        dfmodel['Ye'] = at.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
     if 'Q' in derived_cols and os.path.isfile(modelpath / 'Q_energy.txt'):
-        dfmodel['Q'] = artistools.inputmodel.energyinputfiles.get_Q_energy_from_file(modelpath)
+        dfmodel['Q'] = at.inputmodel.energyinputfiles.get_Q_energy_from_file(modelpath)
 
     return dfmodel
 
 
 def get_cell_angle(dfmodel, modelpath):
     """get angle between cell midpoint and axis"""
-    syn_dir = artistools.get_syn_dir(modelpath)
+    syn_dir = at.get_syn_dir(modelpath)
 
     cos_theta = np.zeros(len(dfmodel))
     i = 0
     for _, cell in dfmodel.iterrows():
         mid_point = [cell['pos_x_mid'], cell['pos_y_mid'], cell['pos_z_mid']]
         cos_theta[i] = (
-            artistools.dot(mid_point, syn_dir)) / (artistools.vec_len(mid_point) * artistools.vec_len(syn_dir))
+            at.dot(mid_point, syn_dir)) / (at.vec_len(mid_point) * at.vec_len(syn_dir))
         i += 1
     dfmodel['cos_theta'] = cos_theta
     cos_bins = [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1]  # including end bin
@@ -383,7 +383,7 @@ def save_modeldata(
 
     dfmodel['inputcellid'] = dfmodel['inputcellid'].astype(int)
     customcols = [col for col in dfmodel.columns if col not in standardcols and col.startswith('X_')]
-    customcols.sort(key=lambda col: artistools.get_z_a_nucname(col))  # sort columns by atomic number, mass number
+    customcols.sort(key=lambda col: at.get_z_a_nucname(col))  # sort columns by atomic number, mass number
 
     # set missing radioabundance columns to zero
     for col in standardcols:
@@ -468,13 +468,13 @@ def get_mgi_of_velocity_kms(modelpath, velocity, mgilist=None):
 @lru_cache(maxsize=8)
 def get_initialabundances(modelpath):
     """Return a list of mass fractions."""
-    abundancefilepath = artistools.firstexisting(
+    abundancefilepath = at.firstexisting(
         ['abundances.txt.xz', 'abundances.txt.gz', 'abundances.txt'], path=modelpath)
 
     abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None)
     abundancedata.index.name = 'modelgridindex'
     abundancedata.columns = [
-        'inputcellid', *['X_' + artistools.get_elsymbol(x) for x in range(1, len(abundancedata.columns))]]
+        'inputcellid', *['X_' + at.get_elsymbol(x) for x in range(1, len(abundancedata.columns))]]
     if len(abundancedata) > 100000:
         print('abundancedata memory usage:')
         abundancedata.info(verbose=False, memory_usage="deep")
@@ -491,9 +491,9 @@ def save_initialabundances(dfelabundances, abundancefilename):
     if Path(abundancefilename).is_dir():
         abundancefilename = Path(abundancefilename) / 'abundances.txt'
     dfelabundances['inputcellid'] = dfelabundances['inputcellid'].astype(int)
-    atomic_numbers = [artistools.get_atomic_number(colname[2:])
+    atomic_numbers = [at.get_atomic_number(colname[2:])
                       for colname in dfelabundances.columns if colname.startswith('X_')]
-    elcolnames = [f'X_{artistools.get_elsymbol(Z)}' for Z in range(1, 1 + max(atomic_numbers))]
+    elcolnames = [f'X_{at.get_elsymbol(Z)}' for Z in range(1, 1 + max(atomic_numbers))]
 
     # set missing elemental abundance columns to zero
     for col in elcolnames:

@@ -14,7 +14,6 @@ import pandas as pd
 from astropy import units as u
 
 import artistools as at
-# from artistools.nonthermal.spencerfano import *
 
 DEFAULTSPECPATH = '../example_run/spec.out'
 defaultoutputfile = 'plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf'
@@ -152,7 +151,7 @@ def make_plot(modelpaths, args):
     if args.showcontributions:
         nplots += 1
     fig, axes = plt.subplots(nrows=nplots, ncols=1, sharex=True,
-                             figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * 0.7 * nplots),
+                             figsize=(args.figscale * at.config['figwidth'], args.figscale * at.config['figwidth'] * 0.7 * nplots),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if nplots == 1:
@@ -168,7 +167,7 @@ def make_plot(modelpaths, args):
     for index, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
         if args.velocity >= 0.:
-            modelgridindex = at.get_mgi_of_velocity_kms(modelpath, args.velocity)
+            modelgridindex = at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)
         else:
             modelgridindex = args.modelgridindex
 

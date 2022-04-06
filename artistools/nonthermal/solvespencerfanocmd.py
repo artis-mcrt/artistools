@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from pathlib import Path
-# from bigfloat import *
 # import numba
 # from numpy import arctan as atan
 
@@ -160,10 +159,11 @@ def main(args=None, argsraw=None, **kwargs):
 
         modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
         if args.velocity >= 0.:
-            args.modelgridindex = at.get_mgi_of_velocity_kms(modelpath, args.velocity)
+            args.modelgridindex = at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)
         else:
             args.modelgridindex = args.modelgridindex
-        estimators = at.estimators.read_estimators(modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex)
+        estimators = at.estimators.read_estimators(
+            modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex)
         estim = estimators[(args.timestep, args.modelgridindex)]
 
         dfpops = at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)

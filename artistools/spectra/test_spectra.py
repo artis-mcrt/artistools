@@ -13,7 +13,7 @@ import artistools.transitions
 
 modelpath = at.config['path_testartismodel']
 outputpath = at.config['path_testoutput']
-at.enable_diskcache = False
+at.config['enable_diskcache'] = False
 
 
 def test_spectraplot():

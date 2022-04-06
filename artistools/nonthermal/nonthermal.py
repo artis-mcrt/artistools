@@ -84,7 +84,7 @@ def get_nnetot(ions, ionpopdict):
 
 def read_binding_energies(modelpath='.'):
     collionfilename = at.firstexisting([os.path.join(modelpath, 'binding_energies.txt'),
-                                        os.path.join(at.PYDIR, 'data', 'binding_energies.txt')])
+                                        os.path.join(at.config['path_artistools_dir'], 'data', 'binding_energies.txt')])
 
     with open(collionfilename, "r") as f:
         nt_shells, n_z_binding = [int(x) for x in f.readline().split()]
@@ -449,7 +449,7 @@ def get_xs_excitation_vector(engrid, row):
     return xs_excitation_vec
 
 
-def read_colliondata(collionfilename='collion.txt', modelpath=Path(at.PYDIR, 'data')):
+def read_colliondata(collionfilename='collion.txt', modelpath=at.config['path_datadir']):
 
     collionrow = namedtuple('collionrow', ['Z', 'nelec', 'n', 'l', 'ionpot_ev', 'A', 'B', 'C', 'D'])
 

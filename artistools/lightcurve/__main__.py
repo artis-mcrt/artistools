@@ -1,3 +1,3 @@
-from .plotlightcurve import main
+from artistools.lightcurve.plotlightcurve import main
 
 main()

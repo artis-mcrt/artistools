@@ -41,9 +41,9 @@ def get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles
     model, _, _ = at.inputmodel.get_modeldata(modelpath)
     # vmax = model.iloc[-1].velocity_outer * u.km / u.s
     processfile = partial(get_packets_with_emtype_onefile, emtypecolumn, lineindices)
-    if at.num_processes > 1:
-        print(f"Reading packets files with {at.num_processes} processes")
-        with multiprocessing.Pool(processes=at.num_processes) as pool:
+    if at.config['num_processes'] > 1:
+        print(f"Reading packets files with {at.config['num_processes']} processes")
+        with multiprocessing.Pool(processes=at.config['num_processes']) as pool:
             arr_dfmatchingpackets = pool.map(processfile, packetsfiles)
             pool.close()
             pool.join()
@@ -236,7 +236,7 @@ def make_flux_ratio_plot(args):
     nrows = 1
     fig, axes = plt.subplots(
         nrows=nrows, ncols=1, sharey=False,
-        figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * (0.25 + nrows * 0.4)),
+        figsize=(args.figscale * at.config['figwidth'], args.figscale * at.config['figwidth'] * (0.25 + nrows * 0.4)),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if nrows == 1:
@@ -556,7 +556,7 @@ def make_emitting_regions_plot(args):
             nrows = 1
             fig, axis = plt.subplots(
                 nrows=nrows, ncols=1, sharey=False, sharex=False,
-                figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * (0.25 + nrows * 0.7)),
+                figsize=(args.figscale * at.config['figwidth'], args.figscale * at.config['figwidth'] * (0.25 + nrows * 0.7)),
                 tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.2})
 
             for refdataindex, f in enumerate(refdatafilenames):

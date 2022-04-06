@@ -1,3 +1,3 @@
-from .plotspectra import main
+from artistools.spectra.plotspectra import main
 
 main()

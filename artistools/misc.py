@@ -26,13 +26,13 @@ import pandas as pd
 from astropy import units as u
 from astropy import constants as const
 
-import artistools
-
+from artistools.configuration import config as atconfig
+from artistools.inputmodel.inputmodel import get_modeldata
 PYDIR = os.path.dirname(os.path.abspath(__file__))
 
 plt.style.use('file://' + PYDIR + '/matplotlibrc')
 
-elsymbols = ['n'] + list(pd.read_csv(os.path.join(artistools.config['path_datadir'], 'elements.csv'))['symbol'].values)
+elsymbols = ['n'] + list(pd.read_csv(os.path.join(atconfig['path_datadir'], 'elements.csv'))['symbol'].values)
 
 roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
@@ -176,7 +176,8 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savez
 
                 fopen, filename = (lzma.open, filename_xz) if savezipped else (open, filename_nogz)
                 with fopen(filename, 'wb') as f:
-                    pickle.dump((result, str_funcversion + argfilesmodifiedhash_strhex), f, protocol=pickle.HIGHEST_PROTOCOL)
+                    pickle.dump((result, str_funcversion + argfilesmodifiedhash_strhex), f,
+                                protocol=pickle.HIGHEST_PROTOCOL)
 
                 filesize = Path(filename).stat().st_size / 1024 / 1024
                 printopt(f"diskcache: Saved '{filename}' ({filesize:.1f} MiB, functime {functime:.1f}s)")
@@ -195,7 +196,7 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savez
         # sourcehash_strhex = sourcehash.hexdigest()
         str_funcversion = f'funcversion_{funcversion}' if funcversion else 'funcversion_none'
 
-        return wrapper if artistools.enable_diskcache else func
+        return wrapper if atconfig['enable_diskcache'] else func
 
     return diskcacheinner
 
@@ -421,7 +422,7 @@ def get_grid_mapping(modelpath):
 def get_wid_init_at_tmin(modelpath):
     # cell width in cm at time tmin
     tmin = get_timestep_times_float(modelpath, loc='start')[0] * u.day.to('s')
-    _, _, vmax = artistools.inputmodel.get_modeldata(modelpath)
+    _, _, vmax = get_modeldata(modelpath)
 
     rmax = vmax * tmin
 
@@ -435,7 +436,7 @@ def get_wid_init_at_tmin(modelpath):
 def get_wid_init_at_tmodel(modelpath=None, ngridpoints=None, t_model_days=None, xmax=None):
     if ngridpoints is None or t_model_days is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
-        dfmodel, t_model_days, vmax = artistools.inputmodel.get_modeldata(modelpath)
+        dfmodel, t_model_days, vmax = get_modeldata(modelpath)
         ngridpoints = len(dfmodel)
         xmax = vmax * t_model_days * (24 * 60 * 60)
 
@@ -519,6 +520,7 @@ def get_timestep_times_float(modelpath, loc='mid'):
 
     # virtual path to code comparison workshop models
     if not modelpath.exists() and modelpath.parts[0] == 'codecomparison':
+        import artistools.codecomparison
         return artistools.codecomparison.get_timestep_times_float(modelpath=modelpath, loc=loc)
 
     # custom timestep file
@@ -592,7 +594,8 @@ def get_time_range(modelpath, timestep_range_str=None, timemin=None, timemax=Non
         print(f"{get_model_name(modelpath)}: WARNING timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
         return -1, -1, timemin, timemax
     elif timemax and timemax < tstarts[0]:
-        print(f"{get_model_name(modelpath)}: WARNING timemax {timemax} is before the first timestep at {tstarts[0]:.1f}")
+        print(f"{get_model_name(modelpath)}: WARNING timemax {timemax} is "
+              f"before the first timestep at {tstarts[0]:.1f}")
         return -1, -1, timemin, timemax
 
     if timestep_range_str is not None:
@@ -1006,7 +1009,8 @@ def get_inputparams(modelpath):
         params['nsyn_time'] = int(readnoncommentline(inputfile).split('#')[0])
 
         # start and end times for synthesis
-        params['nsyn_time_start'], params['nsyn_time_end'] = [float(x) for x in readnoncommentline(inputfile).split('#')[0].split()]
+        params['nsyn_time_start'], params['nsyn_time_end'] = [
+            float(x) for x in readnoncommentline(inputfile).split('#')[0].split()]
 
         params['n_dimensions'] = int(readnoncommentline(inputfile).split('#')[0])
 

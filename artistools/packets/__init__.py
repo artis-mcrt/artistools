@@ -79,12 +79,12 @@ def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None)
     colnames = at.makelist(colnames)
 
     def em_modelgridindex(packet):
-        return at.get_mgi_of_velocity_kms(modelpath, packet.emission_velocity * cm_to_km,
-                                          mgilist=allnonemptymgilist)
+        return at.inputmodel.get_mgi_of_velocity_kms(modelpath, packet.emission_velocity * cm_to_km,
+                                                     mgilist=allnonemptymgilist)
 
     def emtrue_modelgridindex(packet):
-        return at.get_mgi_of_velocity_kms(modelpath, packet.true_emission_velocity * cm_to_km,
-                                          mgilist=allnonemptymgilist)
+        return at.inputmodel.get_mgi_of_velocity_kms(modelpath, packet.true_emission_velocity * cm_to_km,
+                                                     mgilist=allnonemptymgilist)
 
     def em_timestep(packet):
         return at.get_timestep_of_timedays(modelpath, packet.em_time / day_in_s)

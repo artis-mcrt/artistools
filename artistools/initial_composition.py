@@ -128,8 +128,8 @@ def plot_3d_initial_abundances(modelpath, args=None):
         cols = len(args.ion)
 
         fig, axes = plt.subplots(nrows=rows, ncols=cols, sharex=True, sharey=True,
-                                 figsize=(at.figwidth * cols,
-                                          at.figwidth * 1.4),
+                                 figsize=(at.config['figwidth'] * cols,
+                                          at.config['figwidth'] * 1.4),
                                  tight_layout={"pad": 5.0, "w_pad": 0.0, "h_pad": 0.0})
         for ax in axes:
             ax.set(aspect='equal')

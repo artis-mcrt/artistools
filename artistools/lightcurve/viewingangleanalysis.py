@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import math
 import os
 from pathlib import Path
@@ -5,13 +7,12 @@ import glob
 
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib
 from matplotlib.legend_handler import HandlerTuple
 import pandas as pd
 from astropy import constants as const
 
 import artistools as at
-from .lightcurve import *
+import artistools.lightcurve
 
 
 define_colours_list = ['k', 'tab:blue', 'tab:red', 'tab:green', 'purple', 'tab:orange', 'tab:pink', 'tab:gray', 'gold',
@@ -365,7 +366,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, key, 
                 xvalues_angleaveraged = args.band_risetime_angle_averaged_polyfit[ii]
 
             p0 = ax.scatter(xvalues_angleaveraged, args.band_peakmag_angle_averaged_polyfit[ii],
-                             **plotkwargsangleaveraged)
+                            **plotkwargsangleaveraged)
             args.plotvalues.append((a0, p0))
         else:
             args.plotvalues.append((a0, a0))
@@ -376,8 +377,8 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, key, 
                 ecolor = define_colours_list
 
             ax.errorbar(xvalues_angleaveraged, args.band_peakmag_angle_averaged_polyfit[ii],
-                         xerr=np.std(xvalues_viewingangles),
-                         yerr=np.std(band_peak_mag_viewing_angles), ecolor=ecolor[ii], capsize=2)
+                        xerr=np.std(xvalues_viewingangles),
+                        yerr=np.std(band_peak_mag_viewing_angles), ecolor=ecolor[ii], capsize=2)
 
     if args.label:
         linelabels = args.label
@@ -391,7 +392,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, key, 
 
     if not args.nolegend:
         ax.legend(args.plotvalues, linelabels, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
-                   loc='upper right', fontsize='x-small', ncol=args.ncolslegend, columnspacing=1, frameon=False)
+                  loc='upper right', fontsize='x-small', ncol=args.ncolslegend, columnspacing=1, frameon=False)
     # ax.set_xlabel(r'Decline Rate ($\Delta$m$_{15}$)', fontsize=14)
 
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
@@ -446,7 +447,7 @@ def make_peak_colour_viewing_angle_plot(args):
         plotkwargsviewingangles['label'] = modelname
         ax.scatter(data['peakcolour'], data[f"{bands[0]}max"], **plotkwargsviewingangles)
 
-    sn_data, label = get_phillips_relation_data()
+    sn_data, label = at.lightcurve.get_phillips_relation_data()
     ax.errorbar(x=sn_data['(B-V)Bmax'], y=sn_data['MB'], xerr=sn_data['err_(B-V)Bmax'], yerr=sn_data['err_MB'],
                 color='k', alpha=0.9, marker='.', capsize=2, label=label, ls='None', zorder=-1)
 
@@ -464,8 +465,9 @@ def make_peak_colour_viewing_angle_plot(args):
 def second_band_brightness_at_peak_first_band(data, bands, modelpath, modelnumber, args):
     second_band_brightness = []
     for anglenumber, time in enumerate(data[f"time_{bands[0]}max"]):
-        lightcurve_data = generate_band_lightcurve_data(modelpath, args, anglenumber, modelnumber=modelnumber)
-        time, brightness_in_mag = get_band_lightcurve(lightcurve_data, bands[1], args)
+        lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
+            modelpath, args, anglenumber, modelnumber=modelnumber)
+        time, brightness_in_mag = at.lightcurve.get_band_lightcurve(lightcurve_data, bands[1], args)
 
         fxfit, xfit = lightcurve_polyfit(time, brightness_in_mag, args)
 
@@ -522,7 +524,8 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
             modelnames.append(modelname)  # save for later
             print(f'Reading spectra: {modelname}')
             if args.filter:
-                lightcurve_data = generate_band_lightcurve_data(modelpath, args, angle, modelnumber=modelnumber)
+                lightcurve_data = at.lightcurve.generate_band_lightcurve_data(
+                    modelpath, args, angle, modelnumber=modelnumber)
                 plottinglist = args.filter
             elif args.plotviewingangle:
                 lightcurve_data = lcdataframes[angle]
@@ -531,7 +534,7 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
 
             for plotnumber, band_name in enumerate(plottinglist):
                 if args.filter:
-                    time, brightness = get_band_lightcurve(lightcurve_data, band_name, args)
+                    time, brightness = at.lightcurve.get_band_lightcurve(lightcurve_data, band_name, args)
                 else:
                     lightcurve_data = lightcurve_data.loc[(lightcurve_data['time'] > args.timemin) &
                                                           (lightcurve_data['time'] < args.timemax)]

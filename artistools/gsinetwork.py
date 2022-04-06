@@ -331,8 +331,8 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
 
     print(f'Reading trajectory data for {len(list_particleids_getabund)} particles with abundances')
 
-    if at.num_processes > 1:
-        with multiprocessing.Pool(processes=at.num_processes) as pool:
+    if at.config['num_processes'] > 1:
+        with multiprocessing.Pool(processes=at.config['num_processes']) as pool:
             list_particledata_withabund = pool.map(fworkerwithabund, list_particleids_getabund)
             pool.close()
             pool.join()
@@ -344,8 +344,8 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
     fworkernoabund = partial(get_particledata, arr_time_gsi_s, [])
     print(f'Reading trajectory data for {len(list_particleids_noabund)} particles for Qdot/thermal data (no abundances)')
 
-    if at.num_processes > 1:
-        with multiprocessing.Pool(processes=at.num_processes) as pool:
+    if at.config['num_processes'] > 1:
+        with multiprocessing.Pool(processes=at.config['num_processes']) as pool:
             list_particledata_noabund = pool.map(fworkernoabund, list_particleids_noabund)
             pool.close()
             pool.join()

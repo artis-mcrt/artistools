@@ -1,6 +1,6 @@
-import artistools
-# from .__init__ import main
+import artistools as at
+import artistools.nltepops
 
 if __name__ == '__main__':
     # multiprocessing.freeze_support()
-    artistools.nltepops.main()
+    at.nltepops.main()

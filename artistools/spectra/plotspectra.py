@@ -4,28 +4,26 @@
 import argcomplete
 import argparse
 import math
-import multiprocessing
-from collections import namedtuple
-from functools import lru_cache
-from functools import partial
 from pathlib import Path
-from typing import Iterable
 import os
 
 import matplotlib.ticker as ticker
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
-import matplotlib as mpl
 import numpy as np
 import pandas as pd
 from astropy import constants as const
-from astropy import units as u
-import re
 
 import artistools as at
 import artistools.radfield
 import artistools.packets
-from artistools.spectra.spectra import *
+from artistools.spectra import (
+    get_reference_spectrum, get_res_spectrum, get_specpol_data,
+    get_spectrum, get_spectrum_from_packets,
+    get_vspecpol_spectrum, make_averaged_vspecfiles,
+    make_virtual_spectra_summed_file, print_integrated_flux,
+    timeshift_fluxscale_co56law,
+)
 
 hatches = ['', 'x', '-', '\\', '+', 'O', '.', '', 'x', '*', '\\', '+', 'O', '.']  # ,
 
@@ -161,7 +159,7 @@ def plot_filter_functions(axis):
     filter_names = ['U', 'B', 'V', 'R', 'I']
     colours = ['r', 'b', 'g', 'c', 'm']
 
-    filterdir = os.path.join(at.PYDIR, 'data/filters/')
+    filterdir = os.path.join(at.config['path_artistools_dir'], 'data/filters/')
     for index, filter_name in enumerate(filter_names):
         filter_data = pd.read_csv(filterdir / Path(f'{filter_name}.txt'), delim_whitespace=True,
                                   header=None, skiprows=4, names=['lamba_angstroms', 'flux_normalised'])
@@ -394,7 +392,7 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
 def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_to_peak=None):
     """Plot the emission and absorption by ion for an ARTIS model."""
     print(modelpath)
-    arraynu = at.get_nu_grid(modelpath)
+    arraynu = at.misc.get_nu_grid(modelpath)
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
@@ -637,7 +635,7 @@ def make_plot(args):
         nrows = 1 + len(densityplotyvars)
     fig, axes = plt.subplots(
         nrows=nrows, ncols=1, sharey=False, sharex=True, squeeze=True,
-        figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * (0.25 + nrows * 0.4)),
+        figsize=(args.figscale * at.config['figwidth'], args.figscale * at.config['figwidth'] * (0.25 + nrows * 0.4)),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if nrows == 1:

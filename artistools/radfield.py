@@ -590,7 +590,7 @@ def plot_celltimestep(
 
     nrows = 1 if not args.photoionrates else 3
     fig, axes = plt.subplots(nrows=nrows, ncols=1, sharex=True,
-                             figsize=(args.figscale * at.figwidth, args.figscale * at.figwidth * (0.25 + nrows * 0.4)),
+                             figsize=(args.figscale * at.config['figwidth'], args.figscale * at.config['figwidth'] * (0.25 + nrows * 0.4)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     axis = axes if nrows == 1 else axes[-1]
@@ -749,8 +749,8 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
 
     nlinesplotted = 200
     fig, axes = plt.subplots(nlinesplotted, 1, sharex=True,
-                             figsize=(args.figscale * at.figwidth,
-                                      args.figscale * at.figwidth * (0.25 + nlinesplotted * 0.35)),
+                             figsize=(args.figscale * at.config['figwidth'],
+                                      args.figscale * at.config['figwidth'] * (0.25 + nlinesplotted * 0.35)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     timestep = at.get_timestep_of_timedays(modelpath, 330)

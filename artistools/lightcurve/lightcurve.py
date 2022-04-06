@@ -6,7 +6,6 @@ import math
 import os
 # import sys
 from pathlib import Path
-from typing import Iterable
 
 import numpy as np
 import pandas as pd
@@ -144,7 +143,7 @@ def generate_band_lightcurve_data(modelpath, args, angle=None, modelnumber=None)
         elif filter_name not in filters_dict:
             filters_dict[filter_name] = []
 
-    filterdir = os.path.join(at.PYDIR, 'data/filters/')
+    filterdir = os.path.join(at.config['path_artistools_dir'], 'data/filters/')
 
     for filter_name in filters_list:
         if filter_name == 'bol':
@@ -293,7 +292,7 @@ def get_colour_delta_mag(band_lightcurve_data, filter_names):
 
 
 def read_hesma_lightcurve(args):
-    hesma_directory = os.path.join(at.PYDIR, 'data/hesma')
+    hesma_directory = os.path.join(at.config['path_artistools_dir'], 'data/hesma')
     filename = args.plot_hesma_model
     hesma_modelname = hesma_directory / filename
 
@@ -314,10 +313,10 @@ def read_hesma_lightcurve(args):
 
 
 def read_reflightcurve_band_data(lightcurvefilename):
-    filepath = Path(at.PYDIR, 'data', 'lightcurves', lightcurvefilename)
-    metadata = at.get_file_metadata(filepath)
+    filepath = Path(at.config['path_artistools_dir'], 'data', 'lightcurves', lightcurvefilename)
+    metadata = at.misc.get_file_metadata(filepath)
 
-    data_path = os.path.join(at.PYDIR, f"data/lightcurves/{lightcurvefilename}")
+    data_path = os.path.join(at.config['path_artistools_dir'], f"data/lightcurves/{lightcurvefilename}")
     lightcurve_data = pd.read_csv(data_path, comment='#')
     lightcurve_data['time'] = lightcurve_data['time'].apply(lambda x: x - (metadata['timecorrection']))
     # m - M = 5log(d) - 5  Get absolute magnitude
@@ -338,8 +337,8 @@ def read_reflightcurve_band_data(lightcurvefilename):
 
 
 def read_bol_reflightcurve_data(lightcurvefilename):
-    data_path = os.path.join(at.PYDIR, f"data/lightcurves/bollightcurves/{lightcurvefilename}")
-    metadata = at.get_file_metadata(data_path)
+    data_path = os.path.join(at.config['path_artistools_dir'], f"data/lightcurves/bollightcurves/{lightcurvefilename}")
+    metadata = at.misc.get_file_metadata(data_path)
 
     bollightcurve_data = pd.read_csv(data_path, comment='#', delim_whitespace=True, header=None)
 
@@ -350,7 +349,7 @@ def read_bol_reflightcurve_data(lightcurvefilename):
 
 
 def get_sn_sample_bol():
-    datafilepath = Path(at.PYDIR, 'data', 'lightcurves', 'SNsample', 'bololc.txt')
+    datafilepath = Path(at.config['path_artistools_dir'], 'data', 'lightcurves', 'SNsample', 'bololc.txt')
     sn_data = pd.read_csv(datafilepath, delim_whitespace=True, comment='#')
 
     print(sn_data)
@@ -387,7 +386,7 @@ def get_sn_sample_bol():
 
 
 def get_phillips_relation_data():
-    datafilepath = Path(at.PYDIR, 'data', 'lightcurves', 'SNsample', 'CfA3_Phillips.dat')
+    datafilepath = Path(at.config['path_artistools_dir'], 'data', 'lightcurves', 'SNsample', 'CfA3_Phillips.dat')
     sn_data = pd.read_csv(datafilepath, delim_whitespace=True, comment='#')
     print(sn_data)
 

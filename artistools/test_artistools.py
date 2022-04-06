@@ -13,13 +13,13 @@ import artistools as at
 
 modelpath = at.config['path_testartismodel']
 outputpath = at.config['path_testoutput']
-at.enable_diskcache = False
+at.config['enable_diskcache'] = False
 
 
 def test_commands():
     import importlib
     # ensure that the commands are pointing to valid submodule.function() targets
-    for command, (submodulename, funcname) in sorted(at.commandlist.items()):
+    for command, (submodulename, funcname) in sorted(at.commands.commandlist.items()):
         submodule = importlib.import_module(submodulename, package='artistools')
         assert hasattr(submodule, funcname)
 

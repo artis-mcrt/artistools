@@ -27,7 +27,7 @@ import pandas as pd
 import artistools as at
 import artistools.initial_composition
 import artistools.nltepops
-from .estimators import *
+import artistools.estimators
 
 colors_tab10 = list(plt.get_cmap('tab10')(np.linspace(0, 1.0, 10)))
 
@@ -51,12 +51,12 @@ def get_elemcolor(atomic_number=None, elsymbol=None):
 
 
 def get_ylabel(variable):
-    if variable in variablelongunits:
-        return variablelongunits[variable]
-    elif variable in variableunits:
-        return f'[{variableunits[variable]}]'
-    elif variable.split('_')[0] in variableunits:
-        return f'[{variableunits[variable.split("_")[0]]}]'
+    if variable in at.estimators.variablelongunits:
+        return at.estimators.variablelongunits[variable]
+    elif variable in at.estimators.variableunits:
+        return f'[{at.estimators.variableunits[variable]}]'
+    elif variable.split('_')[0] in at.estimators.variableunits:
+        return f'[{at.estimators.variableunits[variable.split("_")[0]]}]'
     return ''
 
 
@@ -109,7 +109,7 @@ def plot_init_abundances(ax, xlist, specieslist, mgilist, modelpath, seriestype,
         # or ax.step(where='pre', )
         color = get_elemcolor(atomic_number=atomic_number)
 
-        xlist, ylist = apply_filters(xlist, ylist, args)
+        xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
 
         ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, linestyle=linestyle, color=color, **plotkwargs)
 
@@ -141,11 +141,11 @@ def plot_average_ionisation_excitation(
             for timestep in timesteps:
 
                 if seriestype == 'averageionisation':
-                    valuesum += (get_averageionisation(
+                    valuesum += (at.estimators.get_averageionisation(
                         estimators[(timestep, modelgridindex)]['populations'], atomic_number) * arr_tdelta[timestep])
                 elif seriestype == 'averageexcitation':
                     T_exc = estimators[(timestep, modelgridindex)]['Te']
-                    valuesum += (get_averageexcitation(
+                    valuesum += (at.estimators.get_averageexcitation(
                         modelpath, modelgridindex, timestep, atomic_number, ion_stage, T_exc) * arr_tdelta[timestep])
                 tdeltasum += arr_tdelta[timestep]
 
@@ -158,7 +158,7 @@ def plot_average_ionisation_excitation(
 
         ylist.insert(0, ylist[0])
 
-        xlist, ylist = apply_filters(xlist, ylist, args)
+        xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
 
         ax.plot(xlist, ylist, label=paramvalue, color=color, **plotkwargs)
 
@@ -230,7 +230,7 @@ def plot_levelpop(
 
         ylist.insert(0, ylist[0])
 
-        xlist, ylist = apply_filters(xlist, ylist, args)
+        xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
 
         ax.plot(xlist, ylist, label=label, **plotkwargs)
 
@@ -307,7 +307,7 @@ def plot_multi_ion_series(
             else:
                 assert False
         else:
-            ax.set_ylabel(dictlabelreplacements.get(seriestype, seriestype))
+            ax.set_ylabel(at.estimators.dictlabelreplacements.get(seriestype, seriestype))
 
         ylist = []
         for modelgridindex, timesteps in zip(mgilist, timestepslist):
@@ -317,7 +317,7 @@ def plot_multi_ion_series(
                 #           f'cell {modelgridindex} timesteps {timesteps}')
 
                 try:
-                    estimpop = get_averaged_estimators(
+                    estimpop = at.estimators.get_averaged_estimators(
                         modelpath, estimators, timesteps, modelgridindex, ['populations'])
                 except KeyError:
                     ylist.append(float('nan'))
@@ -353,7 +353,7 @@ def plot_multi_ion_series(
             else:
                 # this is very slow!
                 try:
-                    estim = get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [])
+                    estim = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [])
                 except KeyError:
                     ylist.append(float('nan'))
                     continue
@@ -421,7 +421,7 @@ def plot_multi_ion_series(
 
         ylist.insert(0, ylist[0])
 
-        xlist, ylist = apply_filters(xlist, ylist, args)
+        xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
 
         ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, dashes=dashes, **plotkwargs)
         prev_atomic_number = atomic_number
@@ -440,10 +440,10 @@ def plot_series(ax, xlist, variablename, showlegend, timestepslist, mgilist,
                 modelpath, estimators, args, nounits=False, dfalldata=None, **plotkwargs):
     """Plot something like Te or TR."""
     assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
-    formattedvariablename = dictlabelreplacements.get(variablename, variablename)
+    formattedvariablename = at.estimators.dictlabelreplacements.get(variablename, variablename)
     serieslabel = f'{formattedvariablename}'
     if not nounits:
-        serieslabel += get_units_string(variablename)
+        serieslabel += at.estimators.get_units_string(variablename)
 
     if showlegend:
         linelabel = serieslabel
@@ -453,7 +453,7 @@ def plot_series(ax, xlist, variablename, showlegend, timestepslist, mgilist,
 
     ylist = []
     for modelgridindex, timesteps in zip(mgilist, timestepslist):
-        estimavg = get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [])
+        estimavg = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [])
         try:
             ylist.append(eval(variablename, {"__builtins__": math}, estimavg))
         except KeyError:
@@ -483,7 +483,7 @@ def plot_series(ax, xlist, variablename, showlegend, timestepslist, mgilist,
 
     ylist.insert(0, ylist[0])
 
-    xlist, ylist = apply_filters(xlist, ylist, args)
+    xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
 
     ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename, None), **plotkwargs)
 
@@ -510,7 +510,7 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timestepslist, modelpat
         mgilist_out = []
         timestepslist_out = []
         for modelgridindex, timesteps in zip(allnonemptymgilist, timestepslist):
-            xvalue = get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, xvariable)
+            xvalue = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, xvariable)
             xlist.append(xvalue)
             mgilist_out.append(modelgridindex)
             timestepslist_out.append(timesteps)
@@ -595,15 +595,15 @@ def make_plot(modelpath, timestepslist_unfiltered, allnonemptymgilist, estimator
               args, **plotkwargs):
     modelname = at.get_model_name(modelpath)
     fig, axes = plt.subplots(nrows=len(plotlist), ncols=1, sharex=True,
-                             figsize=(args.figscale * at.figwidth * args.scalefigwidth,
-                                      args.figscale * at.figwidth * 0.5 * len(plotlist)),
+                             figsize=(args.figscale * at.config['figwidth'] * args.scalefigwidth,
+                                      args.figscale * at.config['figwidth'] * 0.5 * len(plotlist)),
                              tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
     if len(plotlist) == 1:
         axes = [axes]
 
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
     if not args.hidexlabel:
-        axes[-1].set_xlabel(f'{xvariable}{get_units_string(xvariable)}')
+        axes[-1].set_xlabel(f'{xvariable}{at.estimators.get_units_string(xvariable)}')
     xlist, mgilist, timestepslist = get_xlist(
         xvariable, allnonemptymgilist, estimators, timestepslist_unfiltered, modelpath, args)
 
@@ -682,7 +682,8 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
 
     for ax, ion_stage in zip(axes, ion_stage_list):
 
-        ionstr = f'{at.get_elsymbol(atomic_number)} {at.roman_numerals[ion_stage]} to {at.roman_numerals[ion_stage - 1]}'
+        ionstr = (f'{at.get_elsymbol(atomic_number)} {at.roman_numerals[ion_stage]} to '
+                  f'{at.roman_numerals[ion_stage - 1]}')
 
         listT_e = []
         list_rrc = []
@@ -856,7 +857,8 @@ def main(args=None, argsraw=None, **kwargs):
         modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
         estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
     else:
-        estimators = read_estimators(modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included))
+        estimators = at.estimators.read_estimators(
+            modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included))
 
     for ts in reversed(timesteps_included):
         tswithdata = [ts for (ts, mgi) in estimators.keys()]

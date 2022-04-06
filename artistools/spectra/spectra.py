@@ -221,8 +221,8 @@ def get_spectrum_from_packets(
              betafactor=betafactor, c_cgs=c_cgs, c_ang_s=c_ang_s),
         array_lambda, array_lambdabinedges, use_comovingframe=use_comovingframe, getpacketcount=getpacketcount,
         betafactor=betafactor)
-    if at.num_processes > 1:
-        with multiprocessing.Pool(processes=at.num_processes) as pool:
+    if at.config['num_processes'] > 1:
+        with multiprocessing.Pool(processes=at.config['num_processes']) as pool:
             results = pool.map(processfile, packetsfiles)
             pool.close()
             pool.join()
@@ -510,7 +510,7 @@ def get_flux_contributions(
 
     arr_tmid = at.get_timestep_times_float(modelpath, loc='mid')
     arr_tdelta = at.get_timestep_times_float(modelpath, loc='delta')
-    arraynu = at.get_nu_grid(modelpath)
+    arraynu = at.misc.get_nu_grid(modelpath)
     arraylambda = const.c.to('angstrom/s').value / arraynu
     if not Path(modelpath, 'compositiondata.txt').is_file():
         print('WARNING: compositiondata.txt not found. Using output*.txt instead')
@@ -969,9 +969,9 @@ def get_reference_spectrum(filename):
     if Path(filename).is_file():
         filepath = Path(filename)
     else:
-        filepath = Path(at.PYDIR, 'data', 'refspectra', filename)
+        filepath = Path(at.config['path_artistools_dir'], 'data', 'refspectra', filename)
 
-    metadata = at.get_file_metadata(filepath)
+    metadata = at.misc.get_file_metadata(filepath)
 
     flambdaindex = metadata.get('f_lambda_columnindex', 1)
 

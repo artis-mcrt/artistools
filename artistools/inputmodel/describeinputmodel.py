@@ -7,8 +7,7 @@ import math
 import numpy as np
 # import pandas as pd
 
-from artistools import CustomArgHelpFormatter, get_atomic_number
-import artistools.inputmodel
+import artistools as at
 
 
 def addargs(parser):
@@ -29,7 +28,7 @@ def addargs(parser):
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=CustomArgHelpFormatter,
+            formatter_class=at.CustomArgHelpFormatter,
             description='Scale the velocity of an ARTIS model, keeping mass constant and saving back to ARTIS format.')
 
         addargs(parser)
@@ -37,7 +36,7 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     print(f'Reading {args.inputfile}')
-    dfmodel, t_model_init_days, vmax = artistools.inputmodel.get_modeldata(
+    dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata(
         args.inputfile, get_abundances=args.getabundances)
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
@@ -72,7 +71,7 @@ def main(args=None, argsraw=None, **kwargs):
             speciesabund_g = np.dot(dfmodel[column], dfmodel['cellmass_grams'])
 
             species_mass_msun = speciesabund_g / 1.989e33
-            atomic_number = get_atomic_number(species)
+            atomic_number = at.get_atomic_number(species)
             if species[-1].isdigit():
                 strtotiso = species.rstrip('0123456789') + '-isosum'
                 speciesmasses[strtotiso] = speciesmasses.get(strtotiso, 0.) + speciesabund_g
@@ -90,7 +89,7 @@ def main(args=None, argsraw=None, **kwargs):
     print(f'M_{"tot_iso":9s} {mass_msun_isotopes:8.5f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% of M_tot_rho, but can be < 100% if stable isotopes not tracked)')
 
     if not args.noabund:
-        for species, mass_g in sorted(speciesmasses.items(), key=lambda x: (get_atomic_number(x[0]), x[0])):
+        for species, mass_g in sorted(speciesmasses.items(), key=lambda x: (at.get_atomic_number(x[0]), x[0])):
             species_mass_msun = mass_g / 1.989e33
             massfrac = species_mass_msun / mass_msun_rho
             strcomment = ''
