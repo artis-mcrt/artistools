@@ -101,7 +101,7 @@ def get_ionrecombrates_fromfile(filename):
 def get_units_string(variable):
     if variable in variableunits:
         return f' [{variableunits[variable]}]'
-    elif variable.split('_')[0] in variableunits:
+    if variable.split('_')[0] in variableunits:
         return f' [{variableunits[variable.split("_")[0]]}]'
     return ''
 
@@ -372,7 +372,6 @@ def get_averageionisation(populations, atomic_number):
 
 
 def get_averageexcitation(modelpath, modelgridindex, timestep, atomic_number, ion_stage, T_exc):
-    import artistools.nltepops
     dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
     adata = at.atomic.get_levels(modelpath)
     ionlevels = adata.query('Z == @atomic_number and ion_stage == @ion_stage').iloc[0].levels
