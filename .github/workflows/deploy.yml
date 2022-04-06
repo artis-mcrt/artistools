@@ -25,12 +25,12 @@ jobs:
 
     - name: Publish to Test PyPI
       run: |
-        twine upload -r testpypi -u __token__ -p ${{ secrets.TESTPYPI_TOKEN }} dist/*
+        twine upload -r testpypi -u __token__ -p ${{ secrets.TESTPYPI_TOKEN }} --non-interactive dist/*
 
     - name: Publish to PyPI
       if: startsWith(github.ref, 'refs/tags')
       run: |
-        twine upload -r pypi -u __token__ -p ${{ secrets.PYPI_PASSWORD }} dist/*
+        twine upload -r pypi -u __token__ -p ${{ secrets.PYPI_PASSWORD }} --non-interactive dist/*
 
     # - name: Publish to Test PyPI
     #   uses: pypa/gh-action-pypi-publish@v1.5
