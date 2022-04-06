@@ -4,15 +4,7 @@ on: [push]
 
 jobs:
   flake8:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        # os: [ubuntu-latest, macos-latest]
-        os: [ubuntu-latest]
-        python-version: ['3.8', '3.9', '3.10']
-    env:
-      OS: ${{ matrix.os }}
-      PYTHON: ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
