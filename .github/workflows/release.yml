@@ -24,18 +24,22 @@ jobs:
         python -m build --sdist --wheel --outdir dist/ .
 
     - name: Publish to Test PyPI
-      uses: pypa/gh-action-pypi-publish@v1.5
-      with:
-        user: __token__
-        password: ${{ secrets.TESTPYPI_TOKEN }}
-        repository_url: https://test.pypi.org/
+      run: |
+        twine upload -r testpypi -u __token__ -p ${{ secrets.TESTPYPI_TOKEN }} dist/*
 
-    - name: Publish to PyPI
-      if: startsWith(github.ref, 'refs/tags')
-      uses: pypa/gh-action-pypi-publish@v1.5
-      with:
-        user: __token__
-        password: ${{ secrets.PYPI_PASSWORD }}
+    # - name: Publish to Test PyPI
+    #   uses: pypa/gh-action-pypi-publish@v1.5
+    #   with:
+    #     user: __token__
+    #     password: ${{ secrets.TESTPYPI_TOKEN }}
+    #     repository_url: https://test.pypi.org/
+    #
+    # - name: Publish to PyPI
+    #   if: startsWith(github.ref, 'refs/tags')
+    #   uses: pypa/gh-action-pypi-publish@v1.5
+    #   with:
+    #     user: __token__
+    #     password: ${{ secrets.PYPI_PASSWORD }}
 
     # - name: Build and publish
     #   env:
