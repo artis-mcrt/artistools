@@ -1,10 +1,9 @@
-import artistools as at
 from pathlib import Path
 import gzip
 import glob
 import os
 
-import artistools.estimators
+import artistools as at
 
 
 def get_atomic_composition(modelpath):

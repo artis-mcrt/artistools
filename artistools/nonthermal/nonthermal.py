@@ -772,7 +772,8 @@ def differentialsfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
             #     #     en_plus_epsilon = engrid[j]
             #     #     epsilon = en_plus_epsilon - en
             #     #     sfmatrix[i, j] -= prefactor * ar_xs_array[j] / (1 + (((epsilon - ionpot_ev) / J) ** 2))
-            #     sfmatrix[i, j_lower:j_upper] -= prefactor * ar_xs_array[j_lower:j_upper] / (1 + ((((engrid[j_lower:j_upper] - en) - ionpot_ev) / J) ** 2))
+            #     sfmatrix[i, j_lower:j_upper] -= prefactor * ar_xs_array[j_lower:j_upper] / (1 +
+            #         ((((engrid[j_lower:j_upper] - en) - ionpot_ev) / J) ** 2))
 
         if (2 * en + ionpot_ev) < engrid[-1]:
             epsilon = en + ionpot_ev

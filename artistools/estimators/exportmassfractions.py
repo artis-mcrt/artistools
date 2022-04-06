@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
 import argparse
+from pathlib import Path
+
 import numpy as np
 
-from pathlib import Path
 import artistools as at
 import artistools.estimators
 
