@@ -131,6 +131,26 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
     return griddata, t_model_days, vmax
 
 
+def read_mattia_grid_data_file(pathtogriddata):
+    # griddatfilepath = Path(pathtogriddata) / "q90_m0.01_v0.1.txt"
+    griddatfilepath = Path(pathtogriddata) / "1D_m0.01_v0.1.txt"
+
+    griddata = pd.read_csv(griddatfilepath, delim_whitespace=True, comment='#', skiprows=1)
+    with open(griddatfilepath, 'r') as gridfile:
+        t_model = float(gridfile.readline())
+        print(f't_model {t_model} seconds')
+    xmax = max(griddata['posx'])
+    vmax = xmax / t_model  # cm/s
+    t_model = t_model / (24. * 3600) # days
+    ngrid = len(griddata['posx'])
+
+    griddata['rho'][griddata['rho'] <= 1e-50] = 0.
+    inputcellid = np.arange(1, ngrid+1)
+    griddata['inputcellid'] = inputcellid
+
+    return griddata, t_model, vmax
+
+
 def mirror_model_in_axis(griddata):
     grid = round(len(griddata) ** (1. / 3.))
 
