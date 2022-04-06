@@ -517,7 +517,7 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timestepslist, modelpat
                 break
 
     xlist, mgilist_out, timestepslist_out = zip(
-        *[xmt for xmt in sorted(zip(xlist, mgilist_out, timestepslist_out))])
+        *list(sorted(zip(xlist, mgilist_out, timestepslist_out))))
 
     assert len(xlist) == len(mgilist_out) == len(timestepslist_out)
 
@@ -874,31 +874,31 @@ def main(args=None, argsraw=None, **kwargs):
         plotlist = args.plotlist
     else:
         plotlist = [
-            [['initabundances', ['Fe', 'Ni_stable', 'Ni_56']]],
-            ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
-             ['_yscale', 'linear']],
-            ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff',
-             ['_yscale', 'linear']],
+            # [['initabundances', ['Fe', 'Ni_stable', 'Ni_56']]],
+            # ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
+            #  ['_yscale', 'linear']],
+            # ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff',
+            #  ['_yscale', 'linear']],
             # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
             # ['heating_gamma/gamma_dep'],
             # ['nne'],
-            ['W', 'TR', 'Te', 'TJ',
+            ['TR', 'Te', 'TJ',
              ['_yscale', 'linear']],
             # ['Te'],
             # [['averageionisation', ['Fe', 'Ni']]],
             # [['averageexcitation', ['Fe II', 'Fe III']]],
             # [['populations', ['Sr89', 'Sr90', 'Sr91', 'Sr92', 'Sr93', 'Sr94', 'Sr95']],
             #  ['_ymin', 1e-3], ['_ymax', 5]],
-            # [['populations', ['Fe', 'Co', 'Ni', 'Sr']]],
+            [['populations', ['Fe', 'Co', 'Ni', 'Sr', 'Nd', 'U']]],
             # [['populations', ['He I', 'He II', 'He III']]],
             # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
             # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
             # [['populations', ['Ne I', 'Ne II', 'Ne III', 'Ne IV', 'Ne V']]],
             # [['populations', ['Si I', 'Si II', 'Si III', 'Si IV', 'Si V']]],
             # [['populations', ['Cr I', 'Cr II', 'Cr III', 'Cr IV', 'Cr V']]],
-            [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Fe VI', 'Fe VII', 'Fe VIII']]],
-            [['populations', ['Co I', 'Co II', 'Co III', 'Co IV', 'Co V', 'Co VI', 'Co VII']]],
-            [['populations', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
+            # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Fe VI', 'Fe VII', 'Fe VIII']]],
+            # [['populations', ['Co I', 'Co II', 'Co III', 'Co IV', 'Co V', 'Co VI', 'Co VII']]],
+            # [['populations', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
             # [['populations', ['Fe II', 'Fe III', 'Co II', 'Co III', 'Ni II', 'Ni III']]],
             # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
             # [['RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V']]],
