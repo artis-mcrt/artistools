@@ -4,13 +4,13 @@
 """Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code."""
 
 import datetime
+import sys
 
 from pathlib import Path
 from setuptools import find_packages, setup
 
-# sys.path.append('artistools/')
-# from commands import console_scripts
-from artistools.commands import console_scripts, completioncommands
+sys.path.append('artistools/')
+from commands import console_scripts, completioncommands
 
 
 # Add the following lines to your .zshrc file to get command completion:
