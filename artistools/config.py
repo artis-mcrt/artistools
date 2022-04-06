@@ -1,5 +1,5 @@
 import subprocess
-# import psutil
+import psutil
 from pathlib import Path
 
 # num_processes = 1
@@ -9,8 +9,11 @@ try:
     num_processes = int(subprocess.run(
         ['sysctl', '-n', 'hw.perflevel0.logicalcpu'], capture_output=True, text=True, check=True).stdout)
 except subprocess.CalledProcessError:
-    num_processes = int(subprocess.run(
-        ['sysctl', '-n', 'hw.logicalcpu'], capture_output=True, text=True, check=True).stdout)
+    try:
+        num_processes = int(subprocess.run(
+            ['sysctl', '-n', 'hw.logicalcpu'], capture_output=True, text=True, check=True).stdout)
+    except subprocess.CalledProcessError:
+        num_processes = max(1, int(psutil.cpu_count(logical=False)) - 2)
 
 # print(f'Using {num_processes} processes')
 
