@@ -22,21 +22,22 @@ jobs:
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v3
       with:
+        cache: 'pip'
         python-version: ${{ matrix.python-version }}
 
-    - name: Get pip cache dir
-      id: pip-cache
-      run: |
-        pip list --format=freeze > piplist.txt
-        echo "::set-output name=dir::$(pip cache dir)"
-
-    - name: Cache pip
-      uses: actions/cache@v3
-      with:
-        path: ${{ steps.pip-cache.outputs.dir }}
-        key: ${{ runner.os }}-${{ runner.python-version }}-pip-${{ hashFiles('piplist.txt') }}
-        restore-keys: |
-         ${{ runner.os }}-${{ runner.python-version }}-pip-
+    # - name: Get pip cache dir
+    #   id: pip-cache
+    #   run: |
+    #     pip list --format=freeze > piplist.txt
+    #     echo "::set-output name=dir::$(pip cache dir)"
+    #
+    # - name: Cache pip
+    #   uses: actions/cache@v3
+    #   with:
+    #     path: ${{ steps.pip-cache.outputs.dir }}
+    #     key: ${{ runner.os }}-${{ runner.python-version }}-pip-${{ hashFiles('piplist.txt') }}
+    #     restore-keys: |
+    #      ${{ runner.os }}-${{ runner.python-version }}-pip-
 
     - name: Install dependencies
       run: |
