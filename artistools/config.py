@@ -4,7 +4,7 @@ from pathlib import Path
 
 # num_processes = 1
 # count the cores (excluding the efficiency cores on ARM)
-num_processes = int(subprocess.check_output(['sysctl', '-n', 'hw.perflevel0.logicalcpu']))
+num_processes = int(subprocess.run(['sysctl', '-n', 'hw.perflevel0.logicalcpu'], stdout=subprocess.PIPE).stdout)
 # print(f'Using {num_processes} processes')
 
 enable_diskcache = True
