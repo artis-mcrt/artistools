@@ -141,7 +141,7 @@ def read_mattia_grid_data_file(pathtogriddata):
         print(f't_model {t_model} seconds')
     xmax = max(griddata['posx'])
     vmax = xmax / t_model  # cm/s
-    t_model = t_model / (24. * 3600) # days
+    t_model = t_model / (24. * 3600)  # days
     ngrid = len(griddata['posx'])
 
     griddata['rho'][griddata['rho'] <= 1e-50] = 0.
