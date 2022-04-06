@@ -5,8 +5,12 @@ from pathlib import Path
 # num_processes = 1
 
 # count the cores (excluding the efficiency cores on ARM)
-num_processes = int(subprocess.run(
-    ['sysctl', '-n', 'hw.perflevel0.logicalcpu'], capture_output=True, text=True, check=True).stdout)
+try:
+    num_processes = int(subprocess.run(
+        ['sysctl', '-n', 'hw.perflevel0.logicalcpu'], capture_output=True, text=True, check=True).stdout)
+except subprocess.CalledProcessError:
+    num_processes = int(subprocess.run(
+        ['sysctl', '-n', 'hw.logicalcpu'], capture_output=True, text=True, check=True).stdout)
 
 # print(f'Using {num_processes} processes')
 
