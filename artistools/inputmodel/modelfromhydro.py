@@ -240,7 +240,10 @@ def makemodelfromgriddata(
     if 'Q' in dfmodel and args.makeenergyinputfiles:
         at.inputmodel.energyinputfiles.write_Q_energy_file(outputpath, dfmodel)
 
-    dfgridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
+    if os.path.isfile(Path(outputpath, 'gridcontributions.txt')):
+        dfgridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
+    else:
+        dfgridcontributions = None
 
     if getabundances:
         dfmodel, dfelabundances, dfgridcontributions = (
