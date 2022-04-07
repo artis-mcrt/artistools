@@ -1,4 +1,4 @@
-name: Upload Python Package to PyPI
+name: Upload Package to TestPyPI/PyPI
 
 on:
   push:
@@ -15,13 +15,14 @@ jobs:
     - name: Install dependencies
       run: |
         python3 -m pip install --upgrade pip
-        python3 -m pip install -r requirements.txt
+        # python3 -m pip install -r requirements.txt
         python3 -m pip install setuptools wheel twine build
 
     - name: Build
       run: |
         python3 setup.py sdist bdist_wheel
         # python -m build --sdist --wheel --outdir dist/ .
+        twine check dist/*
 
     - name: Publish to Test PyPI
       run: |
@@ -31,17 +32,3 @@ jobs:
       if: startsWith(github.ref, 'refs/tags')
       run: |
         twine upload -r pypi -u __token__ -p ${{ secrets.PYPI_PASSWORD }} --non-interactive dist/*
-
-    # - name: Publish to Test PyPI
-    #   uses: pypa/gh-action-pypi-publish@v1.5
-    #   with:
-    #     user: __token__
-    #     password: ${{ secrets.TESTPYPI_TOKEN }}
-    #     repository_url: https://test.pypi.org/
-    #
-    # - name: Publish to PyPI
-    #   if: startsWith(github.ref, 'refs/tags')
-    #   uses: pypa/gh-action-pypi-publish@v1.5
-    #   with:
-    #     user: __token__
-    #     password: ${{ secrets.PYPI_PASSWORD }}
