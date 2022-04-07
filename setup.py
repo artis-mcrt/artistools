@@ -6,6 +6,7 @@ import sys
 
 from pathlib import Path
 from setuptools import find_packages, setup
+from setuptools_scm import get_version
 
 sys.path.append('artistools/')
 from commands import console_scripts, completioncommands
@@ -21,7 +22,7 @@ with open("artistoolscompletions.sh", "w") as f:
 
 setup(
     name="artistools",
-    # version=version,
+    version=get_version(),
     use_scm_version=True,
     author="ARTIS Collaboration",
     author_email="luke.shingles@gmail.com",
