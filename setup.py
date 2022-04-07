@@ -3,14 +3,11 @@
 # coding: utf-8
 """Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code."""
 
-import datetime
-import sys
-
 from pathlib import Path
 from setuptools import find_packages, setup
 
-sys.path.append('artistools/')
-from commands import console_scripts, completioncommands
+# sys.path.append('artistools/')
+from artistools.commands import console_scripts, completioncommands
 
 
 # Add the following lines to your .zshrc file to get command completion:
@@ -21,17 +18,10 @@ with open('artistoolscompletions.sh', 'w') as f:
     f.write('\n'.join(completioncommands))
 
 
-def get_version():
-    utcnow = datetime.datetime.utcnow()
-    strversion = f'{utcnow.year}.{utcnow.month}.{utcnow.day}.'
-    strversion += f'{utcnow.hour:02d}{utcnow.minute:02d}{utcnow.second:02d}'
-    # strversion += '.dev'
-    return strversion
-
-
 setup(
     name="artistools",
-    version=get_version(),
+    # version=version,
+    use_scm_version=True,
     author="ARTIS Collaboration",
     author_email="luke.shingles@gmail.com",
     packages=find_packages(),
@@ -47,6 +37,6 @@ setup(
     scripts=['artistoolscompletions.sh'],
     python_requires='>==3.6',
     # test_suite='tests',
-    setup_requires=['pytest', 'pytest-runner', 'pytest-cov'],
+    setup_requires=["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"],
     tests_require=['pytest', 'pytest-runner', 'pytest-cov'],
     include_package_data=True)

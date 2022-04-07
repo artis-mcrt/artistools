@@ -74,5 +74,5 @@ console_scripts.append('artistools = artistools:main')
 
 completioncommands = []
 for command in commandlist.keys():
-    result = subprocess.run(['register-python-argcomplete', command], stdout=subprocess.PIPE)
-    completioncommands.append(result.stdout.decode('utf-8') + '\n')
+    result = subprocess.run(['register-python-argcomplete', command], capture_output=True, text=True).stdout
+    completioncommands.append(result + '\n')
