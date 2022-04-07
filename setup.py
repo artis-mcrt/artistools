@@ -7,7 +7,7 @@ from pathlib import Path
 from setuptools import find_packages, setup
 
 # sys.path.append('artistools/')
-from artistools.commands import console_scripts, completioncommands
+from commands import console_scripts, completioncommands
 
 
 # Add the following lines to your .zshrc file to get command completion:
