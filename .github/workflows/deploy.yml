@@ -11,7 +11,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-      run: git fetch --prune --unshallow
+      with:
+        fetch-depth: 0
     - uses: actions/setup-python@v3
       with:
         cache: 'pip'
