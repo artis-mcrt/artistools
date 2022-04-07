@@ -1,6 +1,7 @@
-name: Build and test
+name: CI
 
-on: [push]
+on:
+  push:
 
 jobs:
   flake8:

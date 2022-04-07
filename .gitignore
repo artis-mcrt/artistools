@@ -60,3 +60,5 @@ artistools/data/lightcurves/SNsample/*.txt
 plottingscripts/*
 plottingscripts/
 artistoolscompletions.sh
+
+_version.py
