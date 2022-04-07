@@ -17,11 +17,12 @@ jobs:
     - name: Install dependencies
       run: |
         python3 -m pip install --upgrade pip
-        # python3 -m pip install -r requirements.txt
-        python3 -m pip install setuptools wheel twine build
+        python3 -m pip install -r requirements.txt
+        python3 -m pip install setuptools setuptools_scm wheel twine build
 
     - name: Build
       run: |
+        python3 -m setuptools_scm
         python3 setup.py sdist bdist_wheel
         # python -m build --sdist --wheel --outdir dist/ .
         twine check dist/*
