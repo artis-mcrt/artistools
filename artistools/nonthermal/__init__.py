@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Artistools - spectra related functions."""
 
-from artistools.nonthermal.nonthermal import (
+from artistools.nonthermal._nonthermal_core import (
     Psecondary,
     analyse_ntspectrum,
     ar_xs,
