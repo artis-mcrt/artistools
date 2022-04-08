@@ -1,3 +1,10 @@
+"""
+File readers for Blondin et al. code comparison file formats
+The model paths are not real file system paths, but take a form like this:
+codecomparison/[modelname]/[codename]
+
+e.g., codecomparison/DDC10/artisnebular
+"""
 import math
 
 import artistools as at

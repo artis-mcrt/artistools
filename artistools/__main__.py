@@ -4,7 +4,6 @@ import importlib
 
 import artistools.commands
 
-
 def addargs(parser):
     pass
 

@@ -9,13 +9,14 @@ from setuptools import find_packages, setup
 from setuptools_scm import get_version
 
 sys.path.append('artistools/')
-from commands import console_scripts, completioncommands
+from commands import get_console_scripts, get_completioncommands
 
 
 # Add the following lines to your .zshrc file to get command completion:
 # autoload -U bashcompinit
 # bashcompinit
 # source artistoolscompletions.sh
+completioncommands = get_completioncommands()
 with open("artistoolscompletions.sh", "w") as f:
     f.write("\n".join(completioncommands))
 
@@ -34,7 +35,7 @@ setup(
     long_description_content_type="text/markdown",
     install_requires=(Path(__file__).absolute().parent / "requirements.txt").open("rt").read().splitlines(),
     entry_points={
-        "console_scripts": console_scripts,
+        "console_scripts": get_console_scripts(),
     },
     scripts=["artistoolscompletions.sh"],
     python_requires=">==3.6",
