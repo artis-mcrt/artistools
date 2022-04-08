@@ -5,7 +5,6 @@ A collection of plotting, analysis, and file format conversion tools
 for the ARTIS radiative transfer code.
 """
 
-import sys
 from artistools.configuration import config
 from artistools.misc import (
     AppendPath,
@@ -14,8 +13,6 @@ from artistools.misc import (
     decode_roman_numeral,
     diskcache,
     dot,
-    elsymbols,
-    ExponentLabelFormatter,
     firstexisting,
     flatten_list,
     gather_res_data,
@@ -26,6 +23,7 @@ from artistools.misc import (
     get_composition_data_from_outputfile,
     get_deposition,
     get_elsymbol,
+    get_elsymbolslist,
     get_filterfunc,
     get_grid_mapping,
     get_model_name,
@@ -60,6 +58,7 @@ from artistools.misc import (
 
 import artistools.atomic
 import artistools.codecomparison
+import artistools.commands
 import artistools.deposition
 import artistools.estimators
 import artistools.inputmodel
@@ -71,10 +70,6 @@ import artistools.packets
 import artistools.radfield
 import artistools.spectra
 import artistools.transitions
-import artistools.plottools
+# import artistools.plottools
 
 from artistools.__main__ import main, addargs
-
-
-if sys.version_info < (3,):
-    print("Python 2 not supported")

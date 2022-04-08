@@ -49,9 +49,8 @@ def main(args=None, argsraw=None, **kwargs):
     if os.path.isdir(args.outputfile):
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
-    try:
-        atomic_number = next(Z for Z, elsymb in enumerate(at.elsymbols) if elsymb.lower() == args.element.lower())
-    except StopIteration:
+    atomic_number = at.get_atomic_number(args.element.lower())
+    if atomic_number < 1:
         print(f"Could not find element '{args.element}'")
         return
 

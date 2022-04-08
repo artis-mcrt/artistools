@@ -455,6 +455,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 else:
                     ax.plot(time, brightness_in_mag, linewidth=3.5, **plotkwargs)  # color=color, linestyle=linestyle)
 
+    import artistools.plottools
     ax = at.plottools.set_axis_properties(ax, args)
     fig, ax = set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_name=band_name)
     ax = set_lightcurveplot_legend(ax, args)

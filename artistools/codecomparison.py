@@ -11,7 +11,6 @@ import artistools as at
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from astropy import units as u
 
 
 def get_timestep_times_float(modelpath, loc='mid'):
@@ -131,7 +130,7 @@ def read_reference_estimators(modelpath, modelgridindex=None, timestep=None):
                     iontuples = []
                     ion_startnumber = None
                     for ionstr in row[1:]:
-                        atomic_number = at.elsymbols.index(ionstr.strip().rstrip(' 0123456789').title())
+                        atomic_number = at.get_atomic_number(ionstr.strip().rstrip(' 0123456789').title())
                         ion_number = int(ionstr.lstrip('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ '))
 
                         # there is unfortunately an inconsistency between codes for
@@ -203,6 +202,7 @@ def plot_spectrum(modelpath, timedays, ax, **plotkwargs):
     # print(dfspectra[['lambda', timedays_found]])
     label = str(modelpath).lstrip('_') + f" {timedays_found}d"
 
-    arr_flux = dfspectra[dfspectra.columns[timeindex + 1]] / 4 / math.pi / (u.megaparsec.to('cm') ** 2)
+    megaparsec_to_cm = 3.085677581491367e+24
+    arr_flux = dfspectra[dfspectra.columns[timeindex + 1]] / 4 / math.pi / (megaparsec_to_cm ** 2)
 
     ax.plot(dfspectra['lambda'], arr_flux, label=label, **plotkwargs)

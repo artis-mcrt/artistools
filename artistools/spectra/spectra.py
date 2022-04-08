@@ -709,7 +709,7 @@ def get_flux_contributions_from_packets(
     import artistools.packets
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
 
-    linelist = at.get_linelist(modelpath)
+    linelist = at.get_linelist(modelpath=modelpath, returntype='dict')
 
     energysum_spectrum_emission_total = np.zeros_like(array_lambda, dtype=float)
     array_energysum_spectra = {}

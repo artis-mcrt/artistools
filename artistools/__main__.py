@@ -1,8 +1,4 @@
-import argcomplete
-import argparse
-import importlib
-
-import artistools.commands
+#!/usr/bin/env python3
 
 
 def addargs(parser):
@@ -11,6 +7,12 @@ def addargs(parser):
 
 def main(argsraw=None):
     """Show a list of available artistools commands."""
+
+    import argcomplete
+    import argparse
+    import importlib
+
+    import artistools.commands
 
     parser = argparse.ArgumentParser()
     parser.set_defaults(func=None)

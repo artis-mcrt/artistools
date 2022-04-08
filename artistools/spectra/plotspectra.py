@@ -638,6 +638,7 @@ def make_plot(args):
         nrows = len(args.timedayslist)
     else:
         nrows = 1 + len(densityplotyvars)
+
     fig, axes = plt.subplots(
         nrows=nrows, ncols=1, sharey=False, sharex=True, squeeze=True,
         figsize=(args.figscale * at.config['figwidth'], args.figscale * at.config['figwidth'] * (0.25 + nrows * 0.4)),
@@ -733,7 +734,8 @@ def make_plot(args):
         # ax.xaxis.set_major_formatter(plt.NullFormatter())
 
         if '{' in ax.get_ylabel() and not args.logscale:
-            ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True, decimalplaces=1))
+            ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(
+                ax.get_ylabel(), useMathText=True, decimalplaces=1))
 
         if args.hidexticklabels:
             ax.tick_params(axis='x', which='both',

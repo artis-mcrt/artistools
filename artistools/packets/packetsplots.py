@@ -25,6 +25,7 @@ def make_2d_packets_plot_imshow(modelpath, timestep):
                     hist[x, y, z] = None
                 i += 1
 
+    import artistools.plottools
     data, extent = at.plottools.imshow_init_for_artis_grid(grid, vmax_cms, hist,
                                                            plot_axes='zx')
 
