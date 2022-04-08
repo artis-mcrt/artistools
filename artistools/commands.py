@@ -67,12 +67,18 @@ commandlist = {
     'artistools-writecodecomparisondata': ('artistools.writecomparisondata', 'main'),
 }
 
-console_scripts = [f'{command} = {submodulename}:{funcname}'
-                   for command, (submodulename, funcname) in commandlist.items()]
-console_scripts.append('at = artistools:main')
-console_scripts.append('artistools = artistools:main')
 
-completioncommands = []
-for command in commandlist.keys():
-    result = subprocess.run(['register-python-argcomplete', command], capture_output=True, text=True).stdout
-    completioncommands.append(result + '\n')
+def get_console_scripts():
+    console_scripts = [f'{command} = {submodulename}:{funcname}'
+                       for command, (submodulename, funcname) in commandlist.items()]
+    console_scripts.append('at = artistools:main')
+    console_scripts.append('artistools = artistools:main')
+    return console_scripts
+
+
+def get_completioncommands():
+    completioncommands = []
+    for command in commandlist.keys():
+        result = subprocess.run(['register-python-argcomplete', command], capture_output=True, text=True).stdout
+        completioncommands.append(result + '\n')
+    return completioncommands
