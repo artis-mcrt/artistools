@@ -69,14 +69,15 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
         abundances = [0. for _ in range(31)]
 
+        elsymbols = at.get_elsymbolslist()
         for col in datain.columns:
             atomic_number = -1
-            if col in at.elsymbols:
-                atomic_number = at.elsymbols.index(col)
+            if col in elsymbols:
+                atomic_number = elsymbols.index(col)
                 abundances[atomic_number] = shell[col]
-            elif col.rstrip('0123456789') in at.elsymbols and col.rstrip('0123456789') not in datain.columns:
+            elif col.rstrip('0123456789') in elsymbols and col.rstrip('0123456789') not in datain.columns:
                 # specific nuclide abundance
-                atomic_number = at.elsymbols.index(col.rstrip('0123456789'))
+                atomic_number = elsymbols.index(col.rstrip('0123456789'))
                 abundances[atomic_number] += shell[col]
 
         X_fegroup = sum(abundances[26:])

@@ -405,7 +405,7 @@ def main(args=None, argsraw=None, **kwargs):
         ('Pa', 233),
         ('U', 235),
     ]
-    arr_el_a.sort(key=lambda x: (at.elsymbols.index(x[0]), -x[1]))
+    arr_el_a.sort(key=lambda x: (at.get_atomic_number(x[0]), -x[1]))
 
     modelpath = Path(args.modelpath)
     if args.modelgridindex is None:

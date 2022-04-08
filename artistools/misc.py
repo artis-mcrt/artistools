@@ -3,19 +3,16 @@
 import argparse
 from functools import lru_cache
 import gzip
-import hashlib
 # import inspect
 import lzma
 import math
 import os.path
-import pickle
 import sys
 import time
 from collections import namedtuple
 from itertools import chain
 from functools import wraps
 # from functools import partial
-import matplotlib.ticker as ticker
 import matplotlib.pyplot as plt
 from pathlib import Path
 from typing import Iterable
@@ -23,16 +20,10 @@ from typing import Iterable
 # import scipy.signal
 import numpy as np
 import pandas as pd
-from astropy import units as u
-from astropy import constants as const
 
-from artistools.configuration import config as atconfig
-from artistools.inputmodel.inputmodel import get_modeldata
-PYDIR = os.path.dirname(os.path.abspath(__file__))
+import artistools as at
 
-plt.style.use('file://' + PYDIR + '/matplotlibrc')
-
-elsymbols = ['n'] + list(pd.read_csv(os.path.join(atconfig['path_datadir'], 'elements.csv'))['symbol'].values)
+plt.style.use('file://' + str(at.config['path_artistools_dir'] / 'matplotlibrc'))
 
 roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
                   'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX')
@@ -40,6 +31,9 @@ roman_numerals = ('', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX',
 
 def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savezipped=False,
               funcdepends=None, funcversion=None):
+    import pickle
+    import hashlib
+
     def printopt(*args, **kwargs):
         if not quiet:
             print(*args, **kwargs)
@@ -196,7 +190,7 @@ def diskcache(ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savez
         # sourcehash_strhex = sourcehash.hexdigest()
         str_funcversion = f'funcversion_{funcversion}' if funcversion else 'funcversion_none'
 
-        return wrapper if atconfig['enable_diskcache'] else func
+        return wrapper if at.config['enable_diskcache'] else func
 
     return diskcacheinner
 
@@ -229,49 +223,6 @@ class AppendPath(argparse.Action):
                     pathlist.append(Path(pathstr))
         else:
             setattr(args, self.dest, Path(values))
-
-
-class ExponentLabelFormatter(ticker.ScalarFormatter):
-    """Formatter to move the 'x10^x' offset text into the axis label."""
-
-    def __init__(self, labeltemplate, useMathText=True, decimalplaces=None):
-        self.set_labeltemplate(labeltemplate)
-        self.decimalplaces = decimalplaces
-        super().__init__(useOffset=True, useMathText=useMathText)
-        # ticker.ScalarFormatter.__init__(self, useOffset=useOffset, useMathText=useMathText)
-
-    def _set_formatted_label_text(self):
-        # or use self.orderOfMagnitude
-        stroffset = self.get_offset().replace(r'$\times', '$') + ' '
-        strnewlabel = self.labeltemplate.format(stroffset)
-        self.axis.set_label_text(strnewlabel)
-        assert(self.offset == 0)
-        self.axis.offsetText.set_visible(False)
-
-    def set_labeltemplate(self, labeltemplate):
-        assert '{' in labeltemplate
-        self.labeltemplate = labeltemplate
-
-    def set_locs(self, locs):
-        if self.decimalplaces is not None:
-            self.format = '%1.' + str(self.decimalplaces) + 'f'
-            if self._usetex:
-                self.format = '$%s$' % self.format
-            elif self._useMathText:
-                self.format = '$%s$' % ('\\mathdefault{%s}' % self.format)
-        super().set_locs(locs)
-
-        if self.decimalplaces is not None:
-            # rounding the tick labels will make the locations incorrect unless we round these too
-            newlocs = [float(('%1.' + str(self.decimalplaces) + 'f') % (x / (10 ** self.orderOfMagnitude)))
-                       * (10 ** self.orderOfMagnitude) for x in self.locs]
-            super().set_locs(newlocs)
-
-        self._set_formatted_label_text()
-
-    def set_axis(self, axis):
-        super().set_axis(axis)
-        self._set_formatted_label_text()
 
 
 def make_namedtuple(typename, **fields):
@@ -421,8 +372,9 @@ def get_grid_mapping(modelpath):
 
 def get_wid_init_at_tmin(modelpath):
     # cell width in cm at time tmin
-    tmin = get_timestep_times_float(modelpath, loc='start')[0] * u.day.to('s')
-    _, _, vmax = get_modeldata(modelpath)
+    day_to_sec = 86400
+    tmin = get_timestep_times_float(modelpath, loc='start')[0] * day_to_sec
+    _, _, vmax = at.get_modeldata(modelpath)
 
     rmax = vmax * tmin
 
@@ -436,7 +388,7 @@ def get_wid_init_at_tmin(modelpath):
 def get_wid_init_at_tmodel(modelpath=None, ngridpoints=None, t_model_days=None, xmax=None):
     if ngridpoints is None or t_model_days is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
-        dfmodel, t_model_days, vmax = get_modeldata(modelpath)
+        dfmodel, t_model_days, vmax = at.get_modeldata(modelpath)
         ngridpoints = len(dfmodel)
         xmax = vmax * t_model_days * (24 * 60 * 60)
 
@@ -689,6 +641,14 @@ def get_z_a_nucname(nucname):
     return z, a
 
 
+@lru_cache(maxsize=1)
+def get_elsymbolslist():
+    elsymbols = ['n'] + list(pd.read_csv(
+        at.config['path_datadir'] / 'elements.csv', usecols=['symbol'])['symbol'].values)
+
+    return elsymbols
+
+
 def get_atomic_number(elsymbol):
     assert elsymbol is not None
     if elsymbol.startswith('X_'):
@@ -696,8 +656,9 @@ def get_atomic_number(elsymbol):
 
     elsymbol = elsymbol.split('_')[0].split('-')[0].rstrip('0123456789')
 
-    if elsymbol.title() in elsymbols:
-        return elsymbols.index(elsymbol.title())
+    if elsymbol.title() in get_elsymbolslist():
+        return get_elsymbolslist().index(elsymbol.title())
+
     return -1
 
 
@@ -708,15 +669,15 @@ def decode_roman_numeral(strin):
 
 
 def get_elsymbol(atomic_number):
-    return elsymbols[atomic_number]
+    return get_elsymbolslist()[atomic_number]
 
 
 @lru_cache(maxsize=16)
 def get_ionstring(atomic_number, ionstage, spectral=True, nospace=False):
     if ionstage == 'ALL' or ionstage is None:
-        return f'{elsymbols[atomic_number]}'
+        return f'{get_elsymbol(atomic_number)}'
     elif spectral:
-        return f"{elsymbols[atomic_number]}{' ' if not nospace else ''}{roman_numerals[ionstage]}"
+        return f"{get_elsymbol(atomic_number)}{' ' if not nospace else ''}{roman_numerals[ionstage]}"
     else:
         # ion notion e.g. Co+, Fe2+
         if ionstage > 2:
@@ -725,7 +686,7 @@ def get_ionstring(atomic_number, ionstage, spectral=True, nospace=False):
             strcharge = r'$^{+}$'
         else:
             strcharge = ''
-        return f'{elsymbols[atomic_number]}{strcharge}'
+        return f'{get_elsymbol(atomic_number)}{strcharge}'
 
 
 # based on code from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
@@ -990,6 +951,9 @@ def get_nprocs(modelpath):
 @lru_cache(maxsize=8)
 def get_inputparams(modelpath):
     """Return parameters specified in input.txt."""
+    from astropy import units as u
+    from astropy import constants as const
+
     params = {}
     with Path(modelpath, 'input.txt').open('r') as inputfile:
         params['pre_zseed'] = int(readnoncommentline(inputfile).split('#')[0])

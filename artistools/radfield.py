@@ -16,7 +16,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 # import matplotlib.patches as mpatches
 
 import artistools as at
@@ -674,10 +673,12 @@ def plot_celltimestep(
 
     axis.set_xlabel(r'Wavelength ($\mathrm{{\AA}}$)')
     axis.set_ylabel(r'J$_\lambda$ [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]')
+    import matplotlib.ticker as ticker
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
     axis.set_xlim(left=xmin, right=xmax)
     axis.set_ylim(bottom=0.0, top=ymax)
-    axis.yaxis.set_major_formatter(at.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))
+    import artistools.plottools
+    axis.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))
 
     axis.legend(loc='best', handlelength=2, frameon=False, numpoints=1, fontsize=9)
 

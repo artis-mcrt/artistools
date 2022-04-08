@@ -1,5 +1,49 @@
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import numpy as np
+
+
+class ExponentLabelFormatter(ticker.ScalarFormatter):
+    """Formatter to move the 'x10^x' offset text into the axis label."""
+
+    def __init__(self, labeltemplate, useMathText=True, decimalplaces=None):
+        self.set_labeltemplate(labeltemplate)
+        self.decimalplaces = decimalplaces
+        super().__init__(useOffset=True, useMathText=useMathText)
+        # ticker.ScalarFormatter.__init__(self, useOffset=useOffset, useMathText=useMathText)
+
+    def _set_formatted_label_text(self):
+        # or use self.orderOfMagnitude
+        stroffset = self.get_offset().replace(r'$\times', '$') + ' '
+        strnewlabel = self.labeltemplate.format(stroffset)
+        self.axis.set_label_text(strnewlabel)
+        assert(self.offset == 0)
+        self.axis.offsetText.set_visible(False)
+
+    def set_labeltemplate(self, labeltemplate):
+        assert '{' in labeltemplate
+        self.labeltemplate = labeltemplate
+
+    def set_locs(self, locs):
+        if self.decimalplaces is not None:
+            self.format = '%1.' + str(self.decimalplaces) + 'f'
+            if self._usetex:
+                self.format = '$%s$' % self.format
+            elif self._useMathText:
+                self.format = '$%s$' % ('\\mathdefault{%s}' % self.format)
+        super().set_locs(locs)
+
+        if self.decimalplaces is not None:
+            # rounding the tick labels will make the locations incorrect unless we round these too
+            newlocs = [float(('%1.' + str(self.decimalplaces) + 'f') % (x / (10 ** self.orderOfMagnitude)))
+                       * (10 ** self.orderOfMagnitude) for x in self.locs]
+            super().set_locs(newlocs)
+
+        self._set_formatted_label_text()
+
+    def set_axis(self, axis):
+        super().set_axis(axis)
+        self._set_formatted_label_text()
 
 
 def set_axis_properties(ax, args):

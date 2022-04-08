@@ -351,6 +351,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
         xlabel = r'Zone outer velocity [km s$^{-1}$]'
     ylabel = r'Level population [cm$^{-3}$]'
 
+    import artistools.plottools
     at.plottools.set_axis_labels(fig, ax, xlabel, ylabel, labelfontsize, args)
     if args.subplots:
         for plotnumber, axis in enumerate(ax):
@@ -750,13 +751,10 @@ def main(args=None, argsraw=None, **kwargs):
             atomic_number = int(el_in)
             elsymbol = at.get_elsymbol(atomic_number)
         except ValueError:
-            try:
-                elsymbol = el_in
-                atomic_number = next(
-                    Z for Z, elsymb in enumerate(at.elsymbols) if elsymb.lower() == elsymbol.lower())
-            except StopIteration:
+            elsymbol = el_in
+            atomic_number = at.get_atomic_number(el_in)
+            if atomic_number < 1:
                 print(f"Could not find element '{elsymbol}'")
-                continue
 
         make_plot(modelpath, atomic_number, ionstages_permitted,
                   mgilist, timestep, args)

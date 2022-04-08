@@ -165,12 +165,13 @@ def plot_average_ionisation_excitation(
 def plot_levelpop(
         ax, xlist, seriestype, params, timestepslist, mgilist,
         estimators, modelpath, dfalldata=None, args=None, **plotkwargs):
+    import at.plottools
     if seriestype == 'levelpopulation_dn_on_dvel':
         ax.set_ylabel('dN/dV [{}km$^{{-1}}$ s]')
-        ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))
+        ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))
     elif seriestype == 'levelpopulation':
         ax.set_ylabel('X$_{{i}}$ [{}/cm3]')
-        ax.yaxis.set_major_formatter(at.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))
+        ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))
     else:
         raise ValueError()
 
@@ -245,11 +246,11 @@ def plot_multi_ion_series(
     plotted_something = False
 
     def get_iontuple(ionstr):
-        if ionstr in at.elsymbols:
+        if ionstr in at.get_elsymbolslist():
             return (at.get_atomic_number(ionstr), 'ALL')
         elif ' ' in ionstr:
             return (at.get_atomic_number(ionstr.split(' ')[0]), at.decode_roman_numeral(ionstr.split(' ')[1]))
-        elif ionstr.rstrip('-0123456789') in at.elsymbols:
+        elif ionstr.rstrip('-0123456789') in at.get_elsymbolslist():
             atomic_number = at.get_atomic_number(ionstr.rstrip('-0123456789'))
             return (atomic_number, ionstr)
         else:

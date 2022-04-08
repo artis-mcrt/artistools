@@ -90,7 +90,7 @@ def addargs(parser):
     parser.add_argument('-vary', action='store', choices=['emin', 'emax', 'npts', 'emax,npts', 'x_e'],
                         help='Which parameter to vary')
 
-    parser.add_argument('-composition', action='store', default='artis', choices=['artis', *at.elsymbols[1:]],
+    parser.add_argument('-composition', action='store', default='artis', choices=['artis', *at.get_elsymbolslist()[1:]],
                         help='Composition comes from artis or specific an element to use')
 
     parser.add_argument('-x_e', type=float, default=2,

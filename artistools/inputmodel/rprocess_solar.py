@@ -118,7 +118,7 @@ def main(args=None, argsraw=None, **kwargs):
     }
 
     for _, row in dfsolarabund_undecayed.query('radioactive == True').iterrows():
-        rowdict[f'X_{at.elsymbols[int(row.Z)]}{int(row.A)}'] = row.massfrac
+        rowdict[f'X_{at.get_elsymbol(int(row.Z))}{int(row.A)}'] = row.massfrac
 
     modeldata = []
     for mgi, densityrow in dfdensities.iterrows():
