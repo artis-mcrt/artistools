@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from collections import namedtuple
-from scipy import linalg
 from pathlib import Path
 from math import atan
 # import numba
@@ -788,6 +787,7 @@ def solve_spencerfano_differentialform(
         ions, ionpopdict, dfpops, nne, deposition_density_ev, engrid, sourcevec, dfcollion, args,
         adata=None, noexcitation=False):
 
+    from scipy import linalg
     deltaen = engrid[1] - engrid[0]
     npts = len(engrid)
     nnetot = get_nnetot(ions, ionpopdict)
