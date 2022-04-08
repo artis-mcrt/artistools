@@ -1,3 +1,5 @@
-from artistools.estimators.plotestimators import main
+import artistools as at
+import artistools.estimators.plotestimators
 
-main()
+if __name__ == '__main__':
+    at.estimators.plotestimators.main()

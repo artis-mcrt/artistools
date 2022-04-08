@@ -1,3 +1,5 @@
-from artistools.lightcurve.plotlightcurve import main
+import artistools as at
+import artistools.lightcurve.plotlightcurve
 
-main()
+if __name__ == '__main__':
+    at.lightcurve.plotlightcurve.main()
