@@ -3,7 +3,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.integrate import quad
 import os
 
 import artistools as at
@@ -34,6 +33,7 @@ def rprocess_const_and_powerlaw():
     def integrand(t_days, t0, epsilon0, sigma, alpha, thermalisation_factor):
         return (epsilon0 * ((1/2) - (1/np.pi * np.arctan((t_days-t0)/sigma)))**alpha) * (thermalisation_factor / 0.5)
 
+    from scipy.integrate import quad
     tmin = 0.01*DAY
     tmax = 50*DAY
     t0 = 1.3  # seconds

@@ -16,8 +16,6 @@ import matplotlib.pyplot as plt
 import artistools as at
 import artistools.spectra
 
-from scipy.interpolate import interp1d
-
 
 def readfile(filepath_or_buffer, modelpath=None, args=None):
     lcdata = pd.read_csv(filepath_or_buffer, delim_whitespace=True, header=None, names=['time', 'lum', 'lum_cmf'])
@@ -96,6 +94,8 @@ def get_from_packets(modelpath, lcpath, packet_type='TYPE_ESCAPE', escape_type='
 
 def generate_band_lightcurve_data(modelpath, args, angle=None, modelnumber=None):
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
+    from scipy.interpolate import interp1d
+
     if args and args.plotvspecpol and os.path.isfile(modelpath / 'vpkt.txt'):
         print("Found vpkt.txt, using virtual packets")
         stokes_params = at.spectra.get_specpol_data(angle, modelpath)
