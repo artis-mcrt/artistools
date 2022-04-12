@@ -17,7 +17,9 @@ import artistools as at
 # import artistools.estimators
 
 
-def plot_qdot(modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis_days, arr_time_gsi_days, pdfoutpath):
+def plot_qdot(
+        modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis_days, arr_artis_ye, arr_time_gsi_days, pdfoutpath):
+
     try:
         depdata = at.get_deposition(modelpath=modelpath)
     except FileNotFoundError:
@@ -31,7 +33,7 @@ def plot_qdot(modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis
 
     arr_heat = {}
 
-    heatcols = ['hbeta', 'halpha', 'hbfis', 'hspof']  # , 'Qdot'
+    heatcols = ['hbeta', 'halpha', 'hbfis', 'hspof', 'Ye']  # , 'Qdot'
 
     for col in heatcols:
         arr_heat[col] = np.zeros_like(arr_time_gsi_days)
@@ -53,9 +55,10 @@ def plot_qdot(modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis
                 arr_heat[col] += (
                     thisparticledata[col] * cell_mass_frac * frac_of_cellmass / frac_of_cellmass_sum)
 
-    fig, axis = plt.subplots(
-        nrows=1, ncols=1, sharex=False, sharey=False, figsize=(6, 4),
+    fig, axes = plt.subplots(
+        nrows=2, ncols=1, sharex=True, sharey=False, figsize=(6, 6),
         tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0})
+    axis = axes[0]
 
     # axis.set_ylim(bottom=1e7, top=2e10)
     # axis.set_xlim(left=tstart, right=tend)
@@ -63,7 +66,7 @@ def plot_qdot(modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis
     # axis.set_xscale('log')
 
     # axis.set_xlim(left=1., right=arr_time_artis[-1])
-    axis.set_xlabel('Time [days]')
+    axes[-1].set_xlabel('Time [days]')
     axis.set_yscale('log')
     # axis.set_ylabel(f'X({strnuc})')
     axis.set_ylabel('Qdot [erg/g/s]')
@@ -83,46 +86,65 @@ def plot_qdot(modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis
     #           # marker='+', markersize=15,
     #           label='Qdot ARTIS')
 
-    axis.plot(arr_time_gsi_days, arr_heat['hbeta'],
-              linewidth=2, color='black',
-              linestyle='dashed',
-              # marker='x', markersize=8,
-              label=r'$\dot{Q}_\beta$ GSI Network')
+    axis.plot(
+        arr_time_gsi_days, arr_heat['hbeta'],
+        linewidth=2, color='black',
+        linestyle='dashed',
+        # marker='x', markersize=8,
+        label=r'$\dot{Q}_\beta$ GSI Network')
 
-    axis.plot(depdata['tmid_days'], depdata['Qdot_betaminus_ana_erg/g/s'],
-              linewidth=2, color='red',
-              linestyle='dashed',
-              # marker='+', markersize=15,
-              label=r'$\dot{Q}_\beta$ ARTIS')
+    axis.plot(
+        depdata['tmid_days'], depdata['Qdot_betaminus_ana_erg/g/s'],
+        linewidth=2, color='red',
+        linestyle='dashed',
+        # marker='+', markersize=15,
+        label=r'$\dot{Q}_\beta$ ARTIS')
 
-    axis.plot(arr_time_gsi_days, arr_heat['halpha'],
-              linewidth=2, color='black',
-              linestyle='dotted',
-              # marker='x', markersize=8,
-              label=r'$\dot{Q}_\alpha$ GSI Network')
+    axis.plot(
+        arr_time_gsi_days, arr_heat['halpha'],
+        linewidth=2, color='black',
+        linestyle='dotted',
+        # marker='x', markersize=8,
+        label=r'$\dot{Q}_\alpha$ GSI Network')
 
-    axis.plot(depdata['tmid_days'], depdata['Qdotalpha_ana_erg/g/s'],
-              linewidth=2, color='red',
-              linestyle='dotted',
-              # marker='+', markersize=15,
-              label=r'$\dot{Q}_\alpha$ ARTIS')
+    axis.plot(
+        depdata['tmid_days'], depdata['Qdotalpha_ana_erg/g/s'],
+        linewidth=2, color='red',
+        linestyle='dotted',
+        # marker='+', markersize=15,
+        label=r'$\dot{Q}_\alpha$ ARTIS')
 
-    axis.plot(arr_time_gsi_days, arr_heat['hbfis'],
-              linewidth=2,
-              linestyle='dotted',
-              # marker='x', markersize=8,
-              # color='black',
-              label=r'$\dot{Q}_{hbfis}$ GSI Network')
+    axis.plot(
+        arr_time_gsi_days, arr_heat['hbfis'],
+        linewidth=2,
+        linestyle='dotted',
+        # marker='x', markersize=8,
+        # color='black',
+        label=r'$\dot{Q}_{hbfis}$ GSI Network')
 
-    axis.plot(arr_time_gsi_days, arr_heat['hspof'],
-              linewidth=2,
-              linestyle='dotted',
-              # marker='x', markersize=8,
-              # color='black',
-              label=r'$\dot{Q}_{spof}$ GSI Network')
+    axis.plot(
+        arr_time_gsi_days, arr_heat['hspof'],
+        linewidth=2,
+        linestyle='dotted',
+        # marker='x', markersize=8,
+        # color='black',
+        label=r'$\dot{Q}_{spof}$ GSI Network')
 
-    axis.legend(loc='best', frameon=False, handlelength=1, ncol=3,
-                numpoints=1)
+    axis.legend(loc='best', frameon=False, handlelength=1, ncol=3, numpoints=1)
+
+    axes[1].plot(
+        arr_time_gsi_days, arr_heat['Ye'],
+        linewidth=2, color='black',
+        linestyle='dashed',
+        # marker='x', markersize=8,
+        label=r'Ye GSI Network')
+
+    axes[1].plot(
+        arr_time_artis_days, arr_artis_ye,
+        linewidth=2,
+        # linestyle='None',
+        # marker='+', markersize=15,
+        label='Ye ARTIS', color='red')
 
     fig.suptitle(f'{modelname}', fontsize=10)
     plt.savefig(pdfoutpath, format='pdf')
@@ -238,22 +260,24 @@ def get_particledata(arr_time_s, arr_strnuc, particleid):
 
     with at.inputmodel.rprocess_from_trajectory.open_tar_file_or_extracted(
             particleid, './Run_rprocess/energy_thermo.dat') as f:
-        dfthermo = pd.read_csv(f, delim_whitespace=True, usecols=['#count', 'time/s', 'Qdot'])
 
-        heatcols = ['Qdot']
-        heatrates_in = {col: [] for col in heatcols}
+        storecols = ['Qdot', 'Ye']
+
+        dfthermo = pd.read_csv(f, delim_whitespace=True, usecols=['#count', 'time/s', *storecols])
+
+        data_in = {col: [] for col in storecols}
         arr_time_s_source = []
         for _, row in dfthermo.iterrows():
             nstep_timesec[row['#count']] = row['time/s']
             arr_time_s_source.append(row['time/s'])
-            for col in heatcols:
+            for col in storecols:
                 try:
-                    heatrates_in[col].append(float(row[col]))
+                    data_in[col].append(float(row[col]))
                 except ValueError:
-                    heatrates_in[col].append(float(row[col].replace('-', 'e-')))
+                    data_in[col].append(float(row[col].replace('-', 'e-')))
 
-        for col in heatcols:
-            particledata[col] = np.interp(arr_time_s, arr_time_s_source, heatrates_in[col])
+        for col in storecols:
+            particledata[col] = np.interp(arr_time_s, arr_time_s_source, data_in[col])
 
     if arr_strnuc:
         arr_traj_time_s = []
@@ -285,19 +309,28 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
 
     arr_time_artis_days = []
     arr_abund_artis = {}
+    get_Ye = True
+    arr_artis_protoncount = {}
+    arr_artis_nucleoncount = {}
 
     try:
-        estimators = at.estimators.read_estimators(modelpath, modelgridindex=tuple(mgiplotlist))
-        for nts, mgi in estimators.keys():
-            if mgi not in mgiplotlist:
+        get_mgi_list = None if get_Ye else tuple(mgiplotlist)  # all cells if Ye is calculated
+        estimators = at.estimators.read_estimators(modelpath, modelgridindex=get_mgi_list)
+
+        first_mgi = None
+        for nts, mgi in sorted(estimators.keys()):
+            if mgi not in mgiplotlist and not get_Ye or estimators[(nts, mgi)]['emptycell']:
                 continue
 
+            if first_mgi is None:
+                first_mgi = mgi
             time_days = float(estimators[(nts, mgi)]['tdays'])
-            if mgi == mgiplotlist[0]:
+            if mgi == first_mgi:
                 arr_time_artis_days.append(time_days)
 
             rho_init_cgs = 10 ** dfmodel.iloc[mgi].logrho
             rho_cgs = rho_init_cgs * (t_model_init_days / time_days) ** 3
+
             for strnuc, a in zip(arr_strnuc, arr_a):
                 abund = estimators[(nts, mgi)]['populations'].get(strnuc, 0.)
                 massfrac = abund * a * MH / rho_cgs
@@ -309,6 +342,32 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
                     arr_abund_artis[mgi][strnuc] = []
 
                 arr_abund_artis[mgi][strnuc].append(massfrac)
+
+            if get_Ye:
+                if mgi not in arr_abund_artis:
+                    arr_abund_artis[mgi] = {}
+
+                if 'Ye' not in arr_abund_artis[mgi]:
+                    arr_abund_artis[mgi]['Ye'] = []
+                abund = estimators[(nts, mgi)]['populations'].get(strnuc, 0.)
+                proton_count = 0
+                nucleon_count = 0
+                for popkey, abund in estimators[(nts, mgi)]['populations'].items():
+                    if isinstance(popkey, str) and abund > 0.:
+                        if popkey.endswith('_otherstable'):
+                            # TODO: use mean molecular weight, but this is not needed for kilonova input files anyway
+                            pass
+                        else:
+                            try:
+                                z, a = at.get_z_a_nucname(popkey)
+                                arr_artis_protoncount[nts] = arr_artis_protoncount.get(nts, 0.) + z
+                                arr_artis_nucleoncount[nts] = arr_artis_nucleoncount.get(nts, 0.) + a
+
+                            except AssertionError:
+                                pass
+
+        arr_artis_ye = [
+            arr_artis_protoncount[nts] / arr_artis_nucleoncount[nts] for nts in arr_artis_protoncount.keys()]
 
     except FileNotFoundError:
         pass
@@ -356,7 +415,7 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
         particleid: data for particleid, data in (list_particledata_withabund + list_particledata_noabund)}
 
     plot_qdot(
-        modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis_days, arr_time_gsi_days,
+        modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis_days, arr_artis_ye, arr_time_gsi_days,
         pdfoutpath=Path(modelpath, 'gsinetwork_global-qdot.pdf'))
 
     for mgi in mgiplotlist:
