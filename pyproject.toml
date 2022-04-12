@@ -4,7 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
 write_to = "_version.py"
-local_scheme = 'no-local-version'
+local_scheme = "no-local-version"
 
 [tool.black]
 line-length = 120
+
+[project]
+name = "artistools"
+authors = [
+    {name = "ARTIS Collaboration", email = "luke.shingles@gmail.com"},
+]
+readme = "README.md"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+]
+requires-python = ">=3.6"
+dynamic = ["version", "description", "entry-points"]
