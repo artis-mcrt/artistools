@@ -18,7 +18,8 @@ import artistools as at
 
 
 def plot_qdot(
-        modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis_days, arr_artis_ye, arr_time_gsi_days, pdfoutpath):
+        modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis_days,
+        arr_artis_ye, arr_time_gsi_days, pdfoutpath):
 
     try:
         depdata = at.get_deposition(modelpath=modelpath)
@@ -314,7 +315,7 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
     arr_artis_nucleoncount = {}
 
     try:
-        get_mgi_list = None if get_Ye else tuple(mgiplotlist)  # all cells if Ye is calculated
+        get_mgi_list = None if get_Ye else tuple(mgiplotlist)  # all cells if Ye is calculated
         estimators = at.estimators.read_estimators(modelpath, modelgridindex=get_mgi_list)
 
         first_mgi = None
@@ -401,7 +402,8 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
     list_particleids_noabund = [
         pid for pid in dfpartcontrib.particleid.unique() if pid not in list_particleids_getabund]
     fworkernoabund = partial(get_particledata, arr_time_gsi_s, [])
-    print(f'Reading trajectory data for {len(list_particleids_noabund)} particles for Qdot/thermal data (no abundances)')
+    print(f'Reading trajectory data for {len(list_particleids_noabund)} '
+          'particles for Qdot/thermal data (no abundances)')
 
     if at.config['num_processes'] > 1:
         with multiprocessing.Pool(processes=at.config['num_processes']) as pool:
