@@ -27,7 +27,7 @@ def addargs(parser):
 
 def eval_mshell(dfmodel, t_model_init_seconds):
     dfmodel.eval('cellmass_grams = 10 ** logrho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)'
-                     '* (1e5 * @t_model_init_seconds) ** 3', inplace=True)
+                 '* (1e5 * @t_model_init_seconds) ** 3', inplace=True)
 
 
 def main(args=None, argsraw=None, **kwargs) -> None:

@@ -38,8 +38,6 @@ setup(
         "console_scripts": get_console_scripts(),
     },
     scripts=["artistoolscompletions.sh"],
-    python_requires=">==3.6",
-    # test_suite='tests',
     setup_requires=["psutil>=5.9.0", "setuptools>=45", "setuptools_scm[toml]>=6.2", "wheel"],
     tests_require=["pytest", "pytest-runner", "pytest-cov"],
     include_package_data=True,
