@@ -351,8 +351,7 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
                 if 'Ye' not in arr_abund_artis[mgi]:
                     arr_abund_artis[mgi]['Ye'] = []
                 abund = estimators[(nts, mgi)]['populations'].get(strnuc, 0.)
-                proton_count = 0
-                nucleon_count = 0
+                cellvolume = dfmodel.iloc[mgi].cellmass_grams / rho_cgs
                 for popkey, abund in estimators[(nts, mgi)]['populations'].items():
                     if isinstance(popkey, str) and abund > 0.:
                         if popkey.endswith('_otherstable'):
@@ -361,8 +360,10 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
                         else:
                             try:
                                 z, a = at.get_z_a_nucname(popkey)
-                                arr_artis_protoncount[nts] = arr_artis_protoncount.get(nts, 0.) + z
-                                arr_artis_nucleoncount[nts] = arr_artis_nucleoncount.get(nts, 0.) + a
+                                arr_artis_protoncount[nts] = (
+                                    arr_artis_protoncount.get(nts, 0.) + z * abund * cellvolume)
+                                arr_artis_nucleoncount[nts] = (
+                                    arr_artis_nucleoncount.get(nts, 0.) + a * abund * cellvolume)
 
                             except AssertionError:
                                 pass
