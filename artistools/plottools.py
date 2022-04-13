@@ -140,8 +140,8 @@ def imshow_init_for_artis_grid(ngrid, vmax, plot_variable_3d_array, plot_axes="x
             for x in range(0, ngrid):
                 if plot_axes == "xy":
                     if z == round(ngrid / 2) - 1:
-                        data[x, y] = plot_variable_3d_array[x, y, z]
-                elif plot_axes == "zx":
+                        data[y, x] = plot_variable_3d_array[x, y, z]
+                elif plot_axes == "xz":
                     if y == round(ngrid / 2) - 1:
                         data[z, x] = plot_variable_3d_array[x, y, z]
 
