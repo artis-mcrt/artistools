@@ -8,6 +8,7 @@ from artistools.estimators.estimators import (
     get_averageexcitation,
     get_averageionisation,
     get_ionrecombrates_fromfile,
+    get_partiallycompletetimesteps,
     get_units_string,
     parse_estimfile,
     read_estimators,

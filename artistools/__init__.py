@@ -22,6 +22,7 @@ from artistools.misc import (
     get_composition_data,
     get_composition_data_from_outputfile,
     get_deposition,
+    get_escaped_arrivalrange,
     get_elsymbol,
     get_elsymbolslist,
     get_filterfunc,

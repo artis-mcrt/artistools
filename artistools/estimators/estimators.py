@@ -405,3 +405,24 @@ def get_averageexcitation(modelpath, modelgridindex, timestep, atomic_number, io
             pass
 
     return energypopsum / ionpopsum
+
+
+def get_partiallycompletetimesteps(estimators):
+    """
+        During a simulation, some estimator files can contain information for some cells but not others
+        for the current timestep
+    """
+    timestepcells = {}
+    all_mgis = set()
+    for nts, mgi in estimators.keys():
+        if nts not in timestepcells:
+            timestepcells[nts] = []
+        timestepcells[nts].append(mgi)
+        all_mgis.add(mgi)
+
+    nts_incomplete = []
+    for nts, mgilist in timestepcells.items():
+        if len(mgilist) < len(all_mgis):
+            nts_incomplete.append(nts)
+
+    return nts_incomplete
