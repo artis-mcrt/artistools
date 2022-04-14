@@ -79,9 +79,12 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
             if args.colorbarcostheta or args.colorbarphi:
                 costheta_viewing_angle_bins, phi_viewing_angle_bins = at.lightcurve.get_viewinganglebin_definitions()
                 scaledmap = make_colorbar_viewingangles_colormap()
-        nts_last, validrange_start_days, validrange_end_days = at.get_escaped_arrivalrange(modelpath)
-        print(f'  range of validity (last timestep {nts_last}): '
-              f'{validrange_start_days:.2f} to {validrange_end_days:.2f} days')
+        try:
+            nts_last, validrange_start_days, validrange_end_days = at.get_escaped_arrivalrange(modelpath)
+            print(f'  range of validity (last timestep {nts_last}): '
+                  f'{validrange_start_days:.2f} to {validrange_end_days:.2f} days')
+        except FileNotFoundError:
+            nts_last, validrange_start_days, validrange_end_days = None, float('-inf'), float('inf')
 
         for angleindex, angle in enumerate(angles):
             if args.plotviewingangle:
