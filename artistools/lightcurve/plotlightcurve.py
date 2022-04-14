@@ -40,6 +40,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
     for seriesindex, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
         print(f"====> {modelname}")
+
         lcname = 'gamma_light_curve.out' if (escape_type == 'TYPE_GAMMA' and not frompackets) else 'light_curve.out'
         if args.plotviewingangle is not None and lcname == 'light_curve.out':
             lcname = 'light_curve_res.out'
@@ -56,6 +57,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
                 modelpath, lcpath, packet_type=args.packet_type, escape_type=escape_type, maxpacketfiles=maxpacketfiles)
         else:
             lcdata = at.lightcurve.readfile(lcpath, modelpath, args)
+
         plotkwargs = {}
         if args.label[seriesindex] is None:
             plotkwargs['label'] = modelname
@@ -77,6 +79,9 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
             if args.colorbarcostheta or args.colorbarphi:
                 costheta_viewing_angle_bins, phi_viewing_angle_bins = at.lightcurve.get_viewinganglebin_definitions()
                 scaledmap = make_colorbar_viewingangles_colormap()
+        nts_last, validrange_start_days, validrange_end_days = at.get_escaped_arrivalrange(modelpath)
+        print(f'  range of validity (last timestep {nts_last}): '
+              f'{validrange_start_days:.2f} to {validrange_end_days:.2f} days')
 
         for angleindex, angle in enumerate(angles):
             if args.plotviewingangle:
@@ -98,15 +103,26 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
             if filterfunc is not None:
                 lcdata['lum'] = filterfunc(lcdata['lum'])
 
-            if args.ergs or args.magnitude:
-                lcdata['lum'] = lcdata['lum']*3.826e33  # Luminosity in erg/s
+            if not args.Lsun or args.magnitude:
+                # convert luminosity from Lsun to rg/s
+                lcdata.eval('lum = lum * 3.826e33', inplace=True)
+                lcdata.eval('lum_cmf = lum_cmf * 3.826e33', inplace=True)
 
             if args.magnitude:
                 # convert to bol magnitude
                 lcdata['mag'] = 4.74 - (2.5 * np.log10(lcdata['lum'] / const.L_sun.to('erg/s').value))
                 axis.plot(lcdata['time'], lcdata['mag'], **plotkwargs)
             else:
-                axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
+                # show the parts of the light curve that are outside the valid arrival range partially transparent
+                lcdata_valid = lcdata.query('time >= @validrange_start_days and time <= @validrange_end_days')
+                lcdata_before_valid = lcdata.query('time <= @lcdata_valid.time.min()')
+                lcdata_after_valid = lcdata.query('time >= @lcdata_valid.time.max()')
+                # axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
+                plotkwargs_invalidrange = plotkwargs.copy()
+                plotkwargs_invalidrange.update({'label': None, 'alpha': 0.5})
+                axis.plot(lcdata_before_valid['time'], lcdata_before_valid['lum'], **plotkwargs_invalidrange)
+                axis.plot(lcdata_after_valid['time'], lcdata_after_valid['lum'], **plotkwargs_invalidrange)
+                axis.plot(lcdata_valid['time'], lcdata_valid['lum'], **plotkwargs)
 
                 if args.print_data:
                     print(lcdata[['time', 'lum', 'lum_cmf']].to_string(index=False))
@@ -119,7 +135,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
 
     if args.reflightcurves:
         for bolreflightcurve in args.reflightcurves:
-            if not args.ergs:
+            if not args.Lsun:
                 print("Check units - trying to plot ref light curve in erg/s")
                 quit()
             bollightcurve_data, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
@@ -141,21 +157,22 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
 
     if not args.nolegend:
         axis.legend(loc='best', handlelength=2, frameon=args.legendframeon, numpoints=1, prop={'size': 9})
-    axis.set_xlabel(r'Time (days)')
+    axis.set_xlabel(r'Time [days]')
 
     if args.magnitude:
         axis.set_ylabel('Absolute Bolometric Magnitude')
-
-    elif args.ergs:
-        axis.set_ylabel('erg/s')
     else:
+        if not args.Lsun:
+            str_units = ' [erg/s]'
+        else:
+            str_units = r'$/ \mathrm{L}_\odot$'
         if escape_type == 'TYPE_GAMMA':
             lum_suffix = r'_\gamma'
         elif escape_type == 'TYPE_RPKT':
             lum_suffix = r'_{\mathrm{OVOIR}}'
         else:
             lum_suffix = r'_{\mathrm{' + escape_type.replace("_", r"\_") + '}}'
-        axis.set_ylabel(r'$\mathrm{L} ' + lum_suffix + r'/ \mathrm{L}_\odot$')
+        axis.set_ylabel(r'$\mathrm{L} ' + lum_suffix + '$' + str_units)
 
     if args.title:
         axis.set_title(modelname)
@@ -770,8 +787,8 @@ def addargs(parser):
     parser.add_argument('--magnitude', action='store_true',
                         help='Plot light curves in magnitudes')
 
-    parser.add_argument('--ergs', action='store_true',
-                        help='Plot light curves in erg/s')
+    parser.add_argument('--Lsun', action='store_true',
+                        help='Plot light curves in units of Lsun')
 
     parser.add_argument('-filter', '-band', dest='filter', type=str, nargs='+',
                         help='Choose filter eg. bol U B V R I. Default B. '

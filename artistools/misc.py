@@ -602,12 +602,36 @@ def get_time_range(modelpath, timestep_range_str=None, timemin=None, timemax=Non
 
 
 def get_timestep_time(modelpath, timestep):
-    """Return the time in days of a timestep number using a spec.out file."""
+    """Return the time in days of the midpoint of a timestep number """
     timearray = get_timestep_times_float(modelpath, loc='mid')
     if timearray is not None:
         return timearray[timestep]
 
     return -1
+
+
+def get_escaped_arrivalrange(modelpath):
+    dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata(modelpath)
+    cornervmax = math.sqrt(3 * vmax ** 2)
+
+    # find the earliest possible escape time and add the largest possible travel time
+
+    # for 3D models, the box corners can have non-zero density (allowing packet escape from tmin)
+    # for 1D and 2D, the largest escape radius at tmin is the box side radius
+
+    vmax_tmin = cornervmax if at.inputmodel.get_dfmodel_dimensions(dfmodel) == 3 else vmax
+    validrange_start_days = at.get_timestep_times_float(modelpath, loc='start')[0] * (1 + vmax_tmin / 29979245800)
+
+    # find the last possible escape time and subtract the largest possible travel time
+    depdata = at.get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
+
+    nts_last = depdata.ts.max() if 'ts' in depdata.columns else len(depdata) - 1
+
+    nts_last_tend = at.get_timestep_times_float(modelpath, loc='end')[nts_last]
+
+    validrange_end_days = nts_last_tend * (1 - cornervmax / 29979245800)
+
+    return nts_last, validrange_start_days, validrange_end_days
 
 
 @lru_cache(maxsize=8)
