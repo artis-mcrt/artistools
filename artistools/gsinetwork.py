@@ -147,6 +147,9 @@ def plot_qdot(
         # marker='+', markersize=15,
         label='Ye ARTIS', color='red')
 
+    axis.set_ylabel('Ye [e-/nucleon]')
+    axes[1].legend(loc='best', frameon=False, handlelength=1, ncol=3, numpoints=1)
+
     fig.suptitle(f'{modelname}', fontsize=10)
     plt.savefig(pdfoutpath, format='pdf')
     print(f'Saved {pdfoutpath}')
@@ -305,21 +308,25 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
     # arr_z = [at.get_atomic_number(el) for el in arr_el]
 
     dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath)
+    model_mass_grams = dfmodel.cellmass_grams.sum()
     npts_model = len(dfmodel)
     MH = 1.67352e-24  # g
 
     arr_time_artis_days = []
     arr_abund_artis = {}
     get_Ye = True
-    arr_artis_protoncount = {}
-    arr_artis_nucleoncount = {}
+    artis_ye_sum = {}
+    artis_ye_norm = {}
 
     try:
         get_mgi_list = None if get_Ye else tuple(mgiplotlist)  # all cells if Ye is calculated
         estimators = at.estimators.read_estimators(modelpath, modelgridindex=get_mgi_list)
 
         first_mgi = None
+        partiallycomplete_timesteps = at.estimators.get_partiallycompletetimesteps(estimators)
         for nts, mgi in sorted(estimators.keys()):
+            if nts in partiallycomplete_timesteps:
+                continue
             if mgi not in mgiplotlist and not get_Ye or estimators[(nts, mgi)]['emptycell']:
                 continue
 
@@ -350,26 +357,41 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
 
                 if 'Ye' not in arr_abund_artis[mgi]:
                     arr_abund_artis[mgi]['Ye'] = []
+
                 abund = estimators[(nts, mgi)]['populations'].get(strnuc, 0.)
-                cellvolume = dfmodel.iloc[mgi].cellmass_grams / rho_cgs
-                for popkey, abund in estimators[(nts, mgi)]['populations'].items():
-                    if isinstance(popkey, str) and abund > 0.:
-                        if popkey.endswith('_otherstable'):
-                            # TODO: use mean molecular weight, but this is not needed for kilonova input files anyway
-                            pass
-                        else:
-                            try:
-                                z, a = at.get_z_a_nucname(popkey)
-                                arr_artis_protoncount[nts] = (
-                                    arr_artis_protoncount.get(nts, 0.) + z * abund * cellvolume)
-                                arr_artis_nucleoncount[nts] = (
-                                    arr_artis_nucleoncount.get(nts, 0.) + a * abund * cellvolume)
-
-                            except AssertionError:
+                if 'Ye' in estimators[(nts, mgi)]:
+                    cell_Ye = estimators[(nts, mgi)]['Ye']
+                    arr_abund_artis[mgi]['Ye'].append(cell_Ye)
+                    artis_ye_sum[nts] = (
+                        artis_ye_sum.get(nts, 0.) + cell_Ye * dfmodel.iloc[mgi].cellmass_grams)
+                    artis_ye_norm[nts] = (
+                        artis_ye_norm.get(nts, 0.) + dfmodel.iloc[mgi].cellmass_grams)
+                else:
+                    cell_protoncount = 0.
+                    cell_nucleoncount = 0.
+                    cellvolume = dfmodel.iloc[mgi].cellmass_grams / rho_cgs
+                    for popkey, abund in estimators[(nts, mgi)]['populations'].items():
+                        if isinstance(popkey, str) and abund > 0.:
+                            if popkey.endswith('_otherstable'):
+                                # TODO: use mean molecular weight, but this is not needed for kilonova input files anyway
                                 pass
+                            else:
+                                try:
+                                    z, a = at.get_z_a_nucname(popkey)
+                                    cell_protoncount += z * abund * cellvolume
+                                    cell_nucleoncount += a * abund * cellvolume
 
-        arr_artis_ye = [
-            arr_artis_protoncount[nts] / arr_artis_nucleoncount[nts] for nts in arr_artis_protoncount.keys()]
+                                except AssertionError:
+                                    pass
+                    cell_Ye = cell_protoncount / cell_nucleoncount
+
+                    arr_abund_artis[mgi]['Ye'].append(cell_Ye)
+                    artis_ye_sum[nts] = (
+                        artis_ye_sum.get(nts, 0.) + cell_protoncount)
+                    artis_ye_norm[nts] = (
+                        artis_ye_norm.get(nts, 0.) + cell_nucleoncount)
+
+        arr_artis_ye = [artis_ye_sum[nts] / artis_ye_norm[nts] for nts in sorted(artis_ye_sum.keys())]
 
     except FileNotFoundError:
         pass
