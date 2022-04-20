@@ -183,6 +183,9 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
     if args.colorbarcostheta or args.colorbarphi:
         make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args)
 
+    if args.logscalex:
+        axis.set_xscale('log')
+
     if args.logscaley:
         axis.set_yscale('log')
 
@@ -834,6 +837,9 @@ def addargs(parser):
 
     parser.add_argument('-timemin', type=float, default=None,
                         help='Time min to plot')
+
+    parser.add_argument('--logscalex', action='store_true',
+                        help='Use log scale for horizontal axis')
 
     parser.add_argument('--logscaley', action='store_true',
                         help='Use log scale for vertial axis')
