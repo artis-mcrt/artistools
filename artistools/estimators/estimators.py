@@ -174,7 +174,10 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
 
                     if variablename in ['Alpha_R*nne', 'AlphaR*nne']:
                         estimblock.setdefault('Alpha_R', {})
-                        estimblock['Alpha_R'][(atomic_number, ion_stage)] = value_thision / estimblock['nne']
+                        estimblock['Alpha_R'][(atomic_number, ion_stage)] = (
+                            value_thision / estimblock['nne']
+                            if estimblock['nne'] > 0.
+                            else float('inf'))
 
                     else:  # variablename == 'populations':
 
