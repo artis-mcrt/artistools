@@ -429,8 +429,13 @@ def get_nu_grid(modelpath):
 
 
 def get_deposition(modelpath):
+    if Path(modelpath).is_file():
+        depfilepath = modelpath
+        modelpath = Path(modelpath).parent
+    else:
+        depfilepath = Path(modelpath, 'deposition.out')
+
     ts_mids = get_timestep_times_float(modelpath, loc='mid')
-    depfilepath = Path(modelpath, 'deposition.out')
 
     with open(depfilepath, 'r') as fdep:
         filepos = fdep.tell()
