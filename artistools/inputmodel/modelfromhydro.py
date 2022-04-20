@@ -260,7 +260,7 @@ def makemodelfromgriddata(
     if 'Q' in dfmodel and args.makeenergyinputfiles:
         at.inputmodel.energyinputfiles.write_Q_energy_file(outputpath, dfmodel)
 
-    if os.path.isfile(Path(outputpath, 'gridcontributions.txt')):
+    if os.path.isfile(Path(gridfolderpath, 'gridcontributions.txt')):
         dfgridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
     else:
         dfgridcontributions = None
