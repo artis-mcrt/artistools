@@ -84,8 +84,8 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
             print(f'  range of validity (last timestep {nts_last}): '
                   f'{validrange_start_days:.2f} to {validrange_end_days:.2f} days')
         except FileNotFoundError:
-            print(f'  range of validity: could not determine due to missing files '
-                  f'(requires deposition.out, input.txt, model.txt)')
+            print('  range of validity: could not determine due to missing files '
+                  '(requires deposition.out, input.txt, model.txt)')
             nts_last, validrange_start_days, validrange_end_days = None, float('-inf'), float('inf')
 
         for angleindex, angle in enumerate(angles):
