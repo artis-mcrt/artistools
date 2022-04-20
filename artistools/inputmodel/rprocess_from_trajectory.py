@@ -298,18 +298,23 @@ def add_abundancecontributions(dfgridcontributions, dfmodel, t_model_days, minpa
     timestart = time.perf_counter()
     print('Adding up isotopes for elemental abundances and creating dfelabundances...', end='', flush=True)
     elemisotopes = {}
+    nuclidesincluded = 0
     for colname in sorted(dfnucabundances.columns):
         if not colname.startswith('X_'):
             continue
+        nuclidesincluded += 1
         atomic_number = at.get_atomic_number(colname[2:].rstrip('0123456789'))
         if atomic_number in elemisotopes:
             elemisotopes[atomic_number].append(colname)
         else:
             elemisotopes[atomic_number] = [colname]
+    elementsincluded = len(elemisotopes)
 
     dfelabundances_partial = pd.DataFrame({
         'inputcellid': dfnucabundances.inputcellid,
-        **{f'X_{at.get_elsymbol(atomic_number)}': dfnucabundances.eval(f'{" + ".join(elemisotopes[atomic_number])}')
+        **{f'X_{at.get_elsymbol(atomic_number)}': dfnucabundances.eval(
+                f'{" + ".join(elemisotopes[atomic_number])}',
+                engine='python' if len(elemisotopes[atomic_number]) > 32 else None)
             if atomic_number in elemisotopes else np.zeros(len(dfnucabundances))
             for atomic_number in range(1, max(elemisotopes.keys()) + 1)}}, index=dfnucabundances.index)
 
@@ -320,7 +325,7 @@ def add_abundancecontributions(dfgridcontributions, dfmodel, t_model_days, minpa
     dfnucabundances.index.name = None
     dfelabundances.fillna(0., inplace=True)
     print(f' took {time.perf_counter() - timestart:.1f} seconds')
-
+    print(f' there are {nuclidesincluded} nuclides from {elementsincluded} elements included')
     timestart = time.perf_counter()
     print('Merging isotopic abundances into dfmodel...', end='', flush=True)
     dfmodel = dfmodel.merge(dfnucabundances, how='left', left_on='inputcellid', right_on='inputcellid')
