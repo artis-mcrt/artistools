@@ -162,10 +162,12 @@ def plot_abund(
     dfpartcontrib_thiscell = dfpartcontrib.query('cellindex == (@mgi + 1) and particleid in @allparticledata.keys()')
     frac_of_cellmass_sum = dfpartcontrib_thiscell.frac_of_cellmass.sum()
     print(f'frac_of_cellmass_sum: {frac_of_cellmass_sum} (can be < 1.0 because of missing particles)')
+    arr_strnuc.insert(0, 'Ye')
 
     for strnuc in arr_strnuc:
         arr_abund_gsi[strnuc] = np.zeros_like(arr_time_gsi_days)
 
+    # calculate the GSI values from the particles contributing to this cell
     for particleid, frac_of_cellmass in dfpartcontrib_thiscell[
             ['particleid', 'frac_of_cellmass']].itertuples(index=False):
         frac_of_cellmass = dfpartcontrib_thiscell.query('particleid == @particleid').frac_of_cellmass.sum()
@@ -183,6 +185,8 @@ def plot_abund(
     modelname = at.get_model_name(modelpath)
 
     axes[-1].set_xlabel('Time [days]')
+    axis = axes[0]
+    axis.set_ylabel('Ye')
     for axis, strnuc in zip(axes, arr_strnuc):
         # print(arr_time_artis_days)
         xmin = arr_time_gsi_days.min() * 0.9
@@ -190,7 +194,10 @@ def plot_abund(
         axis.set_xlim(left=xmin, right=xmax)
         # axis.set_yscale('log')
         # axis.set_ylabel(f'X({strnuc})')
-        axis.set_ylabel('Mass fraction')
+        if strnuc == 'Ye':
+            axis.set_ylabel('Electron fraction')
+        else:
+            axis.set_ylabel('Mass fraction')
 
         axis.plot(arr_time_gsi_days, arr_abund_gsi[strnuc],
                   # linestyle='None',
