@@ -95,29 +95,29 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
             print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
             depdata = at.get_deposition(modelpath)
 
-            axis.plot(depdata['tmid_days'], depdata['Qdot_erg/g/s'] * model_mass_grams, **(
-                plotkwargs | {
+            axis.plot(depdata['tmid_days'], depdata['Qdot_erg/g/s'] * model_mass_grams, **dict(
+                plotkwargs, **{
                     'label': plotkwargs['label'] + r' $\dot{Q}_{\alpha\beta\gamma}$',
                     'linestyle': '-.',
                     'color': None,
                 }))
 
-            axis.plot(depdata['tmid_days'], depdata['gammadecay_Lsun'] * 3.826e33, **(
-                plotkwargs | {
+            axis.plot(depdata['tmid_days'], depdata['gammadecay_Lsun'] * 3.826e33, **dict(
+                plotkwargs, **{
                     'label': plotkwargs['label'] + r' $\dot{Q}_{\gamma}$',
                     'linestyle': 'dotted',
                     'color': None,
                 }))
 
-            axis.plot(depdata['tmid_days'], depdata['gammadep_Lsun'] * 3.826e33, **(
-                plotkwargs | {
+            axis.plot(depdata['tmid_days'], depdata['gammadep_Lsun'] * 3.826e33, **dict(
+                plotkwargs, **{
                     'label': plotkwargs['label'] + r' dep$_{\gamma}$',
                     'linestyle': 'dashed',
                     'color': None,
                 }))
 
-            axis.plot(depdata['tmid_days'], depdata['elecdep_Lsun'] * 3.826e33, **(
-                plotkwargs | {
+            axis.plot(depdata['tmid_days'], depdata['elecdep_Lsun'] * 3.826e33, **dict(
+                plotkwargs, **{
                     'label': plotkwargs['label'] + r' dep$_{\beta^-}$',
                     'linestyle': '-.',
                     'color': None,
