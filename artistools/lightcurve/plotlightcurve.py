@@ -28,7 +28,9 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
                                                    escape_type=False, maxpacketfiles=None, args=None):
     """Use light_curve.out or light_curve_res.out files to plot light curve"""
     fig, axis = plt.subplots(
-        nrows=1, ncols=1, sharey=True, figsize=(args.figscale * at.config['figwidth'] * 1.6, args.figscale * at.config['figwidth']), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
+        nrows=1, ncols=1, sharey=True,
+        figsize=(args.figscale * at.config['figwidth'] * 1.6, args.figscale * at.config['figwidth']),
+        tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0})
 
     if not frompackets and escape_type not in ['TYPE_RPKT', 'TYPE_GAMMA']:
         print(f'Escape_type of {escape_type} not one of TYPE_RPKT or TYPE_GAMMA, so frompackets must be enabled')
@@ -36,6 +38,10 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
     elif not frompackets and args.packet_type != 'TYPE_ESCAPE' and args.packet_type is not None:
         print('Looking for non-escaped packets, so frompackets must be enabled')
         assert False
+
+    # take any assigned colours our of the cycle
+    colors = [color for i, color in enumerate(plt.rcParams['axes.prop_cycle'].by_key()['color']) if f'C{i}' not in args.color]
+    axis.set_prop_cycle(color=colors)
 
     for seriesindex, modelpath in enumerate(modelpaths):
         if Path(modelpath).is_file():
@@ -98,14 +104,14 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
             axis.plot(depdata['tmid_days'], depdata['Qdot_erg/g/s'] * model_mass_grams, **dict(
                 plotkwargs, **{
                     'label': plotkwargs['label'] + r' $\dot{Q}_{\alpha\beta\gamma}$',
-                    'linestyle': '-.',
+                    'linestyle': 'dashed',
                     'color': None,
                 }))
 
             axis.plot(depdata['tmid_days'], depdata['gammadecay_Lsun'] * 3.826e33, **dict(
                 plotkwargs, **{
                     'label': plotkwargs['label'] + r' $\dot{Q}_{\gamma}$',
-                    'linestyle': 'dotted',
+                    'linestyle': 'dashed',
                     'color': None,
                 }))
 
@@ -119,7 +125,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
             axis.plot(depdata['tmid_days'], depdata['elecdep_Lsun'] * 3.826e33, **dict(
                 plotkwargs, **{
                     'label': plotkwargs['label'] + r' dep$_{\beta^-}$',
-                    'linestyle': '-.',
+                    'linestyle': 'dashed',
                     'color': None,
                 }))
 
@@ -175,15 +181,18 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
                 axis.plot(lcdata['time'], lcdata['mag'], **plotkwargs)
             else:
                 # show the parts of the light curve that are outside the valid arrival range partially transparent
-                lcdata_valid = lcdata.query('time >= @validrange_start_days and time <= @validrange_end_days')
-                lcdata_before_valid = lcdata.query('time <= @lcdata_valid.time.min()')
-                lcdata_after_valid = lcdata.query('time >= @lcdata_valid.time.max()')
-                # axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
                 plotkwargs_invalidrange = plotkwargs.copy()
                 plotkwargs_invalidrange.update({'label': None, 'alpha': 0.5})
-                axis.plot(lcdata_before_valid['time'], lcdata_before_valid['lum'], **plotkwargs_invalidrange)
-                axis.plot(lcdata_after_valid['time'], lcdata_after_valid['lum'], **plotkwargs_invalidrange)
-                axis.plot(lcdata_valid['time'], lcdata_valid['lum'], **plotkwargs)
+                lcdata_valid = lcdata.query('time >= @validrange_start_days and time <= @validrange_end_days')
+                if lcdata_valid.empty:
+                    axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs_invalidrange)
+                else:
+                    lcdata_before_valid = lcdata.query('time <= @lcdata_valid.time.min()')
+                    lcdata_after_valid = lcdata.query('time >= @lcdata_valid.time.max()')
+                    # axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
+                    axis.plot(lcdata_before_valid['time'], lcdata_before_valid['lum'], **plotkwargs_invalidrange)
+                    axis.plot(lcdata_after_valid['time'], lcdata_after_valid['lum'], **plotkwargs_invalidrange)
+                    axis.plot(lcdata_valid['time'], lcdata_valid['lum'], **plotkwargs)
 
                 if args.print_data:
                     print(lcdata[['time', 'lum', 'lum_cmf']].to_string(index=False))
