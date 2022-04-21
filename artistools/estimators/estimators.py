@@ -194,7 +194,7 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
                     estimblock['populations'].setdefault('total', 0.)
                     estimblock['populations']['total'] += estimblock['populations'][atomic_number]
                     estimblock.setdefault('nntot', 0.)
-                    estimblock['nntot'] += estimblock['nntot'][atomic_number]
+                    estimblock['nntot'] += estimblock['populations'][atomic_number]
 
             elif row[0] == 'heating:' and get_heatingcooling:
                 for heatingtype, value in zip(row[1::2], row[2::2]):
