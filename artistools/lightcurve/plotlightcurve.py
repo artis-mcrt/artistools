@@ -196,7 +196,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
         if escape_type == 'TYPE_GAMMA':
             lum_suffix = r'_\gamma'
         elif escape_type == 'TYPE_RPKT':
-            lum_suffix = r'_{\mathrm{OVOIR}}'
+            lum_suffix = r'_{\mathrm{UVOIR}}'
         else:
             lum_suffix = r'_{\mathrm{' + escape_type.replace("_", r"\_") + '}}'
         axis.set_ylabel(r'$\mathrm{L} ' + lum_suffix + '$' + str_units)
