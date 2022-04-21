@@ -216,7 +216,7 @@ def plot_abund(
             axis.plot(t_model_init_days, dfcell[f'X_{strnuc}'],
                       marker='+', markersize=15, markeredgewidth=2,
                       label=f'{strnuc} ARTIS inputmodel', color='blue')
-            print(strnuc, arr_abund_gsi[strnuc][0], dfcell[f'X_{strnuc}'])
+            print(strnuc, arr_abund_gsi[strnuc][0], dfcell[f'X_{strnuc}'], arr_abund_artis[strnuc][0])
 
         axis.legend(loc='best', frameon=False, handlelength=1, ncol=1, numpoints=1)
 
@@ -482,6 +482,7 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     arr_el_a = [
+        ('He', 4),
         ('Ga', 72),
         ('Sr', 89),
         ('Ba', 140),
