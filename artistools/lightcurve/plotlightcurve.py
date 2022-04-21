@@ -89,6 +89,40 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
         if args.linewidth[seriesindex]:
             plotkwargs['linewidth'] = args.linewidth[seriesindex]
 
+        if args.plotdeposition:
+            dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath)
+            model_mass_grams = dfmodel.cellmass_grams.sum()
+            print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
+            depdata = at.get_deposition(modelpath)
+
+            axis.plot(depdata['tmid_days'], depdata['Qdot_erg/g/s'] * model_mass_grams, **(
+                plotkwargs | {
+                    'label': plotkwargs['label'] + r' $\dot{Q}_{\alpha\beta\gamma}$',
+                    'linestyle': '-.',
+                    'color': None,
+                }))
+
+            axis.plot(depdata['tmid_days'], depdata['gammadecay_Lsun'] * 3.826e33, **(
+                plotkwargs | {
+                    'label': plotkwargs['label'] + r' $\dot{Q}_{\gamma}$',
+                    'linestyle': 'dotted',
+                    'color': None,
+                }))
+
+            axis.plot(depdata['tmid_days'], depdata['gammadep_Lsun'] * 3.826e33, **(
+                plotkwargs | {
+                    'label': plotkwargs['label'] + r' dep$_{\gamma}$',
+                    'linestyle': 'dashed',
+                    'color': None,
+                }))
+
+            axis.plot(depdata['tmid_days'], depdata['elecdep_Lsun'] * 3.826e33, **(
+                plotkwargs | {
+                    'label': plotkwargs['label'] + r' dep$_{\beta^-}$',
+                    'linestyle': '-.',
+                    'color': None,
+                }))
+
         # check if doing viewing angle stuff, and if so define which data to use
         angles, viewing_angles, angle_definition = at.lightcurve.get_angle_stuff(modelpath, args)
         if args.plotviewingangle:
@@ -131,7 +165,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
                 lcdata['lum'] = filterfunc(lcdata['lum'])
 
             if not args.Lsun or args.magnitude:
-                # convert luminosity from Lsun to rg/s
+                # convert luminosity from Lsun to erg/s
                 lcdata.eval('lum = lum * 3.826e33', inplace=True)
                 lcdata.eval('lum_cmf = lum_cmf * 3.826e33', inplace=True)
 
@@ -807,12 +841,16 @@ def addargs(parser):
     parser.add_argument('-escape_type', default='TYPE_RPKT',
                         help='Type of escaping packets')
 
-    parser.add_argument('-o', action='store', dest='outputfile', type=Path,
+    parser.add_argument('-o', '-outputfile', action='store', dest='outputfile', type=Path,
                         help='Filename for PDF file')
 
     parser.add_argument('--plotcmf', '--plot_cmf', '--showcmf', '--show_cmf',
                         action='store_true',
                         help='Plot comoving frame light curve')
+
+    parser.add_argument('--plotdeposition',
+                        action='store_true',
+                        help='Plot model deposition rates')
 
     parser.add_argument('--magnitude', action='store_true',
                         help='Plot light curves in magnitudes')
