@@ -73,7 +73,7 @@ def main(args=None, argsraw=None, **kwargs):
             species_mass_msun = speciesabund_g / 1.989e33
             atomic_number = at.get_atomic_number(species)
             if species[-1].isdigit():
-                strtotiso = species.rstrip('0123456789') + '-isosum'
+                strtotiso = species.rstrip('0123456789') + '_isosum'
                 speciesmasses[strtotiso] = speciesmasses.get(strtotiso, 0.) + speciesabund_g
                 mass_msun_isotopes += species_mass_msun
             elif species.lower() != 'fegroup':
@@ -84,17 +84,19 @@ def main(args=None, argsraw=None, **kwargs):
 
     print(f'M_{"tot_rho":9s} {mass_msun_rho:8.5f} MSun (density * volume)')
     if mass_msun_elem > 0.:
-        print(f'M_{"tot_elem":9s} {mass_msun_elem:8.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)')
+        print(f'M_{"tot_elem":9s} {mass_msun_elem:8.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}%'
+              'of M_tot_rho)')
 
-    print(f'M_{"tot_iso":9s} {mass_msun_isotopes:8.5f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% of M_tot_rho, but can be < 100% if stable isotopes not tracked)')
+    print(f'M_{"tot_iso":9s} {mass_msun_isotopes:8.5f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% '
+          'of M_tot_rho, but can be < 100% if stable isotopes not tracked)')
 
     if not args.noabund:
         for species, mass_g in sorted(speciesmasses.items(), key=lambda x: (at.get_atomic_number(x[0]), x[0])):
             species_mass_msun = mass_g / 1.989e33
             massfrac = species_mass_msun / mass_msun_rho
             strcomment = ''
-            if species.endswith('-isosum') and args.getabundances:
-                elsymb = species.replace('-isosum', '')
+            if species.endswith('_isosum') and args.getabundances:
+                elsymb = species.replace('_isosum', '')
                 elem_mass = speciesmasses.get(elsymb, 0.)
                 if elem_mass > 0.:
                     strcomment += f' ({mass_g / elem_mass * 100:6.2f}% of {elsymb} element mass)'
