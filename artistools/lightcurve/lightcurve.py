@@ -337,15 +337,33 @@ def read_reflightcurve_band_data(lightcurvefilename):
 
 
 def read_bol_reflightcurve_data(lightcurvefilename):
-    data_path = os.path.join(at.config['path_artistools_dir'], f"data/lightcurves/bollightcurves/{lightcurvefilename}")
+    if Path(lightcurvefilename).is_file():
+        data_path = Path(lightcurvefilename)
+    else:
+        data_path = Path(at.config['path_artistools_dir'], "data/lightcurves/bollightcurves", lightcurvefilename)
+
     metadata = at.misc.get_file_metadata(data_path)
 
-    bollightcurve_data = pd.read_csv(data_path, comment='#', delim_whitespace=True, header=None)
+    # check for possible header line and read table
+    with open(data_path, 'r') as flc:
+        filepos = flc.tell()
+        line = flc.readline()
+        if line.startswith('#'):
+            columns = line.lstrip('#').split()
+        else:
+            flc.seek(filepos)  # undo the readline() and go back
+            columns = None
 
-    bollightcurve_data = bollightcurve_data.rename(columns={0: 'time_days'})  # days
-    bollightcurve_data = bollightcurve_data.rename(columns={1: 'luminosity_erg/s'})  # erg/s
+        dflightcurve = pd.read_csv(flc, delim_whitespace=True, header=None, names=columns)
 
-    return bollightcurve_data, metadata
+    colrenames = {k: v for k, v in {
+        dflightcurve.columns[0]: 'time_days',
+        dflightcurve.columns[1]: 'luminosity_erg/s'}.items() if k != v}
+    if colrenames:
+        print(f'{data_path}: renaming columns {colrenames}')
+        dflightcurve.rename(columns=colrenames, inplace=True)
+
+    return dflightcurve, metadata
 
 
 def get_sn_sample_bol():
