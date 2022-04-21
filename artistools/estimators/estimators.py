@@ -155,7 +155,13 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
                 estimblock.setdefault(variablename,  {})
 
                 for ion_stage_str, value in zip(row[startindex::2], row[startindex + 1::2]):
-                    if ion_stage_str.strip() in ['SUM:', '(or']:
+                    if ion_stage_str.strip() == '(or':
+                        continue
+
+                    value_thision = float(value.rstrip(','))
+
+                    if ion_stage_str.strip() == 'SUM:':
+                        estimblock[variablename][atomic_number] = value_thision
                         continue
 
                     try:
@@ -167,8 +173,6 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
                             print(ion_stage_str, at.get_elsymbol(atomic_number))
                             print(f'Cannot parse row: {row}')
                         continue
-
-                    value_thision = float(value.rstrip(','))
 
                     estimblock[variablename][(atomic_number, ion_stage)] = value_thision
 
@@ -189,7 +193,8 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
                     # contribute the element population to the total population
                     estimblock['populations'].setdefault('total', 0.)
                     estimblock['populations']['total'] += estimblock['populations'][atomic_number]
-                    estimblock['nntot'] = estimblock['populations']['total']
+                    estimblock.setdefault('nntot', 0.)
+                    estimblock['nntot'] += estimblock['nntot'][atomic_number]
 
             elif row[0] == 'heating:' and get_heatingcooling:
                 for heatingtype, value in zip(row[1::2], row[2::2]):
