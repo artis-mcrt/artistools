@@ -247,7 +247,7 @@ def read_estimators_from_file(folderpath, modelpath, arr_velocity_outer, mpirank
 
 
 @lru_cache(maxsize=16)
-@at.diskcache(savezipped=True, funcdepends=[read_estimators_from_file, parse_estimfile])
+# @at.diskcache(savezipped=True, funcdepends=[read_estimators_from_file, parse_estimfile])
 def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_values=True, get_heatingcooling=True):
     """Read estimator files into a nested dictionary structure.
 
