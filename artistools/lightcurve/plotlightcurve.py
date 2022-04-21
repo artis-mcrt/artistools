@@ -38,6 +38,24 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
         assert False
 
     for seriesindex, modelpath in enumerate(modelpaths):
+        if Path(modelpath).is_file():
+            bolreflightcurve = Path(modelpath)
+
+            dflightcurve, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
+            lightcurvelabel = metadata.get('label', bolreflightcurve)
+            plotkwargs = dict(label=lightcurvelabel, color='k')
+            if ('luminosity_errminus_erg/s' in dflightcurve.columns
+                    and 'luminosity_errplus_erg/s' in dflightcurve.columns):
+                plt.errorbar(
+                    dflightcurve['time_days'], dflightcurve['luminosity_erg/s'],
+                    yerr=[dflightcurve['luminosity_errminus_erg/s'], dflightcurve['luminosity_errplus_erg/s']],
+                    fmt='o', capsize=3, **plotkwargs)
+            else:
+                axis.scatter(
+                    dflightcurve['time_days'], dflightcurve['luminosity_erg/s'], **plotkwargs)
+            print(f"====> {lightcurvelabel}")
+            continue
+
         modelname = at.get_model_name(modelpath)
         print(f"====> {modelname}")
 
@@ -144,12 +162,12 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
 
     if args.reflightcurves:
         for bolreflightcurve in args.reflightcurves:
-            if not args.Lsun:
+            if args.Lsun:
                 print("Check units - trying to plot ref light curve in erg/s")
                 quit()
             bollightcurve_data, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
             axis.scatter(bollightcurve_data['time_days'], bollightcurve_data['luminosity_erg/s'],
-                         label=metadata['label'], color='k')
+                         label=metadata.get('label', bolreflightcurve), color='k')
 
     if args.magnitude:
         plt.gca().invert_yaxis()
