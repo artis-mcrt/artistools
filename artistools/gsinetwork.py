@@ -70,7 +70,7 @@ def plot_qdot(
     axes[-1].set_xlabel('Time [days]')
     axis.set_yscale('log')
     # axis.set_ylabel(f'X({strnuc})')
-    axis.set_ylabel('Qdot [erg/g/s]')
+    axis.set_ylabel('Qdot [erg/s/g]')
     # arr_time_days, arr_qdot = zip(
     #     *[(t, qdot) for t, qdot in zip(arr_time_days, arr_qdot)
     #       if depdata['tmid_days'].min() <= t and t <= depdata['tmid_days'].max()])
@@ -81,7 +81,7 @@ def plot_qdot(
     #           # marker='x', markersize=8,
     #           label='Qdot GSI Network')
     #
-    # axis.plot(depdata['tmid_days'], depdata['Qdot_ana_erg/g/s'],
+    # axis.plot(depdata['tmid_days'], depdata['Qdot_ana_erg/s/g'],
     #           linewidth=2, color='red',
     #           # linestyle='None',
     #           # marker='+', markersize=15,
@@ -95,7 +95,7 @@ def plot_qdot(
         label=r'$\dot{Q}_\beta$ GSI Network')
 
     axis.plot(
-        depdata['tmid_days'], depdata['Qdot_betaminus_ana_erg/g/s'],
+        depdata['tmid_days'], depdata['Qdot_betaminus_ana_erg/s/g'],
         linewidth=2, color='red',
         linestyle='dashed',
         # marker='+', markersize=15,
@@ -109,7 +109,7 @@ def plot_qdot(
         label=r'$\dot{Q}_\alpha$ GSI Network')
 
     axis.plot(
-        depdata['tmid_days'], depdata['Qdotalpha_ana_erg/g/s'],
+        depdata['tmid_days'], depdata['Qdotalpha_ana_erg/s/g'],
         linewidth=2, color='red',
         linestyle='dotted',
         # marker='+', markersize=15,

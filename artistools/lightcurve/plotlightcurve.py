@@ -101,30 +101,30 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
             print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
             depdata = at.get_deposition(modelpath)
 
-            axis.plot(depdata['tmid_days'], depdata['Qdot_erg/g/s'] * model_mass_grams, **dict(
+            axis.plot(depdata['tmid_days'], depdata['eps_erg/s/g'] * model_mass_grams, **dict(
                 plotkwargs, **{
-                    'label': plotkwargs['label'] + r' $\dot{Q}_{\alpha\beta\gamma}$',
+                    'label': plotkwargs['label'] + r' $\dot{\epsilon}_{\alpha\beta^\pm\gamma}$',
                     'linestyle': 'dashed',
                     'color': None,
                 }))
 
-            axis.plot(depdata['tmid_days'], depdata['gammadecay_Lsun'] * 3.826e33, **dict(
+            axis.plot(depdata['tmid_days'], depdata['eps_gamma_Lsun'] * 3.826e33, **dict(
                 plotkwargs, **{
-                    'label': plotkwargs['label'] + r' $\dot{Q}_{\gamma}$',
+                    'label': plotkwargs['label'] + r' $\dot{\epsilon}_{\gamma}$',
                     'linestyle': 'dashed',
                     'color': None,
                 }))
 
             axis.plot(depdata['tmid_days'], depdata['gammadep_Lsun'] * 3.826e33, **dict(
                 plotkwargs, **{
-                    'label': plotkwargs['label'] + r' dep$_{\gamma}$',
+                    'label': plotkwargs['label'] + r' $\dot{E}_{th,\gamma}$',
                     'linestyle': 'dashed',
                     'color': None,
                 }))
 
             axis.plot(depdata['tmid_days'], depdata['elecdep_Lsun'] * 3.826e33, **dict(
                 plotkwargs, **{
-                    'label': plotkwargs['label'] + r' dep$_{\beta^-}$',
+                    'label': plotkwargs['label'] + r' $\dot{E}_{th,\beta^-}$',
                     'linestyle': 'dashed',
                     'color': None,
                 }))
@@ -236,13 +236,15 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
             str_units = ' [erg/s]'
         else:
             str_units = r'$/ \mathrm{L}_\odot$'
-        if escape_type == 'TYPE_GAMMA':
-            lum_suffix = r'_\gamma'
+        if args.plotdeposition:
+            yvarname = ''
+        elif escape_type == 'TYPE_GAMMA':
+            yvarname = r'$\mathrm{L}_\gamma$'
         elif escape_type == 'TYPE_RPKT':
-            lum_suffix = r'_{\mathrm{UVOIR}}'
+            yvarname = r'$\mathrm{L}_{\mathrm{UVOIR}}$'
         else:
-            lum_suffix = r'_{\mathrm{' + escape_type.replace("_", r"\_") + '}}'
-        axis.set_ylabel(r'$\mathrm{L} ' + lum_suffix + '$' + str_units)
+            yvarname = r'$\mathrm{L}_{\mathrm{' + escape_type.replace("_", r"\_") + r'}}$'
+        axis.set_ylabel(yvarname + str_units)
 
     if args.title:
         axis.set_title(modelname)
