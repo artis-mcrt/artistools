@@ -110,9 +110,10 @@ def main(args=None, argsraw=None, **kwargs):
     if not args.noabund:
         def sortkey(tup_species_mass_g):
             species, mass_g = tup_species_mass_g
+            # return -mass_g
             # return (-speciesmasses.get(species.rstrip('0123456789'), 0.), species)
-            return -mass_g
-            # return (at.get_atomic_number(species), species)
+            return (at.get_atomic_number(species), species)
+
         for species, mass_g in sorted(speciesmasses.items(), key=sortkey):
             species_mass_msun = mass_g / 1.989e33
             massfrac = species_mass_msun / mass_msun_rho
