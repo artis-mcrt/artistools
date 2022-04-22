@@ -219,7 +219,7 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
         yield timestep, modelgridindex, estimblock
 
 
-@at.diskcache(ignorekwargs=['printfilename'], quiet=False, funcdepends=parse_estimfile, savezipped=True)
+# @at.diskcache(ignorekwargs=['printfilename'], quiet=False, funcdepends=parse_estimfile, savezipped=True)
 def read_estimators_from_file(folderpath, modelpath, arr_velocity_outer, mpirank, printfilename=False,
                               get_ion_values=True, get_heatingcooling=True):
 
