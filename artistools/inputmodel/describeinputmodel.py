@@ -54,9 +54,9 @@ def main(args=None, argsraw=None, **kwargs):
     if 'pos_x_min' in dfmodel.columns:
         nonemptycells = sum(dfmodel['rho'] > 0.)
         print(f'Model contains {len(dfmodel)} Cartesian grid cells ({nonemptycells} nonempty) with '
-              f'vmax = {vmax} km/s ({vmax / 299792.458:.2f} * c)')
+              f'vmax = {vmax} cm/s ({vmax * 1e-5 / 299792.458:.2f} * c)')
         corner_vmax = math.sqrt(3 * vmax ** 2)
-        print(f'  corner vmax: {corner_vmax:.2e} cm/s ({corner_vmax / 299792.458:.2f} * c)')
+        print(f'  corner vmax: {corner_vmax:.2e} cm/s ({corner_vmax * 1e-5 / 299792.458:.2f} * c)')
     else:
         vmax = dfmodel['velocity_outer'].max()
         print(f'Model contains {len(dfmodel)} 1D spherical shells with vmax = {vmax} km/s '
