@@ -4,6 +4,8 @@ on:
   push:
     branches:
       main
+    tags:
+      *
 
 jobs:
   deploy:
@@ -34,6 +36,6 @@ jobs:
         twine upload -r testpypi -u __token__ -p ${{ secrets.TESTPYPI_TOKEN }} --non-interactive dist/*
 
     - name: Publish to PyPI
-      if: startsWith(github.ref, 'refs/tags')
+      # if: startsWith(github.ref, 'refs/tags')
       run: |
         twine upload -r pypi -u __token__ -p ${{ secrets.PYPI_PASSWORD }} --non-interactive dist/*
