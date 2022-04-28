@@ -1,4 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+"""
+    Convert a CMFGEN model file to ARTIS format. Original script possibly by Markus Kromer?
+"""
 
 # from rd_cmfgen import rd_nuc_decay_data
 from math import exp
@@ -187,3 +190,64 @@ def timeshift_double_decay(
     elfracsum_after = sum([a["specfrac"][:, indexofatomicnumber[zparent - i]] for i in range(3)])
     isofracsum_after = sum([a["isofrac"][:, indexofisotope[(zparent - i, numnucleons)]] for i in range(3)])
     assert np.all(abs(elfracsum_before - elfracsum_after) < 1e-10)
+
+
+def main():
+    a = rd_sn_hydro_data(snapshot, reverse='true')
+
+    # Mapping of the CMFGEN species to atomic numbers, and masking IGEs
+    # For now I include Ba in the IGE mass fraction, but do not include it as a chemical species
+    # I assume Ba is just a proxy for everything heavier than Ni in their simulations.
+    spectoz = [1, 2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 56]
+    ige_index = (np.array(spectoz) > 20)
+
+    # The radii/velocity in the CMFGEN files are zone centered, while in ARTIS they represent
+    # the outer radius of a given zone. So we need to do a transformation
+    r = a['rad'] * 1e10
+    rmax = 0.5 * (r[:-1] + r[1:])
+    rout = rmax
+    rout = np.append(rout, r[-1])  # cmfgen uses the radius of the outermost zone as the outer boundary
+    rin = rmax
+    rin = np.insert(rin, 0, 0)     # for artis we use 0 as inner radius for the innermost shell, cmfgen uses
+    # the innermost radius r[0], this gives a slight discrepancy (<1%) in the total mass
+    dm = 4 / 3 * np.pi * (rout**3 - rin**3) * a['dens'] / msun
+    print(dm.sum(), dm.sum() / (a['dmass'].sum() / msun))  # Check total mass
+
+    with open(model + '/model.txt', 'w') as f:
+        f.write(str(a['nd']) + '\n')
+        f.write(str(a['time']) + '\n')
+
+        for i in range(a['nd']):
+            vel = rout[i] / a['time'] / 3600 / 24 / 1e5  # a['vel'][i]
+            rho = np.log10(a['dens'][i])
+            igefrac = a['specfrac'][i, ige_index].sum()
+            ni56frac = a['isofrac'][i, 96]
+            co56frac = a['isofrac'][i, 89]
+            cr48frac = a['isofrac'][i, 75]
+            v48frac = a['isofrac'][i, 49]
+            strout = "{0:4d} {1:1.7e} {2:1.7e} {3:1.7e} {4:1.7e} {5:1.7e} {6:1.7e} {7:1.7e}\n".format(
+                i + 1, vel, rho, igefrac, ni56frac, co56frac, cr48frac, v48frac)
+            f.write(strout)
+
+    # Create an array of size n_radial_cells*31 (31=running index + 30 ARTIS species)
+    abund = np.zeros((a['nd'], 31))
+
+    # Fill the array with availble mass fractions and the running index
+    for i in range(a['nspec'] - 1):
+        abund[:, spectoz[i]] = a['specfrac'][:, i]
+
+    for i in range(a['nd']):
+        abund[i, 0] = i + 1
+
+    # Write to file abundances.txt
+    fmtstring = "%d " + "%1.7e " * 30
+    np.savetxt(model + '/abundances.txt', abund[:, :], fmt=fmtstring)
+
+    # M = 0
+    # for i in range(a['nd']):
+    #     M += dm[i]
+    #     print(i + 1, a['vel'][i], dm[i], M)
+
+
+if __name__ == "__main__":
+    main()
