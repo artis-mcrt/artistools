@@ -3,6 +3,11 @@ name: Upload Package to PyPI
 on:
   release:
     types: [published, edited]
+  push:
+    branches:
+      main
+    tags:
+      - '*'
 
 jobs:
   deploy:
