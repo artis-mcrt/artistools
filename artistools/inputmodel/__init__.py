@@ -4,7 +4,7 @@ import artistools.inputmodel.describeinputmodel
 import artistools.inputmodel.makeartismodel
 import artistools.inputmodel.rprocess_from_trajectory
 
-from artistools.inputmodel.misc import (
+from artistools.inputmodel.inputmodel_misc import (
     add_derived_cols_to_modeldata,
     get_modeldata,
     get_2d_modeldata,
