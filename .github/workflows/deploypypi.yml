@@ -1,0 +1,33 @@
+name: Upload Package to PyPI
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - uses: actions/setup-python@v3
+      with:
+        cache: 'pip'
+    - name: Install dependencies
+      run: |
+        python3 -m pip install --upgrade pip
+        python3 -m pip install -r requirements.txt
+        python3 -m pip install setuptools setuptools_scm wheel twine build
+
+    - name: Build
+      run: |
+        python3 -m setuptools_scm
+        python3 setup.py sdist bdist_wheel
+        # python3 -m build --sdist --wheel --outdir dist/ .
+        twine check dist/*
+
+    - name: Publish to PyPI
+      run: |
+        twine upload -r pypi -u __token__ -p ${{ secrets.PYPI_PASSWORD }} --non-interactive dist/*
