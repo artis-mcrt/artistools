@@ -6,6 +6,19 @@ for the ARTIS radiative transfer code.
 """
 
 from artistools.configuration import config
+
+from artistools.inputmodel import (
+    add_derived_cols_to_modeldata,
+    get_modeldata,
+    get_2d_modeldata,
+    get_cell_angle,
+    get_dfmodel_dimensions,
+    get_mean_cell_properties_of_angle_bin,
+    get_mgi_of_velocity_kms,
+    save_initialabundances,
+    save_modeldata,
+)
+
 from artistools.misc import (
     AppendPath,
     CustomArgHelpFormatter,
@@ -31,8 +44,10 @@ from artistools.misc import (
     get_inputparams,
     get_ionstring,
     get_mpiranklist,
-    get_mpirankofcell, get_runfolders,
-    get_syn_dir, get_time_range,
+    get_mpirankofcell,
+    get_runfolders,
+    get_syn_dir,
+    get_time_range,
     get_timestep_of_timedays,
     get_timestep_time,
     get_timestep_times_float,
