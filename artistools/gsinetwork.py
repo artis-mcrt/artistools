@@ -147,7 +147,7 @@ def plot_qdot(
         # marker='+', markersize=15,
         label='Ye ARTIS', color='red')
 
-    axis.set_ylabel('Ye [e-/nucleon]')
+    axes[1].set_ylabel('Ye [e-/nucleon]')
     axes[1].legend(loc='best', frameon=False, handlelength=1, ncol=3, numpoints=1)
 
     fig.suptitle(f'{modelname}', fontsize=10)

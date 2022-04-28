@@ -453,7 +453,7 @@ def get_deposition(modelpath):
     # no timesteps are given in the old format of deposition.out, so ensure that
     # the times in days match up with the times of our assumed timesteps
     for timestep, row in depdata.iterrows():
-        assert(abs(ts_mids[timestep] / row['tmid_days'] - 1) < 0.01)
+        assert(abs(ts_mids[timestep] / row['tmid_days'] - 1) < 0.01)  # deposition times don't match input.txt
 
     return depdata
 

@@ -44,6 +44,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
         color for i, color in enumerate(plt.rcParams['axes.prop_cycle'].by_key()['color'])
         if f'C{i}' not in args.color]
     axis.set_prop_cycle(color=colors)
+    reflightcurveindex = 0
 
     for seriesindex, modelpath in enumerate(modelpaths):
         if not modelpath.is_dir() and '.' in str(modelpath):
@@ -51,7 +52,8 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
 
             dflightcurve, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
             lightcurvelabel = metadata.get('label', bolreflightcurve)
-            plotkwargs = dict(label=lightcurvelabel, color='k')
+            color = ['0.0', '0.5', '0.7'][reflightcurveindex]
+            plotkwargs = dict(label=lightcurvelabel, color=color)
             if ('luminosity_errminus_erg/s' in dflightcurve.columns
                     and 'luminosity_errplus_erg/s' in dflightcurve.columns):
                 plt.errorbar(
@@ -62,6 +64,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
                 axis.scatter(
                     dflightcurve['time_days'], dflightcurve['luminosity_erg/s'], **plotkwargs)
             print(f"====> {lightcurvelabel}")
+            reflightcurveindex += 1
             continue
 
         modelname = at.get_model_name(modelpath)
@@ -103,12 +106,21 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
             print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
             depdata = at.get_deposition(modelpath)
 
-            axis.plot(depdata['tmid_days'], depdata['eps_erg/s/g'] * model_mass_grams, **dict(
-                plotkwargs, **{
-                    'label': plotkwargs['label'] + r' $\dot{\epsilon}_{\alpha\beta^\pm\gamma}$',
-                    'linestyle': 'dashed',
-                    'color': None,
-                }))
+            color_total = next(axis._get_lines.prop_cycler)['color']
+
+            # axis.plot(depdata['tmid_days'], depdata['eps_erg/s/g'] * model_mass_grams, **dict(
+            #     plotkwargs, **{
+            #         'label': plotkwargs['label'] + r' $\dot{\epsilon}_{\alpha\beta^\pm\gamma}$',
+            #         'linestyle': 'dashed',
+            #         'color': color_total,
+            #     }))
+
+            # axis.plot(depdata['tmid_days'], depdata['total_dep_Lsun'] * 3.826e33, **dict(
+            #     plotkwargs, **{
+            #         'label': plotkwargs['label'] + r' $\dot{E}_{dep,\alpha\beta^\pm\gamma}$',
+            #         'linestyle': 'dotted',
+            #         'color': color_total,
+            #     }))
 
             color_gamma = next(axis._get_lines.prop_cycler)['color']
 
@@ -121,25 +133,51 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
 
             axis.plot(depdata['tmid_days'], depdata['gammadep_Lsun'] * 3.826e33, **dict(
                 plotkwargs, **{
-                    'label': plotkwargs['label'] + r' $\dot{E}_{th,\gamma}$',
+                    'label': plotkwargs['label'] + r' $\dot{E}_{dep,\gamma}$',
                     'linestyle': 'dotted',
                     'color': color_gamma,
                 }))
 
             color_beta = next(axis._get_lines.prop_cycler)['color']
 
-            axis.plot(depdata['tmid_days'], depdata['eps_elec_Lsun'] * 3.826e33, **dict(
-                plotkwargs, **{
-                    'label': plotkwargs['label'] + r' $\dot{\epsilon}_{\beta^-}$',
-                    'linestyle': 'dashed',
-                    'color': color_beta,
-                }))
+            if 'eps_elec_Lsun' in depdata:
+                axis.plot(depdata['tmid_days'], depdata['eps_elec_Lsun'] * 3.826e33, **dict(
+                    plotkwargs, **{
+                        'label': plotkwargs['label'] + r' $\dot{\epsilon}_{\beta^-}$',
+                        'linestyle': 'dashed',
+                        'color': color_beta,
+                    }))
 
             axis.plot(depdata['tmid_days'], depdata['elecdep_Lsun'] * 3.826e33, **dict(
                 plotkwargs, **{
-                    'label': plotkwargs['label'] + r' $\dot{E}_{th,\beta^-}$',
+                    'label': plotkwargs['label'] + r' $\dot{E}_{dep,\beta^-}$',
                     'linestyle': 'dotted',
                     'color': color_beta,
+                }))
+
+            color_alpha = next(axis._get_lines.prop_cycler)['color']
+
+            # if 'eps_alpha_ana_Lsun' in depdata:
+            #     axis.plot(depdata['tmid_days'], depdata['eps_alpha_ana_Lsun'] * 3.826e33, **dict(
+            #         plotkwargs, **{
+            #             'label': plotkwargs['label'] + r' $\dot{\epsilon}_{\alpha}$ ana',
+            #             'linestyle': 'solid',
+            #             'color': color_alpha,
+            #         }))
+
+            # if 'eps_alpha_Lsun' in depdata:
+            #     axis.plot(depdata['tmid_days'], depdata['eps_alpha_Lsun'] * 3.826e33, **dict(
+            #         plotkwargs, **{
+            #             'label': plotkwargs['label'] + r' $\dot{\epsilon}_{\alpha}$',
+            #             'linestyle': 'dashed',
+            #             'color': color_alpha,
+            #         }))
+
+            axis.plot(depdata['tmid_days'], depdata['alphadep_Lsun'] * 3.826e33, **dict(
+                plotkwargs, **{
+                    'label': plotkwargs['label'] + r' $\dot{E}_{dep,\alpha}$',
+                    'linestyle': 'dotted',
+                    'color': color_alpha,
                 }))
 
         # check if doing viewing angle stuff, and if so define which data to use
