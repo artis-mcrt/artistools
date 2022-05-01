@@ -389,6 +389,7 @@ def get_wid_init_at_tmodel(modelpath=None, ngridpoints=None, t_model_days=None, 
     if ngridpoints is None or t_model_days is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
         dfmodel, t_model_days, vmax = at.get_modeldata(modelpath)
+        assert(at.inputmodel.get_dfmodel_dimensions(dfmodel) == 3)
         ngridpoints = len(dfmodel)
         xmax = vmax * t_model_days * (24 * 60 * 60)
 

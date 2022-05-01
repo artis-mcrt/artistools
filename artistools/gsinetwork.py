@@ -3,6 +3,7 @@
 
 import argcomplete
 import argparse
+import math
 
 import numpy as np
 # import io
@@ -56,9 +57,14 @@ def plot_qdot(
                 arr_heat[col] += (
                     thisparticledata[col] * cell_mass_frac * frac_of_cellmass / frac_of_cellmass_sum)
 
+    show_ye = False
+    nrows = 2 if show_ye else 1
     fig, axes = plt.subplots(
-        nrows=2, ncols=1, sharex=True, sharey=False, figsize=(6, 6),
+        nrows=nrows, ncols=1, sharex=True, sharey=False, figsize=(6, 1 + 3 * nrows),
         tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0})
+    if nrows == 1:
+        axes = [axes]
+
     axis = axes[0]
 
     # axis.set_ylim(bottom=1e7, top=2e10)
@@ -133,24 +139,25 @@ def plot_qdot(
 
     axis.legend(loc='best', frameon=False, handlelength=1, ncol=3, numpoints=1)
 
-    axes[1].plot(
-        arr_time_gsi_days, arr_heat['Ye'],
-        linewidth=2, color='black',
-        linestyle='dashed',
-        # marker='x', markersize=8,
-        label=r'Ye GSI Network')
+    if show_ye:
+        axes[1].plot(
+            arr_time_gsi_days, arr_heat['Ye'],
+            linewidth=2, color='black',
+            linestyle='dashed',
+            # marker='x', markersize=8,
+            label=r'Ye GSI Network')
 
-    axes[1].plot(
-        arr_time_artis_days, arr_artis_ye,
-        linewidth=2,
-        # linestyle='None',
-        # marker='+', markersize=15,
-        label='Ye ARTIS', color='red')
+        axes[1].plot(
+            arr_time_artis_days, arr_artis_ye,
+            linewidth=2,
+            # linestyle='None',
+            # marker='+', markersize=15,
+            label='Ye ARTIS', color='red')
 
-    axes[1].set_ylabel('Ye [e-/nucleon]')
-    axes[1].legend(loc='best', frameon=False, handlelength=1, ncol=3, numpoints=1)
+        axes[1].set_ylabel('Ye [e-/nucleon]')
+        axes[1].legend(loc='best', frameon=False, handlelength=1, ncol=3, numpoints=1)
 
-    fig.suptitle(f'{modelname}', fontsize=10)
+    # fig.suptitle(f'{modelname}', fontsize=10)
     plt.savefig(pdfoutpath, format='pdf')
     print(f'Saved {pdfoutpath}')
 
@@ -162,7 +169,8 @@ def plot_abund(
     dfpartcontrib_thiscell = dfpartcontrib.query('cellindex == (@mgi + 1) and particleid in @allparticledata.keys()')
     frac_of_cellmass_sum = dfpartcontrib_thiscell.frac_of_cellmass.sum()
     print(f'frac_of_cellmass_sum: {frac_of_cellmass_sum} (can be < 1.0 because of missing particles)')
-    arr_strnuc.insert(0, 'Ye')
+    if arr_strnuc[0] != 'Ye':
+        arr_strnuc.insert(0, 'Ye')
 
     for strnuc in arr_strnuc:
         arr_abund_gsi[strnuc] = np.zeros_like(arr_time_gsi_days)
@@ -186,11 +194,12 @@ def plot_abund(
 
     axes[-1].set_xlabel('Time [days]')
     axis = axes[0]
-    axis.set_ylabel('Ye')
+    print('nuc', 'gsi_abund', 'inputmodel_abund', 'artis_abund')
     for axis, strnuc in zip(axes, arr_strnuc):
         # print(arr_time_artis_days)
         xmin = arr_time_gsi_days.min() * 0.9
         xmax = arr_time_gsi_days.max() * 1.03
+        xmax = 30
         axis.set_xlim(left=xmin, right=xmax)
         # axis.set_yscale('log')
         # axis.set_ylabel(f'X({strnuc})')
@@ -317,16 +326,34 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
     dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath)
     model_mass_grams = dfmodel.cellmass_grams.sum()
     npts_model = len(dfmodel)
+
+    correction_factors = {}
+    assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
+    # WARNING sketchy inference!
+    gridcellcount = math.ceil(max(mgi_of_propcells.keys()) ** (1/3.)) ** 3
+    xmax_tmodel = vmax_cmps * t_model_init_days * 86400
+    wid_init = at.misc.get_wid_init_at_tmodel(modelpath, gridcellcount, t_model_init_days, xmax_tmodel)
+    dfmodel['n_assoc_cells'] = [len(assoc_cells.get(inputcellid - 1, [])) for inputcellid in dfmodel['inputcellid']]
+
+    dfmodel.eval('cellmass_grams_mapped = 10 ** logrho * @wid_init ** 3 * n_assoc_cells', inplace=True)
+    for strnuc, a in zip(arr_strnuc, arr_a):
+        corr = (
+            dfmodel.eval(f'X_{strnuc} * cellmass_grams_mapped').sum() /
+            dfmodel.eval(f'X_{strnuc} * cellmass_grams').sum())
+        print(strnuc, corr)
+        correction_factors[strnuc] = corr
+
+    tmids = at.get_timestep_times_float(modelpath, loc='mid')
     MH = 1.67352e-24  # g
 
     arr_time_artis_days = []
     arr_abund_artis = {}
-    get_Ye = True
+    get_global_Ye = True
     artis_ye_sum = {}
     artis_ye_norm = {}
 
     try:
-        get_mgi_list = None if get_Ye else tuple(mgiplotlist)  # all cells if Ye is calculated
+        get_mgi_list = None if get_global_Ye else tuple(mgiplotlist)  # all cells if Ye is calculated
         estimators = at.estimators.read_estimators(modelpath, modelgridindex=get_mgi_list)
 
         first_mgi = None
@@ -334,12 +361,14 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
         for nts, mgi in sorted(estimators.keys()):
             if nts in partiallycomplete_timesteps:
                 continue
-            if mgi not in mgiplotlist and not get_Ye or estimators[(nts, mgi)]['emptycell']:
+            if mgi not in mgiplotlist and not get_global_Ye or estimators[(nts, mgi)]['emptycell']:
                 continue
 
             if first_mgi is None:
                 first_mgi = mgi
-            time_days = float(estimators[(nts, mgi)]['tdays'])
+            # time_days = float(estimators[(nts, mgi)]['tdays'])
+            time_days = tmids[nts]
+
             if mgi == first_mgi:
                 arr_time_artis_days.append(time_days)
 
@@ -349,6 +378,7 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
             for strnuc, a in zip(arr_strnuc, arr_a):
                 abund = estimators[(nts, mgi)]['populations'].get(strnuc, 0.)
                 massfrac = abund * a * MH / rho_cgs
+                massfrac = massfrac + dfmodel.iloc[mgi][f'X_{strnuc}'] * (correction_factors[strnuc] - 1.)
 
                 if mgi not in arr_abund_artis:
                     arr_abund_artis[mgi] = {}
@@ -358,45 +388,44 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
 
                 arr_abund_artis[mgi][strnuc].append(massfrac)
 
-            if get_Ye:
-                if mgi not in arr_abund_artis:
-                    arr_abund_artis[mgi] = {}
+            if mgi not in arr_abund_artis:
+                arr_abund_artis[mgi] = {}
 
-                if 'Ye' not in arr_abund_artis[mgi]:
-                    arr_abund_artis[mgi]['Ye'] = []
+            if 'Ye' not in arr_abund_artis[mgi]:
+                arr_abund_artis[mgi]['Ye'] = []
 
-                abund = estimators[(nts, mgi)]['populations'].get(strnuc, 0.)
-                if 'Ye' in estimators[(nts, mgi)]:
-                    cell_Ye = estimators[(nts, mgi)]['Ye']
-                    arr_abund_artis[mgi]['Ye'].append(cell_Ye)
-                    artis_ye_sum[nts] = (
-                        artis_ye_sum.get(nts, 0.) + cell_Ye * dfmodel.iloc[mgi].cellmass_grams)
-                    artis_ye_norm[nts] = (
-                        artis_ye_norm.get(nts, 0.) + dfmodel.iloc[mgi].cellmass_grams)
-                else:
-                    cell_protoncount = 0.
-                    cell_nucleoncount = 0.
-                    cellvolume = dfmodel.iloc[mgi].cellmass_grams / rho_cgs
-                    for popkey, abund in estimators[(nts, mgi)]['populations'].items():
-                        if isinstance(popkey, str) and abund > 0.:
-                            if popkey.endswith('_otherstable'):
-                                # TODO: use mean molecular weight, but this is not needed for kilonova input files anyway
+            abund = estimators[(nts, mgi)]['populations'].get(strnuc, 0.)
+            if 'Ye' in estimators[(nts, mgi)]:
+                cell_Ye = estimators[(nts, mgi)]['Ye']
+                arr_abund_artis[mgi]['Ye'].append(cell_Ye)
+                artis_ye_sum[nts] = (
+                    artis_ye_sum.get(nts, 0.) + cell_Ye * dfmodel.iloc[mgi].cellmass_grams)
+                artis_ye_norm[nts] = (
+                    artis_ye_norm.get(nts, 0.) + dfmodel.iloc[mgi].cellmass_grams)
+            else:
+                cell_protoncount = 0.
+                cell_nucleoncount = 0.
+                cellvolume = dfmodel.iloc[mgi].cellmass_grams / rho_cgs
+                for popkey, abund in estimators[(nts, mgi)]['populations'].items():
+                    if isinstance(popkey, str) and abund > 0.:
+                        if popkey.endswith('_otherstable'):
+                            # TODO: use mean molecular weight, but this is not needed for kilonova input files anyway
+                            pass
+                        else:
+                            try:
+                                z, a = at.get_z_a_nucname(popkey)
+                                cell_protoncount += z * abund * cellvolume
+                                cell_nucleoncount += a * abund * cellvolume
+
+                            except AssertionError:
                                 pass
-                            else:
-                                try:
-                                    z, a = at.get_z_a_nucname(popkey)
-                                    cell_protoncount += z * abund * cellvolume
-                                    cell_nucleoncount += a * abund * cellvolume
+                cell_Ye = cell_protoncount / cell_nucleoncount
 
-                                except AssertionError:
-                                    pass
-                    cell_Ye = cell_protoncount / cell_nucleoncount
-
-                    arr_abund_artis[mgi]['Ye'].append(cell_Ye)
-                    artis_ye_sum[nts] = (
-                        artis_ye_sum.get(nts, 0.) + cell_protoncount)
-                    artis_ye_norm[nts] = (
-                        artis_ye_norm.get(nts, 0.) + cell_nucleoncount)
+                arr_abund_artis[mgi]['Ye'].append(cell_Ye)
+                artis_ye_sum[nts] = (
+                    artis_ye_sum.get(nts, 0.) + cell_protoncount)
+                artis_ye_norm[nts] = (
+                    artis_ye_norm.get(nts, 0.) + cell_nucleoncount)
 
         arr_artis_ye = [artis_ye_sum[nts] / artis_ye_norm[nts] for nts in sorted(artis_ye_sum.keys())]
 
@@ -484,16 +513,16 @@ def main(args=None, argsraw=None, **kwargs):
     arr_el_a = [
         ('He', 4),
         ('Ga', 72),
-        ('Sr', 89),
-        ('Ba', 140),
+        # ('Sr', 89),
+        # ('Ba', 140),
         # ('Ce', 141),
-        ('Nd', 147),
-        ('Rn', 222),
+        # ('Nd', 147),
+        # ('Rn', 222),
         ('Ra', 223),
         ('Ra', 224),
-        ('Ra', 225),
+        # ('Ra', 225),
         ('Ac', 225),
-        ('Th', 234),
+        # ('Th', 234),
         ('Pa', 233),
         ('U', 235),
     ]
