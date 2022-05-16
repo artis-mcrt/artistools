@@ -91,7 +91,9 @@ def maptogrid(ejectasnapshotpath, outputpath):
         'psi', 'alpha', 'pmass', 'rho', 'p', 'rst', 'tau', 'av', 'ye', 'temp',
         'prev_rho(i)', 'ynue(i)', 'yanue(i)', 'enuetrap(i)', 'eanuetrap(i)',
         'enuxtrap(i)', 'iwasequil(i, 1)', 'iwasequil(i, 2)', 'iwasequil(i, 3)']
+
     snapshot_columns_used = ['id', 'h', 'x', 'y', 'z', 'vx', 'vy', 'vz', 'pmass', 'rho', 'p', 'rst', 'ye']
+
     dfsnapshot = pd.read_csv(
         ejectasnapshotpath, names=snapshot_columns,
         delim_whitespace=True, usecols=snapshot_columns_used)
@@ -113,9 +115,9 @@ def maptogrid(ejectasnapshotpath, outputpath):
     vratiomean = 0.
 
     # Propagate particles to dtextra using velocities
-    dtextra = 0.5  # in seconds ---  dtextra = 0.0 # for no extrapolation
+    dtextra_seconds = 0.5  # in seconds ---  dtextra = 0.0 # for no extrapolation
 
-    dtextra = dtextra / 4.926e-6  # convert to geom units.
+    dtextra = dtextra_seconds / 4.926e-6  # convert to geom units.
 
     particleid = dfsnapshot.id.values
     x = dfsnapshot.x.values
