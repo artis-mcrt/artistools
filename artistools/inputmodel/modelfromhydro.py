@@ -255,10 +255,6 @@ def makemodelfromgriddata(
 
     if getattr(args, 'getcellopacityfromYe', False):
         at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, dfmodel)
-    if 'cellYe' in dfmodel:
-        at.inputmodel.opacityinputfile.write_Ye_file(outputpath, dfmodel)
-    if 'Q' in dfmodel and args.makeenergyinputfiles:
-        at.inputmodel.energyinputfiles.write_Q_energy_file(outputpath, dfmodel)
 
     if os.path.isfile(Path(gridfolderpath, 'gridcontributions.txt')):
         dfgridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
@@ -276,6 +272,12 @@ def makemodelfromgriddata(
     if dimensions == 1:
         dfmodel, dfelabundances, dfgridcontributions = at.inputmodel.sphericalaverage(
             dfmodel, t_model_days, vmax, dfelabundances, dfgridcontributions)
+
+    if 'cellYe' in dfmodel:
+        at.inputmodel.opacityinputfile.write_Ye_file(outputpath, dfmodel)
+
+    if 'Q' in dfmodel and args.makeenergyinputfiles:
+        at.inputmodel.energyinputfiles.write_Q_energy_file(outputpath, dfmodel)
 
     if dfgridcontributions is not None:
         at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(

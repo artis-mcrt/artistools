@@ -606,7 +606,7 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None, dfgr
         }
 
         for column in matchedcells.columns:
-            if column.startswith('X_'):
+            if column.startswith('X_') or column == 'cellYe':
                 if rhomean > 0.:
                     massfrac = np.dot(matchedcells[column], matchedcells.rho) / matchedcellrhosum
                 else:
