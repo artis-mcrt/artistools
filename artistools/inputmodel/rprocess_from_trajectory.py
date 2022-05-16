@@ -314,7 +314,7 @@ def add_abundancecontributions(dfgridcontributions, dfmodel, t_model_days, minpa
         'inputcellid': dfnucabundances.inputcellid,
         **{f'X_{at.get_elsymbol(atomic_number)}': dfnucabundances.eval(
                 f'{" + ".join(elemisotopes[atomic_number])}',
-                engine='python' if len(elemisotopes[atomic_number]) > 32 else None)
+                engine='python' if len(elemisotopes[atomic_number]) > 31 else None)
             if atomic_number in elemisotopes else np.zeros(len(dfnucabundances))
             for atomic_number in range(1, max(elemisotopes.keys()) + 1)}}, index=dfnucabundances.index)
 
