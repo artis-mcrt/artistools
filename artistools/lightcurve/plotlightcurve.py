@@ -47,7 +47,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
     reflightcurveindex = 0
 
     for seriesindex, modelpath in enumerate(modelpaths):
-        if not modelpath.is_dir() and '.' in str(modelpath):
+        if not Path(modelpath).is_dir() and '.' in str(modelpath):
             bolreflightcurve = Path(modelpath)
 
             dflightcurve, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
