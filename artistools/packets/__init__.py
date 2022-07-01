@@ -69,6 +69,7 @@ def get_column_names_artiscode(modelpath):
             "pol_dir[0]": "pol_dirx",
             "pol_dir[1]": "pol_diry",
             "pol_dir[2]": "pol_dirz",
+            'trueemissionvelocity': 'true_emission_velocity',
         }
 
         for i, column_name in enumerate(columns):
