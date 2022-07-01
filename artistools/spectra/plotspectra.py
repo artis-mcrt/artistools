@@ -672,10 +672,17 @@ def make_contrib_plot(axes, modelpath, densityplotyvars, args):
 
     modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
 
-    estimators = at.estimators.read_estimators(modelpath=modelpath)
-    allnonemptymgilist = [
-        modelgridindex for modelgridindex in modeldata.index if not estimators[(0, modelgridindex)]["emptycell"]
-    ]
+    if args.classicartis:
+        import artistools.estimators.estimators_classic
+        modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
+        estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
+        allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index]
+
+    else:
+        estimators = at.estimators.read_estimators(modelpath=modelpath)
+        allnonemptymgilist = [
+            modelgridindex for modelgridindex in modeldata.index if not estimators[(0, modelgridindex)]["emptycell"]
+        ]
 
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, args.maxpacketfiles)
     tdays_min = float(args.timemin)
@@ -1150,6 +1157,9 @@ def addargs(parser):
     parser.add_argument(
         "-viewinganglelabelunits", type=str, default="deg", help="Choose viewing angle label in deg or rad"
     )
+
+    parser.add_argument('--classicartis', action='store_true',
+                        help='Flag to show using output from classic ARTIS branch')
 
 
 def main(args=None, argsraw=None, **kwargs):
