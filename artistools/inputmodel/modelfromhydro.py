@@ -23,8 +23,14 @@ def read_ejectasnapshot(pathtosnapshot):
                     'psi', 'alpha', 'pmass', 'rho', 'p', 'rst', 'tau', 'av', 'ye', 'temp',
                     'prev_rho(i)', 'ynue(i)', 'yanue(i)', 'enuetrap(i)', 'eanuetrap(i)',
                     'enuxtrap(i)', 'iwasequil(i, 1)', 'iwasequil(i, 2)', 'iwasequil(i, 3)']
-    ejectasnapshot = pd.read_csv(pathtosnapshot / "ejectasnapshot.dat", delim_whitespace=True, header=None, dtype=float,
-                                 names=column_names)
+
+    types_dict = {'id': int}
+    types_dict.update({col: float for col in column_names if col not in types_dict})
+
+    ejectasnapshot = pd.read_csv(
+        Path(pathtosnapshot) / "ejectasnapshot.dat", delim_whitespace=True, header=None,
+        names=column_names, dtype=types_dict)
+
     # Everything is in geometric units here
 
     return ejectasnapshot
