@@ -52,20 +52,33 @@ def get_closest_network_timestep(particleid, timesec, cond='nearest'):
             'greaterthan': find lowest timestep greater than time_sec
     """
     dfevol = get_dfevol(particleid)
+
     if cond == 'nearest':
+
         idx = np.abs(dfevol.timesec.values - timesec).argmin()
+
     elif cond == 'greaterthan':
+
         return dfevol.query('timesec > @timesec').nstep.min()
+
     elif cond == 'lessthan':
+
         return dfevol.query('timesec < @timesec').nstep.max()
+
     else:
+
         assert False
+
     nts = dfevol.nstep.values[idx]
 
     return nts
 
 
 def get_trajectory_timestepfile_nuc_abund(particleid, memberfilename):
+    """
+        get the nuclear abundances for a particular trajectory id number and time
+        memberfilename should be something like "./Run_rprocess/tday_nz-plane"
+    """
     with open_tar_file_or_extracted(particleid, memberfilename) as trajfile:
 
         # with open(trajfile) as ftraj:
@@ -153,6 +166,7 @@ def get_modelcellabundance(dict_traj_nuc_abund, minparticlespercell, cellgroup):
             frac_of_cellmass * traj_nuc_abund.get(nucabundcolname, 0.) / cell_frac_sum
             for traj_nuc_abund, frac_of_cellmass in contribparticles]
         ) for nucabundcolname in nucabundcolnames}
+
     row['inputcellid'] = cellindex
 
     # if n % 100 == 0:
