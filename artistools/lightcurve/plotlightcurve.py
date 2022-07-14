@@ -268,7 +268,6 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
                 costheta_viewing_angle_bins, phi_viewing_angle_bins = at.lightcurve.get_viewinganglebin_definitions()
                 scaledmap = make_colorbar_viewingangles_colormap()
 
-
         print(f'  range of light curve: '
               f'{lcdata.time.min():.2f} to {lcdata.time.max():.2f} days')
         try:
