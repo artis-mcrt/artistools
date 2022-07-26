@@ -922,6 +922,8 @@ def main(args=None, argsraw=None, **kwargs):
                 args.x = 'time'
             mgilist = [args.modelgridindex] * len(timesteps_included)
             timesteplist_unfiltered = [(ts,) for ts in timesteps_included]
+            if estimators[(args.modelgridindex, timesteps_included[0])]['emptycell']:
+                raise ValueError(f'cell {args.modelgridindex} is empty. no estimators available')
             make_plot(modelpath, timesteplist_unfiltered, mgilist, estimators, args.x, plotlist, args)
         else:
             # plot a range of cells in a time snapshot showing internal structure
