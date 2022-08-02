@@ -617,53 +617,97 @@ def make_peak_colour_viewing_angle_plot(args):
         nrows=1, ncols=1, sharex=True, figsize=(8, 6), tight_layout={"pad": 0.5, "w_pad": 1.5, "h_pad": 0.3}
     )
 
+    args.plotvalues = []
+    linelabels = args.label
+
     for modelnumber, modelpath in enumerate(args.modelpath):
         modelname = at.get_model_name(modelpath)
 
         bands = [args.filter[0], args.filter[1]]
 
-        data = {}
+        filename = f'{modelname}-viewingangles{bands[0]}-{bands[1]}.txt'
+        readfromfile = True
+        if readfromfile:
+            data = pd.read_csv(filename, delim_whitespace=True)
+            data.query(f'peakcolour > 0', inplace=True)
+        else:
+            data = {}
 
-        datafilename = bands[0] + "band_" + f"{modelname}" + "_viewing_angle_data.txt"
-        viewing_angle_plot_data = pd.read_csv(datafilename, delimiter=" ")
-        data[f"{bands[0]}max"] = viewing_angle_plot_data["peak_mag_polyfit"].values
-        data[f"time_{bands[0]}max"] = viewing_angle_plot_data["risetime_polyfit"].values
+            datafilename = bands[0] + "band_" + f'{modelname}' + "_viewing_angle_data.txt"
+            viewing_angle_plot_data = pd.read_csv(datafilename, delimiter=" ")
+            data[f"{bands[0]}max"] = viewing_angle_plot_data["peak_mag_polyfit"].values
+            data[f"time_{bands[0]}max"] = viewing_angle_plot_data["risetime_polyfit"].values
 
-        # Get brightness in second band at time of peak in first band
-        if len(data[f"time_{bands[0]}max"]) != 100:
-            print(f"All 100 angles are not in file {datafilename}. Quitting")
-            quit()
+            # Get brightness in second band at time of peak in first band
+            if len(data[f"time_{bands[0]}max"]) != 100:
+                print(f"All 100 angles are not in file {datafilename}. Quitting")
+                quit()
 
-        second_band_brightness = second_band_brightness_at_peak_first_band(data, bands, modelpath, modelnumber, args)
+            second_band_brightness = second_band_brightness_at_peak_first_band(data, bands, modelpath, modelnumber, args)
 
-        data[f"{bands[1]}at{bands[0]}max"] = second_band_brightness
+            datafilename = bands[0] + "band_" + f"{modelname}" + "_viewing_angle_data.txt"
+            viewing_angle_plot_data = pd.read_csv(datafilename, delimiter=" ")
+            data[f"{bands[0]}max"] = viewing_angle_plot_data["peak_mag_polyfit"].values
+            data[f"time_{bands[0]}max"] = viewing_angle_plot_data["risetime_polyfit"].values
+            data[f"{bands[1]}at{bands[0]}max"] = second_band_brightness
 
-        data = pd.DataFrame(data)
-        data["peakcolour"] = data[f"{bands[0]}max"] - data[f"{bands[1]}at{bands[0]}max"]
-        print(data["peakcolour"], data[f"{bands[0]}max"], data[f"{bands[1]}at{bands[0]}max"])
+            data = pd.DataFrame(data)
+            data['peakcolour'] = data[f"{bands[0]}max"] - data[f"{bands[1]}at{bands[0]}max"]
+            print(data['peakcolour'], data[f"{bands[0]}max"], data[f"{bands[1]}at{bands[0]}max"])
 
-        plotkwargsviewingangles, _ = set_scatterplot_plotkwargs(modelnumber, args)
-        plotkwargsviewingangles["label"] = modelname
-        ax.scatter(data["peakcolour"], data[f"{bands[0]}max"], **plotkwargsviewingangles)
+            data.to_csv(filename, sep=' ', index=False)
 
-    sn_data, label = at.lightcurve.get_phillips_relation_data()
-    ax.errorbar(
-        x=sn_data["(B-V)Bmax"],
-        y=sn_data["MB"],
-        xerr=sn_data["err_(B-V)Bmax"],
-        yerr=sn_data["err_MB"],
-        color="k",
-        alpha=0.9,
-        marker=".",
-        capsize=2,
-        label=label,
-        ls="None",
-        zorder=-1,
-    )
+        plotkwargsviewingangles, plotkwargsangleaveraged = set_scatterplot_plotkwargs(modelnumber, args)
+        plotkwargsviewingangles['label'] = args.label[modelnumber]
+        a0 = ax.scatter(data['peakcolour'], data[f"{bands[0]}max"], **plotkwargsviewingangles)
 
-    ax.legend(loc="upper right", fontsize=8, ncol=1, columnspacing=1, frameon=False)
-    ax.set_xlabel(f"{bands[0]}-{bands[1]} at {bands[0]}max", fontsize=14)
-    ax.set_ylabel(f"{bands[0]}max", fontsize=14)
+        if not args.noangleaveraged:
+            first_band_angle_ave_data = pd.read_csv(f'Bband_M08_03_angle_averaged_all_models_data.txt', delim_whitespace=True)
+            print(first_band_angle_ave_data['object'])
+            print(modelname)
+            model_values = first_band_angle_ave_data.query(f'object == @modelname', inplace=False)
+            peakmag = model_values['B_band_peakmag'].values[0]
+            risetime = model_values['B_band_risetime'].values[0]
+            print(peakmag, risetime)
+
+            # lightcurve_data_angleave = generate_band_lightcurve_data(modelpath, args, modelnumber=modelnumber)
+            # time, brightness_in_mag = get_band_lightcurve(lightcurve_data_angleave, bands[1], args)
+
+            # fxfit, xfit = lightcurve_polyfit(time, brightness_in_mag, args)
+
+            # closest_list_time_to_first_band_peak \
+            #     = at.match_closest_time(reftime=risetime, searchtimes=xfit)
+
+            # for ii, xfits in enumerate(xfit):
+            #     if float(xfits) == float(closest_list_time_to_first_band_peak):
+            #         index_at_max = ii
+            #         break
+
+            # brightness_in_second_band_at_first_band_peak = fxfit[index_at_max]
+            # print(brightness_in_second_band_at_first_band_peak)
+
+            # xvalues_angleaveraged = peakmag-brightness_in_second_band_at_first_band_peak
+            # p0 = ax.scatter(xvalues_angleaveraged, peakmag, **plotkwargsangleaveraged)
+
+            # ax.errorbar(xvalues_angleaveraged, peakmag,
+            #              xerr=np.std(data['peakcolour']),
+            #              yerr=np.std(data[f"{bands[0]}max"]), capsize=2)
+            #
+            # args.plotvalues.append((a0, p0))
+        else:
+            args.plotvalues.append((a0, a0))
+
+    # sn_data, label = get_phillips_relation_data()
+    # a0 = ax.errorbar(x=sn_data['(B-V)Bmax'], y=sn_data['MB'], xerr=sn_data['err_(B-V)Bmax'], yerr=sn_data['err_MB'],
+    #             color='k', alpha=0.9, marker='.', capsize=2, label=label, ls='None', zorder=-1)
+    # linelabels.append(label)
+    # args.plotvalues.append((a0, a0))
+
+    ax.legend(args.plotvalues, linelabels, numpoints=1, handler_map={tuple: HandlerTuple(ndivide=None)},
+              loc='upper right', fontsize=10, ncol=3, columnspacing=1, frameon=False)
+    # ax.legend(loc='upper right', fontsize=10, ncol=3, columnspacing=1, frameon=False)
+    ax.set_xlabel(f'{bands[0]}-{bands[1]} at {bands[0]}max', fontsize=14)
+    ax.set_ylabel(rf'M$_{{\mathrm{{B}}}}$, max', fontsize=14)
     set_scatterplot_plot_params(args)
     plotname = f"plotviewinganglecolour{bands[0]}-{bands[1]}.pdf"
     plt.savefig(plotname, format="pdf")
@@ -671,7 +715,7 @@ def make_peak_colour_viewing_angle_plot(args):
     plt.close()
 
 
-@at.diskcache(savezipped=True)
+# @at.diskcache(savezipped=True)
 def second_band_brightness_at_peak_first_band(data, bands, modelpath, modelnumber, args):
     second_band_brightness = []
     for anglenumber, time in enumerate(data[f"time_{bands[0]}max"]):
