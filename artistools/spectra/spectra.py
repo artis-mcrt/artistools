@@ -75,6 +75,9 @@ def get_specdata(modelpath, stokesparam=None):
     if Path(modelpath, 'specpol.out').is_file():
         specfilename = Path(modelpath) / "specpol.out"
         polarisationdata = True
+    elif Path(modelpath, 'specpol.out.xz').is_file():
+        specfilename = Path(modelpath) / "specpol.out.xz"
+        polarisationdata = True
     elif Path(modelpath).is_dir():
         specfilename = at.firstexisting(['spec.out.xz', 'spec.out.gz', 'spec.out'], path=modelpath)
     else:
@@ -429,7 +432,7 @@ def make_averaged_vspecfiles(args):
 def get_specpol_data(angle=None, modelpath=None, specdata=None):
     if specdata is None:
         if angle is None:
-            specfilename = Path(modelpath, 'specpol.out')
+            specfilename = at.firstexisting(['specpol.out', 'specpol.out.xz', 'specpol.out.gz'], path=modelpath)
         else:
             # alternatively use f'vspecpol_averaged-{angle}.out' ?
             specfilename = Path(modelpath, f'vspecpol_total-{angle}.out')
