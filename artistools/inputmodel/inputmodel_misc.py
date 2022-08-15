@@ -49,7 +49,7 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
 
     headerrows = 0
     with at.misc.zopen(filename, 'rt') as fmodel:
-        gridcellcount = int(fmodel.readline())
+        gridcellcount = int(at.misc.readnoncommentline(fmodel))
         t_model_init_days = float(fmodel.readline())
         headerrows += 2
         t_model_init_seconds = t_model_init_days * 24 * 60 * 60
