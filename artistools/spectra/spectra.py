@@ -21,7 +21,7 @@ import artistools.radfield
 import artistools.packets
 
 fluxcontributiontuple = namedtuple(
-    'fluxcontribution', 'fluxcontrib linelabel array_flambda_emission array_flambda_absorption color')
+    'fluxcontributiontuple', 'fluxcontrib linelabel array_flambda_emission array_flambda_absorption color')
 
 
 def timeshift_fluxscale_co56law(scaletoreftime, spectime):
