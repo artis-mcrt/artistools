@@ -327,6 +327,7 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
     model_mass_grams = dfmodel.cellmass_grams.sum()
     npts_model = len(dfmodel)
 
+    # these factors correct for missing mass due to skipped shells, and volume error due to Cartesian grid map
     correction_factors = {}
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
     # WARNING sketchy inference!
