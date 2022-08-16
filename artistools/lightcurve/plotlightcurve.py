@@ -320,7 +320,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
                 if lcdata_valid.empty:
                     axis.plot(lcdata['time'], plotkwargs['lum'], **plotkwargs)
                 else:
-                    if args.showinvalidpart:
+                    if args.plotinvalidpart:
                         lcdata_before_valid = lcdata.query('time <= @lcdata_valid.time.min()')
                         lcdata_after_valid = lcdata.query('time >= @lcdata_valid.time.max()')
                         axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
