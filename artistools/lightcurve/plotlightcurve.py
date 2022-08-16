@@ -147,7 +147,9 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
             #         'color': color_gamma,
             #     }))
 
-            axis.plot(depdata['tmid_days'], depdata['gammadeppathint_Lsun'] * 3.826e33, **dict(
+            gammadep_lsun = depdata['gammadeppathint_Lsun'] if 'gammadeppathint_Lsun' in depdata else depdata['gammadep_Lsun']
+
+            axis.plot(depdata['tmid_days'], gammadep_lsun * 3.826e33, **dict(
                 plotkwargs, **{
                     'label': plotkwargs['label'] + r' $\dot{E}_{dep,\gamma}$',
                     'linestyle': 'dashed',
@@ -156,19 +158,21 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
 
             color_beta = next(axis._get_lines.prop_cycler)['color']
 
-            axis.plot(depdata['tmid_days'], depdata['eps_elec_Lsun'] * 3.826e33, **dict(
-                plotkwargs, **{
-                    'label': plotkwargs['label'] + r' $\dot{E}_{rad,\beta^-}$',
-                    'linestyle': 'dotted',
-                    'color': color_beta,
-                }))
+            if 'eps_elec_Lsun' in depdata:
+                axis.plot(depdata['tmid_days'], depdata['eps_elec_Lsun'] * 3.826e33, **dict(
+                    plotkwargs, **{
+                        'label': plotkwargs['label'] + r' $\dot{E}_{rad,\beta^-}$',
+                        'linestyle': 'dotted',
+                        'color': color_beta,
+                    }))
 
-            axis.plot(depdata['tmid_days'], depdata['elecdep_Lsun'] * 3.826e33, **dict(
-                plotkwargs, **{
-                    'label': plotkwargs['label'] + r' $\dot{E}_{dep,\beta^-}$',
-                    'linestyle': 'dashed',
-                    'color': color_beta,
-                }))
+            if 'elecdep_Lsun' in depdata:
+                axis.plot(depdata['tmid_days'], depdata['elecdep_Lsun'] * 3.826e33, **dict(
+                    plotkwargs, **{
+                        'label': plotkwargs['label'] + r' $\dot{E}_{dep,\beta^-}$',
+                        'linestyle': 'dashed',
+                        'color': color_beta,
+                    }))
 
             # color_alpha = next(axis._get_lines.prop_cycler)['color']
             color_alpha = 'C1'

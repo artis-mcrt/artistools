@@ -43,6 +43,7 @@ from artistools.misc import (
     get_model_name,
     get_inputparams,
     get_ionstring,
+    get_linelist,
     get_mpiranklist,
     get_mpirankofcell,
     get_runfolders,
