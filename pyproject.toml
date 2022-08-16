@@ -21,7 +21,7 @@ line-length = 120
 max-line-length=120
 
 [tool.pylint.'MESSAGES CONTROL']
-max-line-length=12
+max-line-length=120
 
 [tool.setuptools_scm]
 write_to = "_version.py"
