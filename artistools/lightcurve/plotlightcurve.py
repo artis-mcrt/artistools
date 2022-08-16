@@ -316,15 +316,16 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
                 # show the parts of the light curve that are outside the valid arrival range partially transparent
                 plotkwargs_invalidrange = plotkwargs.copy()
                 plotkwargs_invalidrange.update({'label': None, 'alpha': 0.5})
-                lcdata_valid = lcdata.query('time >= @validrange_start_days and time <= @validrange_end_days')
+                lcdata_valid = lcdata.query('time >= @validrange_start_days and time <= @validrange_end_days', inplace=False)
                 if lcdata_valid.empty:
-                    axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs_invalidrange)
+                    axis.plot(lcdata['time'], plotkwargs['lum'], **plotkwargs)
                 else:
-                    lcdata_before_valid = lcdata.query('time <= @lcdata_valid.time.min()')
-                    lcdata_after_valid = lcdata.query('time >= @lcdata_valid.time.max()')
-                    # axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
-                    axis.plot(lcdata_before_valid['time'], lcdata_before_valid['lum'], **plotkwargs_invalidrange)
-                    axis.plot(lcdata_after_valid['time'], lcdata_after_valid['lum'], **plotkwargs_invalidrange)
+                    if args.showinvalidpart:
+                        lcdata_before_valid = lcdata.query('time <= @lcdata_valid.time.min()')
+                        lcdata_after_valid = lcdata.query('time >= @lcdata_valid.time.max()')
+                        axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
+                        axis.plot(lcdata_before_valid['time'], lcdata_before_valid['lum'], **plotkwargs_invalidrange)
+                        axis.plot(lcdata_after_valid['time'], lcdata_after_valid['lum'], **plotkwargs_invalidrange)
                     axis.plot(lcdata_valid['time'], lcdata_valid['lum'], **plotkwargs)
 
                 if args.print_data:
@@ -1012,6 +1013,10 @@ def addargs(parser):
     parser.add_argument('--plotcmf', '--plot_cmf', '--showcmf', '--show_cmf',
                         action='store_true',
                         help='Plot comoving frame light curve')
+
+    parser.add_argument('--plotinvalidpart',
+                        action='store_true',
+                        help='Plot the entire light curve including partially accumulated parts (light travel time effects)')
 
     parser.add_argument('--plotdeposition',
                         action='store_true',
