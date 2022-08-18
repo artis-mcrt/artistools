@@ -165,7 +165,7 @@ def plot_average_ionisation_excitation(
 def plot_levelpop(
         ax, xlist, seriestype, params, timestepslist, mgilist,
         estimators, modelpath, dfalldata=None, args=None, **plotkwargs):
-    import at.plottools
+    import artistools.plottools
     if seriestype == 'levelpopulation_dn_on_dvel':
         ax.set_ylabel('dN/dV [{}km$^{{-1}}$ s]')
         ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))
@@ -845,7 +845,7 @@ def main(args=None, argsraw=None, **kwargs):
         args.timestep = f'0-{len(at.get_timestep_times_float(modelpath)) - 1}'
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
-         modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
+        modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
 
     print(f"Plotting estimators for '{modelname}' timesteps {timestepmin} to {timestepmax} "
           f"({args.timemin:.1f} to {args.timemax:.1f}d)")
