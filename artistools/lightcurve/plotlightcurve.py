@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Iterable
 
 import numpy as np
-# import pandas as pd
+import pandas as pd
 
 import artistools as at
 import artistools.spectra
@@ -276,8 +276,11 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
               f'{lcdata.time.min():.2f} to {lcdata.time.max():.2f} days')
         try:
             nts_last, validrange_start_days, validrange_end_days = at.get_escaped_arrivalrange(modelpath)
-            print(f'  range of validity (last timestep {nts_last}): '
-                  f'{validrange_start_days:.2f} to {validrange_end_days:.2f} days')
+            if validrange_start_days is not None and validrange_end_days is not None:
+                str_valid_range = f'{validrange_start_days:.2f} to {validrange_end_days:.2f} days' 
+            else:
+                str_valid_range = f'{validrange_start_days} to {validrange_end_days} days'
+            print(f'  range of validity (last timestep {nts_last}): {str_valid_range}')
         except FileNotFoundError:
             print('  range of validity: could not determine due to missing files '
                   '(requires deposition.out, input.txt, model.txt)')
@@ -314,19 +317,23 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
                 axis.plot(lcdata['time'], lcdata['mag'], **plotkwargs)
             else:
                 # show the parts of the light curve that are outside the valid arrival range partially transparent
-                plotkwargs_invalidrange = plotkwargs.copy()
-                plotkwargs_invalidrange.update({'label': None, 'alpha': 0.5})
-                lcdata_valid = lcdata.query('time >= @validrange_start_days and time <= @validrange_end_days', inplace=False)
-                if lcdata_valid.empty:
-                    axis.plot(lcdata['time'], plotkwargs['lum'], **plotkwargs)
+                if validrange_start_days is None or validrange_end_days is None:
+                    # entire range is invalid
+                    lcdata_before_valid = lcdata
+                    lcdata_after_valid = pd.DataFrame(data=None, columns=lcdata.columns)
+                    lcdata_valid = pd.DataFrame(data=None, columns=lcdata.columns)
                 else:
-                    if args.plotinvalidpart:
-                        lcdata_before_valid = lcdata.query('time <= @lcdata_valid.time.min()')
-                        lcdata_after_valid = lcdata.query('time >= @lcdata_valid.time.max()')
-                        axis.plot(lcdata['time'], lcdata['lum'], **plotkwargs)
-                        axis.plot(lcdata_before_valid['time'], lcdata_before_valid['lum'], **plotkwargs_invalidrange)
-                        axis.plot(lcdata_after_valid['time'], lcdata_after_valid['lum'], **plotkwargs_invalidrange)
-                    axis.plot(lcdata_valid['time'], lcdata_valid['lum'], **plotkwargs)
+                    lcdata_valid = lcdata.query(
+                        'time >= @validrange_start_days and time <= @validrange_end_days', inplace=False)
+                    lcdata_before_valid = lcdata.query('time <= @lcdata_valid.time.min()')
+                    lcdata_after_valid = lcdata.query('time >= @lcdata_valid.time.max()')
+
+                axis.plot(lcdata_valid['time'], lcdata_valid['lum'], **plotkwargs)
+                if args.plotinvalidpart:
+                    plotkwargs_invalidrange = plotkwargs.copy()
+                    plotkwargs_invalidrange.update({'label': None, 'alpha': 0.5})
+                    axis.plot(lcdata_before_valid['time'], lcdata_before_valid['lum'], **plotkwargs_invalidrange)
+                    axis.plot(lcdata_after_valid['time'], lcdata_after_valid['lum'], **plotkwargs_invalidrange)
 
                 if args.print_data:
                     print(lcdata[['time', 'lum', 'lum_cmf']].to_string(index=False))
