@@ -31,6 +31,3 @@ config['path_artistools_dir'] = Path(__file__).absolute().parent  # the package 
 config['path_datadir'] = Path(__file__).absolute().parent / 'data'
 config['path_testartismodel'] = Path(config['path_artistools_repository'], 'tests', 'data', 'testmodel')
 config['path_testoutput'] = Path(config['path_artistools_repository'], 'tests', 'output')
-
-config['gsimerger_trajroot'] = Path(
-    '/Users/luke/Library/Mobile Documents/com~apple~CloudDocs/Archive/Astronomy/Mergers/SFHo/')

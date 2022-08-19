@@ -356,7 +356,14 @@ def get_3d_modeldata_minimal(modelpath):
 
 
 def save_modeldata(
-        dfmodel, t_model_init_days, filename=None, modelpath=None, vmax=None, dimensions=1, radioactives=True):
+        dfmodel,
+        t_model_init_days,
+        filename=None, modelpath=None,
+        vmax=None,
+        dimensions=1, 
+        radioactives=True,
+        headerlines=None
+):
     """Save a pandas DataFrame and snapshot time into ARTIS model.txt"""
 
     timestart = time.perf_counter()
@@ -398,7 +405,9 @@ def save_modeldata(
     else:
         modelfilepath = Path(filename)
 
-    with open(modelfilepath, 'w') as fmodel:
+    with open(modelfilepath, 'w', encoding='utf-8') as fmodel:
+        if headerlines is not None:
+            fmodel.write('\n'.join([f'# {line}' for line in headerlines]) + '\n')
         fmodel.write(f'{len(dfmodel)}\n')
         fmodel.write(f'{t_model_init_days}\n')
         if dimensions == 3:
@@ -429,14 +438,14 @@ def save_modeldata(
             zeroabund = ' '.join(['0.0' for _ in abundcols])
 
             for inputcellid, posxmin, posymin, poszmin, rho, *massfracs in dfmodel[
-                    ['inputcellid', 'pos_x_min', 'pos_y_min', 'pos_z_min', 'rho', *abundcols]
-                    ].itertuples(index=False, name=None):
+                    ['inputcellid', 'pos_x_min', 'pos_y_min', 'pos_z_min', 'rho', *abundcols]].itertuples(
+                        index=False, name=None):
 
                 fmodel.write(f"{inputcellid:6d} {posxmin} {posymin} {poszmin} {rho}\n")
                 fmodel.write(" ".join([f'{abund}' for abund in massfracs]) if rho > 0. else zeroabund)
                 fmodel.write('\n')
 
-    print(f'Saved {filename} (took {time.perf_counter() - timestart:.1f} seconds)')
+    print(f'Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)')
 
 
 def get_mgi_of_velocity_kms(modelpath, velocity, mgilist=None):
@@ -481,7 +490,7 @@ def get_initialabundances(modelpath):
     return abundancedata
 
 
-def save_initialabundances(dfelabundances, abundancefilename):
+def save_initialabundances(dfelabundances, abundancefilename, headerlines=None):
     """Save a DataFrame (same format as get_initialabundances) to abundances.txt.
         columns must be:
             - inputcellid: integer index to match model.txt (starting from 1)
@@ -500,7 +509,9 @@ def save_initialabundances(dfelabundances, abundancefilename):
         if col not in dfelabundances.columns:
             dfelabundances[col] = 0.0
 
-    with open(abundancefilename, 'w') as fabund:
+    with open(abundancefilename, 'w', encoding='utf-8') as fabund:
+        if headerlines is not None:
+            fabund.write('\n'.join([f'# {line}' for line in headerlines]) + '\n')
         for row in dfelabundances.itertuples(index=False):
             fabund.write(f' {row.inputcellid:6d} ')
             fabund.write(" ".join([f'{getattr(row, colname, 0.)}' for colname in elcolnames]))
