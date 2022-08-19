@@ -5,10 +5,11 @@
 
 import argparse
 import math
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
-from pathlib import Path
 import artistools as at
 
 itable = 40000  # wie fein Kernelfkt interpoliert wird
@@ -105,7 +106,7 @@ def maptogrid(ejectasnapshotpath, outputpath):
     npart = len(dfsnapshot)
     print("number of particles", npart)
 
-    fpartanalysis = open(Path(outputpath, 'ejectapartanalysis.dat'), mode='w')
+    fpartanalysis = open(Path(outputpath, 'ejectapartanalysis.dat'), mode='w', encoding='utf-8')
 
     totmass = 0.0
     rmax = 0.0
@@ -286,7 +287,7 @@ def maptogrid(ejectasnapshotpath, outputpath):
         #             # if not norm[i, j, k] > 0:
         #             #     print(i, j, k, norm[i, j, k], gye[i, j, k] )
 
-        with open(Path(outputpath, 'gridcontributions.txt'), 'w') as fcontribs:
+        with open(Path(outputpath, 'gridcontributions.txt'), 'w', encoding='utf-8') as fcontribs:
             fcontribs.write('particleid cellindex frac_of_cellmass\n')
             for (n, i, j, k), old_value in particlecontribs.items():
                 # particle_contribs[n, i, j, k] = old_value / norm[i, j, k]
@@ -330,7 +331,7 @@ def maptogrid(ejectasnapshotpath, outputpath):
 
     # output grid - adapt as you need output
 
-    with open(Path(outputpath, 'grid.dat'), 'w') as fgrid:
+    with open(Path(outputpath, 'grid.dat'), 'w', encoding="utf-8") as fgrid:
 
         fgrid.write(f'{ngrid**3} # ngrid\n')
         fgrid.write(f'{dtextra} # extra time after explosion simulation ended (in geom units)\n')

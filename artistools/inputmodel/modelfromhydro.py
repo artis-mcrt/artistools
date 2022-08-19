@@ -249,9 +249,10 @@ def add_mass_to_center(griddata, t_model_in_days, vmax, args):
 
 def makemodelfromgriddata(
         gridfolderpath=Path(), outputpath=Path(), targetmodeltime_days=None,
-        minparticlespercell=0, getabundances=True, dimensions=3, args=None):
+        minparticlespercell=0, traj_root=None, dimensions=3, args=None):
 
     assert dimensions in [1, 3]
+    headerlines = [f'gridfolder: {Path(gridfolderpath).resolve().parts[-1]}']
     dfmodel, t_model_days, vmax = at.inputmodel.modelfromhydro.read_griddat_file(
         pathtogriddata=gridfolderpath, targetmodeltime_days=targetmodeltime_days,
         minparticlespercell=minparticlespercell)
@@ -267,12 +268,15 @@ def makemodelfromgriddata(
     else:
         dfgridcontributions = None
 
-    if getabundances:
+    if traj_root is not None:
+        print(f'Nuclear network abundances from {traj_root} will be used')
+        headerlines.append(f'trajfolder: {Path(traj_root).resolve().parts[-1]}')
         dfmodel, dfelabundances, dfgridcontributions = (
             at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
                 dfgridcontributions=dfgridcontributions, dfmodel=dfmodel, t_model_days=t_model_days,
-                minparticlespercell=minparticlespercell))
+                minparticlespercell=minparticlespercell, traj_root=traj_root))
     else:
+        print('WARNING: No abundances will be set because no nuclear network trajectories folder was specified')
         dfelabundances = None
 
     if dimensions == 1:
@@ -289,24 +293,29 @@ def makemodelfromgriddata(
         at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(
             dfgridcontributions, Path(outputpath, 'gridcontributions.txt'))
 
-    if getabundances:
-        print('Writing to abundances.txt...')
-        at.inputmodel.save_initialabundances(dfelabundances=dfelabundances, abundancefilename=outputpath)
+    if traj_root is not None:
+        print(f'Writing to {Path(outputpath) / "abundances.txt"}...')
+        at.inputmodel.save_initialabundances(
+            dfelabundances=dfelabundances, abundancefilename=outputpath, headerlines=headerlines)
     else:
         at.inputmodel.save_empty_abundance_file(len(dfmodel))
 
-    print('Writing to model.txt...')
+    print(f'Writing to {Path(outputpath) / "model.txt"}...')
     at.inputmodel.save_modeldata(
-        modelpath=outputpath, dfmodel=dfmodel, t_model_init_days=t_model_days, dimensions=dimensions, vmax=vmax)
+        modelpath=outputpath, dfmodel=dfmodel, t_model_init_days=t_model_days, dimensions=dimensions, vmax=vmax,
+        headerlines=headerlines)
 
 
 def addargs(parser):
-    parser.add_argument('-inputpath', '-i',
+    parser.add_argument('-gridfolderpath', '-i',
                         default='.',
-                        help='Path of input files')
+                        help='Path to folder containing grid.dat and gridcontributions.dat')
     parser.add_argument('-minparticlespercell',
                         default=0, type=int,
                         help='Minimum number of SPH particles in each cell (otherwise set rho=0)')
+    parser.add_argument('-trajectoryroot',
+                        default=None,
+                        help='Path to nuclear network trajectory folder, if abundances are requierd')
     parser.add_argument('-dimensions',
                         default=3, type=int,
                         help='Number of dimensions: 1 for spherically symmetric 1D, 3 for 3D Cartesian')
@@ -331,7 +340,7 @@ def main(args=None, argsraw=None, **kwargs):
         argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
-    gridfolderpath = args.inputpath
+    gridfolderpath = args.gridfolderpath
     if not Path(gridfolderpath, 'grid.dat').is_file() or not Path(gridfolderpath, 'gridcontributions.txt').is_file():
         print('grid.dat and gridcontributions.txt are required. Run artistools-maptogrid')
         return
@@ -346,7 +355,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     makemodelfromgriddata(
         gridfolderpath=gridfolderpath, outputpath=outputpath, minparticlespercell=args.minparticlespercell,
-        targetmodeltime_days=args.targetmodeltime_days, getabundances=(not args.noabundances),
+        targetmodeltime_days=args.targetmodeltime_days, traj_root=args.trajectoryroot,
         dimensions=args.dimensions)
 
 
