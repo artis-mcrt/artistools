@@ -19,6 +19,7 @@ import artistools as at
 
 traj_root = Path('/Volumes/GoogleDrive/My Drive/Archive/Mergers/SFHo_short/SFHo')
 
+
 def plot_qdot(
         modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis_days,
         arr_artis_ye, arr_time_gsi_days, pdfoutpath):
