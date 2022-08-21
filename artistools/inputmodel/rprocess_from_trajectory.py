@@ -2,6 +2,7 @@
 # PYTHON_ARGCOMPLETE_OK
 
 import argparse
+import io
 import math
 import multiprocessing
 import tarfile
@@ -16,6 +17,7 @@ from functools import lru_cache, partial
 
 
 def get_elemabund_from_nucabund(dfnucabund):
+    """ return a dictionary of elemental abundances from nuclear abundance DataFrame """
     dictelemabund = {}
     for atomic_number in range(1, dfnucabund.Z.max() + 1):
         dictelemabund[f'X_{at.get_elsymbol(atomic_number)}'] = (
@@ -23,17 +25,23 @@ def get_elemabund_from_nucabund(dfnucabund):
     return dictelemabund
 
 
-def get_traj_tarpath(traj_root, particleid):
-    return Path(traj_root, f'{particleid}.tar.xz')
-
-
 def open_tar_file_or_extracted(traj_root, particleid, memberfilename):
     """ memberfilename is within the trajectory tarfile/folder, eg. ./Run_rprocess/evol.dat """
     path_extracted_file = Path(traj_root, str(particleid), memberfilename)
     if path_extracted_file.is_file():
         return open(path_extracted_file, mode='r', encoding='utf-8')
-    else:
-        return tarfile.open(get_traj_tarpath(traj_root, particleid), mode='r:*').extractfile(member=memberfilename)
+
+    tarfilepath = Path(traj_root, f'{particleid}.tar')
+    if not tarfilepath.is_file():
+        tarfilepath = Path(traj_root, f'{particleid}.tar.xz')
+
+    print(f'using {tarfilepath} for {memberfilename}')
+    # return tarfile.open(tarfilepath, 'r:*').extractfile(member=memberfilename)
+    with tarfile.open(tarfilepath, 'r|*') as tfile:
+        for tarmember in tfile:
+            if tarmember.name == memberfilename:
+                return io.StringIO(tfile.extractfile(tarmember).read().decode('utf-8'))
+    assert False
 
 
 @lru_cache(maxsize=16)
@@ -121,7 +129,7 @@ def get_trajectory_nuc_abund(particleid, traj_root, t_model_s=None, nts=None):
         dftrajnucabund, traj_time_s = get_trajectory_timestepfile_nuc_abund(traj_root, particleid, memberfilename)
 
     except FileNotFoundError:
-        # print(f' WARNING {get_traj_tarpath(particleid)} not found! ')
+        # print(f' WARNING {particleid}.tar.xz file not found! ')
         return None
 
     massfractotal = dftrajnucabund.massfrac.sum()
@@ -191,7 +199,7 @@ def get_gridparticlecontributions(gridcontribpath):
 def filtermissinggridparticlecontributions(traj_root, dfcontribs):
     missing_particleids = []
     for particleid in sorted(dfcontribs.particleid.unique()):
-        if not get_traj_tarpath(traj_root, particleid).is_file():
+        if not Path(traj_root, f'{particleid}.tar.xz').is_file():
             missing_particleids.append(particleid)
             # print(f' WARNING particle {particleid} not found!')
 
@@ -269,7 +277,7 @@ def add_abundancecontributions(dfgridcontributions, dfmodel, t_model_days, traj_
     timestart = time.perf_counter()
     trajnucabundworker = partial(get_trajectory_nuc_abund, t_model_s=t_model_s, traj_root=traj_root)
 
-    if at.config['num_processes'] > 1:
+    if at.config['num_processes'] > 1 and False:
         with multiprocessing.Pool(processes=at.config['num_processes']) as pool:
             list_traj_nuc_abund = pool.map(trajnucabundworker, dfcontribs_particlegroups.groups)
             pool.close()
@@ -370,7 +378,7 @@ def main(args=None, argsraw=None, **kwargs):
     # particleid = 88969  # Ye = 0.0963284224
     particleid = 133371  # Ye = 0.403913230
     print(f'trajectory particle id {particleid}')
-    dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(particleid, './Run_rprocess/tday_nz-plane')
+    dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(traj_root, particleid, './Run_rprocess/tday_nz-plane')
     dfnucabund.query('Z >= 1', inplace=True)
     dfnucabund['radioactive'] = True
 

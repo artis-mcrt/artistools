@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 
+import datetime
 import math
 
-import argcomplete
 import argparse
 from pathlib import Path
 import os.path
+
+import argcomplete
 import pandas as pd
 from astropy import units as u
 import numpy as np
@@ -92,7 +94,7 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
 
     griddata['rho'] = griddata['rho'] * 6.176e17  # convert to g/cm3
 
-    with open(griddatfilepath, 'r') as gridfile:
+    with open(griddatfilepath, 'r', encoding='utf-8') as gridfile:
         ngrid = int(gridfile.readline().split()[0])
         if ngrid != len(griddata['inputcellid']):
             print("length of file and ngrid don't match")
@@ -292,6 +294,8 @@ def makemodelfromgriddata(
     if dfgridcontributions is not None:
         at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(
             dfgridcontributions, Path(outputpath, 'gridcontributions.txt'))
+
+    headerlines.append(f'generated at (UTC): {datetime.datetime.utcnow()}')
 
     if traj_root is not None:
         print(f'Writing to {Path(outputpath) / "abundances.txt"}...')
