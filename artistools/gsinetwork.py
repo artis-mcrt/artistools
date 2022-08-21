@@ -257,7 +257,7 @@ def get_particledata(arr_time_s, arr_strnuc, particleid):
     }
     nstep_timesec = {}
     with at.inputmodel.rprocess_from_trajectory.open_tar_file_or_extracted(
-            particleid, './Run_rprocess/heating.dat') as f:
+            traj_root, particleid, './Run_rprocess/heating.dat') as f:
 
         dfheating = pd.read_csv(
             f, delim_whitespace=True, usecols=[
@@ -279,7 +279,7 @@ def get_particledata(arr_time_s, arr_strnuc, particleid):
             particledata[col] = np.interp(arr_time_s, arr_time_s_source, heatrates_in[col])
 
     with at.inputmodel.rprocess_from_trajectory.open_tar_file_or_extracted(
-            particleid, './Run_rprocess/energy_thermo.dat') as f:
+            traj_root, particleid, './Run_rprocess/energy_thermo.dat') as f:
 
         storecols = ['Qdot', 'Ye']
 
@@ -306,7 +306,7 @@ def get_particledata(arr_time_s, arr_strnuc, particleid):
             timesec = nstep_timesec[nts]
             arr_traj_time_s.append(timesec)
             # print(nts, timesec / 86400)
-            traj_nuc_abund = at.inputmodel.rprocess_from_trajectory.get_trajectory_nuc_abund(particleid, nts=nts)
+            traj_nuc_abund = at.inputmodel.rprocess_from_trajectory.get_trajectory_nuc_abund(traj_root, particleid, nts=nts)
             for strnuc in arr_strnuc:
                 arr_massfracs[strnuc].append(traj_nuc_abund.get(f'X_{strnuc}', 0.))
 
@@ -447,7 +447,7 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
     dfpartcontrib.query('cellindex <= @npts_model', inplace=True)
 
     list_particleids_getabund = dfpartcontrib.query('(cellindex - 1) in @mgiplotlist').particleid.unique()
-    fworkerwithabund = partial(get_particledata, arr_time_gsi_s, arr_strnuc)
+    fworkerwithabund = partial(get_particledata, arr_time_gsi_s, arr_strnuc, traj_root)
 
     print(f'Reading trajectory data for {len(list_particleids_getabund)} particles with abundances')
 
@@ -461,7 +461,7 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
 
     list_particleids_noabund = [
         pid for pid in dfpartcontrib.particleid.unique() if pid not in list_particleids_getabund]
-    fworkernoabund = partial(get_particledata, arr_time_gsi_s, [])
+    fworkernoabund = partial(get_particledata, arr_time_gsi_s, [], traj_root)
     print(f'Reading trajectory data for {len(list_particleids_noabund)} '
           'particles for Qdot/thermal data (no abundances)')
 
