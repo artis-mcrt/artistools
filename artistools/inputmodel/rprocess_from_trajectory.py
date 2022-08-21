@@ -375,6 +375,7 @@ def main(args=None, argsraw=None, **kwargs):
         argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
+    traj_root = Path('/Volumes/GoogleDrive/My Drive/Archive/Mergers/SFHo_short/SFHo')
     # particleid = 88969  # Ye = 0.0963284224
     particleid = 133371  # Ye = 0.403913230
     print(f'trajectory particle id {particleid}')
