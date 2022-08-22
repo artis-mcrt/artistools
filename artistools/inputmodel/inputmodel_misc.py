@@ -49,7 +49,13 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
 
     headerrows = 0
     with at.misc.zopen(filename, 'rt') as fmodel:
-        gridcellcount = int(at.misc.readnoncommentline(fmodel))
+        line = '#'
+        while line.startswith('#'):
+            line = fmodel.readline()
+            if line.startswith('#'):
+                headerrows += 1
+
+        gridcellcount = int(line)
         t_model_init_days = float(fmodel.readline())
         headerrows += 2
         t_model_init_seconds = t_model_init_days * 24 * 60 * 60
@@ -360,7 +366,7 @@ def save_modeldata(
         t_model_init_days,
         filename=None, modelpath=None,
         vmax=None,
-        dimensions=1, 
+        dimensions=1,
         radioactives=True,
         headerlines=None
 ):
@@ -471,7 +477,7 @@ def get_mgi_of_velocity_kms(modelpath, velocity, mgilist=None):
         return float('nan')
     else:
         print(f"Can't find cell with velocity of {velocity}. Velocity list: {arr_vouter}")
-        assert(False)
+        assert False
 
 
 @lru_cache(maxsize=8)
@@ -480,7 +486,7 @@ def get_initialabundances(modelpath):
     abundancefilepath = at.firstexisting(
         ['abundances.txt.xz', 'abundances.txt.gz', 'abundances.txt'], path=modelpath)
 
-    abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None)
+    abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, comment='#')
     abundancedata.index.name = 'modelgridindex'
     abundancedata.columns = [
         'inputcellid', *['X_' + at.get_elsymbol(x) for x in range(1, len(abundancedata.columns))]]
@@ -590,13 +596,13 @@ def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None, dfgr
 
                 for particleid, dfparticlecontribs in dfcellcont.groupby('particleid'):
                     frac_of_cellmass_avg = sum([
-                        (row.frac_of_cellmass *
-                         celldensity[row.cellindex])
+                        (row.frac_of_cellmass
+                         * celldensity[row.cellindex])
                         for row in dfparticlecontribs.itertuples(index=False)]) / matchedcellrhosum
 
                     frac_of_cellmass_includemissing_avg = sum([
-                        (row.frac_of_cellmass_includemissing *
-                         celldensity[row.cellindex])
+                        (row.frac_of_cellmass_includemissing
+                         * celldensity[row.cellindex])
                         for row in dfparticlecontribs.itertuples(index=False)]) / matchedcellrhosum
 
                     outgridcontributions.append({
