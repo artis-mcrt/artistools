@@ -18,7 +18,7 @@ dynamic = ["version", "description", "entry-points"]
 line-length = 120
 
 [tool.flake8]
-ignore = N806
+ignore = "N806"
 max-line-length = 120
 count = true
 
