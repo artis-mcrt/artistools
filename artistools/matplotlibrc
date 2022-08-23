@@ -9,9 +9,12 @@ savefig.format:    pdf
 
 #axes.formatter.useoffset: False
 
+
 xtick.direction: in
+xtick.top:         True
 
 ytick.direction: in
+ytick.right:         True
 
 axes.linewidth:     1.0     # edge linewidth
 
