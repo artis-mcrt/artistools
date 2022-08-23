@@ -41,6 +41,8 @@ def open_tar_file_or_extracted(traj_root, particleid, memberfilename):
         for tarmember in tfile:
             if tarmember.name == memberfilename:
                 return io.StringIO(tfile.extractfile(tarmember).read().decode('utf-8'))
+
+    print(f'Member {memberfilename} not found in {tarfilepath}')
     assert False
 
 
@@ -277,7 +279,7 @@ def add_abundancecontributions(dfgridcontributions, dfmodel, t_model_days, traj_
     timestart = time.perf_counter()
     trajnucabundworker = partial(get_trajectory_nuc_abund, t_model_s=t_model_s, traj_root=traj_root)
 
-    if at.config['num_processes'] > 1 and False:
+    if at.config['num_processes'] > 1:
         with multiprocessing.Pool(processes=at.config['num_processes']) as pool:
             list_traj_nuc_abund = pool.map(trajnucabundworker, dfcontribs_particlegroups.groups)
             pool.close()
@@ -336,8 +338,8 @@ def add_abundancecontributions(dfgridcontributions, dfmodel, t_model_days, traj_
     dfelabundances_partial = pd.DataFrame({
         'inputcellid': dfnucabundances.inputcellid,
         **{f'X_{at.get_elsymbol(atomic_number)}': dfnucabundances.eval(
-                f'{" + ".join(elemisotopes[atomic_number])}',
-                engine='python' if len(elemisotopes[atomic_number]) > 31 else None)
+            f'{" + ".join(elemisotopes[atomic_number])}',
+            engine='python' if len(elemisotopes[atomic_number]) > 31 else None)
             if atomic_number in elemisotopes else np.zeros(len(dfnucabundances))
             for atomic_number in range(1, max(elemisotopes.keys()) + 1)}}, index=dfnucabundances.index)
 
@@ -379,7 +381,8 @@ def main(args=None, argsraw=None, **kwargs):
     # particleid = 88969  # Ye = 0.0963284224
     particleid = 133371  # Ye = 0.403913230
     print(f'trajectory particle id {particleid}')
-    dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(traj_root, particleid, './Run_rprocess/tday_nz-plane')
+    dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(
+        traj_root, particleid, './Run_rprocess/tday_nz-plane')
     dfnucabund.query('Z >= 1', inplace=True)
     dfnucabund['radioactive'] = True
 
