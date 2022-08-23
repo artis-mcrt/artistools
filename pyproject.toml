@@ -18,13 +18,18 @@ dynamic = ["version", "description", "entry-points"]
 line-length = 120
 
 [tool.flake8]
-max-line-length=120
+ignore = N806
+max-line-length = 120
+count = true
 
-[tool.pylint.'MESSAGES CONTROL']
-max-line-length=120
+[tool.pylint.format]
+max-line-length = "120"
 
-[tool.pylint.'FORMAT']
-max-line-length=120
+[tool.pylama]
+max-line-length = 120
+
+[tool.pycodestyle]
+max-line-length = 120
 
 [tool.setuptools_scm]
 write_to = "_version.py"
