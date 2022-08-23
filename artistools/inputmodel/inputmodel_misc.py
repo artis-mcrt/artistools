@@ -15,7 +15,13 @@ import artistools as at
 
 
 @lru_cache(maxsize=8)
-def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, derived_cols=False):
+def get_modeldata(
+    inputpath=Path(),
+    dimensions=None,
+    get_abundances=False,
+    derived_cols=False,
+    printwarningsonly=False,
+):
     """
     Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
 
@@ -67,7 +73,8 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
             xmax_tmodel = vmax_cmps * t_model_init_seconds  # xmax = ymax = zmax
             headerrows += 1
             if dimensions is None:
-                print("Detected 3D model file")
+                if not printwarningsonly:
+                    print("Detected 3D model file")
                 dimensions = 3
             elif dimensions != 3:
                 print(f" {dimensions} were specified but file appears to be 3D")
@@ -76,7 +83,8 @@ def get_modeldata(inputpath=Path(), dimensions=None, get_abundances=False, deriv
         except ValueError:
 
             if dimensions is None:
-                print("Detected 1D model file")
+                if not printwarningsonly:
+                    print("Detected 1D model file")
                 dimensions = 1
             elif dimensions != 1:
                 print(f" {dimensions} were specified but file appears to be 1D")

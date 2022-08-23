@@ -389,7 +389,7 @@ def get_wid_init_at_tmodel(modelpath=None, ngridpoints=None, t_model_days=None, 
     if ngridpoints is None or t_model_days is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
         dfmodel, t_model_days, vmax = at.get_modeldata(modelpath)
-        assert(at.inputmodel.get_dfmodel_dimensions(dfmodel) == 3)
+        assert at.inputmodel.get_dfmodel_dimensions(dfmodel) == 3
         ngridpoints = len(dfmodel)
         xmax = vmax * t_model_days * (24 * 60 * 60)
 
@@ -403,6 +403,7 @@ def get_wid_init_at_tmodel(modelpath=None, ngridpoints=None, t_model_days=None, 
 def get_syn_dir(modelpath):
     with open(modelpath / 'syn_dir.txt', 'r') as syn_dir_file:
         syn_dir = [int(x) for x in syn_dir_file.readline().split()]
+
     return syn_dir
 
 
@@ -617,7 +618,7 @@ def get_timestep_time(modelpath, timestep):
 
 
 def get_escaped_arrivalrange(modelpath):
-    dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata(modelpath)
+    dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True)
     cornervmax = math.sqrt(3 * vmax ** 2)
 
     # find the earliest possible escape time and add the largest possible travel time
@@ -971,7 +972,7 @@ def get_linelist(modelpath, returntype='dict'):
 def get_npts_model(modelpath):
     """Return the number of cell in the model.txt."""
     with Path(modelpath, 'model.txt').open('r') as modelfile:
-        npts_model = int(modelfile.readline())
+        npts_model = int(readnoncommentline(modelfile))
     return npts_model
 
 
