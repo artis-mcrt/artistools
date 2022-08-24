@@ -215,7 +215,7 @@ def plot_artis_spectrum(
         if from_packets:
             spectrum = get_spectrum_from_packets(
                 modelpath, args.timemin, args.timemax, lambda_min=args.xmin, lambda_max=args.xmax,
-                use_comovingframe=args.use_comovingframe, maxpacketfiles=args.maxpacketfiles,
+                use_escapetime=args.use_escapetime, maxpacketfiles=args.maxpacketfiles,
                 delta_lambda=args.deltalambda, useinternalpackets=args.internalpackets, getpacketcount=plotpacketcount)
             if args.outputfile is None:
                 statpath = Path()
@@ -879,7 +879,7 @@ def addargs(parser):
     parser.add_argument('--normalised', action='store_true',
                         help='Normalise all spectra to their peak values')
 
-    parser.add_argument('--use_comovingframe', action='store_true',
+    parser.add_argument('--use_escapetime', action='store_true',
                         help='Use the time of packet escape to the surface (instead of a plane toward the observer)')
 
     parser.add_argument('--use_lastemissiontype', action='store_true',
