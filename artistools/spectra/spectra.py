@@ -154,7 +154,7 @@ def get_spectrum_at_time(modelpath, timestep, time, args, angle=None, res_specda
 
 
 def get_spectrum_from_packets_worker(querystr, qlocals, array_lambda, array_lambdabinedges, packetsfile,
-                                     use_comovingframe=False, getpacketcount=False, betafactor=None):
+                                     use_escapetime=False, getpacketcount=False, betafactor=None):
     dfpackets = at.packets.readfile(packetsfile, type='TYPE_ESCAPE', escape_type='TYPE_RPKT').query(
         querystr, inplace=False, local_dict=qlocals)
 
@@ -165,7 +165,7 @@ def get_spectrum_from_packets_worker(querystr, qlocals, array_lambda, array_lamb
         x=dfpackets['lambda_rf'], bins=array_lambdabinedges, right=True,
         labels=range(len(array_lambda)), include_lowest=True)
 
-    if use_comovingframe:
+    if use_escapetime:
         array_energysum_onefile = dfpackets.e_cmf.groupby(wl_bins).sum().values / betafactor
     else:
         array_energysum_onefile = dfpackets.e_rf.groupby(wl_bins).sum().values
@@ -180,13 +180,13 @@ def get_spectrum_from_packets_worker(querystr, qlocals, array_lambda, array_lamb
 
 def get_spectrum_from_packets(
         modelpath, timelowdays, timehighdays, lambda_min, lambda_max,
-        delta_lambda=None, use_comovingframe=None, maxpacketfiles=None, useinternalpackets=False,
+        delta_lambda=None, use_escapetime=None, maxpacketfiles=None, useinternalpackets=False,
         getpacketcount=False):
     """Get a spectrum dataframe using the packets files as input."""
     assert(not useinternalpackets)
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
 
-    if use_comovingframe:
+    if use_escapetime:
         modeldata, _, _ = at.inputmodel.get_modeldata(Path(packetsfiles[0]).parent)
         vmax = modeldata.iloc[-1].velocity_outer * u.km / u.s
         betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
@@ -213,7 +213,7 @@ def get_spectrum_from_packets(
 
     nprocs_read = len(packetsfiles)
     querystr = '@nu_min <= nu_rf < @nu_max and trueemissiontype >= 0 and '
-    if not use_comovingframe:
+    if not use_escapetime:
         querystr += '@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh'
     else:
         querystr += '@timelow < (escape_time * @betafactor) < @timehigh'
@@ -222,7 +222,7 @@ def get_spectrum_from_packets(
         get_spectrum_from_packets_worker, querystr,
         dict(nu_min=nu_min, nu_max=nu_max, timelow=timelow, timehigh=timehigh,
              betafactor=betafactor, c_cgs=c_cgs, c_ang_s=c_ang_s),
-        array_lambda, array_lambdabinedges, use_comovingframe=use_comovingframe, getpacketcount=getpacketcount,
+        array_lambda, array_lambdabinedges, use_escapetime=use_escapetime, getpacketcount=getpacketcount,
         betafactor=betafactor)
     if at.config['num_processes'] > 1:
         with multiprocessing.Pool(processes=at.config['num_processes']) as pool:
@@ -639,7 +639,7 @@ def get_flux_contributions(
 def get_flux_contributions_from_packets(
         modelpath, timelowerdays, timeupperdays, lambda_min, lambda_max, delta_lambda=None,
         getemission=True, getabsorption=True, maxpacketfiles=None, filterfunc=None, groupby='ion', modelgridindex=None,
-        use_comovingframe=False, use_lastemissiontype=False, useinternalpackets=False, emissionvelocitycut=None):
+        use_escapetime=False, use_lastemissiontype=False, useinternalpackets=False, emissionvelocitycut=None):
 
     assert groupby in [None, 'ion', 'line', 'upperterm', 'terms']
 
@@ -704,7 +704,7 @@ def get_flux_contributions_from_packets(
     else:
         array_lambdabinedges, array_lambda, delta_lambda = get_exspec_bins()
 
-    if use_comovingframe:
+    if use_escapetime:
         modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
         vmax = modeldata.iloc[-1].velocity_outer * u.km / u.s
         betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
@@ -762,7 +762,7 @@ def get_flux_contributions_from_packets(
             dfpackets.query(
                 '@nu_min <= nu_rf < @nu_max and ' +
                 ('@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh'
-                 if not use_comovingframe else
+                 if not use_escapetime else
                  '@timelow < escape_time * @betafactor < @timehigh'),
                 inplace=True)
             print(f"  {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges")
@@ -789,7 +789,7 @@ def get_flux_contributions_from_packets(
             xindex = int(packet.xindex)
             assert xindex >= 0
 
-            pkt_en = packet.e_cmf / betafactor if use_comovingframe else packet.e_rf
+            pkt_en = packet.e_cmf / betafactor if use_escapetime else packet.e_rf
 
             energysum_spectrum_emission_total[xindex] += pkt_en
 
