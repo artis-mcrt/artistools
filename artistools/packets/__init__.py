@@ -160,7 +160,7 @@ def readfile_text(packetsfile, modelpath=Path('.')):
     # space at the end of line made an extra column of Nones
     if dfpackets[dfpackets.columns[-1]].isnull().all():
         dfpackets.drop(labels=dfpackets.columns[-1], axis=1, inplace=True)
-    
+
     if hasattr(dfpackets.columns[0], 'startswith') and dfpackets.columns[0].startswith('#'):
 
         dfpackets.rename(columns={dfpackets.columns[0]: dfpackets.columns[0].lstrip('#')}, inplace=True)
