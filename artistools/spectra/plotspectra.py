@@ -684,15 +684,15 @@ def make_plot(args):
     if args.showemission or args.showabsorption:
         legendncol = 2
         if args.internalpackets:
-            defaultoutputfile = Path("plotspecinternalemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
+            defaultoutputfile = Path("plotspecinternalemission_{time_days_min:.1f}d_{time_days_max:.1f}d.pdf")
         else:
-            defaultoutputfile = Path("plotspecemission_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
+            defaultoutputfile = Path("plotspecemission_{time_days_min:.1f}d_{time_days_max:.1f}d.pdf")
 
         plotobjects, plotobjectlabels, dfalldata = make_emissionabsorption_plot(
             args.specpath[0], axes[0], filterfunc, args=args, scale_to_peak=scale_to_peak)
     else:
         legendncol = 1
-        defaultoutputfile = Path("plotspec_{time_days_min:.0f}d_{time_days_max:.0f}d.pdf")
+        defaultoutputfile = Path("plotspec_{time_days_min:.1f}d_{time_days_max:.1f}d.pdf")
 
         if args.multispecplot:
             dfalldata = make_spectrum_plot(args.specpath, axes, filterfunc, args, scale_to_peak=scale_to_peak)

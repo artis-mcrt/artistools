@@ -189,7 +189,7 @@ def maptogrid(ejectasnapshotpath, outputpath):
 
     ngrid = 50
 
-    x0 = - 0.6 * rmax  # 90% is hand waving - choose #
+    x0 = - 0.5 * rmax  # 90% is hand waving - choose #
 
     # x0 = - rmean
 

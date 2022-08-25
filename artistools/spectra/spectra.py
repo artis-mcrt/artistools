@@ -1059,7 +1059,7 @@ def write_flambda_spectra(modelpath, args):
             dfspectrum = get_spectrum(modelpath, timestep, timestep)
             tmid = arr_tmid[timestep]
 
-            outfilepath = outdirectory / f'spectrum_ts{timestep:02.0f}_{tmid:.0f}d.txt'
+            outfilepath = outdirectory / f'spectrum_ts{timestep:02.0f}_{tmid:.2f}d.txt'
 
             with open(outfilepath, 'w') as spec_file:
 
