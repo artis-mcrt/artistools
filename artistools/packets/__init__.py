@@ -125,12 +125,42 @@ def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None)
 def readfile_text(packetsfile, modelpath=Path('.')):
     usecols_nodata = None  # print a warning for missing columns if the source code columns can't be read
 
-    dfpackets = pd.read_csv(packetsfile, sep=' ', header=None, skip_blank_lines=True, engine='pyarrow')
+    skiprows = 0
+    column_names = None
+    try:
+        fpackets = at.zopen(packetsfile, 'rt')
+
+        datastartpos = fpackets.tell()  # will be updated if this was actually the start of a header
+        firstline = fpackets.readline()
+
+        if firstline.lstrip().startswith('#'):
+            column_names = firstline.lstrip('#').split()
+            column_names.append('ignore')
+            # get the column count from the first data line to check header matched
+            datastartpos = fpackets.tell()
+            dataline = fpackets.readline()
+            inputcolumncount = len(dataline.split())
+            skiprows = 1
+        else:
+            inputcolumncount = len(firstline.split())
+
+        fpackets.seek(datastartpos)  # go to first data line
+
+    except gzip.BadGzipFile:
+        print(f"\nBad Gzip File: {packetsfile}")
+        raise gzip.BadGzipFile
+
+    dfpackets = pd.read_csv(fpackets, sep=' ', header=None, skiprows=skiprows, names=column_names,
+                            skip_blank_lines=True, engine='pyarrow')
 
     # import datatable as dt
     # dsk_dfpackets = dt.fread(packetsfile)
     # dfpackets = dsk_dfpackets.to_pandas()
 
+    # space at the end of line made an extra column of Nones
+    if dfpackets[dfpackets.columns[-1]].isnull().all():
+        dfpackets.drop(labels=dfpackets.columns[-1], axis=1, inplace=True)
+    
     if hasattr(dfpackets.columns[0], 'startswith') and dfpackets.columns[0].startswith('#'):
 
         dfpackets.rename(columns={dfpackets.columns[0]: dfpackets.columns[0].lstrip('#')}, inplace=True)
@@ -140,12 +170,6 @@ def readfile_text(packetsfile, modelpath=Path('.')):
         inputcolumncount = len(dfpackets.columns)
         column_names = get_column_names_artiscode(modelpath)
         if column_names:  # found them in the artis code files
-
-            if inputcolumncount == len(column_names) + 1:
-                # space at the end of line made an extra column of Nones
-                assert dfpackets[dfpackets.columns[-1]].isnull().all()
-                dfpackets.drop(labels=dfpackets.columns[-1], axis=1, inplace=True)
-                inputcolumncount = len(dfpackets.columns)
 
             assert len(column_names) == inputcolumncount
 
@@ -203,6 +227,8 @@ def readfile_text(packetsfile, modelpath=Path('.')):
         print(f'WARNING: no data in packets file for columns: {usecols_nodata}')
         for col in usecols_nodata:
             dfpackets[col] = float('NaN')
+
+    print(dfpackets)
 
     return dfpackets
 
