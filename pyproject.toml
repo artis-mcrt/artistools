@@ -1,5 +1,5 @@
 [build-system]
-requires = ["psutil>=5.9.0", "setuptools>=45", "setuptools_scm[toml]>=6.2", "wheel"]
+requires = ["psutil>=5.9.0", "setuptools>=45", "setuptools_scm[toml]>=6.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -16,6 +16,7 @@ dynamic = ["version", "description", "entry-points"]
 
 [tool.black]
 line-length = 120
+review = true
 
 [tool.flake8]
 ignore = "N806"
