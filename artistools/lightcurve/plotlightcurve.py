@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 
 import argparse
 # import glob
@@ -9,6 +10,8 @@ import os
 # import sys
 from pathlib import Path
 from typing import Iterable
+
+import argcomplete
 
 import numpy as np
 import pandas as pd
@@ -1199,6 +1202,7 @@ def main(args=None, argsraw=None, **kwargs):
             description='Plot ARTIS light curve.')
         addargs(parser)
         parser.set_defaults(**kwargs)
+        argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
     if not args.modelpath and not args.colour_evolution:
