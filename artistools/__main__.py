@@ -17,12 +17,12 @@ def main(argsraw=None):
     parser = argparse.ArgumentParser()
     parser.set_defaults(func=None)
 
-    subparsers = parser.add_subparsers(dest='subcommand')
+    subparsers = parser.add_subparsers(dest="subcommand")
     subparsers.required = False
 
     for command, (submodulename, funcname) in sorted(artistools.commands.commandlist.items()):
-        submodule = importlib.import_module(submodulename, package='artistools')
-        subparser = subparsers.add_parser(command.replace('artistools-', ''))
+        submodule = importlib.import_module(submodulename, package="artistools")
+        subparser = subparsers.add_parser(command.replace("artistools-", ""))
         submodule.addargs(subparser)
         subparser.set_defaults(func=getattr(submodule, funcname))
 
@@ -32,16 +32,16 @@ def main(argsraw=None):
         args.func(args=args)
     else:
         # parser.print_help()
-        print('artistools provides the following commands:\n')
+        print("artistools provides the following commands:\n")
 
         # for script in sorted(console_scripts):
         #     command = script.split('=')[0].strip()
         #     print(f'  {command}')
 
         for command in sorted(artistools.commands.commandlist):
-            print(f'  {command}')
+            print(f"  {command}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # multiprocessing.freeze_support()
     main()

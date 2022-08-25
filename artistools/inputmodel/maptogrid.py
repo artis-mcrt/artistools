@@ -21,57 +21,57 @@ wij = np.zeros(itab + 1)
 #
 # --maximum interaction length and step size
 #
-v2max = 4.
+v2max = 4.0
 dvtable = v2max / itable
-i1 = int(1. // dvtable)
+i1 = int(1.0 // dvtable)
 
 
 igphi = 0
 #
 # --normalisation constant
 #
-cnormk = 1. / math.pi
+cnormk = 1.0 / math.pi
 # --build tables
 #
 #  a) v less than 1
 #
-if (igphi == 1):
+if igphi == 1:
     for i in range(1, i1 + 1):
         v2 = i * dvtable
         v = math.sqrt(v2)
         v3 = v * v2
         v4 = v * v3
-        sum = 1. - 1.5 * v2 + 0.75 * v3
+        sum = 1.0 - 1.5 * v2 + 0.75 * v3
         wij[i] = cnormk * sum
 else:
     for i in range(1, i1 + 1):
         v2 = i * dvtable
         v = math.sqrt(v2)
         v3 = v * v2
-        sum = 1. - 1.5 * v2 + 0.75 * v3
+        sum = 1.0 - 1.5 * v2 + 0.75 * v3
         wij[i] = cnormk * sum
 
 #
 #  b) v greater than 1
 #
-if (igphi == 1):
+if igphi == 1:
     for i in range(i1 + 1, itable + 1):
         v2 = i * dvtable
         v = math.sqrt(v2)
-        dif2 = 2. - v
+        dif2 = 2.0 - v
         sum = 0.25 * dif2 * dif2 * dif2
         wij[i] = cnormk * sum
 else:
     for i in range(i1 + 1, itable + 1):
         v2 = i * dvtable
         v = math.sqrt(v2)
-        dif2 = 2. - v
+        dif2 = 2.0 - v
         sum = 0.25 * dif2 * dif2 * dif2
         wij[i] = cnormk * sum
 
 
 def kernelvals2(rij2, hmean):  # ist schnell berechnet aber keine Gradienten
-    hmean21 = 1. / (hmean * hmean)
+    hmean21 = 1.0 / (hmean * hmean)
     hmean31 = hmean21 / hmean
     v2 = rij2 * hmean21
     index = math.floor(v2 / dvtable)
@@ -84,20 +84,48 @@ def kernelvals2(rij2, hmean):  # ist schnell berechnet aber keine Gradienten
 
 def maptogrid(ejectasnapshotpath, outputpath):
     if not ejectasnapshotpath.is_file():
-        print(f'{ejectasnapshotpath} not found')
+        print(f"{ejectasnapshotpath} not found")
         return
 
     snapshot_columns = [
-        'id', 'h', 'x', 'y', 'z', 'vx', 'vy', 'vz', 'vstx', 'vsty', 'vstz', 'u',
-        'psi', 'alpha', 'pmass', 'rho', 'p', 'rst', 'tau', 'av', 'ye', 'temp',
-        'prev_rho(i)', 'ynue(i)', 'yanue(i)', 'enuetrap(i)', 'eanuetrap(i)',
-        'enuxtrap(i)', 'iwasequil(i, 1)', 'iwasequil(i, 2)', 'iwasequil(i, 3)']
+        "id",
+        "h",
+        "x",
+        "y",
+        "z",
+        "vx",
+        "vy",
+        "vz",
+        "vstx",
+        "vsty",
+        "vstz",
+        "u",
+        "psi",
+        "alpha",
+        "pmass",
+        "rho",
+        "p",
+        "rst",
+        "tau",
+        "av",
+        "ye",
+        "temp",
+        "prev_rho(i)",
+        "ynue(i)",
+        "yanue(i)",
+        "enuetrap(i)",
+        "eanuetrap(i)",
+        "enuxtrap(i)",
+        "iwasequil(i, 1)",
+        "iwasequil(i, 2)",
+        "iwasequil(i, 3)",
+    ]
 
-    snapshot_columns_used = ['id', 'h', 'x', 'y', 'z', 'vx', 'vy', 'vz', 'pmass', 'rho', 'p', 'rst', 'ye']
+    snapshot_columns_used = ["id", "h", "x", "y", "z", "vx", "vy", "vz", "pmass", "rho", "p", "rst", "ye"]
 
     dfsnapshot = pd.read_csv(
-        ejectasnapshotpath, names=snapshot_columns,
-        delim_whitespace=True, usecols=snapshot_columns_used)
+        ejectasnapshotpath, names=snapshot_columns, delim_whitespace=True, usecols=snapshot_columns_used
+    )
 
     print(dfsnapshot)
 
@@ -106,14 +134,14 @@ def maptogrid(ejectasnapshotpath, outputpath):
     npart = len(dfsnapshot)
     print("number of particles", npart)
 
-    fpartanalysis = open(Path(outputpath, 'ejectapartanalysis.dat'), mode='w', encoding='utf-8')
+    fpartanalysis = open(Path(outputpath, "ejectapartanalysis.dat"), mode="w", encoding="utf-8")
 
     totmass = 0.0
     rmax = 0.0
     rmean = 0.0
     hmean = 0.0
-    hmin = 100000.
-    vratiomean = 0.
+    hmin = 100000.0
+    vratiomean = 0.0
 
     # Propagate particles to dtextra using velocities
     dtextra_seconds = 0.5  # in seconds ---  dtextra = 0.0 # for no extrapolation
@@ -160,7 +188,7 @@ def maptogrid(ejectasnapshotpath, outputpath):
 
         vrad = (vx[n] * x[n] + vy[n] * y[n] + vz[n] * z[n]) / dis  # radial velocity
 
-        if (vtot > vrad):
+        if vtot > vrad:
             vperp = math.sqrt(vtot * vtot - vrad * vrad)  # velicty perpendicular
         else:
             vperp = 0.0  # if we rxtrapolate roundoff error can lead to Nan, ly?
@@ -169,7 +197,7 @@ def maptogrid(ejectasnapshotpath, outputpath):
 
         # output some ejecta properties in file
 
-        fpartanalysis.write(f'{dis} {h[n]} {h[n] / dis} {vrad} {vperp} {vtot}\n')
+        fpartanalysis.write(f"{dis} {h[n]} {h[n] / dis} {vrad} {vperp} {vtot}\n")
 
     rmean = rmean / npart
 
@@ -189,11 +217,11 @@ def maptogrid(ejectasnapshotpath, outputpath):
 
     ngrid = 50
 
-    x0 = - 0.5 * rmax  # 90% is hand waving - choose #
+    x0 = -0.5 * rmax  # 90% is hand waving - choose #
 
     # x0 = - rmean
 
-    dx = 2. * abs(x0) / (ngrid)  # -1 to be symmetric, right?
+    dx = 2.0 * abs(x0) / (ngrid)  # -1 to be symmetric, right?
 
     y0 = x0
     z0 = x0
@@ -206,16 +234,15 @@ def maptogrid(ejectasnapshotpath, outputpath):
     gparticlecounter = np.zeros((ngrid + 1, ngrid + 1, ngrid + 1), dtype=int)
     particlecontribs = {}
 
-    print('grid properties', x0, dx, x0 + dx * (ngrid - 1))
+    print("grid properties", x0, dx, x0 + dx * (ngrid - 1))
 
     arrgx = x0 + dx * (np.arange(ngrid + 1) - 1)
     arrgy = arrgx
     arrgz = arrgx
 
     for n in range(npart):
-
-        maxdist = 2. * h[n]
-        maxdist2 = maxdist ** 2
+        maxdist = 2.0 * h[n]
+        maxdist2 = maxdist**2
 
         ilow = max(math.floor((x[n] - maxdist - x0) / dx), 1)
         ihigh = min(math.ceil((x[n] + maxdist - x0) / dx), ngrid)
@@ -260,7 +287,6 @@ def maptogrid(ejectasnapshotpath, outputpath):
             # or via neighbors  - not yet implemented
 
             if dis2 <= maxdist2:
-
                 wtij = kernelvals2(dis2, h[n])
 
                 grho[i, j, k] += pmass[n] * wtij
@@ -278,7 +304,7 @@ def maptogrid(ejectasnapshotpath, outputpath):
                 # Counts particles contributing to grid cell
                 gparticlecounter[i, j, k] += 1
 
-    with np.errstate(divide='ignore', invalid='ignore'):
+    with np.errstate(divide="ignore", invalid="ignore"):
         gye = np.divide(gye, norm)
         # for i in range(1, ngrid + 1):
         #     for j in range(1, ngrid + 1):
@@ -287,12 +313,12 @@ def maptogrid(ejectasnapshotpath, outputpath):
         #             # if not norm[i, j, k] > 0:
         #             #     print(i, j, k, norm[i, j, k], gye[i, j, k] )
 
-        with open(Path(outputpath, 'gridcontributions.txt'), 'w', encoding='utf-8') as fcontribs:
-            fcontribs.write('particleid cellindex frac_of_cellmass\n')
+        with open(Path(outputpath, "gridcontributions.txt"), "w", encoding="utf-8") as fcontribs:
+            fcontribs.write("particleid cellindex frac_of_cellmass\n")
             for (n, i, j, k), old_value in particlecontribs.items():
                 # particle_contribs[n, i, j, k] = old_value / norm[i, j, k]
                 gridindex = ((k - 1) * ngrid + (j - 1)) * ngrid + (i - 1) + 1
-                fcontribs.write(f'{particleid[n]} {gridindex} {old_value / norm[i, j, k]}\n')
+                fcontribs.write(f"{particleid[n]} {gridindex} {old_value / norm[i, j, k]}\n")
     # check some stuff on the grid
 
     gmass = 0.0
@@ -306,37 +332,42 @@ def maptogrid(ejectasnapshotpath, outputpath):
         for j in range(1, ngrid + 1):
             gy = y0 + dy * (j - 1)
             for k in range(1, ngrid + 1):
-
                 # how many cells with rho=0?
 
-                if grho[i, j, k] < 1.e-20:
+                if grho[i, j, k] < 1.0e-20:
                     nzero = nzero + 1
 
                 gz = z0 + dz * (k - 1)
 
                 dis = math.sqrt(gx * gx + gy * gy + gz * gz)
 
-                if (grho[i, j, k] < 1.e-20 and dis < rmean):
+                if grho[i, j, k] < 1.0e-20 and dis < rmean:
                     nzerocentral = nzerocentral + 1
 
     print("mass on grid and particles", gmass, totmass)
 
-    print("number of cells with zero rho, total num of cells, fraction of cells w rho=0",
-          nzero, ngrid**3, (nzero) / (ngrid**3))
+    print(
+        "number of cells with zero rho, total num of cells, fraction of cells w rho=0",
+        nzero,
+        ngrid**3,
+        (nzero) / (ngrid**3),
+    )
 
-    print("number of central cells (dis<rmean) with zero rho, ratio",
-          nzerocentral, (nzerocentral) / (4. * 3.14 / 3. * rmean**3 / (dx * dy * dz)))
+    print(
+        "number of central cells (dis<rmean) with zero rho, ratio",
+        nzerocentral,
+        (nzerocentral) / (4.0 * 3.14 / 3.0 * rmean**3 / (dx * dy * dz)),
+    )
 
     print("probably we want to choose grid size, i.e. x0, as compromise between mapped mass and rho=0 cells")
 
     # output grid - adapt as you need output
 
-    with open(Path(outputpath, 'grid.dat'), 'w', encoding="utf-8") as fgrid:
-
-        fgrid.write(f'{ngrid**3} # ngrid\n')
-        fgrid.write(f'{dtextra} # extra time after explosion simulation ended (in geom units)\n')
-        fgrid.write(f'{x0} # xmax\n')
-        fgrid.write(' gridindex    pos_x_min    pos_y_min    pos_z_min    rho    cellYe    tracercount\n')
+    with open(Path(outputpath, "grid.dat"), "w", encoding="utf-8") as fgrid:
+        fgrid.write(f"{ngrid**3} # ngrid\n")
+        fgrid.write(f"{dtextra} # extra time after explosion simulation ended (in geom units)\n")
+        fgrid.write(f"{x0} # xmax\n")
+        fgrid.write(" gridindex    pos_x_min    pos_y_min    pos_z_min    rho    cellYe    tracercount\n")
         gridindex = 1
         for k in range(1, ngrid + 1):
             gz = z0 + dz * (k - 1)
@@ -344,33 +375,30 @@ def maptogrid(ejectasnapshotpath, outputpath):
                 gy = y0 + dy * (j - 1)
                 for i in range(1, ngrid + 1):
                     fgrid.write(
-                        f'{gridindex:8d} {x0+dx*(i-1)} {gy} {gz} '
-                        f'{grho[i,j,k]} {gye[i,j,k]} {gparticlecounter[i,j,k]}\n')
+                        f"{gridindex:8d} {x0+dx*(i-1)} {gy} {gz} {grho[i,j,k]} {gye[i,j,k]} {gparticlecounter[i,j,k]}\n"
+                    )
                     # gridindex2 = ((k - 1) * ngrid + (j - 1)) * ngrid + (i - 1) + 1
 
                     gridindex = gridindex + 1
 
 
 def addargs(parser):
-    parser.add_argument('-inputpath', '-i',
-                        default='.',
-                        help='Path to ejectasnapshot')
-    parser.add_argument('-outputpath', '-o',
-                        default='.',
-                        help='Path for output files')
+    parser.add_argument("-inputpath", "-i", default=".", help="Path to ejectasnapshot")
+    parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,
-            description='Map tracer particle trajectories to a Cartesian grid.')
+            description="Map tracer particle trajectories to a Cartesian grid.",
+        )
 
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    ejectasnapshotpath = Path(args.inputpath, 'ejectasnapshot.dat')
+    ejectasnapshotpath = Path(args.inputpath, "ejectasnapshot.dat")
 
     maptogrid(ejectasnapshotpath=ejectasnapshotpath, outputpath=args.outputpath)
 

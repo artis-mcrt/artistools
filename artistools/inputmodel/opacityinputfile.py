@@ -6,11 +6,11 @@ from pathlib import Path
 def all_cells_same_opacity(modelpath, ngrid):
     cell_opacities = np.array([0.1] * ngrid)
 
-    with open(Path(modelpath) / 'opacity.txt', 'w') as fopacity:
-        fopacity.write(f'{ngrid}\n')
+    with open(Path(modelpath) / "opacity.txt", "w") as fopacity:
+        fopacity.write(f"{ngrid}\n")
 
         for cellid, opacity in enumerate(cell_opacities):
-            fopacity.write(f'{cellid+1}    {opacity}\n')
+            fopacity.write(f"{cellid+1}    {opacity}\n")
 
 
 def opacity_by_Ye(outputfilepath, griddata):
@@ -18,11 +18,11 @@ def opacity_by_Ye(outputfilepath, griddata):
     griddata = pd.DataFrame(griddata)
     print("Getting opacity kappa from Ye")
 
-    cell_opacities = np.zeros_like(griddata['cellYe'])
+    cell_opacities = np.zeros_like(griddata["cellYe"])
 
-    for index, Ye in enumerate(griddata['cellYe']):
-        if Ye == 0. and griddata['rho'][index] == 0:
-            cell_opacities[index] = 0.
+    for index, Ye in enumerate(griddata["cellYe"]):
+        if Ye == 0.0 and griddata["rho"][index] == 0:
+            cell_opacities[index] = 0.0
         elif Ye <= 0.1:
             cell_opacities[index] = 19.5
         elif Ye <= 0.15:
@@ -38,11 +38,11 @@ def opacity_by_Ye(outputfilepath, griddata):
         else:
             cell_opacities[index] = 0.96
 
-    griddata['opacity'] = cell_opacities
+    griddata["opacity"] = cell_opacities
 
-    with open(Path(outputfilepath) / 'opacity.txt', 'w') as fopacity:
+    with open(Path(outputfilepath) / "opacity.txt", "w") as fopacity:
         fopacity.write(f'{len(griddata["inputcellid"])}\n')
-        griddata[['inputcellid', 'opacity']].to_csv(fopacity, sep='\t', index=False, header=False, float_format='%.10f')
+        griddata[["inputcellid", "opacity"]].to_csv(fopacity, sep="\t", index=False, header=False, float_format="%.10f")
 
 
 def get_opacity_from_file(modelpath):
@@ -53,8 +53,8 @@ def get_opacity_from_file(modelpath):
 
 
 def write_Ye_file(outputfilepath, griddata):
-    with open(Path(outputfilepath) / 'Ye.txt', 'w') as fYe:
+    with open(Path(outputfilepath) / "Ye.txt", "w") as fYe:
         fYe.write(f'{len(griddata["inputcellid"])}\n')
-        griddata[['inputcellid', 'cellYe']].to_csv(fYe, sep='\t', index=False, header=False, float_format='%.10f')
+        griddata[["inputcellid", "cellYe"]].to_csv(fYe, sep="\t", index=False, header=False, float_format="%.10f")
 
     print("Saved Ye.txt")

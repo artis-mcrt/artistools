@@ -17,5 +17,5 @@ from artistools.inputmodel.inputmodel_misc import (
     save_empty_abundance_file,
     save_initialabundances,
     save_modeldata,
-    sphericalaverage
+    sphericalaverage,
 )

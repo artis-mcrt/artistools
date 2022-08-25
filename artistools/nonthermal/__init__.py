@@ -41,7 +41,7 @@ from artistools.nonthermal._nonthermal_core import (
     sfmatrix_add_excitation,
     sfmatrix_add_ionization_shell,
     solve_spencerfano_differentialform,
-    workfunction_tests
+    workfunction_tests,
 )
 
 from artistools.nonthermal.plotnonthermal import main, addargs

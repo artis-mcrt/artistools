@@ -14,29 +14,32 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
 
     def _set_formatted_label_text(self):
         # or use self.orderOfMagnitude
-        stroffset = self.get_offset().replace(r'$\times', '$') + ' '
+        stroffset = self.get_offset().replace(r"$\times", "$") + " "
         strnewlabel = self.labeltemplate.format(stroffset)
         self.axis.set_label_text(strnewlabel)
-        assert(self.offset == 0)
+        assert self.offset == 0
         self.axis.offsetText.set_visible(False)
 
     def set_labeltemplate(self, labeltemplate):
-        assert '{' in labeltemplate
+        assert "{" in labeltemplate
         self.labeltemplate = labeltemplate
 
     def set_locs(self, locs):
         if self.decimalplaces is not None:
-            self.format = '%1.' + str(self.decimalplaces) + 'f'
+            self.format = "%1." + str(self.decimalplaces) + "f"
             if self._usetex:
-                self.format = '$%s$' % self.format
+                self.format = "$%s$" % self.format
             elif self._useMathText:
-                self.format = '$%s$' % ('\\mathdefault{%s}' % self.format)
+                self.format = "$%s$" % ("\\mathdefault{%s}" % self.format)
         super().set_locs(locs)
 
         if self.decimalplaces is not None:
             # rounding the tick labels will make the locations incorrect unless we round these too
-            newlocs = [float(('%1.' + str(self.decimalplaces) + 'f') % (x / (10 ** self.orderOfMagnitude)))
-                       * (10 ** self.orderOfMagnitude) for x in self.locs]
+            newlocs = [
+                float(("%1." + str(self.decimalplaces) + "f") % (x / (10**self.orderOfMagnitude)))
+                * (10**self.orderOfMagnitude)
+                for x in self.locs
+            ]
             super().set_locs(newlocs)
 
         self._set_formatted_label_text()
@@ -47,29 +50,61 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
 
 
 def set_axis_properties(ax, args):
-    if 'subplots' not in args:
+    if "subplots" not in args:
         args.subplots = False
-    if 'labelfontsize' not in args:
+    if "labelfontsize" not in args:
         args.labelfontsize = 18
 
     if args.subplots:
         for axis in ax:
             axis.minorticks_on()
-            axis.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2,
-                             labelsize=args.labelfontsize, direction='in')
-            axis.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2,
-                             labelsize=args.labelfontsize, direction='in')
+            axis.tick_params(
+                axis="both",
+                which="minor",
+                top=True,
+                right=True,
+                length=5,
+                width=2,
+                labelsize=args.labelfontsize,
+                direction="in",
+            )
+            axis.tick_params(
+                axis="both",
+                which="major",
+                top=True,
+                right=True,
+                length=8,
+                width=2,
+                labelsize=args.labelfontsize,
+                direction="in",
+            )
 
     else:
         ax.minorticks_on()
-        ax.tick_params(axis='both', which='minor', top=True, right=True, length=5, width=2,
-                       labelsize=args.labelfontsize, direction='in')
-        ax.tick_params(axis='both', which='major', top=True, right=True, length=8, width=2,
-                       labelsize=args.labelfontsize, direction='in')
+        ax.tick_params(
+            axis="both",
+            which="minor",
+            top=True,
+            right=True,
+            length=5,
+            width=2,
+            labelsize=args.labelfontsize,
+            direction="in",
+        )
+        ax.tick_params(
+            axis="both",
+            which="major",
+            top=True,
+            right=True,
+            length=8,
+            width=2,
+            labelsize=args.labelfontsize,
+            direction="in",
+        )
 
-    if 'ymin' in args or 'ymax' in args:
+    if "ymin" in args or "ymax" in args:
         plt.ylim(args.ymin, args.ymax)
-    if 'xmin' in args or 'xmax' in args:
+    if "xmin" in args or "xmax" in args:
         plt.xlim(args.xmin, args.xmax)
 
     plt.minorticks_on()
@@ -78,50 +113,50 @@ def set_axis_properties(ax, args):
 
 def set_axis_labels(fig, ax, xlabel, ylabel, labelfontsize, args):
     if args.subplots:
-        fig.text(0.5, 0.02, xlabel, ha='center', va='center')
-        fig.text(0.02, 0.5, ylabel, ha='center', va='center', rotation='vertical')
+        fig.text(0.5, 0.02, xlabel, ha="center", va="center")
+        fig.text(0.02, 0.5, ylabel, ha="center", va="center", rotation="vertical")
     else:
         ax.set_xlabel(xlabel, fontsize=labelfontsize)
         ax.set_ylabel(ylabel, fontsize=labelfontsize)
 
 
-def imshow_init_for_artis_grid(ngrid, vmax, plot_variable_3d_array, plot_axes='xy'):
+def imshow_init_for_artis_grid(ngrid, vmax, plot_variable_3d_array, plot_axes="xy"):
     # ngrid = round(len(model['inputcellid']) ** (1./3.))
-    extent = {'left': -vmax, 'right': vmax, 'bottom': vmax, 'top': -vmax}
-    extent = extent['left'], extent['right'], extent['bottom'], extent['top']
+    extent = {"left": -vmax, "right": vmax, "bottom": vmax, "top": -vmax}
+    extent = extent["left"], extent["right"], extent["bottom"], extent["top"]
     data = np.zeros((ngrid, ngrid))
 
-    plot_axes_choices = ['xy', 'zx']
+    plot_axes_choices = ["xy", "zx"]
     if plot_axes not in plot_axes_choices:
-        print(f'Choose plot axes from {plot_axes_choices}')
+        print(f"Choose plot axes from {plot_axes_choices}")
         quit()
 
     for z in range(0, ngrid):
         for y in range(0, ngrid):
             for x in range(0, ngrid):
-                if plot_axes == 'xy':
-                    if z == round(ngrid/2)-1:
+                if plot_axes == "xy":
+                    if z == round(ngrid / 2) - 1:
                         data[x, y] = plot_variable_3d_array[x, y, z]
-                elif plot_axes == 'zx':
-                    if y == round(ngrid/2)-1:
+                elif plot_axes == "zx":
+                    if y == round(ngrid / 2) - 1:
                         data[z, x] = plot_variable_3d_array[x, y, z]
 
     return data, extent
 
 
-def autoscale(ax=None, axis='y', margin=0.1):
-    '''Autoscales the x or y axis of a given matplotlib ax object
+def autoscale(ax=None, axis="y", margin=0.1):
+    """Autoscales the x or y axis of a given matplotlib ax object
     to fit the margins set by manually limits of the other axis,
     with margins in fraction of the width of the plot
 
     Defaults to current axes object if not specified.
     From https://stackoverflow.com/questions/29461608/matplotlib-fixing-x-axis-scale-and-autoscale-y-axis
-    '''
+    """
 
     def calculate_new_limit(fixed, dependent, limit):
-        '''Calculates the min/max of the dependent axis given
+        """Calculates the min/max of the dependent axis given
         a fixed axis with limits
-        '''
+        """
         if len(fixed) > 2:
             mask = (fixed > limit[0]) & (fixed < limit[1]) & (~np.isnan(dependent)) & (~np.isnan(fixed))
             window = dependent[mask]
@@ -139,8 +174,7 @@ def autoscale(ax=None, axis='y', margin=0.1):
         return low, high
 
     def get_xy(artist):
-        '''Gets the xy coordinates of a given artist
-        '''
+        """Gets the xy coordinates of a given artist"""
         if "Collection" in str(artist):
             x, y = artist.get_offsets().T
         elif "Line" in str(artist):
@@ -155,7 +189,7 @@ def autoscale(ax=None, axis='y', margin=0.1):
 
     for artist in ax.collections + ax.lines:
         x, y = get_xy(artist)
-        if axis == 'y':
+        if axis == "y":
             setlim = ax.set_ylim
             lim = ax.get_xlim()
             fixed, dependent = x, y
@@ -170,4 +204,4 @@ def autoscale(ax=None, axis='y', margin=0.1):
 
     margin = margin * (newhigh - newlow)
 
-    setlim(newlow-margin, newhigh + margin)
+    setlim(newlow - margin, newhigh + margin)
