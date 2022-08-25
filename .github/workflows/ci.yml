@@ -40,8 +40,8 @@ jobs:
           # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=130 --statistics
 
-      -name: Use black to check formatting
-        run: black --check .
+      - name: Use black to check formatting
+        run: black --check --preview .
 
   pytest:
     runs-on: ${{ matrix.os }}
