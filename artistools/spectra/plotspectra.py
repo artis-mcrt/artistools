@@ -41,7 +41,7 @@ def plot_polarisation(modelpath, args):
 
     timearray = stokes_params[args.stokesparam].keys()[1:-1]
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
-                    modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
+        modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
     timeavg = (args.timemin + args.timemax) / 2.
 
     def match_closest_time(reftime):
@@ -255,8 +255,8 @@ def plot_artis_spectrum(
             if args.plotvspecpol is not None:
                 for angle in args.plotvspecpol:
                     viewinganglespectra[angle]['f_lambda_scaled'] = (
-                        viewinganglespectra[angle]['f_lambda'] / viewinganglespectra[angle]['f_lambda'].max() *
-                        scale_to_peak)
+                        viewinganglespectra[angle]['f_lambda'] / viewinganglespectra[angle]['f_lambda'].max()
+                        * scale_to_peak)
 
             ycolumnname = 'f_lambda_scaled'
         else:
@@ -423,7 +423,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
             useinternalpackets=args.internalpackets, emissionvelocitycut=args.emissionvelocitycut)
     else:
         arraylambda_angstroms = const.c.to('angstrom/s').value / arraynu
-        assert(args.groupby in [None, 'ion'])
+        assert args.groupby in [None, 'ion']
         contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
             modelpath, filterfunc, timestepmin, timestepmax,
             getemission=args.showemission, getabsorption=args.showabsorption,
