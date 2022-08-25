@@ -280,7 +280,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(modelpaths, filenameout, from
         try:
             nts_last, validrange_start_days, validrange_end_days = at.get_escaped_arrivalrange(modelpath)
             if validrange_start_days is not None and validrange_end_days is not None:
-                str_valid_range = f'{validrange_start_days:.2f} to {validrange_end_days:.2f} days' 
+                str_valid_range = f'{validrange_start_days:.2f} to {validrange_end_days:.2f} days'
             else:
                 str_valid_range = f'{validrange_start_days} to {validrange_end_days} days'
             print(f'  range of validity (last timestep {nts_last}): {str_valid_range}')
@@ -453,7 +453,7 @@ def create_axes(args):
     if 'figwidth' not in args:
         args.figwidth = at.config['figwidth'] * 1.6 * cols
     if 'figheight' not in args:
-        args.figheight = at.config['figwidth'] * 1.1 * rows*1.5
+        args.figheight = at.config['figwidth'] * 1.1 * rows * 1.5
 
     fig, ax = plt.subplots(nrows=rows, ncols=cols, sharex=True, sharey=True,
                            figsize=(args.figwidth, args.figheight),

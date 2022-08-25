@@ -71,6 +71,7 @@ def plot_qdot(
 
     # axis.set_ylim(bottom=1e7, top=2e10)
     # axis.set_xlim(left=tstart, right=tend)
+    axis.set_xlim(right=5)  # TODO: remove
 
     # axis.set_xscale('log')
 
@@ -160,6 +161,7 @@ def plot_qdot(
         axes[1].legend(loc='best', frameon=False, handlelength=1, ncol=3, numpoints=1)
 
     # fig.suptitle(f'{modelname}', fontsize=10)
+    at.plottools.autoscale(axis, margin=0.)
     plt.savefig(pdfoutpath, format='pdf')
     print(f'Saved {pdfoutpath}')
 
@@ -171,8 +173,8 @@ def plot_abund(
     dfpartcontrib_thiscell = dfpartcontrib.query('cellindex == (@mgi + 1) and particleid in @allparticledata.keys()')
     frac_of_cellmass_sum = dfpartcontrib_thiscell.frac_of_cellmass.sum()
     print(f'frac_of_cellmass_sum: {frac_of_cellmass_sum} (can be < 1.0 because of missing particles)')
-    if arr_strnuc[0] != 'Ye':
-        arr_strnuc.insert(0, 'Ye')
+    # if arr_strnuc[0] != 'Ye':
+    #     arr_strnuc.insert(0, 'Ye')
 
     for strnuc in arr_strnuc:
         arr_abund_gsi[strnuc] = np.zeros_like(arr_time_gsi_days)
@@ -201,7 +203,7 @@ def plot_abund(
         # print(arr_time_artis_days)
         xmin = arr_time_gsi_days.min() * 0.9
         xmax = arr_time_gsi_days.max() * 1.03
-        xmax = 30
+        # xmax = 5  # TODO: remove
         axis.set_xlim(left=xmin, right=xmax)
         # axis.set_yscale('log')
         # axis.set_ylabel(f'X({strnuc})')
@@ -232,17 +234,18 @@ def plot_abund(
         axis.legend(loc='best', frameon=False, handlelength=1, ncol=1, numpoints=1)
 
     fig.suptitle(f'{modelname} cell {mgi}', y=0.995, fontsize=10)
+    at.plottools.autoscale(axis, margin=0.05)
     plt.savefig(pdfoutpath, format='pdf')
     print(f'Saved {pdfoutpath}')
 
 
-def get_particledata(arr_time_s, arr_strnuc, particleid):
+def get_particledata(arr_time_s, arr_strnuc, traj_root, particleid):
 
     try:
         nts_min = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(
-            particleid, timesec=min(arr_time_s), cond='lessthan')
+            traj_root, particleid, timesec=min(arr_time_s), cond='lessthan')
         nts_max = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(
-            particleid, timesec=max(arr_time_s), cond='greaterthan')
+            traj_root, particleid, timesec=max(arr_time_s), cond='greaterthan')
 
     except FileNotFoundError:
         # print(f'WARNING: Particle data not found for id {particleid}')
@@ -308,7 +311,8 @@ def get_particledata(arr_time_s, arr_strnuc, particleid):
             timesec = nstep_timesec[nts]
             arr_traj_time_s.append(timesec)
             # print(nts, timesec / 86400)
-            traj_nuc_abund = at.inputmodel.rprocess_from_trajectory.get_trajectory_nuc_abund(traj_root, particleid, nts=nts)
+            traj_nuc_abund = at.inputmodel.rprocess_from_trajectory.get_trajectory_nuc_abund(
+                    traj_root, particleid, nts=nts)
             for strnuc in arr_strnuc:
                 arr_massfracs[strnuc].append(traj_nuc_abund.get(f'X_{strnuc}', 0.))
 
@@ -343,7 +347,7 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
         corr = (
             dfmodel.eval(f'X_{strnuc} * cellmass_grams_mapped').sum() /
             dfmodel.eval(f'X_{strnuc} * cellmass_grams').sum())
-        print(strnuc, corr)
+        # print(strnuc, corr)
         correction_factors[strnuc] = corr
 
     tmids = at.get_timestep_times_float(modelpath, loc='mid')
@@ -351,7 +355,7 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
 
     arr_time_artis_days = []
     arr_abund_artis = {}
-    get_global_Ye = True
+    get_global_Ye = False
     artis_ye_sum = {}
     artis_ye_norm = {}
 
@@ -526,8 +530,8 @@ def main(args=None, argsraw=None, **kwargs):
         # ('Ra', 225),
         ('Ac', 225),
         # ('Th', 234),
-        ('Pa', 233),
-        ('U', 235),
+        # ('Pa', 233),
+        # ('U', 235),
     ]
     arr_el_a.sort(key=lambda x: (at.get_atomic_number(x[0]), -x[1]))
 
