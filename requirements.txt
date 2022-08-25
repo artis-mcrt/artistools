@@ -1,6 +1,7 @@
 argcomplete>=2.0.0
 astropy>=4.1
 coveralls>=1.3.0
+datatable>=1.1
 extinction>=0.4.5
 flake8>=3.8.4
 matplotlib>=3.3.4
