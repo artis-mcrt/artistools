@@ -377,7 +377,7 @@ def make_virtual_spectra_summed_file(modelpath):
         for i, index_spectrum_starts in enumerate(index_of_new_spectrum[:nvirtual_spectra]):
             # todo: this is different to at.gather_res_data() -- could be made to be same format to not repeat code
             if index_spectrum_starts != index_of_new_spectrum[-1]:
-                chunk = vspecpolfile.iloc[index_spectrum_starts:index_of_new_spectrum[i+1], :]
+                chunk = vspecpolfile.iloc[index_spectrum_starts:index_of_new_spectrum[i + 1], :]
             else:
                 chunk = vspecpolfile.iloc[index_spectrum_starts:, :]
             vspecpol_data.append(chunk)
@@ -868,7 +868,8 @@ def sort_and_reduce_flux_contribution_list(
                     else len(fixedionlist) + 1, -x.fluxcontrib)
     else:
         # sort descending by flux contribution
-        def sortkey(x): return -x.fluxcontrib
+        def sortkey(x):
+            return -x.fluxcontrib
 
     contribution_list = sorted(contribution_list_in, key=sortkey)
 
