@@ -36,7 +36,7 @@ from artistools.lightcurve.viewingangleanalysis import (
     set_scatterplot_plot_params,
     set_scatterplot_plotkwargs,
     update_plotkwargs_for_viewingangle_colorbar,
-    write_viewing_angle_data
+    write_viewing_angle_data,
 )
 
 from artistools.lightcurve.plotlightcurve import main, addargs

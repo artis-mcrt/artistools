@@ -11,29 +11,31 @@ from pathlib import Path
 
 import artistools as at
 
-modelpath = at.config['path_testartismodel']
-outputpath = at.config['path_testoutput']
-at.config['enable_diskcache'] = False
+modelpath = at.config["path_testartismodel"]
+outputpath = at.config["path_testoutput"]
+at.config["enable_diskcache"] = False
 
 
 def test_commands():
     import importlib
+
     # ensure that the commands are pointing to valid submodule.function() targets
     for command, (submodulename, funcname) in sorted(at.commands.commandlist.items()):
-        submodule = importlib.import_module(submodulename, package='artistools')
+        submodule = importlib.import_module(submodulename, package="artistools")
         assert hasattr(submodule, funcname)
 
 
 def test_timestep_times():
-    timestartarray = at.get_timestep_times_float(modelpath, loc='start')
-    timedeltarray = at.get_timestep_times_float(modelpath, loc='delta')
-    timemidarray = at.get_timestep_times_float(modelpath, loc='mid')
+    timestartarray = at.get_timestep_times_float(modelpath, loc="start")
+    timedeltarray = at.get_timestep_times_float(modelpath, loc="delta")
+    timemidarray = at.get_timestep_times_float(modelpath, loc="mid")
     assert len(timestartarray) == 100
     assert math.isclose(float(timemidarray[0]), 250.421, abs_tol=1e-3)
     assert math.isclose(float(timemidarray[-1]), 349.412, abs_tol=1e-3)
 
-    assert all([tstart < tmid < (tstart + tdelta)
-                for tstart, tdelta, tmid in zip(timestartarray, timedeltarray, timemidarray)])
+    assert all(
+        [tstart < tmid < (tstart + tdelta) for tstart, tdelta, tmid in zip(timestartarray, timedeltarray, timemidarray)]
+    )
 
 
 def test_deposition():
@@ -45,13 +47,13 @@ def test_estimator_snapshot():
 
 
 def test_estimator_timeevolution():
-    at.estimators.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, modelgridindex=0, x='time')
+    at.estimators.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, modelgridindex=0, x="time")
 
 
 def test_get_inputparams():
     inputparams = at.get_inputparams(modelpath)
-    dicthash = hashlib.sha256(str(sorted(inputparams.items())).encode('utf-8')).hexdigest()
-    assert dicthash == 'ce7d04d6944207673a105cba8d2430055d0b53b7f3e92db3964d2dca285a3adb'
+    dicthash = hashlib.sha256(str(sorted(inputparams.items())).encode("utf-8")).hexdigest()
+    assert dicthash == "ce7d04d6944207673a105cba8d2430055d0b53b7f3e92db3964d2dca285a3adb"
 
 
 def test_get_levels():
@@ -62,11 +64,12 @@ def test_get_modeldata():
     # expect a 3D model but read 1D
     with pytest.raises(Exception):
         dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(
-            modelpath, get_abundances=True, dimensions=3)
+            modelpath, get_abundances=True, dimensions=3
+        )
 
     dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath, get_abundances=True)
     assert np.isclose(t_model_init_days, 0.00115740740741, rtol=0.0001)
-    assert np.isclose(vmax_cmps, 800000000., rtol=0.0001)
+    assert np.isclose(vmax_cmps, 800000000.0, rtol=0.0001)
 
     # assert (
     #     hashlib.sha256(pd.util.hash_pandas_object(dfmodel, index=True).values).hexdigest() ==
@@ -78,24 +81,28 @@ def test_lightcurve():
 
 
 def test_lightcurve_frompackets():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, frompackets=True,
-                       outputfile=os.path.join(outputpath, 'lightcurve_from_packets.pdf'))
+    at.lightcurve.main(
+        argsraw=[],
+        modelpath=modelpath,
+        frompackets=True,
+        outputfile=os.path.join(outputpath, "lightcurve_from_packets.pdf"),
+    )
 
 
 def test_band_lightcurve_plot():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, filter=['B'], outputfile=outputpath)
+    at.lightcurve.main(argsraw=[], modelpath=modelpath, filter=["B"], outputfile=outputpath)
 
 
 def test_band_lightcurve_subplots():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, filter=['bol', 'B'], outputfile=outputpath)
+    at.lightcurve.main(argsraw=[], modelpath=modelpath, filter=["bol", "B"], outputfile=outputpath)
 
 
 def test_colour_evolution_plot():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, colour_evolution=['B-V'], outputfile=outputpath)
+    at.lightcurve.main(argsraw=[], modelpath=modelpath, colour_evolution=["B-V"], outputfile=outputpath)
 
 
 def test_colour_evolution_subplots():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, colour_evolution=['U-B', 'B-V'], outputfile=outputpath)
+    at.lightcurve.main(argsraw=[], modelpath=modelpath, colour_evolution=["U-B", "B-V"], outputfile=outputpath)
 
 
 def test_macroatom():
@@ -127,8 +134,8 @@ def test_get_ionrecombratecalibration():
 
 def test_spencerfano():
     at.nonthermal.solvespencerfanocmd.main(
-        argsraw=[], modelpath=modelpath, timedays=300, makeplot=True, npts=200,
-        noexcitation=True, outputfile=outputpath)
+        argsraw=[], modelpath=modelpath, timedays=300, makeplot=True, npts=200, noexcitation=True, outputfile=outputpath
+    )
 
 
 def test_transitions():

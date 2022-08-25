@@ -22,7 +22,7 @@ from artistools.spectra.spectra import (
     sort_and_reduce_flux_contribution_list,
     stackspectra,
     timeshift_fluxscale_co56law,
-    write_flambda_spectra
+    write_flambda_spectra,
 )
 
 from artistools.spectra.plotspectra import main, addargs

@@ -25,16 +25,16 @@ def parse_adata(fadata, phixsdict, ionlist):
             for levelindex in range(level_count):
                 row = fadata.readline().split()
 
-                levelname = row[4].strip('\'')
+                levelname = row[4].strip("'")
                 numberin = int(row[0])
                 assert levelindex == numberin - firstlevelnumber
                 phixstargetlist, phixstable = phixsdict.get((Z, ionstage, numberin), ([], []))
 
                 level_list.append((float(row[1]), float(row[2]), int(row[3]), levelname, phixstargetlist, phixstable))
 
-            dflevels = pd.DataFrame(level_list,
-                                    columns=['energy_ev', 'g', 'transition_count',
-                                             'levelname', 'phixstargetlist', 'phixstable'])
+            dflevels = pd.DataFrame(
+                level_list, columns=["energy_ev", "g", "transition_count", "levelname", "phixstargetlist", "phixstable"]
+            )
 
             yield Z, ionstage, level_count, ionisation_energy_ev, dflevels
 
@@ -60,10 +60,16 @@ def parse_transitiondata(ftransitions, ionlist):
             for _ in range(transition_count):
                 row = ftransitions.readline().split()
                 translist.append(
-                    (int(row[0]) - firstlevelnumber, int(row[1]) - firstlevelnumber,
-                     float(row[2]), float(row[3]), int(row[4]) == 1))
+                    (
+                        int(row[0]) - firstlevelnumber,
+                        int(row[1]) - firstlevelnumber,
+                        float(row[2]),
+                        float(row[3]),
+                        int(row[4]) == 1,
+                    )
+                )
 
-            yield Z, ionstage, pd.DataFrame(translist, columns=['lower', 'upper', 'A', 'collstr', 'forbidden'])
+            yield Z, ionstage, pd.DataFrame(translist, columns=["lower", "upper", "A", "collstr", "forbidden"])
         else:
             for _ in range(transition_count):
                 ftransitions.readline()
@@ -115,35 +121,43 @@ def parse_phixsdata(fphixs, ionlist):
 @lru_cache(maxsize=8)
 def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisations=False, quiet=False):
     """Return a list of lists of levels."""
-    adatafilename = Path(modelpath, 'adata.txt')
+    adatafilename = Path(modelpath, "adata.txt")
 
     transitionsdict = {}
     if get_transitions:
-        transition_filename = Path(modelpath, 'transitiondata.txt')
+        transition_filename = Path(modelpath, "transitiondata.txt")
         if not quiet:
-            print(f'Reading {transition_filename.relative_to(modelpath.parent)}')
-        with at.zopen(transition_filename, 'rt') as ftransitions:
+            print(f"Reading {transition_filename.relative_to(modelpath.parent)}")
+        with at.zopen(transition_filename, "rt") as ftransitions:
             transitionsdict = {
                 (Z, ionstage): dftransitions
-                for Z, ionstage, dftransitions in parse_transitiondata(ftransitions, ionlist)}
+                for Z, ionstage, dftransitions in parse_transitiondata(ftransitions, ionlist)
+            }
 
     phixsdict = {}
     if get_photoionisations:
-        phixs_filename = Path(modelpath, 'phixsdata_v2.txt')
+        phixs_filename = Path(modelpath, "phixsdata_v2.txt")
 
         if not quiet:
-            print(f'Reading {phixs_filename.relative_to(Path(modelpath).parent)}')
-        with at.zopen(phixs_filename, 'rt') as fphixs:
-            for (Z, upperionstage, upperionlevel, lowerionstage,
-                 lowerionlevel, phixstargetlist, phixstable) in parse_phixsdata(fphixs, ionlist):
+            print(f"Reading {phixs_filename.relative_to(Path(modelpath).parent)}")
+        with at.zopen(phixs_filename, "rt") as fphixs:
+            for (
+                Z,
+                upperionstage,
+                upperionlevel,
+                lowerionstage,
+                lowerionlevel,
+                phixstargetlist,
+                phixstable,
+            ) in parse_phixsdata(fphixs, ionlist):
                 phixsdict[(Z, lowerionstage, lowerionlevel)] = (phixstargetlist, phixstable)
 
     level_lists = []
-    iontuple = namedtuple('ion', 'Z ion_stage level_count ion_pot levels transitions')
+    iontuple = namedtuple("ion", "Z ion_stage level_count ion_pot levels transitions")
 
-    with at.zopen(adatafilename, 'rt') as fadata:
+    with at.zopen(adatafilename, "rt") as fadata:
         if not quiet:
-            print(f'Reading {adatafilename.relative_to(Path(modelpath).parent)}')
+            print(f"Reading {adatafilename.relative_to(Path(modelpath).parent)}")
 
         for Z, ionstage, level_count, ionisation_energy_ev, dflevels in parse_adata(fadata, phixsdict, ionlist):
             translist = transitionsdict.get((Z, ionstage), pd.DataFrame())
@@ -166,10 +180,11 @@ def parse_recombratefile(frecomb):
             arr_rrc_low_n.append(rrc_low_n)
             arr_rrc_total.append(rrc_total)
 
-        recombdata_thision = pd.DataFrame({
-            'log10T_e': arr_log10t, 'rrc_low_n': arr_rrc_low_n, 'rrc_total': arr_rrc_total})
+        recombdata_thision = pd.DataFrame(
+            {"log10T_e": arr_log10t, "rrc_low_n": arr_rrc_low_n, "rrc_total": arr_rrc_total}
+        )
 
-        recombdata_thision.eval('T_e = 10 ** log10T_e', inplace=True)
+        recombdata_thision.eval("T_e = 10 ** log10T_e", inplace=True)
 
         yield Z, upper_ionstage, recombdata_thision
 
@@ -178,7 +193,7 @@ def parse_recombratefile(frecomb):
 def get_ionrecombratecalibration(modelpath):
     """Read recombrates file."""
     recombdata = {}
-    with open(Path(modelpath, 'recombrates.txt'), 'r') as frecomb:
+    with open(Path(modelpath, "recombrates.txt"), "r") as frecomb:
         for Z, upper_ionstage, dfrrc in parse_recombratefile(frecomb):
             recombdata[(Z, upper_ionstage)] = dfrrc
 

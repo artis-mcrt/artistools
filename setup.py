@@ -8,7 +8,7 @@ from pathlib import Path
 from setuptools import find_packages, setup
 from setuptools_scm import get_version
 
-sys.path.append('artistools/')
+sys.path.append("artistools/")
 from commands import get_console_scripts, get_completioncommands
 
 
