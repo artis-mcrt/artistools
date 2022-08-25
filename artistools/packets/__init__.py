@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 # import matplotlib.patches as mpatches
-import datatable as dt
 import numpy as np
 import pandas as pd
 
@@ -126,75 +125,79 @@ def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None)
 def readfile_text(packetsfile, modelpath=Path('.')):
     usecols_nodata = None  # print a warning for missing columns if the source code columns can't be read
 
-    try:
-        # dfpackets = pd.read_csv(fpackets, delim_whitespace=True, names=column_names, header=None)
+    dfpackets = pd.read_csv(packetsfile, sep=' ', header=None, skip_blank_lines=True, engine='pyarrow')
 
-        # LJS: datatables reads it faster (25% on my laptop). Does everything still work?
-        dsk_dfpackets = dt.fread(packetsfile)  # , columns=column_names
+    # import datatable as dt
+    # dsk_dfpackets = dt.fread(packetsfile)
+    # dfpackets = dsk_dfpackets.to_pandas()
 
-        if dsk_dfpackets.names[0].startswith('#'):
+    if hasattr(dfpackets.columns[0], 'startswith') and dfpackets.columns[0].startswith('#'):
 
-            dsk_dfpackets.names = {dsk_dfpackets.names[0]: dsk_dfpackets.names[0].lstrip('#')}
+        dfpackets.rename(columns={dfpackets.columns[0]: dfpackets.columns[0].lstrip('#')}, inplace=True)
 
-        elif dsk_dfpackets.names[0] == 'C0':
+    elif dfpackets.columns[0] in ['C0', 0]:
 
-            inputcolumncount = len(dsk_dfpackets.names)
-            column_names = get_column_names_artiscode(modelpath)
-            if column_names:  # found them in the artis code files
+        inputcolumncount = len(dfpackets.columns)
+        column_names = get_column_names_artiscode(modelpath)
+        if column_names:  # found them in the artis code files
 
-                assert len(column_names) == inputcolumncount
+            if inputcolumncount == len(column_names) + 1:
+                # space at the end of line made an extra column of Nones
+                assert dfpackets[dfpackets.columns[-1]].isnull().all()
+                dfpackets.drop(labels=dfpackets.columns[-1], axis=1, inplace=True)
+                inputcolumncount = len(dfpackets.columns)
 
-            else:  # infer from column positions
-                # new artis added extra columns to the end of this list, but they may be absent in older versions
-                # the packets file may have a truncated set of columns, but we assume that they
-                # are only truncated, i.e. the columns with the same index have the same meaning
-                columns_full = (
-                    'number',
-                    'where',
-                    'type_id',
-                    'posx', 'posy', 'posz',
-                    'dirx', 'diry', 'dirz',
-                    'last_cross',
-                    'tdecay',
-                    'e_cmf',
-                    'e_rf',
-                    'nu_cmf',
-                    'nu_rf',
-                    'escape_type_id',
-                    'escape_time',
-                    'scat_count',
-                    'next_trans',
-                    'interactions',
-                    'last_event',
-                    'emissiontype',
-                    'trueemissiontype',
-                    'em_posx', 'em_posy', 'em_posz',
-                    'absorption_type',
-                    'absorption_freq',
-                    'nscatterings',
-                    'em_time',
-                    'absorptiondirx',
-                    'absorptiondiry',
-                    'absorptiondirz', 'stokes1', 'stokes2', 'stokes3', 'pol_dirx', 'pol_diry',
-                    'pol_dirz',
-                    'originated_from_positron',
-                    'true_emission_velocity',
-                    'trueem_time',
-                    'pellet_nucindex',
-                )
+            assert len(column_names) == inputcolumncount
 
-                assert len(columns_full) >= inputcolumncount
-                usecols_nodata = [n for n in columns_full if columns_full.index(n) >= inputcolumncount]
-                column_names = columns_full[:inputcolumncount]
+        else:  # infer from column positions
+            # new artis added extra columns to the end of this list, but they may be absent in older versions
+            # the packets file may have a truncated set of columns, but we assume that they
+            # are only truncated, i.e. the columns with the same index have the same meaning
+            columns_full = (
+                'number',
+                'where',
+                'type_id',
+                'posx', 'posy', 'posz',
+                'dirx', 'diry', 'dirz',
+                'last_cross',
+                'tdecay',
+                'e_cmf',
+                'e_rf',
+                'nu_cmf',
+                'nu_rf',
+                'escape_type_id',
+                'escape_time',
+                'scat_count',
+                'next_trans',
+                'interactions',
+                'last_event',
+                'emissiontype',
+                'trueemissiontype',
+                'em_posx', 'em_posy', 'em_posz',
+                'absorption_type',
+                'absorption_freq',
+                'nscatterings',
+                'em_time',
+                'absorptiondirx',
+                'absorptiondiry',
+                'absorptiondirz', 'stokes1', 'stokes2', 'stokes3', 'pol_dirx', 'pol_diry',
+                'pol_dirz',
+                'originated_from_positron',
+                'true_emission_velocity',
+                'trueem_time',
+                'pellet_nucindex',
+            )
 
-            dsk_dfpackets.names = {f'C{i}': col for i, col in enumerate(column_names)}
+            assert len(columns_full) >= inputcolumncount
+            usecols_nodata = [n for n in columns_full if columns_full.index(n) >= inputcolumncount]
+            column_names = columns_full[:inputcolumncount]
 
-        dfpackets = dsk_dfpackets.to_pandas()
+        dfpackets.columns = column_names
 
-    except Exception as ex:
-        print(f'Problem with file {packetsfile}')
-        print(f'ERROR: {ex}')
-        sys.exit(1)
+    # except Exception as ex:
+    #     print(f'Problem with file {packetsfile}')
+    #     print(f'ERROR: {ex}')
+    #     sys.exit(1)
 
     if usecols_nodata:
         print(f'WARNING: no data in packets file for columns: {usecols_nodata}')
