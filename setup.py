@@ -17,7 +17,7 @@ from commands import get_console_scripts, get_completioncommands
 # bashcompinit
 # source artistoolscompletions.sh
 completioncommands = get_completioncommands()
-with open("artistoolscompletions.sh", "w") as f:
+with open("artistoolscompletions.sh", "w", encoding="utf-8") as f:
     f.write("\n".join(completioncommands))
 
 
