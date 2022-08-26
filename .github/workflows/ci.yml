@@ -9,6 +9,9 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
+        with:
+          # this is needed to the get the automatic version correct
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v3
