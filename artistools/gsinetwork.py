@@ -46,16 +46,21 @@ def plot_qdot(
 
     model_mass_grams = dfmodel.cellmass_grams.sum()
     print(f"model mass: {model_mass_grams / 1.989e33:.3f} Msun")
-    dfpartcontrib = dfpartcontrib.query("particleid in @allparticledata.keys()")
-    for cellindex, dfpartcontrib in dfpartcontrib.groupby("cellindex"):
+    dfpartcontrib_nomissing = dfpartcontrib.query("particleid in @allparticledata.keys()")
+    for cellindex, dfpartcontribthiscell in dfpartcontrib_nomissing.groupby("cellindex"):
         if cellindex >= len(dfmodel):
             continue
+
         cell_mass_frac = dfmodel.iloc[cellindex - 1].cellmass_grams / model_mass_grams
+
         if cell_mass_frac == 0.0:
             continue
-        frac_of_cellmass_sum = dfpartcontrib.frac_of_cellmass.sum()
 
-        for particleid, frac_of_cellmass in dfpartcontrib[["particleid", "frac_of_cellmass"]].itertuples(index=False):
+        frac_of_cellmass_sum = dfpartcontribthiscell.frac_of_cellmass.sum()
+
+        contribtuples = dfpartcontribthiscell[["particleid", "frac_of_cellmass"]].itertuples(index=False)
+
+        for particleid, frac_of_cellmass in contribtuples:
             thisparticledata = allparticledata[particleid]
             for col in heatcols:
                 arr_heat[col] += thisparticledata[col] * cell_mass_frac * frac_of_cellmass / frac_of_cellmass_sum
