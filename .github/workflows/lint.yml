@@ -20,7 +20,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python3 -m pip install --upgrade pip wheel
+          python3 -m pip install --upgrade pip wheel flake8
           python3 -m pip install -r requirements.txt
 
           # upgrade all installed packages to their latest versions
