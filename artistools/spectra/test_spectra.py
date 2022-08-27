@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-
 import math
-import numpy as np
 import os.path
+from pathlib import Path
+
+import numpy as np
 import pandas as pd
 from astropy import constants as const
-from pathlib import Path
 
 import artistools as at
 import artistools.spectra

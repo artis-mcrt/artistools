@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
+import os
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import pandas as pd
 
 import artistools as at
 
 # import artistools.spectra
 # import artistools.lightcurve.writebollightcurvedata
-
-from pathlib import Path
-import pandas as pd
-import matplotlib.pyplot as plt
-import os
 
 
 def plot_hesma_spectrum(timeavg, axes):

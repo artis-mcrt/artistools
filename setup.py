@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-
 """Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code."""
-
 import sys
-
 from pathlib import Path
-from setuptools import find_packages, setup
+
+from setuptools import find_packages
+from setuptools import setup
 from setuptools_scm import get_version
 
 sys.path.append("artistools/")

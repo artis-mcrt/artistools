@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-
 import hashlib
 import math
-import numpy as np
-import os
 import os.path
+from pathlib import Path
+
+import numpy as np
 import pandas as pd
 import pytest
-from pathlib import Path
 
 import artistools as at
 

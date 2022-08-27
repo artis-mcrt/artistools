@@ -5,15 +5,14 @@ import multiprocessing
 import os.path
 import sys
 
+import matplotlib.pyplot as plt
+import pandas as pd
 from astropy import constants as const
 
-# from astropy import units as u
-
 import artistools as at
-import matplotlib.pyplot as plt
 
+# from astropy import units as u
 # import matplotlib.ticker as ticker
-import pandas as pd
 
 defaultoutputfile = "plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf"
 

@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
-
 import argparse
-
-# import os
+import gc
 from pathlib import Path
 
-# import pandas as pd
-import artistools as at
 import matplotlib.pyplot as plt
+import numpy as np
 from astropy import units as u
 
-# import matplotlib
-import numpy as np
+import artistools as at
 
+# import os
+# import pandas as pd
+# import matplotlib
 # from mpl_toolkits.mplot3d import Axes3D
-import gc
 
 
 def make_cone(args):

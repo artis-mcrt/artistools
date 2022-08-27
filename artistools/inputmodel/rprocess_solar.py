@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-
 import argparse
 import math
-
-# import os.path
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
 import artistools as at
+
+# import os.path
 
 
 def addargs(parser):

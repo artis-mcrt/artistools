@@ -2,21 +2,20 @@
 import argparse
 import multiprocessing
 import sys
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from pathlib import Path
-
-# import numba
-# from numpy import arctan as atan
-
 import pynonthermal as pynt
 
 import artistools as at
 import artistools.estimators
 import artistools.nltepops
 import artistools.nonthermal
+
+# import numba
+# from numpy import arctan as atan
 
 
 minionfraction = 0.0  # minimum number fraction of the total population to include in SF solution

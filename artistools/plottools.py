@@ -2,6 +2,10 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 
+import artistools as at
+
+plt.style.use("file://" + str(at.config["path_artistools_dir"] / "matplotlibrc"))
+
 
 class ExponentLabelFormatter(ticker.ScalarFormatter):
     """Formatter to move the 'x10^x' offset text into the axis label."""

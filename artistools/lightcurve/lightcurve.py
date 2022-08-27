@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
-
 # import glob
 # import itertools
 import math
 import os
-
-# import sys
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from astropy import constants as const
 from astropy import units as u
-import matplotlib.pyplot as plt
 
 import artistools as at
 import artistools.spectra
+
+# import sys
 
 
 def readfile(filepath_or_buffer, modelpath=None, args=None):

@@ -9,28 +9,25 @@ import argparse
 import math
 import multiprocessing
 import os
-
-# import re
 import sys
-
-# from collections import namedtuple
-# from functools import lru_cache, partial, reduce
-# from itertools import chain
 from pathlib import Path
+
 import argcomplete
-
 import matplotlib.pyplot as plt
-
-# import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
-
-# import scipy.signal
-# from astropy import constants as const
 
 import artistools as at
 import artistools.initial_composition
 import artistools.nltepops
+
+# import re
+# from collections import namedtuple
+# from functools import lru_cache, partial, reduce
+# from itertools import chain
+# import matplotlib.ticker as ticker
+# import scipy.signal
+# from astropy import constants as const
 
 colors_tab10 = list(plt.get_cmap("tab10")(np.linspace(0, 1.0, 10)))
 

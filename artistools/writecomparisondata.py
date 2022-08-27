@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-
 import argparse
-import numpy as np
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 import artistools as at

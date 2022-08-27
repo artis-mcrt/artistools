@@ -1,14 +1,14 @@
+from collections import namedtuple
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
-from pathlib import Path
 
 import artistools as at
 import artistools.estimators.estimators_classic
-import artistools.inputmodel.slice1Dfromconein3dmodel
 import artistools.initial_composition
-
-from collections import namedtuple
+import artistools.inputmodel.slice1Dfromconein3dmodel
 
 CLIGHT = 2.99792458e10
 

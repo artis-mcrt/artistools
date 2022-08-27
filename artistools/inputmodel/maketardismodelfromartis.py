@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
+import argparse
+from pathlib import Path
 
 import argcomplete
-import argparse
 from yaml import dump as yamldump
 
-from pathlib import Path
 import artistools as at
 
 

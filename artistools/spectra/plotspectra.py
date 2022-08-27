@@ -1,34 +1,32 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 """Artistools - spectra plotting functions."""
-import argcomplete
 import argparse
 import math
-from pathlib import Path
 import os
+from pathlib import Path
 
-import matplotlib.ticker as ticker
+import argcomplete
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 from astropy import constants as const
 
 import artistools as at
-import artistools.radfield
 import artistools.packets
-from artistools.spectra.spectra import (
-    get_reference_spectrum,
-    get_res_spectrum,
-    get_specpol_data,
-    get_spectrum,
-    get_spectrum_from_packets,
-    get_vspecpol_spectrum,
-    make_averaged_vspecfiles,
-    make_virtual_spectra_summed_file,
-    print_integrated_flux,
-    timeshift_fluxscale_co56law,
-)
+import artistools.radfield
+from artistools.spectra.spectra import get_reference_spectrum
+from artistools.spectra.spectra import get_res_spectrum
+from artistools.spectra.spectra import get_specpol_data
+from artistools.spectra.spectra import get_spectrum
+from artistools.spectra.spectra import get_spectrum_from_packets
+from artistools.spectra.spectra import get_vspecpol_spectrum
+from artistools.spectra.spectra import make_averaged_vspecfiles
+from artistools.spectra.spectra import make_virtual_spectra_summed_file
+from artistools.spectra.spectra import print_integrated_flux
+from artistools.spectra.spectra import timeshift_fluxscale_co56law
 
 hatches = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]  # ,
 

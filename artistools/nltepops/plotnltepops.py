@@ -4,29 +4,27 @@ import argparse
 import math
 import multiprocessing
 import os
-
-# import re
-# import sys
-# from functools import lru_cache
-# from functools import partial
 from pathlib import Path
 
-# from itertools import chain
-
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-
-# import numpy as np
+import numpy as np
 import pandas as pd
 from astropy import constants as const
-import numpy as np
-import matplotlib as mpl
 
 import artistools as at
 import artistools.atomic
 import artistools.estimators
 import artistools.nltepops
 import artistools.plottools
+
+# import re
+# import sys
+# from functools import lru_cache
+# from functools import partial
+# from itertools import chain
+# import numpy as np
 
 
 defaultoutputfile = "plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"

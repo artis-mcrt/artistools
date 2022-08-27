@@ -1,8 +1,8 @@
 import numpy as np
 
-# import pandas as pd
-
 import artistools as at
+
+# import pandas as pd
 
 CLIGHT = 2.99792458e10
 

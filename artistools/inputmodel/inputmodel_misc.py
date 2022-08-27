@@ -1,9 +1,6 @@
 import errno
 import gc
-
-# from collections import namedtuple
 import math
-import os
 import os.path
 import time
 from functools import lru_cache
@@ -13,6 +10,8 @@ import numpy as np
 import pandas as pd
 
 import artistools as at
+
+# from collections import namedtuple
 
 
 @lru_cache(maxsize=8)

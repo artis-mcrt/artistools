@@ -8,15 +8,17 @@ import math
 import multiprocessing
 import sys
 from collections import namedtuple
-from functools import lru_cache, partial, reduce
-
-# from itertools import chain
+from functools import lru_cache
+from functools import partial
+from functools import reduce
 from pathlib import Path
 
 import pandas as pd
 
 import artistools as at
 import artistools.nltepops
+
+# from itertools import chain
 
 
 variableunits = {

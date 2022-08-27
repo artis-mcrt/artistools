@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-
 # import hashlib
 # import math
 # import numpy as np
 # import os
 # import os.path
-import pandas as pd
-
-# import pytest
 from pathlib import Path
+
+import pandas as pd
 
 import artistools as at
 import artistools.inputmodel
+
+# import pytest
 
 modelpath = at.config["path_testartismodel"]
 outputpath = at.config["path_testoutput"]

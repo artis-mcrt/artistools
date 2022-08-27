@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-
-import argcomplete
 import argparse
 import math
-
-import numpy as np
-
-# import io
-import pandas as pd
-
-# import math
 import multiprocessing
 from functools import partial
 from pathlib import Path
+
+import argcomplete
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 import artistools as at
+
+# import io
+# import math
 
 # import artistools.estimators
 

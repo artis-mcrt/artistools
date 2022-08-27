@@ -1,22 +1,19 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-
-import argcomplete
 import argparse
 import math
-
-# import os.path
-
-import numpy as np
-import pandas as pd
 from pathlib import Path
 
-# import matplotlib
+import argcomplete
 import matplotlib.pyplot as plt
-
+import numpy as np
+import pandas as pd
 
 import artistools as at
 import artistools.inputmodel
+
+# import os.path
+# import matplotlib
 
 
 def get_model_recombenergy(dfbinding, args):

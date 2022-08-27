@@ -1,7 +1,7 @@
-from pathlib import Path
-import gzip
 import glob
+import gzip
 import os
+from pathlib import Path
 
 import artistools as at
 

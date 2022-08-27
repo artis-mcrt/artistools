@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
+from pathlib import Path
 
 import matplotlib.pyplot as plt
-from pathlib import Path
 
 import artistools as at
 import artistools.packets

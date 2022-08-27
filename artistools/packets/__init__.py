@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
-
-import math
 import gzip
-
-# import multiprocessing
+import math
 import sys
+from functools import lru_cache
 from pathlib import Path
 
-# import matplotlib.patches as mpatches
 import numpy as np
 import pandas as pd
 
-# from collections import namedtuple
-from functools import lru_cache
-
 import artistools as at
+
+# import multiprocessing
+# import matplotlib.patches as mpatches
+# from collections import namedtuple
 
 CLIGHT = 2.99792458e10
 DAY = 86400
