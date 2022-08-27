@@ -18,20 +18,6 @@ dynamic = ["version", "description", "entry-points"]
 line-length = 120
 preview = true
 
-[tool.flake8]
-ignore = "N806"
-max-line-length = 120
-count = true
-
-[tool.pylint.format]
-max-line-length = "120"
-
-[tool.pylama]
-max-line-length = 120
-
-[tool.pycodestyle]
-max-line-length = 120
-
 [tool.setuptools_scm]
 write_to = "_version.py"
 local_scheme = "no-local-version"
