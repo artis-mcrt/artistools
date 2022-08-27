@@ -3,10 +3,7 @@ repos:
     rev: 22.6.0
     hooks:
       - id: black
-        args: [
-              "--preview",
-            ]
-  -   repo: https://github.com/pycqa/flake8
-      rev: '5.0.4'
-      hooks:
-      -   id: flake8
+  - repo: https://github.com/pycqa/flake8
+    rev: '5.0.4'
+    hooks:
+    -   id: flake8
