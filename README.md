@@ -14,6 +14,7 @@ git clone https://github.com/artis-mcrt/artistools.git
 Then from within the repository directory run:
 ```sh
 python3 -m pip install -e .
+pre-commit install
 ```
 
 ## Usage
