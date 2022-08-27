@@ -11,13 +11,14 @@ import pandas as pd
 from astropy import constants as const
 
 import artistools as at
+import artistools.misc
+
 
 # import os
 # import sys
 # from itertools import chain
 # import matplotlib.pyplot as plt
 # import matplotlib.ticker as ticker
-# import numpy as np
 # import numpy as np
 # import matplotlib as mpl
 

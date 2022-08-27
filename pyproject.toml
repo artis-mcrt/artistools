@@ -7,12 +7,13 @@ name = "artistools"
 authors = [
     {name = "ARTIS Collaboration", email = "luke.shingles@gmail.com"},
 ]
+description="Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code."
 readme = "README.md"
 classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
+dynamic = ["version", "dependencies", "entry-points"]
 requires-python = ">=3.8"
-dynamic = ["version", "description", "entry-points"]
 
 [tool.black]
 line-length = 120
