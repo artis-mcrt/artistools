@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import artistools as at
 import artistools.spectra.plotspectra
 

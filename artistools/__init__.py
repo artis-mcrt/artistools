@@ -4,6 +4,8 @@
 A collection of plotting, analysis, and file format conversion tools
 for the ARTIS radiative transfer code.
 """
+from artistools.configuration import config  # noreorder
+from artistools.diskcache import diskcache  # noreorder
 import artistools.atomic
 import artistools.codecomparison
 import artistools.commands
@@ -21,7 +23,6 @@ import artistools.spectra
 import artistools.transitions
 from artistools.__main__ import addargs
 from artistools.__main__ import main
-from artistools.configuration import config
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_2d_modeldata
 from artistools.inputmodel import get_cell_angle
@@ -35,7 +36,6 @@ from artistools.misc import AppendPath
 from artistools.misc import cross_prod
 from artistools.misc import CustomArgHelpFormatter
 from artistools.misc import decode_roman_numeral
-from artistools.misc import diskcache
 from artistools.misc import dot
 from artistools.misc import firstexisting
 from artistools.misc import flatten_list
