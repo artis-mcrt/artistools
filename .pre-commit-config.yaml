@@ -12,10 +12,13 @@ repos:
       - id: check-yaml
       - id: detect-private-key
       - id: destroyed-symlinks
+      - id: fix-byte-order-marker
       - id: forbid-new-submodules
       - id: mixed-line-ending
         args: ['--fix=lf']
+      - id: name-tests-test
       - id: requirements-txt-fixer
+      - id: trailing-whitespace
   - repo: https://github.com/psf/black
     rev: 22.6.0
     hooks:
