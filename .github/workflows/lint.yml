@@ -1,4 +1,4 @@
-name: Source linting and formatting
+name: Linter
 
 on:
   push:
@@ -40,22 +40,3 @@ jobs:
         run: |
           # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=130 --statistics
-
-  black:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          cache: 'pip'
-          python-version-file: '.python-version'
-
-      - name: Install dependencies
-        run: |
-          python3 -m pip install --upgrade black
-
-      - name: Use black to check formatting
-        run: black --check --preview .
