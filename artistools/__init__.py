@@ -4,75 +4,6 @@
 A collection of plotting, analysis, and file format conversion tools
 for the ARTIS radiative transfer code.
 """
-
-from artistools.configuration import config
-
-from artistools.inputmodel import (
-    add_derived_cols_to_modeldata,
-    get_modeldata,
-    get_2d_modeldata,
-    get_cell_angle,
-    get_dfmodel_dimensions,
-    get_mean_cell_properties_of_angle_bin,
-    get_mgi_of_velocity_kms,
-    save_initialabundances,
-    save_modeldata,
-)
-
-from artistools.misc import (
-    AppendPath,
-    CustomArgHelpFormatter,
-    cross_prod,
-    decode_roman_numeral,
-    diskcache,
-    dot,
-    firstexisting,
-    flatten_list,
-    gather_res_data,
-    get_artis_constants,
-    get_atomic_number,
-    get_cellsofmpirank,
-    get_composition_data,
-    get_composition_data_from_outputfile,
-    get_deposition,
-    get_escaped_arrivalrange,
-    get_elsymbol,
-    get_elsymbolslist,
-    get_filterfunc,
-    get_grid_mapping,
-    get_model_name,
-    get_inputparams,
-    get_ionstring,
-    get_linelist,
-    get_mpiranklist,
-    get_mpirankofcell,
-    get_runfolders,
-    get_syn_dir,
-    get_time_range,
-    get_timestep_of_timedays,
-    get_timestep_time,
-    get_timestep_times_float,
-    get_vpkt_config,
-    get_wid_init_at_tmin,
-    get_wid_init_at_tmodel,
-    get_z_a_nucname,
-    join_pdf_files,
-    make_namedtuple,
-    makelist,
-    match_closest_time,
-    namedtuple,
-    parse_cdefines,
-    parse_range,
-    parse_range_list,
-    readnoncommentline,
-    roman_numerals,
-    showtimesteptimes,
-    stripallsuffixes,
-    trim_or_pad,
-    vec_len,
-    zopen,
-)
-
 import artistools.atomic
 import artistools.codecomparison
 import artistools.commands
@@ -84,10 +15,70 @@ import artistools.macroatom
 import artistools.nltepops
 import artistools.nonthermal
 import artistools.packets
+import artistools.plottools
 import artistools.radfield
 import artistools.spectra
 import artistools.transitions
-
-# import artistools.plottools
-
-from artistools.__main__ import main, addargs
+from artistools.__main__ import addargs
+from artistools.__main__ import main
+from artistools.configuration import config
+from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_2d_modeldata
+from artistools.inputmodel import get_cell_angle
+from artistools.inputmodel import get_dfmodel_dimensions
+from artistools.inputmodel import get_mean_cell_properties_of_angle_bin
+from artistools.inputmodel import get_mgi_of_velocity_kms
+from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import save_initialabundances
+from artistools.inputmodel import save_modeldata
+from artistools.misc import AppendPath
+from artistools.misc import cross_prod
+from artistools.misc import CustomArgHelpFormatter
+from artistools.misc import decode_roman_numeral
+from artistools.misc import diskcache
+from artistools.misc import dot
+from artistools.misc import firstexisting
+from artistools.misc import flatten_list
+from artistools.misc import gather_res_data
+from artistools.misc import get_artis_constants
+from artistools.misc import get_atomic_number
+from artistools.misc import get_cellsofmpirank
+from artistools.misc import get_composition_data
+from artistools.misc import get_composition_data_from_outputfile
+from artistools.misc import get_deposition
+from artistools.misc import get_elsymbol
+from artistools.misc import get_elsymbolslist
+from artistools.misc import get_escaped_arrivalrange
+from artistools.misc import get_filterfunc
+from artistools.misc import get_grid_mapping
+from artistools.misc import get_inputparams
+from artistools.misc import get_ionstring
+from artistools.misc import get_linelist
+from artistools.misc import get_model_name
+from artistools.misc import get_mpiranklist
+from artistools.misc import get_mpirankofcell
+from artistools.misc import get_runfolders
+from artistools.misc import get_syn_dir
+from artistools.misc import get_time_range
+from artistools.misc import get_timestep_of_timedays
+from artistools.misc import get_timestep_time
+from artistools.misc import get_timestep_times_float
+from artistools.misc import get_vpkt_config
+from artistools.misc import get_wid_init_at_tmin
+from artistools.misc import get_wid_init_at_tmodel
+from artistools.misc import get_z_a_nucname
+from artistools.misc import join_pdf_files
+from artistools.misc import make_namedtuple
+from artistools.misc import makelist
+from artistools.misc import match_closest_time
+from artistools.misc import namedtuple
+from artistools.misc import parse_cdefines
+from artistools.misc import parse_range
+from artistools.misc import parse_range_list
+from artistools.misc import readnoncommentline
+from artistools.misc import roman_numerals
+from artistools.misc import showtimesteptimes
+from artistools.misc import stripallsuffixes
+from artistools.misc import trim_or_pad
+from artistools.misc import vec_len
+from artistools.misc import zopen

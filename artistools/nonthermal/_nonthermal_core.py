@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 import math
 import os
+from collections import namedtuple
+from math import atan
+from pathlib import Path
 
-# import matplotlib.ticker as ticker
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from collections import namedtuple
-from pathlib import Path
-from math import atan
-
-# import numba
-# from numpy import arctan as atan
 
 import artistools as at
 import artistools.estimators
 import artistools.nltepops
 import artistools.nonthermal
+
+# import matplotlib.ticker as ticker
+# import numba
+# from numpy import arctan as atan
 
 # cgs units to match artis
 EV = 1.6021772e-12  # in erg

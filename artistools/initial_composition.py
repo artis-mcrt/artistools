@@ -4,14 +4,15 @@ import math
 import os
 from pathlib import Path
 
-import artistools as at
-import artistools.inputmodel.opacityinputfile
 import matplotlib
-
-# import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy import units as u
+
+import artistools as at
+import artistools.inputmodel.opacityinputfile
+
+# import pandas as pd
 
 # import artistools.inputmodel
 # from mpl_toolkits.mplot3d import Axes3D

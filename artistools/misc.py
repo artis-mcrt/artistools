@@ -1,31 +1,27 @@
 #!/usr/bin/env python3
-
 import argparse
-from functools import lru_cache
 import gzip
-
-# import inspect
 import lzma
 import math
 import os.path
 import sys
 import time
 from collections import namedtuple
-from itertools import chain
+from functools import lru_cache
 from functools import wraps
-
-# from functools import partial
-import matplotlib.pyplot as plt
+from itertools import chain
 from pathlib import Path
 from typing import Iterable
 
-# import scipy.signal
 import numpy as np
 import pandas as pd
 
 import artistools as at
 
-plt.style.use("file://" + str(at.config["path_artistools_dir"] / "matplotlibrc"))
+# import inspect
+# from functools import partial
+# import scipy.signal
+
 
 roman_numerals = (
     "",

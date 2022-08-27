@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-
 import math
+
 import matplotlib.pyplot as plt
 
 CONST_EV_IN_J = 1.602176634e-19  # 1 eV [J]

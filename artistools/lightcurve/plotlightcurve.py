@@ -1,30 +1,28 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-
 import argparse
-
-# import glob
-# import itertools
 import math
 import multiprocessing
 import os
-
-# import sys
 from pathlib import Path
 from typing import Iterable
 
 import argcomplete
-
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from astropy import constants as const
+from extinction import apply
+from extinction import ccm89
 
 import artistools as at
-import artistools.spectra
 import artistools.plottools
-import matplotlib.pyplot as plt
-import matplotlib
-from extinction import apply, ccm89
-from astropy import constants as const
+import artistools.spectra
+
+# import glob
+# import itertools
+# import sys
 
 color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 

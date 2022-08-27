@@ -2,27 +2,24 @@
 """Artistools - NLTE population related functions."""
 import math
 import multiprocessing
-
-# import os
 import re
-
-# import sys
 from functools import lru_cache
 from functools import partial
 from pathlib import Path
 
-# from itertools import chain
-
-# import matplotlib.pyplot as plt
-# import matplotlib.ticker as ticker
-# import numpy as np
 import pandas as pd
 from astropy import constants as const
 
+import artistools as at
+
+# import os
+# import sys
+# from itertools import chain
+# import matplotlib.pyplot as plt
+# import matplotlib.ticker as ticker
+# import numpy as np
 # import numpy as np
 # import matplotlib as mpl
-
-import artistools as at
 
 
 def texifyterm(strterm):

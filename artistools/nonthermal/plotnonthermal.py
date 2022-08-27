@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
-
 import argparse
 import multiprocessing
 import os
-import pynonthermal
 from functools import lru_cache
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-
-# import matplotlib.ticker as ticker
 import pandas as pd
+import pynonthermal
 from astropy import units as u
 
 import artistools as at
+
+# import matplotlib.ticker as ticker
 
 DEFAULTSPECPATH = "../example_run/spec.out"
 defaultoutputfile = "plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf"

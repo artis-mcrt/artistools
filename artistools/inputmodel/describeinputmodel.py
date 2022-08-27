@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-
-import argcomplete
 import argparse
 import math
 
-# import os.path
-
+import argcomplete
 import numpy as np
 
-# import pandas as pd
-
 import artistools as at
+
+# import os.path
+# import pandas as pd
 
 
 def addargs(parser):

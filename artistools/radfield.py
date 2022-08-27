@@ -1,30 +1,26 @@
 #!/usr/bin/env python3
-
 import argparse
 import math
 import multiprocessing
 import os
-
-# import re
 import sys
-
-from astropy import constants as const
-from astropy import units as u
 from functools import lru_cache
 from pathlib import Path
 
-# from itertools import chain
-
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-
-# import matplotlib.patches as mpatches
+from astropy import constants as const
+from astropy import units as u
 
 import artistools as at
-import artistools.spectra
 import artistools.estimators
 import artistools.nltepops
+import artistools.spectra
+
+# import re
+# from itertools import chain
+# import matplotlib.patches as mpatches
 
 H = 6.6260755e-27  # Planck constant [erg s]
 KB = 1.38064852e-16

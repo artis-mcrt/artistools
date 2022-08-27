@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-
 import argparse
-
-# import math
-# import os.path
+from pathlib import Path
 
 from astropy import units as u
 
+import artistools as at
+
+# import math
+# import os.path
 # import numpy as np
 # import pandas as pd
-from pathlib import Path
-
-import artistools as at
 
 
 def addargs(parser):

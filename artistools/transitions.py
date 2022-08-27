@@ -1,27 +1,24 @@
 #!/usr/bin/env python3
 import argparse
-
-# import glob
 import math
 import multiprocessing
-
-# import re
 from collections import namedtuple
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-
-# import numexpr as ne
 import numpy as np
 import pandas as pd
 from astropy import constants as const
-
-# from astropy import units as u
 
 import artistools as at
 import artistools.estimators
 import artistools.nltepops
 import artistools.spectra
+
+# import glob
+# import re
+# import numexpr as ne
+# from astropy import units as u
 
 defaultoutputfile = "plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
 

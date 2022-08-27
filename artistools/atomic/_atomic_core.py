@@ -1,8 +1,10 @@
-from functools import lru_cache
-import pandas as pd
-import numpy as np
 from collections import namedtuple
+from functools import lru_cache
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
 import artistools as at
 
 

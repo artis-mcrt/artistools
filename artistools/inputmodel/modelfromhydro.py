@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-
+import argparse
 import datetime
 import math
-
-import argparse
-from pathlib import Path
 import os.path
+from pathlib import Path
 
 import argcomplete
+import numpy as np
 import pandas as pd
 from astropy import units as u
-import numpy as np
 
 import artistools as at
 

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-from pathlib import Path
-import argcomplete
 import argparse
+from pathlib import Path
+
+import argcomplete
+
 import artistools as at
 import artistools.inputmodel.downscale3dgrid
 import artistools.inputmodel.energyinputfiles

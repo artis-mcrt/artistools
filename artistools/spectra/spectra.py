@@ -2,11 +2,12 @@
 """Artistools - spectra related functions."""
 import math
 import multiprocessing
+import os
+import re
 from collections import namedtuple
 from functools import lru_cache
 from functools import partial
 from pathlib import Path
-import os
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt  # needed to get the color map
@@ -14,11 +15,10 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 from astropy import units as u
-import re
 
 import artistools as at
-import artistools.radfield
 import artistools.packets
+import artistools.radfield
 
 fluxcontributiontuple = namedtuple(
     "fluxcontributiontuple", "fluxcontrib linelabel array_flambda_emission array_flambda_absorption color"

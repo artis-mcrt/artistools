@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-
+import glob
 import math
 import os
 from pathlib import Path
-import glob
 
-import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.legend_handler import HandlerTuple
+import numpy as np
 import pandas as pd
 from astropy import constants as const
+from matplotlib.legend_handler import HandlerTuple
 
 import artistools as at
 import artistools.lightcurve

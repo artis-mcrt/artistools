@@ -6,11 +6,12 @@ codecomparison/[modelname]/[codename]
 e.g., codecomparison/DDC10/artisnebular
 """
 import math
+from pathlib import Path
 
-import artistools as at
 import numpy as np
 import pandas as pd
-from pathlib import Path
+
+import artistools as at
 
 
 def get_timestep_times_float(modelpath, loc="mid"):

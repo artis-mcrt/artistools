@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 import argparse
 import math
+from math import exp
 
-# import numpy as np
 from astropy import units as u
+
 import artistools as at
 import artistools.nltepops
-from math import exp
+
+# import numpy as np
 
 
 def forward_doubledecay(iso1fract0, iso2fract0, iso3fract0, tlate, meanlife1_days, meanlife2_days):

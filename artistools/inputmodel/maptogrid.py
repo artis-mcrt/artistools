@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
-
 # adapted from Fortran maptogrid.f90 and kernelmodule.f90
 # original Fortran code by Andreas Bauswein
-
 import argparse
 import math
 from pathlib import Path
