@@ -8,6 +8,7 @@ from artistools.inputmodel.inputmodel_misc import get_3d_model_data_merged_model
 from artistools.inputmodel.inputmodel_misc import get_3d_modeldata_minimal
 from artistools.inputmodel.inputmodel_misc import get_cell_angle
 from artistools.inputmodel.inputmodel_misc import get_dfmodel_dimensions
+from artistools.inputmodel.inputmodel_misc import get_initialabundances
 from artistools.inputmodel.inputmodel_misc import get_mean_cell_properties_of_angle_bin
 from artistools.inputmodel.inputmodel_misc import get_mgi_of_velocity_kms
 from artistools.inputmodel.inputmodel_misc import get_modeldata

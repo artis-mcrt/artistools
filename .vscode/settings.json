@@ -5,7 +5,7 @@
         "120",
         "--preview"
     ],
-    "editor.formatOnPaste": true,
+    "editor.formatOnPaste": false,
     "editor.formatOnSave": true,
     "editor.formatOnType": true
 }

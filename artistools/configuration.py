@@ -1,5 +1,6 @@
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import psutil
 
@@ -20,6 +21,7 @@ except subprocess.CalledProcessError:
 
 # print(f'Using {num_processes} processes')
 
+config: dict[str, Any]
 config = {}
 config["enable_diskcache"] = True
 config["num_processes"] = num_processes

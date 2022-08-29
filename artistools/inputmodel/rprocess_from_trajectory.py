@@ -17,7 +17,7 @@ import pandas as pd
 import artistools as at
 
 
-def get_elemabund_from_nucabund(dfnucabund):
+def get_elemabund_from_nucabund(dfnucabund) -> dict[str, float]:
     """return a dictionary of elemental abundances from nuclear abundance DataFrame"""
     dictelemabund = {}
     for atomic_number in range(1, dfnucabund.Z.max() + 1):
@@ -49,9 +49,10 @@ def open_tar_file_or_extracted(traj_root, particleid, memberfilename):
 
 
 @lru_cache(maxsize=16)
-def get_dfevol(traj_root, particleid):
+def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
     with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/evol.dat") as evolfile:
         dfevol = pd.read_csv(evolfile, delim_whitespace=True, comment="#", usecols=[0, 1], names=["nstep", "timesec"])
+
     return dfevol
 
 
