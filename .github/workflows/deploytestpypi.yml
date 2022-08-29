@@ -3,35 +3,35 @@ name: Upload Package to TestPyPI
 on:
   push:
     branches:
-      main
+      - main
     tags:
-      - '*'
+      - "*"
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
-    - uses: actions/setup-python@v4
-      with:
-        cache: 'pip'
-        python-version-file: '.python-version'
-    - name: Install dependencies
-      run: |
-        python3 -m pip install --upgrade pip
-        python3 -m pip install -r requirements.txt
-        python3 -m pip install setuptools setuptools_scm wheel twine build
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v4
+        with:
+          cache: "pip"
+          python-version-file: ".python-version"
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt
+          python3 -m pip install setuptools setuptools_scm wheel twine build
 
-    - name: Build
-      run: |
-        python3 -m setuptools_scm
-        python3 setup.py sdist bdist_wheel
-        # python3 -m build --sdist --wheel --outdir dist/ .
-        twine check dist/*
+      - name: Build
+        run: |
+          python3 -m setuptools_scm
+          python3 setup.py sdist bdist_wheel
+          # python3 -m build --sdist --wheel --outdir dist/ .
+          twine check dist/*
 
-    - name: Publish to Test PyPI
-      run: |
-        twine upload -r testpypi -u __token__ -p ${{ secrets.TESTPYPI_TOKEN }} --non-interactive dist/*
+      - name: Publish to Test PyPI
+        run: |
+          twine upload -r testpypi -u __token__ -p ${{ secrets.TESTPYPI_TOKEN }} --non-interactive dist/*
