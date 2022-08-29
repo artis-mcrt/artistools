@@ -37,10 +37,3 @@ repos:
     rev: v0.902
     hooks:
       - id: mypy
-        exclude: "build/"
-        additional_dependencies: [types-PyYAML]
-        args: [
-            # "--python-executable python3.10",
-            "--no-strict-optional",
-            "--ignore-missing-imports",
-          ]
