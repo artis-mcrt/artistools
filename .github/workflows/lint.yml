@@ -17,9 +17,6 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
-        # with:
-        #   # this is needed to the get the automatic version correct
-        #   fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -30,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip wheel flake8
-          python3 -m pip install -r requirements.txt
+          # python3 -m pip install -r requirements.txt
 
           # upgrade all installed packages to their latest versions
           # python3 -m pip list --format=freeze --outdated | cut -d '=' -f1 | xargs -n1 python3 -m pip install --upgrade
@@ -45,9 +42,6 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
-        # with:
-        #   # this is needed to the get the automatic version correct
-        #   fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
