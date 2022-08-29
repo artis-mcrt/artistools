@@ -2,6 +2,7 @@
 import argparse
 import math
 import os.path
+from typing import List
 
 import pandas as pd
 from astropy import units as u
@@ -30,7 +31,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         columns = infile.readline().split()
 
     atomicnumberofspecies = {}
-    isotopesofelem = {}
+    isotopesofelem: dict[int, list[str]] = {}
     for species in columns[5:]:
         atomic_number = at.get_atomic_number(species.rstrip("0123456789"))
         atomicnumberofspecies[species] = atomic_number

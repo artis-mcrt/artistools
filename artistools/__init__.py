@@ -5,7 +5,7 @@ A collection of plotting, analysis, and file format conversion tools
 for the ARTIS radiative transfer code.
 """
 from artistools.configuration import config  # noreorder
-from artistools.diskcache import diskcache  # noreorder
+from artistools.diskcachedecorator import diskcache  # noreorder
 import artistools.atomic
 import artistools.codecomparison
 import artistools.commands

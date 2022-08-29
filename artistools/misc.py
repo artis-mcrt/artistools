@@ -11,6 +11,7 @@ from functools import lru_cache
 from itertools import chain
 from pathlib import Path
 from typing import Iterable
+from typing import Sequence
 
 import numpy as np
 import pandas as pd
@@ -120,7 +121,7 @@ def get_composition_data(filename):
         for _ in range(nelements):
             line = fcompdata.readline()
             linesplit = line.split()
-            row_list = list(map(int, linesplit[:5])) + list(map(float, linesplit[5:])) + [startindex]
+            row_list = list([int(x) for x in linesplit[:5]]) + list([float(x) for x in linesplit[5:]]) + [startindex]
 
             rowdfs.append(pd.DataFrame([row_list], columns=columns))
 
@@ -199,7 +200,7 @@ def get_vpkt_config(modelpath):
 
 
 @lru_cache(maxsize=8)
-def get_grid_mapping(modelpath):
+def get_grid_mapping(modelpath) -> tuple[dict[int, list[int]], dict[int, int]]:
     """Return dict with the associated propagation cells for each model grid cell and
     a dict with the associated model grid cell of each propagration cell."""
 
@@ -208,8 +209,8 @@ def get_grid_mapping(modelpath):
     else:
         filename = modelpath
 
-    assoc_cells = {}
-    mgi_of_propcells = {}
+    assoc_cells: dict[int, list[int]] = {}
+    mgi_of_propcells: dict[int, int] = {}
     with open(filename, "r") as fgrid:
         for line in fgrid:
             row = line.split()
@@ -222,7 +223,7 @@ def get_grid_mapping(modelpath):
     return assoc_cells, mgi_of_propcells
 
 
-def get_wid_init_at_tmin(modelpath):
+def get_wid_init_at_tmin(modelpath) -> float:
     # cell width in cm at time tmin
     day_to_sec = 86400
     tmin = get_timestep_times_float(modelpath, loc="start")[0] * day_to_sec
@@ -237,7 +238,7 @@ def get_wid_init_at_tmin(modelpath):
     return wid_init
 
 
-def get_wid_init_at_tmodel(modelpath=None, ngridpoints=None, t_model_days=None, xmax=None):
+def get_wid_init_at_tmodel(modelpath=None, ngridpoints=None, t_model_days=None, xmax=None) -> float:
     if ngridpoints is None or t_model_days is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
         dfmodel, t_model_days, vmax = at.get_modeldata(modelpath)
@@ -259,7 +260,7 @@ def get_syn_dir(modelpath):
     return syn_dir
 
 
-def dot(x, y):
+def dot(x, y) -> float:
     return (x[0] * y[0]) + (x[1] * y[1]) + (x[2] * y[2])
 
 
