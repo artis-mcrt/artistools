@@ -62,5 +62,4 @@ jobs:
 
       - name: Lint with mypy
         run: |
-          mypy --install-types
-          mypy --ignore-missing-imports artistools/
+          mypy --install-types --ignore-missing-imports artistools/
