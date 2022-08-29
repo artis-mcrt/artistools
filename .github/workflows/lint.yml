@@ -55,12 +55,10 @@ jobs:
           cache: "pip"
           python-version-file: ".python-version"
 
-      # - name: Install dependencies
-      #   run: |
-      #     python3 -m pip install --upgrade pip wheel
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip wheel mypy
       #     python3 -m pip install -r requirements.txt
-
       - name: Lint with mypy
         run: |
-          mypy --install-types
-          mypy --ignore-missing-imports --python-executable python3 artistools/
+          mypy

@@ -19,6 +19,12 @@ requires-python = ">=3.8"
 line-length = 120
 preview = true
 
+[tool.mypy]
+python_version = '3.10'
+exclude = "(build)|(tests)"
+ignore_missing_imports = true
+files = 'artistools/**/*.py'
+
 [tool.setuptools_scm]
 write_to = "_version.py"
 local_scheme = "no-local-version"
