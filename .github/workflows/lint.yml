@@ -61,4 +61,4 @@ jobs:
       #     python3 -m pip install -r requirements.txt
       - name: Lint with mypy
         run: |
-          mypy
+          mypy --install-types --non-interactive
