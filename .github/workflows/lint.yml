@@ -83,7 +83,7 @@ jobs:
           LINTER_RULES_PATH: ./
           LOG_LEVEL: NOTICE
           PYTHON_BLACK_CONFIG_FILE: pyproject.toml
-          PYTHON_FLAKE8_CONFIG_FILE: pyproject.toml
+          # PYTHON_FLAKE8_CONFIG_FILE: pyproject.toml
           PYTHON_MYPY_CONFIG_FILE: pyproject.toml
           VALIDATE_GITLEAKS: false
           VALIDATE_JSCPD: false
