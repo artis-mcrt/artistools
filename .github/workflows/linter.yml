@@ -1,3 +1,5 @@
+name: Linter
+
 on:
     push:
     pull_request:
@@ -15,7 +17,7 @@ jobs:
                   fetch-depth: 0
 
             - name: Lint Code Base
-              uses: github/super-linter:slim-v4@v4
+              uses: github/super-linter@slim-v4
               env:
                   VALIDATE_ALL_CODEBASE: true
                   DEFAULT_BRANCH: main
