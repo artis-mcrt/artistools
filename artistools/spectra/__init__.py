@@ -6,6 +6,7 @@ from artistools.spectra.plotspectra import main as plot
 from artistools.spectra.spectra import average_angle_bins
 from artistools.spectra.spectra import get_exspec_bins
 from artistools.spectra.spectra import get_flux_contributions
+from artistools.spectra.spectra import get_flux_contributions_from_packets
 from artistools.spectra.spectra import get_line_flux
 from artistools.spectra.spectra import get_reference_spectrum
 from artistools.spectra.spectra import get_res_spectrum

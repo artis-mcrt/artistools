@@ -38,3 +38,15 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies: [types-PyYAML]
+  - repo: local
+    hooks:
+      - id: pylint
+        name: pylint
+        entry: pylint
+        language: system
+        types: [python]
+        args: [
+            "-rn", # Only display messages
+            "-sn", # Don't display the score
+            "--errors-only",
+          ]

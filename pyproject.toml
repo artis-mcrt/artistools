@@ -25,6 +25,13 @@ exclude = "(build)|(tests)"
 ignore_missing_imports = true
 files = 'artistools/**/*.py'
 
+[tool.pylint]
+max-line-length = 120
+errors-only = true
+
+[tool.pylint.typecheck]
+ignored-modules = ["astropy", "extinction"]
+
 [tool.setuptools_scm]
 write_to = "_version.py"
 local_scheme = "no-local-version"

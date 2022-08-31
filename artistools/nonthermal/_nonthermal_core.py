@@ -613,19 +613,10 @@ def calculate_frac_heating(
 
     deltaen = engrid[1] - engrid[0]
     frac_heating += (
-        deltaen
-        / deposition_density_ev
-        * sum(
-            [
-                lossfunction(en_ev, nne, nnetot, ions=ions, ionpopdict=ionpopdict) * yvec[i]
-                for i, en_ev in enumerate(engrid)
-            ]
-        )
+        deltaen / deposition_density_ev * sum([lossfunction(en_ev, nne) * yvec[i] for i, en_ev in enumerate(engrid)])
     )
 
-    frac_heating_E_0_part = (
-        E_0 * yvec[0] * lossfunction(E_0, nne, nnetot, ions=ions, ionpopdict=ionpopdict) / deposition_density_ev
-    )
+    frac_heating_E_0_part = E_0 * yvec[0] * lossfunction(E_0, nne) / deposition_density_ev
 
     frac_heating += frac_heating_E_0_part
 
@@ -850,7 +841,7 @@ def solve_spencerfano_differentialform(
     for i in range(npts):
         constvec[i] += sourcevec[i]
 
-    lossfngrid = np.array([lossfunction(en, nne, nnetot, ions=ions, ionpopdict=ionpopdict) for en in engrid])
+    lossfngrid = np.array([lossfunction(en, nne) for en in engrid])
 
     sfmatrix = np.zeros((npts, npts))
     for i in range(npts):
@@ -868,9 +859,7 @@ def solve_spencerfano_differentialform(
             sfmatrix[i, i + 1] -= lossfngrid[i] / deltaen
 
         # - y(E) * dlossfn/dE
-        sfmatrix[i, i] -= (
-            lossfunction(en + deltaen, nne, nnetot, ions=ions, ionpopdict=ionpopdict) - lossfngrid[i]
-        ) / deltaen
+        sfmatrix[i, i] -= (lossfunction(en + deltaen, nne) - lossfngrid[i]) / deltaen
 
     dftransitions = {}
     for Z, ionstage in ions:
@@ -1014,7 +1003,7 @@ def analyse_ntspectrum(
         print(f"       work function: {1. / oneoverW / EV:.2f} [eV]")
         print(f"   work fn ratecoeff: {deposition_density_erg / nntot * oneoverW:.2e}")
         # Axelrod 1980 Eq 3.225 with E0 = E = E_max
-        # xs = lossfunction(engrid[-1], nne, nnetot) * EV * oneoverW / nntot
+        # xs = lossfunction(engrid[-1], nne) * EV * oneoverW / nntot
         # print(f"         WFApprox xs: {xs:.2e} cm^2")
 
         print()
@@ -1361,15 +1350,7 @@ def workfunction_tests(modelpath, args):
     )
     # Lelec_axelrod_nnetot = np.array([get_Lelec_axelrod(en_ev=en_ev, nne=nnetot, nnetot=nnetot, nntot=nntot) for en_ev in arr_en_ev])
 
-    Lelec_kf92_nne = np.array([lossfunction(en_ev, nne, nnetot, use_nnetot=False) * EV / nntot for en_ev in arr_en_ev])
-
-    Lelec_kf92_nnetot = np.array(
-        [lossfunction(en_ev, nne, nnetot, use_nnetot=True) * EV / nntot for en_ev in arr_en_ev]
-    )
-
-    Lelec_kf92_nnebound = np.array(
-        [lossfunction(en_ev, nnebound, nnetot, use_nnetot=False) * EV / nntot for en_ev in arr_en_ev]
-    )
+    Lelec_kf92_nne = np.array([lossfunction(en_ev, nne) * EV / nntot for en_ev in arr_en_ev])
 
     # print(f'{Lelec_axelrod[-1]=}')
     # print(f'{Lelec_kf92[-1]=}')
