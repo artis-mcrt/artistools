@@ -72,18 +72,9 @@ jobs:
       - name: Lint Code Base
         uses: github/super-linter/slim@v4
         env:
-          #   VALIDATE_ALL_CODEBASE: true
-          #   VALIDATE_BASH: true
-          #   VALIDATE_BASH_EXEC: true
-          #   VALIDATE_CPP: true
-          #   VALIDATE_CSS: true
-          #   VALIDATE_GITHUB_ACTIONS: true
-          #   VALIDATE_GITLEAKS: true
-          #   VALIDATE_CLANG_FORMAT: true
           LINTER_RULES_PATH: ./
           LOG_LEVEL: NOTICE
           PYTHON_BLACK_CONFIG_FILE: pyproject.toml
-          # PYTHON_FLAKE8_CONFIG_FILE: pyproject.toml
           PYTHON_MYPY_CONFIG_FILE: pyproject.toml
           VALIDATE_GITLEAKS: false
           VALIDATE_JSCPD: false
