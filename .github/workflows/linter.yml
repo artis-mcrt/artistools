@@ -27,6 +27,7 @@ jobs:
                   #   VALIDATE_GITHUB_ACTIONS: true
                   #   VALIDATE_GITLEAKS: true
                   #   VALIDATE_CLANG_FORMAT: true
+                  LINTER_RULES_PATH: ./
                   PYTHON_BLACK_CONFIG_FILE: pyproject.toml
                   PYTHON_MYPY_CONFIG_FILE: pyproject.toml
                   VALIDATE_GITLEAKS: false
