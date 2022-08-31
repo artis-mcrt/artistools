@@ -42,6 +42,7 @@ from artistools.misc import flatten_list
 from artistools.misc import gather_res_data
 from artistools.misc import get_artis_constants
 from artistools.misc import get_atomic_number
+from artistools.misc import get_bflist
 from artistools.misc import get_cellsofmpirank
 from artistools.misc import get_composition_data
 from artistools.misc import get_composition_data_from_outputfile
@@ -57,6 +58,7 @@ from artistools.misc import get_linelist
 from artistools.misc import get_model_name
 from artistools.misc import get_mpiranklist
 from artistools.misc import get_mpirankofcell
+from artistools.misc import get_nprocs
 from artistools.misc import get_runfolders
 from artistools.misc import get_syn_dir
 from artistools.misc import get_time_range

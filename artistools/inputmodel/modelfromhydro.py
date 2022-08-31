@@ -352,8 +352,8 @@ def makemodelfromgriddata(
     if "cellYe" in dfmodel:
         at.inputmodel.opacityinputfile.write_Ye_file(outputpath, dfmodel)
 
-    if "Q" in dfmodel and args.makeenergyinputfiles:
-        at.inputmodel.energyinputfiles.write_Q_energy_file(outputpath, dfmodel)
+    # if "Q" in dfmodel and args.makeenergyinputfiles:
+    #     at.inputmodel.energyinputfiles.write_Q_energy_file(outputpath, dfmodel)
 
     if dfgridcontributions is not None:
         at.inputmodel.rprocess_from_trajectory.save_gridparticlecontributions(

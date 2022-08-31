@@ -281,10 +281,10 @@ def add_derived_cols_to_modeldata(
     if "angle_bin" in derived_cols:
         get_cell_angle(dfmodel, modelpath)
 
-    if "Ye" in derived_cols and os.path.isfile(modelpath / "Ye.txt"):
-        dfmodel["Ye"] = at.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
-    if "Q" in derived_cols and os.path.isfile(modelpath / "Q_energy.txt"):
-        dfmodel["Q"] = at.inputmodel.energyinputfiles.get_Q_energy_from_file(modelpath)
+    # if "Ye" in derived_cols and os.path.isfile(modelpath / "Ye.txt"):
+    #     dfmodel["Ye"] = at.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
+    # if "Q" in derived_cols and os.path.isfile(modelpath / "Q_energy.txt"):
+    #     dfmodel["Q"] = at.inputmodel.energyinputfiles.get_Q_energy_from_file(modelpath)
 
     return dfmodel
 

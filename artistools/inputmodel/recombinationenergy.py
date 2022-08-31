@@ -78,13 +78,13 @@ def get_model_recombenergy(dfbinding, args):
     print(f"Mass from sum of isotopes {mass_msun_accounted:.3e}")
 
 
-def get_particle_elec_binding_energy_per_gram(dictbinding, particleid, time_s):
+def get_particle_elec_binding_energy_per_gram(traj_root, dictbinding, particleid, time_s):
     # find the closest timestep to the required time
-    nts = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(particleid, time_s)
+    nts = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(traj_root, particleid, time_s)
     memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
 
     dftrajnucabund, traj_time_s = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfile_nuc_abund(
-        particleid=particleid, memberfilename=memberfilename
+        traj_root=traj_root, particleid=particleid, memberfilename=memberfilename
     )
 
     dftrajnucabund["Z_be_tot_ev"] = [dictbinding.get(Z, 0.0) for Z in dftrajnucabund["Z"]]
@@ -106,10 +106,12 @@ def get_particle_elec_binding_energy_per_gram(dictbinding, particleid, time_s):
     return dftrajnucabund["recombenergy_ev_per_gram"].sum()
 
 
-def get_particle_nucenergy_released(particleid, tmin_s, time_s_end):
+def get_particle_nucenergy_released(traj_root, particleid, tmin_s, time_s_end):
     memberfilename = "./Run_rprocess/energy_thermo.dat"
     erg_to_ev = 6.242e11
-    with at.inputmodel.rprocess_from_trajectory.open_tar_file_or_extracted(particleid, memberfilename) as fthermo:
+    with at.inputmodel.rprocess_from_trajectory.open_tar_file_or_extracted(
+        traj_root=traj_root, particleid=particleid, memberfilename=memberfilename
+    ) as fthermo:
         dfthermo = pd.read_csv(fthermo, delim_whitespace=True, usecols=["#count", "time/s", "Qdot", "Ye"])
         dfthermo.rename(columns={"time/s": "time_s"}, inplace=True)
         dfthermo.query("time_s >= @tmin_s", inplace=True)
@@ -119,7 +121,7 @@ def get_particle_nucenergy_released(particleid, tmin_s, time_s_end):
     return en_released_ev_per_gram
 
 
-def get_particles_recomb_nuc_energy(dfbinding):
+def get_particles_recomb_nuc_energy(traj_root, dfbinding):
     dfsnapshot = at.inputmodel.modelfromhydro.read_ejectasnapshot(
         "/Users/luke/Library/Mobile Documents/com~apple~CloudDocs/Archive/Astronomy/Mergers/SFHo_snapshot"
     )
@@ -138,9 +140,11 @@ def get_particles_recomb_nuc_energy(dfbinding):
     for particleid, ye, pmass in dfsnapshot[["id", "ye", "pmass"]].itertuples(index=False):
         try:
             elecbinding_en = get_particle_elec_binding_energy_per_gram(
-                dictbinding=dictbinding, particleid=particleid, time_s=time_s
+                traj_root=traj_root, dictbinding=dictbinding, particleid=particleid, time_s=time_s
             )
-            nuc_en_released = get_particle_nucenergy_released(particleid=particleid, tmin_s=tmin_s, time_s_end=time_s)
+            nuc_en_released = get_particle_nucenergy_released(
+                traj_root=traj_root, particleid=particleid, tmin_s=tmin_s, time_s_end=time_s
+            )
             ye_list.append(ye)
             elecbinding_en_list.append(elecbinding_en)
             nuclear_released_en_list.append(nuc_en_released)
@@ -216,8 +220,9 @@ def main(args=None, argsraw=None, **kwargs):
         dfbinding = pd.read_csv(fbinding, delim_whitespace=True, names=header)
         # print(dfbinding)
 
+    traj_root = Path("/Volumes/GoogleDrive/My Drive/Archive/Mergers/SFHo_short/SFHo")
     # get_model_recombenergy(dfbinding, args)
-    get_particles_recomb_nuc_energy(dfbinding)
+    get_particles_recomb_nuc_energy(traj_root, dfbinding)
 
 
 if __name__ == "__main__":

@@ -77,7 +77,7 @@ def main(args=None, argsraw=None, **kwargs):
     if args.makemodelfromgriddata:
         print(args)
         at.inputmodel.modelfromhydro.makemodelfromgriddata(
-            gridfolderpath=args.pathtogriddata, outputpath=args.modelpath[0], getabundances=False, args=args
+            gridfolderpath=args.pathtogriddata, outputpath=args.modelpath[0], args=args
         )
 
     if args.makeenergyinputfiles:

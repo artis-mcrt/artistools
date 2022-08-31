@@ -984,7 +984,7 @@ def sort_and_reduce_flux_contribution_list(
     remainder_fluxcontrib = 0
 
     if greyscale:
-        hatches = artistools.spectra.plot.hatches
+        hatches = artistools.spectra.plotspectra.hatches
         seriescount = len(fixedionlist) if fixedionlist else maxseriescount
         colorcount = math.ceil(seriescount / 1.0 / len(hatches))
         greylist = [str(x) for x in np.linspace(0.4, 0.9, colorcount, endpoint=True)]

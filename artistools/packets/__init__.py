@@ -466,8 +466,12 @@ def get_mean_packet_emission_velocity_per_ts(
         if i == 0:  # make new df
             dfpackets_escape_velocity_and_arrive_time = dfpackets[["t_arrive_d", "emission_velocity"]]
         else:  # append to df
-            dfpackets_escape_velocity_and_arrive_time = dfpackets_escape_velocity_and_arrive_time.append(
-                dfpackets[["t_arrive_d", "emission_velocity"]], ignore_index=True
+            # dfpackets_escape_velocity_and_arrive_time = dfpackets_escape_velocity_and_arrive_time.append(
+            #     other=dfpackets[["t_arrive_d", "emission_velocity"]], ignore_index=True
+            # )
+            dfpackets_escape_velocity_and_arrive_time = pd.concat(
+                [dfpackets_escape_velocity_and_arrive_time, dfpackets[["t_arrive_d", "emission_velocity"]]],
+                ignore_index=True,
             )
 
     print(dfpackets_escape_velocity_and_arrive_time)

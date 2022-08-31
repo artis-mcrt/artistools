@@ -809,7 +809,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 
     ax = at.plottools.set_axis_properties(ax, args)
     fig, ax = set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_name=band_name)
-    ax = set_lightcurveplot_legend(ax, args)
+    set_lightcurveplot_legend(ax, args)
 
     if args.colorbarcostheta or args.colorbarphi:
         make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=fig, ax=ax)
@@ -934,7 +934,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
 
     fig, ax = set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args)
     ax = at.plottools.set_axis_properties(ax, args)
-    ax = set_lightcurveplot_legend(ax, args)
+    set_lightcurveplot_legend(ax, args)
 
     args.outputfile = os.path.join(outputfolder, f"plotcolorevolution{filter_names[0]}-{filter_names[1]}.pdf")
     for i in range(2):

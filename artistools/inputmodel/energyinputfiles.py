@@ -128,7 +128,7 @@ def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_tra
             )
             interpolated_trajectories[trajectory_id] = qdotinterp
 
-        E_tot = energy_from_rprocess_calculation(energy_thermo_data, get_rate=False, thermalisation=thermalisation)
+        E_tot = energy_from_rprocess_calculation(energy_thermo_data, get_rate=False)
 
         trajectory_ids.append(float(trajectory_id))
         trajectory_E_tot.append(E_tot)
