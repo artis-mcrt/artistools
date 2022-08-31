@@ -73,7 +73,7 @@ jobs:
         uses: github/super-linter/slim@v4
         env:
           LINTER_RULES_PATH: ./
-          LOG_LEVEL: NOTICE
+          # LOG_LEVEL: NOTICE
           PYTHON_BLACK_CONFIG_FILE: pyproject.toml
           PYTHON_MYPY_CONFIG_FILE: pyproject.toml
           VALIDATE_GITLEAKS: false
