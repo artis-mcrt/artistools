@@ -2,6 +2,7 @@ name: Lint
 
 on:
   push:
+  pull_request:
 
 jobs:
   black:
@@ -56,3 +57,37 @@ jobs:
       - name: Lint with mypy
         run: |
           mypy --install-types --non-interactive
+
+  superlinter:
+    name: Super linter
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          # Full git history is needed to get a proper list of changed files within `super-linter`
+          fetch-depth: 0
+
+      - name: Lint Code Base
+        uses: github/super-linter/slim@v4
+        env:
+          #   VALIDATE_ALL_CODEBASE: true
+          #   VALIDATE_BASH: true
+          #   VALIDATE_BASH_EXEC: true
+          #   VALIDATE_CPP: true
+          #   VALIDATE_CSS: true
+          #   VALIDATE_GITHUB_ACTIONS: true
+          #   VALIDATE_GITLEAKS: true
+          #   VALIDATE_CLANG_FORMAT: true
+          LINTER_RULES_PATH: ./
+          LOG_LEVEL: NOTICE
+          PYTHON_BLACK_CONFIG_FILE: pyproject.toml
+          PYTHON_FLAKE8_CONFIG_FILE: pyproject.toml
+          PYTHON_MYPY_CONFIG_FILE: pyproject.toml
+          VALIDATE_GITLEAKS: false
+          VALIDATE_JSCPD: false
+          VALIDATE_PYTHON_ISORT: false
+          YAML_ERROR_ON_WARNING: false
+          DEFAULT_BRANCH: main
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
