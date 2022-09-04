@@ -74,6 +74,7 @@ jobs:
             - name: Install dependencies
               run: |
                   python3 -m pip install --upgrade pip wheel pylint
+                  python3 -m pip install -r requirements.txt
 
             - name: Lint with mypy
               run: |
