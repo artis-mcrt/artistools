@@ -1,84 +1,105 @@
+---
 name: Linter
 
 on:
-  push:
-  pull_request:
+    push:
+    pull_request:
 
 jobs:
-  black:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: psf/black@stable
-        with:
-          options: "--check --verbose"
+    black:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
+            - uses: psf/black@stable
+              with:
+                  options: --check --verbose
 
-  flake8:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+    flake8:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          cache: "pip"
-          python-version-file: ".python-version"
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                  cache: pip
+                  python-version-file: .python-version
 
-      - name: Install dependencies
-        run: |
-          python3 -m pip install --upgrade pip wheel flake8
-          # python3 -m pip install -r requirements.txt
+            - name: Install dependencies
+              run: |
+                  python3 -m pip install --upgrade pip wheel flake8
+                  # python3 -m pip install -r requirements.txt
 
-          # upgrade all installed packages to their latest versions
-          # python3 -m pip list --format=freeze --outdated | cut -d '=' -f1 | xargs -n1 python3 -m pip install --upgrade
+                  # upgrade all installed packages to their latest versions
+                  # python3 -m pip list --format=freeze --outdated | cut -d '=' -f1 | xargs -n1 python3 -m pip install --upgrade
 
-      - name: Lint with flake8
-        run: |
-          # stop the build if there are Python syntax errors or undefined names
-          flake8 . --count --show-source --statistics
+            - name: Lint with flake8
+              run: |
+                  # stop the build if there are Python syntax errors or undefined names
+                  flake8 . --count --show-source --statistics
 
-  mypy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+    mypy:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          cache: "pip"
-          python-version-file: ".python-version"
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                  cache: pip
+                  python-version-file: .python-version
 
-      - name: Install dependencies
-        run: |
-          python3 -m pip install --upgrade pip wheel mypy
-      #     python3 -m pip install -r requirements.txt
-      - name: Lint with mypy
-        run: |
-          mypy --install-types --non-interactive
+            - name: Install dependencies
+              run: |
+                  python3 -m pip install --upgrade pip wheel mypy
+            #     python3 -m pip install -r requirements.txt
+            - name: Lint with mypy
+              run: |
+                  mypy --install-types --non-interactive
 
-  superlinter:
-    name: Super linter
-    runs-on: ubuntu-latest
+    pylint:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v3
 
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-        with:
-          # Full git history is needed to get a proper list of changed files within `super-linter`
-          fetch-depth: 0
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                  cache: pip
+                  python-version-file: .python-version
 
-      - name: Lint Code Base
-        uses: github/super-linter/slim@v4
-        env:
-          LINTER_RULES_PATH: ./
-          # LOG_LEVEL: NOTICE
-          PYTHON_BLACK_CONFIG_FILE: pyproject.toml
-          PYTHON_MYPY_CONFIG_FILE: pyproject.toml
-          VALIDATE_GITLEAKS: false
-          VALIDATE_JSCPD: false
-          VALIDATE_PYTHON_ISORT: false
-          YAML_ERROR_ON_WARNING: false
-          DEFAULT_BRANCH: main
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            - name: Install dependencies
+              run: |
+                  python3 -m pip install --upgrade pip wheel pylint
+
+            - name: Lint with mypy
+              run: |
+                  pylint artistools
+
+    superlinter:
+        name: Super linter
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v3
+              with:
+                  # Full git history is needed to get a proper list of changed files within `super-linter`
+                  fetch-depth: 0
+
+            - name: Lint Code Base
+              uses: github/super-linter/slim@v4
+              env:
+                  LINTER_RULES_PATH: ./
+                  LOG_LEVEL: WARNING
+                  PYTHON_BLACK_CONFIG_FILE: pyproject.toml
+                  PYTHON_MYPY_CONFIG_FILE: pyproject.toml
+                  VALIDATE_GITLEAKS: false
+                  VALIDATE_JSCPD: false
+                  VALIDATE_PYTHON_ISORT: false
+                  YAML_ERROR_ON_WARNING: false
+                  DEFAULT_BRANCH: main
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

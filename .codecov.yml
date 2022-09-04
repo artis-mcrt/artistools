@@ -1,16 +1,17 @@
+---
 codecov:
-  branch: main
-  strict_yaml_branch: main  # only use the latest copy on master branch
+    branch: main
+    strict_yaml_branch: main # only use the latest copy on master branch
 coverage:
-  status:
-    project:
-      default:
-        threshold: 1%
+    status:
+        project:
+            default:
+                threshold: 1%
     #     target: auto
     #     if_ci_failed: failure #success, failure, error, ignore
     #     informational: false
     #     only_pulls: true
-    patch: off
+        patch: off
     # patch:
     #   default:
     #     target: auto
