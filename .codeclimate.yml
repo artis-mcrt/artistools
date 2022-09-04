@@ -1,20 +1,21 @@
+---
 languages:
-  python: true
+    python: true
 engines:
-  pep8:
-    enabled: true
-    checks:
-      E501:
-        enabled: false
-  duplication:
-    enabled: true
-    config:
-      languages:
-        python:
-          python_version: 3
-          mass_threshold: 50
-  fixme:
-    enabled: true
-  radon:
-    enabled: true
+    pep8:
+        enabled: true
+        checks:
+            E501:
+                enabled: false
+    duplication:
+        enabled: true
+        config:
+            languages:
+                python:
+                    python_version: 3
+                    mass_threshold: 50
+    fixme:
+        enabled: true
+    radon:
+        enabled: true
 exclude_paths: []
