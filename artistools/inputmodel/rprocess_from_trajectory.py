@@ -9,6 +9,7 @@ import time
 from functools import lru_cache
 from functools import partial
 from pathlib import Path
+from typing import Optional
 
 import argcomplete
 import numpy as np
@@ -17,7 +18,7 @@ import pandas as pd
 import artistools as at
 
 
-def get_elemabund_from_nucabund(dfnucabund) -> dict[str, float]:
+def get_elemabund_from_nucabund(dfnucabund: pd.DataFrame) -> dict[str, float]:
     """return a dictionary of elemental abundances from nuclear abundance DataFrame"""
     dictelemabund = {}
     for atomic_number in range(1, dfnucabund.Z.max() + 1):
@@ -27,7 +28,7 @@ def get_elemabund_from_nucabund(dfnucabund) -> dict[str, float]:
     return dictelemabund
 
 
-def open_tar_file_or_extracted(traj_root, particleid, memberfilename):
+def open_tar_file_or_extracted(traj_root, particleid: int, memberfilename: str):
     """memberfilename is within the trajectory tarfile/folder, eg. ./Run_rprocess/evol.dat"""
     path_extracted_file = Path(traj_root, str(particleid), memberfilename)
     if path_extracted_file.is_file():
@@ -42,7 +43,9 @@ def open_tar_file_or_extracted(traj_root, particleid, memberfilename):
     with tarfile.open(tarfilepath, "r|*") as tfile:
         for tarmember in tfile:
             if tarmember.name == memberfilename:
-                return io.StringIO(tfile.extractfile(tarmember).read().decode("utf-8"))
+                extractedfile = tfile.extractfile(tarmember)
+                if extractedfile is not None:
+                    return io.StringIO(extractedfile.read().decode("utf-8"))
 
     print(f"Member {memberfilename} not found in {tarfilepath}")
     assert False
@@ -112,7 +115,7 @@ def get_trajectory_timestepfile_nuc_abund(traj_root, particleid, memberfilename)
     return dfnucabund, t_model_init_seconds
 
 
-def get_trajectory_nuc_abund(particleid, traj_root, t_model_s=None, nts=None):
+def get_trajectory_nuc_abund(particleid: int, traj_root, t_model_s: Optional[float] = None, nts: Optional[int] = None):
     """
     nts: GSI network timestep number
     """
@@ -150,6 +153,7 @@ def get_trajectory_nuc_abund(particleid, traj_root, t_model_s=None, nts=None):
     # print(f' grid snapshot: {t_model_s:.2e} s, network: {traj_time_s:.2e} s (timestep {nts})')
     assert np.isclose(massfractotal, 1.0, rtol=0.02)
     if nts is None:
+        assert t_model_s is not None
         assert np.isclose(traj_time_s, t_model_s, rtol=0.2, atol=1.0)
 
     dict_traj_nuc_abund = {nucabundcolname: massfrac / massfractotal for nucabundcolname, massfrac in colmassfracs}
@@ -261,14 +265,16 @@ def filtermissinggridparticlecontributions(traj_root, dfcontribs):
     return dfcontribs
 
 
-def save_gridparticlecontributions(dfcontribs, gridcontribpath):
+def save_gridparticlecontributions(dfcontribs: pd.DataFrame, gridcontribpath):
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
         gridcontribpath = Path(gridcontribpath, "gridcontributions.txt")
     dfcontribs.to_csv(gridcontribpath, sep=" ", index=False)
 
 
-def add_abundancecontributions(dfgridcontributions, dfmodel, t_model_days, traj_root, minparticlespercell=0):
+def add_abundancecontributions(
+    dfgridcontributions: pd.DataFrame, dfmodel: pd.DataFrame, t_model_days: float, traj_root, minparticlespercell=0
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """contribute trajectory network calculation abundances to model cell abundances"""
     t_model_s = t_model_days * 86400
     dfcontribs = dfgridcontributions
@@ -344,7 +350,7 @@ def add_abundancecontributions(dfgridcontributions, dfmodel, t_model_days, traj_
 
     timestart = time.perf_counter()
     print("Adding up isotopes for elemental abundances and creating dfelabundances...", end="", flush=True)
-    elemisotopes = {}
+    elemisotopes: dict[int, list[str]] = {}
     nuclidesincluded = 0
     for colname in sorted(dfnucabundances.columns):
         if not colname.startswith("X_"):

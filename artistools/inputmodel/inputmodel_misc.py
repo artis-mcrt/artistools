@@ -21,7 +21,7 @@ def get_modeldata(
     get_abundances=False,
     derived_cols=False,
     printwarningsonly=False,
-):
+) -> tuple[pd.DataFrame, float, float]:
     """
     Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
 
@@ -143,6 +143,8 @@ def get_modeldata(
             ncoordgridz = int(round(gridcellcount ** (1.0 / 3.0)))
 
             assert (ncoordgridx * ncoordgridy * ncoordgridz) == gridcellcount
+        else:
+            assert False
 
     if dimensions == 1:
         dfmodel = pd.read_csv(
@@ -407,7 +409,7 @@ def get_3d_model_data_merged_model_and_abundances_minimal(args):
     return merge_dfs
 
 
-def get_3d_modeldata_minimal(modelpath):
+def get_3d_modeldata_minimal(modelpath) -> pd.DataFrame:
     """Read 3D model without generating all the extra columns in standard routine.
     Needed for large (eg. 200^3) models"""
     model = pd.read_csv(
@@ -434,7 +436,7 @@ def get_3d_modeldata_minimal(modelpath):
 
 
 def save_modeldata(
-    dfmodel,
+    dfmodel: pd.DataFrame,
     t_model_init_days,
     filename=None,
     modelpath=None,
@@ -442,7 +444,7 @@ def save_modeldata(
     dimensions=1,
     radioactives=True,
     headerlines=None,
-):
+) -> None:
     """Save a pandas DataFrame and snapshot time into ARTIS model.txt"""
 
     timestart = time.perf_counter()
@@ -626,7 +628,9 @@ def get_dfmodel_dimensions(dfmodel):
     return 1
 
 
-def sphericalaverage(dfmodel, t_model_init_days, vmax, dfelabundances=None, dfgridcontributions=None):
+def sphericalaverage(
+    dfmodel: pd.DataFrame, t_model_init_days: float, vmax: float, dfelabundances=None, dfgridcontributions=None
+):
     """Convert 3D Cartesian grid model to 1D spherical"""
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
     xmax = vmax * t_model_init_seconds
