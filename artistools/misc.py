@@ -10,8 +10,11 @@ from collections import namedtuple
 from functools import lru_cache
 from itertools import chain
 from pathlib import Path
+from typing import Any
 from typing import Iterable
+from typing import Optional
 from typing import Sequence
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -283,7 +286,7 @@ def get_nu_grid(modelpath):
     return specdata.loc[:, "0"].values
 
 
-def get_deposition(modelpath):
+def get_deposition(modelpath) -> pd.DataFrame:
     if Path(modelpath).is_file():
         depfilepath = modelpath
         modelpath = Path(modelpath).parent
@@ -314,7 +317,7 @@ def get_deposition(modelpath):
 
 
 @lru_cache(maxsize=16)
-def get_timestep_times(modelpath):
+def get_timestep_times(modelpath) -> list[str]:
     """Return a list of the mid time in days of each timestep from a spec.out file."""
     try:
         specfilename = firstexisting(["spec.out.gz", "spec.out", "specpol.out"], path=modelpath)
@@ -500,7 +503,7 @@ def get_escaped_arrivalrange(modelpath):
 
 
 @lru_cache(maxsize=8)
-def get_model_name(path):
+def get_model_name(path) -> str:
     """Get the name of an ARTIS model from the path to any file inside it.
 
     Name will be either from a special plotlabel.txt file if it exists or the enclosing directory name
@@ -520,7 +523,7 @@ def get_model_name(path):
         return os.path.basename(modelpath)
 
 
-def get_z_a_nucname(nucname):
+def get_z_a_nucname(nucname) -> tuple[int, int]:
     """return atomic number and mass number from a string like 'Pb208' (returns 92, 208)"""
     if nucname.startswith("X_"):
         nucname = nucname[2:]
@@ -531,7 +534,7 @@ def get_z_a_nucname(nucname):
 
 
 @lru_cache(maxsize=1)
-def get_elsymbolslist():
+def get_elsymbolslist() -> list[str]:
     elsymbols = ["n"] + list(
         pd.read_csv(at.config["path_datadir"] / "elements.csv", usecols=["symbol"])["symbol"].values
     )
@@ -539,7 +542,7 @@ def get_elsymbolslist():
     return elsymbols
 
 
-def get_atomic_number(elsymbol):
+def get_atomic_number(elsymbol: str) -> int:
     assert elsymbol is not None
     if elsymbol.startswith("X_"):
         elsymbol = elsymbol[2:]
@@ -552,18 +555,18 @@ def get_atomic_number(elsymbol):
     return -1
 
 
-def decode_roman_numeral(strin):
+def decode_roman_numeral(strin: str) -> int:
     if strin.upper() in roman_numerals:
         return roman_numerals.index(strin.upper())
     return -1
 
 
-def get_elsymbol(atomic_number):
+def get_elsymbol(atomic_number: int) -> str:
     return get_elsymbolslist()[atomic_number]
 
 
 @lru_cache(maxsize=16)
-def get_ionstring(atomic_number, ionstage, spectral=True, nospace=False):
+def get_ionstring(atomic_number: int, ionstage: int, spectral=True, nospace=False) -> str:
     if ionstage == "ALL" or ionstage is None:
         return f"{get_elsymbol(atomic_number)}"
     elif spectral:
@@ -835,7 +838,7 @@ def get_linelist(modelpath, returntype="dict"):
 
 
 @lru_cache(maxsize=8)
-def get_npts_model(modelpath):
+def get_npts_model(modelpath) -> int:
     """Return the number of cell in the model.txt."""
     with Path(modelpath, "model.txt").open("r") as modelfile:
         npts_model = int(readnoncommentline(modelfile))
@@ -843,18 +846,18 @@ def get_npts_model(modelpath):
 
 
 @lru_cache(maxsize=8)
-def get_nprocs(modelpath):
+def get_nprocs(modelpath) -> int:
     """Return the number of MPI processes specified in input.txt."""
     return int(Path(modelpath, "input.txt").read_text().split("\n")[21].split("#")[0])
 
 
 @lru_cache(maxsize=8)
-def get_inputparams(modelpath):
+def get_inputparams(modelpath) -> dict[str, Any]:
     """Return parameters specified in input.txt."""
     from astropy import units as u
     from astropy import constants as const
 
-    params = {}
+    params: dict[str, Any] = {}
     with Path(modelpath, "input.txt").open("r") as inputfile:
         params["pre_zseed"] = int(readnoncommentline(inputfile).split("#")[0])
 
@@ -928,7 +931,9 @@ def get_runfolders(modelpath, timestep=None, timesteps=None):
     return [folderpath for folderpath in folderlist_all if get_runfolder_timesteps(folderpath)]
 
 
-def get_mpiranklist(modelpath, modelgridindex=None, only_ranks_withgridcells=False):
+def get_mpiranklist(
+    modelpath, modelgridindex: Optional[Union[Iterable[int], int]] = None, only_ranks_withgridcells: bool = False
+) -> Iterable[int]:
     """
     Get a list of rank ids. Parameters:
     - modelpath:
@@ -943,7 +948,7 @@ def get_mpiranklist(modelpath, modelgridindex=None, only_ranks_withgridcells=Fal
             return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
         return range(get_nprocs(modelpath))
     else:
-        try:
+        if isinstance(modelgridindex, Iterable):
             mpiranklist = set()
             for mgi in modelgridindex:
                 if mgi < 0:
@@ -955,7 +960,7 @@ def get_mpiranklist(modelpath, modelgridindex=None, only_ranks_withgridcells=Fal
 
             return sorted(list(mpiranklist))
 
-        except TypeError:
+        else:
             # in case modelgridindex is a single number rather than an iterable
             if modelgridindex < 0:
                 return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
@@ -963,7 +968,7 @@ def get_mpiranklist(modelpath, modelgridindex=None, only_ranks_withgridcells=Fal
                 return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
-def get_cellsofmpirank(mpirank, modelpath):
+def get_cellsofmpirank(mpirank, modelpath) -> Iterable[int]:
     """Return an iterable of the cell numbers processed by a given MPI rank."""
     npts_model = get_npts_model(modelpath)
     nprocs = get_nprocs(modelpath)
@@ -984,7 +989,7 @@ def get_cellsofmpirank(mpirank, modelpath):
 
 
 @lru_cache(maxsize=16)
-def get_dfrankassignments(modelpath):
+def get_dfrankassignments(modelpath) -> Optional[pd.DataFrame]:
     filerankassignments = Path(modelpath, "modelgridrankassignments.out")
     if filerankassignments.is_file():
         df = pd.read_csv(filerankassignments, delim_whitespace=True)
@@ -993,7 +998,7 @@ def get_dfrankassignments(modelpath):
     return None
 
 
-def get_mpirankofcell(modelgridindex, modelpath):
+def get_mpirankofcell(modelgridindex: int, modelpath: Path) -> int:
     """Return the rank number of the MPI process responsible for handling a specified cell's updating and output."""
     npts_model = get_npts_model(modelpath)
     assert modelgridindex < npts_model
