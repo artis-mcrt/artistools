@@ -155,9 +155,25 @@ def readfile_text(packetsfile, modelpath=Path(".")):
         print(f"\nBad Gzip File: {packetsfile}")
         raise gzip.BadGzipFile
 
-    dfpackets = pd.read_csv(
-        fpackets, sep=" ", header=None, skiprows=skiprows, names=column_names, skip_blank_lines=True, engine="pyarrow"
-    )
+    try:
+        dfpackets = pd.read_csv(
+            fpackets,
+            sep=" ",
+            header=None,
+            skiprows=skiprows,
+            names=column_names,
+            skip_blank_lines=True,
+            engine="pyarrow",
+        )
+    except ImportError:
+        dfpackets = pd.read_csv(
+            fpackets,
+            sep=" ",
+            header=None,
+            skiprows=skiprows,
+            names=column_names,
+            skip_blank_lines=True,
+        )
 
     # import datatable as dt
     # dsk_dfpackets = dt.fread(packetsfile)
