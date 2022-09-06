@@ -5,6 +5,8 @@ import math
 import multiprocessing
 from functools import partial
 from pathlib import Path
+from typing import Any
+from typing import Sequence
 
 import argcomplete
 import matplotlib.pyplot as plt
@@ -198,24 +200,25 @@ def plot_qdot(
 
 
 def plot_abund(
-    modelpath,
-    dfpartcontrib,
+    modelpath: Path,
+    dfpartcontrib: pd.DataFrame,
     allparticledata,
-    arr_time_artis_days,
-    arr_time_gsi_days,
-    arr_strnuc,
-    arr_abund_gsi,
-    arr_abund_artis,
-    t_model_init_days,
-    dfcell,
-    pdfoutpath,
-    mgi,
+    arr_time_artis_days: Sequence[float],
+    arr_time_gsi_days: Sequence[float],
+    arr_strnuc: Sequence[str],
+    arr_abund_artis: dict[str, list[float]],
+    t_model_init_days: float,
+    dfcell: pd.DataFrame,
+    pdfoutpath: Path,
+    mgi: int,
 ):
     dfpartcontrib_thiscell = dfpartcontrib.query("cellindex == (@mgi + 1) and particleid in @allparticledata.keys()")
     frac_of_cellmass_sum = dfpartcontrib_thiscell.frac_of_cellmass.sum()
     print(f"frac_of_cellmass_sum: {frac_of_cellmass_sum} (can be < 1.0 because of missing particles)")
     # if arr_strnuc[0] != 'Ye':
     #     arr_strnuc.insert(0, 'Ye')
+
+    arr_abund_gsi: dict[str, np.ndarray[Any, np.dtype[np.float64]]] = {}
 
     for strnuc in arr_strnuc:
         arr_abund_gsi[strnuc] = np.zeros_like(arr_time_gsi_days)
@@ -247,8 +250,8 @@ def plot_abund(
     print("nuc", "gsi_abund", "inputmodel_abund", "artis_abund")
     for axis, strnuc in zip(axes, arr_strnuc):
         # print(arr_time_artis_days)
-        xmin = arr_time_gsi_days.min() * 0.9
-        xmax = arr_time_gsi_days.max() * 1.03
+        xmin = min(arr_time_gsi_days) * 0.9
+        xmax = max(arr_time_gsi_days) * 1.03
         # xmax = 5  # TODO: remove
         axis.set_xlim(left=xmin, right=xmax)
         # axis.set_yscale('log')
@@ -300,7 +303,7 @@ def plot_abund(
     print(f"Saved {pdfoutpath}")
 
 
-def get_particledata(arr_time_s, arr_strnuc, traj_root, particleid):
+def get_particledata(arr_time_s, arr_strnuc, traj_root: Path, particleid: int):
     try:
         nts_min = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(
             traj_root, particleid, timesec=min(arr_time_s), cond="lessthan"
@@ -314,13 +317,13 @@ def get_particledata(arr_time_s, arr_strnuc, traj_root, particleid):
         return "NONE", None
 
     # print(f'Reading data for particle id {particleid}...')
-    particledata = {
-        "Qdot": {},
-        "hbeta": {},
-        "halpha": {},
-        "hbfis": {},
-        "hspof": {},
-        **{strnuc: {} for strnuc in arr_strnuc},
+    particledata: dict[str, Sequence[float]] = {
+        "Qdot": [],
+        "hbeta": [],
+        "halpha": [],
+        "hbfis": [],
+        "hspof": [],
+        **{strnuc: [] for strnuc in arr_strnuc},
     }
     nstep_timesec = {}
     with at.inputmodel.rprocess_from_trajectory.open_tar_file_or_extracted(
@@ -331,7 +334,7 @@ def get_particledata(arr_time_s, arr_strnuc, traj_root, particleid):
         )
         heatcols = ["hbeta", "halpha", "hbfis", "hspof"]
 
-        heatrates_in = {col: [] for col in heatcols}
+        heatrates_in: dict[str, list[float]] = {col: [] for col in heatcols}
         arr_time_s_source = []
         for _, row in dfheating.iterrows():
             nstep_timesec[row["#count"]] = row["time/s"]
@@ -343,7 +346,7 @@ def get_particledata(arr_time_s, arr_strnuc, traj_root, particleid):
                     heatrates_in[col].append(float(row[col].replace("-", "e-")))
 
         for col in heatcols:
-            particledata[col] = np.interp(arr_time_s, arr_time_s_source, heatrates_in[col])
+            particledata[col] = [float(x) for x in np.interp(arr_time_s, arr_time_s_source, heatrates_in[col])]
 
     with at.inputmodel.rprocess_from_trajectory.open_tar_file_or_extracted(
         traj_root, particleid, "./Run_rprocess/energy_thermo.dat"
@@ -352,7 +355,7 @@ def get_particledata(arr_time_s, arr_strnuc, traj_root, particleid):
 
         dfthermo = pd.read_csv(f, delim_whitespace=True, usecols=["#count", "time/s", *storecols])
 
-        data_in = {col: [] for col in storecols}
+        data_in: dict[str, list[float]] = {col: [] for col in storecols}
         arr_time_s_source = []
         for _, row in dfthermo.iterrows():
             nstep_timesec[row["#count"]] = row["time/s"]
@@ -364,31 +367,31 @@ def get_particledata(arr_time_s, arr_strnuc, traj_root, particleid):
                     data_in[col].append(float(row[col].replace("-", "e-")))
 
         for col in storecols:
-            particledata[col] = np.interp(arr_time_s, arr_time_s_source, data_in[col])
+            particledata[col] = [float(x) for x in np.interp(arr_time_s, arr_time_s_source, data_in[col])]
 
     if arr_strnuc:
         arr_traj_time_s = []
-        arr_massfracs = {strnuc: [] for strnuc in arr_strnuc}
+        arr_massfracs: dict[str, list[float]] = {strnuc: [] for strnuc in arr_strnuc}
         for nts in range(nts_min, nts_max + 1):
             timesec = nstep_timesec[nts]
             arr_traj_time_s.append(timesec)
             # print(nts, timesec / 86400)
             traj_nuc_abund = at.inputmodel.rprocess_from_trajectory.get_trajectory_nuc_abund(
-                traj_root, particleid, nts=nts
+                particleid, traj_root=traj_root, nts=nts
             )
             for strnuc in arr_strnuc:
                 arr_massfracs[strnuc].append(traj_nuc_abund.get(f"X_{strnuc}", 0.0))
 
         for strnuc in arr_strnuc:
             massfracs_interp = np.interp(arr_time_s, arr_traj_time_s, arr_massfracs[strnuc])
-            particledata[strnuc] = massfracs_interp
+            particledata[strnuc] = [float(x) for x in massfracs_interp]
 
     return particleid, particledata
 
 
-def do_modelcells(modelpath, mgiplotlist, arr_el_a):
+def do_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_el_a: list[tuple[str, int]]):
     arr_el, arr_a = zip(*arr_el_a)
-    arr_strnuc = [z + str(a) for z, a in arr_el_a]
+    arr_strnuc = [el + str(a) for el, a in arr_el_a]
 
     # arr_z = [at.get_atomic_number(el) for el in arr_el]
 
@@ -417,11 +420,11 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
     tmids = at.get_timestep_times_float(modelpath, loc="mid")
     MH = 1.67352e-24  # g
 
-    arr_time_artis_days = []
-    arr_abund_artis = {}
+    arr_time_artis_days: list[float] = []
+    arr_abund_artis: dict[int, dict[str, list[float]]] = {}
     get_global_Ye = False
-    artis_ye_sum = {}
-    artis_ye_norm = {}
+    artis_ye_sum: dict[int, float] = {}
+    artis_ye_norm: dict[int, float] = {}
 
     try:
         get_mgi_list = None if get_global_Ye else tuple(mgiplotlist)  # all cells if Ye is calculated
@@ -504,10 +507,8 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
     if len(arr_time_artis_days) == 0:
         arr_time_artis_days = arr_time_artis_days_alltimesteps
 
-    arr_abund_gsi = {}
-
     arr_time_gsi_s = np.array([t_model_init_days * 86400, *arr_time_artis_s_alltimesteps])
-    arr_time_gsi_days = arr_time_gsi_s / 86400
+    arr_time_gsi_days = list(arr_time_gsi_s / 86400)
 
     dfpartcontrib = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
     dfpartcontrib.query("cellindex <= @npts_model", inplace=True)
@@ -564,8 +565,7 @@ def do_modelcells(modelpath, mgiplotlist, arr_el_a):
             arr_time_artis_days,
             arr_time_gsi_days,
             arr_strnuc,
-            arr_abund_gsi,
-            arr_abund_artis.get(mgi, []),
+            arr_abund_artis.get(mgi, {}),
             t_model_init_days,
             dfmodel.iloc[mgi],
             mgi=mgi,
