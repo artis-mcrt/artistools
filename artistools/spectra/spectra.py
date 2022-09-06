@@ -1088,6 +1088,15 @@ def get_reference_spectrum(filename):
     else:
         filepath = Path(at.config["path_artistools_dir"], "data", "refspectra", filename)
 
+        if not filepath.is_file():
+            filepathxz = filepath.with_suffix(filepath.suffix + ".xz")
+            if filepathxz.is_file():
+                filepath = filepathxz
+            else:
+                filepathgz = filepath.with_suffix(filepath.suffix + ".gz")
+                if filepathgz.is_file():
+                    filepath = filepathgz
+
     metadata = at.misc.get_file_metadata(filepath)
 
     flambdaindex = metadata.get("f_lambda_columnindex", 1)
