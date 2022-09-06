@@ -38,6 +38,10 @@ def open_tar_file_or_extracted(traj_root, particleid: int, memberfilename: str):
     if not tarfilepath.is_file():
         tarfilepath = Path(traj_root, f"{particleid}.tar.xz")
 
+    if not tarfilepath.is_file():
+        print(f"No data found for particle {particleid}")
+        raise FileNotFoundError
+
     print(f"using {tarfilepath} for {memberfilename}")
     # return tarfile.open(tarfilepath, 'r:*').extractfile(member=memberfilename)
     with tarfile.open(tarfilepath, "r|*") as tfile:
@@ -213,10 +217,14 @@ def get_gridparticlecontributions(gridcontribpath):
     return dfcontribs
 
 
-def filtermissinggridparticlecontributions(traj_root, dfcontribs):
+def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataFrame) -> pd.DataFrame:
     missing_particleids = []
     for particleid in sorted(dfcontribs.particleid.unique()):
-        if not Path(traj_root, f"{particleid}.tar.xz").is_file():
+        if (
+            not Path(traj_root, f"{particleid}.tar.xz").is_file()
+            and not Path(traj_root, f"{particleid}.tar").is_file()
+            and not Path(traj_root, str(particleid)).is_dir()
+        ):
             missing_particleids.append(particleid)
             # print(f' WARNING particle {particleid} not found!')
 
@@ -235,8 +243,8 @@ def filtermissinggridparticlecontributions(traj_root, dfcontribs):
         row.frac_of_cellmass if row.particleid not in missing_particleids else 0.0 for row in dfcontribs.itertuples()
     ]
 
-    cell_frac_sum = {}
-    cell_frac_includemissing_sum = {}
+    cell_frac_sum: dict[int, float] = {}
+    cell_frac_includemissing_sum: dict[int, float] = {}
     for cellindex, dfparticlecontribs in dfcontribs.groupby("cellindex"):
         cell_frac_sum[cellindex] = dfparticlecontribs.frac_of_cellmass.sum()
         cell_frac_includemissing_sum[cellindex] = dfparticlecontribs.frac_of_cellmass_includemissing.sum()
@@ -254,11 +262,13 @@ def filtermissinggridparticlecontributions(traj_root, dfcontribs):
     ]
 
     for cellindex, dfparticlecontribs in dfcontribs.groupby("cellindex"):
-        frac_sum = dfparticlecontribs.frac_of_cellmass.sum()
+        frac_sum: float = dfparticlecontribs.frac_of_cellmass.sum()
         assert frac_sum == 0.0 or np.isclose(frac_sum, 1.0, rtol=0.02)
 
-        cell_frac_includemissing_sum = dfparticlecontribs.frac_of_cellmass_includemissing.sum()
-        assert cell_frac_includemissing_sum == 0.0 or np.isclose(cell_frac_includemissing_sum, 1.0, rtol=0.02)
+        cell_frac_includemissing_sum_thiscell: float = dfparticlecontribs.frac_of_cellmass_includemissing.sum()
+        assert cell_frac_includemissing_sum_thiscell == 0.0 or np.isclose(
+            cell_frac_includemissing_sum_thiscell, 1.0, rtol=0.02
+        )
 
     print("done")
 
@@ -316,6 +326,9 @@ def add_abundancecontributions(
 
     n_missing_particles = len([d for d in list_traj_nuc_abund if d is None])
     print(f"  {n_missing_particles} particles are missing network abundance data")
+
+    assert particle_count > n_missing_particles
+
     dict_traj_nuc_abund = {
         particleid: dftrajnucabund
         for particleid, dftrajnucabund in zip(dfcontribs_particlegroups.groups, list_traj_nuc_abund)

@@ -88,6 +88,9 @@ def plot_polarisation(modelpath, args):
         args.xmax = 10000
     if args.xmin is None:
         args.xmin = 0
+    assert args.xmin < args.xmax
+    assert args.ymin < args.ymax
+
     plt.ylim(args.ymin, args.ymax)
     plt.xlim(args.xmin, args.xmax)
 

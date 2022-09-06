@@ -30,7 +30,6 @@ jobs:
 
             - name: Install dependencies
               run: |
-                  sudo apt-get install libopenblas-dev  # needed for scipy install on 3.11
                   python3 -m pip install --upgrade pip wheel
                   python3 -m pip install -r requirements.txt
 
@@ -49,7 +48,6 @@ jobs:
                   key: https://theory.gsi.de/~lshingle/artis_http_public/artistools/testmodel.tar.xz
 
             - name: Download/extract test data
-              # if: steps.cache-atomicdata.outputs.cache-hit != 'true'
               working-directory: tests/data/
               run: source ./setuptestdata.sh
 
