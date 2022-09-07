@@ -96,9 +96,8 @@ jobs:
               uses: github/super-linter/slim@v4
               env:
                   LINTER_RULES_PATH: ./
-                  LOG_LEVEL: WARNING
-                  PYTHON_BLACK_CONFIG_FILE: pyproject.toml
-                  PYTHON_MYPY_CONFIG_FILE: pyproject.toml
+                  #   LOG_LEVEL: WARNING
+                  VALIDATE_PYTHON: false
                   VALIDATE_GITLEAKS: false
                   VALIDATE_JSCPD: false
                   VALIDATE_PYTHON_ISORT: false
