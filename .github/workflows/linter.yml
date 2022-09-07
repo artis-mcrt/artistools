@@ -97,10 +97,13 @@ jobs:
               env:
                   LINTER_RULES_PATH: ./
                   #   LOG_LEVEL: WARNING
-                  VALIDATE_PYTHON: false
                   VALIDATE_GITLEAKS: false
                   VALIDATE_JSCPD: false
+                  VALIDATE_PYTHON_BLACK: false
+                  VALIDATE_PYTHON_FLAKE8: false
                   VALIDATE_PYTHON_ISORT: false
+                  VALIDATE_PYTHON_PYLINT: false
+                  VALIDATE_PYTHON_MYPY: false
                   YAML_ERROR_ON_WARNING: false
                   DEFAULT_BRANCH: main
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
