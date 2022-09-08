@@ -708,7 +708,7 @@ def get_file_metadata(filepath):
 
     import yaml
 
-    filepath = Path(filepath)
+    filepath = Path(str(filepath).replace(".xz", ""))
 
     # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
     individualmetafile = filepath.with_suffix(filepath.suffix + ".meta.yml")
