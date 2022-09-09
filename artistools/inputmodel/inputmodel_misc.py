@@ -5,6 +5,7 @@ import os.path
 import time
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -606,19 +607,21 @@ def save_initialabundances(dfelabundances, abundancefilename, headerlines=None):
     print(f"Saved {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def save_empty_abundance_file(ngrid, outputfilepath="."):
+def save_empty_abundance_file(ngrid: int, outputfilepath=Path()):
     """Dummy abundance file with only zeros"""
+    if Path(outputfilepath).is_dir():
+        outputfilepath = Path(outputfilepath) / "abundances.txt"
+
     Z_atomic = np.arange(1, 31)
 
-    abundancedata = {"cellid": range(1, ngrid + 1)}
+    abundancedata: dict[str, Any] = {"cellid": range(1, ngrid + 1)}
     for atomic_number in Z_atomic:
         abundancedata[f"Z={atomic_number}"] = np.zeros(ngrid)
 
     # abundancedata['Z=28'] = np.ones(ngrid)
 
-    abundancedata = pd.DataFrame(data=abundancedata)
-    abundancedata = abundancedata.round(decimals=5)
-    abundancedata.to_csv(Path(outputfilepath) / "abundances.txt", header=False, sep="\t", index=False)
+    dfabundances = pd.DataFrame(data=abundancedata).round(decimals=5)
+    dfabundances.to_csv(outputfilepath, header=False, sep="\t", index=False)
 
 
 def get_dfmodel_dimensions(dfmodel):
@@ -629,7 +632,12 @@ def get_dfmodel_dimensions(dfmodel):
 
 
 def sphericalaverage(
-    dfmodel: pd.DataFrame, t_model_init_days: float, vmax: float, dfelabundances=None, dfgridcontributions=None
+    dfmodel: pd.DataFrame,
+    t_model_init_days: float,
+    vmax: float,
+    dfelabundances=None,
+    dfgridcontributions=None,
+    nradialbins=None,
 ):
     """Convert 3D Cartesian grid model to 1D spherical"""
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
@@ -651,10 +659,13 @@ def sphericalaverage(
     # print(dfmodel)
     # print(dfelabundances)
     km_to_cm = 1e5
-    velocity_bins = [vmax * n / ncoordgridx for n in range(ncoordgridx + 1)]  # cm/s
+    if nradialbins is None:
+        nradialbins = ncoordgridx
+    velocity_bins = [vmax * n / nradialbins for n in range(nradialbins + 1)]  # cm/s
     outcells = []
     outcellabundances = []
     outgridcontributions = []
+    includemissingcolexists = "frac_of_cellmass_includemissing" in dfgridcontributions.columns
 
     # cellidmap_3d_to_1d = {}
     highest_active_radialcellid = -1
@@ -688,24 +699,25 @@ def sphericalaverage(
                         / matchedcellrhosum
                     )
 
-                    frac_of_cellmass_includemissing_avg = (
-                        sum(
-                            [
-                                (row.frac_of_cellmass_includemissing * celldensity[row.cellindex])
-                                for row in dfparticlecontribs.itertuples(index=False)
-                            ]
-                        )
-                        / matchedcellrhosum
-                    )
+                    contriboutrow = {
+                        "particleid": particleid,
+                        "cellindex": radialcellid,
+                        "frac_of_cellmass": frac_of_cellmass_avg,
+                    }
 
-                    outgridcontributions.append(
-                        {
-                            "particleid": particleid,
-                            "cellindex": radialcellid,
-                            "frac_of_cellmass": frac_of_cellmass_avg,
-                            "frac_of_cellmass_includemissing": frac_of_cellmass_includemissing_avg,
-                        }
-                    )
+                    if includemissingcolexists:
+                        frac_of_cellmass_includemissing_avg = (
+                            sum(
+                                [
+                                    (row.frac_of_cellmass_includemissing * celldensity[row.cellindex])
+                                    for row in dfparticlecontribs.itertuples(index=False)
+                                ]
+                            )
+                            / matchedcellrhosum
+                        )
+                        contriboutrow["frac_of_cellmass_includemissing"] = frac_of_cellmass_includemissing_avg
+
+                    outgridcontributions.append(contriboutrow)
 
         if rhomean > 0.0:
             highest_active_radialcellid = radialcellid

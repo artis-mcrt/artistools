@@ -368,7 +368,7 @@ def makemodelfromgriddata(
             dfelabundances=dfelabundances, abundancefilename=outputpath, headerlines=headerlines
         )
     else:
-        at.inputmodel.save_empty_abundance_file(len(dfmodel))
+        at.inputmodel.save_empty_abundance_file(outputfilepath=outputpath, ngrid=len(dfmodel))
 
     print(f'Writing to {Path(outputpath) / "model.txt"}...')
     at.inputmodel.save_modeldata(
