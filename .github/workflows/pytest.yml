@@ -30,12 +30,12 @@ jobs:
 
             - name: Install dependencies
               run: |
-                  sudo apt-get install libopenblas-dev  # needed for scipy install on 3.11
-                    python3 -m pip install --upgrade pip wheel
-                    python3 -m pip install -r requirements.txt
+                  #   sudo apt-get install libopenblas-dev  # needed for scipy install on 3.11
+                  python3 -m pip install --upgrade pip wheel
+                  python3 -m pip install -r requirements.txt
 
-                    # upgrade all installed packages to their latest versions
-                    # python3 -m pip list --format=freeze --outdated | cut -d '=' -f1 | xargs -n1 python3 -m pip install --upgrade
+                  # upgrade all installed packages to their latest versions
+                  # python3 -m pip list --format=freeze --outdated | cut -d '=' -f1 | xargs -n1 python3 -m pip install --upgrade
 
             - name: Install artistools
               run: |
