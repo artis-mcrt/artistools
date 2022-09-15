@@ -29,7 +29,13 @@ def get_elemabund_from_nucabund(dfnucabund: pd.DataFrame) -> dict[str, float]:
 
 
 def open_tar_file_or_extracted(traj_root, particleid: int, memberfilename: str):
-    """memberfilename is within the trajectory tarfile/folder, eg. ./Run_rprocess/evol.dat"""
+    """
+    trajectory files are generally stored as {particleid}.tar.xz, but this is slow
+    to access, so first check for extracted files, or decompressed .tar files,
+    which are much faster to access.
+
+    memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/evol.dat
+    """
     path_extracted_file = Path(traj_root, str(particleid), memberfilename)
     if path_extracted_file.is_file():
         return open(path_extracted_file, mode="r", encoding="utf-8")
@@ -42,7 +48,7 @@ def open_tar_file_or_extracted(traj_root, particleid: int, memberfilename: str):
         print(f"No data found for particle {particleid}")
         raise FileNotFoundError
 
-    print(f"using {tarfilepath} for {memberfilename}")
+    # print(f"using {tarfilepath} for {memberfilename}")
     # return tarfile.open(tarfilepath, 'r:*').extractfile(member=memberfilename)
     with tarfile.open(tarfilepath, "r|*") as tfile:
         for tarmember in tfile:
@@ -63,7 +69,7 @@ def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
     return dfevol
 
 
-def get_closest_network_timestep(traj_root, particleid, timesec, cond="nearest"):
+def get_closest_network_timestep(traj_root: Path, particleid: int, timesec: float, cond="nearest") -> int:
     """
     cond:
         'lessthan': find highest timestep less than time_sec
@@ -88,7 +94,9 @@ def get_closest_network_timestep(traj_root, particleid, timesec, cond="nearest")
     return nts
 
 
-def get_trajectory_timestepfile_nuc_abund(traj_root, particleid, memberfilename):
+def get_trajectory_timestepfile_nuc_abund(
+    traj_root: Path, particleid: int, memberfilename: str
+) -> tuple[pd.DataFrame, float]:
     """
     get the nuclear abundances for a particular trajectory id number and time
     memberfilename should be something like "./Run_rprocess/tday_nz-plane"
@@ -119,8 +127,26 @@ def get_trajectory_timestepfile_nuc_abund(traj_root, particleid, memberfilename)
     return dfnucabund, t_model_init_seconds
 
 
-def get_trajectory_nuc_abund(particleid: int, traj_root, t_model_s: Optional[float] = None, nts: Optional[int] = None):
+def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts: int):
+    memberfilename = "./Run_rprocess/energy_thermo.dat"
+    with open_tar_file_or_extracted(traj_root, particleid, memberfilename) as enthermofile:
+        dfthermo = pd.read_csv(enthermofile, delim_whitespace=True)
+        startindex: int = int(np.argmax(dfthermo["time/s"] >= 1))  # start integrating at this number of seconds
+        lastindex: int = nts
+        assert all(dfthermo["Qdot"][startindex : lastindex + 1] > 0.0)
+        qdotintegral = np.trapz(
+            y=dfthermo["Qdot"][startindex : lastindex + 1], x=dfthermo["time/s"][startindex : lastindex + 1]
+        )
+        assert qdotintegral >= 0.0
+
+    return qdotintegral
+
+
+def get_trajectory_abund_q(
+    particleid: int, traj_root: Path, t_model_s: Optional[float] = None, nts: Optional[int] = None
+) -> dict[str, float]:
     """
+    get the nuclear mass fractions (and Qdotintegral) for a particle particle number as a given time
     nts: GSI network timestep number
     """
     assert t_model_s is not None or nts is not None
@@ -128,12 +154,9 @@ def get_trajectory_nuc_abund(particleid: int, traj_root, t_model_s: Optional[flo
         if nts is not None:
             memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
         elif t_model_s is not None:
-            if np.isclose(t_model_s, 86400, rtol=0.1):
-                memberfilename = "./Run_rprocess/tday_nz-plane"
-            else:
-                # find the closest timestep to the required time
-                nts = get_closest_network_timestep(traj_root, particleid, t_model_s)
-                memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
+            # find the closest timestep to the required time
+            nts = get_closest_network_timestep(traj_root, particleid, t_model_s)
+            memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
         else:
             raise ValueError("Either t_model_s or nts must be specified")
 
@@ -141,7 +164,7 @@ def get_trajectory_nuc_abund(particleid: int, traj_root, t_model_s: Optional[flo
 
     except FileNotFoundError:
         # print(f' WARNING {particleid}.tar.xz file not found! ')
-        return None
+        return {}
 
     massfractotal = dftrajnucabund.massfrac.sum()
     dftrajnucabund.query("Z >= 1", inplace=True)
@@ -156,11 +179,12 @@ def get_trajectory_nuc_abund(particleid: int, traj_root, t_model_s: Optional[flo
     # print(f'trajectory particle id {particleid} massfrac sum: {massfractotal:.2f}')
     # print(f' grid snapshot: {t_model_s:.2e} s, network: {traj_time_s:.2e} s (timestep {nts})')
     assert np.isclose(massfractotal, 1.0, rtol=0.02)
-    if nts is None:
-        assert t_model_s is not None
+    if t_model_s is not None:
         assert np.isclose(traj_time_s, t_model_s, rtol=0.2, atol=1.0)
 
     dict_traj_nuc_abund = {nucabundcolname: massfrac / massfractotal for nucabundcolname, massfrac in colmassfracs}
+    dict_traj_nuc_abund["q"] = get_trajectory_qdotintegral(particleid=particleid, traj_root=traj_root, nts=nts)
+
     return dict_traj_nuc_abund
 
 
@@ -314,17 +338,17 @@ def add_abundancecontributions(
     listcellnucabundances = []
     print("Reading trajectory abundances...")
     timestart = time.perf_counter()
-    trajnucabundworker = partial(get_trajectory_nuc_abund, t_model_s=t_model_s, traj_root=traj_root)
+    trajworker = partial(get_trajectory_abund_q, t_model_s=t_model_s, traj_root=traj_root)
 
     if at.config["num_processes"] > 1:
         with multiprocessing.Pool(processes=at.config["num_processes"]) as pool:
-            list_traj_nuc_abund = pool.map(trajnucabundworker, dfcontribs_particlegroups.groups)
+            list_traj_nuc_abund = pool.map(trajworker, dfcontribs_particlegroups.groups)
             pool.close()
             pool.join()
     else:
-        list_traj_nuc_abund = [trajnucabundworker(particleid) for particleid in dfcontribs_particlegroups.groups]
+        list_traj_nuc_abund = [trajworker(particleid) for particleid in dfcontribs_particlegroups.groups]
 
-    n_missing_particles = len([d for d in list_traj_nuc_abund if d is None])
+    n_missing_particles = len([d for d in list_traj_nuc_abund if not d])
     print(f"  {n_missing_particles} particles are missing network abundance data")
 
     assert particle_count > n_missing_particles
@@ -332,7 +356,7 @@ def add_abundancecontributions(
     dict_traj_nuc_abund = {
         particleid: dftrajnucabund
         for particleid, dftrajnucabund in zip(dfcontribs_particlegroups.groups, list_traj_nuc_abund)
-        if dftrajnucabund is not None
+        if dftrajnucabund
     }
     print(f"Reading trajectory abundances took {time.perf_counter() - timestart:.1f} seconds")
 
@@ -360,6 +384,7 @@ def add_abundancecontributions(
     dfnucabundances.index.name = None
     dfnucabundances.fillna(0.0, inplace=True)
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
+    print("HERE", dfnucabundances.columns)
 
     timestart = time.perf_counter()
     print("Adding up isotopes for elemental abundances and creating dfelabundances...", end="", flush=True)
@@ -382,7 +407,7 @@ def add_abundancecontributions(
             **{
                 f"X_{at.get_elsymbol(atomic_number)}": dfnucabundances.eval(
                     f'{" + ".join(elemisotopes[atomic_number])}',
-                    engine="python" if len(elemisotopes[atomic_number]) > 31 else None,
+                    # engine="python" if len(elemisotopes[atomic_number]) > 31 else None
                 )
                 if atomic_number in elemisotopes
                 else np.zeros(len(dfnucabundances))

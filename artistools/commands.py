@@ -21,6 +21,7 @@ commandlist = {
     "artistools-maketardismodelfromartis": ("artistools.inputmodel.maketardismodelfromartis", "main"),
     "artistools-maptogrid": ("artistools.inputmodel.maptogrid", "main"),
     "plotartismodeldensity": ("artistools.inputmodel.plotdensity", "main"),
+    "artistools-plotdensity": ("artistools.inputmodel.plotdensity", "main"),
     "plotartismodeldeposition": ("artistools.deposition", "main"),
     "artistools-deposition": ("artistools.deposition", "main"),
     "artistools-describeinputmodel": ("artistools.inputmodel.describeinputmodel", "main"),

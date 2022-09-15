@@ -11,6 +11,7 @@ from typing import Sequence
 import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 import artistools as at
@@ -19,8 +20,6 @@ import artistools as at
 # import math
 
 # import artistools.estimators
-
-traj_root = Path("/Volumes/GoogleDrive/My Drive/Archive/Mergers/SFHo_short/SFHo")
 
 
 def plot_qdot(
@@ -37,15 +36,14 @@ def plot_qdot(
     tstart = depdata["tmid_days"].min()
     tend = depdata["tmid_days"].max()
 
-    arr_heat = {}
+    heatcols = ["hbeta", "halpha", "hbfis", "hspof", "Ye", "Qdot"]
 
-    heatcols = ["hbeta", "halpha", "hbfis", "hspof", "Ye"]  # , 'Qdot'
-
-    for col in heatcols:
-        arr_heat[col] = np.zeros_like(arr_time_gsi_days)
+    arr_heat = {col: np.zeros_like(arr_time_gsi_days) for col in heatcols}
 
     model_mass_grams = dfmodel.cellmass_grams.sum()
     print(f"model mass: {model_mass_grams / 1.989e33:.3f} Msun")
+
+    # calculate global heating rates from the individual particle heating rates
     dfpartcontrib_nomissing = dfpartcontrib.query("particleid in @allparticledata.keys()")
     for cellindex, dfpartcontribthiscell in dfpartcontrib_nomissing.groupby("cellindex"):
         if cellindex >= len(dfmodel):
@@ -100,7 +98,7 @@ def plot_qdot(
     #           linewidth=2, color='black',
     #           # marker='x', markersize=8,
     #           label='Qdot GSI Network')
-    #
+
     # axis.plot(depdata['tmid_days'], depdata['Qdot_ana_erg/s/g'],
     #           linewidth=2, color='red',
     #           # linestyle='None',
@@ -199,7 +197,7 @@ def plot_qdot(
     print(f"Saved {pdfoutpath}")
 
 
-def plot_abund(
+def plot_cell_abund_evolution(
     modelpath: Path,
     dfpartcontrib: pd.DataFrame,
     allparticledata,
@@ -211,7 +209,7 @@ def plot_abund(
     dfcell: pd.DataFrame,
     pdfoutpath: Path,
     mgi: int,
-):
+) -> None:
     dfpartcontrib_thiscell = dfpartcontrib.query("cellindex == (@mgi + 1) and particleid in @allparticledata.keys()")
     frac_of_cellmass_sum = dfpartcontrib_thiscell.frac_of_cellmass.sum()
     print(f"frac_of_cellmass_sum: {frac_of_cellmass_sum} (can be < 1.0 because of missing particles)")
@@ -303,7 +301,9 @@ def plot_abund(
     print(f"Saved {pdfoutpath}")
 
 
-def get_particledata(arr_time_s, arr_strnuc, traj_root: Path, particleid: int):
+def get_particledata(
+    arr_time_s, arr_strnuc, traj_root: Path, particleid: int
+) -> tuple[int, dict[str, npt.NDArray[np.float64]]]:
     try:
         nts_min = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(
             traj_root, particleid, timesec=min(arr_time_s), cond="lessthan"
@@ -314,17 +314,11 @@ def get_particledata(arr_time_s, arr_strnuc, traj_root: Path, particleid: int):
 
     except FileNotFoundError:
         # print(f'WARNING: Particle data not found for id {particleid}')
-        return "NONE", None
+        return -1, {}
 
     # print(f'Reading data for particle id {particleid}...')
-    particledata: dict[str, Sequence[float]] = {
-        "Qdot": [],
-        "hbeta": [],
-        "halpha": [],
-        "hbfis": [],
-        "hspof": [],
-        **{strnuc: [] for strnuc in arr_strnuc},
-    }
+
+    particledata = {}
     nstep_timesec = {}
     with at.inputmodel.rprocess_from_trajectory.open_tar_file_or_extracted(
         traj_root, particleid, "./Run_rprocess/heating.dat"
@@ -346,7 +340,7 @@ def get_particledata(arr_time_s, arr_strnuc, traj_root: Path, particleid: int):
                     heatrates_in[col].append(float(row[col].replace("-", "e-")))
 
         for col in heatcols:
-            particledata[col] = [float(x) for x in np.interp(arr_time_s, arr_time_s_source, heatrates_in[col])]
+            particledata[col] = np.array(np.interp(arr_time_s, arr_time_s_source, heatrates_in[col]))
 
     with at.inputmodel.rprocess_from_trajectory.open_tar_file_or_extracted(
         traj_root, particleid, "./Run_rprocess/energy_thermo.dat"
@@ -367,7 +361,7 @@ def get_particledata(arr_time_s, arr_strnuc, traj_root: Path, particleid: int):
                     data_in[col].append(float(row[col].replace("-", "e-")))
 
         for col in storecols:
-            particledata[col] = [float(x) for x in np.interp(arr_time_s, arr_time_s_source, data_in[col])]
+            particledata[col] = np.array(np.interp(arr_time_s, arr_time_s_source, data_in[col]))
 
     if arr_strnuc:
         arr_traj_time_s = []
@@ -376,7 +370,7 @@ def get_particledata(arr_time_s, arr_strnuc, traj_root: Path, particleid: int):
             timesec = nstep_timesec[nts]
             arr_traj_time_s.append(timesec)
             # print(nts, timesec / 86400)
-            traj_nuc_abund = at.inputmodel.rprocess_from_trajectory.get_trajectory_nuc_abund(
+            traj_nuc_abund = at.inputmodel.rprocess_from_trajectory.get_trajectory_abund_q(
                 particleid, traj_root=traj_root, nts=nts
             )
             for strnuc in arr_strnuc:
@@ -384,12 +378,14 @@ def get_particledata(arr_time_s, arr_strnuc, traj_root: Path, particleid: int):
 
         for strnuc in arr_strnuc:
             massfracs_interp = np.interp(arr_time_s, arr_traj_time_s, arr_massfracs[strnuc])
-            particledata[strnuc] = [float(x) for x in massfracs_interp]
+            particledata[strnuc] = np.array(massfracs_interp)
 
     return particleid, particledata
 
 
-def do_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_el_a: list[tuple[str, int]]):
+def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_el_a: list[tuple[str, int]]):
+    traj_root = Path("/Volumes/GoogleDrive/My Drive/Archive/Mergers/SFHo_short/SFHo")
+
     arr_el, arr_a = zip(*arr_el_a)
     arr_strnuc = [el + str(a) for el, a in arr_el_a]
 
@@ -558,7 +554,7 @@ def do_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_el_a: list[tu
     )
 
     for mgi in mgiplotlist:
-        plot_abund(
+        plot_cell_abund_evolution(
             modelpath,
             dfpartcontrib,
             allparticledata,
@@ -624,7 +620,7 @@ def main(args=None, argsraw=None, **kwargs):
     else:
         mgiplotlist = [int(args.modelgridindex)]
 
-    do_modelcells(modelpath, mgiplotlist, arr_el_a)
+    plot_qdot_abund_modelcells(modelpath, mgiplotlist, arr_el_a)
 
 
 if __name__ == "__main__":
