@@ -392,7 +392,10 @@ def addargs(parser):
         help="Minimum number of SPH particles in each cell (otherwise set rho=0)",
     )
     parser.add_argument(
-        "-trajectoryroot", default=None, help="Path to nuclear network trajectory folder, if abundances are requierd"
+        "-trajectoryroot",
+        "-trajroot",
+        default=None,
+        help="Path to nuclear network trajectory folder, if abundances are required",
     )
     parser.add_argument(
         "-dimensions",

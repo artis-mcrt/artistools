@@ -44,8 +44,8 @@ def main(args=None, argsraw=None, **kwargs):
         tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
     )
 
-    # dfmodela, _, _ = at.get_modeldata("artismodel_SFHO_long-radius-entropy_1d_0p05d")
-    # dfmodelb, _, _ = at.get_modeldata("artismodel_1d")
+    if not args.modelpath:
+        args.modelpath = ["."]
 
     for modelpath in args.modelpath:
         dfmodel, _, _ = at.get_modeldata(modelpath)
@@ -79,6 +79,10 @@ def main(args=None, argsraw=None, **kwargs):
     axes[0].set_ylabel(r"$\Delta$M [M$_\odot$] / $\Delta$v/c")
     axes[1].set_ylabel(r"enclosed mass [M$_\odot$]")
     axes[0].legend()
+
+    axes[-1].set_xlim(left=0.0)
+    axes[0].set_ylim(bottom=0.0)
+    axes[1].set_ylim(bottom=0.0)
 
     outfilepath = Path(args.outputpath)
     if outfilepath.is_dir():

@@ -479,8 +479,10 @@ def save_modeldata(
         standardcols.append("X_Co57")
 
     dfmodel["inputcellid"] = dfmodel["inputcellid"].astype(int)
-    customcols = [col for col in dfmodel.columns if col not in standardcols and col.startswith("X_")]
-    customcols.sort(key=lambda col: at.get_z_a_nucname(col))  # sort columns by atomic number, mass number
+    customcols = [col for col in dfmodel.columns if col not in standardcols]
+    customcols.sort(
+        key=lambda col: at.get_z_a_nucname(col) if col.startswith("X_") else (float("inf"), 0)
+    )  # sort columns by atomic number, mass number
 
     # set missing radioabundance columns to zero
     for col in standardcols:
@@ -526,11 +528,11 @@ def save_modeldata(
         elif dimensions == 3:
             zeroabund = " ".join(["0.0" for _ in abundcols])
 
-            for inputcellid, posxmin, posymin, poszmin, rho, *massfracs in dfmodel[
+            for inputcellid, posxmin, posymin, poszmin, rho, *othercolvals in dfmodel[
                 ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho", *abundcols]
             ].itertuples(index=False, name=None):
                 fmodel.write(f"{inputcellid:6d} {posxmin} {posymin} {poszmin} {rho}\n")
-                fmodel.write(" ".join([f"{abund}" for abund in massfracs]) if rho > 0.0 else zeroabund)
+                fmodel.write(" ".join([f"{colvalue}" for colvalue in othercolvals]) if rho > 0.0 else zeroabund)
                 fmodel.write("\n")
 
     print(f"Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
@@ -660,7 +662,7 @@ def sphericalaverage(
     # print(dfelabundances)
     km_to_cm = 1e5
     if nradialbins is None:
-        nradialbins = ncoordgridx
+        nradialbins = int(ncoordgridx / 2.0)
     velocity_bins = [vmax * n / nradialbins for n in range(nradialbins + 1)]  # cm/s
     outcells = []
     outcellabundances = []
@@ -730,7 +732,7 @@ def sphericalaverage(
         }
 
         for column in matchedcells.columns:
-            if column.startswith("X_") or column == "cellYe":
+            if column.startswith("X_") or column in ["cellYe", "q"]:
                 if rhomean > 0.0:
                     massfrac = np.dot(matchedcells[column], matchedcells.rho) / matchedcellrhosum
                 else:
