@@ -127,15 +127,19 @@ def get_trajectory_timestepfile_nuc_abund(
     return dfnucabund, t_model_init_seconds
 
 
-def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts: int):
+def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float):
     memberfilename = "./Run_rprocess/energy_thermo.dat"
     with open_tar_file_or_extracted(traj_root, particleid, memberfilename) as enthermofile:
         dfthermo = pd.read_csv(enthermofile, delim_whitespace=True)
-        startindex: int = int(np.argmax(dfthermo["time/s"] >= 1))  # start integrating at this number of seconds
-        lastindex: int = nts
-        assert all(dfthermo["Qdot"][startindex : lastindex + 1] > 0.0)
+        dfthermo.rename(columns={"time/s": "time_s"}, inplace=True)
+        startindex: int = int(np.argmax(dfthermo["time_s"] >= 1))  # start integrating at this number of seconds
+
+        assert all(dfthermo["Qdot"][startindex : nts_max + 1] > 0.0)
+        dfthermo.eval("Qdot_expansionadjusted = Qdot * time_s / @t_model_s", inplace=True)
+
         qdotintegral = np.trapz(
-            y=dfthermo["Qdot"][startindex : lastindex + 1], x=dfthermo["time/s"][startindex : lastindex + 1]
+            y=dfthermo["Qdot_expansionadjusted"][startindex : nts_max + 1],
+            x=dfthermo["time_s"][startindex : nts_max + 1],
         )
         assert qdotintegral >= 0.0
 
@@ -162,6 +166,9 @@ def get_trajectory_abund_q(
 
         dftrajnucabund, traj_time_s = get_trajectory_timestepfile_nuc_abund(traj_root, particleid, memberfilename)
 
+        if t_model_s is None:
+            t_model_s = traj_time_s
+
     except FileNotFoundError:
         # print(f' WARNING {particleid}.tar.xz file not found! ')
         return {}
@@ -183,7 +190,9 @@ def get_trajectory_abund_q(
         assert np.isclose(traj_time_s, t_model_s, rtol=0.2, atol=1.0)
 
     dict_traj_nuc_abund = {nucabundcolname: massfrac / massfractotal for nucabundcolname, massfrac in colmassfracs}
-    dict_traj_nuc_abund["q"] = get_trajectory_qdotintegral(particleid=particleid, traj_root=traj_root, nts=nts)
+    dict_traj_nuc_abund["q"] = get_trajectory_qdotintegral(
+        particleid=particleid, traj_root=traj_root, nts_max=nts, t_model_s=t_model_s
+    )
 
     return dict_traj_nuc_abund
 
@@ -384,7 +393,6 @@ def add_abundancecontributions(
     dfnucabundances.index.name = None
     dfnucabundances.fillna(0.0, inplace=True)
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
-    print("HERE", dfnucabundances.columns)
 
     timestart = time.perf_counter()
     print("Adding up isotopes for elemental abundances and creating dfelabundances...", end="", flush=True)
