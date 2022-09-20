@@ -13,9 +13,6 @@ spec = importlib.util.spec_from_file_location("commands", "./artistools/commands
 commands = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(commands)
 
-commands.setup_completions()
-
-
 setup(
     name="artistools",
     version=get_version(),

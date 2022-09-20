@@ -48,6 +48,7 @@ commandlist = {
     "plotartisinitialcomposition": ("artistools.initial_composition", "main"),
     "artistools-initialcomposition": ("artistools.initial_composition", "main"),
     "artistools-writecodecomparisondata": ("artistools.writecomparisondata", "main"),
+    "artistools-setup_completions": ("artistools.commands", "setup_completions"),
 }
 
 
@@ -67,11 +68,19 @@ def setup_completions():
     # source artistoolscompletions.sh
     path_repo = Path(__file__).absolute().parent.parent
     completioncommands = []
-    for command in commandlist.keys():
-        result = subprocess.run(["register-python-argcomplete", command], capture_output=True, text=True).stdout
-        completioncommands.append(result + "\n")
     with open(path_repo / "artistoolscompletions.sh", "w", encoding="utf-8") as f:
+        for command in commandlist.keys():
+            proc = subprocess.run(["register-python-argcomplete", command], capture_output=True, text=True)
+
+            if proc.stderr:
+                print(proc.stderr)
+
+            completioncommands.append(proc.stdout + "\n")
+
         f.write("\n".join(completioncommands))
+
+    print("To enable completions, add this line to your .zshrc/.bashrc")
+    print("source artistoolscompletions.sh")
 
 
 def addargs(parser):

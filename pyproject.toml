@@ -8,12 +8,24 @@ authors = [
     {name = "ARTIS Collaboration", email = "luke.shingles@gmail.com"},
 ]
 description="Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code."
-readme = "README.md"
+#readme = "README.md"
 classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
-dynamic = ["version", "dependencies", "entry-points"]
+dynamic = ["version", "dependencies", "entry-points", "readme"]
 requires-python = ">=3.8"
+
+#[project.scripts]
+#atcompletions = "artistoolscompletions.sh"
+
+[tool.setuptools]
+packages = ["artistools"]
+
+[tool.setuptools.dynamic]
+readme = {file = ["README.md"]}
+dependencies = {file = ["requirements.txt"]}
+#entry-points = {attr = "artistools.commands.console_scripts"}
+
 
 [tool.black]
 line-length = 120
