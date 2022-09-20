@@ -69,15 +69,18 @@ def setup_completions():
     path_repo = Path(__file__).absolute().parent.parent
     completioncommands = []
     with open(path_repo / "artistoolscompletions.sh", "w", encoding="utf-8") as f:
+        proc = subprocess.run(["register-python-argcomplete", "__MY_COMMAND__"], capture_output=True, text=True)
+
+        if proc.stderr:
+            print(proc.stderr)
+
+        scriptlines = proc.stdout.split("\n")
+        f.write("\n".join(scriptlines[:-2]))
+        f.write("\n")
+
         for command in commandlist.keys():
-            proc = subprocess.run(["register-python-argcomplete", command], capture_output=True, text=True)
-
-            if proc.stderr:
-                print(proc.stderr)
-
-            completioncommands.append(proc.stdout + "\n")
-
-        f.write("\n".join(completioncommands))
+            completecommand = scriptlines[-2].replace("__MY_COMMAND__", command)
+            f.write(completecommand + "\n")
 
     print("To enable completions, add this line to your .zshrc/.bashrc")
     print("source artistoolscompletions.sh")
