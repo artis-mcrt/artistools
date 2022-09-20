@@ -23,7 +23,7 @@ except subprocess.CalledProcessError:
 
 config: dict[str, Any]
 config = {}
-config["enable_diskcache"] = True
+config["enable_diskcache"] = False
 config["num_processes"] = num_processes
 config["figwidth"] = 5
 config["codecomparisondata1path"] = Path(

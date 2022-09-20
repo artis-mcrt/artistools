@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 
 
 def addargs(parser):
@@ -24,6 +25,7 @@ def main(argsraw=None):
         submodule = importlib.import_module(submodulename, package="artistools")
         subparser = subparsers.add_parser(command.replace("artistools-", ""))
         submodule.addargs(subparser)
+        argcomplete.autocomplete(subparser)
         subparser.set_defaults(func=getattr(submodule, funcname))
 
     argcomplete.autocomplete(parser)
