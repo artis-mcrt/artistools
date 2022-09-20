@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 
 commandlist = {
     "artistools-comparetogsinetwork": ("artistools.gsinetwork", "main"),
@@ -59,9 +60,19 @@ def get_console_scripts():
     return console_scripts
 
 
-def get_completioncommands():
+def setup_completions():
+    # Add the following lines to your .zshrc file to get command completion:
+    # autoload -U bashcompinit
+    # bashcompinit
+    # source artistoolscompletions.sh
+    path_repo = Path(__file__).absolute().parent.parent
     completioncommands = []
     for command in commandlist.keys():
         result = subprocess.run(["register-python-argcomplete", command], capture_output=True, text=True).stdout
         completioncommands.append(result + "\n")
-    return completioncommands
+    with open(path_repo / "artistoolscompletions.sh", "w", encoding="utf-8") as f:
+        f.write("\n".join(completioncommands))
+
+
+def addargs(parser):
+    pass

@@ -13,13 +13,7 @@ spec = importlib.util.spec_from_file_location("commands", "./artistools/commands
 commands = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(commands)
 
-# Add the following lines to your .zshrc file to get command completion:
-# autoload -U bashcompinit
-# bashcompinit
-# source artistoolscompletions.sh
-completioncommands = commands.get_completioncommands()
-with open("artistoolscompletions.sh", "w", encoding="utf-8") as f:
-    f.write("\n".join(completioncommands))
+commands.setup_completions()
 
 
 setup(
