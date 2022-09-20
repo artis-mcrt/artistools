@@ -1,3 +1,4 @@
+#!/usr/bin/env zsh
 
 # Run something, muting output or redirecting it to the debug stream
 # depending on the value of _ARC_DEBUG.
