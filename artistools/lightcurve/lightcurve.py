@@ -57,22 +57,24 @@ def get_from_packets(modelpath, lcpath, packet_type="TYPE_ESCAPE", escape_type="
     nprocs_read = len(packetsfiles)
     assert nprocs_read > 0
 
-    timearray = at.get_timestep_times_float(modelpath=modelpath, loc="mid")
+    tmidarray = at.get_timestep_times_float(modelpath=modelpath, loc="mid")
+    timearray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
     arr_timedelta = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
     # timearray = np.arange(250, 350, 0.1)
-    model, _, _ = at.inputmodel.get_modeldata(modelpath)
-    vmax = model.iloc[-1].velocity_outer * u.km / u.s
-    betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
+    model, _, vmax_cmps = at.inputmodel.get_modeldata(modelpath)
+    escapesurfacegamma = math.sqrt(1 - (vmax_cmps / 29979245800) ** 2)
 
     timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
 
     lcdata = pd.DataFrame(
         {
-            "time": timearray,
+            "time": tmidarray,
             "lum": np.zeros_like(timearray, dtype=float),
             "lum_cmf": np.zeros_like(timearray, dtype=float),
         }
     )
+
+    sec_to_day = 1 / 86400
 
     for packetsfile in packetsfiles:
         dfpackets = at.packets.readfile(packetsfile, type=packet_type, escape_type=escape_type)
@@ -81,18 +83,18 @@ def get_from_packets(modelpath, lcpath, packet_type="TYPE_ESCAPE", escape_type="
             print(f"sum of e_cmf {dfpackets['e_cmf'].sum()} e_rf {dfpackets['e_rf'].sum()}")
 
             binned = pd.cut(dfpackets["t_arrive_d"], timearrayplusend, labels=False, include_lowest=True)
-            for binindex, e_rf_sum in dfpackets.groupby(binned)["e_rf"].sum().iteritems():
+            for binindex, e_rf_sum in dfpackets.groupby(binned)["e_rf"].sum().items():
                 lcdata["lum"][binindex] += e_rf_sum
 
-            dfpackets["t_arrive_cmf_d"] = dfpackets["escape_time"] * betafactor * u.s.to("day")
+            dfpackets.eval("t_arrive_cmf_d = escape_time * @escapesurfacegamma * @sec_to_day", inplace=True)
 
             binned_cmf = pd.cut(dfpackets["t_arrive_cmf_d"], timearrayplusend, labels=False, include_lowest=True)
-            for binindex, e_cmf_sum in dfpackets.groupby(binned_cmf)["e_cmf"].sum().iteritems():
+            for binindex, e_cmf_sum in dfpackets.groupby(binned_cmf)["e_cmf"].sum().items():
                 lcdata["lum_cmf"][binindex] += e_cmf_sum
 
     lcdata["lum"] = np.divide(lcdata["lum"] / nprocs_read * (u.erg / u.day).to("solLum"), arr_timedelta)
     lcdata["lum_cmf"] = np.divide(
-        lcdata["lum_cmf"] / nprocs_read / betafactor * (u.erg / u.day).to("solLum"), arr_timedelta
+        lcdata["lum_cmf"] / nprocs_read / escapesurfacegamma * (u.erg / u.day).to("solLum"), arr_timedelta
     )
     return lcdata
 

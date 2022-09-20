@@ -99,8 +99,7 @@ def make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax):
 
     lightcurvedataframe = at.lightcurve.writebollightcurvedata.get_bol_lc_from_lightcurveout(modelpath)
     print(lightcurvedataframe)
-    lightcurvedataframe = lightcurvedataframe[lightcurvedataframe.time > timemin]
-    lightcurvedataframe = lightcurvedataframe[lightcurvedataframe.time < timemax]
+    lightcurvedataframe.query("time > @timemin and time < @timemax", inplace=True)
 
     modelname = at.get_model_name(modelpath)
     outfilename = f"doubledet_2021_{modelname}.dat"
