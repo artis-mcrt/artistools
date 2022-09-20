@@ -258,8 +258,6 @@ def readfile_text(packetsfile, modelpath=Path(".")):
         for col in usecols_nodata:
             dfpackets[col] = float("NaN")
 
-    print(dfpackets)
-
     return dfpackets
 
 

@@ -37,7 +37,7 @@ def get_bol_lc_from_spec(modelpath):
     return lightcurvedataframe
 
 
-def get_bol_lc_from_lightcurveout(modelpath, res=False):
+def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.DataFrame:
     if res:
         lcfilename = "light_curve_res.out"
     else:
