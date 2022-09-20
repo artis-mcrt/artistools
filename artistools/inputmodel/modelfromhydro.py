@@ -399,6 +399,7 @@ def addargs(parser):
     )
     parser.add_argument(
         "-dimensions",
+        "-d",
         default=3,
         type=int,
         help="Number of dimensions: 1 for spherically symmetric 1D, 3 for 3D Cartesian",
