@@ -60,3 +60,5 @@ plottingscripts/*
 plottingscripts/
 
 _version.py
+
+.vscode

@@ -1,6 +1,0 @@
-{
-    "python.formatting.provider": "none",
-    "editor.formatOnPaste": false,
-    "editor.formatOnSave": true,
-    "editor.formatOnType": true
-}
