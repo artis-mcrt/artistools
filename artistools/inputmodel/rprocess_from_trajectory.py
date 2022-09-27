@@ -64,7 +64,15 @@ def open_tar_file_or_extracted(traj_root, particleid: int, memberfilename: str):
 @lru_cache(maxsize=16)
 def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
     with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/evol.dat") as evolfile:
-        dfevol = pd.read_csv(evolfile, delim_whitespace=True, comment="#", usecols=[0, 1], names=["nstep", "timesec"])
+        dfevol = pd.read_table(
+            evolfile,
+            sep=r"\s+",
+            comment="#",
+            usecols=[0, 1],
+            names=["nstep", "timesec"],
+            engine="c",
+            dtype={0: int, 1: float},
+        )
 
     return dfevol
 
@@ -102,17 +110,31 @@ def get_trajectory_timestepfile_nuc_abund(
     memberfilename should be something like "./Run_rprocess/tday_nz-plane"
     """
     with open_tar_file_or_extracted(traj_root, particleid, memberfilename) as trajfile:
-        # with open(trajfile) as ftraj:
         _, str_t_model_init_seconds, _, rho, _, _ = trajfile.readline().split()
+        trajfile.seek(0)
         t_model_init_seconds = float(str_t_model_init_seconds)
-        dfnucabund = pd.read_csv(
+
+        dfnucabund = pd.read_fwf(
             trajfile,
-            delim_whitespace=True,
-            comment="#",
-            names=["N", "Z", "log10abund", "S1n", "S2n"],
-            usecols=["N", "Z", "log10abund"],
+            skip_blank_lines=True,
+            skiprows=1,
+            colspecs=[(0, 4), (4, 8), (8, 21)],
+            engine="c",
+            names=["N", "Z", "log10abund"],
             dtype={0: int, 1: int, 2: float},
         )
+
+        # in case the files are inconsistent, switch to an adaptive reader
+        # dfnucabund = pd.read_table(
+        #     trajfile,
+        #     skip_blank_lines=True,
+        #     skiprows=1,
+        #     sep=r"\s+",
+        #     engine='c',
+        #     names=["N", "Z", "log10abund", "S1n", "S2n"],
+        #     usecols=["N", "Z", "log10abund"],
+        #     dtype={0: int, 1: int, 2: float},
+        # )
 
     # dfnucabund.eval('abund = 10 ** log10abund', inplace=True)
     dfnucabund.eval("massfrac = (N + Z) * (10 ** log10abund)", inplace=True)
@@ -127,10 +149,12 @@ def get_trajectory_timestepfile_nuc_abund(
     return dfnucabund, t_model_init_seconds
 
 
-def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float):
+def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
     memberfilename = "./Run_rprocess/energy_thermo.dat"
     with open_tar_file_or_extracted(traj_root, particleid, memberfilename) as enthermofile:
-        dfthermo = pd.read_csv(enthermofile, delim_whitespace=True)
+        dfthermo = pd.read_table(
+            enthermofile, sep=r"\s+", usecols=["time/s", "Qdot"], engine="c", dtype={0: float, 1: float}
+        )
         dfthermo.rename(columns={"time/s": "time_s"}, inplace=True)
         startindex: int = int(np.argmax(dfthermo["time_s"] >= 1))  # start integrating at this number of seconds
 
