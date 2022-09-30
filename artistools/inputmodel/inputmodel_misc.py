@@ -53,6 +53,7 @@ def get_modeldata(
         filename = Path(at.config["codecomparisonmodelartismodelpath"], inputmodel, "model.txt")
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
+    print(f"Reading {filename}")
 
     headerrows = 0
     with at.misc.zopen(filename, "rt") as fmodel:
@@ -152,17 +153,20 @@ def get_modeldata(
             filename, delim_whitespace=True, header=None, names=columns, skiprows=headerrows, nrows=gridcellcount
         )
     else:
-        dfmodel = pd.read_csv(
+        # each cell takes up two lines in the model file
+        dfmodel = pd.read_table(
             filename,
-            delim_whitespace=True,
+            sep=r"\s+",
+            engine="c",
             header=None,
             skiprows=lambda x: x < headerrows or (x - headerrows - 1) % 2 == 0,
             names=columns[:5],
             nrows=gridcellcount,
         )
-        dfmodeloddlines = pd.read_csv(
+        dfmodeloddlines = pd.read_table(
             filename,
-            delim_whitespace=True,
+            sep=r"\s+",
+            engine="c",
             header=None,
             skiprows=lambda x: x < headerrows or (x - headerrows - 1) % 2 == 1,
             names=columns[5:],
