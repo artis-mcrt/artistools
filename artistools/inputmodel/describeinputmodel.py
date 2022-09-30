@@ -2,20 +2,18 @@
 # PYTHON_ARGCOMPLETE_OK
 import argparse
 import math
+from pathlib import Path
 
 import argcomplete
 import numpy as np
 
 import artistools as at
 
-# import os.path
 # import pandas as pd
 
 
 def addargs(parser):
-    parser.add_argument(
-        "-inputfile", "-i", default="model.txt", help="Path of input file or folder containing model.txt"
-    )
+    parser.add_argument("-inputfile", "-i", default=Path(), help="Path of input file or folder containing model.txt")
 
     parser.add_argument("-cell", "-mgi", default=None, help="Focus on particular cell number (0-indexed)")
 
@@ -47,8 +45,9 @@ def main(args=None, argsraw=None, **kwargs):
     if args.noisotopes:
         args.getabundances = True
 
-    print(f"Reading {args.inputfile}")
-    dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata(args.inputfile, get_abundances=args.getabundances)
+    dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata(
+        args.inputfile, get_abundances=args.getabundances, printwarningsonly=False
+    )
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
     print(f"Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)")
