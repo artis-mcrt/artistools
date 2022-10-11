@@ -43,7 +43,13 @@ def test_spectra_outputtext():
 
 def test_spectraemissionplot():
     at.spectra.main(
-        argsraw=[], specpath=modelpath, outputfile=outputpath, timemin=290, timemax=320, emissionabsorption=True
+        argsraw=[],
+        specpath=modelpath,
+        outputfile=outputpath,
+        timemin=290,
+        timemax=320,
+        emissionabsorption=True,
+        use_thermalemissiontype=True,
     )
 
 
@@ -56,6 +62,7 @@ def test_spectraemissionplot_nostack():
         timemax=320,
         emissionabsorption=True,
         nostack=True,
+        use_thermalemissiontype=True,
     )
 
 
@@ -99,7 +106,10 @@ def test_spectra_get_flux_contributions():
     arraylambda_angstroms = const.c.to("angstrom/s").value / arraynu
 
     contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
-        modelpath, timestepmin=timestepmin, timestepmax=timestepmax
+        modelpath,
+        timestepmin=timestepmin,
+        timestepmax=timestepmax,
+        use_lastemissiontype=False,
     )
 
     integrated_flux_emission = -np.trapz(array_flambda_emission_total, x=arraylambda_angstroms)
