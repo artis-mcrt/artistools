@@ -229,9 +229,9 @@ def plot_artis_spectrum(
 
             if not args.hidemodeltime and not args.multispecplot:
                 # todo: fix this for multispecplot - use args.showtime for now
-                linelabel += f" +{timeavg:.0f}d"
+                linelabel += f" +{timeavg:.1f}d"
             if not args.hidemodeltimerange and not args.multispecplot:
-                linelabel += r" ($\pm$ " + f"{timedelta:.0f}d)"
+                linelabel += r" ($\pm$ " + f"{timedelta:.1f}d)"
         # Luke: disabled below because line label has already been formatted with e.g. timeavg values
         # formatting for a second time makes it impossible to use curly braces in line labels (needed for LaTeX math)
         # else:
@@ -499,7 +499,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
             filterfunc=filterfunc,
             groupby=args.groupby,
             delta_lambda=args.deltalambda,
-            use_lastemissiontype=args.use_lastemissiontype,
+            use_lastemissiontype=not args.use_thermalemissiontype,
             useinternalpackets=args.internalpackets,
             emissionvelocitycut=args.emissionvelocitycut,
         )
@@ -513,7 +513,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
             timestepmax,
             getemission=args.showemission,
             getabsorption=args.showabsorption,
-            use_lastemissiontype=args.use_lastemissiontype,
+            use_lastemissiontype=not args.use_thermalemissiontype,
         )
 
     at.spectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
@@ -1032,9 +1032,9 @@ def addargs(parser):
     )
 
     parser.add_argument(
-        "--use_lastemissiontype",
+        "--use_thermalemissiontype",
         action="store_true",
-        help="Tag packets by their last scattering rather than thermal emission type",
+        help="Tag packets by their thermal emission type rather than last scattering process",
     )
 
     parser.add_argument(
