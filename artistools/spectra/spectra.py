@@ -555,7 +555,7 @@ def get_flux_contributions(
     timestepmax=None,
     getemission=True,
     getabsorption=True,
-    use_lastemissiontype=False,
+    use_lastemissiontype=True,
 ):
     arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
     arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
@@ -712,7 +712,7 @@ def get_flux_contributions_from_packets(
     groupby="ion",
     modelgridindex=None,
     use_escapetime=False,
-    use_lastemissiontype=False,
+    use_lastemissiontype=True,
     useinternalpackets=False,
     emissionvelocitycut=None,
 ):
