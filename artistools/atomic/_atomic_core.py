@@ -27,7 +27,7 @@ def parse_adata(fadata, phixsdict, ionlist):
             for levelindex in range(level_count):
                 row = fadata.readline().split()
 
-                levelname = row[4].strip("'")
+                levelname = row[4].strip("'") if len(row) >= 5 else None
                 numberin = int(row[0])
                 assert levelindex == numberin - firstlevelnumber
                 phixstargetlist, phixstable = phixsdict.get((Z, ionstage, numberin), ([], []))
@@ -67,7 +67,7 @@ def parse_transitiondata(ftransitions, ionlist):
                         int(row[1]) - firstlevelnumber,
                         float(row[2]),
                         float(row[3]),
-                        int(row[4]) == 1,
+                        int(row[4]) == 1 if len(row) >= 5 else 0,
                     )
                 )
 
@@ -129,7 +129,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
     if get_transitions:
         transition_filename = Path(modelpath, "transitiondata.txt")
         if not quiet:
-            print(f"Reading {transition_filename.relative_to(modelpath.parent)}")
+            print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}")
         with at.zopen(transition_filename, "rt") as ftransitions:
             transitionsdict = {
                 (Z, ionstage): dftransitions
