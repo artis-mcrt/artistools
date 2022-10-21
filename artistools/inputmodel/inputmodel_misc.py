@@ -22,6 +22,7 @@ def get_modeldata(
     get_abundances=False,
     derived_cols=False,
     printwarningsonly=False,
+    skip3ddataframe=False,
 ) -> tuple[pd.DataFrame, float, float]:
     """
     Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
@@ -153,6 +154,8 @@ def get_modeldata(
             filename, delim_whitespace=True, header=None, names=columns, skiprows=headerrows, nrows=gridcellcount
         )
     else:
+        nrows_read = 1 if skip3ddataframe else gridcellcount
+
         # each cell takes up two lines in the model file
         dfmodel = pd.read_table(
             filename,
@@ -161,7 +164,7 @@ def get_modeldata(
             header=None,
             skiprows=lambda x: x < headerrows or (x - headerrows - 1) % 2 == 0,
             names=columns[:5],
-            nrows=gridcellcount,
+            nrows=nrows_read,
         )
         dfmodeloddlines = pd.read_table(
             filename,
@@ -170,7 +173,7 @@ def get_modeldata(
             header=None,
             skiprows=lambda x: x < headerrows or (x - headerrows - 1) % 2 == 1,
             names=columns[5:],
-            nrows=gridcellcount,
+            nrows=nrows_read,
         )
         assert len(dfmodel) == len(dfmodeloddlines)
         dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
@@ -179,7 +182,7 @@ def get_modeldata(
     if len(dfmodel) > gridcellcount:
         dfmodel = dfmodel.iloc[:gridcellcount]
 
-    assert len(dfmodel) == gridcellcount
+    assert len(dfmodel) == gridcellcount or skip3ddataframe
 
     dfmodel.index.name = "cellid"
     # dfmodel.drop('inputcellid', axis=1, inplace=True)
