@@ -12,6 +12,7 @@ from itertools import chain
 from pathlib import Path
 from typing import Any
 from typing import Iterable
+from typing import Literal
 from typing import Optional
 from typing import Sequence
 from typing import Union
@@ -279,14 +280,14 @@ def vec_len(vec):
 
 
 @lru_cache(maxsize=16)
-def get_nu_grid(modelpath):
+def get_nu_grid(modelpath: Path) -> np.ndarray[Any, np.dtype[np.float64]]:
     """Get an array of frequencies at which the ARTIS spectra are binned by exspec."""
     specfilename = firstexisting(["spec.out.gz", "spec.out", "specpol.out"], path=modelpath)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     return specdata.loc[:, "0"].values
 
 
-def get_deposition(modelpath) -> pd.DataFrame:
+def get_deposition(modelpath: Path) -> pd.DataFrame:
     if Path(modelpath).is_file():
         depfilepath = modelpath
         modelpath = Path(modelpath).parent
@@ -317,27 +318,29 @@ def get_deposition(modelpath) -> pd.DataFrame:
 
 
 @lru_cache(maxsize=16)
-def get_timestep_times(modelpath) -> list[str]:
+def get_timestep_times(modelpath: Path) -> list[str]:
     """Return a list of the mid time in days of each timestep from a spec.out file."""
     try:
         specfilename = firstexisting(["spec.out.gz", "spec.out", "specpol.out"], path=modelpath)
         time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
-        return time_columns.columns[1:]
+        return list(time_columns.columns[1:])
     except FileNotFoundError:
         return [f"{tdays:.3f}" for tdays in get_timestep_times_float(modelpath, loc="mid")]
 
 
 @lru_cache(maxsize=16)
-def get_timestep_times_float(modelpath, loc="mid"):
+def get_timestep_times_float(
+    modelpath: Path, loc: Literal["mid", "start", "end", "delta"] = "mid"
+) -> np.ndarray[Any, np.dtype[np.float64]]:
     """Return a list of the time in days of each timestep."""
-
-    modelpath = Path(modelpath)
 
     # virtual path to code comparison workshop models
     if not modelpath.exists() and modelpath.parts[0] == "codecomparison":
         import artistools.codecomparison
 
         return artistools.codecomparison.get_timestep_times_float(modelpath=modelpath, loc=loc)
+
+    modelpath = modelpath if modelpath.is_dir() else modelpath.parent
 
     # custom timestep file
     tsfilepath = Path(modelpath, "timesteps.out")
@@ -476,7 +479,9 @@ def get_timestep_time(modelpath, timestep):
 
 
 def get_escaped_arrivalrange(modelpath):
-    dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True)
+    dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata(
+        modelpath, printwarningsonly=True, skip3ddataframe=True
+    )
     cornervmax = math.sqrt(3 * vmax**2)
 
     # find the earliest possible escape time and add the largest possible travel time
