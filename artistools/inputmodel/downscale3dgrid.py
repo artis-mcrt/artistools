@@ -27,9 +27,9 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50):
 
     print("reading abundance file")
     with open(abundancefile, "r") as sourceabundancefile:
-        for x in range(0, grid):
+        for z in range(0, grid):
             for y in range(0, grid):
-                for z in range(0, grid):
+                for x in range(0, grid):
                     abread = sourceabundancefile.readline().split()
                     abund[x, y, z] = abread
 
@@ -39,9 +39,9 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50):
         t_model = sourcemodelfile.readline()
         vmax = sourcemodelfile.readline()
 
-        for x in range(0, grid):
+        for z in range(0, grid):
             for y in range(0, grid):
-                for z in range(0, grid):
+                for x in range(0, grid):
                     dum1, dum2, dum3, dum4, rhoread = sourcemodelfile.readline().split()
                     rho[x, y, z] = rhoread
                     fferead, fniread, fcoread, ffe52read, fcr48read = sourcemodelfile.readline().split()
@@ -59,12 +59,12 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50):
     fcr48_small = np.zeros((smallgrid, smallgrid, smallgrid))
     abund_small = np.zeros((smallgrid, smallgrid, smallgrid, 31))
 
-    for x in range(0, smallgrid):
+    for z in range(0, smallgrid):
         for y in range(0, smallgrid):
-            for z in range(0, smallgrid):
-                for xx in range(0, merge):
+            for x in range(0, smallgrid):
+                for zz in range(0, merge):
                     for yy in range(0, merge):
-                        for zz in range(0, merge):
+                        for xx in range(0, merge):
                             rho_small[x, y, z] += rho[x * merge + xx, y * merge + yy, z * merge + zz]
                             ffe_small[x, y, z] += (
                                 ffe[x * merge + xx, y * merge + yy, z * merge + zz]
@@ -91,9 +91,9 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50):
                                 * rho[x * merge + xx, y * merge + yy, z * merge + zz]
                             )
 
-    for x in range(0, smallgrid):
+    for z in range(0, smallgrid):
         for y in range(0, smallgrid):
-            for z in range(0, smallgrid):
+            for x in range(0, smallgrid):
                 if rho_small[x, y, z] > 0:
                     ffe_small[x, y, z] /= rho_small[x, y, z]
                     fni_small[x, y, z] /= rho_small[x, y, z]
@@ -107,9 +107,9 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50):
     print("writing abundance file")
     i = 0
     with open(modelpath / smallabundancefile, "w") as newabundancefile:
-        for x in range(0, smallgrid):
+        for z in range(0, smallgrid):
             for y in range(0, smallgrid):
-                for z in range(0, smallgrid):
+                for x in range(0, smallgrid):
                     line = abund_small[x, y, z, :].tolist()  # index 1:30 are abundances
                     line[0] = int(i + 1)  # replace index 0 with index id
                     i += 1
@@ -125,9 +125,9 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50):
         newmodelfile.write(f"{t_model}")
         newmodelfile.write(f"{vmax}")
 
-        for x in range(0, smallgrid):
+        for z in range(0, smallgrid):
             for y in range(0, smallgrid):
-                for z in range(0, smallgrid):
+                for x in range(0, smallgrid):
                     line1 = [
                         int(i + 1),
                         -xmax + 2 * x * xmax / smallgrid,
