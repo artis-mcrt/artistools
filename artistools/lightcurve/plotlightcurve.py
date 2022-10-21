@@ -89,12 +89,19 @@ def make_lightcurve_plot_from_lightcurve_out_files(
             reflightcurveindex += 1
             continue
 
+        lcname = None
+        if not Path(modelpath).is_dir():  # handle e.g. modelpath/light_curve.out
+            lcname = Path(modelpath).parts[-1]
+            modelpath = Path(modelpath).parent
         modelname = at.get_model_name(modelpath)
+        if lcname is not None:
+            modelname += f" {lcname}"
         print(f"====> {modelname}")
 
-        lcname = "gamma_light_curve.out" if (escape_type == "TYPE_GAMMA" and not frompackets) else "light_curve.out"
-        if args.plotviewingangle is not None and lcname == "light_curve.out":
-            lcname = "light_curve_res.out"
+        if lcname is None:
+            lcname = "gamma_light_curve.out" if (escape_type == "TYPE_GAMMA" and not frompackets) else "light_curve.out"
+            if args.plotviewingangle is not None and lcname == "light_curve.out":
+                lcname = "light_curve_res.out"
         try:
             lcpath = at.firstexisting([lcname + ".xz", lcname + ".gz", lcname], path=modelpath)
         except FileNotFoundError:
