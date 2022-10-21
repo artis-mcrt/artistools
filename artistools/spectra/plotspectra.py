@@ -199,6 +199,9 @@ def plot_artis_spectrum(
     **plotkwargs,
 ):
     """Plot an ARTIS output spectrum."""
+    modelpath_or_file = Path(modelpath)
+    modelpath = Path(modelpath) if Path(modelpath).is_dir() else Path(modelpath).parent
+
     if not Path(modelpath, "input.txt").exists():
         print(f"Skipping '{modelpath}' (no input.txt found. Not an ARTIS folder?)")
         return
@@ -255,7 +258,7 @@ def plot_artis_spectrum(
             else:
                 statpath = Path(args.outputfile).resolve().parent
         else:
-            spectrum = get_spectrum(modelpath, timestepmin, timestepmax, fnufilterfunc=filterfunc)
+            spectrum = get_spectrum(modelpath_or_file, timestepmin, timestepmax, fnufilterfunc=filterfunc)
             if args.plotviewingangle:  # read specpol res.
                 angles = args.plotviewingangle
                 viewinganglespectra = {}
@@ -374,7 +377,7 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
 
         seriesdata = pd.DataFrame()
 
-        if specpath.is_dir() or specpath.name == "spec.out":
+        if specpath.is_dir() or specpath.name.endswith(".out"):
             # ARTIS model spectrum
             # plotkwargs['dash_capstyle'] = dash_capstyleList[artisindex]
             if "linewidth" not in plotkwargs:
