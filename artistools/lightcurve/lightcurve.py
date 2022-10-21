@@ -27,10 +27,11 @@ def readfile(filepath_or_buffer, modelpath=None, args=None):
         # get a list of dfs with light curves at each viewing angle
         lcdata = at.gather_res_data(lcdata, index_of_repeated_value=0)
 
-    else:
+    elif list(lcdata.time.values) != list(sorted(lcdata.time.values)):
         # the light_curve.dat file repeats x values, so keep the first half only
         lcdata = lcdata.iloc[: len(lcdata) // 2]
         lcdata.index.name = "timestep"
+
     return lcdata
 
 
