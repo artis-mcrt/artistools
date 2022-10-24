@@ -200,9 +200,7 @@ def get_modeldata(
         wid_init = at.misc.get_wid_init_at_tmodel(modelpath, gridcellcount, t_model_init_days, xmax_tmodel)
         dfmodel.eval("cellmass_grams = rho * @wid_init ** 3", inplace=True)
 
-        dfmodel.rename(
-            columns={"pos_x_min": "pos_x_min", "pos_y_min": "pos_y_min", "pos_z_min": "pos_z_min"}, inplace=True
-        )
+        dfmodel.rename(columns={"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"}, inplace=True)
         if "pos_x_min" in dfmodel.columns:
             print("Cell positions in model.txt are defined in the header")
         else:
