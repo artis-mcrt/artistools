@@ -205,7 +205,7 @@ def get_modeldata(
         dfmodel.rename(columns={"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"}, inplace=True)
         if "pos_x_min" in dfmodel.columns:
             print("Cell positions in model.txt are defined in the header")
-        else:
+        elif not skip3ddataframe:
             cellid = dfmodel.index.values
             xindex = cellid % ncoordgridx
             yindex = (cellid // ncoordgridx) % ncoordgridy
