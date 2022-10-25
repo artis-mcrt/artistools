@@ -322,6 +322,8 @@ def make_lightcurve_plot_from_lightcurve_out_files(
         angles, viewing_angles, angle_definition = at.lightcurve.get_angle_stuff(modelpath, args)
         if args.plotviewingangle:
             lcdataframes = lcdata
+            if args.average_every_tenth_viewing_angle:
+                lcdataframes = at.lightcurve.average_lightcurve_every_10_bins(lcdataframes, args)
 
             if args.colorbarcostheta or args.colorbarphi:
                 costheta_viewing_angle_bins, phi_viewing_angle_bins = at.lightcurve.get_viewinganglebin_definitions()
