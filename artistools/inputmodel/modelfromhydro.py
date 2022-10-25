@@ -90,14 +90,16 @@ def get_snapshot_time_geomunits(pathtogriddata):
                 f"({simulation_end_time_geomunits * 4.926e-6} s)"
             )
 
-        mergertimefile = str(Path(pathtogriddata) / 'tmerger.txt')
+        mergertimefile = str(Path(pathtogriddata) / "tmerger.txt")
         if os.path.isfile(mergertimefile):
             with open(mergertimefile, "r") as fmergertimefile:
                 comments = fmergertimefile.readline()
                 mergertime_geomunits = float(fmergertimefile.readline())
-                print(f'Found simulation merger time to be {mergertime_geomunits} '
-                      f'({mergertime_geomunits * 4.926e-6} s) '
-                      f'time since merger {(simulation_end_time_geomunits - mergertime_geomunits) * 4.926e-6} s')
+                print(
+                    f"Found simulation merger time to be {mergertime_geomunits} "
+                    f"({mergertime_geomunits * 4.926e-6} s) "
+                    f"time since merger {(simulation_end_time_geomunits - mergertime_geomunits) * 4.926e-6} s"
+                )
         else:
             print('Make file "tmerger.txt" with time of merger in geom units')
             quit()
@@ -150,7 +152,9 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
         xmax = abs(float(gridfile.readline().split()[0]))
         xmax = (xmax * factor_position) * (u.km).to(u.cm)
 
-    t_model_sec = ((simulation_end_time_geomunits - mergertime_geomunits) + extratime_geomunits) * 4.926e-6  # in seconds
+    t_model_sec = (
+        (simulation_end_time_geomunits - mergertime_geomunits) + extratime_geomunits
+    ) * 4.926e-6  # in seconds
     vmax = xmax / t_model_sec  # cm/s
 
     t_model_days = t_model_sec / (24.0 * 3600)  # in days
@@ -418,9 +422,6 @@ def addargs(parser):
     )
     parser.add_argument(
         "-targetmodeltime_days", "-t", type=float, default=1.0, help="Time in days for the output model snapshot"
-    )
-    parser.add_argument(
-        "--noabundances", action="store_true", help="Skip trajectory abundance mapping (get densities only)"
     )
     parser.add_argument("-outputpath", "-o", default=None, help="Path for output model files")
 
