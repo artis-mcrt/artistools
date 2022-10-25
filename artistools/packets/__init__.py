@@ -69,7 +69,7 @@ def get_column_names_artiscode(modelpath):
             "pol_dir[0]": "pol_dirx",
             "pol_dir[1]": "pol_diry",
             "pol_dir[2]": "pol_dirz",
-            'trueemissionvelocity': 'true_emission_velocity',
+            "trueemissionvelocity": "true_emission_velocity",
         }
 
         for i, column_name in enumerate(columns):
@@ -372,7 +372,7 @@ def get_escaping_packet_angle_bin(modelpath, dfpackets):
 
 
 def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, escape_time=True):
-    if timestep_max == None:
+    if timestep_max is None:
         timestep_max = timestep_min
     modeldata, _, vmax_cms = at.inputmodel.get_modeldata(modelpath)
 
@@ -383,9 +383,9 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
     # timestep = 63 # 82 73 #63 #54 46 #27
     # print([(ts, time) for ts, time in enumerate(timeminarray)])
     if escape_time:
-        print('Binning by packet escape time')
+        print("Binning by packet escape time")
     else:
-        print('Binning by packet arrival time')
+        print("Binning by packet arrival time")
 
     packetsfiles = at.packets.get_packetsfilepaths(modelpath)
 
@@ -400,14 +400,15 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
 
         # print(dfpackets[['emission_velocity', 'em_velx', 'em_vely', 'em_velz']])
         # select only type escape and type r-pkt (don't include gamma-rays)
-        dfpackets.query(f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids["TYPE_RPKT"]}',
-                        inplace=True)
+        dfpackets.query(
+            f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids["TYPE_RPKT"]}', inplace=True
+        )
         if escape_time:
-            dfpackets.query('@timeminarray[@timestep_min] < escape_time/@DAY < @timemaxarray[@timestep_max]',
-                            inplace=True)
+            dfpackets.query(
+                "@timeminarray[@timestep_min] < escape_time/@DAY < @timemaxarray[@timestep_max]", inplace=True
+            )
         else:  # packet arrival time
-            dfpackets.query('@timeminarray[@timestep_min] < t_arrive_d < @timemaxarray[@timestep_max]',
-                            inplace=True)
+            dfpackets.query("@timeminarray[@timestep_min] < t_arrive_d < @timemaxarray[@timestep_max]", inplace=True)
 
         emission_position3d[0].extend([em_velx / CLIGHT for em_velx in dfpackets["em_velx"]])
         emission_position3d[1].extend([em_vely / CLIGHT for em_vely in dfpackets["em_vely"]])
@@ -434,7 +435,9 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
     # print(hist.shape)
     if weight_by_energy:
         # Divide binned energies by number of processes and by length of timestep
-        hist = hist / len(packetsfiles) / (timemaxarray[timestep_max] - timeminarray[timestep_min]) # timedeltaarray[timestep]  # histogram weighted by energy
+        hist = (
+            hist / len(packetsfiles) / (timemaxarray[timestep_max] - timeminarray[timestep_min])
+        )  # timedeltaarray[timestep]  # histogram weighted by energy
     # - need to divide by number of processes
     # and length of timestep(s)
 

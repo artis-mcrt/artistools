@@ -7,7 +7,7 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/artis-mcrt/artistools/badge)](https://www.codefactor.io/repository/github/artis-mcrt/artistools)
 
 ## Installation
-Requires Python >= 3.9  
+Requires Python >= 3.9
 
 First clone the repository, for example:
 ```sh

@@ -674,6 +674,7 @@ def make_contrib_plot(axes, modelpath, densityplotyvars, args):
 
     if args.classicartis:
         import artistools.estimators.estimators_classic
+
         modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
         estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
         allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index]
@@ -1158,8 +1159,9 @@ def addargs(parser):
         "-viewinganglelabelunits", type=str, default="deg", help="Choose viewing angle label in deg or rad"
     )
 
-    parser.add_argument('--classicartis', action='store_true',
-                        help='Flag to show using output from classic ARTIS branch')
+    parser.add_argument(
+        "--classicartis", action="store_true", help="Flag to show using output from classic ARTIS branch"
+    )
 
 
 def main(args=None, argsraw=None, **kwargs):
