@@ -479,6 +479,7 @@ def get_timestep_time(modelpath, timestep):
 
 
 def get_escaped_arrivalrange(modelpath):
+    modelpath = Path(modelpath)
     dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata(
         modelpath, printwarningsonly=True, skip3ddataframe=True
     )
