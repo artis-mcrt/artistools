@@ -2,7 +2,6 @@
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from pathlib import Path
 
 import artistools as at
 
@@ -14,8 +13,9 @@ def make_2d_packets_plot_imshow(modelpath, timestep_min, timestep_max):
     modeldata, _, vmax_cms = at.inputmodel.get_modeldata(modelpath)
     escape_time = True
 
-    hist = at.packets.make_3d_histogram_from_packets(modelpath, timestep_min=timestep_min, timestep_max=timestep_max,
-                                                     escape_time=escape_time)
+    hist = at.packets.make_3d_histogram_from_packets(
+        modelpath, timestep_min=timestep_min, timestep_max=timestep_max, escape_time=escape_time
+    )
 
     grid = round(len(modeldata["inputcellid"]) ** (1.0 / 3.0))
     vmax_cms = vmax_cms / CLIGHT
@@ -29,36 +29,35 @@ def make_2d_packets_plot_imshow(modelpath, timestep_min, timestep_max):
                     hist[x, y, z] = None
                 i += 1
 
-    timeminarray = at.get_timestep_times_float(modelpath=modelpath, loc='start')
-    timemaxarray = at.get_timestep_times_float(modelpath=modelpath, loc='end')
+    timeminarray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
+    timemaxarray = at.get_timestep_times_float(modelpath=modelpath, loc="end")
     time_lower = timeminarray[timestep_min]
     time_upper = timemaxarray[timestep_max]
-    title = f'{time_lower:.2f} - {time_upper:.2f} days'
-    print(f'plotting packets between {title}')
+    title = f"{time_lower:.2f} - {time_upper:.2f} days"
+    print(f"plotting packets between {title}")
     if escape_time:
-        escapetitle = 'pktescapetime'
+        escapetitle = "pktescapetime"
     else:
-        escapetitle = 'pktarrivetime'
-    title = title + '\n' + escapetitle
+        escapetitle = "pktarrivetime"
+    title = title + "\n" + escapetitle
 
-    plot_axes_list = ['xz', 'xy']
+    plot_axes_list = ["xz", "xy"]
     for plot_axes in plot_axes_list:
-        data, extent = at.plottools.imshow_init_for_artis_grid(grid, vmax_cms, hist,
-                                                               plot_axes=plot_axes)
+        data, extent = at.plottools.imshow_init_for_artis_grid(grid, vmax_cms, hist, plot_axes=plot_axes)
 
         plt.imshow(data, extent=extent)
         cbar = plt.colorbar()
-        cbar.set_label('n packets', rotation=90)
-        plt.xlabel(f'v{plot_axes[0]} / c')
-        plt.ylabel(f'v{plot_axes[1]} / c')
+        cbar.set_label("n packets", rotation=90)
+        plt.xlabel(f"v{plot_axes[0]} / c")
+        plt.ylabel(f"v{plot_axes[1]} / c")
         plt.xlim(-vmax_cms, vmax_cms)
         plt.ylim(-vmax_cms, vmax_cms)
 
         plt.title(title)
         # plt.show()
-        outfilename = f'packets_hist_{time_lower:.2f}d_{plot_axes}_{escapetitle}.pdf'
-        plt.savefig(Path(modelpath) / outfilename, format='pdf')
-        print(f'Saved {outfilename}')
+        outfilename = f"packets_hist_{time_lower:.2f}d_{plot_axes}_{escapetitle}.pdf"
+        plt.savefig(Path(modelpath) / outfilename, format="pdf")
+        print(f"Saved {outfilename}")
         plt.clf()
 
 
