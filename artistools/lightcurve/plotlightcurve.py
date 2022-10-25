@@ -93,7 +93,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(
         if not Path(modelpath).is_dir():  # handle e.g. modelpath/light_curve.out
             lcname = Path(modelpath).parts[-1]
             modelpath = Path(modelpath).parent
-        modelname = at.get_model_name(modelpath)
+        modelname = at.get_model_name(modelpath) if args.label[seriesindex] is None else args.label[seriesindex]
         if lcname is not None:
             modelname += f" {lcname}"
         print(f"====> {modelname}")
@@ -118,11 +118,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(
             lcdata = at.lightcurve.readfile(lcpath, modelpath, args)
 
         plotkwargs = {}
-        if args.label[seriesindex] is None:
-            plotkwargs["label"] = modelname
-        else:
-            plotkwargs["label"] = args.label[seriesindex]
-
+        plotkwargs["label"] = modelname
         plotkwargs["linestyle"] = args.linestyle[seriesindex]
         plotkwargs["color"] = args.color[seriesindex]
         if args.dashes[seriesindex]:
@@ -131,9 +127,11 @@ def make_lightcurve_plot_from_lightcurve_out_files(
             plotkwargs["linewidth"] = args.linewidth[seriesindex]
 
         if args.plotdeposition:
-            dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath)
-            model_mass_grams = dfmodel.cellmass_grams.sum()
-            print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
+            if args.plotthermalisation:
+                dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath, skipabundances=True)
+                model_mass_grams = dfmodel.cellmass_grams.sum()
+                print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
+
             depdata = at.get_deposition(modelpath)
 
             # color_total = next(axis._get_lines.prop_cycler)['color']
@@ -365,7 +363,9 @@ def make_lightcurve_plot_from_lightcurve_out_files(
                     )
                 else:
                     plotkwargs["color"] = None
-                    plotkwargs["label"] = f"{modelname}\n{angle_definition[angle]}"
+                    plotkwargs["label"] = (
+                        f"{modelname}\n{angle_definition[angle]}" if modelname else angle_definition[angle]
+                    )
 
             filterfunc = at.get_filterfunc(args)
             if filterfunc is not None:
@@ -897,7 +897,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                         "WARNING: -color argument will not work with viewing angles for colour evolution plots,"
                         "colours are taken from color_list array instead"
                     )
-                    plotkwargs["color"] = color_list[angle_counter]  # index instaed of angle_counter??
+                    # plotkwargs["color"] = color_list[angle_counter]  # index instaed of angle_counter??
                     angle_counter += 1
                 elif args.plotviewingangle and not args.color:
                     plotkwargs["color"] = color_list[angle_counter]
