@@ -45,10 +45,11 @@ repos:
       rev: v0.982
       hooks:
           - id: mypy
-            language: system
+            # language: system
+            additional_dependencies: [numpy, types-PyYAML]
             types: [python]
             require_serial: true
-        # verbose: true
+            # verbose: true
     - repo: local
       hooks:
           - id: pylint
