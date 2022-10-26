@@ -45,7 +45,7 @@ def open_tar_file_or_extracted(traj_root, particleid: int, memberfilename: str):
         tarfilepath = Path(traj_root, f"{particleid}.tar.xz")
 
     if not tarfilepath.is_file():
-        print(f"No data found for particle {particleid}")
+        print(f"No network data found for particle {particleid}")
         raise FileNotFoundError
 
     # print(f"using {tarfilepath} for {memberfilename}")
