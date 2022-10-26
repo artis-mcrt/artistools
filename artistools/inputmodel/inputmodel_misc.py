@@ -288,6 +288,9 @@ def add_derived_cols_to_modeldata(
         dfmodel["pos_y_mid"] = dfmodel["pos_y_min"] + (0.5 * wid_init)
         dfmodel["pos_z_mid"] = dfmodel["pos_z_min"] + (0.5 * wid_init)
 
+    if "logrho" in derived_cols and "logrho" not in dfmodel.columns:
+        dfmodel.eval("logrho = log10(rho)", inplace=True)
+
     if "angle_bin" in derived_cols:
         get_cell_angle(dfmodel, modelpath)
 
