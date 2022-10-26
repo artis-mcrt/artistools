@@ -220,7 +220,7 @@ def main(args=None, argsraw=None, **kwargs):
         dfbinding = pd.read_csv(fbinding, delim_whitespace=True, names=header)
         # print(dfbinding)
 
-    traj_root = Path("/Volumes/GoogleDrive/My Drive/Archive/Mergers/SFHo_short/SFHo")
+    traj_root = Path("/Volumes/GoogleDrive/Shared Drives/GSI NSM/Mergers/SFHo_long/Trajectory_SFHo_long-radius-entropy")
     # get_model_recombenergy(dfbinding, args)
     get_particles_recomb_nuc_energy(traj_root, dfbinding)
 
