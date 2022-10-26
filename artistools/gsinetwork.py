@@ -3,10 +3,10 @@
 import argparse
 import math
 import multiprocessing
+from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 from typing import Any
-from typing import Sequence
 
 import argcomplete
 import matplotlib.pyplot as plt
@@ -384,7 +384,7 @@ def get_particledata(
 
 
 def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_el_a: list[tuple[str, int]]):
-    traj_root = Path("/Volumes/GoogleDrive/My Drive/Archive/Mergers/SFHo_short/SFHo")
+    traj_root = Path("/Volumes/GoogleDrive/Shared Drives/GSI NSM/Mergers/SFHo_long/Trajectory_SFHo_long-radius-entropy")
 
     arr_el, arr_a = zip(*arr_el_a)
     arr_strnuc = [el + str(a) for el, a in arr_el_a]
@@ -392,6 +392,8 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     # arr_z = [at.get_atomic_number(el) for el in arr_el]
 
     dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath)
+    if "logrho" not in dfmodel.columns:
+        dfmodel.eval("logrho = log10(rho)", inplace=True)
     model_mass_grams = dfmodel.cellmass_grams.sum()
     npts_model = len(dfmodel)
 
@@ -404,6 +406,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     wid_init = at.misc.get_wid_init_at_tmodel(modelpath, gridcellcount, t_model_init_days, xmax_tmodel)
     dfmodel["n_assoc_cells"] = [len(assoc_cells.get(inputcellid - 1, [])) for inputcellid in dfmodel["inputcellid"]]
 
+    # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
     dfmodel.eval("cellmass_grams_mapped = 10 ** logrho * @wid_init ** 3 * n_assoc_cells", inplace=True)
     for strnuc, a in zip(arr_strnuc, arr_a):
         corr = (
@@ -512,7 +515,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     list_particleids_getabund = dfpartcontrib.query("(cellindex - 1) in @mgiplotlist").particleid.unique()
     fworkerwithabund = partial(get_particledata, arr_time_gsi_s, arr_strnuc, traj_root)
 
-    print(f"Reading trajectory data for {len(list_particleids_getabund)} particles with abundances")
+    print(f"Reading trajectory data for {len(list_particleids_getabund)} particles (including abundance data)")
 
     if at.config["num_processes"] > 1:
         with multiprocessing.Pool(processes=at.config["num_processes"]) as pool:
@@ -527,7 +530,8 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     ]
     fworkernoabund = partial(get_particledata, arr_time_gsi_s, [], traj_root)
     print(
-        f"Reading trajectory data for {len(list_particleids_noabund)} particles for Qdot/thermal data (no abundances)"
+        f"Reading trajectory data for {len(list_particleids_noabund)} particles for Qdot/thermal data (not reading"
+        " abundances)"
     )
 
     if at.config["num_processes"] > 1:
