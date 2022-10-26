@@ -371,7 +371,7 @@ def get_escaping_packet_angle_bin(modelpath, dfpackets):
     return dfpackets
 
 
-def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, escape_time=True):
+def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, em_time=True):
     if timestep_max is None:
         timestep_max = timestep_min
     modeldata, _, vmax_cms = at.inputmodel.get_modeldata(modelpath)
@@ -382,8 +382,8 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
 
     # timestep = 63 # 82 73 #63 #54 46 #27
     # print([(ts, time) for ts, time in enumerate(timeminarray)])
-    if escape_time:
-        print("Binning by packet escape time")
+    if em_time:
+        print("Binning by packet emission time")
     else:
         print("Binning by packet arrival time")
 
@@ -391,6 +391,7 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
 
     emission_position3d = [[], [], []]
     e_rf = []
+    e_cmf = []
 
     for npacketfile in range(0, len(packetsfiles)):
         # for npacketfile in range(0, 1):
@@ -398,15 +399,19 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
         at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
         dfpackets = dfpackets.dropna(subset=["emission_velocity"])  # drop rows where emission_vel is NaN
 
+        only_packets_0_scatters = False
+        if only_packets_0_scatters:
+            print("Only using packets with 0 scatters")
+            # print(dfpackets[['scat_count', 'interactions', 'nscatterings']])
+            dfpackets.query("nscatterings == 0", inplace=True)
+
         # print(dfpackets[['emission_velocity', 'em_velx', 'em_vely', 'em_velz']])
         # select only type escape and type r-pkt (don't include gamma-rays)
         dfpackets.query(
             f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids["TYPE_RPKT"]}', inplace=True
         )
-        if escape_time:
-            dfpackets.query(
-                "@timeminarray[@timestep_min] < escape_time/@DAY < @timemaxarray[@timestep_max]", inplace=True
-            )
+        if em_time:
+            dfpackets.query("@timeminarray[@timestep_min] < em_time/@DAY < @timemaxarray[@timestep_max]", inplace=True)
         else:  # packet arrival time
             dfpackets.query("@timeminarray[@timestep_min] < t_arrive_d < @timemaxarray[@timestep_max]", inplace=True)
 
@@ -415,12 +420,15 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
         emission_position3d[2].extend([em_velz / CLIGHT for em_velz in dfpackets["em_velz"]])
 
         e_rf.extend([e_rf for e_rf in dfpackets["e_rf"]])
+        e_cmf.extend([e_cmf for e_cmf in dfpackets["e_cmf"]])
 
     emission_position3d = np.array(emission_position3d)
-    weight_by_energy = False
+    weight_by_energy = True
     if weight_by_energy:
         e_rf = np.array(e_rf)
-        weights = e_rf
+        e_cmf = np.array(e_cmf)
+        # weights = e_rf
+        weights = e_cmf
     else:
         weights = None
 
@@ -429,7 +437,7 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
 
     # print(emission_position3d)
     grid_3d, _, _, _ = make_3d_grid(modeldata, vmax_cms)
-    print(grid_3d)
+    print(grid_3d.shape)
     # https://stackoverflow.com/questions/49861468/binning-random-data-to-regular-3d-grid-with-unequal-axis-lengths
     hist, _ = np.histogramdd(emission_position3d.T, [np.append(ax, np.inf) for ax in grid_3d], weights=weights)
     # print(hist.shape)

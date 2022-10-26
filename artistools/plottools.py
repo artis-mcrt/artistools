@@ -130,7 +130,7 @@ def imshow_init_for_artis_grid(ngrid, vmax, plot_variable_3d_array, plot_axes="x
     extent = extent["left"], extent["right"], extent["bottom"], extent["top"]
     data = np.zeros((ngrid, ngrid))
 
-    plot_axes_choices = ["xy", "zx"]
+    plot_axes_choices = ["xy", "xz"]
     if plot_axes not in plot_axes_choices:
         print(f"Choose plot axes from {plot_axes_choices}")
         quit()
