@@ -354,7 +354,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(
                     plotkwargs["alpha"] = 0.75
                     plotkwargs["label"] = None
                     # Update plotkwargs with viewing angle colour
-                    plotkwargs, _ = get_viewinganglecolor_for_colorbar(
+                    plotkwargs, colorindex = get_viewinganglecolor_for_colorbar(
                         angle_definition,
                         angle,
                         costheta_viewing_angle_bins,
@@ -363,6 +363,8 @@ def make_lightcurve_plot_from_lightcurve_out_files(
                         plotkwargs,
                         args,
                     )
+                    if args.average_every_tenth_viewing_angle:  # if angles plotted that are not averaged over phi
+                        plotkwargs["color"] = "lightgrey"  # then plot these in grey
                 else:
                     plotkwargs["color"] = None
                     plotkwargs["label"] = (
@@ -396,7 +398,11 @@ def make_lightcurve_plot_from_lightcurve_out_files(
                     lcdata_before_valid = lcdata.query("time <= @lcdata_valid.time.min()")
                     lcdata_after_valid = lcdata.query("time >= @lcdata_valid.time.max()")
 
-                axis.plot(lcdata_valid["time"], lcdata_valid["lum"], **plotkwargs)
+                if args.average_every_tenth_viewing_angle and angle % 10 == 0:
+                    color = scaledmap.to_rgba(colorindex)  # Update colours for light curves averaged over phi
+                    axis.plot(lcdata["time"], lcdata["lum"], color=color, zorder=10)
+                else:
+                    axis.plot(lcdata_valid["time"], lcdata_valid["lum"], **plotkwargs)
                 if args.plotinvalidpart:
                     plotkwargs_invalidrange = plotkwargs.copy()
                     plotkwargs_invalidrange.update({"label": None, "alpha": 0.5})
