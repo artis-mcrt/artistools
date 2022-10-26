@@ -11,23 +11,23 @@ DAY = 86400
 
 def make_2d_packets_plot_imshow(modelpath, timestep_min, timestep_max):
     modeldata, _, vmax_cms = at.inputmodel.get_modeldata(modelpath)
-    escape_time = True
+    em_time = True  # False for arrive time
 
     hist = at.packets.make_3d_histogram_from_packets(
-        modelpath, timestep_min=timestep_min, timestep_max=timestep_max, escape_time=escape_time
+        modelpath, timestep_min=timestep_min, timestep_max=timestep_max, em_time=em_time
     )
 
     grid = round(len(modeldata["inputcellid"]) ** (1.0 / 3.0))
     vmax_cms = vmax_cms / CLIGHT
 
-    # Don't plot empty cells
-    i = 0
-    for z in range(0, grid):
-        for y in range(0, grid):
-            for x in range(0, grid):
-                if modeldata["rho"][i] == 0.0:
-                    hist[x, y, z] = None
-                i += 1
+    # # Don't plot empty cells
+    # i = 0
+    # for z in range(0, grid):
+    #     for y in range(0, grid):
+    #         for x in range(0, grid):
+    #             if modeldata["rho"][i] == 0.0:
+    #                 hist[x, y, z] = None
+    #             i += 1
 
     timeminarray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
     timemaxarray = at.get_timestep_times_float(modelpath=modelpath, loc="end")
@@ -35,25 +35,27 @@ def make_2d_packets_plot_imshow(modelpath, timestep_min, timestep_max):
     time_upper = timemaxarray[timestep_max]
     title = f"{time_lower:.2f} - {time_upper:.2f} days"
     print(f"plotting packets between {title}")
-    if escape_time:
-        escapetitle = "pktescapetime"
+    if em_time:
+        escapetitle = "pktemissiontime"
     else:
         escapetitle = "pktarrivetime"
     title = title + "\n" + escapetitle
 
     plot_axes_list = ["xz", "xy"]
     for plot_axes in plot_axes_list:
-        data, extent = at.plottools.imshow_init_for_artis_grid(grid, vmax_cms, hist, plot_axes=plot_axes)
+        data, extent = at.plottools.imshow_init_for_artis_grid(grid, vmax_cms, hist / 1e41, plot_axes=plot_axes)
 
         plt.imshow(data, extent=extent)
         cbar = plt.colorbar()
-        cbar.set_label("n packets", rotation=90)
+        # cbar.set_label('n packets', rotation=90)
+        cbar.set_label(r"energy emission rate ($10^{41}$ erg/s)", rotation=90)
+        # cbar.set_label(r'npackets)', rotation=90)
         plt.xlabel(f"v{plot_axes[0]} / c")
         plt.ylabel(f"v{plot_axes[1]} / c")
         plt.xlim(-vmax_cms, vmax_cms)
         plt.ylim(-vmax_cms, vmax_cms)
 
-        plt.title(title)
+        # plt.title(title)
         # plt.show()
         outfilename = f"packets_hist_{time_lower:.2f}d_{plot_axes}_{escapetitle}.pdf"
         plt.savefig(Path(modelpath) / outfilename, format="pdf")
@@ -121,3 +123,8 @@ def plot_packet_mean_emission_velocity(modelpath, write_emission_data=True):
     outfilename = "meanemissionvelocity.pdf"
     plt.savefig(Path(modelpath) / outfilename, format="pdf")
     print(f"Saved {outfilename}")
+
+
+modelpath = Path(".")
+# plot_packet_mean_emission_velocity(modelpath)
+make_2d_packets_plot_imshow(modelpath, timestep_min=77, timestep_max=81)
