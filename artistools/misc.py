@@ -844,21 +844,22 @@ def get_linelist(modelpath, returntype="dict"):
 
 
 @lru_cache(maxsize=8)
-def get_npts_model(modelpath) -> int:
+def get_npts_model(modelpath: Path) -> int:
     """Return the number of cell in the model.txt."""
-    with Path(modelpath, "model.txt").open("r") as modelfile:
+    modelfilepath = Path(modelpath) if Path(modelpath).is_file() else Path(modelpath, "model.txt")
+    with zopen(modelfilepath, "rt") as modelfile:
         npts_model = int(readnoncommentline(modelfile))
     return npts_model
 
 
 @lru_cache(maxsize=8)
-def get_nprocs(modelpath) -> int:
+def get_nprocs(modelpath: Path) -> int:
     """Return the number of MPI processes specified in input.txt."""
     return int(Path(modelpath, "input.txt").read_text().split("\n")[21].split("#")[0])
 
 
 @lru_cache(maxsize=8)
-def get_inputparams(modelpath) -> dict[str, Any]:
+def get_inputparams(modelpath: Path) -> dict[str, Any]:
     """Return parameters specified in input.txt."""
     from astropy import units as u
     from astropy import constants as const
