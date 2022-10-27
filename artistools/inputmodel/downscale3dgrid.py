@@ -1,3 +1,4 @@
+import os
 import numpy as np
 
 
@@ -11,10 +12,10 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50):
     merge = grid / smallgrid
     merge = int(merge)
 
-    modelfile = modelpath / "model.txt"
-    abundancefile = modelpath / "abundances.txt"
-    smallmodelfile = modelpath / "model_small.txt"
-    smallabundancefile = modelpath / "abundances_small.txt"
+    modelfile = os.path.join(modelpath, "model.txt")
+    abundancefile = os.path.join(modelpath, "abundances.txt")
+    smallmodelfile = os.path.join(modelpath, "model_small.txt")
+    smallabundancefile = os.path.join(modelpath, "abundances_small.txt")
 
     rho = np.zeros((grid, grid, grid))
     ffe = np.zeros((grid, grid, grid))
@@ -106,20 +107,20 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50):
 
     print("writing abundance file")
     i = 0
-    with open(modelpath / smallabundancefile, "w") as newabundancefile:
+    with open(os.path.join(modelpath, smallabundancefile), "w") as newabundancefile:
         for z in range(0, smallgrid):
             for y in range(0, smallgrid):
                 for x in range(0, smallgrid):
                     line = abund_small[x, y, z, :].tolist()  # index 1:30 are abundances
                     line[0] = int(i + 1)  # replace index 0 with index id
                     i += 1
-                    newabundancefile.writelines("%s " % item for item in line)
+                    newabundancefile.writelines("%g " % item for item in line)
                     newabundancefile.writelines("\n")
 
     print("writing model file")
     xmax = float(vmax) * float(t_model) * 3600 * 24
     i = 0
-    with open(modelpath / smallmodelfile, "w") as newmodelfile:
+    with open(os.path.join(modelpath, smallmodelfile), "w") as newmodelfile:
         gridsize = int(smallgrid**3)
         newmodelfile.write(f"{gridsize}\n")
         newmodelfile.write(f"{t_model}")
@@ -143,7 +144,9 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50):
                         fcr48_small[x, y, z],
                     ]
                     i += 1
-                    newmodelfile.writelines("%s " % item for item in line1)
+                    newmodelfile.writelines("%g " % item for item in line1)
                     newmodelfile.writelines("\n")
-                    newmodelfile.writelines("%s " % item for item in line2)
+                    newmodelfile.writelines("%g " % item for item in line2)
                     newmodelfile.writelines("\n")
+
+    return
