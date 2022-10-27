@@ -123,8 +123,3 @@ def plot_packet_mean_emission_velocity(modelpath, write_emission_data=True):
     outfilename = "meanemissionvelocity.pdf"
     plt.savefig(Path(modelpath) / outfilename, format="pdf")
     print(f"Saved {outfilename}")
-
-
-modelpath = Path(".")
-# plot_packet_mean_emission_velocity(modelpath)
-make_2d_packets_plot_imshow(modelpath, timestep_min=77, timestep_max=81)
