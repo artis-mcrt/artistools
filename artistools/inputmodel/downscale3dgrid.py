@@ -2,7 +2,7 @@ import os
 import numpy as np
 
 
-def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50):
+def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50, plot=False):
     """Should be same as downscale_3d_grid.pro
     Expects a 3D model with grid^3 cells and outputs 3D model with smallgrid^3 cells"""
 
@@ -148,5 +148,44 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50):
                     newmodelfile.writelines("\n")
                     newmodelfile.writelines("%g " % item for item in line2)
                     newmodelfile.writelines("\n")
+
+    if plot:
+        print("making diagnostic plot")
+        try:
+            import matplotlib.pyplot as plt
+            from mpl_toolkits.axes_grid1 import make_axes_locatable
+        except ModuleNotFoundError:
+            print("matplotlib not found, skipping")
+            return
+
+        fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(6.8 * 1.5, 4.8))
+
+        middle_ind = int(rho.shape[0] / 2)
+        im1 = ax1.imshow(rho[middle_ind, :, :])
+        divider1 = make_axes_locatable(ax1)
+        cax1 = divider1.append_axes("right", size="5%", pad=0.05)
+        cbar1 = plt.colorbar(im1, cax=cax1)
+        ax1.set_xlabel("Cell index")
+        ax1.set_ylabel("Cell index")
+        ax1.set_title("Original resolution")
+        cbar1.set_label(r"$\rho$ (g/cm$^3$)")
+
+        middle_ind_small = int(rho_small.shape[0] / 2)
+        im2 = ax2.imshow(rho_small[middle_ind_small, :, :])
+        divider2 = make_axes_locatable(ax2)
+        cax2 = divider2.append_axes("right", size="5%", pad=0.05)
+        cbar2 = plt.colorbar(im2, cax=cax2)
+        ax2.set_xlabel("Cell index")
+        ax2.set_ylabel("Cell index")
+        ax2.set_title("Downscaled resolution")
+        cbar2.set_label(r"$\rho$ (g/cm$^3$)")
+
+        plt.tight_layout()
+
+        fig.savefig(
+            os.path.join(modelpath, "downscaled_density_diagnostic.png"),
+            dpi=300,
+            bbox_inches="tight",
+        )
 
     return
