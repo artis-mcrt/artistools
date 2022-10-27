@@ -4,8 +4,8 @@ import argparse
 import math
 import multiprocessing
 import os
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 import argcomplete
 import matplotlib
@@ -398,9 +398,12 @@ def make_lightcurve_plot_from_lightcurve_out_files(
                     lcdata_before_valid = lcdata.query("time <= @lcdata_valid.time.min()")
                     lcdata_after_valid = lcdata.query("time >= @lcdata_valid.time.max()")
 
-                if args.average_every_tenth_viewing_angle and angle % 10 == 0:
-                    if args.colorbarcostheta or args.colorbarphi:
-                        color = scaledmap.to_rgba(colorindex)  # Update colours for light curves averaged over phi
+                if (
+                    args.average_every_tenth_viewing_angle
+                    and angle % 10 == 0
+                    and (args.colorbarcostheta or args.colorbarphi)
+                ):
+                    color = scaledmap.to_rgba(colorindex)  # Update colours for light curves averaged over phi
                     axis.plot(lcdata["time"], lcdata["lum"], color=color, zorder=10)
                 else:
                     axis.plot(lcdata_valid["time"], lcdata_valid["lum"], **plotkwargs)
