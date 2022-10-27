@@ -614,7 +614,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
     ymaxrefall = 0.0
     plotkwargs = {}
     for index, filepath in enumerate(args.specpath):
-        if Path(filepath).is_dir() or Path(filepath).name == "spec.out":
+        if Path(filepath).is_dir() or Path(filepath).name.endswith(".out"):
             continue
         if index < len(args.color):
             plotkwargs["color"] = args.color[index]
@@ -1196,7 +1196,7 @@ def main(args=None, argsraw=None, **kwargs):
         refspecnum = 0
         artismodelnum = 0
         for filepath in args.specpath:
-            if Path(filepath).is_dir() or Path(filepath).name == "spec.out":
+            if Path(filepath).is_dir() or Path(filepath).name.endswith(".out"):
                 args.color.append(artismodelcolors[artismodelnum])
                 artismodelnum += 1
             else:
