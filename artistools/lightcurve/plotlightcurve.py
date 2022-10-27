@@ -399,7 +399,8 @@ def make_lightcurve_plot_from_lightcurve_out_files(
                     lcdata_after_valid = lcdata.query("time >= @lcdata_valid.time.max()")
 
                 if args.average_every_tenth_viewing_angle and angle % 10 == 0:
-                    color = scaledmap.to_rgba(colorindex)  # Update colours for light curves averaged over phi
+                    if args.colorbarcostheta or args.colorbarphi:
+                        color = scaledmap.to_rgba(colorindex)  # Update colours for light curves averaged over phi
                     axis.plot(lcdata["time"], lcdata["lum"], color=color, zorder=10)
                 else:
                     axis.plot(lcdata_valid["time"], lcdata_valid["lum"], **plotkwargs)
