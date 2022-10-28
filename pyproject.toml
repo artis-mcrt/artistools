@@ -32,7 +32,7 @@ line-length = 120
 preview = true
 
 [tool.mypy]
-python_version = '3.10'
+python_version = '3.11'
 exclude = "(build)|(tests)"
 ignore_missing_imports = true
 files = 'artistools/**/*.py'
