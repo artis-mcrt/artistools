@@ -1,4 +1,4 @@
-import os
+import pathlib
 import numpy as np
 
 
@@ -6,16 +6,20 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50, plo
     """Should be same as downscale_3d_grid.pro
     Expects a 3D model with grid^3 cells and outputs 3D model with smallgrid^3 cells"""
 
+    # Check if modelpath is a pathlib.path object
+    if not isinstance(modelpath, pathlib.Path):
+        modelpath = pathlib.Path(modelpath)
+
     grid = int(inputgridsize)
     smallgrid = int(outputgridsize)
 
     merge = grid / smallgrid
     merge = int(merge)
 
-    modelfile = os.path.join(modelpath, "model.txt")
-    abundancefile = os.path.join(modelpath, "abundances.txt")
-    smallmodelfile = os.path.join(modelpath, "model_small.txt")
-    smallabundancefile = os.path.join(modelpath, "abundances_small.txt")
+    modelfile = modelpath / "model.txt"
+    abundancefile = modelpath / "abundances.txt"
+    smallmodelfile = modelpath / "model_small.txt"
+    smallabundancefile = modelpath / "abundances_small.txt"
 
     rho = np.zeros((grid, grid, grid))
     ffe = np.zeros((grid, grid, grid))
@@ -107,7 +111,7 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50, plo
 
     print("writing abundance file")
     i = 0
-    with open(os.path.join(modelpath, smallabundancefile), "w") as newabundancefile:
+    with open(modelpath / smallabundancefile, "w") as newabundancefile:
         for z in range(0, smallgrid):
             for y in range(0, smallgrid):
                 for x in range(0, smallgrid):
@@ -120,7 +124,7 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50, plo
     print("writing model file")
     xmax = float(vmax) * float(t_model) * 3600 * 24
     i = 0
-    with open(os.path.join(modelpath, smallmodelfile), "w") as newmodelfile:
+    with open(modelpath / smallmodelfile, "w") as newmodelfile:
         gridsize = int(smallgrid**3)
         newmodelfile.write(f"{gridsize}\n")
         newmodelfile.write(f"{t_model}")
@@ -183,7 +187,7 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50, plo
         plt.tight_layout()
 
         fig.savefig(
-            os.path.join(modelpath, "downscaled_density_diagnostic.png"),
+            modelpath / "downscaled_density_diagnostic.png",
             dpi=300,
             bbox_inches="tight",
         )
