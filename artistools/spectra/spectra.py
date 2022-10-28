@@ -287,10 +287,13 @@ def get_spectrum_from_packets(
 
 
 @at.diskcache(savezipped=True)
+# @at.diskcache(savezipped=True)
 def read_specpol_res(modelpath):
     """Return specpol_res data for a given angle"""
     if Path(modelpath, "specpol_res.out").is_file():
         specfilename = Path(modelpath) / "specpol_res.out"
+    elif Path(modelpath, "spec_res.out").is_file():
+        specfilename = Path(modelpath) / "spec_res.out"
     else:
         specfilename = modelpath
 
