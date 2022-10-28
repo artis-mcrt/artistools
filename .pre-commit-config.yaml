@@ -36,7 +36,7 @@ repos:
       rev: 22.10.0
       hooks:
           - id: black
-            args: [--quiet]
+            args: [--quiet, --preview]
     - repo: https://github.com/pycqa/flake8
       rev: 5.0.4
       hooks:
