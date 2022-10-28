@@ -31,7 +31,7 @@ repos:
       hooks:
           - id: reorder-python-imports
             types: [python]
-            args: [--py39-plus]
+            args: [--py39-plus, --exit-zero-even-if-changed]
     - repo: https://github.com/psf/black
       rev: 22.10.0
       hooks:
