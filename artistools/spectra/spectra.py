@@ -286,6 +286,7 @@ def get_spectrum_from_packets(
     return pd.DataFrame(dfdict)
 
 
+@lru_cache(maxsize=16)
 @at.diskcache(savezipped=True)
 # @at.diskcache(savezipped=True)
 def read_specpol_res(modelpath):
