@@ -7,14 +7,14 @@ import os.path
 import sys
 import time
 from collections import namedtuple
+from collections.abc import Iterable
+from collections.abc import Sequence
 from functools import lru_cache
 from itertools import chain
 from pathlib import Path
 from typing import Any
-from typing import Iterable
 from typing import Literal
 from typing import Optional
-from typing import Sequence
 from typing import Union
 
 import numpy as np
@@ -172,6 +172,7 @@ def gather_res_data(res_df, index_of_repeated_value=1):
         else:
             chunk = res_df.iloc[index_to_split[i] :, :]
         res_data.append(chunk)
+    assert len(res_data) == 100
     return res_data
 
 
