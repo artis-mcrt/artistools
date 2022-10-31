@@ -85,10 +85,14 @@ def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model):
     # colorscale = np.ma.masked_where(colorscale == 0., colorscale)
     # colorscale = np.log10(colorscale)
 
-    norm = matplotlib.colors.Normalize(vmin=0, vmax=1)
-    scaledmap = matplotlib.cm.ScalarMappable(cmap="viridis", norm=norm)
-    scaledmap.set_array([])
-    colorscale = scaledmap.to_rgba(colorscale)  # colorscale fixed between 0 and 1
+    normalise_between_0_and_1 = False
+    if normalise_between_0_and_1:
+        norm = matplotlib.colors.Normalize(vmin=0, vmax=1)
+        scaledmap = matplotlib.cm.ScalarMappable(cmap="viridis", norm=norm)
+        scaledmap.set_array([])
+        colorscale = scaledmap.to_rgba(colorscale)  # colorscale fixed between 0 and 1
+    else:
+        scaledmap = None
 
     x = plotvals[f"pos_{plotaxis1}_min"] / t_model * (u.cm / u.day).to("km/s") / 10**3
     y = plotvals[f"pos_{plotaxis2}_min"] / t_model * (u.cm / u.day).to("km/s") / 10**3
