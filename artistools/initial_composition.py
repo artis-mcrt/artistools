@@ -100,7 +100,8 @@ def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model):
 
     ymin, ymax = ax.get_ylim()
     xmin, xmax = ax.get_xlim()
-    ax.text(xmax * 0.6, ymax * 0.7, ion.split("_")[1], color="k", fontweight="bold")
+    if "_" in ion:
+        ax.text(xmax * 0.6, ymax * 0.7, ion.split("_")[1], color="k", fontweight="bold")
     return im, scaledmap
 
 
@@ -144,6 +145,8 @@ def plot_3d_initial_abundances(modelpath, args=None):
 
     for index, ion in enumerate(args.ion):
         ion = f"X_{ion}"
+        if args.rho:
+            ion = "rho"
         if subplots:
             ax = axes[index]
         im, scaledmap = plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model)
