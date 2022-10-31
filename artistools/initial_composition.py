@@ -73,10 +73,10 @@ def get_2D_slice_through_3d_model(merge_dfs, sliceaxis, sliceindex=None):
         # Choose position to slice. This gets minimum absolute value as the closest to 0
     else:
         cell_boundaries = []
-        [cell_boundaries.append(x) for x in merge_dfs[f"pos_{sliceaxis}"] if x not in cell_boundaries]
+        [cell_boundaries.append(x) for x in merge_dfs[f"pos_{sliceaxis}_min"] if x not in cell_boundaries]
         sliceposition = cell_boundaries[sliceindex]
 
-    slicedf = merge_dfs.loc[merge_dfs[f"pos_{sliceaxis}"] == sliceposition]
+    slicedf = merge_dfs.loc[merge_dfs[f"pos_{sliceaxis}_min"] == sliceposition]
     return slicedf
 
 
@@ -90,8 +90,11 @@ def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model):
     scaledmap.set_array([])
     colorscale = scaledmap.to_rgba(colorscale)  # colorscale fixed between 0 and 1
 
-    x = plotvals[f"pos_{plotaxis1}"] / t_model * (u.cm / u.day).to("km/s") / 10**3
-    y = plotvals[f"pos_{plotaxis2}"] / t_model * (u.cm / u.day).to("km/s") / 10**3
+    x = plotvals[f"pos_{plotaxis1}_min"] / t_model * (u.cm / u.day).to("km/s") / 10**3
+    y = plotvals[f"pos_{plotaxis2}_min"] / t_model * (u.cm / u.day).to("km/s") / 10**3
+
+    # x = plotvals[f'pos_{plotaxis1}'] / t_model * (u.cm/u.day).to('m/s') / 2.99792458e+8
+    # y = plotvals[f'pos_{plotaxis2}'] / t_model * (u.cm/u.day).to('m/s') / 2.99792458e+8
 
     im = ax.scatter(x, y, c=colorscale, marker="8", rasterized=True)  # cmap=plt.get_cmap('PuOr')
 
@@ -165,12 +168,12 @@ def plot_3d_initial_abundances(modelpath, args=None):
     # ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
 
-    if args.outputfile:
-        outfilename = args.outputfile
-    else:
-        outfilename = f"plotcomposition{ion}.pdf"
-    # plt.savefig(Path(modelpath[0]) / outfilename, format='pdf')
-    plt.savefig(outfilename, format="pdf")
+    # if args.outputfile:
+    #     outfilename = args.outputfile
+    # else:
+    outfilename = f"plotcomposition{ion}.pdf"
+    plt.savefig(Path(modelpath[0]) / outfilename, format="pdf")
+
     print(f"Saved {outfilename}")
 
 
