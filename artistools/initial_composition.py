@@ -82,7 +82,11 @@ def get_2D_slice_through_3d_model(merge_dfs, sliceaxis, sliceindex=None):
 
 def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model):
     colorscale = plotvals[ion]
+
+    # Don't plot empty cells:
     # colorscale = np.ma.masked_where(colorscale == 0., colorscale)
+
+    # logscale for colormap
     # colorscale = np.log10(colorscale)
 
     normalise_between_0_and_1 = False
