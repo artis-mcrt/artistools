@@ -49,7 +49,7 @@ def open_tar_file_or_extracted(traj_root, particleid: int, memberfilename: str):
         raise FileNotFoundError
 
     # print(f"using {tarfilepath} for {memberfilename}")
-    # return tarfile.open(tarfilepath, 'r:*').extractfile(member=memberfilename)
+    # return tarfile.open(tarfilepath, "r:*").extractfile(member=memberfilename)
     with tarfile.open(tarfilepath, "r|*") as tfile:
         for tarmember in tfile:
             if tarmember.name == memberfilename:
@@ -150,8 +150,7 @@ def get_trajectory_timestepfile_nuc_abund(
 
 
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
-    memberfilename = "./Run_rprocess/energy_thermo.dat"
-    with open_tar_file_or_extracted(traj_root, particleid, memberfilename) as enthermofile:
+    with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as enthermofile:
         dfthermo = pd.read_table(
             enthermofile, sep=r"\s+", usecols=["time/s", "Qdot"], engine="c", dtype={0: float, 1: float}
         )
@@ -171,7 +170,11 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
 
 
 def get_trajectory_abund_q(
-    particleid: int, traj_root: Path, t_model_s: Optional[float] = None, nts: Optional[int] = None
+    particleid: int,
+    traj_root: Path,
+    t_model_s: Optional[float] = None,
+    nts: Optional[int] = None,
+    getqdotintegral: bool = False,
 ) -> dict[str, float]:
     """
     get the nuclear mass fractions (and Qdotintegral) for a particle particle number as a given time
@@ -214,9 +217,11 @@ def get_trajectory_abund_q(
         assert np.isclose(traj_time_s, t_model_s, rtol=0.2, atol=1.0)
 
     dict_traj_nuc_abund = {nucabundcolname: massfrac / massfractotal for nucabundcolname, massfrac in colmassfracs}
-    dict_traj_nuc_abund["q"] = get_trajectory_qdotintegral(
-        particleid=particleid, traj_root=traj_root, nts_max=nts, t_model_s=t_model_s
-    )
+
+    if getqdotintegral:
+        dict_traj_nuc_abund["q"] = get_trajectory_qdotintegral(
+            particleid=particleid, traj_root=traj_root, nts_max=nts, t_model_s=t_model_s
+        )
 
     return dict_traj_nuc_abund
 
@@ -371,7 +376,7 @@ def add_abundancecontributions(
     listcellnucabundances = []
     print("Reading trajectory abundances...")
     timestart = time.perf_counter()
-    trajworker = partial(get_trajectory_abund_q, t_model_s=t_model_s, traj_root=traj_root)
+    trajworker = partial(get_trajectory_abund_q, t_model_s=t_model_s, traj_root=traj_root, getqdotintegral=True)
 
     if at.config["num_processes"] > 1:
         with multiprocessing.Pool(processes=at.config["num_processes"]) as pool:

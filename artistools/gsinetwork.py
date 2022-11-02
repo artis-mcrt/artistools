@@ -27,6 +27,7 @@ def plot_qdot(
 ):
     try:
         depdata = at.get_deposition(modelpath=modelpath)
+
     except FileNotFoundError:
         print("Can't do qdot plot because no deposition.out file")
         return
@@ -313,7 +314,7 @@ def get_particledata(
         )
 
     except FileNotFoundError:
-        # print(f'WARNING: Particle data not found for id {particleid}')
+        # print(f"WARNING: Particle data not found for id {particleid}")
         return -1, {}
 
     # print(f'Reading data for particle id {particleid}...')
@@ -529,7 +530,8 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     list_particleids_getabund = dfpartcontrib.query("(cellindex - 1) in @mgiplotlist").particleid.unique()
     fworkerwithabund = partial(get_particledata, arr_time_gsi_s, arr_strnuc, traj_root)
 
-    print(f"Reading trajectory data for {len(list_particleids_getabund)} particles (including abundance data)")
+    print(f"Reading trajectories from {traj_root}")
+    print(f"  Reading Qdot/thermo and abundance data for {len(list_particleids_getabund)} particles")
 
     if at.config["num_processes"] > 1:
         with multiprocessing.Pool(processes=at.config["num_processes"]) as pool:
@@ -543,10 +545,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
         pid for pid in dfpartcontrib.particleid.unique() if pid not in list_particleids_getabund
     ]
     fworkernoabund = partial(get_particledata, arr_time_gsi_s, [], traj_root)
-    print(
-        f"Reading trajectory data for {len(list_particleids_noabund)} particles for Qdot/thermal data (not reading"
-        " abundances)"
-    )
+    print(f"  Reading for Qdot/thermo data (no abundances needed) for for {len(list_particleids_noabund)} particles")
 
     if at.config["num_processes"] > 1:
         with multiprocessing.Pool(processes=at.config["num_processes"]) as pool:
