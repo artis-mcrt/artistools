@@ -519,6 +519,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
 
     arr_time_artis_days_alltimesteps = at.get_timestep_times_float(modelpath)
     arr_time_artis_s_alltimesteps = np.array([t * 8.640000e04 for t in arr_time_artis_days_alltimesteps])
+    # no completed timesteps yet, so display full set of timesteps that artis will compute
     if len(arr_time_artis_days) == 0:
         arr_time_artis_days = list(arr_time_artis_days_alltimesteps)
 
