@@ -303,7 +303,7 @@ def plot_cell_abund_evolution(
 
 
 def get_particledata(
-    arr_time_s, arr_strnuc, traj_root: Path, particleid: int
+    arr_time_s: Sequence[float], arr_strnuc: list[str], traj_root: Path, particleid: int
 ) -> tuple[int, dict[str, npt.NDArray[np.float64]]]:
     try:
         nts_min = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(
@@ -315,6 +315,7 @@ def get_particledata(
 
     except FileNotFoundError:
         # print(f"WARNING: Particle data not found for id {particleid}")
+        assert not arr_strnuc
         return -1, {}
 
     # print(f'Reading data for particle id {particleid}...')
@@ -390,9 +391,9 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
             line = fmodel.readline()
             if line.startswith("#"):
                 if line.startswith("# gridfolder:"):
-                    mergermodelfolder = line.strip().removeprefix("# gridfolder: ").removesuffix("_snapshot")
+                    mergermodelfolder = Path(line.strip().removeprefix("# gridfolder: ").removesuffix("_snapshot"))
                 elif line.startswith("# trajfolder:"):
-                    trajfolder = line.strip().removeprefix("# trajfolder: ").replace("SFHO", "SFHo")
+                    trajfolder = Path(line.strip().removeprefix("# trajfolder: ").replace("SFHO", "SFHo"))
             else:
                 break
 
@@ -402,7 +403,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     assert traj_root.is_dir()
 
     arr_el, arr_a = zip(*arr_el_a)
-    arr_strnuc = [el + str(a) for el, a in arr_el_a]
+    arr_strnuc: list[str] = [el + str(a) for el, a in arr_el_a]
 
     # arr_z = [at.get_atomic_number(el) for el in arr_el]
 
