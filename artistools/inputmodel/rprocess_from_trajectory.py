@@ -28,7 +28,7 @@ def get_elemabund_from_nucabund(dfnucabund: pd.DataFrame) -> dict[str, float]:
     return dictelemabund
 
 
-def open_tar_file_or_extracted(traj_root, particleid: int, memberfilename: str):
+def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename: str):
     """
     trajectory files are generally stored as {particleid}.tar.xz, but this is slow
     to access, so first check for extracted files, or decompressed .tar files,
@@ -45,7 +45,7 @@ def open_tar_file_or_extracted(traj_root, particleid: int, memberfilename: str):
         tarfilepath = Path(traj_root, f"{particleid}.tar.xz")
 
     if not tarfilepath.is_file():
-        print(f"No network data found for particle {particleid}")
+        print(f"No network data found for particle {particleid} (so can't access {memberfilename})")
         raise FileNotFoundError
 
     # print(f"using {tarfilepath} for {memberfilename}")
