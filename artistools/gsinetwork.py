@@ -384,7 +384,21 @@ def get_particledata(
 
 
 def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_el_a: list[tuple[str, int]]):
-    traj_root = Path("/Volumes/GoogleDrive/Shared Drives/GSI NSM/Mergers/SFHo_long/Trajectory_SFHo_long-radius-entropy")
+    with at.zopen(modelpath / "model.txt", "rt") as fmodel:
+        while True:
+            line = fmodel.readline()
+            if line.startswith("#"):
+                if line.startswith("# gridfolder:"):
+                    mergermodelfolder = line.strip().removeprefix("# gridfolder: ").removesuffix("_snapshot")
+                elif line.startswith("# trajfolder:"):
+                    trajfolder = line.strip().removeprefix("# trajfolder: ").replace("SFHO", "SFHo")
+            else:
+                break
+
+    merger_root = Path("/Volumes/GoogleDrive/Shared Drives/GSI NSM/Mergers")
+    traj_root = Path(merger_root, mergermodelfolder, trajfolder)
+    print(f"model.txt traj_root: {traj_root}")
+    assert traj_root.is_dir()
 
     arr_el, arr_a = zip(*arr_el_a)
     arr_strnuc = [el + str(a) for el, a in arr_el_a]
