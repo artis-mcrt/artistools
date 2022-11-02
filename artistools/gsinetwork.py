@@ -318,7 +318,10 @@ def get_particledata(
         assert not arr_strnuc
         return -1, {}
 
-    # print(f'Reading data for particle id {particleid}...')
+    print(
+        "Reading network calculation heating.dat,"
+        f" energy_thermo.dat{', and nz-plane abundances' if arr_strnuc else ''} for particle {particleid}..."
+    )
 
     particledata = {}
     nstep_timesec = {}
@@ -547,7 +550,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
         pid for pid in dfpartcontrib.particleid.unique() if pid not in list_particleids_getabund
     ]
     fworkernoabund = partial(get_particledata, arr_time_gsi_s, [], traj_root)
-    print(f"  Reading for Qdot/thermo data (no abundances needed) for for {len(list_particleids_noabund)} particles")
+    print(f"  Reading for Qdot/thermo data (no abundances needed) for {len(list_particleids_noabund)} particles")
 
     if at.config["num_processes"] > 1:
         with multiprocessing.Pool(processes=at.config["num_processes"]) as pool:
