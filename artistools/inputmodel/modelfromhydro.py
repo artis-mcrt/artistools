@@ -345,6 +345,9 @@ def makemodelfromgriddata(
     if traj_root is not None:
         print(f"Nuclear network abundances from {traj_root} will be used")
         headerlines.append(f"trajfolder: {Path(traj_root).resolve().parts[-1]}")
+        simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(gridfolderpath)
+        t_model_days_incpremerger = t_model_days + (mergertime_geomunits * 4.926e-6 / 86400)
+
         (
             dfmodel,
             dfelabundances,
@@ -352,7 +355,7 @@ def makemodelfromgriddata(
         ) = at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
             dfgridcontributions=dfgridcontributions,
             dfmodel=dfmodel,
-            t_model_days=t_model_days,
+            t_model_days_incpremerger=t_model_days_incpremerger,
             minparticlespercell=minparticlespercell,
             traj_root=traj_root,
         )

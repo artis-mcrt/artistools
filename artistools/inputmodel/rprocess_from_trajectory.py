@@ -345,10 +345,14 @@ def save_gridparticlecontributions(dfcontribs: pd.DataFrame, gridcontribpath):
 
 
 def add_abundancecontributions(
-    dfgridcontributions: pd.DataFrame, dfmodel: pd.DataFrame, t_model_days: float, traj_root, minparticlespercell=0
+    dfgridcontributions: pd.DataFrame,
+    dfmodel: pd.DataFrame,
+    t_model_days_incpremerger: float,
+    traj_root,
+    minparticlespercell=0,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """contribute trajectory network calculation abundances to model cell abundances"""
-    t_model_s = t_model_days * 86400
+    t_model_s = t_model_days_incpremerger * 86400
     dfcontribs = dfgridcontributions
 
     if "X_Fegroup" not in dfmodel.columns:
