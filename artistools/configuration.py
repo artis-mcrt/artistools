@@ -4,8 +4,6 @@ from typing import Any
 
 import psutil
 
-# num_processes = 1
-
 # count the cores (excluding the efficiency cores on ARM)
 try:
     num_processes = int(
@@ -19,7 +17,9 @@ except subprocess.CalledProcessError:
     except subprocess.CalledProcessError:
         num_processes = max(1, int(psutil.cpu_count(logical=False)) - 2)
 
-# print(f'Using {num_processes} processes')
+# num_processes = 1
+
+# print(f"Using {num_processes} processes")
 
 config: dict[str, Any]
 config = {}
