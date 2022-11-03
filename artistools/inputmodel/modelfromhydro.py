@@ -68,21 +68,35 @@ def read_ejectasnapshot(pathtosnapshot):
     return ejectasnapshot
 
 
-def get_snapshot_time_geomunits(pathtogriddata):
+def get_merger_time_geomunits(pathtogriddata: Path) -> float:
+    mergertimefile = pathtogriddata / "tmerger.txt"
+    if mergertimefile.exists():
+        with mergertimefile.open("rt") as fmergertimefile:
+            comments = fmergertimefile.readline()
+            assert comments.startswith("#")
+            mergertime_geomunits = float(fmergertimefile.readline())
+            print(f"Found simulation merger time to be {mergertime_geomunits} ({mergertime_geomunits * 4.926e-6} s) ")
+        return mergertime_geomunits
+    else:
+        print('Make file "tmerger.txt" with time of merger in geom units')
+        quit()
+
+
+def get_snapshot_time_geomunits(pathtogriddata: Path) -> tuple[float, float]:
     import glob
 
-    snapshotinfofile = glob.glob(str(Path(pathtogriddata) / "*_info.dat*"))
-    if not snapshotinfofile:
+    snapshotinfofiles = glob.glob(str(Path(pathtogriddata) / "*_info.dat*"))
+    if not snapshotinfofiles:
         print("No info file found for dumpstep")
         quit()
 
-    if len(snapshotinfofile) > 1:
+    if len(snapshotinfofiles) > 1:
         print("Too many sfho_info.dat files found")
         quit()
-    snapshotinfofile = snapshotinfofile[0]
+    snapshotinfofile = Path(snapshotinfofiles[0])
 
-    if os.path.isfile(snapshotinfofile):
-        with open(snapshotinfofile, "r") as fsnapshotinfo:
+    if snapshotinfofile.is_file():
+        with snapshotinfofile.open("rt") as fsnapshotinfo:
             line1 = fsnapshotinfo.readline()
             simulation_end_time_geomunits = float(line1.split()[2])
             print(
@@ -90,19 +104,8 @@ def get_snapshot_time_geomunits(pathtogriddata):
                 f"({simulation_end_time_geomunits * 4.926e-6} s)"
             )
 
-        mergertimefile = str(Path(pathtogriddata) / "tmerger.txt")
-        if os.path.isfile(mergertimefile):
-            with open(mergertimefile, "r") as fmergertimefile:
-                comments = fmergertimefile.readline()
-                mergertime_geomunits = float(fmergertimefile.readline())
-                print(
-                    f"Found simulation merger time to be {mergertime_geomunits} "
-                    f"({mergertime_geomunits * 4.926e-6} s) "
-                    f"time since merger {(simulation_end_time_geomunits - mergertime_geomunits) * 4.926e-6} s"
-                )
-        else:
-            print('Make file "tmerger.txt" with time of merger in geom units')
-            quit()
+        mergertime_geomunits = get_merger_time_geomunits(Path(pathtogriddata))
+        print(f"  time since merger {(simulation_end_time_geomunits - mergertime_geomunits) * 4.926e-6} s")
 
     else:
         print("Could not find snapshot info file to get simulation time")
@@ -121,9 +124,9 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
     griddata.rename(
         columns={
             "gridindex": "inputcellid",
-            "pos_x_min": "pos_x_min",
-            "pos_y_min": "pos_y_min",
-            "pos_z_min": "pos_z_min",
+            "pos_x": "pos_x_min",
+            "pos_y": "pos_y_min",
+            "pos_z": "pos_z_min",
         },
         inplace=True,
     )
@@ -155,6 +158,8 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
     t_model_sec = (
         (simulation_end_time_geomunits - mergertime_geomunits) + extratime_geomunits
     ) * 4.926e-6  # in seconds
+    # t_model of zero is the merger, but this was not time zero in the NSM simulation time
+    t_mergertime_s = mergertime_geomunits * 4.926e-6
     vmax = xmax / t_model_sec  # cm/s
 
     t_model_days = t_model_sec / (24.0 * 3600)  # in days
@@ -194,7 +199,7 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
 
     print(f"Max tracers in a cell {max(griddata['tracercount'])}")
 
-    return griddata, t_model_days, vmax
+    return griddata, t_model_days, t_mergertime_s, vmax
 
 
 def read_mattia_grid_data_file(pathtogriddata):
@@ -325,7 +330,7 @@ def makemodelfromgriddata(
 ):
     assert dimensions in [1, 3]
     headerlines = [f"gridfolder: {Path(gridfolderpath).resolve().parts[-1]}"]
-    dfmodel, t_model_days, vmax = at.inputmodel.modelfromhydro.read_griddat_file(
+    dfmodel, t_model_days, t_mergertime_s, vmax = at.inputmodel.modelfromhydro.read_griddat_file(
         pathtogriddata=gridfolderpath,
         targetmodeltime_days=targetmodeltime_days,
         minparticlespercell=minparticlespercell,
@@ -345,8 +350,7 @@ def makemodelfromgriddata(
     if traj_root is not None:
         print(f"Nuclear network abundances from {traj_root} will be used")
         headerlines.append(f"trajfolder: {Path(traj_root).resolve().parts[-1]}")
-        simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(gridfolderpath)
-        t_model_days_incpremerger = t_model_days + (mergertime_geomunits * 4.926e-6 / 86400)
+        t_model_days_incpremerger = t_model_days + (t_mergertime_s / 86400)
 
         (
             dfmodel,
