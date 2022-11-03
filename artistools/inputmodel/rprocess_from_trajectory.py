@@ -37,12 +37,15 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
     memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/evol.dat
     """
     path_extracted_file = Path(traj_root, str(particleid), memberfilename)
-    if path_extracted_file.is_file():
-        return open(path_extracted_file, mode="r", encoding="utf-8")
-
     tarfilepath = Path(traj_root, f"{particleid}.tar")
     if not tarfilepath.is_file():
         tarfilepath = Path(traj_root, f"{particleid}.tar.xz")
+
+    if memberfilename.endswith(".dat") and not path_extracted_file.is_file():
+        tarfile.open(tarfilepath, "r:*").extract(path=Path(traj_root, str(particleid)), member=memberfilename)
+
+    if path_extracted_file.is_file():
+        return open(path_extracted_file, mode="r", encoding="utf-8")
 
     if not tarfilepath.is_file():
         print(f"No network data found for particle {particleid} (so can't access {memberfilename})")
