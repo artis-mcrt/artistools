@@ -110,7 +110,12 @@ def get_trajectory_timestepfile_nuc_abund(
     memberfilename should be something like "./Run_rprocess/tday_nz-plane"
     """
     with open_tar_file_or_extracted(traj_root, particleid, memberfilename) as trajfile:
-        _, str_t_model_init_seconds, _, rho, _, _ = trajfile.readline().split()
+        try:
+            _, str_t_model_init_seconds, _, rho, _, _ = trajfile.readline().split()
+        except ValueError:
+            print(f"Problem with {memberfilename}")
+            raise ValueError(f"Problem with {memberfilename}")
+            assert False
         trajfile.seek(0)
         t_model_init_seconds = float(str_t_model_init_seconds)
 
