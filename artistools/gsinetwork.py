@@ -81,7 +81,9 @@ def plot_qdot(
 
     # axis.set_ylim(bottom=1e7, top=2e10)
     # axis.set_xlim(left=tstart, right=tend)
-    axis.set_xlim(right=5)  # TODO: remove
+    xmin = min(arr_time_gsi_days) * 0.9
+    xmax = max(arr_time_gsi_days) * 1.03
+    axis.set_xlim(left=xmin, right=xmax)
 
     # axis.set_xscale('log')
 
@@ -303,8 +305,15 @@ def plot_cell_abund_evolution(
 
 
 def get_particledata(
-    arr_time_s: Sequence[float], arr_strnuc: list[str], traj_root: Path, particleid: int
+    arr_time_s: Sequence[float],
+    arr_strnuc: list[str],
+    traj_root: Path,
+    particleid: int,
 ) -> tuple[int, dict[str, npt.NDArray[np.float64]]]:
+    """
+    for an array of times (NSM time including time before merger), interpolate the heating rates of various decay channels
+    and (if arr_strnuc is not empty) the nuclear mass fractions.
+    """
     try:
         nts_min = at.inputmodel.rprocess_from_trajectory.get_closest_network_timestep(
             traj_root, particleid, timesec=min(arr_time_s), cond="lessthan"
@@ -314,7 +323,10 @@ def get_particledata(
         )
 
     except FileNotFoundError:
-        # print(f"WARNING: Particle data not found for id {particleid}")
+        print(f"No network calculation for particle {particleid}")
+        # make sure we weren't requesting abundance data for this particle that has no network data
+        if arr_strnuc:
+            print("ERROR:", particleid, arr_strnuc)
         assert not arr_strnuc
         return -1, {}
 
@@ -389,20 +401,28 @@ def get_particledata(
 
 
 def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_el_a: list[tuple[str, int]]):
+    # default values, because early model.txt didn't specify this
+    griddatafolder: Path = Path("SFHo_snapshot")
+    mergermodelfolder: Path = Path("SFHo_short")
+    trajfolder: Path = Path("SFHo")
     with at.zopen(modelpath / "model.txt", "rt") as fmodel:
         while True:
             line = fmodel.readline()
             if line.startswith("#"):
                 if line.startswith("# gridfolder:"):
+                    griddatafolder = Path(line.strip().removeprefix("# gridfolder: "))
                     mergermodelfolder = Path(line.strip().removeprefix("# gridfolder: ").removesuffix("_snapshot"))
                 elif line.startswith("# trajfolder:"):
                     trajfolder = Path(line.strip().removeprefix("# trajfolder: ").replace("SFHO", "SFHo"))
             else:
                 break
 
-    merger_root = Path("/Volumes/GoogleDrive/Shared Drives/GSI NSM/Mergers")
+    # merger_root = Path("/Volumes/GoogleDrive/Shared Drives/GSI NSM/Mergers")
+    merger_root = Path("/Users/luke/Downloads/Mergers")
+    griddata_root = Path(merger_root, mergermodelfolder, griddatafolder)
     traj_root = Path(merger_root, mergermodelfolder, trajfolder)
     print(f"model.txt traj_root: {traj_root}")
+    print(f"model.txt griddata_root: {griddata_root}")
     assert traj_root.is_dir()
 
     arr_el, arr_a = zip(*arr_el_a)
@@ -420,9 +440,9 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     correction_factors = {}
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
     # WARNING sketchy inference!
-    gridcellcount = math.ceil(max(mgi_of_propcells.keys()) ** (1 / 3.0)) ** 3
+    propcellcount = math.ceil(max(mgi_of_propcells.keys()) ** (1 / 3.0)) ** 3
     xmax_tmodel = vmax_cmps * t_model_init_days * 86400
-    wid_init = at.misc.get_wid_init_at_tmodel(modelpath, gridcellcount, t_model_init_days, xmax_tmodel)
+    wid_init = at.misc.get_wid_init_at_tmodel(modelpath, propcellcount, t_model_init_days, xmax_tmodel)
     dfmodel["n_assoc_cells"] = [len(assoc_cells.get(inputcellid - 1, [])) for inputcellid in dfmodel["inputcellid"]]
 
     # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
@@ -527,13 +547,18 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
         arr_time_artis_days = list(arr_time_artis_days_alltimesteps)
 
     arr_time_gsi_s = np.array([t_model_init_days * 86400, *arr_time_artis_s_alltimesteps])
+
+    # times in artis are relative to merger, but NSM simulation time started earlier
+    mergertime_geomunits = at.inputmodel.modelfromhydro.get_merger_time_geomunits(griddata_root)
+    t_mergertime_s = mergertime_geomunits * 4.926e-6
+    arr_time_gsi_s_incpremerger = np.array([t_model_init_days * 86400 + t_mergertime_s, *arr_time_artis_s_alltimesteps])
     arr_time_gsi_days = list(arr_time_gsi_s / 86400)
 
     dfpartcontrib = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
-    dfpartcontrib.query("cellindex <= @npts_model", inplace=True)
+    dfpartcontrib.query("cellindex <= @npts_model and frac_of_cellmass > 0", inplace=True)
 
     list_particleids_getabund = dfpartcontrib.query("(cellindex - 1) in @mgiplotlist").particleid.unique()
-    fworkerwithabund = partial(get_particledata, arr_time_gsi_s, arr_strnuc, traj_root)
+    fworkerwithabund = partial(get_particledata, arr_time_gsi_s_incpremerger, arr_strnuc, traj_root)
 
     print(f"Reading trajectories from {traj_root}")
     print(f"  Reading Qdot/thermo and abundance data for {len(list_particleids_getabund)} particles")
@@ -549,7 +574,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     list_particleids_noabund = [
         pid for pid in dfpartcontrib.particleid.unique() if pid not in list_particleids_getabund
     ]
-    fworkernoabund = partial(get_particledata, arr_time_gsi_s, [], traj_root)
+    fworkernoabund = partial(get_particledata, arr_time_gsi_s_incpremerger, [], traj_root)
     print(f"  Reading for Qdot/thermo data (no abundances needed) for {len(list_particleids_noabund)} particles")
 
     if at.config["num_processes"] > 1:
@@ -619,15 +644,15 @@ def main(args=None, argsraw=None, **kwargs):
     arr_el_a = [
         ("He", 4),
         ("Ga", 72),
-        # ('Sr', 89),
-        # ('Ba', 140),
-        # ('Ce', 141),
-        # ('Nd', 147),
+        ("Sr", 89),
+        ("Ba", 140),
+        ("Ce", 141),
+        ("Nd", 147),
         # ('Rn', 222),
         ("Ra", 223),
         ("Ra", 224),
-        # ('Ra', 225),
-        ("Ac", 225),
+        ("Ra", 225),
+        # ("Ac", 225),
         # ('Th', 234),
         # ('Pa', 233),
         # ('U', 235),
