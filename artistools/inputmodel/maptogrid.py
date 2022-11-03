@@ -103,7 +103,7 @@ def maptogrid(ejectasnapshotpath, outputpath):
         "pmass",
         "rho",
         "p",
-        "rst",
+        "rho_rst",
         "tau",
         "av",
         "ye",
@@ -119,7 +119,7 @@ def maptogrid(ejectasnapshotpath, outputpath):
         "iwasequil(i, 3)",
     ]
 
-    snapshot_columns_used = ["id", "h", "x", "y", "z", "vx", "vy", "vz", "pmass", "rho", "p", "rst", "ye"]
+    snapshot_columns_used = ["id", "h", "x", "y", "z", "vx", "vy", "vz", "pmass", "rho", "p", "rho_rst", "ye"]
 
     dfsnapshot = pd.read_csv(
         ejectasnapshotpath, names=snapshot_columns, delim_whitespace=True, usecols=snapshot_columns_used
@@ -155,7 +155,7 @@ def maptogrid(ejectasnapshotpath, outputpath):
     vy = dfsnapshot.vy.values
     vz = dfsnapshot.vz.values
     pmass = dfsnapshot.pmass.values
-    rst = dfsnapshot.rst.values
+    rho_rst = dfsnapshot.rho_rst.values
     rho = dfsnapshot.rho.values
     Ye = dfsnapshot.ye.values
 
@@ -227,12 +227,10 @@ def maptogrid(ejectasnapshotpath, outputpath):
     dy = dx
     dz = dx
 
-    grho_old = np.zeros((ngrid + 1, ngrid + 1, ngrid + 1))
     grho = np.zeros((ngrid + 1, ngrid + 1, ngrid + 1))
-    norm = np.zeros((ngrid + 1, ngrid + 1, ngrid + 1))
     gye = np.zeros((ngrid + 1, ngrid + 1, ngrid + 1))
     gparticlecounter = np.zeros((ngrid + 1, ngrid + 1, ngrid + 1), dtype=int)
-    particlecontribs = {}
+    particle_rho_contribs = {}
 
     print("grid properties", x0, dx, x0 + dx * (ngrid - 1))
 
@@ -292,43 +290,29 @@ def maptogrid(ejectasnapshotpath, outputpath):
                 wtij = kernelvals2(dis2, h[n])
 
                 # USED PREVIOUSLY: less accurate?
-                grho_old[i, j, k] += pmass[n] * wtij
+                # grho_contrib = pmass[n] * wtij
 
-                particle_contrib = pmass[n] / rst[n] * wtij
-                particlecontribs[(n, i, j, k)] = particle_contrib
+                # this particle's contribution to mass density (rho) in the cell
+                grho_contrib = pmass[n] * rho[n] / rho_rst[n] * wtij
 
-                G = 4.3009125e-3  # pc⋅Msun−1⋅(km/s)2
-                c = 9.7156e-9  # [pc/s]
-                grho[i, j, k] += particle_contrib * rho[n]  # / (G * c**2)
-                # grho[i, j, k] += pmass[n] / particle.rst * wtij
+                grho[i, j, k] += grho_contrib
 
-                # gye[i, j, k] += pmass[n] * particle.Ye * wtij
-                gye[i, j, k] += particle_contrib * Ye[n]
+                particle_rho_contribs[(n, i, j, k)] = grho_contrib
 
-                # norm[i, j, k] += pmass[n] * wtij
-                norm[i, j, k] += particle_contrib
+                # mass-weighted electron fraction (needs to be normalised by cell density afterwards)
+                gye[i, j, k] += grho_contrib * Ye[n]
 
-                # Counts particles contributing to grid cell
+                # count number of particles contributing to each grid cell
                 gparticlecounter[i, j, k] += 1
 
     with np.errstate(divide="ignore", invalid="ignore"):
-        gye = np.divide(gye, norm)
-        # grho = np.divide(grho, norm)
-        # np.nan_to_num(grho, 0.0)
-        # for i in range(1, ngrid + 1):
-        #     for j in range(1, ngrid + 1):
-        #         for k in range(1, ngrid + 1):
-        #             gye[i, j, k] = gye[i, j, k] / norm[i, j, k]
-        #             # if not norm[i, j, k] > 0:
-        #             #     print(i, j, k, norm[i, j, k], gye[i, j, k] )
+        gye = np.divide(gye, grho)
 
         with open(Path(outputpath, "gridcontributions.txt"), "w", encoding="utf-8") as fcontribs:
             fcontribs.write("particleid cellindex frac_of_cellmass\n")
-            for (n, i, j, k), old_value in particlecontribs.items():
-                # print(grho_old[i, j, k], grho[i, j, k], norm[i, j, k])
-                # particle_contribs[n, i, j, k] = old_value / norm[i, j, k]
+            for (n, i, j, k), rho_contrib in particle_rho_contribs.items():
                 gridindex = ((k - 1) * ngrid + (j - 1)) * ngrid + (i - 1) + 1
-                fcontribs.write(f"{particleid[n]} {gridindex} {old_value / norm[i, j, k]}\n")
+                fcontribs.write(f"{particleid[n]} {gridindex} {rho_contrib / grho[i, j, k]}\n")
 
     # check some stuff on the grid
 
@@ -336,7 +320,6 @@ def maptogrid(ejectasnapshotpath, outputpath):
     nzero = 0
     nzerocentral = 0
     gmass = np.sum(grho) * dx * dy * dz
-    gmass_old = np.sum(grho_old) * dx * dy * dz
     # nzero = np.count_nonzero(grho[1:][1:][1:] < 1.e-20)
 
     for i in range(1, ngrid + 1):
@@ -356,7 +339,7 @@ def maptogrid(ejectasnapshotpath, outputpath):
                 if grho[i, j, k] < 1.0e-20 and dis < rmean:
                     nzerocentral = nzerocentral + 1
 
-    print(f"mass on grid from rho*V: {gmass} (old_method: {gmass_old}) particles: {totmass}")
+    print(f"mass on grid from rho*V: {gmass} particles: {totmass}")
 
     print(
         "number of cells with zero rho, total num of cells, fraction of cells w rho=0",
