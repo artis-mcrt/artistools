@@ -294,7 +294,9 @@ def plot_cell_abund_evolution(
                 label=f"{strnuc} ARTIS inputmodel",
                 color="blue",
             )
-            print(strnuc, arr_abund_gsi[strnuc][0], dfcell[f"X_{strnuc}"], arr_abund_artis[strnuc][0])
+            print(
+                f'{strnuc} {arr_abund_gsi[strnuc][0]:.2e} {dfcell[f"X_{strnuc}"]:.2e}, {arr_abund_artis[strnuc][0]:.2e}'
+            )
 
         axis.legend(loc="best", frameon=False, handlelength=1, ncol=1, numpoints=1)
 
