@@ -6,6 +6,8 @@ import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from typing import Optional
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -16,45 +18,22 @@ import artistools as at
 
 
 @lru_cache(maxsize=8)
-def get_modeldata(
-    inputpath=Path(),
+def read_modelfile(
+    filename: Path,
     dimensions=None,
-    get_abundances=False,
-    derived_cols=False,
     printwarningsonly=False,
     skip3ddataframe=False,
-    skipabundances=False,
-) -> tuple[pd.DataFrame, float, float]:
+    skipabundancecolumns=False,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
     Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
-
-    Arguments:
-        - inputpath: either a path to model.txt file, or a folder containing model.txt
-        - dimensions: number of dimensions in input file, or None for automatic
-        - get_abundances: also read elemental abundances (abundances.txt) and
-            merge with the output DataFrame
-
-    Returns (dfmodel, t_model_init_days)
-        - dfmodel: a pandas DataFrame with a row for each model grid cell
-        - t_model_init_days: the time in days at which the snapshot is defined
     """
 
     assert dimensions in [1, 3, None]
 
-    inputpath = Path(inputpath)
+    modelmeta: dict[str, Any] = {"headercommentlines": []}
 
-    if os.path.isdir(inputpath):
-        modelpath = inputpath
-        filename = at.firstexisting(["model.txt.xz", "model.txt.gz", "model.txt"], path=inputpath)
-    elif os.path.isfile(inputpath):  # passed in a filename instead of the modelpath
-        filename = inputpath
-        modelpath = Path(inputpath).parent
-    elif not inputpath.exists() and inputpath.parts[0] == "codecomparison":
-        modelpath = inputpath
-        _, inputmodel, _ = modelpath.parts
-        filename = Path(at.config["codecomparisonmodelartismodelpath"], inputmodel, "model.txt")
-    else:
-        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
+    modelpath = Path(filename).parent
     print(f"Reading {filename}")
 
     headerrows = 0
@@ -63,9 +42,10 @@ def get_modeldata(
         while line.startswith("#"):
             line = fmodel.readline()
             if line.startswith("#"):
+                modelmeta["headercommentlines"].append(line)
                 headerrows += 1
 
-        gridcellcount = int(line)
+        modelcellcount = int(line)
         t_model_init_days = float(fmodel.readline())
         headerrows += 2
         t_model_init_seconds = t_model_init_days * 24 * 60 * 60
@@ -142,20 +122,20 @@ def get_modeldata(
             ][:ncols_file]
 
             # number of grid cell steps along an axis (same for xyz)
-            ncoordgridx = int(round(gridcellcount ** (1.0 / 3.0)))
-            ncoordgridy = int(round(gridcellcount ** (1.0 / 3.0)))
-            ncoordgridz = int(round(gridcellcount ** (1.0 / 3.0)))
+            ncoordgridx = int(round(modelcellcount ** (1.0 / 3.0)))
+            ncoordgridy = int(round(modelcellcount ** (1.0 / 3.0)))
+            ncoordgridz = int(round(modelcellcount ** (1.0 / 3.0)))
 
-            assert (ncoordgridx * ncoordgridy * ncoordgridz) == gridcellcount
+            assert (ncoordgridx * ncoordgridy * ncoordgridz) == modelcellcount
         else:
             assert False
 
     if dimensions == 1:
         dfmodel = pd.read_csv(
-            filename, delim_whitespace=True, header=None, names=columns, skiprows=headerrows, nrows=gridcellcount
+            filename, delim_whitespace=True, header=None, names=columns, skiprows=headerrows, nrows=modelcellcount
         )
     else:
-        nrows_read = 1 if skip3ddataframe else gridcellcount
+        nrows_read = 1 if skip3ddataframe else modelcellcount
 
         # each cell takes up two lines in the model file
         dfmodel = pd.read_table(
@@ -167,7 +147,7 @@ def get_modeldata(
             names=columns[:5],
             nrows=nrows_read,
         )
-        if not skipabundances:
+        if not skipabundancecolumns:
             dfmodeloddlines = pd.read_table(
                 filename,
                 sep=r"\s+",
@@ -181,10 +161,10 @@ def get_modeldata(
             dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
             del dfmodeloddlines
 
-    if len(dfmodel) > gridcellcount:
-        dfmodel = dfmodel.iloc[:gridcellcount]
+    if len(dfmodel) > modelcellcount:
+        dfmodel = dfmodel.iloc[:modelcellcount]
 
-    assert len(dfmodel) == gridcellcount or skip3ddataframe
+    assert len(dfmodel) == modelcellcount or skip3ddataframe
 
     dfmodel.index.name = "cellid"
     # dfmodel.drop('inputcellid', axis=1, inplace=True)
@@ -199,7 +179,8 @@ def get_modeldata(
         vmax_cmps = dfmodel.velocity_outer.max() * 1e5
 
     elif dimensions == 3:
-        wid_init = at.misc.get_wid_init_at_tmodel(modelpath, gridcellcount, t_model_init_days, xmax_tmodel)
+        wid_init = at.misc.get_wid_init_at_tmodel(modelpath, modelcellcount, t_model_init_days, xmax_tmodel)
+        modelmeta["wid_init"] = wid_init
         dfmodel.eval("cellmass_grams = rho * @wid_init ** 3", inplace=True)
 
         dfmodel.rename(columns={"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"}, inplace=True)
@@ -249,16 +230,90 @@ def get_modeldata(
             if posmatch_zyx:
                 print("Cell positions in model.txt are consistent with calculated values when z-y-x column order")
 
-    if get_abundances:
+    modelmeta["t_model_init_days"] = t_model_init_days
+    modelmeta["dimensions"] = dimensions
+    modelmeta["vmax_cmps"] = vmax_cmps
+    modelmeta["modelcellcount"] = modelcellcount
+
+    return dfmodel, modelmeta
+
+
+def get_modeldata_metadata(
+    inputpath=Path(),
+    dimensions: Optional[int] = None,
+    get_elemabundances=False,
+    derived_cols=False,
+    printwarningsonly=False,
+    skip3ddataframe=False,
+    skipabundancecolumns=False,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """
+    Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
+
+    Parameters:
+        - inputpath: either a path to model.txt file, or a folder containing model.txt
+        - dimensions: number of dimensions in input file, or None for automatic
+        - get_elemabundances: also read elemental abundances (abundances.txt) and
+            merge with the output DataFrame
+
+    return dfmodel, modelmeta
+        - dfmodel: a pandas DataFrame with a row for each model grid cell
+        - modelmeta is a dictionary of model properties, such as t_model_init_days, vmax_cmps, dimensions, etc
+    """
+
+    inputpath = Path(inputpath)
+
+    if inputpath.is_dir():
+        modelpath = inputpath
+        filename = at.firstexisting(["model.txt.xz", "model.txt.gz", "model.txt"], path=inputpath)
+    elif inputpath.is_file():  # passed in a filename instead of the modelpath
+        filename = inputpath
+        modelpath = Path(inputpath).parent
+    elif not inputpath.exists() and inputpath.parts[0] == "codecomparison":
+        modelpath = inputpath
+        _, inputmodel, _ = modelpath.parts
+        filename = Path(at.config["codecomparisonmodelartismodelpath"], inputmodel, "model.txt")
+    else:
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
+
+    # this inner call gets LRU cached, so that we can reuse the cache when changing derived columns, or adding elemental abundances
+    dfmodel, modelmeta = read_modelfile(
+        filename=filename,
+        dimensions=dimensions,
+        printwarningsonly=printwarningsonly,
+        skip3ddataframe=skip3ddataframe,
+        skipabundancecolumns=skipabundancecolumns,
+    )
+
+    dfmodel = dfmodel.copy()
+
+    if get_elemabundances:
         if dimensions == 3:
             print("Getting abundances")
         abundancedata = get_initialabundances(modelpath)
         dfmodel = dfmodel.merge(abundancedata, how="inner", on="inputcellid")
 
     if derived_cols:
-        add_derived_cols_to_modeldata(dfmodel, derived_cols, dimensions, t_model_init_seconds, wid_init, modelpath)
+        add_derived_cols_to_modeldata(
+            dfmodel,
+            derived_cols,
+            dimensions,
+            modelmeta["t_model_init_seconds"],
+            modelmeta["wid_init"],
+            modelmeta["modelpath"],
+        )
 
-    return dfmodel, t_model_init_days, vmax_cmps
+    return dfmodel, modelmeta
+
+
+def get_modeldata(*args, **kwargs) -> tuple[pd.DataFrame, float, float]:
+    """
+    Deprecated but included for compatibility with fixed length tuple return type
+    Use get_modeldata_metadata() instead!
+    """
+    dfmodel, modelmeta = get_modeldata_metadata(*args, **kwargs)
+
+    return dfmodel, modelmeta["t_model_init_days"], modelmeta["vmax_cmps"]
 
 
 def add_derived_cols_to_modeldata(
@@ -575,7 +630,7 @@ def get_mgi_of_velocity_kms(modelpath, velocity, mgilist=None):
 
 
 @lru_cache(maxsize=8)
-def get_initialabundances(modelpath):
+def get_initialabundances(modelpath: Path) -> pd.DataFrame:
     """Return a list of mass fractions."""
     abundancefilepath = at.firstexisting(["abundances.txt.xz", "abundances.txt.gz", "abundances.txt"], path=modelpath)
 
@@ -585,6 +640,7 @@ def get_initialabundances(modelpath):
     if len(abundancedata) > 100000:
         print("abundancedata memory usage:")
         abundancedata.info(verbose=False, memory_usage="deep")
+
     return abundancedata
 
 

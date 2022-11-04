@@ -138,7 +138,7 @@ def add_derived_columns(
     return dfpackets
 
 
-def readfile_text(packetsfile, modelpath=Path(".")):
+def readfile_text(packetsfile, modelpath=Path(".")) -> pd.DataFrame:
     usecols_nodata = None  # print a warning for missing columns if the source code columns can't be read
 
     skiprows = 0
@@ -273,7 +273,7 @@ def readfile_text(packetsfile, modelpath=Path(".")):
 
 
 @at.diskcache(savezipped=True)
-def readfile(packetsfile, type=None, escape_type=None):
+def readfile(packetsfile, type=None, escape_type=None) -> pd.DataFrame:
     """Read a packet file into a pandas DataFrame."""
     packetsfile = Path(packetsfile)
 
@@ -488,7 +488,7 @@ def make_3d_grid(modeldata, vmax_cms):
 
 def get_mean_packet_emission_velocity_per_ts(
     modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT", maxpacketfiles=None, escape_angles=None
-):
+) -> pd.DataFrame:
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
     assert nprocs_read > 0

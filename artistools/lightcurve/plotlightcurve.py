@@ -128,7 +128,9 @@ def make_lightcurve_plot_from_lightcurve_out_files(
 
         if args.plotdeposition:
             if args.plotthermalisation:
-                dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath, skipabundances=True)
+                dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(
+                    modelpath, skipabundancecolumns=True
+                )
                 model_mass_grams = dfmodel.cellmass_grams.sum()
                 print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
 
@@ -573,7 +575,7 @@ def set_axis_limit_args(args):
             args.timemin = args.xmin - 5
 
 
-def get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args):
+def get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args) -> str:
     if args.plotvspecpol and angle is not None and os.path.isfile(modelpath / "vpkt.txt"):
         vpkt_config = at.get_vpkt_config(modelpath)
         viewing_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][angle])))

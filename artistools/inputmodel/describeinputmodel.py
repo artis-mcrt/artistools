@@ -24,10 +24,10 @@ def addargs(parser):
     parser.add_argument(
         "--noisotopes",
         action="store_true",
-        help="Give element abundances only, no isotope abundances (implies --getabundances)",
+        help="Give element abundances only, no isotope abundances (implies --getelemabundances)",
     )
 
-    parser.add_argument("--getabundances", action="store_true", help="Get elemental abundance masses")
+    parser.add_argument("--getelemabundances", action="store_true", help="Get elemental abundance masses")
 
 
 def main(args=None, argsraw=None, **kwargs):
@@ -43,10 +43,10 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     if args.noisotopes:
-        args.getabundances = True
+        args.getelemabundances = True
 
     dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata(
-        args.inputfile, get_abundances=args.getabundances, printwarningsonly=False
+        args.inputfile, get_elemabundances=args.getelemabundances, printwarningsonly=False
     )
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
@@ -127,7 +127,7 @@ def main(args=None, argsraw=None, **kwargs):
             massfrac = species_mass_msun / mass_msun_rho
             strcomment = ""
             atomic_number = at.get_atomic_number(species)
-            if species.endswith("_isosum") and args.getabundances:
+            if species.endswith("_isosum") and args.getelemabundances:
                 elsymb = species.replace("_isosum", "")
                 elem_mass = speciesmasses.get(elsymb, 0.0)
                 if elem_mass > 0.0:

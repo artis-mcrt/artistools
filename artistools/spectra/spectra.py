@@ -8,6 +8,7 @@ from collections import namedtuple
 from functools import lru_cache
 from functools import partial
 from pathlib import Path
+from typing import Literal
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt  # needed to get the color map
@@ -70,7 +71,7 @@ def stackspectra(spectra_and_factors):
 
 
 @lru_cache(maxsize=16)
-def get_specdata(modelpath, stokesparam=None):
+def get_specdata(modelpath, stokesparam: Literal["I", "Q", "U"] = None) -> pd.DataFrame:
     polarisationdata = False
     if Path(modelpath, "specpol.out").is_file():
         specfilename = Path(modelpath) / "specpol.out"
@@ -94,12 +95,14 @@ def get_specdata(modelpath, stokesparam=None):
         assert stokesparam is None
         print(f"Reading {specfilename}")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
-        specdata = specdata.rename(columns={"0": "nu"})
+        specdata.rename(columns={"0": "nu"}, inplace=True)
 
     return specdata
 
 
-def get_spectrum(modelpath, timestepmin: int, timestepmax=-1, fnufilterfunc=None, modelnumber=None):
+def get_spectrum(
+    modelpath, timestepmin: int, timestepmax: int = -1, fnufilterfunc=None, modelnumber=None
+) -> pd.DataFrame:
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax < 0:
         timestepmax = timestepmin
@@ -471,7 +474,7 @@ def make_averaged_vspecfiles(args):
         )
 
 
-def get_specpol_data(angle=None, modelpath=None, specdata=None):
+def get_specpol_data(angle=None, modelpath=None, specdata=None) -> dict[str, pd.DataFrame]:
     if specdata is None:
         if angle is None:
             specfilename = at.firstexisting(["specpol.out", "specpol.out.xz", "specpol.out.gz"], path=modelpath)
