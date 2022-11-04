@@ -2,8 +2,10 @@
 import gzip
 import math
 import sys
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -81,7 +83,12 @@ def get_column_names_artiscode(modelpath):
     return False
 
 
-def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None):
+def add_derived_columns(
+    dfpackets: pd.DataFrame,
+    modelpath: Path,
+    colnames: Sequence[str],
+    allnonemptymgilist: Optional[Sequence[int]] = None,
+) -> pd.DataFrame:
     cm_to_km = 1e-5
     day_in_s = 86400
     if dfpackets.empty:
@@ -124,6 +131,9 @@ def add_derived_columns(dfpackets, modelpath, colnames, allnonemptymgilist=None)
 
     if "em_timestep" in colnames:
         dfpackets["em_timestep"] = dfpackets.apply(em_timestep, axis=1)
+
+    if "angle_bin" in colnames:
+        dfpackets = get_escaping_packet_angle_bin(modelpath, dfpackets)
 
     return dfpackets
 
@@ -337,7 +347,7 @@ def get_packetsfilepaths(modelpath, maxpacketfiles=None):
     return packetsfiles
 
 
-def get_escaping_packet_angle_bin(modelpath, dfpackets):
+def get_escaping_packet_angle_bin(modelpath, dfpackets: pd.DataFrame) -> pd.DataFrame:
     MABINS = 100
 
     syn_dir = at.get_syn_dir(modelpath)
@@ -346,16 +356,16 @@ def get_escaping_packet_angle_bin(modelpath, dfpackets):
     i = 0
     for pkt_index, _ in dfpackets.iterrows():
         pkt_dir = [dfpackets["dirx"][pkt_index], dfpackets["diry"][pkt_index], dfpackets["dirz"][pkt_index]]
-        costheta = at.dot(pkt_dir, syn_dir)
+        costheta = np.dot(pkt_dir, syn_dir)
         thetabin = (costheta + 1.0) * np.sqrt(MABINS) / 2.0
-        vec1 = vec2 = vec3 = [0, 0, 0]
-        xhat = [1, 0, 0]
-        vec1 = at.cross_prod(pkt_dir, syn_dir, vec1)
-        vec2 = at.cross_prod(xhat, syn_dir, vec2)
-        cosphi = at.dot(vec1, vec2) / at.vec_len(vec1) / at.vec_len(vec2)
+        vec1 = vec2 = vec3 = np.array([0.0, 0.0, 0.0])
+        xhat = np.array([1.0, 0.0, 0.0])
+        vec1 = np.cross(pkt_dir, syn_dir)
+        vec2 = np.cross(xhat, syn_dir)
+        cosphi = np.dot(vec1, vec2) / at.vec_len(vec1) / at.vec_len(vec2)
 
-        vec3 = at.cross_prod(vec2, syn_dir, vec3)
-        testphi = at.dot(vec1, vec3)
+        vec3 = np.cross(vec2, syn_dir)
+        testphi = np.dot(vec1, vec3)
 
         if testphi > 0:
             phibin = math.acos(cosphi) / 2.0 / np.pi * np.sqrt(MABINS)

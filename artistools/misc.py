@@ -160,7 +160,7 @@ def get_composition_data_from_outputfile(modelpath):
     return composition_df
 
 
-def gather_res_data(res_df, index_of_repeated_value=1):
+def gather_res_data(res_df: pd.DataFrame, index_of_repeated_value: int = 1) -> list[pd.DataFrame]:
     """res files repeat output for each angle.
     index_of_repeated_value is the value to look for repeating eg. time of ts 0.
     In spec_res files it's 1, but in lc_res file it's 0"""
@@ -176,14 +176,14 @@ def gather_res_data(res_df, index_of_repeated_value=1):
     return res_data
 
 
-def match_closest_time(reftime, searchtimes):
+def match_closest_time(reftime: float, searchtimes: list[Any]) -> str:
     """Get time closest to reftime in list of times (searchtimes)"""
     return str("{}".format(min([float(x) for x in searchtimes], key=lambda x: abs(x - reftime))))
 
 
-def get_vpkt_config(modelpath):
+def get_vpkt_config(modelpath) -> dict[str, Any]:
     filename = Path(modelpath, "vpkt.txt")
-    vpkt_config = {}
+    vpkt_config: dict[str, Any] = {}
     with open(filename, "r") as vpkt_txt:
         vpkt_config["nobsdirections"] = int(vpkt_txt.readline())
         vpkt_config["cos_theta"] = [float(x) for x in vpkt_txt.readline().split()]
@@ -258,26 +258,15 @@ def get_wid_init_at_tmodel(modelpath=None, ngridpoints=None, t_model_days=None, 
     return wid_init
 
 
-def get_syn_dir(modelpath):
-    with open(modelpath / "syn_dir.txt", "r") as syn_dir_file:
+def get_syn_dir(modelpath) -> Sequence[int]:
+    with open(modelpath / "syn_dir.txt", "rt") as syn_dir_file:
         syn_dir = [int(x) for x in syn_dir_file.readline().split()]
 
     return syn_dir
 
 
-def dot(x, y) -> float:
-    return (x[0] * y[0]) + (x[1] * y[1]) + (x[2] * y[2])
-
-
-def cross_prod(v1, v2, v3):
-    v3[0] = (v1[1] * v2[2]) - (v2[1] * v1[2])
-    v3[1] = (v1[2] * v2[0]) - (v2[2] * v1[0])
-    v3[2] = (v1[0] * v2[1]) - (v2[0] * v1[1])
-    return v3
-
-
-def vec_len(vec):
-    return np.sqrt(vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2)
+def vec_len(vec: Union[Sequence, np.ndarray[Any, Any]]) -> float:
+    return np.sqrt(np.dot(vec, vec))
 
 
 @lru_cache(maxsize=16)
