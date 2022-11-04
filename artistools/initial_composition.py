@@ -239,7 +239,7 @@ def make_3d_plot(modelpath, args):
 
     pv.set_plot_theme("document")  # set white background
 
-    model, t_model, vmax = at.inputmodel.get_modeldata(modelpath, dimensions=3, get_abundances=False)
+    model, t_model, vmax = at.inputmodel.get_modeldata(modelpath, dimensions=3, get_elemabundances=False)
     abundances = at.inputmodel.get_initialabundances(modelpath)
 
     abundances["inputcellid"] = abundances["inputcellid"].apply(lambda x: float(x))

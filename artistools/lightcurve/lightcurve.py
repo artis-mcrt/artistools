@@ -4,6 +4,7 @@
 import math
 import os
 from pathlib import Path
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,7 +18,7 @@ import artistools.spectra
 # import sys
 
 
-def readfile(filepath_or_buffer, modelpath=None, args=None):
+def readfile(filepath_or_buffer, modelpath=None, args=None) -> pd.DataFrame:
     lcdata = pd.read_csv(filepath_or_buffer, delim_whitespace=True, header=None, names=["time", "lum", "lum_cmf"])
 
     if args is not None and args.gamma and modelpath is not None and at.get_inputparams(modelpath)["n_dimensions"] == 3:
@@ -35,7 +36,7 @@ def readfile(filepath_or_buffer, modelpath=None, args=None):
     return lcdata
 
 
-def read_3d_gammalightcurve(filepath_or_buffer):
+def read_3d_gammalightcurve(filepath_or_buffer) -> list[pd.DataFrame]:
     columns = ["time"]
     columns.extend(np.arange(0, 100))
     lcdata = pd.read_csv(filepath_or_buffer, delim_whitespace=True, header=None)
@@ -51,7 +52,13 @@ def read_3d_gammalightcurve(filepath_or_buffer):
     return res_data
 
 
-def get_from_packets(modelpath, lcpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT", maxpacketfiles=None):
+def get_from_packets(
+    modelpath,
+    lcpath,
+    packet_type: str = "TYPE_ESCAPE",
+    escape_type: str = "TYPE_RPKT",
+    maxpacketfiles: Optional[int] = None,
+) -> pd.DataFrame:
     import artistools.packets
 
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
@@ -62,7 +69,7 @@ def get_from_packets(modelpath, lcpath, packet_type="TYPE_ESCAPE", escape_type="
     timearray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
     arr_timedelta = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
     # timearray = np.arange(250, 350, 0.1)
-    _, _, vmax_cmps = at.inputmodel.get_modeldata(modelpath, skip3ddataframe=True, skipabundances=True)
+    _, _, vmax_cmps = at.inputmodel.get_modeldata(modelpath, skip3ddataframe=True, skipabundancecolumns=True)
     escapesurfacegamma = math.sqrt(1 - (vmax_cmps / 29979245800) ** 2)
 
     timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
@@ -100,7 +107,7 @@ def get_from_packets(modelpath, lcpath, packet_type="TYPE_ESCAPE", escape_type="
     return lcdata
 
 
-def average_lightcurve_every_10_bins(lcdataframes, args):
+def average_lightcurve_every_10_bins(lcdataframes: list[pd.DataFrame], args) -> list[pd.DataFrame]:
     if args and args.average_every_tenth_viewing_angle:
         for start_bin in np.arange(start=0, stop=100, step=10):
             # print(start_bin)
@@ -250,7 +257,7 @@ def bolometric_magnitude(modelpath, timearray, args, angle=None, res_specdata=No
     return times, magnitudes
 
 
-def get_filter_data(filterdir, filter_name):
+def get_filter_data(filterdir, filter_name: str) -> tuple[float, np.ndarray, np.ndarray, float, float]:
     """Filter data in 'data/filters' taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata"""
 
     with open(filterdir / Path(filter_name + ".txt"), "r") as filter_metadata:  # defintion of the file
@@ -273,16 +280,16 @@ def get_filter_data(filterdir, filter_name):
 
 def get_spectrum_in_filter_range(
     modelpath,
-    timestep,
-    time,
-    wavefilter_min,
-    wavefilter_max,
+    timestep: int,
+    time: float,
+    wavefilter_min: float,
+    wavefilter_max: float,
     angle=None,
     res_specdata=None,
     modelnumber=None,
-    spectrum=None,
+    spectrum: Optional[pd.DataFrame] = None,
     args=None,
-):
+) -> tuple[np.ndarray, np.ndarray]:
     if spectrum is None:
         spectrum = at.spectra.get_spectrum_at_time(
             modelpath,
@@ -303,7 +310,7 @@ def get_spectrum_in_filter_range(
     return np.array(wavelength_from_spectrum), np.array(flux)
 
 
-def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux):
+def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux) -> float:
     cf = flux * transmission
     flux_obs = abs(np.trapz(cf, wavelength_from_spectrum))  # using trapezoidal rule to integrate
     if flux_obs == 0.0:

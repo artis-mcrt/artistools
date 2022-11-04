@@ -19,7 +19,7 @@ at.config["enable_diskcache"] = False
 
 
 def test_describeinputmodel():
-    at.inputmodel.describeinputmodel.main(argsraw=[], inputfile=modelpath, get_abundances=True)
+    at.inputmodel.describeinputmodel.main(argsraw=[], inputfile=modelpath, get_elemabundances=True)
 
 
 def test_makemodel_botyanski2017():

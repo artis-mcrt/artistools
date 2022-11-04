@@ -66,7 +66,7 @@ def plot_init_abundances(
     assert len(xlist) - 1 == len(mgilist)
 
     if seriestype == "initabundances":
-        mergemodelabundata, _, _ = at.inputmodel.get_modeldata(modelpath, get_abundances=True)
+        mergemodelabundata, _, _ = at.inputmodel.get_modeldata(modelpath, get_elemabundances=True)
     elif seriestype == "initmasses":
         mergemodelabundata = at.initial_composition.get_model_abundances_Msun_1D(modelpath)
 
