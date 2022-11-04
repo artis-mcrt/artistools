@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import gzip
+import io
 import lzma
 import math
 import os.path
@@ -368,13 +369,14 @@ def get_timestep_times_float(
         raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
 
 
-def get_timestep_of_timedays(modelpath, timedays):
+def get_timestep_of_timedays(modelpath, timedays: Union[str, float]) -> int:
     """Return the timestep containing the given time in days."""
-    try:
+
+    if isinstance(timedays, str):
         # could be a string like '330d'
-        timedays_float = float(timedays.rstrip("d"))
-    except AttributeError:
-        timedays_float = float(timedays)
+        timedays = timedays.rstrip("d")
+
+    timedays_float = float(timedays)
 
     arr_tstart = get_timestep_times_float(modelpath, loc="start")
     arr_tend = get_timestep_times_float(modelpath, loc="end")
@@ -459,7 +461,7 @@ def get_time_range(modelpath, timestep_range_str=None, timemin=None, timemax=Non
     return timestepmin, timestepmax, time_days_lower, time_days_upper
 
 
-def get_timestep_time(modelpath, timestep):
+def get_timestep_time(modelpath, timestep: int) -> float:
     """Return the time in days of the midpoint of a timestep number"""
     timearray = get_timestep_times_float(modelpath, loc="mid")
     if timearray is not None:
@@ -670,7 +672,7 @@ def firstexisting(filelist, path=Path(".")):
     raise FileNotFoundError(f'None of these files exist in {path}: {", ".join([str(x) for x in fullpaths])}')
 
 
-def stripallsuffixes(f):
+def stripallsuffixes(f) -> Path:
     """Take a file path (e.g. packets00_0000.out.gz) and return the Path with no suffixes (e.g. packets)"""
     f_nosuffixes = Path(f)
     for _ in f.suffixes:
@@ -679,7 +681,7 @@ def stripallsuffixes(f):
     return f_nosuffixes
 
 
-def readnoncommentline(file):
+def readnoncommentline(file: io.TextIOBase) -> str:
     """Read a line from the text file, skipping blank and comment lines that begin with #"""
 
     line = ""
@@ -769,7 +771,7 @@ def join_pdf_files(pdf_list, modelpath_list):
 
 
 @lru_cache(maxsize=2)
-def get_bflist(modelpath, returntype="dict"):
+def get_bflist(modelpath) -> dict[int, tuple[int, int, int, int]]:
     compositiondata = get_composition_data(modelpath)
     bflist = {}
     with zopen(Path(modelpath, "bflist.dat"), "rt") as filein:
@@ -790,7 +792,7 @@ def get_bflist(modelpath, returntype="dict"):
 
 
 @lru_cache(maxsize=16)
-def get_linelist(modelpath, returntype="dict"):
+def get_linelist(modelpath, returntype: Literal["dict", "dataframe"] = "dict"):
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     with zopen(Path(modelpath, "linestat.out"), "rt") as linestatfile:
         lambda_angstroms = [float(wl) * 1e8 for wl in linestatfile.readline().split()]
@@ -808,7 +810,7 @@ def get_linelist(modelpath, returntype="dict"):
         assert len(lower_levels) == nlines
 
     if returntype == "dict":
-        linetuple = namedtuple("line", "lambda_angstroms atomic_number ionstage upperlevelindex lowerlevelindex")
+        linetuple = namedtuple("linetuple", "lambda_angstroms atomic_number ionstage upperlevelindex lowerlevelindex")
         linelistdict = {
             index: linetuple(lambda_a, Z, ionstage, upper, lower)
             for index, lambda_a, Z, ionstage, upper, lower in zip(
@@ -965,7 +967,7 @@ def get_mpiranklist(
                 return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
-def get_cellsofmpirank(mpirank, modelpath) -> Iterable[int]:
+def get_cellsofmpirank(mpirank: int, modelpath) -> Iterable[int]:
     """Return an iterable of the cell numbers processed by a given MPI rank."""
     npts_model = get_npts_model(modelpath)
     nprocs = get_nprocs(modelpath)
@@ -1026,7 +1028,7 @@ def get_mpirankofcell(modelgridindex: int, modelpath: Path) -> int:
     return mpirank
 
 
-def get_artis_constants(modelpath=None, srcpath=None, printdefs=False):
+def get_artis_constants(modelpath=None, srcpath=None, printdefs: bool = False):
     # get artis options specified as preprocessor macro definitions in artisoptions.h and other header files
     if not srcpath:
         srcpath = Path(modelpath, "artis")
@@ -1066,7 +1068,7 @@ def get_artis_constants(modelpath=None, srcpath=None, printdefs=False):
     return definedict
 
 
-def parse_cdefines(srcfilepath=None, printdefs=False):
+def parse_cdefines(srcfilepath=None, printdefs: bool = False):
     # adapted from h2py.py in Python source
     import re
 
