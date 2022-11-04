@@ -994,8 +994,6 @@ def addargs(parser):
         help="Maximum number of plot series (ions/processes) for emission/absorption plot",
     )
 
-    parser.add_argument("--listtimesteps", action="store_true", help="Show the times at each timestep")
-
     parser.add_argument(
         "-filtersavgol",
         nargs=2,
@@ -1221,9 +1219,6 @@ def main(args=None, argsraw=None, **kwargs):
     if "/" in args.stokesparam:
         plot_polarisation(args.specpath[0], args)
         return
-
-    if args.listtimesteps:
-        at.showtimesteptimes(modelpath=args.specpath[0])
 
     elif args.output_spectra:
         for modelpath in args.specpath:

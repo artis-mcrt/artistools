@@ -932,8 +932,6 @@ def addargs(parser):
     """Add arguments to an argparse parser object."""
     parser.add_argument("-modelpath", default=".", type=Path, help="Path to ARTIS folder")
 
-    parser.add_argument("-listtimesteps", action="store_true", help="Show the times at each timestep")
-
     parser.add_argument("--frompackets", action="store_true", help="Read packets files for internal radiation field")
 
     parser.add_argument("-maxpacketfiles", type=int, default=None, help="Limit the number of packet files read")
@@ -1001,49 +999,46 @@ def main(args=None, argsraw=None, **kwargs):
     modelpath_list = []
     modelgridindexlist = []
 
-    if args.listtimesteps:
-        at.showtimesteptimes(modelpath=args.modelpath)
+    if args.velocity >= 0.0:
+        modelgridindexlist = [at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)]
     else:
-        if args.velocity >= 0.0:
-            modelgridindexlist = [at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)]
+        if args.modelgridindex is None:
+            modelgridindexlist = [0]
         else:
-            if args.modelgridindex is None:
-                modelgridindexlist = [0]
-            else:
-                modelgridindexlist = at.parse_range_list(args.modelgridindex)
+            modelgridindexlist = at.parse_range_list(args.modelgridindex)
 
-        timesteplast = len(at.get_timestep_times_float(modelpath))
-        if args.timedays:
-            timesteplist = [at.get_timestep_of_timedays(modelpath, args.timedays)]
-        elif args.timestep:
-            timesteplist = at.parse_range_list(args.timestep, dictvars={"last": timesteplast})
+    timesteplast = len(at.get_timestep_times_float(modelpath))
+    if args.timedays:
+        timesteplist = [at.get_timestep_of_timedays(modelpath, args.timedays)]
+    elif args.timestep:
+        timesteplist = at.parse_range_list(args.timestep, dictvars={"last": timesteplast})
+    else:
+        print("Using last timestep.")
+        timesteplist = [timesteplast]
+
+    for modelgridindex in modelgridindexlist:
+        if args.xaxis == "lambda":
+            for timestep in timesteplist:
+                outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
+                make_plot = plot_celltimestep(
+                    modelpath,
+                    timestep,
+                    outputfile,
+                    xmin=args.xmin,
+                    xmax=args.xmax,
+                    modelgridindex=modelgridindex,
+                    args=args,
+                    normalised=args.normalised,
+                )
+                if make_plot:
+                    pdf_list.append(outputfile)
+                    modelpath_list.append(args.modelpath)
+        elif args.xaxis == "timestep":
+            outputfile = args.outputfile.format(modelgridindex=modelgridindex)
+            plot_timeevolution(modelpath, outputfile, modelgridindex, args)
         else:
-            print("Using last timestep.")
-            timesteplist = [timesteplast]
-
-        for modelgridindex in modelgridindexlist:
-            if args.xaxis == "lambda":
-                for timestep in timesteplist:
-                    outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
-                    make_plot = plot_celltimestep(
-                        modelpath,
-                        timestep,
-                        outputfile,
-                        xmin=args.xmin,
-                        xmax=args.xmax,
-                        modelgridindex=modelgridindex,
-                        args=args,
-                        normalised=args.normalised,
-                    )
-                    if make_plot:
-                        pdf_list.append(outputfile)
-                        modelpath_list.append(args.modelpath)
-            elif args.xaxis == "timestep":
-                outputfile = args.outputfile.format(modelgridindex=modelgridindex)
-                plot_timeevolution(modelpath, outputfile, modelgridindex, args)
-            else:
-                print("Unknown plot type {args.plot}")
-                return 1
+            print("Unknown plot type {args.plot}")
+            return 1
 
     if len(pdf_list) > 1:
         print(pdf_list, modelpath_list)
