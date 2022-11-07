@@ -237,13 +237,13 @@ def read_modelfile(
 
             assert posmatch_xyz != posmatch_zyx  # one option must match
             if posmatch_xyz:
-                print("Cell positions in model.txt are consistent with calculated values when x-y-z column order")
+                print("Cell positions in model.txt are consistent with x-y-z column order")
                 dfmodel.rename(
                     columns={"inputpos_a": "pos_x_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_z_min"},
                     inplace=True,
                 )
             if posmatch_zyx:
-                print("Cell positions in model.txt are consistent with calculated values when z-y-x column order")
+                print("Cell positions in model.txt are consistent with z-y-x column order")
                 dfmodel.rename(
                     columns={"inputpos_a": "pos_z_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_x_min"},
                     inplace=True,
