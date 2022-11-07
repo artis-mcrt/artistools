@@ -718,7 +718,7 @@ def sphericalaverage(
     t_model_init_days: float,
     vmax: float,
     dfelabundances: Optional[pd.DataFrame] = None,
-    dfgridcontributions: Optional[pd.Dataframe] = None,
+    dfgridcontributions: Optional[pd.DataFrame] = None,
     nradialbins: Optional[int] = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Convert 3D Cartesian grid model to 1D spherical"""
