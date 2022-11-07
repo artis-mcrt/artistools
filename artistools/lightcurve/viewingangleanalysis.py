@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 from typing import Optional
+from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -150,7 +151,7 @@ define_colours_list2 = [
 
 
 def get_angle_stuff(
-    modelpath: Path | str, args
+    modelpath: Union[Path, str], args
 ) -> tuple[Any, Optional[np.ndarray[Any, np.dtype[Any]]], Optional[dict[int, str]]]:
     modelpath = Path(modelpath)
     viewing_angles = None
@@ -224,7 +225,7 @@ def get_viewinganglebin_definitions() -> tuple[list[str], list[str]]:
 
 
 def calculate_costheta_phi_for_viewing_angles(
-    viewing_angles: np.ndarray[Any, np.dtype[Any]] | Sequence[int], modelpath: Path | str
+    viewing_angles: np.ndarray[Any, np.dtype[Any]] | Sequence[int], modelpath: Union[Path, str]
 ):
     modelpath = Path(modelpath)
     if (modelpath / "absorptionpol_res_99.out").is_file() and (modelpath / "absorptionpol_res_100.out").is_file():

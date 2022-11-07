@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -273,7 +274,9 @@ def readfile_text(packetsfile, modelpath=Path(".")) -> pd.DataFrame:
 
 
 @at.diskcache(savezipped=True)
-def readfile(packetsfile, type=None, escape_type=None) -> pd.DataFrame:
+def readfile(
+    packetsfile: Union[Path, str], type: Optional[str] = None, escape_type: Optional[str] = None
+) -> pd.DataFrame:
     """Read a packet file into a pandas DataFrame."""
     packetsfile = Path(packetsfile)
 
