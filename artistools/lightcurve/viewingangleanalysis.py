@@ -225,7 +225,7 @@ def get_viewinganglebin_definitions() -> tuple[list[str], list[str]]:
 
 
 def calculate_costheta_phi_for_viewing_angles(
-    viewing_angles: np.ndarray[Any, np.dtype[Any]] | Sequence[int], modelpath: Union[Path, str]
+    viewing_angles: Union[np.ndarray[Any, np.dtype[Any]], Sequence[int]], modelpath: Union[Path, str]
 ):
     modelpath = Path(modelpath)
     if (modelpath / "absorptionpol_res_99.out").is_file() and (modelpath / "absorptionpol_res_100.out").is_file():
