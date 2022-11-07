@@ -8,10 +8,14 @@ import math
 import multiprocessing
 import sys
 from collections import namedtuple
+from collections.abc import Iterable
+from collections.abc import Sequence
 from functools import lru_cache
 from functools import partial
 from functools import reduce
 from pathlib import Path
+from typing import Any
+from typing import Optional
 
 import pandas as pd
 
@@ -100,7 +104,7 @@ def get_ionrecombrates_fromfile(filename):
     return dfrecombrates
 
 
-def get_units_string(variable):
+def get_units_string(variable: str) -> str:
     if variable in variableunits:
         return f" [{variableunits[variable]}]"
     if variable.split("_")[0] in variableunits:
@@ -108,14 +112,16 @@ def get_units_string(variable):
     return ""
 
 
-def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcooling=True):
+def parse_estimfile(
+    estfilepath: Path, modelpath, get_ion_values: bool = True, get_heatingcooling: bool = True
+) -> Iterable[tuple[int, int, dict]]:
     """Generate timestep, modelgridindex, dict from estimator file."""
     # itstep = at.get_inputparams(modelpath)['itstep']
 
     with at.zopen(estfilepath, "rt") as estimfile:
         timestep = -1
         modelgridindex = -1
-        estimblock = {}
+        estimblock: dict[Any, Any] = {}
         for line in estimfile:
             row = line.split()
             if not row:
@@ -218,12 +224,12 @@ def parse_estimfile(estfilepath, modelpath, get_ion_values=True, get_heatingcool
 # @at.diskcache(ignorekwargs=['printfilename'], quiet=False, funcdepends=parse_estimfile, savezipped=True)
 def read_estimators_from_file(
     folderpath,
-    modelpath,
-    arr_velocity_outer,
-    mpirank,
-    printfilename=False,
-    get_ion_values=True,
-    get_heatingcooling=True,
+    modelpath: Path,
+    arr_velocity_outer: Optional[Sequence[float]],
+    mpirank: int,
+    printfilename: bool = False,
+    get_ion_values: bool = True,
+    get_heatingcooling: bool = True,
 ):
     estimators_thisfile = {}
     estimfilename = f"estimators_{mpirank:04d}.out"
@@ -334,7 +340,14 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_value
     return estimators
 
 
-def get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, keys, avgadjcells=0):
+def get_averaged_estimators(
+    modelpath,
+    estimators: dict[Any, Any],
+    timesteps: int | Sequence[int],
+    modelgridindex: int,
+    keys,
+    avgadjcells: int = 0,
+):
     """Get the average of estimators[(timestep, modelgridindex)][keys[0]]...[keys[-1]] across timesteps."""
     if isinstance(keys, str):
         keys = [keys]
@@ -343,7 +356,7 @@ def get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, ke
     # applying all keys in the keys list
 
     # if single timestep, no averaging needed
-    if not hasattr(timesteps, "__iter__"):
+    if isinstance(timesteps, int):
         return reduce(lambda d, k: d[k], [(timesteps, modelgridindex)] + keys, estimators)
 
     firsttimestepvalue = reduce(lambda d, k: d[k], [(timesteps[0], modelgridindex)] + keys, estimators)

@@ -5,14 +5,19 @@ import multiprocessing
 import os
 import re
 from collections import namedtuple
+from collections.abc import Sequence
 from functools import lru_cache
 from functools import partial
 from pathlib import Path
+from typing import Any
+from typing import Callable
 from typing import Literal
+from typing import Optional
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt  # needed to get the color map
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from astropy import constants as const
 from astropy import units as u
@@ -26,7 +31,7 @@ fluxcontributiontuple = namedtuple(
 )
 
 
-def timeshift_fluxscale_co56law(scaletoreftime, spectime):
+def timeshift_fluxscale_co56law(scaletoreftime: Optional[float], spectime: float) -> float:
     if scaletoreftime is not None:
         # Co56 decay flux scaling
         assert spectime > 150
@@ -39,6 +44,7 @@ def get_exspec_bins():
     MNUBINS = 1000
     NU_MIN_R = 1e13
     NU_MAX_R = 5e15
+    print("WARNING: assuming {MNUBINS=} {NU_MIN_R=} {NU_MAX_R=}. Check that artis code matches.")
 
     c_ang_s = const.c.to("angstrom/s").value
 
@@ -57,7 +63,7 @@ def get_exspec_bins():
     return array_lambdabinedges, array_lambda, delta_lambda
 
 
-def stackspectra(spectra_and_factors):
+def stackspectra(spectra_and_factors: list[tuple[np.ndarray[Any, np.dtype[np.float64]], float]]):
     """Add spectra using weighting factors, i.e., specout[nu] = spec1[nu] * factor1 + spec2[nu] * factor2 + ...
     spectra_and_factors should be a list of tuples: spectra[], factor"""
 
@@ -71,7 +77,7 @@ def stackspectra(spectra_and_factors):
 
 
 @lru_cache(maxsize=16)
-def get_specdata(modelpath, stokesparam: Literal["I", "Q", "U"] = None) -> pd.DataFrame:
+def get_specdata(modelpath: Path, stokesparam: Literal["I", "Q", "U"] = None) -> pd.DataFrame:
     polarisationdata = False
     if Path(modelpath, "specpol.out").is_file():
         specfilename = Path(modelpath) / "specpol.out"
@@ -101,7 +107,11 @@ def get_specdata(modelpath, stokesparam: Literal["I", "Q", "U"] = None) -> pd.Da
 
 
 def get_spectrum(
-    modelpath, timestepmin: int, timestepmax: int = -1, fnufilterfunc=None, modelnumber=None
+    modelpath: Path,
+    timestepmin: int,
+    timestepmax: int = -1,
+    fnufilterfunc: Optional[Callable[[npt.ArrayLike], npt.ArrayLike]] = None,
+    modelnumber=None,
 ) -> pd.DataFrame:
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax < 0:
@@ -157,14 +167,14 @@ def get_spectrum_at_time(modelpath, timestep, time, args, angle=None, res_specda
 
 
 def get_spectrum_from_packets_worker(
-    querystr,
-    qlocals,
-    array_lambda,
-    array_lambdabinedges,
+    querystr: str,
+    qlocals: dict[str, Any],
+    array_lambda: Sequence[float],
+    array_lambdabinedges: Sequence[float],
     packetsfile,
-    use_escapetime=False,
-    getpacketcount=False,
-    betafactor=None,
+    use_escapetime: bool = False,
+    getpacketcount: bool = False,
+    betafactor: Optional[float] = None,
 ):
     dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT").query(
         querystr, inplace=False, local_dict=qlocals
@@ -182,6 +192,7 @@ def get_spectrum_from_packets_worker(
     )
 
     if use_escapetime:
+        assert betafactor is not None
         array_energysum_onefile = dfpackets.e_cmf.groupby(wl_bins).sum().values / betafactor
     else:
         array_energysum_onefile = dfpackets.e_rf.groupby(wl_bins).sum().values
@@ -195,17 +206,17 @@ def get_spectrum_from_packets_worker(
 
 
 def get_spectrum_from_packets(
-    modelpath,
-    timelowdays,
-    timehighdays,
-    lambda_min,
-    lambda_max,
+    modelpath: Path,
+    timelowdays: float,
+    timehighdays: float,
+    lambda_min: float,
+    lambda_max: float,
     delta_lambda=None,
-    use_escapetime=None,
-    maxpacketfiles=None,
-    useinternalpackets=False,
-    getpacketcount=False,
-):
+    use_escapetime: bool = None,
+    maxpacketfiles: Optional[int] = None,
+    useinternalpackets: bool = False,
+    getpacketcount: bool = False,
+) -> pd.DataFrame:
     """Get a spectrum dataframe using the packets files as input."""
     assert not useinternalpackets
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
@@ -291,7 +302,7 @@ def get_spectrum_from_packets(
 
 @lru_cache(maxsize=16)
 @at.diskcache(savezipped=True)
-def read_specpol_res(modelpath):
+def read_specpol_res(modelpath: Path) -> list[pd.DataFrame]:
     """Return specpol_res data for a given angle"""
     if Path(modelpath, "specpol_res.out").is_file():
         specfilename = Path(modelpath) / "specpol_res.out"
@@ -333,7 +344,7 @@ def read_specpol_res(modelpath):
     return res_specdata
 
 
-def average_angle_bins(res_specdata, angle, args):
+def average_angle_bins(res_specdata: list[pd.DataFrame], angle: int, args) -> list[pd.DataFrame]:
     # Averages over 10 bins to reduce noise
 
     if args and args.average_every_tenth_viewing_angle:
@@ -347,12 +358,19 @@ def average_angle_bins(res_specdata, angle, args):
 
         if angle and angle % 10 == 0:
             print(f"Bin number {angle} is the average of 10 angle bins")
+
     return res_specdata
 
 
 def get_res_spectrum(
-    modelpath, timestepmin: int, timestepmax=-1, angle=None, res_specdata=None, fnufilterfunc=None, args=None
-):
+    modelpath: Path,
+    timestepmin: int,
+    timestepmax: int = -1,
+    angle: Optional[int] = None,
+    res_specdata: Optional[list[pd.DataFrame]] = None,
+    fnufilterfunc: Optional[Callable[[npt.ArrayLike], npt.ArrayLike]] = None,
+    args=None,
+) -> list[pd.DataFrame]:
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax < 0:
         timestepmax = timestepmin
@@ -1158,7 +1176,7 @@ def get_reference_spectrum(filename):
     return specdata, metadata
 
 
-def write_flambda_spectra(modelpath, args):
+def write_flambda_spectra(modelpath, args) -> None:
     """Write out spectra to text files.
 
     Writes lambda_angstroms and f_lambda to .txt files for all timesteps and create

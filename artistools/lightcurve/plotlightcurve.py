@@ -6,6 +6,7 @@ import multiprocessing
 import os
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Optional
 
 import argcomplete
 import matplotlib
@@ -112,7 +113,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(
             continue
         elif frompackets:
             lcdata = at.lightcurve.get_from_packets(
-                modelpath, lcpath, packet_type=args.packet_type, escape_type=escape_type, maxpacketfiles=maxpacketfiles
+                modelpath, packet_type=args.packet_type, escape_type=escape_type, maxpacketfiles=maxpacketfiles
             )
         else:
             lcdata = at.lightcurve.readfile(lcpath, modelpath, args)
@@ -575,7 +576,9 @@ def set_axis_limit_args(args):
             args.timemin = args.xmin - 5
 
 
-def get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args) -> str:
+def get_linelabel(
+    modelpath: Path, modelname: str, modelnumber: int, angle: Optional[int], angle_definition: dict[int, str], args
+) -> str:
     if args.plotvspecpol and angle is not None and os.path.isfile(modelpath / "vpkt.txt"):
         vpkt_config = at.get_vpkt_config(modelpath)
         viewing_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][angle])))
