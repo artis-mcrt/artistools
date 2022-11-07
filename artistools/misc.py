@@ -950,7 +950,7 @@ def get_runfolders(modelpath, timestep=None, timesteps=None) -> Iterable[Path]:
 
 def get_mpiranklist(
     modelpath, modelgridindex: Optional[Union[Iterable[int], int]] = None, only_ranks_withgridcells: bool = False
-) -> Iterable[int]:
+) -> Sequence[int]:
     """
     Get a list of rank ids. Parameters:
     - modelpath:
