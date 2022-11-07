@@ -43,7 +43,7 @@ def read_modelfile(
         while line.startswith("#"):
             line = fmodel.readline()
             if line.startswith("#"):
-                modelmeta["headercommentlines"].append(line.removeprefix("#").removeprefix(" "))
+                modelmeta["headercommentlines"].append(line.removeprefix("#").removeprefix(" ").removesuffix("\n"))
                 headerrows += 1
 
         modelcellcount = int(line)
@@ -121,13 +121,6 @@ def read_modelfile(
                 "X_Ni57",
                 "X_Co57",
             ][:ncols_file]
-
-            # number of grid cell steps along an axis (same for xyz)
-            ncoordgridx = int(round(modelcellcount ** (1.0 / 3.0)))
-            ncoordgridy = int(round(modelcellcount ** (1.0 / 3.0)))
-            ncoordgridz = int(round(modelcellcount ** (1.0 / 3.0)))
-
-            assert (ncoordgridx * ncoordgridy * ncoordgridz) == modelcellcount
         else:
             assert False
 
@@ -135,32 +128,49 @@ def read_modelfile(
         dfmodel = pd.read_csv(
             filename, delim_whitespace=True, header=None, names=columns, skiprows=headerrows, nrows=modelcellcount
         )
-    else:
+    elif dimensions == 3:
+        # number of grid cell steps along an axis (same for xyz)
+        ncoordgridx = int(round(modelcellcount ** (1.0 / 3.0)))
+        ncoordgridy = int(round(modelcellcount ** (1.0 / 3.0)))
+        ncoordgridz = int(round(modelcellcount ** (1.0 / 3.0)))
+
+        assert (ncoordgridx * ncoordgridy * ncoordgridz) == modelcellcount
+
         nrows_read = 1 if skip3ddataframe else modelcellcount
 
+        skipoddrows = list(
+            [x for x in range(headerrows + modelcellcount * 2) if x < headerrows or (x - headerrows - 1) % 2 == 0]
+        )
         # each cell takes up two lines in the model file
         dfmodel = pd.read_table(
             filename,
             sep=r"\s+",
             engine="c",
             header=None,
-            skiprows=lambda x: x < headerrows or (x - headerrows - 1) % 2 == 0,
+            skiprows=skipoddrows,
             names=columns[:5],
             nrows=nrows_read,
         )
+
         if not skipabundancecolumns:
+            skipevenrows = list(
+                [x for x in range(headerrows + modelcellcount * 2) if x < headerrows or (x - headerrows - 1) % 2 == 1]
+            )
             dfmodeloddlines = pd.read_table(
                 filename,
                 sep=r"\s+",
                 engine="c",
                 header=None,
-                skiprows=lambda x: x < headerrows or (x - headerrows - 1) % 2 == 1,
+                skiprows=skipevenrows,
                 names=columns[5:],
                 nrows=nrows_read,
+                converters={"tracercount": int},
             )
             assert len(dfmodel) == len(dfmodeloddlines)
             dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
             del dfmodeloddlines
+    else:
+        assert False
 
     if len(dfmodel) > modelcellcount:
         dfmodel = dfmodel.iloc[:modelcellcount]
@@ -185,16 +195,9 @@ def read_modelfile(
         dfmodel.eval("cellmass_grams = rho * @wid_init ** 3", inplace=True)
 
         dfmodel.rename(columns={"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"}, inplace=True)
-        if "pos_x_min" in dfmodel.columns:
+        if "pos_x_min" in dfmodel.columns and False:
             print("Cell positions in model.txt are defined in the header")
         elif not skip3ddataframe:
-            cellid = dfmodel.index.values
-            xindex = cellid % ncoordgridx
-            yindex = (cellid // ncoordgridx) % ncoordgridy
-            zindex = (cellid // (ncoordgridx * ncoordgridy)) % ncoordgridz
-            dfmodel["pos_x_min"] = -xmax_tmodel + 2 * xindex * xmax_tmodel / ncoordgridx
-            dfmodel["pos_y_min"] = -xmax_tmodel + 2 * yindex * xmax_tmodel / ncoordgridy
-            dfmodel["pos_z_min"] = -xmax_tmodel + 2 * zindex * xmax_tmodel / ncoordgridz
 
             def vectormatch(vec1, vec2):
                 xclose = np.isclose(vec1[0], vec2[0], atol=xmax_tmodel / ncoordgridx)
@@ -212,24 +215,39 @@ def read_modelfile(
                 (ncoordgridx - 1) * (ncoordgridy - 1),
                 (ncoordgridx - 1) * (ncoordgridy - 1) * (ncoordgridz - 1),
             ]
-            for index in indexlist:
-                cell = dfmodel.iloc[index]
+            for modelgridindex in indexlist:
+                xindex = modelgridindex % ncoordgridx
+                yindex = (modelgridindex // ncoordgridx) % ncoordgridy
+                zindex = (modelgridindex // (ncoordgridx * ncoordgridy)) % ncoordgridz
+                pos_x_min = -xmax_tmodel + 2 * xindex * xmax_tmodel / ncoordgridx
+                pos_y_min = -xmax_tmodel + 2 * yindex * xmax_tmodel / ncoordgridy
+                pos_z_min = -xmax_tmodel + 2 * zindex * xmax_tmodel / ncoordgridz
+
+                cell = dfmodel.iloc[modelgridindex]
                 if not vectormatch(
                     [cell.inputpos_a, cell.inputpos_b, cell.inputpos_c],
-                    [cell.pos_x_min, cell.pos_y_min, cell.pos_z_min],
+                    [pos_x_min, pos_y_min, pos_z_min],
                 ):
                     posmatch_xyz = False
                 if not vectormatch(
                     [cell.inputpos_a, cell.inputpos_b, cell.inputpos_c],
-                    [cell.pos_z_min, cell.pos_y_min, cell.pos_x_min],
+                    [pos_z_min, pos_y_min, pos_x_min],
                 ):
                     posmatch_zyx = False
 
             assert posmatch_xyz != posmatch_zyx  # one option must match
             if posmatch_xyz:
                 print("Cell positions in model.txt are consistent with calculated values when x-y-z column order")
+                dfmodel.rename(
+                    columns={"inputpos_a": "pos_x_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_z_min"},
+                    inplace=True,
+                )
             if posmatch_zyx:
                 print("Cell positions in model.txt are consistent with calculated values when z-y-x column order")
+                dfmodel.rename(
+                    columns={"inputpos_a": "pos_z_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_x_min"},
+                    inplace=True,
+                )
 
     modelmeta["t_model_init_days"] = t_model_init_days
     modelmeta["dimensions"] = dimensions
@@ -266,7 +284,7 @@ def get_modeldata_metadata(
 
     if inputpath.is_dir():
         modelpath = inputpath
-        filename = at.firstexisting(["model.txt.xz", "model.txt.gz", "model.txt"], path=inputpath)
+        filename = at.firstexisting(["model.txt", "model.txt.gz", "model.txt.xz"], path=inputpath)
     elif inputpath.is_file():  # passed in a filename instead of the modelpath
         filename = inputpath
         modelpath = Path(inputpath).parent

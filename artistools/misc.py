@@ -670,15 +670,17 @@ def flatten_list(listin):
 
 
 def zopen(filename, mode):
-    """Open filename.xz, filename.gz or filename."""
+    """Open filename, filename.gz or filename.x"""
     filenamexz = str(filename) if str(filename).endswith(".xz") else str(filename) + ".xz"
     filenamegz = str(filename) if str(filename).endswith(".gz") else str(filename) + ".gz"
-    if os.path.exists(filenamexz):
-        return lzma.open(filenamexz, mode)
-    elif os.path.exists(filenamegz):
-        return gzip.open(filenamegz, mode)
-    else:
+    if os.path.exists(filename) and not str(filename).endswith(".gz") and not str(filename).endswith(".xz"):
         return open(filename, mode)
+    elif os.path.exists(filenamegz) or str(filename).endswith(".gz"):
+        return gzip.open(filenamegz, mode)
+    elif os.path.exists(filenamexz) or str(filename).endswith(".xz"):
+        return lzma.open(filenamexz, mode)
+    else:
+        assert False
 
 
 def firstexisting(filelist, path=Path(".")):
