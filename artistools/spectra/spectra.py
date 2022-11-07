@@ -13,6 +13,7 @@ from typing import Any
 from typing import Callable
 from typing import Literal
 from typing import Optional
+from typing import Union
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt  # needed to get the color map

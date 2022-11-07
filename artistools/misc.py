@@ -113,7 +113,7 @@ def showtimesteptimes(modelpath: Optional[Path] = None, numberofcolumns: int = 5
 
 
 @lru_cache(maxsize=8)
-def get_composition_data(filename: Path | str) -> pd.DataFrame:
+def get_composition_data(filename: Union[Path, str]) -> pd.DataFrame:
     """Return a pandas DataFrame containing details of included elements and ions."""
     if os.path.isdir(Path(filename)):
         filename = os.path.join(filename, "compositiondata.txt")
@@ -185,7 +185,7 @@ def match_closest_time(reftime: float, searchtimes: list[Any]) -> str:
     return str("{}".format(min([float(x) for x in searchtimes], key=lambda x: abs(x - reftime))))
 
 
-def get_vpkt_config(modelpath: Path | str) -> dict[str, Any]:
+def get_vpkt_config(modelpath: Union[Path, str]) -> dict[str, Any]:
     filename = Path(modelpath, "vpkt.txt")
     vpkt_config: dict[str, Any] = {}
     with open(filename, "r") as vpkt_txt:
@@ -209,7 +209,7 @@ def get_vpkt_config(modelpath: Path | str) -> dict[str, Any]:
 
 
 @lru_cache(maxsize=8)
-def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[int, int]]:
+def get_grid_mapping(modelpath: Union[Path, str]) -> tuple[dict[int, list[int]], dict[int, int]]:
     """Return dict with the associated propagation cells for each model grid cell and
     a dict with the associated model grid cell of each propagration cell."""
 
@@ -477,7 +477,7 @@ def get_time_range(
     return timestepmin, timestepmax, time_days_lower, time_days_upper
 
 
-def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
+def get_timestep_time(modelpath: Union[Path, str], timestep: int) -> float:
     """Return the time in days of the midpoint of a timestep number"""
     timearray = get_timestep_times_float(modelpath, loc="mid")
     if timearray is not None:
@@ -486,7 +486,7 @@ def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
     return -1
 
 
-def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float, float]:
+def get_escaped_arrivalrange(modelpath: Union[Path, str]) -> tuple[int, float, float]:
     modelpath = Path(modelpath)
     dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata(
         modelpath, printwarningsonly=True, skip3ddataframe=True
@@ -517,7 +517,7 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float, float]:
 
 
 @lru_cache(maxsize=8)
-def get_model_name(path: Path | str) -> str:
+def get_model_name(path: Union[Path, str]) -> str:
     """Get the name of an ARTIS model from the path to any file inside it.
 
     Name will be either from a special plotlabel.txt file if it exists or the enclosing directory name
@@ -789,7 +789,7 @@ def join_pdf_files(pdf_list, modelpath_list):
 
 
 @lru_cache(maxsize=2)
-def get_bflist(modelpath: Path | str) -> dict[int, tuple[int, int, int, int]]:
+def get_bflist(modelpath: Union[Path, str]) -> dict[int, tuple[int, int, int, int]]:
     compositiondata = get_composition_data(modelpath)
     bflist = {}
     with zopen(Path(modelpath, "bflist.dat"), "rt") as filein:
@@ -810,7 +810,7 @@ def get_bflist(modelpath: Path | str) -> dict[int, tuple[int, int, int, int]]:
 
 
 @lru_cache(maxsize=16)
-def get_linelist(modelpath: Path | str, returntype: Literal["dict", "dataframe"] = "dict"):
+def get_linelist(modelpath: Union[Path, str], returntype: Literal["dict", "dataframe"] = "dict"):
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     with zopen(Path(modelpath, "linestat.out"), "rt") as linestatfile:
         lambda_angstroms = [float(wl) * 1e8 for wl in linestatfile.readline().split()]
@@ -985,7 +985,7 @@ def get_mpiranklist(
                 return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
-def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
+def get_cellsofmpirank(mpirank: int, modelpath: Union[Path, str]) -> Iterable[int]:
     """Return an iterable of the cell numbers processed by a given MPI rank."""
     npts_model = get_npts_model(modelpath)
     nprocs = get_nprocs(modelpath)
@@ -1006,7 +1006,7 @@ def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
 
 
 @lru_cache(maxsize=16)
-def get_dfrankassignments(modelpath: Path | str) -> Optional[pd.DataFrame]:
+def get_dfrankassignments(modelpath: Union[Path, str]) -> Optional[pd.DataFrame]:
     filerankassignments = Path(modelpath, "modelgridrankassignments.out")
     if filerankassignments.is_file():
         df = pd.read_csv(filerankassignments, delim_whitespace=True)

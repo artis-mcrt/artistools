@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 from typing import Literal
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -19,7 +20,7 @@ import artistools as at
 
 
 def get_timestep_times_float(
-    modelpath: str | Path, loc: Literal["start", "mid", "end", "delta"] = "mid"
+    modelpath: Union[Path, str], loc: Literal["start", "mid", "end", "delta"] = "mid"
 ) -> np.ndarray[Any, np.dtype[np.float64]]:
     modelpath = Path(modelpath)
     _, modelname, codename = modelpath.parts

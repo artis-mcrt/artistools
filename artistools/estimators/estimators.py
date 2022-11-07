@@ -16,6 +16,7 @@ from functools import reduce
 from pathlib import Path
 from typing import Any
 from typing import Optional
+from typing import Union
 
 import pandas as pd
 
@@ -343,7 +344,7 @@ def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_value
 def get_averaged_estimators(
     modelpath,
     estimators: dict[Any, Any],
-    timesteps: int | Sequence[int],
+    timesteps: Union[int, Sequence[int]],
     modelgridindex: int,
     keys,
     avgadjcells: int = 0,
