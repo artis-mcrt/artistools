@@ -231,7 +231,7 @@ def read_estimators_from_file(
     printfilename: bool = False,
     get_ion_values: bool = True,
     get_heatingcooling: bool = True,
-):
+) -> dict[tuple[int, int], Any]:
     estimators_thisfile = {}
     estimfilename = f"estimators_{mpirank:04d}.out"
     estfilepath = Path(folderpath, estimfilename)
@@ -262,26 +262,36 @@ def read_estimators_from_file(
 
 @lru_cache(maxsize=16)
 # @at.diskcache(savezipped=True, funcdepends=[read_estimators_from_file, parse_estimfile])
-def read_estimators(modelpath, modelgridindex=None, timestep=None, get_ion_values=True, get_heatingcooling=True):
+def read_estimators(
+    modelpath,
+    modelgridindex: Optional[Union[int, Sequence[int]]] = None,
+    timestep: Optional[Union[int, Sequence[int]]] = None,
+    get_ion_values=True,
+    get_heatingcooling=True,
+) -> dict[tuple[int, int], Any]:
     """Read estimator files into a nested dictionary structure.
 
     Speed it up by only retrieving estimators for a particular timestep(s) or modelgrid cells.
     """
 
+    match_modelgridindex: Iterable[int]
     if modelgridindex is None:
         match_modelgridindex = []
-    elif hasattr(modelgridindex, "__iter__"):
-        match_modelgridindex = tuple(modelgridindex)
-    else:
+    elif isinstance(modelgridindex, int):
         match_modelgridindex = (modelgridindex,)
+    else:
+        match_modelgridindex = tuple(modelgridindex)
 
     if -1 in match_modelgridindex:
         match_modelgridindex = []
 
+    match_timestep: Iterable[int]
     if timestep is None:
         match_timestep = []
+    elif isinstance(timestep, int):
+        match_timestep = (timestep,)
     else:
-        match_timestep = tuple(timestep) if hasattr(timestep, "__iter__") else (timestep,)
+        match_timestep = tuple(timestep)
 
     if not Path(modelpath).exists() and Path(modelpath).parts[0] == "codecomparison":
         return artistools.codecomparison.read_reference_estimators(
