@@ -380,6 +380,7 @@ def get_res_spectrum(
 
     if angle is None:
         angle = args.plotviewingangle[0]
+        print("WARNING: no viewing direction specified. Using direction bin {angle}")
 
     if res_specdata is None:
         print("Reading specpol_res.out")
