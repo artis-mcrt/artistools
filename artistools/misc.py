@@ -248,7 +248,10 @@ def get_wid_init_at_tmin(modelpath: Path) -> float:
 
 
 def get_wid_init_at_tmodel(
-    modelpath=None, ngridpoints: Optional[int] = None, t_model_days: float = None, xmax: Optional[float] = None
+    modelpath=None,
+    ngridpoints: Optional[int] = None,
+    t_model_days: Optional[float] = None,
+    xmax: Optional[float] = None,
 ) -> float:
     if ngridpoints is None or t_model_days is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
