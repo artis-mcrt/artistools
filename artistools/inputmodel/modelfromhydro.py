@@ -329,7 +329,7 @@ def makemodelfromgriddata(
     args=None,
 ):
     assert dimensions in [1, 3]
-    headerlines = [f"gridfolder: {Path(gridfolderpath).resolve().parts[-1]}"]
+    headercommentlines = [f"gridfolder: {Path(gridfolderpath).resolve().parts[-1]}"]
     dfmodel, t_model_days, t_mergertime_s, vmax = at.inputmodel.modelfromhydro.read_griddat_file(
         pathtogriddata=gridfolderpath,
         targetmodeltime_days=targetmodeltime_days,
@@ -349,7 +349,7 @@ def makemodelfromgriddata(
 
     if traj_root is not None:
         print(f"Nuclear network abundances from {traj_root} will be used")
-        headerlines.append(f"trajfolder: {Path(traj_root).resolve().parts[-1]}")
+        headercommentlines.append(f"trajfolder: {Path(traj_root).resolve().parts[-1]}")
         t_model_days_incpremerger = t_model_days + (t_mergertime_s / 86400)
 
         (
@@ -383,12 +383,12 @@ def makemodelfromgriddata(
             dfgridcontributions, Path(outputpath, "gridcontributions.txt")
         )
 
-    headerlines.append(f"generated at (UTC): {datetime.datetime.utcnow()}")
+    headercommentlines.append(f"generated at (UTC): {datetime.datetime.utcnow()}")
 
     if traj_root is not None:
         print(f'Writing to {Path(outputpath) / "abundances.txt"}...')
         at.inputmodel.save_initialabundances(
-            dfelabundances=dfelabundances, abundancefilename=outputpath, headerlines=headerlines
+            dfelabundances=dfelabundances, abundancefilename=outputpath, headercommentlines=headercommentlines
         )
     else:
         at.inputmodel.save_empty_abundance_file(outputfilepath=outputpath, ngrid=len(dfmodel))
@@ -400,7 +400,7 @@ def makemodelfromgriddata(
         t_model_init_days=t_model_days,
         dimensions=dimensions,
         vmax=vmax,
-        headerlines=headerlines,
+        headercommentlines=headercommentlines,
     )
 
 

@@ -12,6 +12,7 @@ from artistools.inputmodel.inputmodel_misc import get_initialabundances
 from artistools.inputmodel.inputmodel_misc import get_mean_cell_properties_of_angle_bin
 from artistools.inputmodel.inputmodel_misc import get_mgi_of_velocity_kms
 from artistools.inputmodel.inputmodel_misc import get_modeldata
+from artistools.inputmodel.inputmodel_misc import get_modeldata_metadata
 from artistools.inputmodel.inputmodel_misc import save_empty_abundance_file
 from artistools.inputmodel.inputmodel_misc import save_initialabundances
 from artistools.inputmodel.inputmodel_misc import save_modeldata
