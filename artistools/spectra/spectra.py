@@ -78,7 +78,7 @@ def stackspectra(spectra_and_factors: list[tuple[np.ndarray[Any, np.dtype[np.flo
 
 
 @lru_cache(maxsize=16)
-def get_specdata(modelpath: Path, stokesparam: Literal["I", "Q", "U"] = None) -> pd.DataFrame:
+def get_specdata(modelpath: Path, stokesparam: Optional[Literal["I", "Q", "U"]] = None) -> pd.DataFrame:
     polarisationdata = False
     if Path(modelpath, "specpol.out").is_file():
         specfilename = Path(modelpath) / "specpol.out"
