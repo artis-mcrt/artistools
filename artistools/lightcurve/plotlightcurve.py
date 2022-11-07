@@ -28,6 +28,196 @@ import artistools.spectra
 color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
 
+def plot_deposition_thermalisation(axis, axistherm, modelpath, plotkwargs, args):
+    if args.plotthermalisation:
+        dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath, skipabundancecolumns=True)
+        model_mass_grams = dfmodel.cellmass_grams.sum()
+        print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
+
+    depdata = at.get_deposition(modelpath)
+
+    # color_total = next(axis._get_lines.prop_cycler)['color']
+
+    # axis.plot(depdata['tmid_days'], depdata['eps_erg/s/g'] * model_mass_grams, **dict(
+    #     plotkwargs, **{
+    #         'label': plotkwargs['label'] + r' $\dot{\epsilon}_{\alpha\beta^\pm\gamma}$',
+    #         'linestyle': 'dashed',
+    #         'color': color_total,
+    #     }))
+
+    # axis.plot(depdata['tmid_days'], depdata['total_dep_Lsun'] * 3.826e33, **dict(
+    #     plotkwargs, **{
+    #         'label': plotkwargs['label'] + r' $\dot{E}_{dep,\alpha\beta^\pm\gamma}$',
+    #         'linestyle': 'dotted',
+    #         'color': color_total,
+    #     }))
+    # if args.plotthermalisation:
+    #     # f = depdata['eps_erg/s/g'] / depdata['Qdot_ana_erg/s/g']
+    #     f = depdata['total_dep_Lsun'] * 3.826e33 / (depdata['eps_erg/s/g'] * model_mass_grams)
+    #     axistherm.plot(depdata['tmid_days'], f, **dict(
+    #         plotkwargs, **{
+    #             'label': plotkwargs['label'] + r' $\dot{E}_{dep}/\dot{E}_{rad}$',
+    #             'linestyle': 'solid',
+    #             'color': color_total,
+    #         }))
+
+    color_gamma = next(axis._get_lines.prop_cycler)["color"]
+
+    # axis.plot(depdata['tmid_days'], depdata['eps_gamma_Lsun'] * 3.826e33, **dict(
+    #     plotkwargs, **{
+    #         'label': plotkwargs['label'] + r' $\dot{E}_{rad,\gamma}$',
+    #         'linestyle': 'dashed',
+    #         'color': color_gamma,
+    #     }))
+
+    gammadep_lsun = depdata["gammadeppathint_Lsun"] if "gammadeppathint_Lsun" in depdata else depdata["gammadep_Lsun"]
+
+    axis.plot(
+        depdata["tmid_days"],
+        gammadep_lsun * 3.826e33,
+        **dict(
+            plotkwargs,
+            **{
+                "label": plotkwargs["label"] + r" $\dot{E}_{dep,\gamma}$",
+                "linestyle": "dashed",
+                "color": color_gamma,
+            },
+        ),
+    )
+
+    color_beta = next(axis._get_lines.prop_cycler)["color"]
+
+    if "eps_elec_Lsun" in depdata:
+        axis.plot(
+            depdata["tmid_days"],
+            depdata["eps_elec_Lsun"] * 3.826e33,
+            **dict(
+                plotkwargs,
+                **{
+                    "label": plotkwargs["label"] + r" $\dot{E}_{rad,\beta^-}$",
+                    "linestyle": "dotted",
+                    "color": color_beta,
+                },
+            ),
+        )
+
+    if "elecdep_Lsun" in depdata:
+        axis.plot(
+            depdata["tmid_days"],
+            depdata["elecdep_Lsun"] * 3.826e33,
+            **dict(
+                plotkwargs,
+                **{
+                    "label": plotkwargs["label"] + r" $\dot{E}_{dep,\beta^-}$",
+                    "linestyle": "dashed",
+                    "color": color_beta,
+                },
+            ),
+        )
+
+    # color_alpha = next(axis._get_lines.prop_cycler)['color']
+    color_alpha = "C1"
+
+    # if 'eps_alpha_ana_Lsun' in depdata:
+    #     axis.plot(depdata['tmid_days'], depdata['eps_alpha_ana_Lsun'] * 3.826e33, **dict(
+    #         plotkwargs, **{
+    #             'label': plotkwargs['label'] + r' $\dot{E}_{rad,\alpha}$ analytical',
+    #             'linestyle': 'solid',
+    #             'color': color_alpha,
+    #         }))
+
+    # if 'eps_alpha_Lsun' in depdata:
+    #     axis.plot(depdata['tmid_days'], depdata['eps_alpha_Lsun'] * 3.826e33, **dict(
+    #         plotkwargs, **{
+    #             'label': plotkwargs['label'] + r' $\dot{E}_{rad,\alpha}$',
+    #             'linestyle': 'dashed',
+    #             'color': color_alpha,
+    #         }))
+
+    # axis.plot(depdata['tmid_days'], depdata['alphadep_Lsun'] * 3.826e33, **dict(
+    #     plotkwargs, **{
+    #         'label': plotkwargs['label'] + r' $\dot{E}_{dep,\alpha}$',
+    #         'linestyle': 'dotted',
+    #         'color': color_alpha,
+    #     }))
+    if args.plotthermalisation:
+        ejecta_ke = dfmodel.eval(
+            "0.5 * (cellmass_grams / 1000.) * (0.5 * 1000. * (velocity_inner + velocity_outer)) ** 2"
+        ).sum()
+        # velocity derived from ejecta kinetric energy to match Barnes et al. (2016) Section 2.1
+        ejecta_v = np.sqrt(2 * ejecta_ke / (model_mass_grams * 1e-3))
+        v2 = ejecta_v / (0.2 * 299792458)
+        m5 = model_mass_grams / (5e-3 * 1.989e33)  # M / (5e-3 Msun)
+
+        # v2 = 1.
+        # m5 = 1.
+
+        t_ineff_gamma = 0.5 * np.sqrt(m5) / v2
+        barnes_f_gamma = [1 - math.exp(-((t / t_ineff_gamma) ** -2)) for t in depdata["tmid_days"].values]
+
+        axistherm.plot(
+            depdata["tmid_days"],
+            barnes_f_gamma,
+            **dict(plotkwargs, **{"label": "Barnes+16 f_gamma", "linestyle": "dashed", "color": color_gamma}),
+        )
+
+        e0_beta_mev = 0.5
+        t_ineff_beta = 7.4 * (e0_beta_mev / 0.5) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
+        barnes_f_beta = [
+            math.log(1 + 2 * (t / t_ineff_beta) ** 2) / (2 * (t / t_ineff_beta) ** 2)
+            for t in depdata["tmid_days"].values
+        ]
+
+        axistherm.plot(
+            depdata["tmid_days"],
+            barnes_f_beta,
+            **dict(plotkwargs, **{"label": "Barnes+16 f_beta", "linestyle": "dashed", "color": color_beta}),
+        )
+
+        e0_alpha_mev = 6.0
+        t_ineff_alpha = 4.3 * 1.8 * (e0_alpha_mev / 6.0) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
+        barnes_f_alpha = [
+            math.log(1 + 2 * (t / t_ineff_alpha) ** 2) / (2 * (t / t_ineff_alpha) ** 2)
+            for t in depdata["tmid_days"].values
+        ]
+
+        axistherm.plot(
+            depdata["tmid_days"],
+            barnes_f_alpha,
+            **dict(plotkwargs, **{"label": "Barnes+16 f_alpha", "linestyle": "dashed", "color": color_alpha}),
+        )
+
+        axistherm.plot(
+            depdata["tmid_days"],
+            depdata["gammadeppathint_Lsun"] / depdata["eps_gamma_Lsun"],
+            **dict(plotkwargs, **{"label": "ARTIS f_gamma", "linestyle": "solid", "color": color_gamma}),
+        )
+
+        axistherm.plot(
+            depdata["tmid_days"],
+            depdata["elecdep_Lsun"] / depdata["eps_elec_Lsun"],
+            **dict(
+                plotkwargs,
+                **{
+                    "label": "ARTIS f_beta",
+                    "linestyle": "solid",
+                    "color": color_beta,
+                },
+            ),
+        )
+
+        f_alpha = depdata["alphadep_Lsun"] / depdata["eps_alpha_Lsun"]
+        kernel_size = 5
+        if len(f_alpha) > kernel_size:
+            kernel = np.ones(kernel_size) / kernel_size
+            f_alpha = np.convolve(f_alpha, kernel, mode="same")
+        axistherm.plot(
+            depdata["tmid_days"],
+            f_alpha,
+            **dict(plotkwargs, **{"label": "ARTIS f_alpha", "linestyle": "solid", "color": color_alpha}),
+        )
+
+
 def make_lightcurve_plot_from_lightcurve_out_files(
     modelpaths, filenameout, frompackets=False, escape_type=False, maxpacketfiles=None, args=None
 ):
@@ -127,199 +317,8 @@ def make_lightcurve_plot_from_lightcurve_out_files(
         if args.linewidth[seriesindex]:
             plotkwargs["linewidth"] = args.linewidth[seriesindex]
 
-        if args.plotdeposition:
-            if args.plotthermalisation:
-                dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(
-                    modelpath, skipabundancecolumns=True
-                )
-                model_mass_grams = dfmodel.cellmass_grams.sum()
-                print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
-
-            depdata = at.get_deposition(modelpath)
-
-            # color_total = next(axis._get_lines.prop_cycler)['color']
-
-            # axis.plot(depdata['tmid_days'], depdata['eps_erg/s/g'] * model_mass_grams, **dict(
-            #     plotkwargs, **{
-            #         'label': plotkwargs['label'] + r' $\dot{\epsilon}_{\alpha\beta^\pm\gamma}$',
-            #         'linestyle': 'dashed',
-            #         'color': color_total,
-            #     }))
-
-            # axis.plot(depdata['tmid_days'], depdata['total_dep_Lsun'] * 3.826e33, **dict(
-            #     plotkwargs, **{
-            #         'label': plotkwargs['label'] + r' $\dot{E}_{dep,\alpha\beta^\pm\gamma}$',
-            #         'linestyle': 'dotted',
-            #         'color': color_total,
-            #     }))
-            # if args.plotthermalisation:
-            #     # f = depdata['eps_erg/s/g'] / depdata['Qdot_ana_erg/s/g']
-            #     f = depdata['total_dep_Lsun'] * 3.826e33 / (depdata['eps_erg/s/g'] * model_mass_grams)
-            #     axistherm.plot(depdata['tmid_days'], f, **dict(
-            #         plotkwargs, **{
-            #             'label': plotkwargs['label'] + r' $\dot{E}_{dep}/\dot{E}_{rad}$',
-            #             'linestyle': 'solid',
-            #             'color': color_total,
-            #         }))
-
-            color_gamma = next(axis._get_lines.prop_cycler)["color"]
-
-            # axis.plot(depdata['tmid_days'], depdata['eps_gamma_Lsun'] * 3.826e33, **dict(
-            #     plotkwargs, **{
-            #         'label': plotkwargs['label'] + r' $\dot{E}_{rad,\gamma}$',
-            #         'linestyle': 'dashed',
-            #         'color': color_gamma,
-            #     }))
-
-            gammadep_lsun = (
-                depdata["gammadeppathint_Lsun"] if "gammadeppathint_Lsun" in depdata else depdata["gammadep_Lsun"]
-            )
-
-            axis.plot(
-                depdata["tmid_days"],
-                gammadep_lsun * 3.826e33,
-                **dict(
-                    plotkwargs,
-                    **{
-                        "label": plotkwargs["label"] + r" $\dot{E}_{dep,\gamma}$",
-                        "linestyle": "dashed",
-                        "color": color_gamma,
-                    },
-                ),
-            )
-
-            color_beta = next(axis._get_lines.prop_cycler)["color"]
-
-            if "eps_elec_Lsun" in depdata:
-                axis.plot(
-                    depdata["tmid_days"],
-                    depdata["eps_elec_Lsun"] * 3.826e33,
-                    **dict(
-                        plotkwargs,
-                        **{
-                            "label": plotkwargs["label"] + r" $\dot{E}_{rad,\beta^-}$",
-                            "linestyle": "dotted",
-                            "color": color_beta,
-                        },
-                    ),
-                )
-
-            if "elecdep_Lsun" in depdata:
-                axis.plot(
-                    depdata["tmid_days"],
-                    depdata["elecdep_Lsun"] * 3.826e33,
-                    **dict(
-                        plotkwargs,
-                        **{
-                            "label": plotkwargs["label"] + r" $\dot{E}_{dep,\beta^-}$",
-                            "linestyle": "dashed",
-                            "color": color_beta,
-                        },
-                    ),
-                )
-
-            # color_alpha = next(axis._get_lines.prop_cycler)['color']
-            color_alpha = "C1"
-
-            # if 'eps_alpha_ana_Lsun' in depdata:
-            #     axis.plot(depdata['tmid_days'], depdata['eps_alpha_ana_Lsun'] * 3.826e33, **dict(
-            #         plotkwargs, **{
-            #             'label': plotkwargs['label'] + r' $\dot{E}_{rad,\alpha}$ analytical',
-            #             'linestyle': 'solid',
-            #             'color': color_alpha,
-            #         }))
-
-            # if 'eps_alpha_Lsun' in depdata:
-            #     axis.plot(depdata['tmid_days'], depdata['eps_alpha_Lsun'] * 3.826e33, **dict(
-            #         plotkwargs, **{
-            #             'label': plotkwargs['label'] + r' $\dot{E}_{rad,\alpha}$',
-            #             'linestyle': 'dashed',
-            #             'color': color_alpha,
-            #         }))
-
-            # axis.plot(depdata['tmid_days'], depdata['alphadep_Lsun'] * 3.826e33, **dict(
-            #     plotkwargs, **{
-            #         'label': plotkwargs['label'] + r' $\dot{E}_{dep,\alpha}$',
-            #         'linestyle': 'dotted',
-            #         'color': color_alpha,
-            #     }))
-
-            if args.plotthermalisation:
-                ejecta_ke = dfmodel.eval(
-                    "0.5 * (cellmass_grams / 1000.) * (0.5 * 1000. * (velocity_inner + velocity_outer)) ** 2"
-                ).sum()
-                # velocity derived from ejecta kinetric energy to match Barnes et al. (2016) Section 2.1
-                ejecta_v = np.sqrt(2 * ejecta_ke / (model_mass_grams * 1e-3))
-                v2 = ejecta_v / (0.2 * 299792458)
-                m5 = model_mass_grams / (5e-3 * 1.989e33)  # M / (5e-3 Msun)
-
-                # v2 = 1.
-                # m5 = 1.
-
-                t_ineff_gamma = 0.5 * np.sqrt(m5) / v2
-                barnes_f_gamma = [1 - math.exp(-((t / t_ineff_gamma) ** -2)) for t in depdata["tmid_days"].values]
-
-                axistherm.plot(
-                    depdata["tmid_days"],
-                    barnes_f_gamma,
-                    **dict(plotkwargs, **{"label": "Barnes+16 f_gamma", "linestyle": "dashed", "color": color_gamma}),
-                )
-
-                e0_beta_mev = 0.5
-                t_ineff_beta = 7.4 * (e0_beta_mev / 0.5) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
-                barnes_f_beta = [
-                    math.log(1 + 2 * (t / t_ineff_beta) ** 2) / (2 * (t / t_ineff_beta) ** 2)
-                    for t in depdata["tmid_days"].values
-                ]
-
-                axistherm.plot(
-                    depdata["tmid_days"],
-                    barnes_f_beta,
-                    **dict(plotkwargs, **{"label": "Barnes+16 f_beta", "linestyle": "dashed", "color": color_beta}),
-                )
-
-                e0_alpha_mev = 6.0
-                t_ineff_alpha = 4.3 * 1.8 * (e0_alpha_mev / 6.0) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
-                barnes_f_alpha = [
-                    math.log(1 + 2 * (t / t_ineff_alpha) ** 2) / (2 * (t / t_ineff_alpha) ** 2)
-                    for t in depdata["tmid_days"].values
-                ]
-
-                axistherm.plot(
-                    depdata["tmid_days"],
-                    barnes_f_alpha,
-                    **dict(plotkwargs, **{"label": "Barnes+16 f_alpha", "linestyle": "dashed", "color": color_alpha}),
-                )
-
-                axistherm.plot(
-                    depdata["tmid_days"],
-                    depdata["gammadeppathint_Lsun"] / depdata["eps_gamma_Lsun"],
-                    **dict(plotkwargs, **{"label": "ARTIS f_gamma", "linestyle": "solid", "color": color_gamma}),
-                )
-
-                axistherm.plot(
-                    depdata["tmid_days"],
-                    depdata["elecdep_Lsun"] / depdata["eps_elec_Lsun"],
-                    **dict(
-                        plotkwargs,
-                        **{
-                            "label": "ARTIS f_beta",
-                            "linestyle": "solid",
-                            "color": color_beta,
-                        },
-                    ),
-                )
-
-                f_alpha = depdata["alphadep_Lsun"] / depdata["eps_alpha_Lsun"]
-                kernel_size = 5
-                if len(f_alpha) > kernel_size:
-                    kernel = np.ones(kernel_size) / kernel_size
-                    f_alpha = np.convolve(f_alpha, kernel, mode="same")
-                axistherm.plot(
-                    depdata["tmid_days"],
-                    f_alpha,
-                    **dict(plotkwargs, **{"label": "ARTIS f_alpha", "linestyle": "solid", "color": color_alpha}),
-                )
+        if args.plotdeposition or args.plotthermalisation:
+            plot_deposition_thermalisation(axis, axistherm, modelpath, plotkwargs, args)
 
         # check if doing viewing angle stuff, and if so define which data to use
         angles, viewing_angles, angle_definition = at.lightcurve.get_angle_stuff(modelpath, args)
