@@ -346,7 +346,7 @@ def read_specpol_res(modelpath: Path) -> list[pd.DataFrame]:
 
 
 def average_angle_bins(res_specdata: list[pd.DataFrame], angle: int, args) -> list[pd.DataFrame]:
-    # Averages over 10 bins to reduce noise
+    # Averages over 10 phi (azimuthal angle) bins to reduce noise
 
     if args and args.average_every_tenth_viewing_angle:
         for start_bin in np.arange(start=0, stop=100, step=10):
@@ -384,7 +384,7 @@ def get_res_spectrum(
     if res_specdata is None:
         print("Reading specpol_res.out")
         res_specdata = read_specpol_res(modelpath)
-        if args and "average_every_tenth_viewing_angle" in args:
+        if args and args.average_every_tenth_viewing_angle:
             at.spectra.average_angle_bins(res_specdata, angle, args)
 
     nu = res_specdata[angle].loc[:, "nu"].values
