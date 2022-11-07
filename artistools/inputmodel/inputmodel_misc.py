@@ -43,7 +43,7 @@ def read_modelfile(
         while line.startswith("#"):
             line = fmodel.readline()
             if line.startswith("#"):
-                modelmeta["headercommentlines"].append(line)
+                modelmeta["headercommentlines"].append(line.removeprefix("#").removeprefix(" "))
                 headerrows += 1
 
         modelcellcount = int(line)
@@ -521,7 +521,7 @@ def save_modeldata(
     vmax=None,
     dimensions=1,
     radioactives=True,
-    headerlines=None,
+    headercommentlines=None,
 ) -> None:
     """Save a pandas DataFrame and snapshot time into ARTIS model.txt"""
 
@@ -575,8 +575,8 @@ def save_modeldata(
         modelfilepath = Path(filename)
 
     with open(modelfilepath, "w", encoding="utf-8") as fmodel:
-        if headerlines is not None:
-            fmodel.write("\n".join([f"# {line}" for line in headerlines]) + "\n")
+        if headercommentlines is not None:
+            fmodel.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
         fmodel.write(f"{len(dfmodel)}\n")
         fmodel.write(f"{t_model_init_days}\n")
         if dimensions == 3:
@@ -657,7 +657,7 @@ def get_initialabundances(modelpath: Path) -> pd.DataFrame:
 
 
 def save_initialabundances(
-    dfelabundances: pd.DataFrame, abundancefilename, headerlines: Optional[Sequence[str]] = None
+    dfelabundances: pd.DataFrame, abundancefilename, headercommentlines: Optional[Sequence[str]] = None
 ) -> None:
     """Save a DataFrame (same format as get_initialabundances) to abundances.txt.
     columns must be:
@@ -679,8 +679,8 @@ def save_initialabundances(
             dfelabundances[col] = 0.0
 
     with open(abundancefilename, "w", encoding="utf-8") as fabund:
-        if headerlines is not None:
-            fabund.write("\n".join([f"# {line}" for line in headerlines]) + "\n")
+        if headercommentlines is not None:
+            fabund.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
         for row in dfelabundances.itertuples(index=False):
             fabund.write(f" {row.inputcellid:6d} ")
             fabund.write(" ".join([f"{getattr(row, colname, 0.)}" for colname in elcolnames]))
