@@ -9,16 +9,19 @@ import sys
 import time
 from collections import namedtuple
 from collections.abc import Iterable
+from collections.abc import Iterator
 from collections.abc import Sequence
 from functools import lru_cache
 from itertools import chain
 from pathlib import Path
 from typing import Any
+from typing import Callable
 from typing import Literal
 from typing import Optional
 from typing import Union
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 import artistools as at
@@ -54,8 +57,8 @@ roman_numerals = (
 
 
 class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
-    def add_arguments(self, actions):
-        def my_sort(arg):
+    def add_arguments(self, actions: Iterable[argparse.Action]) -> None:
+        def my_sort(arg: Any) -> str:
             opstr = arg.option_strings[0] if len(arg.option_strings) > 0 else ""
             # chars = 'abcdefghijklmnopqrstuvwxyz-'
             opstr = opstr.upper().replace("-", "z")  # push dash chars below alphabet
@@ -89,7 +92,7 @@ def make_namedtuple(typename, **fields):
     return namedtuple(typename, fields)(*fields.values())
 
 
-def showtimesteptimes(modelpath=None, numberofcolumns=5, args=None):
+def showtimesteptimes(modelpath: Optional[Path] = None, numberofcolumns: int = 5, args=None) -> None:
     """Print a table showing the timesteps and their corresponding times."""
     if modelpath is None:
         modelpath = Path()
@@ -110,7 +113,7 @@ def showtimesteptimes(modelpath=None, numberofcolumns=5, args=None):
 
 
 @lru_cache(maxsize=8)
-def get_composition_data(filename):
+def get_composition_data(filename: Path | str) -> pd.DataFrame:
     """Return a pandas DataFrame containing details of included elements and ions."""
     if os.path.isdir(Path(filename)):
         filename = os.path.join(filename, "compositiondata.txt")
@@ -137,11 +140,11 @@ def get_composition_data(filename):
     return compdf
 
 
-def get_composition_data_from_outputfile(modelpath):
+def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
     """Read ion list from output file"""
     atomic_composition = {}
 
-    output = open(modelpath / "output_0-0.txt", "r").read().splitlines()
+    output = open(modelpath / "output_0-0.txt", "rt").read().splitlines()
     ioncount = 0
     for row in output:
         if row.split()[0] == "[input.c]":
@@ -182,7 +185,7 @@ def match_closest_time(reftime: float, searchtimes: list[Any]) -> str:
     return str("{}".format(min([float(x) for x in searchtimes], key=lambda x: abs(x - reftime))))
 
 
-def get_vpkt_config(modelpath) -> dict[str, Any]:
+def get_vpkt_config(modelpath: Path | str) -> dict[str, Any]:
     filename = Path(modelpath, "vpkt.txt")
     vpkt_config: dict[str, Any] = {}
     with open(filename, "r") as vpkt_txt:
@@ -206,7 +209,7 @@ def get_vpkt_config(modelpath) -> dict[str, Any]:
 
 
 @lru_cache(maxsize=8)
-def get_grid_mapping(modelpath) -> tuple[dict[int, list[int]], dict[int, int]]:
+def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[int, int]]:
     """Return dict with the associated propagation cells for each model grid cell and
     a dict with the associated model grid cell of each propagration cell."""
 
@@ -229,7 +232,7 @@ def get_grid_mapping(modelpath) -> tuple[dict[int, list[int]], dict[int, int]]:
     return assoc_cells, mgi_of_propcells
 
 
-def get_wid_init_at_tmin(modelpath) -> float:
+def get_wid_init_at_tmin(modelpath: Path) -> float:
     # cell width in cm at time tmin
     day_to_sec = 86400
     tmin = get_timestep_times_float(modelpath, loc="start")[0] * day_to_sec
@@ -261,7 +264,7 @@ def get_wid_init_at_tmodel(
     return wid_init
 
 
-def get_syn_dir(modelpath) -> Sequence[int]:
+def get_syn_dir(modelpath: Path) -> Sequence[int]:
     with open(modelpath / "syn_dir.txt", "rt") as syn_dir_file:
         syn_dir = [int(x) for x in syn_dir_file.readline().split()]
 
@@ -371,7 +374,7 @@ def get_timestep_times_float(
         raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
 
 
-def get_timestep_of_timedays(modelpath, timedays: Union[str, float]) -> int:
+def get_timestep_of_timedays(modelpath: Path, timedays: Union[str, float]) -> int:
     """Return the timestep containing the given time in days."""
 
     if isinstance(timedays, str):
@@ -394,14 +397,18 @@ def get_timestep_of_timedays(modelpath, timedays: Union[str, float]) -> int:
     return
 
 
-def get_time_range(modelpath, timestep_range_str=None, timemin=None, timemax=None, timedays_range_str=None):
+def get_time_range(
+    modelpath: Path,
+    timestep_range_str: Optional[str] = None,
+    timemin: Optional[float] = None,
+    timemax: Optional[float] = None,
+    timedays_range_str: Optional[str] = None,
+) -> tuple[int, int, Optional[float], Optional[float]]:
     """Handle a time range specified in either days or timesteps."""
     # assertions make sure time is specified either by timesteps or times in days, but not both!
     tstarts = get_timestep_times_float(modelpath, loc="start")
     tmids = get_timestep_times_float(modelpath, loc="mid")
     tends = get_timestep_times_float(modelpath, loc="end")
-
-    timedays_is_specified = (timemin is not None and timemax is not None) or timedays_range_str is not None
 
     if timemin and timemin > tends[-1]:
         print(f"{get_model_name(modelpath)}: WARNING timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
@@ -418,7 +425,8 @@ def get_time_range(modelpath, timestep_range_str=None, timemin=None, timemax=Non
         else:
             timestepmin = int(timestep_range_str)
             timestepmax = timestepmin
-    elif timedays_is_specified:
+    elif (timemin is not None and timemax is not None) or timedays_range_str is not None:
+        # time days range is specified
         timestepmin = None
         timestepmax = None
         if timedays_range_str is not None:
@@ -433,6 +441,8 @@ def get_time_range(modelpath, timestep_range_str=None, timemin=None, timemax=Non
                 # timedelta = 10
                 # timemin, timemax = timeavg - timedelta, timeavg + timedelta
 
+        assert timemin is not None
+
         for timestep, tmid in enumerate(tmids):
             if tmid >= float(timemin):
                 timestepmin = timestep
@@ -444,6 +454,8 @@ def get_time_range(modelpath, timestep_range_str=None, timemin=None, timemax=Non
 
         if not timemax:
             timemax = tends[-1]
+        assert timemax is not None
+
         for timestep, tmid in enumerate(tmids):
             if tmid <= float(timemax):
                 timestepmax = timestep
@@ -454,16 +466,18 @@ def get_time_range(modelpath, timestep_range_str=None, timemin=None, timemax=Non
         raise ValueError("Either time or timesteps must be specified.")
 
     timesteplast = len(tmids) - 1
-    if timestepmax > timesteplast:
+    if timestepmax is not None and timestepmax > timesteplast:
         print(f"Warning timestepmax {timestepmax} > timesteplast {timesteplast}")
         timestepmax = timesteplast
-    time_days_lower = tstarts[timestepmin]
-    time_days_upper = tends[timestepmax]
+    time_days_lower = float(tstarts[timestepmin])
+    time_days_upper = float(tends[timestepmax])
+    assert timestepmin is not None
+    assert timestepmax is not None
 
     return timestepmin, timestepmax, time_days_lower, time_days_upper
 
 
-def get_timestep_time(modelpath, timestep: int) -> float:
+def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
     """Return the time in days of the midpoint of a timestep number"""
     timearray = get_timestep_times_float(modelpath, loc="mid")
     if timearray is not None:
@@ -472,7 +486,7 @@ def get_timestep_time(modelpath, timestep: int) -> float:
     return -1
 
 
-def get_escaped_arrivalrange(modelpath):
+def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float, float]:
     modelpath = Path(modelpath)
     dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata(
         modelpath, printwarningsonly=True, skip3ddataframe=True
@@ -503,7 +517,7 @@ def get_escaped_arrivalrange(modelpath):
 
 
 @lru_cache(maxsize=8)
-def get_model_name(path) -> str:
+def get_model_name(path: Path | str) -> str:
     """Get the name of an ARTIS model from the path to any file inside it.
 
     Name will be either from a special plotlabel.txt file if it exists or the enclosing directory name
@@ -523,7 +537,7 @@ def get_model_name(path) -> str:
         return os.path.basename(modelpath)
 
 
-def get_z_a_nucname(nucname) -> tuple[int, int]:
+def get_z_a_nucname(nucname: str) -> tuple[int, int]:
     """return atomic number and mass number from a string like 'Pb208' (returns 92, 208)"""
     if nucname.startswith("X_"):
         nucname = nucname[2:]
@@ -566,7 +580,7 @@ def get_elsymbol(atomic_number: int) -> str:
 
 
 @lru_cache(maxsize=16)
-def get_ionstring(atomic_number: int, ionstage: int, spectral=True, nospace=False) -> str:
+def get_ionstring(atomic_number: int, ionstage: int, spectral: bool = True, nospace: bool = False) -> str:
     if ionstage == "ALL" or ionstage is None:
         return f"{get_elsymbol(atomic_number)}"
     elif spectral:
@@ -583,16 +597,16 @@ def get_ionstring(atomic_number: int, ionstage: int, spectral=True, nospace=Fals
 
 
 # based on code from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
-def parse_range(rng, dictvars={}):
+def parse_range(rng: str, dictvars: dict[str, int] = {}) -> Iterable[Any]:
     """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars."""
-    parts = rng.split("-")
+    strparts = rng.split("-")
 
-    if len(parts) not in [1, 2]:
+    if len(strparts) not in [1, 2]:
         raise ValueError("Bad range: '%s'" % (rng,))
 
-    parts = [int(i) if i not in dictvars else dictvars[i] for i in parts]
-    start = parts[0]
-    end = start if len(parts) == 1 else parts[1]
+    parts = [int(i) if i not in dictvars else dictvars[i] for i in strparts]
+    start: int = parts[0]
+    end: int = start if len(parts) == 1 else parts[1]
 
     if start > end:
         end, start = start, end
@@ -600,7 +614,7 @@ def parse_range(rng, dictvars={}):
     return range(start, end + 1)
 
 
-def parse_range_list(rngs, dictvars={}):
+def parse_range_list(rngs: Union[str, list], dictvars={}) -> list[Any]:
     """Parse a string with comma-separated ranges or a list of range strings.
 
     Return a sorted list of integers in any of the ranges.
@@ -613,7 +627,7 @@ def parse_range_list(rngs, dictvars={}):
     return sorted(set(chain.from_iterable([parse_range(rng, dictvars) for rng in rngs.split(",")])))
 
 
-def makelist(x):
+def makelist(x: Any) -> list[Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
         return []
@@ -625,7 +639,7 @@ def makelist(x):
         return x
 
 
-def trim_or_pad(requiredlength, *listoflistin):
+def trim_or_pad(requiredlength: int, *listoflistin) -> Iterator[list[Any]]:
     """Make lists equal in length to requiedlength either by padding with None or truncating"""
     for listin in listoflistin:
         listin = makelist(listin)
@@ -730,15 +744,17 @@ def get_file_metadata(filepath):
     return {}
 
 
-def get_filterfunc(args, mode="interp"):
+def get_filterfunc(args, mode="interp") -> Optional[Callable[[npt.ArrayLike], npt.ArrayLike]]:
     """Using command line arguments to determine the appropriate filter function."""
 
     if hasattr(args, "filtermovingavg") and args.filtermovingavg > 0:
 
-        def filterfunc(ylist):
+        def movavgfilterfunc(ylist):
             n = args.filtermovingavg
             arr_padded = np.pad(ylist, (n // 2, n - 1 - n // 2), mode="edge")
             return np.convolve(arr_padded, np.ones((n,)) / n, mode="valid")
+
+        filterfunc = movavgfilterfunc
 
     elif hasattr(args, "filtersavgol") and args.filtersavgol:
         import scipy.signal
@@ -773,7 +789,7 @@ def join_pdf_files(pdf_list, modelpath_list):
 
 
 @lru_cache(maxsize=2)
-def get_bflist(modelpath) -> dict[int, tuple[int, int, int, int]]:
+def get_bflist(modelpath: Path | str) -> dict[int, tuple[int, int, int, int]]:
     compositiondata = get_composition_data(modelpath)
     bflist = {}
     with zopen(Path(modelpath, "bflist.dat"), "rt") as filein:
@@ -794,7 +810,7 @@ def get_bflist(modelpath) -> dict[int, tuple[int, int, int, int]]:
 
 
 @lru_cache(maxsize=16)
-def get_linelist(modelpath, returntype: Literal["dict", "dataframe"] = "dict"):
+def get_linelist(modelpath: Path | str, returntype: Literal["dict", "dataframe"] = "dict"):
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     with zopen(Path(modelpath, "linestat.out"), "rt") as linestatfile:
         lambda_angstroms = [float(wl) * 1e8 for wl in linestatfile.readline().split()]
@@ -913,7 +929,7 @@ def get_runfolder_timesteps(folderpath):
     return tuple(folder_timesteps)
 
 
-def get_runfolders(modelpath, timestep=None, timesteps=None):
+def get_runfolders(modelpath, timestep=None, timesteps=None) -> Iterable[Path]:
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
     The folder list may include non-ARTIS folders if a timestep is not specified."""
@@ -969,7 +985,7 @@ def get_mpiranklist(
                 return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
-def get_cellsofmpirank(mpirank: int, modelpath) -> Iterable[int]:
+def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
     """Return an iterable of the cell numbers processed by a given MPI rank."""
     npts_model = get_npts_model(modelpath)
     nprocs = get_nprocs(modelpath)
@@ -990,7 +1006,7 @@ def get_cellsofmpirank(mpirank: int, modelpath) -> Iterable[int]:
 
 
 @lru_cache(maxsize=16)
-def get_dfrankassignments(modelpath) -> Optional[pd.DataFrame]:
+def get_dfrankassignments(modelpath: Path | str) -> Optional[pd.DataFrame]:
     filerankassignments = Path(modelpath, "modelgridrankassignments.out")
     if filerankassignments.is_file():
         df = pd.read_csv(filerankassignments, delim_whitespace=True)

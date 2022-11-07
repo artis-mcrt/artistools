@@ -2,7 +2,10 @@
 import glob
 import math
 import os
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -146,7 +149,9 @@ define_colours_list2 = [
 ]
 
 
-def get_angle_stuff(modelpath, args):
+def get_angle_stuff(
+    modelpath: Path | str, args
+) -> tuple[Any, Optional[np.ndarray[Any, np.dtype[Any]]], Optional[dict[int, str]]]:
     modelpath = Path(modelpath)
     viewing_angles = None
     viewing_angle_data = False
@@ -167,6 +172,7 @@ def get_angle_stuff(modelpath, args):
         calculate_costheta_phi_for_viewing_angles(viewing_angles, modelpath)
     elif args.calculate_costheta_phi_from_viewing_angle_numbers:
         viewing_angles = args.calculate_costheta_phi_from_viewing_angle_numbers
+        assert viewing_angles is not None
         calculate_costheta_phi_for_viewing_angles(viewing_angles, modelpath)
     else:
         angles = [None]
@@ -182,7 +188,7 @@ def get_angle_stuff(modelpath, args):
     return angles, viewing_angles, angle_definition
 
 
-def get_viewinganglebin_definitions():
+def get_viewinganglebin_definitions() -> tuple[list[str], list[str]]:
     costheta_viewing_angle_bins = [
         "-1.0 \u2264 cos(\u03B8) < -0.8",
         "-0.8 \u2264 cos(\u03B8) < -0.6",
@@ -217,14 +223,14 @@ def get_viewinganglebin_definitions():
     return costheta_viewing_angle_bins, phi_viewing_angle_bins
 
 
-def calculate_costheta_phi_for_viewing_angles(viewing_angles, modelpath):
+def calculate_costheta_phi_for_viewing_angles(
+    viewing_angles: np.ndarray[Any, np.dtype[Any]] | Sequence[int], modelpath: Path | str
+):
     modelpath = Path(modelpath)
-    if os.path.isfile(modelpath / "absorptionpol_res_99.out") and os.path.isfile(
-        modelpath / "absorptionpol_res_100.out"
-    ):
+    if (modelpath / "absorptionpol_res_99.out").is_file() and (modelpath / "absorptionpol_res_100.out").is_file():
         print("Too many viewing angle bins (MABINS) for this method to work, it only works for MABINS = 100")
         exit()
-    elif os.path.isfile(modelpath / "light_curve_res.out"):
+    elif (modelpath / "light_curve_res.out").is_file():
         angle_definition = {}
 
         costheta_viewing_angle_bins, phi_viewing_angle_bins = get_viewinganglebin_definitions()
@@ -243,7 +249,7 @@ def calculate_costheta_phi_for_viewing_angles(viewing_angles, modelpath):
         return angle_definition
     else:
         print("Too few viewing angle bins (MABINS) for this method to work, it only works for MABINS = 100")
-        exit()
+        assert False
 
 
 def save_viewing_angle_data_for_plotting(band_name, modelname, args):

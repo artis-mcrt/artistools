@@ -53,8 +53,7 @@ def read_3d_gammalightcurve(filepath_or_buffer) -> list[pd.DataFrame]:
 
 
 def get_from_packets(
-    modelpath,
-    lcpath,
+    modelpath: Path,
     packet_type: str = "TYPE_ESCAPE",
     escape_type: str = "TYPE_RPKT",
     maxpacketfiles: Optional[int] = None,

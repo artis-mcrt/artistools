@@ -6,7 +6,11 @@ codecomparison/[modelname]/[codename]
 e.g., codecomparison/DDC10/artisnebular
 """
 import math
+from collections.abc import Iterable
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -14,7 +18,9 @@ import pandas as pd
 import artistools as at
 
 
-def get_timestep_times_float(modelpath, loc="mid"):
+def get_timestep_times_float(
+    modelpath: str | Path, loc: Literal["start", "mid", "end", "delta"] = "mid"
+) -> np.ndarray[Any, np.dtype[np.float64]]:
     modelpath = Path(modelpath)
     _, modelname, codename = modelpath.parts
 

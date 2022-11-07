@@ -3,6 +3,7 @@ import gc
 import math
 import os.path
 import time
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -239,13 +240,13 @@ def read_modelfile(
 
 
 def get_modeldata_metadata(
-    inputpath=Path(),
+    inputpath: Path = Path(),
     dimensions: Optional[int] = None,
-    get_elemabundances=False,
-    derived_cols=False,
-    printwarningsonly=False,
-    skip3ddataframe=False,
-    skipabundancecolumns=False,
+    get_elemabundances: bool = False,
+    derived_cols: Optional[Sequence[str]] = None,
+    printwarningsonly: bool = False,
+    skip3ddataframe: bool = False,
+    skipabundancecolumns: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
     Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
@@ -317,13 +318,20 @@ def get_modeldata(*args, **kwargs) -> tuple[pd.DataFrame, float, float]:
 
 
 def add_derived_cols_to_modeldata(
-    dfmodel, derived_cols, dimensions=None, t_model_init_seconds=None, wid_init=None, modelpath=None
-):
+    dfmodel: pd.DataFrame,
+    derived_cols: Sequence[str],
+    dimensions: Optional[int] = None,
+    t_model_init_seconds: Optional[float] = None,
+    wid_init: Optional[float] = None,
+    modelpath: Optional[Path] = None,
+) -> pd.DataFrame:
     """add columns to modeldata using e.g. derived_cols = ('velocity', 'Ye')"""
     if dimensions is None:
         dimensions = get_dfmodel_dimensions(dfmodel)
 
     if dimensions == 3 and "velocity" in derived_cols:
+        assert t_model_init_seconds is not None
+        assert wid_init is not None
         dfmodel["vel_x_min"] = dfmodel["pos_x_min"] / t_model_init_seconds
         dfmodel["vel_y_min"] = dfmodel["pos_y_min"] / t_model_init_seconds
         dfmodel["vel_z_min"] = dfmodel["pos_z_min"] / t_model_init_seconds
@@ -339,6 +347,7 @@ def add_derived_cols_to_modeldata(
         dfmodel.eval("vel_mid_radial = sqrt(vel_x_mid ** 2 + vel_y_mid ** 2 + vel_z_mid ** 2)", inplace=True)
 
     if dimensions == 3 and "pos_mid" in derived_cols or "angle_bin" in derived_cols:
+        assert wid_init is not None
         dfmodel["pos_x_mid"] = dfmodel["pos_x_min"] + (0.5 * wid_init)
         dfmodel["pos_y_mid"] = dfmodel["pos_y_min"] + (0.5 * wid_init)
         dfmodel["pos_z_mid"] = dfmodel["pos_z_min"] + (0.5 * wid_init)
@@ -347,6 +356,7 @@ def add_derived_cols_to_modeldata(
         dfmodel.eval("logrho = log10(rho)", inplace=True)
 
     if "angle_bin" in derived_cols:
+        assert modelpath is not None
         get_cell_angle(dfmodel, modelpath)
 
     # if "Ye" in derived_cols and os.path.isfile(modelpath / "Ye.txt"):
@@ -357,7 +367,7 @@ def add_derived_cols_to_modeldata(
     return dfmodel
 
 
-def get_cell_angle(dfmodel, modelpath):
+def get_cell_angle(dfmodel: pd.DataFrame, modelpath: Path) -> pd.DataFrame:
     """get angle between cell midpoint and axis"""
     syn_dir = at.get_syn_dir(modelpath)
 
@@ -376,7 +386,9 @@ def get_cell_angle(dfmodel, modelpath):
     return dfmodel
 
 
-def get_mean_cell_properties_of_angle_bin(dfmodeldata, vmax_cmps, modelpath=None):
+def get_mean_cell_properties_of_angle_bin(
+    dfmodeldata: pd.DataFrame, vmax_cmps: float, modelpath=None
+) -> dict[int, pd.DataFrame]:
     if "cos_bin" not in dfmodeldata:
         get_cell_angle(dfmodeldata, modelpath)
 
@@ -644,7 +656,9 @@ def get_initialabundances(modelpath: Path) -> pd.DataFrame:
     return abundancedata
 
 
-def save_initialabundances(dfelabundances, abundancefilename, headerlines=None):
+def save_initialabundances(
+    dfelabundances: pd.DataFrame, abundancefilename, headerlines: Optional[Sequence[str]] = None
+) -> None:
     """Save a DataFrame (same format as get_initialabundances) to abundances.txt.
     columns must be:
         - inputcellid: integer index to match model.txt (starting from 1)
@@ -692,7 +706,7 @@ def save_empty_abundance_file(ngrid: int, outputfilepath=Path()):
     dfabundances.to_csv(outputfilepath, header=False, sep="\t", index=False)
 
 
-def get_dfmodel_dimensions(dfmodel):
+def get_dfmodel_dimensions(dfmodel: pd.DataFrame) -> int:
     if "pos_x_min" in dfmodel.columns:
         return 3
 
@@ -703,10 +717,10 @@ def sphericalaverage(
     dfmodel: pd.DataFrame,
     t_model_init_days: float,
     vmax: float,
-    dfelabundances=None,
-    dfgridcontributions=None,
-    nradialbins=None,
-):
+    dfelabundances: Optional[pd.DataFrame] = None,
+    dfgridcontributions: Optional[pd.Dataframe] = None,
+    nradialbins: Optional[int] = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Convert 3D Cartesian grid model to 1D spherical"""
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
     xmax = vmax * t_model_init_seconds
@@ -733,7 +747,9 @@ def sphericalaverage(
     outcells = []
     outcellabundances = []
     outgridcontributions = []
-    includemissingcolexists = "frac_of_cellmass_includemissing" in dfgridcontributions.columns
+    includemissingcolexists = (
+        dfgridcontributions is not None and "frac_of_cellmass_includemissing" in dfgridcontributions.columns
+    )
 
     # cellidmap_3d_to_1d = {}
     highest_active_radialcellid = -1
