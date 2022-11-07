@@ -490,7 +490,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
             rho_cgs = rho_init_cgs * (t_model_init_days / time_days) ** 3
 
             for strnuc, a in zip(arr_strnuc, arr_a):
-                abund = estimators[(nts, mgi)]["populations"].get(strnuc, 0.0)
+                abund = estimators[(nts, mgi)]["populations"][strnuc]
                 massfrac = abund * a * MH / rho_cgs
                 massfrac = massfrac + dfmodel.iloc[mgi][f"X_{strnuc}"] * (correction_factors[strnuc] - 1.0)
 
@@ -644,7 +644,7 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     arr_el_a = [
-        ("He", 4),
+        # ("He", 4),
         ("Ga", 72),
         ("Sr", 89),
         ("Ba", 140),
