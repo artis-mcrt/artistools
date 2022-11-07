@@ -1135,7 +1135,11 @@ def addargs(parser):
         help="Plot viewing angles. Expects int for angle number in specpol_res.out",
     )
 
-    parser.add_argument("--averagespecpolres", action="store_true", help="Average bins of specpol_res.out")
+    parser.add_argument(
+        "--average_every_tenth_viewing_angle",
+        action="store_true",
+        help="average every tenth viewing angle to reduce noise",
+    )
 
     parser.add_argument("--binflux", action="store_true", help="Bin flux over wavelength and average flux")
 
