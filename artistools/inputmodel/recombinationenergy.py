@@ -23,7 +23,7 @@ def get_model_recombenergy(dfbinding, args):
     )
 
     print(f"Reading {args.inputfile}")
-    dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata(args.inputfile, get_elemabundances=False)
+    dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata_tuple(args.inputfile, get_elemabundances=False)
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
     print(f"Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)")

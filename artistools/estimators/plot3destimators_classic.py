@@ -14,7 +14,7 @@ CLIGHT = 2.99792458e10
 
 
 def read_selected_mgi(modelpath, readonly_mgi, readonly_timestep=False):
-    modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
+    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
     estimators = at.estimators.estimators_classic.read_classic_estimators(
         modelpath, modeldata, readonly_mgi=readonly_mgi, readonly_timestep=readonly_timestep
     )
@@ -153,7 +153,7 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
 
 def main():
     modelpath = Path(".")
-    modeldata, _, vmax = at.inputmodel.get_modeldata(modelpath)
+    modeldata, _, vmax = at.inputmodel.get_modeldata_tuple(modelpath)
 
     # # Get mgi of grid cells along axis for 1D plot
     # # readonly_mgi = get_modelgridcells_along_axis(modelpath)

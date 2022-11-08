@@ -670,12 +670,12 @@ def make_contrib_plot(axes, modelpath, densityplotyvars, args):
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
 
-    modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
+    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
 
     if args.classicartis:
         import artistools.estimators.estimators_classic
 
-        modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
+        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
         estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
         allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index]
 

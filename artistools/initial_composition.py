@@ -56,7 +56,7 @@ def plot_2d_initial_abundances(modelpath, args):
 
 def get_merged_model_abundances(modelpath):
     # t_model is in days and vmax is in cm/s
-    model, t_model, vmax = at.inputmodel.get_modeldata(modelpath[0], dimensions=3)
+    model, t_model, vmax = at.inputmodel.get_modeldata_tuple(modelpath[0], dimensions=3)
 
     abundances = at.inputmodel.get_initialabundances(modelpath[0])
 
@@ -190,7 +190,7 @@ def plot_3d_initial_abundances(modelpath, args=None):
 
 def get_model_abundances_Msun_1D(modelpath):
     filename = modelpath / "model.txt"
-    modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata(filename)
+    modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(filename)
     abundancedata = at.inputmodel.get_initialabundances(modelpath)
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
@@ -220,7 +220,7 @@ def get_model_abundances_Msun_1D(modelpath):
 
 
 def plot_most_abundant(modelpath, args):
-    model, _, _ = at.inputmodel.get_modeldata(modelpath[0], dimensions=3)
+    model, _ = at.inputmodel.get_modeldata(modelpath[0], dimensions=3)
     abundances = at.inputmodel.get_initialabundances(modelpath[0])
 
     merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
@@ -239,7 +239,7 @@ def make_3d_plot(modelpath, args):
 
     pv.set_plot_theme("document")  # set white background
 
-    model, t_model, vmax = at.inputmodel.get_modeldata(modelpath, dimensions=3, get_elemabundances=False)
+    model, t_model, vmax = at.inputmodel.get_modeldata_tuple(modelpath, dimensions=3, get_elemabundances=False)
     abundances = at.inputmodel.get_initialabundances(modelpath)
 
     abundances["inputcellid"] = abundances["inputcellid"].apply(lambda x: float(x))

@@ -48,7 +48,7 @@ def main(args=None, argsraw=None, **kwargs):
         args.modelpath = ["."]
 
     for modelpath in args.modelpath:
-        dfmodel, _, _ = at.get_modeldata(modelpath)
+        dfmodel, _, _ = at.get_modeldata_tuple(modelpath)
         label = at.get_model_name(modelpath)
         enclosed_xvals = []
         enclosed_yvals = []

@@ -429,7 +429,7 @@ def get_recombination_emission(
     print(f"  {upperionstr} Alpha_R = {alpha_ion:.2e}   Alpha_R*nne = {nne*alpha_ion:.2e}")
     print(f"  {upperionstr} Alpha_R2 = {alpha_ion2:.2e} Alpha_R2*nne = {nne*alpha_ion2:.2e}")
     # c_cgs = const.c.to('cm/s').value
-    # vmax = at.inputmodel.get_modeldata(modelpath)[0]['velocity_outer'].iloc[-1] * 1e5
+    # vmax = at.inputmodel.get_modeldata_tuple(modelpath)[0]['velocity_outer'].iloc[-1] * 1e5
     # t_seconds = at.get_timestep_times_float(modelpath, loc='start')[timestep] * u.day.to('s')
 
     # mean_free_path = vmax * t_seconds
@@ -729,7 +729,7 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
     if not args.nospec:
         plotkwargs = {}
         if not normalised:
-            modeldata, _, t_model_init = at.inputmodel.get_modeldata(modelpath)
+            modeldata, _, t_model_init = at.inputmodel.get_modeldata_tuple(modelpath)
             # outer velocity
             v_surface = modeldata.loc[int(radfielddata.modelgridindex.max())].velocity_outer * u.km / u.s
             r_surface = (time_days * u.day * v_surface).to("km")
@@ -749,7 +749,7 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
         binedges = get_binedges(radfielddata)
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5, color="red", label="", zorder=-1, alpha=0.4)
 
-    velocity = at.inputmodel.get_modeldata(modelpath)[0]["velocity_outer"][modelgridindex]
+    velocity = at.inputmodel.get_modeldata_tuple(modelpath)[0]["velocity_outer"][modelgridindex]
 
     figure_title = f"{modelname} {velocity:.0f} km/s at {time_days:.0f}d"
     # figure_title += '\ncell {modelgridindex} timestep {timestep}'

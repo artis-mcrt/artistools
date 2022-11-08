@@ -55,7 +55,7 @@ def main_analytical(args=None, argsraw=None, **kwargs):
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
-    dfmodel, t_model_init, _ = at.inputmodel.get_modeldata(args.modelpath)
+    dfmodel, t_model_init, _ = at.inputmodel.get_modeldata_tuple(args.modelpath)
 
     t_init = t_model_init * u.day
 

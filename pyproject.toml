@@ -26,7 +26,6 @@ readme = {file = ["README.md"]}
 dependencies = {file = ["requirements.txt"]}
 #entry-points = {attr = "artistools.commands.console_scripts"}
 
-
 [tool.black]
 line-length = 120
 preview = true
@@ -34,8 +33,10 @@ preview = true
 [tool.mypy]
 python_version = '3.11'
 exclude = "(build)|(tests)"
+packages = "artistools"
 ignore_missing_imports = true
-files = 'artistools/**/*.py'
+no_implicit_optional = false
+#files = 'artistools/**/*.py'
 plugins = 'numpy.typing.mypy_plugin'
 
 [tool.pylint]

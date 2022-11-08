@@ -40,7 +40,7 @@ def get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles
     nprocs_read = len(packetsfiles)
     assert nprocs_read > 0
 
-    model, _, _ = at.inputmodel.get_modeldata(modelpath)
+    model, _ = at.inputmodel.get_modeldata(modelpath)
     # vmax = model.iloc[-1].velocity_outer * u.km / u.s
     processfile = partial(get_packets_with_emtype_onefile, emtypecolumn, lineindices)
     if at.config["num_processes"] > 1:
@@ -79,7 +79,7 @@ def get_line_fluxes_from_packets(
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = arr_tend = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
 
-    model, _, _ = at.inputmodel.get_modeldata(modelpath)
+    model, _ = at.inputmodel.get_modeldata(modelpath)
     # vmax = model.iloc[-1].velocity_outer * u.km / u.s
     # betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
@@ -122,7 +122,7 @@ def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=No
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = arr_tend = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
 
-    modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
+    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
 
     ionlist = []
     for feature in emfeatures:
@@ -423,7 +423,7 @@ def make_flux_ratio_plot(args):
 def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, tstart, tend, maxpacketfiles=None):
     estimators = at.estimators.read_estimators(modelpath, get_ion_values=False, get_heatingcooling=False)
 
-    modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
+    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
     ts = at.get_timestep_of_timedays(modelpath, tend)
     allnonemptymgilist = [
         modelgridindex for modelgridindex in modeldata.index if not estimators[(ts, modelgridindex)]["emptycell"]
@@ -621,7 +621,7 @@ def make_emitting_regions_plot(args):
                         }
 
             estimators = at.estimators.read_estimators(modelpath, get_ion_values=False, get_heatingcooling=False)
-            modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
+            modeldata, _ = at.inputmodel.get_modeldata(modelpath)
             Tedata_all[modelindex] = {}
             log10nnedata_all[modelindex] = {}
             for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend):

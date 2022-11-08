@@ -432,7 +432,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
 
     # arr_z = [at.get_atomic_number(el) for el in arr_el]
 
-    dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath)
+    dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath)
     if "logrho" not in dfmodel.columns:
         dfmodel.eval("logrho = log10(rho)", inplace=True)
     model_mass_grams = dfmodel.cellmass_grams.sum()

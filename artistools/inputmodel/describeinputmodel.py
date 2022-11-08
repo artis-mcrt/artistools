@@ -45,7 +45,7 @@ def main(args=None, argsraw=None, **kwargs):
     if args.noisotopes:
         args.getelemabundances = True
 
-    dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata(
+    dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata_tuple(
         args.inputfile, get_elemabundances=args.getelemabundances, printwarningsonly=False
     )
 
