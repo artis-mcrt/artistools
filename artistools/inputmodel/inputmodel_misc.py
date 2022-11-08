@@ -164,7 +164,6 @@ def read_modelfile(
                 skiprows=skipevenrows,
                 names=columns[5:],
                 nrows=nrows_read,
-                converters={"tracercount": int},
             )
             assert len(dfmodel) == len(dfmodeloddlines)
             dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
