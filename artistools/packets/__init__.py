@@ -387,7 +387,7 @@ def get_escaping_packet_angle_bin(modelpath, dfpackets: pd.DataFrame) -> pd.Data
 def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, em_time=True):
     if timestep_max is None:
         timestep_max = timestep_min
-    modeldata, _, vmax_cms = at.inputmodel.get_modeldata(modelpath)
+    modeldata, _, vmax_cms = at.inputmodel.get_modeldata_tuple(modelpath)
 
     timeminarray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
     timedeltaarray = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
@@ -471,7 +471,7 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
 
 
 def make_3d_grid(modeldata, vmax_cms):
-    # modeldata, _, vmax_cms = at.inputmodel.get_modeldata(modelpath)
+    # modeldata, _, vmax_cms = at.inputmodel.get_modeldata_tuple(modelpath)
     grid = round(len(modeldata["inputcellid"]) ** (1.0 / 3.0))
     xgrid = np.zeros(grid)
     vmax = vmax_cms / CLIGHT

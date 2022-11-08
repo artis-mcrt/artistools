@@ -81,7 +81,7 @@ def main(args=None, argsraw=None, **kwargs):
         )
 
     if args.makeenergyinputfiles:
-        model, t_model, vmax = at.inputmodel.get_modeldata(args.modelpath[0])
+        model, t_model, vmax = at.inputmodel.get_modeldata_tuple(args.modelpath[0])
         if args.modeldim == 1:
             rho = 10 ** model["logrho"]
             Mtot_grams = model["cellmass_grams"].sum()

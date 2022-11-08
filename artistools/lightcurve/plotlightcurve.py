@@ -30,7 +30,7 @@ color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
 def plot_deposition_thermalisation(axis, axistherm, modelpath, plotkwargs, args):
     if args.plotthermalisation:
-        dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata(modelpath, skipabundancecolumns=True)
+        dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath, skipabundancecolumns=True)
         model_mass_grams = dfmodel.cellmass_grams.sum()
         print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
 

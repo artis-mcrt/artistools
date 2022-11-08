@@ -175,7 +175,7 @@ def make_energy_files(rho, Mtot_grams, outputpath=None):
 
 def plot_energy_rate(modelpath):
     times_and_rate, E_tot = at.inputmodel.energyinputfiles.rprocess_const_and_powerlaw()
-    model, _, _ = at.inputmodel.get_modeldata(modelpath)
+    model, _ = at.inputmodel.get_modeldata(modelpath)
     Mtot_grams = model["cellmass_grams"].sum()
     plt.plot(
         times_and_rate["times"], np.array(times_and_rate["nuclear_heating_power"]) * Mtot_grams, color="k", zorder=10

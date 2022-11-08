@@ -159,7 +159,7 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
                 floersmultizonefilename = "level_pops_subch_shen2018-247d.csv"
 
         if floersmultizonefilename and os.path.isfile(floersmultizonefilename):
-            modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)  # todo: move into modelpath loop
+            modeldata, _ = at.inputmodel.get_modeldata(modelpath)  # todo: move into modelpath loop
             vel_outer = modeldata.iloc[modelgridindex].velocity_outer
             print(f"  reading {floersmultizonefilename}", vel_outer, T_e)
             dffloers = pd.read_csv(floersmultizonefilename)
@@ -480,7 +480,7 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ionstage, i
         modelgridindex_list = modelgridindex_list * int(args.modelgridindex[0])
 
     if args.x == "velocity":
-        modeldata, _, _ = at.inputmodel.get_modeldata(modelpaths[0])  # todo: move into modelpath loop
+        modeldata, _ = at.inputmodel.get_modeldata(modelpaths[0])  # todo: move into modelpath loop
         velocity = modeldata["velocity_outer"]
         modelgridindex_list = [mgi for mgi, _ in enumerate(velocity)]
 
@@ -619,7 +619,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         subplot_title = f"{modelname}"
         if len(modelname) > 10:
             subplot_title += "\n"
-        velocity = at.inputmodel.get_modeldata(modelpath)[0]["velocity_outer"][modelgridindex]
+        velocity = at.inputmodel.get_modeldata_tuple(modelpath)[0]["velocity_outer"][modelgridindex]
         subplot_title += f" {velocity:.0f} km/s at"
 
         try:

@@ -66,7 +66,7 @@ def plot_init_abundances(
     assert len(xlist) - 1 == len(mgilist)
 
     if seriestype == "initabundances":
-        mergemodelabundata, _, _ = at.inputmodel.get_modeldata(modelpath, get_elemabundances=True)
+        mergemodelabundata, _, _ = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=True)
     elif seriestype == "initmasses":
         mergemodelabundata = at.initial_composition.get_model_abundances_Msun_1D(modelpath)
 
@@ -207,7 +207,7 @@ def plot_levelpop(
     else:
         raise ValueError()
 
-    modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
+    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
     modeldata.eval("modelcellvolume = cellmass_grams / (10 ** logrho)", inplace=True)
 
     adata = at.atomic.get_levels(modelpath)
@@ -993,7 +993,7 @@ def main(args=None, argsraw=None, **kwargs):
     if args.classicartis:
         import artistools.estimators.estimators_classic
 
-        modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
+        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
         estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
     else:
         estimators = at.estimators.read_estimators(
@@ -1053,7 +1053,7 @@ def main(args=None, argsraw=None, **kwargs):
         plot_recombrates(modelpath, estimators, 27, [3, 4])
         plot_recombrates(modelpath, estimators, 28, [3, 4, 5])
     else:
-        modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
+        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
 
         if args.modelgridindex > -1 or args.x in ["time", "timestep"]:
             # plot time evolution in specific cell

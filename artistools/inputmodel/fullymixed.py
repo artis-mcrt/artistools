@@ -37,7 +37,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    dfmodel, t_model_init_days, _ = at.inputmodel.get_modeldata(args.inputpath)
+    dfmodel, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(args.inputpath)
     print("Read model.txt")
     dfelabundances = at.inputmodel.get_initialabundances(args.inputpath)
     print("Read abundances.txt")

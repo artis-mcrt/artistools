@@ -179,7 +179,7 @@ def main(args=None, argsraw=None, **kwargs):
             print("A time or timestep must be specified.")
             sys.exit()
 
-        modeldata, _, _ = at.inputmodel.get_modeldata(modelpath)
+        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
         if args.velocity >= 0.0:
             args.modelgridindex = at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)
         else:

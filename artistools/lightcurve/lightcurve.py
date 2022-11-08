@@ -68,7 +68,7 @@ def get_from_packets(
     timearray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
     arr_timedelta = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
     # timearray = np.arange(250, 350, 0.1)
-    _, _, vmax_cmps = at.inputmodel.get_modeldata(modelpath, skip3ddataframe=True, skipabundancecolumns=True)
+    _, _, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath, skip3ddataframe=True, skipabundancecolumns=True)
     escapesurfacegamma = math.sqrt(1 - (vmax_cmps / 29979245800) ** 2)
 
     timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])

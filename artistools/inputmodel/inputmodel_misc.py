@@ -257,7 +257,7 @@ def read_modelfile(
     return dfmodel, modelmeta
 
 
-def get_modeldata_metadata(
+def get_modeldata(
     inputpath: Path = Path(),
     dimensions: Optional[int] = None,
     get_elemabundances: bool = False,
@@ -325,12 +325,12 @@ def get_modeldata_metadata(
     return dfmodel, modelmeta
 
 
-def get_modeldata(*args, **kwargs) -> tuple[pd.DataFrame, float, float]:
+def get_modeldata_tuple(*args, **kwargs) -> tuple[pd.DataFrame, float, float]:
     """
     Deprecated but included for compatibility with fixed length tuple return type
-    Use get_modeldata_metadata() instead!
+    Use get_modeldata() instead!
     """
-    dfmodel, modelmeta = get_modeldata_metadata(*args, **kwargs)
+    dfmodel, modelmeta = get_modeldata(*args, **kwargs)
 
     return dfmodel, modelmeta["t_model_init_days"], modelmeta["vmax_cmps"]
 
@@ -533,18 +533,40 @@ def get_3d_modeldata_minimal(modelpath) -> pd.DataFrame:
 
 def save_modeldata(
     dfmodel: pd.DataFrame,
-    t_model_init_days,
-    filename=None,
-    modelpath=None,
-    vmax=None,
-    dimensions=1,
-    radioactives=True,
-    headercommentlines=None,
+    t_model_init_days: Optional[float] = None,
+    filename: Union[Path, str, None] = None,
+    modelpath: Union[Path, str, None] = None,
+    vmax: Optional[float] = None,
+    dimensions: Optional[int] = None,
+    headercommentlines: Optional[list[str]] = None,
+    modelmeta: Optional[dict[str, Any]] = None,
 ) -> None:
     """Save a pandas DataFrame and snapshot time into ARTIS model.txt"""
+    if modelmeta:
+        if "headercommentlines" in modelmeta:
+            assert headercommentlines is None
+            headercommentlines = modelmeta["headercommentlines"]
+
+        if "vmax_cmps" in modelmeta:
+            assert vmax is None
+            vmax = modelmeta["vmax_cmps"]
+
+        if "dimensions" in modelmeta:
+            assert dimensions is None
+            dimensions = modelmeta["dimensions"]
+
+        if "t_model_init_days" in modelmeta:
+            assert t_model_init_days is None
+            t_model_init_days = modelmeta["t_model_init_days"]
+
+        if "modelcellcount" in modelmeta:
+            assert len(dfmodel) == modelmeta["modelcellcount"]
 
     timestart = time.perf_counter()
-    assert dimensions in [1, 3, None]
+    if dimensions is None:
+        dimensions = at.get_dfmodel_dimensions(dfmodel)
+
+    assert dimensions in [1, 3]
     if dimensions == 1:
         standardcols = ["inputcellid", "velocity_outer", "logrho", "X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
     elif dimensions == 3:
@@ -636,7 +658,7 @@ def save_modeldata(
 def get_mgi_of_velocity_kms(modelpath, velocity, mgilist=None):
     """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
     If mgilist is given, then chose from these cells only"""
-    modeldata, _, _ = get_modeldata(modelpath)
+    modeldata, _, _ = get_modeldata_tuple(modelpath)
 
     velocity = float(velocity)
 

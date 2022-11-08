@@ -236,9 +236,9 @@ def get_wid_init_at_tmin(modelpath: Path) -> float:
     # cell width in cm at time tmin
     day_to_sec = 86400
     tmin = get_timestep_times_float(modelpath, loc="start")[0] * day_to_sec
-    _, _, vmax = at.get_modeldata(modelpath)
+    _, modelmeta = at.get_modeldata(modelpath)
 
-    rmax = vmax * tmin
+    rmax = modelmeta["vmax_cmps"] * tmin
 
     coordmax0 = rmax
     ncoordgrid0 = 50
@@ -255,13 +255,14 @@ def get_wid_init_at_tmodel(
 ) -> float:
     if ngridpoints is None or t_model_days is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
-        dfmodel, t_model_days, vmax = at.get_modeldata(modelpath)
-        assert at.inputmodel.get_dfmodel_dimensions(dfmodel) == 3
+        dfmodel, modelmeta = at.get_modeldata(modelpath)
+        assert modelmeta["dimensions"] == 3
         ngridpoints = len(dfmodel)
-        xmax = vmax * t_model_days * (24 * 60 * 60)
+        xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * (24 * 60 * 60)
 
     ncoordgridx = round(ngridpoints ** (1.0 / 3.0))
 
+    assert xmax is not None
     wid_init = 2 * xmax / ncoordgridx
 
     return wid_init
@@ -491,9 +492,8 @@ def get_timestep_time(modelpath: Union[Path, str], timestep: int) -> float:
 
 def get_escaped_arrivalrange(modelpath: Union[Path, str]) -> tuple[int, float, float]:
     modelpath = Path(modelpath)
-    dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata(
-        modelpath, printwarningsonly=True, skip3ddataframe=True
-    )
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True, skip3ddataframe=True)
+    vmax = modelmeta["vmax_cmps"]
     cornervmax = math.sqrt(3 * vmax**2)
 
     # find the earliest possible escape time and add the largest possible travel time

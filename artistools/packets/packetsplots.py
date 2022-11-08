@@ -10,7 +10,7 @@ DAY = 86400
 
 
 def make_2d_packets_plot_imshow(modelpath, timestep_min, timestep_max):
-    modeldata, _, vmax_cms = at.inputmodel.get_modeldata(modelpath)
+    modeldata, _, vmax_cms = at.inputmodel.get_modeldata_tuple(modelpath)
     em_time = True  # False for arrive time
 
     hist = at.packets.make_3d_histogram_from_packets(
@@ -66,7 +66,7 @@ def make_2d_packets_plot_imshow(modelpath, timestep_min, timestep_max):
 def make_2d_packets_plot_pyvista(modelpath, timestep):
     import pyvista as pv
 
-    modeldata, _, vmax_cms = at.inputmodel.get_modeldata(modelpath)
+    modeldata, _, vmax_cms = at.inputmodel.get_modeldata_tuple(modelpath)
     _, x, y, z = at.packets.make_3d_grid(modeldata, vmax_cms)
     mesh = pv.StructuredGrid(x, y, z)
 

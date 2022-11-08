@@ -22,7 +22,7 @@ def make_cone(args):
 
     theta = np.radians([angle_of_cone / 2])  # angle between line of sight and edge is half angle of cone
 
-    # merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata(args.modelpath[0], dimensions=3, get_elemabundances=True)
+    # merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata_tuple(args.modelpath[0], dimensions=3, get_elemabundances=True)
     merge_dfs = at.inputmodel.get_3d_model_data_merged_model_and_abundances_minimal(args)
 
     if args.positive_axis:
@@ -56,9 +56,9 @@ def make_cone(args):
 def get_profile_along_axis(args=None, modeldata=None, derived_cols=False):
     print("Getting profile along axis")
 
-    # merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata(args.modelpath, dimensions=3, get_elemabundances=True)
+    # merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata_tuple(args.modelpath, dimensions=3, get_elemabundances=True)
     if modeldata is None:
-        modeldata, _, _ = at.inputmodel.get_modeldata(
+        modeldata, _ = at.inputmodel.get_modeldata(
             args.modelpath, dimensions=3, get_elemabundances=True, derived_cols=derived_cols
         )
 
