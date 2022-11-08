@@ -303,7 +303,7 @@ def get_spectrum_from_packets(
 
 @lru_cache(maxsize=16)
 @at.diskcache(savezipped=True)
-def read_specpol_res(modelpath: Path) -> list[pd.DataFrame]:
+def read_specpol_res(modelpath: Path) -> dict[int, pd.DataFrame]:
     """Return specpol_res data for a given angle"""
     if Path(modelpath, "specpol_res.out").is_file():
         specfilename = Path(modelpath) / "specpol_res.out"
