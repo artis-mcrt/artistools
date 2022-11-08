@@ -680,7 +680,8 @@ def zopen(filename, mode):
     elif os.path.exists(filenamexz) or str(filename).endswith(".xz"):
         return lzma.open(filenamexz, mode)
     else:
-        assert False
+        # will raise file not found
+        return open(filename, mode)
 
 
 def firstexisting(filelist, path=Path(".")):
