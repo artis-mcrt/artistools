@@ -164,18 +164,19 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
     return composition_df
 
 
-def gather_res_data(res_df: pd.DataFrame, index_of_repeated_value: int = 1) -> list[pd.DataFrame]:
+def gather_res_data(res_df: pd.DataFrame, index_of_repeated_value: int = 1) -> dict[int, pd.DataFrame]:
     """res files repeat output for each angle.
     index_of_repeated_value is the value to look for repeating eg. time of ts 0.
     In spec_res files it's 1, but in lc_res file it's 0"""
     index_to_split = res_df.index[res_df.iloc[:, index_of_repeated_value] == res_df.iloc[0, index_of_repeated_value]]
-    res_data = []
+    res_data = {}
     for i, index_value in enumerate(index_to_split):
         if index_value != index_to_split[-1]:
             chunk = res_df.iloc[index_to_split[i] : index_to_split[i + 1], :]
         else:
             chunk = res_df.iloc[index_to_split[i] :, :]
-        res_data.append(chunk)
+        res_data[i] = chunk
+
     assert len(res_data) == 100
     return res_data
 
