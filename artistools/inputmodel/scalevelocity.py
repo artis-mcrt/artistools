@@ -2,14 +2,12 @@
 import argparse
 import math
 
+import pandas as pd
+
 import artistools as at
 
-# import os.path
-# import numpy as np
-# import pandas as pd
 
-
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-kescale", "-k", default=None, help="Kinetic energy scale factor")
 
     parser.add_argument("-velscale", "-v", default=None, help="Velocity scale factor")
@@ -21,7 +19,7 @@ def addargs(parser):
     )
 
 
-def eval_mshell(dfmodel, t_model_init_seconds):
+def eval_mshell(dfmodel: pd.DataFrame, t_model_init_seconds: float) -> None:
     dfmodel.eval(
         "cellmass_grams = 10 ** logrho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
         "* (1e5 * @t_model_init_seconds) ** 3",

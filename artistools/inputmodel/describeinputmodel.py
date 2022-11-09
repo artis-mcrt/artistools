@@ -12,7 +12,7 @@ import artistools as at
 # import pandas as pd
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-inputfile", "-i", default=Path(), help="Path of input file or folder containing model.txt")
 
     parser.add_argument("-cell", "-mgi", default=None, help="Focus on particular cell number (0-indexed)")

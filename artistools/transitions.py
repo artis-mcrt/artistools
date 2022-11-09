@@ -193,7 +193,7 @@ def add_upper_lte_pop(dftransitions, T_exc, ionpop, ltepartfunc, columnname=None
     dftransitions.eval(f"{columnname} = @scalefactor * upper_g * exp(-upper_energy_ev / @K_B / @T_exc)", inplace=True)
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-modelpath", default=None, type=Path, help="Path to ARTIS folder")
 
     parser.add_argument("-xmin", type=int, default=3500, help="Plot range: minimum wavelength in Angstroms")

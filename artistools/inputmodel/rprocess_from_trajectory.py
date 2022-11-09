@@ -9,7 +9,9 @@ import time
 from functools import lru_cache
 from functools import partial
 from pathlib import Path
+from typing import Literal
 from typing import Optional
+from typing import Union
 
 import argcomplete
 import numpy as np
@@ -80,7 +82,9 @@ def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
     return dfevol
 
 
-def get_closest_network_timestep(traj_root: Path, particleid: int, timesec: float, cond="nearest") -> int:
+def get_closest_network_timestep(
+    traj_root: Path, particleid: int, timesec: float, cond: Literal["lessthan", "greaterthan", "nearest"] = "nearest"
+) -> int:
     """
     cond:
         'lessthan': find highest timestep less than time_sec
@@ -234,7 +238,9 @@ def get_trajectory_abund_q(
     return dict_traj_nuc_abund
 
 
-def get_modelcellabundance(dict_traj_nuc_abund, minparticlespercell, cellgroup):
+def get_modelcellabundance(
+    dict_traj_nuc_abund: dict[int, pd.DataFrame], minparticlespercell: int, cellgroup: tuple[int, pd.DataFrame]
+) -> Optional[dict[str, float]]:
     cellindex, dfthiscellcontribs = cellgroup
 
     if len(dfthiscellcontribs) < minparticlespercell:
@@ -277,7 +283,7 @@ def get_modelcellabundance(dict_traj_nuc_abund, minparticlespercell, cellgroup):
     return row
 
 
-def get_gridparticlecontributions(gridcontribpath):
+def get_gridparticlecontributions(gridcontribpath: Union[Path, str]) -> pd.DataFrame:
     dfcontribs = pd.read_csv(
         Path(gridcontribpath, "gridcontributions.txt"),
         delim_whitespace=True,
@@ -356,8 +362,8 @@ def add_abundancecontributions(
     dfgridcontributions: pd.DataFrame,
     dfmodel: pd.DataFrame,
     t_model_days_incpremerger: float,
-    traj_root,
-    minparticlespercell=0,
+    traj_root: Path,
+    minparticlespercell: int = 0,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """contribute trajectory network calculation abundances to model cell abundances"""
     t_model_s = t_model_days_incpremerger * 86400
@@ -484,7 +490,7 @@ def add_abundancecontributions(
     return dfmodel, dfelabundances, dfcontribs
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 

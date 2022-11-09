@@ -8,10 +8,10 @@ from astropy import units as u
 import artistools as at
 import artistools.nltepops
 
-# import numpy as np
 
-
-def forward_doubledecay(iso1fract0, iso2fract0, iso3fract0, tlate, meanlife1_days, meanlife2_days):
+def forward_doubledecay(
+    iso1fract0: float, iso2fract0: float, iso3fract0: float, tlate: float, meanlife1_days: float, meanlife2_days: float
+) -> tuple[float, float, float]:
     # get the abundances at a late time from the time zero abundances
     # e.g. Ni56 -> Co56 -> Fe56 decay
     # meanlife1 is the mean lifetime of the parent (e.g. Ni56) and meanlife2 is the mean life of the daughter nucleus (e.g. Co56)
@@ -39,7 +39,7 @@ def forward_doubledecay(iso1fract0, iso2fract0, iso3fract0, tlate, meanlife1_day
     return iso1fraclate, iso2fraclate, iso3fraclate
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-modelpath", default=".", help="Path to ARTIS folder")
 
     parser.add_argument("-timedays", "-t", default=330, type=float, help="Time in days")

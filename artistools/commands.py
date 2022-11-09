@@ -88,5 +88,5 @@ def setup_completions():
     print("source artistoolscompletions.sh")
 
 
-def addargs(parser):
+def addargs(parser=None):
     pass

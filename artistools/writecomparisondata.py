@@ -173,7 +173,7 @@ def write_lbol_edep(modelpath, model_id, selected_timesteps, estimators, outputp
     f.close()
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-modelpath", default=[], nargs="*", action=at.AppendPath, help="Paths to ARTIS folders")
 
     parser.add_argument(

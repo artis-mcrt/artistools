@@ -12,7 +12,7 @@ import artistools.inputmodel.modelfromhydro
 import artistools.inputmodel.opacityinputfile
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-modelpath", default=[], nargs="*", action=at.AppendPath, help="Path to initial model file")
 
     parser.add_argument(

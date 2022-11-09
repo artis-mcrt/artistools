@@ -683,7 +683,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
     plt.close()
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("elements", nargs="*", default=["Fe"], help="List of elements to plot")
 
     parser.add_argument("-modelpath", default=Path(), type=Path, help="Path to ARTIS folder")

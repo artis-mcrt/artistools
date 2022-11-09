@@ -4,7 +4,12 @@
 import argparse
 import math
 import os
+from collections.abc import Collection
 from pathlib import Path
+from typing import Any
+from typing import Callable
+from typing import Optional
+from typing import Union
 
 import argcomplete
 import matplotlib.patches as mpatches
@@ -13,6 +18,7 @@ import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 from astropy import constants as const
+from matplotlib.artist import Artist
 
 import artistools as at
 import artistools.packets
@@ -31,7 +37,7 @@ from artistools.spectra.spectra import timeshift_fluxscale_co56law
 hatches = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]  # ,
 
 
-def plot_polarisation(modelpath, args):
+def plot_polarisation(modelpath: Path, args) -> None:
     angle = args.plotviewingangle[0]
     stokes_params = get_specpol_data(angle=angle, modelpath=modelpath)
     stokes_params[args.stokesparam].eval(
@@ -42,6 +48,8 @@ def plot_polarisation(modelpath, args):
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
+    assert args.timemin is not None
+    assert args.timemax is not None
     timeavg = (args.timemin + args.timemax) / 2.0
 
     def match_closest_time(reftime):
@@ -102,14 +110,14 @@ def plot_polarisation(modelpath, args):
 
 
 def plot_reference_spectrum(
-    filename,
-    axis,
-    xmin,
-    xmax,
-    flambdafilterfunc=None,
-    scale_to_peak=None,
-    scale_to_dist_mpc=1,
-    scaletoreftime=None,
+    filename: Union[Path, str],
+    axis: plt.Axes,
+    xmin: float,
+    xmax: float,
+    flambdafilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+    scale_to_peak: Optional[float] = None,
+    scale_to_dist_mpc: float = 1,
+    scaletoreftime: Optional[float] = None,
     **plotkwargs,
 ):
     """Plot a single reference spectrum.
@@ -169,7 +177,7 @@ def plot_reference_spectrum(
     return mpatches.Patch(color=lineplot.get_lines()[0].get_color()), plotkwargs["label"], ymax
 
 
-def plot_filter_functions(axis):
+def plot_filter_functions(axis: plt.Axes) -> None:
     filter_names = ["U", "B", "V", "R", "I"]
     colours = ["r", "b", "g", "c", "m"]
 
@@ -188,16 +196,16 @@ def plot_filter_functions(axis):
 
 
 def plot_artis_spectrum(
-    axes,
-    modelpath,
+    axes: Collection[plt.Axes],
+    modelpath: Union[Path, str],
     args,
-    scale_to_peak=None,
-    from_packets=False,
-    filterfunc=None,
-    linelabel=None,
-    plotpacketcount=False,
+    scale_to_peak: Optional[float] = None,
+    from_packets: bool = False,
+    filterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+    linelabel: Optional[str] = None,
+    plotpacketcount: bool = False,
     **plotkwargs,
-):
+) -> pd.DataFrame:
     """Plot an ARTIS output spectrum."""
     modelpath_or_file = Path(modelpath)
     modelpath = Path(modelpath) if Path(modelpath).is_dir() else Path(modelpath).parent
@@ -222,6 +230,8 @@ def plot_artis_spectrum(
         if timestepmin == timestepmax == -1:
             return
 
+        assert args.timemin is not None
+        assert args.timemax is not None
         timeavg = (args.timemin + args.timemax) / 2.0
         timedelta = (args.timemax - args.timemin) / 2
         if linelabel is None:
@@ -239,6 +249,7 @@ def plot_artis_spectrum(
         # formatting for a second time makes it impossible to use curly braces in line labels (needed for LaTeX math)
         # else:
         #     linelabel = linelabel.format(**locals())
+        viewinganglespectra: dict[int, pd.DataFrame] = {}
 
         if from_packets:
             spectrum = get_spectrum_from_packets(
@@ -253,19 +264,22 @@ def plot_artis_spectrum(
                 useinternalpackets=args.internalpackets,
                 getpacketcount=plotpacketcount,
             )
+
             if args.outputfile is None:
                 statpath = Path()
             else:
                 statpath = Path(args.outputfile).resolve().parent
         else:
             spectrum = get_spectrum(modelpath_or_file, timestepmin, timestepmax, fnufilterfunc=filterfunc)
+
+            angles: Collection[int] = args.plotviewingangle
+
             if args.plotviewingangle:  # read specpol res.
-                angles = args.plotviewingangle
-                viewinganglespectra = {}
                 for angle in angles:
                     viewinganglespectra[angle] = get_res_spectrum(
                         modelpath, timestepmin, timestepmax, angle=angle, fnufilterfunc=filterfunc, args=args
                     )
+
             elif args.plotvspecpol is not None and os.path.isfile(modelpath / "vpkt.txt"):
                 # read virtual packet files (after running plotartisspectrum --makevspecpol)
                 vpkt_config = at.get_vpkt_config(modelpath)
@@ -277,8 +291,7 @@ def plot_artis_spectrum(
                         f"end time {vpkt_config['final_time']} days"
                     )
                     quit()
-                angles = args.plotvspecpol
-                viewinganglespectra = {}
+
                 for angle in angles:
                     viewinganglespectra[angle] = get_vspecpol_spectrum(
                         modelpath, timeavg, angle, args, fnufilterfunc=filterfunc
@@ -357,7 +370,13 @@ def plot_artis_spectrum(
     return spectrum[["lambda_angstroms", "f_lambda"]]
 
 
-def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
+def make_spectrum_plot(
+    speclist: Collection[Union[Path, str]],
+    axes: plt.Axes,
+    filterfunc: Optional[Callable[[np.ndarray], np.ndarray]],
+    args,
+    scale_to_peak: Optional[float] = None,
+) -> pd.DataFrame:
     """Plot reference spectra and ARTIS spectra."""
     dfalldata = pd.DataFrame()
     artisindex = 0
@@ -365,7 +384,7 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
     seriesindex = 0
     for seriesindex, specpath in enumerate(speclist):
         specpath = Path(specpath)
-        plotkwargs = {}
+        plotkwargs: dict[str, Any] = {}
         plotkwargs["alpha"] = 0.95
 
         plotkwargs["linestyle"] = args.linestyle[seriesindex]
@@ -466,7 +485,13 @@ def make_spectrum_plot(speclist, axes, filterfunc, args, scale_to_peak=None):
     return dfalldata
 
 
-def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_to_peak=None):
+def make_emissionabsorption_plot(
+    modelpath: Path,
+    axis: plt.Axes,
+    filterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+    args=None,
+    scale_to_peak: Optional[float] = None,
+) -> tuple[list[Artist], list[str], Optional[pd.DataFrame]]:
     """Plot the emission and absorption by ion for an ARTIS model."""
     print(modelpath)
     arraynu = at.misc.get_nu_grid(modelpath)
@@ -663,7 +688,7 @@ def make_emissionabsorption_plot(modelpath, axis, filterfunc, args=None, scale_t
     return plotobjects, plotobjectlabels, dfaxisdata
 
 
-def make_contrib_plot(axes, modelpath, densityplotyvars, args):
+def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[str], args) -> None:
     import artistools.packets
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
@@ -686,6 +711,8 @@ def make_contrib_plot(axes, modelpath, densityplotyvars, args):
         ]
 
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, args.maxpacketfiles)
+    assert args.timemin is not None
+    assert args.timemax is not None
     tdays_min = float(args.timemin)
     tdays_max = float(args.timemax)
 
@@ -695,9 +722,8 @@ def make_contrib_plot(axes, modelpath, densityplotyvars, args):
 
     querystr = ""
 
-    list_lambda = {}
-    lists_y = {}
-    list_weights = []
+    list_lambda: dict[str, list[float]] = {}
+    lists_y: dict[str, list[float]] = {}
     for index, packetsfile in enumerate(packetsfiles):
         dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
 
@@ -756,11 +782,11 @@ def make_contrib_plot(axes, modelpath, densityplotyvars, args):
         # ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.BuGn_r)
 
 
-def make_plot(args):
+def make_plot(args) -> None:
     # font = {'size': 16}
     # mpl.rc('font', **font)
 
-    densityplotyvars = []
+    densityplotyvars: list[str] = []
     # densityplotyvars = ['emission_velocity', 'Te', 'nne']
     # densityplotyvars = ['true_emission_velocity', 'emission_velocity', 'Te', 'nne']
 
@@ -927,7 +953,7 @@ def make_plot(args):
     plt.close()
 
 
-def addargs(parser):
+def addargs(parser) -> None:
     parser.add_argument(
         "specpath",
         default=[],
@@ -1166,7 +1192,7 @@ def addargs(parser):
     )
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args=None, argsraw=None, **kwargs) -> None:
     """Plot spectra from ARTIS and reference data."""
     if args is None:
         parser = argparse.ArgumentParser(

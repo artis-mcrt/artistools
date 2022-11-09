@@ -121,7 +121,7 @@ def make_plot(logfiledict):
     #     print(_)
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-modelpath",
         default=[],

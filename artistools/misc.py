@@ -8,6 +8,7 @@ import os.path
 import sys
 import time
 from collections import namedtuple
+from collections.abc import Collection
 from collections.abc import Iterable
 from collections.abc import Iterator
 from collections.abc import Sequence
@@ -21,8 +22,8 @@ from typing import Optional
 from typing import Union
 
 import numpy as np
-import numpy.typing as npt
 import pandas as pd
+from numpy import typing as npt
 
 import artistools as at
 
@@ -643,18 +644,12 @@ def makelist(x: Any) -> list[Any]:
         return x
 
 
-def trim_or_pad(requiredlength: int, *listoflistin) -> Iterator[list[Any]]:
-    """Make lists equal in length to requiedlength either by padding with None or truncating"""
+def trim_or_pad(requiredlength: int, *listoflistin: list[list[Any]]) -> Iterator[list[Any]]:
+    """Make lists equal in length to requiredlength either by padding with None or truncating"""
     for listin in listoflistin:
         listin = makelist(listin)
 
-        if len(listin) < requiredlength:
-            listout = listin.copy()
-            listout.extend([None for _ in range(requiredlength - len(listin))])
-        elif len(listin) > requiredlength:
-            listout = listin[:requiredlength]
-        else:
-            listout = listin
+        listout = [listin[i] if i < len(listin) else None for i in range(requiredlength)]
 
         assert len(listout) == requiredlength
         yield listout
@@ -751,7 +746,7 @@ def get_file_metadata(filepath):
     return {}
 
 
-def get_filterfunc(args, mode="interp") -> Optional[Callable[[npt.ArrayLike], npt.ArrayLike]]:
+def get_filterfunc(args, mode="interp") -> Optional[Callable[[np.ndarray], np.ndarray]]:
     """Using command line arguments to determine the appropriate filter function."""
 
     if hasattr(args, "filtermovingavg") and args.filtermovingavg > 0:
@@ -913,7 +908,7 @@ def get_inputparams(modelpath: Path) -> dict[str, Any]:
 
 
 @lru_cache(maxsize=16)
-def get_runfolder_timesteps(folderpath):
+def get_runfolder_timesteps(folderpath: Union[Path, str]) -> tuple[int, ...]:
     """Get the set of timesteps covered by the output files in an ARTIS run folder."""
     folder_timesteps = set()
     try:
@@ -936,7 +931,7 @@ def get_runfolder_timesteps(folderpath):
     return tuple(folder_timesteps)
 
 
-def get_runfolders(modelpath, timestep=None, timesteps=None) -> Iterable[Path]:
+def get_runfolders(modelpath, timestep=None, timesteps=None) -> Collection[Path]:
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
     The folder list may include non-ARTIS folders if a timestep is not specified."""
