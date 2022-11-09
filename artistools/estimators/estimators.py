@@ -8,7 +8,8 @@ import math
 import multiprocessing
 import sys
 from collections import namedtuple
-from collections.abc import Iterable
+from collections.abc import Collection
+from collections.abc import Iterator
 from collections.abc import Sequence
 from functools import lru_cache
 from functools import partial
@@ -18,6 +19,7 @@ from typing import Any
 from typing import Optional
 from typing import Union
 
+import numpy as np
 import pandas as pd
 
 import artistools as at
@@ -58,7 +60,9 @@ dictlabelreplacements = {
 }
 
 
-def apply_filters(xlist, ylist, args):
+def apply_filters(
+    xlist: Union[list, np.ndarray], ylist: np.ndarray, args
+) -> tuple[Union[list, np.ndarray], np.ndarray]:
     filterfunc = at.get_filterfunc(args)
 
     if filterfunc is not None:
@@ -67,7 +71,7 @@ def apply_filters(xlist, ylist, args):
     return xlist, ylist
 
 
-def get_ionrecombrates_fromfile(filename):
+def get_ionrecombrates_fromfile(filename: Union[Path, str]) -> pd.DataFrame:
     """WARNING: copy pasted from artis-atomic! replace with a package import soon ionstage is the lower ion stage."""
     print(f"Reading {filename}")
 
@@ -114,8 +118,8 @@ def get_units_string(variable: str) -> str:
 
 
 def parse_estimfile(
-    estfilepath: Path, modelpath, get_ion_values: bool = True, get_heatingcooling: bool = True
-) -> Iterable[tuple[int, int, dict]]:
+    estfilepath: Path, modelpath: Path, get_ion_values: bool = True, get_heatingcooling: bool = True
+) -> Iterator[tuple[int, int, dict]]:
     """Generate timestep, modelgridindex, dict from estimator file."""
     # itstep = at.get_inputparams(modelpath)['itstep']
 
@@ -224,7 +228,7 @@ def parse_estimfile(
 
 # @at.diskcache(ignorekwargs=['printfilename'], quiet=False, funcdepends=parse_estimfile, savezipped=True)
 def read_estimators_from_file(
-    folderpath,
+    folderpath: Union[Path, str],
     modelpath: Path,
     arr_velocity_outer: Optional[Sequence[float]],
     mpirank: int,
@@ -263,18 +267,18 @@ def read_estimators_from_file(
 @lru_cache(maxsize=16)
 # @at.diskcache(savezipped=True, funcdepends=[read_estimators_from_file, parse_estimfile])
 def read_estimators(
-    modelpath,
+    modelpath: Union[Path, str],
     modelgridindex: Optional[Union[int, Sequence[int]]] = None,
     timestep: Optional[Union[int, Sequence[int]]] = None,
-    get_ion_values=True,
-    get_heatingcooling=True,
-) -> dict[tuple[int, int], Any]:
+    get_ion_values: bool = True,
+    get_heatingcooling: bool = True,
+) -> dict[tuple[int, int], dict]:
     """Read estimator files into a nested dictionary structure.
 
     Speed it up by only retrieving estimators for a particular timestep(s) or modelgrid cells.
     """
 
-    match_modelgridindex: Iterable[int]
+    match_modelgridindex: Collection[int]
     if modelgridindex is None:
         match_modelgridindex = []
     elif isinstance(modelgridindex, int):
@@ -285,7 +289,7 @@ def read_estimators(
     if -1 in match_modelgridindex:
         match_modelgridindex = []
 
-    match_timestep: Iterable[int]
+    match_timestep: Collection[int]
     if timestep is None:
         match_timestep = []
     elif isinstance(timestep, int):
@@ -352,8 +356,8 @@ def read_estimators(
 
 
 def get_averaged_estimators(
-    modelpath,
-    estimators: dict[Any, Any],
+    modelpath: Union[Path, str],
+    estimators: dict[tuple[int, int], dict],
     timesteps: Union[int, Sequence[int]],
     modelgridindex: int,
     keys,

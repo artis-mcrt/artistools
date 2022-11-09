@@ -5,6 +5,7 @@ import multiprocessing
 import os
 import re
 from collections import namedtuple
+from collections.abc import Collection
 from collections.abc import Sequence
 from functools import lru_cache
 from functools import partial
@@ -18,7 +19,6 @@ from typing import Union
 import matplotlib as mpl
 import matplotlib.pyplot as plt  # needed to get the color map
 import numpy as np
-import numpy.typing as npt
 import pandas as pd
 from astropy import constants as const
 from astropy import units as u
@@ -41,7 +41,7 @@ def timeshift_fluxscale_co56law(scaletoreftime: Optional[float], spectime: float
         return 1.0
 
 
-def get_exspec_bins():
+def get_exspec_bins() -> tuple[np.ndarray, np.ndarray, float]:
     MNUBINS = 1000
     NU_MIN_R = 1e13
     NU_MAX_R = 5e15
@@ -111,7 +111,7 @@ def get_spectrum(
     modelpath: Path,
     timestepmin: int,
     timestepmax: int = -1,
-    fnufilterfunc: Optional[Callable[[npt.ArrayLike], npt.ArrayLike]] = None,
+    fnufilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     modelnumber=None,
 ) -> pd.DataFrame:
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
@@ -369,7 +369,7 @@ def get_res_spectrum(
     timestepmax: int = -1,
     angle: Optional[int] = None,
     res_specdata: Optional[list[pd.DataFrame]] = None,
-    fnufilterfunc: Optional[Callable[[npt.ArrayLike], npt.ArrayLike]] = None,
+    fnufilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     args=None,
 ) -> list[pd.DataFrame]:
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
@@ -528,7 +528,13 @@ def get_specpol_data(angle=None, modelpath=None, specdata=None) -> dict[str, pd.
     return stokes_params
 
 
-def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
+def get_vspecpol_spectrum(
+    modelpath: Union[Path, str],
+    timeavg: float,
+    angle: int,
+    args,
+    fnufilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+) -> pd.DataFrame:
     stokes_params = get_specpol_data(angle, modelpath=modelpath)
     if "stokesparam" not in args:
         args.stokesparam = "I"
@@ -576,7 +582,7 @@ def get_vspecpol_spectrum(modelpath, timeavg, angle, args, fnufilterfunc=None):
 @lru_cache(maxsize=4)
 def get_flux_contributions(
     modelpath,
-    filterfunc=None,
+    filterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     timestepmin=0,
     timestepmax=None,
     getemission=True,
@@ -608,10 +614,12 @@ def get_flux_contributions(
             arr_tmid = np.array(arr_tmid.tolist() * 3)
 
         try:
-            emissionfilesize = Path(emissionfilename).stat().st_siplze / 1024 / 1024
+            emissionfilesize = Path(emissionfilename).stat().st_size / 1024 / 1024
             print(f" Reading {emissionfilename} ({emissionfilesize:.2f} MiB)")
+
         except AttributeError:
             print(f" Reading {emissionfilename}")
+
         emissiondata = pd.read_csv(emissionfilename, delim_whitespace=True, header=None)
         maxion_float = (emissiondata.shape[1] - 1) / 2 / nelements  # also known as MIONS in ARTIS sn3d.h
         assert maxion_float.is_integer()
@@ -725,19 +733,19 @@ def get_flux_contributions(
 
 @lru_cache(maxsize=4)
 def get_flux_contributions_from_packets(
-    modelpath,
-    timelowerdays,
-    timeupperdays,
-    lambda_min,
-    lambda_max,
-    delta_lambda=None,
-    getemission=True,
-    getabsorption=True,
-    maxpacketfiles=None,
-    filterfunc=None,
+    modelpath: Path,
+    timelowerdays: float,
+    timeupperdays: float,
+    lambda_min: float,
+    lambda_max: float,
+    delta_lambda: Optional[float] = None,
+    getemission: bool = True,
+    getabsorption: bool = True,
+    maxpacketfiles: Optional[int] = None,
+    filterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     groupby="ion",
-    modelgridindex=None,
-    use_escapetime=False,
+    modelgridindex: Optional[int] = None,
+    use_escapetime: bool = False,
     use_lastemissiontype=True,
     useinternalpackets=False,
     emissionvelocitycut=None,
@@ -812,11 +820,12 @@ def get_flux_contributions_from_packets(
             return "bound-free"
         return "? other absorp."
 
-    if delta_lambda:
+    if delta_lambda is not None:
         array_lambdabinedges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
         array_lambda = 0.5 * (array_lambdabinedges[:-1] + array_lambdabinedges[1:])  # bin centres
     else:
         array_lambdabinedges, array_lambda, delta_lambda = get_exspec_bins()
+    assert delta_lambda is not None
 
     if use_escapetime:
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)

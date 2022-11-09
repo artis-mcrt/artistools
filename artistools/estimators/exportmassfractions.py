@@ -8,7 +8,7 @@ import artistools as at
 import artistools.estimators
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default="massfracs.txt", help="Path to output file of mass fractions")
 
 

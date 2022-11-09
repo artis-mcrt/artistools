@@ -12,7 +12,7 @@ import pandas as pd
 import artistools as at
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "modelpath",
         default=[],

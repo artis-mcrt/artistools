@@ -180,7 +180,7 @@ def make_plot(args):
     plt.show()
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-modelpath",
         default=[],

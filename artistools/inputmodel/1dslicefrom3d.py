@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from artistools import CustomArgHelpFormatter
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-inputfolder", action="store", default=".", help="Path to folder with 3D files")
 
     parser.add_argument(

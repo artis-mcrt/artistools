@@ -195,7 +195,7 @@ def get_particles_recomb_nuc_energy(traj_root, dfbinding):
     plt.savefig("recomb.pdf", format="pdf")
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-inputfile", "-i", default="model.txt", help="Path of input file or folder containing model.txt"
     )

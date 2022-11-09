@@ -20,11 +20,11 @@ import artistools as at
 
 @lru_cache(maxsize=8)
 def read_modelfile(
-    filename: Path,
-    dimensions=None,
-    printwarningsonly=False,
-    skip3ddataframe=False,
-    skipabundancecolumns=False,
+    filename: Union[Path, str],
+    dimensions: Optional[int] = None,
+    printwarningsonly: bool = False,
+    skip3ddataframe: bool = False,
+    skipabundancecolumns: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
     Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
@@ -257,7 +257,7 @@ def read_modelfile(
 
 
 def get_modeldata(
-    inputpath: Path = Path(),
+    inputpath: Union[Path, str] = Path(),
     dimensions: Optional[int] = None,
     get_elemabundances: bool = False,
     derived_cols: Optional[Sequence[str]] = None,
@@ -696,7 +696,9 @@ def get_initialabundances(modelpath: Path) -> pd.DataFrame:
 
 
 def save_initialabundances(
-    dfelabundances: pd.DataFrame, abundancefilename, headercommentlines: Optional[Sequence[str]] = None
+    dfelabundances: pd.DataFrame,
+    abundancefilename: Union[Path, str],
+    headercommentlines: Optional[Sequence[str]] = None,
 ) -> None:
     """Save a DataFrame (same format as get_initialabundances) to abundances.txt.
     columns must be:

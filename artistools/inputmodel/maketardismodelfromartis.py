@@ -9,7 +9,7 @@ from yaml import dump as yamldump
 import artistools as at
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-inputpath", "-i", default=".", help="Path of input ARTIS model")
 
     parser.add_argument("-temperature", "-T", default=10000, help="Temperature to use in TARDIS file")

@@ -246,7 +246,7 @@ def make_plot(modelpaths, args):
     plt.close()
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-modelpath",
         default=[],

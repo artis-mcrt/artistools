@@ -23,7 +23,7 @@ def min_dist(listin, number):
     return min_dist_found
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 

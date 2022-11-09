@@ -885,7 +885,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
     plt.close()
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-modelpath", default=".", help="Paths to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)"
     )
@@ -928,7 +928,7 @@ def addargs(parser):
 
     parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
 
-    parser.add_argument("-plotlist", type=list, default=[], help="Plot list (when calling from Python only)")
+    parser.add_argument("-plotlist", type=list, default=[], help="Plot list (when calling from Python only)")  # type: ignore
 
     parser.add_argument(
         "-ionpoptype",

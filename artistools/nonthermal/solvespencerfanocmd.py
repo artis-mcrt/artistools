@@ -63,7 +63,7 @@ def make_ntstats_plot(ntstatfile):
     plt.close()
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-modelpath", default=".", help="Path to ARTIS folder")
 
     parser.add_argument("-timedays", "-time", "-t", help="Time in days to plot")

@@ -377,7 +377,7 @@ def maptogrid(ejectasnapshotpath, outputpath):
                     gridindex = gridindex + 1
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-inputpath", "-i", default=".", help="Path to ejectasnapshot")
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 

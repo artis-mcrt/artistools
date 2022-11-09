@@ -294,7 +294,7 @@ def make_3d_plot(modelpath, args):
     surf.plot(opacity="linear", screenshot=modelpath / "3Dplot.png")  # plot surfaces and save screenshot
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-modelpath",
         default=[],

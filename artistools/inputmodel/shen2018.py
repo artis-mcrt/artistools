@@ -12,7 +12,7 @@ import artistools as at
 # import numpy as np
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-inputpath", "-i", default="1.00_5050.dat", help="Path of input file")
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 

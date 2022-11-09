@@ -3,15 +3,16 @@
 import argparse
 import math
 import multiprocessing
+from collections.abc import Collection
 from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 from typing import Any
+from typing import Union
 
 import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
-import numpy.typing as npt
 import pandas as pd
 
 import artistools as at
@@ -23,8 +24,15 @@ import artistools as at
 
 
 def plot_qdot(
-    modelpath, dfpartcontrib, dfmodel, allparticledata, arr_time_artis_days, arr_artis_ye, arr_time_gsi_days, pdfoutpath
-):
+    modelpath: Path,
+    dfpartcontrib: pd.DataFrame,
+    dfmodel: pd.DataFrame,
+    allparticledata: dict[int, dict[str, np.ndarray]],
+    arr_time_artis_days: Collection[float],
+    arr_artis_ye: Collection[float],
+    arr_time_gsi_days: Collection[float],
+    pdfoutpath: Union[Path, str],
+) -> None:
     try:
         depdata = at.get_deposition(modelpath=modelpath)
 
@@ -311,7 +319,7 @@ def get_particledata(
     arr_strnuc: list[str],
     traj_root: Path,
     particleid: int,
-) -> tuple[int, dict[str, npt.NDArray[np.float64]]]:
+) -> tuple[int, dict[str, np.ndarray]]:
     """
     for an array of times (NSM time including time before merger), interpolate the heating rates of various decay channels
     and (if arr_strnuc is not empty) the nuclear mass fractions.
@@ -618,7 +626,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
         )
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-modelpath", default=".", help="Path for ARTIS files")
 
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")

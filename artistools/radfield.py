@@ -928,7 +928,7 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
     plt.close()
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument("-modelpath", default=".", type=Path, help="Path to ARTIS folder")
 

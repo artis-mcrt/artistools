@@ -404,7 +404,7 @@ def makemodelfromgriddata(
     )
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-gridfolderpath", "-i", default=".", help="Path to folder containing grid.dat and gridcontributions.dat"
     )

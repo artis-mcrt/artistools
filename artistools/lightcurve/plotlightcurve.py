@@ -1132,7 +1132,7 @@ def plot_color_evolution_from_data(
         )
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "modelpath",
         default=[],

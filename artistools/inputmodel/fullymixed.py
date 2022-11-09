@@ -12,7 +12,7 @@ import artistools as at
 # import pandas as pd
 
 
-def addargs(parser):
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-scalefactor", "-s", default=0.5, help="Kinetic energy scale factor")
     parser.add_argument("-inputpath", "-i", default=".", help="Path of input files")
     parser.add_argument("-outputpath", "-o", default=".", help="Path of output files")

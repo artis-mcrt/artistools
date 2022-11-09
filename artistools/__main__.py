@@ -2,7 +2,7 @@
 # PYTHON_ARGCOMPLETE_OK
 
 
-def addargs(parser):
+def addargs(parser=None):
     pass
 
 
