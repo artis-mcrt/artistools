@@ -2,11 +2,11 @@
 # PYTHON_ARGCOMPLETE_OK
 
 
-def addargs(parser=None):
+def addargs(parser=None) -> None:
     pass
 
 
-def main(argsraw=None):
+def main(argsraw=None) -> None:
     """Show a list of available artistools commands."""
 
     import argcomplete

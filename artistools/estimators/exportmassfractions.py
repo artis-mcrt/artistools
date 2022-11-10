@@ -22,7 +22,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    modelpath = Path(".")
+    modelpath: Path = Path(".")
     timestep = 14
     elmass = {el.Z: el.mass for _, el in at.get_composition_data(modelpath).iterrows()}
     outfilename = args.outputpath

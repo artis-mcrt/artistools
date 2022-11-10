@@ -328,7 +328,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(
                 lcdataframes = at.lightcurve.average_lightcurve_every_10_bins(lcdataframes, args)
 
             if args.colorbarcostheta or args.colorbarphi:
-                costheta_viewing_angle_bins, phi_viewing_angle_bins = at.lightcurve.get_viewinganglebin_definitions()
+                costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
                 scaledmap = make_colorbar_viewingangles_colormap()
 
         if args.plotviewingangle:
@@ -710,7 +710,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     plotkwargs = {}
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.lightcurve.get_viewinganglebin_definitions()
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
         scaledmap = make_colorbar_viewingangles_colormap()
 
     for modelnumber, modelpath in enumerate(modelpaths):

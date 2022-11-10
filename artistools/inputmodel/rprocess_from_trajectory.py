@@ -22,7 +22,7 @@ import artistools as at
 
 def get_elemabund_from_nucabund(dfnucabund: pd.DataFrame) -> dict[str, float]:
     """return a dictionary of elemental abundances from nuclear abundance DataFrame"""
-    dictelemabund = {}
+    dictelemabund: dict[str, float] = {}
     for atomic_number in range(1, dfnucabund.Z.max() + 1):
         dictelemabund[f"X_{at.get_elsymbol(atomic_number)}"] = dfnucabund.query(
             "Z == @atomic_number", inplace=False
@@ -90,7 +90,7 @@ def get_closest_network_timestep(
         'lessthan': find highest timestep less than time_sec
         'greaterthan': find lowest timestep greater than time_sec
     """
-    dfevol = get_dfevol(traj_root, particleid)
+    dfevol: pd.DataFrame = get_dfevol(traj_root, particleid)
 
     if cond == "nearest":
         idx = np.abs(dfevol.timesec.values - timesec).argmin()
@@ -104,7 +104,7 @@ def get_closest_network_timestep(
     else:
         assert False
 
-    nts = dfevol.nstep.values[idx]
+    nts: int = dfevol.nstep.values[idx]
 
     return nts
 
@@ -163,7 +163,7 @@ def get_trajectory_timestepfile_nuc_abund(
 
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
     with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as enthermofile:
-        dfthermo = pd.read_table(
+        dfthermo: pd.DataFrame = pd.read_table(
             enthermofile, sep=r"\s+", usecols=["time/s", "Qdot"], engine="c", dtype={0: float, 1: float}
         )
         dfthermo.rename(columns={"time/s": "time_s"}, inplace=True)
@@ -172,7 +172,7 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
         assert all(dfthermo["Qdot"][startindex : nts_max + 1] > 0.0)
         dfthermo.eval("Qdot_expansionadjusted = Qdot * time_s / @t_model_s", inplace=True)
 
-        qdotintegral = np.trapz(
+        qdotintegral: float = np.trapz(
             y=dfthermo["Qdot_expansionadjusted"][startindex : nts_max + 1],
             x=dfthermo["time_s"][startindex : nts_max + 1],
         )
@@ -241,6 +241,8 @@ def get_trajectory_abund_q(
 def get_modelcellabundance(
     dict_traj_nuc_abund: dict[int, pd.DataFrame], minparticlespercell: int, cellgroup: tuple[int, pd.DataFrame]
 ) -> Optional[dict[str, float]]:
+    cellindex: int
+    dfthiscellcontribs: pd.DataFrame
     cellindex, dfthiscellcontribs = cellgroup
 
     if len(dfthiscellcontribs) < minparticlespercell:

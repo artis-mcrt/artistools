@@ -588,6 +588,7 @@ def get_flux_contributions(
     getemission=True,
     getabsorption=True,
     use_lastemissiontype=True,
+    directionbin=None,
 ):
     arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
     arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
@@ -605,6 +606,9 @@ def get_flux_contributions(
             emissionfilenames = ["emission.out.xz", "emission.out.gz", "emission.out", "emissionpol.out"]
         else:
             emissionfilenames = ["emissiontrue.out.xz", "emissiontrue.out.gz", "emissiontrue.out"]
+
+        if directionbin is not None:
+            emissionfilenames = [x.replace(".out", f"_res_{directionbin:02d}.out") for x in emissionfilenames]
 
         emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
 
@@ -630,14 +634,18 @@ def get_flux_contributions(
         assert emissiondata.shape[0] == len(arraynu) * len(arr_tmid)
 
     if getabsorption:
-        absorptionfilename = at.firstexisting(
-            ["absorption.out.xz", "absorption.out.gz", "absorption.out", "absorptionpol.out"], path=modelpath
-        )
+        absorptionfilenames = ["absorption.out.xz", "absorption.out.gz", "absorption.out", "absorptionpol.out"]
+        if directionbin is not None:
+            absorptionfilenames = [x.replace(".out", f"_res_{directionbin:02d}.out") for x in absorptionfilenames]
+
+        absorptionfilename = at.firstexisting(absorptionfilenames, path=modelpath)
+
         try:
             absorptionfilesize = Path(absorptionfilename).stat().st_size / 1024 / 1024
             print(f" Reading {absorptionfilename} ({absorptionfilesize:.2f} MiB)")
         except AttributeError:
-            print(f" Reading {emissionfilename}")
+            print(f" Reading {absorptionfilename}")
+
         absorptiondata = pd.read_csv(absorptionfilename, delim_whitespace=True, header=None)
         absorption_maxion_float = absorptiondata.shape[1] / nelements
         assert absorption_maxion_float.is_integer()
@@ -648,7 +656,7 @@ def get_flux_contributions(
                 f" inferred MAXION = {maxion} from absorption file using nlements = {nelements}from compositiondata.txt"
             )
         else:
-            assert absorption_maxion == maxion
+            assert maxion is not None and absorption_maxion == maxion
         assert absorptiondata.shape[0] == len(arraynu) * len(arr_tmid)
     else:
         absorptiondata = None
