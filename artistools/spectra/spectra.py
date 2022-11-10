@@ -304,7 +304,7 @@ def get_spectrum_from_packets(
 @lru_cache(maxsize=16)
 @at.diskcache(savezipped=True)
 def read_specpol_res(modelpath: Path) -> dict[int, pd.DataFrame]:
-    """Return specpol_res data for a given angle"""
+    """Return dataframe of time-series spectra for every viewing direction"""
     if Path(modelpath, "specpol_res.out").is_file():
         specfilename = Path(modelpath) / "specpol_res.out"
     elif Path(modelpath, "spec_res.out").is_file():
@@ -315,7 +315,7 @@ def read_specpol_res(modelpath: Path) -> dict[int, pd.DataFrame]:
     print(f"Reading {specfilename} (in read_specpol_res)")
     specdata = pd.read_csv(specfilename, delim_whitespace=True, header=None, dtype=str)
 
-    res_specdata = at.gather_res_data(specdata)
+    res_specdata: dict[int, pd.DataFrame] = at.gather_res_data(specdata).copy()
 
     # index_to_split = specdata.index[specdata.iloc[:, 1] == specdata.iloc[0, 1]]
     # # print(len(index_to_split))
@@ -330,17 +330,16 @@ def read_specpol_res(modelpath: Path) -> dict[int, pd.DataFrame]:
 
     columns = res_specdata[0].iloc[0]
     # print(columns)
-    for i, res_spec in enumerate(res_specdata):
-        res_specdata[i] = res_specdata[i].rename(columns=columns).drop(res_specdata[i].index[0])
+    res_specdata_numpy: dict[int, np.ndarray] = {}
+    for i in res_specdata.keys():
+        res_specdata[i].rename(columns=columns, inplace=True)
+        res_specdata[i].drop(res_specdata[i].index[0], inplace=True)
         # These lines remove the Q and U values from the dataframe (I think)
         numberofIvalues = len(res_specdata[i].columns.drop_duplicates())
-        res_specdata[i] = res_specdata[i].iloc[:, :numberofIvalues]
-        res_specdata[i] = res_specdata[i].astype(float)
-        res_specdata[i] = res_specdata[i].to_numpy()
+        res_specdata_numpy[i] = res_specdata[i].iloc[:, :numberofIvalues].astype(float).to_numpy()
 
-    for i, res_spec in enumerate(res_specdata):
-        res_specdata[i] = pd.DataFrame(data=res_specdata[i], columns=columns[:numberofIvalues])
-        res_specdata[i] = res_specdata[i].rename(columns={"0": "nu"})
+        res_specdata[i] = pd.DataFrame(data=res_specdata_numpy[i], columns=columns[:numberofIvalues])
+        res_specdata[i].rename(columns={"0": "nu"}, inplace=True)
 
     return res_specdata
 
