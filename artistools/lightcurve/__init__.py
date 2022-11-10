@@ -23,7 +23,6 @@ from artistools.lightcurve.plotlightcurve import main as plot
 from artistools.lightcurve.viewingangleanalysis import calculate_costheta_phi_for_viewing_angles
 from artistools.lightcurve.viewingangleanalysis import calculate_peak_time_mag_deltam15
 from artistools.lightcurve.viewingangleanalysis import get_angle_stuff
-from artistools.lightcurve.viewingangleanalysis import get_viewinganglebin_definitions
 from artistools.lightcurve.viewingangleanalysis import lightcurve_polyfit
 from artistools.lightcurve.viewingangleanalysis import make_peak_colour_viewing_angle_plot
 from artistools.lightcurve.viewingangleanalysis import make_plot_test_viewing_angle_fit

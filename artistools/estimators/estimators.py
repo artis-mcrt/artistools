@@ -124,11 +124,11 @@ def parse_estimfile(
     # itstep = at.get_inputparams(modelpath)['itstep']
 
     with at.zopen(estfilepath, "rt") as estimfile:
-        timestep = -1
-        modelgridindex = -1
+        timestep: int = -1
+        modelgridindex: int = -1
         estimblock: dict[Any, Any] = {}
         for line in estimfile:
-            row = line.split()
+            row: list[str] = line.split()
             if not row:
                 continue
 

@@ -352,6 +352,14 @@ def plot_artis_spectrum(
                             linelabel = rf"cos($\theta$) = {vpkt_config['cos_theta'][angle]}" if index == 0 else None
                     else:
                         linelabel = f"bin number {angle}"
+                        if args.average_every_tenth_viewing_angle:
+                            (
+                                costheta_viewing_angle_bins,
+                                phi_viewing_angle_bins,
+                            ) = at.get_viewinganglebin_definitions()
+                            assert angle % 10 == 0
+                            linelabel = costheta_viewing_angle_bins[int(angle // 10)]
+
                     viewinganglespectra[angle].query(
                         "@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax"
                     ).plot(
@@ -542,6 +550,7 @@ def make_emissionabsorption_plot(
             getemission=args.showemission,
             getabsorption=args.showabsorption,
             use_lastemissiontype=not args.use_thermalemissiontype,
+            directionbin=args.plotviewingangle[0] if args.plotviewingangle else None,
         )
 
     at.spectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)

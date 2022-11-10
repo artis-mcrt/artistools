@@ -189,41 +189,6 @@ def get_angle_stuff(
     return angles, viewing_angles, angle_definition
 
 
-def get_viewinganglebin_definitions() -> tuple[list[str], list[str]]:
-    costheta_viewing_angle_bins = [
-        "-1.0 \u2264 cos(\u03B8) < -0.8",
-        "-0.8 \u2264 cos(\u03B8) < -0.6",
-        "-0.6 \u2264 cos(\u03B8) < -0.4",
-        "-0.4 \u2264 cos(\u03B8) < -0.2",
-        "-0.2 \u2264 cos(\u03B8) < 0",
-        "0 \u2264 cos(\u03B8) < 0.2",
-        "0.2 \u2264 cos(\u03B8) < 0.4",
-        "0.4 \u2264 cos(\u03B8) < 0.6",
-        "0.6 \u2264 cos(\u03B8) < 0.8",
-        "0.8 \u2264 cos(\u03B8) < 1",
-    ]
-    phi_viewing_angle_bins = [
-        "0 \u2264 \u03D5 < \u03c0/5",
-        "\u03c0/5 \u2264 \u03D5 < 2\u03c0/5",
-        "2\u03c0/5 \u2264 \u03D5 < 3\u03c0/5",
-        "3\u03c0/5 \u2264 \u03D5 < 4\u03c0/5",
-        "4\u03c0/5 \u2264 \u03D5 < \u03c0",
-        "9\u03c0/5 < \u03D5 < 2\u03c0",
-        "8\u03c0/5 < \u03D5 \u2264 9\u03c0/5",
-        "7\u03c0/5 < \u03D5 \u2264 8\u03c0/5",
-        "6\u03c0/5 < \u03D5 \u2264 7\u03c0/5",
-        "\u03c0 < \u03D5 \u2264 6\u03c0/5",
-    ]
-
-    # label orders changed so that bins are in order. Not used yet.
-    # phi_viewing_angle_bins_reordered = ['0 \u2264 \u03D5 < \u03c0/5', '\u03c0/5 \u2264 \u03D5 < 2\u03c0/5',
-    #                                     '2\u03c0/5 \u2264 \u03D5 < 3\u03c0/5', '3\u03c0/5 \u2264 \u03D5 < 4\u03c0/5',
-    #                                     '4\u03c0/5 \u2264 \u03D5 < \u03c0', '\u03c0 < \u03D5 \u2264 6\u03c0/5',
-    #                                     '6\u03c0/5 < \u03D5 \u2264 7\u03c0/5', '7\u03c0/5 < \u03D5 \u2264 8\u03c0/5',
-    #                                     '8\u03c0/5 < \u03D5 \u2264 9\u03c0/5', '9\u03c0/5 < \u03D5 < 2\u03c0']
-    return costheta_viewing_angle_bins, phi_viewing_angle_bins
-
-
 def calculate_costheta_phi_for_viewing_angles(
     viewing_angles: Union[np.ndarray[Any, np.dtype[Any]], Sequence[int]], modelpath: Union[Path, str]
 ):
@@ -234,7 +199,7 @@ def calculate_costheta_phi_for_viewing_angles(
     elif (modelpath / "light_curve_res.out").is_file():
         angle_definition = {}
 
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = get_viewinganglebin_definitions()
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
 
         for angle in viewing_angles:
             MABINS = 100
@@ -450,7 +415,7 @@ def set_scatterplot_plotkwargs(modelnumber, args):
 
 
 def update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args):
-    costheta_viewing_angle_bins, phi_viewing_angle_bins = get_viewinganglebin_definitions()
+    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
     angles = np.arange(0, 100)
@@ -482,7 +447,7 @@ def set_scatterplot_plot_params(args):
     plt.tight_layout()
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = get_viewinganglebin_definitions()
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
         scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
         at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args)
 
@@ -804,7 +769,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath, args):
 
     angles, viewing_angles, angle_definition = at.lightcurve.get_angle_stuff(modelpath, args)
 
-    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.lightcurve.get_viewinganglebin_definitions()
+    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
     plotkwargs = {}

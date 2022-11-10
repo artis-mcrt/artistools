@@ -64,6 +64,7 @@ from artistools.misc import get_time_range
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times_float
+from artistools.misc import get_viewinganglebin_definitions
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_wid_init_at_tmin
 from artistools.misc import get_wid_init_at_tmodel

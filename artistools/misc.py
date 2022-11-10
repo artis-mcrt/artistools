@@ -1160,3 +1160,38 @@ def parse_cdefines(srcfilepath=None, printdefs: bool = False):
             print(f"{k} = '{definedict[k]}'")
 
     return definedict
+
+
+def get_viewinganglebin_definitions() -> tuple[list[str], list[str]]:
+    costheta_viewing_angle_bins = [
+        "-1.0 \u2264 cos(\u03B8) < -0.8",
+        "-0.8 \u2264 cos(\u03B8) < -0.6",
+        "-0.6 \u2264 cos(\u03B8) < -0.4",
+        "-0.4 \u2264 cos(\u03B8) < -0.2",
+        "-0.2 \u2264 cos(\u03B8) <  0.0",
+        " 0.0 \u2264 cos(\u03B8) <  0.2",
+        " 0.2 \u2264 cos(\u03B8) <  0.4",
+        " 0.4 \u2264 cos(\u03B8) <  0.6",
+        " 0.6 \u2264 cos(\u03B8) <  0.8",
+        " 0.8 \u2264 cos(\u03B8) <  1.0",
+    ]
+    phi_viewing_angle_bins = [
+        "0 \u2264 \u03D5 < \u03c0/5",
+        "\u03c0/5 \u2264 \u03D5 < 2\u03c0/5",
+        "2\u03c0/5 \u2264 \u03D5 < 3\u03c0/5",
+        "3\u03c0/5 \u2264 \u03D5 < 4\u03c0/5",
+        "4\u03c0/5 \u2264 \u03D5 < \u03c0",
+        "9\u03c0/5 < \u03D5 < 2\u03c0",
+        "8\u03c0/5 < \u03D5 \u2264 9\u03c0/5",
+        "7\u03c0/5 < \u03D5 \u2264 8\u03c0/5",
+        "6\u03c0/5 < \u03D5 \u2264 7\u03c0/5",
+        "\u03c0 < \u03D5 \u2264 6\u03c0/5",
+    ]
+
+    # label orders changed so that bins are in order. Not used yet.
+    # phi_viewing_angle_bins_reordered = ['0 \u2264 \u03D5 < \u03c0/5', '\u03c0/5 \u2264 \u03D5 < 2\u03c0/5',
+    #                                     '2\u03c0/5 \u2264 \u03D5 < 3\u03c0/5', '3\u03c0/5 \u2264 \u03D5 < 4\u03c0/5',
+    #                                     '4\u03c0/5 \u2264 \u03D5 < \u03c0', '\u03c0 < \u03D5 \u2264 6\u03c0/5',
+    #                                     '6\u03c0/5 < \u03D5 \u2264 7\u03c0/5', '7\u03c0/5 < \u03D5 \u2264 8\u03c0/5',
+    #                                     '8\u03c0/5 < \u03D5 \u2264 9\u03c0/5', '9\u03c0/5 < \u03D5 < 2\u03c0']
+    return costheta_viewing_angle_bins, phi_viewing_angle_bins
