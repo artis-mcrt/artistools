@@ -9,9 +9,11 @@
 # precedence.
 
 # root dir package files are owned by Luke
-/.github/              @lukeshingles
-artistools/nonthermal/ @lukeshingles
-artistools/nltepops/   @lukeshingles
+/.github/                @lukeshingles
+artistools/gsinetwork.py @lukeshingles
+artistools/estimators/   @lukeshingles
+artistools/nonthermal/   @lukeshingles
+artistools/nltepops/     @lukeshingles
 
 artistools/initial_composition.py @ccollins22
 artistools/lightcurve/   @ccollins22
