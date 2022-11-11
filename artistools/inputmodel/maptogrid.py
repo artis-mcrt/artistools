@@ -316,7 +316,6 @@ def maptogrid(ejectasnapshotpath, outputpath):
 
     # check some stuff on the grid
 
-    gmass = 0.0
     nzero = 0
     nzerocentral = 0
     gmass = np.sum(grho) * dx * dy * dz
