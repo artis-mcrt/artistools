@@ -59,6 +59,7 @@ from artistools.misc import get_mpiranklist
 from artistools.misc import get_mpirankofcell
 from artistools.misc import get_nprocs
 from artistools.misc import get_runfolders
+from artistools.misc import linetuple
 from artistools.misc import get_syn_dir
 from artistools.misc import get_time_range
 from artistools.misc import get_timestep_of_timedays

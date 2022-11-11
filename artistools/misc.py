@@ -834,7 +834,7 @@ linetuple = namedtuple("linetuple", "lambda_angstroms atomic_number ionstage upp
 @lru_cache(maxsize=16)
 def get_linelist(
     modelpath: Union[Path, str], returntype: Literal["dict", "dataframe"] = "dict"
-) -> Union[dict[Any, linetuple], pd.DataFrame]:
+) -> Union[dict[int, linetuple], pd.DataFrame]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     with zopen(Path(modelpath, "linestat.out"), "rt") as linestatfile:
         lambda_angstroms = [float(wl) * 1e8 for wl in linestatfile.readline().split()]

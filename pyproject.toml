@@ -43,6 +43,7 @@ plugins = 'numpy.typing.mypy_plugin'
 [[tool.mypy.overrides]]
 module = [
     "artistools.estimators.estimators",
+    "artistools.spectra.spectra",
     "artistools.inputmodel",
     "artistools.misc",
 ]
