@@ -4,7 +4,7 @@ import gzip
 import io
 import lzma
 import math
-import os.path
+import os
 import sys
 import time
 from collections import namedtuple
@@ -17,8 +17,11 @@ from itertools import chain
 from pathlib import Path
 from typing import Any
 from typing import Callable
+from typing import IO
 from typing import Literal
+from typing import NamedTuple
 from typing import Optional
+from typing import TextIO
 from typing import Union
 
 import numpy as np
@@ -71,7 +74,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
 
 
 class AppendPath(argparse.Action):
-    def __call__(self, parser, args, values, option_string=None):
+    def __call__(self, parser, args, values, option_string=None) -> None:  # type: ignore
         # if getattr(args, self.dest) is None:
         #     setattr(args, self.dest, [])
         if isinstance(values, Iterable):
@@ -87,13 +90,15 @@ class AppendPath(argparse.Action):
             setattr(args, self.dest, Path(values))
 
 
-def make_namedtuple(typename, **fields):
+def make_namedtuple(typename: str, **fields: dict) -> tuple[Any, ...]:
     """Make a namedtuple from a dictionary of attributes and values.
     Example: make_namedtuple('mytuple', x=2, y=3)"""
     return namedtuple(typename, fields)(*fields.values())
 
 
-def showtimesteptimes(modelpath: Optional[Path] = None, numberofcolumns: int = 5, args=None) -> None:
+def showtimesteptimes(
+    modelpath: Optional[Path] = None, numberofcolumns: int = 5, args: Optional[argparse.Namespace] = None
+) -> None:
     """Print a table showing the timesteps and their corresponding times."""
     if modelpath is None:
         modelpath = Path()
@@ -146,6 +151,7 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
     atomic_composition = {}
 
     output = open(modelpath / "output_0-0.txt", "rt").read().splitlines()
+    Z: Optional[int] = None
     ioncount = 0
     for row in output:
         if row.split()[0] == "[input.c]":
@@ -155,6 +161,7 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
                 ioncount = 0
             elif split_row[1] == "ion":
                 ioncount += 1
+                assert Z is not None
                 atomic_composition[Z] = ioncount
 
     composition_df = pd.DataFrame(
@@ -215,10 +222,11 @@ def get_grid_mapping(modelpath: Union[Path, str]) -> tuple[dict[int, list[int]],
     """Return dict with the associated propagation cells for each model grid cell and
     a dict with the associated model grid cell of each propagration cell."""
 
-    if os.path.isdir(modelpath):
+    modelpath = Path(modelpath)
+    if modelpath.is_dir():
         filename = firstexisting(["grid.out.xz", "grid.out.gz", "grid.out"], path=modelpath)
     else:
-        filename = modelpath
+        filename = Path(modelpath)
 
     assoc_cells: dict[int, list[int]] = {}
     mgi_of_propcells: dict[int, int] = {}
@@ -250,13 +258,14 @@ def get_wid_init_at_tmin(modelpath: Path) -> float:
 
 
 def get_wid_init_at_tmodel(
-    modelpath=None,
+    modelpath: Union[Path, str, None] = None,
     ngridpoints: Optional[int] = None,
     t_model_days: Optional[float] = None,
     xmax: Optional[float] = None,
 ) -> float:
     if ngridpoints is None or t_model_days is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
+        assert modelpath is not None
         dfmodel, modelmeta = at.get_modeldata(modelpath)
         assert modelmeta["dimensions"] == 3
         ngridpoints = len(dfmodel)
@@ -492,7 +501,7 @@ def get_timestep_time(modelpath: Union[Path, str], timestep: int) -> float:
     return -1
 
 
-def get_escaped_arrivalrange(modelpath: Union[Path, str]) -> tuple[int, float, float]:
+def get_escaped_arrivalrange(modelpath: Union[Path, str]) -> tuple[int, Optional[float], Optional[float]]:
     modelpath = Path(modelpath)
     dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True, skip3ddataframe=True)
     vmax = modelmeta["vmax_cmps"]
@@ -619,7 +628,7 @@ def parse_range(rng: str, dictvars: dict[str, int] = {}) -> Iterable[Any]:
     return range(start, end + 1)
 
 
-def parse_range_list(rngs: Union[str, list], dictvars={}) -> list[Any]:
+def parse_range_list(rngs: Union[str, list], dictvars: dict = {}) -> list[Any]:
     """Parse a string with comma-separated ranges or a list of range strings.
 
     Return a sorted list of integers in any of the ranges.
@@ -632,7 +641,7 @@ def parse_range_list(rngs: Union[str, list], dictvars={}) -> list[Any]:
     return sorted(set(chain.from_iterable([parse_range(rng, dictvars) for rng in rngs.split(",")])))
 
 
-def makelist(x: Any) -> list[Any]:
+def makelist(x: Union[None, list, Sequence, str, Path]) -> list[Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
         return []
@@ -641,7 +650,7 @@ def makelist(x: Any) -> list[Any]:
             x,
         ]
     else:
-        return x
+        return list(x)
 
 
 def trim_or_pad(requiredlength: int, *listoflistin: list[list[Any]]) -> Iterator[list[Any]]:
@@ -655,7 +664,7 @@ def trim_or_pad(requiredlength: int, *listoflistin: list[list[Any]]) -> Iterator
         yield listout
 
 
-def flatten_list(listin):
+def flatten_list(listin: list) -> list:
     listout = []
     for elem in listin:
         if isinstance(elem, list):
@@ -665,7 +674,7 @@ def flatten_list(listin):
     return listout
 
 
-def zopen(filename, mode):
+def zopen(filename: Union[Path, str], mode: str):  # type: ignore
     """Open filename, filename.gz or filename.x"""
     filenamexz = str(filename) if str(filename).endswith(".xz") else str(filename) + ".xz"
     filenamegz = str(filename) if str(filename).endswith(".gz") else str(filename) + ".gz"
@@ -680,7 +689,7 @@ def zopen(filename, mode):
         return open(filename, mode)
 
 
-def firstexisting(filelist, path=Path(".")):
+def firstexisting(filelist: Sequence[Union[str, Path]], path: Union[Path, str] = Path(".")) -> Path:
     """Return the first existing file in file list."""
     fullpaths = [Path(path) / filename for filename in filelist]
     for fullpath in fullpaths:
@@ -690,7 +699,7 @@ def firstexisting(filelist, path=Path(".")):
     raise FileNotFoundError(f'None of these files exist in {path}: {", ".join([str(x) for x in fullpaths])}')
 
 
-def stripallsuffixes(f) -> Path:
+def stripallsuffixes(f: Path) -> Path:
     """Take a file path (e.g. packets00_0000.out.gz) and return the Path with no suffixes (e.g. packets)"""
     f_nosuffixes = Path(f)
     for _ in f.suffixes:
@@ -711,8 +720,10 @@ def readnoncommentline(file: io.TextIOBase) -> str:
 
 
 @lru_cache(maxsize=24)
-def get_file_metadata(filepath):
-    def add_derived_metadata(metadata):
+def get_file_metadata(filepath: Union[Path, str]) -> dict[str, Any]:
+    filepath = Path(filepath)
+
+    def add_derived_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
         if "a_v" in metadata and "e_bminusv" in metadata and "r_v" not in metadata:
             metadata["r_v"] = metadata["a_v"] / metadata["e_bminusv"]
         elif "e_bminusv" in metadata and "r_v" in metadata and "a_v" not in metadata:
@@ -746,12 +757,16 @@ def get_file_metadata(filepath):
     return {}
 
 
-def get_filterfunc(args, mode="interp") -> Optional[Callable[[np.ndarray], np.ndarray]]:
+def get_filterfunc(
+    args: argparse.Namespace, mode: str = "interp"
+) -> Optional[Callable[[Union[list, np.ndarray]], np.ndarray]]:
     """Using command line arguments to determine the appropriate filter function."""
+
+    filterfunc: Optional[Callable[[Union[list, np.ndarray]], np.ndarray]]
 
     if hasattr(args, "filtermovingavg") and args.filtermovingavg > 0:
 
-        def movavgfilterfunc(ylist):
+        def movavgfilterfunc(ylist: Union[list, np.ndarray]) -> np.ndarray:
             n = args.filtermovingavg
             arr_padded = np.pad(ylist, (n // 2, n - 1 - n // 2), mode="edge")
             return np.convolve(arr_padded, np.ones((n,)) / n, mode="valid")
@@ -763,8 +778,10 @@ def get_filterfunc(args, mode="interp") -> Optional[Callable[[np.ndarray], np.nd
 
         window_length, poly_order = [int(x) for x in args.filtersavgol]
 
-        def filterfunc(ylist):
+        def ffilterfunc(ylist: Union[list, np.ndarray]) -> np.ndarray:
             return scipy.signal.savgol_filter(ylist, window_length, poly_order, mode=mode)
+
+        filterfunc = ffilterfunc
 
         print("Applying Savitzky–Golay filter")
     else:
@@ -773,7 +790,7 @@ def get_filterfunc(args, mode="interp") -> Optional[Callable[[np.ndarray], np.nd
     return filterfunc
 
 
-def join_pdf_files(pdf_list, modelpath_list):
+def join_pdf_files(pdf_list: list[str], modelpath_list: list[Path]) -> None:
     from PyPDF2 import PdfFileMerger
 
     merger = PdfFileMerger()
@@ -811,8 +828,13 @@ def get_bflist(modelpath: Union[Path, str]) -> dict[int, tuple[int, int, int, in
     return bflist
 
 
+linetuple = namedtuple("linetuple", "lambda_angstroms atomic_number ionstage upperlevelindex lowerlevelindex")
+
+
 @lru_cache(maxsize=16)
-def get_linelist(modelpath: Union[Path, str], returntype: Literal["dict", "dataframe"] = "dict"):
+def get_linelist(
+    modelpath: Union[Path, str], returntype: Literal["dict", "dataframe"] = "dict"
+) -> Union[dict[Any, linetuple], pd.DataFrame]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     with zopen(Path(modelpath, "linestat.out"), "rt") as linestatfile:
         lambda_angstroms = [float(wl) * 1e8 for wl in linestatfile.readline().split()]
@@ -830,7 +852,6 @@ def get_linelist(modelpath: Union[Path, str], returntype: Literal["dict", "dataf
         assert len(lower_levels) == nlines
 
     if returntype == "dict":
-        linetuple = namedtuple("linetuple", "lambda_angstroms atomic_number ionstage upperlevelindex lowerlevelindex")
         linelistdict = {
             index: linetuple(lambda_a, Z, ionstage, upper, lower)
             for index, lambda_a, Z, ionstage, upper, lower in zip(
@@ -931,7 +952,9 @@ def get_runfolder_timesteps(folderpath: Union[Path, str]) -> tuple[int, ...]:
     return tuple(folder_timesteps)
 
 
-def get_runfolders(modelpath, timestep=None, timesteps=None) -> Collection[Path]:
+def get_runfolders(
+    modelpath: Union[Path, str], timestep: Optional[int] = None, timesteps: Optional[Sequence[int]] = None
+) -> Collection[Path]:
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
     The folder list may include non-ARTIS folders if a timestep is not specified."""
@@ -951,7 +974,9 @@ def get_runfolders(modelpath, timestep=None, timesteps=None) -> Collection[Path]
 
 
 def get_mpiranklist(
-    modelpath, modelgridindex: Optional[Union[Iterable[int], int]] = None, only_ranks_withgridcells: bool = False
+    modelpath: Union[Path, str],
+    modelgridindex: Optional[Union[Iterable[int], int]] = None,
+    only_ranks_withgridcells: bool = False,
 ) -> Sequence[int]:
     """
     Get a list of rank ids. Parameters:
@@ -1017,8 +1042,9 @@ def get_dfrankassignments(modelpath: Union[Path, str]) -> Optional[pd.DataFrame]
     return None
 
 
-def get_mpirankofcell(modelgridindex: int, modelpath: Path) -> int:
+def get_mpirankofcell(modelgridindex: int, modelpath: Union[Path, str]) -> int:
     """Return the rank number of the MPI process responsible for handling a specified cell's updating and output."""
+    modelpath = Path(modelpath)
     npts_model = get_npts_model(modelpath)
     assert modelgridindex < npts_model
 
@@ -1048,9 +1074,12 @@ def get_mpirankofcell(modelgridindex: int, modelpath: Path) -> int:
     return mpirank
 
 
-def get_artis_constants(modelpath=None, srcpath=None, printdefs: bool = False):
+def get_artis_constants(
+    modelpath: Optional[Path] = None, srcpath: Optional[Path] = None, printdefs: bool = False
+) -> dict[str, Any]:
     # get artis options specified as preprocessor macro definitions in artisoptions.h and other header files
     if not srcpath:
+        assert modelpath is not None
         srcpath = Path(modelpath, "artis")
         if not modelpath:
             raise ValueError("Either modelpath or srcpath must be specified in call to get_defines()")
@@ -1088,7 +1117,7 @@ def get_artis_constants(modelpath=None, srcpath=None, printdefs: bool = False):
     return definedict
 
 
-def parse_cdefines(srcfilepath=None, printdefs: bool = False):
+def parse_cdefines(srcfilepath: Path, printdefs: bool = False) -> dict[str, Any]:
     # adapted from h2py.py in Python source
     import re
 
@@ -1106,7 +1135,7 @@ def parse_cdefines(srcfilepath=None, printdefs: bool = False):
 
     p_hex = re.compile(r"0x([0-9a-fA-F]+)L?")
 
-    def pytify(body):
+    def pytify(body: str) -> str:
         # replace ignored patterns by spaces
         for p in ignores:
             body = p.sub(" ", body)

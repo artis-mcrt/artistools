@@ -4,6 +4,7 @@
 Examples are temperatures, populations, and heating/cooling rates.
 """
 # import math
+import argparse
 import math
 import multiprocessing
 import sys
@@ -61,8 +62,8 @@ dictlabelreplacements = {
 
 
 def apply_filters(
-    xlist: Union[list, np.ndarray], ylist: np.ndarray, args
-) -> tuple[Union[list, np.ndarray], np.ndarray]:
+    xlist: Union[list, np.ndarray], ylist: Union[list, np.ndarray], args: argparse.Namespace
+) -> tuple[Union[list, np.ndarray], Union[list, np.ndarray]]:
     filterfunc = at.get_filterfunc(args)
 
     if filterfunc is not None:
@@ -360,9 +361,9 @@ def get_averaged_estimators(
     estimators: dict[tuple[int, int], dict],
     timesteps: Union[int, Sequence[int]],
     modelgridindex: int,
-    keys,
+    keys: Union[str, list],
     avgadjcells: int = 0,
-):
+) -> Union[Any, float]:
     """Get the average of estimators[(timestep, modelgridindex)][keys[0]]...[keys[-1]] across timesteps."""
     if isinstance(keys, str):
         keys = [keys]
@@ -404,10 +405,10 @@ def get_averaged_estimators(
     #     sys.exit()
 
 
-def get_averageionisation(populations, atomic_number):
+def get_averageionisation(populations: dict[Any, float], atomic_number: int) -> float:
     free_electron_weighted_pop_sum = 0.0
     found = False
-    popsum = 0
+    popsum = 0.0
     for key in populations.keys():
         if isinstance(key, tuple) and key[0] == atomic_number:
             found = True
@@ -421,7 +422,9 @@ def get_averageionisation(populations, atomic_number):
     return free_electron_weighted_pop_sum / populations[atomic_number]
 
 
-def get_averageexcitation(modelpath, modelgridindex, timestep, atomic_number, ion_stage, T_exc):
+def get_averageexcitation(
+    modelpath: Path, modelgridindex: int, timestep: int, atomic_number: int, ion_stage: int, T_exc: float
+) -> float:
     dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
     adata = at.atomic.get_levels(modelpath)
     ionlevels = adata.query("Z == @atomic_number and ion_stage == @ion_stage").iloc[0].levels
@@ -460,12 +463,12 @@ def get_averageexcitation(modelpath, modelgridindex, timestep, atomic_number, io
     return energypopsum / ionpopsum
 
 
-def get_partiallycompletetimesteps(estimators):
+def get_partiallycompletetimesteps(estimators: dict[Any, Any]) -> list[int]:
     """
     During a simulation, some estimator files can contain information for some cells but not others
     for the current timestep
     """
-    timestepcells = {}
+    timestepcells: dict[int, list[int]] = {}
     all_mgis = set()
     for nts, mgi in estimators.keys():
         if nts not in timestepcells:
