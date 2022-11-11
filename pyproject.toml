@@ -36,8 +36,19 @@ exclude = "(build)|(tests)"
 packages = "artistools"
 ignore_missing_imports = true
 no_implicit_optional = false
+warn_unused_configs = true
 #files = 'artistools/**/*.py'
 plugins = 'numpy.typing.mypy_plugin'
+
+[[tool.mypy.overrides]]
+module = [
+    "artistools.estimators.estimators",
+    "artistools.inputmodel",
+    "artistools.misc",
+]
+check_untyped_defs = true
+disallow_untyped_defs = true
+warn_return_any = false
 
 [tool.pylint]
 max-line-length = 120

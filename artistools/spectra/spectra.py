@@ -332,7 +332,7 @@ def read_specpol_res(modelpath: Path) -> dict[int, pd.DataFrame]:
     # print(columns)
     res_specdata_numpy: dict[int, np.ndarray] = {}
     for i in res_specdata.keys():
-        res_specdata[i].rename(columns=columns, inplace=True)
+        res_specdata[i] = res_specdata[i].rename(columns=columns)
         res_specdata[i].drop(res_specdata[i].index[0], inplace=True)
         # These lines remove the Q and U values from the dataframe (I think)
         numberofIvalues = len(res_specdata[i].columns.drop_duplicates())

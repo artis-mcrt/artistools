@@ -31,7 +31,7 @@ type_ids = dict((v, k) for k, v in types.items())
 
 
 @lru_cache(maxsize=16)
-def get_column_names_artiscode(modelpath):
+def get_column_names_artiscode(modelpath: Union[str, Path]) -> Optional[list[str]]:
     modelpath = Path(modelpath)
     if Path(modelpath, "artis").is_dir():
         print("detected artis code directory")
@@ -81,7 +81,7 @@ def get_column_names_artiscode(modelpath):
 
         return columns
 
-    return False
+    return None
 
 
 def add_derived_columns(
@@ -208,7 +208,7 @@ def readfile_text(packetsfile, modelpath=Path(".")) -> pd.DataFrame:
             # new artis added extra columns to the end of this list, but they may be absent in older versions
             # the packets file may have a truncated set of columns, but we assume that they
             # are only truncated, i.e. the columns with the same index have the same meaning
-            columns_full = (
+            columns_full = [
                 "number",
                 "where",
                 "type_id",
@@ -252,7 +252,7 @@ def readfile_text(packetsfile, modelpath=Path(".")) -> pd.DataFrame:
                 "true_emission_velocity",
                 "trueem_time",
                 "pellet_nucindex",
-            )
+            ]
 
             assert len(columns_full) >= inputcolumncount
             usecols_nodata = [n for n in columns_full if columns_full.index(n) >= inputcolumncount]

@@ -6,6 +6,7 @@ from math import exp
 from astropy import units as u
 
 import artistools as at
+import artistools.inputmodel
 import artistools.nltepops
 
 
@@ -45,7 +46,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-timedays", "-t", default=330, type=float, help="Time in days")
 
 
-def main_analytical(args=None, argsraw=None, **kwargs):
+def main_analytical(args: argparse.Namespace = None, argsraw=None, **kwargs) -> None:
     """Use the model initial conditions to calculate the deposition rates"""
 
     if args is None:
@@ -78,7 +79,7 @@ def main_analytical(args=None, argsraw=None, **kwargs):
 
     # phixs = adata.query('Z==26 & ion_stage==1', inplace=False).iloc[0].levels.iloc[0].phixstable[0][1] * 1e-18
 
-    global_posdep = 0.0
+    global_posdep = 0.0 * u.erg / u.s
     for i, row in dfmodel.iterrows():
         v_inner = row["velocity_inner"] * u.km / u.s
         v_outer = row["velocity_outer"] * u.km / u.s
@@ -117,7 +118,7 @@ def main_analytical(args=None, argsraw=None, **kwargs):
     print(f'Global posdep: {global_posdep.to("solLum"):.3e}')
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args: argparse.Namespace = None, argsraw: list[str] = None, **kwargs):
     main_analytical(args=args, argsraw=argsraw, **kwargs)
     if args is None:
         parser = argparse.ArgumentParser(
