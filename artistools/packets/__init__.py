@@ -97,20 +97,20 @@ def add_derived_columns(
 
     colnames = at.makelist(colnames)
 
-    def em_modelgridindex(packet):
+    def em_modelgridindex(packet) -> Union[int, float]:
         return at.inputmodel.get_mgi_of_velocity_kms(
             modelpath, packet.emission_velocity * cm_to_km, mgilist=allnonemptymgilist
         )
 
-    def emtrue_modelgridindex(packet):
+    def emtrue_modelgridindex(packet) -> Union[int, float]:
         return at.inputmodel.get_mgi_of_velocity_kms(
             modelpath, packet.true_emission_velocity * cm_to_km, mgilist=allnonemptymgilist
         )
 
-    def em_timestep(packet):
+    def em_timestep(packet) -> int:
         return at.get_timestep_of_timedays(modelpath, packet.em_time / day_in_s)
 
-    def emtrue_timestep(packet):
+    def emtrue_timestep(packet) -> int:
         return at.get_timestep_of_timedays(modelpath, packet.trueem_time / day_in_s)
 
     if "emission_velocity" in colnames:
@@ -139,11 +139,11 @@ def add_derived_columns(
     return dfpackets
 
 
-def readfile_text(packetsfile, modelpath=Path(".")) -> pd.DataFrame:
+def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) -> pd.DataFrame:
     usecols_nodata = None  # print a warning for missing columns if the source code columns can't be read
 
-    skiprows = 0
-    column_names = None
+    skiprows: int = 0
+    column_names: Optional[list[str]] = None
     try:
         fpackets = at.zopen(packetsfile, "rt")
 
@@ -152,6 +152,7 @@ def readfile_text(packetsfile, modelpath=Path(".")) -> pd.DataFrame:
 
         if firstline.lstrip().startswith("#"):
             column_names = firstline.lstrip("#").split()
+            assert column_names is not None
             column_names.append("ignore")
             # get the column count from the first data line to check header matched
             datastartpos = fpackets.tell()

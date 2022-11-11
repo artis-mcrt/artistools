@@ -654,7 +654,7 @@ def save_modeldata(
     print(f"Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def get_mgi_of_velocity_kms(modelpath, velocity, mgilist=None):
+def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> Union[int, float]:
     """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
     If mgilist is given, then chose from these cells only"""
     modeldata, _, _ = get_modeldata_tuple(modelpath)
