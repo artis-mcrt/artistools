@@ -116,10 +116,10 @@ def main(args=None, argsraw=None, **kwargs):
 
     if not args.noabund:
 
-        def sortkey(tup_species_mass_g):
+        def sortkey(tup_species_mass_g: tuple[str, float]):
             species, mass_g = tup_species_mass_g
             # return -mass_g
-            # return (-speciesmasses.get(species.rstrip('0123456789'), 0.), species)
+            # return (-speciesmasses.get(species.rstrip("0123456789"), 0.0), species)
             return (at.get_atomic_number(species), species)
 
         for species, mass_g in sorted(speciesmasses.items(), key=sortkey):
