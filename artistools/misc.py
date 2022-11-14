@@ -17,16 +17,12 @@ from itertools import chain
 from pathlib import Path
 from typing import Any
 from typing import Callable
-from typing import IO
 from typing import Literal
-from typing import NamedTuple
 from typing import Optional
-from typing import TextIO
 from typing import Union
 
 import numpy as np
 import pandas as pd
-from numpy import typing as npt
 
 import artistools as at
 
@@ -759,14 +755,14 @@ def get_file_metadata(filepath: Union[Path, str]) -> dict[str, Any]:
 
 def get_filterfunc(
     args: argparse.Namespace, mode: str = "interp"
-) -> Optional[Callable[[Union[list, np.ndarray]], np.ndarray]]:
+) -> Optional[Callable[[Union[list[float], np.ndarray]], np.ndarray]]:
     """Using command line arguments to determine the appropriate filter function."""
 
-    filterfunc: Optional[Callable[[Union[list, np.ndarray]], np.ndarray]]
+    filterfunc: Optional[Callable[[Union[list[float], np.ndarray]], np.ndarray]]
 
     if hasattr(args, "filtermovingavg") and args.filtermovingavg > 0:
 
-        def movavgfilterfunc(ylist: Union[list, np.ndarray]) -> np.ndarray:
+        def movavgfilterfunc(ylist: Union[list[float], np.ndarray]) -> np.ndarray:
             n = args.filtermovingavg
             arr_padded = np.pad(ylist, (n // 2, n - 1 - n // 2), mode="edge")
             return np.convolve(arr_padded, np.ones((n,)) / n, mode="valid")
@@ -778,7 +774,7 @@ def get_filterfunc(
 
         window_length, poly_order = [int(x) for x in args.filtersavgol]
 
-        def ffilterfunc(ylist: Union[list, np.ndarray]) -> np.ndarray:
+        def ffilterfunc(ylist: Union[list[float], np.ndarray]) -> np.ndarray:
             return scipy.signal.savgol_filter(ylist, window_length, poly_order, mode=mode)
 
         filterfunc = ffilterfunc

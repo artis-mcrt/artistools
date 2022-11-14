@@ -350,9 +350,10 @@ def main(args=None, argsraw=None, **kwargs):
             sf.analyse_ntspectrum()
 
             if args.makeplot:
-                # outputfilename = str(args.outputfile).format(
-                #     cell=args.modelgridindex, timestep=args.timestep, timedays=args.timedays)
-                outputfilename = "spencerfano.pdf"
+                outputfilename = str(args.outputfile).format(
+                    cell=args.modelgridindex, timestep=args.timestep, timedays=args.timedays
+                )
+                # outputfilename = "spencerfano.pdf"
                 sf.plot_spec_channels(outputfilename=outputfilename)
 
             if args.ostat:

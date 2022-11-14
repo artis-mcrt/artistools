@@ -353,6 +353,7 @@ def get_packetsfilepaths(modelpath, maxpacketfiles=None):
 
 def get_escaping_packet_angle_bin(modelpath, dfpackets: pd.DataFrame) -> pd.DataFrame:
     MABINS = 100
+    PHIBINS = np.sqrt(MABINS)
 
     syn_dir = at.get_syn_dir(modelpath)
 
@@ -361,7 +362,7 @@ def get_escaping_packet_angle_bin(modelpath, dfpackets: pd.DataFrame) -> pd.Data
     for pkt_index, _ in dfpackets.iterrows():
         pkt_dir = [dfpackets["dirx"][pkt_index], dfpackets["diry"][pkt_index], dfpackets["dirz"][pkt_index]]
         costheta = np.dot(pkt_dir, syn_dir)
-        thetabin = (costheta + 1.0) * np.sqrt(MABINS) / 2.0
+        thetabin = (costheta + 1.0) * np.sqrt(MABINS) / 2.0  # Luke: this needs to have a ceil/int conversion applied
         vec1 = vec2 = vec3 = np.array([0.0, 0.0, 0.0])
         xhat = np.array([1.0, 0.0, 0.0])
         vec1 = np.cross(pkt_dir, syn_dir)
@@ -372,10 +373,10 @@ def get_escaping_packet_angle_bin(modelpath, dfpackets: pd.DataFrame) -> pd.Data
         testphi = np.dot(vec1, vec3)
 
         if testphi > 0:
-            phibin = math.acos(cosphi) / 2.0 / np.pi * np.sqrt(MABINS)
+            phibin = math.acos(cosphi) / 2.0 / np.pi * PHIBINS
         else:
-            phibin = (math.acos(cosphi) + np.pi) / 2.0 / np.pi * np.sqrt(MABINS)
-        na = (thetabin * np.sqrt(MABINS)) + phibin  # think na is angle number???
+            phibin = (math.acos(cosphi) + np.pi) / 2.0 / np.pi * PHIBINS
+        na = (thetabin * PHIBINS) + phibin  # think na is angle number???
         if na >= 100:
             print(f"error bin number too high {na}")
         angle_number[i] = int(na)

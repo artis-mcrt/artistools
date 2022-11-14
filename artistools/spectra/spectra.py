@@ -160,13 +160,13 @@ def get_spectrum_at_time(
     modelpath: Path,
     timestep: int,
     time: float,
-    args: argparse.Namespace,
+    args: Optional[argparse.Namespace],
     angle: Optional[int] = None,
     res_specdata: Optional[dict[int, pd.DataFrame]] = None,
     modelnumber: Optional[int] = None,
 ) -> pd.DataFrame:
     if angle is not None:
-        if args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
+        if args is not None and args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
             spectrum = get_vspecpol_spectrum(modelpath, time, angle, args)[angle]
         elif os.path.isfile(modelpath / "specpol_res.out"):
             spectrum = get_res_spectrum(modelpath, timestep, timestep, angle=angle, res_specdata=res_specdata)[angle]

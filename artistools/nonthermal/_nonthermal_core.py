@@ -30,7 +30,7 @@ PI = math.pi
 use_collstrengths = False
 
 
-def get_nntot(ions, ionpopdict):
+def get_nntot(ions: list[tuple[int, int]], ionpopdict: dict[tuple[int, int], float]) -> float:
     # total number density of all nuclei [cm^-3]
     nntot = 0.0
     for Z, ionstage in ions:
@@ -38,7 +38,7 @@ def get_nntot(ions, ionpopdict):
     return nntot
 
 
-def get_nne(ions, ionpopdict):
+def get_nne(ions: list[tuple[int, int]], ionpopdict: dict[tuple[int, int], float]) -> float:
     # number density of free electrons [cm-^3]
     nne = 0.0
     for Z, ionstage in ions:
@@ -49,7 +49,7 @@ def get_nne(ions, ionpopdict):
     return nne
 
 
-def get_Zbar(ions, ionpopdict):
+def get_Zbar(ions: list[tuple[int, int]], ionpopdict: dict[tuple[int, int], float]) -> float:
     # number density-weighted average atomic number
     # i.e. protons per nucleus
     Zbar = 0.0
@@ -61,7 +61,7 @@ def get_Zbar(ions, ionpopdict):
     return Zbar
 
 
-def get_Zboundbar(ions, ionpopdict):
+def get_Zboundbar(ions: list[tuple[int, int]], ionpopdict: dict[tuple[int, int], float]) -> float:
     # number density-weighted average number of bound electrons per nucleus
     Zboundbar = 0.0
     nntot = get_nntot(ions, ionpopdict)
@@ -72,7 +72,7 @@ def get_Zboundbar(ions, ionpopdict):
     return Zboundbar
 
 
-def get_nnetot(ions, ionpopdict):
+def get_nnetot(ions: list[tuple[int, int]], ionpopdict: dict[tuple[int, int], float]) -> float:
     # total number density of electrons (free + bound) [cm-^3]
     # return get_Zbar(ions, ionpopdict) * get_nntot(ions, ionpopdict)
     nnetot = 0.0
@@ -82,7 +82,7 @@ def get_nnetot(ions, ionpopdict):
     return nnetot
 
 
-def read_binding_energies(modelpath="."):
+def read_binding_energies(modelpath: str = ".") -> np.ndarray:
     collionfilename = at.firstexisting(
         [
             os.path.join(modelpath, "binding_energies.txt"),
@@ -100,7 +100,7 @@ def read_binding_energies(modelpath="."):
     return electron_binding
 
 
-def get_electronoccupancy(atomic_number, ion_stage, nt_shells):
+def get_electronoccupancy(atomic_number: int, ion_stage: int, nt_shells: int) -> np.ndarray:
     # adapted from ARTIS code
     q = np.zeros(nt_shells)
 
@@ -150,7 +150,9 @@ def get_electronoccupancy(atomic_number, ion_stage, nt_shells):
     return q
 
 
-def get_mean_binding_energy(atomic_number, ion_stage, electron_binding, ionpot_ev):
+def get_mean_binding_energy(
+    atomic_number: int, ion_stage: int, electron_binding: np.ndarray, ionpot_ev: float
+) -> float:
     # LJS: this came from ARTIS and I'm not sure what this actually is - inverse binding energy? electrons per erg?
     n_z_binding, nt_shells = electron_binding.shape
     q = get_electronoccupancy(atomic_number, ion_stage, nt_shells)

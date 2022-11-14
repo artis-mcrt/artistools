@@ -2,7 +2,6 @@
 import argparse
 import math
 import os.path
-from typing import List
 
 import pandas as pd
 from astropy import units as u
