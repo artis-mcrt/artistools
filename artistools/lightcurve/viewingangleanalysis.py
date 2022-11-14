@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import glob
 import math
 import os
@@ -178,7 +179,7 @@ def get_angle_stuff(
     else:
         angles = [None]
 
-    angle_definition = None
+    angle_definition: Optional[dict] = None
     if angles[0] is not None and not args.plotvspecpol:
         angle_definition = calculate_costheta_phi_for_viewing_angles(angles, modelpath)
         if args.average_every_tenth_viewing_angle:
@@ -191,31 +192,25 @@ def get_angle_stuff(
 
 def calculate_costheta_phi_for_viewing_angles(
     viewing_angles: Union[np.ndarray[Any, np.dtype[Any]], Sequence[int]], modelpath: Union[Path, str]
-):
+) -> dict[int, str]:
     modelpath = Path(modelpath)
-    if (modelpath / "absorptionpol_res_99.out").is_file() and (modelpath / "absorptionpol_res_100.out").is_file():
-        print("Too many viewing angle bins (MABINS) for this method to work, it only works for MABINS = 100")
-        exit()
-    elif (modelpath / "light_curve_res.out").is_file():
-        angle_definition = {}
+    MABINS = 100
+    assert len(list(Path(modelpath).glob(f"*_res_{MABINS-1:02d}.out*"))) > 0  # check last bin exists
+    assert len(list(Path(modelpath).glob(f"*_res_{MABINS:02d}.out*"))) == 0  # check one beyond does not exist
 
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
+    angle_definition: dict[int, str] = {}
 
-        for angle in viewing_angles:
-            MABINS = 100
-            phibins = int(math.sqrt(MABINS))
-            costheta_index = angle // phibins
-            phi_index = angle % phibins
+    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
 
-            angle_definition[
-                angle
-            ] = f"{costheta_viewing_angle_bins[costheta_index]}, {phi_viewing_angle_bins[phi_index]}"
-            print(f"{angle:4d}   {costheta_viewing_angle_bins[costheta_index]}   {phi_viewing_angle_bins[phi_index]}")
+    for angle in viewing_angles:
+        phibins = int(math.sqrt(MABINS))
+        costheta_index = angle // phibins
+        phi_index = angle % phibins
 
-        return angle_definition
-    else:
-        print("Too few viewing angle bins (MABINS) for this method to work, it only works for MABINS = 100")
-        assert False
+        angle_definition[angle] = f"{costheta_viewing_angle_bins[costheta_index]}, {phi_viewing_angle_bins[phi_index]}"
+        print(f"{angle:4d}   {costheta_viewing_angle_bins[costheta_index]}   {phi_viewing_angle_bins[phi_index]}")
+
+    return angle_definition
 
 
 def save_viewing_angle_data_for_plotting(band_name, modelname, args):
@@ -360,7 +355,7 @@ def make_plot_test_viewing_angle_fit(
     time_after15days_polyfit,
     modelname,
     angle,
-):
+) -> None:
     plt.plot(time, magnitude)
     plt.plot(xfit, fxfit)
 
@@ -414,7 +409,9 @@ def set_scatterplot_plotkwargs(modelnumber, args):
     return plotkwargsviewingangles, plotkwargsangleaveraged
 
 
-def update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args):
+def update_plotkwargs_for_viewingangle_colorbar(
+    plotkwargsviewingangles: dict[str, Any], args: argparse.Namespace
+) -> dict[str, Any]:
     costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 

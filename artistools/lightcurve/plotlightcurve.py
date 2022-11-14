@@ -6,6 +6,7 @@ import multiprocessing
 import os
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 from typing import Optional
 
 import argcomplete
@@ -28,7 +29,7 @@ import artistools.spectra
 color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
 
-def plot_deposition_thermalisation(axis, axistherm, modelpath, plotkwargs, args):
+def plot_deposition_thermalisation(axis, axistherm, modelpath, plotkwargs, args) -> None:
     if args.plotthermalisation:
         dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath, skipabundancecolumns=True)
         model_mass_grams = dfmodel.cellmass_grams.sum()
@@ -239,6 +240,8 @@ def make_lightcurve_plot_from_lightcurve_out_files(
             figsize=(args.figscale * at.config["figwidth"] * 1.4, args.figscale * at.config["figwidth"]),
             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
         )
+    else:
+        axistherm = None
 
     if not frompackets and escape_type not in ["TYPE_RPKT", "TYPE_GAMMA"]:
         print(f"Escape_type of {escape_type} not one of TYPE_RPKT or TYPE_GAMMA, so frompackets must be enabled")
@@ -576,17 +579,23 @@ def set_axis_limit_args(args):
 
 
 def get_linelabel(
-    modelpath: Path, modelname: str, modelnumber: int, angle: Optional[int], angle_definition: dict[int, str], args
+    modelpath: Path,
+    modelname: str,
+    modelnumber: int,
+    angle: Optional[int],
+    angle_definition: Optional[dict[int, str]],
+    args,
 ) -> str:
     if args.plotvspecpol and angle is not None and os.path.isfile(modelpath / "vpkt.txt"):
         vpkt_config = at.get_vpkt_config(modelpath)
         viewing_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][angle])))
         linelabel = rf"$\theta$ = {viewing_angle}"  # todo: update to be consistent with res definition
     elif args.plotviewingangle and angle is not None and os.path.isfile(modelpath / "specpol_res.out"):
+        assert angle_definition is not None
         if args.nomodelname:
-            linelabel = rf"{angle_definition[angle]}"
+            linelabel = f"{angle_definition[angle]}"
         else:
-            linelabel = rf"{modelname} {angle_definition[angle]}"
+            linelabel = f"{modelname} {angle_definition[angle]}"
         # linelabel = None
         # linelabel = fr"{modelname} $\theta$ = {angle_names[index]}$^\circ$"
         # plt.plot(time, magnitude, label=linelabel, linewidth=3)
@@ -699,7 +708,7 @@ def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=Non
     cbar.update_ticks()
 
 
-def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
+def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfolder, args: argparse.Namespace) -> None:
     # angle_names = [0, 45, 90, 180]
     # plt.style.use('dark_background')
 
@@ -707,7 +716,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     fig, ax = create_axes(args)
     set_axis_limit_args(args)
 
-    plotkwargs = {}
+    plotkwargs: dict[str, Any] = {}
 
     if args.colorbarcostheta or args.colorbarphi:
         costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()

@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 # import glob
 # import itertools
+import argparse
 import math
 import os
+from collections.abc import Collection
 from pathlib import Path
+from typing import Any
 from typing import Optional
+from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,14 +19,16 @@ from astropy import units as u
 import artistools as at
 import artistools.spectra
 
-# import sys
 
-
-def readfile(filepath_or_buffer, modelpath=None, args=None) -> pd.DataFrame:
-    lcdata = pd.read_csv(filepath_or_buffer, delim_whitespace=True, header=None, names=["time", "lum", "lum_cmf"])
+def readfile(
+    filepath: Union[str, Path],
+    modelpath: Optional[Path] = None,
+    args: Union[argparse.Namespace, None] = None,
+) -> Union[pd.DataFrame, dict[int, pd.DataFrame]]:
+    lcdata = pd.read_csv(filepath, delim_whitespace=True, header=None, names=["time", "lum", "lum_cmf"])
 
     if args is not None and args.gamma and modelpath is not None and at.get_inputparams(modelpath)["n_dimensions"] == 3:
-        lcdata = read_3d_gammalightcurve(filepath_or_buffer)
+        lcdata = read_3d_gammalightcurve(filepath)
 
     elif args is not None and args.plotviewingangle is not None:
         # get a list of dfs with light curves at each viewing angle
@@ -36,18 +42,19 @@ def readfile(filepath_or_buffer, modelpath=None, args=None) -> pd.DataFrame:
     return lcdata
 
 
-def read_3d_gammalightcurve(filepath_or_buffer) -> list[pd.DataFrame]:
+def read_3d_gammalightcurve(
+    filepath: Union[str, Path],
+) -> dict[int, pd.DataFrame]:
     columns = ["time"]
     columns.extend(np.arange(0, 100))
-    lcdata = pd.read_csv(filepath_or_buffer, delim_whitespace=True, header=None)
+    lcdata = pd.read_csv(filepath, delim_whitespace=True, header=None)
     lcdata.columns = columns
     # lcdata = lcdata.rename(columns={0: 'time', 1: 'lum', 2: 'lum_cmf'})
 
-    res_data = []
+    res_data = {}
     for angle in np.arange(0, 100):
-        res_data.append(lcdata[["time", angle]].copy())
-        res_data[angle] = res_data[angle].rename(columns={angle: "lum"})
-    print(res_data)
+        res_data[angle] = lcdata[["time", angle]].copy()
+        res_data[angle].rename(columns={angle: "lum"}, inplace=True)
 
     return res_data
 
@@ -106,7 +113,9 @@ def get_from_packets(
     return lcdata
 
 
-def average_lightcurve_every_10_bins(lcdataframes: list[pd.DataFrame], args) -> list[pd.DataFrame]:
+def average_lightcurve_every_10_bins(
+    lcdataframes: dict[int, pd.DataFrame], args: argparse.Namespace
+) -> dict[int, pd.DataFrame]:
     if args and args.average_every_tenth_viewing_angle:
         for start_bin in np.arange(start=0, stop=100, step=10):
             # print(start_bin)
@@ -118,10 +127,16 @@ def average_lightcurve_every_10_bins(lcdataframes: list[pd.DataFrame], args) -> 
                 lcdataframes[start_bin]["lum"] += lcdataframes[bin_number]["lum"]
             lcdataframes[start_bin]["lum"] /= 10  # every 10th bin is the average of 10 bins
             print(f"bin number {start_bin} = the average of bins {start_bin} to {start_bin + 9}")
+
     return lcdataframes
 
 
-def generate_band_lightcurve_data(modelpath, args, angle=None, modelnumber=None):
+def generate_band_lightcurve_data(
+    modelpath: Path,
+    args: argparse.Namespace,
+    angle: Optional[int] = None,
+    modelnumber: Optional[int] = None,
+) -> dict:
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
     from scipy.interpolate import interp1d
 
@@ -131,7 +146,7 @@ def generate_band_lightcurve_data(modelpath, args, angle=None, modelnumber=None)
         vspecdata = stokes_params["I"]
         timearray = vspecdata.keys()[1:]
     elif args and args.plotviewingangle and os.path.isfile(modelpath / "specpol_res.out"):
-        specfilename = os.path.join(modelpath, "specpol_res.out")
+        specfilename = Path(modelpath, "specpol_res.out")
         specdataresdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdataresdata.columns.values[1:] if i[-2] != "."]
     # elif Path(modelpath, 'specpol.out').is_file():
@@ -219,13 +234,18 @@ def generate_band_lightcurve_data(modelpath, args, angle=None, modelnumber=None)
     return filters_dict
 
 
-def bolometric_magnitude(modelpath, timearray, args, angle=None, res_specdata=None):
+def bolometric_magnitude(
+    modelpath: Path,
+    timearray: Collection[float],
+    args: argparse.Namespace,
+    angle: Optional[int] = None,
+    res_specdata: Optional[dict[int, pd.DataFrame]] = None,
+) -> tuple[list[float], list[float]]:
     magnitudes = []
     times = []
 
-    if args.timemin is None or args.timemax is None:  # todo: either make it so these are define or aren't needed
-        print("args.timemin or args.timemax not defined")
-        quit()
+    assert args.timemin is not None
+    assert args.timemax is not None  # todo: either make it so these are define or aren't needed
 
     for timestep, time in enumerate(timearray):
         time = float(time)
@@ -256,10 +276,12 @@ def bolometric_magnitude(modelpath, timearray, args, angle=None, res_specdata=No
     return times, magnitudes
 
 
-def get_filter_data(filterdir, filter_name: str) -> tuple[float, np.ndarray, np.ndarray, float, float]:
+def get_filter_data(
+    filterdir: Union[Path, str], filter_name: str
+) -> tuple[float, np.ndarray, np.ndarray, float, float]:
     """Filter data in 'data/filters' taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata"""
 
-    with open(filterdir / Path(filter_name + ".txt"), "r") as filter_metadata:  # defintion of the file
+    with Path(filterdir, filter_name + ".txt").open("r") as filter_metadata:  # defintion of the file
         line_in_filter_metadata = filter_metadata.readlines()  # list of lines
 
     zeropointenergyflux = float(line_in_filter_metadata[0])
@@ -278,20 +300,20 @@ def get_filter_data(filterdir, filter_name: str) -> tuple[float, np.ndarray, np.
 
 
 def get_spectrum_in_filter_range(
-    modelpath,
+    modelpath: Union[Path, str],
     timestep: int,
     time: float,
     wavefilter_min: float,
     wavefilter_max: float,
-    angle=None,
-    res_specdata=None,
-    modelnumber=None,
+    angle: Optional[int] = None,
+    res_specdata: Optional[dict[int, pd.DataFrame]] = None,
+    modelnumber: Optional[int] = None,
     spectrum: Optional[pd.DataFrame] = None,
-    args=None,
+    args: Optional[argparse.Namespace] = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     if spectrum is None:
         spectrum = at.spectra.get_spectrum_at_time(
-            modelpath,
+            Path(modelpath),
             timestep=timestep,
             time=time,
             args=args,
@@ -309,7 +331,7 @@ def get_spectrum_in_filter_range(
     return np.array(wavelength_from_spectrum), np.array(flux)
 
 
-def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux) -> float:
+def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux: float) -> float:
     cf = flux * transmission
     flux_obs = abs(np.trapz(cf, wavelength_from_spectrum))  # using trapezoidal rule to integrate
     if flux_obs == 0.0:
@@ -320,16 +342,16 @@ def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointe
     return phot_filtobs_sn
 
 
-def get_band_lightcurve(band_lightcurve_data, band_name, args):
+def get_band_lightcurve(band_lightcurve_data, band_name, args: argparse.Namespace) -> tuple[list[float], np.ndarray]:
     time = [t for t, _ in band_lightcurve_data[band_name] if (args.timemin < t < args.timemax)]
     brightness_in_mag = [
         brightness for t, brightness in band_lightcurve_data[band_name] if (args.timemin < t < args.timemax)
     ]
 
-    return time, brightness_in_mag
+    return time, np.array(brightness_in_mag)
 
 
-def get_colour_delta_mag(band_lightcurve_data, filter_names):
+def get_colour_delta_mag(band_lightcurve_data, filter_names) -> tuple[list[float], list[float]]:
     time_dict_1 = {}
     time_dict_2 = {}
 
@@ -349,7 +371,7 @@ def get_colour_delta_mag(band_lightcurve_data, filter_names):
     return plot_times, colour_delta_mag
 
 
-def read_hesma_lightcurve(args):
+def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
     hesma_directory = os.path.join(at.config["path_artistools_dir"], "data/hesma")
     filename = args.plot_hesma_model
     hesma_modelname = hesma_directory / filename
@@ -371,7 +393,7 @@ def read_hesma_lightcurve(args):
     return hesma_model
 
 
-def read_reflightcurve_band_data(lightcurvefilename):
+def read_reflightcurve_band_data(lightcurvefilename: Union[Path, str]) -> tuple[pd.DataFrame, dict[str, Any]]:
     filepath = Path(at.config["path_artistools_dir"], "data", "lightcurves", lightcurvefilename)
     metadata = at.misc.get_file_metadata(filepath)
 
