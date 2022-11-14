@@ -351,38 +351,41 @@ def get_packetsfilepaths(modelpath: Path, maxpacketfiles: Optional[int] = None) 
     return packetsfiles
 
 
+def get_directionbin(dirx: float, diry: float, dirz: float, nphibins: int, syn_dir: Sequence[float]) -> int:
+    dirmag = np.sqrt(dirx**2 + diry**2 + dirz**2)
+    pkt_dir = [dirx / dirmag, diry / dirmag, dirz / dirmag]
+    costheta = np.dot(pkt_dir, syn_dir)
+    thetabin = int((costheta + 1.0) * nphibins / 2.0)
+    vec1 = vec2 = vec3 = np.array([0.0, 0.0, 0.0])
+    xhat = np.array([1.0, 0.0, 0.0])
+    vec1 = np.cross(pkt_dir, syn_dir)
+    vec2 = np.cross(xhat, syn_dir)
+    cosphi = np.dot(vec1, vec2) / at.vec_len(vec1) / at.vec_len(vec2)
+
+    vec3 = np.cross(vec2, syn_dir)
+    testphi = np.dot(vec1, vec3)
+
+    if testphi > 0:
+        phibin = int(math.acos(cosphi) / 2.0 / np.pi * nphibins)
+    else:
+        phibin = int((math.acos(cosphi) + np.pi) / 2.0 / np.pi * nphibins)
+
+    na = (thetabin * nphibins) + phibin
+    return na
+
+
 def get_escaping_packet_angle_bin(modelpath: Union[Path, str], dfpackets: pd.DataFrame) -> pd.DataFrame:
     nphibins = at.get_viewingdirection_phibincount()
 
     syn_dir = at.get_syn_dir(Path(modelpath))
 
-    angle_number = np.zeros(len(dfpackets))
-    i = 0
-    for pkt_index, _ in dfpackets.iterrows():
-        pkt_dir = [dfpackets["dirx"][pkt_index], dfpackets["diry"][pkt_index], dfpackets["dirz"][pkt_index]]
-        costheta = np.dot(pkt_dir, syn_dir)
-        thetabin = int((costheta + 1.0) * nphibins / 2.0)
-        vec1 = vec2 = vec3 = np.array([0.0, 0.0, 0.0])
-        xhat = np.array([1.0, 0.0, 0.0])
-        vec1 = np.cross(pkt_dir, syn_dir)
-        vec2 = np.cross(xhat, syn_dir)
-        cosphi = np.dot(vec1, vec2) / at.vec_len(vec1) / at.vec_len(vec2)
+    @np.vectorize
+    def get_directionbin_loc(dirx, diry, dirz) -> int:
+        return get_directionbin(dirx, diry, dirz, nphibins, syn_dir)
 
-        vec3 = np.cross(vec2, syn_dir)
-        testphi = np.dot(vec1, vec3)
+    dfpackets["angle_bin"] = get_directionbin_loc(dfpackets["dirx"], dfpackets["diry"], dfpackets["dirz"])
+    assert np.all(dfpackets["angle_bin"] < at.get_viewingdirectionbincount())
 
-        if testphi > 0:
-            phibin = int(math.acos(cosphi) / 2.0 / np.pi * nphibins)
-        else:
-            phibin = int((math.acos(cosphi) + np.pi) / 2.0 / np.pi * nphibins)
-
-        na = (thetabin * nphibins) + phibin
-        assert na < at.get_viewingdirectionbincount()
-
-        angle_number[i] = na
-        i += 1
-
-    dfpackets["angle_bin"] = angle_number
     return dfpackets
 
 
