@@ -171,7 +171,7 @@ def generate_band_lightcurve_data(
     if angle is not None and os.path.isfile(modelpath / "specpol_res.out"):
         res_specdata = at.spectra.read_specpol_res(modelpath)
         if args and args.average_every_tenth_viewing_angle:
-            at.spectra.average_angle_bins(res_specdata, angle, args)
+            at.spectra.average_angle_bins(res_specdata, angle)
 
     else:
         res_specdata = None
@@ -257,7 +257,7 @@ def bolometric_magnitude(
                     if res_specdata is None:
                         res_specdata = at.spectra.read_specpol_res(modelpath)
                         if args and args.average_every_tenth_viewing_angle:
-                            at.spectra.average_angle_bins(res_specdata, angle, args)
+                            at.spectra.average_angle_bins(res_specdata, angle)
                     spectrum = at.spectra.get_res_spectrum(
                         modelpath, timestep, timestep, angle=angle, res_specdata=res_specdata
                     )

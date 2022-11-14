@@ -68,6 +68,9 @@ from artistools.misc import get_timestep_times_float
 from artistools.misc import get_viewinganglebin_definitions
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_wid_init_at_tmin
+from artistools.misc import get_viewingdirectionbincount
+from artistools.misc import get_viewingdirection_phibincount
+from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_wid_init_at_tmodel
 from artistools.misc import get_z_a_nucname
 from artistools.misc import join_pdf_files

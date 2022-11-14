@@ -1187,6 +1187,18 @@ def parse_cdefines(srcfilepath: Path, printdefs: bool = False) -> dict[str, Any]
     return definedict
 
 
+def get_viewingdirectionbincount() -> int:
+    return 100
+
+
+def get_viewingdirection_phibincount() -> int:
+    return 10
+
+
+def get_viewingdirection_costhetabincount() -> int:
+    return 10
+
+
 def get_viewinganglebin_definitions() -> tuple[list[str], list[str]]:
     costheta_viewing_angle_bins = [
         "-1.0 \u2264 cos(\u03B8) < -0.8",
@@ -1200,6 +1212,7 @@ def get_viewinganglebin_definitions() -> tuple[list[str], list[str]]:
         " 0.6 \u2264 cos(\u03B8) <  0.8",
         " 0.8 \u2264 cos(\u03B8) <  1.0",
     ]
+    assert len(costheta_viewing_angle_bins) == get_viewingdirection_costhetabincount()
     phi_viewing_angle_bins = [
         "0 \u2264 \u03D5 < \u03c0/5",
         "\u03c0/5 \u2264 \u03D5 < 2\u03c0/5",
@@ -1212,6 +1225,8 @@ def get_viewinganglebin_definitions() -> tuple[list[str], list[str]]:
         "6\u03c0/5 < \u03D5 \u2264 7\u03c0/5",
         "\u03c0 < \u03D5 \u2264 6\u03c0/5",
     ]
+    assert len(phi_viewing_angle_bins) == get_viewingdirection_phibincount()
+    assert len(costheta_viewing_angle_bins) * len(phi_viewing_angle_bins) == get_viewingdirectionbincount()
 
     # label orders changed so that bins are in order. Not used yet.
     # phi_viewing_angle_bins_reordered = ['0 \u2264 \u03D5 < \u03c0/5', '\u03c0/5 \u2264 \u03D5 < 2\u03c0/5',

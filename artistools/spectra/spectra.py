@@ -357,21 +357,22 @@ def read_specpol_res(modelpath: Path) -> dict[int, pd.DataFrame]:
 
 
 def average_angle_bins(
-    res_specdata: dict[int, pd.DataFrame], angle: int, args: argparse.Namespace
+    res_specdata: dict[int, pd.DataFrame],
+    angle: int,
 ) -> dict[int, pd.DataFrame]:
     # Averages over 10 phi (azimuthal angle) bins to reduce noise
+    dirbincount = at.get_viewingdirectionbincount()
+    phibincount = at.get_viewingdirection_phibincount()
+    for start_bin in np.arange(start=0, stop=dirbincount, step=phibincount):
+        # print(start_bin)
+        for bin_number in range(start_bin + 1, start_bin + phibincount):
+            # print(bin_number)
+            res_specdata[start_bin] += res_specdata[bin_number]
+        res_specdata[start_bin] /= phibincount  # every 10th bin is the average of 10 bins
+        print(f"bin number {start_bin} = the average of bins {start_bin} to {start_bin + phibincount - 1}")
 
-    if args and args.average_every_tenth_viewing_angle:
-        for start_bin in np.arange(start=0, stop=100, step=10):
-            # print(start_bin)
-            for bin_number in range(start_bin + 1, start_bin + 10):
-                # print(bin_number)
-                res_specdata[start_bin] += res_specdata[bin_number]
-            res_specdata[start_bin] /= 10  # every 10th bin is the average of 10 bins
-            print(f"bin number {start_bin} = the average of bins {start_bin} to {start_bin + 9}")
-
-        if angle and angle % 10 == 0:
-            print(f"Bin number {angle} is the average of 10 angle bins")
+    if angle and angle % phibincount == 0:
+        print(f"Bin number {angle} is the average of {phibincount} phi angle bins")
 
     return res_specdata
 
@@ -400,7 +401,7 @@ def get_res_spectrum(
         print("Reading specpol_res.out")
         res_specdata = read_specpol_res(modelpath)
         if args and args.average_every_tenth_viewing_angle:
-            at.spectra.average_angle_bins(res_specdata, angle, args)
+            at.spectra.average_angle_bins(res_specdata, angle)
 
     nu = res_specdata[angle].loc[:, "nu"].values
     arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
