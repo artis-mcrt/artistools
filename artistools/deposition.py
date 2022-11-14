@@ -2,6 +2,7 @@
 import argparse
 import math
 from math import exp
+from typing import Optional
 
 from astropy import units as u
 
@@ -46,7 +47,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-timedays", "-t", default=330, type=float, help="Time in days")
 
 
-def main_analytical(args: argparse.Namespace = None, argsraw=None, **kwargs) -> None:
+def main_analytical(args: Optional[argparse.Namespace] = None, argsraw: Optional[list[str]] = None, **kwargs) -> None:
     """Use the model initial conditions to calculate the deposition rates"""
 
     if args is None:
@@ -118,7 +119,7 @@ def main_analytical(args: argparse.Namespace = None, argsraw=None, **kwargs) -> 
     print(f'Global posdep: {global_posdep.to("solLum"):.3e}')
 
 
-def main(args: argparse.Namespace = None, argsraw: list[str] = None, **kwargs):
+def main(args: Optional[argparse.Namespace] = None, argsraw: Optional[list[str]] = None, **kwargs):
     main_analytical(args=args, argsraw=argsraw, **kwargs)
     if args is None:
         parser = argparse.ArgumentParser(
