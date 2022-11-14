@@ -375,9 +375,10 @@ def get_escaping_packet_angle_bin(modelpath, dfpackets: pd.DataFrame) -> pd.Data
             phibin = int(math.acos(cosphi) / 2.0 / np.pi * nphibins)
         else:
             phibin = int((math.acos(cosphi) + np.pi) / 2.0 / np.pi * nphibins)
-        na = (thetabin * nphibins) + phibin  # think na is angle number???
-        if na >= 100:
-            print(f"error bin number too high {na}")
+
+        na = (thetabin * nphibins) + phibin
+        assert na < at.get_viewingdirectionbincount()
+
         angle_number[i] = na
         i += 1
 
