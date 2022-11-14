@@ -194,7 +194,7 @@ def calculate_costheta_phi_for_viewing_angles(
     viewing_angles: Union[np.ndarray[Any, np.dtype[Any]], Sequence[int]], modelpath: Union[Path, str]
 ) -> dict[int, str]:
     modelpath = Path(modelpath)
-    MABINS = 100
+    MABINS = at.get_viewingdirectionbincount()
     assert len(list(Path(modelpath).glob(f"*_res_{MABINS-1:02d}.out*"))) > 0  # check last bin exists
     assert len(list(Path(modelpath).glob(f"*_res_{MABINS:02d}.out*"))) == 0  # check one beyond does not exist
 
@@ -203,9 +203,9 @@ def calculate_costheta_phi_for_viewing_angles(
     costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
 
     for angle in viewing_angles:
-        phibins = int(math.sqrt(MABINS))
-        costheta_index = angle // phibins
-        phi_index = angle % phibins
+        nphibins = at.get_viewingdirection_phibincount()
+        costheta_index = angle // nphibins
+        phi_index = angle % nphibins
 
         angle_definition[angle] = f"{costheta_viewing_angle_bins[costheta_index]}, {phi_viewing_angle_bins[phi_index]}"
         print(f"{angle:4d}   {costheta_viewing_angle_bins[costheta_index]}   {phi_viewing_angle_bins[phi_index]}")
