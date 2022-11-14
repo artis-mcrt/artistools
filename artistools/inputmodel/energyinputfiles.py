@@ -5,6 +5,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy import integrate
 
 import artistools as at
 import artistools.inputmodel
@@ -69,6 +70,53 @@ def rprocess_const_and_powerlaw():
     # times_and_rate = {'times': times/DAY, 'rate': rate, 'nuclear_heating_power': nuclear_heating_power}
     times_and_rate = {"times": times / DAY, "rate": rate}
     times_and_rate = pd.DataFrame(data=times_and_rate)
+
+    return times_and_rate, E_tot
+
+
+def define_heating_rate():
+    tmin = 0.0001  # days
+    tmax = 50
+
+    times = np.logspace(np.log10(tmin), np.log10(tmax), num=300)  # days
+    qdot = 5e9 * (times) ** (-1.3)  # define energy power law (5e9*t^-1.3)
+
+    E_tot = integrate.trapezoid(y=qdot, x=times)  # ergs/s/g
+    # print("Etot per gram", E_tot, E_tot*1.989e33*0.01)
+
+    import scipy.integrate
+
+    cumulative_integrated_energy = scipy.integrate.cumulative_trapezoid(y=qdot, x=times)
+    cumulative_integrated_energy = np.insert(cumulative_integrated_energy, 0, 0)
+
+    rate = cumulative_integrated_energy / E_tot
+
+    times_and_rate = {"times": times, "rate": rate}
+    times_and_rate = pd.DataFrame(data=times_and_rate)
+
+    dE = np.diff(times_and_rate["rate"] * E_tot)
+    dt = np.diff(times * 24 * 60 * 60)
+
+    intergrated_rate = dE / dt
+    scale_factor_energy_diff = max(qdot[1:] / intergrated_rate)
+    print(np.mean(scale_factor_energy_diff))
+    E_tot = E_tot * scale_factor_energy_diff
+    # print(f"E_tot after integrated line scaled to match energy of power law: {E_tot}")
+
+    dE = np.diff(times_and_rate["rate"] * E_tot)
+    dt = np.diff(times * 24 * 60 * 60)
+
+    # check energy rate is on top of power law line
+    plt.plot(times_and_rate["times"][1:], (dE / dt) * 0.01 * MSUN)
+    plt.plot(times_and_rate["times"], qdot * 0.01 * MSUN)
+    plt.yscale("log")
+    plt.xscale("log")
+
+    plt.xlabel("Time [days]")
+    plt.ylabel("Q [erg/g/s]")
+    # plt.xlim(0.1, 20)
+    # plt.ylim(5e39, 2e41)
+    plt.show()
 
     return times_and_rate, E_tot
 
@@ -150,6 +198,7 @@ def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_tra
 
 
 def make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams):
+    print(f"energy distribution weighted by rho (E_tot per gram {E_tot_per_gram})")
     Etot = E_tot_per_gram * Mtot_grams
     print("Etot", Etot)
     numberofcells = len(rho)
@@ -159,15 +208,34 @@ def make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams):
 
     energydistdata = {"cellid": np.arange(1, len(rho) + 1), "cell_energy": cellenergy}
 
-    print("sum energy cells", sum(energydistdata["cell_energy"]))
+    print(f"sum energy cells {sum(energydistdata['cell_energy'])} should equal Etot")
     energydistdata = pd.DataFrame(data=energydistdata)
 
     return energydistdata
 
 
-def make_energy_files(rho, Mtot_grams, outputpath=None):
-    times_and_rate, E_tot_per_gram = rprocess_const_and_powerlaw()
-    energydistributiondata = make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams)
+def make_energy_files(rho, Mtot_grams, outputpath=None, modelpath=None, model=None):
+    powerlaw = True
+    if powerlaw:
+        print("Using power law for energy rate")
+        # times_and_rate, E_tot_per_gram = rprocess_const_and_powerlaw()
+        times_and_rate, E_tot_per_gram = define_heating_rate()
+    # else:
+    #     path = Path(".")
+    #     energy_thermo_data = pd.read_csv(path / "interpolatedQdot.dat", delim_whitespace=True)
+    #     energy_thermo_data = energy_thermo_data.rename(columns={"mean": "Qdot"})
+    #     print("Taking rate from averaged trajectories Qdot")
+    #     with pd.option_context("display.max_rows", None, "display.max_columns", None):
+    #         print(energy_thermo_data["time/s"] / DAY)
+    #     times_and_rate, E_tot_per_gram = energy_from_rprocess_calculation(
+    #         energy_thermo_data, get_rate=True, thermalisation=True
+    #     )
+
+    weight_energy_by_rho = True
+    if weight_energy_by_rho:
+        energydistributiondata = make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams)
+    # else:
+    # energydistributiondata = energy_distribution_from_Q_rprocess(modelpath, model)
 
     write_energydistribution_file(energydistributiondata, outputfilepath=outputpath)
     write_energyrate_file(times_and_rate, outputfilepath=outputpath)
