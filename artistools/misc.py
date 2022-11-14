@@ -758,30 +758,31 @@ def get_filterfunc(
 ) -> Optional[Callable[[Union[list[float], np.ndarray]], np.ndarray]]:
     """Using command line arguments to determine the appropriate filter function."""
 
-    filterfunc: Optional[Callable[[Union[list[float], np.ndarray]], np.ndarray]]
+    filterfunc: Optional[Callable[[Union[list[float], np.ndarray]], np.ndarray]] = None
+    dictargs = vars(args)
 
-    if hasattr(args, "filtermovingavg") and args.filtermovingavg > 0:
+    if dictargs.get("filtermovingavg", False):
 
         def movavgfilterfunc(ylist: Union[list[float], np.ndarray]) -> np.ndarray:
             n = args.filtermovingavg
             arr_padded = np.pad(ylist, (n // 2, n - 1 - n // 2), mode="edge")
             return np.convolve(arr_padded, np.ones((n,)) / n, mode="valid")
 
+        assert filterfunc is None
         filterfunc = movavgfilterfunc
 
-    elif hasattr(args, "filtersavgol") and args.filtersavgol:
+    if dictargs.get("filtersavgol", False):
         import scipy.signal
 
         window_length, poly_order = [int(x) for x in args.filtersavgol]
 
-        def ffilterfunc(ylist: Union[list[float], np.ndarray]) -> np.ndarray:
+        def savgolfilterfunc(ylist: Union[list[float], np.ndarray]) -> np.ndarray:
             return scipy.signal.savgol_filter(ylist, window_length, poly_order, mode=mode)
 
-        filterfunc = ffilterfunc
+        assert filterfunc is None
+        filterfunc = savgolfilterfunc
 
         print("Applying Savitzky–Golay filter")
-    else:
-        filterfunc = None
 
     return filterfunc
 

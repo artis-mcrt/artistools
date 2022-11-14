@@ -78,7 +78,7 @@ def setup_completions():
 
         scriptlines = proc.stdout.split("\n")
         f.write("\n".join(scriptlines[:-2]))
-        f.write("\n")
+        f.write("\n\n")
 
         for command in commandlist.keys():
             completecommand = scriptlines[-2].replace("__MY_COMMAND__", command)
