@@ -383,7 +383,7 @@ def get_res_spectrum(
     angle: Optional[int] = None,
     res_specdata: Optional[dict[int, pd.DataFrame]] = None,
     fnufilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
-    args: argparse.Namespace = None,
+    args: Optional[argparse.Namespace] = None,
 ) -> list[pd.DataFrame]:
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax < 0:
