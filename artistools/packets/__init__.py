@@ -323,8 +323,8 @@ def readfile(
 
 
 @lru_cache(maxsize=16)
-def get_packetsfilepaths(modelpath, maxpacketfiles=None):
-    def preferred_alternative(f, files):
+def get_packetsfilepaths(modelpath: Path, maxpacketfiles: Optional[int] = None) -> list[Path]:
+    def preferred_alternative(f: Path) -> bool:
         f_nosuffixes = at.stripallsuffixes(f)
 
         suffix_priority = [[".out", ".gz"], [".out", ".xz"], [".out", ".feather"], [".out", ".parquet"]]
@@ -342,7 +342,7 @@ def get_packetsfilepaths(modelpath, maxpacketfiles=None):
     )
 
     # strip out duplicates in the case that some are stored as binary and some are text files
-    packetsfiles = [f for f in packetsfiles if not preferred_alternative(f, packetsfiles)]
+    packetsfiles = [f for f in packetsfiles if not preferred_alternative(f)]
 
     if maxpacketfiles is not None and maxpacketfiles > 0 and len(packetsfiles) > maxpacketfiles:
         print(f"Using only the first {maxpacketfiles} of {len(packetsfiles)} packets files")
@@ -351,10 +351,10 @@ def get_packetsfilepaths(modelpath, maxpacketfiles=None):
     return packetsfiles
 
 
-def get_escaping_packet_angle_bin(modelpath, dfpackets: pd.DataFrame) -> pd.DataFrame:
+def get_escaping_packet_angle_bin(modelpath: Union[Path, str], dfpackets: pd.DataFrame) -> pd.DataFrame:
     nphibins = at.get_viewingdirection_phibincount()
 
-    syn_dir = at.get_syn_dir(modelpath)
+    syn_dir = at.get_syn_dir(Path(modelpath))
 
     angle_number = np.zeros(len(dfpackets))
     i = 0
