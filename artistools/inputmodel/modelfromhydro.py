@@ -114,6 +114,20 @@ def get_snapshot_time_geomunits(pathtogriddata: Path) -> tuple[float, float]:
     return simulation_end_time_geomunits, mergertime_geomunits
 
 
+def scale_model_to_time(targetmodeltime_days, t_model_days, modeldata):
+    timefactor = targetmodeltime_days / t_model_days
+    modeldata.eval("pos_x_min = pos_x_min * @timefactor", inplace=True)
+    modeldata.eval("pos_y_min = pos_y_min * @timefactor", inplace=True)
+    modeldata.eval("pos_z_min = pos_z_min * @timefactor", inplace=True)
+    modeldata.eval("rho = rho * @timefactor ** -3", inplace=True)
+    print(
+        f"Adjusting t_model to {targetmodeltime_days} days (factor {timefactor}) "
+        "using homologous expansion of positions and densities"
+    )
+    t_model_days = targetmodeltime_days
+    return t_model_days, modeldata
+
+
 def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlespercell=0):
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
 
@@ -171,16 +185,7 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
     )
 
     if targetmodeltime_days is not None:
-        timefactor = targetmodeltime_days / t_model_days
-        griddata.eval("pos_x_min = pos_x_min * @timefactor", inplace=True)
-        griddata.eval("pos_y_min = pos_y_min * @timefactor", inplace=True)
-        griddata.eval("pos_z_min = pos_z_min * @timefactor", inplace=True)
-        griddata.eval("rho = rho * @timefactor ** -3", inplace=True)
-        print(
-            f"Adjusting t_model to {targetmodeltime_days} days (factor {timefactor}) "
-            "using homologous expansion of positions and densities"
-        )
-        t_model_days = targetmodeltime_days
+        t_model_days, griddata = scale_model_to_time(targetmodeltime_days, t_model_days, griddata)
 
     if minparticlespercell > 0:
         ncoordgridx = round(len(griddata) ** (1.0 / 3.0))
