@@ -56,14 +56,25 @@ def plot_2d_initial_abundances(modelpath, args):
 
 def get_merged_model_abundances(modelpath):
     # t_model is in days and vmax is in cm/s
-    model, t_model, vmax = at.inputmodel.get_modeldata_tuple(modelpath[0], dimensions=3)
+    model, t_model_days, vmax = at.inputmodel.get_modeldata_tuple(modelpath[0], dimensions=3)
+
+    targetmodeltime_days = None
+    if targetmodeltime_days is not None:
+        print(
+            f"Scaling modeldata to {targetmodeltime_days} days. \nWARNING: abundances not scaled for radioactive decays"
+        )
+        import artistools.inputmodel.modelfromhydro
+
+        t_model_days, model = artistools.inputmodel.modelfromhydro.scale_model_to_time(
+            targetmodeltime_days, t_model_days, model
+        )
 
     abundances = at.inputmodel.get_initialabundances(modelpath[0])
 
     abundances["inputcellid"] = abundances["inputcellid"].apply(lambda x: float(x))
 
     merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
-    return merge_dfs, t_model
+    return merge_dfs, t_model_days
 
 
 def get_2D_slice_through_3d_model(merge_dfs, sliceaxis, sliceindex=None):
