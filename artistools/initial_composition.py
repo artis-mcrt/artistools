@@ -80,14 +80,16 @@ def get_2D_slice_through_3d_model(merge_dfs, sliceaxis, sliceindex=None):
     return slicedf
 
 
-def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model):
+def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model, args):
     colorscale = plotvals[ion]
 
-    # Don't plot empty cells:
-    # colorscale = np.ma.masked_where(colorscale == 0., colorscale)
+    if args.hideemptycells:
+        # Don't plot empty cells:
+        colorscale = np.ma.masked_where(colorscale == 0.0, colorscale)
 
-    # logscale for colormap
-    # colorscale = np.log10(colorscale)
+    if args.logcolorscale:
+        # logscale for colormap
+        colorscale = np.log10(colorscale)
 
     normalise_between_0_and_1 = False
     if normalise_between_0_and_1:
@@ -157,7 +159,7 @@ def plot_3d_initial_abundances(modelpath, args=None):
             ion = "rho"
         if subplots:
             ax = axes[index]
-        im, scaledmap = plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model)
+        im, scaledmap = plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model, args)
 
     xlabel = rf"v$_{plotaxis1}$ in 10$^3$ km/s"
     ylabel = rf"v$_{plotaxis2}$ in 10$^3$ km/s"
@@ -310,6 +312,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-ion", type=str, default=["Fe"], nargs="+", help="Choose ion to plot. Default is Fe")
 
     parser.add_argument("--rho", action="store_true", help="Plot rho instead of ion")
+
+    parser.add_argument("--logcolorscale", action="store_true", help="Use log scale for colour map")
+
+    parser.add_argument("--hideemptycells", action="store_true", help="Don't plot empty cells")
 
     parser.add_argument("--opacity", action="store_true", help="Plot opacity from opacity.txt (if available for model)")
 
