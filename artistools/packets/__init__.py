@@ -379,11 +379,10 @@ def get_escaping_packet_angle_bin(modelpath: Union[Path, str], dfpackets: pd.Dat
 
     syn_dir = at.get_syn_dir(Path(modelpath))
 
-    @np.vectorize
-    def get_directionbin_loc(dirx, diry, dirz) -> int:
-        return get_directionbin(dirx, diry, dirz, nphibins, syn_dir)
-
-    dfpackets["angle_bin"] = get_directionbin_loc(dfpackets["dirx"], dfpackets["diry"], dfpackets["dirz"])
+    get_all_directionbins = np.vectorize(get_directionbin, excluded=["nphibins", "syn_dir"])
+    dfpackets["angle_bin"] = get_all_directionbins(
+        dfpackets["dirx"], dfpackets["diry"], dfpackets["dirz"], nphibins=nphibins, syn_dir=syn_dir
+    )
     assert np.all(dfpackets["angle_bin"] < at.get_viewingdirectionbincount())
 
     return dfpackets
