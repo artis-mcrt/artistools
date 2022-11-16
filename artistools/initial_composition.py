@@ -65,9 +65,8 @@ def get_merged_model_abundances(modelpath):
         )
         import artistools.inputmodel.modelfromhydro
 
-        t_model_days, model = artistools.inputmodel.modelfromhydro.scale_model_to_time(
-            targetmodeltime_days, t_model_days, model
-        )
+        artistools.inputmodel.modelfromhydro.scale_model_to_time(targetmodeltime_days, t_model_days, model)
+        t_model_days = targetmodeltime_days
 
     abundances = at.inputmodel.get_initialabundances(modelpath[0])
 

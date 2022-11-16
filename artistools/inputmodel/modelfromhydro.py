@@ -124,8 +124,7 @@ def scale_model_to_time(targetmodeltime_days, t_model_days, modeldata):
         f"Adjusting t_model to {targetmodeltime_days} days (factor {timefactor}) "
         "using homologous expansion of positions and densities"
     )
-    t_model_days = targetmodeltime_days
-    return t_model_days, modeldata
+    return t_model_days
 
 
 def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlespercell=0):
@@ -185,7 +184,8 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
     )
 
     if targetmodeltime_days is not None:
-        t_model_days, griddata = scale_model_to_time(targetmodeltime_days, t_model_days, griddata)
+        scale_model_to_time(targetmodeltime_days, t_model_days, griddata)
+        t_model_days = targetmodeltime_days
 
     if minparticlespercell > 0:
         ncoordgridx = round(len(griddata) ** (1.0 / 3.0))
