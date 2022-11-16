@@ -609,6 +609,8 @@ def get_flux_contributions(
     getabsorption: bool = True,
     use_lastemissiontype: bool = True,
     directionbin: Optional[int] = None,
+    averageoverphi: bool = False,
+    averageovertheta: bool = False,
 ) -> tuple[list[fluxcontributiontuple], np.ndarray]:
     arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
     arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
@@ -621,71 +623,93 @@ def get_flux_contributions(
         elementlist = at.get_composition_data(modelpath)
     nelements = len(elementlist)
 
-    if getemission:
-        if use_lastemissiontype:
-            emissionfilenames = ["emission.out.xz", "emission.out.gz", "emission.out", "emissionpol.out"]
-        else:
-            emissionfilenames = ["emissiontrue.out.xz", "emissiontrue.out.gz", "emissiontrue.out"]
-
-        if directionbin is not None:
-            emissionfilenames = [x.replace(".out", f"_res_{directionbin:02d}.out") for x in emissionfilenames]
-
-        emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
-
-        if "pol" in str(emissionfilename):
-            print("This artis run contains polarisation data")
-            # File contains I, Q and U and so times are repeated 3 times
-            arr_tmid = np.array(arr_tmid.tolist() * 3)
-
-        try:
-            emissionfilesize = Path(emissionfilename).stat().st_size / 1024 / 1024
-            print(f" Reading {emissionfilename} ({emissionfilesize:.2f} MiB)")
-
-        except AttributeError:
-            print(f" Reading {emissionfilename}")
-
-        emissiondata = pd.read_csv(emissionfilename, delim_whitespace=True, header=None)
-        maxion_float = (emissiondata.shape[1] - 1) / 2 / nelements  # also known as MIONS in ARTIS sn3d.h
-        assert maxion_float.is_integer()
-        maxion = int(maxion_float)
-        print(f" inferred MAXION = {maxion} from emission file using nlements = {nelements} from compositiondata.txt")
-
-        # check that the row count is product of timesteps and frequency bins found in spec.out
-        assert emissiondata.shape[0] == len(arraynu) * len(arr_tmid)
-
-    if getabsorption:
-        absorptionfilenames = ["absorption.out.xz", "absorption.out.gz", "absorption.out", "absorptionpol.out"]
-        if directionbin is not None:
-            absorptionfilenames = [x.replace(".out", f"_res_{directionbin:02d}.out") for x in absorptionfilenames]
-
-        absorptionfilename = at.firstexisting(absorptionfilenames, path=modelpath)
-
-        try:
-            absorptionfilesize = Path(absorptionfilename).stat().st_size / 1024 / 1024
-            print(f" Reading {absorptionfilename} ({absorptionfilesize:.2f} MiB)")
-        except AttributeError:
-            print(f" Reading {absorptionfilename}")
-
-        absorptiondata = pd.read_csv(absorptionfilename, delim_whitespace=True, header=None)
-        absorption_maxion_float = absorptiondata.shape[1] / nelements
-        assert absorption_maxion_float.is_integer()
-        absorption_maxion = int(absorption_maxion_float)
-        if not getemission:
-            maxion = absorption_maxion
-            print(
-                f" inferred MAXION = {maxion} from absorption file using nlements = {nelements}from compositiondata.txt"
-            )
-        else:
-            assert maxion is not None and absorption_maxion == maxion
-        assert absorptiondata.shape[0] == len(arraynu) * len(arr_tmid)
+    if directionbin is None:
+        dbinlist = [-1]
+    elif averageoverphi:
+        assert directionbin is not None and directionbin % at.get_viewingdirection_phibincount() == 0
+        dbinlist = list(range(directionbin, directionbin + at.get_viewingdirection_phibincount()))
+    elif averageovertheta:
+        assert not averageoverphi
+        assert directionbin is not None and directionbin < at.get_viewingdirection_phibincount()
+        dbinlist = list(range(directionbin, at.get_viewingdirectionbincount(), at.get_viewingdirection_phibincount()))
     else:
-        absorptiondata = None
+        dbinlist = [directionbin]
+
+    emissiondata: dict[int, pd.DataFrame] = {}
+    absorptiondata: dict[int, pd.DataFrame] = {}
+    maxion: Optional[int] = None
+    for i, dbin in enumerate(dbinlist):
+        if getemission:
+            if use_lastemissiontype:
+                emissionfilenames = ["emission.out.xz", "emission.out.gz", "emission.out", "emissionpol.out"]
+            else:
+                emissionfilenames = ["emissiontrue.out.xz", "emissiontrue.out.gz", "emissiontrue.out"]
+
+            if dbin != -1:
+                emissionfilenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in emissionfilenames]
+
+            emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
+
+            if "pol" in str(emissionfilename):
+                print("This artis run contains polarisation data")
+                # File contains I, Q and U and so times are repeated 3 times
+                arr_tmid = np.array(arr_tmid.tolist() * 3)
+
+            try:
+                emissionfilesize = Path(emissionfilename).stat().st_size / 1024 / 1024
+                print(f" Reading {emissionfilename} ({emissionfilesize:.2f} MiB)")
+
+            except AttributeError:
+                print(f" Reading {emissionfilename}")
+
+            emissiondata[dbin] = pd.read_csv(emissionfilename, delim_whitespace=True, header=None)
+            maxion_float = (emissiondata[dbin].shape[1] - 1) / 2 / nelements  # also known as MIONS in ARTIS sn3d.h
+            assert maxion_float.is_integer()
+            if maxion is None:
+                maxion = int(maxion_float)
+                print(
+                    f" inferred MAXION = {maxion} from emission file using nlements = {nelements} from"
+                    " compositiondata.txt"
+                )
+            else:
+                assert maxion == int(maxion_float)
+
+            # check that the row count is product of timesteps and frequency bins found in spec.out
+            assert emissiondata[dbin].shape[0] == len(arraynu) * len(arr_tmid)
+
+        if getabsorption:
+            absorptionfilenames = ["absorption.out.xz", "absorption.out.gz", "absorption.out", "absorptionpol.out"]
+            if directionbin is not None:
+                absorptionfilenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in absorptionfilenames]
+
+            absorptionfilename = at.firstexisting(absorptionfilenames, path=modelpath)
+
+            try:
+                absorptionfilesize = Path(absorptionfilename).stat().st_size / 1024 / 1024
+                print(f" Reading {absorptionfilename} ({absorptionfilesize:.2f} MiB)")
+            except AttributeError:
+                print(f" Reading {absorptionfilename}")
+
+            absorptiondata[dbin] = pd.read_csv(absorptionfilename, delim_whitespace=True, header=None)
+            absorption_maxion_float = absorptiondata[dbin].shape[1] / nelements
+            assert absorption_maxion_float.is_integer()
+            absorption_maxion = int(absorption_maxion_float)
+            if maxion is None:
+                maxion = absorption_maxion
+                print(
+                    f" inferred MAXION = {maxion} from absorption file using nlements = {nelements}from"
+                    " compositiondata.txt"
+                )
+            else:
+                assert absorption_maxion == maxion
+            assert absorptiondata[dbin].shape[0] == len(arraynu) * len(arr_tmid)
 
     array_flambda_emission_total = np.zeros_like(arraylambda, dtype=float)
     contribution_list = []
     if filterfunc:
         print("Applying filter to ARTIS spectrum")
 
+    assert maxion is not None
     for element in range(nelements):
         nions = elementlist.nions[element]
         # nions = elementlist.iloc[element].uppermost_ionstage - elementlist.iloc[element].lowermost_ionstage + 1
@@ -705,21 +729,26 @@ def get_flux_contributions(
                 if getemission:
                     array_fnu_emission = stackspectra(
                         [
-                            (emissiondata.iloc[timestep :: len(arr_tmid), selectedcolumn].values, arr_tdelta[timestep])
+                            (
+                                emissiondata[dbin].iloc[timestep :: len(arr_tmid), selectedcolumn].values,
+                                arr_tdelta[timestep] / len(dbinlist),
+                            )
                             for timestep in range(timestepmin, timestepmax + 1)
+                            for dbin in dbinlist
                         ]
                     )
                 else:
                     array_fnu_emission = np.zeros_like(arraylambda, dtype=float)
 
-                if absorptiondata is not None and selectedcolumn < nelements * maxion:  # bound-bound process
+                if absorptiondata and selectedcolumn < nelements * maxion:  # bound-bound process
                     array_fnu_absorption = stackspectra(
                         [
                             (
-                                absorptiondata.iloc[timestep :: len(arr_tmid), selectedcolumn].values,
-                                arr_tdelta[timestep],
+                                absorptiondata[dbin].iloc[timestep :: len(arr_tmid), selectedcolumn].values,
+                                arr_tdelta[timestep] / len(dbinlist),
                             )
                             for timestep in range(timestepmin, timestepmax + 1)
+                            for dbin in dbinlist
                         ]
                     )
                 else:
