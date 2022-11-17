@@ -124,7 +124,6 @@ def scale_model_to_time(targetmodeltime_days, t_model_days, modeldata):
         f"Adjusting t_model to {targetmodeltime_days} days (factor {timefactor}) "
         "using homologous expansion of positions and densities"
     )
-    return t_model_days
 
 
 def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlespercell=0):
