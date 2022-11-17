@@ -551,6 +551,7 @@ def make_emissionabsorption_plot(
             getabsorption=args.showabsorption,
             use_lastemissiontype=not args.use_thermalemissiontype,
             directionbin=args.plotviewingangle[0] if args.plotviewingangle else None,
+            averageoverphi=args.average_every_tenth_viewing_angle,
         )
 
     at.spectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
