@@ -662,7 +662,14 @@ def get_flux_contributions(
             except AttributeError:
                 print(f" Reading {emissionfilename}")
 
-            emissiondata[dbin] = pd.read_csv(emissionfilename, delim_whitespace=True, header=None)
+            emissiondata[dbin] = pd.read_table(
+                emissionfilename, sep=" ", engine=at.config["pandas_engine"], header=None
+            )
+
+            # check if last column is an artefact of whitespace at end of line (None or NaNs for pyarrow/c engine)
+            if emissiondata[dbin].iloc[0, -1] is None or np.isnan(emissiondata[dbin].iloc[0, -1]):
+                emissiondata[dbin].drop(emissiondata[dbin].columns[-1], axis=1, inplace=True)
+
             maxion_float = (emissiondata[dbin].shape[1] - 1) / 2 / nelements  # also known as MIONS in ARTIS sn3d.h
             assert maxion_float.is_integer()
             if maxion is None:
@@ -690,7 +697,14 @@ def get_flux_contributions(
             except AttributeError:
                 print(f" Reading {absorptionfilename}")
 
-            absorptiondata[dbin] = pd.read_csv(absorptionfilename, delim_whitespace=True, header=None)
+            absorptiondata[dbin] = pd.read_table(
+                absorptionfilename, sep=" ", engine=at.config["pandas_engine"], header=None
+            )
+
+            # check if last column is an artefact of whitespace at end of line (None or NaNs for pyarrow/c engine)
+            if absorptiondata[dbin].iloc[0, -1] is None or np.isnan(absorptiondata[dbin].iloc[0, -1]):
+                absorptiondata[dbin].drop(absorptiondata[dbin].columns[-1], axis=1, inplace=True)
+
             absorption_maxion_float = absorptiondata[dbin].shape[1] / nelements
             assert absorption_maxion_float.is_integer()
             absorption_maxion = int(absorption_maxion_float)
