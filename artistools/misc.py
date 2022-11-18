@@ -828,12 +828,12 @@ def get_bflist(modelpath: Union[Path, str]) -> dict[int, tuple[int, int, int, in
 linetuple = namedtuple("linetuple", "lambda_angstroms atomic_number ionstage upperlevelindex lowerlevelindex")
 
 
-@lru_cache(maxsize=16)
-def get_linelist(
-    modelpath: Union[Path, str], returntype: Literal["dict", "dataframe"] = "dict"
-) -> Union[dict[int, linetuple], pd.DataFrame]:
+def read_linestatfile(
+    filepath: Union[Path, str]
+) -> tuple[int, list[float], list[int], list[int], list[int], list[int]]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
-    with zopen(Path(modelpath, "linestat.out"), "rt") as linestatfile:
+
+    with zopen(filepath, "rt") as linestatfile:
         lambda_angstroms = [float(wl) * 1e8 for wl in linestatfile.readline().split()]
         nlines = len(lambda_angstroms)
 
@@ -848,29 +848,47 @@ def get_linelist(
         lower_levels = [int(levelplusone) - 1 for levelplusone in linestatfile.readline().split()]
         assert len(lower_levels) == nlines
 
-    if returntype == "dict":
-        linelistdict = {
-            index: linetuple(lambda_a, Z, ionstage, upper, lower)
-            for index, lambda_a, Z, ionstage, upper, lower in zip(
-                range(nlines), lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
-            )
-        }
-        return linelistdict
-    elif returntype == "dataframe":
-        # considering our standard lineline is about 1.5 million lines,
-        # using a dataframe make the lookup process very slow
-        dflinelist = pd.DataFrame(
-            {
-                "lambda_angstroms": lambda_angstroms,
-                "atomic_number": atomic_numbers,
-                "ionstage": ion_stages,
-                "upperlevelindex": upper_levels,
-                "lowerlevelindex": lower_levels,
-            }
-        )
-        dflinelist.index.name = "linelistindex"
+    return nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
 
-        return dflinelist
+
+@lru_cache(maxsize=8)
+def get_linelist_dict(
+    modelpath: Union[Path, str], returntype: Literal["dict", "dataframe"] = "dict"
+) -> dict[int, linetuple]:
+    nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
+        Path(modelpath, "linestat.out")
+    )
+    linelistdict = {
+        index: linetuple(lambda_a, Z, ionstage, upper, lower)
+        for index, lambda_a, Z, ionstage, upper, lower in zip(
+            range(nlines), lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
+        )
+    }
+    return linelistdict
+
+
+@lru_cache(maxsize=8)
+def get_linelist_dataframe(
+    modelpath: Union[Path, str],
+) -> pd.DataFrame:
+    nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
+        Path(modelpath, "linestat.out")
+    )
+
+    # considering our standard lineline is about 1.5 million lines,
+    # using a dataframe make the lookup process very slow
+    dflinelist = pd.DataFrame(
+        {
+            "lambda_angstroms": lambda_angstroms,
+            "atomic_number": atomic_numbers,
+            "ionstage": ion_stages,
+            "upperlevelindex": upper_levels,
+            "lowerlevelindex": lower_levels,
+        }
+    )
+    dflinelist.index.name = "linelistindex"
+
+    return dflinelist
 
 
 @lru_cache(maxsize=8)

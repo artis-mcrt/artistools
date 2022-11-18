@@ -855,9 +855,11 @@ def make_plot(args) -> None:
     if args.showemission or args.showabsorption:
         legendncol = 2
         if args.internalpackets:
-            defaultoutputfile = Path("plotspecinternalemission_{time_days_min:.1f}d_{time_days_max:.1f}d.pdf")
+            defaultoutputfile = Path(
+                "plotspecinternalemission_{time_days_min:.1f}d_{time_days_max:.1f}d{directionbins}.pdf"
+            )
         else:
-            defaultoutputfile = Path("plotspecemission_{time_days_min:.1f}d_{time_days_max:.1f}d.pdf")
+            defaultoutputfile = Path("plotspecemission_{time_days_min:.1f}d_{time_days_max:.1f}d{directionbins}.pdf")
 
         plotobjects, plotobjectlabels, dfalldata = make_emissionabsorption_plot(
             args.specpath[0], axes[0], filterfunc, args=args, scale_to_peak=scale_to_peak
@@ -937,7 +939,13 @@ def make_plot(args) -> None:
     elif not Path(args.outputfile).suffixes:
         args.outputfile = args.outputfile / defaultoutputfile
 
-    filenameout = str(args.outputfile).format(time_days_min=args.timemin, time_days_max=args.timemax)
+    strdirectionbins = ""
+    if args.plotviewingangle:
+        strdirectionbins = "_direction" + "_".join([f"{angle:02d}" for angle in args.plotviewingangle])
+
+    filenameout = str(args.outputfile).format(
+        time_days_min=args.timemin, time_days_max=args.timemax, directionbins=strdirectionbins
+    )
     # plt.text(6000, (args.ymax * 0.9), f'{round(args.timemin) + 1} days', fontsize='large')
 
     if args.showtime and not args.multispecplot:

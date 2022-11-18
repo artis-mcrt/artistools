@@ -390,7 +390,7 @@ def add_abundancecontributions(
 
     print(
         f"{active_inputcellcount} of {len(dfmodel)} model cells have >={minparticlespercell} particles contributing "
-        f"({len(dfcontribs)} total contributions from {particle_count} particles after filter)"
+        f"({len(dfcontribs)} cell contributions from {particle_count} particles after filter)"
     )
 
     listcellnucabundances = []
