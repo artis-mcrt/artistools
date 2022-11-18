@@ -25,6 +25,15 @@ config: dict[str, Any]
 config = {}
 config["enable_diskcache"] = False
 config["num_processes"] = num_processes
+
+# pyarrow is faster, if it is installed
+try:
+    import pyarrow
+
+    config["pandas_engine"] = "pyarrow"
+except ImportError:
+    config["pandas_engine"] = "c"
+
 config["figwidth"] = 5
 config["codecomparisondata1path"] = Path(
     "/Users/luke/Library/Mobile Documents/com~apple~CloudDocs/GitHub/sn-rad-trans/data1"
