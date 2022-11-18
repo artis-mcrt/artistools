@@ -715,7 +715,7 @@ def get_flux_contributions(
         # nions = elementlist.iloc[element].uppermost_ionstage - elementlist.iloc[element].lowermost_ionstage + 1
         for ion in range(nions):
             ion_stage = ion + elementlist.lowermost_ionstage[element]
-            ionserieslist = [
+            ionserieslist: list[tuple[int, str]] = [
                 (element * maxion + ion, "bound-bound"),
                 (nelements * maxion + element * maxion + ion, "bound-free"),
             ]
@@ -723,7 +723,7 @@ def get_flux_contributions(
             if element == ion == 0:
                 ionserieslist.append((2 * nelements * maxion, "free-free"))
 
-            for selectedcolumn, emissiontype in ionserieslist:
+            for selectedcolumn, emissiontypeclass in ionserieslist:
                 # if linelabel.startswith('Fe ') or linelabel.endswith("-free"):
                 #     continue
                 if getemission:
@@ -768,12 +768,12 @@ def get_flux_contributions(
                     np.trapz(array_fnu_absorption, x=arraynu)
                 )
 
-                if emissiontype == "bound-bound":
+                if emissiontypeclass == "bound-bound":
                     linelabel = at.get_ionstring(elementlist.Z[element], ion_stage)
-                elif emissiontype != "free-free":
-                    linelabel = f"{at.get_ionstring(elementlist.Z[element], ion_stage)} {emissiontype}"
+                elif emissiontypeclass == "free-free":
+                    linelabel = "free-free"
                 else:
-                    linelabel = f"{emissiontype}"
+                    linelabel = f"{at.get_ionstring(elementlist.Z[element], ion_stage)} {emissiontypeclass}"
 
                 contribution_list.append(
                     fluxcontributiontuple(
