@@ -812,7 +812,9 @@ def get_flux_contributions_from_packets(
     if groupby in ["terms", "upperterm"]:
         adata = at.atomic.get_levels(modelpath)
 
-    def get_emprocesslabel(linelist: dict[int, at.linetuple], emtype: int) -> str:
+    def get_emprocesslabel(
+        linelist: dict[int, at.linetuple], bflist: dict[int, tuple[int, int, int, int]], emtype: int
+    ) -> str:
         if emtype >= 0:
             line = linelist[emtype]
             if groupby == "line":
@@ -852,7 +854,6 @@ def get_flux_contributions_from_packets(
         elif emtype == -9999999:
             return "free-free"
 
-        bflist = at.get_bflist(modelpath)
         bfindex = -emtype - 1
         if bfindex in bflist:
             (atomic_number, ionstage, level) = bflist[bfindex][:3]
@@ -893,7 +894,7 @@ def get_flux_contributions_from_packets(
 
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
 
-    linelist = at.get_linelist(modelpath=modelpath, returntype="dict")
+    linelist = at.get_linelist_dict(modelpath=modelpath)
 
     energysum_spectrum_emission_total = np.zeros_like(array_lambda, dtype=float)
     array_energysum_spectra = {}
@@ -970,6 +971,7 @@ def get_flux_contributions_from_packets(
                     np.digitize(c_ang_s / dfpackets.absorption_freq, bins=array_lambdabinedges, right=True) - 1
                 )
 
+        bflist = at.get_bflist(modelpath)
         for _, packet in dfpackets.iterrows():
             lambda_rf = c_ang_s / packet.nu_rf
             xindex = int(packet.xindex)
@@ -983,7 +985,7 @@ def get_flux_contributions_from_packets(
                 # if emtype >= 0 and linelist[emtype].upperlevelindex <= 80:
                 #     continue
                 # emprocesskey = get_emprocesslabel(packet.emissiontype)
-                emprocesskey = get_emprocesslabel(linelist, packet[emtypecolumn])
+                emprocesskey = get_emprocesslabel(linelist, bflist, packet[emtypecolumn])
                 # print('packet lambda_cmf: {c_ang_s / packet.nu_cmf}.1f}, lambda_rf {lambda_rf:.1f}, {emprocesskey}')
 
                 if emprocesskey not in array_energysum_spectra:
@@ -1061,6 +1063,10 @@ def sort_and_reduce_flux_contribution_list(
     greyscale: bool = False,
 ) -> list[fluxcontributiontuple]:
     if fixedionlist:
+        unrecognised_items = [x for x in fixedionlist if x not in [y.linelabel for y in contribution_list_in]]
+        if unrecognised_items:
+            raise ValueError(f"WARNING: did not understand these items in fixedionlist: {unrecognised_items}")
+
         # sort in manual order
         def sortkey(x: fluxcontributiontuple) -> tuple[int, float]:
             assert fixedionlist is not None
