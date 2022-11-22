@@ -181,7 +181,7 @@ def plot_filter_functions(axis: plt.Axes) -> None:
     filter_names = ["U", "B", "V", "R", "I"]
     colours = ["r", "b", "g", "c", "m"]
 
-    filterdir = os.path.join(at.config["path_artistools_dir"], "data/filters/")
+    filterdir = os.path.join(at.get_config()["path_artistools_dir"], "data/filters/")
     for index, filter_name in enumerate(filter_names):
         filter_data = pd.read_csv(
             filterdir / Path(f"{filter_name}.txt"),
@@ -811,7 +811,10 @@ def make_plot(args) -> None:
         sharey=False,
         sharex=True,
         squeeze=True,
-        figsize=(args.figscale * at.config["figwidth"], args.figscale * at.config["figwidth"] * (0.25 + nrows * 0.4)),
+        figsize=(
+            args.figscale * at.get_config()["figwidth"],
+            args.figscale * at.get_config()["figwidth"] * (0.25 + nrows * 0.4),
+        ),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 

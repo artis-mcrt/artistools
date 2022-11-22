@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
+import multiprocessing
 
 
 def addargs(parser=None) -> None:
@@ -45,5 +46,5 @@ def main(argsraw=None) -> None:
 
 
 if __name__ == "__main__":
-    # multiprocessing.freeze_support()
+    multiprocessing.freeze_support()
     main()

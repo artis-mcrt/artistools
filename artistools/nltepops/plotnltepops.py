@@ -416,7 +416,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
         ncols=cols,
         sharex=True,
         sharey=True,
-        figsize=(at.config["figwidth"] * 2 * cols, at.config["figwidth"] * 0.85 * rows),
+        figsize=(at.get_config()["figwidth"] * 2 * cols, at.get_config()["figwidth"] * 0.85 * rows),
         tight_layout={"pad": 2.0, "w_pad": 0.2, "h_pad": 0.2},
     )
     if args.subplots:
@@ -563,7 +563,10 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         nrows=nrows,
         ncols=1,
         sharex=False,
-        figsize=(args.figscale * at.config["figwidth"], args.figscale * at.config["figwidth"] * subplotheight * nrows),
+        figsize=(
+            args.figscale * at.get_config()["figwidth"],
+            args.figscale * at.get_config()["figwidth"] * subplotheight * nrows,
+        ),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 

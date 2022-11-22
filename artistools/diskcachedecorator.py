@@ -174,6 +174,6 @@ def diskcache(
         # sourcehash_strhex = sourcehash.hexdigest()
         str_funcversion = f"funcversion_{funcversion}" if funcversion else "funcversion_none"
 
-        return wrapper if artistools.configuration.config["enable_diskcache"] else func
+        return wrapper if artistools.configuration.get_config()["enable_diskcache"] else func
 
     return diskcacheinner

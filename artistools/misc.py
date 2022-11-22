@@ -560,7 +560,7 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
 @lru_cache(maxsize=1)
 def get_elsymbolslist() -> list[str]:
     elsymbols = ["n"] + list(
-        pd.read_csv(at.config["path_datadir"] / "elements.csv", usecols=["symbol"])["symbol"].values
+        pd.read_csv(at.get_config()["path_datadir"] / "elements.csv", usecols=["symbol"])["symbol"].values
     )
 
     return elsymbols

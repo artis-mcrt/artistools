@@ -4,7 +4,7 @@ import numpy as np
 
 import artistools as at
 
-plt.style.use("file://" + str(at.config["path_artistools_dir"] / "matplotlibrc"))
+plt.style.use("file://" + str(at.get_config()["path_artistools_dir"] / "matplotlibrc"))
 
 
 class ExponentLabelFormatter(ticker.ScalarFormatter):

@@ -157,7 +157,7 @@ def plot_3d_initial_abundances(modelpath, args=None):
             ncols=cols,
             sharex=True,
             sharey=True,
-            figsize=(at.config["figwidth"] * cols, at.config["figwidth"] * 1.4),
+            figsize=(at.get_config()["figwidth"] * cols, at.get_config()["figwidth"] * 1.4),
             tight_layout={"pad": 5.0, "w_pad": 0.0, "h_pad": 0.0},
         )
         for ax in axes:

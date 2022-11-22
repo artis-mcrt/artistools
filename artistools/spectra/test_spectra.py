@@ -11,9 +11,9 @@ import artistools as at
 import artistools.spectra
 import artistools.transitions
 
-modelpath = at.config["path_testartismodel"]
-outputpath = at.config["path_testoutput"]
-at.config["enable_diskcache"] = False
+modelpath = at.get_config()["path_testartismodel"]
+outputpath = at.get_config()["path_testoutput"]
+at.set_config("enable_diskcache", False)
 
 
 def test_spectraplot():
