@@ -19,7 +19,7 @@ def test_commands():
     import importlib
 
     # ensure that the commands are pointing to valid submodule.function() targets
-    for command, (submodulename, funcname) in sorted(at.commands.commandlist.items()):
+    for command, (submodulename, funcname) in sorted(at.commands.get_commandlist().items()):
         submodule = importlib.import_module(submodulename, package="artistools")
         assert hasattr(submodule, funcname)
 
