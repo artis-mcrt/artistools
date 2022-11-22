@@ -290,7 +290,7 @@ def get_modeldata(
     elif not inputpath.exists() and inputpath.parts[0] == "codecomparison":
         modelpath = inputpath
         _, inputmodel, _ = modelpath.parts
-        filename = Path(at.config["codecomparisonmodelartismodelpath"], inputmodel, "model.txt")
+        filename = Path(at.get_config()["codecomparisonmodelartismodelpath"], inputmodel, "model.txt")
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 

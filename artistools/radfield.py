@@ -685,7 +685,10 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
         nrows=nrows,
         ncols=1,
         sharex=True,
-        figsize=(args.figscale * at.config["figwidth"], args.figscale * at.config["figwidth"] * (0.25 + nrows * 0.4)),
+        figsize=(
+            args.figscale * at.get_config()["figwidth"],
+            args.figscale * at.get_config()["figwidth"] * (0.25 + nrows * 0.4),
+        ),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 
@@ -880,8 +883,8 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
         1,
         sharex=True,
         figsize=(
-            args.figscale * at.config["figwidth"],
-            args.figscale * at.config["figwidth"] * (0.25 + nlinesplotted * 0.35),
+            args.figscale * at.get_config()["figwidth"],
+            args.figscale * at.get_config()["figwidth"] * (0.25 + nlinesplotted * 0.35),
         ),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )

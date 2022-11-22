@@ -228,7 +228,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(
         nrows=1,
         ncols=1,
         sharex=True,
-        figsize=(args.figscale * at.config["figwidth"] * 1.6, args.figscale * at.config["figwidth"]),
+        figsize=(args.figscale * at.get_config()["figwidth"] * 1.6, args.figscale * at.get_config()["figwidth"]),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 
@@ -237,7 +237,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(
             nrows=1,
             ncols=1,
             sharex=True,
-            figsize=(args.figscale * at.config["figwidth"] * 1.4, args.figscale * at.config["figwidth"]),
+            figsize=(args.figscale * at.get_config()["figwidth"] * 1.4, args.figscale * at.get_config()["figwidth"]),
             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
         )
     else:
@@ -535,9 +535,9 @@ def create_axes(args):
         cols = 1
 
     if "figwidth" not in args:
-        args.figwidth = at.config["figwidth"] * 1.6 * cols
+        args.figwidth = at.get_config()["figwidth"] * 1.6 * cols
     if "figheight" not in args:
-        args.figheight = at.config["figwidth"] * 1.1 * rows * 1.5
+        args.figheight = at.get_config()["figwidth"] * 1.1 * rows * 1.5
 
     fig, ax = plt.subplots(
         nrows=rows,
@@ -1000,7 +1000,7 @@ def plot_lightcurve_from_data(
 ):
     lightcurve_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
     linename = metadata["label"] if plotnumber == 0 else None
-    filterdir = os.path.join(at.config["path_artistools_dir"], "data/filters/")
+    filterdir = os.path.join(at.get_config()["path_artistools_dir"], "data/filters/")
 
     filter_data = {}
     for plotnumber, filter_name in enumerate(filter_names):
@@ -1080,7 +1080,7 @@ def plot_color_evolution_from_data(
     filter_names, lightcurvefilename, color, marker, filternames_conversion_dict, ax, plotnumber, args
 ):
     lightcurve_from_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
-    filterdir = os.path.join(at.config["path_artistools_dir"], "data/filters/")
+    filterdir = os.path.join(at.get_config()["path_artistools_dir"], "data/filters/")
 
     filter_data = []
     for i, filter_name in enumerate(filter_names):

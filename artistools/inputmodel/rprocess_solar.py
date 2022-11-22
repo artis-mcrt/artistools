@@ -26,7 +26,7 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     dfsolarabund = pd.read_csv(
-        at.config["path_datadir"] / "solar_r_abundance_pattern.txt", delim_whitespace=True, comment="#"
+        at.get_config()["path_datadir"] / "solar_r_abundance_pattern.txt", delim_whitespace=True, comment="#"
     )
 
     dfsolarabund["radioactive"] = True
@@ -34,7 +34,7 @@ def main(args=None, argsraw=None, **kwargs):
     # print(dfsolarabund)
 
     dfbetaminus = pd.read_csv(
-        at.config["path_datadir"] / "betaminusdecays.txt",
+        at.get_config()["path_datadir"] / "betaminusdecays.txt",
         delim_whitespace=True,
         comment="#",
         names=["A", "Z", "Q[MeV]", "Egamma[MeV]", "Eelec[MeV]", "Eneutrino[MeV]", "tau[s]"],

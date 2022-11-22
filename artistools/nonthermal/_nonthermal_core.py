@@ -86,7 +86,7 @@ def read_binding_energies(modelpath: str = ".") -> np.ndarray:
     collionfilename = at.firstexisting(
         [
             os.path.join(modelpath, "binding_energies.txt"),
-            os.path.join(at.config["path_artistools_dir"], "data", "binding_energies.txt"),
+            os.path.join(at.get_config()["path_artistools_dir"], "data", "binding_energies.txt"),
         ]
     )
 
@@ -466,7 +466,7 @@ def get_xs_excitation_vector(engrid, row):
     return xs_excitation_vec
 
 
-def read_colliondata(collionfilename="collion.txt", modelpath=at.config["path_datadir"]):
+def read_colliondata(collionfilename="collion.txt", modelpath=at.get_config()["path_datadir"]):
     collionrow = namedtuple("collionrow", ["Z", "nelec", "n", "l", "ionpot_ev", "A", "B", "C", "D"])
 
     nrows = -1

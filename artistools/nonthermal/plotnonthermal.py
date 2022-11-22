@@ -157,7 +157,10 @@ def make_plot(modelpaths, args):
         nrows=nplots,
         ncols=1,
         sharex=True,
-        figsize=(args.figscale * at.config["figwidth"], args.figscale * at.config["figwidth"] * 0.7 * nplots),
+        figsize=(
+            args.figscale * at.get_config()["figwidth"],
+            args.figscale * at.get_config()["figwidth"] * 0.7 * nplots,
+        ),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 

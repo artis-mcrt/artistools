@@ -25,7 +25,7 @@ def get_timestep_times_float(
     modelpath = Path(modelpath)
     _, modelname, codename = modelpath.parts
 
-    filepath = Path(at.config["codecomparisondata1path"], modelname, f"phys_{modelname}_{codename}.txt")
+    filepath = Path(at.get_config()["codecomparisondata1path"], modelname, f"phys_{modelname}_{codename}.txt")
 
     with open(filepath, "r") as fphys:
         ntimes = int(fphys.readline().replace("#NTIMES:", ""))
@@ -58,7 +58,7 @@ def read_reference_estimators(modelpath, modelgridindex=None, timestep=None):
     virtualfolder, inputmodel, codename = modelpath.parts
     assert virtualfolder == "codecomparison"
 
-    inputmodelfolder = Path(at.config["codecomparisondata1path"], inputmodel)
+    inputmodelfolder = Path(at.get_config()["codecomparisondata1path"], inputmodel)
 
     physfilepath = Path(inputmodelfolder, f"phys_{inputmodel}_{codename}.txt")
 
@@ -177,7 +177,7 @@ def get_spectra(modelpath):
     virtualfolder, inputmodel, codename = modelpath.parts
     assert virtualfolder == "codecomparison"
 
-    inputmodelfolder = Path(at.config["codecomparisondata1path"], inputmodel)
+    inputmodelfolder = Path(at.get_config()["codecomparisondata1path"], inputmodel)
 
     specfilepath = Path(inputmodelfolder, f"spectra_{inputmodel}_{codename}.txt")
 

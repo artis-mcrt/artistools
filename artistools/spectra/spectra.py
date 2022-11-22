@@ -284,8 +284,8 @@ def get_spectrum_from_packets(
         getpacketcount=getpacketcount,
         betafactor=betafactor,
     )
-    if at.config["num_processes"] > 1:
-        with multiprocessing.Pool(processes=at.config["num_processes"]) as pool:
+    if at.get_config()["num_processes"] > 1:
+        with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
             results = pool.map(processfile, packetsfiles)
             pool.close()
             pool.join()
@@ -663,7 +663,7 @@ def get_flux_contributions(
                 print(f" Reading {emissionfilename}")
 
             emissiondata[dbin] = pd.read_table(
-                emissionfilename, sep=" ", engine=at.config["pandas_engine"], header=None
+                emissionfilename, sep=" ", engine=at.get_config()["pandas_engine"], header=None
             )
 
             # check if last column is an artefact of whitespace at end of line (None or NaNs for pyarrow/c engine)
@@ -698,7 +698,7 @@ def get_flux_contributions(
                 print(f" Reading {absorptionfilename}")
 
             absorptiondata[dbin] = pd.read_table(
-                absorptionfilename, sep=" ", engine=at.config["pandas_engine"], header=None
+                absorptionfilename, sep=" ", engine=at.get_config()["pandas_engine"], header=None
             )
 
             # check if last column is an artefact of whitespace at end of line (None or NaNs for pyarrow/c engine)
@@ -1212,7 +1212,7 @@ def get_reference_spectrum(filename: Union[Path, str]) -> tuple[pd.DataFrame, di
     if Path(filename).is_file():
         filepath = Path(filename)
     else:
-        filepath = Path(at.config["path_artistools_dir"], "data", "refspectra", filename)
+        filepath = Path(at.get_config()["path_artistools_dir"], "data", "refspectra", filename)
 
         if not filepath.is_file():
             filepathxz = filepath.with_suffix(filepath.suffix + ".xz")
