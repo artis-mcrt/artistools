@@ -154,6 +154,9 @@ def generate_band_lightcurve_data(
     #     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     #     timearray = [i for i in specdata.columns.values[1:] if i[-2] != '.']
     else:
+        if args.plotviewingangle:
+            print("WARNING: no direction-resolved spectra available. Using angle-averaged spectra.")
+
         specfilename = at.firstexisting(["spec.out.xz", "spec.out.gz", "spec.out", "specpol.out"], path=modelpath)
         if "specpol.out" in str(specfilename):
             specdata = pd.read_csv(specfilename, delim_whitespace=True)
@@ -169,7 +172,7 @@ def generate_band_lightcurve_data(
     filters_list = args.filter
 
     if angle is not None and os.path.isfile(modelpath / "specpol_res.out"):
-        res_specdata = at.spectra.read_specpol_res(modelpath)
+        res_specdata = at.spectra.read_spec_res(modelpath)
         if args and args.average_every_tenth_viewing_angle:
             at.spectra.average_angle_bins(res_specdata, angle)
 
@@ -255,7 +258,7 @@ def bolometric_magnitude(
                     spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
                 else:
                     if res_specdata is None:
-                        res_specdata = at.spectra.read_specpol_res(modelpath)
+                        res_specdata = at.spectra.read_spec_res(modelpath)
                         if args and args.average_every_tenth_viewing_angle:
                             at.spectra.average_angle_bins(res_specdata, angle)
                     spectrum = at.spectra.get_res_spectrum(

@@ -167,12 +167,9 @@ def get_spectrum_at_time(
 ) -> pd.DataFrame:
     if angle is not None:
         if args is not None and args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
-            spectrum = get_vspecpol_spectrum(modelpath, time, angle, args)[angle]
-        elif os.path.isfile(modelpath / "specpol_res.out"):
-            spectrum = get_res_spectrum(modelpath, timestep, timestep, angle=angle, res_specdata=res_specdata)[angle]
+            spectrum = get_vspecpol_spectrum(modelpath, time, angle, args)
         else:
-            assert False  # no angle resolved spectra available
-            spectrum = get_spectrum(modelpath, timestep, timestep, modelnumber=modelnumber)
+            spectrum = get_res_spectrum(modelpath, timestep, timestep, angle=angle, res_specdata=res_specdata)
     else:
         spectrum = get_spectrum(modelpath, timestep, timestep, modelnumber=modelnumber)
 
@@ -314,17 +311,24 @@ def get_spectrum_from_packets(
 
 
 @lru_cache(maxsize=16)
-@at.diskcache(savezipped=True)
-def read_specpol_res(modelpath: Path) -> dict[int, pd.DataFrame]:
+def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
     """Return dataframe of time-series spectra for every viewing direction"""
-    if Path(modelpath, "specpol_res.out").is_file():
-        specfilename = Path(modelpath) / "specpol_res.out"
-    elif Path(modelpath, "spec_res.out").is_file():
-        specfilename = Path(modelpath) / "spec_res.out"
-    else:
+    if Path(modelpath).is_file():
         specfilename = modelpath
+    else:
+        specfilename = at.firstexisting(
+            [
+                "specpol_res.out",
+                "specpol_res.out.xz",
+                "specpol_res.out.gz",
+                "spec_res.out",
+                "spec_res.out.xz",
+                "spec_res.out.gz",
+            ],
+            path=modelpath,
+        )
 
-    print(f"Reading {specfilename} (in read_specpol_res)")
+    print(f"Reading {specfilename} (in read_spec_res)")
     specdata = pd.read_csv(specfilename, delim_whitespace=True, header=None, dtype=str)
 
     res_specdata: dict[int, pd.DataFrame] = at.gather_res_data(specdata)
@@ -342,15 +346,14 @@ def read_specpol_res(modelpath: Path) -> dict[int, pd.DataFrame]:
 
     columns = res_specdata[0].iloc[0]
     # print(columns)
-    res_specdata_numpy: dict[int, np.ndarray] = {}
     for i in res_specdata.keys():
         res_specdata[i] = res_specdata[i].rename(columns=columns)
         res_specdata[i].drop(res_specdata[i].index[0], inplace=True)
         # These lines remove the Q and U values from the dataframe (I think)
         numberofIvalues = len(res_specdata[i].columns.drop_duplicates())
-        res_specdata_numpy[i] = res_specdata[i].iloc[:, :numberofIvalues].astype(float).to_numpy()
+        res_specdata_numpy = res_specdata[i].iloc[:, :numberofIvalues].astype(float).to_numpy()
 
-        res_specdata[i] = pd.DataFrame(data=res_specdata_numpy[i], columns=columns[:numberofIvalues])
+        res_specdata[i] = pd.DataFrame(data=res_specdata_numpy, columns=columns[:numberofIvalues])
         res_specdata[i].rename(columns={"0": "nu"}, inplace=True)
 
     return res_specdata
@@ -365,6 +368,7 @@ def average_angle_bins(
     phibincount = at.get_viewingdirection_phibincount()
     for start_bin in np.arange(start=0, stop=dirbincount, step=phibincount):
         # print(start_bin)
+        res_specdata[start_bin] = res_specdata[start_bin].copy()  # important to not affect the LRU cached copy
         for bin_number in range(start_bin + 1, start_bin + phibincount):
             # print(bin_number)
             res_specdata[start_bin] += res_specdata[bin_number]
@@ -385,7 +389,7 @@ def get_res_spectrum(
     res_specdata: Optional[dict[int, pd.DataFrame]] = None,
     fnufilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     args: Optional[argparse.Namespace] = None,
-) -> list[pd.DataFrame]:
+) -> pd.DataFrame:
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax < 0:
         timestepmax = timestepmin
@@ -398,8 +402,7 @@ def get_res_spectrum(
         print("WARNING: no viewing direction specified. Using direction bin {angle}")
 
     if res_specdata is None:
-        print("Reading specpol_res.out")
-        res_specdata = read_specpol_res(modelpath)
+        res_specdata = read_spec_res(modelpath)
         if args and args.average_every_tenth_viewing_angle:
             at.spectra.average_angle_bins(res_specdata, angle)
 

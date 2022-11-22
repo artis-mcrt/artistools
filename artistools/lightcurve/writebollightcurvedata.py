@@ -10,7 +10,7 @@ import artistools.spectra
 
 
 def get_bol_lc_from_spec(modelpath):
-    res_specdata = at.spectra.read_specpol_res(modelpath)
+    res_specdata = at.spectra.read_spec_res(modelpath)
     # print(res_specdata)
     timearray = res_specdata[0].columns.values[1:]
     times = [time for time in timearray if 5 < float(time) < 80]
