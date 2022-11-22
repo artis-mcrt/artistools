@@ -673,6 +673,19 @@ def make_emissionabsorption_plot(
     axis.axhline(color="white", linewidth=0.5)
 
     plotlabel = f"{modelname}\n{args.timemin:.2f}d to {args.timemax:.2f}d"
+    if args.plotviewingangle:
+        angle = args.plotviewingangle[0]
+        (
+            costheta_viewing_angle_bins,
+            phi_viewing_angle_bins,
+        ) = at.get_viewinganglebin_definitions()
+
+        if args.average_every_tenth_viewing_angle:
+            assert angle % 10 == 0
+            plotlabel += ", " + costheta_viewing_angle_bins[int(angle // 10)]
+        else:
+            plotlabel += f", directionbin {args.plotviewingangle[0]}"
+
     if not args.notitle:
         axis.set_title(plotlabel, fontsize=11)
     # axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
