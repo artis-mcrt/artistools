@@ -21,14 +21,6 @@ import artistools as at
 import artistools.initial_composition
 import artistools.nltepops
 
-# import re
-# from collections import namedtuple
-# from functools import lru_cache, partial, reduce
-# from itertools import chain
-# import matplotlib.ticker as ticker
-# import scipy.signal
-# from astropy import constants as const
-
 colors_tab10 = list(plt.get_cmap("tab10")(np.linspace(0, 1.0, 10)))
 
 # reserve colours for these elements
@@ -51,12 +43,12 @@ def get_elemcolor(atomic_number=None, elsymbol=None):
 
 
 def get_ylabel(variable):
-    if variable in at.estimators.variablelongunits:
-        return at.estimators.variablelongunits[variable]
-    if variable in at.estimators.variableunits:
-        return f"[{at.estimators.variableunits[variable]}]"
-    if variable.split("_")[0] in at.estimators.variableunits:
-        return f'[{at.estimators.variableunits[variable.split("_")[0]]}]'
+    if variable in at.estimators.get_variablelongunits():
+        return at.estimators.get_variablelongunits()[variable]
+    if variable in at.estimators.get_variableunits():
+        return f"[{at.estimators.get_variableunits()[variable]}]"
+    if variable.split("_")[0] in at.estimators.get_variableunits():
+        return f'[{at.estimators.get_variableunits()[variable.split("_")[0]]}]'
     return ""
 
 
@@ -358,7 +350,7 @@ def plot_multi_ion_series(
             else:
                 assert False
         else:
-            ax.set_ylabel(at.estimators.dictlabelreplacements.get(seriestype, seriestype))
+            ax.set_ylabel(at.estimators.get_dictlabelreplacements().get(seriestype, seriestype))
 
         ylist = []
         for modelgridindex, timesteps in zip(mgilist, timestepslist):
@@ -504,7 +496,7 @@ def plot_series(
 ):
     """Plot something like Te or TR."""
     assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
-    formattedvariablename = at.estimators.dictlabelreplacements.get(variablename, variablename)
+    formattedvariablename = at.estimators.get_dictlabelreplacements().get(variablename, variablename)
     serieslabel = f"{formattedvariablename}"
     if not nounits:
         serieslabel += at.estimators.get_units_string(variablename)

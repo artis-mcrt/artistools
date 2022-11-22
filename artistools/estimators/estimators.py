@@ -29,36 +29,44 @@ import artistools.nltepops
 # from itertools import chain
 
 
-variableunits = {
-    "time": "days",
-    "gamma_NT": "/s",
-    "gamma_R_bfest": "/s",
-    "TR": "K",
-    "Te": "K",
-    "TJ": "K",
-    "nne": "e-/cm3",
-    "heating": "erg/s/cm3",
-    "heating_dep/total_dep": "Ratio",
-    "cooling": "erg/s/cm3",
-    "velocity": "km/s",
-    "velocity_outer": "km/s",
-}
+def get_variableunits(key: Optional[str] = None) -> Union[str, dict[str, str]]:
+    variableunits = {
+        "time": "days",
+        "gamma_NT": "/s",
+        "gamma_R_bfest": "/s",
+        "TR": "K",
+        "Te": "K",
+        "TJ": "K",
+        "nne": "e-/cm3",
+        "heating": "erg/s/cm3",
+        "heating_dep/total_dep": "Ratio",
+        "cooling": "erg/s/cm3",
+        "velocity": "km/s",
+        "velocity_outer": "km/s",
+    }
+    return variableunits[key] if key else variableunits
 
-variablelongunits = {
-    "heating_dep/total_dep": "",
-    "TR": "Temperature [K]",
-    "Te": "Temperature [K]",
-    "TJ": "Temperature [K]",
-}
 
-dictlabelreplacements = {
-    "lognne": "Log nne",
-    "Te": "T$_e$",
-    "TR": "T$_R$",
-    "gamma_NT": r"$\Gamma_{\rm non-thermal}$ [s$^{-1}$]",
-    "gamma_R_bfest": r"$\Gamma_{\rm phot}$ [s$^{-1}$]",
-    "heating_dep/total_dep": "Heating fraction",
-}
+def get_variablelongunits(key: Optional[str] = None) -> Union[str, dict[str, str]]:
+    variablelongunits = {
+        "heating_dep/total_dep": "",
+        "TR": "Temperature [K]",
+        "Te": "Temperature [K]",
+        "TJ": "Temperature [K]",
+    }
+    return variablelongunits[key] if key else variablelongunits
+
+
+def get_dictlabelreplacements(key: Optional[str] = None) -> Union[str, dict[str, str]]:
+    dictlabelreplacements = {
+        "lognne": "Log nne",
+        "Te": "T$_e$",
+        "TR": "T$_R$",
+        "gamma_NT": r"$\Gamma_{\rm non-thermal}$ [s$^{-1}$]",
+        "gamma_R_bfest": r"$\Gamma_{\rm phot}$ [s$^{-1}$]",
+        "heating_dep/total_dep": "Heating fraction",
+    }
+    return dictlabelreplacements[key] if key else dictlabelreplacements
 
 
 def apply_filters(
@@ -111,10 +119,10 @@ def get_ionrecombrates_fromfile(filename: Union[Path, str]) -> pd.DataFrame:
 
 
 def get_units_string(variable: str) -> str:
-    if variable in variableunits:
-        return f" [{variableunits[variable]}]"
-    if variable.split("_")[0] in variableunits:
-        return f' [{variableunits[variable.split("_")[0]]}]'
+    if variable in get_variableunits():
+        return f" [{get_variableunits(variable)}]"
+    if variable.split("_")[0] in get_variableunits():
+        return f' [{get_variableunits(variable.split("_")[0])}]'
     return ""
 
 
