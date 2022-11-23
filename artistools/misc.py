@@ -1220,37 +1220,37 @@ def get_viewingdirection_costhetabincount() -> int:
 
 def get_viewinganglebin_definitions() -> tuple[list[str], list[str]]:
     costheta_viewing_angle_bins = [
-        "-1.0 \u2264 cos(\u03B8) < -0.8",
-        "-0.8 \u2264 cos(\u03B8) < -0.6",
-        "-0.6 \u2264 cos(\u03B8) < -0.4",
-        "-0.4 \u2264 cos(\u03B8) < -0.2",
-        "-0.2 \u2264 cos(\u03B8) <  0.0",
-        " 0.0 \u2264 cos(\u03B8) <  0.2",
-        " 0.2 \u2264 cos(\u03B8) <  0.4",
-        " 0.4 \u2264 cos(\u03B8) <  0.6",
-        " 0.6 \u2264 cos(\u03B8) <  0.8",
-        " 0.8 \u2264 cos(\u03B8) <  1.0",
+        "-1.0 ≤ cos(θ) < -0.8",
+        "-0.8 ≤ cos(θ) < -0.6",
+        "-0.6 ≤ cos(θ) < -0.4",
+        "-0.4 ≤ cos(θ) < -0.2",
+        "-0.2 ≤ cos(θ) <  0.0",
+        " 0.0 ≤ cos(θ) <  0.2",
+        " 0.2 ≤ cos(θ) <  0.4",
+        " 0.4 ≤ cos(θ) <  0.6",
+        " 0.6 ≤ cos(θ) <  0.8",
+        " 0.8 ≤ cos(θ) <  1.0",
     ]
     assert len(costheta_viewing_angle_bins) == get_viewingdirection_costhetabincount()
     phi_viewing_angle_bins = [
-        "0 \u2264 \u03D5 < \u03c0/5",
-        "\u03c0/5 \u2264 \u03D5 < 2\u03c0/5",
-        "2\u03c0/5 \u2264 \u03D5 < 3\u03c0/5",
-        "3\u03c0/5 \u2264 \u03D5 < 4\u03c0/5",
-        "4\u03c0/5 \u2264 \u03D5 < \u03c0",
-        "9\u03c0/5 < \u03D5 < 2\u03c0",
-        "8\u03c0/5 < \u03D5 \u2264 9\u03c0/5",
-        "7\u03c0/5 < \u03D5 \u2264 8\u03c0/5",
-        "6\u03c0/5 < \u03D5 \u2264 7\u03c0/5",
-        "\u03c0 < \u03D5 \u2264 6\u03c0/5",
+        "0 ≤ ϕ < π/5",
+        "π/5 ≤ ϕ < 2π/5",
+        "2π/5 ≤ ϕ < 3π/5",
+        "3π/5 ≤ ϕ < 4π/5",
+        "4π/5 ≤ ϕ < π",
+        "9π/5 < ϕ < 2π",
+        "8π/5 < ϕ ≤ 9π/5",
+        "7π/5 < ϕ ≤ 8π/5",
+        "6π/5 < ϕ ≤ 7π/5",
+        "π < ϕ ≤ 6π/5",
     ]
     assert len(phi_viewing_angle_bins) == get_viewingdirection_phibincount()
     assert len(costheta_viewing_angle_bins) * len(phi_viewing_angle_bins) == get_viewingdirectionbincount()
 
     # label orders changed so that bins are in order. Not used yet.
-    # phi_viewing_angle_bins_reordered = ['0 \u2264 \u03D5 < \u03c0/5', '\u03c0/5 \u2264 \u03D5 < 2\u03c0/5',
-    #                                     '2\u03c0/5 \u2264 \u03D5 < 3\u03c0/5', '3\u03c0/5 \u2264 \u03D5 < 4\u03c0/5',
-    #                                     '4\u03c0/5 \u2264 \u03D5 < \u03c0', '\u03c0 < \u03D5 \u2264 6\u03c0/5',
-    #                                     '6\u03c0/5 < \u03D5 \u2264 7\u03c0/5', '7\u03c0/5 < \u03D5 \u2264 8\u03c0/5',
-    #                                     '8\u03c0/5 < \u03D5 \u2264 9\u03c0/5', '9\u03c0/5 < \u03D5 < 2\u03c0']
+    # phi_viewing_angle_bins_reordered = ['0 ≤ ϕ < π/5', 'π/5 ≤ ϕ < 2π/5',
+    #                                     '2π/5 ≤ ϕ < 3π/5', '3π/5 ≤ ϕ < 4π/5',
+    #                                     '4π/5 ≤ ϕ < π', 'π < ϕ ≤ 6π/5',
+    #                                     '6π/5 < ϕ ≤ 7π/5', '7π/5 < ϕ ≤ 8π/5',
+    #                                     '8π/5 < ϕ ≤ 9π/5', '9π/5 < ϕ < 2π']
     return costheta_viewing_angle_bins, phi_viewing_angle_bins
