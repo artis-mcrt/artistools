@@ -66,10 +66,17 @@ def plothesmaresspec(fig, ax):
     # plt.show()
 
 
-def make_hesma_vspecfiles(modelpath):
+def make_hesma_vspecfiles(modelpath, outpath=None):
+    if not outpath:
+        outpath = modelpath
+    modelname = at.get_model_name(modelpath)
     angles = [0, 1, 2, 3, 4]
+    vpkt_config = at.get_vpkt_config(modelpath)
+    angle_names = []
 
     for angle in angles:
+        angle_names.append(rf"cos(theta) = {vpkt_config['cos_theta'][angle]}")
+        print(rf"cos(theta) = {vpkt_config['cos_theta'][angle]}")
         vspecdata_all = at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
         vspecdata = vspecdata_all["I"]
 
@@ -85,13 +92,23 @@ def make_hesma_vspecfiles(modelpath):
 
         vspecdata = vspecdata.rename(columns={"lambda_angstroms": "0"})
 
-        print(vspecdata)
-
+        outfilename = f"{modelname}_vspec_res.dat"
         if angle == 0:
-            vspecdata.to_csv(modelpath / "hesma_virtualspecseq_theta.dat", sep=" ", index=False)  # create file
+            vspecdata.to_csv(outpath / outfilename, sep=" ", index=False)  # create file
         else:
             # append to file
-            vspecdata.to_csv(modelpath / "hesma_virtualspecseq_theta.dat", mode="a", sep=" ", index=False)
+            vspecdata.to_csv(outpath / outfilename, mode="a", sep=" ", index=False)
+
+    with open(outpath / outfilename, "r+") as f:  # add comment to start of file
+        content = f.read()
+        f.seek(0, 0)
+        f.write(
+            f"# File contains spectra at observer angles {angle_names} for Model {modelname}.\n# A header line"
+            " containing spectra time is repeated at the beginning of each observer angle. Column 0 gives wavelength."
+            " \n# Spectra are at a distance of 10 pc."
+            + "\n"
+            + content
+        )
 
 
 def make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax):
