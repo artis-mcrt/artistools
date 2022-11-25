@@ -366,17 +366,20 @@ def average_angle_bins(
     # Averages over 10 phi (azimuthal angle) bins to reduce noise
     dirbincount = at.get_viewingdirectionbincount()
     phibincount = at.get_viewingdirection_phibincount()
+    assert angle % phibincount == 0
     for start_bin in np.arange(start=0, stop=dirbincount, step=phibincount):
+        if start_bin != angle:
+            continue
         # print(start_bin)
         res_specdata[start_bin] = res_specdata[start_bin].copy()  # important to not affect the LRU cached copy
         for bin_number in range(start_bin + 1, start_bin + phibincount):
             # print(bin_number)
             res_specdata[start_bin] += res_specdata[bin_number]
         res_specdata[start_bin] /= phibincount  # every 10th bin is the average of 10 bins
-        print(f"bin number {start_bin} = the average of bins {start_bin} to {start_bin + phibincount - 1}")
-
-    if angle and angle % phibincount == 0:
-        print(f"Bin number {angle} is the average of {phibincount} phi angle bins")
+        print(
+            f"Bin number {angle} is the average of {phibincount} phi angle bins: {start_bin} to"
+            f" {start_bin + phibincount - 1}"
+        )
 
     return res_specdata
 
