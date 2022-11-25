@@ -191,13 +191,14 @@ def get_angle_stuff(
 
 
 def calculate_costheta_phi_for_viewing_angles(
-    viewing_angles: Union[np.ndarray[Any, np.dtype[Any]], Sequence[int]], modelpath: Union[Path, str]
+    viewing_angles: Union[np.ndarray[Any, np.dtype[Any]], Sequence[int]], modelpath: Union[Path, str, None] = None
 ) -> dict[int, str]:
-    modelpath = Path(modelpath)
-    MABINS = at.get_viewingdirectionbincount()
-    if len(list(Path(modelpath).glob("*_res_00.out*"))) > 0:  # if the first direction bin file exists
-        assert len(list(Path(modelpath).glob(f"*_res_{MABINS-1:02d}.out*"))) > 0  # check last bin exists
-        assert len(list(Path(modelpath).glob(f"*_res_{MABINS:02d}.out*"))) == 0  # check one beyond does not exist
+    if modelpath:
+        modelpath = Path(modelpath)
+        MABINS = at.get_viewingdirectionbincount()
+        if len(list(Path(modelpath).glob("*_res_00.out*"))) > 0:  # if the first direction bin file exists
+            assert len(list(Path(modelpath).glob(f"*_res_{MABINS-1:02d}.out*"))) > 0  # check last bin exists
+            assert len(list(Path(modelpath).glob(f"*_res_{MABINS:02d}.out*"))) == 0  # check one beyond does not exist
 
     angle_definition: dict[int, str] = {}
 
