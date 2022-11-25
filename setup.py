@@ -19,7 +19,7 @@ setup(
     use_scm_version=True,
     author="ARTIS Collaboration",
     author_email="luke.shingles@gmail.com",
-    packages=find_packages(),
+    # packages=find_packages(),
     url="https://www.github.com/artis-mcrt/artistools/",
     long_description=(Path(__file__).absolute().parent / "README.md").open("rt").read(),
     long_description_content_type="text/markdown",
