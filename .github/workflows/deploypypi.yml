@@ -21,7 +21,7 @@ jobs:
               run: |
                   python3 -m pip install --upgrade pip
                   python3 -m pip install -r requirements.txt
-                  python3 -m pip install setuptools setuptools_scm wheel twine build
+                  python3 -m pip install --upgrade setuptools setuptools_scm[toml] wheel twine build
 
             - name: Build
               run: |
