@@ -491,10 +491,10 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
             filenames.append(vspecfile)
 
     def sorted_by_number(l: list) -> list:
-        def convert(text: str) -> int | str:
+        def convert(text: str) -> Union[int, str]:
             return int(text) if text.isdigit() else text
 
-        def alphanum_key(key: str) -> list[int | str | Any]:
+        def alphanum_key(key: str) -> list[Union[int, str]]:
             return [convert(c) for c in re.split("([0-9]+)", key)]
 
         return sorted(l, key=alphanum_key)
