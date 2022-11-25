@@ -526,7 +526,13 @@ def get_specpol_data(
             specfilename = at.firstexisting(["specpol.out", "specpol.out.xz", "specpol.out.gz"], path=modelpath)
         else:
             # alternatively use f'vspecpol_averaged-{angle}.out' ?
-            specfilename = Path(modelpath, f"vspecpol_total-{angle}.out")
+            vspecpath = modelpath
+            if os.path.isdir(modelpath / "vspecpol"):
+                vspecpath = modelpath / "vspecpol"
+            specfilename = at.firstexisting(
+                [f"vspecpol_total-{angle}.out", f"vspecpol_total-{angle}.out.xz", f"vspecpol_total-{angle}.out.gz"],
+                path=vspecpath,
+            )
             if not specfilename.exists():
                 print(f"{specfilename} does not exist. Generating all-rank summed vspec files..")
                 make_virtual_spectra_summed_file(modelpath=modelpath)
