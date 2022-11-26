@@ -1219,6 +1219,11 @@ def get_viewingdirection_costhetabincount() -> int:
 
 
 def get_viewinganglebin_definitions() -> tuple[list[str], list[str]]:
+    # todo: replace with general code for any bin count:
+    # ncosthetabins = at.get_viewingdirection_costhetabincount()
+    # costhetabins_lower = np.arange(-1., 1., 2. / ncosthetabins)
+    # costhetabins_upper = costhetabins_lower + 2. / ncosthetabins
+
     costheta_viewing_angle_bins = [
         "-1.0 ≤ cos(θ) < -0.8",
         "-0.8 ≤ cos(θ) < -0.6",
@@ -1232,6 +1237,12 @@ def get_viewinganglebin_definitions() -> tuple[list[str], list[str]]:
         " 0.8 ≤ cos(θ) <  1.0",
     ]
     assert len(costheta_viewing_angle_bins) == get_viewingdirection_costhetabincount()
+
+    # this is not correct because the phi bins are not in ascending order
+    # nphibins = at.get_viewingdirection_phibincount()
+    # thetabins_lower = np.arange(0, 2 * math.pi, 2 * math.pi / nphibins)
+    # thetabins_upper = thetabins_lower + 2 * math.pi / nphibins
+
     phi_viewing_angle_bins = [
         "0 ≤ ϕ < π/5",
         "π/5 ≤ ϕ < 2π/5",
