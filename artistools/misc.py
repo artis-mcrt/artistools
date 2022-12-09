@@ -687,12 +687,24 @@ def zopen(filename: Union[Path, str], mode: str):  # type: ignore
 
 def firstexisting(filelist: Sequence[Union[str, Path]], path: Union[Path, str] = Path(".")) -> Path:
     """Return the first existing file in file list."""
+
     fullpaths = [Path(path) / filename for filename in filelist]
+
     for fullpath in fullpaths:
         if fullpath.exists():
             return fullpath
 
     raise FileNotFoundError(f'None of these files exist in {path}: {", ".join([str(x) for x in fullpaths])}')
+
+
+def anyexist(filelist: Sequence[Union[str, Path]], path: Union[Path, str] = Path(".")) -> bool:
+    """Return the first existing file in file list."""
+
+    for fullpath in [Path(path) / filename for filename in filelist]:
+        if fullpath.exists():
+            return True
+
+    return False
 
 
 def stripallsuffixes(f: Path) -> Path:

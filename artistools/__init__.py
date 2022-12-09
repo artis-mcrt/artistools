@@ -37,6 +37,7 @@ from artistools.inputmodel import save_modeldata
 from artistools.misc import AppendPath
 from artistools.misc import CustomArgHelpFormatter
 from artistools.misc import decode_roman_numeral
+from artistools.misc import anyexist
 from artistools.misc import firstexisting
 from artistools.misc import flatten_list
 from artistools.misc import gather_res_data

@@ -145,8 +145,12 @@ def generate_band_lightcurve_data(
         stokes_params = at.spectra.get_specpol_data(angle, modelpath)
         vspecdata = stokes_params["I"]
         timearray = vspecdata.keys()[1:]
-    elif args and args.plotviewingangle and os.path.isfile(modelpath / "specpol_res.out"):
-        specfilename = Path(modelpath, "specpol_res.out")
+    elif (
+        args
+        and args.plotviewingangle
+        and at.anyexist(["specpol_res.out", "specpol_res.out.xz", "spec_res.out"], path=modelpath)
+    ):
+        specfilename = at.firstexisting(["specpol_res.out", "spec_res.out"], path=modelpath)
         specdataresdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdataresdata.columns.values[1:] if i[-2] != "."]
     # elif Path(modelpath, 'specpol.out').is_file():
