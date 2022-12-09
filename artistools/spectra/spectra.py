@@ -1091,7 +1091,7 @@ def sort_and_reduce_flux_contribution_list(
     if fixedionlist:
         unrecognised_items = [x for x in fixedionlist if x not in [y.linelabel for y in contribution_list_in]]
         if unrecognised_items:
-            raise ValueError(f"WARNING: did not understand these items in fixedionlist: {unrecognised_items}")
+            print(f"WARNING: did not understand these items in fixedionlist: {unrecognised_items}")
 
         # sort in manual order
         def sortkey(x: fluxcontributiontuple) -> tuple[int, float]:
