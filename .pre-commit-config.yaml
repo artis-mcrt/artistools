@@ -51,11 +51,13 @@ repos:
             types: [python]
             require_serial: true
             # verbose: true
-    # - repo: local
-    #   hooks:
-    #       - id: pylint
-    #         name: pylint
-    #         entry: pylint
-    #         language: system
-    #         types: [python]
-    #         args: [-rn, -sn, --errors-only]
+    - repo: local
+      hooks:
+          - id: pylint
+            name: pylint
+            entry: pylint
+            language: python
+            # language: system
+            types: [python]
+            require_serial: true
+            args: [-rn, -sn, --errors-only]
