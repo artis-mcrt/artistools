@@ -162,6 +162,7 @@ def get_trajectory_timestepfile_nuc_abund(
 
 
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
+    """initial cell energy [erg/g]"""
     with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as enthermofile:
         dfthermo: pd.DataFrame = pd.read_table(
             enthermofile, sep=r"\s+", usecols=["time/s", "Qdot"], engine="c", dtype={0: float, 1: float}
@@ -231,6 +232,7 @@ def get_trajectory_abund_q(
     dict_traj_nuc_abund = {nucabundcolname: massfrac / massfractotal for nucabundcolname, massfrac in colmassfracs}
 
     if getqdotintegral:
+        # set the cell energy at model time [erg/g]
         dict_traj_nuc_abund["q"] = get_trajectory_qdotintegral(
             particleid=particleid, traj_root=traj_root, nts_max=nts, t_model_s=t_model_s
         )
@@ -307,8 +309,10 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataF
             # print(f' WARNING particle {particleid} not found!')
 
     print(
-        f"Adding gridcontributions column that excludes {len(missing_particleids)} "
-        "particles without abundance data and renormalising...",
+        (
+            f"Adding gridcontributions column that excludes {len(missing_particleids)} "
+            "particles without abundance data and renormalising..."
+        ),
         end="",
     )
     # after filtering, frac_of_cellmass_includemissing will still include particles with rho but no abundance data
@@ -532,17 +536,21 @@ def main(args=None, argsraw=None, **kwargs):
 
         t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
         dfdensities.eval(
-            "cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
-            "* (1e5 * @t_model_init_seconds_in) ** 3",
+            (
+                "cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
+                "* (1e5 * @t_model_init_seconds_in) ** 3"
+            ),
             inplace=True,
         )
 
         # now replace the density at the input time with the density at required time
 
         dfdensities.eval(
-            "rho = cellmass_grams / ("
-            "4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
-            " * (1e5 * @t_model_init_seconds) ** 3)",
+            (
+                "rho = cellmass_grams / ("
+                "4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
+                " * (1e5 * @t_model_init_seconds) ** 3)"
+            ),
             inplace=True,
         )
     else:
