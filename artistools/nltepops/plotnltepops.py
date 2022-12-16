@@ -195,8 +195,10 @@ def make_ionsubplot(
     ionstr = at.get_ionstring(atomic_number, ion_stage, spectral=False)
 
     dfpopthision = dfpop.query(
-        "modelgridindex == @modelgridindex and timestep == @timestep "
-        "and Z == @atomic_number and ion_stage == @ion_stage",
+        (
+            "modelgridindex == @modelgridindex and timestep == @timestep "
+            "and Z == @atomic_number and ion_stage == @ion_stage"
+        ),
         inplace=False,
     ).copy()
 
