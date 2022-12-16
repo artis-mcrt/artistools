@@ -21,8 +21,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def eval_mshell(dfmodel: pd.DataFrame, t_model_init_seconds: float) -> None:
     dfmodel.eval(
-        "cellmass_grams = 10 ** logrho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
-        "* (1e5 * @t_model_init_seconds) ** 3",
+        (
+            "cellmass_grams = 10 ** logrho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
+            "* (1e5 * @t_model_init_seconds) ** 3"
+        ),
         inplace=True,
     )
 
@@ -62,9 +64,11 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     dfmodel.velocity_outer *= velscale
 
     dfmodel.eval(
-        "logrho = log10(cellmass_grams / ("
-        "4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
-        " * (1e5 * @t_model_init_seconds) ** 3))",
+        (
+            "logrho = log10(cellmass_grams / ("
+            "4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
+            " * (1e5 * @t_model_init_seconds) ** 3))"
+        ),
         inplace=True,
     )
 
