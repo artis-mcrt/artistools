@@ -9,8 +9,8 @@
 # root files
 *                                 @lukeshingles
 
-artistools/                       @lukeshingles @ccollins22 @fcallan678
-tests/                            @lukeshingles @ccollins22 @fcallan678
+artistools/                       @lukeshingles @ccollins22
+tests/                            @lukeshingles @ccollins22
 
 .github/                          @lukeshingles
 artistools/gsinetwork.py          @lukeshingles
