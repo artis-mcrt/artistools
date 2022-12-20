@@ -16,7 +16,7 @@ spec.loader.exec_module(commands)
 setup(
     name="artistools",
     version=get_version(),
-    use_scm_version=True,
+    use_scm_version={"local_scheme": "no-local-version"},
     author="ARTIS Collaboration",
     author_email="luke.shingles@gmail.com",
     # packages=find_packages(),
