@@ -157,7 +157,7 @@ def get_angle_stuff(
     modelpath = Path(modelpath)
     viewing_angles = None
     viewing_angle_data = False
-    if len(glob.glob(str(modelpath / "*_res.out"))) > 1:
+    if len(glob.glob(str(modelpath / "*_res.out*"))) >= 1:
         viewing_angle_data = True
 
     if args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
