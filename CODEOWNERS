@@ -3,18 +3,21 @@
 # they will be requested for
 # review when someone opens a pull request.
 
-*            @lukeshingles @ccollins22 @fcallan678
-
 # Order is important; the last matching pattern takes the most
 # precedence.
 
-# root dir package files are owned by Luke
-/.github/                @lukeshingles
-artistools/gsinetwork.py @lukeshingles
-artistools/estimators/   @lukeshingles
-artistools/nonthermal/   @lukeshingles
-artistools/nltepops/     @lukeshingles
+# root files
+*                                 @lukeshingles
+
+artistools/                       @lukeshingles @ccollins22 @fcallan678
+tests/                            @lukeshingles @ccollins22 @fcallan678
+
+.github/                          @lukeshingles
+artistools/gsinetwork.py          @lukeshingles
+artistools/estimators/            @lukeshingles
+artistools/nonthermal/            @lukeshingles
+artistools/nltepops/              @lukeshingles
 
 artistools/initial_composition.py @ccollins22
-artistools/lightcurve/   @ccollins22
-artistools/hesma_scripts.py @ccollins22
+artistools/lightcurve/            @ccollins22
+artistools/hesma_scripts.py       @ccollins22
