@@ -763,10 +763,10 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
         )
 
         # dfpackets.eval('xindex = floor((@c_ang_s / nu_rf - @lambda_min) / @delta_lambda)', inplace=True)
-        dfpackets.eval(
-            "lambda_rf_binned = @lambda_min + @delta_lambda * floor((@c_ang_s / nu_rf - @lambda_min) / @delta_lambda)",
-            inplace=True,
-        )
+        # dfpackets.eval(
+        #     "lambda_rf_binned = @lambda_min + @delta_lambda * floor((@c_ang_s / nu_rf - @lambda_min) / @delta_lambda)",
+        #     inplace=True,
+        # )
 
         for _, packet in dfpackets_selected.iterrows():
             for v in densityplotyvars:
@@ -878,7 +878,7 @@ def make_plot(args) -> None:
             defaultoutputfile = Path("plotspecemission_{time_days_min:.1f}d_{time_days_max:.1f}d{directionbins}.pdf")
 
         plotobjects, plotobjectlabels, dfalldata = make_emissionabsorption_plot(
-            args.specpath[0], axes[0], filterfunc, args=args, scale_to_peak=scale_to_peak
+            args.specpath[0], axes[-1], filterfunc, args=args, scale_to_peak=scale_to_peak
         )
     else:
         legendncol = 1
