@@ -4,7 +4,7 @@ name: Upload Package to TestPyPI
 on:
     push:
         branches:
-            - main
+            - '*'
         tags:
             - '*'
 
