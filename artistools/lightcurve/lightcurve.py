@@ -170,6 +170,10 @@ def generate_band_lightcurve_data(
             timearray = specdata.columns.values[1:]
 
     filters_dict = {}
+    lightcurvedata = {}
+    lightcurvedata["time"] = [
+        float(time) for time in timearray if (float(time) > args.timemin and float(time) < args.timemax)
+    ]
     if not args.filter:
         args.filter = ["B"]
 
@@ -190,6 +194,7 @@ def generate_band_lightcurve_data(
             times, bol_magnitudes = bolometric_magnitude(
                 modelpath, timearray, args, angle=angle, res_specdata=res_specdata
             )
+            lightcurvedata["bol"] = bol_magnitudes
             filters_dict["bol"] = [
                 (time, bol_magnitude)
                 for time, bol_magnitude in zip(times, bol_magnitudes)
@@ -206,7 +211,7 @@ def generate_band_lightcurve_data(
         zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max = get_filter_data(
             filterdir, filter_name
         )
-
+        lightcurve = []
         for timestep, time in enumerate(timearray):
             time = float(time)
             if args.timemin < time < args.timemax:
@@ -239,6 +244,13 @@ def generate_band_lightcurve_data(
                 if phot_filtobs_sn != 0.0:
                     phot_filtobs_sn = phot_filtobs_sn - 25  # Absolute magnitude
                 filters_dict[filter_name].append((time, phot_filtobs_sn))
+                lightcurve.append(phot_filtobs_sn)
+            lightcurvedata[filter_name] = lightcurve
+
+    df_lightcurvedata = pd.DataFrame.from_dict(lightcurvedata)
+    if args.write_data:
+        modelname = at.get_model_name(modelpath)
+        df_lightcurvedata.to_csv(f"bandlightcurves_{modelname}.txt", sep=" ", index=False, header=True)
 
     return filters_dict
 
