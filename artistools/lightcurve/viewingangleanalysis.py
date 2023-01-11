@@ -693,7 +693,7 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
                 lcname = "light_curve.out"
             lcpath = at.firstexisting([lcname + ".xz", lcname + ".gz", lcname], path=modelpath)
             print(f"Reading {lcname}")
-            lightcurve_data = at.lightcurve.readfile(lcpath, args)
+            lightcurve_data = at.lightcurve.readfile(lcpath, modelpath, args)
 
         # check if doing viewing angle stuff, and if so define which data to use
         angles, viewing_angles, angle_definition = get_angle_stuff(modelpath, args)
