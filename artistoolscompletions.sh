@@ -92,5 +92,3 @@ complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartisin
 complete -o nospace -o default -o bashdefault -F _python_argcomplete artistools-initialcomposition
 complete -o nospace -o default -o bashdefault -F _python_argcomplete artistools-writecodecomparisondata
 complete -o nospace -o default -o bashdefault -F _python_argcomplete artistools-setup_completions
-complete -o nospace -o default -o bashdefault -F _python_argcomplete artistools-viewingangles
-complete -o nospace -o default -o bashdefault -F _python_argcomplete plotartisviewingangles
