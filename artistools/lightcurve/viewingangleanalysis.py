@@ -321,15 +321,51 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, arg
         )
 
 
-def lightcurve_polyfit(time, magnitude, args, deg=10):
-    zfit = np.polyfit(x=time, y=magnitude, deg=deg)
-    xfit = np.linspace(args.timemin + 0.5, args.timemax - 0.5, num=1000)
+def lightcurve_polyfit(time, magnitude, args, deg=10, kernel_scale=10, lc_error=0.01):
+    try:
+        import george
+        from george import kernels
+        import scipy.optimize as op
 
-    # Taking line_min and line_max from the limits set for the lightcurve being plotted
-    # polynomial with 10 degrees of freedom used here but change as required if it improves the fit
-    fxfit = np.poly1d(zfit)
+        kernel = np.var(magnitude) * kernels.Matern32Kernel(kernel_scale)
+        gp = george.GP(kernel)
 
-    return fxfit(xfit), xfit
+        # Define the objective function (negative log-likelihood in this case).
+        def nll(p):
+            gp.set_parameter_vector(p)
+            ll = gp.log_likelihood(magnitude, quiet=True)
+            return -ll if np.isfinite(ll) else 1e25
+
+        # And the gradient of the objective function.
+        def grad_nll(p):
+            gp.set_parameter_vector(p)
+            return -gp.grad_log_likelihood(magnitude, quiet=True)
+
+        # You need to compute the GP once before starting the optimization.
+        gp.compute(time, yerr=np.abs(magnitude) * lc_error)
+
+        # Run the optimization routine.
+        p0 = gp.get_parameter_vector()
+        results = op.minimize(nll, p0, jac=grad_nll, method="L-BFGS-B")
+
+        # Update the kernel and print the final log-likelihood.
+        gp.set_parameter_vector(results.x)
+
+        xfit = np.linspace(min(time), max(time), 1000)
+        pred, _ = gp.predict(magnitude, xfit, return_var=True)
+
+    except ModuleNotFoundError:
+        print("Could not find 'george' module, falling back to polynomial fit")
+        zfit = np.polyfit(x=time, y=magnitude, deg=deg)
+        xfit = np.linspace(args.timemin + 0.5, args.timemax - 0.5, num=1000)
+
+        # Taking line_min and line_max from the limits set for the lightcurve being plotted
+        # polynomial with 10 degrees of freedom used here but change as required if it improves the fit
+        fxfit = np.poly1d(zfit)
+        pred = fxfit(xfit)
+
+    return pred, xfit
+
 
 
 def make_plot_test_viewing_angle_fit(
