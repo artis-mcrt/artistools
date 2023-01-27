@@ -51,8 +51,6 @@ def get_commandlist():
         "artistools-initialcomposition": ("artistools.initial_composition", "main"),
         "artistools-writecodecomparisondata": ("artistools.writecomparisondata", "main"),
         "artistools-setup_completions": ("artistools.commands", "setup_completions"),
-        "artistools-viewingangles": ("artistools.viewing_angles_visualization", "cli"),
-        "plotartisviewingangles": ("artistools.viewing_angles_visualization", "cli"),
     }
     return commandlist
 
