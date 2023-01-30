@@ -23,17 +23,13 @@ requires-python = ">=3.9"
 #[project.scripts]
 #atcompletions = "artistoolscompletions.sh"
 
-#[tool.setuptools]
-#packages = ["artistools"]
+[tool.setuptools]
+packages = ["artistools"]
 
 [tool.setuptools.dynamic]
 readme = {file = ["README.md"]}
 dependencies = {file = ["requirements.txt"]}
 #entry-points = {attr = "artistools.commands.console_scripts"}
-
-[tool.setuptools.packages.find]
-where = ["artistools"]
-namespaces = true
 
 [tool.black]
 line-length = 120
