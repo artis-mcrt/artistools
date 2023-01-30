@@ -64,4 +64,4 @@ ignored-modules = ["astropy", "extinction"]
 
 [tool.setuptools_scm]
 write_to = "_version.py"
-local_scheme = "no-local-version"
+#local_scheme = "no-local-version"
