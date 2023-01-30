@@ -221,9 +221,7 @@ def main(
     return (isomin, isomax)
 
 
-def cli():
-    parser = argparse.ArgumentParser()
-
+def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "modelfile",
         help="Path to the ARTIS model.",
@@ -273,6 +271,12 @@ def cli():
         action="store_true",
         help="If flag is given, plot will be shown after saving.",
     )
+
+
+def cli():
+    parser = argparse.ArgumentParser()
+
+    addargs(parser)
 
     args = parser.parse_args()
 
