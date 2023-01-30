@@ -288,5 +288,6 @@ def cli():
         show_plot=args.show_plot,
     )
 
+
 if __name__ == "__main__":
     cli()
