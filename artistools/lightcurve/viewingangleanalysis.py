@@ -367,7 +367,6 @@ def lightcurve_polyfit(time, magnitude, args, deg=10, kernel_scale=10, lc_error=
     return pred, xfit
 
 
-
 def make_plot_test_viewing_angle_fit(
     time,
     magnitude,
