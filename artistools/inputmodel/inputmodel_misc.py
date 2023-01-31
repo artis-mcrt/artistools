@@ -196,7 +196,7 @@ def read_modelfile(
         dfmodel.eval("cellmass_grams = rho * @wid_init ** 3", inplace=True)
 
         dfmodel.rename(columns={"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"}, inplace=True)
-        if "pos_x_min" in dfmodel.columns and False:
+        if "pos_x_min" in dfmodel.columns:
             print("Cell positions in model.txt are defined in the header")
         elif not skip3ddataframe:
 
