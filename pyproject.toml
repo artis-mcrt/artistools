@@ -32,8 +32,7 @@ dependencies = {file = ["requirements.txt"]}
 #entry-points = {attr = "artistools.commands.console_scripts"}
 
 [tool.setuptools.packages.find]
-where = ["artistools"]
-namespaces = true
+where = ["."]
 
 [tool.black]
 line-length = 120

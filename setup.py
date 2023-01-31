@@ -5,7 +5,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
-from setuptools import find_packages
+from setuptools import find_namespace_packages
 from setuptools import setup
 from setuptools_scm import get_version
 
@@ -19,7 +19,8 @@ setup(
     use_scm_version={"local_scheme": "no-local-version"},
     author="ARTIS Collaboration",
     author_email="luke.shingles@gmail.com",
-    # packages=find_packages(),
+    packages=find_namespace_packages(where="."),
+    package_dir={"": "."},
     url="https://www.github.com/artis-mcrt/artistools/",
     long_description=(Path(__file__).absolute().parent / "README.md").open("rt").read(),
     long_description_content_type="text/markdown",
