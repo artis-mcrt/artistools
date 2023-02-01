@@ -679,7 +679,7 @@ def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=Non
         # ticklabels = costheta_viewing_angle_bins
         ticklabels = [" -1", " -0.8", " -0.6", " -0.4", " -0.2", " 0", " 0.2", " 0.4", " 0.6", " 0.8", " 1"]
         ticklocs = np.linspace(0, 9, num=11)
-        label = "cos(\u03B8)"
+        label = "cos(\u03b8)"
     if args.colorbarphi:
         print("reordered phi bins")
         phi_viewing_angle_bins_reordered = [
@@ -698,7 +698,7 @@ def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=Non
         ticklabels = phi_viewing_angle_bins_reordered
         # ticklabels = phi_viewing_angle_bins
         ticklocs = np.linspace(0, 9, num=11)
-        label = "\u03D5 bin"
+        label = "\u03d5 bin"
 
     cbar = plt.colorbar(scaledmap)
     if label:
