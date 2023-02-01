@@ -106,9 +106,7 @@ def make_hesma_vspecfiles(modelpath, outpath=None):
         f.write(
             f"# File contains spectra at observer angles {angle_names} for Model {modelname}.\n# A header line"
             " containing spectra time is repeated at the beginning of each observer angle. Column 0 gives wavelength."
-            " \n# Spectra are at a distance of 10 pc."
-            + "\n"
-            + content
+            " \n# Spectra are at a distance of 10 pc." + "\n" + content
         )
 
 
