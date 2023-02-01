@@ -337,9 +337,11 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataF
     ]
 
     dfcontribs["frac_of_cellmass_includemissing"] = [
-        row.frac_of_cellmass_includemissing / cell_frac_includemissing_sum[row.cellindex]
-        if cell_frac_includemissing_sum[row.cellindex] > 0.0
-        else 0.0
+        (
+            row.frac_of_cellmass_includemissing / cell_frac_includemissing_sum[row.cellindex]
+            if cell_frac_includemissing_sum[row.cellindex] > 0.0
+            else 0.0
+        )
         for row in dfcontribs.itertuples()
     ]
 
@@ -466,12 +468,14 @@ def add_abundancecontributions(
         {
             "inputcellid": dfnucabundances.inputcellid,
             **{
-                f"X_{at.get_elsymbol(atomic_number)}": dfnucabundances.eval(
-                    f'{" + ".join(elemisotopes[atomic_number])}',
-                    # engine="python" if len(elemisotopes[atomic_number]) > 31 else None
+                f"X_{at.get_elsymbol(atomic_number)}": (
+                    dfnucabundances.eval(
+                        f'{" + ".join(elemisotopes[atomic_number])}',
+                        # engine="python" if len(elemisotopes[atomic_number]) > 31 else None
+                    )
+                    if atomic_number in elemisotopes
+                    else np.zeros(len(dfnucabundances))
                 )
-                if atomic_number in elemisotopes
-                else np.zeros(len(dfnucabundances))
                 for atomic_number in range(1, max(elemisotopes.keys()) + 1)
             },
         },

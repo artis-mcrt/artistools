@@ -107,9 +107,10 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
 
 
 def slice_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid):
-    with open(os.path.join(inputfolder, "abundances.txt"), "r") as fabundancesin, open(
-        os.path.join(outputfolder, "abundances.txt"), "w"
-    ) as fabundancesout:
+    with (
+        open(os.path.join(inputfolder, "abundances.txt"), "r") as fabundancesin,
+        open(os.path.join(outputfolder, "abundances.txt"), "w") as fabundancesout,
+    ):
         currentblock = []
         keepcurrentblock = False
         for line in fabundancesin:

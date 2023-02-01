@@ -101,9 +101,9 @@ def get_binaverage_field(axis, radfielddata, modelgridindex=None, timestep=None)
     )
 
     yvalues = bindata.apply(
-        lambda row: row["J"] / row["dlambda"]
-        if (not math.isnan(row["J"] / row["dlambda"]) and row["T_R"] >= 0)
-        else 0.0,
+        lambda row: (
+            row["J"] / row["dlambda"] if (not math.isnan(row["J"] / row["dlambda"]) and row["T_R"] >= 0) else 0.0
+        ),
         axis=1,
     ).values
 
