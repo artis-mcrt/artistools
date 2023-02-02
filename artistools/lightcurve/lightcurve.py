@@ -408,6 +408,11 @@ def read_reflightcurve_band_data(lightcurvefilename: Union[Path, str]) -> tuple[
 
     data_path = os.path.join(at.get_config()["path_artistools_dir"], f"data/lightcurves/{lightcurvefilename}")
     lightcurve_data = pd.read_csv(data_path, comment="#")
+    if len(lightcurve_data.keys()) == 1:
+        lightcurve_data = pd.read_csv(data_path, comment="#", delim_whitespace=True)
+
+    lightcurve_data["magnitude"] = pd.to_numeric(lightcurve_data["magnitude"])  # force column to be float
+
     lightcurve_data["time"] = lightcurve_data["time"].apply(lambda x: x - (metadata["timecorrection"]))
     # m - M = 5log(d) - 5  Get absolute magnitude
     if "dist_mpc" not in metadata and "z" in metadata:
