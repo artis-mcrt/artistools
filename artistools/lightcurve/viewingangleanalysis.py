@@ -282,12 +282,12 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, arg
         )
         quit()
     print(
-        "WARNING: Both methods that can be used to fit model light curves to get "
+        "WARNING: Both methods that can be used to fit model light curves to get  "
         "light curve parameters (rise, decline, peak) can be impacted by how much "
-        "of the light curve is being fitted. It is safest to experiment with the "
-        "timemin and timemax args which set the region of the light curve fitted."
-        "The --test_viewing_angle_fit flag will allow you to check the fitting is"
-        "behaving as expected. In general fitting over a smaller region of the "
+        "of the light curve is being fitted. It is safest to experiment with the  "
+        "timemin and timemax args which set the region of the light curve fitted. "
+        "The --test_viewing_angle_fit flag will allow you to check the fitting is "
+        "behaving as expected. In general fitting over a smaller region of the    "
         "light curve tends to produce better fits."
     )
     fxfit, xfit = lightcurve_polyfit(time, magnitude, args)
@@ -364,11 +364,13 @@ def lightcurve_polyfit(time, magnitude, args, deg=10, kernel_scale=10, lc_error=
         pred, _ = gp.predict(magnitude, xfit, return_var=True)
 
     except ModuleNotFoundError:
-        print("Could not find 'george' module, falling back to polynomial fit"
-              "WARNING: polynomial fit method is sensitive to the degrees of "
-              "freedom used in the polynomial fit. Therefore important to check"
-              "which degree of freedom used in the polynomial provides the best "
-              "fit using the --test_viewing_angle_fit flag")
+        print(
+            "Could not find 'george' module, falling back to polynomial fit  "
+            "WARNING: polynomial fit method is sensitive to the degrees of   "
+            "freedom used in the polynomial fit. Therefore important to check"
+            "which degree of freedom used in the polynomial provides the best"
+            "fit using the --test_viewing_angle_fit flag                     "
+            )
         zfit = np.polyfit(x=time, y=magnitude, deg=deg)
         xfit = np.linspace(args.timemin + 0.5, args.timemax - 0.5, num=1000)
 
