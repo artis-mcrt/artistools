@@ -1464,7 +1464,7 @@ def main(args=None, argsraw=None, **kwargs):
     else:
         outputfolder = Path()
 
-    filternames_conversion_dict = {"rs": "r", "gs": "g", "is": "i"}
+    filternames_conversion_dict = {"rs": "r", "gs": "g", "is": "i", "zs": "z"}
 
     # determine if this will be a scatter plot or not
     args.calculate_peak_time_mag_deltam15_bool = False
