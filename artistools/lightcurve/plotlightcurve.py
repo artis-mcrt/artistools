@@ -700,12 +700,21 @@ def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=Non
         ticklocs = np.linspace(0, 9, num=11)
         label = "\u03d5 bin"
 
-    cbar = plt.colorbar(scaledmap)
-    if label:
-        cbar.set_label(label, rotation=90)
-    cbar.locator = matplotlib.ticker.FixedLocator(ticklocs)
-    cbar.formatter = matplotlib.ticker.FixedFormatter(ticklabels)
-    cbar.update_ticks()
+    hidecolorbar = False
+    if not hidecolorbar:
+        if fig:
+            from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+
+            # cax = plt.axes([0.3, 0.97, 0.45, 0.02])  #2nd and 4th move up and down. 1st left and right. 3rd bar width
+            cax = plt.axes([0.2, 0.98, 0.65, 0.04])
+            cbar = fig.colorbar(scaledmap, cax=cax, orientation="horizontal")
+        else:
+            cbar = plt.colorbar(scaledmap)
+        if label:
+            cbar.set_label(label, rotation=0)
+        cbar.locator = matplotlib.ticker.FixedLocator(ticklocs)
+        cbar.formatter = matplotlib.ticker.FixedFormatter(ticklabels)
+        cbar.update_ticks()
 
 
 def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfolder, args: argparse.Namespace) -> None:
