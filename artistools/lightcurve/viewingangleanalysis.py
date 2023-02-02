@@ -406,7 +406,7 @@ def make_plot_test_viewing_angle_fit(
 
     plt.xlabel("Time Since Explosion [d]")
     plt.gca().invert_yaxis()
-    plt.xlim(args.timemin - 1, args.timemax + 1)
+    plt.xlim(args.timemin / 1.05, args.timemax * 1.05)
     plt.minorticks_on()
     plt.tick_params(axis="both", which="minor", top=True, right=True, length=5, width=2, labelsize=12)
     plt.tick_params(axis="both", which="major", top=True, right=True, length=8, width=2, labelsize=12)
