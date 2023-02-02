@@ -236,8 +236,8 @@ def generate_band_lightcurve_data(
                 phot_filtobs_sn = evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux)
 
                 # print(time, phot_filtobs_sn)
-                # if phot_filtobs_sn != 0.0:
-                phot_filtobs_sn = phot_filtobs_sn - 25  # Absolute magnitude
+                if phot_filtobs_sn != 0.0:
+                    phot_filtobs_sn = phot_filtobs_sn - 25  # Absolute magnitude
                 filters_dict[filter_name].append((time, phot_filtobs_sn))
 
     return filters_dict
