@@ -370,7 +370,7 @@ def lightcurve_polyfit(time, magnitude, args, deg=10, kernel_scale=10, lc_error=
             "freedom used in the polynomial fit. Therefore important to check"
             "which degree of freedom used in the polynomial provides the best"
             "fit using the --test_viewing_angle_fit flag                     "
-            )
+        )
         zfit = np.polyfit(x=time, y=magnitude, deg=deg)
         xfit = np.linspace(args.timemin + 0.5, args.timemax - 0.5, num=1000)
 
