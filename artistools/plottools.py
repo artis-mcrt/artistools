@@ -111,6 +111,11 @@ def set_axis_properties(ax, args):
     if "xmin" in args or "xmax" in args:
         plt.xlim(args.xmin, args.xmax)
 
+    if args.logscalex:
+        plt.xscale("log")
+    if args.logscaley:
+        plt.yscale("log")
+
     plt.minorticks_on()
     return ax
 
