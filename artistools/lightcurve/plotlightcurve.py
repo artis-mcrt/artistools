@@ -553,31 +553,6 @@ def create_axes(args):
     return fig, ax
 
 
-def set_axis_limit_args(args):
-    if args.filter:
-        plt.gca().invert_yaxis()
-        if args.ymax is None:
-            args.ymax = -20
-        if args.ymin is None:
-            args.ymin = -14
-
-    if args.colour_evolution:
-        if args.ymax is None:
-            args.ymax = 1
-        if args.ymin is None:
-            args.ymin = -1
-
-    if args.filter or args.colour_evolution:
-        if args.xmax is None:
-            args.xmax = 100
-        if args.xmin is None:
-            args.xmin = 0
-        if args.timemax is None:
-            args.timemax = args.xmax + 5
-        if args.timemin is None:
-            args.timemin = args.xmin - 5
-
-
 def get_linelabel(
     modelpath: Path,
     modelname: str,
@@ -723,7 +698,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 
     args.labelfontsize = 22  # todo: make command line arg
     fig, ax = create_axes(args)
-    set_axis_limit_args(args)
+    ax[0].invert_yaxis()
 
     plotkwargs: dict[str, Any] = {}
 
@@ -789,8 +764,17 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                     text_key = filternames_conversion_dict[band_name]
                 else:
                     text_key = band_name
+
                 if args.subplots:
-                    ax[plotnumber].text(args.xmax * 0.8, args.ymax * 0.97, text_key)
+                    ax[plotnumber].annotate(
+                        text_key,
+                        xy=(1.0, 1.0),
+                        xycoords="axes fraction",
+                        textcoords="offset points",
+                        xytext=(-30, -30),
+                        horizontalalignment="right",
+                        verticalalignment="top",
+                    )
                 # else:
                 #     ax.text(args.xmax * 0.75, args.ymax * 0.95, text_key)
 
@@ -899,7 +883,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
     angle_counter = 0
 
     fig, ax = create_axes(args)
-    set_axis_limit_args(args)
+    ax[0].invert_yaxis()
 
     plotkwargs = {}
 
@@ -1359,7 +1343,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--include_delta_m40",
         action="store_true",
-        help=("When calculating delta_m15, calculate delta_m40 as well." "Only affects the saved viewing angle data."),
+        help="When calculating delta_m15, calculate delta_m40 as well.Only affects the saved viewing angle data.",
     )
 
     parser.add_argument(

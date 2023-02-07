@@ -209,7 +209,7 @@ def generate_band_lightcurve_data(
 
         for timestep, time in enumerate(timearray):
             time = float(time)
-            if args.timemin < time < args.timemax:
+            if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
                 wavelength_from_spectrum, flux = get_spectrum_in_filter_range(
                     modelpath,
                     timestep,
@@ -352,10 +352,13 @@ def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointe
 
 
 def get_band_lightcurve(band_lightcurve_data, band_name, args: argparse.Namespace) -> tuple[list[float], np.ndarray]:
-    time = [t for t, _ in band_lightcurve_data[band_name] if (args.timemin < t < args.timemax)]
-    brightness_in_mag = [
-        brightness for t, brightness in band_lightcurve_data[band_name] if (args.timemin < t < args.timemax)
-    ]
+    time, brightness_in_mag = zip(
+        *[
+            (time, brightness)
+            for time, brightness in band_lightcurve_data[band_name]
+            if ((args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time))
+        ]
+    )
 
     return time, np.array(brightness_in_mag)
 
