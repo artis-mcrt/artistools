@@ -217,13 +217,27 @@ def calculate_costheta_phi_for_viewing_angles(
 
 def save_viewing_angle_data_for_plotting(band_name, modelname, args):
     if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
-        np.savetxt(
-            band_name + "band_" + f"{modelname}" + "_viewing_angle_data.txt",
-            np.c_[args.band_peakmag_polyfit, args.band_risetime_polyfit, args.band_deltam15_polyfit],
-            delimiter=" ",
-            header="peak_mag_polyfit risetime_polyfit deltam15_polyfit",
-            comments="",
-        )
+        if args.include_delta_m40:
+            np.savetxt(
+                band_name + "band_" + f"{modelname}" + "_viewing_angle_data.txt",
+                np.c_[
+                    args.band_peakmag_polyfit,
+                    args.band_risetime_polyfit,
+                    args.band_deltam15_polyfit,
+                    args.band_deltam40_polyfit,
+                ],
+                delimiter=" ",
+                header="peak_mag_polyfit risetime_polyfit deltam15_polyfit deltam40_polyfit",
+                comments="",
+            )
+        else:
+            np.savetxt(
+                band_name + "band_" + f"{modelname}" + "_viewing_angle_data.txt",
+                np.c_[args.band_peakmag_polyfit, args.band_risetime_polyfit, args.band_deltam15_polyfit],
+                delimiter=" ",
+                header="peak_mag_polyfit risetime_polyfit deltam15_polyfit",
+                comments="",
+            )
 
     elif (
         args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
@@ -237,6 +251,8 @@ def save_viewing_angle_data_for_plotting(band_name, modelname, args):
     args.band_risetime_polyfit = []
     args.band_peakmag_polyfit = []
     args.band_deltam15_polyfit = []
+    if args.include_delta_m40:
+        args.band_deltam40_polyfit = []
 
     # if args.magnitude and not (
     #         args.calculate_peakmag_risetime_delta_m15 or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
@@ -298,9 +314,13 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, arg
     index_min = np.argmin(fxfit)
     tmax_polyfit = xfit[index_min]
     time_after15days_polyfit = match_closest_time_polyfit(tmax_polyfit + 15)
+    if args.include_delta_m40:
+        time_after40days_polyfit = match_closest_time_polyfit(tmax_polyfit + 40)
     for ii, xfits in enumerate(xfit):
         if float(xfits) == float(time_after15days_polyfit):
             index_after_15_days = ii
+        elif args.include_delta_m40 and float(xfits) == float(time_after40days_polyfit):
+            index_after40_days = ii
 
     mag_after15days_polyfit = fxfit[index_after_15_days]
     print(f"{key}_max polyfit = {min(fxfit)} at time = {tmax_polyfit}")
@@ -309,6 +329,10 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, arg
     args.band_risetime_polyfit.append(tmax_polyfit)
     args.band_peakmag_polyfit.append(min(fxfit))
     args.band_deltam15_polyfit.append((min(fxfit) - mag_after15days_polyfit) * -1)
+    if args.include_delta_m40:
+        mag_after15days_polyfit = fxfit[index_after_15_days]
+        print(f"deltam40 polyfit = {min(fxfit) - mag_after40days_polyfit}")
+        args.band_deltam40_polyfit.append((min(fxfit) - mag_after40days_polyfit) * -1)
 
     # Plotting the lightcurves for all viewing angles specified in the command line along with the
     # polynomial fit and peak mag, risetime to peak and delta m15 marked on the plots to check the
@@ -714,6 +738,8 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
     args.band_risetime_polyfit = []
     args.band_peakmag_polyfit = []
     args.band_deltam15_polyfit = []
+    if args.include_delta_m40:
+        args.band_deltam40_polyfit = []
 
     args.band_risetime_angle_averaged_polyfit = []
     args.band_peakmag_angle_averaged_polyfit = []
