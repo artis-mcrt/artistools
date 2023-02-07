@@ -330,7 +330,7 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, arg
     args.band_peakmag_polyfit.append(min(fxfit))
     args.band_deltam15_polyfit.append((min(fxfit) - mag_after15days_polyfit) * -1)
     if args.include_delta_m40:
-        mag_after15days_polyfit = fxfit[index_after_15_days]
+        mag_after40days_polyfit = fxfit[index_after_40_days]
         print(f"deltam40 polyfit = {min(fxfit) - mag_after40days_polyfit}")
         args.band_deltam40_polyfit.append((min(fxfit) - mag_after40days_polyfit) * -1)
 
