@@ -698,7 +698,6 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 
     args.labelfontsize = 22  # todo: make command line arg
     fig, ax = create_axes(args)
-    ax[0].invert_yaxis()
 
     plotkwargs: dict[str, Any] = {}
 
@@ -819,7 +818,8 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                     plotkwargs["linestyle"] = args.linestyle[modelnumber]
 
                 # if not (args.test_viewing_angle_fit or args.calculate_peak_time_mag_deltam15_bool):
-
+                curax = ax[plotnumber] if args.subplots else ax
+                curax.invert_yaxis()
                 if args.subplots:
                     if len(angles) > 1 or (args.plotviewingangle and os.path.isfile(modelpath / "specpol_res.out")):
                         ax[plotnumber].plot(time, brightness_in_mag, linewidth=4, **plotkwargs)
