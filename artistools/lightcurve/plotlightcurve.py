@@ -1357,6 +1357,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
+        "--include_delta_m40",
+        action="store_true",
+        help=("When calculating delta_m15, calculate delta_m40 as well." "Only affects the saved viewing angle data."),
+    )
+
+    parser.add_argument(
         "--noerrorbars", action="store_true", help="Don't plot error bars on viewing angle scatter plots"
     )
 
