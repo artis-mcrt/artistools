@@ -320,7 +320,7 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, arg
         if float(xfits) == float(time_after15days_polyfit):
             index_after_15_days = ii
         elif args.include_delta_m40 and float(xfits) == float(time_after40days_polyfit):
-            index_after40_days = ii
+            index_after_40_days = ii
 
     mag_after15days_polyfit = fxfit[index_after_15_days]
     print(f"{key}_max polyfit = {min(fxfit)} at time = {tmax_polyfit}")
