@@ -253,12 +253,9 @@ def bolometric_magnitude(
     magnitudes = []
     times = []
 
-    assert args.timemin is not None
-    assert args.timemax is not None  # todo: either make it so these are define or aren't needed
-
     for timestep, time in enumerate(timearray):
         time = float(time)
-        if args.timemin < time < args.timemax:
+        if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
             if angle is not None:
                 if args.plotvspecpol:
                     spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
