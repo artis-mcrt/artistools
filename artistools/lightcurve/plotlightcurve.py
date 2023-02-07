@@ -883,7 +883,6 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
     angle_counter = 0
 
     fig, ax = create_axes(args)
-    ax.invert_yaxis()
 
     plotkwargs = {}
 
@@ -947,6 +946,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                     ax.plot(plot_times, colour_delta_mag, linewidth=3, **plotkwargs)
 
                 curax = ax[plotnumber] if args.subplots else ax
+                curax.invert_yaxis()
                 curax.annotate(
                     f"{filter_names[0]}-{filter_names[1]}",
                     xy=(1.0, 1.0),
