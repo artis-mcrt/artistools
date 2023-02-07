@@ -946,10 +946,18 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                 else:
                     ax.plot(plot_times, colour_delta_mag, linewidth=3, **plotkwargs)
 
-                if args.subplots:
-                    ax[plotnumber].text(10, args.ymax - 0.5, f"{filter_names[0]}-{filter_names[1]}", fontsize="x-large")
-                else:
-                    ax.text(60, args.ymax * 0.8, f"{filter_names[0]}-{filter_names[1]}", fontsize="x-large")
+                curax = ax[plotnumber] if args.subplots else ax
+                curax.annotate(
+                    f"{filter_names[0]}-{filter_names[1]}",
+                    xy=(1.0, 1.0),
+                    xycoords="axes fraction",
+                    textcoords="offset points",
+                    xytext=(-30, -30),
+                    horizontalalignment="right",
+                    verticalalignment="top",
+                    fontsize="x-large",
+                )
+
         # UNCOMMENT TO ESTIMATE COLOUR AT TIME B MAX
         # def match_closest_time(reftime):
         #     return ("{}".format(min([float(x) for x in plot_times], key=lambda x: abs(x - reftime))))
