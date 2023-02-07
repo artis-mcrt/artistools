@@ -883,7 +883,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
     angle_counter = 0
 
     fig, ax = create_axes(args)
-    ax[0].invert_yaxis()
+    ax.invert_yaxis()
 
     plotkwargs = {}
 
