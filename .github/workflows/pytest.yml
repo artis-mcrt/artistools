@@ -3,6 +3,7 @@ name: Installation and pytest
 
 on:
     push:
+    merge_group:
 
 jobs:
     pytest:
