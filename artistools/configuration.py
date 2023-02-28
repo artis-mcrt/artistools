@@ -48,7 +48,7 @@ def setup_config():
         "/Users/luke/Library/Mobile Documents/com~apple~CloudDocs/GitHub/sn-rad-trans/data1"
     )
 
-    config["codecomparisonmodelartismodelpath"] = Path("/Volumes/GoogleDrive/My Drive/artis_runs/weizmann/")
+    config["codecomparisonmodelartismodelpath"] = Path(Path.home() / "Google Drive/My Drive/artis_runs/weizmann/")
 
     config["path_artistools_repository"] = Path(__file__).absolute().parent.parent
     config["path_artistools_dir"] = Path(__file__).absolute().parent  # the package path
