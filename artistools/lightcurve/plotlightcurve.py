@@ -1198,7 +1198,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--plotdeposition", action="store_true", help="Plot model deposition rates")
 
-    parser.add_argument("--plotthermalisation", action="store_true", help="Plot thermalisation rates")
+    parser.add_argument(
+        "--plotthermalisation", action="store_true", help="Plot thermalisation rates (in separate plot)"
+    )
 
     parser.add_argument("--magnitude", action="store_true", help="Plot light curves in magnitudes")
 

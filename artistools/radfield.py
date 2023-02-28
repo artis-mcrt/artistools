@@ -6,6 +6,7 @@ import os
 import sys
 from functools import lru_cache
 from pathlib import Path
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,7 +24,7 @@ import artistools.spectra
 # import matplotlib.patches as mpatches
 
 H = 6.6260755e-27  # Planck constant [erg s]
-KB = 1.38064852e-16
+KB = 1.38064852e-16  # Boltzmann constant [erg/K]
 EV = 1.6021772e-12  # eV to ergs [eV/erg]
 ONEOVERH = 1.509188961e26
 HOVERKB = 4.799243681748932e-11
@@ -71,9 +72,9 @@ def select_bin(radfielddata, nu=None, lambda_angstroms=None, modelgridindex=None
     assert nu is None or lambda_angstroms is None
 
     if lambda_angstroms is not None:
-        nu = const.c.to("angstrom/s").value / lambda_angstroms
+        nu = 2.99792458e18 / lambda_angstroms
     else:
-        lambda_angstroms = const.c.to("angstrom/s").value / nu
+        lambda_angstroms = 2.99792458e18 / nu
 
     dfselected = radfielddata.query(
         ("modelgridindex == @modelgridindex and " if modelgridindex else "")
@@ -94,11 +95,9 @@ def get_binaverage_field(axis, radfielddata, modelgridindex=None, timestep=None)
         + (" & timestep==@timestep" if timestep else "")
     )
 
-    arr_lambda = const.c.to("angstrom/s").value / bindata["nu_upper"].values
+    arr_lambda = 2.99792458e18 / bindata["nu_upper"].values
 
-    bindata["dlambda"] = bindata.apply(
-        lambda row: const.c.to("angstrom/s").value * (1 / row["nu_lower"] - 1 / row["nu_upper"]), axis=1
-    )
+    bindata["dlambda"] = bindata.apply(lambda row: 2.99792458e18 * (1 / row["nu_lower"] - 1 / row["nu_upper"]), axis=1)
 
     yvalues = bindata.apply(
         lambda row: (
@@ -108,7 +107,7 @@ def get_binaverage_field(axis, radfielddata, modelgridindex=None, timestep=None)
     ).values
 
     # add the starting point
-    arr_lambda = np.insert(arr_lambda, 0, const.c.to("angstrom/s").value / bindata["nu_lower"].iloc[0])
+    arr_lambda = np.insert(arr_lambda, 0, 2.99792458e18 / bindata["nu_lower"].iloc[0])
     yvalues = np.insert(yvalues, 0, 0.0)
 
     return arr_lambda, yvalues
@@ -116,19 +115,18 @@ def get_binaverage_field(axis, radfielddata, modelgridindex=None, timestep=None)
 
 def j_nu_dbb(arr_nu_hz, W, T):
     """# CGS units J_nu for dilute blackbody."""
-    k_b = const.k_B.to("eV/K").value
-    h = const.h.to("eV s").value
-
     if W > 0.0:
         try:
-            return [W * 1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(h * nu_hz / T / k_b)) for nu_hz in arr_nu_hz]
+            return [W * 1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(H * nu_hz / T / KB)) for nu_hz in arr_nu_hz]
         except OverflowError:
             print(f"WARNING: overflow error W {W}, T {T} (Did this happen in ARTIS too?)")
 
     return [0.0 for _ in arr_nu_hz]
 
 
-def get_fullspecfittedfield(radfielddata, xmin, xmax, modelgridindex=None, timestep=None):
+def get_fullspecfittedfield(
+    radfielddata, xmin, xmax, modelgridindex: Optional[int] = None, timestep: Optional[int] = None
+):
     row = (
         radfielddata.query(
             "bin_num == -1"
@@ -138,21 +136,26 @@ def get_fullspecfittedfield(radfielddata, xmin, xmax, modelgridindex=None, times
         .copy()
         .iloc[0]
     )
-    nu_lower = const.c.to("angstrom/s").value / xmin
-    nu_upper = const.c.to("angstrom/s").value / xmax
+    nu_lower = 2.99792458e18 / xmin
+    nu_upper = 2.99792458e18 / xmax
     arr_nu_hz = np.linspace(nu_lower, nu_upper, num=500)
     arr_j_nu = j_nu_dbb(arr_nu_hz, row["W"], row["T_R"])
 
-    arr_lambda = const.c.to("angstrom/s").value / arr_nu_hz
+    arr_lambda = 2.99792458e18 / arr_nu_hz
     arr_j_lambda = arr_j_nu * arr_nu_hz / arr_lambda
 
     return arr_lambda, arr_j_lambda
 
 
 def get_fitted_field(
-    radfielddata, modelgridindex=None, timestep=None, print_bins=False, lambdamin=None, lambdamax=None
-):
-    """Return the fitted dilute blackbody made up of all bins."""
+    radfielddata,
+    modelgridindex: Optional[int] = None,
+    timestep: Optional[int] = None,
+    print_bins: bool = False,
+    lambdamin: Optional[float] = None,
+    lambdamax: Optional[float] = None,
+) -> tuple[list[float], list[float]]:
+    """Return the fitted dilute blackbody (list of lambda, list of j_nu) made up of all bins."""
     arr_lambda = []
     j_lambda_fitted = []
 
@@ -162,11 +165,11 @@ def get_fitted_field(
         + (" & timestep==@timestep" if timestep else "")
     )
 
-    if lambdamin is not None:
-        nu_min = const.c.to("angstrom/s").value / lambdamax
-
     if lambdamax is not None:
-        nu_max = const.c.to("angstrom/s").value / lambdamin
+        nu_min = 2.99792458e18 / lambdamax
+
+    if lambdamin is not None:
+        nu_max = 2.99792458e18 / lambdamin
 
     for _, row in radfielddata_subset.iterrows():
         nu_lower = row["nu_lower"]
@@ -185,7 +188,7 @@ def get_fitted_field(
             arr_nu_hz_bin = np.linspace(nu_lower, nu_upper, num=200)
             arr_j_nu = j_nu_dbb(arr_nu_hz_bin, row["W"], row["T_R"])
 
-            arr_lambda_bin = const.c.to("angstrom/s").value / arr_nu_hz_bin
+            arr_lambda_bin = 2.99792458e18 / arr_nu_hz_bin
             arr_j_lambda_bin = arr_j_nu * arr_nu_hz_bin / arr_lambda_bin
 
             arr_lambda += list(arr_lambda_bin)
@@ -194,11 +197,11 @@ def get_fitted_field(
             arr_nu_hz_bin = [nu_lower, nu_upper]
             arr_j_lambda_bin = [0.0, 0.0]
 
-            arr_lambda += [const.c.to("angstrom/s").value / nu for nu in arr_nu_hz_bin]
+            arr_lambda += [2.99792458e18 / nu for nu in arr_nu_hz_bin]
             j_lambda_fitted += arr_j_lambda_bin
 
-        lambda_lower = const.c.to("angstrom/s").value / row["nu_upper"]
-        lambda_upper = const.c.to("angstrom/s").value / row["nu_lower"]
+        lambda_lower = 2.99792458e18 / row["nu_upper"]
+        lambda_upper = 2.99792458e18 / row["nu_lower"]
         if (
             print_bins
             and (lambdamax is None or lambda_lower < lambdamax)
@@ -222,9 +225,8 @@ def plot_line_estimators(axis, radfielddata, xmin, xmax, modelgridindex=None, ti
         + (" & timestep==@timestep" if timestep else "")
     )[["nu_upper", "J_nu_avg"]]
 
-    const_c = const.c.to("angstrom/s").value
-    radfielddataselected.eval("lambda_angstroms = @const_c / nu_upper", inplace=True)
-    radfielddataselected.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / @const_c", inplace=True)
+    radfielddataselected.eval("lambda_angstroms = 2.99792458e18 / nu_upper", inplace=True)
+    radfielddataselected.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18", inplace=True)
 
     ymax = radfielddataselected["Jb_lambda"].max()
 
@@ -240,7 +242,14 @@ def plot_line_estimators(axis, radfielddata, xmin, xmax, modelgridindex=None, ti
     return ymax
 
 
-def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=None, **plotkwargs):
+def plot_specout(
+    axis,
+    specfilename,
+    timestep: int,
+    peak_value: Optional[float] = None,
+    scale_factor: Optional[float] = None,
+    **plotkwargs,
+) -> None:
     """Plot the ARTIS spectrum."""
     print(f"Plotting {specfilename}")
 
@@ -263,7 +272,9 @@ def plot_specout(axis, specfilename, timestep, peak_value=None, scale_factor=Non
 
 
 @lru_cache(maxsize=128)
-def evaluate_phixs(modelpath, atomic_number, lower_ion_stage, lowerlevelindex, nu_threshold, arr_nu_hz):
+def evaluate_phixs(
+    modelpath, atomic_number: int, lower_ion_stage: int, lowerlevelindex: int, nu_threshold: float, arr_nu_hz
+):
     adata = at.atomic.get_levels(modelpath, get_photoionisations=True)
     lower_ion_data = adata.query("Z == @atomic_number and ion_stage == @lower_ion_stage").iloc[0]
     lowerlevel = lower_ion_data.levels.iloc[lowerlevelindex]
@@ -417,7 +428,7 @@ def get_recombination_emission(
             alpha_ion2 += alpha_level2
 
             # alpha_level = np.abs(np.trapz(arr_alpha_level_dnu, x=arr_nu_hz))
-            lambda_threshold = const.c.to("angstrom/s").value / nu_threshold
+            lambda_threshold = 2.99792458e18 / nu_threshold
             print(
                 f" {upperionstr} level {upperlevelnum} -> {lowerionstr} level {levelnum}"
                 f" threshold {lambda_threshold:7.1f} Å"
@@ -428,9 +439,9 @@ def get_recombination_emission(
     alpha_ion = np.abs(np.trapz(arr_alpha_dnu, x=arr_nu_hz))
     print(f"  {upperionstr} Alpha_R = {alpha_ion:.2e}   Alpha_R*nne = {nne*alpha_ion:.2e}")
     print(f"  {upperionstr} Alpha_R2 = {alpha_ion2:.2e} Alpha_R2*nne = {nne*alpha_ion2:.2e}")
-    # c_cgs = const.c.to('cm/s').value
+
     # vmax = at.inputmodel.get_modeldata_tuple(modelpath)[0]['velocity_outer'].iloc[-1] * 1e5
-    # t_seconds = at.get_timestep_times_float(modelpath, loc='start')[timestep] * u.day.to('s')
+    # t_seconds = at.get_timestep_times_float(modelpath, loc="start")[timestep] * 86400.0
 
     # mean_free_path = vmax * t_seconds
 
@@ -478,7 +489,7 @@ def get_ion_gamma_dnu(modelpath, modelgridindex, timestep, atomic_number, ion_st
             arr_gamma_dnu += arr_gamma_level_dnu
 
             gamma_r_level = np.abs(np.trapz(arr_gamma_level_dnu, x=arr_nu_hz))
-            lambda_threshold = const.c.to("angstrom/s").value / nu_threshold
+            lambda_threshold = 2.99792458e18 / nu_threshold
 
             print(
                 f"  level {levelnum} pop_frac {levelpopfrac:.2f} upperlevel {upperlevelnum}"
@@ -522,7 +533,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
     print(f"T_e {T_e:.1f} K, nne {nne:.1e} /cm3")
 
     arraylambda_angstrom_recomb = np.linspace(xmin, xmax, num=10000)
-    arr_nu_hz_recomb = const.c.to("angstrom/s").value / np.array(arraylambda_angstrom_recomb)
+    arr_nu_hz_recomb = 2.99792458e18 / np.array(arraylambda_angstrom_recomb)
 
     # calculate bound-free opacity
     array_kappa_bf_nu = np.zeros_like(arr_nu_hz_recomb)
@@ -634,7 +645,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
         lw = 1.0
         for arraylambda_angstrom, J_lambda_arr, linelabel in fieldlist:
             # lw -= 0.4
-            arr_nu_hz = const.c.to("angstrom/s").value / np.array(arraylambda_angstrom)
+            arr_nu_hz = 2.99792458e18 / np.array(arraylambda_angstrom)
             print(f"{ionstr} photoionisation rate coeffs using radiation field due to {linelabel}")
             J_nu_arr = np.array(J_lambda_arr) * arraylambda_angstrom / arr_nu_hz
 
@@ -662,9 +673,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
 
 
 def get_binedges(radfielddata):
-    return [const.c.to("angstrom/s").value / radfielddata["nu_lower"].iloc[1]] + list(
-        const.c.to("angstrom/s").value / radfielddata["nu_upper"][1:]
-    )
+    return [2.99792458e18 / radfielddata["nu_lower"].iloc[1]] + list(2.99792458e18 / radfielddata["nu_upper"][1:])
 
 
 def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridindex, args, normalised=False):
@@ -810,9 +819,8 @@ def plot_bin_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex,
         lambda x: j_nu_dbb([nu_line], x.W, x.T_R)[0], axis=1
     )
 
-    const_c = const.c.to("angstrom/s").value
-    radfielddataselected.eval("Jb_lambda_at_line = Jb_nu_at_line * (@nu_line ** 2) / @const_c", inplace=True)
-    lambda_angstroms = const_c / nu_line
+    radfielddataselected.eval("Jb_lambda_at_line = Jb_nu_at_line * (@nu_line ** 2) / 2.99792458e18", inplace=True)
+    lambda_angstroms = 2.99792458e18 / nu_line
 
     radfielddataselected.plot(
         x="timestep",
@@ -830,11 +838,10 @@ def plot_global_fitted_field_evolution(axis, radfielddata, nu_line, modelgridind
         lambda x: j_nu_dbb([nu_line], x.W, x.T_R)[0], axis=1
     )
 
-    const_c = const.c.to("angstrom/s").value
     radfielddataselected.eval(
-        "J_lambda_fullspec_at_line = J_nu_fullspec_at_line * (@nu_line ** 2) / @const_c", inplace=True
+        "J_lambda_fullspec_at_line = J_nu_fullspec_at_line * (@nu_line ** 2) / 2.99792458e18", inplace=True
     )
-    lambda_angstroms = const_c / nu_line
+    lambda_angstroms = 2.99792458e18 / nu_line
 
     radfielddataselected.plot(
         x="timestep",
@@ -856,9 +863,8 @@ def plot_line_estimator_evolution(
         + (" & timestep <= @timestep_max" if timestep_max else "")
     )[["timestep", "nu_upper", "J_nu_avg"]]
 
-    const_c = const.c.to("angstrom/s").value
-    radfielddataselected.eval("lambda_angstroms = @const_c / nu_upper", inplace=True)
-    radfielddataselected.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / @const_c", inplace=True)
+    radfielddataselected.eval("lambda_angstroms = 2.99792458e18 / nu_upper", inplace=True)
+    radfielddataselected.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18", inplace=True)
 
     axis.plot(
         radfielddataselected["timestep"],
@@ -874,8 +880,6 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
 
     radfielddata = read_files(modelpath, modelgridindex=modelgridindex)
     radfielddataselected = radfielddata.query("modelgridindex == @modelgridindex")
-
-    const_c = const.c.to("angstrom/s").value
 
     nlinesplotted = 200
     fig, axes = plt.subplots(
@@ -893,8 +897,8 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
     time_days = float(at.get_timestep_time(modelpath, timestep))
 
     dftopestimators = radfielddataselected.query("timestep==@timestep and bin_num < -1").copy()
-    dftopestimators.eval("lambda_angstroms = @const_c / nu_upper", inplace=True)
-    dftopestimators.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / @const_c", inplace=True)
+    dftopestimators.eval("lambda_angstroms = 2.99792458e18 / nu_upper", inplace=True)
+    dftopestimators.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18", inplace=True)
     dftopestimators.sort_values(by="Jb_lambda", ascending=False, inplace=True)
     dftopestimators = dftopestimators.iloc[0:nlinesplotted]
 
@@ -902,7 +906,7 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
     print(dftopestimators)
 
     for ax, bin_num_estimator, nu_line in zip(axes, dftopestimators.bin_num.values, dftopestimators.nu_upper.values):
-        lambda_angstroms = const_c / nu_line
+        lambda_angstroms = 2.99792458e18 / nu_line
         print(f"Selected line estimator with bin_num {bin_num_estimator}, lambda={lambda_angstroms:.1f}")
         plot_line_estimator_evolution(ax, radfielddataselected, bin_num_estimator, modelgridindex=modelgridindex)
 
