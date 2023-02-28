@@ -104,7 +104,7 @@ def get_line_fluxes_from_packets(
 
         energysumsreduced = calculate_timebinned_packet_sum(dfpackets_selected, timearrayplusend)
         # print(energysumsreduced, arr_timedelta)
-        fluxdata = np.divide(energysumsreduced * normfactor, arr_timedelta * u.day.to("s"))
+        fluxdata = np.divide(energysumsreduced * normfactor, arr_timedelta * 86400.0)
         dictlcdata[feature.colname] = fluxdata
 
     lcdata = pd.DataFrame(dictlcdata)
