@@ -516,7 +516,9 @@ def main(args=None, argsraw=None, **kwargs):
         argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
-    traj_root = Path("/Volumes/GoogleDrive/Shared Drives/GSI NSM/Mergers/SFHo_long/Trajectory_SFHo_long-radius-entropy")
+    traj_root = Path(
+        Path.home() / "Google Drive/Shared Drives/GSI NSM/Mergers/SFHo_long/Trajectory_SFHo_long-radius-entropy"
+    )
     # particleid = 88969  # Ye = 0.0963284224
     particleid = 133371  # Ye = 0.403913230
     print(f"trajectory particle id {particleid}")
