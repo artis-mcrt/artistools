@@ -42,13 +42,13 @@ def timeshift_fluxscale_co56law(scaletoreftime: Optional[float], spectime: float
         return 1.0
 
 
-def get_exspec_bins() -> tuple[np.ndarray, np.ndarray, float]:
+def get_exspec_bins() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     MNUBINS = 1000
     NU_MIN_R = 1e13
     NU_MAX_R = 5e15
     print("WARNING: assuming {MNUBINS=} {NU_MIN_R=} {NU_MAX_R=}. Check that artis code matches.")
 
-    c_ang_s = const.c.to("angstrom/s").value
+    c_ang_s = 2.99792458e18
 
     dlognu = (math.log(NU_MAX_R) - math.log(NU_MIN_R)) / MNUBINS
 
@@ -142,7 +142,7 @@ def get_spectrum(
     dfspectrum = pd.DataFrame({"nu": nu, "f_nu": f_nu})
     dfspectrum.sort_values(by="nu", ascending=False, inplace=True)
 
-    dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": const.c.to("angstrom/s").value}, inplace=True)
+    dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18}, inplace=True)
     dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms", inplace=True)
 
     # if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
@@ -192,7 +192,7 @@ def get_spectrum_from_packets_worker(
 
     print(f"  {packetsfile}: {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges ")
 
-    dfpackets.eval("lambda_rf = @c_ang_s / nu_rf", inplace=True, local_dict=qlocals)
+    dfpackets.eval("lambda_rf = 2.99792458e18 / nu_rf", inplace=True, local_dict=qlocals)
     wl_bins = pd.cut(
         x=dfpackets["lambda_rf"],
         bins=array_lambdabinedges,
@@ -221,7 +221,7 @@ def get_spectrum_from_packets(
     timehighdays: float,
     lambda_min: float,
     lambda_max: float,
-    delta_lambda: Optional[float] = None,
+    delta_lambda: Union[None, float, np.ndarray] = None,
     use_escapetime: bool = False,
     maxpacketfiles: Optional[int] = None,
     useinternalpackets: bool = False,
@@ -238,11 +238,10 @@ def get_spectrum_from_packets(
     else:
         betafactor = None
 
-    c_cgs = const.c.to("cm/s").value
-    c_ang_s = const.c.to("angstrom/s").value
-    nu_min = c_ang_s / lambda_max
-    nu_max = c_ang_s / lambda_min
+    nu_min = 2.99792458e18 / lambda_max
+    nu_max = 2.99792458e18 / lambda_min
 
+    array_lambdabinedges: np.ndarray
     if delta_lambda:
         array_lambdabinedges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
         array_lambda = 0.5 * (array_lambdabinedges[:-1] + array_lambdabinedges[1:])  # bin centres
@@ -253,13 +252,13 @@ def get_spectrum_from_packets(
     if getpacketcount:
         array_pktcount = np.zeros_like(array_lambda, dtype=int)  # number of packets in each bin
 
-    timelow = timelowdays * u.day.to("s")
-    timehigh = timehighdays * u.day.to("s")
+    timelow = timelowdays * 86400.0
+    timehigh = timehighdays * 86400.0
 
     nprocs_read = len(packetsfiles)
     querystr = "@nu_min <= nu_rf < @nu_max and trueemissiontype >= 0 and "
     if not use_escapetime:
-        querystr += "@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh"
+        querystr += "@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / 29979245800) < @timehigh"
     else:
         querystr += "@timelow < (escape_time * @betafactor) < @timehigh"
 
@@ -272,8 +271,6 @@ def get_spectrum_from_packets(
             timelow=timelow,
             timehigh=timehigh,
             betafactor=betafactor,
-            c_cgs=c_cgs,
-            c_ang_s=c_ang_s,
         ),
         array_lambda,
         array_lambdabinedges,
@@ -432,7 +429,7 @@ def get_res_spectrum(
     dfspectrum = pd.DataFrame({"nu": nu, "f_nu": f_nu})
     dfspectrum.sort_values(by="nu", ascending=False, inplace=True)
 
-    dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": const.c.to("angstrom/s").value}, inplace=True)
+    dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18}, inplace=True)
     dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms", inplace=True)
     return dfspectrum
 
@@ -607,7 +604,7 @@ def get_vspecpol_spectrum(
     dfspectrum = pd.DataFrame({"nu": nu, "f_nu": f_nu})
     dfspectrum.sort_values(by="nu", ascending=False, inplace=True)
 
-    dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": const.c.to("angstrom/s").value}, inplace=True)
+    dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18}, inplace=True)
     dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms", inplace=True)
 
     return dfspectrum
@@ -629,7 +626,7 @@ def get_flux_contributions(
     arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
     arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
     arraynu = at.misc.get_nu_grid(modelpath)
-    arraylambda = const.c.to("angstrom/s").value / arraynu
+    arraylambda = 2.99792458e18 / arraynu
     if not Path(modelpath, "compositiondata.txt").is_file():
         print("WARNING: compositiondata.txt not found. Using output*.txt instead")
         elementlist = at.get_composition_data_from_outputfile(modelpath)
@@ -823,7 +820,7 @@ def get_flux_contributions_from_packets(
     timeupperdays: float,
     lambda_min: float,
     lambda_max: float,
-    delta_lambda: Optional[float] = None,
+    delta_lambda: Union[None, float, np.ndarray] = None,
     getemission: bool = True,
     getabsorption: bool = True,
     maxpacketfiles: Optional[int] = None,
@@ -906,6 +903,7 @@ def get_flux_contributions_from_packets(
             return "bound-free"
         return "? other absorp."
 
+    array_lambdabinedges: np.ndarray
     if delta_lambda is not None:
         array_lambdabinedges = np.arange(lambda_min, lambda_max + delta_lambda, delta_lambda)
         array_lambda = 0.5 * (array_lambdabinedges[:-1] + array_lambdabinedges[1:])  # bin centres
@@ -927,14 +925,13 @@ def get_flux_contributions_from_packets(
     energysum_spectrum_emission_total = np.zeros_like(array_lambda, dtype=float)
     array_energysum_spectra = {}
 
-    timelow = timelowerdays * u.day.to("s")
-    timehigh = timeupperdays * u.day.to("s")
+    timelow = timelowerdays * 86400.0
+    timehigh = timeupperdays * 86400.0
 
     nprocs_read = len(packetsfiles)
-    c_cgs = const.c.to("cm/s").value
-    c_ang_s = const.c.to("angstrom/s").value
-    nu_min = c_ang_s / lambda_max
-    nu_max = c_ang_s / lambda_min
+    c_cgs = 29979245800.0
+    nu_min = 2.99792458e18 / lambda_max
+    nu_max = 2.99792458e18 / lambda_min
 
     if useinternalpackets:
         emtypecolumn = "emissiontype"
@@ -944,7 +941,7 @@ def get_flux_contributions_from_packets(
     for index, packetsfile in enumerate(packetsfiles):
         if useinternalpackets:
             # if we're using packets*.out files, these packets are from the last timestep
-            t_seconds = at.get_timestep_times_float(modelpath, loc="start")[-1] * u.day.to("s")
+            t_seconds = at.get_timestep_times_float(modelpath, loc="start")[-1] * 86400.0
 
             if modelgridindex is not None:
                 v_inner = at.inputmodel.get_modeldata_tuple(modelpath)[0]["velocity_inner"].iloc[modelgridindex] * 1e5
@@ -987,21 +984,24 @@ def get_flux_contributions_from_packets(
                 dfpackets.query("(emission_velocity / 1e5) > @emissionvelocitycut", inplace=True)
 
         if np.isscalar(delta_lambda):
-            dfpackets.eval("xindex = floor((@c_ang_s / nu_rf - @lambda_min) / @delta_lambda)", inplace=True)
+            dfpackets.eval("xindex = floor((2.99792458e18 / nu_rf - @lambda_min) / @delta_lambda)", inplace=True)
             if getabsorption:
                 dfpackets.eval(
-                    "xindexabsorbed = floor((@c_ang_s / absorption_freq - @lambda_min) / @delta_lambda)", inplace=True
+                    "xindexabsorbed = floor((2.99792458e18 / absorption_freq - @lambda_min) / @delta_lambda)",
+                    inplace=True,
                 )
         else:
-            dfpackets["xindex"] = np.digitize(c_ang_s / dfpackets.nu_rf, bins=array_lambdabinedges, right=True) - 1
+            dfpackets["xindex"] = (
+                np.digitize(2.99792458e18 / dfpackets.nu_rf, bins=array_lambdabinedges, right=True) - 1
+            )
             if getabsorption:
                 dfpackets["xindexabsorbed"] = (
-                    np.digitize(c_ang_s / dfpackets.absorption_freq, bins=array_lambdabinedges, right=True) - 1
+                    np.digitize(2.99792458e18 / dfpackets.absorption_freq, bins=array_lambdabinedges, right=True) - 1
                 )
 
         bflist = at.get_bflist(modelpath)
         for _, packet in dfpackets.iterrows():
-            lambda_rf = c_ang_s / packet.nu_rf
+            lambda_rf = 2.99792458e18 / packet.nu_rf
             xindex = int(packet.xindex)
             assert xindex >= 0
 
@@ -1014,7 +1014,7 @@ def get_flux_contributions_from_packets(
                 #     continue
                 # emprocesskey = get_emprocesslabel(packet.emissiontype)
                 emprocesskey = get_emprocesslabel(linelist, bflist, packet[emtypecolumn])
-                # print('packet lambda_cmf: {c_ang_s / packet.nu_cmf}.1f}, lambda_rf {lambda_rf:.1f}, {emprocesskey}')
+                # print('packet lambda_cmf: {2.99792458e18 / packet.nu_cmf}.1f}, lambda_rf {lambda_rf:.1f}, {emprocesskey}')
 
                 if emprocesskey not in array_energysum_spectra:
                     array_energysum_spectra[emprocesskey] = (
@@ -1046,7 +1046,7 @@ def get_flux_contributions_from_packets(
             volume_shells = volume
             assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
             volume = (
-                at.get_wid_init_at_tmin(modelpath) * t_seconds / (at.get_inputparams(modelpath)["tmin"] * u.day.to("s"))
+                at.get_wid_init_at_tmin(modelpath) * t_seconds / (at.get_inputparams(modelpath)["tmin"] * 86400.0)
             ) ** 3 * len(assoc_cells[modelgridindex])
             print("volume", volume, "shell volume", volume_shells, "-------------------------------------------------")
         normfactor = c_cgs / 4 / math.pi / delta_lambda / volume / nprocs_read

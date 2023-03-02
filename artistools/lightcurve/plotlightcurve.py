@@ -553,31 +553,6 @@ def create_axes(args):
     return fig, ax
 
 
-def set_axis_limit_args(args):
-    if args.filter:
-        plt.gca().invert_yaxis()
-        if args.ymax is None:
-            args.ymax = -20
-        if args.ymin is None:
-            args.ymin = -14
-
-    if args.colour_evolution:
-        if args.ymax is None:
-            args.ymax = 1
-        if args.ymin is None:
-            args.ymin = -1
-
-    if args.filter or args.colour_evolution:
-        if args.xmax is None:
-            args.xmax = 100
-        if args.xmin is None:
-            args.xmin = 0
-        if args.timemax is None:
-            args.timemax = args.xmax + 5
-        if args.timemin is None:
-            args.timemin = args.xmin - 5
-
-
 def get_linelabel(
     modelpath: Path,
     modelname: str,
@@ -723,7 +698,6 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 
     args.labelfontsize = 22  # todo: make command line arg
     fig, ax = create_axes(args)
-    set_axis_limit_args(args)
 
     plotkwargs: dict[str, Any] = {}
 
@@ -789,8 +763,17 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                     text_key = filternames_conversion_dict[band_name]
                 else:
                     text_key = band_name
+
                 if args.subplots:
-                    ax[plotnumber].text(args.xmax * 0.8, args.ymax * 0.97, text_key)
+                    ax[plotnumber].annotate(
+                        text_key,
+                        xy=(1.0, 1.0),
+                        xycoords="axes fraction",
+                        textcoords="offset points",
+                        xytext=(-30, -30),
+                        horizontalalignment="right",
+                        verticalalignment="top",
+                    )
                 # else:
                 #     ax.text(args.xmax * 0.75, args.ymax * 0.95, text_key)
 
@@ -835,7 +818,8 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                     plotkwargs["linestyle"] = args.linestyle[modelnumber]
 
                 # if not (args.test_viewing_angle_fit or args.calculate_peak_time_mag_deltam15_bool):
-
+                curax = ax[plotnumber] if args.subplots else ax
+                curax.invert_yaxis()
                 if args.subplots:
                     if len(angles) > 1 or (args.plotviewingangle and os.path.isfile(modelpath / "specpol_res.out")):
                         ax[plotnumber].plot(time, brightness_in_mag, linewidth=4, **plotkwargs)
@@ -899,7 +883,6 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
     angle_counter = 0
 
     fig, ax = create_axes(args)
-    set_axis_limit_args(args)
 
     plotkwargs = {}
 
@@ -962,10 +945,19 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                 else:
                     ax.plot(plot_times, colour_delta_mag, linewidth=3, **plotkwargs)
 
-                if args.subplots:
-                    ax[plotnumber].text(10, args.ymax - 0.5, f"{filter_names[0]}-{filter_names[1]}", fontsize="x-large")
-                else:
-                    ax.text(60, args.ymax * 0.8, f"{filter_names[0]}-{filter_names[1]}", fontsize="x-large")
+                curax = ax[plotnumber] if args.subplots else ax
+                curax.invert_yaxis()
+                curax.annotate(
+                    f"{filter_names[0]}-{filter_names[1]}",
+                    xy=(1.0, 1.0),
+                    xycoords="axes fraction",
+                    textcoords="offset points",
+                    xytext=(-30, -30),
+                    horizontalalignment="right",
+                    verticalalignment="top",
+                    fontsize="x-large",
+                )
+
         # UNCOMMENT TO ESTIMATE COLOUR AT TIME B MAX
         # def match_closest_time(reftime):
         #     return ("{}".format(min([float(x) for x in plot_times], key=lambda x: abs(x - reftime))))
@@ -1206,7 +1198,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--plotdeposition", action="store_true", help="Plot model deposition rates")
 
-    parser.add_argument("--plotthermalisation", action="store_true", help="Plot thermalisation rates")
+    parser.add_argument(
+        "--plotthermalisation", action="store_true", help="Plot thermalisation rates (in separate plot)"
+    )
 
     parser.add_argument("--magnitude", action="store_true", help="Plot light curves in magnitudes")
 
@@ -1359,7 +1353,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--include_delta_m40",
         action="store_true",
-        help=("When calculating delta_m15, calculate delta_m40 as well." "Only affects the saved viewing angle data."),
+        help="When calculating delta_m15, calculate delta_m40 as well.Only affects the saved viewing angle data.",
     )
 
     parser.add_argument(

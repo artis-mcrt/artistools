@@ -40,9 +40,7 @@ hatches = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]
 def plot_polarisation(modelpath: Path, args) -> None:
     angle = args.plotviewingangle[0]
     stokes_params = get_specpol_data(angle=angle, modelpath=modelpath)
-    stokes_params[args.stokesparam].eval(
-        "lambda_angstroms = @c / nu", local_dict={"c": const.c.to("angstrom/s").value}, inplace=True
-    )
+    stokes_params[args.stokesparam].eval("lambda_angstroms = 2.99792458e18 / nu", inplace=True)
 
     timearray = stokes_params[args.stokesparam].keys()[1:-1]
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
@@ -206,7 +204,7 @@ def plot_artis_spectrum(
     plotpacketcount: bool = False,
     **plotkwargs,
 ) -> pd.DataFrame:
-    """Plot an ARTIS output spectrum."""
+    """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame"""
     modelpath_or_file = Path(modelpath)
     modelpath = Path(modelpath) if Path(modelpath).is_dir() else Path(modelpath).parent
 
@@ -390,6 +388,7 @@ def make_spectrum_plot(
     artisindex = 0
     refspecindex = 0
     seriesindex = 0
+
     for seriesindex, specpath in enumerate(speclist):
         specpath = Path(specpath)
         plotkwargs: dict[str, Any] = {}
@@ -482,6 +481,27 @@ def make_spectrum_plot(
                 print("Use args.normalised")
             plot_filter_functions(axis)
 
+        H = 6.6260755e-27  # Planck constant [erg s]
+        KB = 1.38064852e-16  # Boltzmann constant [erg/K]
+
+        for temp in [2900]:
+            bbspec_lambda = np.linspace(3000, 25000, num=1000)
+            bbspec_nu_hz = 2.99792458e18 / bbspec_lambda
+            bbspec_j_nu = np.array(
+                [1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(H * nu_hz / temp / KB)) for nu_hz in bbspec_nu_hz]
+            )
+
+            arr_j_lambda = bbspec_j_nu * bbspec_nu_hz / bbspec_lambda
+            bbspec_y = arr_j_lambda * 6e-14 / arr_j_lambda.max()
+            axis.plot(
+                bbspec_lambda,
+                bbspec_y,
+                label=f"{temp}K Planck function (scaled)",
+                color="black",
+                alpha=0.5,
+                zorder=-1,
+            )
+
         if args.stokesparam == "I":
             axis.set_ylim(bottom=0.0)
         if args.normalised:
@@ -540,7 +560,7 @@ def make_emissionabsorption_plot(
             emissionvelocitycut=args.emissionvelocitycut,
         )
     else:
-        arraylambda_angstroms = const.c.to("angstrom/s").value / arraynu
+        arraylambda_angstroms = 2.99792458e18 / arraynu
         assert args.groupby in [None, "ion"]
         contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
             modelpath,
@@ -739,7 +759,7 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
     tdays_min = float(args.timemin)
     tdays_max = float(args.timemax)
 
-    c_ang_s = const.c.to("angstrom/s").value
+    c_ang_s = 2.99792458e18
     nu_min = c_ang_s / args.xmax
     nu_max = c_ang_s / args.xmin
 
@@ -793,7 +813,7 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
         ax.set_ylabel(yvar + " " + at.estimators.get_units_string(yvar))
         # ax.plot(list_lambda, list_yvar, lw=0, marker='o', markersize=0.5)
         # ax.hexbin(list_lambda[yvar], lists_y[yvar], gridsize=100, cmap=plt.cm.BuGn_r)
-        ax.hist2d(list_lambda[yvar], lists_y[yvar], bins=(50, 30), cmap=plt.cm.Greys)
+        ax.hist2d(list_lambda[yvar], lists_y[yvar], bins=(50, 30), cmap=plt.cm.Greys)  # pylint: disable=no-member
         # plt.cm.Greys
         # x = np.array(list_lambda[yvar])
         # y = np.array(lists_y[yvar])
@@ -878,7 +898,7 @@ def make_plot(args) -> None:
             defaultoutputfile = Path("plotspecemission_{time_days_min:.1f}d_{time_days_max:.1f}d{directionbins}.pdf")
 
         plotobjects, plotobjectlabels, dfalldata = make_emissionabsorption_plot(
-            args.specpath[0], axes[-1], filterfunc, args=args, scale_to_peak=scale_to_peak
+            Path(args.specpath[0]), axes[-1], filterfunc, args=args, scale_to_peak=scale_to_peak
         )
     else:
         legendncol = 1

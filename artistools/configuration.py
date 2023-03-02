@@ -20,12 +20,12 @@ def setup_config():
                 ["sysctl", "-n", "hw.perflevel0.logicalcpu"], capture_output=True, text=True, check=True
             ).stdout
         )
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         try:
             num_processes = int(
                 subprocess.run(["sysctl", "-n", "hw.logicalcpu"], capture_output=True, text=True, check=True).stdout
             )
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             num_processes = max(1, int(psutil.cpu_count(logical=False)) - 2)
 
     # num_processes = 1
@@ -48,7 +48,7 @@ def setup_config():
         "/Users/luke/Library/Mobile Documents/com~apple~CloudDocs/GitHub/sn-rad-trans/data1"
     )
 
-    config["codecomparisonmodelartismodelpath"] = Path("/Volumes/GoogleDrive/My Drive/artis_runs/weizmann/")
+    config["codecomparisonmodelartismodelpath"] = Path(Path.home() / "Google Drive/My Drive/artis_runs/weizmann/")
 
     config["path_artistools_repository"] = Path(__file__).absolute().parent.parent
     config["path_artistools_dir"] = Path(__file__).absolute().parent  # the package path
