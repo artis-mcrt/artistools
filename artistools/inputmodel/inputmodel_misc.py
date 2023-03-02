@@ -321,7 +321,7 @@ def get_modeldata(
             dimensions,
             modelmeta["t_model_init_seconds"],
             modelmeta["wid_init"],
-            modelmeta["modelpath"],
+            modelpath,
         )
 
     return dfmodel, modelmeta
