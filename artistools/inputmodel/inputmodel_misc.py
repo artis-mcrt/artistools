@@ -251,6 +251,7 @@ def read_modelfile(
                 )
 
     modelmeta["t_model_init_days"] = t_model_init_days
+    modelmeta["t_model_init_seconds"] = t_model_init_seconds
     modelmeta["dimensions"] = dimensions
     modelmeta["vmax_cmps"] = vmax_cmps
     modelmeta["modelcellcount"] = modelcellcount
