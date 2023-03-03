@@ -251,7 +251,6 @@ def read_modelfile(
                 )
 
     modelmeta["t_model_init_days"] = t_model_init_days
-    modelmeta["t_model_init_seconds"] = t_model_init_seconds
     modelmeta["dimensions"] = dimensions
     modelmeta["vmax_cmps"] = vmax_cmps
     modelmeta["modelcellcount"] = modelcellcount
@@ -319,7 +318,7 @@ def get_modeldata(
             dfmodel,
             derived_cols,
             dimensions,
-            modelmeta["t_model_init_seconds"],
+            modelmeta["t_model_init_days"] * 86400.0,
             modelmeta["wid_init"],
             modelpath,
         )
