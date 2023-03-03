@@ -379,6 +379,7 @@ def add_derived_cols_to_modeldata(
         get_cell_angle(dfmodel, modelpath)
 
     if "propcells" in derived_cols:
+        assert dimensions == 3  # Only works for 3D case. 1D or 2D can have multiple associated cells
         get_propcellid(dfmodel, modelpath)
 
     # if "Ye" in derived_cols and os.path.isfile(modelpath / "Ye.txt"):
