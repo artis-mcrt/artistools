@@ -378,26 +378,12 @@ def add_derived_cols_to_modeldata(
         assert modelpath is not None
         get_cell_angle(dfmodel, modelpath)
 
-    if "propcells" in derived_cols:
-        assert dimensions == 3  # Only works for 3D case. 1D or 2D can have multiple associated cells
-        get_propcellid(dfmodel, modelpath)
-
     # if "Ye" in derived_cols and os.path.isfile(modelpath / "Ye.txt"):
     #     dfmodel["Ye"] = at.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
     # if "Q" in derived_cols and os.path.isfile(modelpath / "Q_energy.txt"):
     #     dfmodel["Q"] = at.inputmodel.energyinputfiles.get_Q_energy_from_file(modelpath)
 
     return dfmodel
-
-
-def get_propcellid(modeldata, modelpath):
-    assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
-    prop_cellid = [
-        mgi_of_propcells[int(row["inputcellid"]) - 1] if (row["rho"] > 0) else "NaN"
-        for index, row in modeldata.iterrows()
-    ]
-
-    modeldata["prop_cellid"] = prop_cellid
 
 
 def get_cell_angle(dfmodel: pd.DataFrame, modelpath: Path) -> pd.DataFrame:

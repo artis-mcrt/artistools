@@ -388,20 +388,6 @@ def get_escaping_packet_angle_bin(modelpath: Union[Path, str], dfpackets: pd.Dat
     return dfpackets
 
 
-def get_packets_escaping_from_cells_within_an_angle_bin(
-    modelpath: Union[Path, str], angle_bin: int, dfpackets: pd.DataFrame
-):
-    """Select only packets that left the ejecta from grid cells lying within a given angle bin
-    (not the bin packets were emitted into)"""
-
-    # Get which angle bin a model grid cell is in
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols="angle_bin, propcells")
-    dfmodel.query("prop_cellid != 'NaN'", inplace=True)  # Empty cells have NaN
-    dfmodel.query("cos_bin == @angle_bin", inplace=True)
-
-    dfpackets.query("where in @dfmodel['prop_cellid'].values", inplace=True)
-
-
 def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, em_time=True):
     if timestep_max is None:
         timestep_max = timestep_min
