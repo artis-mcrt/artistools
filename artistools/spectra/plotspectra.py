@@ -484,24 +484,6 @@ def make_spectrum_plot(
         H = 6.6260755e-27  # Planck constant [erg s]
         KB = 1.38064852e-16  # Boltzmann constant [erg/K]
 
-        for temp in [2900]:
-            bbspec_lambda = np.linspace(3000, 25000, num=1000)
-            bbspec_nu_hz = 2.99792458e18 / bbspec_lambda
-            bbspec_j_nu = np.array(
-                [1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(H * nu_hz / temp / KB)) for nu_hz in bbspec_nu_hz]
-            )
-
-            arr_j_lambda = bbspec_j_nu * bbspec_nu_hz / bbspec_lambda
-            bbspec_y = arr_j_lambda * 6e-14 / arr_j_lambda.max()
-            axis.plot(
-                bbspec_lambda,
-                bbspec_y,
-                label=f"{temp}K Planck function (scaled)",
-                color="black",
-                alpha=0.5,
-                zorder=-1,
-            )
-
         if args.stokesparam == "I":
             axis.set_ylim(bottom=0.0)
         if args.normalised:
