@@ -62,21 +62,21 @@ def get_profile_along_axis(args=None, modeldata=None, derived_cols=False):
             args.modelpath, dimensions=3, get_elemabundances=True, derived_cols=derived_cols
         )
 
-    position_closest_to_axis = modeldata.iloc[(modeldata[f"pos_{args.other_axis2}"]).abs().argsort()][:1][
-        f"pos_{args.other_axis2}"
+    position_closest_to_axis = modeldata.iloc[(modeldata[f"pos_{args.other_axis2}_min"]).abs().argsort()][:1][
+        f"pos_{args.other_axis2}_min"
     ].item()
 
     if args.positive_axis:
         profile1D = modeldata.loc[
-            (modeldata[f"pos_{args.other_axis1}"] == position_closest_to_axis)
-            & (modeldata[f"pos_{args.other_axis2}"] == position_closest_to_axis)
-            & (modeldata[f"pos_{args.sliceaxis}"] > 0)
+            (modeldata[f"pos_{args.other_axis1}_min"] == position_closest_to_axis)
+            & (modeldata[f"pos_{args.other_axis2}_min"] == position_closest_to_axis)
+            & (modeldata[f"pos_{args.sliceaxis}_min"] > 0)
         ]
     else:
         profile1D = modeldata.loc[
-            (modeldata[f"pos_{args.other_axis1}"] == position_closest_to_axis)
-            & (modeldata[f"pos_{args.other_axis2}"] == position_closest_to_axis)
-            & (modeldata[f"pos_{args.sliceaxis}"] < 0)
+            (modeldata[f"pos_{args.other_axis1}_min"] == position_closest_to_axis)
+            & (modeldata[f"pos_{args.other_axis2}_min"] == position_closest_to_axis)
+            & (modeldata[f"pos_{args.sliceaxis}_min"] < 0)
         ]
 
     return profile1D.reset_index(drop=True)
