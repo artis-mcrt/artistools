@@ -318,9 +318,9 @@ def get_modeldata(
             dfmodel,
             derived_cols,
             dimensions,
-            modelmeta["t_model_init_seconds"],
+            modelmeta["t_model_init_days"] * 86400.0,
             modelmeta["wid_init"],
-            modelmeta["modelpath"],
+            modelpath,
         )
 
     return dfmodel, modelmeta
