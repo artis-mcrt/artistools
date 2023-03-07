@@ -7,17 +7,19 @@
 # precedence.
 
 # root files
-*                                 @lukeshingles
+*                                                 @lukeshingles
 
-artistools/                       @lukeshingles @ccollins22
-tests/                            @lukeshingles @ccollins22
+artistools/                                       @lukeshingles @ccollins22
+tests/                                            @lukeshingles @ccollins22
 
-.github/                          @lukeshingles
-artistools/gsinetwork.py          @lukeshingles
-artistools/estimators/            @lukeshingles
-artistools/nonthermal/            @lukeshingles
-artistools/nltepops/              @lukeshingles
+.github/                                          @lukeshingles
+artistools/gsinetwork.py                          @lukeshingles
+artistools/estimators/                            @lukeshingles
+artistools/nonthermal/                            @lukeshingles
+artistools/nltepops/                              @lukeshingles
 
-artistools/initial_composition.py @ccollins22
-artistools/lightcurve/            @ccollins22
-artistools/hesma_scripts.py       @ccollins22
+artistools/initial_composition.py                 @ccollins22
+artistools/lightcurve/                            @ccollins22
+artistools/hesma_scripts.py                       @ccollins22
+
+artistools/inputmodel/slice1Dfromconein3dmodel.py @ccollins22
