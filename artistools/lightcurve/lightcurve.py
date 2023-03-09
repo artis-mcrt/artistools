@@ -30,7 +30,7 @@ def readfile(
     if args is not None and args.gamma and modelpath is not None and at.get_inputparams(modelpath)["n_dimensions"] == 3:
         lcdata = read_3d_gammalightcurve(filepath)
 
-    elif args is not None and args.plotviewingangle is not None:
+    elif (args is not None and args.plotviewingangle is not None) or "res" in str(filepath):
         # get a list of dfs with light curves at each viewing angle
         lcdata = at.gather_res_data(lcdata, index_of_repeated_value=0)
 
@@ -113,20 +113,17 @@ def get_from_packets(
     return lcdata
 
 
-def average_lightcurve_every_10_bins(
-    lcdataframes: dict[int, pd.DataFrame], args: argparse.Namespace
-) -> dict[int, pd.DataFrame]:
-    if args and args.average_every_tenth_viewing_angle:
-        for start_bin in np.arange(start=0, stop=100, step=10):
-            # print(start_bin)
-            for bin_number in range(start_bin + 1, start_bin + 10):
-                # print(bin_number)
-                lcdataframes[bin_number] = lcdataframes[bin_number].set_index(
-                    lcdataframes[start_bin].index
-                )  # need indexs to match or else gives NaN
-                lcdataframes[start_bin]["lum"] += lcdataframes[bin_number]["lum"]
-            lcdataframes[start_bin]["lum"] /= 10  # every 10th bin is the average of 10 bins
-            print(f"bin number {start_bin} = the average of bins {start_bin} to {start_bin + 9}")
+def average_lightcurve_phi_bins(lcdataframes: dict[int, pd.DataFrame]) -> dict[int, pd.DataFrame]:
+    nviewinganglebins = at.get_viewingdirectionbincount()
+    nphibins = at.get_viewingdirection_phibincount()
+    for start_bin in np.arange(start=0, stop=nviewinganglebins, step=nphibins):
+        for bin_number in range(start_bin + 1, start_bin + nphibins):
+            lcdataframes[bin_number] = lcdataframes[bin_number].set_index(
+                lcdataframes[start_bin].index
+            )  # need indexs to match or else gives NaN
+            lcdataframes[start_bin]["lum"] += lcdataframes[bin_number]["lum"]
+        lcdataframes[start_bin]["lum"] /= nphibins  # every nth bin is the average of n bins
+        print(f"bin number {start_bin} = the average of bins {start_bin} to {start_bin + nphibins-1}")
 
     return lcdataframes
 
