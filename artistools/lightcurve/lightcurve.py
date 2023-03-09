@@ -30,7 +30,7 @@ def readfile(
     if args is not None and args.gamma and modelpath is not None and at.get_inputparams(modelpath)["n_dimensions"] == 3:
         lcdata = read_3d_gammalightcurve(filepath)
 
-    elif args is not None and args.plotviewingangle is not None:
+    elif (args is not None and args.plotviewingangle is not None) or "res" in str(filepath):
         # get a list of dfs with light curves at each viewing angle
         lcdata = at.gather_res_data(lcdata, index_of_repeated_value=0)
 
