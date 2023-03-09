@@ -113,7 +113,7 @@ def get_from_packets(
     return lcdata
 
 
-def average_lightcurve_every_10_bins(lcdataframes: dict[int, pd.DataFrame]) -> dict[int, pd.DataFrame]:
+def average_lightcurve_phi_bins(lcdataframes: dict[int, pd.DataFrame]) -> dict[int, pd.DataFrame]:
     for start_bin in np.arange(start=0, stop=100, step=10):
         for bin_number in range(start_bin + 1, start_bin + 10):
             lcdataframes[bin_number] = lcdataframes[bin_number].set_index(
