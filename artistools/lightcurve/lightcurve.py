@@ -114,14 +114,16 @@ def get_from_packets(
 
 
 def average_lightcurve_phi_bins(lcdataframes: dict[int, pd.DataFrame]) -> dict[int, pd.DataFrame]:
-    for start_bin in np.arange(start=0, stop=100, step=10):
-        for bin_number in range(start_bin + 1, start_bin + 10):
+    nviewinganglebins = at.get_viewingdirectionbincount()
+    nphibins = at.get_viewingdirection_phibincount()
+    for start_bin in np.arange(start=0, stop=nviewinganglebins, step=nphibins):
+        for bin_number in range(start_bin + 1, start_bin + nphibins):
             lcdataframes[bin_number] = lcdataframes[bin_number].set_index(
                 lcdataframes[start_bin].index
             )  # need indexs to match or else gives NaN
             lcdataframes[start_bin]["lum"] += lcdataframes[bin_number]["lum"]
-        lcdataframes[start_bin]["lum"] /= 10  # every 10th bin is the average of 10 bins
-        print(f"bin number {start_bin} = the average of bins {start_bin} to {start_bin + 9}")
+        lcdataframes[start_bin]["lum"] /= nphibins  # every nth bin is the average of n bins
+        print(f"bin number {start_bin} = the average of bins {start_bin} to {start_bin + nphibins-1}")
 
     return lcdataframes
 
