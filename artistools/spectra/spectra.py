@@ -84,7 +84,7 @@ def stackspectra(
 def get_specdata(modelpath: Path, stokesparam: Optional[Literal["I", "Q", "U"]] = None) -> pd.DataFrame:
     polarisationdata = False
     if Path(modelpath, "specpol.out").is_file():
-        specfilename = Path(modelpath) / "specpol.fout"
+        specfilename = Path(modelpath) / "specpol.out"
         polarisationdata = True
     elif Path(modelpath, "specpol.out.xz").is_file():
         specfilename = Path(modelpath) / "specpol.out.xz"
