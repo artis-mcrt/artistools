@@ -182,16 +182,23 @@ def get_angle_stuff(
     angle_definition: Optional[dict] = None
     if angles[0] is not None and not args.plotvspecpol:
         angle_definition = calculate_costheta_phi_for_viewing_angles(angles, modelpath)
-        if args.average_every_tenth_viewing_angle:
-            for key in angle_definition.keys():
-                costheta_label = angle_definition[key].split(",")[0]
-                angle_definition[key] = costheta_label
+        if args.average_over_phi_angle:
+            for dirbin in angle_definition.keys():
+                assert dirbin % at.get_viewingdirection_phibincount() == 0
+                costheta_label = angle_definition[dirbin].split(",")[0]
+                angle_definition[dirbin] = costheta_label
+
+        if args.average_over_theta_angle:
+            for dirbin in angle_definition.keys():
+                assert dirbin < at.get_viewingdirection_costhetabincount()
+                phi_label = angle_definition[dirbin].split(",")[1]
+                angle_definition[dirbin] = phi_label
 
     return angles, viewing_angles, angle_definition
 
 
 def calculate_costheta_phi_for_viewing_angles(
-    viewing_angles: Union[np.ndarray[Any, np.dtype[Any]], Sequence[int]], modelpath: Union[Path, str, None] = None
+    dirbins: Union[np.ndarray[Any, np.dtype[Any]], Sequence[int]], modelpath: Union[Path, str, None] = None
 ) -> dict[int, str]:
     if modelpath:
         modelpath = Path(modelpath)
@@ -204,7 +211,7 @@ def calculate_costheta_phi_for_viewing_angles(
 
     costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
 
-    for angle in viewing_angles:
+    for angle in dirbins:
         nphibins = at.get_viewingdirection_phibincount()
         costheta_index = angle // nphibins
         phi_index = angle % nphibins
@@ -755,7 +762,7 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
                 lcname = "light_curve_res.out"
             else:
                 lcname = "light_curve.out"
-            lcpath = at.firstexisting([lcname + ".xz", lcname + ".gz", lcname], path=modelpath)
+            lcpath = at.firstexisting(lcname, path=modelpath, tryzipped=True)
             print(f"Reading {lcname}")
             lightcurve_data = at.lightcurve.readfile(lcpath, modelpath, args)
 

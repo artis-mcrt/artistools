@@ -313,7 +313,7 @@ def read_estimators(
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
 
-    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+    modeldata, _ = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
     if "velocity_outer" in modeldata.columns:
         arr_velocity_outer = tuple(list([float(v) for v in modeldata["velocity_outer"].values]))
     else:

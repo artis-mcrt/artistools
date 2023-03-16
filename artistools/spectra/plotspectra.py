@@ -350,13 +350,20 @@ def plot_artis_spectrum(
                             linelabel = rf"cos($\theta$) = {vpkt_config['cos_theta'][angle]}" if index == 0 else None
                     else:
                         linelabel = f"bin number {angle}"
-                        if args.average_every_tenth_viewing_angle:
+                        if args.average_over_phi_angle:
                             (
                                 costheta_viewing_angle_bins,
                                 phi_viewing_angle_bins,
                             ) = at.get_viewinganglebin_definitions()
-                            assert angle % 10 == 0
+                            assert angle % at.get_viewingdirection_phibincount() == 0
                             linelabel = costheta_viewing_angle_bins[int(angle // 10)]
+                        elif args.average_over_theta_angle:
+                            (
+                                costheta_viewing_angle_bins,
+                                phi_viewing_angle_bins,
+                            ) = at.get_viewinganglebin_definitions()
+                            assert angle < at.get_viewingdirection_costhetabincount()
+                            linelabel = phi_viewing_angle_bins[int(angle)]
 
                     viewinganglespectra[angle].query(
                         "@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax"
@@ -481,8 +488,26 @@ def make_spectrum_plot(
                 print("Use args.normalised")
             plot_filter_functions(axis)
 
-        H = 6.6260755e-27  # Planck constant [erg s]
-        KB = 1.38064852e-16  # Boltzmann constant [erg/K]
+        # H = 6.6260755e-27  # Planck constant [erg s]
+        # KB = 1.38064852e-16  # Boltzmann constant [erg/K]
+
+        # for temp in [2900]:
+        #     bbspec_lambda = np.linspace(3000, 25000, num=1000)
+        #     bbspec_nu_hz = 2.99792458e18 / bbspec_lambda
+        #     bbspec_j_nu = np.array(
+        #         [1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(H * nu_hz / temp / KB)) for nu_hz in bbspec_nu_hz]
+        #     )
+
+        #     arr_j_lambda = bbspec_j_nu * bbspec_nu_hz / bbspec_lambda
+        #     bbspec_y = arr_j_lambda * 6e-14 / arr_j_lambda.max()
+        #     axis.plot(
+        #         bbspec_lambda,
+        #         bbspec_y,
+        #         label=f"{temp}K Planck function (scaled)",
+        #         color="black",
+        #         alpha=0.5,
+        #         zorder=-1,
+        #     )
 
         if args.stokesparam == "I":
             axis.set_ylim(bottom=0.0)
@@ -553,7 +578,8 @@ def make_emissionabsorption_plot(
             getabsorption=args.showabsorption,
             use_lastemissiontype=not args.use_thermalemissiontype,
             directionbin=args.plotviewingangle[0] if args.plotviewingangle else None,
-            averageoverphi=args.average_every_tenth_viewing_angle,
+            averageoverphi=args.average_over_phi_angle,
+            averageovertheta=args.average_over_theta_angle,
         )
 
     at.spectra.print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
@@ -682,7 +708,7 @@ def make_emissionabsorption_plot(
             phi_viewing_angle_bins,
         ) = at.get_viewinganglebin_definitions()
 
-        if args.average_every_tenth_viewing_angle:
+        if args.average_over_phi_angle:
             assert angle % 10 == 0
             plotlabel += ", " + costheta_viewing_angle_bins[int(angle // 10)]
         else:
@@ -1193,14 +1219,27 @@ def addargs(parser) -> None:
     parser.add_argument(
         "-plotviewingangle",
         type=int,
+        metavar="n",
         nargs="+",
         help="Plot viewing angles. Expects int for angle number in specpol_res.out",
     )
 
     parser.add_argument(
+        "--average_over_phi_angle",
+        action="store_true",
+        help="Average over phi (azimuthal) viewing angles to make direction bins into polar angle bins",
+    )
+
+    # for backwards compatability with above option
+    parser.add_argument(
         "--average_every_tenth_viewing_angle",
         action="store_true",
-        help="average every tenth viewing angle to reduce noise",
+    )
+
+    parser.add_argument(
+        "--average_over_theta_angle",
+        action="store_true",
+        help="Average over theta (polar) viewing angles to make direction bins into azimuthal angle bins",
     )
 
     parser.add_argument("--binflux", action="store_true", help="Bin flux over wavelength and average flux")
@@ -1241,6 +1280,9 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         parser.set_defaults(**kwargs)
         argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
+        if args.average_every_tenth_viewing_angle:
+            print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
+            args.average_over_phi_angle
 
     if not args.specpath:
         args.specpath = [Path(".")]

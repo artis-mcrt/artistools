@@ -84,13 +84,13 @@ def stackspectra(
 def get_specdata(modelpath: Path, stokesparam: Optional[Literal["I", "Q", "U"]] = None) -> pd.DataFrame:
     polarisationdata = False
     if Path(modelpath, "specpol.out").is_file():
-        specfilename = Path(modelpath) / "specpol.out"
+        specfilename = Path(modelpath) / "specpol.fout"
         polarisationdata = True
     elif Path(modelpath, "specpol.out.xz").is_file():
         specfilename = Path(modelpath) / "specpol.out.xz"
         polarisationdata = True
     elif Path(modelpath).is_dir():
-        specfilename = at.firstexisting(["spec.out.xz", "spec.out.gz", "spec.out"], path=modelpath)
+        specfilename = at.firstexisting("spec.out", path=modelpath, tryzipped=True)
     else:
         specfilename = modelpath
 
@@ -356,27 +356,50 @@ def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
     return res_specdata
 
 
-def average_angle_bins(
+def average_phi_bins(
     res_specdata: dict[int, pd.DataFrame],
-    angle: int,
+    dirbin: Optional[int],
 ) -> dict[int, pd.DataFrame]:
-    # Averages over 10 phi (azimuthal angle) bins to reduce noise
+    # Averages over phi (azimuthal) angle bins to make polar angle bin with less noise
     dirbincount = at.get_viewingdirectionbincount()
     phibincount = at.get_viewingdirection_phibincount()
-    assert angle % phibincount == 0
-    for start_bin in np.arange(start=0, stop=dirbincount, step=phibincount):
-        if start_bin != angle:
+    assert dirbin is None or dirbin % phibincount == 0
+    for start_bin in range(0, dirbincount, phibincount):
+        if dirbin is not None and start_bin != dirbin:
             continue
-        # print(start_bin)
         res_specdata[start_bin] = res_specdata[start_bin].copy()  # important to not affect the LRU cached copy
         for bin_number in range(start_bin + 1, start_bin + phibincount):
-            # print(bin_number)
             res_specdata[start_bin] += res_specdata[bin_number]
-        res_specdata[start_bin] /= phibincount  # every 10th bin is the average of 10 bins
+            del res_specdata[bin_number]
+        res_specdata[start_bin] /= phibincount
         print(
-            f"Bin number {angle} is the average of {phibincount} phi angle bins: {start_bin} to"
-            f" {start_bin + phibincount - 1}"
+            f"Bin number {dirbin} is the average of {phibincount} bins {start_bin} to" f" {start_bin + phibincount - 1}"
         )
+
+    return res_specdata
+
+
+def average_costheta_bins(
+    res_specdata: dict[int, pd.DataFrame],
+    dirbin: Optional[int],
+) -> dict[int, pd.DataFrame]:
+    # Averages over cos theta (polar) angle bins to make azimuthal angle bins with less noise
+    dirbincount = at.get_viewingdirectionbincount()
+    nphibins = at.get_viewingdirection_phibincount()
+    ncosthetabins = at.get_viewingdirection_costhetabincount()
+    assert dirbin is None or dirbin < nphibins
+    for start_bin in range(0, nphibins):
+        if dirbin is not None and start_bin != dirbin:
+            continue
+        contribbins = range(start_bin + ncosthetabins, dirbincount, ncosthetabins)
+
+        res_specdata[start_bin] = res_specdata[start_bin].copy()  # important to not affect the LRU cached copy
+        for bin_number in contribbins:
+            res_specdata[start_bin] += res_specdata[bin_number]
+            del res_specdata[bin_number]
+        res_specdata[start_bin] /= nphibins
+
+        print(f"bin number {start_bin} = the average of bins {[start_bin] + list(contribbins)}")
 
     return res_specdata
 
@@ -402,9 +425,11 @@ def get_res_spectrum(
         print("WARNING: no viewing direction specified. Using direction bin {angle}")
 
     if res_specdata is None:
-        res_specdata = read_spec_res(modelpath)
-        if args and args.average_every_tenth_viewing_angle:
-            at.spectra.average_angle_bins(res_specdata, angle)
+        res_specdata = read_spec_res(modelpath).copy()
+        if args and args.average_over_phi_angle:
+            res_specdata = average_phi_bins(res_specdata, angle)
+        if args and args.average_over_theta_angle:
+            res_specdata = average_costheta_bins(res_specdata, angle)
 
     nu = res_specdata[angle].loc[:, "nu"].values
     arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
@@ -520,16 +545,13 @@ def get_specpol_data(
     if specdata is None:
         assert modelpath is not None
         if angle is None:
-            specfilename = at.firstexisting(["specpol.out", "specpol.out.xz", "specpol.out.gz"], path=modelpath)
+            specfilename = at.firstexisting("specpol.out", path=modelpath, tryzipped=True)
         else:
             # alternatively use f'vspecpol_averaged-{angle}.out' ?
             vspecpath = modelpath
             if os.path.isdir(modelpath / "vspecpol"):
                 vspecpath = modelpath / "vspecpol"
-            specfilename = at.firstexisting(
-                [f"vspecpol_total-{angle}.out", f"vspecpol_total-{angle}.out.xz", f"vspecpol_total-{angle}.out.gz"],
-                path=vspecpath,
-            )
+            specfilename = at.firstexisting(f"vspecpol_total-{angle}.out", path=vspecpath, tryzipped=True)
             if not specfilename.exists():
                 print(f"{specfilename} does not exist. Generating all-rank summed vspec files..")
                 make_virtual_spectra_summed_file(modelpath=modelpath)
@@ -635,6 +657,7 @@ def get_flux_contributions(
     if directionbin is None:
         dbinlist = [-1]
     elif averageoverphi:
+        assert not averageovertheta
         assert directionbin is not None and directionbin % at.get_viewingdirection_phibincount() == 0
         dbinlist = list(range(directionbin, directionbin + at.get_viewingdirection_phibincount()))
     elif averageovertheta:
@@ -650,14 +673,14 @@ def get_flux_contributions(
     for i, dbin in enumerate(dbinlist):
         if getemission:
             if use_lastemissiontype:
-                emissionfilenames = ["emission.out.xz", "emission.out.gz", "emission.out", "emissionpol.out"]
+                emissionfilenames = ["emission.out", "emissionpol.out"]
             else:
-                emissionfilenames = ["emissiontrue.out.xz", "emissiontrue.out.gz", "emissiontrue.out"]
+                emissionfilenames = ["emissiontrue.out"]
 
             if dbin != -1:
                 emissionfilenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in emissionfilenames]
 
-            emissionfilename = at.firstexisting(emissionfilenames, path=modelpath)
+            emissionfilename = at.firstexisting(emissionfilenames, path=modelpath, tryzipped=True)
 
             if "pol" in str(emissionfilename):
                 print("This artis run contains polarisation data")
@@ -694,11 +717,11 @@ def get_flux_contributions(
             assert emissiondata[dbin].shape[0] == len(arraynu) * len(arr_tmid)
 
         if getabsorption:
-            absorptionfilenames = ["absorption.out.xz", "absorption.out.gz", "absorption.out", "absorptionpol.out"]
+            absorptionfilenames = ["absorption.out", "absorptionpol.out"]
             if directionbin is not None:
                 absorptionfilenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in absorptionfilenames]
 
-            absorptionfilename = at.firstexisting(absorptionfilenames, path=modelpath)
+            absorptionfilename = at.firstexisting(absorptionfilenames, path=modelpath, tryzipped=True)
 
             try:
                 absorptionfilesize = Path(absorptionfilename).stat().st_size / 1024 / 1024
@@ -1305,7 +1328,7 @@ def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdata.columns.values[1:] if i[-2] != "."]
     else:
-        specfilename = at.firstexisting(["spec.out.xz", "spec.out.gz", "spec.out"], path=modelpath)
+        specfilename = at.firstexisting("spec.out", path=modelpath, tryzipped=True)
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = specdata.columns.values[1:]
 

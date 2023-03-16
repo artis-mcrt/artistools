@@ -29,9 +29,12 @@ import artistools.spectra
 color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
 
-def plot_deposition_thermalisation(axis, axistherm, modelpath, plotkwargs, args) -> None:
+def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkwargs, args) -> None:
+    axistherm.set_xscale("log")
     if args.plotthermalisation:
-        dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath, skipabundancecolumns=True)
+        dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(
+            modelpath, skipabundancecolumns=True, derived_cols=["vel_mid_radial"]
+        )
         model_mass_grams = dfmodel.cellmass_grams.sum()
         print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
 
@@ -142,56 +145,10 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, plotkwargs, args)
     #         'color': color_alpha,
     #     }))
     if args.plotthermalisation:
-        ejecta_ke = dfmodel.eval(
-            "0.5 * (cellmass_grams / 1000.) * (0.5 * 1000. * (velocity_inner + velocity_outer)) ** 2"
-        ).sum()
-        # velocity derived from ejecta kinetric energy to match Barnes et al. (2016) Section 2.1
-        ejecta_v = np.sqrt(2 * ejecta_ke / (model_mass_grams * 1e-3))
-        v2 = ejecta_v / (0.2 * 299792458)
-        m5 = model_mass_grams / (5e-3 * 1.989e33)  # M / (5e-3 Msun)
-
-        # v2 = 1.
-        # m5 = 1.
-
-        t_ineff_gamma = 0.5 * np.sqrt(m5) / v2
-        barnes_f_gamma = [1 - math.exp(-((t / t_ineff_gamma) ** -2)) for t in depdata["tmid_days"].values]
-
-        axistherm.plot(
-            depdata["tmid_days"],
-            barnes_f_gamma,
-            **dict(plotkwargs, **{"label": "Barnes+16 f_gamma", "linestyle": "dashed", "color": color_gamma}),
-        )
-
-        e0_beta_mev = 0.5
-        t_ineff_beta = 7.4 * (e0_beta_mev / 0.5) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
-        barnes_f_beta = [
-            math.log(1 + 2 * (t / t_ineff_beta) ** 2) / (2 * (t / t_ineff_beta) ** 2)
-            for t in depdata["tmid_days"].values
-        ]
-
-        axistherm.plot(
-            depdata["tmid_days"],
-            barnes_f_beta,
-            **dict(plotkwargs, **{"label": "Barnes+16 f_beta", "linestyle": "dashed", "color": color_beta}),
-        )
-
-        e0_alpha_mev = 6.0
-        t_ineff_alpha = 4.3 * 1.8 * (e0_alpha_mev / 6.0) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
-        barnes_f_alpha = [
-            math.log(1 + 2 * (t / t_ineff_alpha) ** 2) / (2 * (t / t_ineff_alpha) ** 2)
-            for t in depdata["tmid_days"].values
-        ]
-
-        axistherm.plot(
-            depdata["tmid_days"],
-            barnes_f_alpha,
-            **dict(plotkwargs, **{"label": "Barnes+16 f_alpha", "linestyle": "dashed", "color": color_alpha}),
-        )
-
         axistherm.plot(
             depdata["tmid_days"],
             depdata["gammadeppathint_Lsun"] / depdata["eps_gamma_Lsun"],
-            **dict(plotkwargs, **{"label": "ARTIS f_gamma", "linestyle": "solid", "color": color_gamma}),
+            **dict(plotkwargs, **{"label": modelname + r" $f_\gamma$", "linestyle": "solid", "color": color_gamma}),
         )
 
         axistherm.plot(
@@ -200,7 +157,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, plotkwargs, args)
             **dict(
                 plotkwargs,
                 **{
-                    "label": "ARTIS f_beta",
+                    "label": modelname + r" $f_\beta$",
                     "linestyle": "solid",
                     "color": color_beta,
                 },
@@ -215,13 +172,60 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, plotkwargs, args)
         axistherm.plot(
             depdata["tmid_days"],
             f_alpha,
-            **dict(plotkwargs, **{"label": "ARTIS f_alpha", "linestyle": "solid", "color": color_alpha}),
+            **dict(plotkwargs, **{"label": modelname + r" $f_\alpha$", "linestyle": "solid", "color": color_alpha}),
+        )
+
+        ejecta_ke: float
+        if "vel_mid_radial" in dfmodel.columns:
+            # vel_mid_radial is in cm/s
+            ejecta_ke = dfmodel.eval("0.5 * (cellmass_grams / 1000.) * (vel_mid_radial / 100.) ** 2").sum()
+        else:
+            # velocity_inner is in km/s
+            ejecta_ke = dfmodel.eval("0.5 * (cellmass_grams / 1000.) * (1000. * velocity_outer) ** 2").sum()
+        print(f"  ejecta kinetic energy: {ejecta_ke:.2e} [K] = {ejecta_ke *1e7:.2e} [erg]")
+        # velocity derived from ejecta kinetic energy to match Barnes et al. (2016) Section 2.1
+        ejecta_v = np.sqrt(2 * ejecta_ke / (model_mass_grams * 1e-3))
+        v2 = ejecta_v / (0.2 * 299792458)
+        print(f"  Barnes average ejecta velocity: {ejecta_v / 299792458:.2f}c")
+        m5 = model_mass_grams / (5e-3 * 1.989e33)  # M / (5e-3 Msun)
+
+        t_ineff_gamma = 0.5 * np.sqrt(m5) / v2
+        barnes_f_gamma = [1 - math.exp(-((t / t_ineff_gamma) ** -2)) for t in depdata["tmid_days"].values]
+
+        axistherm.plot(
+            depdata["tmid_days"],
+            barnes_f_gamma,
+            **dict(plotkwargs, **{"label": r"Barnes+16 $f_\gamma$", "linestyle": "dashed", "color": color_gamma}),
+        )
+
+        e0_beta_mev = 0.5
+        t_ineff_beta = 7.4 * (e0_beta_mev / 0.5) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
+        barnes_f_beta = [
+            math.log(1 + 2 * (t / t_ineff_beta) ** 2) / (2 * (t / t_ineff_beta) ** 2)
+            for t in depdata["tmid_days"].values
+        ]
+
+        axistherm.plot(
+            depdata["tmid_days"],
+            barnes_f_beta,
+            **dict(plotkwargs, **{"label": r"Barnes+16 $f_\beta$", "linestyle": "dashed", "color": color_beta}),
+        )
+
+        e0_alpha_mev = 6.0
+        t_ineff_alpha = 4.3 * 1.8 * (e0_alpha_mev / 6.0) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
+        barnes_f_alpha = [
+            math.log(1 + 2 * (t / t_ineff_alpha) ** 2) / (2 * (t / t_ineff_alpha) ** 2)
+            for t in depdata["tmid_days"].values
+        ]
+
+        axistherm.plot(
+            depdata["tmid_days"],
+            barnes_f_alpha,
+            **dict(plotkwargs, **{"label": r"Barnes+16 $f_\alpha$", "linestyle": "dashed", "color": color_alpha}),
         )
 
 
-def make_lightcurve_plot_from_lightcurve_out_files(
-    modelpaths, filenameout, frompackets=False, escape_type=False, maxpacketfiles=None, args=None
-):
+def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type=False, maxpacketfiles=None, args=None):
     """Use light_curve.out or light_curve_res.out files to plot light curve"""
 
     fig, axis = plt.subplots(
@@ -297,7 +301,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(
             if args.plotviewingangle is not None and lcname == "light_curve.out":
                 lcname = "light_curve_res.out"
         try:
-            lcpath = at.firstexisting([lcname + ".xz", lcname + ".gz", lcname], path=modelpath)
+            lcpath = at.firstexisting(lcname, path=modelpath, tryzipped=True)
         except FileNotFoundError:
             print(f"Skipping {modelname} because {lcname} does not exist")
             continue
@@ -321,14 +325,17 @@ def make_lightcurve_plot_from_lightcurve_out_files(
             plotkwargs["linewidth"] = args.linewidth[seriesindex]
 
         if args.plotdeposition or args.plotthermalisation:
-            plot_deposition_thermalisation(axis, axistherm, modelpath, plotkwargs, args)
+            plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkwargs, args)
 
         # check if doing viewing angle stuff, and if so define which data to use
         angles, viewing_angles, angle_definition = at.lightcurve.get_angle_stuff(modelpath, args)
         if args.plotviewingangle:
             lcdataframes = lcdata
-            if args.average_every_tenth_viewing_angle:
+            if args.average_over_phi_angle:
                 lcdataframes = at.lightcurve.average_lightcurve_phi_bins(lcdataframes)
+
+            if args.average_over_theta_angle:
+                lcdataframes = at.lightcurve.average_lightcurve_theta_bins(lcdataframes)
 
             if args.colorbarcostheta or args.colorbarphi:
                 costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
@@ -368,7 +375,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(
                         plotkwargs,
                         args,
                     )
-                    if args.average_every_tenth_viewing_angle:  # if angles plotted that are not averaged over phi
+                    if args.average_over_phi_angle:  # if angles plotted that are not averaged over phi
                         plotkwargs["color"] = "lightgrey"  # then plot these in grey
                 else:
                     plotkwargs["color"] = None
@@ -403,11 +410,7 @@ def make_lightcurve_plot_from_lightcurve_out_files(
                     lcdata_before_valid = lcdata.query("time <= @lcdata_valid.time.min()")
                     lcdata_after_valid = lcdata.query("time >= @lcdata_valid.time.max()")
 
-                if (
-                    args.average_every_tenth_viewing_angle
-                    and angle % 10 == 0
-                    and (args.colorbarcostheta or args.colorbarphi)
-                ):
+                if args.average_over_phi_angle and angle % 10 == 0 and (args.colorbarcostheta or args.colorbarphi):
                     color = scaledmap.to_rgba(colorindex)  # Update colours for light curves averaged over phi
                     axis.plot(lcdata["time"], lcdata["lum"], color=color, zorder=10)
                 else:
@@ -507,7 +510,8 @@ def make_lightcurve_plot_from_lightcurve_out_files(
         axistherm.set_ylim(bottom=0.0)
         # axistherm.set_ylim(top=1.05)
 
-        filenameout2 = "plotthermalisation.pdf"
+        # filenameout2 = "plotthermalisation.pdf"
+        filenameout2 = str(filenameout).replace(".pdf", "_thermalisation.pdf")
         figtherm.savefig(str(filenameout2), format="pdf")
         print(f"Saved {filenameout2}")
 
@@ -1371,9 +1375,21 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
+        "--average_over_phi_angle",
+        action="store_true",
+        help="Average over phi (azimuthal) viewing angles to make direction bins into polar angle bins",
+    )
+
+    # for backwards compatability with above option
+    parser.add_argument(
         "--average_every_tenth_viewing_angle",
         action="store_true",
-        help="average every tenth viewing angle to reduce noise",
+    )
+
+    parser.add_argument(
+        "--average_over_theta_angle",
+        action="store_true",
+        help="Average over theta (polar) viewing angles to make direction bins into azimuthal angle bins",
     )
 
     parser.add_argument(
@@ -1429,6 +1445,9 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
+        if args.average_every_tenth_viewing_angle:
+            print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
+            args.average_over_phi_angle
 
     if not args.modelpath and not args.colour_evolution:
         args.modelpath = ["."]
@@ -1509,11 +1528,11 @@ def main(args=None, argsraw=None, **kwargs):
         colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args)
         print(f"Saved figure: {args.outputfile}")
     else:
-        make_lightcurve_plot_from_lightcurve_out_files(
-            args.modelpath,
-            args.outputfile,
-            args.frompackets,
-            args.escape_type,
+        make_lightcurve_plot(
+            modelpaths=args.modelpath,
+            filenameout=args.outputfile,
+            frompackets=args.frompackets,
+            escape_type=args.escape_type,
             maxpacketfiles=args.maxpacketfiles,
             args=args,
         )

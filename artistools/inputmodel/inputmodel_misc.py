@@ -23,7 +23,7 @@ def read_modelfile(
     filename: Union[Path, str],
     dimensions: Optional[int] = None,
     printwarningsonly: bool = False,
-    skip3ddataframe: bool = False,
+    getheadersonly: bool = False,
     skipabundancecolumns: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
@@ -37,18 +37,18 @@ def read_modelfile(
     modelpath = Path(filename).parent
     print(f"Reading {filename}")
 
-    headerrows = 0
+    numheaderrows = 0
     with at.misc.zopen(filename, "rt") as fmodel:
         line = "#"
         while line.startswith("#"):
             line = fmodel.readline()
             if line.startswith("#"):
                 modelmeta["headercommentlines"].append(line.removeprefix("#").removeprefix(" ").removesuffix("\n"))
-                headerrows += 1
+                numheaderrows += 1
 
         modelcellcount = int(line)
         t_model_init_days = float(fmodel.readline())
-        headerrows += 2
+        numheaderrows += 2
         t_model_init_seconds = t_model_init_days * 24 * 60 * 60
 
         filepos = fmodel.tell()
@@ -56,10 +56,10 @@ def read_modelfile(
         try:
             vmax_cmps = float(fmodel.readline())  # velocity max in cm/s
             xmax_tmodel = vmax_cmps * t_model_init_seconds  # xmax = ymax = zmax
-            headerrows += 1
+            numheaderrows += 1
             if dimensions is None:
                 if not printwarningsonly:
-                    print("Detected 3D model file")
+                    print("  detected 3D model file")
                 dimensions = 3
             elif dimensions != 3:
                 print(f" {dimensions} were specified but file appears to be 3D")
@@ -68,7 +68,7 @@ def read_modelfile(
         except ValueError:
             if dimensions is None:
                 if not printwarningsonly:
-                    print("Detected 1D model file")
+                    print("  detected 1D model file")
                 dimensions = 1
             elif dimensions != 1:
                 print(f" {dimensions} were specified but file appears to be 1D")
@@ -80,55 +80,66 @@ def read_modelfile(
         filepos = fmodel.tell()
         line = fmodel.readline()
         if line.startswith("#"):
-            headerrows += 1
+            numheaderrows += 1
             columns = line.lstrip("#").split()
         else:
             fmodel.seek(filepos)  # undo the readline() and go back
 
-        ncols_file = len(fmodel.readline().split())
-        if dimensions > 1:
-            # columns split over two lines
-            ncols_file += len(fmodel.readline().split())
+        data_line_even = fmodel.readline().split()
+        ncols_line_even = len(data_line_even)
 
-        if columns is not None:
-            assert ncols_file == len(columns)
-        elif dimensions == 1:
-            columns = [
-                "inputcellid",
-                "velocity_outer",
-                "logrho",
-                "X_Fegroup",
-                "X_Ni56",
-                "X_Co56",
-                "X_Fe52",
-                "X_Cr48",
-                "X_Ni57",
-                "X_Co57",
-            ][:ncols_file]
+        if columns is None:
+            if dimensions == 1:
+                columns = [
+                    "inputcellid",
+                    "velocity_outer",
+                    "logrho",
+                    "X_Fegroup",
+                    "X_Ni56",
+                    "X_Co56",
+                    "X_Fe52",
+                    "X_Cr48",
+                    "X_Ni57",
+                    "X_Co57",
+                ][:ncols_line_even]
 
-        elif dimensions == 3:
-            columns = [
-                "inputcellid",
-                "inputpos_a",
-                "inputpos_b",
-                "inputpos_c",
-                "rho",
-                "X_Fegroup",
-                "X_Ni56",
-                "X_Co56",
-                "X_Fe52",
-                "X_Cr48",
-                "X_Ni57",
-                "X_Co57",
-            ][:ncols_file]
+            elif dimensions == 3:
+                columns = [
+                    "inputcellid",
+                    "inputpos_a",
+                    "inputpos_b",
+                    "inputpos_c",
+                    "rho",
+                    "X_Fegroup",
+                    "X_Ni56",
+                    "X_Co56",
+                    "X_Fe52",
+                    "X_Cr48",
+                    "X_Ni57",
+                    "X_Co57",
+                ][:ncols_line_even]
+            else:
+                # TODO: 2D case
+                assert False
+
+        if ncols_line_even == len(columns):
+            print("  model file is one line per cell")
+            ncols_line_odd = 0
         else:
-            assert False
+            print("  model file format is two lines per cell")
+            # columns split over two lines
+            ncols_line_odd = len(fmodel.readline().split())
+            assert (ncols_line_even + ncols_line_odd) == len(columns)
 
-    if dimensions == 1:
-        dfmodel = pd.read_csv(
-            filename, delim_whitespace=True, header=None, names=columns, skiprows=headerrows, nrows=modelcellcount
-        )
-    elif dimensions == 3:
+    if skipabundancecolumns:
+        print("  skipping abundance columns in model.txt")
+        if dimensions == 1:
+            ncols_line_even = 3
+        elif dimensions == 3:
+            ncols_line_even = 5
+        ncols_line_odd = 0
+
+    if dimensions == 3:
         # number of grid cell steps along an axis (same for xyz)
         ncoordgridx = int(round(modelcellcount ** (1.0 / 3.0)))
         ncoordgridy = int(round(modelcellcount ** (1.0 / 3.0)))
@@ -136,45 +147,59 @@ def read_modelfile(
 
         assert (ncoordgridx * ncoordgridy * ncoordgridz) == modelcellcount
 
-        nrows_read = 1 if skip3ddataframe else modelcellcount
+    nrows_read = 1 if getheadersonly else modelcellcount
 
-        skipoddrows = list(
-            [x for x in range(headerrows + modelcellcount * 2) if x < headerrows or (x - headerrows - 1) % 2 == 0]
+    skiprows: Union[list, int, None]
+    if ncols_line_odd > 0:
+        # skip the odd rows for the first read in
+        skiprows = list(
+            [
+                x
+                for x in range(numheaderrows + modelcellcount * 2)
+                if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
+            ]
         )
-        # each cell takes up two lines in the model file
-        dfmodel = pd.read_table(
+    else:
+        skiprows = numheaderrows
+
+    # each cell takes up two lines in the model file
+    dfmodel = pd.read_table(
+        filename,
+        sep=r"\s+",
+        engine="c",
+        header=None,
+        skiprows=skiprows,
+        names=columns[:ncols_line_even],
+        usecols=columns[:ncols_line_even],
+        nrows=nrows_read,
+    )
+
+    if ncols_line_odd > 0:
+        # read in the odd rows and merge dataframes
+        skipevenrows = list(
+            [
+                x
+                for x in range(numheaderrows + modelcellcount * 2)
+                if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
+            ]
+        )
+        dfmodeloddlines = pd.read_table(
             filename,
             sep=r"\s+",
             engine="c",
             header=None,
-            skiprows=skipoddrows,
-            names=columns[:5],
+            skiprows=skipevenrows,
+            names=columns[ncols_line_even:],
             nrows=nrows_read,
         )
-
-        if not skipabundancecolumns:
-            skipevenrows = list(
-                [x for x in range(headerrows + modelcellcount * 2) if x < headerrows or (x - headerrows - 1) % 2 == 1]
-            )
-            dfmodeloddlines = pd.read_table(
-                filename,
-                sep=r"\s+",
-                engine="c",
-                header=None,
-                skiprows=skipevenrows,
-                names=columns[5:],
-                nrows=nrows_read,
-            )
-            assert len(dfmodel) == len(dfmodeloddlines)
-            dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
-            del dfmodeloddlines
-    else:
-        assert False
+        assert len(dfmodel) == len(dfmodeloddlines)
+        dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
+        del dfmodeloddlines
 
     if len(dfmodel) > modelcellcount:
         dfmodel = dfmodel.iloc[:modelcellcount]
 
-    assert len(dfmodel) == modelcellcount or skip3ddataframe
+    assert len(dfmodel) == modelcellcount or getheadersonly
 
     dfmodel.index.name = "cellid"
     # dfmodel.drop('inputcellid', axis=1, inplace=True)
@@ -197,8 +222,8 @@ def read_modelfile(
 
         dfmodel.rename(columns={"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"}, inplace=True)
         if "pos_x_min" in dfmodel.columns:
-            print("Cell positions in model.txt are defined in the header")
-        elif not skip3ddataframe:
+            print("  model cell positions are defined in the header")
+        elif not getheadersonly:
 
             def vectormatch(vec1, vec2):
                 xclose = np.isclose(vec1[0], vec2[0], atol=xmax_tmodel / ncoordgridx)
@@ -238,13 +263,13 @@ def read_modelfile(
 
             assert posmatch_xyz != posmatch_zyx  # one option must match
             if posmatch_xyz:
-                print("Cell positions in model.txt are consistent with x-y-z column order")
+                print("  model cell positions are consistent with x-y-z column order")
                 dfmodel.rename(
                     columns={"inputpos_a": "pos_x_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_z_min"},
                     inplace=True,
                 )
             if posmatch_zyx:
-                print("Cell positions in model.txt are consistent with z-y-x column order")
+                print("  cell positions are consistent with z-y-x column order")
                 dfmodel.rename(
                     columns={"inputpos_a": "pos_z_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_x_min"},
                     inplace=True,
@@ -264,7 +289,7 @@ def get_modeldata(
     get_elemabundances: bool = False,
     derived_cols: Optional[Sequence[str]] = None,
     printwarningsonly: bool = False,
-    skip3ddataframe: bool = False,
+    getheadersonly: bool = False,
     skipabundancecolumns: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
@@ -285,7 +310,7 @@ def get_modeldata(
 
     if inputpath.is_dir():
         modelpath = inputpath
-        filename = at.firstexisting(["model.txt", "model.txt.gz", "model.txt.xz"], path=inputpath)
+        filename = at.firstexisting("model.txt", path=inputpath, tryzipped=True)
     elif inputpath.is_file():  # passed in a filename instead of the modelpath
         filename = inputpath
         modelpath = Path(inputpath).parent
@@ -301,7 +326,7 @@ def get_modeldata(
         filename=filename,
         dimensions=dimensions,
         printwarningsonly=printwarningsonly,
-        skip3ddataframe=skip3ddataframe,
+        getheadersonly=getheadersonly,
         skipabundancecolumns=skipabundancecolumns,
     )
 
@@ -315,12 +340,12 @@ def get_modeldata(
 
     if derived_cols:
         add_derived_cols_to_modeldata(
-            dfmodel,
-            derived_cols,
-            dimensions,
-            modelmeta["t_model_init_days"] * 86400.0,
-            modelmeta["wid_init"],
-            modelpath,
+            dfmodel=dfmodel,
+            derived_cols=derived_cols,
+            dimensions=dimensions,
+            t_model_init_seconds=modelmeta["t_model_init_days"] * 86400.0,
+            wid_init=modelmeta.get("wid_init", None),
+            modelpath=modelpath,
         )
 
     return dfmodel, modelmeta
@@ -348,22 +373,27 @@ def add_derived_cols_to_modeldata(
     if dimensions is None:
         dimensions = get_dfmodel_dimensions(dfmodel)
 
-    if dimensions == 3 and "velocity" in derived_cols:
-        assert t_model_init_seconds is not None
-        assert wid_init is not None
-        dfmodel["vel_x_min"] = dfmodel["pos_x_min"] / t_model_init_seconds
-        dfmodel["vel_y_min"] = dfmodel["pos_y_min"] / t_model_init_seconds
-        dfmodel["vel_z_min"] = dfmodel["pos_z_min"] / t_model_init_seconds
+    if dimensions == 3:
+        if "velocity" in derived_cols or "vel_min" in derived_cols:
+            assert t_model_init_seconds is not None
+            dfmodel["vel_x_min"] = dfmodel["pos_x_min"] / t_model_init_seconds
+            dfmodel["vel_y_min"] = dfmodel["pos_y_min"] / t_model_init_seconds
+            dfmodel["vel_z_min"] = dfmodel["pos_z_min"] / t_model_init_seconds
 
-        dfmodel["vel_x_max"] = (dfmodel["pos_x_min"] + wid_init) / t_model_init_seconds
-        dfmodel["vel_y_max"] = (dfmodel["pos_y_min"] + wid_init) / t_model_init_seconds
-        dfmodel["vel_z_max"] = (dfmodel["pos_z_min"] + wid_init) / t_model_init_seconds
+        if "velocity" in derived_cols or "vel_max" in derived_cols:
+            assert t_model_init_seconds is not None
+            dfmodel["vel_x_max"] = (dfmodel["pos_x_min"] + wid_init) / t_model_init_seconds
+            dfmodel["vel_y_max"] = (dfmodel["pos_y_min"] + wid_init) / t_model_init_seconds
+            dfmodel["vel_z_max"] = (dfmodel["pos_z_min"] + wid_init) / t_model_init_seconds
 
-        dfmodel["vel_x_mid"] = (dfmodel["pos_x_min"] + (0.5 * wid_init)) / t_model_init_seconds
-        dfmodel["vel_y_mid"] = (dfmodel["pos_y_min"] + (0.5 * wid_init)) / t_model_init_seconds
-        dfmodel["vel_z_mid"] = (dfmodel["pos_z_min"] + (0.5 * wid_init)) / t_model_init_seconds
+        if any([col in derived_cols for col in ["velocity", "vel_mid", "vel_mid_radial"]]):
+            assert wid_init is not None
+            assert t_model_init_seconds is not None
+            dfmodel["vel_x_mid"] = (dfmodel["pos_x_min"] + (0.5 * wid_init)) / t_model_init_seconds
+            dfmodel["vel_y_mid"] = (dfmodel["pos_y_min"] + (0.5 * wid_init)) / t_model_init_seconds
+            dfmodel["vel_z_mid"] = (dfmodel["pos_z_min"] + (0.5 * wid_init)) / t_model_init_seconds
 
-        dfmodel.eval("vel_mid_radial = sqrt(vel_x_mid ** 2 + vel_y_mid ** 2 + vel_z_mid ** 2)", inplace=True)
+            dfmodel.eval("vel_mid_radial = sqrt(vel_x_mid ** 2 + vel_y_mid ** 2 + vel_z_mid ** 2)", inplace=True)
 
     if dimensions == 3 and "pos_mid" in derived_cols or "angle_bin" in derived_cols:
         assert wid_init is not None
@@ -373,6 +403,9 @@ def add_derived_cols_to_modeldata(
 
     if "logrho" in derived_cols and "logrho" not in dfmodel.columns:
         dfmodel.eval("logrho = log10(rho)", inplace=True)
+
+    if "rho" in derived_cols and "rho" not in dfmodel.columns:
+        dfmodel.eval("rho = 10**logrho", inplace=True)
 
     if "angle_bin" in derived_cols:
         assert modelpath is not None
@@ -387,7 +420,7 @@ def add_derived_cols_to_modeldata(
 
 
 def get_cell_angle(dfmodel: pd.DataFrame, modelpath: Path) -> pd.DataFrame:
-    """get angle between cell midpoint and axis"""
+    """get angle between origin to cell midpoint and the syn_dir axis"""
     syn_dir = at.get_syn_dir(modelpath)
 
     cos_theta = np.zeros(len(dfmodel))
@@ -399,6 +432,8 @@ def get_cell_angle(dfmodel: pd.DataFrame, modelpath: Path) -> pd.DataFrame:
     dfmodel["cos_theta"] = cos_theta
     cos_bins = [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1]  # including end bin
     labels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]  # to agree with escaping packet bin numbers
+    assert at.get_viewingdirection_costhetabincount() == 10
+    assert at.get_viewingdirection_phibincount() == 10
     dfmodel["cos_bin"] = pd.cut(dfmodel["cos_theta"], cos_bins, labels=labels)
     # dfmodel['cos_bin'] = np.searchsorted(cos_bins, dfmodel['cos_theta'].values) -1
 
@@ -624,7 +659,7 @@ def save_modeldata(
             fmodel.write(f"{vmax}\n")
 
         if customcols:
-            fmodel.write(f'#{"  ".join(standardcols)} {"  ".join(customcols)}\n')
+            fmodel.write(f'#{" ".join(standardcols)} {" ".join(customcols)}\n')
 
         abundcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
 
@@ -639,7 +674,7 @@ def save_modeldata(
         #     fmodel.write('\n')
         if dimensions == 1:
             for cell in dfmodel.itertuples(index=False):
-                fmodel.write(f"{cell.inputcellid:6d}   {cell.velocity_outer:9.2f}   {cell.logrho:10.8f} ")
+                fmodel.write(f"{cell.inputcellid:6d} {cell.velocity_outer:9.2f} {cell.logrho:10.8f} ")
                 fmodel.write(" ".join([f"{getattr(cell, col)}" for col in abundcols]))
                 fmodel.write("\n")
 
@@ -650,7 +685,16 @@ def save_modeldata(
                 ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho", *abundcols]
             ].itertuples(index=False, name=None):
                 fmodel.write(f"{inputcellid:6d} {posxmin} {posymin} {poszmin} {rho}\n")
-                fmodel.write(" ".join([f"{colvalue}" for colvalue in othercolvals]) if rho > 0.0 else zeroabund)
+                fmodel.write(
+                    " ".join(
+                        [
+                            f"{colvalue:.4e}" if isinstance(colvalue, float) else f"{colvalue}"
+                            for colvalue in othercolvals
+                        ]
+                    )
+                    if rho > 0.0
+                    else zeroabund
+                )
                 fmodel.write("\n")
 
     print(f"Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
@@ -685,7 +729,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> U
 @lru_cache(maxsize=8)
 def get_initialabundances(modelpath: Path) -> pd.DataFrame:
     """Return a list of mass fractions."""
-    abundancefilepath = at.firstexisting(["abundances.txt.xz", "abundances.txt.gz", "abundances.txt"], path=modelpath)
+    abundancefilepath = at.firstexisting("abundances.txt", path=modelpath, tryzipped=True)
 
     abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, comment="#")
     abundancedata.index.name = "modelgridindex"
