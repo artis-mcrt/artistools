@@ -315,6 +315,7 @@ def read_estimators(
 
     modeldata, _ = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
     if "velocity_outer" in modeldata.columns:
+        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
         arr_velocity_outer = tuple(list([float(v) for v in modeldata["velocity_outer"].values]))
     else:
         arr_velocity_outer = None
