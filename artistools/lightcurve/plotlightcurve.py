@@ -1447,7 +1447,7 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
         if args.average_every_tenth_viewing_angle:
             print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
-            args.average_over_phi_angle
+            args.average_over_phi_angle = True
 
     if not args.modelpath and not args.colour_evolution:
         args.modelpath = ["."]
