@@ -4,6 +4,8 @@ from pathlib import Path
 
 def get_commandlist():
     commandlist = {
+        "at": ("artistools", "main"),
+        "artistools": ("artistools", "main"),
         "artistools-comparetogsinetwork": ("artistools.gsinetwork", "main"),
         "artistools-modeldeposition": ("artistools.deposition", "main_analytical"),
         "getartisspencerfano": ("artistools.nonthermal.solvespencerfanocmd", "main"),
@@ -54,6 +56,7 @@ def get_commandlist():
         "artistools-viewingangles": ("artistools.viewing_angles_visualization", "cli"),
         "plotartisviewingangles": ("artistools.viewing_angles_visualization", "cli"),
     }
+
     return commandlist
 
 
@@ -61,8 +64,6 @@ def get_console_scripts():
     console_scripts = [
         f"{command} = {submodulename}:{funcname}" for command, (submodulename, funcname) in get_commandlist().items()
     ]
-    console_scripts.append("at = artistools:main")
-    console_scripts.append("artistools = artistools:main")
     return console_scripts
 
 
@@ -81,12 +82,16 @@ def setup_completions():
         if proc.stderr:
             print(proc.stderr)
 
-        scriptlines = proc.stdout.split("\n")
-        f.write("\n".join(scriptlines[:-2]))
+        scriptlines = proc.stdout
+
+        strfunctiondefs, strsplit, strcommandregister = proc.stdout.rpartition("}\n")
+
+        f.write(strfunctiondefs)
+        f.write(strsplit)
         f.write("\n\n")
 
         for command in get_commandlist().keys():
-            completecommand = scriptlines[-2].replace("__MY_COMMAND__", command)
+            completecommand = strcommandregister.replace("__MY_COMMAND__", command)
             f.write(completecommand + "\n")
 
     print("To enable completions, add this line to your .zshrc/.bashrc")

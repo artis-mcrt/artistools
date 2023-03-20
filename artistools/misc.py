@@ -220,7 +220,7 @@ def get_grid_mapping(modelpath: Union[Path, str]) -> tuple[dict[int, list[int]],
 
     modelpath = Path(modelpath)
     if modelpath.is_dir():
-        filename = firstexisting(["grid.out.xz", "grid.out.gz", "grid.out"], path=modelpath)
+        filename = firstexisting("grid.out", tryzipped=True, path=modelpath)
     else:
         filename = Path(modelpath)
 
@@ -262,7 +262,7 @@ def get_wid_init_at_tmodel(
     if ngridpoints is None or t_model_days is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
         assert modelpath is not None
-        dfmodel, modelmeta = at.get_modeldata(modelpath)
+        dfmodel, modelmeta = at.get_modeldata(modelpath, getheadersonly=True, skipabundancecolumns=True)
         assert modelmeta["dimensions"] == 3
         ngridpoints = len(dfmodel)
         xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * (24 * 60 * 60)
@@ -289,7 +289,7 @@ def vec_len(vec: Union[Sequence, np.ndarray[Any, Any]]) -> float:
 @lru_cache(maxsize=16)
 def get_nu_grid(modelpath: Path) -> np.ndarray[Any, np.dtype[np.float64]]:
     """Get an array of frequencies at which the ARTIS spectra are binned by exspec."""
-    specfilename = firstexisting(["spec.out.gz", "spec.out", "specpol.out"], path=modelpath)
+    specfilename = firstexisting(["spec.out", "specpol.out"], path=modelpath, tryzipped=True)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     return specdata.loc[:, "0"].values
 
@@ -328,7 +328,7 @@ def get_deposition(modelpath: Path) -> pd.DataFrame:
 def get_timestep_times(modelpath: Path) -> list[str]:
     """Return a list of the mid time in days of each timestep from a spec.out file."""
     try:
-        specfilename = firstexisting(["spec.out.gz", "spec.out", "specpol.out"], path=modelpath)
+        specfilename = firstexisting(["spec.out", "specpol.out"], path=modelpath, tryzipped=True)
         time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
         return list(time_columns.columns[1:])
     except FileNotFoundError:
@@ -337,10 +337,11 @@ def get_timestep_times(modelpath: Path) -> list[str]:
 
 @lru_cache(maxsize=16)
 def get_timestep_times_float(
-    modelpath: Path, loc: Literal["mid", "start", "end", "delta"] = "mid"
+    modelpath: Union[Path, str], loc: Literal["mid", "start", "end", "delta"] = "mid"
 ) -> np.ndarray[Any, np.dtype[np.float64]]:
     """Return a list of the time in days of each timestep."""
 
+    modelpath = Path(modelpath)
     # virtual path to code comparison workshop models
     if not modelpath.exists() and modelpath.parts[0] == "codecomparison":
         import artistools.codecomparison
@@ -499,7 +500,7 @@ def get_timestep_time(modelpath: Union[Path, str], timestep: int) -> float:
 
 def get_escaped_arrivalrange(modelpath: Union[Path, str]) -> tuple[int, Optional[float], Optional[float]]:
     modelpath = Path(modelpath)
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True, skip3ddataframe=True)
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True, getheadersonly=True)
     vmax = modelmeta["vmax_cmps"]
     cornervmax = math.sqrt(3 * vmax**2)
 
@@ -685,14 +686,35 @@ def zopen(filename: Union[Path, str], mode: str):  # type: ignore
         return open(filename, mode)
 
 
-def firstexisting(filelist: Sequence[Union[str, Path]], path: Union[Path, str] = Path(".")) -> Path:
-    """Return the first existing file in file list."""
+def firstexisting(
+    filelist: Sequence[Union[str, Path]],
+    path: Union[Path, str] = Path("."),
+    tryzipped: bool = True,
+    noexcept: bool = False,
+) -> Path:
+    """Return the first existing file in file list. If none exists, raise exception or if noexcept=True, return the last one"""
+    if isinstance(filelist, str) or isinstance(filelist, Path):
+        filelist = [filelist]
 
-    fullpaths = [Path(path) / filename for filename in filelist]
+    fullpaths = []
+    for filename in filelist:
+        if tryzipped:
+            filenamexz = str(filename) if str(filename).endswith(".xz") else str(filename) + ".xz"
+            if filenamexz not in filelist:
+                fullpaths.append(Path(path) / filenamexz)
+
+            filenamegz = str(filename) if str(filename).endswith(".gz") else str(filename) + ".gz"
+            if filenamegz not in filelist:
+                fullpaths.append(Path(path) / filenamegz)
+
+        fullpaths.append(Path(path) / filename)
 
     for fullpath in fullpaths:
         if fullpath.exists():
             return fullpath
+
+    if noexcept:
+        return fullpaths[-1]
 
     raise FileNotFoundError(f'None of these files exist in {path}: {", ".join([str(x) for x in fullpaths])}')
 
@@ -820,7 +842,8 @@ def join_pdf_files(pdf_list: list[str], modelpath_list: list[Path]) -> None:
 def get_bflist(modelpath: Union[Path, str]) -> dict[int, tuple[int, int, int, int]]:
     compositiondata = get_composition_data(modelpath)
     bflist = {}
-    with zopen(Path(modelpath, "bflist.dat"), "rt") as filein:
+    bflistpath = firstexisting(["bflist.out", "bflist.dat"], path=modelpath, tryzipped=True)
+    with zopen(bflistpath, "rt") as filein:
         bflistcount = int(filein.readline())
 
         for k in range(bflistcount):
@@ -906,7 +929,9 @@ def get_linelist_dataframe(
 @lru_cache(maxsize=8)
 def get_npts_model(modelpath: Path) -> int:
     """Return the number of cell in the model.txt."""
-    modelfilepath = Path(modelpath) if Path(modelpath).is_file() else Path(modelpath, "model.txt")
+    modelfilepath = (
+        Path(modelpath) if Path(modelpath).is_file() else at.firstexisting("model.txt", path=modelpath, tryzipped=True)
+    )
     with zopen(modelfilepath, "rt") as modelfile:
         npts_model = int(readnoncommentline(modelfile))
     return npts_model
