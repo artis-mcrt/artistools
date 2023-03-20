@@ -1230,7 +1230,7 @@ def addargs(parser) -> None:
         help="Average over phi (azimuthal) viewing angles to make direction bins into polar angle bins",
     )
 
-    # for backwards compatability with above option
+    # for backwards compatibility with above option
     parser.add_argument(
         "--average_every_tenth_viewing_angle",
         action="store_true",

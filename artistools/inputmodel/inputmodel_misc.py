@@ -679,7 +679,7 @@ def save_modeldata(
                 fmodel.write("\n")
 
         elif dimensions == 3:
-            zeroabund = " ".join(["0.0" for _ in abundcols])
+            zeroabund = " ".join(["0" for _ in abundcols])
 
             for inputcellid, posxmin, posymin, poszmin, rho, *othercolvals in dfmodel[
                 ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho", *abundcols]

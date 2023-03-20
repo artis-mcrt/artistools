@@ -2,6 +2,8 @@ import artistools.inputmodel.botyanski2017
 import artistools.inputmodel.describeinputmodel
 import artistools.inputmodel.makeartismodel
 import artistools.inputmodel.rprocess_from_trajectory
+from .__main__ import addargs
+from .__main__ import main
 from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
 from artistools.inputmodel.inputmodel_misc import get_2d_modeldata
 from artistools.inputmodel.inputmodel_misc import get_3d_model_data_merged_model_and_abundances_minimal

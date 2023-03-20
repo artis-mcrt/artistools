@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 # adapted from Fortran maptogrid.f90 and kernelmodule.f90
 # original Fortran code by Andreas Bauswein
 import argparse
@@ -6,6 +7,7 @@ import math
 from pathlib import Path
 from typing import Union
 
+import argcomplete
 import numpy as np
 import pandas as pd
 
@@ -394,6 +396,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
         addargs(parser)
         parser.set_defaults(**kwargs)
+        argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
     ejectasnapshotpath = Path(args.inputpath, "ejectasnapshot.dat")

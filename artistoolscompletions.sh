@@ -45,6 +45,7 @@ _python_argcomplete() {
     fi
 }
 
+complete -o nospace -o default -o bashdefault -F _python_argcomplete artistools
 complete -o nospace -o default -o bashdefault -F _python_argcomplete artistools-comparetogsinetwork
 complete -o nospace -o default -o bashdefault -F _python_argcomplete artistools-modeldeposition
 complete -o nospace -o default -o bashdefault -F _python_argcomplete getartisspencerfano
