@@ -2,8 +2,9 @@ import subprocess
 from pathlib import Path
 
 
-def get_commandlist(noprefix=False):
+def get_commandlist():
     commandlist = {
+        "at": ("artistools", "main"),
         "artistools": ("artistools", "main"),
         "artistools-comparetogsinetwork": ("artistools.gsinetwork", "main"),
         "artistools-modeldeposition": ("artistools.deposition", "main_analytical"),
@@ -56,13 +57,6 @@ def get_commandlist(noprefix=False):
         "plotartisviewingangles": ("artistools.viewing_angles_visualization", "cli"),
     }
 
-    if noprefix:
-        commandlist = {
-            command.removeprefix("artistools-"): v
-            for command, v in commandlist.items()
-            if command.startswith("artistools")
-        }
-
     return commandlist
 
 
@@ -70,8 +64,6 @@ def get_console_scripts():
     console_scripts = [
         f"{command} = {submodulename}:{funcname}" for command, (submodulename, funcname) in get_commandlist().items()
     ]
-    console_scripts.append("at = artistools:main")
-    console_scripts.append("artistools = artistools:main")
     return console_scripts
 
 
