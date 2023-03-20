@@ -82,12 +82,16 @@ def setup_completions():
         if proc.stderr:
             print(proc.stderr)
 
-        scriptlines = proc.stdout.split("\n")
-        f.write("\n".join(scriptlines[:-2]))
+        scriptlines = proc.stdout
+
+        strfunctiondefs, strsplit, strcommandregister = proc.stdout.rpartition("}\n")
+
+        f.write(strfunctiondefs)
+        f.write(strsplit)
         f.write("\n\n")
 
         for command in get_commandlist().keys():
-            completecommand = scriptlines[-2].replace("__MY_COMMAND__", command)
+            completecommand = strcommandregister.replace("__MY_COMMAND__", command)
             f.write(completecommand + "\n")
 
     print("To enable completions, add this line to your .zshrc/.bashrc")
