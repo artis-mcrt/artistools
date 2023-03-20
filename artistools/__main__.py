@@ -1,48 +1,60 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
+import argparse
+import importlib
 import multiprocessing
+from typing import Union
+
+import argcomplete
 
 
 def addargs(parser=None) -> None:
     pass
 
 
-def main(argsraw=None) -> None:
-    """Show a list of available artistools commands."""
+dictcommands = {
+    "inputmodel": {
+        "describe": ("inputmodel.describeinputmodel", "main"),
+        "maptogrid": ("inputmodel.maptogrid", "main"),
+    },
+    "lightcurves": {
+        "plot": ("lightcurve.plotlightcurve", "main"),
+    },
+    "spectra": {
+        "plot": ("spectra.plotspectra", "main"),
+    },
+}
 
-    import argcomplete
-    import argparse
-    import importlib
+
+def addsubparsers(parser, parentcommand, dictcommands, depth: int = 1) -> None:
+    subparsers = parser.add_subparsers(dest=f"{parentcommand} command", required=True, title="test")
+    for subcommand, subcommands in dictcommands.items():
+        if isinstance(subcommands, dict):
+            subparser = subparsers.add_parser(subcommand)
+
+            addsubparsers(subparser, subcommand, subcommands, depth=depth + 1)
+        else:
+            command = subcommand
+            submodulename, funcname = subcommands
+            submodule = importlib.import_module(f"artistools.{submodulename}", package="artistools")
+            subparser = subparsers.add_parser(command)
+            submodule.addargs(subparser)
+            subparser.set_defaults(func=getattr(submodule, funcname))
+
+
+def main(args=None, argsraw=None, **kwargs) -> None:
+    """Parse and run artistools commands."""
 
     import artistools.commands
 
     parser = argparse.ArgumentParser()
     parser.set_defaults(func=None)
 
-    subparsers = parser.add_subparsers(dest="subcommand")
-    subparsers.required = False
-
-    for command, (submodulename, funcname) in sorted(artistools.commands.get_commandlist().items()):
-        submodule = importlib.import_module(submodulename, package="artistools")
-        subparser = subparsers.add_parser(command.replace("artistools-", ""))
-        submodule.addargs(subparser)
-        argcomplete.autocomplete(subparser)
-        subparser.set_defaults(func=getattr(submodule, funcname))
+    addsubparsers(parser, "artistools", dictcommands)
 
     argcomplete.autocomplete(parser)
     args = parser.parse_args(argsraw)
-    if args.func is not None:
-        args.func(args=args)
-    else:
-        # parser.print_help()
-        print("artistools provides the following commands:\n")
-
-        # for script in sorted(console_scripts):
-        #     command = script.split('=')[0].strip()
-        #     print(f'  {command}')
-
-        for command in sorted(artistools.commands.get_commandlist()):
-            print(f"  {command}")
+    args.func(args=args)
 
 
 if __name__ == "__main__":

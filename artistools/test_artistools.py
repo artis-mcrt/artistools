@@ -108,11 +108,6 @@ def test_macroatom():
     at.macroatom.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=10)
 
 
-def test_menu():
-    at.main(argsraw=[])
-    at.showtimesteptimes(modelpath=modelpath)
-
-
 def test_nltepops():
     # at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timedays=300),
     #                    **benchargs)

@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 # adapted from Fortran maptogrid.f90 and kernelmodule.f90
 # original Fortran code by Andreas Bauswein
 import argparse
 import math
 from pathlib import Path
+from typing import Union
 
+import argcomplete
 import numpy as np
 import pandas as pd
 
@@ -68,7 +71,7 @@ else:
         wij[i] = cnormk * sum
 
 
-def kernelvals2(rij2, hmean):  # ist schnell berechnet aber keine Gradienten
+def kernelvals2(rij2: float, hmean: float) -> float:  # ist schnell berechnet aber keine Gradienten
     hmean21 = 1.0 / (hmean * hmean)
     hmean31 = hmean21 / hmean
     v2 = rij2 * hmean21
@@ -80,10 +83,12 @@ def kernelvals2(rij2, hmean):  # ist schnell berechnet aber keine Gradienten
     return wtij
 
 
-def maptogrid(ejectasnapshotpath, outputpath):
+def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoordgrid: int = 50) -> None:
     if not ejectasnapshotpath.is_file():
         print(f"{ejectasnapshotpath} not found")
         return
+
+    assert ncoordgrid % 2 == 0
 
     snapshot_columns = [
         "id",
@@ -132,7 +137,7 @@ def maptogrid(ejectasnapshotpath, outputpath):
     npart = len(dfsnapshot)
     print("number of particles", npart)
 
-    fpartanalysis = open(Path(outputpath, "ejectapartanalysis.dat"), mode="w", encoding="utf-8")
+    fpartanalysis = open(Path(outputfolderpath, "ejectapartanalysis.dat"), mode="w", encoding="utf-8")
 
     totmass = 0.0
     rmax = 0.0
@@ -214,27 +219,25 @@ def maptogrid(ejectasnapshotpath, outputpath):
 
     # set up grid
 
-    ngrid = 50
-
     x0 = -0.5 * rmax  # 90% is hand waving - choose #
 
     # x0 = - rmean
 
-    dx = 2.0 * abs(x0) / (ngrid)  # -1 to be symmetric, right?
+    dx = 2.0 * abs(x0) / (ncoordgrid)  # -1 to be symmetric, right?
 
     y0 = x0
     z0 = x0
     dy = dx
     dz = dx
 
-    grho = np.zeros((ngrid + 1, ngrid + 1, ngrid + 1))
-    gye = np.zeros((ngrid + 1, ngrid + 1, ngrid + 1))
-    gparticlecounter = np.zeros((ngrid + 1, ngrid + 1, ngrid + 1), dtype=int)
+    grho = np.zeros((ncoordgrid + 1, ncoordgrid + 1, ncoordgrid + 1))
+    gye = np.zeros((ncoordgrid + 1, ncoordgrid + 1, ncoordgrid + 1))
+    gparticlecounter = np.zeros((ncoordgrid + 1, ncoordgrid + 1, ncoordgrid + 1), dtype=int)
     particle_rho_contribs = {}
 
-    print("grid properties", x0, dx, x0 + dx * (ngrid - 1))
+    print("grid properties", x0, dx, x0 + dx * (ncoordgrid - 1))
 
-    arrgx = x0 + dx * (np.arange(ngrid + 1) - 1)
+    arrgx = x0 + dx * (np.arange(ncoordgrid + 1) - 1)
     arrgy = arrgx
     arrgz = arrgx
 
@@ -243,11 +246,11 @@ def maptogrid(ejectasnapshotpath, outputpath):
         maxdist2 = maxdist**2
 
         ilow = max(math.floor((x[n] - maxdist - x0) / dx), 1)
-        ihigh = min(math.ceil((x[n] + maxdist - x0) / dx), ngrid)
+        ihigh = min(math.ceil((x[n] + maxdist - x0) / dx), ncoordgrid)
         jlow = max(math.floor((y[n] - maxdist - y0) / dy), 1)
-        jhigh = min(math.ceil((y[n] + maxdist - y0) / dy), ngrid)
+        jhigh = min(math.ceil((y[n] + maxdist - y0) / dy), ncoordgrid)
         klow = max(math.floor((z[n] - maxdist - z0) / dz), 1)
-        khigh = min(math.ceil((z[n] + maxdist - z0) / dz), ngrid)
+        khigh = min(math.ceil((z[n] + maxdist - z0) / dz), ncoordgrid)
 
         # check some min max
 
@@ -308,10 +311,10 @@ def maptogrid(ejectasnapshotpath, outputpath):
     with np.errstate(divide="ignore", invalid="ignore"):
         gye = np.divide(gye, grho)
 
-        with open(Path(outputpath, "gridcontributions.txt"), "w", encoding="utf-8") as fcontribs:
+        with open(Path(outputfolderpath, "gridcontributions.txt"), "w", encoding="utf-8") as fcontribs:
             fcontribs.write("particleid cellindex frac_of_cellmass\n")
             for (n, i, j, k), rho_contrib in particle_rho_contribs.items():
-                gridindex = ((k - 1) * ngrid + (j - 1)) * ngrid + (i - 1) + 1
+                gridindex = ((k - 1) * ncoordgrid + (j - 1)) * ncoordgrid + (i - 1) + 1
                 fcontribs.write(f"{particleid[n]} {gridindex} {rho_contrib / grho[i, j, k]}\n")
 
     # check some stuff on the grid
@@ -321,11 +324,11 @@ def maptogrid(ejectasnapshotpath, outputpath):
     gmass = np.sum(grho) * dx * dy * dz
     # nzero = np.count_nonzero(grho[1:][1:][1:] < 1.e-20)
 
-    for i in range(1, ngrid + 1):
+    for i in range(1, ncoordgrid + 1):
         gx = x0 + dx * (i - 1)
-        for j in range(1, ngrid + 1):
+        for j in range(1, ncoordgrid + 1):
             gy = y0 + dy * (j - 1)
-            for k in range(1, ngrid + 1):
+            for k in range(1, ncoordgrid + 1):
                 # how many cells with rho=0?
 
                 if grho[i, j, k] < 1.0e-20:
@@ -343,8 +346,8 @@ def maptogrid(ejectasnapshotpath, outputpath):
     print(
         "number of cells with zero rho, total num of cells, fraction of cells w rho=0",
         nzero,
-        ngrid**3,
-        (nzero) / (ngrid**3),
+        ncoordgrid**3,
+        (nzero) / (ncoordgrid**3),
     )
 
     print(
@@ -357,31 +360,34 @@ def maptogrid(ejectasnapshotpath, outputpath):
 
     # output grid - adapt as you need output
 
-    with open(Path(outputpath, "grid.dat"), "w", encoding="utf-8") as fgrid:
-        fgrid.write(f"{ngrid**3} # ngrid\n")
+    with open(Path(outputfolderpath, "grid.dat"), "w", encoding="utf-8") as fgrid:
+        fgrid.write(f"{ncoordgrid**3} # ncoordgrid\n")
         fgrid.write(f"{dtextra} # extra time after explosion simulation ended (in geom units)\n")
         fgrid.write(f"{x0} # xmax\n")
         fgrid.write(" gridindex    pos_x_min    pos_y_min    pos_z_min    rho    cellYe    tracercount\n")
         gridindex = 1
-        for k in range(1, ngrid + 1):
+        for k in range(1, ncoordgrid + 1):
             gz = z0 + dz * (k - 1)
-            for j in range(1, ngrid + 1):
+            for j in range(1, ncoordgrid + 1):
                 gy = y0 + dy * (j - 1)
-                for i in range(1, ngrid + 1):
+                for i in range(1, ncoordgrid + 1):
                     fgrid.write(
                         f"{gridindex:8d} {x0+dx*(i-1)} {gy} {gz} {grho[i,j,k]} {gye[i,j,k]} {gparticlecounter[i,j,k]}\n"
                     )
-                    # gridindex2 = ((k - 1) * ngrid + (j - 1)) * ngrid + (i - 1) + 1
+                    # gridindex2 = ((k - 1) * ncoordgrid + (j - 1)) * ncoordgrid + (i - 1) + 1
 
                     gridindex = gridindex + 1
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-inputpath", "-i", default=".", help="Path to ejectasnapshot")
-    parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
+    parser.add_argument(
+        "-ncoordgrid", type=int, default=50, help="Number of grid positions per axis (numcells = ncoordgrid^3)"
+    )
+    parser.add_argument("-outputfolderpath", "-o", default=".", help="Path for output files")
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args=None, argsraw=None, **kwargs) -> None:
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,
@@ -390,11 +396,12 @@ def main(args=None, argsraw=None, **kwargs):
 
         addargs(parser)
         parser.set_defaults(**kwargs)
+        argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
     ejectasnapshotpath = Path(args.inputpath, "ejectasnapshot.dat")
 
-    maptogrid(ejectasnapshotpath=ejectasnapshotpath, outputpath=args.outputpath)
+    maptogrid(ejectasnapshotpath=ejectasnapshotpath, ncoordgrid=args.ncoordgrid, outputfolderpath=args.outputfolderpath)
 
 
 if __name__ == "__main__":

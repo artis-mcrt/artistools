@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Artistools - light curve functions."""
 from artistools.lightcurve.lightcurve import average_lightcurve_phi_bins
+from artistools.lightcurve.lightcurve import average_lightcurve_theta_bins
 from artistools.lightcurve.lightcurve import bolometric_magnitude
 from artistools.lightcurve.lightcurve import evaluate_magnitudes
 from artistools.lightcurve.lightcurve import generate_band_lightcurve_data

@@ -75,7 +75,7 @@ def get_from_packets(
     timearray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
     arr_timedelta = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
     # timearray = np.arange(250, 350, 0.1)
-    _, _, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath, skip3ddataframe=True, skipabundancecolumns=True)
+    _, _, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath, getheadersonly=True, skipabundancecolumns=True)
     escapesurfacegamma = math.sqrt(1 - (vmax_cmps / 29979245800) ** 2)
 
     timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
@@ -114,16 +114,38 @@ def get_from_packets(
 
 
 def average_lightcurve_phi_bins(lcdataframes: dict[int, pd.DataFrame]) -> dict[int, pd.DataFrame]:
-    nviewinganglebins = at.get_viewingdirectionbincount()
+    dirbincount = at.get_viewingdirectionbincount()
     nphibins = at.get_viewingdirection_phibincount()
-    for start_bin in np.arange(start=0, stop=nviewinganglebins, step=nphibins):
+    for start_bin in range(0, dirbincount, nphibins):
         for bin_number in range(start_bin + 1, start_bin + nphibins):
+            lcdataframes[bin_number] = lcdataframes[bin_number].copy()  # important to not affect the LRU cached copy
             lcdataframes[bin_number] = lcdataframes[bin_number].set_index(
                 lcdataframes[start_bin].index
-            )  # need indexs to match or else gives NaN
+            )  # need indexes to match or else gives NaN
             lcdataframes[start_bin]["lum"] += lcdataframes[bin_number]["lum"]
+            del lcdataframes[bin_number]
+
         lcdataframes[start_bin]["lum"] /= nphibins  # every nth bin is the average of n bins
         print(f"bin number {start_bin} = the average of bins {start_bin} to {start_bin + nphibins-1}")
+
+    return lcdataframes
+
+
+def average_lightcurve_theta_bins(lcdataframes: dict[int, pd.DataFrame]) -> dict[int, pd.DataFrame]:
+    dirbincount = at.get_viewingdirectionbincount()
+    nphibins = at.get_viewingdirection_phibincount()
+    ncosthetabins = at.get_viewingdirection_costhetabincount()
+    for start_bin in range(0, nphibins):
+        contribbins = range(start_bin + ncosthetabins, dirbincount, ncosthetabins)
+        for bin_number in contribbins:
+            lcdataframes[bin_number] = lcdataframes[bin_number].set_index(
+                lcdataframes[start_bin].index
+            )  # need indexes to match or else gives NaN
+            lcdataframes[start_bin]["lum"] += lcdataframes[bin_number]["lum"]
+            del lcdataframes[bin_number]
+
+        lcdataframes[start_bin]["lum"] /= ncosthetabins  # every nth bin is the average of n bins
+        print(f"bin number {start_bin} = the average of bins {[start_bin] + list(contribbins)}")
 
     return lcdataframes
 
@@ -158,7 +180,7 @@ def generate_band_lightcurve_data(
         if args.plotviewingangle:
             print("WARNING: no direction-resolved spectra available. Using angle-averaged spectra.")
 
-        specfilename = at.firstexisting(["spec.out.xz", "spec.out.gz", "spec.out", "specpol.out"], path=modelpath)
+        specfilename = at.firstexisting(["spec.out", "specpol.out"], path=modelpath, tryzipped=True)
         if "specpol.out" in str(specfilename):
             specdata = pd.read_csv(specfilename, delim_whitespace=True)
             timearray = [i for i in specdata.columns.values[1:] if i[-2] != "."]  # Ignore Q and U values in pol file
@@ -175,9 +197,9 @@ def generate_band_lightcurve_data(
     res_specdata = None
     if angle is not None:
         try:
-            res_specdata = at.spectra.read_spec_res(modelpath)
-            if args and args.average_every_tenth_viewing_angle:
-                at.spectra.average_angle_bins(res_specdata, angle)
+            res_specdata = at.spectra.read_spec_res(modelpath).copy()
+            if args and args.average_over_phi_angle:
+                at.spectra.average_phi_bins(res_specdata, angle)
 
         except FileNotFoundError:
             pass
@@ -259,8 +281,8 @@ def bolometric_magnitude(
                 else:
                     if res_specdata is None:
                         res_specdata = at.spectra.read_spec_res(modelpath)
-                        if args and args.average_every_tenth_viewing_angle:
-                            at.spectra.average_angle_bins(res_specdata, angle)
+                        if args and args.average_over_phi_angle:
+                            at.spectra.average_phi_bins(res_specdata, angle)
                     spectrum = at.spectra.get_res_spectrum(
                         modelpath, timestep, timestep, angle=angle, res_specdata=res_specdata
                     )

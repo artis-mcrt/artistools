@@ -27,10 +27,7 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
     for folderpath in at.get_runfolders(modelpath, timestep=timestep):
         for mpirank in mpiranklist:
-            nonthermalfile = f"nonthermalspec_{mpirank:04d}.out"
-            filepath = at.firstexisting(
-                [nonthermalfile, nonthermalfile + ".xz", nonthermalfile + ".gz"], path=folderpath
-            )
+            filepath = at.firstexisting(f"nonthermalspec_{mpirank:04d}.out", path=folderpath, tryzipped=True)
 
             if modelgridindex > -1:
                 filesize = Path(filepath).stat().st_size / 1024 / 1024
