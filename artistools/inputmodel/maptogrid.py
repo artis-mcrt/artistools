@@ -13,6 +13,8 @@ import pandas as pd
 
 import artistools as at
 
+logfile = None
+
 itable = 40000  # wie fein Kernelfkt interpoliert wird
 itab = itable + 5
 
@@ -83,7 +85,17 @@ def kernelvals2(rij2: float, hmean: float) -> float:  # ist schnell berechnet ab
     return wtij
 
 
+def logprint(*args, **kwargs):
+    logfile.write(" ".join([str(x) for x in args]) + "\n")
+    print(*args, **kwargs)
+
+
 def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoordgrid: int = 50) -> None:
+    # save the printed output to a log file
+    global logfile
+    logfile = open("maptogridlog.txt", "w")
+    print = logprint
+
     if not ejectasnapshotpath.is_file():
         print(f"{ejectasnapshotpath} not found")
         return
@@ -135,9 +147,6 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
     assert len(dfsnapshot.columns) == len(snapshot_columns_used)
 
     npart = len(dfsnapshot)
-    print("number of particles", npart)
-
-    fpartanalysis = open(Path(outputfolderpath, "ejectapartanalysis.dat"), mode="w", encoding="utf-8")
 
     totmass = 0.0
     rmax = 0.0
@@ -164,53 +173,55 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
     rho = dfsnapshot.rho.values
     Ye = dfsnapshot.ye.values
 
-    for n in range(npart):
-        totmass = totmass + pmass[n]
+    with open(Path(outputfolderpath, "ejectapartanalysis.dat"), mode="w", encoding="utf-8") as fpartanalysis:
+        for n in range(npart):
+            totmass = totmass + pmass[n]
 
-        dis = math.sqrt(x[n] ** 2 + y[n] ** 2 + z[n] ** 2)  # original dis
+            dis = math.sqrt(x[n] ** 2 + y[n] ** 2 + z[n] ** 2)  # original dis
 
-        x[n] += vx[n] * dtextra
-        y[n] += vy[n] * dtextra
-        z[n] += vz[n] * dtextra
+            x[n] += vx[n] * dtextra
+            y[n] += vy[n] * dtextra
+            z[n] += vz[n] * dtextra
 
-        # actually we should also extrapolate smoothing length h unless we disrgard it below
+            # actually we should also extrapolate smoothing length h unless we disrgard it below
 
-        # extrapolate h such that ratio betwen dis and h remains constant
-        h[n] = h[n] / dis * math.sqrt(x[n] ** 2 + y[n] ** 2 + z[n] ** 2)
+            # extrapolate h such that ratio between dis and h remains constant
+            h[n] = h[n] / dis * math.sqrt(x[n] ** 2 + y[n] ** 2 + z[n] ** 2)
 
-        dis = math.sqrt(x[n] ** 2 + y[n] ** 2 + z[n] ** 2)  # possibly new distance
+            dis = math.sqrt(x[n] ** 2 + y[n] ** 2 + z[n] ** 2)  # possibly new distance
 
-        rmean = rmean + dis
+            rmean = rmean + dis
 
-        rmax = max(rmax, dis)
+            rmax = max(rmax, dis)
 
-        hmean = hmean + h[n]
+            hmean = hmean + h[n]
 
-        hmin = min(hmin, h[n])
+            hmin = min(hmin, h[n])
 
-        vtot = math.sqrt(vx[n] ** 2 + vy[n] ** 2 + vz[n] ** 2)
+            vtot = math.sqrt(vx[n] ** 2 + vy[n] ** 2 + vz[n] ** 2)
 
-        vrad = (vx[n] * x[n] + vy[n] * y[n] + vz[n] * z[n]) / dis  # radial velocity
+            vrad = (vx[n] * x[n] + vy[n] * y[n] + vz[n] * z[n]) / dis  # radial velocity
 
-        if vtot > vrad:
-            vperp = math.sqrt(vtot * vtot - vrad * vrad)  # velicty perpendicular
-        else:
-            vperp = 0.0  # if we rxtrapolate roundoff error can lead to Nan, ly?
+            if vtot > vrad:
+                vperp = math.sqrt(vtot * vtot - vrad * vrad)  # velicty perpendicular
+            else:
+                vperp = 0.0  # if we rxtrapolate roundoff error can lead to Nan, ly?
 
-        vratiomean = vratiomean + vperp / vrad
+            vratiomean = vratiomean + vperp / vrad
 
-        # output some ejecta properties in file
+            # output some ejecta properties in file
 
-        fpartanalysis.write(f"{dis} {h[n]} {h[n] / dis} {vrad} {vperp} {vtot}\n")
+            fpartanalysis.write(f"{dis} {h[n]} {h[n] / dis} {vrad} {vperp} {vtot}\n")
 
+    print("saved ejectapartanalysis.dat")
     rmean = rmean / npart
 
     hmean = hmean / npart
 
     vratiomean = vratiomean / npart
 
-    print("total mass of sph particle, max, mean distance", totmass, rmax, rmean)
-    print("smoothing length min, mean", hmin, hmean)
+    print(f"total mass of sph particle {totmass} max dist {rmax} mean dist {rmean}")
+    print(f"smoothing length min {hmin} mean {hmean}")
     print("ratio between vrad and vperp mean", vratiomean)
 
     # check maybe cm and correct by shifting
@@ -230,28 +241,33 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
     dy = dx
     dz = dx
 
-    grho = np.zeros((ncoordgrid + 1, ncoordgrid + 1, ncoordgrid + 1))
-    gye = np.zeros((ncoordgrid + 1, ncoordgrid + 1, ncoordgrid + 1))
-    gparticlecounter = np.zeros((ncoordgrid + 1, ncoordgrid + 1, ncoordgrid + 1), dtype=int)
+    grho = np.zeros((ncoordgrid, ncoordgrid, ncoordgrid))
+    gye = np.zeros((ncoordgrid, ncoordgrid, ncoordgrid))
+    gparticlecounter = np.zeros((ncoordgrid, ncoordgrid, ncoordgrid), dtype=int)
     particle_rho_contribs = {}
 
-    print("grid properties", x0, dx, x0 + dx * (ncoordgrid - 1))
+    print(f"grid properties {x0=}, {dx=}, {x0 + dx * (ncoordgrid - 1)=}")
 
-    arrgx = x0 + dx * (np.arange(ncoordgrid + 1) - 1)
+    arrgx = x0 + dx * np.arange(ncoordgrid)
     arrgy = arrgx
     arrgz = arrgx
+
+    particlesused = set()
+    particlesinsidegrid = set()
 
     for n in range(npart):
         maxdist = 2.0 * h[n]
         maxdist2 = maxdist**2
 
-        ilow = max(math.floor((x[n] - maxdist - x0) / dx), 1)
-        ihigh = min(math.ceil((x[n] + maxdist - x0) / dx), ncoordgrid)
-        jlow = max(math.floor((y[n] - maxdist - y0) / dy), 1)
-        jhigh = min(math.ceil((y[n] + maxdist - y0) / dy), ncoordgrid)
-        klow = max(math.floor((z[n] - maxdist - z0) / dz), 1)
-        khigh = min(math.ceil((z[n] + maxdist - z0) / dz), ncoordgrid)
+        ilow = max(math.floor((x[n] - maxdist - x0) / dx), 0)
+        ihigh = min(math.ceil((x[n] + maxdist - x0) / dx), ncoordgrid - 1)
+        jlow = max(math.floor((y[n] - maxdist - y0) / dy), 0)
+        jhigh = min(math.ceil((y[n] + maxdist - y0) / dy), ncoordgrid - 1)
+        klow = max(math.floor((z[n] - maxdist - z0) / dz), 0)
+        khigh = min(math.ceil((z[n] + maxdist - z0) / dz), ncoordgrid - 1)
 
+        if min(ihigh, jhigh, khigh) >= 1 and max(ilow, jlow, klow) <= ncoordgrid:
+            particlesinsidegrid.add(n)
         # check some min max
 
         # ... kernel reweighting ?
@@ -307,6 +323,20 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
 
                 # count number of particles contributing to each grid cell
                 gparticlecounter[i, j, k] += 1
+                particlesused.add(n)
+
+    print(
+        f"particles with any cell contribution: {len(particlesused)} of {len(particlesinsidegrid)} inside grid out of {npart} total"
+    )
+    unusedparticles = [n for n in range(npart) if n not in particlesused]
+    for n in unusedparticles:
+        loc_i = math.floor((x[n] - x0) / dx)
+        loc_j = math.floor((y[n] - y0) / dy)
+        loc_k = math.floor((z[n] - z0) / dz)
+        # ignore particles outside grid boundary
+        if min(loc_i, loc_j, loc_k) < 0 or max(loc_i, loc_j, loc_k) > ncoordgrid - 1:
+            continue
+        print(f"particle {n} is totally unused but located in cell {loc_i} {loc_j} {loc_k}")
 
     with np.errstate(divide="ignore", invalid="ignore"):
         gye = np.divide(gye, grho)
@@ -314,8 +344,9 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
         with open(Path(outputfolderpath, "gridcontributions.txt"), "w", encoding="utf-8") as fcontribs:
             fcontribs.write("particleid cellindex frac_of_cellmass\n")
             for (n, i, j, k), rho_contrib in particle_rho_contribs.items():
-                gridindex = ((k - 1) * ncoordgrid + (j - 1)) * ncoordgrid + (i - 1) + 1
+                gridindex = (k * ncoordgrid + j) * ncoordgrid + i + 1
                 fcontribs.write(f"{particleid[n]} {gridindex} {rho_contrib / grho[i, j, k]}\n")
+        print("saved gridcontributions.txt")
 
     # check some stuff on the grid
 
@@ -324,36 +355,33 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
     gmass = np.sum(grho) * dx * dy * dz
     # nzero = np.count_nonzero(grho[1:][1:][1:] < 1.e-20)
 
-    for i in range(1, ncoordgrid + 1):
-        gx = x0 + dx * (i - 1)
-        for j in range(1, ncoordgrid + 1):
-            gy = y0 + dy * (j - 1)
-            for k in range(1, ncoordgrid + 1):
+    for i in range(ncoordgrid):
+        gx = x0 + dx * i
+        for j in range(ncoordgrid):
+            gy = y0 + dy * j
+            for k in range(1, ncoordgrid):
                 # how many cells with rho=0?
 
                 if grho[i, j, k] < 1.0e-20:
                     nzero = nzero + 1
 
-                gz = z0 + dz * (k - 1)
+                gz = z0 + dz * k
 
                 dis = math.sqrt(gx * gx + gy * gy + gz * gz)
 
                 if grho[i, j, k] < 1.0e-20 and dis < rmean:
                     nzerocentral = nzerocentral + 1
 
-    print(f"mass on grid from rho*V: {gmass} particles: {totmass}")
-
     print(
-        "number of cells with zero rho, total num of cells, fraction of cells w rho=0",
-        nzero,
-        ncoordgrid**3,
-        (nzero) / (ncoordgrid**3),
+        f"{'WARNING!' if gmass / totmass < 0.9 else ''} mass on grid from rho*V: {gmass} mass of particles: {totmass} "
     )
 
     print(
-        "number of central cells (dis<rmean) with zero rho, ratio",
-        nzerocentral,
-        (nzerocentral) / (4.0 * 3.14 / 3.0 * rmean**3 / (dx * dy * dz)),
+        f"number of cells with rho=0 {nzero}, total num of cells {ncoordgrid**3}, fraction of cells with rho=0: {(nzero) / (ncoordgrid**3)}"
+    )
+
+    print(
+        f"number of central cells (dis<rmean) with rho=0 {nzerocentral}, ratio {(nzerocentral) / (4.0 * 3.14 / 3.0 * rmean**3 / (dx * dy * dz))}"
     )
 
     print("probably we want to choose grid size, i.e. x0, as compromise between mapped mass and rho=0 cells")
@@ -366,17 +394,19 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
         fgrid.write(f"{x0} # xmax\n")
         fgrid.write(" gridindex    pos_x_min    pos_y_min    pos_z_min    rho    cellYe    tracercount\n")
         gridindex = 1
-        for k in range(1, ncoordgrid + 1):
-            gz = z0 + dz * (k - 1)
-            for j in range(1, ncoordgrid + 1):
-                gy = y0 + dy * (j - 1)
-                for i in range(1, ncoordgrid + 1):
+        for k in range(ncoordgrid):
+            gz = z0 + dz * k
+            for j in range(ncoordgrid):
+                gy = y0 + dy * j
+                for i in range(ncoordgrid):
                     fgrid.write(
-                        f"{gridindex:8d} {x0+dx*(i-1)} {gy} {gz} {grho[i,j,k]} {gye[i,j,k]} {gparticlecounter[i,j,k]}\n"
+                        f"{gridindex:8d} {x0+dx*i} {gy} {gz} {grho[i,j,k]} {gye[i,j,k]} {gparticlecounter[i,j,k]}\n"
                     )
                     # gridindex2 = ((k - 1) * ncoordgrid + (j - 1)) * ncoordgrid + (i - 1) + 1
 
                     gridindex = gridindex + 1
+
+    print("saved grid.dat")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
