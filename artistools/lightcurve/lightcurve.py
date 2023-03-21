@@ -102,7 +102,8 @@ def get_from_packets(
             print(f"sum of e_cmf {dfpackets['e_cmf'].sum()} e_rf {dfpackets['e_rf'].sum()}")
 
             for dirbin in dirbins:
-                dfpackets_dirbin = dfpackets.query("angle_bin == @dirbin")
+                dfpackets_dirbin = dfpackets.query("angle_bin == @dirbin") if dirbin != -1 else dfpackets
+
                 binned = pd.cut(dfpackets_dirbin["t_arrive_d"], timearrayplusend, labels=False, include_lowest=True)
                 for binindex, e_rf_sum in dfpackets_dirbin.groupby(binned)["e_rf"].sum().items():
                     lcdata[dirbin]["lum"][binindex] += e_rf_sum
@@ -124,6 +125,9 @@ def get_from_packets(
             * (u.erg / u.day).to("solLum"),
             arr_timedelta,
         )
+
+    if not usedirectionbins:
+        return lcdata[-1]
 
     return lcdata
 
