@@ -31,6 +31,7 @@ def read_modelfile(
     """
 
     assert dimensions in [1, 3, None]
+    onelinepercellformat = None
 
     modelmeta: dict[str, Any] = {"headercommentlines": []}
 
@@ -125,11 +126,13 @@ def read_modelfile(
         if ncols_line_even == len(columns):
             print("  model file is one line per cell")
             ncols_line_odd = 0
+            onelinepercellformat = True
         else:
             print("  model file format is two lines per cell")
             # columns split over two lines
             ncols_line_odd = len(fmodel.readline().split())
             assert (ncols_line_even + ncols_line_odd) == len(columns)
+            onelinepercellformat = False
 
     if skipabundancecolumns:
         print("  skipping abundance columns in model.txt")
@@ -150,7 +153,9 @@ def read_modelfile(
     nrows_read = 1 if getheadersonly else modelcellcount
 
     skiprows: Union[list, int, None]
-    if ncols_line_odd > 0:
+    if onelinepercellformat:
+        skiprows = numheaderrows
+    else:
         # skip the odd rows for the first read in
         skiprows = list(
             [
@@ -159,8 +164,6 @@ def read_modelfile(
                 if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
             ]
         )
-    else:
-        skiprows = numheaderrows
 
     # each cell takes up two lines in the model file
     dfmodel = pd.read_table(
@@ -174,7 +177,7 @@ def read_modelfile(
         nrows=nrows_read,
     )
 
-    if ncols_line_odd > 0:
+    if ncols_line_odd > 0 and not onelinepercellformat:
         # read in the odd rows and merge dataframes
         skipevenrows = list(
             [
