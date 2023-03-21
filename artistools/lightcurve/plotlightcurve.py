@@ -310,7 +310,11 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
             continue
         elif frompackets:
             lcdata = at.lightcurve.get_from_packets(
-                modelpath, packet_type=args.packet_type, escape_type=escape_type, maxpacketfiles=maxpacketfiles
+                modelpath,
+                packet_type=args.packet_type,
+                escape_type=escape_type,
+                maxpacketfiles=maxpacketfiles,
+                usedirectionbins=args.plotviewingangle is not None,
             )
         else:
             lcdata = at.lightcurve.readfile(lcpath, modelpath, args)

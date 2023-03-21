@@ -356,6 +356,26 @@ def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
     return res_specdata
 
 
+@lru_cache(maxsize=200)
+def read_emission_absorption_file(emabsfilename: Union[str, Path]) -> pd.DataFrame:
+    """Read into a DataFrame one of: emission.out. emissionpol.out, emissiontrue.out, absorption.out"""
+
+    try:
+        emissionfilesize = Path(emabsfilename).stat().st_size / 1024 / 1024
+        print(f" Reading {emabsfilename} ({emissionfilesize:.2f} MiB)")
+
+    except AttributeError:
+        print(f" Reading {emabsfilename}")
+
+    dfemabs = pd.read_table(emabsfilename, sep=" ", engine=at.get_config()["pandas_engine"], header=None)
+
+    # check if last column is an artefact of whitespace at end of line (None or NaNs for pyarrow/c engine)
+    if dfemabs.iloc[0, -1] is None or np.isnan(dfemabs.iloc[0, -1]):
+        dfemabs.drop(dfemabs.columns[-1], axis=1, inplace=True)
+
+    return dfemabs
+
+
 def average_phi_bins(
     res_specdata: dict[int, pd.DataFrame],
     dirbin: Optional[int],
@@ -687,20 +707,7 @@ def get_flux_contributions(
                 # File contains I, Q and U and so times are repeated 3 times
                 arr_tmid = np.array(arr_tmid.tolist() * 3)
 
-            try:
-                emissionfilesize = Path(emissionfilename).stat().st_size / 1024 / 1024
-                print(f" Reading {emissionfilename} ({emissionfilesize:.2f} MiB)")
-
-            except AttributeError:
-                print(f" Reading {emissionfilename}")
-
-            emissiondata[dbin] = pd.read_table(
-                emissionfilename, sep=" ", engine=at.get_config()["pandas_engine"], header=None
-            )
-
-            # check if last column is an artefact of whitespace at end of line (None or NaNs for pyarrow/c engine)
-            if emissiondata[dbin].iloc[0, -1] is None or np.isnan(emissiondata[dbin].iloc[0, -1]):
-                emissiondata[dbin].drop(emissiondata[dbin].columns[-1], axis=1, inplace=True)
+            emissiondata[dbin] = read_emission_absorption_file(emissionfilename)
 
             maxion_float = (emissiondata[dbin].shape[1] - 1) / 2 / nelements  # also known as MIONS in ARTIS sn3d.h
             assert maxion_float.is_integer()
@@ -723,20 +730,7 @@ def get_flux_contributions(
 
             absorptionfilename = at.firstexisting(absorptionfilenames, path=modelpath, tryzipped=True)
 
-            try:
-                absorptionfilesize = Path(absorptionfilename).stat().st_size / 1024 / 1024
-                print(f" Reading {absorptionfilename} ({absorptionfilesize:.2f} MiB)")
-            except AttributeError:
-                print(f" Reading {absorptionfilename}")
-
-            absorptiondata[dbin] = pd.read_table(
-                absorptionfilename, sep=" ", engine=at.get_config()["pandas_engine"], header=None
-            )
-
-            # check if last column is an artefact of whitespace at end of line (None or NaNs for pyarrow/c engine)
-            if absorptiondata[dbin].iloc[0, -1] is None or np.isnan(absorptiondata[dbin].iloc[0, -1]):
-                absorptiondata[dbin].drop(absorptiondata[dbin].columns[-1], axis=1, inplace=True)
-
+            absorptiondata[dbin] = read_emission_absorption_file(absorptionfilename)
             absorption_maxion_float = absorptiondata[dbin].shape[1] / nelements
             assert absorption_maxion_float.is_integer()
             absorption_maxion = int(absorption_maxion_float)

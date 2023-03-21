@@ -203,14 +203,14 @@ def plot_artis_spectrum(
     linelabel: Optional[str] = None,
     plotpacketcount: bool = False,
     **plotkwargs,
-) -> pd.DataFrame:
+) -> Optional[pd.DataFrame]:
     """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame"""
     modelpath_or_file = Path(modelpath)
     modelpath = Path(modelpath) if Path(modelpath).is_dir() else Path(modelpath).parent
 
     if not Path(modelpath, "input.txt").exists():
         print(f"Skipping '{modelpath}' (no input.txt found. Not an ARTIS folder?)")
-        return
+        return None
 
     if plotpacketcount:
         from_packets = True
@@ -226,7 +226,7 @@ def plot_artis_spectrum(
 
         modelname = at.get_model_name(modelpath)
         if timestepmin == timestepmax == -1:
-            return
+            return None
 
         assert args.timemin is not None
         assert args.timemax is not None
@@ -428,8 +428,9 @@ def make_spectrum_plot(
                 plotpacketcount=args.plotpacketcount,
                 **plotkwargs,
             )
-            seriesname = at.get_model_name(specpath)
-            artisindex += 1
+            if seriesdata is not None:
+                seriesname = at.get_model_name(specpath)
+                artisindex += 1
 
         elif not specpath.exists() and specpath.parts[0] == "codecomparison":
             # timeavg = (args.timemin + args.timemax) / 2.
@@ -458,7 +459,7 @@ def make_spectrum_plot(
                     **plotkwargs,
                 )
             else:
-                for _, axis in enumerate(axes):
+                for axis in axes:
                     supxmin, supxmax = axis.get_xlim()
                     plot_reference_spectrum(
                         specpath,
@@ -990,6 +991,7 @@ def make_plot(args) -> None:
     filenameout = str(args.outputfile).format(
         time_days_min=args.timemin, time_days_max=args.timemax, directionbins=strdirectionbins
     )
+
     # plt.text(6000, (args.ymax * 0.9), f'{round(args.timemin) + 1} days', fontsize='large')
 
     if args.showtime and not args.multispecplot:

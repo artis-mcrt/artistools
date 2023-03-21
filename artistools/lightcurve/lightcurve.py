@@ -64,7 +64,8 @@ def get_from_packets(
     packet_type: str = "TYPE_ESCAPE",
     escape_type: str = "TYPE_RPKT",
     maxpacketfiles: Optional[int] = None,
-) -> pd.DataFrame:
+    usedirectionbins=False,
+) -> dict[int, pd.DataFrame]:
     import artistools.packets
 
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
@@ -80,36 +81,50 @@ def get_from_packets(
 
     timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
 
-    lcdata = pd.DataFrame(
-        {
-            "time": tmidarray,
-            "lum": np.zeros_like(timearray, dtype=float),
-            "lum_cmf": np.zeros_like(timearray, dtype=float),
-        }
-    )
-
-    sec_to_day = 1 / 86400
+    lcdata = {}
+    dirbins = [-1] if not usedirectionbins else range(at.get_viewingdirectionbincount())
+    for dirbin in dirbins:
+        lcdata[dirbin] = pd.DataFrame(
+            {
+                "time": tmidarray,
+                "lum": np.zeros_like(timearray, dtype=float),
+                "lum_cmf": np.zeros_like(timearray, dtype=float),
+            }
+        )
 
     for packetsfile in packetsfiles:
         dfpackets = at.packets.readfile(packetsfile, type=packet_type, escape_type=escape_type)
 
         if not (dfpackets.empty):
+            dfpackets.eval("t_arrive_cmf_d = escape_time * @escapesurfacegamma / 86400", inplace=True)
+            if usedirectionbins:
+                dfpackets = at.packets.get_escaping_packet_angle_bin(modelpath, dfpackets)
             print(f"sum of e_cmf {dfpackets['e_cmf'].sum()} e_rf {dfpackets['e_rf'].sum()}")
 
-            binned = pd.cut(dfpackets["t_arrive_d"], timearrayplusend, labels=False, include_lowest=True)
-            for binindex, e_rf_sum in dfpackets.groupby(binned)["e_rf"].sum().items():
-                lcdata["lum"][binindex] += e_rf_sum
+            for dirbin in dirbins:
+                dfpackets_dirbin = dfpackets.query("angle_bin == @dirbin")
+                binned = pd.cut(dfpackets_dirbin["t_arrive_d"], timearrayplusend, labels=False, include_lowest=True)
+                for binindex, e_rf_sum in dfpackets_dirbin.groupby(binned)["e_rf"].sum().items():
+                    lcdata[dirbin]["lum"][binindex] += e_rf_sum
 
-            dfpackets.eval("t_arrive_cmf_d = escape_time * @escapesurfacegamma * @sec_to_day", inplace=True)
+                binned_cmf = pd.cut(dfpackets["t_arrive_cmf_d"], timearrayplusend, labels=False, include_lowest=True)
+                for binindex, e_cmf_sum in dfpackets.groupby(binned_cmf)["e_cmf"].sum().items():
+                    lcdata[dirbin]["lum_cmf"][binindex] += e_cmf_sum
 
-            binned_cmf = pd.cut(dfpackets["t_arrive_cmf_d"], timearrayplusend, labels=False, include_lowest=True)
-            for binindex, e_cmf_sum in dfpackets.groupby(binned_cmf)["e_cmf"].sum().items():
-                lcdata["lum_cmf"][binindex] += e_cmf_sum
+    for dirbin in dirbins:
+        solidanglefactor = 1.0 if dirbin == -1 else at.get_viewingdirectionbincount()
+        lcdata[dirbin]["lum"] = np.divide(
+            lcdata[dirbin]["lum"] / nprocs_read * solidanglefactor * (u.erg / u.day).to("solLum"), arr_timedelta
+        )
+        lcdata[dirbin]["lum_cmf"] = np.divide(
+            lcdata[dirbin]["lum_cmf"]
+            / nprocs_read
+            * solidanglefactor
+            / escapesurfacegamma
+            * (u.erg / u.day).to("solLum"),
+            arr_timedelta,
+        )
 
-    lcdata["lum"] = np.divide(lcdata["lum"] / nprocs_read * (u.erg / u.day).to("solLum"), arr_timedelta)
-    lcdata["lum_cmf"] = np.divide(
-        lcdata["lum_cmf"] / nprocs_read / escapesurfacegamma * (u.erg / u.day).to("solLum"), arr_timedelta
-    )
     return lcdata
 
 

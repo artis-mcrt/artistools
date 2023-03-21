@@ -351,11 +351,13 @@ def get_packetsfilepaths(modelpath: Path, maxpacketfiles: Optional[int] = None) 
     return packetsfiles
 
 
-def get_directionbin(dirx: float, diry: float, dirz: float, nphibins: int, syn_dir: Sequence[float]) -> int:
+def get_directionbin(
+    dirx: float, diry: float, dirz: float, nphibins: int, ncostthetabins: int, syn_dir: Sequence[float]
+) -> int:
     dirmag = np.sqrt(dirx**2 + diry**2 + dirz**2)
     pkt_dir = [dirx / dirmag, diry / dirmag, dirz / dirmag]
     costheta = np.dot(pkt_dir, syn_dir)
-    thetabin = int((costheta + 1.0) * nphibins / 2.0)
+    thetabin = int((costheta + 1.0) * ncostthetabins / 2.0)
     vec1 = vec2 = vec3 = np.array([0.0, 0.0, 0.0])
     xhat = np.array([1.0, 0.0, 0.0])
     vec1 = np.cross(pkt_dir, syn_dir)
@@ -376,12 +378,18 @@ def get_directionbin(dirx: float, diry: float, dirz: float, nphibins: int, syn_d
 
 def get_escaping_packet_angle_bin(modelpath: Union[Path, str], dfpackets: pd.DataFrame) -> pd.DataFrame:
     nphibins = at.get_viewingdirection_phibincount()
+    ncostthetabins = at.get_viewingdirection_costhetabincount()
 
     syn_dir = at.get_syn_dir(Path(modelpath))
 
     get_all_directionbins = np.vectorize(get_directionbin, excluded=["nphibins", "syn_dir"])
     dfpackets["angle_bin"] = get_all_directionbins(
-        dfpackets["dirx"], dfpackets["diry"], dfpackets["dirz"], nphibins=nphibins, syn_dir=syn_dir
+        dfpackets["dirx"],
+        dfpackets["diry"],
+        dfpackets["dirz"],
+        nphibins=nphibins,
+        ncostthetabins=ncostthetabins,
+        syn_dir=syn_dir,
     )
     assert np.all(dfpackets["angle_bin"] < at.get_viewingdirectionbincount())
 
