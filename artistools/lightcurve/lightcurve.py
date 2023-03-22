@@ -235,7 +235,7 @@ def generate_band_lightcurve_data(
     filters_list = args.filter
 
     res_specdata = None
-    if angle is not None:
+    if angle is not None and angle != -1:
         try:
             res_specdata = at.spectra.read_spec_res(modelpath).copy()
             if args and args.average_over_phi_angle:
@@ -315,7 +315,7 @@ def bolometric_magnitude(
     for timestep, time in enumerate(timearray):
         time = float(time)
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
-            if angle is not None:
+            if angle is not None and angle != -1:
                 if args.plotvspecpol:
                     spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
                 else:

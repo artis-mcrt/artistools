@@ -937,7 +937,7 @@ def make_plot(args) -> None:
         )
         leg.set_zorder(200)
 
-        for artist, text in zip(leg.legendHandles, leg.get_texts()):
+        for artist, text in zip(leg.legend_handles, leg.get_texts()):
             if hasattr(artist, "get_color"):
                 col = artist.get_color()
                 artist.set_linewidth(2.0)

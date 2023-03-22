@@ -564,7 +564,7 @@ def get_specpol_data(
 ) -> dict[str, pd.DataFrame]:
     if specdata is None:
         assert modelpath is not None
-        if angle is None:
+        if angle is None or angle == -1:
             specfilename = at.firstexisting("specpol.out", path=modelpath, tryzipped=True)
         else:
             # alternatively use f'vspecpol_averaged-{angle}.out' ?

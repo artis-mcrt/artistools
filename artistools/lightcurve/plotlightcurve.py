@@ -619,11 +619,11 @@ def get_linelabel(
     angle_definition: Optional[dict[int, str]],
     args,
 ) -> str:
-    if args.plotvspecpol and angle is not None and os.path.isfile(modelpath / "vpkt.txt"):
+    if args.plotvspecpol and angle is not None and angle != -1 and os.path.isfile(modelpath / "vpkt.txt"):
         vpkt_config = at.get_vpkt_config(modelpath)
         viewing_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][angle])))
         linelabel = rf"$\theta$ = {viewing_angle}"  # todo: update to be consistent with res definition
-    elif args.plotviewingangle and angle is not None and os.path.isfile(modelpath / "specpol_res.out"):
+    elif args.plotviewingangle and angle is not None and angle != -1 and os.path.isfile(modelpath / "specpol_res.out"):
         assert angle_definition is not None
         if args.nomodelname:
             linelabel = f"{angle_definition[angle]}"
