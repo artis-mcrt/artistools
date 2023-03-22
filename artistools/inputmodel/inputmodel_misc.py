@@ -36,7 +36,8 @@ def read_modelfile(
     modelmeta: dict[str, Any] = {"headercommentlines": []}
 
     modelpath = Path(filename).parent
-    print(f"Reading {filename}")
+    if not printwarningsonly:
+        print(f"Reading {filename}")
 
     numheaderrows = 0
     with at.misc.zopen(filename, "rt") as fmodel:
@@ -124,18 +125,21 @@ def read_modelfile(
                 assert False
 
         if ncols_line_even == len(columns):
-            print("  model file is one line per cell")
+            if not printwarningsonly:
+                print("  model file is one line per cell")
             ncols_line_odd = 0
             onelinepercellformat = True
         else:
-            print("  model file format is two lines per cell")
+            if not printwarningsonly:
+                print("  model file format is two lines per cell")
             # columns split over two lines
             ncols_line_odd = len(fmodel.readline().split())
             assert (ncols_line_even + ncols_line_odd) == len(columns)
             onelinepercellformat = False
 
     if skipabundancecolumns:
-        print("  skipping abundance columns in model.txt")
+        if not printwarningsonly:
+            print("  skipping abundance columns in model.txt")
         if dimensions == 1:
             ncols_line_even = 3
         elif dimensions == 3:
@@ -224,7 +228,7 @@ def read_modelfile(
         dfmodel.eval("cellmass_grams = rho * @wid_init ** 3", inplace=True)
 
         dfmodel.rename(columns={"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"}, inplace=True)
-        if "pos_x_min" in dfmodel.columns:
+        if "pos_x_min" in dfmodel.columns and not printwarningsonly:
             print("  model cell positions are defined in the header")
         elif not getheadersonly:
 

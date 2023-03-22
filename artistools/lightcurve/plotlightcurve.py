@@ -5,9 +5,11 @@ import math
 import multiprocessing
 import os
 from collections.abc import Iterable
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 from typing import Optional
+from typing import Union
 
 import argcomplete
 import matplotlib
@@ -225,7 +227,191 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         )
 
 
-def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type=False, maxpacketfiles=None, args=None):
+def plot_artis_lightcurve(
+    modelpath: Union[str, Path],
+    seriesindex: int,
+    label: Optional[str],
+    axis,
+    escape_type: str = "TYPE_RPKT",
+    frompackets: bool = False,
+    maxpacketfiles: Optional[int] = None,
+    axistherm=None,
+    directionbins: Optional[Sequence[int]] = None,
+    average_over_phi=False,
+    average_over_theta=False,
+    args=None,
+) -> Optional[pd.DataFrame]:
+    lcfilename = None
+    if not Path(modelpath).is_dir():  # handle e.g. modelpath = 'modelpath/light_curve.out'
+        lcfilename = Path(modelpath).parts[-1]
+        modelpath = Path(modelpath).parent
+
+    modelname = at.get_model_name(modelpath) if label is None else label
+    if lcfilename is not None:
+        modelname += f" {lcfilename}"
+
+    print(f"====> {modelname}")
+    if args is not None and args.title:
+        axis.set_title(modelname)
+
+    if directionbins is None:
+        directionbins = [-1]
+
+    if frompackets:
+        lcdataframes = at.lightcurve.get_from_packets(
+            modelpath,
+            escape_type=escape_type,
+            maxpacketfiles=maxpacketfiles,
+            directionbins=directionbins,
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
+        )
+    else:
+        if lcfilename is None:
+            if directionbins is not None and directionbins != [-1]:
+                lcfilename = "light_curve_res.out"
+            else:
+                lcfilename = "gamma_light_curve.out" if (escape_type == "TYPE_GAMMA") else "light_curve.out"
+
+        try:
+            lcpath = at.firstexisting(lcfilename, path=modelpath, tryzipped=True)
+        except FileNotFoundError:
+            print(f"Skipping {modelname} because {lcfilename} does not exist")
+            return None
+
+        lcdataframes = at.lightcurve.readfile(lcpath)
+
+        if average_over_phi:
+            lcdataframes = at.lightcurve.average_lightcurve_phi_bins(lcdataframes)
+
+        if average_over_theta:
+            lcdataframes = at.lightcurve.average_lightcurve_theta_bins(lcdataframes)
+
+    plotkwargs: dict[str, Any] = {}
+    plotkwargs["label"] = modelname
+    plotkwargs["linestyle"] = args.linestyle[seriesindex]
+    plotkwargs["color"] = args.color[seriesindex]
+    if args.dashes[seriesindex]:
+        plotkwargs["dashes"] = args.dashes[seriesindex]
+    if args.linewidth[seriesindex]:
+        plotkwargs["linewidth"] = args.linewidth[seriesindex]
+
+    if args.plotdeposition or args.plotthermalisation:
+        plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkwargs, args)
+
+    # check if doing viewing angle stuff, and if so define which data to use
+    angles, angle_definition = at.lightcurve.parse_angle_args(modelpath, args)
+
+    if args.colorbarcostheta or args.colorbarphi:
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
+        scaledmap = make_colorbar_viewingangles_colormap()
+
+    lctimemin, lctimemax = lcdataframes[angles[0]].time.min(), lcdataframes[angles[0]].time.max()
+
+    print(f"  range of light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
+    try:
+        nts_last, validrange_start_days, validrange_end_days = at.get_escaped_arrivalrange(modelpath)
+        if validrange_start_days is not None and validrange_end_days is not None:
+            str_valid_range = f"{validrange_start_days:.2f} to {validrange_end_days:.2f} days"
+        else:
+            str_valid_range = f"{validrange_start_days} to {validrange_end_days} days"
+        print(f"  range of validity (last timestep {nts_last}): {str_valid_range}")
+    except FileNotFoundError:
+        print(
+            "  range of validity: could not determine due to missing files "
+            "(requires deposition.out, input.txt, model.txt)"
+        )
+        nts_last, validrange_start_days, validrange_end_days = None, float("-inf"), float("inf")
+
+    for dirbin in angles:
+        lcdata = lcdataframes[dirbin]
+        if args.plotviewingangle:
+            if args.colorbarcostheta or args.colorbarphi:
+                plotkwargs["alpha"] = 0.75
+                plotkwargs["label"] = None
+                # Update plotkwargs with viewing angle colour
+                plotkwargs, colorindex = get_viewinganglecolor_for_colorbar(
+                    dirbin,
+                    costheta_viewing_angle_bins,
+                    phi_viewing_angle_bins,
+                    scaledmap,
+                    plotkwargs,
+                    args,
+                )
+                if args.average_over_phi_angle:  # if angles plotted that are not averaged over phi
+                    plotkwargs["color"] = "lightgrey"  # then plot these in grey
+            else:
+                plotkwargs["color"] = None
+                plotkwargs["label"] = (
+                    f"{modelname}\n{angle_definition[dirbin]}" if modelname else angle_definition[dirbin]
+                )
+
+        filterfunc = at.get_filterfunc(args)
+        if filterfunc is not None:
+            lcdata["lum"] = filterfunc(lcdata["lum"])
+
+        if not args.Lsun or args.magnitude:
+            # convert luminosity from Lsun to erg/s
+            lcdata.eval("lum = lum * 3.826e33", inplace=True)
+            lcdata.eval("lum_cmf = lum_cmf * 3.826e33", inplace=True)
+
+        if args.magnitude:
+            # convert to bol magnitude
+            lcdata["mag"] = 4.74 - (2.5 * np.log10(lcdata["lum"] / const.L_sun.to("erg/s").value))
+            ycolumn = "mag"
+        else:
+            ycolumn = "lum"
+
+        if (
+            args.average_over_phi_angle
+            and dirbin % at.get_viewingdirection_costhetabincount() == 0
+            and (args.colorbarcostheta or args.colorbarphi)
+        ):
+            plotkwargs["color"] = scaledmap.to_rgba(colorindex)  # Update colours for light curves averaged over phi
+            plotkwargs["zorder"] = 10
+
+        # show the parts of the light curve that are outside the valid arrival range partially transparent
+        if validrange_start_days is None or validrange_end_days is None:
+            # entire range is invalid
+            lcdata_before_valid = lcdata
+            lcdata_after_valid = pd.DataFrame(data=None, columns=lcdata.columns)
+            lcdata_valid = pd.DataFrame(data=None, columns=lcdata.columns)
+        else:
+            lcdata_valid = lcdata.query(
+                "time >= @validrange_start_days and time <= @validrange_end_days", inplace=False
+            )
+            lcdata_before_valid = lcdata.query("time <= @lcdata_valid.time.min()")
+            lcdata_after_valid = lcdata.query("time >= @lcdata_valid.time.max()")
+
+        axis.plot(lcdata_valid["time"], lcdata_valid[ycolumn], **plotkwargs)
+
+        if args.plotinvalidpart:
+            plotkwargs_invalidrange = plotkwargs.copy()
+            plotkwargs_invalidrange.update({"label": None, "alpha": 0.5})
+            axis.plot(lcdata_before_valid["time"], lcdata_before_valid[ycolumn], **plotkwargs_invalidrange)
+            axis.plot(lcdata_after_valid["time"], lcdata_after_valid[ycolumn], **plotkwargs_invalidrange)
+
+        if args.print_data:
+            print(lcdata[["time", ycolumn, "lum_cmf"]].to_string(index=False))
+
+        if args.plotcmf:
+            plotkwargs["linewidth"] = 1
+            plotkwargs["label"] += " (cmf)"
+            plotkwargs["linestyle"] = "dashed"
+            # plotkwargs['color'] = 'tab:orange'
+            axis.plot(lcdata.time, lcdata["lum_cmf"], **plotkwargs)
+
+    return lcdataframes
+
+
+def make_lightcurve_plot(
+    modelpaths: Sequence[Union[str, Path]],
+    filenameout: str,
+    frompackets: bool = False,
+    escape_type: str = "TYPE_RPKT",
+    maxpacketfiles: Optional[int] = None,
+    args=None,
+):
     """Use light_curve.out or light_curve_res.out files to plot light curve"""
 
     fig, axis = plt.subplots(
@@ -247,13 +433,6 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
     else:
         axistherm = None
 
-    if not frompackets and escape_type not in ["TYPE_RPKT", "TYPE_GAMMA"]:
-        print(f"Escape_type of {escape_type} not one of TYPE_RPKT or TYPE_GAMMA, so frompackets must be enabled")
-        assert False
-    elif not frompackets and args.packet_type != "TYPE_ESCAPE" and args.packet_type is not None:
-        print("Looking for non-escaped packets, so frompackets must be enabled")
-        assert False
-
     # take any assigned colours our of the cycle
     colors = [
         color for i, color in enumerate(plt.rcParams["axes.prop_cycle"].by_key()["color"]) if f"C{i}" not in args.color
@@ -261,6 +440,7 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
     axis.set_prop_cycle(color=colors)
     reflightcurveindex = 0
 
+    plottedsomething = False
     for seriesindex, modelpath in enumerate(modelpaths):
         if not Path(modelpath).is_dir() and not Path(modelpath).exists() and "." in str(modelpath):
             bolreflightcurve = Path(modelpath)
@@ -285,154 +465,25 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
                 axis.scatter(dflightcurve["time_days"], dflightcurve["luminosity_erg/s"], **plotkwargs)
             print(f"====> {lightcurvelabel}")
             reflightcurveindex += 1
-            continue
-
-        lcname = None
-        if not Path(modelpath).is_dir():  # handle e.g. modelpath/light_curve.out
-            lcname = Path(modelpath).parts[-1]
-            modelpath = Path(modelpath).parent
-        modelname = at.get_model_name(modelpath) if args.label[seriesindex] is None else args.label[seriesindex]
-        if lcname is not None:
-            modelname += f" {lcname}"
-        print(f"====> {modelname}")
-
-        if lcname is None:
-            lcname = "gamma_light_curve.out" if (escape_type == "TYPE_GAMMA" and not frompackets) else "light_curve.out"
-            if args.plotviewingangle is not None and lcname == "light_curve.out":
-                lcname = "light_curve_res.out"
-        try:
-            lcpath = at.firstexisting(lcname, path=modelpath, tryzipped=True)
-        except FileNotFoundError:
-            print(f"Skipping {modelname} because {lcname} does not exist")
-            continue
-        if not os.path.exists(str(lcpath)):
-            print(f"Skipping {modelname} because {lcpath} does not exist")
-            continue
-        elif frompackets:
-            lcdata = at.lightcurve.get_from_packets(
-                modelpath,
-                packet_type=args.packet_type,
-                escape_type=escape_type,
-                maxpacketfiles=maxpacketfiles,
-                usedirectionbins=args.plotviewingangle is not None,
-            )
+            plottedsomething = True
         else:
-            lcdata = at.lightcurve.readfile(lcpath, modelpath, args)
-
-        plotkwargs = {}
-        plotkwargs["label"] = modelname
-        plotkwargs["linestyle"] = args.linestyle[seriesindex]
-        plotkwargs["color"] = args.color[seriesindex]
-        if args.dashes[seriesindex]:
-            plotkwargs["dashes"] = args.dashes[seriesindex]
-        if args.linewidth[seriesindex]:
-            plotkwargs["linewidth"] = args.linewidth[seriesindex]
-
-        if args.plotdeposition or args.plotthermalisation:
-            plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkwargs, args)
-
-        # check if doing viewing angle stuff, and if so define which data to use
-        angles, viewing_angles, angle_definition = at.lightcurve.get_angle_stuff(modelpath, args)
-        if args.plotviewingangle:
-            lcdataframes = lcdata
-            if args.average_over_phi_angle:
-                lcdataframes = at.lightcurve.average_lightcurve_phi_bins(lcdataframes)
-
-            if args.average_over_theta_angle:
-                lcdataframes = at.lightcurve.average_lightcurve_theta_bins(lcdataframes)
-
-            if args.colorbarcostheta or args.colorbarphi:
-                costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
-                scaledmap = make_colorbar_viewingangles_colormap()
-
-        if args.plotviewingangle:
-            lcdata = lcdataframes[0]
-        print(f"  range of light curve: {lcdata.time.min():.2f} to {lcdata.time.max():.2f} days")
-        try:
-            nts_last, validrange_start_days, validrange_end_days = at.get_escaped_arrivalrange(modelpath)
-            if validrange_start_days is not None and validrange_end_days is not None:
-                str_valid_range = f"{validrange_start_days:.2f} to {validrange_end_days:.2f} days"
-            else:
-                str_valid_range = f"{validrange_start_days} to {validrange_end_days} days"
-            print(f"  range of validity (last timestep {nts_last}): {str_valid_range}")
-        except FileNotFoundError:
-            print(
-                "  range of validity: could not determine due to missing files "
-                "(requires deposition.out, input.txt, model.txt)"
+            lcdataframes = plot_artis_lightcurve(
+                modelpath=modelpath,
+                seriesindex=seriesindex,
+                label=args.label[seriesindex],
+                axis=axis,
+                escape_type=escape_type,
+                frompackets=frompackets,
+                maxpacketfiles=maxpacketfiles,
+                axistherm=axistherm,
+                directionbins=args.plotviewingangle if args.plotviewingangle is not None else [-1],
+                average_over_phi=args.average_over_phi_angle,
+                average_over_theta=args.average_over_theta_angle,
+                args=args,
             )
-            nts_last, validrange_start_days, validrange_end_days = None, float("-inf"), float("inf")
+            plottedsomething = plottedsomething or (lcdataframes is not None)
 
-        for angleindex, angle in enumerate(angles):
-            if args.plotviewingangle:
-                lcdata = lcdataframes[angle]
-
-                if args.colorbarcostheta or args.colorbarphi:
-                    plotkwargs["alpha"] = 0.75
-                    plotkwargs["label"] = None
-                    # Update plotkwargs with viewing angle colour
-                    plotkwargs, colorindex = get_viewinganglecolor_for_colorbar(
-                        angle_definition,
-                        angle,
-                        costheta_viewing_angle_bins,
-                        phi_viewing_angle_bins,
-                        scaledmap,
-                        plotkwargs,
-                        args,
-                    )
-                    if args.average_over_phi_angle:  # if angles plotted that are not averaged over phi
-                        plotkwargs["color"] = "lightgrey"  # then plot these in grey
-                else:
-                    plotkwargs["color"] = None
-                    plotkwargs["label"] = (
-                        f"{modelname}\n{angle_definition[angle]}" if modelname else angle_definition[angle]
-                    )
-
-            filterfunc = at.get_filterfunc(args)
-            if filterfunc is not None:
-                lcdata["lum"] = filterfunc(lcdata["lum"])
-
-            if not args.Lsun or args.magnitude:
-                # convert luminosity from Lsun to erg/s
-                lcdata.eval("lum = lum * 3.826e33", inplace=True)
-                lcdata.eval("lum_cmf = lum_cmf * 3.826e33", inplace=True)
-
-            if args.magnitude:
-                # convert to bol magnitude
-                lcdata["mag"] = 4.74 - (2.5 * np.log10(lcdata["lum"] / const.L_sun.to("erg/s").value))
-                axis.plot(lcdata["time"], lcdata["mag"], **plotkwargs)
-            else:
-                # show the parts of the light curve that are outside the valid arrival range partially transparent
-                if validrange_start_days is None or validrange_end_days is None:
-                    # entire range is invalid
-                    lcdata_before_valid = lcdata
-                    lcdata_after_valid = pd.DataFrame(data=None, columns=lcdata.columns)
-                    lcdata_valid = pd.DataFrame(data=None, columns=lcdata.columns)
-                else:
-                    lcdata_valid = lcdata.query(
-                        "time >= @validrange_start_days and time <= @validrange_end_days", inplace=False
-                    )
-                    lcdata_before_valid = lcdata.query("time <= @lcdata_valid.time.min()")
-                    lcdata_after_valid = lcdata.query("time >= @lcdata_valid.time.max()")
-
-                if args.average_over_phi_angle and angle % 10 == 0 and (args.colorbarcostheta or args.colorbarphi):
-                    color = scaledmap.to_rgba(colorindex)  # Update colours for light curves averaged over phi
-                    axis.plot(lcdata["time"], lcdata["lum"], color=color, zorder=10)
-                else:
-                    axis.plot(lcdata_valid["time"], lcdata_valid["lum"], **plotkwargs)
-                if args.plotinvalidpart:
-                    plotkwargs_invalidrange = plotkwargs.copy()
-                    plotkwargs_invalidrange.update({"label": None, "alpha": 0.5})
-                    axis.plot(lcdata_before_valid["time"], lcdata_before_valid["lum"], **plotkwargs_invalidrange)
-                    axis.plot(lcdata_after_valid["time"], lcdata_after_valid["lum"], **plotkwargs_invalidrange)
-
-                if args.print_data:
-                    print(lcdata[["time", "lum", "lum_cmf"]].to_string(index=False))
-                if args.plotcmf:
-                    plotkwargs["linewidth"] = 1
-                    plotkwargs["label"] += " (cmf)"
-                    plotkwargs["linestyle"] = "dashed"
-                    # plotkwargs['color'] = 'tab:orange'
-                    axis.plot(lcdata.time, lcdata["lum_cmf"], **plotkwargs)
+    assert plottedsomething
 
     if args.reflightcurves:
         for bolreflightcurve in args.reflightcurves:
@@ -484,10 +535,9 @@ def make_lightcurve_plot(modelpaths, filenameout, frompackets=False, escape_type
             yvarname = r"$\mathrm{L}_{\mathrm{" + escape_type.replace("_", r"\_") + r"}}$"
         axis.set_ylabel(yvarname + str_units)
 
-    if args.title:
-        axis.set_title(modelname)
-
     if args.colorbarcostheta or args.colorbarphi:
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
+        scaledmap = make_colorbar_viewingangles_colormap()
         make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args)
 
     if args.logscalex:
@@ -642,18 +692,23 @@ def make_colorbar_viewingangles_colormap():
 
 
 def get_viewinganglecolor_for_colorbar(
-    angle_definition, angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
+    angle: int, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
 ):
+    nphibins = at.get_viewingdirection_phibincount()
     if args.colorbarcostheta:
-        colorindex = costheta_viewing_angle_bins.index(angle_definition[angle].split(", ")[0])
+        costheta_index = angle // nphibins
+        colorindex = costheta_index
         plotkwargs["color"] = scaledmap.to_rgba(colorindex)
     if args.colorbarphi:
-        colorindex = phi_viewing_angle_bins.index(angle_definition[angle].split(", ")[1])
+        phi_index = angle % nphibins
+        colorindex = phi_index
+        assert nphibins == 10
         reorderphibins = {5: 9, 6: 8, 7: 7, 8: 6, 9: 5}
         print("Reordering phi bins")
         if colorindex in reorderphibins.keys():
             colorindex = reorderphibins[colorindex]
         plotkwargs["color"] = scaledmap.to_rgba(colorindex)
+
     return plotkwargs, colorindex
 
 
@@ -717,7 +772,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
         modelpath = Path(modelpath)  # Make sure modelpath is defined as path. May not be necessary
 
         # check if doing viewing angle stuff, and if so define which data to use
-        angles, viewing_angles, angle_definition = at.lightcurve.get_angle_stuff(modelpath, args)
+        angles, angle_definition = at.lightcurve.parse_angle_args(modelpath, args)
 
         for index, angle in enumerate(angles):
             modelname = at.get_model_name(modelpath)
@@ -797,7 +852,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                         define_colours_list = args.refspeccolors
                         markers = args.refspecmarkers
                         for i, reflightcurve in enumerate(args.reflightcurves):
-                            plot_lightcurve_from_data(
+                            plot_lightcurve_from_refdata(
                                 band_lightcurve_data.keys(),
                                 reflightcurve,
                                 define_colours_list[i],
@@ -816,7 +871,6 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                     # Update plotkwargs with viewing angle colour
                     plotkwargs["label"] = None
                     plotkwargs, _ = get_viewinganglecolor_for_colorbar(
-                        angle_definition,
                         angle,
                         costheta_viewing_angle_bins,
                         phi_viewing_angle_bins,
@@ -885,7 +939,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 #         colours = args.refspeccolors
 #         markers = args.refspecmarkers
 #         for i, reflightcurve in enumerate(args.reflightcurves):
-#             plot_lightcurve_from_data(filters_dict.keys(), reflightcurve, colours[i], markers[i],
+#             plot_lightcurve_from_refdata(filters_dict.keys(), reflightcurve, colours[i], markers[i],
 #                                       filternames_conversion_dict)
 
 
@@ -902,7 +956,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
         modelname = at.get_model_name(modelpath)
         print(f"Reading spectra: {modelname}")
 
-        angles, viewing_angles, angle_definition = at.lightcurve.get_angle_stuff(modelpath, args)
+        angles, angle_definition = at.lightcurve.parse_angle_args(modelpath, args)
 
         for index, angle in enumerate(angles):
             for plotnumber, filters in enumerate(args.colour_evolution):
@@ -1007,7 +1061,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
 #     color='k'
 
 
-def plot_lightcurve_from_data(
+def plot_lightcurve_from_refdata(
     filter_names, lightcurvefilename, color, marker, filternames_conversion_dict, ax, plotnumber
 ):
     lightcurve_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
@@ -1185,8 +1239,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-maxpacketfiles", type=int, default=None, help="Limit the number of packet files read")
 
     parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays instead of R-packets")
-
-    parser.add_argument("-packet_type", default="TYPE_ESCAPE", help="Type of escaping packets")
 
     parser.add_argument("-escape_type", default="TYPE_RPKT", help="Type of escaping packets")
 

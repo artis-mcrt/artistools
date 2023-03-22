@@ -144,9 +144,7 @@ def make_hesma_peakmag_dm15_dm40(band, pathtofiles, modelname, outpath, dm40=Fal
         )
 
     angles = np.arange(0, 100)
-    angle_definition = at.lightcurve.viewingangleanalysis.calculate_costheta_phi_for_viewing_angles(
-        angles, modelpath=None
-    )
+    angle_definition = at.lightcurve.viewingangleanalysis.get_dirbin_costheta_phi_labels(angles, modelpath=None)
 
     outdata = {}
     outdata["peakmag"] = dm15data["peakmag"]  # dm15 peak mag probably more accurate - shorter time window

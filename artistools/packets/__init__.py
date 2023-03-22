@@ -134,7 +134,7 @@ def add_derived_columns(
         dfpackets["em_timestep"] = dfpackets.apply(em_timestep, axis=1)
 
     if "angle_bin" in colnames:
-        dfpackets = get_escaping_packet_angle_bin(modelpath, dfpackets)
+        dfpackets = bin_packet_directions(modelpath, dfpackets)
 
     return dfpackets
 
@@ -168,25 +168,15 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
         print(f"\nBad Gzip File: {packetsfile}")
         raise gzip.BadGzipFile
 
-    try:
-        dfpackets = pd.read_csv(
-            fpackets,
-            sep=" ",
-            header=None,
-            skiprows=skiprows,
-            names=column_names,
-            skip_blank_lines=True,
-            engine="pyarrow",
-        )
-    except ImportError:
-        dfpackets = pd.read_csv(
-            fpackets,
-            sep=" ",
-            header=None,
-            skiprows=skiprows,
-            names=column_names,
-            skip_blank_lines=True,
-        )
+    dfpackets = pd.read_csv(
+        fpackets,
+        sep=" ",
+        header=None,
+        skiprows=skiprows,
+        names=column_names,
+        skip_blank_lines=True,
+        engine=at.get_config()["pandas_engine"],
+    )
 
     # import datatable as dt
     # dsk_dfpackets = dt.fread(packetsfile)
@@ -352,13 +342,13 @@ def get_packetsfilepaths(modelpath: Path, maxpacketfiles: Optional[int] = None) 
 
 
 def get_directionbin(
-    dirx: float, diry: float, dirz: float, nphibins: int, ncostthetabins: int, syn_dir: Sequence[float]
+    dirx: float, diry: float, dirz: float, nphibins: int, ncosthetabins: int, syn_dir: Sequence[float]
 ) -> int:
     dirmag = np.sqrt(dirx**2 + diry**2 + dirz**2)
     pkt_dir = [dirx / dirmag, diry / dirmag, dirz / dirmag]
     costheta = np.dot(pkt_dir, syn_dir)
-    thetabin = int((costheta + 1.0) * ncostthetabins / 2.0)
-    vec1 = vec2 = vec3 = np.array([0.0, 0.0, 0.0])
+    thetabin = int((costheta + 1.0) / 2.0 * ncosthetabins)
+
     xhat = np.array([1.0, 0.0, 0.0])
     vec1 = np.cross(pkt_dir, syn_dir)
     vec2 = np.cross(xhat, syn_dir)
@@ -376,22 +366,39 @@ def get_directionbin(
     return na
 
 
-def get_escaping_packet_angle_bin(modelpath: Union[Path, str], dfpackets: pd.DataFrame) -> pd.DataFrame:
+def bin_packet_directions(modelpath: Union[Path, str], dfpackets: pd.DataFrame) -> pd.DataFrame:
     nphibins = at.get_viewingdirection_phibincount()
-    ncostthetabins = at.get_viewingdirection_costhetabincount()
+    ncosthetabins = at.get_viewingdirection_costhetabincount()
 
     syn_dir = at.get_syn_dir(Path(modelpath))
 
-    get_all_directionbins = np.vectorize(get_directionbin, excluded=["nphibins", "syn_dir"])
-    dfpackets["angle_bin"] = get_all_directionbins(
-        dfpackets["dirx"],
-        dfpackets["diry"],
-        dfpackets["dirz"],
-        nphibins=nphibins,
-        ncostthetabins=ncostthetabins,
-        syn_dir=syn_dir,
-    )
-    assert np.all(dfpackets["angle_bin"] < at.get_viewingdirectionbincount())
+    pktdirvecs = dfpackets[["dirx", "diry", "dirz"]].values
+
+    # normalise. might not be needed
+    dirmags = np.linalg.norm(pktdirvecs, axis=1)
+    pktdirvecs /= np.array([dirmags, dirmags, dirmags]).transpose()
+
+    costheta = np.dot(pktdirvecs, syn_dir)
+    arr_costhetabin = ((costheta + 1) / 2.0 * ncosthetabins).astype(int)
+    # dfpackets["costhetabin"] = arr_costhetabin
+
+    arr_vec1 = np.cross(pktdirvecs, syn_dir)
+    xhat = np.array([1.0, 0.0, 0.0])
+    vec2 = np.cross(xhat, syn_dir)
+    arr_cosphi = np.dot(arr_vec1, vec2) / np.linalg.norm(arr_vec1, axis=1) / np.linalg.norm(vec2)
+    vec3 = np.cross(vec2, syn_dir)
+    arr_testphi = np.dot(arr_vec1, vec3)
+
+    arr_phibin = np.zeros(len(pktdirvecs), dtype=int)
+    filta = arr_testphi > 0
+    arr_phibin[filta] = np.arccos(arr_cosphi[filta]) / 2.0 / np.pi * nphibins
+    filtb = np.invert(filta)
+    arr_phibin[filtb] = (np.arccos(arr_cosphi[filtb]) + np.pi) / 2.0 / np.pi * nphibins
+    # dfpackets["phibin"] = arr_phibin
+
+    dfpackets["dirbin"] = (arr_costhetabin * nphibins) + arr_phibin
+
+    assert np.all(dfpackets["dirbin"] < at.get_viewingdirectionbincount())
 
     return dfpackets
 
@@ -521,8 +528,8 @@ def get_mean_packet_emission_velocity_per_ts(
         dfpackets = at.packets.readfile(packetsfile, type=packet_type, escape_type=escape_type)
         at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
         if escape_angles is not None:
-            dfpackets = at.packets.get_escaping_packet_angle_bin(modelpath, dfpackets)
-            dfpackets.query("angle_bin == @escape_angles", inplace=True)
+            dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
+            dfpackets.query("dirbin == @escape_angles", inplace=True)
 
         if i == 0:  # make new df
             dfpackets_escape_velocity_and_arrive_time = dfpackets[["t_arrive_d", "emission_velocity"]]

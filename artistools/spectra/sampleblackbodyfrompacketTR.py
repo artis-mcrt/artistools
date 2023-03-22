@@ -96,7 +96,7 @@ nprocs = at.get_nprocs(modelpath)
 # nprocs = 100
 for npacketfile in range(0, nprocs):
     dfpackets = at.packets.readfile(packetsfiles[npacketfile])  # , type='TYPE_ESCAPE', escape_type='TYPE_RPKT')
-    dfpackets = at.packets.get_escaping_packet_angle_bin(modelpath, dfpackets)
+    dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
     dfpackets.query(f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids["TYPE_RPKT"]}', inplace=True)
 
     # print(max(dfpackets['t_arrive_d']))

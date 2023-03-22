@@ -690,9 +690,8 @@ def firstexisting(
     filelist: Sequence[Union[str, Path]],
     path: Union[Path, str] = Path("."),
     tryzipped: bool = True,
-    noexcept: bool = False,
 ) -> Path:
-    """Return the first existing file in file list. If none exists, raise exception or if noexcept=True, return the last one"""
+    """Return the first existing file in file list. If none exists, raise exception."""
     if isinstance(filelist, str) or isinstance(filelist, Path):
         filelist = [filelist]
 
@@ -712,9 +711,6 @@ def firstexisting(
     for fullpath in fullpaths:
         if fullpath.exists():
             return fullpath
-
-    if noexcept:
-        return fullpaths[-1]
 
     raise FileNotFoundError(f'None of these files exist in {path}: {", ".join([str(x) for x in fullpaths])}')
 

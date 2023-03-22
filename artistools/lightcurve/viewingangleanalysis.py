@@ -151,11 +151,8 @@ define_colours_list2 = [
 ]
 
 
-def get_angle_stuff(
-    modelpath: Union[Path, str], args
-) -> tuple[Any, Optional[np.ndarray[Any, np.dtype[Any]]], Optional[dict[int, str]]]:
+def parse_angle_args(modelpath: Union[Path, str], args) -> tuple[Sequence[int], dict[int, str]]:
     modelpath = Path(modelpath)
-    viewing_angles = None
     viewing_angle_data = False
     if len(glob.glob(str(modelpath / "*_res.out*"))) >= 1:
         viewing_angle_data = True
@@ -171,34 +168,38 @@ def get_angle_stuff(
         and args.calculate_costheta_phi_from_viewing_angle_numbers[0] == -1
     ):
         viewing_angles = np.arange(0, 100, 1, dtype=int)
-        calculate_costheta_phi_for_viewing_angles(viewing_angles, modelpath)
     elif args.calculate_costheta_phi_from_viewing_angle_numbers:
         viewing_angles = args.calculate_costheta_phi_from_viewing_angle_numbers
         assert viewing_angles is not None
-        calculate_costheta_phi_for_viewing_angles(viewing_angles, modelpath)
     else:
-        angles = [None]
+        angles = [-1]
 
-    angle_definition: Optional[dict] = None
-    if angles[0] is not None and not args.plotvspecpol:
-        angle_definition = calculate_costheta_phi_for_viewing_angles(angles, modelpath)
+    angle_definition: dict[int, str] = {}
+
+    if not args.plotvspecpol:
+        angle_definition = get_dirbin_costheta_phi_labels(
+            angles,
+            modelpath=modelpath,
+            average_over_phi=args.average_over_phi_angle,
+            average_over_theta=args.average_over_theta_angle,
+        )
+
         if args.average_over_phi_angle:
             for dirbin in angle_definition.keys():
                 assert dirbin % at.get_viewingdirection_phibincount() == 0
-                costheta_label = angle_definition[dirbin].split(",")[0]
-                angle_definition[dirbin] = costheta_label
 
         if args.average_over_theta_angle:
             for dirbin in angle_definition.keys():
                 assert dirbin < at.get_viewingdirection_costhetabincount()
-                phi_label = angle_definition[dirbin].split(",")[1]
-                angle_definition[dirbin] = phi_label
 
-    return angles, viewing_angles, angle_definition
+    return angles, angle_definition
 
 
-def calculate_costheta_phi_for_viewing_angles(
-    dirbins: Union[np.ndarray[Any, np.dtype[Any]], Sequence[int]], modelpath: Union[Path, str, None] = None
+def get_dirbin_costheta_phi_labels(
+    dirbins: Union[np.ndarray[Any, np.dtype[Any]], Sequence[int]],
+    modelpath: Union[Path, str, None] = None,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
 ) -> dict[int, str]:
     if modelpath:
         modelpath = Path(modelpath)
@@ -207,19 +208,31 @@ def calculate_costheta_phi_for_viewing_angles(
             assert len(list(Path(modelpath).glob(f"*_res_{MABINS-1:02d}.out*"))) > 0  # check last bin exists
             assert len(list(Path(modelpath).glob(f"*_res_{MABINS:02d}.out*"))) == 0  # check one beyond does not exist
 
-    angle_definition: dict[int, str] = {}
+    strlist_costheta_bins, strlist_phi_bins = at.get_viewinganglebin_definitions()
 
-    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
+    nphibins = at.get_viewingdirection_phibincount()
 
-    for angle in dirbins:
-        nphibins = at.get_viewingdirection_phibincount()
-        costheta_index = angle // nphibins
-        phi_index = angle % nphibins
+    angle_definitions: dict[int, str] = {}
+    for dirbin in dirbins:
+        if dirbin == -1:
+            angle_definitions[dirbin] = ""
+            continue
 
-        angle_definition[angle] = f"{costheta_viewing_angle_bins[costheta_index]}, {phi_viewing_angle_bins[phi_index]}"
-        print(f"{angle:4d}   {costheta_viewing_angle_bins[costheta_index]}   {phi_viewing_angle_bins[phi_index]}")
+        costheta_index = dirbin // nphibins
+        phi_index = dirbin % nphibins
 
-    return angle_definition
+        if average_over_phi:
+            angle_definitions[dirbin] = f"{strlist_costheta_bins[costheta_index]}"
+            assert phi_index == 0
+            assert not average_over_theta
+        elif average_over_theta:
+            angle_definitions[dirbin] = f"{strlist_phi_bins[phi_index]}"
+            assert costheta_index == 0
+        else:
+            angle_definitions[dirbin] = f"{strlist_costheta_bins[costheta_index]}, {strlist_phi_bins[phi_index]}"
+        print(f"directionbin {dirbin:4d}   {angle_definitions[dirbin]}")
+
+    return angle_definitions
 
 
 def save_viewing_angle_data_for_plotting(band_name, modelname, args):
@@ -486,12 +499,10 @@ def update_plotkwargs_for_viewingangle_colorbar(
     costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
-    angles = np.arange(0, 100)
-    angle_definition = calculate_costheta_phi_for_viewing_angles(angles, args.modelpath[0])
+    angles = np.arange(0, at.get_viewingdirectionbincount())
     colors = []
     for angle in angles:
         _, colorindex = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(
-            angle_definition,
             angle,
             costheta_viewing_angle_bins,
             phi_viewing_angle_bins,
@@ -764,10 +775,10 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
                 lcname = "light_curve.out"
             lcpath = at.firstexisting(lcname, path=modelpath, tryzipped=True)
             print(f"Reading {lcname}")
-            lightcurve_data = at.lightcurve.readfile(lcpath, modelpath, args)
+            lightcurve_data = at.lightcurve.readfile(lcpath)
 
         # check if doing viewing angle stuff, and if so define which data to use
-        angles, viewing_angles, angle_definition = get_angle_stuff(modelpath, args)
+        angles, angle_definition = parse_angle_args(modelpath, args)
         if not args.filter and args.plotviewingangle:
             lcdataframes = lightcurve_data
 
@@ -837,14 +848,14 @@ def plot_viewanglebrightness_at_fixed_time(modelpath, args):
         nrows=1, ncols=1, sharey=True, figsize=(8, 5), tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0}
     )
 
-    angles, viewing_angles, angle_definition = at.lightcurve.get_angle_stuff(modelpath, args)
+    angles, angle_definition = at.lightcurve.parse_angle_args(modelpath, args)
 
     costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
     plotkwargs = {}
 
-    lcdataframes = at.lightcurve.readfile(modelpath / "light_curve_res.out", args)
+    lcdataframes = at.lightcurve.readfile(modelpath / "light_curve_res.out")
 
     timetoplot = at.match_closest_time(reftime=args.timedays, searchtimes=lcdataframes[0]["time"])
     print(timetoplot)
@@ -852,7 +863,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath, args):
     for angleindex, lcdata in enumerate(lcdataframes):
         angle = angleindex
         plotkwargs, _ = at.lightcurve.plotlightcurve.get_viewinganglecolor_for_colorbar(
-            angle_definition, angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
+            angle, costheta_viewing_angle_bins, phi_viewing_angle_bins, scaledmap, plotkwargs, args
         )
 
         rowattime = lcdata.loc[lcdata["time"] == float(timetoplot)]

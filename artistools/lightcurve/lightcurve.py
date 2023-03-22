@@ -5,6 +5,8 @@ import argparse
 import math
 import os
 from collections.abc import Collection
+from collections.abc import Sequence
+from collections.abc import Sized
 from pathlib import Path
 from typing import Any
 from typing import Optional
@@ -22,22 +24,23 @@ import artistools.spectra
 
 def readfile(
     filepath: Union[str, Path],
-    modelpath: Optional[Path] = None,
-    args: Union[argparse.Namespace, None] = None,
-) -> Union[pd.DataFrame, dict[int, pd.DataFrame]]:
-    lcdata = pd.read_csv(filepath, delim_whitespace=True, header=None, names=["time", "lum", "lum_cmf"])
-
-    if args is not None and args.gamma and modelpath is not None and at.get_inputparams(modelpath)["n_dimensions"] == 3:
-        lcdata = read_3d_gammalightcurve(filepath)
-
-    elif (args is not None and args.plotviewingangle is not None) or "res" in str(filepath):
+) -> dict[int, pd.DataFrame]:
+    lcdata: dict[int, pd.DataFrame] = {}
+    if "_res" in str(filepath):
         # get a list of dfs with light curves at each viewing angle
-        lcdata = at.gather_res_data(lcdata, index_of_repeated_value=0)
+        lcdata_res = pd.read_csv(
+            filepath, sep=" ", engine=at.get_config()["pandas_engine"], header=None, names=["time", "lum", "lum_cmf"]
+        )
+        lcdata = at.gather_res_data(lcdata_res, index_of_repeated_value=0)
+    else:
+        lcdata[-1] = pd.read_csv(
+            filepath, sep=" ", engine=at.get_config()["pandas_engine"], header=None, names=["time", "lum", "lum_cmf"]
+        )
 
-    elif list(lcdata.time.values) != list(sorted(lcdata.time.values)):
-        # the light_curve.dat file repeats x values, so keep the first half only
-        lcdata = lcdata.iloc[: len(lcdata) // 2]
-        lcdata.index.name = "timestep"
+        if list(lcdata[-1].time.values) != list(sorted(lcdata[-1].time.values)):
+            # the light_curve.out file repeats x values, so keep the first half only
+            lcdata[-1] = lcdata[-1].iloc[: len(lcdata[-1]) // 2]
+            lcdata[-1].index.name = "timestep"
 
     return lcdata
 
@@ -60,11 +63,12 @@ def read_3d_gammalightcurve(
 
 
 def get_from_packets(
-    modelpath: Path,
-    packet_type: str = "TYPE_ESCAPE",
+    modelpath: Union[str, Path],
     escape_type: str = "TYPE_RPKT",
     maxpacketfiles: Optional[int] = None,
-    usedirectionbins=False,
+    directionbins: Sequence[int] = [-1],
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
 ) -> dict[int, pd.DataFrame]:
     import artistools.packets
 
@@ -82,8 +86,7 @@ def get_from_packets(
     timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
 
     lcdata = {}
-    dirbins = [-1] if not usedirectionbins else range(at.get_viewingdirectionbincount())
-    for dirbin in dirbins:
+    for dirbin in directionbins:
         lcdata[dirbin] = pd.DataFrame(
             {
                 "time": tmidarray,
@@ -92,31 +95,52 @@ def get_from_packets(
             }
         )
 
+    nphibins = at.get_viewingdirection_phibincount()
+    ncosthetabins = at.get_viewingdirection_costhetabincount()
+    ndirbins = at.get_viewingdirectionbincount()
+
+    contribbinlists: list[Sized] = []
+    for dirbin in directionbins:
+        if dirbin == -1:
+            contribbinlists.append([])
+            continue
+
+        if average_over_phi and average_over_theta:
+            assert False
+        elif average_over_phi:
+            contribbinlists.append(range(dirbin, dirbin + nphibins))
+        elif average_over_theta:
+            contribbinlists.append(range(dirbin, ndirbins, nphibins))
+        else:
+            contribbinlists.append([dirbin])
+
     for packetsfile in packetsfiles:
-        dfpackets = at.packets.readfile(packetsfile, type=packet_type, escape_type=escape_type)
+        dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type=escape_type)
 
         if not (dfpackets.empty):
             dfpackets.eval("t_arrive_cmf_d = escape_time * @escapesurfacegamma / 86400", inplace=True)
-            if usedirectionbins:
-                dfpackets = at.packets.get_escaping_packet_angle_bin(modelpath, dfpackets)
+            if directionbins != [-1]:
+                dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
+
             print(f"sum of e_cmf {dfpackets['e_cmf'].sum()} e_rf {dfpackets['e_rf'].sum()}")
 
-            for dirbin in dirbins:
-                dfpackets_dirbin = dfpackets.query("angle_bin == @dirbin") if dirbin != -1 else dfpackets
+            for dirbin, contribbins in zip(directionbins, contribbinlists):
+                dfpackets_dirbin = dfpackets.query("dirbin in @contribbins") if contribbins != [] else dfpackets
 
-                binned = pd.cut(dfpackets_dirbin["t_arrive_d"], timearrayplusend, labels=False, include_lowest=True)
-                for binindex, e_rf_sum in dfpackets_dirbin.groupby(binned)["e_rf"].sum().items():
-                    lcdata[dirbin]["lum"][binindex] += e_rf_sum
+                timebins = pd.cut(
+                    dfpackets_dirbin["t_arrive_d"], timearrayplusend, labels=range(len(timearray)), include_lowest=True
+                )
+                lcdata[dirbin]["lum"] += dfpackets_dirbin.groupby(timebins).e_rf.sum().values
 
-                binned_cmf = pd.cut(dfpackets["t_arrive_cmf_d"], timearrayplusend, labels=False, include_lowest=True)
-                for binindex, e_cmf_sum in dfpackets.groupby(binned_cmf)["e_cmf"].sum().items():
-                    lcdata[dirbin]["lum_cmf"][binindex] += e_cmf_sum
+                lcdata[dirbin]["lum_cmf"] += dfpackets_dirbin.groupby(timebins).e_cmf.sum().values
 
-    for dirbin in dirbins:
-        solidanglefactor = 1.0 if dirbin == -1 else at.get_viewingdirectionbincount()
+    for dirbin, contribbins in zip(directionbins, contribbinlists):
+        solidanglefactor = float(ndirbins) / len(contribbins) if contribbins != [] else 1.0
+
         lcdata[dirbin]["lum"] = np.divide(
             lcdata[dirbin]["lum"] / nprocs_read * solidanglefactor * (u.erg / u.day).to("solLum"), arr_timedelta
         )
+
         lcdata[dirbin]["lum_cmf"] = np.divide(
             lcdata[dirbin]["lum_cmf"]
             / nprocs_read
@@ -125,9 +149,6 @@ def get_from_packets(
             * (u.erg / u.day).to("solLum"),
             arr_timedelta,
         )
-
-    if not usedirectionbins:
-        return lcdata[-1]
 
     return lcdata
 
