@@ -87,7 +87,7 @@ def test_spectra_get_spectrum():
 
     dfspectrumpkts = at.spectra.get_from_packets(
         modelpath, timelowdays=timelowdays, timehighdays=timehighdays, lambda_min=lambda_min, lambda_max=lambda_max
-    )
+    )[-1]
 
     check_spectrum(dfspectrumpkts)
 
