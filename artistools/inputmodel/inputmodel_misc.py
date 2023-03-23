@@ -40,7 +40,7 @@ def read_modelfile(
         print(f"Reading {filename}")
 
     numheaderrows = 0
-    with at.misc.zopen(filename, "rt") as fmodel:
+    with at.zopen(filename, "rt") as fmodel:
         line = "#"
         while line.startswith("#"):
             line = fmodel.readline()
@@ -223,7 +223,7 @@ def read_modelfile(
         vmax_cmps = dfmodel.velocity_outer.max() * 1e5
 
     elif dimensions == 3:
-        wid_init = at.misc.get_wid_init_at_tmodel(modelpath, modelcellcount, t_model_init_days, xmax_tmodel)
+        wid_init = at.get_wid_init_at_tmodel(modelpath, modelcellcount, t_model_init_days, xmax_tmodel)
         modelmeta["wid_init"] = wid_init
         dfmodel.eval("cellmass_grams = rho * @wid_init ** 3", inplace=True)
 

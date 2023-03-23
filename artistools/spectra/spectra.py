@@ -376,54 +376,6 @@ def read_emission_absorption_file(emabsfilename: Union[str, Path]) -> pd.DataFra
     return dfemabs
 
 
-def average_phi_bins(
-    res_specdata: dict[int, pd.DataFrame],
-    dirbin: Optional[int],
-) -> dict[int, pd.DataFrame]:
-    # Averages over phi (azimuthal) angle bins to make polar angle bin with less noise
-    dirbincount = at.get_viewingdirectionbincount()
-    phibincount = at.get_viewingdirection_phibincount()
-    assert dirbin is None or dirbin % phibincount == 0
-    for start_bin in range(0, dirbincount, phibincount):
-        if dirbin is not None and start_bin != dirbin:
-            continue
-        res_specdata[start_bin] = res_specdata[start_bin].copy()  # important to not affect the LRU cached copy
-        for bin_number in range(start_bin + 1, start_bin + phibincount):
-            res_specdata[start_bin] += res_specdata[bin_number]
-            del res_specdata[bin_number]
-        res_specdata[start_bin] /= phibincount
-        print(
-            f"Bin number {dirbin} is the average of {phibincount} bins {start_bin} to" f" {start_bin + phibincount - 1}"
-        )
-
-    return res_specdata
-
-
-def average_costheta_bins(
-    res_specdata: dict[int, pd.DataFrame],
-    dirbin: Optional[int],
-) -> dict[int, pd.DataFrame]:
-    # Averages over cos theta (polar) angle bins to make azimuthal angle bins with less noise
-    dirbincount = at.get_viewingdirectionbincount()
-    nphibins = at.get_viewingdirection_phibincount()
-    ncosthetabins = at.get_viewingdirection_costhetabincount()
-    assert dirbin is None or dirbin < nphibins
-    for start_bin in range(0, nphibins):
-        if dirbin is not None and start_bin != dirbin:
-            continue
-        contribbins = range(start_bin + ncosthetabins, dirbincount, ncosthetabins)
-
-        res_specdata[start_bin] = res_specdata[start_bin].copy()  # important to not affect the LRU cached copy
-        for bin_number in contribbins:
-            res_specdata[start_bin] += res_specdata[bin_number]
-            del res_specdata[bin_number]
-        res_specdata[start_bin] /= nphibins
-
-        print(f"bin number {start_bin} = the average of bins {[start_bin] + list(contribbins)}")
-
-    return res_specdata
-
-
 def get_res_spectrum(
     modelpath: Path,
     timestepmin: int,
@@ -447,9 +399,9 @@ def get_res_spectrum(
     if res_specdata is None:
         res_specdata = read_spec_res(modelpath).copy()
         if args and args.average_over_phi_angle:
-            res_specdata = average_phi_bins(res_specdata, angle)
+            res_specdata = at.average_direction_bins(res_specdata, dirbin=angle, overangle="phi")
         if args and args.average_over_theta_angle:
-            res_specdata = average_costheta_bins(res_specdata, angle)
+            res_specdata = at.average_direction_bins(res_specdata, dirbin=angle, overangle="phi")
 
     nu = res_specdata[angle].loc[:, "nu"].values
     arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
@@ -665,7 +617,7 @@ def get_flux_contributions(
 ) -> tuple[list[fluxcontributiontuple], np.ndarray]:
     arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
     arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
-    arraynu = at.misc.get_nu_grid(modelpath)
+    arraynu = at.get_nu_grid(modelpath)
     arraylambda = 2.99792458e18 / arraynu
     if not Path(modelpath, "compositiondata.txt").is_file():
         print("WARNING: compositiondata.txt not found. Using output*.txt instead")
@@ -1252,7 +1204,7 @@ def get_reference_spectrum(filename: Union[Path, str]) -> tuple[pd.DataFrame, di
                 if filepathgz.is_file():
                     filepath = filepathgz
 
-    metadata = at.misc.get_file_metadata(filepath)
+    metadata = at.get_file_metadata(filepath)
 
     flambdaindex = metadata.get("f_lambda_columnindex", 1)
 

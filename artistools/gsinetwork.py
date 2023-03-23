@@ -452,7 +452,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     # WARNING sketchy inference!
     propcellcount = math.ceil(max(mgi_of_propcells.keys()) ** (1 / 3.0)) ** 3
     xmax_tmodel = vmax_cmps * t_model_init_days * 86400
-    wid_init = at.misc.get_wid_init_at_tmodel(modelpath, propcellcount, t_model_init_days, xmax_tmodel)
+    wid_init = at.get_wid_init_at_tmodel(modelpath, propcellcount, t_model_init_days, xmax_tmodel)
     dfmodel["n_assoc_cells"] = [len(assoc_cells.get(inputcellid - 1, [])) for inputcellid in dfmodel["inputcellid"]]
 
     # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes

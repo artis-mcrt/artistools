@@ -185,6 +185,44 @@ def gather_res_data(res_df: pd.DataFrame, index_of_repeated_value: int = 1) -> d
     return res_data
 
 
+def average_direction_bins(
+    dirbindataframes: dict[int, pd.DataFrame], overangle: Literal["phi", "theta"], dirbin: Optional[int] = None
+) -> dict[int, pd.DataFrame]:
+    """Will average dict of direction-binned DataFrames according to the phi or theta angle"""
+    dirbincount = at.get_viewingdirectionbincount()
+    nphibins = at.get_viewingdirection_phibincount()
+
+    assert overangle in ["phi", "theta"]
+    if overangle == "phi":
+        start_bin_range = range(0, dirbincount, nphibins)
+    elif overangle == "theta":
+        ncosthetabins = at.get_viewingdirection_costhetabincount()
+        start_bin_range = range(0, nphibins)
+
+    for start_bin in start_bin_range:
+        if dirbin is not None and start_bin != dirbin:
+            continue
+
+        dirbindataframes[start_bin] = (
+            dirbindataframes[start_bin].copy().reset_index(drop=True)
+        )  # important to not affect the LRU cached copy
+
+        if overangle == "phi":
+            contribbins = range(start_bin + 1, start_bin + nphibins)
+        else:
+            contribbins = range(start_bin + ncosthetabins, dirbincount, ncosthetabins)
+
+        for dirbin_contrib in contribbins:
+            dirbindataframes[start_bin] += dirbindataframes[dirbin_contrib].copy().reset_index(drop=True)
+
+            del dirbindataframes[dirbin_contrib]
+
+        dirbindataframes[start_bin] /= nphibins  # every nth bin is the average of n bins
+        print(f"bin number {start_bin} = the average of bins {[start_bin] + list(contribbins)}")
+
+    return dirbindataframes
+
+
 def match_closest_time(reftime: float, searchtimes: list[Any]) -> str:
     """Get time closest to reftime in list of times (searchtimes)"""
     return str("{}".format(min([float(x) for x in searchtimes], key=lambda x: abs(x - reftime))))

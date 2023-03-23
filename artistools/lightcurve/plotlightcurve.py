@@ -282,10 +282,10 @@ def plot_artis_lightcurve(
         lcdataframes = at.lightcurve.readfile(lcpath)
 
         if average_over_phi:
-            lcdataframes = at.lightcurve.average_lightcurve_phi_bins(lcdataframes)
+            lcdataframes = at.average_direction_bins(lcdataframes, overangle="phi")
 
         if average_over_theta:
-            lcdataframes = at.lightcurve.average_lightcurve_theta_bins(lcdataframes)
+            lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta")
 
     plotkwargs: dict[str, Any] = {}
     plotkwargs["label"] = modelname

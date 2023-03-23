@@ -530,7 +530,7 @@ def make_emissionabsorption_plot(
 ) -> tuple[list[Artist], list[str], Optional[pd.DataFrame]]:
     """Plot the emission and absorption by ion for an ARTIS model."""
     print(modelpath)
-    arraynu = at.misc.get_nu_grid(modelpath)
+    arraynu = at.get_nu_grid(modelpath)
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays

@@ -3,7 +3,6 @@
 from artistools.spectra.plotspectra import addargs
 from artistools.spectra.plotspectra import main
 from artistools.spectra.plotspectra import main as plot
-from artistools.spectra.spectra import average_phi_bins
 from artistools.spectra.spectra import get_exspec_bins
 from artistools.spectra.spectra import get_flux_contributions
 from artistools.spectra.spectra import get_flux_contributions_from_packets

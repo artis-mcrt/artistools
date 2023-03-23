@@ -211,43 +211,6 @@ def get_from_packets(
     return lcdata
 
 
-def average_lightcurve_phi_bins(lcdataframes: dict[int, pd.DataFrame]) -> dict[int, pd.DataFrame]:
-    dirbincount = at.get_viewingdirectionbincount()
-    nphibins = at.get_viewingdirection_phibincount()
-    for start_bin in range(0, dirbincount, nphibins):
-        for bin_number in range(start_bin + 1, start_bin + nphibins):
-            lcdataframes[bin_number] = lcdataframes[bin_number].copy()  # important to not affect the LRU cached copy
-            lcdataframes[bin_number] = lcdataframes[bin_number].set_index(
-                lcdataframes[start_bin].index
-            )  # need indexes to match or else gives NaN
-            lcdataframes[start_bin]["lum"] += lcdataframes[bin_number]["lum"]
-            del lcdataframes[bin_number]
-
-        lcdataframes[start_bin]["lum"] /= nphibins  # every nth bin is the average of n bins
-        print(f"bin number {start_bin} = the average of bins {start_bin} to {start_bin + nphibins-1}")
-
-    return lcdataframes
-
-
-def average_lightcurve_theta_bins(lcdataframes: dict[int, pd.DataFrame]) -> dict[int, pd.DataFrame]:
-    dirbincount = at.get_viewingdirectionbincount()
-    nphibins = at.get_viewingdirection_phibincount()
-    ncosthetabins = at.get_viewingdirection_costhetabincount()
-    for start_bin in range(0, nphibins):
-        contribbins = range(start_bin + ncosthetabins, dirbincount, ncosthetabins)
-        for bin_number in contribbins:
-            lcdataframes[bin_number] = lcdataframes[bin_number].set_index(
-                lcdataframes[start_bin].index
-            )  # need indexes to match or else gives NaN
-            lcdataframes[start_bin]["lum"] += lcdataframes[bin_number]["lum"]
-            del lcdataframes[bin_number]
-
-        lcdataframes[start_bin]["lum"] /= ncosthetabins  # every nth bin is the average of n bins
-        print(f"bin number {start_bin} = the average of bins {[start_bin] + list(contribbins)}")
-
-    return lcdataframes
-
-
 def generate_band_lightcurve_data(
     modelpath: Path,
     args: argparse.Namespace,
@@ -297,7 +260,7 @@ def generate_band_lightcurve_data(
         try:
             res_specdata = at.spectra.read_spec_res(modelpath).copy()
             if args and args.average_over_phi_angle:
-                at.spectra.average_phi_bins(res_specdata, angle)
+                at.average_direction_bins(res_specdata, dirbin=angle, overangle="phi")
 
         except FileNotFoundError:
             pass
@@ -380,7 +343,7 @@ def bolometric_magnitude(
                     if res_specdata is None:
                         res_specdata = at.spectra.read_spec_res(modelpath)
                         if args and args.average_over_phi_angle:
-                            at.spectra.average_phi_bins(res_specdata, angle)
+                            at.average_direction_bins(res_specdata, dirbin=angle, overangle="phi")
                     spectrum = at.spectra.get_res_spectrum(
                         modelpath, timestep, timestep, angle=angle, res_specdata=res_specdata
                     )
@@ -521,7 +484,7 @@ def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
 
 def read_reflightcurve_band_data(lightcurvefilename: Union[Path, str]) -> tuple[pd.DataFrame, dict[str, Any]]:
     filepath = Path(at.get_config()["path_artistools_dir"], "data", "lightcurves", lightcurvefilename)
-    metadata = at.misc.get_file_metadata(filepath)
+    metadata = at.get_file_metadata(filepath)
 
     data_path = os.path.join(at.get_config()["path_artistools_dir"], f"data/lightcurves/{lightcurvefilename}")
     lightcurve_data = pd.read_csv(data_path, comment="#")
@@ -555,7 +518,7 @@ def read_bol_reflightcurve_data(lightcurvefilename):
     else:
         data_path = Path(at.get_config()["path_artistools_dir"], "data/lightcurves/bollightcurves", lightcurvefilename)
 
-    metadata = at.misc.get_file_metadata(data_path)
+    metadata = at.get_file_metadata(data_path)
 
     # check for possible header line and read table
     with open(data_path, "r") as flc:
