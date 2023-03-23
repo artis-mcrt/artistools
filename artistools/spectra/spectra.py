@@ -397,11 +397,11 @@ def get_res_spectrum(
         print("WARNING: no viewing direction specified. Using direction bin {angle}")
 
     if res_specdata is None:
-        res_specdata = read_spec_res(modelpath).copy()
+        res_specdata = read_spec_res(modelpath)
         if args and args.average_over_phi_angle:
-            res_specdata = at.average_direction_bins(res_specdata, dirbin=angle, overangle="phi")
+            res_specdata = at.average_direction_bins(res_specdata, overangle="phi")
         if args and args.average_over_theta_angle:
-            res_specdata = at.average_direction_bins(res_specdata, dirbin=angle, overangle="phi")
+            res_specdata = at.average_direction_bins(res_specdata, overangle="theta")
 
     nu = res_specdata[angle].loc[:, "nu"].values
     arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")

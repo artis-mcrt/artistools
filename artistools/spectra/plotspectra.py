@@ -249,6 +249,8 @@ def plot_artis_spectrum(
         #     linelabel = linelabel.format(**locals())
         viewinganglespectra: dict[int, pd.DataFrame] = {}
 
+        angles: Collection[int] = args.plotviewingangle
+
         if from_packets:
             spectrum = get_spectrum_from_packets(
                 modelpath,
@@ -270,12 +272,22 @@ def plot_artis_spectrum(
         else:
             spectrum = get_spectrum(modelpath_or_file, timestepmin, timestepmax, fnufilterfunc=filterfunc)
 
-            angles: Collection[int] = args.plotviewingangle
+            if args.plotviewingangle:  # read angle resolved spectra
+                res_specdata = at.spectra.read_spec_res(modelpath)
+                if args and args.average_over_phi_angle:
+                    res_specdata = at.average_direction_bins(res_specdata, overangle="phi")
+                if args and args.average_over_theta_angle:
+                    res_specdata = at.average_direction_bins(res_specdata, overangle="theta")
 
-            if args.plotviewingangle:  # read specpol res.
                 for angle in angles:
                     viewinganglespectra[angle] = get_res_spectrum(
-                        modelpath, timestepmin, timestepmax, angle=angle, fnufilterfunc=filterfunc, args=args
+                        modelpath,
+                        timestepmin,
+                        timestepmax,
+                        angle=angle,
+                        fnufilterfunc=filterfunc,
+                        args=args,
+                        res_specdata=res_specdata,
                     )
 
             elif args.plotvspecpol is not None and os.path.isfile(modelpath / "vpkt.txt"):

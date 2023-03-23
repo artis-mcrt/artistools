@@ -258,9 +258,11 @@ def generate_band_lightcurve_data(
     res_specdata = None
     if angle is not None and angle != -1:
         try:
-            res_specdata = at.spectra.read_spec_res(modelpath).copy()
+            res_specdata = at.spectra.read_spec_res(modelpath)
             if args and args.average_over_phi_angle:
-                at.average_direction_bins(res_specdata, dirbin=angle, overangle="phi")
+                res_specdata = at.average_direction_bins(res_specdata, overangle="phi")
+            if args and args.average_over_theta_angle:
+                res_specdata = at.average_direction_bins(res_specdata, overangle="theta")
 
         except FileNotFoundError:
             pass
@@ -343,7 +345,7 @@ def bolometric_magnitude(
                     if res_specdata is None:
                         res_specdata = at.spectra.read_spec_res(modelpath)
                         if args and args.average_over_phi_angle:
-                            at.average_direction_bins(res_specdata, dirbin=angle, overangle="phi")
+                            res_specdata = at.average_direction_bins(res_specdata, overangle="phi")
                     spectrum = at.spectra.get_res_spectrum(
                         modelpath, timestep, timestep, angle=angle, res_specdata=res_specdata
                     )

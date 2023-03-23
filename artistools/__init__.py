@@ -39,7 +39,8 @@ from artistools.misc import CustomArgHelpFormatter
 from artistools.misc import decode_roman_numeral
 from artistools.misc import anyexist
 from artistools.misc import firstexisting
-from artistools.misc import flatten_list, average_direction_bins
+from artistools.misc import flatten_list
+from artistools.misc import average_direction_bins
 from artistools.misc import gather_res_data
 from artistools.misc import get_artis_constants
 from artistools.misc import get_atomic_number
@@ -50,7 +51,8 @@ from artistools.misc import get_composition_data_from_outputfile
 from artistools.misc import get_deposition
 from artistools.misc import get_elsymbol
 from artistools.misc import get_elsymbolslist
-from artistools.misc import get_escaped_arrivalrange, get_file_metadata
+from artistools.misc import get_escaped_arrivalrange
+from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
 from artistools.misc import get_grid_mapping
 from artistools.misc import get_inputparams
@@ -67,7 +69,8 @@ from artistools.misc import linetuple
 from artistools.misc import get_syn_dir
 from artistools.misc import get_time_range
 from artistools.misc import get_timestep_of_timedays
-from artistools.misc import get_timestep_time, get_nu_grid
+from artistools.misc import get_timestep_time
+from artistools.misc import get_nu_grid
 from artistools.misc import get_timestep_times_float
 from artistools.misc import get_viewinganglebin_definitions
 from artistools.misc import get_vpkt_config

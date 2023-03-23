@@ -199,13 +199,16 @@ def average_direction_bins(
         ncosthetabins = at.get_viewingdirection_costhetabincount()
         start_bin_range = range(0, nphibins)
 
+    # we will make a copy to ensure that we don't cause side effects from altering the original DataFrames
+    # that might be returned again later by an lru_cached function
+    dirbindataframesout = {}
+
     for start_bin in start_bin_range:
         if dirbin is not None and start_bin != dirbin:
             continue
 
-        dirbindataframes[start_bin] = (
-            dirbindataframes[start_bin].copy().reset_index(drop=True)
-        )  # important to not affect the LRU cached copy
+        dirbindataframesout[start_bin] = dirbindataframes[start_bin].copy()
+        dirbindataframesout[start_bin].reset_index(drop=True, inplace=True)
 
         if overangle == "phi":
             contribbins = range(start_bin + 1, start_bin + nphibins)
@@ -213,14 +216,12 @@ def average_direction_bins(
             contribbins = range(start_bin + ncosthetabins, dirbincount, ncosthetabins)
 
         for dirbin_contrib in contribbins:
-            dirbindataframes[start_bin] += dirbindataframes[dirbin_contrib].copy().reset_index(drop=True)
+            dirbindataframesout[start_bin] += dirbindataframes[dirbin_contrib].reset_index(drop=True)
 
-            del dirbindataframes[dirbin_contrib]
-
-        dirbindataframes[start_bin] /= 1 + len(contribbins)  # every nth bin is the average of n bins
+        dirbindataframesout[start_bin] /= 1 + len(contribbins)  # every nth bin is the average of n bins
         print(f"bin number {start_bin} = the average of bins {[start_bin] + list(contribbins)}")
 
-    return dirbindataframes
+    return dirbindataframesout
 
 
 def match_closest_time(reftime: float, searchtimes: list[Any]) -> str:
