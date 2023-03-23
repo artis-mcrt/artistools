@@ -184,7 +184,7 @@ def get_spectrum_from_packets_worker(
     packetsfile: Path,
     use_escapetime: bool = False,
     getpacketcount: bool = False,
-    betafactor: Optional[float] = None,
+    escapesurfacegamma: Optional[float] = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT").query(
         querystr, inplace=False, local_dict=qlocals
@@ -202,8 +202,8 @@ def get_spectrum_from_packets_worker(
     )
 
     if use_escapetime:
-        assert betafactor is not None
-        array_energysum_onefile = dfpackets.e_cmf.groupby(wl_bins).sum().values / betafactor
+        assert escapesurfacegamma is not None
+        array_energysum_onefile = dfpackets.e_cmf.groupby(wl_bins).sum().values / escapesurfacegamma
     else:
         array_energysum_onefile = dfpackets.e_rf.groupby(wl_bins).sum().values
 
@@ -234,9 +234,9 @@ def get_spectrum_from_packets(
     if use_escapetime:
         modeldata, _ = at.inputmodel.get_modeldata(Path(packetsfiles[0]).parent)
         vmax = modeldata.iloc[-1].velocity_outer * u.km / u.s
-        betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
+        escapesurfacegamma = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
     else:
-        betafactor = None
+        escapesurfacegamma = None
 
     nu_min = 2.99792458e18 / lambda_max
     nu_max = 2.99792458e18 / lambda_min
@@ -260,7 +260,7 @@ def get_spectrum_from_packets(
     if not use_escapetime:
         querystr += "@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / 29979245800) < @timehigh"
     else:
-        querystr += "@timelow < (escape_time * @betafactor) < @timehigh"
+        querystr += "@timelow < (escape_time * @escapesurfacegamma) < @timehigh"
 
     processfile = partial(
         get_spectrum_from_packets_worker,
@@ -270,13 +270,13 @@ def get_spectrum_from_packets(
             nu_max=nu_max,
             timelow=timelow,
             timehigh=timehigh,
-            betafactor=betafactor,
+            escapesurfacegamma=escapesurfacegamma,
         ),
         array_lambda,
         array_lambdabinedges,
         use_escapetime=use_escapetime,
         getpacketcount=getpacketcount,
-        betafactor=betafactor,
+        escapesurfacegamma=escapesurfacegamma,
     )
     if at.get_config()["num_processes"] > 1:
         with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
