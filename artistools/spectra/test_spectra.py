@@ -85,7 +85,7 @@ def test_spectra_get_spectrum():
     timelowdays = at.get_timestep_times_float(modelpath)[55]
     timehighdays = at.get_timestep_times_float(modelpath)[65]
 
-    dfspectrumpkts = at.spectra.get_spectrum_from_packets(
+    dfspectrumpkts = at.spectra.get_from_packets(
         modelpath, timelowdays=timelowdays, timehighdays=timehighdays, lambda_min=lambda_min, lambda_max=lambda_max
     )
 

@@ -5,6 +5,7 @@ import argparse
 import math
 import os
 from collections.abc import Collection
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 from typing import Callable
@@ -23,11 +24,11 @@ from matplotlib.artist import Artist
 import artistools as at
 import artistools.packets
 import artistools.radfield
+from artistools.spectra.spectra import get_from_packets
 from artistools.spectra.spectra import get_reference_spectrum
 from artistools.spectra.spectra import get_res_spectrum
 from artistools.spectra.spectra import get_specpol_data
 from artistools.spectra.spectra import get_spectrum
-from artistools.spectra.spectra import get_spectrum_from_packets
 from artistools.spectra.spectra import get_vspecpol_spectrum
 from artistools.spectra.spectra import make_averaged_vspecfiles
 from artistools.spectra.spectra import make_virtual_spectra_summed_file
@@ -202,6 +203,9 @@ def plot_artis_spectrum(
     filterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     linelabel: Optional[str] = None,
     plotpacketcount: bool = False,
+    directionbins: Collection[int] = [-1],
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
     **plotkwargs,
 ) -> Optional[pd.DataFrame]:
     """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame"""
@@ -249,10 +253,12 @@ def plot_artis_spectrum(
         #     linelabel = linelabel.format(**locals())
         viewinganglespectra: dict[int, pd.DataFrame] = {}
 
-        angles: Collection[int] = args.plotviewingangle
-
         if from_packets:
-            spectrum = get_spectrum_from_packets(
+            dbins_get = list(directionbins).copy() if directionbins is not None else [-1]
+            if -1 not in dbins_get:
+                dbins_get.append(-1)
+
+            viewinganglespectra = get_from_packets(
                 modelpath,
                 args.timemin,
                 args.timemax,
@@ -263,7 +269,12 @@ def plot_artis_spectrum(
                 delta_lambda=args.deltalambda,
                 useinternalpackets=args.internalpackets,
                 getpacketcount=plotpacketcount,
+                directionbins=dbins_get,
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
             )
+
+            spectrum = viewinganglespectra[-1].copy()
 
             if args.outputfile is None:
                 statpath = Path()
@@ -279,16 +290,19 @@ def plot_artis_spectrum(
                 if args and args.average_over_theta_angle:
                     res_specdata = at.average_direction_bins(res_specdata, overangle="theta")
 
-                for angle in angles:
-                    viewinganglespectra[angle] = get_res_spectrum(
-                        modelpath,
-                        timestepmin,
-                        timestepmax,
-                        angle=angle,
+                viewinganglespectra = {
+                    dirbin: get_res_spectrum(
+                        modelpath=modelpath,
+                        dirbin=dirbin,
+                        timestepmin=timestepmin,
+                        timestepmax=timestepmax,
+                        res_specdata=res_specdata,
                         fnufilterfunc=filterfunc,
                         args=args,
-                        res_specdata=res_specdata,
                     )
+                    for dirbin in directionbins
+                    if dirbin != -1
+                }
 
             elif args.plotvspecpol is not None and os.path.isfile(modelpath / "vpkt.txt"):
                 # read virtual packet files (after running plotartisspectrum --makevspecpol)
@@ -302,10 +316,11 @@ def plot_artis_spectrum(
                     )
                     quit()
 
-                for angle in angles:
-                    viewinganglespectra[angle] = get_vspecpol_spectrum(
-                        modelpath, timeavg, angle, args, fnufilterfunc=filterfunc
-                    )
+                viewinganglespectra = {
+                    dirbin: get_vspecpol_spectrum(modelpath, timeavg, dirbin, args, fnufilterfunc=filterfunc)
+                    for dirbin in directionbins
+                    if dirbin != -1
+                }
 
         spectrum.query("@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax", inplace=True)
 
@@ -335,62 +350,59 @@ def plot_artis_spectrum(
 
         supxmin, supxmax = axis.get_xlim()
 
-        if (args.plotvspecpol is not None and os.path.isfile(modelpath / "vpkt.txt")) or args.plotviewingangle:
-            for angle in angles:
-                if args.binflux:
-                    new_lambda_angstroms = []
-                    binned_flux = []
+        for dirbin in directionbins:
+            if dirbin == -1:
+                spectrum.query("@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax").plot(
+                    x="lambda_angstroms",
+                    y=ycolumnname,
+                    ax=axis,
+                    legend=None,
+                    label=linelabel if index == 0 else None,
+                    **plotkwargs,
+                )
+            elif args.binflux:
+                new_lambda_angstroms = []
+                binned_flux = []
 
-                    wavelengths = viewinganglespectra[angle]["lambda_angstroms"]
-                    fluxes = viewinganglespectra[angle][ycolumnname]
-                    nbins = 5
+                wavelengths = viewinganglespectra[angle]["lambda_angstroms"]
+                fluxes = viewinganglespectra[angle][ycolumnname]
+                nbins = 5
 
-                    for i in np.arange(0, len(wavelengths - nbins), nbins):
-                        new_lambda_angstroms.append(wavelengths[i + int(nbins / 2)])
-                        sum_flux = 0
-                        for j in range(i, i + nbins):
-                            sum_flux += fluxes[j]
-                        binned_flux.append(sum_flux / nbins)
+                for i in np.arange(0, len(wavelengths - nbins), nbins):
+                    new_lambda_angstroms.append(wavelengths[i + int(nbins / 2)])
+                    sum_flux = 0
+                    for j in range(i, i + nbins):
+                        sum_flux += fluxes[j]
+                    binned_flux.append(sum_flux / nbins)
 
-                    plt.plot(new_lambda_angstroms, binned_flux)
+                plt.plot(new_lambda_angstroms, binned_flux)
+            else:
+                if args.plotvspecpol:
+                    if args.viewinganglelabelunits == "deg":
+                        viewing_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][angle])))
+                        linelabel = rf"$\theta$ = {viewing_angle}$^\circ$" if index == 0 else None
+                    elif args.viewinganglelabelunits == "rad":
+                        linelabel = rf"cos($\theta$) = {vpkt_config['cos_theta'][angle]}" if index == 0 else None
                 else:
-                    if args.plotvspecpol:
-                        if args.viewinganglelabelunits == "deg":
-                            viewing_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][angle])))
-                            linelabel = rf"$\theta$ = {viewing_angle}$^\circ$" if index == 0 else None
-                        elif args.viewinganglelabelunits == "rad":
-                            linelabel = rf"cos($\theta$) = {vpkt_config['cos_theta'][angle]}" if index == 0 else None
-                    else:
-                        linelabel = f"bin number {angle}"
-                        if args.average_over_phi_angle:
-                            (
-                                costheta_viewing_angle_bins,
-                                phi_viewing_angle_bins,
-                            ) = at.get_viewinganglebin_definitions()
-                            assert angle % at.get_viewingdirection_phibincount() == 0
-                            linelabel = costheta_viewing_angle_bins[int(angle // 10)]
-                        elif args.average_over_theta_angle:
-                            (
-                                costheta_viewing_angle_bins,
-                                phi_viewing_angle_bins,
-                            ) = at.get_viewinganglebin_definitions()
-                            assert angle < at.get_viewingdirection_costhetabincount()
-                            linelabel = phi_viewing_angle_bins[int(angle)]
+                    linelabel = f"bin number {angle}"
+                    if args.average_over_phi_angle:
+                        (
+                            costheta_viewing_angle_bins,
+                            phi_viewing_angle_bins,
+                        ) = at.get_viewinganglebin_definitions()
+                        assert angle % at.get_viewingdirection_phibincount() == 0
+                        linelabel = costheta_viewing_angle_bins[int(angle // 10)]
+                    elif args.average_over_theta_angle:
+                        (
+                            costheta_viewing_angle_bins,
+                            phi_viewing_angle_bins,
+                        ) = at.get_viewinganglebin_definitions()
+                        assert angle < at.get_viewingdirection_costhetabincount()
+                        linelabel = phi_viewing_angle_bins[int(angle)]
 
-                    viewinganglespectra[angle].query(
-                        "@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax"
-                    ).plot(
-                        x="lambda_angstroms", y=ycolumnname, ax=axis, legend=None, label=linelabel
-                    )  # {timeavg:.2f} days {at.get_model_name(modelpath)}
-        else:
-            spectrum.query("@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax").plot(
-                x="lambda_angstroms",
-                y=ycolumnname,
-                ax=axis,
-                legend=None,
-                label=linelabel if index == 0 else None,
-                **plotkwargs,
-            )
+                viewinganglespectra[angle].query("@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax").plot(
+                    x="lambda_angstroms", y=ycolumnname, ax=axis, legend=None, label=linelabel
+                )  # {timeavg:.2f} days {at.get_model_name(modelpath)}
 
     return spectrum[["lambda_angstroms", "f_lambda"]]
 
@@ -438,6 +450,9 @@ def make_spectrum_plot(
                 from_packets=args.frompackets,
                 filterfunc=filterfunc,
                 plotpacketcount=args.plotpacketcount,
+                directionbins=args.plotviewingangle,
+                average_over_phi=args.average_over_phi_angle,
+                average_over_theta=args.average_over_theta_angle,
                 **plotkwargs,
             )
             if seriesdata is not None:

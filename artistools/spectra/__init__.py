@@ -6,14 +6,13 @@ from artistools.spectra.plotspectra import main as plot
 from artistools.spectra.spectra import get_exspec_bins
 from artistools.spectra.spectra import get_flux_contributions
 from artistools.spectra.spectra import get_flux_contributions_from_packets
+from artistools.spectra.spectra import get_from_packets
 from artistools.spectra.spectra import get_line_flux
 from artistools.spectra.spectra import get_reference_spectrum
 from artistools.spectra.spectra import get_res_spectrum
 from artistools.spectra.spectra import get_specpol_data
 from artistools.spectra.spectra import get_spectrum
 from artistools.spectra.spectra import get_spectrum_at_time
-from artistools.spectra.spectra import get_spectrum_from_packets
-from artistools.spectra.spectra import get_spectrum_from_packets_worker
 from artistools.spectra.spectra import get_vspecpol_spectrum
 from artistools.spectra.spectra import make_averaged_vspecfiles
 from artistools.spectra.spectra import make_virtual_spectra_summed_file

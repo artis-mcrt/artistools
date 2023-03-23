@@ -8,6 +8,7 @@ import re
 from collections import namedtuple
 from collections.abc import Collection
 from collections.abc import Sequence
+from collections.abc import Sized
 from functools import lru_cache
 from functools import partial
 from pathlib import Path
@@ -46,7 +47,7 @@ def get_exspec_bins() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     MNUBINS = 1000
     NU_MIN_R = 1e13
     NU_MAX_R = 5e15
-    print("WARNING: assuming {MNUBINS=} {NU_MIN_R=} {NU_MAX_R=}. Check that artis code matches.")
+    print(f"WARNING: assuming {MNUBINS=} {NU_MIN_R=} {NU_MAX_R=}. Check that artis code matches.")
 
     c_ang_s = 2.99792458e18
 
@@ -115,7 +116,6 @@ def get_spectrum(
     timestepmin: int,
     timestepmax: int = -1,
     fnufilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
-    modelnumber: Optional[int] = None,
 ) -> pd.DataFrame:
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax < 0:
@@ -161,61 +161,71 @@ def get_spectrum_at_time(
     timestep: int,
     time: float,
     args: Optional[argparse.Namespace],
-    angle: Optional[int] = None,
+    dirbin: Optional[int] = None,
     res_specdata: Optional[dict[int, pd.DataFrame]] = None,
     modelnumber: Optional[int] = None,
 ) -> pd.DataFrame:
-    if angle is not None and angle >= 0:
+    if dirbin is not None and dirbin >= 0:
         if args is not None and args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
-            spectrum = get_vspecpol_spectrum(modelpath, time, angle, args)
+            spectrum = get_vspecpol_spectrum(modelpath, time, dirbin, args)
         else:
-            spectrum = get_res_spectrum(modelpath, timestep, timestep, angle=angle, res_specdata=res_specdata)
+            spectrum = get_res_spectrum(modelpath, dirbin, timestep, timestep, res_specdata=res_specdata)
     else:
-        spectrum = get_spectrum(modelpath, timestep, timestep, modelnumber=modelnumber)
+        spectrum = get_spectrum(modelpath, timestep, timestep)
 
     return spectrum
 
 
-def get_spectrum_from_packets_worker(
+def get_from_packets_worker(
+    packetsfile: Union[str, Path],
+    modelpath: Union[str, Path],
     querystr: str,
     qlocals: dict[str, Any],
     array_lambda: Sequence[float],
     array_lambdabinedges: Sequence[float],
-    packetsfile: Path,
-    use_escapetime: bool = False,
-    getpacketcount: bool = False,
-    escapesurfacegamma: Optional[float] = None,
-) -> tuple[np.ndarray, np.ndarray]:
+    use_escapetime: bool,
+    getpacketcount: bool,
+    escapesurfacegamma: Optional[float],
+    directionbins: Sequence[int],
+    contribbinlists: list[Sized],
+) -> tuple[dict[int, np.ndarray], dict[int, np.ndarray]]:
     dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT").query(
         querystr, inplace=False, local_dict=qlocals
     )
 
     print(f"  {packetsfile}: {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges ")
 
-    dfpackets.eval("lambda_rf = 2.99792458e18 / nu_rf", inplace=True, local_dict=qlocals)
-    wl_bins = pd.cut(
-        x=dfpackets["lambda_rf"],
-        bins=array_lambdabinedges,
-        right=True,
-        labels=range(len(array_lambda)),
-        include_lowest=True,
-    )
+    array_energysum_onefile = {dirbin: np.zeros(len(array_lambda), dtype=float) for dirbin in directionbins}
+    array_pktcount_onefile = {dirbin: np.zeros(len(array_lambda), dtype=int) for dirbin in directionbins}
 
-    if use_escapetime:
-        assert escapesurfacegamma is not None
-        array_energysum_onefile = dfpackets.e_cmf.groupby(wl_bins).sum().values / escapesurfacegamma
-    else:
-        array_energysum_onefile = dfpackets.e_rf.groupby(wl_bins).sum().values
+    if directionbins != [-1]:
+        dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
 
-    if getpacketcount:
-        array_pktcount_onefile = dfpackets.lambda_rf.groupby(wl_bins).count().values
-    else:
-        array_pktcount_onefile = None
+    for dirbin, contribbins in zip(directionbins, contribbinlists):
+        dfpackets_dirbin = dfpackets.query("dirbin in @contribbins") if contribbins != [] else dfpackets
+
+        dfpackets_dirbin.eval("lambda_rf = 2.99792458e18 / nu_rf", inplace=True, local_dict=qlocals)
+        wl_bins = pd.cut(
+            x=dfpackets_dirbin["lambda_rf"],
+            bins=array_lambdabinedges,
+            right=True,
+            labels=range(len(array_lambda)),
+            include_lowest=True,
+        )
+
+        if use_escapetime:
+            assert escapesurfacegamma is not None
+            array_energysum_onefile[dirbin] = dfpackets_dirbin.e_cmf.groupby(wl_bins).sum().values / escapesurfacegamma
+        else:
+            array_energysum_onefile[dirbin] = dfpackets_dirbin.e_rf.groupby(wl_bins).sum().values
+
+        if getpacketcount:
+            array_pktcount_onefile[dirbin] = dfpackets_dirbin.lambda_rf.groupby(wl_bins).count().values
 
     return array_energysum_onefile, array_pktcount_onefile
 
 
-def get_spectrum_from_packets(
+def get_from_packets(
     modelpath: Path,
     timelowdays: float,
     timehighdays: float,
@@ -226,6 +236,9 @@ def get_spectrum_from_packets(
     maxpacketfiles: Optional[int] = None,
     useinternalpackets: bool = False,
     getpacketcount: bool = False,
+    directionbins: Collection[int] = [-1],
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
 ) -> pd.DataFrame:
     """Get a spectrum dataframe using the packets files as input."""
     assert not useinternalpackets
@@ -262,22 +275,45 @@ def get_spectrum_from_packets(
     else:
         querystr += "@timelow < (escape_time * @escapesurfacegamma) < @timehigh"
 
+    nphibins = at.get_viewingdirection_phibincount()
+    ncosthetabins = at.get_viewingdirection_costhetabincount()
+    ndirbins = at.get_viewingdirectionbincount()
+
+    contribbinlists: list[Sized] = []
+    for dirbin in directionbins:
+        if dirbin == -1:
+            contribbinlists.append([])
+            continue
+
+        if average_over_phi and average_over_theta:
+            assert False
+        elif average_over_phi:
+            contribbinlists.append(range(dirbin, dirbin + nphibins))
+        elif average_over_theta:
+            contribbinlists.append(range(dirbin, ndirbins, nphibins))
+        else:
+            contribbinlists.append([dirbin])
+
     processfile = partial(
-        get_spectrum_from_packets_worker,
-        querystr,
-        dict(
+        get_from_packets_worker,
+        modelpath=modelpath,
+        querystr=querystr,
+        qlocals=dict(
             nu_min=nu_min,
             nu_max=nu_max,
             timelow=timelow,
             timehigh=timehigh,
             escapesurfacegamma=escapesurfacegamma,
         ),
-        array_lambda,
-        array_lambdabinedges,
+        array_lambda=array_lambda,
+        array_lambdabinedges=array_lambdabinedges,
         use_escapetime=use_escapetime,
         getpacketcount=getpacketcount,
         escapesurfacegamma=escapesurfacegamma,
+        directionbins=directionbins,
+        contribbinlists=contribbinlists,
     )
+
     if at.get_config()["num_processes"] > 1:
         with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
             results = pool.map(processfile, packetsfiles)
@@ -287,24 +323,38 @@ def get_spectrum_from_packets(
     else:
         results = [processfile(p) for p in packetsfiles]
 
-    array_energysum = np.ufunc.reduce(np.add, [r[0] for r in results])
-    if getpacketcount:
-        array_pktcount += np.ufunc.reduce(np.add, [r[1] for r in results])
+    dfdict = {}
+    for dirbin, contribbins in zip(directionbins, contribbinlists):
+        solidanglefactor = float(ndirbins) / len(contribbins) if contribbins != [] else 1.0
 
-    array_flambda = (
-        array_energysum / delta_lambda / (timehigh - timelow) / 4 / math.pi / (u.megaparsec.to("cm") ** 2) / nprocs_read
-    )
+        array_energysum = np.ufunc.reduce(np.add, [r[0][dirbin] for r in results])
 
-    dfdict = {
-        "lambda_angstroms": array_lambda,
-        "f_lambda": array_flambda,
-        "energy_sum": array_energysum,
-    }
+        if getpacketcount:
+            array_pktcount += np.ufunc.reduce(np.add, [r[1][dirbin] for r in results])
 
-    if getpacketcount:
-        dfdict["packetcount"] = array_pktcount
+        array_flambda = (
+            array_energysum
+            / delta_lambda
+            / (timehigh - timelow)
+            / 4
+            / math.pi
+            * solidanglefactor
+            / (u.megaparsec.to("cm") ** 2)
+            / nprocs_read
+        )
 
-    return pd.DataFrame(dfdict)
+        dfdict[dirbin] = pd.DataFrame(
+            {
+                "lambda_angstroms": array_lambda,
+                "f_lambda": array_flambda,
+                "energy_sum": array_energysum,
+            }
+        )
+
+        if getpacketcount:
+            dfdict[dirbin]["packetcount"] = array_pktcount
+
+    return dfdict
 
 
 @lru_cache(maxsize=16)
@@ -378,9 +428,9 @@ def read_emission_absorption_file(emabsfilename: Union[str, Path]) -> pd.DataFra
 
 def get_res_spectrum(
     modelpath: Path,
+    dirbin: int,
     timestepmin: int,
     timestepmax: int = -1,
-    angle: Optional[int] = None,
     res_specdata: Optional[dict[int, pd.DataFrame]] = None,
     fnufilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     args: Optional[argparse.Namespace] = None,
@@ -389,13 +439,6 @@ def get_res_spectrum(
     if timestepmax < 0:
         timestepmax = timestepmin
 
-    # print(f"Reading spectrum at timestep {timestepmin}")
-
-    if angle is None:
-        assert args is not None
-        angle = args.plotviewingangle[0]
-        print("WARNING: no viewing direction specified. Using direction bin {angle}")
-
     if res_specdata is None:
         res_specdata = read_spec_res(modelpath)
         if args and args.average_over_phi_angle:
@@ -403,14 +446,14 @@ def get_res_spectrum(
         if args and args.average_over_theta_angle:
             res_specdata = at.average_direction_bins(res_specdata, overangle="theta")
 
-    nu = res_specdata[angle].loc[:, "nu"].values
+    nu = res_specdata[dirbin].loc[:, "nu"].values
     arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
     arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
 
     # for angle in args.plotviewingangle:
     f_nu = stackspectra(
         [
-            (res_specdata[angle][res_specdata[angle].columns[timestep + 1]], arr_tdelta[timestep])
+            (res_specdata[dirbin][res_specdata[dirbin].columns[timestep + 1]], arr_tdelta[timestep])
             for timestep in range(timestepmin, timestepmax + 1)
         ]
     )

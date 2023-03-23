@@ -237,8 +237,8 @@ def plot_artis_lightcurve(
     maxpacketfiles: Optional[int] = None,
     axistherm=None,
     directionbins: Optional[Sequence[int]] = None,
-    average_over_phi=False,
-    average_over_theta=False,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
     args=None,
 ) -> Optional[pd.DataFrame]:
     lcfilename = None

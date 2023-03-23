@@ -118,7 +118,7 @@ def get_from_packets(
     modelpath: Union[str, Path],
     escape_type: str = "TYPE_RPKT",
     maxpacketfiles: Optional[int] = None,
-    directionbins: Sequence[int] = [-1],
+    directionbins: Collection[int] = [-1],
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     get_cmf_column: bool = True,
@@ -183,6 +183,7 @@ def get_from_packets(
         directionbins=directionbins,
         contribbinlists=contribbinlists,
     )
+
     if at.get_config()["num_processes"] > 1:
         with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
             results = pool.map(processfile, packetsfiles)
@@ -347,7 +348,7 @@ def bolometric_magnitude(
                         if args and args.average_over_phi_angle:
                             res_specdata = at.average_direction_bins(res_specdata, overangle="phi")
                     spectrum = at.spectra.get_res_spectrum(
-                        modelpath, timestep, timestep, angle=angle, res_specdata=res_specdata
+                        modelpath, angle, timestep, timestep, res_specdata=res_specdata
                     )
             else:
                 spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep)
@@ -405,7 +406,7 @@ def get_spectrum_in_filter_range(
             timestep=timestep,
             time=time,
             args=args,
-            angle=angle,
+            dirbin=angle,
             res_specdata=res_specdata,
             modelnumber=modelnumber,
         )
