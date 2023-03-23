@@ -212,6 +212,9 @@ def plot_artis_spectrum(
     modelpath_or_file = Path(modelpath)
     modelpath = Path(modelpath) if Path(modelpath).is_dir() else Path(modelpath).parent
 
+    if directionbins is None:
+        directionbins = [-1]
+
     if not Path(modelpath, "input.txt").exists():
         print(f"Skipping '{modelpath}' (no input.txt found. Not an ARTIS folder?)")
         return None
@@ -274,7 +277,7 @@ def plot_artis_spectrum(
                 average_over_theta=average_over_theta,
             )
 
-            spectrum = viewinganglespectra[-1].copy()
+            spectrum = viewinganglespectra[-1].copy() if -1 in viewinganglespectra else None
 
             if args.outputfile is None:
                 statpath = Path()
@@ -384,23 +387,23 @@ def plot_artis_spectrum(
                     elif args.viewinganglelabelunits == "rad":
                         linelabel = rf"cos($\theta$) = {vpkt_config['cos_theta'][angle]}" if index == 0 else None
                 else:
-                    linelabel = f"bin number {angle}"
+                    linelabel = f"bin number {dirbin}"
                     if args.average_over_phi_angle:
                         (
                             costheta_viewing_angle_bins,
                             phi_viewing_angle_bins,
                         ) = at.get_viewinganglebin_definitions()
-                        assert angle % at.get_viewingdirection_phibincount() == 0
-                        linelabel = costheta_viewing_angle_bins[int(angle // 10)]
+                        assert dirbin % at.get_viewingdirection_phibincount() == 0
+                        linelabel = costheta_viewing_angle_bins[int(dirbin // at.get_viewingdirection_phibincount())]
                     elif args.average_over_theta_angle:
                         (
                             costheta_viewing_angle_bins,
                             phi_viewing_angle_bins,
                         ) = at.get_viewinganglebin_definitions()
-                        assert angle < at.get_viewingdirection_costhetabincount()
-                        linelabel = phi_viewing_angle_bins[int(angle)]
+                        assert dirbin < at.get_viewingdirection_costhetabincount()
+                        linelabel = phi_viewing_angle_bins[int(dirbin)]
 
-                viewinganglespectra[angle].query("@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax").plot(
+                viewinganglespectra[dirbin].query("@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax").plot(
                     x="lambda_angstroms", y=ycolumnname, ax=axis, legend=None, label=linelabel
                 )  # {timeavg:.2f} days {at.get_model_name(modelpath)}
 

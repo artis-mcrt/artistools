@@ -300,7 +300,7 @@ def plot_artis_lightcurve(
         plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkwargs, args)
 
     # check if doing viewing angle stuff, and if so define which data to use
-    angles, angle_definition = at.lightcurve.parse_angle_args(modelpath, args)
+    angles, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
     if args.colorbarcostheta or args.colorbarphi:
         costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
@@ -772,7 +772,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
         modelpath = Path(modelpath)  # Make sure modelpath is defined as path. May not be necessary
 
         # check if doing viewing angle stuff, and if so define which data to use
-        angles, angle_definition = at.lightcurve.parse_angle_args(modelpath, args)
+        angles, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
         for index, angle in enumerate(angles):
             modelname = at.get_model_name(modelpath)
@@ -956,7 +956,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
         modelname = at.get_model_name(modelpath)
         print(f"Reading spectra: {modelname}")
 
-        angles, angle_definition = at.lightcurve.parse_angle_args(modelpath, args)
+        angles, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
         for index, angle in enumerate(angles):
             for plotnumber, filters in enumerate(args.colour_evolution):
