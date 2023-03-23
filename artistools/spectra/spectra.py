@@ -193,7 +193,7 @@ def get_from_packets_worker(
         querystr, inplace=False, local_dict=qlocals
     )
 
-    print(f"  {packetsfile}: {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges ")
+    # print(f"  {packetsfile}: {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges ")
 
     array_energysum_onefile = {dirbin: np.zeros(len(array_lambda), dtype=float) for dirbin in directionbins}
     array_pktcount_onefile = {dirbin: np.zeros(len(array_lambda), dtype=int) for dirbin in directionbins}
@@ -330,7 +330,7 @@ def get_from_packets(
         array_energysum = np.ufunc.reduce(np.add, [r[0][dirbin] for r in results])
 
         if getpacketcount:
-            array_pktcount += np.ufunc.reduce(np.add, [r[1][dirbin] for r in results])
+            array_pktcount = np.ufunc.reduce(np.add, [r[1][dirbin] for r in results])
 
         array_flambda = (
             array_energysum
