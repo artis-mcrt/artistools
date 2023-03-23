@@ -69,6 +69,7 @@ def get_from_packets(
     directionbins: Sequence[int] = [-1],
     average_over_phi: bool = False,
     average_over_theta: bool = False,
+    get_cmf_column: bool = True,
 ) -> dict[int, pd.DataFrame]:
     import artistools.packets
 
@@ -80,8 +81,11 @@ def get_from_packets(
     timearray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
     arr_timedelta = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
     # timearray = np.arange(250, 350, 0.1)
-    _, _, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath, getheadersonly=True, skipabundancecolumns=True)
-    escapesurfacegamma = math.sqrt(1 - (vmax_cmps / 29979245800) ** 2)
+    if get_cmf_column:
+        _, modelmeta = at.inputmodel.get_modeldata(
+            modelpath, getheadersonly=True, skipabundancecolumns=True, printwarningsonly=True
+        )
+        escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
 
     timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
 
@@ -118,7 +122,8 @@ def get_from_packets(
         dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type=escape_type)
 
         if not (dfpackets.empty):
-            dfpackets.eval("t_arrive_cmf_d = escape_time * @escapesurfacegamma / 86400", inplace=True)
+            if get_cmf_column:
+                dfpackets.eval("t_arrive_cmf_d = escape_time * @escapesurfacegamma / 86400", inplace=True)
             if directionbins != [-1]:
                 dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
 
@@ -128,11 +133,21 @@ def get_from_packets(
                 dfpackets_dirbin = dfpackets.query("dirbin in @contribbins") if contribbins != [] else dfpackets
 
                 timebins = pd.cut(
-                    dfpackets_dirbin["t_arrive_d"], timearrayplusend, labels=range(len(timearray)), include_lowest=True
+                    dfpackets_dirbin["t_arrive_d"],
+                    timearrayplusend,
+                    labels=range(len(timearray)),
+                    include_lowest=True,
                 )
                 lcdata[dirbin]["lum"] += dfpackets_dirbin.groupby(timebins).e_rf.sum().values
 
-                lcdata[dirbin]["lum_cmf"] += dfpackets_dirbin.groupby(timebins).e_cmf.sum().values
+                if get_cmf_column:
+                    timebins_cmf = pd.cut(
+                        dfpackets_dirbin["t_arrive_cmf_d"],
+                        timearrayplusend,
+                        labels=range(len(timearray)),
+                        include_lowest=True,
+                    )
+                    lcdata[dirbin]["lum_cmf"] += dfpackets_dirbin.groupby(timebins_cmf).e_cmf.sum().values
 
     for dirbin, contribbins in zip(directionbins, contribbinlists):
         solidanglefactor = float(ndirbins) / len(contribbins) if contribbins != [] else 1.0
@@ -141,14 +156,15 @@ def get_from_packets(
             lcdata[dirbin]["lum"] / nprocs_read * solidanglefactor * (u.erg / u.day).to("solLum"), arr_timedelta
         )
 
-        lcdata[dirbin]["lum_cmf"] = np.divide(
-            lcdata[dirbin]["lum_cmf"]
-            / nprocs_read
-            * solidanglefactor
-            / escapesurfacegamma
-            * (u.erg / u.day).to("solLum"),
-            arr_timedelta,
-        )
+        if get_cmf_column:
+            lcdata[dirbin]["lum_cmf"] = np.divide(
+                lcdata[dirbin]["lum_cmf"]
+                / nprocs_read
+                * solidanglefactor
+                / escapesurfacegamma
+                * (u.erg / u.day).to("solLum"),
+                arr_timedelta,
+            )
 
     return lcdata
 
