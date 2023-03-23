@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 from typing import Optional
 
+import pandas as pd
 import psutil
 
 config: dict[str, Any] = {}
@@ -43,6 +44,7 @@ def setup_config():
     except ImportError:
         print("pyarrow is not available, so falling back to C Pandas engine. Install pyarrow for faster performance")
         config["pandas_engine"] = "c"
+    pd.options.mode.copy_on_write = True
 
     config["figwidth"] = 5
     config["codecomparisondata1path"] = Path(
