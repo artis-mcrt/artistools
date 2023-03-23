@@ -78,9 +78,11 @@ def get_lightcurve_from_packets_worker(
     dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type=escape_type)
     lum = {dirbin: np.zeros(len(tmidarray), dtype=float) for dirbin in directionbins}
     lum_cmf = {dirbin: np.zeros(len(tmidarray), dtype=float) if get_cmf_column else None for dirbin in directionbins}
+
     if not (dfpackets.empty):
         if get_cmf_column:
             dfpackets.eval("t_arrive_cmf_d = escape_time * @escapesurfacegamma / 86400", inplace=True)
+
         if directionbins != [-1]:
             dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
 
@@ -95,7 +97,7 @@ def get_lightcurve_from_packets_worker(
                 labels=range(len(tmidarray)),
                 include_lowest=True,
             )
-            lum[dirbin] += dfpackets_dirbin.groupby(timebins).e_rf.sum().values
+            lum[dirbin] = dfpackets_dirbin.groupby(timebins).e_rf.sum().values
 
             if get_cmf_column:
                 timebins_cmf = pd.cut(
@@ -104,7 +106,7 @@ def get_lightcurve_from_packets_worker(
                     labels=range(len(tmidarray)),
                     include_lowest=True,
                 )
-                lum_cmf[dirbin] += dfpackets_dirbin.groupby(timebins_cmf).e_cmf.sum().values
+                lum_cmf[dirbin] = dfpackets_dirbin.groupby(timebins_cmf).e_cmf.sum().values
 
     return lum, lum_cmf
 
