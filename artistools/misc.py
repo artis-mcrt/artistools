@@ -217,7 +217,7 @@ def average_direction_bins(
 
             del dirbindataframes[dirbin_contrib]
 
-        dirbindataframes[start_bin] /= nphibins  # every nth bin is the average of n bins
+        dirbindataframes[start_bin] /= 1 + len(contribbins)  # every nth bin is the average of n bins
         print(f"bin number {start_bin} = the average of bins {[start_bin] + list(contribbins)}")
 
     return dirbindataframes
