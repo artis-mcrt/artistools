@@ -27,6 +27,8 @@ import artistools.spectra
 def readfile(
     filepath: Union[str, Path],
 ) -> dict[int, pd.DataFrame]:
+    """Read an ARTIS light curve file"""
+
     lcdata: dict[int, pd.DataFrame] = {}
     if "_res" in str(filepath):
         # get a list of dfs with light curves at each viewing angle
@@ -64,18 +66,19 @@ def read_3d_gammalightcurve(
     return res_data
 
 
-def get_lightcurve_from_packets_worker(
-    packetsfile,
-    modelpath,
+def get_from_packets_worker(
+    packetsfile: Union[str, Path],
+    modelpath: Union[str, Path],
     tmidarray,
     timearrayplusend,
-    escape_type,
+    escape_type: str,
     escapesurfacegamma,
-    get_cmf_column,
-    directionbins,
-    contribbinlists,
+    get_cmf_column: bool,
+    directionbins: Sequence[int],
+    contribbinlists: list[Sized],
 ) -> tuple[dict[int, np.ndarray], dict[int, Optional[np.ndarray]]]:
     dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type=escape_type)
+
     lum = {dirbin: np.zeros(len(tmidarray), dtype=float) for dirbin in directionbins}
     lum_cmf = {dirbin: np.zeros(len(tmidarray), dtype=float) if get_cmf_column else None for dirbin in directionbins}
 
@@ -120,7 +123,7 @@ def get_from_packets(
     average_over_theta: bool = False,
     get_cmf_column: bool = True,
 ) -> dict[int, pd.DataFrame]:
-    import artistools.packets
+    """Get ARTIS luminosity vs time from packets files"""
 
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
@@ -170,7 +173,7 @@ def get_from_packets(
             contribbinlists.append([dirbin])
 
     processfile = partial(
-        get_lightcurve_from_packets_worker,
+        get_from_packets_worker,
         modelpath=modelpath,
         tmidarray=tmidarray,
         timearrayplusend=timearrayplusend,
