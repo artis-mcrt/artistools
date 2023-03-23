@@ -46,8 +46,11 @@ def timeshift_fluxscale_co56law(scaletoreftime: Optional[float], spectime: float
 def get_exspec_bins() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     MNUBINS = 1000
     NU_MIN_R = 1e13
-    NU_MAX_R = 5e15
-    print(f"WARNING: assuming {MNUBINS=} {NU_MIN_R=} {NU_MAX_R=}. Check that artis code matches.")
+    NU_MAX_R = 5e16
+
+    print(
+        f"WARNING: assuming {MNUBINS=} {NU_MIN_R=} {NU_MAX_R=}. Check artisoptions.h if you want to exactly match exspec binning."
+    )
 
     c_ang_s = 2.99792458e18
 
@@ -239,6 +242,7 @@ def get_from_packets(
     directionbins: Collection[int] = [-1],
     average_over_phi: bool = False,
     average_over_theta: bool = False,
+    fnufilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
 ) -> pd.DataFrame:
     """Get a spectrum dataframe using the packets files as input."""
     assert not useinternalpackets
@@ -323,6 +327,9 @@ def get_from_packets(
     else:
         results = [processfile(p) for p in packetsfiles]
 
+    if fnufilterfunc:
+        print("Applying filter to ARTIS spectrum")
+
     dfdict = {}
     for dirbin, contribbins in zip(directionbins, contribbinlists):
         solidanglefactor = float(ndirbins) / len(contribbins) if contribbins != [] else 1.0
@@ -342,6 +349,12 @@ def get_from_packets(
             / (u.megaparsec.to("cm") ** 2)
             / nprocs_read
         )
+
+        if fnufilterfunc:
+            arr_nu = 2.99792458e18 / array_lambda
+            array_f_nu = array_flambda * array_lambda / arr_nu
+            array_f_nu = fnufilterfunc(array_f_nu)
+            array_flambda = array_f_nu * arr_nu / array_lambda
 
         dfdict[dirbin] = pd.DataFrame(
             {
@@ -461,7 +474,7 @@ def get_res_spectrum(
     # best to use the filter on this list because it
     # has regular sampling
     if fnufilterfunc:
-        print("Applying filter to ARTIS spectrum")
+        print(f"Applying filter to ARTIS spectrum with dirbin {dirbin}")
         f_nu = fnufilterfunc(f_nu)
 
     dfspectrum = pd.DataFrame({"nu": nu, "f_nu": f_nu})

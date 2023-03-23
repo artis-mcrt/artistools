@@ -275,6 +275,7 @@ def plot_artis_spectrum(
                 directionbins=dbins_get,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
+                fnufilterfunc=filterfunc,
             )
 
             spectrum = viewinganglespectra[-1].copy() if -1 in viewinganglespectra else None
@@ -354,7 +355,7 @@ def plot_artis_spectrum(
         supxmin, supxmax = axis.get_xlim()
 
         for dirbin in directionbins:
-            if dirbin == -1:
+            if dirbin == -1 or dirbin is None:
                 spectrum.query("@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax").plot(
                     x="lambda_angstroms",
                     y=ycolumnname,
