@@ -178,10 +178,6 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
         engine=at.get_config()["pandas_engine"],
     )
 
-    # import datatable as dt
-    # dsk_dfpackets = dt.fread(packetsfile)
-    # dfpackets = dsk_dfpackets.to_pandas()
-
     # space at the end of line made an extra column of Nones
     if dfpackets[dfpackets.columns[-1]].isnull().all():
         dfpackets.drop(labels=dfpackets.columns[-1], axis=1, inplace=True)
