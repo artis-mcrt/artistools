@@ -3,10 +3,12 @@
 # import itertools
 import argparse
 import math
+import multiprocessing
 import os
 from collections.abc import Collection
 from collections.abc import Sequence
 from collections.abc import Sized
+from functools import partial
 from pathlib import Path
 from typing import Any
 from typing import Optional
@@ -62,6 +64,51 @@ def read_3d_gammalightcurve(
     return res_data
 
 
+def get_lightcurve_from_packets_worker(
+    packetsfile,
+    modelpath,
+    tmidarray,
+    timearrayplusend,
+    escape_type,
+    escapesurfacegamma,
+    get_cmf_column,
+    directionbins,
+    contribbinlists,
+) -> tuple[dict[int, np.ndarray], dict[int, Optional[np.ndarray]]]:
+    dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type=escape_type)
+    lum = {dirbin: np.zeros(len(tmidarray), dtype=float) for dirbin in directionbins}
+    lum_cmf = {dirbin: np.zeros(len(tmidarray), dtype=float) if get_cmf_column else None for dirbin in directionbins}
+    if not (dfpackets.empty):
+        if get_cmf_column:
+            dfpackets.eval("t_arrive_cmf_d = escape_time * @escapesurfacegamma / 86400", inplace=True)
+        if directionbins != [-1]:
+            dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
+
+        # print(f"sum of e_cmf {dfpackets['e_cmf'].sum()} e_rf {dfpackets['e_rf'].sum()}")
+
+        for dirbin, contribbins in zip(directionbins, contribbinlists):
+            dfpackets_dirbin = dfpackets.query("dirbin in @contribbins") if contribbins != [] else dfpackets
+
+            timebins = pd.cut(
+                dfpackets_dirbin["t_arrive_d"],
+                timearrayplusend,
+                labels=range(len(tmidarray)),
+                include_lowest=True,
+            )
+            lum[dirbin] += dfpackets_dirbin.groupby(timebins).e_rf.sum().values
+
+            if get_cmf_column:
+                timebins_cmf = pd.cut(
+                    dfpackets_dirbin["t_arrive_cmf_d"],
+                    timearrayplusend,
+                    labels=range(len(tmidarray)),
+                    include_lowest=True,
+                )
+                lum_cmf[dirbin] += dfpackets_dirbin.groupby(timebins_cmf).e_cmf.sum().values
+
+    return lum, lum_cmf
+
+
 def get_from_packets(
     modelpath: Union[str, Path],
     escape_type: str = "TYPE_RPKT",
@@ -86,6 +133,8 @@ def get_from_packets(
             modelpath, getheadersonly=True, skipabundancecolumns=True, printwarningsonly=True
         )
         escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
+    else:
+        escapesurfacegamma = None
 
     timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
 
@@ -94,8 +143,8 @@ def get_from_packets(
         lcdata[dirbin] = pd.DataFrame(
             {
                 "time": tmidarray,
-                "lum": np.zeros_like(timearray, dtype=float),
-                "lum_cmf": np.zeros_like(timearray, dtype=float),
+                "lum": np.zeros_like(tmidarray, dtype=float),
+                "lum_cmf": np.zeros_like(tmidarray, dtype=float),
             }
         )
 
@@ -118,51 +167,39 @@ def get_from_packets(
         else:
             contribbinlists.append([dirbin])
 
-    for packetsfile in packetsfiles:
-        dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type=escape_type)
-
-        if not (dfpackets.empty):
-            if get_cmf_column:
-                dfpackets.eval("t_arrive_cmf_d = escape_time * @escapesurfacegamma / 86400", inplace=True)
-            if directionbins != [-1]:
-                dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
-
-            print(f"sum of e_cmf {dfpackets['e_cmf'].sum()} e_rf {dfpackets['e_rf'].sum()}")
-
-            for dirbin, contribbins in zip(directionbins, contribbinlists):
-                dfpackets_dirbin = dfpackets.query("dirbin in @contribbins") if contribbins != [] else dfpackets
-
-                timebins = pd.cut(
-                    dfpackets_dirbin["t_arrive_d"],
-                    timearrayplusend,
-                    labels=range(len(timearray)),
-                    include_lowest=True,
-                )
-                lcdata[dirbin]["lum"] += dfpackets_dirbin.groupby(timebins).e_rf.sum().values
-
-                if get_cmf_column:
-                    timebins_cmf = pd.cut(
-                        dfpackets_dirbin["t_arrive_cmf_d"],
-                        timearrayplusend,
-                        labels=range(len(timearray)),
-                        include_lowest=True,
-                    )
-                    lcdata[dirbin]["lum_cmf"] += dfpackets_dirbin.groupby(timebins_cmf).e_cmf.sum().values
+    processfile = partial(
+        get_lightcurve_from_packets_worker,
+        modelpath=modelpath,
+        tmidarray=tmidarray,
+        timearrayplusend=timearrayplusend,
+        escape_type=escape_type,
+        escapesurfacegamma=escapesurfacegamma,
+        get_cmf_column=get_cmf_column,
+        directionbins=directionbins,
+        contribbinlists=contribbinlists,
+    )
+    if at.get_config()["num_processes"] > 1:
+        with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
+            results = pool.map(processfile, packetsfiles)
+            pool.close()
+            pool.join()
+            pool.terminate()
+    else:
+        results = [processfile(p) for p in packetsfiles]
 
     for dirbin, contribbins in zip(directionbins, contribbinlists):
         solidanglefactor = float(ndirbins) / len(contribbins) if contribbins != [] else 1.0
 
+        summed_e_rf = np.ufunc.reduce(np.add, [arr_e_rf[dirbin] for arr_e_rf, _ in results])
+
         lcdata[dirbin]["lum"] = np.divide(
-            lcdata[dirbin]["lum"] / nprocs_read * solidanglefactor * (u.erg / u.day).to("solLum"), arr_timedelta
+            summed_e_rf / nprocs_read * solidanglefactor * (u.erg / u.day).to("solLum"), arr_timedelta
         )
 
         if get_cmf_column:
+            summed_e_cmf = np.ufunc.reduce(np.add, [arr_e_cmf[dirbin] for _, arr_e_cmf in results])
             lcdata[dirbin]["lum_cmf"] = np.divide(
-                lcdata[dirbin]["lum_cmf"]
-                / nprocs_read
-                * solidanglefactor
-                / escapesurfacegamma
-                * (u.erg / u.day).to("solLum"),
+                summed_e_cmf / nprocs_read * solidanglefactor / escapesurfacegamma * (u.erg / u.day).to("solLum"),
                 arr_timedelta,
             )
 
