@@ -41,6 +41,7 @@ def setup_config():
 
         config["pandas_engine"] = "pyarrow"
     except ImportError:
+        print("pyarrow is not available, so falling back to C Pandas engine. Install pyarrow for faster performance")
         config["pandas_engine"] = "c"
 
     config["figwidth"] = 5
