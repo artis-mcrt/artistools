@@ -23,17 +23,16 @@ from matplotlib.artist import Artist
 
 import artistools as at
 import artistools.packets
-import artistools.radfield
-from artistools.spectra.spectra import get_from_packets
-from artistools.spectra.spectra import get_reference_spectrum
-from artistools.spectra.spectra import get_res_spectrum
-from artistools.spectra.spectra import get_specpol_data
-from artistools.spectra.spectra import get_spectrum
-from artistools.spectra.spectra import get_vspecpol_spectrum
-from artistools.spectra.spectra import make_averaged_vspecfiles
-from artistools.spectra.spectra import make_virtual_spectra_summed_file
-from artistools.spectra.spectra import print_integrated_flux
-from artistools.spectra.spectra import timeshift_fluxscale_co56law
+from .spectra import get_from_packets
+from .spectra import get_reference_spectrum
+from .spectra import get_res_spectrum
+from .spectra import get_specpol_data
+from .spectra import get_spectrum
+from .spectra import get_vspecpol_spectrum
+from .spectra import make_averaged_vspecfiles
+from .spectra import make_virtual_spectra_summed_file
+from .spectra import print_integrated_flux
+from .spectra import timeshift_fluxscale_co56law
 
 hatches = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]  # ,
 
@@ -764,6 +763,8 @@ def make_emissionabsorption_plot(
             axis.set_ylabel(r"J$_\lambda$ [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]")
 
     if args.showbinedges:
+        import artistools.radfield
+
         radfielddata = at.radfield.read_files(modelpath, timestep=timestepmax, modelgridindex=30)
         binedges = at.radfield.get_binedges(radfielddata)
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5, color="red", label="", zorder=-1, alpha=0.4)
