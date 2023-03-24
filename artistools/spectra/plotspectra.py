@@ -23,15 +23,15 @@ from matplotlib.artist import Artist
 
 import artistools as at
 import artistools.packets
-from artistools.spectra import get_from_packets
-from artistools.spectra import get_reference_spectrum
-from artistools.spectra import get_specpol_data
-from artistools.spectra import get_spectrum
-from artistools.spectra import get_vspecpol_spectrum
-from artistools.spectra import make_averaged_vspecfiles
-from artistools.spectra import make_virtual_spectra_summed_file
-from artistools.spectra import print_integrated_flux
-from artistools.spectra import timeshift_fluxscale_co56law
+from .spectra import get_from_packets
+from .spectra import get_reference_spectrum
+from .spectra import get_specpol_data
+from .spectra import get_spectrum
+from .spectra import get_vspecpol_spectrum
+from .spectra import make_averaged_vspecfiles
+from .spectra import make_virtual_spectra_summed_file
+from .spectra import print_integrated_flux
+from .spectra import timeshift_fluxscale_co56law
 
 hatches = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]  # ,
 
