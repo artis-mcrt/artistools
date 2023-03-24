@@ -7,6 +7,7 @@ import os
 import re
 from collections import namedtuple
 from collections.abc import Collection
+from collections.abc import Iterable
 from collections.abc import Sequence
 from collections.abc import Sized
 from functools import lru_cache
@@ -127,11 +128,11 @@ def get_from_packets_worker(
     use_escapetime: bool,
     getpacketcount: bool,
     escapesurfacegamma: Optional[float],
-    directionbins: Sequence[Optional[int]],
+    directionbins: Sequence[int],
     average_over_phi: bool,
     average_over_theta: bool,
     nphibins: int,
-) -> tuple[dict[Optional[int], np.ndarray], dict[Optional[int], np.ndarray]]:
+) -> tuple[dict[int, np.ndarray], dict[int, np.ndarray]]:
     dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT").query(
         querystr, inplace=False, local_dict=qlocals
     )
@@ -200,8 +201,8 @@ def get_from_packets(
 
     if use_escapetime:
         modeldata, _ = at.inputmodel.get_modeldata(Path(packetsfiles[0]).parent)
-        vmax = modeldata.iloc[-1].velocity_outer * u.km / u.s
-        escapesurfacegamma = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
+        vmax_beta = modeldata.iloc[-1].velocity_outer * 299792.458
+        escapesurfacegamma = math.sqrt(1 - vmax_beta**2)
     else:
         escapesurfacegamma = None
 
@@ -215,14 +216,9 @@ def get_from_packets(
     else:
         array_lambdabinedges, array_lambda, delta_lambda = get_exspec_bins()
 
-    array_energysum = np.zeros_like(array_lambda, dtype=float)  # total packet energy sum of each bin
-    if getpacketcount:
-        array_pktcount = np.zeros_like(array_lambda, dtype=int)  # number of packets in each bin
-
     timelow = timelowdays * 86400.0
     timehigh = timehighdays * 86400.0
 
-    nprocs_read = len(packetsfiles)
     querystr = "@nu_min <= nu_rf < @nu_max and trueemissiontype >= 0 and "
     if not use_escapetime:
         querystr += "@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / 29979245800) < @timehigh"
@@ -255,14 +251,20 @@ def get_from_packets(
         nphibins=nphibins,
     )
 
-    if at.get_config()["num_processes"] > 1:
-        with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
-            results = pool.map(processfile, packetsfiles)
-            pool.close()
-            pool.join()
-            pool.terminate()
-    else:
-        results = [processfile(p) for p in packetsfiles]
+    # total packet energy sum of each bin
+    array_energysum = {dirbin: np.zeros_like(array_lambda, dtype=float) for dirbin in directionbins}
+    if getpacketcount:
+        # number of packets in each bin
+        array_pktcount = {dirbin: np.zeros_like(array_lambda, dtype=int) for dirbin in directionbins}
+
+    with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
+        for arr_energysum, arr_pktcount in pool.imap_unordered(processfile, packetsfiles):
+            for dirbin in directionbins:
+                array_energysum[dirbin] += arr_energysum[dirbin]
+                if getpacketcount:
+                    array_pktcount[dirbin] += arr_pktcount[dirbin]
+
+    nprocs_read = len(packetsfiles)
 
     if fnufilterfunc:
         print("Applying filter to ARTIS spectrum")
@@ -277,17 +279,11 @@ def get_from_packets(
         elif average_over_theta:
             solidanglefactor = nphibins
 
-        array_energysum = np.ufunc.reduce(np.add, [r[0][dirbin] for r in results])
-
-        if getpacketcount:
-            array_pktcount = np.ufunc.reduce(np.add, [r[1][dirbin] for r in results])
-
         array_flambda = (
-            array_energysum
+            array_energysum[dirbin]
             / delta_lambda
             / (timehigh - timelow)
-            / 4
-            / math.pi
+            / (4 * math.pi)
             * solidanglefactor
             / (u.megaparsec.to("cm") ** 2)
             / nprocs_read
@@ -303,12 +299,12 @@ def get_from_packets(
             {
                 "lambda_angstroms": array_lambda,
                 "f_lambda": array_flambda,
-                "energy_sum": array_energysum,
+                "energy_sum": array_energysum[dirbin],
             }
         )
 
         if getpacketcount:
-            dfdict[dirbin]["packetcount"] = array_pktcount
+            dfdict[dirbin]["packetcount"] = array_pktcount[dirbin]
 
     return dfdict
 
