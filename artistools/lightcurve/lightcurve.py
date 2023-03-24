@@ -159,7 +159,7 @@ def get_from_packets(
 
     contribbinlists: list[Sized] = []
     for dirbin in directionbins:
-        if dirbin == -1:
+        if dirbin == -1 or dirbin is None:
             contribbinlists.append([])
             continue
 
