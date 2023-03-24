@@ -252,17 +252,17 @@ def get_from_packets(
     )
 
     # total packet energy sum of each bin
-    array_energysum = {dirbin: np.zeros_like(array_lambda, dtype=float) for dirbin in directionbins}
+    array_energysum_dirbins = {dirbin: np.zeros_like(array_lambda, dtype=float) for dirbin in directionbins}
     if getpacketcount:
         # number of packets in each bin
-        array_pktcount = {dirbin: np.zeros_like(array_lambda, dtype=int) for dirbin in directionbins}
+        array_pktcount_dirbins = {dirbin: np.zeros_like(array_lambda, dtype=int) for dirbin in directionbins}
 
     with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
         for arr_energysum, arr_pktcount in pool.imap_unordered(processfile, packetsfiles):
             for dirbin in directionbins:
-                array_energysum[dirbin] += arr_energysum[dirbin]
+                array_energysum_dirbins[dirbin] += arr_energysum[dirbin]
                 if getpacketcount:
-                    array_pktcount[dirbin] += arr_pktcount[dirbin]
+                    array_pktcount_dirbins[dirbin] += arr_pktcount[dirbin]
 
     nprocs_read = len(packetsfiles)
 
@@ -280,7 +280,7 @@ def get_from_packets(
             solidanglefactor = nphibins
 
         array_flambda = (
-            array_energysum[dirbin]
+            array_energysum_dirbins[dirbin]
             / delta_lambda
             / (timehigh - timelow)
             / (4 * math.pi)
@@ -299,12 +299,12 @@ def get_from_packets(
             {
                 "lambda_angstroms": array_lambda,
                 "f_lambda": array_flambda,
-                "energy_sum": array_energysum[dirbin],
+                "energy_sum": array_energysum_dirbins[dirbin],
             }
         )
 
         if getpacketcount:
-            dfdict[dirbin]["packetcount"] = array_pktcount[dirbin]
+            dfdict[dirbin]["packetcount"] = array_pktcount_dirbins[dirbin]
 
     return dfdict
 
