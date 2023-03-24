@@ -173,7 +173,7 @@ def gather_res_data(res_df: pd.DataFrame, index_of_repeated_value: int = 1) -> d
     index_of_repeated_value is the value to look for repeating eg. time of ts 0.
     In spec_res files it's 1, but in lc_res file it's 0"""
     index_to_split = res_df.index[res_df.iloc[:, index_of_repeated_value] == res_df.iloc[0, index_of_repeated_value]]
-    res_data = {}
+    res_data: dict[int, pd.DataFrame] = {}
     for i, index_value in enumerate(index_to_split):
         if index_value != index_to_split[-1]:
             chunk = res_df.iloc[index_to_split[i] : index_to_split[i + 1], :]
@@ -186,7 +186,8 @@ def gather_res_data(res_df: pd.DataFrame, index_of_repeated_value: int = 1) -> d
 
 
 def average_direction_bins(
-    dirbindataframes: dict[int, pd.DataFrame], overangle: Literal["phi", "theta"], dirbin: Optional[int] = None
+    dirbindataframes: dict[int, pd.DataFrame],
+    overangle: Literal["phi", "theta"],
 ) -> dict[int, pd.DataFrame]:
     """Will average dict of direction-binned DataFrames according to the phi or theta angle"""
     dirbincount = at.get_viewingdirectionbincount()
@@ -201,12 +202,9 @@ def average_direction_bins(
 
     # we will make a copy to ensure that we don't cause side effects from altering the original DataFrames
     # that might be returned again later by an lru_cached function
-    dirbindataframesout = {}
+    dirbindataframesout: dict[int, pd.DataFrame] = {}
 
     for start_bin in start_bin_range:
-        if dirbin is not None and start_bin != dirbin:
-            continue
-
         dirbindataframesout[start_bin] = dirbindataframes[start_bin].copy()
         dirbindataframesout[start_bin].reset_index(drop=True, inplace=True)
 

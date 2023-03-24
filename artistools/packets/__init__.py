@@ -133,7 +133,7 @@ def add_derived_columns(
     if "em_timestep" in colnames:
         dfpackets["em_timestep"] = dfpackets.apply(em_timestep, axis=1)
 
-    if "angle_bin" in colnames:
+    if any([x in colnames for x in ["angle_bin", "dirbin", "costhetabin", "phibin"]]):
         dfpackets = bin_packet_directions(modelpath, dfpackets)
 
     return dfpackets
@@ -380,7 +380,7 @@ def bin_packet_directions(modelpath: Union[Path, str], dfpackets: pd.DataFrame) 
 
     costheta = np.dot(pktdirvecs, syn_dir)
     arr_costhetabin = ((costheta + 1) / 2.0 * ncosthetabins).astype(int)
-    # dfpackets["costhetabin"] = arr_costhetabin
+    dfpackets["costhetabin"] = arr_costhetabin
 
     arr_vec1 = np.cross(pktdirvecs, syn_dir)
     xhat = np.array([1.0, 0.0, 0.0])
@@ -394,7 +394,7 @@ def bin_packet_directions(modelpath: Union[Path, str], dfpackets: pd.DataFrame) 
     arr_phibin[filta] = np.arccos(arr_cosphi[filta]) / 2.0 / np.pi * nphibins
     filtb = np.invert(filta)
     arr_phibin[filtb] = (np.arccos(arr_cosphi[filtb]) + np.pi) / 2.0 / np.pi * nphibins
-    # dfpackets["phibin"] = arr_phibin
+    dfpackets["phibin"] = arr_phibin
 
     dfpackets["dirbin"] = (arr_costhetabin * nphibins) + arr_phibin
 

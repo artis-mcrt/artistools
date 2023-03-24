@@ -22,8 +22,8 @@ def get_bol_lc_from_spec(modelpath):
             time = float(time)
             if 5 < time < 80:
                 spectrum = at.spectra.get_spectrum(
-                    modelpath=modelpath, dirbin=angle, timestepmin=timestep, timestepmax=timestep
-                )
+                    modelpath=modelpath, directionbins=[angle], timestepmin=timestep, timestepmax=timestep
+                )[angle]
                 integrated_flux = np.trapz(spectrum["f_lambda"], spectrum["lambda_angstroms"])
                 integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to("cm"), 2)
                 bol_luminosity.append(integrated_luminosity)

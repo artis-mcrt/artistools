@@ -236,7 +236,7 @@ def plot_artis_lightcurve(
     frompackets: bool = False,
     maxpacketfiles: Optional[int] = None,
     axistherm=None,
-    directionbins: Optional[Sequence[int]] = None,
+    directionbins: Sequence[int] = [-1],
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     args=None,

@@ -159,7 +159,7 @@ def get_from_packets(
 
     contribbinlists: list[Sized] = []
     for dirbin in directionbins:
-        if dirbin == -1 or dirbin is None:
+        if dirbin == -1:
             contribbinlists.append([])
             continue
 
@@ -215,8 +215,10 @@ def get_from_packets(
 def generate_band_lightcurve_data(
     modelpath: Path,
     args: argparse.Namespace,
-    angle: Optional[int] = None,
+    angle: int = -1,
     modelnumber: Optional[int] = None,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
 ) -> dict:
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
     from scipy.interpolate import interp1d
@@ -243,11 +245,10 @@ def generate_band_lightcurve_data(
             print("WARNING: no direction-resolved spectra available. Using angle-averaged spectra.")
 
         specfilename = at.firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
+        specdata = pd.read_csv(specfilename, delim_whitespace=True)
         if "specpol.out" in str(specfilename):
-            specdata = pd.read_csv(specfilename, delim_whitespace=True)
             timearray = [i for i in specdata.columns.values[1:] if i[-2] != "."]  # Ignore Q and U values in pol file
         else:
-            specdata = pd.read_csv(specfilename, delim_whitespace=True)
             timearray = specdata.columns.values[1:]
 
     filters_dict = {}
@@ -256,22 +257,15 @@ def generate_band_lightcurve_data(
 
     filters_list = args.filter
 
-    res_specdata = None
-    if angle is not None and angle != -1:
-        try:
-            res_specdata = at.spectra.read_spec_res(modelpath)
-            if args and args.average_over_phi_angle:
-                res_specdata = at.average_direction_bins(res_specdata, overangle="phi")
-            if args and args.average_over_theta_angle:
-                res_specdata = at.average_direction_bins(res_specdata, overangle="theta")
-
-        except FileNotFoundError:
-            pass
-
     for filter_name in filters_list:
         if filter_name == "bol":
             times, bol_magnitudes = bolometric_magnitude(
-                modelpath, timearray, args, angle=angle, res_specdata=res_specdata
+                modelpath,
+                timearray,
+                args,
+                angle=angle,
+                average_over_phi=args.average_over_phi_angle,
+                average_over_theta=args.average_over_theta_angle,
             )
             filters_dict["bol"] = [
                 (time, bol_magnitude)
@@ -294,15 +288,16 @@ def generate_band_lightcurve_data(
             time = float(time)
             if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
                 wavelength_from_spectrum, flux = get_spectrum_in_filter_range(
-                    modelpath,
-                    timestep,
-                    time,
-                    wavefilter_min,
-                    wavefilter_max,
-                    angle,
-                    res_specdata=res_specdata,
+                    modelpath=modelpath,
+                    timestep=timestep,
+                    time=time,
+                    wavefilter_min=wavefilter_min,
+                    wavefilter_max=wavefilter_max,
+                    angle=angle,
                     modelnumber=modelnumber,
                     args=args,
+                    average_over_phi=args.average_over_phi_angle,
+                    average_over_theta=args.average_over_theta_angle,
                 )
 
                 if len(wavelength_from_spectrum) > len(wavefilter):
@@ -330,8 +325,9 @@ def bolometric_magnitude(
     modelpath: Path,
     timearray: Collection[float],
     args: argparse.Namespace,
-    angle: Optional[int] = None,
-    res_specdata: Optional[dict[int, pd.DataFrame]] = None,
+    angle: int = -1,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
 ) -> tuple[list[float], list[float]]:
     magnitudes = []
     times = []
@@ -339,20 +335,20 @@ def bolometric_magnitude(
     for timestep, time in enumerate(timearray):
         time = float(time)
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
-            if angle is not None and angle != -1:
+            if angle != -1:
                 if args.plotvspecpol:
                     spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
                 else:
                     spectrum = at.spectra.get_spectrum(
                         modelpath=modelpath,
-                        dirbin=angle,
+                        directionbins=[angle],
                         timestepmin=timestep,
                         timestepmax=timestep,
-                        average_over_phi=args.average_over_phi_angle,
-                        average_over_theta=args.average_over_theta_angle,
-                    )
+                        average_over_phi=average_over_phi,
+                        average_over_theta=average_over_theta,
+                    )[angle]
             else:
-                spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)
+                spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]
 
             integrated_flux = np.trapz(spectrum["f_lambda"], spectrum["lambda_angstroms"])
             integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to("cm"), 2)
@@ -395,22 +391,23 @@ def get_spectrum_in_filter_range(
     time: float,
     wavefilter_min: float,
     wavefilter_max: float,
-    angle: Optional[int] = None,
-    res_specdata: Optional[dict[int, pd.DataFrame]] = None,
+    angle: int = -1,
     modelnumber: Optional[int] = None,
     spectrum: Optional[pd.DataFrame] = None,
     args: Optional[argparse.Namespace] = None,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
-    if spectrum is None:
-        spectrum = at.spectra.get_spectrum_at_time(
-            Path(modelpath),
-            timestep=timestep,
-            time=time,
-            args=args,
-            dirbin=angle,
-            res_specdata=res_specdata,
-            modelnumber=modelnumber,
-        )
+    spectrum = at.spectra.get_spectrum_at_time(
+        Path(modelpath),
+        timestep=timestep,
+        time=time,
+        args=args,
+        dirbin=angle,
+        modelnumber=modelnumber,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+    )
 
     wavelength_from_spectrum, flux = [], []
     for wavelength, flambda in zip(spectrum["lambda_angstroms"], spectrum["f_lambda"]):

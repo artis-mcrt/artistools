@@ -89,7 +89,7 @@ def get_spectrum_at_time(
     timestep: int,
     time: float,
     args: Optional[argparse.Namespace],
-    dirbin: Optional[int] = None,
+    dirbin: int = -1,
     res_specdata: Optional[dict[int, pd.DataFrame]] = None,
     modelnumber: Optional[int] = None,
     average_over_phi: Optional[bool] = None,
@@ -107,7 +107,7 @@ def get_spectrum_at_time(
 
     spectrum = get_spectrum(
         modelpath=modelpath,
-        dirbin=dirbin,
+        directionbins=[dirbin],
         timestepmin=timestep,
         timestepmax=timestep,
         average_over_phi=average_over_phi,
@@ -127,9 +127,10 @@ def get_from_packets_worker(
     use_escapetime: bool,
     getpacketcount: bool,
     escapesurfacegamma: Optional[float],
-    directionbins: Sequence[int],
-    contribbinlists: list[Sized],
-) -> tuple[dict[int, np.ndarray], dict[int, np.ndarray]]:
+    directionbins: Sequence[Optional[int]],
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
+) -> tuple[dict[Optional[int], np.ndarray], dict[Optional[int], np.ndarray]]:
     dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT").query(
         querystr, inplace=False, local_dict=qlocals
     )
@@ -142,8 +143,18 @@ def get_from_packets_worker(
     if directionbins != [-1]:
         dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
 
-    for dirbin, contribbins in zip(directionbins, contribbinlists):
-        dfpackets_dirbin = dfpackets.query("dirbin in @contribbins") if contribbins != [] else dfpackets
+    for dirbin in directionbins:
+        if dirbin != -1:
+            dfpackets_dirbin = dfpackets
+        else:
+            if average_over_phi:
+                querystr = "costhetabin * 10 == @dirbin"
+            elif average_over_theta:
+                querystr = "phibin == @dirbin"
+            else:
+                querystr = "dirbin == @dirbin"
+
+            dfpackets_dirbin = dfpackets.query(querystr)
 
         dfpackets_dirbin.eval("lambda_rf = 2.99792458e18 / nu_rf", inplace=True, local_dict=qlocals)
         wl_bins = pd.cut(
@@ -253,7 +264,8 @@ def get_from_packets(
         getpacketcount=getpacketcount,
         escapesurfacegamma=escapesurfacegamma,
         directionbins=directionbins,
-        contribbinlists=contribbinlists,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
     )
 
     if at.get_config()["num_processes"] > 1:
@@ -324,9 +336,9 @@ def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
         )
 
     print(f"Reading {specfilename} (in read_spec_res)")
-    specdata = pd.read_csv(specfilename, delim_whitespace=True, header=None, dtype=str)
+    res_specdata_in = pd.read_csv(specfilename, delim_whitespace=True, header=None, dtype=str)
 
-    res_specdata: dict[int, pd.DataFrame] = at.gather_res_data(specdata)
+    res_specdata: dict[int, pd.DataFrame] = at.gather_res_data(res_specdata_in)
 
     columns = res_specdata[0].iloc[0]
     for dirbin in res_specdata.keys():
@@ -381,17 +393,20 @@ def get_spectrum(
     modelpath: Path,
     timestepmin: int,
     timestepmax: Optional[int] = None,
-    dirbin: Optional[int] = None,
+    directionbins: Sequence[int] = [-1],
     fnufilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     average_over_theta: bool = False,
     average_over_phi: bool = False,
     stokesparam: Literal["I", "Q", "U"] = "I",
-) -> pd.DataFrame:
+) -> dict[int, pd.DataFrame]:
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin
 
-    if dirbin is None or dirbin < 0:
+    # keys are direction bins (or -1 for spherical average)
+    specdata: dict[int, pd.DataFrame] = {}
+
+    if -1 in directionbins:
         # spherically averaged spectra
         if stokesparam == "I":
             try:
@@ -399,46 +414,49 @@ def get_spectrum(
 
                 print(f"Reading {specfilename}")
 
-                specdata = pd.read_csv(specfilename, delim_whitespace=True)
-                specdata.rename(columns={"0": "nu"}, inplace=True)
+                specdata[-1] = pd.read_csv(specfilename, delim_whitespace=True)
+                specdata[-1].rename(columns={"0": "nu"}, inplace=True)
             except FileNotFoundError:
-                specdata = get_specpol_data(angle=None, modelpath=modelpath)[stokesparam]
+                specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
 
         else:
-            specdata = get_specpol_data(angle=None, modelpath=modelpath)[stokesparam]
+            specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
 
-    else:
+    if any([dirbin != -1 for dirbin in directionbins]):
         assert stokesparam == "I"
-        res_specdata = get_spec_res(
-            modelpath=modelpath, average_over_theta=average_over_theta, average_over_phi=average_over_phi
+        specdata.update(
+            get_spec_res(modelpath=modelpath, average_over_theta=average_over_theta, average_over_phi=average_over_phi)
         )
 
-        specdata = res_specdata[dirbin]
+    specdataout: dict[int, pd.DataFrame] = {}
+    for dirbin in directionbins:
+        nu = specdata[dirbin].loc[:, "nu"].values
+        arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
+        arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
 
-    nu = specdata.loc[:, "nu"].values
-    arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
-    arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
+        f_nu = stackspectra(
+            [
+                (specdata[dirbin][specdata[dirbin].columns[timestep + 1]], arr_tdelta[timestep])
+                for timestep in range(timestepmin, timestepmax + 1)
+            ]
+        )
 
-    f_nu = stackspectra(
-        [
-            (specdata[specdata.columns[timestep + 1]], arr_tdelta[timestep])
-            for timestep in range(timestepmin, timestepmax + 1)
-        ]
-    )
+        # best to use the filter on this list because it
+        # has regular sampling
+        if fnufilterfunc:
+            if dirbin == directionbins[0]:
+                print("Applying filter to ARTIS spectrum")
+            f_nu = fnufilterfunc(f_nu)
 
-    # best to use the filter on this list because it
-    # has regular sampling
-    if fnufilterfunc:
-        print(f"Applying filter to ARTIS spectrum with dirbin {dirbin}")
-        f_nu = fnufilterfunc(f_nu)
+        dfspectrum = pd.DataFrame({"nu": nu, "f_nu": f_nu})
+        dfspectrum.sort_values(by="nu", ascending=False, inplace=True)
 
-    dfspectrum = pd.DataFrame({"nu": nu, "f_nu": f_nu})
-    dfspectrum.sort_values(by="nu", ascending=False, inplace=True)
+        dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18}, inplace=True)
+        dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms", inplace=True)
 
-    dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18}, inplace=True)
-    dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms", inplace=True)
+        specdataout[dirbin] = dfspectrum
 
-    return dfspectrum
+    return specdataout
 
 
 def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
@@ -526,11 +544,11 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
 
 
 def get_specpol_data(
-    angle: Optional[int] = None, modelpath: Optional[Path] = None, specdata: Optional[pd.DataFrame] = None
+    angle: int = -1, modelpath: Optional[Path] = None, specdata: Optional[pd.DataFrame] = None
 ) -> dict[str, pd.DataFrame]:
     if specdata is None:
         assert modelpath is not None
-        if angle is None or angle == -1:
+        if angle == -1:
             specfilename = at.firstexisting("specpol.out", folder=modelpath, tryzipped=True)
         else:
             specfilename = at.firstexisting(f"specpol_res_{angle}.out", folder=modelpath, tryzipped=True)
@@ -1329,7 +1347,7 @@ def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
         arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
 
         for timestep in range(timestepmin, timestepmax + 1):
-            dfspectrum = get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)
+            dfspectrum = get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]
             tmid = arr_tmid[timestep]
 
             outfilepath = outdirectory / f"spectrum_ts{timestep:02.0f}_{tmid:.2f}d.txt"
