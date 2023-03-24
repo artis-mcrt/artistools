@@ -10,7 +10,6 @@ from typing import Union
 
 import numpy as np
 import pandas as pd
-import pyarrow
 
 import artistools as at
 
@@ -179,7 +178,7 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
             skip_blank_lines=True,
             engine=at.get_config()["pandas_engine"],
         )
-    except pyarrow.lib.ArrowInvalid as e:
+    except Exception as e:
         print(f"Error occured in file {packetsfile}")
         raise e
 
