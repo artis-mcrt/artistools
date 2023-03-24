@@ -128,8 +128,9 @@ def get_from_packets_worker(
     getpacketcount: bool,
     escapesurfacegamma: Optional[float],
     directionbins: Sequence[Optional[int]],
-    average_over_phi: bool = False,
-    average_over_theta: bool = False,
+    average_over_phi: bool,
+    average_over_theta: bool,
+    nphibins: int,
 ) -> tuple[dict[Optional[int], np.ndarray], dict[Optional[int], np.ndarray]]:
     dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT").query(
         querystr, inplace=False, local_dict=qlocals
@@ -144,21 +145,21 @@ def get_from_packets_worker(
         dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
 
     for dirbin in directionbins:
-        if dirbin != -1:
+        if dirbin == -1:
             dfpackets_dirbin = dfpackets
         else:
             if average_over_phi:
-                querystr = "costhetabin * 10 == @dirbin"
+                dirbinquerystr = "costhetabin * 10 == @dirbin"
             elif average_over_theta:
-                querystr = "phibin == @dirbin"
+                dirbinquerystr = "phibin == @dirbin"
             else:
-                querystr = "dirbin == @dirbin"
+                dirbinquerystr = "dirbin == @dirbin"
 
-            dfpackets_dirbin = dfpackets.query(querystr)
+            dfpackets_dirbin = dfpackets.query(dirbinquerystr)
 
-        dfpackets_dirbin.eval("lambda_rf = 2.99792458e18 / nu_rf", inplace=True, local_dict=qlocals)
+        lambda_angstroms = 2.99792458e18 / dfpackets_dirbin.nu_rf
         wl_bins = pd.cut(
-            x=dfpackets_dirbin["lambda_rf"],
+            x=lambda_angstroms,
             bins=array_lambdabinedges,
             right=True,
             labels=range(len(array_lambda)),
@@ -232,21 +233,6 @@ def get_from_packets(
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     ndirbins = at.get_viewingdirectionbincount()
 
-    contribbinlists: list[Sized] = []
-    for dirbin in directionbins:
-        if dirbin == -1:
-            contribbinlists.append([])
-            continue
-
-        if average_over_phi and average_over_theta:
-            assert False
-        elif average_over_phi:
-            contribbinlists.append(range(dirbin, dirbin + nphibins))
-        elif average_over_theta:
-            contribbinlists.append(range(dirbin, ndirbins, nphibins))
-        else:
-            contribbinlists.append([dirbin])
-
     processfile = partial(
         get_from_packets_worker,
         modelpath=modelpath,
@@ -266,6 +252,7 @@ def get_from_packets(
         directionbins=directionbins,
         average_over_phi=average_over_phi,
         average_over_theta=average_over_theta,
+        nphibins=nphibins,
     )
 
     if at.get_config()["num_processes"] > 1:
@@ -281,8 +268,14 @@ def get_from_packets(
         print("Applying filter to ARTIS spectrum")
 
     dfdict = {}
-    for dirbin, contribbins in zip(directionbins, contribbinlists):
-        solidanglefactor = float(ndirbins) / len(contribbins) if contribbins != [] else 1.0
+    for dirbin in directionbins:
+        if dirbin == -1:
+            solidanglefactor = 1.0
+        elif average_over_phi:
+            solidanglefactor = ncosthetabins
+            assert not average_over_theta
+        elif average_over_theta:
+            solidanglefactor = nphibins
 
         array_energysum = np.ufunc.reduce(np.add, [r[0][dirbin] for r in results])
 
