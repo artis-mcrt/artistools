@@ -259,7 +259,7 @@ def get_grid_mapping(modelpath: Union[Path, str]) -> tuple[dict[int, list[int]],
 
     modelpath = Path(modelpath)
     if modelpath.is_dir():
-        filename = firstexisting("grid.out", tryzipped=True, path=modelpath)
+        filename = firstexisting("grid.out", tryzipped=True, folder=modelpath)
     else:
         filename = Path(modelpath)
 
@@ -328,7 +328,7 @@ def vec_len(vec: Union[Sequence, np.ndarray[Any, Any]]) -> float:
 @lru_cache(maxsize=16)
 def get_nu_grid(modelpath: Path) -> np.ndarray[Any, np.dtype[np.float64]]:
     """Get an array of frequencies at which the ARTIS spectra are binned by exspec."""
-    specfilename = firstexisting(["spec.out", "specpol.out"], path=modelpath, tryzipped=True)
+    specfilename = firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     return specdata.loc[:, "0"].values
 
@@ -367,7 +367,7 @@ def get_deposition(modelpath: Path) -> pd.DataFrame:
 def get_timestep_times(modelpath: Path) -> list[str]:
     """Return a list of the mid time in days of each timestep from a spec.out file."""
     try:
-        specfilename = firstexisting(["spec.out", "specpol.out"], path=modelpath, tryzipped=True)
+        specfilename = firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
         time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
         return list(time_columns.columns[1:])
     except FileNotFoundError:
@@ -727,10 +727,10 @@ def zopen(filename: Union[Path, str], mode: str):  # type: ignore
 
 def firstexisting(
     filelist: Sequence[Union[str, Path]],
-    path: Union[Path, str] = Path("."),
+    folder: Union[Path, str] = Path("."),
     tryzipped: bool = True,
 ) -> Path:
-    """Return the first existing file in file list. If none exists, raise exception."""
+    """Return the first existing file in file list. If none exist, raise exception."""
     if isinstance(filelist, str) or isinstance(filelist, Path):
         filelist = [filelist]
 
@@ -739,29 +739,34 @@ def firstexisting(
         if tryzipped:
             filenamexz = str(filename) if str(filename).endswith(".xz") else str(filename) + ".xz"
             if filenamexz not in filelist:
-                fullpaths.append(Path(path) / filenamexz)
+                fullpaths.append(Path(folder) / filenamexz)
 
             filenamegz = str(filename) if str(filename).endswith(".gz") else str(filename) + ".gz"
             if filenamegz not in filelist:
-                fullpaths.append(Path(path) / filenamegz)
+                fullpaths.append(Path(folder) / filenamegz)
 
-        fullpaths.append(Path(path) / filename)
+        fullpaths.append(Path(folder) / filename)
 
     for fullpath in fullpaths:
         if fullpath.exists():
             return fullpath
 
-    raise FileNotFoundError(f'None of these files exist in {path}: {", ".join([str(x) for x in fullpaths])}')
+    raise FileNotFoundError(f'None of these files exist in {folder}: {", ".join([str(x) for x in fullpaths])}')
 
 
-def anyexist(filelist: Sequence[Union[str, Path]], path: Union[Path, str] = Path(".")) -> bool:
-    """Return the first existing file in file list."""
+def anyexist(
+    filelist: Sequence[Union[str, Path]],
+    folder: Union[Path, str] = Path("."),
+    tryzipped: bool = True,
+) -> bool:
+    """Return true if any files in file list exist."""
 
-    for fullpath in [Path(path) / filename for filename in filelist]:
-        if fullpath.exists():
-            return True
+    try:
+        firstexisting(filelist=filelist, folder=folder, tryzipped=tryzipped)
+    except FileNotFoundError:
+        return False
 
-    return False
+    return True
 
 
 def stripallsuffixes(f: Path) -> Path:
@@ -862,7 +867,7 @@ def join_pdf_files(pdf_list: list[str], modelpath_list: list[Path]) -> None:
     merger = PdfFileMerger()
 
     for pdf, modelpath in zip(pdf_list, modelpath_list):
-        fullpath = firstexisting([pdf], path=modelpath)
+        fullpath = firstexisting([pdf], folder=modelpath)
         merger.append(open(fullpath, "rb"))
         os.remove(fullpath)
 
@@ -877,7 +882,7 @@ def join_pdf_files(pdf_list: list[str], modelpath_list: list[Path]) -> None:
 def get_bflist(modelpath: Union[Path, str]) -> dict[int, tuple[int, int, int, int]]:
     compositiondata = get_composition_data(modelpath)
     bflist = {}
-    bflistpath = firstexisting(["bflist.out", "bflist.dat"], path=modelpath, tryzipped=True)
+    bflistpath = firstexisting(["bflist.out", "bflist.dat"], folder=modelpath, tryzipped=True)
     with zopen(bflistpath, "rt") as filein:
         bflistcount = int(filein.readline())
 
@@ -965,7 +970,9 @@ def get_linelist_dataframe(
 def get_npts_model(modelpath: Path) -> int:
     """Return the number of cell in the model.txt."""
     modelfilepath = (
-        Path(modelpath) if Path(modelpath).is_file() else at.firstexisting("model.txt", path=modelpath, tryzipped=True)
+        Path(modelpath)
+        if Path(modelpath).is_file()
+        else at.firstexisting("model.txt", folder=modelpath, tryzipped=True)
     )
     with zopen(modelfilepath, "rt") as modelfile:
         npts_model = int(readnoncommentline(modelfile))

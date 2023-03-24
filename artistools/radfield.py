@@ -42,7 +42,7 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
         for mpirank in mpiranklist:
             radfieldfilename = f"radfield_{mpirank:04d}.out"
             radfieldfilepath = Path(folderpath, radfieldfilename)
-            radfieldfilepath = at.firstexisting(radfieldfilename, path=folderpath, tryzipped=True)
+            radfieldfilepath = at.firstexisting(radfieldfilename, folder=folderpath, tryzipped=True)
 
             if modelgridindex > -1:
                 filesize = Path(radfieldfilepath).stat().st_size / 1024 / 1024
@@ -256,7 +256,7 @@ def plot_specout(
     elif os.path.isfile(specfilename):
         modelpath = Path(specfilename).parent
 
-    dfspectrum = at.spectra.get_spectrum(modelpath, timestep)
+    dfspectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=modelpath)
     label = "Emergent spectrum"
     if scale_factor is not None:
         label += " (scaled)"
@@ -731,7 +731,7 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
         ymax = args.ymax
 
     try:
-        specfilename = at.firstexisting("spec.out", path=modelpath, tryzipped=True)
+        specfilename = at.firstexisting("spec.out", folder=modelpath, tryzipped=True)
     except FileNotFoundError:
         print("Could not find spec.out")
         args.nospec = True

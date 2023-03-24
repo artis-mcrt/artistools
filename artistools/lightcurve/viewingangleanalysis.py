@@ -773,7 +773,7 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
                 lcname = "light_curve_res.out"
             else:
                 lcname = "light_curve.out"
-            lcpath = at.firstexisting(lcname, path=modelpath, tryzipped=True)
+            lcpath = at.firstexisting(lcname, folder=modelpath, tryzipped=True)
             print(f"Reading {lcname}")
             lightcurve_data = at.lightcurve.readfile(lcpath)
 

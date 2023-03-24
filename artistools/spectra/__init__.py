@@ -9,7 +9,6 @@ from .spectra import get_flux_contributions_from_packets
 from .spectra import get_from_packets
 from .spectra import get_line_flux
 from .spectra import get_reference_spectrum
-from .spectra import get_res_spectrum
 from .spectra import get_specpol_data
 from .spectra import get_spectrum
 from .spectra import get_spectrum_at_time

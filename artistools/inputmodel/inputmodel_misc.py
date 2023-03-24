@@ -317,7 +317,7 @@ def get_modeldata(
 
     if inputpath.is_dir():
         modelpath = inputpath
-        filename = at.firstexisting("model.txt", path=inputpath, tryzipped=True)
+        filename = at.firstexisting("model.txt", folder=inputpath, tryzipped=True)
     elif inputpath.is_file():  # passed in a filename instead of the modelpath
         filename = inputpath
         modelpath = Path(inputpath).parent
@@ -736,7 +736,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> U
 @lru_cache(maxsize=8)
 def get_initialabundances(modelpath: Path) -> pd.DataFrame:
     """Return a list of mass fractions."""
-    abundancefilepath = at.firstexisting("abundances.txt", path=modelpath, tryzipped=True)
+    abundancefilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
 
     abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, comment="#")
     abundancedata.index.name = "modelgridindex"

@@ -25,7 +25,6 @@ import artistools as at
 import artistools.packets
 from .spectra import get_from_packets
 from .spectra import get_reference_spectrum
-from .spectra import get_res_spectrum
 from .spectra import get_specpol_data
 from .spectra import get_spectrum
 from .spectra import get_vspecpol_spectrum
@@ -287,21 +286,15 @@ def plot_artis_spectrum(
             spectrum = get_spectrum(modelpath_or_file, timestepmin, timestepmax, fnufilterfunc=filterfunc)
 
             if args.plotviewingangle:  # read angle resolved spectra
-                res_specdata = at.spectra.read_spec_res(modelpath)
-                if args and args.average_over_phi_angle:
-                    res_specdata = at.average_direction_bins(res_specdata, overangle="phi")
-                if args and args.average_over_theta_angle:
-                    res_specdata = at.average_direction_bins(res_specdata, overangle="theta")
-
                 viewinganglespectra = {
-                    dirbin: get_res_spectrum(
+                    dirbin: get_spectrum(
                         modelpath=modelpath,
                         dirbin=dirbin,
                         timestepmin=timestepmin,
                         timestepmax=timestepmax,
-                        res_specdata=res_specdata,
+                        average_over_phi=average_over_phi,
+                        average_over_theta=average_over_theta,
                         fnufilterfunc=filterfunc,
-                        args=args,
                     )
                     for dirbin in directionbins
                     if dirbin != -1

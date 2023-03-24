@@ -248,3 +248,22 @@ def plot_energy_rate(modelpath):
     plt.plot(
         times_and_rate["times"], np.array(times_and_rate["nuclear_heating_power"]) * Mtot_grams, color="k", zorder=10
     )
+
+
+def get_etot_fromfile(modelpath):
+    energydistribution_data = pd.read_csv(
+        Path(modelpath) / "energydistribution.txt",
+        skiprows=1,
+        delim_whitespace=True,
+        header=None,
+        names=["cellid", "cell_energy"],
+    )
+    etot = energydistribution_data["cell_energy"].sum()
+    return etot, energydistribution_data
+
+
+def get_energy_rate_fromfile(modelpath):
+    energyrate_data = pd.read_csv(
+        Path(modelpath) / "energyrate.txt", skiprows=1, delim_whitespace=True, header=None, names=["times", "rate"]
+    )
+    return energyrate_data

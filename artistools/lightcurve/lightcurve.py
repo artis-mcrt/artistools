@@ -223,15 +223,15 @@ def generate_band_lightcurve_data(
 
     if args and args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
         print("Found vpkt.txt, using virtual packets")
-        stokes_params = at.spectra.get_specpol_data(angle, modelpath)
+        stokes_params = at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
         vspecdata = stokes_params["I"]
         timearray = vspecdata.keys()[1:]
     elif (
         args
         and args.plotviewingangle
-        and at.anyexist(["specpol_res.out", "specpol_res.out.xz", "spec_res.out"], path=modelpath)
+        and at.anyexist(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True)
     ):
-        specfilename = at.firstexisting(["specpol_res.out", "spec_res.out"], path=modelpath)
+        specfilename = at.firstexisting(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True)
         specdataresdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdataresdata.columns.values[1:] if i[-2] != "."]
     # elif Path(modelpath, 'specpol.out').is_file():
@@ -242,7 +242,7 @@ def generate_band_lightcurve_data(
         if args.plotviewingangle:
             print("WARNING: no direction-resolved spectra available. Using angle-averaged spectra.")
 
-        specfilename = at.firstexisting(["spec.out", "specpol.out"], path=modelpath, tryzipped=True)
+        specfilename = at.firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
         if "specpol.out" in str(specfilename):
             specdata = pd.read_csv(specfilename, delim_whitespace=True)
             timearray = [i for i in specdata.columns.values[1:] if i[-2] != "."]  # Ignore Q and U values in pol file
@@ -343,15 +343,16 @@ def bolometric_magnitude(
                 if args.plotvspecpol:
                     spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
                 else:
-                    if res_specdata is None:
-                        res_specdata = at.spectra.read_spec_res(modelpath)
-                        if args and args.average_over_phi_angle:
-                            res_specdata = at.average_direction_bins(res_specdata, overangle="phi")
-                    spectrum = at.spectra.get_res_spectrum(
-                        modelpath, angle, timestep, timestep, res_specdata=res_specdata
+                    spectrum = at.spectra.get_spectrum(
+                        modelpath=modelpath,
+                        dirbin=angle,
+                        timestepmin=timestep,
+                        timestepmax=timestep,
+                        average_over_phi=args.average_over_phi_angle,
+                        average_over_theta=args.average_over_theta_angle,
                     )
             else:
-                spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep)
+                spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)
 
             integrated_flux = np.trapz(spectrum["f_lambda"], spectrum["lambda_angstroms"])
             integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to("cm"), 2)

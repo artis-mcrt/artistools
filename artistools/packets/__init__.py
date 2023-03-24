@@ -10,6 +10,7 @@ from typing import Union
 
 import numpy as np
 import pandas as pd
+import pyarrow
 
 import artistools as at
 
@@ -36,7 +37,7 @@ def get_column_names_artiscode(modelpath: Union[str, Path]) -> Optional[list[str
     if Path(modelpath, "artis").is_dir():
         print("detected artis code directory")
         packet_properties = []
-        inputfilename = at.firstexisting(["packet_init.cc", "packet_init.c"], path=(modelpath / "artis"))
+        inputfilename = at.firstexisting(["packet_init.cc", "packet_init.c"], folder=(modelpath / "artis"))
         print(f"found {inputfilename}: getting packet column names from artis code")
         with open(inputfilename) as inputfile:
             packet_print_lines = [line.split(",") for line in inputfile if "fprintf(packets_file," in line]
@@ -168,15 +169,19 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
         print(f"\nBad Gzip File: {packetsfile}")
         raise gzip.BadGzipFile
 
-    dfpackets = pd.read_csv(
-        fpackets,
-        sep=" ",
-        header=None,
-        skiprows=skiprows,
-        names=column_names,
-        skip_blank_lines=True,
-        engine=at.get_config()["pandas_engine"],
-    )
+    try:
+        dfpackets = pd.read_csv(
+            fpackets,
+            sep=" ",
+            header=None,
+            skiprows=skiprows,
+            names=column_names,
+            skip_blank_lines=True,
+            engine=at.get_config()["pandas_engine"],
+        )
+    except pyarrow.lib.ArrowInvalid as e:
+        print(f"Error occured in file {packetsfile}")
+        raise e
 
     # space at the end of line made an extra column of Nones
     if dfpackets[dfpackets.columns[-1]].isnull().all():
@@ -279,16 +284,16 @@ def readfile(
         print("ERROR")
         sys.exit(1)
     filesize = Path(packetsfile).stat().st_size / 1024 / 1024
-    print(f"Reading {packetsfile} ({filesize:.1f} MiB)", end="")
+    # print(f"Reading {packetsfile} ({filesize:.1f} MiB)", end="")
 
-    print(f" ({len(dfpackets):.1e} packets", end="")
+    # print(f" ({len(dfpackets):.1e} packets", end="")
 
     if escape_type is not None and escape_type != "" and escape_type != "ALL":
         assert type is None or type == "TYPE_ESCAPE"
         dfpackets.query(
             f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids[escape_type]}', inplace=True
         )
-        print(f", {len(dfpackets)} escaped as {escape_type})")
+        # print(f", {len(dfpackets)} escaped as {escape_type})")
     elif type is not None and type != "ALL" and type != "":
         dfpackets.query(f"type_id == {type_ids[type]}", inplace=True)
         print(f", {len(dfpackets)} with type {type})")

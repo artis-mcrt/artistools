@@ -274,7 +274,7 @@ def plot_artis_lightcurve(
                 lcfilename = "gamma_light_curve.out" if (escape_type == "TYPE_GAMMA") else "light_curve.out"
 
         try:
-            lcpath = at.firstexisting(lcfilename, path=modelpath, tryzipped=True)
+            lcpath = at.firstexisting(lcfilename, folder=modelpath, tryzipped=True)
         except FileNotFoundError:
             print(f"Skipping {modelname} because {lcfilename} does not exist")
             return None

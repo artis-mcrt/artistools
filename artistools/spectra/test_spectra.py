@@ -96,7 +96,7 @@ def test_spectra_get_flux_contributions():
     timestepmin = 40
     timestepmax = 80
     dfspectrum = at.spectra.get_spectrum(
-        modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fnufilterfunc=None
+        modelpath=modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fnufilterfunc=None
     )
 
     integrated_flux_specout = np.trapz(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])

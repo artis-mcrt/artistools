@@ -84,81 +84,6 @@ def stackspectra(
     return stackedspectrum
 
 
-@lru_cache(maxsize=16)
-def get_specdata(modelpath: Path, stokesparam: Optional[Literal["I", "Q", "U"]] = None) -> pd.DataFrame:
-    polarisationdata = False
-    if Path(modelpath, "specpol.out").is_file():
-        specfilename = Path(modelpath) / "specpol.out"
-        polarisationdata = True
-    elif Path(modelpath, "specpol.out.xz").is_file():
-        specfilename = Path(modelpath) / "specpol.out.xz"
-        polarisationdata = True
-    elif Path(modelpath).is_dir():
-        specfilename = at.firstexisting("spec.out", path=modelpath, tryzipped=True)
-    else:
-        specfilename = modelpath
-
-    if polarisationdata:
-        # angle = args.plotviewingangle[0]
-        stokes_params = get_specpol_data(angle=None, modelpath=modelpath)
-        if stokesparam is not None:
-            specdata = stokes_params[stokesparam]
-        else:
-            specdata = stokes_params["I"]
-    else:
-        assert stokesparam is None
-        print(f"Reading {specfilename}")
-        specdata = pd.read_csv(specfilename, delim_whitespace=True)
-        specdata.rename(columns={"0": "nu"}, inplace=True)
-
-    return specdata
-
-
-def get_spectrum(
-    modelpath: Path,
-    timestepmin: int,
-    timestepmax: int = -1,
-    fnufilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
-) -> pd.DataFrame:
-    """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
-    if timestepmax < 0:
-        timestepmax = timestepmin
-
-    specdata = get_specdata(modelpath)
-
-    nu = specdata.loc[:, "nu"].values
-    arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
-
-    f_nu = stackspectra(
-        [
-            (specdata[specdata.columns[timestep + 1]], arr_tdelta[timestep])
-            for timestep in range(timestepmin, timestepmax + 1)
-        ]
-    )
-
-    # best to use the filter on this list because it
-    # has regular sampling
-    if fnufilterfunc:
-        print("Applying filter to ARTIS spectrum")
-        f_nu = fnufilterfunc(f_nu)
-
-    dfspectrum = pd.DataFrame({"nu": nu, "f_nu": f_nu})
-    dfspectrum.sort_values(by="nu", ascending=False, inplace=True)
-
-    dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18}, inplace=True)
-    dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms", inplace=True)
-
-    # if 'redshifttoz' in args and args.redshifttoz[modelnumber] != 0:
-    # #     plt.plot(dfspectrum['lambda_angstroms'], dfspectrum['f_lambda'], color='k')
-    #     z = args.redshifttoz[modelnumber]
-    #     dfspectrum['lambda_angstroms'] *= (1 + z)
-    # #     plt.plot(dfspectrum['lambda_angstroms'], dfspectrum['f_lambda'], color='r')
-    # #     plt.show()
-    # #     quit()
-
-    return dfspectrum
-
-
 def get_spectrum_at_time(
     modelpath: Path,
     timestep: int,
@@ -167,14 +92,27 @@ def get_spectrum_at_time(
     dirbin: Optional[int] = None,
     res_specdata: Optional[dict[int, pd.DataFrame]] = None,
     modelnumber: Optional[int] = None,
+    average_over_phi: Optional[bool] = None,
+    average_over_theta: Optional[bool] = None,
 ) -> pd.DataFrame:
     if dirbin is not None and dirbin >= 0:
         if args is not None and args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
             spectrum = get_vspecpol_spectrum(modelpath, time, dirbin, args)
-        else:
-            spectrum = get_res_spectrum(modelpath, dirbin, timestep, timestep, res_specdata=res_specdata)
+
+        assert average_over_phi is not None
+        assert average_over_theta is not None
     else:
-        spectrum = get_spectrum(modelpath, timestep, timestep)
+        average_over_phi = False
+        average_over_theta = False
+
+    spectrum = get_spectrum(
+        modelpath=modelpath,
+        dirbin=dirbin,
+        timestepmin=timestep,
+        timestepmax=timestep,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+    )
 
     return spectrum
 
@@ -378,14 +316,11 @@ def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
     else:
         specfilename = at.firstexisting(
             [
-                "specpol_res.out",
-                "specpol_res.out.xz",
-                "specpol_res.out.gz",
                 "spec_res.out",
-                "spec_res.out.xz",
-                "spec_res.out.gz",
+                "specpol_res.out",
             ],
-            path=modelpath,
+            folder=modelpath,
+            tryzipped=True,
         )
 
     print(f"Reading {specfilename} (in read_spec_res)")
@@ -393,28 +328,16 @@ def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
 
     res_specdata: dict[int, pd.DataFrame] = at.gather_res_data(specdata)
 
-    # index_to_split = specdata.index[specdata.iloc[:, 1] == specdata.iloc[0, 1]]
-    # # print(len(index_to_split))
-    # res_specdata = []
-    # for i, index_value in enumerate(index_to_split):
-    #     if index_value != index_to_split[-1]:
-    #         chunk = specdata.iloc[index_to_split[i]:index_to_split[i + 1], :]
-    #     else:
-    #         chunk = specdata.iloc[index_to_split[i]:, :]
-    #     res_specdata.append(chunk)
-    # print(res_specdata[0])
-
     columns = res_specdata[0].iloc[0]
-    # print(columns)
-    for i in res_specdata.keys():
-        res_specdata[i] = res_specdata[i].rename(columns=columns)
-        res_specdata[i].drop(res_specdata[i].index[0], inplace=True)
+    for dirbin in res_specdata.keys():
+        res_specdata[dirbin] = res_specdata[dirbin].rename(columns=columns)
+        res_specdata[dirbin].drop(res_specdata[dirbin].index[0], inplace=True)
         # These lines remove the Q and U values from the dataframe (I think)
-        numberofIvalues = len(res_specdata[i].columns.drop_duplicates())
-        res_specdata_numpy = res_specdata[i].iloc[:, :numberofIvalues].astype(float).to_numpy()
+        numberofIvalues = len(res_specdata[dirbin].columns.drop_duplicates())
+        res_specdata_numpy = res_specdata[dirbin].iloc[:, :numberofIvalues].astype(float).to_numpy()
 
-        res_specdata[i] = pd.DataFrame(data=res_specdata_numpy, columns=columns[:numberofIvalues])
-        res_specdata[i].rename(columns={"0": "nu", "0.0": "nu"}, inplace=True)
+        res_specdata[dirbin] = pd.DataFrame(data=res_specdata_numpy, columns=columns[:numberofIvalues])
+        res_specdata[dirbin].rename(columns={"0": "nu", "0.0": "nu"}, inplace=True)
 
     return res_specdata
 
@@ -439,34 +362,66 @@ def read_emission_absorption_file(emabsfilename: Union[str, Path]) -> pd.DataFra
     return dfemabs
 
 
-def get_res_spectrum(
+@lru_cache(maxsize=4)
+def get_spec_res(
     modelpath: Path,
-    dirbin: int,
+    average_over_theta: bool = False,
+    average_over_phi: bool = False,
+) -> dict[int, pd.DataFrame]:
+    res_specdata = read_spec_res(modelpath)
+    if average_over_theta:
+        res_specdata = at.average_direction_bins(res_specdata, overangle="theta")
+    if average_over_phi:
+        res_specdata = at.average_direction_bins(res_specdata, overangle="phi")
+
+    return res_specdata
+
+
+def get_spectrum(
+    modelpath: Path,
     timestepmin: int,
-    timestepmax: int = -1,
-    res_specdata: Optional[dict[int, pd.DataFrame]] = None,
+    timestepmax: Optional[int] = None,
+    dirbin: Optional[int] = None,
     fnufilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
-    args: Optional[argparse.Namespace] = None,
+    average_over_theta: bool = False,
+    average_over_phi: bool = False,
+    stokesparam: Literal["I", "Q", "U"] = "I",
 ) -> pd.DataFrame:
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
-    if timestepmax < 0:
+    if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin
 
-    if res_specdata is None:
-        res_specdata = read_spec_res(modelpath)
-        if args and args.average_over_phi_angle:
-            res_specdata = at.average_direction_bins(res_specdata, overangle="phi")
-        if args and args.average_over_theta_angle:
-            res_specdata = at.average_direction_bins(res_specdata, overangle="theta")
+    if dirbin is None or dirbin < 0:
+        # spherically averaged spectra
+        if stokesparam == "I":
+            try:
+                specfilename = at.firstexisting("spec.out", folder=modelpath, tryzipped=True)
 
-    nu = res_specdata[dirbin].loc[:, "nu"].values
+                print(f"Reading {specfilename}")
+
+                specdata = pd.read_csv(specfilename, delim_whitespace=True)
+                specdata.rename(columns={"0": "nu"}, inplace=True)
+            except FileNotFoundError:
+                specdata = get_specpol_data(angle=None, modelpath=modelpath)[stokesparam]
+
+        else:
+            specdata = get_specpol_data(angle=None, modelpath=modelpath)[stokesparam]
+
+    else:
+        assert stokesparam == "I"
+        res_specdata = get_spec_res(
+            modelpath=modelpath, average_over_theta=average_over_theta, average_over_phi=average_over_phi
+        )
+
+        specdata = res_specdata[dirbin]
+
+    nu = specdata.loc[:, "nu"].values
     arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
     arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
 
-    # for angle in args.plotviewingangle:
     f_nu = stackspectra(
         [
-            (res_specdata[dirbin][res_specdata[dirbin].columns[timestep + 1]], arr_tdelta[timestep])
+            (specdata[specdata.columns[timestep + 1]], arr_tdelta[timestep])
             for timestep in range(timestepmin, timestepmax + 1)
         ]
     )
@@ -482,10 +437,11 @@ def get_res_spectrum(
 
     dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18}, inplace=True)
     dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms", inplace=True)
+
     return dfspectrum
 
 
-def make_virtual_spectra_summed_file(modelpath: Path) -> None:
+def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
     nprocs = at.get_nprocs(modelpath)
     print("nprocs", nprocs)
     vspecpol_data_old: list[
@@ -536,6 +492,8 @@ def make_virtual_spectra_summed_file(modelpath: Path) -> None:
         print(f"Saved {outfile}")
         vspecpol.to_csv(outfile, sep=" ", index=False, header=False)
 
+    return outfile
+
 
 def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
     filenames = []
@@ -573,21 +531,45 @@ def get_specpol_data(
     if specdata is None:
         assert modelpath is not None
         if angle is None or angle == -1:
-            specfilename = at.firstexisting("specpol.out", path=modelpath, tryzipped=True)
+            specfilename = at.firstexisting("specpol.out", folder=modelpath, tryzipped=True)
         else:
-            # alternatively use f'vspecpol_averaged-{angle}.out' ?
-            vspecpath = modelpath
-            if os.path.isdir(modelpath / "vspecpol"):
-                vspecpath = modelpath / "vspecpol"
-            specfilename = at.firstexisting(f"vspecpol_total-{angle}.out", path=vspecpath, tryzipped=True)
-            if not specfilename.exists():
-                print(f"{specfilename} does not exist. Generating all-rank summed vspec files..")
-                make_virtual_spectra_summed_file(modelpath=modelpath)
+            specfilename = at.firstexisting(f"specpol_res_{angle}.out", folder=modelpath, tryzipped=True)
 
         print(f"Reading {specfilename}")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
-        specdata = specdata.rename(columns={specdata.keys()[0]: "nu"})
 
+    stokes_params = split_dataframe_stokesparams(specdata)
+
+    return stokes_params
+
+
+def get_vspecpol_data(
+    vspecangle: Optional[int] = None, modelpath: Optional[Path] = None, specdata: Optional[pd.DataFrame] = None
+) -> dict[str, pd.DataFrame]:
+    if specdata is None:
+        assert modelpath is not None
+        # alternatively use f'vspecpol_averaged-{angle}.out' ?
+        vspecpath = modelpath
+        if os.path.isdir(modelpath / "vspecpol"):
+            vspecpath = modelpath / "vspecpol"
+
+        try:
+            specfilename = at.firstexisting(f"vspecpol_total-{vspecangle}.out", folder=vspecpath, tryzipped=True)
+        except FileNotFoundError:
+            print(f"vspecpol_total-{vspecangle}.out does not exist. Generating all-rank summed vspec files..")
+            specfilename = make_virtual_spectra_summed_file(modelpath=modelpath)
+
+        print(f"Reading {specfilename}")
+        specdata = pd.read_csv(specfilename, delim_whitespace=True)
+
+    stokes_params = split_dataframe_stokesparams(specdata)
+
+    return stokes_params
+
+
+def split_dataframe_stokesparams(specdata: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    """DataFrames read from specpol*.out and vspecpol*.out are repeated over I, Q, U
+    parameters. Split these into a dictionary of DataFrames"""
     cols_to_split = []
     stokes_params = {}
     for i, key in enumerate(specdata.keys()):
@@ -603,7 +585,6 @@ def get_specpol_data(
         stokes_params[param + "/I"] = pd.concat(
             [specdata["nu"], stokes_params[param].iloc[:, 1:] / stokes_params["I"].iloc[:, 1:]], axis=1
         )
-
     return stokes_params
 
 
@@ -708,7 +689,7 @@ def get_flux_contributions(
             if dbin != -1:
                 emissionfilenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in emissionfilenames]
 
-            emissionfilename = at.firstexisting(emissionfilenames, path=modelpath, tryzipped=True)
+            emissionfilename = at.firstexisting(emissionfilenames, folder=modelpath, tryzipped=True)
 
             if "pol" in str(emissionfilename):
                 print("This artis run contains polarisation data")
@@ -736,7 +717,7 @@ def get_flux_contributions(
             if directionbin is not None:
                 absorptionfilenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in absorptionfilenames]
 
-            absorptionfilename = at.firstexisting(absorptionfilenames, path=modelpath, tryzipped=True)
+            absorptionfilename = at.firstexisting(absorptionfilenames, folder=modelpath, tryzipped=True)
 
             absorptiondata[dbin] = read_emission_absorption_file(absorptionfilename)
             absorption_maxion_float = absorptiondata[dbin].shape[1] / nelements
@@ -1210,7 +1191,7 @@ def sort_and_reduce_flux_contribution_list(
 
 def print_integrated_flux(
     arr_f_lambda: np.ndarray, arr_lambda_angstroms: np.ndarray, distance_megaparsec: float = 1.0
-) -> None:
+) -> float:
     integrated_flux = abs(np.trapz(arr_f_lambda, x=arr_lambda_angstroms)) * u.erg / u.s / (u.cm**2)
     print(
         f" integrated flux ({arr_lambda_angstroms.min():.1f} to "
@@ -1218,6 +1199,7 @@ def print_integrated_flux(
     )
     # luminosity = integrated_flux * 4 * math.pi * (distance_megaparsec * u.megaparsec ** 2)
     # print(f'(L={luminosity.to("Lsun"):.3e})')
+    return integrated_flux
 
 
 def get_line_flux(
@@ -1330,7 +1312,7 @@ def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdata.columns.values[1:] if i[-2] != "."]
     else:
-        specfilename = at.firstexisting("spec.out", path=modelpath, tryzipped=True)
+        specfilename = at.firstexisting("spec.out", folder=modelpath, tryzipped=True)
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = specdata.columns.values[1:]
 
@@ -1347,7 +1329,7 @@ def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
         arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
 
         for timestep in range(timestepmin, timestepmax + 1):
-            dfspectrum = get_spectrum(modelpath, timestep, timestep)
+            dfspectrum = get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)
             tmid = arr_tmid[timestep]
 
             outfilepath = outdirectory / f"spectrum_ts{timestep:02.0f}_{tmid:.2f}d.txt"
