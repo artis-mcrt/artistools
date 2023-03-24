@@ -112,7 +112,7 @@ def get_spectrum_at_time(
         timestepmax=timestep,
         average_over_phi=average_over_phi,
         average_over_theta=average_over_theta,
-    )
+    )[dirbin]
 
     return spectrum
 

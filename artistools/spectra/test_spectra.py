@@ -72,7 +72,7 @@ def test_spectra_get_spectrum():
         assert min(dfspectrumpkts["f_lambda"]) < 1e-9
         assert math.isclose(np.mean(dfspectrumpkts["f_lambda"]), 1.0314682640070206e-14, abs_tol=1e-5)
 
-    dfspectrum = at.spectra.get_spectrum(modelpath, 55, 65, fnufilterfunc=None)
+    dfspectrum = at.spectra.get_spectrum(modelpath, 55, 65, fnufilterfunc=None)[-1]
     assert len(dfspectrum["lambda_angstroms"]) == 1000
     assert len(dfspectrum["f_lambda"]) == 1000
     assert abs(dfspectrum["lambda_angstroms"].values[-1] - 29920.601421214415) < 1e-5
@@ -97,7 +97,7 @@ def test_spectra_get_flux_contributions():
     timestepmax = 80
     dfspectrum = at.spectra.get_spectrum(
         modelpath=modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fnufilterfunc=None
-    )
+    )[-1]
 
     integrated_flux_specout = np.trapz(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
 
