@@ -75,7 +75,9 @@ def get_from_packets_worker(
     escapesurfacegamma,
     get_cmf_column: bool,
     directionbins: Sequence[int],
-    contribbinlists: list[Sized],
+    average_over_phi: bool,
+    average_over_theta: bool,
+    nphibins: int,
 ) -> tuple[dict[int, np.ndarray], dict[int, Optional[np.ndarray]]]:
     dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type=escape_type)
 
@@ -91,8 +93,18 @@ def get_from_packets_worker(
 
         # print(f"sum of e_cmf {dfpackets['e_cmf'].sum()} e_rf {dfpackets['e_rf'].sum()}")
 
-        for dirbin, contribbins in zip(directionbins, contribbinlists):
-            dfpackets_dirbin = dfpackets.query("dirbin in @contribbins") if contribbins != [] else dfpackets
+        for dirbin in directionbins:
+            if dirbin == -1:
+                dfpackets_dirbin = dfpackets
+            else:
+                if average_over_phi:
+                    dirbinquerystr = "costhetabin * 10 == @dirbin"
+                elif average_over_theta:
+                    dirbinquerystr = "phibin == @dirbin"
+                else:
+                    dirbinquerystr = "dirbin == @dirbin"
+
+                dfpackets_dirbin = dfpackets.query(dirbinquerystr)
 
             timebins = pd.cut(
                 dfpackets_dirbin["t_arrive_d"],
@@ -157,21 +169,6 @@ def get_from_packets(
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     ndirbins = at.get_viewingdirectionbincount()
 
-    contribbinlists: list[Sized] = []
-    for dirbin in directionbins:
-        if dirbin == -1:
-            contribbinlists.append([])
-            continue
-
-        if average_over_phi and average_over_theta:
-            assert False
-        elif average_over_phi:
-            contribbinlists.append(range(dirbin, dirbin + nphibins))
-        elif average_over_theta:
-            contribbinlists.append(range(dirbin, ndirbins, nphibins))
-        else:
-            contribbinlists.append([dirbin])
-
     processfile = partial(
         get_from_packets_worker,
         modelpath=modelpath,
@@ -181,31 +178,44 @@ def get_from_packets(
         escapesurfacegamma=escapesurfacegamma,
         get_cmf_column=get_cmf_column,
         directionbins=directionbins,
-        contribbinlists=contribbinlists,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+        nphibins=nphibins,
     )
 
-    if at.get_config()["num_processes"] > 1:
-        with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
-            results = pool.map(processfile, packetsfiles)
-            pool.close()
-            pool.join()
-            pool.terminate()
-    else:
-        results = [processfile(p) for p in packetsfiles]
+    summed_e_rf_dirbins = {dirbin: np.zeros_like(tmidarray, dtype=float) for dirbin in directionbins}
+    if get_cmf_column:
+        # number of packets in each bin
+        summed_e_cmf_dirbins = {dirbin: np.zeros_like(tmidarray, dtype=float) for dirbin in directionbins}
 
-    for dirbin, contribbins in zip(directionbins, contribbinlists):
-        solidanglefactor = float(ndirbins) / len(contribbins) if contribbins != [] else 1.0
+    with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
+        for arr_e_rf, arr_e_cmf in pool.imap_unordered(processfile, packetsfiles):
+            for dirbin in directionbins:
+                summed_e_rf_dirbins[dirbin] += arr_e_rf[dirbin]
+                if get_cmf_column:
+                    summed_e_cmf_dirbins[dirbin] += arr_e_cmf[dirbin]
 
-        summed_e_rf = np.ufunc.reduce(np.add, [arr_e_rf[dirbin] for arr_e_rf, _ in results])
+    for dirbin in directionbins:
+        if dirbin == -1:
+            solidanglefactor = 1.0
+        elif average_over_phi:
+            solidanglefactor = ncosthetabins
+            assert not average_over_theta
+        elif average_over_theta:
+            solidanglefactor = nphibins
 
         lcdata[dirbin]["lum"] = np.divide(
-            summed_e_rf / nprocs_read * solidanglefactor * (u.erg / u.day).to("solLum"), arr_timedelta
+            summed_e_rf_dirbins[dirbin] / nprocs_read * solidanglefactor * (u.erg / u.day).to("solLum"), arr_timedelta
         )
 
         if get_cmf_column:
-            summed_e_cmf = np.ufunc.reduce(np.add, [arr_e_cmf[dirbin] for _, arr_e_cmf in results])
+            assert escapesurfacegamma is not None
             lcdata[dirbin]["lum_cmf"] = np.divide(
-                summed_e_cmf / nprocs_read * solidanglefactor / escapesurfacegamma * (u.erg / u.day).to("solLum"),
+                summed_e_cmf_dirbins[dirbin]
+                / nprocs_read
+                * solidanglefactor
+                / escapesurfacegamma
+                * (u.erg / u.day).to("solLum"),
                 arr_timedelta,
             )
 
