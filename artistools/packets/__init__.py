@@ -2,6 +2,7 @@
 import gzip
 import math
 import sys
+from collections.abc import Collection
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -29,6 +30,9 @@ types = {
 }
 
 type_ids = dict((v, k) for k, v in types.items())
+
+EMTYPE_NOTSET = -9999000
+EMTYPE_FREEFREE = -9999999
 
 
 @lru_cache(maxsize=16)
@@ -270,35 +274,71 @@ def readfile(
     packetsfile: Union[Path, str],
     type: Optional[str] = None,
     escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
+    columns: Optional[list[str]] = None,
 ) -> pd.DataFrame:
     """Read a packet file into a pandas DataFrame."""
     packetsfile = Path(packetsfile)
+    readfromtext = True
 
-    if packetsfile.suffixes == [".out", ".parquet"]:
-        dfpackets = pd.read_parquet(packetsfile)
-    elif packetsfile.suffixes == [".out", ".feather"]:
-        dfpackets = pd.read_feather(packetsfile)
-    elif packetsfile.suffixes in [[".out"], [".out", ".gz"], [".out", ".xz"]]:
-        dfpackets = readfile_text(packetsfile)
-        # dfpackets.to_parquet(at.stripallsuffixes(packetsfile).with_suffix('.out.parquet'),
-        #                      compression='brotli', compression_level=99)
-    else:
-        print("ERROR")
-        sys.exit(1)
+    if columns is not None:
+        # to calculate t_arrive_d
+        requiredcolumns = [
+            "escape_time",
+            "posx",
+            "posy",
+            "posz",
+            "dirx",
+            "diry",
+            "dirz",
+        ]
+        if type is not None or escape_type is not None:
+            requiredcolumns.append("type_id")
+
+        if escape_type is not None:
+            requiredcolumns.append("escape_type_id")
+
+        columns += [x for x in requiredcolumns if x not in columns]
     filesize = Path(packetsfile).stat().st_size / 1024 / 1024
-    # print(f"Reading {packetsfile} ({filesize:.1f} MiB)", end="")
+    # print(f"Reading {packetsfile} ({filesize:.1f} MiB)")
 
-    # print(f" ({len(dfpackets):.1e} packets", end="")
+    try:
+        if packetsfile.suffixes == [".out", ".parquet"]:
+            dfpackets = pd.read_parquet(
+                packetsfile,
+                columns=columns,
+            )
+            readfromtext = False
+        elif packetsfile.suffixes == [".out", ".feather"]:
+            dfpackets = pd.read_feather(packetsfile)
+            readfromtext = False
+        elif packetsfile.suffixes in [[".out"], [".out", ".gz"], [".out", ".xz"]]:
+            pass
+        else:
+            print("ERROR")
+            sys.exit(1)
 
+    except Exception as e:
+        print(f"Error occured in file {packetsfile}. Reading from text version.")
+        packetsfile = at.firstexisting([at.stripallsuffixes(packetsfile).with_suffix(".out")])
+        # raise e
+
+    if readfromtext:
+        dfpackets = readfile_text(packetsfile)
+        assert len(dfpackets) > 0
+        outfile = at.stripallsuffixes(packetsfile).with_suffix(".out.parquet")
+        print(f"Saving {outfile}")
+        dfpackets.to_parquet(outfile, compression="brotli", compression_level=99)
+
+    file_npkts = len(dfpackets)
     if escape_type is not None and escape_type != "" and escape_type != "ALL":
         assert type is None or type == "TYPE_ESCAPE"
         dfpackets.query(
             f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids[escape_type]}', inplace=True
         )
-        # print(f", {len(dfpackets)} escaped as {escape_type})")
-    elif type is not None and type != "ALL" and type != "":
+        # print(f"  {file_npkts} packets, {len(dfpackets)} escaped as {escape_type}")
+    elif type is not None and type != "":
         dfpackets.query(f"type_id == {type_ids[type]}", inplace=True)
-        print(f", {len(dfpackets)} with type {type})")
+        # print(f"  ({file_npkts} packets, {len(dfpackets)} with type {type}")
     else:
         print(")")
 
