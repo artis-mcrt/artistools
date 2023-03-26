@@ -129,9 +129,7 @@ def get_from_packets_worker(
     getpacketcount: bool,
     escapesurfacegamma: Optional[float],
     directionbins: Sequence[int],
-    average_over_phi: bool,
-    average_over_theta: bool,
-    nphibins: int,
+    dirbinquerystr: Optional[str],
 ) -> tuple[dict[int, np.ndarray], dict[int, np.ndarray]]:
     dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT").query(
         querystr, inplace=False, local_dict=qlocals
@@ -146,17 +144,7 @@ def get_from_packets_worker(
         dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
 
     for dirbin in directionbins:
-        if dirbin == -1:
-            dfpackets_dirbin = dfpackets
-        else:
-            if average_over_phi:
-                dirbinquerystr = "costhetabin * 10 == @dirbin"
-            elif average_over_theta:
-                dirbinquerystr = "phibin == @dirbin"
-            else:
-                dirbinquerystr = "dirbin == @dirbin"
-
-            dfpackets_dirbin = dfpackets.query(dirbinquerystr)
+        dfpackets_dirbin = dfpackets.query(dirbinquerystr) if dirbinquerystr is not None and dirbin != -1 else dfpackets
 
         lambda_angstroms = 2.99792458e18 / dfpackets_dirbin.nu_rf
         wl_bins = pd.cut(
@@ -229,6 +217,13 @@ def get_from_packets(
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     ndirbins = at.get_viewingdirectionbincount()
 
+    if average_over_phi:
+        dirbinquerystr = "costhetabin * 10 == @dirbin"
+    elif average_over_theta:
+        dirbinquerystr = "phibin == @dirbin"
+    else:
+        dirbinquerystr = "dirbin == @dirbin"
+
     processfile = partial(
         get_from_packets_worker,
         modelpath=modelpath,
@@ -246,9 +241,7 @@ def get_from_packets(
         getpacketcount=getpacketcount,
         escapesurfacegamma=escapesurfacegamma,
         directionbins=directionbins,
-        average_over_phi=average_over_phi,
-        average_over_theta=average_over_theta,
-        nphibins=nphibins,
+        dirbinquerystr=dirbinquerystr,
     )
 
     # total packet energy sum of each bin
