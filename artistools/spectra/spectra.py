@@ -257,8 +257,14 @@ def get_from_packets(
         # number of packets in each bin
         array_pktcount_dirbins = {dirbin: np.zeros_like(array_lambda, dtype=int) for dirbin in directionbins}
 
+    filesdone = 0
     with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
         for arr_energysum, arr_pktcount in pool.imap_unordered(processfile, packetsfiles):
+            filesdone += 1
+            if filesdone % 100 == 0 or filesdone == len(packetsfiles):
+                print(
+                    f"Read {filesdone} of {len(packetsfiles)} packets files ({filesdone / len(packetsfiles)*100.:.1f}%)"
+                )
             for dirbin in directionbins:
                 array_energysum_dirbins[dirbin] += arr_energysum[dirbin]
                 if getpacketcount:
