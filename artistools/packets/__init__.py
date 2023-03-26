@@ -177,7 +177,7 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
             skiprows=skiprows,
             names=column_names,
             skip_blank_lines=True,
-            engine=at.get_config()["pandas_engine"],
+            engine="pyarrow",
         )
     except Exception as e:
         print(f"Error occured in file {packetsfile}")

@@ -36,16 +36,6 @@ def setup_config():
     config["enable_diskcache"] = False
     config["num_processes"] = num_processes
 
-    # pyarrow is faster, if it is installed
-    try:
-        import pyarrow
-
-        config["pandas_engine"] = "pyarrow"
-    except ImportError:
-        print("pyarrow is not available, so falling back to C Pandas engine. Install pyarrow for faster performance")
-        config["pandas_engine"] = "c"
-    pd.options.mode.copy_on_write = True
-
     config["figwidth"] = 5
     config["codecomparisondata1path"] = Path(
         "/Users/luke/Library/Mobile Documents/com~apple~CloudDocs/GitHub/sn-rad-trans/data1"
