@@ -73,7 +73,17 @@ def get_from_packets_worker(
     directionbins: Sequence[int],
     dirbinquerystr: Optional[str],
 ) -> tuple[dict[int, np.ndarray], dict[int, Optional[np.ndarray]]]:
-    dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type=escape_type)
+    dfpackets = at.packets.readfile(
+        packetsfile,
+        type="TYPE_ESCAPE",
+        escape_type=escape_type,
+        columns=[
+            "e_rf",
+            "e_cmf",
+        ]
+        if get_cmf_column
+        else ["e_rf"],
+    )
 
     lum = {dirbin: np.zeros(len(tmidarray), dtype=float) for dirbin in directionbins}
     lum_cmf = {dirbin: np.zeros(len(tmidarray), dtype=float) if get_cmf_column else None for dirbin in directionbins}
@@ -178,8 +188,14 @@ def get_from_packets(
         # number of packets in each bin
         summed_e_cmf_dirbins = {dirbin: np.zeros_like(tmidarray, dtype=float) for dirbin in directionbins}
 
+    filesdone = 0
     with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
         for arr_e_rf, arr_e_cmf in pool.imap_unordered(processfile, packetsfiles):
+            filesdone += 1
+            if filesdone % 100 == 0 or filesdone == len(packetsfiles):
+                print(
+                    f"Read {filesdone} of {len(packetsfiles)} packets files ({filesdone / len(packetsfiles)*100.:.1f}%)"
+                )
             for dirbin in directionbins:
                 summed_e_rf_dirbins[dirbin] += arr_e_rf[dirbin]
                 if get_cmf_column:
