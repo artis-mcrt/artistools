@@ -20,7 +20,7 @@ from typing import Optional
 from typing import Union
 
 import matplotlib as mpl
-import matplotlib.pyplot as plt  # needed to get the color map
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -30,6 +30,7 @@ from astropy import units as u
 import artistools as at
 import artistools.packets
 import artistools.radfield
+from artistools.nltepops.nltepops import texifyconfiguration  # needed to get the color map
 
 fluxcontributiontuple = namedtuple(
     "fluxcontributiontuple", "fluxcontrib linelabel array_flambda_emission array_flambda_absorption color"
@@ -188,44 +189,83 @@ def get_from_packets(
     if fnufilterfunc:
         print("Applying filter to ARTIS spectrum")
 
+    encol = "e_cmf" if use_escapetime else "e_rf"
     dfdict = {}
     for dirbin in directionbins:
         if dirbin == -1:
             solidanglefactor = 1.0
-            pldfpackets_dirbin = dfpackets
+            pldfpackets_dirbin_lazy = dfpackets
         elif average_over_phi:
             assert not average_over_theta
             solidanglefactor = ncosthetabins
-            pldfpackets_dirbin = dfpackets.filter((pl.col("costhetabin") * 10 == dirbin))
+            pldfpackets_dirbin_lazy = dfpackets.filter((pl.col("costhetabin") * 10 == dirbin))
         elif average_over_theta:
             solidanglefactor = nphibins
-            pldfpackets_dirbin = dfpackets.filter((pl.col("phibin") == dirbin))
+            pldfpackets_dirbin_lazy = dfpackets.filter((pl.col("phibin") == dirbin))
         else:
             solidanglefactor = ndirbins
-            pldfpackets_dirbin = dfpackets.filter((pl.col("costhetadirbinbin") * 10 == dirbin))
+            pldfpackets_dirbin_lazy = dfpackets.filter((pl.col("costhetadirbinbin") * 10 == dirbin))
+
+        pldfpackets_dirbin = (
+            pldfpackets_dirbin_lazy.with_columns([(2.99792458e18 / pl.col("nu_rf")).alias("lambda_angstroms")])
+            .select(["lambda_angstroms", encol])
+            .collect()
+        )
 
         pldfpackets_dirbin = pldfpackets_dirbin.with_columns(
-            [(2.99792458e18 / pl.col("nu_rf")).alias("lambda_angstroms")]
+            [
+                (
+                    pldfpackets_dirbin.get_column("lambda_angstroms")
+                    .cut(
+                        bins=array_lambdabinedges,
+                        category_label="wlbin",
+                        maintain_order=True,
+                    )
+                    .get_column("wlbin")
+                    .cast(pl.Int64)
+                    - 1
+                )
+            ]
+        )
+        aggs = (
+            [pl.col(encol).sum().alias("ensum"), pl.col(encol).count().alias("pktcount")]
+            if getpacketcount
+            else [pl.col(encol).sum().alias("ensum")]
+        )
+        wlbins = pldfpackets_dirbin.groupby("wlbin").agg(aggs)
+
+        # now we will include the empty bins
+        allbins = pl.DataFrame({"wlbin": np.arange(0, len(array_lambdabinedges) - 1)}).join(
+            wlbins, on="wlbin", how="left"
         )
 
-        dfpackets_dirbin = pldfpackets_dirbin.select(["t_arrive_d", "e_rf", "lambda_angstroms"]).collect().to_pandas()
-
-        wl_bins = pd.cut(
-            x=dfpackets_dirbin.lambda_angstroms,
-            bins=array_lambdabinedges,
-            right=True,
-            labels=range(len(array_lambda)),
-            include_lowest=True,
-        )
+        array_energysum = allbins.get_column("ensum").fill_null(0.0).to_numpy()
 
         if use_escapetime:
             assert escapesurfacegamma is not None
-            array_energysum = dfpackets_dirbin.e_cmf.groupby(wl_bins).sum().values / escapesurfacegamma
-        else:
-            array_energysum = dfpackets_dirbin.e_rf.groupby(wl_bins).sum().values
+            array_energysum /= escapesurfacegamma
 
         if getpacketcount:
-            array_pktcount = dfpackets_dirbin.lambda_rf.groupby(wl_bins).count().values
+            array_pktcount = allbins.get_column("pktcount").fill_null(0).to_numpy()
+
+        # dfpackets_dirbin = pldfpackets_dirbin.collect().to_pandas()
+
+        # wl_bins = pd.cut(
+        #     x=dfpackets_dirbin.lambda_angstroms,
+        #     bins=array_lambdabinedges,
+        #     right=True,
+        #     labels=range(len(array_lambda)),
+        #     include_lowest=True,
+        # )
+
+        # if use_escapetime:
+        #     assert escapesurfacegamma is not None
+        #     array_energysum = dfpackets_dirbin.e_cmf.groupby(wl_bins).sum().values / escapesurfacegamma
+        # else:
+        #     array_energysum = dfpackets_dirbin.e_rf.groupby(wl_bins).sum().values
+
+        # if getpacketcount:
+        #     array_pktcount = dfpackets_dirbin[encol].groupby(wl_bins).count().values
 
         array_flambda = (
             array_energysum
@@ -247,7 +287,6 @@ def get_from_packets(
             {
                 "lambda_angstroms": array_lambda,
                 "f_lambda": array_flambda,
-                "energy_sum": array_energysum,
             }
         )
 

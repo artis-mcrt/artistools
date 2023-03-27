@@ -337,8 +337,7 @@ def readfile_lazypolars(
     return dfpackets
 
 
-@lru_cache(maxsize=16)
-def get_packetsfilepaths(modelpath: Path, maxpacketfiles: Optional[int] = None) -> list[Path]:
+def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[int] = None) -> list[Path]:
     def preferred_alternative(f: Path) -> bool:
         f_nosuffixes = at.stripallsuffixes(f)
 
