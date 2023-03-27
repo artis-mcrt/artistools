@@ -12,6 +12,7 @@ from typing import Union
 
 import numpy as np
 import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -269,50 +270,32 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
     return dfpackets
 
 
-@at.diskcache(savezipped=True)
 def readfile(
     packetsfile: Union[Path, str],
     type: Optional[str] = None,
     escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
-    columns: Optional[list[str]] = None,
 ) -> pd.DataFrame:
-    """Read a packet file into a pandas DataFrame."""
+    """Read a packet file into a Pandas DataFrame."""
+    return readfile_lazypolars(packetsfile, type, escape_type).collect().to_pandas()
+
+
+def readfile_lazypolars(
+    packetsfile: Union[Path, str],
+    type: Optional[str] = None,
+    escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
+) -> pl.LazyFrame:
+    """Read a packet file into a Polars lazy DataFrame."""
     packetsfile = Path(packetsfile)
-    readfromtext = True
-
-    if columns is not None:
-        # to calculate t_arrive_d
-        requiredcolumns = [
-            "escape_time",
-            "posx",
-            "posy",
-            "posz",
-            "dirx",
-            "diry",
-            "dirz",
-        ]
-        if type is not None or escape_type is not None:
-            requiredcolumns.append("type_id")
-
-        if escape_type is not None:
-            requiredcolumns.append("escape_type_id")
-
-        columns += [x for x in requiredcolumns if x not in columns]
-    filesize = Path(packetsfile).stat().st_size / 1024 / 1024
-    # print(f"Reading {packetsfile} ({filesize:.1f} MiB)")
 
     try:
         if packetsfile.suffixes == [".out", ".parquet"]:
-            dfpackets = pd.read_parquet(
-                packetsfile,
-                columns=columns,
-            )
-            readfromtext = False
-        elif packetsfile.suffixes == [".out", ".feather"]:
-            dfpackets = pd.read_feather(packetsfile)
-            readfromtext = False
+            parquetfile = packetsfile
         elif packetsfile.suffixes in [[".out"], [".out", ".gz"], [".out", ".xz"]]:
-            pass
+            parquetfile = at.stripallsuffixes(packetsfile).with_suffix(".out.parquet")
+            dfpackets = readfile_text(packetsfile)
+            assert len(dfpackets) > 0
+            print(f"Saving {parquetfile}")
+            dfpackets.to_parquet(parquetfile)
         else:
             print("ERROR")
             sys.exit(1)
@@ -322,34 +305,33 @@ def readfile(
         packetsfile = at.firstexisting([at.stripallsuffixes(packetsfile).with_suffix(".out")])
         # raise e
 
-    if readfromtext:
-        dfpackets = readfile_text(packetsfile)
-        assert len(dfpackets) > 0
-        outfile = at.stripallsuffixes(packetsfile).with_suffix(".out.parquet")
-        print(f"Saving {outfile}")
-        dfpackets.to_parquet(outfile, compression="brotli", compression_level=99)
+    dfpackets = pl.scan_parquet(parquetfile)
 
-    file_npkts = len(dfpackets)
     if escape_type is not None and escape_type != "" and escape_type != "ALL":
         assert type is None or type == "TYPE_ESCAPE"
-        dfpackets.query(
-            f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids[escape_type]}', inplace=True
+        dfpackets = dfpackets.filter(
+            (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
         )
-        # print(f"  {file_npkts} packets, {len(dfpackets)} escaped as {escape_type}")
     elif type is not None and type != "":
-        dfpackets.query(f"type_id == {type_ids[type]}", inplace=True)
-        # print(f"  ({file_npkts} packets, {len(dfpackets)} with type {type}")
+        dfpackets = dfpackets.filter(pl.col("type_id") == type_ids["TYPE_ESCAPE"])
     else:
         print(")")
 
-    # dfpackets['type'] = dfpackets['type_id'].map(lambda x: types.get(x, x))
-    # dfpackets['escape_type'] = dfpackets['escape_type_id'].map(lambda x: types.get(x, x))
-
-    # # neglect light travel time correction
-    # dfpackets.eval("t_arrive_d = escape_time / 86400", inplace=True)
-
-    dfpackets.eval(
-        "t_arrive_d = (escape_time - (posx * dirx + posy * diry + posz * dirz) / 29979245800) / 86400", inplace=True
+    dfpackets = dfpackets.with_columns(
+        [
+            (
+                (
+                    pl.col("escape_time")
+                    - (
+                        pl.col("posx") * pl.col("dirx")
+                        + pl.col("posy") * pl.col("diry")
+                        + pl.col("posz") * pl.col("dirz")
+                    )
+                    / 29979245800.0
+                )
+                / 86400.0
+            ).alias("t_arrive_d"),
+        ]
     )
 
     return dfpackets
@@ -409,39 +391,104 @@ def get_directionbin(
     return na
 
 
-def bin_packet_directions(modelpath: Union[Path, str], dfpackets: pd.DataFrame) -> pd.DataFrame:
+def bin_packet_directions(
+    modelpath: Union[Path, str], dfpackets: Union[pl.LazyFrame, pl.DataFrame, pd.DataFrame]
+) -> Union[pl.LazyFrame, pl.DataFrame, pd.DataFrame]:
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
 
     syn_dir = at.get_syn_dir(Path(modelpath))
-
-    pktdirvecs = dfpackets[["dirx", "diry", "dirz"]].values
-
-    # normalise. might not be needed
-    dirmags = np.linalg.norm(pktdirvecs, axis=1)
-    pktdirvecs /= np.array([dirmags, dirmags, dirmags]).transpose()
-
-    costheta = np.dot(pktdirvecs, syn_dir)
-    arr_costhetabin = ((costheta + 1) / 2.0 * ncosthetabins).astype(int)
-    dfpackets["costhetabin"] = arr_costhetabin
-
-    arr_vec1 = np.cross(pktdirvecs, syn_dir)
     xhat = np.array([1.0, 0.0, 0.0])
     vec2 = np.cross(xhat, syn_dir)
-    arr_cosphi = np.dot(arr_vec1, vec2) / np.linalg.norm(arr_vec1, axis=1) / np.linalg.norm(vec2)
-    vec3 = np.cross(vec2, syn_dir)
-    arr_testphi = np.dot(arr_vec1, vec3)
 
-    arr_phibin = np.zeros(len(pktdirvecs), dtype=int)
-    filta = arr_testphi > 0
-    arr_phibin[filta] = np.arccos(arr_cosphi[filta]) / 2.0 / np.pi * nphibins
-    filtb = np.invert(filta)
-    arr_phibin[filtb] = (np.arccos(arr_cosphi[filtb]) + np.pi) / 2.0 / np.pi * nphibins
-    dfpackets["phibin"] = arr_phibin
+    if isinstance(dfpackets, pl.LazyFrame) or isinstance(dfpackets, pl.DataFrame):
+        dfpackets = dfpackets.with_columns(
+            (pl.col("dirx") ** 2 + pl.col("diry") ** 2 + pl.col("dirz") ** 2).sqrt().alias("dirmag"),
+        )
+        dfpackets = dfpackets.with_columns(
+            (
+                (pl.col("dirx") * syn_dir[0] + pl.col("diry") * syn_dir[1] + pl.col("dirz") * syn_dir[2])
+                / pl.col("dirmag")
+            ).alias("costheta"),
+        )
+        dfpackets = dfpackets.with_columns(
+            ((pl.col("costheta") + 1) / 2.0 * ncosthetabins).cast(pl.Int64).alias("costhetabin"),
+        )
+        dfpackets = dfpackets.with_columns(
+            ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
+            ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
+            ((pl.col("dirx") * syn_dir[1] - pl.col("diry") * syn_dir[0]) / pl.col("dirmag")).alias("vec1_z"),
+        )
 
-    dfpackets["dirbin"] = (arr_costhetabin * nphibins) + arr_phibin
+        dfpackets = dfpackets.with_columns(
+            (
+                (pl.col("vec1_x") * vec2[0] + pl.col("vec1_y") * vec2[1] + pl.col("vec1_z") * vec2[2])
+                / (pl.col("vec1_x") ** 2 + pl.col("vec1_y") ** 2 + pl.col("vec1_z") ** 2).sqrt()
+                / float(np.linalg.norm(vec2))
+            ).alias("cosphi"),
+        )
 
-    assert np.all(dfpackets["dirbin"] < at.get_viewingdirectionbincount())
+        # vec1 = dir cross syn_dir
+        dfpackets = dfpackets.with_columns(
+            ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
+            ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
+            ((pl.col("dirx") * syn_dir[1] - pl.col("diry") * syn_dir[0]) / pl.col("dirmag")).alias("vec1_z"),
+        )
+
+        vec3 = np.cross(vec2, syn_dir)
+
+        dfpackets = dfpackets.with_columns(
+            (
+                (pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2])
+                / pl.col("dirmag")
+            ).alias("testphi"),
+        )
+
+        dfpackets = dfpackets.with_columns(
+            (
+                (pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2])
+                / pl.col("dirmag")
+            ).alias("testphi"),
+        )
+        dfpackets = dfpackets.with_columns(
+            (
+                pl.when(pl.col("testphi") > 0)
+                .then(pl.col("cosphi").arccos() / 2.0 / np.pi * nphibins)
+                .otherwise((pl.col("cosphi").arccos() + np.pi) / 2.0 / np.pi * nphibins)
+            )
+            .cast(pl.Int64)
+            .alias("phibin"),
+        )
+        dfpackets = dfpackets.with_columns(
+            (pl.col("costhetabin") * nphibins + pl.col("phibin")).alias("dirbin"),
+        )
+    else:
+        pktdirvecs = dfpackets[["dirx", "diry", "dirz"]].values
+
+        # normalise. might not be needed
+        dirmags = np.linalg.norm(pktdirvecs, axis=1)
+        pktdirvecs /= np.array([dirmags, dirmags, dirmags]).transpose()
+
+        costheta = np.dot(pktdirvecs, syn_dir)
+        arr_costhetabin = ((costheta + 1) / 2.0 * ncosthetabins).astype(int)
+        dfpackets["costhetabin"] = arr_costhetabin
+
+        arr_vec1 = np.cross(pktdirvecs, syn_dir)
+        arr_cosphi = np.dot(arr_vec1, vec2) / np.linalg.norm(arr_vec1, axis=1) / np.linalg.norm(vec2)
+        vec3 = np.cross(vec2, syn_dir)
+        arr_testphi = np.dot(arr_vec1, vec3)
+
+        arr_phibin = np.zeros(len(pktdirvecs), dtype=int)
+        filta = arr_testphi > 0
+        arr_phibin[filta] = np.arccos(arr_cosphi[filta]) / 2.0 / np.pi * nphibins
+        filtb = np.invert(filta)
+        arr_phibin[filtb] = (np.arccos(arr_cosphi[filtb]) + np.pi) / 2.0 / np.pi * nphibins
+        dfpackets["phibin"] = arr_phibin
+        dfpackets["arccoscosphi"] = np.arccos(arr_cosphi)
+
+        dfpackets["dirbin"] = (arr_costhetabin * nphibins) + arr_phibin
+
+        assert np.all(dfpackets["dirbin"] < at.get_viewingdirectionbincount())
 
     return dfpackets
 

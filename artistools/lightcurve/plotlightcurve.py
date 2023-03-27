@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
+from typing import Literal
 from typing import Optional
 from typing import Union
 
@@ -232,7 +233,7 @@ def plot_artis_lightcurve(
     seriesindex: int,
     label: Optional[str],
     axis,
-    escape_type: str = "TYPE_RPKT",
+    escape_type: Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
     frompackets: bool = False,
     maxpacketfiles: Optional[int] = None,
     axistherm=None,
@@ -408,7 +409,7 @@ def make_lightcurve_plot(
     modelpaths: Sequence[Union[str, Path]],
     filenameout: str,
     frompackets: bool = False,
-    escape_type: str = "TYPE_RPKT",
+    escape_type: Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
     maxpacketfiles: Optional[int] = None,
     args=None,
 ):

@@ -131,15 +131,9 @@ def get_from_packets_worker(
     directionbins: Sequence[int],
     dirbinquerystr: Optional[str],
 ) -> tuple[dict[int, np.ndarray], dict[int, np.ndarray]]:
-    dfpackets = at.packets.readfile(
-        packetsfile,
-        type="TYPE_ESCAPE",
-        escape_type="TYPE_RPKT",
-        columns=[
-            "nu_rf",
-            "e_cmf" if use_escapetime else "e_rf",
-        ],
-    ).query(querystr, inplace=False, local_dict=qlocals)
+    dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT").query(
+        querystr, inplace=False, local_dict=qlocals
+    )
 
     # print(f"  {packetsfile}: {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges ")
 
