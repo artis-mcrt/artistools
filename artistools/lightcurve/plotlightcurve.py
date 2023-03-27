@@ -738,7 +738,10 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                         txtlinesout.append(f"{t} {m}")
                     txtout = "\n".join(txtlinesout)
                     if args.write_data:
-                        bandoutfile = Path(f"band_{band_name}.txt")
+                        if angle is not None:
+                            bandoutfile = Path(f"band_{band_name}_angle_{angle}.txt")
+                        else:
+                            bandoutfile = Path(f"band_{band_name}.txt")
                         with bandoutfile.open("w") as f:
                             f.write(txtout)
                         print(f"Saved {bandoutfile}")
