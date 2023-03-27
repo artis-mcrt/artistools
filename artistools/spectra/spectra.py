@@ -178,8 +178,8 @@ def get_from_packets(
         )
     else:
         dfpackets = dfpackets.filter(
-            (timelow <= pl.col("escape_time") * escapesurfacegamma)
-            & (pl.col("escape_time") * escapesurfacegamma <= timehigh)
+            (timelow <= (pl.col("escape_time") * escapesurfacegamma))
+            & ((pl.col("escape_time") * escapesurfacegamma) <= timehigh)
         )
 
     if directionbins != [-1]:
@@ -802,8 +802,6 @@ def get_flux_contributions_from_packets(
         if emtype >= 0:
             line = linelist[emtype]
             if groupby == "line":
-                # if line.atomic_number != 26 or line.ionstage != 2:
-                #     return 'non-Fe II ions'
                 return (
                     f"{at.get_ionstring(line.atomic_number, line.ionstage)} "
                     f"λ{line.lambda_angstroms:.0f} "
