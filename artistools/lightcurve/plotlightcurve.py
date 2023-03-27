@@ -266,6 +266,7 @@ def plot_artis_lightcurve(
             directionbins=directionbins,
             average_over_phi=average_over_phi,
             average_over_theta=average_over_theta,
+            get_cmf_column=args.plotcmf,
         )
     else:
         if lcfilename is None:
@@ -354,7 +355,8 @@ def plot_artis_lightcurve(
         if not args.Lsun or args.magnitude:
             # convert luminosity from Lsun to erg/s
             lcdata.eval("lum = lum * 3.826e33", inplace=True)
-            lcdata.eval("lum_cmf = lum_cmf * 3.826e33", inplace=True)
+            if "lum_cmf" in lcdata.columns:
+                lcdata.eval("lum_cmf = lum_cmf * 3.826e33", inplace=True)
 
         if args.magnitude:
             # convert to bol magnitude

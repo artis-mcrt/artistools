@@ -93,20 +93,11 @@ def get_from_packets(
 
     timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
 
-    lcdata = {}
-    for dirbin in directionbins:
-        lcdata[dirbin] = pd.DataFrame(
-            {
-                "time": tmidarray,
-                "lum": np.zeros_like(tmidarray, dtype=float),
-                "lum_cmf": np.zeros_like(tmidarray, dtype=float),
-            }
-        )
-
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     ndirbins = at.get_viewingdirectionbincount()
-    dfpackets = pl.concat(
+
+    dfpackets: pl.LazyFrame = pl.concat(
         [
             at.packets.readfile_lazypolars(packetsfile, type="TYPE_ESCAPE", escape_type=escape_type)
             for packetsfile in packetsfiles
@@ -120,23 +111,31 @@ def get_from_packets(
             ]
         )
     if directionbins != [-1]:
-        dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
+        dfpackets = at.packets.bin_packet_directions_lazypolars(modelpath, dfpackets)
 
-    # dfpackets = dfpackets.collect().to_pandas()
-    # print(f"sum of e_cmf {dfpackets['e_cmf'].sum()} e_rf {dfpackets['e_rf'].sum()}")
-
+    lcdata = {}
+    arr_lum_cmf = None
     for dirbin in directionbins:
         if dirbin == -1:
-            dfpackets_dirbin = dfpackets
+            solidanglefactor = 1.0
+            pldfpackets_dirbin = dfpackets
         elif average_over_phi:
-            dfpackets_dirbin = dfpackets.filter((pl.col("costhetabin") * 10 == dirbin))
+            assert not average_over_theta
+            solidanglefactor = ncosthetabins
+            pldfpackets_dirbin = dfpackets.filter((pl.col("costhetabin") * 10 == dirbin))
         elif average_over_theta:
-            dfpackets_dirbin = dfpackets.filter((pl.col("phibin") == dirbin))
+            solidanglefactor = nphibins
+            pldfpackets_dirbin = dfpackets.filter((pl.col("phibin") == dirbin))
         else:
-            dfpackets_dirbin = dfpackets.filter((pl.col("costhetadirbinbin") * 10 == dirbin))
+            solidanglefactor = ndirbins
+            pldfpackets_dirbin = dfpackets.filter((pl.col("costhetadirbinbin") * 10 == dirbin))
 
         dfpackets_dirbin = (
-            dfpackets_dirbin.select(["t_arrive_d", "e_rf", "e_cmf", "t_arrive_cmf_d"]).collect().to_pandas()
+            pldfpackets_dirbin.select(
+                ["t_arrive_d", "e_rf", "e_cmf", "t_arrive_cmf_d"] if get_cmf_column else ["t_arrive_d", "e_rf"]
+            )
+            .collect()
+            .to_pandas()
         )
 
         timebins = pd.cut(
@@ -145,7 +144,14 @@ def get_from_packets(
             labels=range(len(tmidarray)),
             include_lowest=True,
         )
-        lcdata[dirbin]["lum"] = dfpackets_dirbin.groupby(timebins).e_rf.sum().values
+        arr_lum = (
+            dfpackets_dirbin.groupby(timebins).e_rf.sum().values
+            / nprocs_read
+            * solidanglefactor
+            * (u.erg / u.day).to("solLum")
+        ) / arr_timedelta
+
+        lcdata[dirbin] = pd.DataFrame({"time": tmidarray, "lum": arr_lum})
 
         if get_cmf_column:
             timebins_cmf = pd.cut(
@@ -154,30 +160,15 @@ def get_from_packets(
                 labels=range(len(tmidarray)),
                 include_lowest=True,
             )
-            lcdata[dirbin]["lum_cmf"] = dfpackets_dirbin.groupby(timebins_cmf).e_cmf.sum().values
 
-    for dirbin in directionbins:
-        if dirbin == -1:
-            solidanglefactor = 1.0
-        elif average_over_phi:
-            solidanglefactor = ncosthetabins
-            assert not average_over_theta
-        elif average_over_theta:
-            solidanglefactor = nphibins
-
-        lcdata[dirbin]["lum"] = np.divide(
-            lcdata[dirbin]["lum"] / nprocs_read * solidanglefactor * (u.erg / u.day).to("solLum"), arr_timedelta
-        )
-
-        if get_cmf_column:
             assert escapesurfacegamma is not None
-            lcdata[dirbin]["lum_cmf"] = np.divide(
-                lcdata[dirbin]["lum_cmf"]
+            lcdata[dirbin]["lum_cmf"] = (
+                dfpackets_dirbin.groupby(timebins_cmf).e_cmf.sum().values
                 / nprocs_read
                 * solidanglefactor
                 / escapesurfacegamma
-                * (u.erg / u.day).to("solLum"),
-                arr_timedelta,
+                * (u.erg / u.day).to("solLum")
+                / arr_timedelta
             )
 
     return lcdata

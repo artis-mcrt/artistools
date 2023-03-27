@@ -23,6 +23,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt  # needed to get the color map
 import numpy as np
 import pandas as pd
+import polars as pl
 from astropy import constants as const
 from astropy import units as u
 
@@ -118,55 +119,6 @@ def get_spectrum_at_time(
     return spectrum
 
 
-def get_from_packets_worker(
-    packetsfile: Union[str, Path],
-    modelpath: Union[str, Path],
-    querystr: str,
-    qlocals: dict[str, Any],
-    array_lambda: Sequence[float],
-    array_lambdabinedges: Sequence[float],
-    use_escapetime: bool,
-    getpacketcount: bool,
-    escapesurfacegamma: Optional[float],
-    directionbins: Sequence[int],
-    dirbinquerystr: Optional[str],
-) -> tuple[dict[int, np.ndarray], dict[int, np.ndarray]]:
-    dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT").query(
-        querystr, inplace=False, local_dict=qlocals
-    )
-
-    # print(f"  {packetsfile}: {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges ")
-
-    array_energysum_onefile = {dirbin: np.zeros(len(array_lambda), dtype=float) for dirbin in directionbins}
-    array_pktcount_onefile = {dirbin: np.zeros(len(array_lambda), dtype=int) for dirbin in directionbins}
-
-    if directionbins != [-1]:
-        dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
-
-    for dirbin in directionbins:
-        dfpackets_dirbin = dfpackets.query(dirbinquerystr) if dirbinquerystr is not None and dirbin != -1 else dfpackets
-
-        lambda_angstroms = 2.99792458e18 / dfpackets_dirbin.nu_rf
-        wl_bins = pd.cut(
-            x=lambda_angstroms,
-            bins=array_lambdabinedges,
-            right=True,
-            labels=range(len(array_lambda)),
-            include_lowest=True,
-        )
-
-        if use_escapetime:
-            assert escapesurfacegamma is not None
-            array_energysum_onefile[dirbin] = dfpackets_dirbin.e_cmf.groupby(wl_bins).sum().values / escapesurfacegamma
-        else:
-            array_energysum_onefile[dirbin] = dfpackets_dirbin.e_rf.groupby(wl_bins).sum().values
-
-        if getpacketcount:
-            array_pktcount_onefile[dirbin] = dfpackets_dirbin.lambda_rf.groupby(wl_bins).count().values
-
-    return array_energysum_onefile, array_pktcount_onefile
-
-
 def get_from_packets(
     modelpath: Path,
     timelowdays: float,
@@ -207,63 +159,31 @@ def get_from_packets(
     timelow = timelowdays * 86400.0
     timehigh = timehighdays * 86400.0
 
-    querystr = "@nu_min <= nu_rf < @nu_max and "
-    if not use_escapetime:
-        querystr += "@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / 29979245800) < @timehigh"
-    else:
-        querystr += "@timelow < (escape_time * @escapesurfacegamma) < @timehigh"
-
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     ndirbins = at.get_viewingdirectionbincount()
 
-    if average_over_phi:
-        dirbinquerystr = "costhetabin * 10 == @dirbin"
-    elif average_over_theta:
-        dirbinquerystr = "phibin == @dirbin"
-    else:
-        dirbinquerystr = "dirbin == @dirbin"
-
-    processfile = partial(
-        get_from_packets_worker,
-        modelpath=modelpath,
-        querystr=querystr,
-        qlocals=dict(
-            nu_min=nu_min,
-            nu_max=nu_max,
-            timelow=timelow,
-            timehigh=timehigh,
-            escapesurfacegamma=escapesurfacegamma,
-        ),
-        array_lambda=array_lambda,
-        array_lambdabinedges=array_lambdabinedges,
-        use_escapetime=use_escapetime,
-        getpacketcount=getpacketcount,
-        escapesurfacegamma=escapesurfacegamma,
-        directionbins=directionbins,
-        dirbinquerystr=dirbinquerystr,
+    nprocs_read = len(packetsfiles)
+    dfpackets = pl.concat(
+        [
+            at.packets.readfile_lazypolars(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+            for packetsfile in packetsfiles
+        ]
     )
 
-    # total packet energy sum of each bin
-    array_energysum_dirbins = {dirbin: np.zeros_like(array_lambda, dtype=float) for dirbin in directionbins}
-    if getpacketcount:
-        # number of packets in each bin
-        array_pktcount_dirbins = {dirbin: np.zeros_like(array_lambda, dtype=int) for dirbin in directionbins}
+    dfpackets = dfpackets.filter((nu_min <= pl.col("nu_rf")) & (pl.col("nu_rf") <= nu_max))
+    if not use_escapetime:
+        dfpackets = dfpackets.filter(
+            (timelow / 86400 <= pl.col("t_arrive_d")) & (pl.col("t_arrive_d") <= timehigh / 86400.0)
+        )
+    else:
+        dfpackets = dfpackets.filter(
+            (timelow <= pl.col("escape_time") * escapesurfacegamma)
+            & (pl.col("escape_time") * escapesurfacegamma <= timehigh)
+        )
 
-    filesdone = 0
-    with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
-        for arr_energysum, arr_pktcount in pool.imap_unordered(processfile, packetsfiles):
-            filesdone += 1
-            if filesdone % 100 == 0 or filesdone == len(packetsfiles):
-                print(
-                    f"Read {filesdone} of {len(packetsfiles)} packets files ({filesdone / len(packetsfiles)*100.:.1f}%)"
-                )
-            for dirbin in directionbins:
-                array_energysum_dirbins[dirbin] += arr_energysum[dirbin]
-                if getpacketcount:
-                    array_pktcount_dirbins[dirbin] += arr_pktcount[dirbin]
-
-    nprocs_read = len(packetsfiles)
+    if directionbins != [-1]:
+        dfpackets = at.packets.bin_packet_directions_lazypolars(modelpath, dfpackets)
 
     if fnufilterfunc:
         print("Applying filter to ARTIS spectrum")
@@ -272,14 +192,43 @@ def get_from_packets(
     for dirbin in directionbins:
         if dirbin == -1:
             solidanglefactor = 1.0
+            pldfpackets_dirbin = dfpackets
         elif average_over_phi:
-            solidanglefactor = ncosthetabins
             assert not average_over_theta
+            solidanglefactor = ncosthetabins
+            pldfpackets_dirbin = dfpackets.filter((pl.col("costhetabin") * 10 == dirbin))
         elif average_over_theta:
             solidanglefactor = nphibins
+            pldfpackets_dirbin = dfpackets.filter((pl.col("phibin") == dirbin))
+        else:
+            solidanglefactor = ndirbins
+            pldfpackets_dirbin = dfpackets.filter((pl.col("costhetadirbinbin") * 10 == dirbin))
+
+        pldfpackets_dirbin = pldfpackets_dirbin.with_columns(
+            [(2.99792458e18 / pl.col("nu_rf")).alias("lambda_angstroms")]
+        )
+
+        dfpackets_dirbin = pldfpackets_dirbin.select(["t_arrive_d", "e_rf", "lambda_angstroms"]).collect().to_pandas()
+
+        wl_bins = pd.cut(
+            x=dfpackets_dirbin.lambda_angstroms,
+            bins=array_lambdabinedges,
+            right=True,
+            labels=range(len(array_lambda)),
+            include_lowest=True,
+        )
+
+        if use_escapetime:
+            assert escapesurfacegamma is not None
+            array_energysum = dfpackets_dirbin.e_cmf.groupby(wl_bins).sum().values / escapesurfacegamma
+        else:
+            array_energysum = dfpackets_dirbin.e_rf.groupby(wl_bins).sum().values
+
+        if getpacketcount:
+            array_pktcount = dfpackets_dirbin.lambda_rf.groupby(wl_bins).count().values
 
         array_flambda = (
-            array_energysum_dirbins[dirbin]
+            array_energysum
             / delta_lambda
             / (timehigh - timelow)
             / (4 * math.pi)
@@ -298,12 +247,12 @@ def get_from_packets(
             {
                 "lambda_angstroms": array_lambda,
                 "f_lambda": array_flambda,
-                "energy_sum": array_energysum_dirbins[dirbin],
+                "energy_sum": array_energysum,
             }
         )
 
         if getpacketcount:
-            dfdict[dirbin]["packetcount"] = array_pktcount_dirbins[dirbin]
+            dfdict[dirbin]["packetcount"] = array_pktcount
 
     return dfdict
 

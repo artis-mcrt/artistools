@@ -391,9 +391,7 @@ def get_directionbin(
     return na
 
 
-def bin_packet_directions(
-    modelpath: Union[Path, str], dfpackets: Union[pl.LazyFrame, pl.DataFrame, pd.DataFrame]
-) -> Union[pl.LazyFrame, pl.DataFrame, pd.DataFrame]:
+def bin_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.LazyFrame) -> pl.LazyFrame:
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
 
@@ -401,94 +399,101 @@ def bin_packet_directions(
     xhat = np.array([1.0, 0.0, 0.0])
     vec2 = np.cross(xhat, syn_dir)
 
-    if isinstance(dfpackets, pl.LazyFrame) or isinstance(dfpackets, pl.DataFrame):
-        dfpackets = dfpackets.with_columns(
-            (pl.col("dirx") ** 2 + pl.col("diry") ** 2 + pl.col("dirz") ** 2).sqrt().alias("dirmag"),
+    dfpackets = dfpackets.with_columns(
+        (pl.col("dirx") ** 2 + pl.col("diry") ** 2 + pl.col("dirz") ** 2).sqrt().alias("dirmag"),
+    )
+    dfpackets = dfpackets.with_columns(
+        (
+            (pl.col("dirx") * syn_dir[0] + pl.col("diry") * syn_dir[1] + pl.col("dirz") * syn_dir[2]) / pl.col("dirmag")
+        ).alias("costheta"),
+    )
+    dfpackets = dfpackets.with_columns(
+        ((pl.col("costheta") + 1) / 2.0 * ncosthetabins).cast(pl.Int64).alias("costhetabin"),
+    )
+    dfpackets = dfpackets.with_columns(
+        ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
+        ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
+        ((pl.col("dirx") * syn_dir[1] - pl.col("diry") * syn_dir[0]) / pl.col("dirmag")).alias("vec1_z"),
+    )
+
+    dfpackets = dfpackets.with_columns(
+        (
+            (pl.col("vec1_x") * vec2[0] + pl.col("vec1_y") * vec2[1] + pl.col("vec1_z") * vec2[2])
+            / (pl.col("vec1_x") ** 2 + pl.col("vec1_y") ** 2 + pl.col("vec1_z") ** 2).sqrt()
+            / float(np.linalg.norm(vec2))
+        ).alias("cosphi"),
+    )
+
+    # vec1 = dir cross syn_dir
+    dfpackets = dfpackets.with_columns(
+        ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
+        ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
+        ((pl.col("dirx") * syn_dir[1] - pl.col("diry") * syn_dir[0]) / pl.col("dirmag")).alias("vec1_z"),
+    )
+
+    vec3 = np.cross(vec2, syn_dir)
+
+    dfpackets = dfpackets.with_columns(
+        (
+            (pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2]) / pl.col("dirmag")
+        ).alias("testphi"),
+    )
+
+    dfpackets = dfpackets.with_columns(
+        (
+            (pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2]) / pl.col("dirmag")
+        ).alias("testphi"),
+    )
+    dfpackets = dfpackets.with_columns(
+        (
+            pl.when(pl.col("testphi") > 0)
+            .then(pl.col("cosphi").arccos() / 2.0 / np.pi * nphibins)
+            .otherwise((pl.col("cosphi").arccos() + np.pi) / 2.0 / np.pi * nphibins)
         )
-        dfpackets = dfpackets.with_columns(
-            (
-                (pl.col("dirx") * syn_dir[0] + pl.col("diry") * syn_dir[1] + pl.col("dirz") * syn_dir[2])
-                / pl.col("dirmag")
-            ).alias("costheta"),
-        )
-        dfpackets = dfpackets.with_columns(
-            ((pl.col("costheta") + 1) / 2.0 * ncosthetabins).cast(pl.Int64).alias("costhetabin"),
-        )
-        dfpackets = dfpackets.with_columns(
-            ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
-            ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
-            ((pl.col("dirx") * syn_dir[1] - pl.col("diry") * syn_dir[0]) / pl.col("dirmag")).alias("vec1_z"),
-        )
+        .cast(pl.Int64)
+        .alias("phibin"),
+    )
+    dfpackets = dfpackets.with_columns(
+        (pl.col("costhetabin") * nphibins + pl.col("phibin")).alias("dirbin"),
+    )
 
-        dfpackets = dfpackets.with_columns(
-            (
-                (pl.col("vec1_x") * vec2[0] + pl.col("vec1_y") * vec2[1] + pl.col("vec1_z") * vec2[2])
-                / (pl.col("vec1_x") ** 2 + pl.col("vec1_y") ** 2 + pl.col("vec1_z") ** 2).sqrt()
-                / float(np.linalg.norm(vec2))
-            ).alias("cosphi"),
-        )
+    return dfpackets
 
-        # vec1 = dir cross syn_dir
-        dfpackets = dfpackets.with_columns(
-            ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
-            ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
-            ((pl.col("dirx") * syn_dir[1] - pl.col("diry") * syn_dir[0]) / pl.col("dirmag")).alias("vec1_z"),
-        )
 
-        vec3 = np.cross(vec2, syn_dir)
+def bin_packet_directions(modelpath: Union[Path, str], dfpackets: pd.DataFrame) -> pd.DataFrame:
+    nphibins = at.get_viewingdirection_phibincount()
+    ncosthetabins = at.get_viewingdirection_costhetabincount()
 
-        dfpackets = dfpackets.with_columns(
-            (
-                (pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2])
-                / pl.col("dirmag")
-            ).alias("testphi"),
-        )
+    syn_dir = at.get_syn_dir(Path(modelpath))
+    xhat = np.array([1.0, 0.0, 0.0])
+    vec2 = np.cross(xhat, syn_dir)
 
-        dfpackets = dfpackets.with_columns(
-            (
-                (pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2])
-                / pl.col("dirmag")
-            ).alias("testphi"),
-        )
-        dfpackets = dfpackets.with_columns(
-            (
-                pl.when(pl.col("testphi") > 0)
-                .then(pl.col("cosphi").arccos() / 2.0 / np.pi * nphibins)
-                .otherwise((pl.col("cosphi").arccos() + np.pi) / 2.0 / np.pi * nphibins)
-            )
-            .cast(pl.Int64)
-            .alias("phibin"),
-        )
-        dfpackets = dfpackets.with_columns(
-            (pl.col("costhetabin") * nphibins + pl.col("phibin")).alias("dirbin"),
-        )
-    else:
-        pktdirvecs = dfpackets[["dirx", "diry", "dirz"]].values
+    pktdirvecs = dfpackets[["dirx", "diry", "dirz"]].values
 
-        # normalise. might not be needed
-        dirmags = np.linalg.norm(pktdirvecs, axis=1)
-        pktdirvecs /= np.array([dirmags, dirmags, dirmags]).transpose()
+    # normalise. might not be needed
+    dirmags = np.linalg.norm(pktdirvecs, axis=1)
+    pktdirvecs /= np.array([dirmags, dirmags, dirmags]).transpose()
 
-        costheta = np.dot(pktdirvecs, syn_dir)
-        arr_costhetabin = ((costheta + 1) / 2.0 * ncosthetabins).astype(int)
-        dfpackets["costhetabin"] = arr_costhetabin
+    costheta = np.dot(pktdirvecs, syn_dir)
+    arr_costhetabin = ((costheta + 1) / 2.0 * ncosthetabins).astype(int)
+    dfpackets["costhetabin"] = arr_costhetabin
 
-        arr_vec1 = np.cross(pktdirvecs, syn_dir)
-        arr_cosphi = np.dot(arr_vec1, vec2) / np.linalg.norm(arr_vec1, axis=1) / np.linalg.norm(vec2)
-        vec3 = np.cross(vec2, syn_dir)
-        arr_testphi = np.dot(arr_vec1, vec3)
+    arr_vec1 = np.cross(pktdirvecs, syn_dir)
+    arr_cosphi = np.dot(arr_vec1, vec2) / np.linalg.norm(arr_vec1, axis=1) / np.linalg.norm(vec2)
+    vec3 = np.cross(vec2, syn_dir)
+    arr_testphi = np.dot(arr_vec1, vec3)
 
-        arr_phibin = np.zeros(len(pktdirvecs), dtype=int)
-        filta = arr_testphi > 0
-        arr_phibin[filta] = np.arccos(arr_cosphi[filta]) / 2.0 / np.pi * nphibins
-        filtb = np.invert(filta)
-        arr_phibin[filtb] = (np.arccos(arr_cosphi[filtb]) + np.pi) / 2.0 / np.pi * nphibins
-        dfpackets["phibin"] = arr_phibin
-        dfpackets["arccoscosphi"] = np.arccos(arr_cosphi)
+    arr_phibin = np.zeros(len(pktdirvecs), dtype=int)
+    filta = arr_testphi > 0
+    arr_phibin[filta] = np.arccos(arr_cosphi[filta]) / 2.0 / np.pi * nphibins
+    filtb = np.invert(filta)
+    arr_phibin[filtb] = (np.arccos(arr_cosphi[filtb]) + np.pi) / 2.0 / np.pi * nphibins
+    dfpackets["phibin"] = arr_phibin
+    dfpackets["arccoscosphi"] = np.arccos(arr_cosphi)
 
-        dfpackets["dirbin"] = (arr_costhetabin * nphibins) + arr_phibin
+    dfpackets["dirbin"] = (arr_costhetabin * nphibins) + arr_phibin
 
-        assert np.all(dfpackets["dirbin"] < at.get_viewingdirectionbincount())
+    assert np.all(dfpackets["dirbin"] < at.get_viewingdirectionbincount())
 
     return dfpackets
 
