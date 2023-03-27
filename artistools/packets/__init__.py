@@ -145,7 +145,7 @@ def add_derived_columns(
     return dfpackets
 
 
-def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) -> pd.DataFrame:
+def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) -> pl.DataFrame:
     usecols_nodata = None  # print a warning for missing columns if the source code columns can't be read
 
     skiprows: int = 0
@@ -267,7 +267,7 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
         for col in usecols_nodata:
             dfpackets[col] = float("NaN")
 
-    return dfpackets
+    return pl.from_pandas(dfpackets)
 
 
 def readfile(
@@ -286,16 +286,17 @@ def readfile_lazypolars(
 ) -> pl.LazyFrame:
     """Read a packet file into a Polars lazy DataFrame."""
     packetsfile = Path(packetsfile)
+    save_parquet = False
 
     try:
         if packetsfile.suffixes == [".out", ".parquet"]:
             parquetfile = packetsfile
+            dfpackets = pl.scan_parquet(parquetfile)
+            save_parquet = False
         elif packetsfile.suffixes in [[".out"], [".out", ".gz"], [".out", ".xz"]]:
             parquetfile = at.stripallsuffixes(packetsfile).with_suffix(".out.parquet")
-            dfpackets = readfile_text(packetsfile)
-            assert len(dfpackets) > 0
-            print(f"Saving {parquetfile}")
-            dfpackets.to_parquet(parquetfile)
+            dfpackets = readfile_text(packetsfile).lazy()
+            save_parquet = True
         else:
             print("ERROR")
             sys.exit(1)
@@ -305,7 +306,28 @@ def readfile_lazypolars(
         packetsfile = at.firstexisting([at.stripallsuffixes(packetsfile).with_suffix(".out")])
         # raise e
 
-    dfpackets = pl.scan_parquet(parquetfile)
+    if "t_arrive_d" not in dfpackets.columns:
+        dfpackets = dfpackets.with_columns(
+            [
+                (
+                    (
+                        pl.col("escape_time")
+                        - (
+                            pl.col("posx") * pl.col("dirx")
+                            + pl.col("posy") * pl.col("diry")
+                            + pl.col("posz") * pl.col("dirz")
+                        )
+                        / 29979245800.0
+                    )
+                    / 86400.0
+                ).alias("t_arrive_d"),
+            ]
+        )
+        save_parquet = True
+
+    if save_parquet:
+        print(f"Saving {parquetfile} with lz4 and t_arrive_d")
+        dfpackets.collect().write_parquet(parquetfile, compression="lz4")
 
     if escape_type is not None and escape_type != "" and escape_type != "ALL":
         assert type is None or type == "TYPE_ESCAPE"
@@ -316,23 +338,6 @@ def readfile_lazypolars(
         dfpackets = dfpackets.filter(pl.col("type_id") == type_ids["TYPE_ESCAPE"])
     else:
         print(")")
-
-    dfpackets = dfpackets.with_columns(
-        [
-            (
-                (
-                    pl.col("escape_time")
-                    - (
-                        pl.col("posx") * pl.col("dirx")
-                        + pl.col("posy") * pl.col("diry")
-                        + pl.col("posz") * pl.col("dirz")
-                    )
-                    / 29979245800.0
-                )
-                / 86400.0
-            ).alias("t_arrive_d"),
-        ]
-    )
 
     return dfpackets
 
