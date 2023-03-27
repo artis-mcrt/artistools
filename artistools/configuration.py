@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any
 from typing import Optional
 
-import pandas as pd
 import psutil
 
 config: dict[str, Any] = {}
