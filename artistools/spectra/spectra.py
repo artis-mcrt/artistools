@@ -217,7 +217,7 @@ def get_from_packets(
                 (
                     pldfpackets_dirbin.get_column("lambda_angstroms")
                     .cut(
-                        bins=array_lambdabinedges,
+                        bins=list(array_lambdabinedges),
                         category_label="wlbin",
                         maintain_order=True,
                     )
