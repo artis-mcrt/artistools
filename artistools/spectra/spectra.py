@@ -171,10 +171,10 @@ def get_from_packets(
         ]
     )
 
-    dfpackets = dfpackets.filter((nu_min <= pl.col("nu_rf")) & (pl.col("nu_rf") <= nu_max))
+    dfpackets = dfpackets.filter((float(nu_min) <= pl.col("nu_rf")) & (pl.col("nu_rf") <= float(nu_max)))
     if not use_escapetime:
         dfpackets = dfpackets.filter(
-            (timelow / 86400 <= pl.col("t_arrive_d")) & (pl.col("t_arrive_d") <= timehigh / 86400.0)
+            (float(timelow / 86400.0) <= pl.col("t_arrive_d")) & (pl.col("t_arrive_d") <= float(timehigh / 86400.0))
         )
     else:
         dfpackets = dfpackets.filter(
