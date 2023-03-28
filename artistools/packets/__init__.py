@@ -338,7 +338,7 @@ def readfile_lazypolars(
         dfpackets = dfpackets.filter(pl.col("type_id") == type_ids["TYPE_ESCAPE"])
     else:
         print(")")
-    print(packetsfile, len(dfpackets.columns), dfpackets.columns)
+
     return dfpackets
 
 
