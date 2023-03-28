@@ -75,10 +75,6 @@ def get_from_packets(
 ) -> dict[int, pd.DataFrame]:
     """Get ARTIS luminosity vs time from packets files"""
 
-    packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
-    nprocs_read = len(packetsfiles)
-    assert nprocs_read > 0
-
     tmidarray = at.get_timestep_times_float(modelpath=modelpath, loc="mid")
     timearray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
     arr_timedelta = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
@@ -97,11 +93,8 @@ def get_from_packets(
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     ndirbins = at.get_viewingdirectionbincount()
 
-    dfpackets: pl.LazyFrame = pl.concat(
-        [
-            at.packets.readfile_lazypolars(packetsfile, type="TYPE_ESCAPE", escape_type=escape_type)
-            for packetsfile in packetsfiles
-        ]
+    nprocs_read, dfpackets = at.packets.get_pldfpackets(
+        modelpath, maxpacketfiles, type="TYPE_ESCAPE", escape_type=escape_type
     )
 
     if get_cmf_column:
@@ -130,40 +123,34 @@ def get_from_packets(
             solidanglefactor = ndirbins
             pldfpackets_dirbin = dfpackets.filter((pl.col("costhetadirbinbin") * 10 == dirbin))
 
-        dfpackets_dirbin = (
-            pldfpackets_dirbin.select(
-                ["t_arrive_d", "e_rf", "e_cmf", "t_arrive_cmf_d"] if get_cmf_column else ["t_arrive_d", "e_rf"]
-            )
-            .collect()
-            .to_pandas()
+        pldfpackets_dirbin = pldfpackets_dirbin.select(
+            ["t_arrive_d", "e_rf", "e_cmf", "t_arrive_cmf_d"] if get_cmf_column else ["t_arrive_d", "e_rf"]
         )
 
-        timebins = pd.cut(
-            dfpackets_dirbin["t_arrive_d"],
-            timearrayplusend,
-            labels=range(len(tmidarray)),
-            include_lowest=True,
+        dftimebinned = at.packets.bin_and_sum(
+            pldfpackets_dirbin,
+            bincol="t_arrive_d",
+            bins=list(timearrayplusend),
+            sumcols=["e_rf"],
         )
+
         arr_lum = (
-            dfpackets_dirbin.groupby(timebins).e_rf.sum().values
-            / nprocs_read
-            * solidanglefactor
-            * (u.erg / u.day).to("solLum")
+            dftimebinned["e_rf_sum"] / nprocs_read * solidanglefactor * (u.erg / u.day).to("solLum")
         ) / arr_timedelta
 
         lcdata[dirbin] = pd.DataFrame({"time": tmidarray, "lum": arr_lum})
 
         if get_cmf_column:
-            timebins_cmf = pd.cut(
-                dfpackets_dirbin["t_arrive_cmf_d"],
-                timearrayplusend,
-                labels=range(len(tmidarray)),
-                include_lowest=True,
+            dftimebinned_cmf = at.packets.bin_and_sum(
+                pldfpackets_dirbin,
+                bincol="t_arrive_cmf_d",
+                bins=list(timearrayplusend),
+                sumcols=["e_cmf"],
             )
 
             assert escapesurfacegamma is not None
             lcdata[dirbin]["lum_cmf"] = (
-                dfpackets_dirbin.groupby(timebins_cmf).e_cmf.sum().values
+                dftimebinned_cmf["e_cmf_sum"]
                 / nprocs_read
                 * solidanglefactor
                 / escapesurfacegamma

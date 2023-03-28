@@ -163,7 +163,9 @@ def get_from_packets(
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     ndirbins = at.get_viewingdirectionbincount()
 
-    nprocs_read, dfpackets = at.packets.get_pldfpackets(modelpath, maxpacketfiles)
+    nprocs_read, dfpackets = at.packets.get_pldfpackets(
+        modelpath, maxpacketfiles=maxpacketfiles, type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+    )
 
     dfpackets = dfpackets.filter((float(nu_min) <= pl.col("nu_rf")) & (pl.col("nu_rf") <= float(nu_max)))
     if not use_escapetime:
@@ -203,7 +205,7 @@ def get_from_packets(
             [(2.99792458e18 / pl.col("nu_rf")).alias("lambda_angstroms")]
         ).select(["lambda_angstroms", encol])
 
-        dfbinned = at.packets.bin(
+        dfbinned = at.packets.bin_and_sum(
             pldfpackets_dirbin,
             bincol="lambda_angstroms",
             bins=list(array_lambdabinedges),

@@ -277,7 +277,7 @@ def readfile(
     escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
 ) -> pd.DataFrame:
     """Read a packet file into a Pandas DataFrame."""
-    return readfile_lazypolars(packetsfile, type, escape_type).collect().to_pandas()
+    return readfile_lazypolars(packetsfile, type=type, escape_type=escape_type).collect().to_pandas()
 
 
 def readfile_lazypolars(
@@ -365,21 +365,46 @@ def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[i
     packetsfiles = [f for f in packetsfiles if not preferred_alternative(f)]
 
     if maxpacketfiles is not None and maxpacketfiles > 0 and len(packetsfiles) > maxpacketfiles:
-        print(f"Using only the first {maxpacketfiles} of {len(packetsfiles)} packets files")
+        print(f"Reading from the first {maxpacketfiles} of {len(packetsfiles)} packets files")
         packetsfiles = packetsfiles[:maxpacketfiles]
+    else:
+        print(f"Reading from {len(packetsfiles)} packets files")
 
     return packetsfiles
 
 
-def get_pldfpackets(modelpath: Union[str, Path], maxpacketfiles: Optional[int] = None) -> tuple[int, pl.LazyFrame]:
+def get_pldfpackets(
+    modelpath: Union[str, Path],
+    maxpacketfiles: Optional[int] = None,
+    type: Optional[str] = None,
+    escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
+) -> tuple[int, pl.LazyFrame]:
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
     nprocs_read = len(packetsfiles)
+    allescrpktfile = Path(modelpath) / "packets_rpkt_escaped.parquet"
+    write_parquet = False
+
+    if maxpacketfiles is None and type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT":
+        if allescrpktfile.is_file():
+            print(f"Reading from {allescrpktfile}")
+            pldfpackets = pl.scan_parquet(allescrpktfile)
+            return nprocs_read, pldfpackets
+        else:
+            write_parquet = True
+
     pldfpackets = pl.concat(
         [
-            at.packets.readfile_lazypolars(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+            at.packets.readfile_lazypolars(packetsfile, type=type, escape_type=escape_type)
             for packetsfile in packetsfiles
         ]
     )
+
+    if write_parquet:
+        print(f"Saving {allescrpktfile}")
+        pldfpacketsb: pl.DataFrame = pldfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"]).collect()
+        pldfpacketsb.write_parquet(allescrpktfile, compression="lz4", statistics=True)
+        pldfpackets = pldfpacketsb.lazy()
+
     return nprocs_read, pldfpackets
 
 
@@ -666,7 +691,7 @@ def get_mean_packet_emission_velocity_per_ts(
     return emission_data
 
 
-def bin(
+def bin_and_sum(
     df: Union[pd.DataFrame, pl.DataFrame, pl.LazyFrame],
     bincol: str,
     bins: list[Union[float, int]],
