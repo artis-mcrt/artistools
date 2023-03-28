@@ -177,7 +177,7 @@ def parse_directionbin_args(modelpath: Union[Path, str], args) -> tuple[Sequence
     dirbin_definition: dict[int, str] = {}
 
     if not args.plotvspecpol:
-        dirbin_definition = get_dirbin_costheta_phi_labels(
+        dirbin_definition = at.get_dirbin_costheta_phi_labels(
             dirbins,
             modelpath=modelpath,
             average_over_phi=args.average_over_phi_angle,
@@ -193,46 +193,6 @@ def parse_directionbin_args(modelpath: Union[Path, str], args) -> tuple[Sequence
                 assert dirbin < at.get_viewingdirection_costhetabincount() or dirbin == -1
 
     return dirbins, dirbin_definition
-
-
-def get_dirbin_costheta_phi_labels(
-    dirbins: Union[np.ndarray[Any, np.dtype[Any]], Sequence[int]],
-    modelpath: Union[Path, str, None] = None,
-    average_over_phi: bool = False,
-    average_over_theta: bool = False,
-) -> dict[int, str]:
-    if modelpath:
-        modelpath = Path(modelpath)
-        MABINS = at.get_viewingdirectionbincount()
-        if len(list(Path(modelpath).glob("*_res_00.out*"))) > 0:  # if the first direction bin file exists
-            assert len(list(Path(modelpath).glob(f"*_res_{MABINS-1:02d}.out*"))) > 0  # check last bin exists
-            assert len(list(Path(modelpath).glob(f"*_res_{MABINS:02d}.out*"))) == 0  # check one beyond does not exist
-
-    strlist_costheta_bins, strlist_phi_bins = at.get_viewinganglebin_definitions()
-
-    nphibins = at.get_viewingdirection_phibincount()
-
-    angle_definitions: dict[int, str] = {}
-    for dirbin in dirbins:
-        if dirbin == -1:
-            angle_definitions[dirbin] = ""
-            continue
-
-        costheta_index = dirbin // nphibins
-        phi_index = dirbin % nphibins
-
-        if average_over_phi:
-            angle_definitions[dirbin] = f"{strlist_costheta_bins[costheta_index]}"
-            assert phi_index == 0
-            assert not average_over_theta
-        elif average_over_theta:
-            angle_definitions[dirbin] = f"{strlist_phi_bins[phi_index]}"
-            assert costheta_index == 0
-        else:
-            angle_definitions[dirbin] = f"{strlist_costheta_bins[costheta_index]}, {strlist_phi_bins[phi_index]}"
-        print(f"directionbin {dirbin:4d}   {angle_definitions[dirbin]}")
-
-    return angle_definitions
 
 
 def save_viewing_angle_data_for_plotting(band_name, modelname, args):
@@ -496,7 +456,7 @@ def set_scatterplot_plotkwargs(modelnumber, args):
 def update_plotkwargs_for_viewingangle_colorbar(
     plotkwargsviewingangles: dict[str, Any], args: argparse.Namespace
 ) -> dict[str, Any]:
-    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
+    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_theta_phi_dirbin_labels()
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
     angles = np.arange(0, at.get_viewingdirectionbincount())
@@ -526,7 +486,7 @@ def set_scatterplot_plot_params(args):
     plt.tight_layout()
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_theta_phi_dirbin_labels()
         scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
         at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args)
 
@@ -850,7 +810,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath, args):
 
     angles, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
-    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
+    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_theta_phi_dirbin_labels()
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
     plotkwargs = {}

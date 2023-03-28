@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 import gzip
 import math
+import multiprocessing
 import sys
 from collections.abc import Collection
 from collections.abc import Sequence
 from functools import lru_cache
+from functools import partial
 from pathlib import Path
 from typing import Literal
 from typing import Optional
@@ -16,7 +18,6 @@ import polars as pl
 
 import artistools as at
 
-# import multiprocessing
 # import matplotlib.patches as mpatches
 # from collections import namedtuple
 
@@ -370,6 +371,18 @@ def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[i
     return packetsfiles
 
 
+def get_pldfpackets(modelpath: Union[str, Path], maxpacketfiles: Optional[int] = None) -> tuple[int, pl.LazyFrame]:
+    packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
+    nprocs_read = len(packetsfiles)
+    pldfpackets = pl.concat(
+        [
+            at.packets.readfile_lazypolars(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+            for packetsfile in packetsfiles
+        ]
+    )
+    return nprocs_read, pldfpackets
+
+
 def get_directionbin(
     dirx: float, diry: float, dirz: float, nphibins: int, ncosthetabins: int, syn_dir: Sequence[float]
 ) -> int:
@@ -651,3 +664,71 @@ def get_mean_packet_emission_velocity_per_ts(
         emission_data["mean_emission_velocity"][binindex] += emission_velocity  # / 2.99792458e10
 
     return emission_data
+
+
+def bin(
+    df: Union[pd.DataFrame, pl.DataFrame, pl.LazyFrame],
+    bincol: str,
+    bins: list[Union[float, int]],
+    sumcols: list[str] = [],
+    getcounts: bool = False,
+) -> pd.DataFrame:
+    """bins is a list of lower edges, and the final upper edge"""
+
+    # dfout = pl.DataFrame(pl.Series(bincol + "_bin", np.arange(0, len(bins) - 1)))
+    dfout = pd.DataFrame({bincol + "_bin": np.arange(0, len(bins) - 1)})
+
+    if isinstance(df, pl.LazyFrame):
+        df = df.collect()
+
+    # POLARS METHOD (slower than pandas for some reason)
+    # df = df.with_columns(
+    #     [
+    #         (
+    #             df[bincol]
+    #             .cut(
+    #                 bins=list(bins),
+    #                 category_label=bincol + "_bin",
+    #                 maintain_order=True,
+    #             )
+    #             .get_column(bincol + "_bin")
+    #             .cast(pl.Int64)
+    #             - 1
+    #         )
+    #     ]
+    # )
+    # aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols]
+
+    # if getcounts:
+    #     aggs.append(pl.col(bincol).count().alias("count"))
+
+    # wlbins = df.groupby(bincol + "_bin").agg(aggs)
+
+    # # now we will include the empty bins
+    # dfout = dfout.join(wlbins, how="left", on=bincol + "_bin").fill_null(0.0)
+
+    # PANDAS METHOD
+
+    if isinstance(df, pl.DataFrame):
+        df = df.to_pandas()
+
+    pdbins = pd.cut(
+        x=df[bincol],
+        bins=bins,
+        right=True,
+        labels=range(len(bins) - 1),
+        include_lowest=True,
+    )
+
+    if sumcols is not None:
+        for col in sumcols:
+            # dfout = dfout.with_columns(
+            #     [pl.Series(col + "_sum", df[col].groupby(pdbins).sum().values) for col in sumcols]
+            # )
+            dfout[col + "_sum"] = df[col].groupby(pdbins).sum().values
+
+    if getcounts:
+        # dfout = dfout.with_columns([pl.Series("count", df[bincol].groupby(pdbins).count().values)])
+        dfout["count"] = df[bincol].groupby(pdbins).count().values
+
+    return dfout

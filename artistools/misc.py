@@ -1295,7 +1295,7 @@ def get_viewingdirection_costhetabincount() -> int:
     return 10
 
 
-def get_viewinganglebin_definitions() -> tuple[list[str], list[str]]:
+def get_theta_phi_dirbin_labels() -> tuple[list[str], list[str]]:
     # todo: replace with general code for any bin count:
     # ncosthetabins = at.get_viewingdirection_costhetabincount()
     # costhetabins_lower = np.arange(-1., 1., 2. / ncosthetabins)
@@ -1342,3 +1342,43 @@ def get_viewinganglebin_definitions() -> tuple[list[str], list[str]]:
     #                                     '6π/5 < ϕ ≤ 7π/5', '7π/5 < ϕ ≤ 8π/5',
     #                                     '8π/5 < ϕ ≤ 9π/5', '9π/5 < ϕ < 2π']
     return costheta_viewing_angle_bins, phi_viewing_angle_bins
+
+
+def get_dirbin_costheta_phi_labels(
+    dirbins: Union[np.ndarray[Any, np.dtype[Any]], Sequence[int]],
+    modelpath: Union[Path, str, None] = None,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
+) -> dict[int, str]:
+    if modelpath:
+        modelpath = Path(modelpath)
+        MABINS = at.get_viewingdirectionbincount()
+        if len(list(Path(modelpath).glob("*_res_00.out*"))) > 0:  # if the first direction bin file exists
+            assert len(list(Path(modelpath).glob(f"*_res_{MABINS-1:02d}.out*"))) > 0  # check last bin exists
+            assert len(list(Path(modelpath).glob(f"*_res_{MABINS:02d}.out*"))) == 0  # check one beyond does not exist
+
+    strlist_costheta_bins, strlist_phi_bins = at.get_theta_phi_dirbin_labels()
+
+    nphibins = at.get_viewingdirection_phibincount()
+
+    angle_definitions: dict[int, str] = {}
+    for dirbin in dirbins:
+        if dirbin == -1:
+            angle_definitions[dirbin] = ""
+            continue
+
+        costheta_index = dirbin // nphibins
+        phi_index = dirbin % nphibins
+
+        if average_over_phi:
+            angle_definitions[dirbin] = f"{strlist_costheta_bins[costheta_index]}"
+            assert phi_index == 0
+            assert not average_over_theta
+        elif average_over_theta:
+            angle_definitions[dirbin] = f"{strlist_phi_bins[phi_index]}"
+            assert costheta_index == 0
+        else:
+            angle_definitions[dirbin] = f"{strlist_costheta_bins[costheta_index]}, {strlist_phi_bins[phi_index]}"
+        print(f"directionbin {dirbin:4d}   {angle_definitions[dirbin]}")
+
+    return angle_definitions

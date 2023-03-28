@@ -138,10 +138,9 @@ def get_from_packets(
 ) -> pd.DataFrame:
     """Get a spectrum dataframe using the packets files as input."""
     assert not useinternalpackets
-    packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
 
     if use_escapetime:
-        modeldata, _ = at.inputmodel.get_modeldata(Path(packetsfiles[0]).parent)
+        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
         vmax_beta = modeldata.iloc[-1].velocity_outer * 299792.458
         escapesurfacegamma = math.sqrt(1 - vmax_beta**2)
     else:
@@ -164,13 +163,7 @@ def get_from_packets(
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     ndirbins = at.get_viewingdirectionbincount()
 
-    nprocs_read = len(packetsfiles)
-    dfpackets = pl.concat(
-        [
-            at.packets.readfile_lazypolars(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
-            for packetsfile in packetsfiles
-        ]
-    )
+    nprocs_read, dfpackets = at.packets.get_pldfpackets(modelpath, maxpacketfiles)
 
     dfpackets = dfpackets.filter((float(nu_min) <= pl.col("nu_rf")) & (pl.col("nu_rf") <= float(nu_max)))
     if not use_escapetime:
@@ -206,69 +199,20 @@ def get_from_packets(
             solidanglefactor = ndirbins
             pldfpackets_dirbin_lazy = dfpackets.filter((pl.col("costhetadirbinbin") * 10 == dirbin))
 
-        pldfpackets_dirbin = (
-            pldfpackets_dirbin_lazy.with_columns([(2.99792458e18 / pl.col("nu_rf")).alias("lambda_angstroms")])
-            .select(["lambda_angstroms", encol])
-            .collect()
+        pldfpackets_dirbin = pldfpackets_dirbin_lazy.with_columns(
+            [(2.99792458e18 / pl.col("nu_rf")).alias("lambda_angstroms")]
+        ).select(["lambda_angstroms", encol])
+
+        dfbinned = at.packets.bin(
+            pldfpackets_dirbin,
+            bincol="lambda_angstroms",
+            bins=list(array_lambdabinedges),
+            sumcols=[encol],
+            getcounts=getpacketcount,
         )
-
-        pldfpackets_dirbin = pldfpackets_dirbin.with_columns(
-            [
-                (
-                    pldfpackets_dirbin.get_column("lambda_angstroms")
-                    .cut(
-                        bins=list(array_lambdabinedges),
-                        category_label="wlbin",
-                        maintain_order=True,
-                    )
-                    .get_column("wlbin")
-                    .cast(pl.Int64)
-                    - 1
-                )
-            ]
-        )
-        aggs = (
-            [pl.col(encol).sum().alias("ensum"), pl.col(encol).count().alias("pktcount")]
-            if getpacketcount
-            else [pl.col(encol).sum().alias("ensum")]
-        )
-        wlbins = pldfpackets_dirbin.groupby("wlbin").agg(aggs)
-
-        # now we will include the empty bins
-        allbins = pl.DataFrame({"wlbin": np.arange(0, len(array_lambdabinedges) - 1)}).join(
-            wlbins, on="wlbin", how="left"
-        )
-
-        array_energysum = allbins.get_column("ensum").fill_null(0.0).to_numpy()
-
-        if use_escapetime:
-            assert escapesurfacegamma is not None
-            array_energysum /= escapesurfacegamma
-
-        if getpacketcount:
-            array_pktcount = allbins.get_column("pktcount").fill_null(0).to_numpy()
-
-        # dfpackets_dirbin = pldfpackets_dirbin.collect().to_pandas()
-
-        # wl_bins = pd.cut(
-        #     x=dfpackets_dirbin.lambda_angstroms,
-        #     bins=array_lambdabinedges,
-        #     right=True,
-        #     labels=range(len(array_lambda)),
-        #     include_lowest=True,
-        # )
-
-        # if use_escapetime:
-        #     assert escapesurfacegamma is not None
-        #     array_energysum = dfpackets_dirbin.e_cmf.groupby(wl_bins).sum().values / escapesurfacegamma
-        # else:
-        #     array_energysum = dfpackets_dirbin.e_rf.groupby(wl_bins).sum().values
-
-        # if getpacketcount:
-        #     array_pktcount = dfpackets_dirbin[encol].groupby(wl_bins).count().values
 
         array_flambda = (
-            array_energysum
+            dfbinned[encol + "_sum"]
             / delta_lambda
             / (timehigh - timelow)
             / (4 * math.pi)
@@ -276,6 +220,10 @@ def get_from_packets(
             / (u.megaparsec.to("cm") ** 2)
             / nprocs_read
         )
+
+        if use_escapetime:
+            assert escapesurfacegamma is not None
+            array_flambda /= escapesurfacegamma
 
         if fnufilterfunc:
             arr_nu = 2.99792458e18 / array_lambda
@@ -291,7 +239,7 @@ def get_from_packets(
         )
 
         if getpacketcount:
-            dfdict[dirbin]["packetcount"] = array_pktcount
+            dfdict[dirbin]["packetcount"] = dfbinned["count"]
 
     return dfdict
 

@@ -305,7 +305,7 @@ def plot_artis_lightcurve(
     angles, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_theta_phi_dirbin_labels()
         scaledmap = make_colorbar_viewingangles_colormap()
 
     lctimemin, lctimemax = lcdataframes[angles[0]].time.min(), lcdataframes[angles[0]].time.max()
@@ -539,7 +539,7 @@ def make_lightcurve_plot(
         axis.set_ylabel(yvarname + str_units)
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_theta_phi_dirbin_labels()
         scaledmap = make_colorbar_viewingangles_colormap()
         make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args)
 
@@ -768,7 +768,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     plotkwargs: dict[str, Any] = {}
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_viewinganglebin_definitions()
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_theta_phi_dirbin_labels()
         scaledmap = make_colorbar_viewingangles_colormap()
 
     for modelnumber, modelpath in enumerate(modelpaths):

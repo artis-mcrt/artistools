@@ -201,7 +201,7 @@ def plot_artis_spectrum(
     filterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     linelabel: Optional[str] = None,
     plotpacketcount: bool = False,
-    directionbins: Collection[int] = [-1],
+    directionbins: list[int] = [-1],
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     maxpacketfiles: Optional[int] = None,
@@ -319,14 +319,21 @@ def plot_artis_spectrum(
         print(f" modelpath {modelname}")
 
         supxmin, supxmax = axis.get_xlim()
+        dirbin_definitions = at.get_dirbin_costheta_phi_labels(
+            dirbins=directionbins,
+            modelpath=modelpath,
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
+        )
 
         for dirbin in directionbins:
-            spectrum = viewinganglespectra[dirbin]
-            spectrum.query("@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax", inplace=True)
-            print_integrated_flux(spectrum["f_lambda"], spectrum["lambda_angstroms"])
+            dfspectrum = viewinganglespectra[dirbin].copy()
+            dfspectrum.query("@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax", inplace=True)
+            dfspectrum.query("@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax", inplace=True)
+            print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
 
             if scale_to_peak:
-                spectrum["f_lambda_scaled"] = spectrum["f_lambda"] / spectrum["f_lambda"].max() * scale_to_peak
+                dfspectrum["f_lambda_scaled"] = dfspectrum["f_lambda"] / dfspectrum["f_lambda"].max() * scale_to_peak
                 if args.plotvspecpol is not None:
                     for angle in args.plotvspecpol:
                         viewinganglespectra[angle]["f_lambda_scaled"] = (
@@ -342,21 +349,12 @@ def plot_artis_spectrum(
             if plotpacketcount:
                 ycolumnname = "packetcount"
 
-            if dirbin == -1:
-                spectrum.query("@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax").plot(
-                    x="lambda_angstroms",
-                    y=ycolumnname,
-                    ax=axis,
-                    legend=None,
-                    label=linelabel if axindex == 0 else None,
-                    **plotkwargs,
-                )
-            elif args.binflux:
+            if args.binflux:
                 new_lambda_angstroms = []
                 binned_flux = []
 
-                wavelengths = spectrum["lambda_angstroms"]
-                fluxes = spectrum[ycolumnname]
+                wavelengths = dfspectrum["lambda_angstroms"]
+                fluxes = dfspectrum[ycolumnname]
                 nbins = 5
 
                 for i in np.arange(0, len(wavelengths - nbins), nbins):
@@ -366,8 +364,9 @@ def plot_artis_spectrum(
                         sum_flux += fluxes[j]
                     binned_flux.append(sum_flux / nbins)
 
-                plt.plot(new_lambda_angstroms, binned_flux)
-            else:
+                dfspectrum = pd.DataFrame({"lambda_angstroms": new_lambda_angstroms, ycolumnname: binned_flux})
+
+            if dirbin != -1:
                 if args.plotvspecpol:
                     if args.viewinganglelabelunits == "deg":
                         viewing_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][angle])))
@@ -375,27 +374,19 @@ def plot_artis_spectrum(
                     elif args.viewinganglelabelunits == "rad":
                         linelabel = rf"cos($\theta$) = {vpkt_config['cos_theta'][angle]}" if axindex == 0 else None
                 else:
-                    linelabel = f"bin number {dirbin}"
-                    if args.average_over_phi_angle:
-                        (
-                            costheta_viewing_angle_bins,
-                            phi_viewing_angle_bins,
-                        ) = at.get_viewinganglebin_definitions()
-                        assert dirbin % at.get_viewingdirection_phibincount() == 0
-                        linelabel = costheta_viewing_angle_bins[int(dirbin // at.get_viewingdirection_phibincount())]
-                    elif args.average_over_theta_angle:
-                        (
-                            costheta_viewing_angle_bins,
-                            phi_viewing_angle_bins,
-                        ) = at.get_viewinganglebin_definitions()
-                        assert dirbin < at.get_viewingdirection_costhetabincount()
-                        linelabel = phi_viewing_angle_bins[int(dirbin)]
+                    # linelabel = f"bin number {dirbin} "
+                    linelabel = dirbin_definitions[dirbin]
 
-                viewinganglespectra[dirbin].query("@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax").plot(
-                    x="lambda_angstroms", y=ycolumnname, ax=axis, legend=None, label=linelabel
-                )  # {timeavg:.2f} days {at.get_model_name(modelpath)}
+            dfspectrum.plot(
+                x="lambda_angstroms",
+                y=ycolumnname,
+                ax=axis,
+                legend=None,
+                label=linelabel if axindex == 0 else None,
+                **plotkwargs,
+            )
 
-    return spectrum[["lambda_angstroms", "f_lambda"]]
+    return dfspectrum[["lambda_angstroms", "f_lambda"]]
 
 
 def make_spectrum_plot(
@@ -417,7 +408,8 @@ def make_spectrum_plot(
         plotkwargs["alpha"] = 0.95
 
         plotkwargs["linestyle"] = args.linestyle[seriesindex]
-        plotkwargs["color"] = args.color[seriesindex]
+        if not args.plotviewingangle:
+            plotkwargs["color"] = args.color[seriesindex]
         if args.dashes[seriesindex]:
             plotkwargs["dashes"] = args.dashes[seriesindex]
         if args.linewidth[seriesindex]:
@@ -725,7 +717,7 @@ def make_emissionabsorption_plot(
         (
             costheta_viewing_angle_bins,
             phi_viewing_angle_bins,
-        ) = at.get_viewinganglebin_definitions()
+        ) = at.get_theta_phi_dirbin_labels()
 
         if args.average_over_phi_angle:
             assert angle % 10 == 0
