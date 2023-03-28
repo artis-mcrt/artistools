@@ -64,7 +64,8 @@ from artistools.misc import get_model_name
 from artistools.misc import get_mpiranklist
 from artistools.misc import get_mpirankofcell
 from artistools.misc import get_nprocs
-from artistools.misc import get_runfolders, get_dirbin_costheta_phi_labels
+from artistools.misc import get_runfolders
+from artistools.misc import get_dirbin_labels
 from artistools.misc import linetuple
 from artistools.misc import get_syn_dir
 from artistools.misc import get_time_range
@@ -72,7 +73,7 @@ from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
 from artistools.misc import get_nu_grid
 from artistools.misc import get_timestep_times_float
-from artistools.misc import get_theta_phi_dirbin_labels
+from artistools.misc import get_costhetabin_phibin_labels
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_wid_init_at_tmin
 from artistools.misc import get_viewingdirectionbincount

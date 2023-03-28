@@ -177,7 +177,7 @@ def parse_directionbin_args(modelpath: Union[Path, str], args) -> tuple[Sequence
     dirbin_definition: dict[int, str] = {}
 
     if not args.plotvspecpol:
-        dirbin_definition = at.get_dirbin_costheta_phi_labels(
+        dirbin_definition = at.get_dirbin_labels(
             dirbins,
             modelpath=modelpath,
             average_over_phi=args.average_over_phi_angle,
@@ -456,7 +456,7 @@ def set_scatterplot_plotkwargs(modelnumber, args):
 def update_plotkwargs_for_viewingangle_colorbar(
     plotkwargsviewingangles: dict[str, Any], args: argparse.Namespace
 ) -> dict[str, Any]:
-    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_theta_phi_dirbin_labels()
+    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
     angles = np.arange(0, at.get_viewingdirectionbincount())
@@ -486,7 +486,7 @@ def set_scatterplot_plot_params(args):
     plt.tight_layout()
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_theta_phi_dirbin_labels()
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
         scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
         at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args)
 
@@ -810,7 +810,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath, args):
 
     angles, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
-    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_theta_phi_dirbin_labels()
+    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
     plotkwargs = {}

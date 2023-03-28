@@ -1295,7 +1295,7 @@ def get_viewingdirection_costhetabincount() -> int:
     return 10
 
 
-def get_theta_phi_dirbin_labels() -> tuple[list[str], list[str]]:
+def get_costhetabin_phibin_labels() -> tuple[list[str], list[str]]:
     # todo: replace with general code for any bin count:
     # ncosthetabins = at.get_viewingdirection_costhetabincount()
     # costhetabins_lower = np.arange(-1., 1., 2. / ncosthetabins)
@@ -1344,7 +1344,7 @@ def get_theta_phi_dirbin_labels() -> tuple[list[str], list[str]]:
     return costheta_viewing_angle_bins, phi_viewing_angle_bins
 
 
-def get_dirbin_costheta_phi_labels(
+def get_dirbin_labels(
     dirbins: Union[np.ndarray[Any, np.dtype[Any]], Sequence[int]],
     modelpath: Union[Path, str, None] = None,
     average_over_phi: bool = False,
@@ -1357,7 +1357,7 @@ def get_dirbin_costheta_phi_labels(
             assert len(list(Path(modelpath).glob(f"*_res_{MABINS-1:02d}.out*"))) > 0  # check last bin exists
             assert len(list(Path(modelpath).glob(f"*_res_{MABINS:02d}.out*"))) == 0  # check one beyond does not exist
 
-    strlist_costheta_bins, strlist_phi_bins = at.get_theta_phi_dirbin_labels()
+    strlist_costheta_bins, strlist_phi_bins = at.get_costhetabin_phibin_labels()
 
     nphibins = at.get_viewingdirection_phibincount()
 

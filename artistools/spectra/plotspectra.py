@@ -319,7 +319,7 @@ def plot_artis_spectrum(
         print(f" modelpath {modelname}")
 
         supxmin, supxmax = axis.get_xlim()
-        dirbin_definitions = at.get_dirbin_costheta_phi_labels(
+        dirbin_definitions = at.get_dirbin_labels(
             dirbins=directionbins,
             modelpath=modelpath,
             average_over_phi=average_over_phi,
@@ -717,7 +717,7 @@ def make_emissionabsorption_plot(
         (
             costheta_viewing_angle_bins,
             phi_viewing_angle_bins,
-        ) = at.get_theta_phi_dirbin_labels()
+        ) = at.get_costhetabin_phibin_labels()
 
         if args.average_over_phi_angle:
             assert angle % 10 == 0
