@@ -50,7 +50,7 @@ def get_exspec_bins() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     NU_MAX_R = 5e16
 
     print(
-        f"WARNING: assuming {MNUBINS=} {NU_MIN_R=} {NU_MAX_R=}. Check artisoptions.h if you want to exactly match exspec binning."
+        f" assuming {MNUBINS=} {NU_MIN_R=:.1e} {NU_MAX_R=:.1e}. Check artisoptions.h if you want to exactly match exspec binning."
     )
 
     c_ang_s = 2.99792458e18
@@ -207,7 +207,7 @@ def get_from_packets(
             pldfpackets_dirbin_lazy = dfpackets.filter((pl.col("phibin") == dirbin))
         else:
             solidanglefactor = ndirbins
-            pldfpackets_dirbin_lazy = dfpackets.filter((pl.col("costhetadirbinbin") * 10 == dirbin))
+            pldfpackets_dirbin_lazy = dfpackets.filter((pl.col("dirbin") == dirbin))
 
         pldfpackets_dirbin = pldfpackets_dirbin_lazy.with_columns(
             [(2.99792458e18 / pl.col("nu_rf")).alias("lambda_angstroms")]

@@ -267,13 +267,14 @@ def plot_artis_spectrum(
         if -1 not in dbins_get:
             dbins_get.append(-1)
 
+        supxmin, supxmax = axis.get_xlim()
         if from_packets:
             viewinganglespectra = get_from_packets(
                 modelpath,
                 args.timemin,
                 args.timemax,
-                lambda_min=args.xmin,
-                lambda_max=args.xmax,
+                lambda_min=supxmin * 0.9,
+                lambda_max=supxmax * 1.1,
                 use_escapetime=args.use_escapetime,
                 maxpacketfiles=args.maxpacketfiles,
                 delta_lambda=args.deltalambda,
@@ -317,7 +318,6 @@ def plot_artis_spectrum(
                     fnufilterfunc=filterfunc,
                 )
 
-        supxmin, supxmax = axis.get_xlim()
         dirbin_definitions = at.get_dirbin_labels(
             dirbins=directionbins,
             modelpath=modelpath,

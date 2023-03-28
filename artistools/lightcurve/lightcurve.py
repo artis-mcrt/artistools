@@ -133,7 +133,7 @@ def get_from_packets(
             pldfpackets_dirbin = dfpackets.filter((pl.col("phibin") == dirbin))
         else:
             solidanglefactor = ndirbins
-            pldfpackets_dirbin = dfpackets.filter((pl.col("costhetadirbinbin") * 10 == dirbin))
+            pldfpackets_dirbin = dfpackets.filter((pl.col("dirbin") == dirbin))
 
         dftimebinned = at.packets.bin_and_sum(
             pldfpackets_dirbin,
