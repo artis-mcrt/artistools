@@ -906,25 +906,27 @@ def read_linestatfile(
 ) -> tuple[int, list[float], list[int], list[int], list[int], list[int]]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
 
-    with zopen(filepath, "rt") as linestatfile:
-        lambda_angstroms = [float(wl) * 1e8 for wl in linestatfile.readline().split()]
-        nlines = len(lambda_angstroms)
+    print(f"Loading {filepath}")
+    data = np.loadtxt(filepath)
+    lambda_angstroms = data[0] * 1e8
+    nlines = len(lambda_angstroms)
 
-        atomic_numbers = [int(z) for z in linestatfile.readline().split()]
-        assert len(atomic_numbers) == nlines
-        ion_stages = [int(ion_stage) for ion_stage in linestatfile.readline().split()]
-        assert len(ion_stages) == nlines
+    atomic_numbers = data[1].astype(int)
+    assert len(atomic_numbers) == nlines
 
-        # the file adds one to the levelindex, i.e. lowest level is 1
-        upper_levels = [int(levelplusone) - 1 for levelplusone in linestatfile.readline().split()]
-        assert len(upper_levels) == nlines
-        lower_levels = [int(levelplusone) - 1 for levelplusone in linestatfile.readline().split()]
-        assert len(lower_levels) == nlines
+    ion_stages = data[2].astype(int)
+    assert len(ion_stages) == nlines
+
+    # the file adds one to the levelindex, i.e. lowest level is 1
+    upper_levels = data[3].astype(int)
+    assert len(upper_levels) == nlines
+
+    lower_levels = data[4].astype(int)
+    assert len(lower_levels) == nlines
 
     return nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
 
 
-@lru_cache(maxsize=8)
 def get_linelist_dict(
     modelpath: Union[Path, str], returntype: Literal["dict", "dataframe"] = "dict"
 ) -> dict[int, linetuple]:
@@ -948,8 +950,6 @@ def get_linelist_dataframe(
         Path(modelpath, "linestat.out")
     )
 
-    # considering our standard lineline is about 1.5 million lines,
-    # using a dataframe make the lookup process very slow
     dflinelist = pd.DataFrame(
         {
             "lambda_angstroms": lambda_angstroms,
@@ -957,7 +957,14 @@ def get_linelist_dataframe(
             "ionstage": ion_stages,
             "upperlevelindex": upper_levels,
             "lowerlevelindex": lower_levels,
-        }
+        },
+        dtype={
+            "lambda_angstroms": float,
+            "atomic_number": int,
+            "ionstage": int,
+            "upperlevelindex": int,
+            "lowerlevelindex": int,
+        },
     )
     dflinelist.index.name = "linelistindex"
 
