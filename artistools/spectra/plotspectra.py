@@ -258,7 +258,7 @@ def plot_artis_spectrum(
             f"====> '{linelabel}' timesteps {timestepmin} to {timestepmax} "
             f"({args.timemin:.3f} to {args.timemax:.3f}d)"
         )
-        print(f" modelpath {modelname}")
+        print(f" modelpath {modelpath}")
 
         viewinganglespectra: dict[int, pd.DataFrame] = {}
 
@@ -540,15 +540,15 @@ def make_emissionabsorption_plot(
     args=None,
     scale_to_peak: Optional[float] = None,
 ) -> tuple[list[Artist], list[str], Optional[pd.DataFrame]]:
-    """Plot the emission and absorption by ion for an ARTIS model."""
-    print(modelpath)
+    """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""
+    modelname = at.get_model_name(modelpath)
+
+    print(f"====> {modelname}")
     arraynu = at.get_nu_grid(modelpath)
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
-
-    modelname = at.get_model_name(modelpath)
 
     if timestepmin == timestepmax == -1:
         print(f"Can't plot {modelname}...skipping")
