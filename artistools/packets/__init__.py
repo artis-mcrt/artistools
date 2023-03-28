@@ -379,18 +379,21 @@ def get_pldfpackets(
     escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
 ) -> tuple[int, pl.LazyFrame]:
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
+
     nprocs_read = len(packetsfiles)
     allescrpktfile = Path(modelpath) / "packets_rpkt_escaped.parquet"
-    write_parquet = False
+    write_allescrpkt_parquet = False
 
     if maxpacketfiles is None and type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT":
         if allescrpktfile.is_file():
             print(f"Reading from {allescrpktfile}")
             # use_statistics is causing some weird errors! (zero flux spectra)
-            pllfpackets = pl.scan_parquet(allescrpktfile, use_statistics=False)
+            pllfpackets = pl.scan_parquet(allescrpktfile, use_statistics=True)
             return nprocs_read, pllfpackets
-        else:
-            write_parquet = True
+        # had to disable writing all packets to a file because they can get huge
+        # and require > 100GB RAM to produce
+        # else:
+        #     write_allescrpkt_parquet = True
 
     pllfpackets = pl.concat(
         [
@@ -399,7 +402,7 @@ def get_pldfpackets(
         ]
     )
 
-    if write_parquet:
+    if write_allescrpkt_parquet:
         print(f"Saving {allescrpktfile}")
         pldfpackets: pl.DataFrame = pllfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"]).collect()
         pldfpackets.write_parquet(allescrpktfile, compression="lz4", statistics=True)

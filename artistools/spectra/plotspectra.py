@@ -328,7 +328,7 @@ def plot_artis_spectrum(
         for dirbin in directionbins:
             dfspectrum = (
                 viewinganglespectra[dirbin]
-                .query("@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax")
+                .query("@supxmin * 0.9 <= lambda_angstroms and lambda_angstroms <= @supxmax * 1.1")
                 .copy()
             )
 

@@ -250,8 +250,10 @@ def plot_artis_lightcurve(
     modelname = at.get_model_name(modelpath) if label is None else label
     if lcfilename is not None:
         modelname += f" {lcfilename}"
-
-    print(f"====> {modelname}")
+    if modelname == "":
+        print(f"====> (no series label) {at.get_model_name(modelpath)}")
+    else:
+        print(f"====> {modelname}")
     if args is not None and args.title:
         axis.set_title(modelname)
 
