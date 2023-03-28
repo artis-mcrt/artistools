@@ -116,7 +116,7 @@ def get_from_packets(
             getcols.append("phibin")
         else:
             getcols.append("dirbin")
-    dfpackets = dfpackets.select(getcols).collect().lazy()
+    dfpackets = dfpackets.select(getcols).collect(streaming=True).lazy()
 
     lcdata = {}
     arr_lum_cmf = None

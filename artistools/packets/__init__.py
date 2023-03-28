@@ -327,7 +327,7 @@ def readfile_lazypolars(
 
     if write_parquet:
         print(f"Saving {parquetfile} with lz4 and t_arrive_d")
-        dfpackets.collect().write_parquet(parquetfile, compression="lz4", statistics=True)
+        dfpackets.collect().write_parquet(parquetfile, compression="lz4")
 
     if escape_type is not None and escape_type != "" and escape_type != "ALL":
         assert type is None or type == "TYPE_ESCAPE"
@@ -381,19 +381,17 @@ def get_pldfpackets(
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
 
     nprocs_read = len(packetsfiles)
-    allescrpktfile = Path(modelpath) / "packets_rpkt_escaped.parquet"
-    write_allescrpkt_parquet = False
+    # allescrpktfile = Path(modelpath) / "packets_rpkt_escaped.parquet"
+    # write_allescrpkt_parquet = False
 
-    if maxpacketfiles is None and type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT":
-        if allescrpktfile.is_file():
-            print(f"Reading from {allescrpktfile}")
-            # use_statistics is causing some weird errors! (zero flux spectra)
-            pllfpackets = pl.scan_parquet(allescrpktfile, use_statistics=False)
-            return nprocs_read, pllfpackets
-        # had to disable writing all packets to a file because they can get huge
-        # and require > 100GB RAM to produce
-        # else:
-        #     write_allescrpkt_parquet = True
+    # if maxpacketfiles is None and type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT":
+    #     if allescrpktfile.is_file():
+    #         print(f"Reading from {allescrpktfile}")
+    #         # use_statistics is causing some weird errors! (zero flux spectra)
+    #         pllfpackets = pl.scan_parquet(allescrpktfile, use_statistics=False)
+    #         return nprocs_read, pllfpackets
+    #     else:
+    #         write_allescrpkt_parquet = True
 
     pllfpackets = pl.concat(
         [
@@ -402,11 +400,14 @@ def get_pldfpackets(
         ]
     )
 
-    if write_allescrpkt_parquet:
-        print(f"Saving {allescrpktfile}")
-        pldfpackets: pl.DataFrame = pllfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"]).collect()
-        pldfpackets.write_parquet(allescrpktfile, compression="lz4", statistics=True)
-        pllfpackets = pldfpackets.lazy()
+    # pllfpackets = pl.scan_parquet(Path(modelpath) / "packets" / "packets00_*.out.parquet")
+
+    # Luke: this turned out to be slower than reading 960 or 3840 parquet files separately
+    # if write_allescrpkt_parquet:
+    #     print(f"Saving {allescrpktfile}")
+    #     # sorting can be extremely slow (and exceed RAM) but it probably speeds up access
+    #     # pllfpackets = pllfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
+    #     pllfpackets.sink_parquet(allescrpktfile, compression="lz4", row_group_size=1024 * 1024)
 
     return nprocs_read, pllfpackets
 
@@ -703,7 +704,7 @@ def bin_and_sum(
     dfout = pd.DataFrame({bincol + "_bin": np.arange(0, len(bins) - 1)})
 
     if isinstance(df, pl.LazyFrame):
-        df = df.collect()
+        df = df.collect(streaming=True)
 
     # POLARS METHOD (slower than pandas for some reason)
     # df = df.with_columns(
