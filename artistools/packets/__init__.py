@@ -287,7 +287,7 @@ def readfile_lazypolars(
 ) -> pl.LazyFrame:
     """Read a packet file into a Polars lazy DataFrame."""
     packetsfile = Path(packetsfile)
-    save_parquet = False
+    write_parquet = False
 
     try:
         if packetsfile.suffixes == [".out", ".parquet"]:
@@ -296,7 +296,7 @@ def readfile_lazypolars(
         elif packetsfile.suffixes in [[".out"], [".out", ".gz"], [".out", ".xz"]]:
             parquetfile = at.stripallsuffixes(packetsfile).with_suffix(".out.parquet")
             dfpackets = readfile_text(packetsfile).lazy()
-            save_parquet = True
+            write_parquet = True
         else:
             print("ERROR")
             sys.exit(1)
@@ -323,9 +323,9 @@ def readfile_lazypolars(
                 ).alias("t_arrive_d"),
             ]
         )
-        save_parquet = True
+        write_parquet = True
 
-    if save_parquet:
+    if write_parquet:
         print(f"Saving {parquetfile} with lz4 and t_arrive_d")
         dfpackets.collect().write_parquet(parquetfile, compression="lz4", statistics=True)
 
