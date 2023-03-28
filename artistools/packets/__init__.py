@@ -346,7 +346,7 @@ def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[i
     def preferred_alternative(f: Path) -> bool:
         f_nosuffixes = at.stripallsuffixes(f)
 
-        suffix_priority = [[".out", ".gz"], [".out", ".xz"], [".out", ".feather"], [".out", ".parquet"]]
+        suffix_priority = [[".out", ".gz"], [".out", ".xz"], [".out", ".parquet"]]
         if f.suffixes in suffix_priority:
             startindex = suffix_priority.index(f.suffixes) + 1
         else:
@@ -397,7 +397,9 @@ def get_pldfpackets(
         [
             at.packets.readfile_lazypolars(packetsfile, type=type, escape_type=escape_type)
             for packetsfile in packetsfiles
-        ]
+        ],
+        how="vertical",
+        rechunk=False,
     )
 
     # pllfpackets = pl.scan_parquet(Path(modelpath) / "packets" / "packets00_*.out.parquet")
