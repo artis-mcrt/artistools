@@ -388,7 +388,7 @@ def get_pldfpackets(
         if allescrpktfile.is_file():
             print(f"Reading from {allescrpktfile}")
             # use_statistics is causing some weird errors! (zero flux spectra)
-            pllfpackets = pl.scan_parquet(allescrpktfile, use_statistics=True)
+            pllfpackets = pl.scan_parquet(allescrpktfile, use_statistics=False)
             return nprocs_read, pllfpackets
         # had to disable writing all packets to a file because they can get huge
         # and require > 100GB RAM to produce
