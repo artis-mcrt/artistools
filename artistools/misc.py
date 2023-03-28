@@ -1379,6 +1379,5 @@ def get_dirbin_labels(
             assert costheta_index == 0
         else:
             angle_definitions[dirbin] = f"{strlist_costheta_bins[costheta_index]}, {strlist_phi_bins[phi_index]}"
-        print(f"directionbin {dirbin:4d}   {angle_definitions[dirbin]}")
 
     return angle_definitions

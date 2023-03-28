@@ -310,24 +310,27 @@ def plot_artis_lightcurve(
 
     lctimemin, lctimemax = lcdataframes[angles[0]].time.min(), lcdataframes[angles[0]].time.max()
 
-    print(f"  range of light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
+    print(f" range of light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
     try:
         nts_last, validrange_start_days, validrange_end_days = at.get_escaped_arrivalrange(modelpath)
         if validrange_start_days is not None and validrange_end_days is not None:
             str_valid_range = f"{validrange_start_days:.2f} to {validrange_end_days:.2f} days"
         else:
             str_valid_range = f"{validrange_start_days} to {validrange_end_days} days"
-        print(f"  range of validity (last timestep {nts_last}): {str_valid_range}")
+        print(f" range of validity (last timestep {nts_last}): {str_valid_range}")
     except FileNotFoundError:
         print(
-            "  range of validity: could not determine due to missing files "
+            " range of validity: could not determine due to missing files "
             "(requires deposition.out, input.txt, model.txt)"
         )
         nts_last, validrange_start_days, validrange_end_days = None, float("-inf"), float("inf")
 
     for dirbin in angles:
         lcdata = lcdataframes[dirbin]
-        if args.plotviewingangle:
+
+        if dirbin != -1:
+            print(f" directionbin {dirbin:4d}  {angle_definition[dirbin]}")
+
             if args.colorbarcostheta or args.colorbarphi:
                 plotkwargs["alpha"] = 0.75
                 plotkwargs["label"] = None
@@ -340,7 +343,7 @@ def plot_artis_lightcurve(
                     plotkwargs,
                     args,
                 )
-                if args.average_over_phi_angle:  # if angles plotted that are not averaged over phi
+                if args.average_over_phi_angle:  # if angles plotted that are averaged over phi
                     plotkwargs["color"] = "lightgrey"  # then plot these in grey
             else:
                 plotkwargs["color"] = None
@@ -373,7 +376,7 @@ def plot_artis_lightcurve(
             plotkwargs["color"] = scaledmap.to_rgba(colorindex)  # Update colours for light curves averaged over phi
             plotkwargs["zorder"] = 10
 
-        # show the parts of the light curve that are outside the valid arrival range partially transparent
+        # show the parts of the light curve that are outside the valid arrival range as partially transparent
         if validrange_start_days is None or validrange_end_days is None:
             # entire range is invalid
             lcdata_before_valid = lcdata
@@ -626,7 +629,7 @@ def get_linelabel(
         vpkt_config = at.get_vpkt_config(modelpath)
         viewing_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][angle])))
         linelabel = rf"$\theta$ = {viewing_angle}"  # todo: update to be consistent with res definition
-    elif args.plotviewingangle and angle is not None and angle != -1 and os.path.isfile(modelpath / "specpol_res.out"):
+    elif args.plotviewingangle and angle is not None and angle != -1:
         assert angle_definition is not None
         if args.nomodelname:
             linelabel = f"{angle_definition[angle]}"

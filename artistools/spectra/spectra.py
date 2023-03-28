@@ -28,8 +28,6 @@ from astropy import constants as const
 from astropy import units as u
 
 import artistools as at
-import artistools.packets
-import artistools.radfield
 from artistools.nltepops.nltepops import texifyconfiguration  # needed to get the color map
 
 fluxcontributiontuple = namedtuple(
@@ -167,7 +165,6 @@ def get_from_packets(
         modelpath, maxpacketfiles=maxpacketfiles, type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
-    dfpackets = dfpackets.filter((float(nu_min) <= pl.col("nu_rf")) & (pl.col("nu_rf") <= float(nu_max)))
     if not use_escapetime:
         dfpackets = dfpackets.filter(
             (float(timelowdays) <= pl.col("t_arrive_d")) & (pl.col("t_arrive_d") <= float(timehighdays))
@@ -177,6 +174,7 @@ def get_from_packets(
             (timelow <= (pl.col("escape_time") * escapesurfacegamma))
             & ((pl.col("escape_time") * escapesurfacegamma) <= timehigh)
         )
+    dfpackets = dfpackets.filter((float(nu_min) <= pl.col("nu_rf")) & (pl.col("nu_rf") <= float(nu_max)))
 
     if directionbins != [-1]:
         dfpackets = at.packets.bin_packet_directions_lazypolars(modelpath, dfpackets)
@@ -185,6 +183,16 @@ def get_from_packets(
         print("Applying filter to ARTIS spectrum")
 
     encol = "e_cmf" if use_escapetime else "e_rf"
+    getcols = ["nu_rf", encol]
+    if directionbins != [-1]:
+        if average_over_phi:
+            getcols.append("costhetabin")
+        elif average_over_theta:
+            getcols.append("phibin")
+        else:
+            getcols.append("dirbin")
+    dfpackets = dfpackets.select(getcols).collect().lazy()
+
     dfdict = {}
     for dirbin in directionbins:
         if dirbin == -1:
@@ -212,7 +220,6 @@ def get_from_packets(
             sumcols=[encol],
             getcounts=getpacketcount,
         )
-
         array_flambda = (
             dfbinned[encol + "_sum"]
             / delta_lambda
@@ -1062,7 +1069,7 @@ def sort_and_reduce_flux_contribution_list(
     remainder_fluxcontrib = 0
 
     if greyscale:
-        hatches = artistools.spectra.plotspectra.hatches
+        hatches = at.spectra.plotspectra.hatches
         seriescount = len(fixedionlist) if fixedionlist else maxseriescount
         colorcount = math.ceil(seriescount / 1.0 / len(hatches))
         greylist = [str(x) for x in np.linspace(0.4, 0.9, colorcount, endpoint=True)]

@@ -293,7 +293,6 @@ def readfile_lazypolars(
         if packetsfile.suffixes == [".out", ".parquet"]:
             parquetfile = packetsfile
             dfpackets = pl.scan_parquet(parquetfile)
-            save_parquet = False
         elif packetsfile.suffixes in [[".out"], [".out", ".gz"], [".out", ".xz"]]:
             parquetfile = at.stripallsuffixes(packetsfile).with_suffix(".out.parquet")
             dfpackets = readfile_text(packetsfile).lazy()
@@ -328,7 +327,7 @@ def readfile_lazypolars(
 
     if save_parquet:
         print(f"Saving {parquetfile} with lz4 and t_arrive_d")
-        dfpackets.collect().write_parquet(parquetfile, compression="lz4")
+        dfpackets.collect().write_parquet(parquetfile, compression="lz4", statistics=True)
 
     if escape_type is not None and escape_type != "" and escape_type != "ALL":
         assert type is None or type == "TYPE_ESCAPE"
@@ -339,7 +338,7 @@ def readfile_lazypolars(
         dfpackets = dfpackets.filter(pl.col("type_id") == type_ids["TYPE_ESCAPE"])
     else:
         print(")")
-
+    print(packetsfile, len(dfpackets.columns), dfpackets.columns)
     return dfpackets
 
 
@@ -387,12 +386,13 @@ def get_pldfpackets(
     if maxpacketfiles is None and type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT":
         if allescrpktfile.is_file():
             print(f"Reading from {allescrpktfile}")
-            pldfpackets = pl.scan_parquet(allescrpktfile)
-            return nprocs_read, pldfpackets
+            # use_statistics is causing some weird errors! (zero flux spectra)
+            pllfpackets = pl.scan_parquet(allescrpktfile, use_statistics=False)
+            return nprocs_read, pllfpackets
         else:
             write_parquet = True
 
-    pldfpackets = pl.concat(
+    pllfpackets = pl.concat(
         [
             at.packets.readfile_lazypolars(packetsfile, type=type, escape_type=escape_type)
             for packetsfile in packetsfiles
@@ -401,11 +401,11 @@ def get_pldfpackets(
 
     if write_parquet:
         print(f"Saving {allescrpktfile}")
-        pldfpacketsb: pl.DataFrame = pldfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"]).collect()
-        pldfpacketsb.write_parquet(allescrpktfile, compression="lz4", statistics=True)
-        pldfpackets = pldfpacketsb.lazy()
+        pldfpackets: pl.DataFrame = pllfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"]).collect()
+        pldfpackets.write_parquet(allescrpktfile, compression="lz4", statistics=True)
+        pllfpackets = pldfpackets.lazy()
 
-    return nprocs_read, pldfpackets
+    return nprocs_read, pllfpackets
 
 
 def get_directionbin(
@@ -475,17 +475,13 @@ def bin_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.
 
     vec3 = np.cross(vec2, syn_dir)
 
+    # arr_testphi = np.dot(arr_vec1, vec3)
     dfpackets = dfpackets.with_columns(
         (
             (pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2]) / pl.col("dirmag")
         ).alias("testphi"),
     )
 
-    dfpackets = dfpackets.with_columns(
-        (
-            (pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2]) / pl.col("dirmag")
-        ).alias("testphi"),
-    )
     dfpackets = dfpackets.with_columns(
         (
             pl.when(pl.col("testphi") > 0)

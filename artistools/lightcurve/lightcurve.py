@@ -106,6 +106,18 @@ def get_from_packets(
     if directionbins != [-1]:
         dfpackets = at.packets.bin_packet_directions_lazypolars(modelpath, dfpackets)
 
+    getcols = ["t_arrive_d", "e_rf"]
+    if get_cmf_column:
+        getcols += ["e_cmf", "t_arrive_cmf_d"]
+    if directionbins != [-1]:
+        if average_over_phi:
+            getcols.append("costhetabin")
+        elif average_over_theta:
+            getcols.append("phibin")
+        else:
+            getcols.append("dirbin")
+    dfpackets = dfpackets.select(getcols).collect().lazy()
+
     lcdata = {}
     arr_lum_cmf = None
     for dirbin in directionbins:
@@ -122,10 +134,6 @@ def get_from_packets(
         else:
             solidanglefactor = ndirbins
             pldfpackets_dirbin = dfpackets.filter((pl.col("costhetadirbinbin") * 10 == dirbin))
-
-        pldfpackets_dirbin = pldfpackets_dirbin.select(
-            ["t_arrive_d", "e_rf", "e_cmf", "t_arrive_cmf_d"] if get_cmf_column else ["t_arrive_d", "e_rf"]
-        )
 
         dftimebinned = at.packets.bin_and_sum(
             pldfpackets_dirbin,

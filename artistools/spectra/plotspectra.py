@@ -254,6 +254,11 @@ def plot_artis_spectrum(
         # formatting for a second time makes it impossible to use curly braces in line labels (needed for LaTeX math)
         # else:
         #     linelabel = linelabel.format(**locals())
+        print(
+            f"====> '{linelabel}' timesteps {timestepmin} to {timestepmax} "
+            f"({args.timemin:.3f} to {args.timemax:.3f}d)"
+        )
+        print(f" modelpath {modelname}")
 
         viewinganglespectra: dict[int, pd.DataFrame] = {}
 
@@ -312,12 +317,6 @@ def plot_artis_spectrum(
                     fnufilterfunc=filterfunc,
                 )
 
-        print(
-            f"Plotting '{linelabel}' timesteps {timestepmin} to {timestepmax} "
-            f"({args.timemin:.3f} to {args.timemax:.3f}d)"
-        )
-        print(f" modelpath {modelname}")
-
         supxmin, supxmax = axis.get_xlim()
         dirbin_definitions = at.get_dirbin_labels(
             dirbins=directionbins,
@@ -327,9 +326,23 @@ def plot_artis_spectrum(
         )
 
         for dirbin in directionbins:
-            dfspectrum = viewinganglespectra[dirbin].copy()
-            dfspectrum.query("@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax", inplace=True)
-            dfspectrum.query("@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax", inplace=True)
+            dfspectrum = (
+                viewinganglespectra[dirbin]
+                .query("@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax")
+                .copy()
+            )
+
+            if dirbin != -1:
+                if args.plotvspecpol:
+                    if args.viewinganglelabelunits == "deg":
+                        viewing_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][dirbin])))
+                        linelabel = rf"$\theta$ = {viewing_angle}$^\circ$" if axindex == 0 else None
+                    elif args.viewinganglelabelunits == "rad":
+                        linelabel = rf"cos($\theta$) = {vpkt_config['cos_theta'][dirbin]}" if axindex == 0 else None
+                else:
+                    linelabel = dirbin_definitions[dirbin]
+                    print(f" directionbin {dirbin:4d}  {dirbin_definitions[dirbin]}")
+
             print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
 
             if scale_to_peak:
@@ -365,17 +378,6 @@ def plot_artis_spectrum(
                     binned_flux.append(sum_flux / nbins)
 
                 dfspectrum = pd.DataFrame({"lambda_angstroms": new_lambda_angstroms, ycolumnname: binned_flux})
-
-            if dirbin != -1:
-                if args.plotvspecpol:
-                    if args.viewinganglelabelunits == "deg":
-                        viewing_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][angle])))
-                        linelabel = rf"$\theta$ = {viewing_angle}$^\circ$" if axindex == 0 else None
-                    elif args.viewinganglelabelunits == "rad":
-                        linelabel = rf"cos($\theta$) = {vpkt_config['cos_theta'][angle]}" if axindex == 0 else None
-                else:
-                    # linelabel = f"bin number {dirbin} "
-                    linelabel = dirbin_definitions[dirbin]
 
             dfspectrum.plot(
                 x="lambda_angstroms",
