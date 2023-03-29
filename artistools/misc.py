@@ -312,6 +312,10 @@ def get_wid_init_at_tmodel(
 
 
 def get_syn_dir(modelpath: Path) -> Sequence[int]:
+    if not (modelpath / "syn_dir.txt").is_file():
+        print(f"{modelpath / 'syn_dir.txt'} does not exist. using x,y,z = 0,0,1")
+        return (0, 0, 1)
+
     with open(modelpath / "syn_dir.txt", "rt") as syn_dir_file:
         syn_dir = [int(x) for x in syn_dir_file.readline().split()]
 
