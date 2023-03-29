@@ -50,7 +50,8 @@ def get_exspec_bins() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     NU_MAX_R = 5e16
 
     print(
-        f" assuming {MNUBINS=} {NU_MIN_R=:.1e} {NU_MAX_R=:.1e}. Check artisoptions.h if you want to exactly match exspec binning."
+        f" assuming {MNUBINS=} {NU_MIN_R=:.1e} {NU_MAX_R=:.1e}. Check artisoptions.h if you want to exactly match"
+        " exspec binning."
     )
 
     c_ang_s = 2.99792458e18
@@ -395,9 +396,9 @@ def get_spectrum(
 def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
     nprocs = at.get_nprocs(modelpath)
     print("nprocs", nprocs)
-    vspecpol_data_old: list[
-        pd.DataFrame
-    ] = []  # virtual packet spectra for each observer (all directions and opacity choices)
+    vspecpol_data_old: list[pd.DataFrame] = (
+        []
+    )  # virtual packet spectra for each observer (all directions and opacity choices)
     vpktconfig = at.get_vpkt_config(modelpath)
     nvirtual_spectra = vpktconfig["nobsdirections"] * vpktconfig["nspectraperobs"]
     print(

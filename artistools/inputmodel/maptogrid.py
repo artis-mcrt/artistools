@@ -326,7 +326,8 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
                 particlesused.add(n)
 
     print(
-        f"particles with any cell contribution: {len(particlesused)} of {len(particlesinsidegrid)} inside grid out of {npart} total"
+        f"particles with any cell contribution: {len(particlesused)} of {len(particlesinsidegrid)} inside grid out of"
+        f" {npart} total"
     )
     unusedparticles = [n for n in range(npart) if n not in particlesused]
     for n in unusedparticles:
@@ -377,11 +378,13 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
     )
 
     print(
-        f"number of cells with rho=0 {nzero}, total num of cells {ncoordgrid**3}, fraction of cells with rho=0: {(nzero) / (ncoordgrid**3)}"
+        f"number of cells with rho=0 {nzero}, total num of cells {ncoordgrid**3}, fraction of cells with rho=0:"
+        f" {(nzero) / (ncoordgrid**3)}"
     )
 
     print(
-        f"number of central cells (dis<rmean) with rho=0 {nzerocentral}, ratio {(nzerocentral) / (4.0 * 3.14 / 3.0 * rmean**3 / (dx * dy * dz))}"
+        f"number of central cells (dis<rmean) with rho=0 {nzerocentral}, ratio"
+        f" {(nzerocentral) / (4.0 * 3.14 / 3.0 * rmean**3 / (dx * dy * dz))}"
     )
 
     print("probably we want to choose grid size, i.e. x0, as compromise between mapped mass and rho=0 cells")

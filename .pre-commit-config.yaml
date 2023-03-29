@@ -36,12 +36,6 @@ repos:
       rev: 23.3.0
       hooks:
           - id: black
-            args: [--quiet]
-    - repo: https://github.com/pycqa/flake8
-      rev: 6.0.0
-      hooks:
-          - id: flake8
-            types: [python]
     - repo: https://github.com/pre-commit/mirrors-mypy
       rev: v1.1.1
       hooks:
@@ -51,6 +45,11 @@ repos:
             types: [python]
             require_serial: true
             # verbose: true
+    - repo: https://github.com/pycqa/flake8
+      rev: 6.0.0
+      hooks:
+          - id: flake8
+            types: [python]
     - repo: local
       hooks:
           - id: pylint
@@ -60,4 +59,4 @@ repos:
             # language: system
             types: [python]
             require_serial: true
-            args: [-rn, -sn, --errors-only]
+            args: [-rn, -sn]

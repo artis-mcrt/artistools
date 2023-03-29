@@ -36,7 +36,7 @@ where = ["."]
 
 [tool.black]
 line-length = 120
-preview = false
+preview = true
 
 [tool.mypy]
 python_version = '3.11'

@@ -255,8 +255,7 @@ def plot_artis_spectrum(
         # else:
         #     linelabel = linelabel.format(**locals())
         print(
-            f"====> '{linelabel}' timesteps {timestepmin} to {timestepmax} "
-            f"({args.timemin:.3f} to {args.timemax:.3f}d)"
+            f"====> '{linelabel}' timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d)"
         )
         print(f" modelpath {modelpath}")
 
