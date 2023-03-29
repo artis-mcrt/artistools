@@ -177,9 +177,6 @@ def get_from_packets(
         )
     dfpackets = dfpackets.filter((float(nu_min) <= pl.col("nu_rf")) & (pl.col("nu_rf") <= float(nu_max)))
 
-    if directionbins != [-1]:
-        dfpackets = at.packets.bin_packet_directions_lazypolars(modelpath, dfpackets)
-
     if fnufilterfunc:
         print("Applying filter to ARTIS spectrum")
 

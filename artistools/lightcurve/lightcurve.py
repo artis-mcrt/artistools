@@ -103,8 +103,6 @@ def get_from_packets(
                 (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d"),
             ]
         )
-    if directionbins != [-1]:
-        dfpackets = at.packets.bin_packet_directions_lazypolars(modelpath, dfpackets)
 
     getcols = ["t_arrive_d", "e_rf"]
     if get_cmf_column:

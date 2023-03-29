@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
+import calendar
 import gzip
 import math
 import multiprocessing
+import os
 import sys
 from collections.abc import Collection
 from collections.abc import Sequence
@@ -282,29 +284,37 @@ def readfile(
 
 def readfile_lazypolars(
     packetsfile: Union[Path, str],
+    modelpath: Union[None, Path, str] = None,
     type: Optional[str] = None,
     escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
 ) -> pl.LazyFrame:
     """Read a packet file into a Polars lazy DataFrame."""
     packetsfile = Path(packetsfile)
-    write_parquet = False
 
-    try:
-        if packetsfile.suffixes == [".out", ".parquet"]:
-            parquetfile = packetsfile
-            dfpackets = pl.scan_parquet(parquetfile)
-        elif packetsfile.suffixes in [[".out"], [".out", ".gz"], [".out", ".xz"]]:
-            parquetfile = at.stripallsuffixes(packetsfile).with_suffix(".out.parquet")
-            dfpackets = readfile_text(packetsfile).lazy()
-            write_parquet = True
-        else:
-            print("ERROR")
-            sys.exit(1)
+    packetsfileparquet = (
+        packetsfile
+        if packetsfile.suffixes == [".out", ".parquet"]
+        else at.stripallsuffixes(packetsfile).with_suffix(".out.parquet")
+    )
+    packetsfiletext = (
+        packetsfile
+        if packetsfile.suffixes in [[".out"], [".out", ".gz"], [".out", ".xz"]]
+        else at.firstexisting([at.stripallsuffixes(packetsfile).with_suffix(".out")])
+    )
+    write_parquet = True
 
-    except Exception as e:
-        print(f"Error occured in file {packetsfile}. Reading from text version.")
-        packetsfile = at.firstexisting([at.stripallsuffixes(packetsfile).with_suffix(".out")])
-        # raise e
+    dfpackets = None
+    if packetsfile == packetsfileparquet and os.path.getmtime(packetsfileparquet) > calendar.timegm(
+        (2023, 3, 22, 0, 0, 0)
+    ):
+        try:
+            dfpackets = pl.scan_parquet(packetsfileparquet)
+            write_parquet = False
+        except Exception as e:
+            print(f"Error occured in file {packetsfile}. Reading from text version.")
+
+    if dfpackets is None:
+        dfpackets = readfile_text(packetsfiletext).lazy()
 
     if "t_arrive_d" not in dfpackets.columns:
         dfpackets = dfpackets.with_columns(
@@ -326,8 +336,9 @@ def readfile_lazypolars(
         write_parquet = True
 
     if write_parquet:
-        print(f"Saving {parquetfile} with lz4 and t_arrive_d")
-        dfpackets.collect().write_parquet(parquetfile, compression="lz4")
+        print(f"Saving {packetsfileparquet}")
+        dfpackets = dfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
+        dfpackets.collect().write_parquet(packetsfileparquet, compression="lz4", use_pyarrow=True, statistics=True)
 
     if escape_type is not None and escape_type != "" and escape_type != "ALL":
         assert type is None or type == "TYPE_ESCAPE"
@@ -336,8 +347,9 @@ def readfile_lazypolars(
         )
     elif type is not None and type != "":
         dfpackets = dfpackets.filter(pl.col("type_id") == type_ids["TYPE_ESCAPE"])
-    else:
-        print(")")
+
+    if modelpath is not None:
+        dfpackets = at.packets.bin_packet_directions_lazypolars(modelpath, dfpackets)
 
     return dfpackets
 
@@ -395,7 +407,7 @@ def get_pldfpackets(
 
     pllfpackets = pl.concat(
         [
-            at.packets.readfile_lazypolars(packetsfile, type=type, escape_type=escape_type)
+            at.packets.readfile_lazypolars(packetsfile, modelpath=modelpath, type=type, escape_type=escape_type)
             for packetsfile in packetsfiles
         ],
         how="vertical",
