@@ -33,7 +33,7 @@ repos:
             types: [python]
             args: [--py39-plus, --exit-zero-even-if-changed]
     - repo: https://github.com/psf/black
-      rev: 23.1.0
+      rev: 23.3.0
       hooks:
           - id: black
             args: [--quiet]
