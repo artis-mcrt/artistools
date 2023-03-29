@@ -51,7 +51,9 @@ plugins = 'numpy.typing.mypy_plugin'
 module = [
     "artistools.estimators.estimators",
     "artistools.inputmodel",
+    "artistools.lightcurve",
     "artistools.misc",
+#    "artistools.packets",
     "artistools.spectra.spectra",
 ]
 check_untyped_defs = true
