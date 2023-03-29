@@ -59,7 +59,7 @@ roman_numerals = (
 class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def add_arguments(self, actions: Iterable[argparse.Action]) -> None:
         def my_sort(arg: Any) -> str:
-            opstr = arg.option_strings[0] if len(arg.option_strings) > 0 else ""
+            opstr: str = arg.option_strings[0] if len(arg.option_strings) > 0 else ""
             # chars = 'abcdefghijklmnopqrstuvwxyz-'
             opstr = opstr.upper().replace("-", "z")  # push dash chars below alphabet
 
@@ -281,7 +281,7 @@ def get_wid_init_at_tmin(modelpath: Path) -> float:
     tmin = get_timestep_times_float(modelpath, loc="start")[0] * day_to_sec
     _, modelmeta = at.get_modeldata(modelpath)
 
-    rmax = modelmeta["vmax_cmps"] * tmin
+    rmax: float = modelmeta["vmax_cmps"] * tmin
 
     coordmax0 = rmax
     ncoordgrid0 = 50
@@ -302,12 +302,11 @@ def get_wid_init_at_tmodel(
         dfmodel, modelmeta = at.get_modeldata(modelpath, getheadersonly=True, skipabundancecolumns=True)
         assert modelmeta["dimensions"] == 3
         ngridpoints = len(dfmodel)
-        xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * (24 * 60 * 60)
-
-    ncoordgridx = round(ngridpoints ** (1.0 / 3.0))
+        xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400
+    ncoordgridx: int = round(ngridpoints ** (1.0 / 3.0))
 
     assert xmax is not None
-    wid_init = 2 * xmax / ncoordgridx
+    wid_init = 2.0 * xmax / ncoordgridx
 
     return wid_init
 
@@ -319,8 +318,8 @@ def get_syn_dir(modelpath: Path) -> Sequence[int]:
     return syn_dir
 
 
-def vec_len(vec: Union[Sequence, np.ndarray[Any, Any]]) -> float:
-    return np.sqrt(np.dot(vec, vec))
+def vec_len(vec: Union[Sequence[float], np.ndarray[Any, np.dtype[np.float64]]]) -> float:
+    return float(np.sqrt(np.dot(vec, vec)))
 
 
 @lru_cache(maxsize=16)
