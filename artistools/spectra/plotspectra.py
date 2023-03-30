@@ -224,7 +224,7 @@ def plot_artis_spectrum(
     for axindex, axis in enumerate(axes):
         if args.multispecplot:
             (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
-                modelpath, timedays_range_str=args.timedayslist[axindex]
+                modelpath, timedays_range_str=str(args.timedayslist[axindex])
             )
         else:
             (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
