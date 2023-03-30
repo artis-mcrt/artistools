@@ -454,7 +454,7 @@ def get_time_range(
     timestep_range_str: Optional[str] = None,
     timemin: Optional[float] = None,
     timemax: Optional[float] = None,
-    timedays_range_str: Optional[str] = None,
+    timedays_range_str: Union[None, str, float] = None,
 ) -> tuple[int, int, Optional[float], Optional[float]]:
     """Handle a time range specified in either days or timesteps."""
     # assertions make sure time is specified either by timesteps or times in days, but not both!
@@ -482,8 +482,7 @@ def get_time_range(
         timestepmin = None
         timestepmax = None
         if timedays_range_str is not None:
-            assert isinstance(timedays_range_str, str)
-            if "-" in timedays_range_str:
+            if isinstance(timedays_range_str, str) and "-" in timedays_range_str:
                 timemin, timemax = [float(timedays) for timedays in timedays_range_str.split("-")]
             else:
                 timeavg = float(timedays_range_str)
