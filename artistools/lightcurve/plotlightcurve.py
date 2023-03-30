@@ -300,9 +300,6 @@ def plot_artis_lightcurve(
     if args.linewidth[seriesindex]:
         plotkwargs["linewidth"] = args.linewidth[seriesindex]
 
-    if args.plotdeposition or args.plotthermalisation:
-        plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkwargs, args)
-
     # check if doing viewing angle stuff, and if so define which data to use
     angles, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
@@ -408,6 +405,9 @@ def plot_artis_lightcurve(
             plotkwargs["linestyle"] = "dashed"
             # plotkwargs['color'] = 'tab:orange'
             axis.plot(lcdata.time, lcdata["lum_cmf"], **plotkwargs)
+
+    if args.plotdeposition or args.plotthermalisation:
+        plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkwargs, args)
 
     return lcdataframes
 
