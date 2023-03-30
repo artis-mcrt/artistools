@@ -943,7 +943,7 @@ def make_plot(args) -> None:
             plotobjectlabels,
             loc="upper right",
             frameon=False,
-            handlelength=1,
+            handlelength=2,
             ncol=legendncol,
             numpoints=1,
             fontsize=fs,
