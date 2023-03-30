@@ -482,6 +482,7 @@ def get_time_range(
         timestepmin = None
         timestepmax = None
         if timedays_range_str is not None:
+            assert isinstance(timedays_range_str, str)
             if "-" in timedays_range_str:
                 timemin, timemax = [float(timedays) for timedays in timedays_range_str.split("-")]
             else:
