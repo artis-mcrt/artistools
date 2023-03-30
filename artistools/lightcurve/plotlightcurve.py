@@ -230,9 +230,9 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
 
 def plot_artis_lightcurve(
     modelpath: Union[str, Path],
-    seriesindex: int,
-    label: Optional[str],
     axis,
+    lcindex: int = 0,
+    label: Optional[str] = None,
     escape_type: Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
     frompackets: bool = False,
     maxpacketfiles: Optional[int] = None,
@@ -293,21 +293,21 @@ def plot_artis_lightcurve(
 
     plotkwargs: dict[str, Any] = {}
     plotkwargs["label"] = modelname
-    plotkwargs["linestyle"] = args.linestyle[seriesindex]
-    plotkwargs["color"] = args.color[seriesindex]
-    if args.dashes[seriesindex]:
-        plotkwargs["dashes"] = args.dashes[seriesindex]
-    if args.linewidth[seriesindex]:
-        plotkwargs["linewidth"] = args.linewidth[seriesindex]
+    plotkwargs["linestyle"] = args.linestyle[lcindex]
+    plotkwargs["color"] = args.color[lcindex]
+    if args.dashes[lcindex]:
+        plotkwargs["dashes"] = args.dashes[lcindex]
+    if args.linewidth[lcindex]:
+        plotkwargs["linewidth"] = args.linewidth[lcindex]
 
     # check if doing viewing angle stuff, and if so define which data to use
-    angles, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
+    dirbins, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
     if args.colorbarcostheta or args.colorbarphi:
         costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
         scaledmap = make_colorbar_viewingangles_colormap()
 
-    lctimemin, lctimemax = lcdataframes[angles[0]].time.min(), lcdataframes[angles[0]].time.max()
+    lctimemin, lctimemax = lcdataframes[dirbins[0]].time.min(), lcdataframes[dirbins[0]].time.max()
 
     print(f" range of light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
     try:
@@ -324,7 +324,7 @@ def plot_artis_lightcurve(
         )
         nts_last, validrange_start_days, validrange_end_days = None, float("-inf"), float("inf")
 
-    for dirbin in angles:
+    for dirbin in dirbins:
         lcdata = lcdataframes[dirbin]
 
         if dirbin != -1:
@@ -342,10 +342,12 @@ def plot_artis_lightcurve(
                     plotkwargs,
                     args,
                 )
-                if args.average_over_phi_angle:  # if angles plotted that are averaged over phi
-                    plotkwargs["color"] = "lightgrey"  # then plot these in grey
+                if args.average_over_phi_angle:
+                    plotkwargs["color"] = "lightgrey"
             else:
-                plotkwargs["color"] = None
+                # the first dirbin should use the color argument (which has been removed from the color cycle)
+                if dirbin != dirbins[0]:
+                    plotkwargs["color"] = None
                 plotkwargs["label"] = (
                     f"{modelname}\n{angle_definition[dirbin]}" if modelname else angle_definition[dirbin]
                 )
@@ -449,7 +451,7 @@ def make_lightcurve_plot(
     reflightcurveindex = 0
 
     plottedsomething = False
-    for seriesindex, modelpath in enumerate(modelpaths):
+    for lcindex, modelpath in enumerate(modelpaths):
         if not Path(modelpath).is_dir() and not Path(modelpath).exists() and "." in str(modelpath):
             bolreflightcurve = Path(modelpath)
 
@@ -477,8 +479,8 @@ def make_lightcurve_plot(
         else:
             lcdataframes = plot_artis_lightcurve(
                 modelpath=modelpath,
-                seriesindex=seriesindex,
-                label=args.label[seriesindex],
+                lcindex=lcindex,
+                label=args.label[lcindex],
                 axis=axis,
                 escape_type=escape_type,
                 frompackets=frompackets,
