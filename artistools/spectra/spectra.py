@@ -97,7 +97,7 @@ def get_spectrum_at_time(
     average_over_phi: Optional[bool] = None,
     average_over_theta: Optional[bool] = None,
 ) -> pd.DataFrame:
-    if dirbin is not None and dirbin >= 0:
+    if dirbin >= 0:
         if args is not None and args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
             spectrum = get_vspecpol_spectrum(modelpath, time, dirbin, args)
 
@@ -616,11 +616,11 @@ def get_flux_contributions(
         dbinlist = [-1]
     elif averageoverphi:
         assert not averageovertheta
-        assert directionbin is not None and directionbin % at.get_viewingdirection_phibincount() == 0
+        assert directionbin % at.get_viewingdirection_phibincount() == 0
         dbinlist = list(range(directionbin, directionbin + at.get_viewingdirection_phibincount()))
     elif averageovertheta:
         assert not averageoverphi
-        assert directionbin is not None and directionbin < at.get_viewingdirection_phibincount()
+        assert directionbin < at.get_viewingdirection_phibincount()
         dbinlist = list(range(directionbin, at.get_viewingdirectionbincount(), at.get_viewingdirection_phibincount()))
     else:
         dbinlist = [directionbin]

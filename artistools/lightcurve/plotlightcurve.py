@@ -272,7 +272,7 @@ def plot_artis_lightcurve(
         )
     else:
         if lcfilename is None:
-            if directionbins is not None and directionbins != [-1]:
+            if directionbins != [-1]:
                 lcfilename = "light_curve_res.out"
             else:
                 lcfilename = "gamma_light_curve.out" if (escape_type == "TYPE_GAMMA") else "light_curve.out"

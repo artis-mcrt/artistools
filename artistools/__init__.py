@@ -42,7 +42,6 @@ from artistools.misc import firstexisting
 from artistools.misc import flatten_list
 from artistools.misc import average_direction_bins
 from artistools.misc import gather_res_data
-from artistools.misc import get_artis_constants
 from artistools.misc import get_atomic_number
 from artistools.misc import get_bflist
 from artistools.misc import get_cellsofmpirank
@@ -86,7 +85,6 @@ from artistools.misc import make_namedtuple
 from artistools.misc import makelist
 from artistools.misc import match_closest_time
 from artistools.misc import namedtuple
-from artistools.misc import parse_cdefines
 from artistools.misc import parse_range
 from artistools.misc import parse_range_list
 from artistools.misc import readnoncommentline

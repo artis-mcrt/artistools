@@ -70,7 +70,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
 
 
 class AppendPath(argparse.Action):
-    def __call__(self, parser, args, values, option_string=None) -> None:  # type: ignore
+    def __call__(self, parser, args, values, option_string=None) -> None:  # type: ignore[no-untyped-def]
         # if getattr(args, self.dest) is None:
         #     setattr(args, self.dest, [])
         if isinstance(values, Iterable):
@@ -472,7 +472,7 @@ def get_time_range(
         return -1, -1, timemin, timemax
 
     if timestep_range_str is not None:
-        if isinstance(timestep_range_str, str) and "-" in timestep_range_str:
+        if "-" in timestep_range_str:
             timestepmin, timestepmax = [int(nts) for nts in timestep_range_str.split("-")]
         else:
             timestepmin = int(timestep_range_str)
@@ -482,7 +482,7 @@ def get_time_range(
         timestepmin = None
         timestepmax = None
         if timedays_range_str is not None:
-            if isinstance(timedays_range_str, str) and "-" in timedays_range_str:
+            if "-" in timedays_range_str:
                 timemin, timemax = [float(timedays) for timedays in timedays_range_str.split("-")]
             else:
                 timeavg = float(timedays_range_str)
@@ -631,7 +631,9 @@ def get_elsymbol(atomic_number: int) -> str:
 
 
 @lru_cache(maxsize=16)
-def get_ionstring(atomic_number: int, ionstage: int, spectral: bool = True, nospace: bool = False) -> str:
+def get_ionstring(
+    atomic_number: int, ionstage: Union[int, Literal["ALL"], None], spectral: bool = True, nospace: bool = False
+) -> str:
     if ionstage == "ALL" or ionstage is None:
         return f"{get_elsymbol(atomic_number)}"
     elif spectral:
@@ -711,7 +713,7 @@ def flatten_list(listin: list) -> list:
     return listout
 
 
-def zopen(filename: Union[Path, str], mode: str):  # type: ignore
+def zopen(filename: Union[Path, str], mode: str):  # type: ignore[no-untyped-def]
     """Open filename, filename.gz or filename.x"""
     filenamexz = str(filename) if str(filename).endswith(".xz") else str(filename) + ".xz"
     filenamegz = str(filename) if str(filename).endswith(".gz") else str(filename) + ".gz"
@@ -1174,123 +1176,6 @@ def get_mpirankofcell(modelgridindex: int, modelpath: Union[Path, str]) -> int:
     assert modelgridindex in get_cellsofmpirank(mpirank, modelpath)
 
     return mpirank
-
-
-def get_artis_constants(
-    modelpath: Optional[Path] = None, srcpath: Optional[Path] = None, printdefs: bool = False
-) -> dict[str, Any]:
-    # get artis options specified as preprocessor macro definitions in artisoptions.h and other header files
-    if not srcpath:
-        assert modelpath is not None
-        srcpath = Path(modelpath, "artis")
-        if not modelpath:
-            raise ValueError("Either modelpath or srcpath must be specified in call to get_defines()")
-
-    cfiles = [
-        # Path(srcpath, 'constants.h'),
-        # Path(srcpath, 'decay.h'),
-        Path(srcpath, "artisoptions.h"),
-        # Path(srcpath, 'sn3d.h'),
-    ]
-    definedict = {
-        "true": True,
-        "false": False,
-    }
-    for filepath in cfiles:
-        definedict.update(parse_cdefines(srcfilepath=filepath))
-
-    # evaluate booleans, numbers, and references to other constants
-    for k, strvalue in definedict.copy().items():
-        try:
-            # definedict[k] = eval(strvalue, definedict)
-            # print(f"{k} = '{strvalue}' = {definedict[k]}")
-            pass
-        except SyntaxError:
-            pass
-            # print(f"{k} = '{strvalue}' = (COULD NOT EVALUATE)")
-        except TypeError:
-            pass
-            # print(f"{k} = '{strvalue}' = (COULD NOT EVALUATE)")
-
-    # if printdefs:
-    #     for k in definedict:
-    #         print(f"{k} = '{definedict[k]}'")
-
-    return definedict
-
-
-def parse_cdefines(srcfilepath: Path, printdefs: bool = False) -> dict[str, Any]:
-    # adapted from h2py.py in Python source
-    import re
-
-    # p_define = re.compile('^[\t ]*#[\t ]*define[\t ]+([a-zA-Z0-9_]+)[\t ]+')
-    p_define = re.compile(r"^[\t ]*#[\t ]*define[\t ]+([a-zA-Z0-9_]+)+")
-
-    p_const = re.compile(r"(?:\w+\s+)([a-zA-Z_=][a-zA-Z0-9_=]*)*(?<!=)=(?!=)")
-
-    p_comment = re.compile(r"/\*([^*]+|\*+[^/])*(\*+/)?")
-    p_cpp_comment = re.compile("//.*")
-
-    ignores = [p_comment, p_cpp_comment]
-
-    p_char = re.compile(r"'(\\.[^\\]*|[^\\])'")
-
-    p_hex = re.compile(r"0x([0-9a-fA-F]+)L?")
-
-    def pytify(body: str) -> str:
-        # replace ignored patterns by spaces
-        for p in ignores:
-            body = p.sub(" ", body)
-        # replace char literals by ord(...)
-        body = p_char.sub("ord(\\0)", body)
-        # Compute negative hexadecimal constants
-        start = 0
-        UMAX = 2 * (sys.maxsize + 1)
-        while 1:
-            m = p_hex.search(body, start)
-            if not m:
-                break
-            s, e = m.span()
-            val = int(body[slice(*m.span(1))], 16)
-            if val > sys.maxsize:
-                val -= UMAX
-                body = body[:s] + "(" + str(val) + ")" + body[e:]
-            start = s + 1
-        return body
-
-    definedict = {}
-    lineno = 0
-    with open(srcfilepath, "r") as optfile:
-        while 1:
-            line = optfile.readline()
-            if not line:
-                break
-            lineno = lineno + 1
-            match = p_define.match(line)
-            if match:
-                # gobble up continuation lines
-                while line[-2:] == "\\\n":
-                    nextline = optfile.readline()
-                    if not nextline:
-                        break
-                    lineno = lineno + 1
-                    line = line + nextline
-                name = match.group(1)
-                body = line[match.end() :]
-                body = pytify(body)
-                definedict[name] = body.strip()
-            match = p_const.match(line)
-            if match:
-                print("CONST", tuple(p_const.findall(line)))
-            # if '=' in line and ';' in line:
-            #     tokens = line.replace('==', 'IGNORE').replace('=', ' = ').split()
-            #     varname = tokens.indexof('=')[-1]
-
-    if printdefs:
-        for k in definedict:
-            print(f"{k} = '{definedict[k]}'")
-
-    return definedict
 
 
 def get_viewingdirectionbincount() -> int:

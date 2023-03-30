@@ -178,16 +178,12 @@ def generate_band_lightcurve_data(
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
     from scipy.interpolate import interp1d
 
-    if args and args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
+    if args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
         print("Found vpkt.txt, using virtual packets")
         stokes_params = at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
         vspecdata = stokes_params["I"]
         timearray = vspecdata.keys()[1:]
-    elif (
-        args
-        and args.plotviewingangle
-        and at.anyexist(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True)
-    ):
+    elif args.plotviewingangle and at.anyexist(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True):
         specfilename = at.firstexisting(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True)
         specdataresdata = pd.read_csv(specfilename, delim_whitespace=True)
         timearray = [i for i in specdataresdata.columns.values[1:] if i[-2] != "."]

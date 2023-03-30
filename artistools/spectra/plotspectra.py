@@ -262,7 +262,7 @@ def plot_artis_spectrum(
         viewinganglespectra: dict[int, pd.DataFrame] = {}
 
         # have to get the spherical average "bin" if directionbins is None
-        dbins_get = list(directionbins).copy() if directionbins is not None else [-1]
+        dbins_get = list(directionbins).copy()
         if -1 not in dbins_get:
             dbins_get.append(-1)
 
