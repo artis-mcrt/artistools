@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """Artistools - spectra related functions."""
-from artistools.estimators.estimators import apply_filters
-from artistools.estimators.estimators import get_averaged_estimators
-from artistools.estimators.estimators import get_averageexcitation
-from artistools.estimators.estimators import get_averageionisation
-from artistools.estimators.estimators import get_dictlabelreplacements
-from artistools.estimators.estimators import get_ionrecombrates_fromfile
-from artistools.estimators.estimators import get_partiallycompletetimesteps
-from artistools.estimators.estimators import get_units_string
-from artistools.estimators.estimators import get_variablelongunits
-from artistools.estimators.estimators import get_variableunits
-from artistools.estimators.estimators import parse_estimfile
-from artistools.estimators.estimators import read_estimators
-from artistools.estimators.estimators import read_estimators_from_file
-from artistools.estimators.plotestimators import addargs
-from artistools.estimators.plotestimators import main
-from artistools.estimators.plotestimators import main as plot
+from .estimators import apply_filters
+from .estimators import get_averaged_estimators
+from .estimators import get_averageexcitation
+from .estimators import get_averageionisation
+from .estimators import get_dictlabelreplacements
+from .estimators import get_ionrecombrates_fromfile
+from .estimators import get_partiallycompletetimesteps
+from .estimators import get_units_string
+from .estimators import get_variablelongunits
+from .estimators import get_variableunits
+from .estimators import parse_estimfile
+from .estimators import read_estimators
+from .estimators import read_estimators_from_file
+from .plotestimators import addargs
+from .plotestimators import main
+from .plotestimators import main as plot
