@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 import argparse
-import math
 from pathlib import Path
 
 import argcomplete
@@ -10,10 +9,6 @@ import numpy as np
 import pandas as pd
 
 import artistools as at
-import artistools.inputmodel
-
-# import os.path
-# import matplotlib
 
 
 def get_model_recombenergy(dfbinding, args):

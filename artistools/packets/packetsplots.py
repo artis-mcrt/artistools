@@ -75,7 +75,14 @@ def make_2d_packets_plot_pyvista(modelpath, timestep):
     mesh["energy [erg/s]"] = hist.ravel(order="F")
     # print(max(mesh['energy [erg/s]']))
 
-    sargs = dict(height=0.75, vertical=True, position_x=0.04, position_y=0.1, title_font_size=22, label_font_size=25)
+    sargs = {
+        "height": 0.75,
+        "vertical": True,
+        "position_x": 0.04,
+        "position_y": 0.1,
+        "title_font_size": 22,
+        "label_font_size": 25,
+    }
 
     pv.set_plot_theme("document")  # set white background
     p = pv.Plotter()

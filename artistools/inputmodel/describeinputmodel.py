@@ -9,8 +9,6 @@ import numpy as np
 
 import artistools as at
 
-# import pandas as pd
-
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-inputfile", "-i", default=Path(), help="Path of input file or folder containing model.txt")

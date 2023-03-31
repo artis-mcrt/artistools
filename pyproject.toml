@@ -46,9 +46,9 @@ ignore_missing_imports = true
 warn_unused_configs = true
 #files = 'artistools/**/*.py'
 plugins = 'numpy.typing.mypy_plugin'
+scripts_are_modules = true
 strict_equality = true
 pretty = true
-color_output = true
 error_summary = true
 enable_error_code = [
   "redundant-expr",
@@ -70,10 +70,41 @@ disallow_untyped_defs = true
 warn_return_any = false
 #strict = true
 
-[tool.pylint]
+[tool.pylint.'MESSAGES CONTROL']
 max-line-length = 120
-errors-only = true
-
+disable = """
+    broad-exception-caught,
+    cell-var-from-loop,
+    cyclic-import,
+    dangerous-default-value,
+    eval-used,
+    fixme,
+    global-statement,
+    global-variable-not-assigned,
+    missing-function-docstring,
+    missing-module-docstring,
+    import-outside-toplevel,
+    invalid-name,
+    line-too-long,
+    protected-access,
+    redefined-builtin,
+    redefined-outer-name,
+    reimported,
+    too-many-arguments,
+    too-many-branches,
+    too-many-lines,
+    too-many-locals,
+    too-many-statements,
+    undefined-loop-variable,
+    unused-argument,
+    unused-variable,
+    unspecified-encoding,
+    C,
+    R,
+"""
+enable = """
+    unused-import,
+"""
 [tool.pylint.typecheck]
 ignored-modules = ["astropy", "extinction"]
 

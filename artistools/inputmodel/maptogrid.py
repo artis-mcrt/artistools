@@ -18,9 +18,6 @@ logfile = None
 itable = 40000  # wie fein Kernelfkt interpoliert wird
 itab = itable + 5
 
-
-wij = np.zeros(itab + 1)
-
 #
 # --maximum interaction length and step size
 #
@@ -29,51 +26,55 @@ dvtable = v2max / itable
 i1 = int(1.0 // dvtable)
 
 
-igphi = 0
-#
-# --normalisation constant
-#
-cnormk = 1.0 / math.pi
-# --build tables
-#
-#  a) v less than 1
-#
-if igphi == 1:
-    for i in range(1, i1 + 1):
-        v2 = i * dvtable
-        v = math.sqrt(v2)
-        v3 = v * v2
-        v4 = v * v3
-        sum = 1.0 - 1.5 * v2 + 0.75 * v3
-        wij[i] = cnormk * sum
-else:
-    for i in range(1, i1 + 1):
-        v2 = i * dvtable
-        v = math.sqrt(v2)
-        v3 = v * v2
-        sum = 1.0 - 1.5 * v2 + 0.75 * v3
-        wij[i] = cnormk * sum
+def get_wij() -> np.ndarray:
+    igphi = 0
+    #
+    # --normalisation constant
+    #
+    cnormk = 1.0 / math.pi
+    # --build tables
+    #
+    #  a) v less than 1
+    #
+    wij = np.zeros(itab + 1)
+    if igphi == 1:
+        for i in range(1, i1 + 1):
+            v2 = i * dvtable
+            v = math.sqrt(v2)
+            v3 = v * v2
+            v4 = v * v3
+            vsum = 1.0 - 1.5 * v2 + 0.75 * v3
+            wij[i] = cnormk * vsum
+    else:
+        for i in range(1, i1 + 1):
+            v2 = i * dvtable
+            v = math.sqrt(v2)
+            v3 = v * v2
+            vsum = 1.0 - 1.5 * v2 + 0.75 * v3
+            wij[i] = cnormk * vsum
 
-#
-#  b) v greater than 1
-#
-if igphi == 1:
-    for i in range(i1 + 1, itable + 1):
-        v2 = i * dvtable
-        v = math.sqrt(v2)
-        dif2 = 2.0 - v
-        sum = 0.25 * dif2 * dif2 * dif2
-        wij[i] = cnormk * sum
-else:
-    for i in range(i1 + 1, itable + 1):
-        v2 = i * dvtable
-        v = math.sqrt(v2)
-        dif2 = 2.0 - v
-        sum = 0.25 * dif2 * dif2 * dif2
-        wij[i] = cnormk * sum
+    #
+    #  b) v greater than 1
+    #
+    if igphi == 1:
+        for i in range(i1 + 1, itable + 1):
+            v2 = i * dvtable
+            v = math.sqrt(v2)
+            dif2 = 2.0 - v
+            vsum = 0.25 * dif2 * dif2 * dif2
+            wij[i] = cnormk * vsum
+    else:
+        for i in range(i1 + 1, itable + 1):
+            v2 = i * dvtable
+            v = math.sqrt(v2)
+            dif2 = 2.0 - v
+            vsum = 0.25 * dif2 * dif2 * dif2
+            wij[i] = cnormk * vsum
+
+    return wij
 
 
-def kernelvals2(rij2: float, hmean: float) -> float:  # ist schnell berechnet aber keine Gradienten
+def kernelvals2(rij2: float, hmean: float, wij: np.ndarray) -> float:  # ist schnell berechnet aber keine Gradienten
     hmean21 = 1.0 / (hmean * hmean)
     hmean31 = hmean21 / hmean
     v2 = rij2 * hmean21
@@ -92,6 +93,8 @@ def logprint(*args, **kwargs):
 
 def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoordgrid: int = 50) -> None:
     # save the printed output to a log file
+
+    wij = get_wij()
     global logfile
     logfile = open("maptogridlog.txt", "w")
     print = logprint
@@ -306,7 +309,7 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
             # or via neighbors  - not yet implemented
 
             if dis2 <= maxdist2:
-                wtij = kernelvals2(dis2, h[n])
+                wtij = kernelvals2(dis2, h[n], wij)
 
                 # USED PREVIOUSLY: less accurate?
                 # grho_contrib = pmass[n] * wtij

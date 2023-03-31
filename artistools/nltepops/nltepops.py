@@ -11,8 +11,8 @@ import pandas as pd
 from astropy import constants as const
 
 import artistools as at
-import artistools.misc
-
+from artistools.configuration import get_config
+from artistools.diskcachedecorator import diskcache
 
 # import os
 # import sys
@@ -153,7 +153,7 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
     return dfpop
 
 
-@at.diskcache(savezipped=True)
+@diskcache(savezipped=True)
 def read_file(nltefilepath):
     """Read NLTE populations from one file."""
 
@@ -189,7 +189,7 @@ def read_file_filtered(nltefilepath, strquery=None, dfqueryvars=None):
 
 
 @lru_cache(maxsize=2)
-@at.diskcache(savezipped=True, funcversion="2020-07-03.1327", saveonly=False)
+@diskcache(savezipped=True, funcversion="2020-07-03.1327", saveonly=False)
 def read_files(modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryvars={}):
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
 
@@ -220,8 +220,8 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryv
             dfquery_full = f"({dfquery_full}) and "
         dfquery_full += f"({dfquery})"
 
-    if at.get_config()["num_processes"] > 1:
-        with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
+    if get_config()["num_processes"] > 1:
+        with multiprocessing.Pool(processes=get_config()["num_processes"]) as pool:
             arr_dfnltepop = pool.map(
                 partial(read_file_filtered, strquery=dfquery_full, dfqueryvars=dfqueryvars), nltefilepaths
             )

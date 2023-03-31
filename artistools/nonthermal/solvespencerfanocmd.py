@@ -3,6 +3,7 @@ import argparse
 import multiprocessing
 import sys
 from pathlib import Path
+from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,12 +11,6 @@ import pandas as pd
 import pynonthermal as pynt
 
 import artistools as at
-import artistools.estimators
-import artistools.nltepops
-import artistools.nonthermal
-
-# import numba
-# from numpy import arctan as atan
 
 
 minionfraction = 0.0  # minimum number fraction of the total population to include in SF solution
@@ -23,7 +18,7 @@ minionfraction = 0.0  # minimum number fraction of the total population to inclu
 defaultoutputfile = "spencerfano_cell{cell:03d}_ts{timestep:02d}_{timedays:.0f}d.pdf"
 
 
-def make_ntstats_plot(ntstatfile):
+def make_ntstats_plot(ntstatfile: Union[str, Path]) -> None:
     fig, ax = plt.subplots(
         nrows=1, ncols=1, sharex=True, figsize=(4, 3), tight_layout={"pad": 0.5, "w_pad": 0.3, "h_pad": 0.3}
     )

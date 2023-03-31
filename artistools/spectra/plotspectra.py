@@ -5,7 +5,6 @@ import argparse
 import math
 import os
 from collections.abc import Collection
-from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 from typing import Callable
@@ -18,7 +17,6 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
-from astropy import constants as const
 from matplotlib.artist import Artist
 
 import artistools as at
@@ -201,7 +199,7 @@ def plot_artis_spectrum(
     filterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     linelabel: Optional[str] = None,
     plotpacketcount: bool = False,
-    directionbins: list[int] = [-1],
+    directionbins: Optional[list[int]] = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     maxpacketfiles: Optional[int] = None,
@@ -275,7 +273,7 @@ def plot_artis_spectrum(
                 lambda_min=supxmin * 0.9,
                 lambda_max=supxmax * 1.1,
                 use_escapetime=args.use_escapetime,
-                maxpacketfiles=args.maxpacketfiles,
+                maxpacketfiles=maxpacketfiles,
                 delta_lambda=args.deltalambda,
                 useinternalpackets=args.internalpackets,
                 getpacketcount=plotpacketcount,
@@ -432,6 +430,7 @@ def make_spectrum_plot(
                 args=args,
                 scale_to_peak=scale_to_peak,
                 from_packets=args.frompackets,
+                maxpacketfiles=args.maxpacketfiles,
                 filterfunc=filterfunc,
                 plotpacketcount=args.plotpacketcount,
                 directionbins=args.plotviewingangle,
@@ -744,8 +743,6 @@ def make_emissionabsorption_plot(
             axis.set_ylabel(r"J$_\lambda$ [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]")
 
     if args.showbinedges:
-        import artistools.radfield
-
         radfielddata = at.radfield.read_files(modelpath, timestep=timestepmax, modelgridindex=30)
         binedges = at.radfield.get_binedges(radfielddata)
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5, color="red", label="", zorder=-1, alpha=0.4)
@@ -754,8 +751,6 @@ def make_emissionabsorption_plot(
 
 
 def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[str], args) -> None:
-    import artistools.packets
-
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
@@ -763,8 +758,6 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
     modeldata, _ = at.inputmodel.get_modeldata(modelpath)
 
     if args.classicartis:
-        import artistools.estimators.estimators_classic
-
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)
         estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
         allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index]
@@ -790,7 +783,7 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
     list_lambda: dict[str, list[float]] = {}
     lists_y: dict[str, list[float]] = {}
     for index, packetsfile in enumerate(packetsfiles):
-        dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+        dfpackets = at.packets.readfile(packetsfile, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
 
         dfpackets_selected = dfpackets.query(
             "@nu_min <= nu_rf < @nu_max and t_arrive_d >= @tdays_min and t_arrive_d <= @tdays_max", inplace=False

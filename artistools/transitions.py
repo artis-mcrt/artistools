@@ -11,14 +11,6 @@ import pandas as pd
 from astropy import constants as const
 
 import artistools as at
-import artistools.estimators
-import artistools.nltepops
-import artistools.spectra
-
-# import glob
-# import re
-# import numexpr as ne
-# from astropy import units as u
 
 defaultoutputfile = "plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
 
@@ -148,7 +140,7 @@ def make_plot(
 
         if len(axes) > len(ionlist):
             axes[len(ionlist)].plot(xvalues, yvalues_combined[seriesindex], linewidth=1.5, label=serieslabel)
-            peak_y_value = max(peak_y_value, max(yvalues_combined[seriesindex]))
+            peak_y_value = max(peak_y_value, **yvalues_combined[seriesindex])
 
     axislabels = [
         f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[(Z, ion_stage)]:.1e}/cm3)"

@@ -5,7 +5,6 @@ from pathlib import Path
 import numpy as np
 
 import artistools as at
-import artistools.estimators
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

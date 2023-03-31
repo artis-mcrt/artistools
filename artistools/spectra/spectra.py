@@ -2,16 +2,12 @@
 """Artistools - spectra related functions."""
 import argparse
 import math
-import multiprocessing
 import os
 import re
 from collections import namedtuple
 from collections.abc import Collection
-from collections.abc import Iterable
 from collections.abc import Sequence
-from collections.abc import Sized
 from functools import lru_cache
-from functools import partial
 from pathlib import Path
 from typing import Any
 from typing import Callable
@@ -28,7 +24,6 @@ from astropy import constants as const
 from astropy import units as u
 
 import artistools as at
-from artistools.nltepops.nltepops import texifyconfiguration  # needed to get the color map
 
 fluxcontributiontuple = namedtuple(
     "fluxcontributiontuple", "fluxcontrib linelabel array_flambda_emission array_flambda_absorption color"
@@ -92,7 +87,6 @@ def get_spectrum_at_time(
     time: float,
     args: Optional[argparse.Namespace],
     dirbin: int = -1,
-    res_specdata: Optional[dict[int, pd.DataFrame]] = None,
     modelnumber: Optional[int] = None,
     average_over_phi: Optional[bool] = None,
     average_over_theta: Optional[bool] = None,
@@ -130,13 +124,15 @@ def get_from_packets(
     maxpacketfiles: Optional[int] = None,
     useinternalpackets: bool = False,
     getpacketcount: bool = False,
-    directionbins: Collection[int] = [-1],
+    directionbins: Optional[Collection[int]] = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     fnufilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
 ) -> pd.DataFrame:
     """Get a spectrum dataframe using the packets files as input."""
     assert not useinternalpackets
+    if directionbins is None:
+        directionbins = [-1]
 
     if use_escapetime:
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)
@@ -163,7 +159,7 @@ def get_from_packets(
     ndirbins = at.get_viewingdirectionbincount()
 
     nprocs_read, dfpackets = at.packets.get_pldfpackets(
-        modelpath, maxpacketfiles=maxpacketfiles, type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+        modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
     if not use_escapetime:
@@ -324,7 +320,7 @@ def get_spectrum(
     modelpath: Path,
     timestepmin: int,
     timestepmax: Optional[int] = None,
-    directionbins: Sequence[int] = [-1],
+    directionbins: Optional[Sequence[int]] = None,
     fnufilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     average_over_theta: bool = False,
     average_over_phi: bool = False,
@@ -334,6 +330,8 @@ def get_spectrum(
     if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin
 
+    if directionbins is None:
+        directionbins = [-1]
     # keys are direction bins (or -1 for spherical average)
     specdata: dict[int, pd.DataFrame] = {}
 
@@ -867,8 +865,6 @@ def get_flux_contributions_from_packets(
         vmax = modeldata.iloc[-1].velocity_outer * u.km / u.s
         betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
-    import artistools.packets
-
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
 
     linelist = at.get_linelist_dict(modelpath=modelpath)
@@ -904,7 +900,7 @@ def get_flux_contributions_from_packets(
             r_inner = t_seconds * v_inner
             r_outer = t_seconds * v_outer
 
-            dfpackets = at.packets.readfile(packetsfile, type="TYPE_RPKT")
+            dfpackets = at.packets.readfile(packetsfile, packet_type="TYPE_RPKT")
             print("Using non-escaped internal r-packets")
             dfpackets.query(
                 f'type_id == {at.packets.type_ids["TYPE_RPKT"]} and @nu_min <= nu_rf < @nu_max', inplace=True
@@ -917,7 +913,7 @@ def get_flux_contributions_from_packets(
                 dfpackets.query("where in @assoc_cells[@modelgridindex]", inplace=True)
             print(f"  {len(dfpackets)} internal r-packets matching frequency range")
         else:
-            dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+            dfpackets = at.packets.readfile(packetsfile, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
             dfpackets.query(
                 "@nu_min <= nu_rf < @nu_max and trueemissiontype >= 0 and "
                 + (

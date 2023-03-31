@@ -14,17 +14,7 @@ import pandas as pd
 from astropy import constants as const
 
 import artistools as at
-import artistools.atomic
-import artistools.estimators
-import artistools.nltepops
-import artistools.plottools
-
-# import re
-# import sys
-# from functools import lru_cache
-# from functools import partial
-# from itertools import chain
-# import numpy as np
+import artistools.plottools  # pylint: disable=unused-import,redefined-outer-name
 
 
 defaultoutputfile = "plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
@@ -76,9 +66,9 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
                 if math.isclose(file_nne, nne, rel_tol=0.01) and math.isclose(file_Te, Te, abs_tol=10):
                     if file_W > 0:
                         continue
-                        bbstr = " with dilute blackbody"
-                        color = "C2"
-                        marker = "+"
+                        # bbstr = " with dilute blackbody"
+                        # color = "C2"
+                        # marker = "+"
                     else:
                         bbstr = ""
                         color = "C1"
@@ -440,8 +430,6 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
         xlabel = r"Zone outer velocity [km s$^{-1}$]"
     ylabel = r"Level population [cm$^{-3}$]"
 
-    import artistools.plottools
-
     at.plottools.set_axis_labels(fig, ax, xlabel, ylabel, labelfontsize, args)
     if args.subplots:
         for plotnumber, axis in enumerate(ax):
@@ -576,6 +564,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         axes = [axes]
 
     prev_ion_stage = -1
+    assert len(mgilist) > 0
     for mgilistindex, modelgridindex in enumerate(mgilist):
         mgifirstaxindex = mgilistindex
         mgilastaxindex = mgilistindex + len(ion_stage_list) - 1

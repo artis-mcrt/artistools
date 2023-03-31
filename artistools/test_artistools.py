@@ -2,10 +2,8 @@
 import hashlib
 import math
 import os.path
-from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import pytest
 
 import artistools as at
@@ -42,11 +40,11 @@ def test_deposition():
 
 
 def test_estimator_snapshot():
-    at.estimators.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
+    at.estimators.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
 
 
 def test_estimator_timeevolution():
-    at.estimators.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, modelgridindex=0, x="time")
+    at.estimators.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, modelgridindex=0, x="time")
 
 
 def test_get_inputparams():
@@ -76,11 +74,11 @@ def test_get_modeldata_tuple():
 
 
 def test_lightcurve():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, outputfile=outputpath)
+    at.lightcurve.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath)
 
 
 def test_lightcurve_frompackets():
-    at.lightcurve.main(
+    at.lightcurve.plot(
         argsraw=[],
         modelpath=modelpath,
         frompackets=True,
@@ -89,19 +87,19 @@ def test_lightcurve_frompackets():
 
 
 def test_band_lightcurve_plot():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, filter=["B"], outputfile=outputpath)
+    at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], outputfile=outputpath)
 
 
 def test_band_lightcurve_subplots():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, filter=["bol", "B"], outputfile=outputpath)
+    at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["bol", "B"], outputfile=outputpath)
 
 
 def test_colour_evolution_plot():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, colour_evolution=["B-V"], outputfile=outputpath)
+    at.lightcurve.plot(argsraw=[], modelpath=modelpath, colour_evolution=["B-V"], outputfile=outputpath)
 
 
 def test_colour_evolution_subplots():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, colour_evolution=["U-B", "B-V"], outputfile=outputpath)
+    at.lightcurve.plot(argsraw=[], modelpath=modelpath, colour_evolution=["U-B", "B-V"], outputfile=outputpath)
 
 
 def test_macroatom():
@@ -109,13 +107,13 @@ def test_macroatom():
 
 
 def test_nltepops():
-    # at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timedays=300),
+    # at.nltepops.plot(modelpath=modelpath, outputfile=outputpath, timedays=300),
     #                    **benchargs)
-    at.nltepops.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40)
+    at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40)
 
 
 def test_nonthermal():
-    at.nonthermal.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=70)
+    at.nonthermal.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=70)
 
 
 def test_radfield():

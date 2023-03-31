@@ -6,7 +6,6 @@ import pandas as pd
 from astropy import units as u
 
 import artistools as at
-import artistools.spectra
 
 
 def get_bol_lc_from_spec(modelpath):

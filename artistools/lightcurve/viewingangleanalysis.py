@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 import argparse
 import glob
-import math
 import os
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
-from typing import Optional
 from typing import Union
 
 import matplotlib.pyplot as plt
@@ -16,8 +14,7 @@ from astropy import constants as const
 from matplotlib.legend_handler import HandlerTuple
 
 import artistools as at
-import artistools.lightcurve
-
+from artistools.diskcachedecorator import diskcache
 
 define_colours_list = [
     "k",
@@ -682,7 +679,7 @@ def make_peak_colour_viewing_angle_plot(args):
     plt.close()
 
 
-@at.diskcache(savezipped=True)
+@diskcache(savezipped=True)
 def second_band_brightness_at_peak_first_band(data, bands, modelpath, modelnumber, args):
     second_band_brightness = []
     for anglenumber, time in enumerate(data[f"time_{bands[0]}max"]):

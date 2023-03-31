@@ -119,10 +119,10 @@ def get_trajectory_timestepfile_nuc_abund(
     with open_tar_file_or_extracted(traj_root, particleid, memberfilename) as trajfile:
         try:
             _, str_t_model_init_seconds, _, rho, _, _ = trajfile.readline().split()
-        except ValueError:
+        except ValueError as exc:
             print(f"Problem with {memberfilename}")
-            raise ValueError(f"Problem with {memberfilename}")
-            assert False
+            raise ValueError(f"Problem with {memberfilename}") from exc
+
         trajfile.seek(0)
         t_model_init_seconds = float(str_t_model_init_seconds)
 

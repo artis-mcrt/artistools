@@ -2,13 +2,9 @@
 import calendar
 import gzip
 import math
-import multiprocessing
 import os
-import sys
-from collections.abc import Collection
 from collections.abc import Sequence
 from functools import lru_cache
-from functools import partial
 from pathlib import Path
 from typing import Literal
 from typing import Optional
@@ -45,7 +41,7 @@ def get_column_names_artiscode(modelpath: Union[str, Path]) -> Optional[list[str
     if Path(modelpath, "artis").is_dir():
         print("detected artis code directory")
         packet_properties = []
-        inputfilename = at.firstexisting(["packet_init.cc", "packet_init.c"], folder=(modelpath / "artis"))
+        inputfilename = at.firstexisting(["packet_init.cc", "packet_init.c"], folder=modelpath / "artis")
         print(f"found {inputfilename}: getting packet column names from artis code")
         with open(inputfilename) as inputfile:
             packet_print_lines = [line.split(",") for line in inputfile if "fprintf(packets_file," in line]
@@ -139,10 +135,13 @@ def add_derived_columns(
     if "emtrue_modelgridindex" in colnames:
         dfpackets["emtrue_modelgridindex"] = dfpackets.apply(emtrue_modelgridindex, axis=1)
 
+    if "emtrue_timestep" in colnames:
+        dfpackets["emtrue_timestep"] = dfpackets.apply(emtrue_timestep, axis=1)
+
     if "em_timestep" in colnames:
         dfpackets["em_timestep"] = dfpackets.apply(em_timestep, axis=1)
 
-    if any([x in colnames for x in ["angle_bin", "dirbin", "costhetabin", "phibin"]]):
+    if any((x in colnames for x in ["angle_bin", "dirbin", "costhetabin", "phibin"])):
         dfpackets = bin_packet_directions(modelpath, dfpackets)
 
     return dfpackets
@@ -173,9 +172,9 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
 
         fpackets.seek(datastartpos)  # go to first data line
 
-    except gzip.BadGzipFile:
+    except gzip.BadGzipFile as exc:
         print(f"\nBad Gzip File: {packetsfile}")
-        raise gzip.BadGzipFile
+        raise exc
 
     try:
         dfpackets = pd.read_csv(
@@ -187,9 +186,9 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
             skip_blank_lines=True,
             engine="pyarrow",
         )
-    except Exception as e:
+    except Exception as exc:
         print(f"Error occured in file {packetsfile}")
-        raise e
+        raise exc
 
     # space at the end of line made an extra column of Nones
     if dfpackets[dfpackets.columns[-1]].isnull().all():
@@ -275,17 +274,17 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
 
 def readfile(
     packetsfile: Union[Path, str],
-    type: Optional[str] = None,
+    packet_type: Optional[str] = None,
     escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
 ) -> pd.DataFrame:
     """Read a packet file into a Pandas DataFrame."""
-    return readfile_lazypolars(packetsfile, type=type, escape_type=escape_type).collect().to_pandas()
+    return readfile_lazypolars(packetsfile, packet_type=packet_type, escape_type=escape_type).collect().to_pandas()
 
 
 def readfile_lazypolars(
     packetsfile: Union[Path, str],
     modelpath: Union[None, Path, str] = None,
-    type: Optional[str] = None,
+    packet_type: Optional[str] = None,
     escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
 ) -> pl.LazyFrame:
     """Read a packet file into a Polars lazy DataFrame."""
@@ -310,7 +309,8 @@ def readfile_lazypolars(
         try:
             dfpackets = pl.scan_parquet(packetsfileparquet)
             write_parquet = False
-        except Exception as e:
+        except Exception as exc:
+            print(exc)
             print(f"Error occured in file {packetsfile}. Reading from text version.")
 
     if dfpackets is None:
@@ -341,12 +341,12 @@ def readfile_lazypolars(
         dfpackets.collect().write_parquet(packetsfileparquet, compression="lz4", use_pyarrow=True, statistics=True)
 
     if escape_type is not None:
-        assert type is None or type == "TYPE_ESCAPE"
+        assert packet_type is None or packet_type == "TYPE_ESCAPE"
         dfpackets = dfpackets.filter(
             (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
         )
-    elif type is not None and type != "":
-        dfpackets = dfpackets.filter(pl.col("type_id") == type_ids["TYPE_ESCAPE"])
+    elif packet_type is not None and packet_type != "":
+        dfpackets = dfpackets.filter(pl.col("type_id") == type_ids[packet_type])
 
     if modelpath is not None:
         dfpackets = bin_packet_directions_lazypolars(modelpath, dfpackets)
@@ -375,7 +375,7 @@ def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[i
     # strip out duplicates in the case that some are stored as binary and some are text files
     packetsfiles = [f for f in packetsfiles if not preferred_alternative(f)]
 
-    if maxpacketfiles is not None and maxpacketfiles > 0 and len(packetsfiles) > maxpacketfiles:
+    if maxpacketfiles is not None and len(packetsfiles) > maxpacketfiles:
         print(f"Reading from the first {maxpacketfiles} of {len(packetsfiles)} packets files")
         packetsfiles = packetsfiles[:maxpacketfiles]
     else:
@@ -387,16 +387,21 @@ def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[i
 def get_pldfpackets(
     modelpath: Union[str, Path],
     maxpacketfiles: Optional[int] = None,
-    type: Optional[str] = None,
+    packet_type: Optional[str] = None,
     escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
 ) -> tuple[int, pl.LazyFrame]:
+    if escape_type is not None:
+        assert packet_type in [None, "TYPE_ESCAPE"]
+        if packet_type is None:
+            packet_type = "TYPE_ESCAPE"
+
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
 
     nprocs_read = len(packetsfiles)
     # allescrpktfile = Path(modelpath) / "packets_rpkt_escaped.parquet"
     # write_allescrpkt_parquet = False
 
-    # if maxpacketfiles is None and type == "TYPE_ESCAPE" and escape_type == "TYPE_RPKT":
+    # if maxpacketfiles is None and escape_type == "TYPE_RPKT":
     #     if allescrpktfile.is_file():
     #         print(f"Reading from {allescrpktfile}")
     #         # use_statistics is causing some weird errors! (zero flux spectra)
@@ -407,7 +412,9 @@ def get_pldfpackets(
 
     pllfpackets = pl.concat(
         [
-            at.packets.readfile_lazypolars(packetsfile, modelpath=modelpath, type=type, escape_type=escape_type)
+            at.packets.readfile_lazypolars(
+                packetsfile, modelpath=modelpath, packet_type=packet_type, escape_type=escape_type
+            )
             for packetsfile in packetsfiles
         ],
         how="vertical",
@@ -560,7 +567,7 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
     modeldata, _, vmax_cms = at.inputmodel.get_modeldata_tuple(modelpath)
 
     timeminarray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
-    timedeltaarray = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
+    # timedeltaarray = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
     timemaxarray = at.get_timestep_times_float(modelpath=modelpath, loc="end")
 
     # timestep = 63 # 82 73 #63 #54 46 #27
@@ -576,9 +583,9 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
     e_rf = []
     e_cmf = []
 
-    for npacketfile in range(0, len(packetsfiles)):
+    for packetsfile in packetsfiles:
         # for npacketfile in range(0, 1):
-        dfpackets = at.packets.readfile(packetsfiles[npacketfile])
+        dfpackets = at.packets.readfile(packetsfile)
         at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
         dfpackets = dfpackets.dropna(subset=["emission_velocity"])  # drop rows where emission_vel is NaN
 
@@ -598,12 +605,12 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
         else:  # packet arrival time
             dfpackets.query("@timeminarray[@timestep_min] < t_arrive_d < @timemaxarray[@timestep_max]", inplace=True)
 
-        emission_position3d[0].extend([em_velx / CLIGHT for em_velx in dfpackets["em_velx"]])
-        emission_position3d[1].extend([em_vely / CLIGHT for em_vely in dfpackets["em_vely"]])
-        emission_position3d[2].extend([em_velz / CLIGHT for em_velz in dfpackets["em_velz"]])
+        emission_position3d[0].extend(list(dfpackets["em_velx"] / CLIGHT))
+        emission_position3d[1].extend(list(dfpackets["em_vely"] / CLIGHT))
+        emission_position3d[2].extend(list(dfpackets["em_velz"] / CLIGHT))
 
-        e_rf.extend([e_rf for e_rf in dfpackets["e_rf"]])
-        e_cmf.extend([e_cmf for e_cmf in dfpackets["e_cmf"]])
+        e_rf.extend(list(dfpackets["e_rf"]))
+        e_cmf.extend(list(dfpackets["e_cmf"]))
 
     emission_position3d = np.array(emission_position3d)
     weight_by_energy = True
@@ -676,7 +683,7 @@ def get_mean_packet_emission_velocity_per_ts(
     )
 
     for i, packetsfile in enumerate(packetsfiles):
-        dfpackets = at.packets.readfile(packetsfile, type=packet_type, escape_type=escape_type)
+        dfpackets = at.packets.readfile(packetsfile, packet_type=packet_type, escape_type=escape_type)
         at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
         if escape_angles is not None:
             dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
@@ -709,7 +716,7 @@ def bin_and_sum(
     df: Union[pd.DataFrame, pl.DataFrame, pl.LazyFrame],
     bincol: str,
     bins: list[Union[float, int]],
-    sumcols: list[str] = [],
+    sumcols: Optional[list[str]] = None,
     getcounts: bool = False,
 ) -> pd.DataFrame:
     """bins is a list of lower edges, and the final upper edge"""

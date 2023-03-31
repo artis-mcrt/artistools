@@ -8,8 +8,6 @@ import pandas as pd
 from scipy import integrate
 
 import artistools as at
-import artistools.inputmodel
-
 
 DAY = 86400  # day in seconds
 MSUN = 1.989e33  # solar mass in grams
@@ -84,9 +82,7 @@ def define_heating_rate():
     E_tot = integrate.trapezoid(y=qdot, x=times)  # ergs/s/g
     # print("Etot per gram", E_tot, E_tot*1.989e33*0.01)
 
-    import scipy.integrate
-
-    cumulative_integrated_energy = scipy.integrate.cumulative_trapezoid(y=qdot, x=times)
+    cumulative_integrated_energy = integrate.cumulative_trapezoid(y=qdot, x=times)
     cumulative_integrated_energy = np.insert(cumulative_integrated_energy, 0, 0)
 
     rate = cumulative_integrated_energy / E_tot
@@ -135,9 +131,7 @@ def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
     if get_rate:
         print(f"E_tot {E_tot} erg/g")
 
-        import scipy.integrate
-
-        cumulative_integrated_energy = scipy.integrate.cumulative_trapezoid(y=qdot, x=times)
+        cumulative_integrated_energy = integrate.cumulative_trapezoid(y=qdot, x=times)
         cumulative_integrated_energy = np.insert(cumulative_integrated_energy, 0, 0)
 
         rate = cumulative_integrated_energy / E_tot

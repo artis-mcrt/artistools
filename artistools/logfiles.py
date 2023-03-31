@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 import argparse
-import glob
 import multiprocessing
-import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import pandas as pd
 
 import artistools as at
 

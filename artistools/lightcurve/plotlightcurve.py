@@ -22,8 +22,7 @@ from extinction import apply
 from extinction import ccm89
 
 import artistools as at
-import artistools.plottools
-import artistools.spectra
+import artistools.plottools  # pylint: disable=unused-import,redefined-outer-name
 
 # import glob
 # import itertools
@@ -121,6 +120,26 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
                 },
             ),
         )
+
+    c23modelpath = Path(
+        "/Users/luke/Library/CloudStorage/GoogleDrive-luke@lukeshingles.com/Shared"
+        " drives/ARTIS/artis_runs_published/Collinsetal2023-KN/sfho_long_1-35-135Msun"
+    )
+
+    c23energyrate = at.inputmodel.energyinputfiles.get_energy_rate_fromfile(c23modelpath)
+    c23etot, c23energydistribution_data = at.inputmodel.energyinputfiles.get_etot_fromfile(c23modelpath)
+
+    dE = np.diff(c23energyrate["rate"] * c23etot)
+    dt = np.diff(c23energyrate["times"] * 24 * 60 * 60)
+
+    axis.plot(
+        c23energyrate["times"][1:],
+        dE / dt * 0.308,
+        color="grey",
+        linestyle="--",
+        zorder=20,
+        label=r"Collins+23 $\dot{E}_{rad,\beta^-}$",
+    )
 
     # color_alpha = next(axis._get_lines.prop_cycler)['color']
     color_alpha = "C1"
@@ -751,7 +770,7 @@ def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=Non
     hidecolorbar = False
     if not hidecolorbar:
         if fig:
-            from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+            # from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
             # cax = plt.axes([0.3, 0.97, 0.45, 0.02])  #2nd and 4th move up and down. 1st left and right. 3rd bar width
             cax = plt.axes([0.2, 0.98, 0.65, 0.04])
@@ -907,7 +926,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 else:
                     ax.plot(time, brightness_in_mag, linewidth=3.5, **plotkwargs)  # color=color, linestyle=linestyle)
 
-    import artistools.plottools
+    import artistools.plottools  # pylint: disable=unused-import,redefined-outer-name,reimported
 
     ax = at.plottools.set_axis_properties(ax, args)
     fig, ax = set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_name=band_name)

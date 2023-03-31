@@ -2,9 +2,9 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 
-import artistools as at
+from .configuration import get_config
 
-plt.style.use("file://" + str(at.get_config()["path_artistools_dir"] / "matplotlibrc"))
+plt.style.use("file://" + str(get_config()["path_artistools_dir"] / "matplotlibrc"))
 
 
 class ExponentLabelFormatter(ticker.ScalarFormatter):

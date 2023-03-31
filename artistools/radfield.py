@@ -3,7 +3,6 @@ import argparse
 import math
 import multiprocessing
 import os
-import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
@@ -11,13 +10,9 @@ from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from astropy import constants as const
 from astropy import units as u
 
 import artistools as at
-import artistools.estimators
-import artistools.nltepops
-import artistools.spectra
 
 # import re
 # from itertools import chain
@@ -84,7 +79,7 @@ def select_bin(radfielddata, nu=None, lambda_angstroms=None, modelgridindex=None
     return dfselected.iloc[0].bin_num, dfselected.iloc[0].nu_lower, dfselected.iloc[0].nu_upper
 
 
-def get_binaverage_field(axis, radfielddata, modelgridindex=None, timestep=None):
+def get_binaverage_field(radfielddata, modelgridindex=None, timestep=None):
     """Get the dJ/dlambda constant average estimators of each bin."""
     # exclude the global fit parameters and detailed lines with negative "bin_num"
     bindata = radfielddata.copy().query(
@@ -593,7 +588,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
     # fieldlabel = f'Summed recombination'
     # axes[2].plot(arraylambda_angstrom_recomb, J_lambda_recomb_total, label=fieldlabel)
     # fieldlist += [(arraylambda_angstrom_recomb, J_lambda_recomb_total, fieldlabel)]
-    ymax = max(ymax, max(J_lambda_recomb_total))
+    ymax = max(ymax, J_lambda_recomb_total)
 
     if args.frompackets:
         (
@@ -711,7 +706,7 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
     ymax = max(yvalues)
 
     if not args.nobandaverage:
-        arr_lambda, yvalues = get_binaverage_field(axis, radfielddata, modelgridindex=modelgridindex, timestep=timestep)
+        arr_lambda, yvalues = get_binaverage_field(radfielddata, modelgridindex=modelgridindex, timestep=timestep)
         axis.step(arr_lambda, yvalues, where="pre", label="Band-average field", color="green", linewidth=1.5)
         ymax = max([ymax] + [point[1] for point in zip(arr_lambda, yvalues) if xmin <= point[0] <= xmax])
 
@@ -793,7 +788,7 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
     axis.set_xlim(left=xmin, right=xmax)
     axis.set_ylim(bottom=0.0, top=ymax)
-    import artistools.plottools
+    import artistools.plottools  # pylint: disable=unused-import,redefined-outer-name
 
     axis.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))
 
@@ -1054,4 +1049,4 @@ def main(args=None, argsraw=None, **kwargs):
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
-    sys.exit(main())
+    main()

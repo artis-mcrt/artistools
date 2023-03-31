@@ -454,7 +454,6 @@ def get_mean_cell_properties_of_angle_bin(
         get_cell_angle(dfmodeldata, modelpath)
 
     dfmodeldata["rho"][dfmodeldata["rho"] == 0] = None
-    dfmodeldata["rho"]
 
     cell_velocities = np.unique(dfmodeldata["vel_x_min"].values)
     cell_velocities = cell_velocities[cell_velocities >= 0]

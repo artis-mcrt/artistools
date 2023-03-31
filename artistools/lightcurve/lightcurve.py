@@ -3,12 +3,8 @@
 # import itertools
 import argparse
 import math
-import multiprocessing
 import os
 from collections.abc import Collection
-from collections.abc import Sequence
-from collections.abc import Sized
-from functools import partial
 from pathlib import Path
 from typing import Any
 from typing import Literal
@@ -23,7 +19,6 @@ from astropy import constants as const
 from astropy import units as u
 
 import artistools as at
-import artistools.spectra
 
 
 def readfile(
@@ -94,7 +89,7 @@ def get_from_packets(
     ndirbins = at.get_viewingdirectionbincount()
 
     nprocs_read, dfpackets = at.packets.get_pldfpackets(
-        modelpath, maxpacketfiles, type="TYPE_ESCAPE", escape_type=escape_type
+        modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
     )
 
     if get_cmf_column:

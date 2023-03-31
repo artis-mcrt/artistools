@@ -15,7 +15,7 @@ import pandas as pd
 from astropy import units as u
 
 import artistools as at
-import artistools.packets
+from artistools.diskcachedecorator import diskcache
 
 # from functools import lru_cache
 # import matplotlib.ticker as ticker
@@ -26,15 +26,15 @@ def get_packets_with_emtype_onefile(emtypecolumn, lineindices, packetsfile):
     import gzip
 
     try:
-        dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
-    except gzip.BadGzipFile:
+        dfpackets = at.packets.readfile(packetsfile, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    except gzip.BadGzipFile as exc:
         print(f"Bad file: {packetsfile}")
-        raise gzip.BadGzipFile
+        raise gzip.BadGzipFile from exc
 
     return dfpackets.query(f"{emtypecolumn} in @lineindices", inplace=False).copy()
 
 
-@at.diskcache(savezipped=True)
+@diskcache(savezipped=True)
 def get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles=None):
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
@@ -112,8 +112,6 @@ def get_line_fluxes_from_packets(
 
 
 def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=None, arr_tend=None):
-    import artistools.nltepops
-
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times_float(modelpath, loc="start")
     if arr_tend is None:
@@ -422,7 +420,7 @@ def make_flux_ratio_plot(args):
     plt.close()
 
 
-@at.diskcache(savezipped=True)
+@diskcache(savezipped=True)
 def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, tstart, tend, maxpacketfiles=None):
     estimators = at.estimators.read_estimators(modelpath, get_ion_values=False, get_heatingcooling=False)
 
@@ -539,8 +537,6 @@ def plot_nne_te_bars(axis, serieslabel, em_log10nne, em_Te, color):
 
 
 def make_emitting_regions_plot(args):
-    import artistools.estimators
-
     # font = {'size': 16}
     # matplotlib.rc('font', **font)
     # 'floers_te_nne.json',
@@ -559,9 +555,7 @@ def make_emitting_regions_plot(args):
             floers_te_nne = json.loads(data_file.read())
 
         # give an ordering and index to dict items
-        refdatakeys[refdataindex] = [
-            t for t in sorted(floers_te_nne.keys(), key=lambda x: float(x))
-        ]  # strings, not floats
+        refdatakeys[refdataindex] = [t for t in sorted(floers_te_nne.keys(), key=float)]  # strings, not floats
         refdatatimes[refdataindex] = np.array([float(t) for t in refdatakeys[refdataindex]])
         refdatapoints[refdataindex] = [floers_te_nne[t] for t in refdatakeys[refdataindex]]
         print(f"{refdatafilename} data available for times: {list(refdatatimes[refdataindex])}")

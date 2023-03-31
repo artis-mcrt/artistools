@@ -5,8 +5,6 @@ import io
 import lzma
 import math
 import os
-import sys
-import time
 from collections import namedtuple
 from collections.abc import Collection
 from collections.abc import Iterable
@@ -445,8 +443,6 @@ def get_timestep_of_timedays(modelpath: Path, timedays: Union[str, float]) -> in
             return ts
 
     raise ValueError(f"Could not find timestep bracketing time {timedays_float}")
-    assert False
-    return
 
 
 def get_time_range(
@@ -650,7 +646,7 @@ def get_ionstring(
 
 
 # based on code from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
-def parse_range(rng: str, dictvars: dict[str, int] = {}) -> Iterable[Any]:
+def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[Any]:
     """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars."""
     strparts = rng.split("-")
 
@@ -667,7 +663,7 @@ def parse_range(rng: str, dictvars: dict[str, int] = {}) -> Iterable[Any]:
     return range(start, end + 1)
 
 
-def parse_range_list(rngs: Union[str, list], dictvars: dict = {}) -> list[Any]:
+def parse_range_list(rngs: Union[str, list], dictvars: Optional[dict] = None) -> list[Any]:
     """Parse a string with comma-separated ranges or a list of range strings.
 
     Return a sorted list of integers in any of the ranges.
@@ -677,7 +673,7 @@ def parse_range_list(rngs: Union[str, list], dictvars: dict = {}) -> list[Any]:
     elif not hasattr(rngs, "split"):
         return [rngs]
 
-    return sorted(set(chain.from_iterable([parse_range(rng, dictvars) for rng in rngs.split(",")])))
+    return sorted(set(chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
 
 
 def makelist(x: Union[None, list, Sequence, str, Path]) -> list[Any]:

@@ -127,8 +127,11 @@ def get_units_string(variable: str) -> str:
 
 
 def parse_estimfile(
-    estfilepath: Path, modelpath: Path, get_ion_values: bool = True, get_heatingcooling: bool = True
-) -> Iterator[tuple[int, int, dict]]:
+    estfilepath: Path,
+    modelpath: Path,
+    get_ion_values: bool = True,
+    get_heatingcooling: bool = True,
+) -> Iterator[tuple[int, int, dict]]:  # pylint: disable=unused-argument
     """Generate timestep, modelgridindex, dict from estimator file."""
     # itstep = at.get_inputparams(modelpath)['itstep']
 
@@ -235,7 +238,7 @@ def parse_estimfile(
         yield timestep, modelgridindex, estimblock
 
 
-# @at.diskcache(ignorekwargs=['printfilename'], quiet=False, funcdepends=parse_estimfile, savezipped=True)
+# @diskcache(ignorekwargs=['printfilename'], quiet=False, funcdepends=parse_estimfile, savezipped=True)
 def read_estimators_from_file(
     folderpath: Union[Path, str],
     modelpath: Path,
@@ -274,11 +277,11 @@ def read_estimators_from_file(
 
 
 @lru_cache(maxsize=16)
-# @at.diskcache(savezipped=True, funcdepends=[read_estimators_from_file, parse_estimfile])
+# @diskcache(savezipped=True, funcdepends=[read_estimators_from_file, parse_estimfile])
 def read_estimators(
     modelpath: Union[Path, str],
-    modelgridindex: Optional[Union[int, Sequence[int]]] = None,
-    timestep: Optional[Union[int, Sequence[int]]] = None,
+    modelgridindex: Union[None, int, Sequence[int]] = None,
+    timestep: Union[None, int, Sequence[int]] = None,
     get_ion_values: bool = True,
     get_heatingcooling: bool = True,
 ) -> dict[tuple[int, int], dict]:

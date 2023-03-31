@@ -8,7 +8,6 @@ import pandas as pd
 from astropy import units as u
 
 import artistools as at
-import artistools.inputmodel
 
 
 def min_dist(listin, number):

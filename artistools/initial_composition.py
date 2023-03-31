@@ -10,19 +10,13 @@ import numpy as np
 from astropy import units as u
 
 import artistools as at
-import artistools.inputmodel.opacityinputfile
-
-# import pandas as pd
-
-# import artistools.inputmodel
-# from mpl_toolkits.mplot3d import Axes3D
 
 
 def plot_2d_initial_abundances(modelpath, args):
     model = at.inputmodel.get_2d_modeldata(modelpath[0])
     abundances = at.inputmodel.get_initialabundances(modelpath[0])
 
-    abundances["inputcellid"] = abundances["inputcellid"].apply(lambda x: float(x))
+    abundances["inputcellid"] = abundances["inputcellid"].apply(float)
 
     merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
 
@@ -70,7 +64,7 @@ def get_merged_model_abundances(modelpath):
 
     abundances = at.inputmodel.get_initialabundances(modelpath[0])
 
-    abundances["inputcellid"] = abundances["inputcellid"].apply(lambda x: float(x))
+    abundances["inputcellid"] = abundances["inputcellid"].apply(float)
 
     merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
     return merge_dfs, t_model_days
@@ -83,7 +77,9 @@ def get_2D_slice_through_3d_model(merge_dfs, sliceaxis, sliceindex=None):
         # Choose position to slice. This gets minimum absolute value as the closest to 0
     else:
         cell_boundaries = []
-        [cell_boundaries.append(x) for x in merge_dfs[f"pos_{sliceaxis}_min"] if x not in cell_boundaries]
+        for x in merge_dfs[f"pos_{sliceaxis}_min"]:
+            if x not in cell_boundaries:
+                cell_boundaries.append(x)
         sliceposition = cell_boundaries[sliceindex]
 
     slicedf = merge_dfs.loc[merge_dfs[f"pos_{sliceaxis}_min"] == sliceposition]
@@ -254,7 +250,7 @@ def make_3d_plot(modelpath, args):
     model, t_model, vmax = at.inputmodel.get_modeldata_tuple(modelpath, dimensions=3, get_elemabundances=False)
     abundances = at.inputmodel.get_initialabundances(modelpath)
 
-    abundances["inputcellid"] = abundances["inputcellid"].apply(lambda x: float(x))
+    abundances["inputcellid"] = abundances["inputcellid"].apply(float)
 
     merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
     model = merge_dfs

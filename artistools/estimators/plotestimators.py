@@ -18,8 +18,6 @@ import numpy as np
 import pandas as pd
 
 import artistools as at
-import artistools.initial_composition
-import artistools.nltepops
 
 colors_tab10 = list(plt.get_cmap("tab10")(np.linspace(0, 1.0, 10)))
 
@@ -188,7 +186,7 @@ def plot_levelpop(
     args=None,
     **plotkwargs,
 ):
-    import artistools.plottools
+    import artistools.plottools  # pylint: disable=unused-import
 
     if seriestype == "levelpopulation_dn_on_dvel":
         ax.set_ylabel("dN/dV [{}km$^{{-1}}$ s]")
@@ -588,12 +586,12 @@ def plot_subplot(
     assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
     showlegend = False
 
-    ylabel = "UNDEFINED"
+    ylabel = None
     sameylabel = True
     for variablename in plotitems:
         if not isinstance(variablename, str):
             pass
-        elif ylabel == "UNDEFINED":
+        elif ylabel is None:
             ylabel = get_ylabel(variablename)
         elif ylabel != get_ylabel(variablename):
             sameylabel = False
@@ -601,7 +599,7 @@ def plot_subplot(
 
     for plotitem in plotitems:
         if isinstance(plotitem, str):
-            showlegend = len(plotitems) > 1 or len(variablename) > 20
+            showlegend = len(plotitems) > 1 or len(plotitem) > 20
             plot_series(
                 ax,
                 xlist,

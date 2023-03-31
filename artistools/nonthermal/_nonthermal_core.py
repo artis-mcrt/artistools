@@ -10,9 +10,7 @@ import numpy as np
 import pandas as pd
 
 import artistools as at
-import artistools.estimators
-import artistools.nltepops
-import artistools.nonthermal
+from artistools.configuration import get_config
 
 # import matplotlib.ticker as ticker
 # import numba
@@ -86,7 +84,7 @@ def read_binding_energies(modelpath: str = ".") -> np.ndarray:
     collionfilename = at.firstexisting(
         [
             os.path.join(modelpath, "binding_energies.txt"),
-            os.path.join(at.get_config()["path_artistools_dir"], "data", "binding_energies.txt"),
+            os.path.join(get_config()["path_artistools_dir"], "data", "binding_energies.txt"),
         ]
     )
 
@@ -466,7 +464,7 @@ def get_xs_excitation_vector(engrid, row):
     return xs_excitation_vec
 
 
-def read_colliondata(collionfilename="collion.txt", modelpath=at.get_config()["path_datadir"]):
+def read_colliondata(collionfilename="collion.txt", modelpath=get_config()["path_datadir"]):
     collionrow = namedtuple("collionrow", ["Z", "nelec", "n", "l", "ionpot_ev", "A", "B", "C", "D"])
 
     nrows = -1
@@ -1339,7 +1337,6 @@ def workfunction_tests(modelpath, args):
         start=math.log10(en_min_ev), stop=math.log10(en_max_ev), base=10, num=args.npts, endpoint=True
     )
 
-    global Psecondary_e_s_max
     Psecondary_e_s_max = arr_en_ev[2]
     print(f"Psecondary_e_s_max: {Psecondary_e_s_max}")
 

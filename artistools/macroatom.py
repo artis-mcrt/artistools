@@ -7,12 +7,8 @@ import sys
 
 import matplotlib.pyplot as plt
 import pandas as pd
-from astropy import constants as const
 
 import artistools as at
-
-# from astropy import units as u
-# import matplotlib.ticker as ticker
 
 defaultoutputfile = "plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf"
 

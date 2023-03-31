@@ -6,8 +6,6 @@ import numpy as np
 import pandas as pd
 
 import artistools as at
-import artistools.estimators
-import artistools.lightcurve
 
 
 def write_spectra(modelpath, model_id, selected_timesteps, outfile):

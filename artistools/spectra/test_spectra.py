@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 import math
 import os.path
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from astropy import constants as const
 
 import artistools as at
-import artistools.spectra
-import artistools.transitions
 
 modelpath = at.get_config()["path_testartismodel"]
 outputpath = at.get_config()["path_testoutput"]
@@ -17,7 +14,7 @@ at.set_config("enable_diskcache", False)
 
 
 def test_spectraplot():
-    at.spectra.main(
+    at.spectra.plot(
         argsraw=[],
         specpath=[modelpath, "sn2011fe_PTF11kly_20120822_norm.txt"],
         outputfile=outputpath,
@@ -27,7 +24,7 @@ def test_spectraplot():
 
 
 def test_spectra_frompackets():
-    at.spectra.main(
+    at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
         outputfile=os.path.join(outputpath, "spectrum_from_packets.pdf"),
@@ -38,11 +35,11 @@ def test_spectra_frompackets():
 
 
 def test_spectra_outputtext():
-    at.spectra.main(argsraw=[], specpath=modelpath, output_spectra=True)
+    at.spectra.plot(argsraw=[], specpath=modelpath, output_spectra=True)
 
 
 def test_spectraemissionplot():
-    at.spectra.main(
+    at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
         outputfile=outputpath,
@@ -54,7 +51,7 @@ def test_spectraemissionplot():
 
 
 def test_spectraemissionplot_nostack():
-    at.spectra.main(
+    at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
         outputfile=outputpath,
@@ -127,6 +124,6 @@ def test_spectra_get_flux_contributions():
 
 def test_spectra_timeseries_subplots():
     timedayslist = [295, 300]
-    at.spectra.main(
+    at.spectra.plot(
         argsraw=[], specpath=modelpath, outputfile=outputpath, timedayslist=timedayslist, multispecplot=True
     )

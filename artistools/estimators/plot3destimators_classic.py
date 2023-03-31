@@ -6,9 +6,6 @@ import numpy as np
 import pyvista as pv
 
 import artistools as at
-import artistools.estimators.estimators_classic
-import artistools.initial_composition
-import artistools.inputmodel.slice1Dfromconein3dmodel
 
 CLIGHT = 2.99792458e10
 

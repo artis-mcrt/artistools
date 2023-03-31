@@ -6,6 +6,7 @@ from pathlib import Path
 
 import artistools.configuration
 import artistools.misc
+from .configuration import get_config
 
 
 def diskcache(
@@ -112,7 +113,6 @@ def diskcache(
                 except Exception as ex:
                     # ex = sys.exc_info()[0]
                     printopt(f"diskcache: Overwriting '{filename}' (Error: {ex})")
-                    pass
 
             if execfunc:
                 timestart = time.perf_counter()
@@ -174,6 +174,6 @@ def diskcache(
         # sourcehash_strhex = sourcehash.hexdigest()
         str_funcversion = f"funcversion_{funcversion}" if funcversion else "funcversion_none"
 
-        return wrapper if artistools.configuration.get_config()["enable_diskcache"] else func
+        return wrapper if get_config()["enable_diskcache"] else func
 
     return diskcacheinner

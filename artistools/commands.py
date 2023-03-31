@@ -77,7 +77,9 @@ def setup_completions():
     with open(path_repo / "artistoolscompletions.sh", "w", encoding="utf-8") as f:
         f.write("#!/usr/bin/env zsh\n")
 
-        proc = subprocess.run(["register-python-argcomplete", "__MY_COMMAND__"], capture_output=True, text=True)
+        proc = subprocess.run(
+            ["register-python-argcomplete", "__MY_COMMAND__"], capture_output=True, text=True, check=True
+        )
 
         if proc.stderr:
             print(proc.stderr)
