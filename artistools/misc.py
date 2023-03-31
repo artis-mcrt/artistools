@@ -133,7 +133,7 @@ def get_composition_data(filename: Union[Path, str]) -> pd.DataFrame:
 
             rowdfs.append(pd.DataFrame([row_list], columns=columns))
 
-            startindex += int(rowdfs[-1]["nions"])
+            startindex += int(rowdfs[-1].iloc[0]["nions"])
 
     compdf = pd.concat(rowdfs, ignore_index=True)
 
