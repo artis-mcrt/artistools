@@ -2,6 +2,7 @@ import artistools.inputmodel.botyanski2017
 import artistools.inputmodel.describeinputmodel
 import artistools.inputmodel.energyinputfiles
 import artistools.inputmodel.makeartismodel
+import artistools.inputmodel.modelfromhydro
 import artistools.inputmodel.opacityinputfile
 import artistools.inputmodel.rprocess_from_trajectory
 from .inputmodel_misc import add_derived_cols_to_modeldata
