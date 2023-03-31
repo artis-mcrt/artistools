@@ -423,8 +423,6 @@ def get_pldfpackets(
         rechunk=False,
     )
 
-    # pllfpackets = pl.scan_parquet(Path(modelpath) / "packets" / "packets00_*.out.parquet")
-
     # Luke: this turned out to be slower than reading 960 or 3840 parquet files separately
     # if write_allescrpkt_parquet:
     #     print(f"Saving {allescrpktfile}")
