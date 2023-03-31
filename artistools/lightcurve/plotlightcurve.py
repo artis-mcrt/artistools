@@ -121,6 +121,26 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
             ),
         )
 
+    c23modelpath = Path(
+        "/Users/luke/Library/CloudStorage/GoogleDrive-luke@lukeshingles.com/Shared"
+        " drives/ARTIS/artis_runs_published/Collinsetal2023-KN/sfho_long_1-35-135Msun"
+    )
+
+    c23energyrate = at.inputmodel.energyinputfiles.get_energy_rate_fromfile(c23modelpath)
+    c23etot, c23energydistribution_data = at.inputmodel.energyinputfiles.get_etot_fromfile(c23modelpath)
+
+    dE = np.diff(c23energyrate["rate"] * c23etot)
+    dt = np.diff(c23energyrate["times"] * 24 * 60 * 60)
+
+    axis.plot(
+        c23energyrate["times"][1:],
+        dE / dt * 0.308,
+        color="grey",
+        linestyle="--",
+        zorder=20,
+        label=r"Collins+23 $\dot{E}_{rad,\beta^-}$",
+    )
+
     # color_alpha = next(axis._get_lines.prop_cycler)['color']
     color_alpha = "C1"
 

@@ -342,7 +342,7 @@ def get_modeldata(
     if get_elemabundances:
         if dimensions == 3:
             print("Getting abundances")
-        abundancedata = get_initialabundances(modelpath)
+        abundancedata = get_initelemabundances(modelpath)
         dfmodel = dfmodel.merge(abundancedata, how="inner", on="inputcellid")
 
     if derived_cols:
@@ -527,7 +527,7 @@ def get_3d_model_data_merged_model_and_abundances_minimal(args):
     """Get 3D data without generating all the extra columns in standard routine.
     Needed for large (eg. 200^3) models"""
     model = get_3d_modeldata_minimal(args.modelpath)
-    abundances = get_initialabundances(args.modelpath[0])
+    abundances = get_initelemabundances(args.modelpath[0])
 
     with open(os.path.join(args.modelpath[0], "model.txt"), "r") as fmodelin:
         fmodelin.readline()  # npts_model3d
@@ -733,8 +733,8 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> U
 
 
 @lru_cache(maxsize=8)
-def get_initialabundances(modelpath: Path) -> pd.DataFrame:
-    """Return a list of mass fractions."""
+def get_initelemabundances(modelpath: Path = Path()) -> pd.DataFrame:
+    """Return a table of elemental mass fractions by cell from abundances."""
     abundancefilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
 
     abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, comment="#")
@@ -747,12 +747,12 @@ def get_initialabundances(modelpath: Path) -> pd.DataFrame:
     return abundancedata
 
 
-def save_initialabundances(
+def save_initelemabundances(
     dfelabundances: pd.DataFrame,
     abundancefilename: Union[Path, str],
     headercommentlines: Optional[Sequence[str]] = None,
 ) -> None:
-    """Save a DataFrame (same format as get_initialabundances) to abundances.txt.
+    """Save a DataFrame (same format as get_initelemabundances) to abundances.txt.
     columns must be:
         - inputcellid: integer index to match model.txt (starting from 1)
         - X_El: mass fraction of element with two-letter code 'El' (e.g., X_H, X_He, H_Li, ...)

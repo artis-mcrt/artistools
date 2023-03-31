@@ -31,7 +31,7 @@ from .inputmodel import get_mean_cell_properties_of_angle_bin
 from .inputmodel import get_mgi_of_velocity_kms
 from .inputmodel import get_modeldata
 from .inputmodel import get_modeldata_tuple
-from .inputmodel import save_initialabundances
+from .inputmodel import save_initelemabundances
 from .inputmodel import save_modeldata
 from .misc import anyexist
 from .misc import AppendPath

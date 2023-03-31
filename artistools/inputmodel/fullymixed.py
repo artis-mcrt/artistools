@@ -41,7 +41,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     dfmodel, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(args.inputpath)
     print("Read model.txt")
-    dfelabundances = at.inputmodel.get_initialabundances(args.inputpath)
+    dfelabundances = at.inputmodel.get_initelemabundances(args.inputpath)
     print("Read abundances.txt")
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
@@ -73,7 +73,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     print(f"Saved {modeloutfilename}")
 
     abundoutfilename = "abundances_fullymixed.txt"
-    at.inputmodel.save_initialabundances(dfelabundances, Path(args.outputpath, abundoutfilename))
+    at.inputmodel.save_initelemabundances(dfelabundances, Path(args.outputpath, abundoutfilename))
     print(f"Saved {abundoutfilename}")
 
 

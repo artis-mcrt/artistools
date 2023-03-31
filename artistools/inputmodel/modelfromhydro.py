@@ -391,7 +391,7 @@ def makemodelfromgriddata(
 
     if traj_root is not None:
         print(f'Writing to {Path(outputpath) / "abundances.txt"}...')
-        at.inputmodel.save_initialabundances(
+        at.inputmodel.save_initelemabundances(
             dfelabundances=dfelabundances, abundancefilename=outputpath, headercommentlines=headercommentlines
         )
     else:
