@@ -13,8 +13,6 @@ import pandas as pd
 
 import artistools as at
 
-logfile = None
-
 itable = 40000  # wie fein Kernelfkt interpoliert wird
 itab = itable + 5
 
@@ -86,22 +84,21 @@ def kernelvals2(rij2: float, hmean: float, wij: np.ndarray) -> float:  # ist sch
     return wtij
 
 
-def logprint(*args, **kwargs):
-    logfile.write(" ".join([str(x) for x in args]) + "\n")
-    print(*args, **kwargs)
-
-
 def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoordgrid: int = 50) -> None:
-    # save the printed output to a log file
-
-    wij = get_wij()
-    global logfile
-    logfile = open("maptogridlog.txt", "w")
-    print = logprint
-
     if not ejectasnapshotpath.is_file():
         print(f"{ejectasnapshotpath} not found")
         return
+
+    # save the printed output to a log file
+    logfilepath = Path("maptogridlog.txt")
+    logfilepath.unlink(missing_ok=True)
+
+    def logprint(*args, **kwargs):
+        print(*args, **kwargs)
+        with open(logfilepath, "at", encoding="utf-8") as logfile:
+            logfile.write(" ".join([str(x) for x in args]) + "\n")
+
+    wij = get_wij()
 
     assert ncoordgrid % 2 == 0
 
@@ -145,7 +142,7 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
         ejectasnapshotpath, names=snapshot_columns, delim_whitespace=True, usecols=snapshot_columns_used
     )
 
-    print(dfsnapshot)
+    logprint(dfsnapshot)
 
     assert len(dfsnapshot.columns) == len(snapshot_columns_used)
 
@@ -216,16 +213,16 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
 
             fpartanalysis.write(f"{dis} {h[n]} {h[n] / dis} {vrad} {vperp} {vtot}\n")
 
-    print("saved ejectapartanalysis.dat")
+    logprint("saved ejectapartanalysis.dat")
     rmean = rmean / npart
 
     hmean = hmean / npart
 
     vratiomean = vratiomean / npart
 
-    print(f"total mass of sph particle {totmass} max dist {rmax} mean dist {rmean}")
-    print(f"smoothing length min {hmin} mean {hmean}")
-    print("ratio between vrad and vperp mean", vratiomean)
+    logprint(f"total mass of sph particle {totmass} max dist {rmax} mean dist {rmean}")
+    logprint(f"smoothing length min {hmin} mean {hmean}")
+    logprint("ratio between vrad and vperp mean", vratiomean)
 
     # check maybe cm and correct by shifting
 
@@ -249,7 +246,7 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
     gparticlecounter = np.zeros((ncoordgrid, ncoordgrid, ncoordgrid), dtype=int)
     particle_rho_contribs = {}
 
-    print(f"grid properties {x0=}, {dx=}, {x0 + dx * (ncoordgrid - 1)=}")
+    logprint(f"grid properties {x0=}, {dx=}, {x0 + dx * (ncoordgrid - 1)=}")
 
     arrgx = x0 + dx * np.arange(ncoordgrid)
     arrgy = arrgx
@@ -328,7 +325,7 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
                 gparticlecounter[i, j, k] += 1
                 particlesused.add(n)
 
-    print(
+    logprint(
         f"particles with any cell contribution: {len(particlesused)} of {len(particlesinsidegrid)} inside grid out of"
         f" {npart} total"
     )
@@ -340,7 +337,7 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
         # ignore particles outside grid boundary
         if min(loc_i, loc_j, loc_k) < 0 or max(loc_i, loc_j, loc_k) > ncoordgrid - 1:
             continue
-        print(f"particle {n} is totally unused but located in cell {loc_i} {loc_j} {loc_k}")
+        logprint(f"particle {n} is totally unused but located in cell {loc_i} {loc_j} {loc_k}")
 
     with np.errstate(divide="ignore", invalid="ignore"):
         gye = np.divide(gye, grho)
@@ -350,7 +347,7 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
             for (n, i, j, k), rho_contrib in particle_rho_contribs.items():
                 gridindex = (k * ncoordgrid + j) * ncoordgrid + i + 1
                 fcontribs.write(f"{particleid[n]} {gridindex} {rho_contrib / grho[i, j, k]}\n")
-        print("saved gridcontributions.txt")
+        logprint("saved gridcontributions.txt")
 
     # check some stuff on the grid
 
@@ -376,21 +373,21 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
                 if grho[i, j, k] < 1.0e-20 and dis < rmean:
                     nzerocentral = nzerocentral + 1
 
-    print(
+    logprint(
         f"{'WARNING!' if gmass / totmass < 0.9 else ''} mass on grid from rho*V: {gmass} mass of particles: {totmass} "
     )
 
-    print(
+    logprint(
         f"number of cells with rho=0 {nzero}, total num of cells {ncoordgrid**3}, fraction of cells with rho=0:"
         f" {(nzero) / (ncoordgrid**3)}"
     )
 
-    print(
+    logprint(
         f"number of central cells (dis<rmean) with rho=0 {nzerocentral}, ratio"
         f" {(nzerocentral) / (4.0 * 3.14 / 3.0 * rmean**3 / (dx * dy * dz))}"
     )
 
-    print("probably we want to choose grid size, i.e. x0, as compromise between mapped mass and rho=0 cells")
+    logprint("probably we want to choose grid size, i.e. x0, as compromise between mapped mass and rho=0 cells")
 
     # output grid - adapt as you need output
 
@@ -412,7 +409,7 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
 
                     gridindex = gridindex + 1
 
-    print("saved grid.dat")
+    logprint("saved grid.dat")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
