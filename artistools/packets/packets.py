@@ -400,17 +400,17 @@ def get_pldfpackets(
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
 
     nprocs_read = len(packetsfiles)
-    # allescrpktfile = Path(modelpath) / "packets_rpkt_escaped.parquet"
-    # write_allescrpkt_parquet = False
+    allescrpktfile = Path(modelpath) / "packets_rpkt_escaped.parquet"
+    write_allescrpkt_parquet = False
 
-    # if maxpacketfiles is None and escape_type == "TYPE_RPKT":
-    #     if allescrpktfile.is_file():
-    #         print(f"Reading from {allescrpktfile}")
-    #         # use_statistics is causing some weird errors! (zero flux spectra)
-    #         pllfpackets = pl.scan_parquet(allescrpktfile, use_statistics=False)
-    #         return nprocs_read, pllfpackets
-    #     else:
-    #         write_allescrpkt_parquet = True
+    if maxpacketfiles is None and escape_type == "TYPE_RPKT":
+        if allescrpktfile.is_file():
+            print(f"Reading from {allescrpktfile}")
+            # use_statistics is causing some weird errors! (zero flux spectra)
+            pllfpackets = pl.scan_parquet(allescrpktfile, use_statistics=False)
+            return nprocs_read, pllfpackets
+        else:
+            write_allescrpkt_parquet = True
 
     pllfpackets = pl.concat(
         [
@@ -424,11 +424,11 @@ def get_pldfpackets(
     )
 
     # Luke: this turned out to be slower than reading 960 or 3840 parquet files separately
-    # if write_allescrpkt_parquet:
-    #     print(f"Saving {allescrpktfile}")
-    #     # sorting can be extremely slow (and exceed RAM) but it probably speeds up access
-    #     # pllfpackets = pllfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
-    #     pllfpackets.sink_parquet(allescrpktfile, compression="lz4", row_group_size=1024 * 1024)
+    if write_allescrpkt_parquet:
+        print(f"Saving {allescrpktfile}")
+        # sorting can be extremely slow (and exceed RAM) but it probably speeds up access
+        pllfpackets = pllfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
+        pllfpackets.collect(streaming=True).write_parquet(allescrpktfile, compression="lz4", row_group_size=1024 * 1024)
 
     return nprocs_read, pllfpackets
 
