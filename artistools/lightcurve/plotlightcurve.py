@@ -262,17 +262,24 @@ def plot_artis_lightcurve(
     args=None,
 ) -> Optional[pd.DataFrame]:
     lcfilename = None
-    if not Path(modelpath).is_dir():  # handle e.g. modelpath = 'modelpath/light_curve.out'
+    modelpath = Path(modelpath)
+    if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/light_curve.out'
         lcfilename = Path(modelpath).parts[-1]
         modelpath = Path(modelpath).parent
+
+    if not modelpath.is_dir():
+        print(f"WARNING: Skipping because {modelpath} does not exist")
+        return None
 
     modelname = at.get_model_name(modelpath) if label is None else label
     if lcfilename is not None:
         modelname += f" {lcfilename}"
     if modelname == "":
-        print(f"====> (no series label) {at.get_model_name(modelpath)}")
+        print("====> (no series label)")
     else:
         print(f"====> {modelname}")
+    print(f" folder: {modelpath.parts[-1]}")
+
     if args is not None and args.title:
         axis.set_title(modelname)
 
@@ -299,7 +306,7 @@ def plot_artis_lightcurve(
         try:
             lcpath = at.firstexisting(lcfilename, folder=modelpath, tryzipped=True)
         except FileNotFoundError:
-            print(f"Skipping {modelname} because {lcfilename} does not exist")
+            print(f"WARNING: Skipping {modelname} because {lcfilename} does not exist")
             return None
 
         lcdataframes = at.lightcurve.readfile(lcpath)
@@ -512,8 +519,6 @@ def make_lightcurve_plot(
             )
             plottedsomething = plottedsomething or (lcdataframes is not None)
 
-    assert plottedsomething
-
     if args.reflightcurves:
         for bolreflightcurve in args.reflightcurves:
             if args.Lsun:
@@ -526,6 +531,9 @@ def make_lightcurve_plot(
                 label=metadata.get("label", bolreflightcurve),
                 color="k",
             )
+            plottedsomething = True
+
+    assert plottedsomething
 
     if args.magnitude:
         plt.gca().invert_yaxis()

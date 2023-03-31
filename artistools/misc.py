@@ -564,7 +564,7 @@ def get_escaped_arrivalrange(modelpath: Union[Path, str]) -> tuple[int, Optional
 
 
 @lru_cache(maxsize=8)
-def get_model_name(path: Union[Path, str]) -> str:
+def get_model_name(path: Union[Path, str], useplotlabelfile: bool = True) -> str:
     """Get the name of an ARTIS model from the path to any file inside it.
 
     Name will be either from a special plotlabel.txt file if it exists or the enclosing directory name
@@ -578,7 +578,7 @@ def get_model_name(path: Union[Path, str]) -> str:
     modelpath = abspath if os.path.isdir(abspath) else os.path.dirname(abspath)
 
     try:
-        plotlabelfile = os.path.join(modelpath, "plotlabel.txt")
+        plotlabelfile = Path(modelpath, "plotlabel.txt")
         return open(plotlabelfile, mode="r").readline().strip()
     except FileNotFoundError:
         return os.path.basename(modelpath)

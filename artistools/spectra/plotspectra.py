@@ -207,14 +207,19 @@ def plot_artis_spectrum(
 ) -> Optional[pd.DataFrame]:
     """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame"""
     modelpath_or_file = Path(modelpath)
-    modelpath = Path(modelpath) if Path(modelpath).is_dir() else Path(modelpath).parent
+
+    modelpath = Path(modelpath)
+    if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/spec.out'
+        specfilename = Path(modelpath).parts[-1]
+        print("WARNING: ignoring filename of {specfilename}")
+        modelpath = Path(modelpath).parent
+
+    if not modelpath.is_dir():
+        print(f"WARNING: Skipping because {modelpath} does not exist")
+        return None
 
     if directionbins is None:
         directionbins = [-1]
-
-    if not Path(modelpath, "input.txt").exists():
-        print(f"Skipping '{modelpath}' (no input.txt found. Not an ARTIS folder?)")
-        return None
 
     if plotpacketcount:
         from_packets = True
@@ -416,41 +421,7 @@ def make_spectrum_plot(
 
         seriesdata = pd.DataFrame()
 
-        if specpath.is_dir() or specpath.name.endswith(".out"):
-            # ARTIS model spectrum
-            # plotkwargs['dash_capstyle'] = dash_capstyleList[artisindex]
-            if "linewidth" not in plotkwargs:
-                plotkwargs["linewidth"] = 1.3
-
-            plotkwargs["linelabel"] = args.label[seriesindex]
-
-            seriesdata = plot_artis_spectrum(
-                axes,
-                specpath,
-                args=args,
-                scale_to_peak=scale_to_peak,
-                from_packets=args.frompackets,
-                maxpacketfiles=args.maxpacketfiles,
-                filterfunc=filterfunc,
-                plotpacketcount=args.plotpacketcount,
-                directionbins=args.plotviewingangle,
-                average_over_phi=args.average_over_phi_angle,
-                average_over_theta=args.average_over_theta_angle,
-                **plotkwargs,
-            )
-            if seriesdata is not None:
-                seriesname = at.get_model_name(specpath)
-                artisindex += 1
-
-        elif not specpath.exists() and specpath.parts[0] == "codecomparison":
-            # timeavg = (args.timemin + args.timemax) / 2.
-            (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
-                specpath, args.timestep, args.timemin, args.timemax, args.timedays
-            )
-            timeavg = args.timedays
-            artistools.codecomparison.plot_spectrum(specpath, timedays=timeavg, ax=axes[0], **plotkwargs)
-            refspecindex += 1
-        else:
+        if not Path(specpath).is_dir() and not Path(specpath).exists() and "." in str(specpath):
             # reference spectrum
             if "linewidth" not in plotkwargs:
                 plotkwargs["linewidth"] = 1.1
@@ -482,6 +453,39 @@ def make_spectrum_plot(
                         **plotkwargs,
                     )
             refspecindex += 1
+        elif not specpath.exists() and specpath.parts[0] == "codecomparison":
+            # timeavg = (args.timemin + args.timemax) / 2.
+            (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+                specpath, args.timestep, args.timemin, args.timemax, args.timedays
+            )
+            timeavg = args.timedays
+            artistools.codecomparison.plot_spectrum(specpath, timedays=timeavg, ax=axes[0], **plotkwargs)
+            refspecindex += 1
+        else:
+            # ARTIS model spectrum
+            # plotkwargs['dash_capstyle'] = dash_capstyleList[artisindex]
+            if "linewidth" not in plotkwargs:
+                plotkwargs["linewidth"] = 1.3
+
+            plotkwargs["linelabel"] = args.label[seriesindex]
+
+            seriesdata = plot_artis_spectrum(
+                axes,
+                specpath,
+                args=args,
+                scale_to_peak=scale_to_peak,
+                from_packets=args.frompackets,
+                maxpacketfiles=args.maxpacketfiles,
+                filterfunc=filterfunc,
+                plotpacketcount=args.plotpacketcount,
+                directionbins=args.plotviewingangle,
+                average_over_phi=args.average_over_phi_angle,
+                average_over_theta=args.average_over_theta_angle,
+                **plotkwargs,
+            )
+            if seriesdata is not None:
+                seriesname = at.get_model_name(specpath)
+                artisindex += 1
 
         if args.write_data and not seriesdata.empty:
             if dfalldata.empty:
@@ -492,6 +496,9 @@ def make_spectrum_plot(
             dfalldata[f"f_lambda.{seriesname}"] = seriesdata["f_lambda"].values
 
         seriesindex += 1
+
+    plottedsomething = artisindex > 0 or refspecindex > 0
+    assert plottedsomething
 
     for axis in axes:
         if args.showfilterfunctions:
