@@ -292,7 +292,13 @@ def read_emission_absorption_file(emabsfilename: Union[str, Path]) -> pd.DataFra
     except AttributeError:
         print(f" Reading {emabsfilename}")
 
-    dfemabs = pd.read_table(emabsfilename, sep=" ", engine="pyarrow", header=None, dtype_backend="pyarrow")
+    dfemabs = pd.read_table(
+        emabsfilename,
+        sep=" ",
+        engine="pyarrow",
+        header=None,
+        **({"dtype_backend": "pyarrow"} if int(pd.__version__.split(".")[0]) >= 2 else {}),
+    )
 
     # check if last column is an artefact of whitespace at end of line (None or NaNs for pyarrow/c engine)
     if pd.isna(dfemabs.iloc[0, -1]):

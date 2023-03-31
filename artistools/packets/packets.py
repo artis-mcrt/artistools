@@ -339,6 +339,7 @@ def readfile_lazypolars(
         print(f"Saving {packetsfileparquet}")
         dfpackets = dfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
         dfpackets.collect().write_parquet(packetsfileparquet, compression="lz4", use_pyarrow=True, statistics=True)
+        dfpackets = pl.scan_parquet(packetsfileparquet)
 
     if escape_type is not None:
         assert packet_type is None or packet_type == "TYPE_ESCAPE"
@@ -725,7 +726,7 @@ def bin_and_sum(
     dfout = pd.DataFrame({bincol + "_bin": np.arange(0, len(bins) - 1)})
 
     if isinstance(df, pl.LazyFrame):
-        df = df.collect(streaming=True)
+        df = df.collect(streaming=False)
 
     # POLARS METHOD (slower than pandas for some reason)
     # df = df.with_columns(
@@ -756,7 +757,7 @@ def bin_and_sum(
     # PANDAS METHOD
 
     if isinstance(df, pl.DataFrame):
-        df = df.to_pandas()
+        df = df.to_pandas(use_pyarrow_extension_array=True)
 
     pdbins = pd.cut(
         x=df[bincol],
