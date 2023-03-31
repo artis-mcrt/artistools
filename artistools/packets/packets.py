@@ -185,6 +185,7 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
             names=column_names,
             skip_blank_lines=True,
             engine="pyarrow",
+            **({"dtype_backend": "pyarrow"} if int(pd.__version__.split(".")[0]) >= 2 else {}),
         )
     except Exception as exc:
         print(f"Error occured in file {packetsfile}")
