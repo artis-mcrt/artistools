@@ -10,8 +10,6 @@ config: dict[str, Any] = {}
 
 
 def setup_config():
-    global config
-
     mp.set_start_method("fork")
     # count the cores (excluding the efficiency cores on ARM)
     try:
@@ -50,7 +48,6 @@ def setup_config():
 
 
 def get_config(key: Optional[str] = None):
-    global config
     if not config:
         setup_config()
     if key is None:

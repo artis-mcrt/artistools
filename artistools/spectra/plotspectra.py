@@ -720,17 +720,13 @@ def make_emissionabsorption_plot(
 
     plotlabel = f"{modelname}\n{args.timemin:.2f}d to {args.timemax:.2f}d"
     if args.plotviewingangle:
-        angle = args.plotviewingangle[0]
-        (
-            costheta_viewing_angle_bins,
-            phi_viewing_angle_bins,
-        ) = at.get_costhetabin_phibin_labels()
-
-        if args.average_over_phi_angle:
-            assert angle % 10 == 0
-            plotlabel += ", " + costheta_viewing_angle_bins[int(angle // 10)]
-        else:
-            plotlabel += f", directionbin {args.plotviewingangle[0]}"
+        dirbin_definitions = at.get_dirbin_labels(
+            dirbins=args.plotviewingangle,
+            modelpath=modelpath,
+            average_over_phi=args.average_over_phi_angle,
+            average_over_theta=args.average_over_theta_angle,
+        )
+        plotlabel += f", directionbin {dirbin_definitions[args.plotviewingangle[0]]}"
 
     if not args.notitle:
         axis.set_title(plotlabel, fontsize=11)
@@ -784,8 +780,6 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
     c_ang_s = 2.99792458e18
     nu_min = c_ang_s / args.xmax
     nu_max = c_ang_s / args.xmin
-
-    querystr = ""
 
     list_lambda: dict[str, list[float]] = {}
     lists_y: dict[str, list[float]] = {}

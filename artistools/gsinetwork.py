@@ -204,7 +204,7 @@ def plot_qdot(
 
     # fig.suptitle(f'{modelname}', fontsize=10)
     at.plottools.autoscale(axis, margin=0.0)
-    plt.savefig(pdfoutpath, format="pdf")
+    fig.savefig(pdfoutpath, format="pdf")
     print(f"Saved {pdfoutpath}")
 
 
@@ -310,7 +310,7 @@ def plot_cell_abund_evolution(
 
     fig.suptitle(f"{modelname} cell {mgi}", y=0.995, fontsize=10)
     at.plottools.autoscale(axis, margin=0.05)
-    plt.savefig(pdfoutpath, format="pdf")
+    fig.savefig(pdfoutpath, format="pdf")
     print(f"Saved {pdfoutpath}")
 
 

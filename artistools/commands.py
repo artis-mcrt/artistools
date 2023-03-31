@@ -73,7 +73,6 @@ def setup_completions():
     # bashcompinit
     # source artistoolscompletions.sh
     path_repo = Path(__file__).absolute().parent.parent
-    completioncommands = []
     with open(path_repo / "artistoolscompletions.sh", "w", encoding="utf-8") as f:
         f.write("#!/usr/bin/env zsh\n")
 
@@ -83,8 +82,6 @@ def setup_completions():
 
         if proc.stderr:
             print(proc.stderr)
-
-        scriptlines = proc.stdout
 
         strfunctiondefs, strsplit, strcommandregister = proc.stdout.rpartition("}\n")
 

@@ -112,7 +112,6 @@ def get_from_packets(
     dfpackets = dfpackets.select(getcols).collect(streaming=True).lazy()
 
     lcdata = {}
-    arr_lum_cmf = None
     for dirbin in directionbins:
         if dirbin == -1:
             solidanglefactor = 1.0

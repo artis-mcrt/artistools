@@ -236,7 +236,7 @@ def get_vpkt_config(modelpath: Union[Path, str]) -> dict[str, Any]:
 
         if nspecflag == 1:
             vpkt_config["nspectraperobs"] = int(vpkt_txt.readline())
-            for i in range(vpkt_config["nspectraperobs"]):
+            for _ in range(vpkt_config["nspectraperobs"]):
                 vpkt_txt.readline()
         else:
             vpkt_config["nspectraperobs"] = 1
@@ -885,7 +885,7 @@ def get_bflist(modelpath: Union[Path, str]) -> dict[int, tuple[int, int, int, in
     with zopen(bflistpath, "rt") as filein:
         bflistcount = int(filein.readline())
 
-        for k in range(bflistcount):
+        for _ in range(bflistcount):
             rowints = [int(x) for x in filein.readline().split()]
             i, elementindex, ionindex, level = rowints[:4]
             if len(rowints) > 4:

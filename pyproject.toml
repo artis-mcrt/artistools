@@ -80,7 +80,6 @@ disable = """
     eval-used,
     fixme,
     global-statement,
-    global-variable-not-assigned,
     missing-function-docstring,
     missing-module-docstring,
     import-outside-toplevel,
