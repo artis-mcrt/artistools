@@ -62,3 +62,4 @@ plottingscripts/
 _version.py
 
 .vscode
+.dmypy.json
