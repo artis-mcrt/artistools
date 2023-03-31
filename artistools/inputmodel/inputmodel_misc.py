@@ -3,6 +3,7 @@ import gc
 import math
 import os.path
 import time
+from collections import defaultdict
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -14,8 +15,6 @@ import numpy as np
 import pandas as pd
 
 import artistools as at
-
-# from collections import namedtuple
 
 
 @lru_cache(maxsize=8)
@@ -168,7 +167,9 @@ def read_modelfile(
                 if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
             ]
         )
-
+    dtypes: defaultdict[str, type] = defaultdict(lambda: np.float32)
+    dtypes["inputcellid"] = np.int32
+    dtypes["tracercount"] = np.int32
     # each cell takes up two lines in the model file
     dfmodel = pd.read_table(
         filename,
@@ -179,7 +180,7 @@ def read_modelfile(
         names=columns[:ncols_line_even],
         usecols=columns[:ncols_line_even],
         nrows=nrows_read,
-        **({"dtype_backend": "pyarrow"} if int(pd.__version__.split(".")[0]) >= 2 else {}),
+        dtype=dtypes,
     )
 
     if ncols_line_odd > 0 and not onelinepercellformat:
@@ -199,7 +200,7 @@ def read_modelfile(
             skiprows=skipevenrows,
             names=columns[ncols_line_even:],
             nrows=nrows_read,
-            **({"dtype_backend": "pyarrow"} if int(pd.__version__.split(".")[0]) >= 2 else {}),
+            dtype=dtypes,
         )
         assert len(dfmodel) == len(dfmodeloddlines)
         dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
@@ -227,7 +228,7 @@ def read_modelfile(
     elif dimensions == 3:
         wid_init = at.get_wid_init_at_tmodel(modelpath, modelcellcount, t_model_init_days, xmax_tmodel)
         modelmeta["wid_init"] = wid_init
-        dfmodel["cellmass_grams"] = dfmodel["rho"] * wid_init**3
+        dfmodel.eval("cellmass_grams = rho * @wid_init ** 3", inplace=True)
 
         dfmodel.rename(columns={"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"}, inplace=True)
         if "pos_x_min" in dfmodel.columns and not printwarningsonly:
