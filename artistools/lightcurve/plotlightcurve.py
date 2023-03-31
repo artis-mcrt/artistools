@@ -278,7 +278,7 @@ def plot_artis_lightcurve(
         print("====> (no series label)")
     else:
         print(f"====> {modelname}")
-    print(f" folder: {modelpath.parts[-1]}")
+    print(f" folder: {modelpath.resolve().parts[-1]}")
 
     if args is not None and args.title:
         axis.set_title(modelname)
@@ -384,9 +384,9 @@ def plot_artis_lightcurve(
 
         if not args.Lsun or args.magnitude:
             # convert luminosity from Lsun to erg/s
-            lcdata.eval("lum = lum * 3.826e33", inplace=True)
+            lcdata["lum"] *= 3.826e33
             if "lum_cmf" in lcdata.columns:
-                lcdata.eval("lum_cmf = lum_cmf * 3.826e33", inplace=True)
+                lcdata["lum_cmf"] *= 3.826e33
 
         if args.magnitude:
             # convert to bol magnitude
