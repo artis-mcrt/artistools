@@ -100,9 +100,6 @@ disable = """
     C,
     R,
 """
-enable = """
-    unused-import,
-"""
 [tool.pylint.typecheck]
 ignored-modules = ["astropy", "extinction"]
 
