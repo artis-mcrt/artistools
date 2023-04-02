@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Artistools - spectra related functions."""
+from .__main__ import main
 from ._nonthermal_core import analyse_ntspectrum
 from ._nonthermal_core import ar_xs
 from ._nonthermal_core import calculate_frac_heating
@@ -41,5 +42,4 @@ from ._nonthermal_core import sfmatrix_add_ionization_shell
 from ._nonthermal_core import solve_spencerfano_differentialform
 from ._nonthermal_core import workfunction_tests
 from .plotnonthermal import addargs
-from .plotnonthermal import main
 from .plotnonthermal import main as plot

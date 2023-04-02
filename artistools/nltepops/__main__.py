@@ -1,5 +1,10 @@
-import artistools as at
+#!/usr/bin/env python3
+from .plotnltepops import main as plot
+
+
+def main() -> None:
+    plot()
+
 
 if __name__ == "__main__":
-    # multiprocessing.freeze_support()
-    at.nltepops.plot()
+    main()

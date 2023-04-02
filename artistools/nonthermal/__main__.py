@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from .plotlightcurve import main as plot
+from .plotnonthermal import main as plot
 
 
 def main() -> None:

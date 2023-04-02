@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-import artistools as at
+from .plotspectra import main as plot
+
+
+def main() -> None:
+    plot()
+
 
 if __name__ == "__main__":
-    at.spectra.plot()
+    main()
