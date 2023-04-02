@@ -2,7 +2,7 @@ import subprocess
 from pathlib import Path
 
 
-def get_commandlist():
+def get_commandlist() -> dict[str, tuple[str, str]]:
     commandlist = {
         "at": ("artistools", "main"),
         "artistools": ("artistools", "main"),
@@ -60,14 +60,14 @@ def get_commandlist():
     return commandlist
 
 
-def get_console_scripts():
+def get_console_scripts() -> list[str]:
     console_scripts = [
         f"{command} = {submodulename}:{funcname}" for command, (submodulename, funcname) in get_commandlist().items()
     ]
     return console_scripts
 
 
-def setup_completions():
+def setup_completions() -> None:
     # Add the following lines to your .zshrc file to get command completion:
     # autoload -U bashcompinit
     # bashcompinit
@@ -97,5 +97,5 @@ def setup_completions():
     print("source artistoolscompletions.sh")
 
 
-def addargs(parser=None):
+def addargs(parser=None) -> None:
     pass
