@@ -416,7 +416,7 @@ def main(args=None, argsraw=None, **kwargs):
                     nltepopdict = {x.level: x["n_NLTE"] for _, x in dfnltepops_thision.iterrows()}
 
                     dftransitions["upper_pop_nlte"] = dftransitions.apply(
-                        lambda x: nltepopdict.get(x.upper, 0.0), axis=1
+                        lambda x: nltepopdict.get(x.upper, 0.0), axis=1  # pylint: disable=cell-var-from-loop
                     )
 
                     # dftransitions['lower_pop_nlte'] = dftransitions.apply(
