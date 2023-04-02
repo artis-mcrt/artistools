@@ -75,7 +75,6 @@ max-line-length = 120
 disable = """
     broad-exception-caught,
     cell-var-from-loop,
-    cyclic-import,
     dangerous-default-value,
     eval-used,
     fixme,
