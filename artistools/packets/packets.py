@@ -256,7 +256,8 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
     if dfpackets[dfpackets.columns[-1]].is_null().all():
         dfpackets = dfpackets.drop(dfpackets.columns[-1])
 
-    dfpackets = dfpackets.with_columns([pl.col("true_emission_velocity").cast(pl.Float32)])
+    if "true_emission_velocity" in dfpackets.columns:
+        dfpackets = dfpackets.with_columns([pl.col("true_emission_velocity").cast(pl.Float32)])
 
     # cast Int64 to Int32
     dfpackets = dfpackets.with_columns(
