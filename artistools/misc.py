@@ -2,7 +2,6 @@
 import argparse
 import gzip
 import io
-import lzma
 import math
 import os
 from collections import namedtuple
@@ -21,8 +20,11 @@ from typing import Union
 
 import numpy as np
 import pandas as pd
+import xz
 
 import artistools as at
+
+# import lzma
 
 # import inspect
 # from functools import partial
@@ -709,16 +711,16 @@ def flatten_list(listin: list) -> list:
     return listout
 
 
-def zopen(filename: Union[Path, str], mode: str):  # type: ignore[no-untyped-def]
+def zopen(filename: Union[Path, str], mode: str, encoding: Optional[str] = None) -> Any:
     """Open filename, filename.gz or filename.x"""
     filenamexz = str(filename) if str(filename).endswith(".xz") else str(filename) + ".xz"
     filenamegz = str(filename) if str(filename).endswith(".gz") else str(filename) + ".gz"
     if os.path.exists(filename) and not str(filename).endswith(".gz") and not str(filename).endswith(".xz"):
-        return open(filename, mode)
+        return open(filename, mode, encoding=encoding)
     elif os.path.exists(filenamegz) or str(filename).endswith(".gz"):
-        return gzip.open(filenamegz, mode)
+        return gzip.open(filenamegz, mode, encoding=encoding)
     elif os.path.exists(filenamexz) or str(filename).endswith(".xz"):
-        return lzma.open(filenamexz, mode)
+        return xz.open(filenamexz, mode, encoding=encoding)
     else:
         # will raise file not found
         return open(filename, mode)

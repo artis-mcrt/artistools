@@ -158,7 +158,7 @@ def get_from_packets(
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     ndirbins = at.get_viewingdirectionbincount()
 
-    nprocs_read, dfpackets = at.packets.get_pldfpackets(
+    nprocs_read, dfpackets = at.packets.get_packets_pl(
         modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 

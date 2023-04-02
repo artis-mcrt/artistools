@@ -19,6 +19,9 @@ import artistools as at
 # import matplotlib.patches as mpatches
 # from collections import namedtuple
 
+# for the parquet files
+time_lastschemachange = (2023, 4, 2, 22, 13, 0)
+
 CLIGHT = 2.99792458e10
 DAY = 86400
 
@@ -33,6 +36,55 @@ type_ids = dict((v, k) for k, v in types.items())
 
 EMTYPE_NOTSET = -9999000
 EMTYPE_FREEFREE = -9999999
+
+# new artis added extra columns to the end of this list, but they may be absent in older versions
+# the packets file may have a truncated set of columns, but we assume that they
+# are only truncated, i.e. the columns with the same index have the same meaning
+columns_full = [
+    "number",
+    "where",
+    "type_id",
+    "posx",
+    "posy",
+    "posz",
+    "dirx",
+    "diry",
+    "dirz",
+    "last_cross",
+    "tdecay",
+    "e_cmf",
+    "e_rf",
+    "nu_cmf",
+    "nu_rf",
+    "escape_type_id",
+    "escape_time",
+    "scat_count",
+    "next_trans",
+    "interactions",
+    "last_event",
+    "emissiontype",
+    "trueemissiontype",
+    "em_posx",
+    "em_posy",
+    "em_posz",
+    "absorption_type",
+    "absorption_freq",
+    "nscatterings",
+    "em_time",
+    "absorptiondirx",
+    "absorptiondiry",
+    "absorptiondirz",
+    "stokes1",
+    "stokes2",
+    "stokes3",
+    "pol_dirx",
+    "pol_diry",
+    "pol_dirz",
+    "originated_from_positron",
+    "true_emission_velocity",
+    "trueem_time",
+    "pellet_nucindex",
+]
 
 
 @lru_cache(maxsize=16)
@@ -148,27 +200,35 @@ def add_derived_columns(
 
 
 def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) -> pl.DataFrame:
-    usecols_nodata = None  # print a warning for missing columns if the source code columns can't be read
+    """Read a packets*.out(.xz) space-separated text file into a polars DataFrame"""
 
     skiprows: int = 0
     column_names: Optional[list[str]] = None
     try:
-        fpackets = at.zopen(packetsfile, "rt")
+        fpackets = at.zopen(packetsfile, "r")
 
         datastartpos = fpackets.tell()  # will be updated if this was actually the start of a header
         firstline = fpackets.readline()
 
-        if firstline.lstrip().startswith("#"):
-            column_names = firstline.lstrip("#").split()
+        if firstline.decode().lstrip().startswith("#"):
+            column_names = firstline.decode().lstrip("#").split()
             assert column_names is not None
-            column_names.append("ignore")
+
             # get the column count from the first data line to check header matched
             datastartpos = fpackets.tell()
-            dataline = fpackets.readline()
+            dataline = fpackets.readline().decode()
             inputcolumncount = len(dataline.split())
+            assert inputcolumncount == len(column_names)
             skiprows = 1
         else:
             inputcolumncount = len(firstline.split())
+            column_names = get_column_names_artiscode(modelpath)
+            if column_names:  # found them in the artis code files
+                assert len(column_names) == inputcolumncount
+
+            else:  # infer from column positions
+                assert len(columns_full) >= inputcolumncount
+                column_names = columns_full[:inputcolumncount]
 
         fpackets.seek(datastartpos)  # go to first data line
 
@@ -177,100 +237,33 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
         raise exc
 
     try:
-        dfpackets = pd.read_csv(
+        dfpackets = pl.read_csv(
             fpackets,
-            sep=" ",
-            header=None,
-            skiprows=skiprows,
-            names=column_names,
-            skip_blank_lines=True,
-            engine="pyarrow",
-            **({"dtype_backend": "pyarrow"} if int(pd.__version__.split(".")[0]) >= 2 else {}),
+            separator=" ",
+            has_header=False,
+            new_columns=column_names,
+            # dtypes={"e_rf": pl.Float64, "e_cmf": pl.Float64, "nu_rf": pl.Float64, "nu_cmf": pl.Float64},
+            infer_schema_length=10000,
         )
+
     except Exception as exc:
         print(f"Error occured in file {packetsfile}")
         raise exc
 
+    dfpackets = dfpackets.drop(["next_trans", "last_cross"])
+
     # space at the end of line made an extra column of Nones
-    if dfpackets[dfpackets.columns[-1]].isnull().all():
-        dfpackets.drop(labels=dfpackets.columns[-1], axis=1, inplace=True)
+    if dfpackets[dfpackets.columns[-1]].is_null().all():
+        dfpackets = dfpackets.drop(dfpackets.columns[-1])
 
-    if hasattr(dfpackets.columns[0], "startswith") and dfpackets.columns[0].startswith("#"):
-        dfpackets.rename(columns={dfpackets.columns[0]: dfpackets.columns[0].lstrip("#")}, inplace=True)
+    dfpackets = dfpackets.with_columns([pl.col("true_emission_velocity").cast(pl.Float32)])
 
-    elif dfpackets.columns[0] in ["C0", 0]:
-        inputcolumncount = len(dfpackets.columns)
-        column_names = get_column_names_artiscode(modelpath)
-        if column_names:  # found them in the artis code files
-            assert len(column_names) == inputcolumncount
+    # cast Int64 to Int32
+    dfpackets = dfpackets.with_columns(
+        [pl.col(col).cast(pl.Int32) for col in dfpackets.columns if dfpackets[col].dtype == pl.Int64]
+    )
 
-        else:  # infer from column positions
-            # new artis added extra columns to the end of this list, but they may be absent in older versions
-            # the packets file may have a truncated set of columns, but we assume that they
-            # are only truncated, i.e. the columns with the same index have the same meaning
-            columns_full = [
-                "number",
-                "where",
-                "type_id",
-                "posx",
-                "posy",
-                "posz",
-                "dirx",
-                "diry",
-                "dirz",
-                "last_cross",
-                "tdecay",
-                "e_cmf",
-                "e_rf",
-                "nu_cmf",
-                "nu_rf",
-                "escape_type_id",
-                "escape_time",
-                "scat_count",
-                "next_trans",
-                "interactions",
-                "last_event",
-                "emissiontype",
-                "trueemissiontype",
-                "em_posx",
-                "em_posy",
-                "em_posz",
-                "absorption_type",
-                "absorption_freq",
-                "nscatterings",
-                "em_time",
-                "absorptiondirx",
-                "absorptiondiry",
-                "absorptiondirz",
-                "stokes1",
-                "stokes2",
-                "stokes3",
-                "pol_dirx",
-                "pol_diry",
-                "pol_dirz",
-                "originated_from_positron",
-                "true_emission_velocity",
-                "trueem_time",
-                "pellet_nucindex",
-            ]
-
-            assert len(columns_full) >= inputcolumncount
-            usecols_nodata = [n for n in columns_full if columns_full.index(n) >= inputcolumncount]
-            column_names = columns_full[:inputcolumncount]
-
-        dfpackets.columns = column_names
-
-    # except Exception as ex:
-    #     print(f'Problem with file {packetsfile}')
-    #     print(f'ERROR: {ex}')
-    #     sys.exit(1)
-
-    if usecols_nodata:
-        print(f"WARNING: no data in packets file for columns: {usecols_nodata}")
-        for col in usecols_nodata:
-            dfpackets[col] = float("NaN")
-
-    return pl.from_pandas(dfpackets)
+    return dfpackets
 
 
 def readfile(
@@ -279,16 +272,16 @@ def readfile(
     escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
 ) -> pd.DataFrame:
     """Read a packet file into a Pandas DataFrame."""
-    return readfile_lazypolars(packetsfile, packet_type=packet_type, escape_type=escape_type).collect().to_pandas()
+    return readfile_pl(packetsfile, packet_type=packet_type, escape_type=escape_type).collect().to_pandas()
 
 
-def readfile_lazypolars(
+def readfile_pl(
     packetsfile: Union[Path, str],
-    modelpath: Union[None, Path, str] = None,
     packet_type: Optional[str] = None,
     escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
 ) -> pl.LazyFrame:
-    """Read a packet file into a Polars lazy DataFrame."""
+    """Read a packets file into a Polars LazyFrame from either a parquet file or a text file (and save .parquet)."""
+
     packetsfile = Path(packetsfile)
 
     packetsfileparquet = (
@@ -305,7 +298,7 @@ def readfile_lazypolars(
 
     dfpackets = None
     if packetsfile == packetsfileparquet and os.path.getmtime(packetsfileparquet) > calendar.timegm(
-        (2023, 3, 22, 0, 0, 0)
+        time_lastschemachange
     ):
         try:
             dfpackets = pl.scan_parquet(packetsfileparquet)
@@ -350,9 +343,6 @@ def readfile_lazypolars(
     elif packet_type is not None and packet_type != "":
         dfpackets = dfpackets.filter(pl.col("type_id") == type_ids[packet_type])
 
-    if modelpath is not None:
-        dfpackets = bin_packet_directions_lazypolars(modelpath, dfpackets)
-
     return dfpackets
 
 
@@ -386,7 +376,7 @@ def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[i
     return packetsfiles
 
 
-def get_pldfpackets(
+def get_packets_pl(
     modelpath: Union[str, Path],
     maxpacketfiles: Optional[int] = None,
     packet_type: Optional[str] = None,
@@ -401,36 +391,35 @@ def get_pldfpackets(
 
     nprocs_read = len(packetsfiles)
     allescrpktfile = Path(modelpath) / "packets_rpkt_escaped.parquet"
-    write_allescrpkt_parquet = False
 
+    pldfpackets = None
     if maxpacketfiles is None and escape_type == "TYPE_RPKT":
         if allescrpktfile.is_file():
             print(f"Reading from {allescrpktfile}")
-            # use_statistics is causing some weird errors! (zero flux spectra)
-            pllfpackets = pl.scan_parquet(allescrpktfile, use_statistics=False)
-            return nprocs_read, pllfpackets
-        else:
-            write_allescrpkt_parquet = True
+            pldfpackets = pl.scan_parquet(allescrpktfile)
 
-    pllfpackets = pl.concat(
-        [
-            at.packets.readfile_lazypolars(
-                packetsfile, modelpath=modelpath, packet_type=packet_type, escape_type=escape_type
-            )
-            for packetsfile in packetsfiles
-        ],
-        how="vertical",
-        rechunk=False,
-    )
+    if pldfpackets is None:
+        pldfpackets = pl.concat(
+            [
+                at.packets.readfile_pl(packetsfile, packet_type=packet_type, escape_type=escape_type)
+                for packetsfile in packetsfiles
+            ],
+            how="vertical",
+            rechunk=False,
+        )
 
-    # Luke: this turned out to be slower than reading 960 or 3840 parquet files separately
-    if write_allescrpkt_parquet:
-        print(f"Saving {allescrpktfile}")
-        # sorting can be extremely slow (and exceed RAM) but it probably speeds up access
-        pllfpackets = pllfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
-        pllfpackets.collect(streaming=True).write_parquet(allescrpktfile, compression="lz4", row_group_size=1024 * 1024)
+        # print(f"Saving {allescrpktfile}")
+        # pldfpackets = pldfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
+        # pldfpackets.sink_parquet(
+        #     allescrpktfile,
+        #     compression="lz4",
+        #     row_group_size=65536,
+        #     statistics=True,
+        # )
 
-    return nprocs_read, pllfpackets
+    pldfpackets = bin_packet_directions_lazypolars(modelpath, pldfpackets)
+
+    return nprocs_read, pldfpackets
 
 
 def get_directionbin(
