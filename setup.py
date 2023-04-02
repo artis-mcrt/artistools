@@ -2,7 +2,6 @@
 # mypy: ignore-errors
 """Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code."""
 import importlib.util
-import sys
 from pathlib import Path
 
 from setuptools import find_namespace_packages
