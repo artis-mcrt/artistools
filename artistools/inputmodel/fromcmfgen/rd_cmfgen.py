@@ -60,7 +60,7 @@ def rd_nuc_decay_data(file, quiet=False):
             isospec.append(linearr[0])
             amu[i] = float(linearr[1])
             aiso[i] = np.rint(amu[i])
-            stable.append(True) if linearr[2] == "s" else stable.append(False)
+            stable.append(linearr[2] == "s")
         if not quiet:
             print("INFO - Read in isotope information")
 
