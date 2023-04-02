@@ -670,7 +670,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         axes[-1].set_xlabel(r"Level index")
 
     outputfilename = str(args.outputfile).format(
-        elsymbol=at.get_elsymbol(atomic_number), cell=modelgridindex, timestep=timestep, time_days=time_days
+        elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, time_days=time_days
     )
     fig.savefig(str(outputfilename), format="pdf")
     print(f"Saved {outputfilename}")

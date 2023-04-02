@@ -94,7 +94,6 @@ disable = """
     too-many-lines,
     too-many-locals,
     too-many-statements,
-    undefined-loop-variable,
     unused-argument,
     unused-variable,
     unspecified-encoding,
