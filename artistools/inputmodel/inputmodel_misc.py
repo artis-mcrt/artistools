@@ -154,60 +154,70 @@ def read_modelfile(
         assert (ncoordgridx * ncoordgridy * ncoordgridz) == modelcellcount
 
     nrows_read = 1 if getheadersonly else modelcellcount
-
-    skiprows: Union[list, int, None]
-    if onelinepercellformat:
-        skiprows = numheaderrows
+    filenameparquet = Path(filename).with_suffix(".parquet")
+    if filenameparquet.is_file():
+        if not printwarningsonly:
+            print(f"  reading {filenameparquet}")
+        dfmodel = pd.read_parquet(filenameparquet)
     else:
-        # skip the odd rows for the first read in
-        skiprows = list(
-            [
-                x
-                for x in range(numheaderrows + modelcellcount * 2)
-                if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
-            ]
-        )
-    dtypes: defaultdict[str, type] = defaultdict(lambda: np.float32)
-    dtypes["inputcellid"] = np.int32
-    dtypes["tracercount"] = np.int32
-    # each cell takes up two lines in the model file
-    dfmodel = pd.read_table(
-        filename,
-        sep=r"\s+",
-        engine="c",
-        header=None,
-        skiprows=skiprows,
-        names=columns[:ncols_line_even],
-        usecols=columns[:ncols_line_even],
-        nrows=nrows_read,
-        dtype=dtypes,
-    )
-
-    if ncols_line_odd > 0 and not onelinepercellformat:
-        # read in the odd rows and merge dataframes
-        skipevenrows = list(
-            [
-                x
-                for x in range(numheaderrows + modelcellcount * 2)
-                if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
-            ]
-        )
-        dfmodeloddlines = pd.read_table(
+        skiprows: Union[list, int, None]
+        if onelinepercellformat:
+            skiprows = numheaderrows
+        else:
+            # skip the odd rows for the first read in
+            skiprows = list(
+                [
+                    x
+                    for x in range(numheaderrows + modelcellcount * 2)
+                    if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
+                ]
+            )
+        dtypes: defaultdict[str, type] = defaultdict(lambda: np.float32)
+        dtypes["inputcellid"] = np.int32
+        dtypes["tracercount"] = np.int32
+        # each cell takes up two lines in the model file
+        dfmodel = pd.read_table(
             filename,
             sep=r"\s+",
             engine="c",
             header=None,
-            skiprows=skipevenrows,
-            names=columns[ncols_line_even:],
+            skiprows=skiprows,
+            names=columns[:ncols_line_even],
+            usecols=columns[:ncols_line_even],
             nrows=nrows_read,
             dtype=dtypes,
         )
-        assert len(dfmodel) == len(dfmodeloddlines)
-        dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
-        del dfmodeloddlines
 
-    if len(dfmodel) > modelcellcount:
-        dfmodel = dfmodel.iloc[:modelcellcount]
+        if ncols_line_odd > 0 and not onelinepercellformat:
+            # read in the odd rows and merge dataframes
+            skipevenrows = list(
+                [
+                    x
+                    for x in range(numheaderrows + modelcellcount * 2)
+                    if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
+                ]
+            )
+            dfmodeloddlines = pd.read_table(
+                filename,
+                sep=r"\s+",
+                engine="c",
+                header=None,
+                skiprows=skipevenrows,
+                names=columns[ncols_line_even:],
+                nrows=nrows_read,
+                dtype=dtypes,
+            )
+            assert len(dfmodel) == len(dfmodeloddlines)
+            dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
+            del dfmodeloddlines
+
+        if len(dfmodel) > modelcellcount:
+            dfmodel = dfmodel.iloc[:modelcellcount]
+
+        if len(dfmodel) > 1000 and not getheadersonly and not skipabundancecolumns:
+            print(f"Saving {filenameparquet}")
+            dfmodel.to_parquet(filenameparquet)
+            print("  Done.")
 
     assert len(dfmodel) == modelcellcount or getheadersonly
 
@@ -740,7 +750,12 @@ def get_initelemabundances(modelpath: Path = Path()) -> pd.DataFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
     abundancefilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
 
-    abundancedata = pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, comment="#")
+    abundancedata = pd.read_csv(
+        abundancefilepath,
+        delim_whitespace=True,
+        header=None,
+        comment="#",
+    )
     abundancedata.index.name = "modelgridindex"
     abundancedata.columns = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, len(abundancedata.columns))]]
     if len(abundancedata) > 100000:
