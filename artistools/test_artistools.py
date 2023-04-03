@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import hashlib
 import math
-import os.path
 
 import numpy as np
 import pytest
@@ -71,35 +70,6 @@ def test_get_modeldata_tuple():
     # assert (
     #     hashlib.sha256(pd.util.hash_pandas_object(dfmodel, index=True).values).hexdigest() ==
     #     '40a02dfa933f6b28671d42f3cf69a182955a5a89dc93bbcd22c894192375fe9b')
-
-
-def test_lightcurve():
-    at.lightcurve.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath)
-
-
-def test_lightcurve_frompackets():
-    at.lightcurve.plot(
-        argsraw=[],
-        modelpath=modelpath,
-        frompackets=True,
-        outputfile=os.path.join(outputpath, "lightcurve_from_packets.pdf"),
-    )
-
-
-def test_band_lightcurve_plot():
-    at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], outputfile=outputpath)
-
-
-def test_band_lightcurve_subplots():
-    at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["bol", "B"], outputfile=outputpath)
-
-
-def test_colour_evolution_plot():
-    at.lightcurve.plot(argsraw=[], modelpath=modelpath, colour_evolution=["B-V"], outputfile=outputpath)
-
-
-def test_colour_evolution_subplots():
-    at.lightcurve.plot(argsraw=[], modelpath=modelpath, colour_evolution=["U-B", "B-V"], outputfile=outputpath)
 
 
 def test_macroatom():

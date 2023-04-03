@@ -25,7 +25,7 @@ def readfile(
     filepath: Union[str, Path],
 ) -> dict[int, pd.DataFrame]:
     """Read an ARTIS light curve file"""
-
+    print(f"Reading {filepath}")
     lcdata: dict[int, pd.DataFrame] = {}
     if "_res" in str(filepath):
         # get a list of dfs with light curves at each viewing angle
