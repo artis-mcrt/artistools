@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Artistools - spectra related functions."""
 import argparse
 import math
@@ -297,7 +296,7 @@ def read_emission_absorption_file(emabsfilename: Union[str, Path]) -> pd.DataFra
         sep=" ",
         engine="pyarrow",
         header=None,
-        **({"dtype_backend": "pyarrow"} if int(pd.__version__.split(".")[0]) >= 2 else {}),
+        dtype_backend="pyarrow",
     )
 
     # check if last column is an artefact of whitespace at end of line (None or NaNs for pyarrow/c engine)
