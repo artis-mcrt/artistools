@@ -399,8 +399,8 @@ def get_packets_pl(
         if allescrpktfile.is_file() and os.path.getmtime(allescrpktfile) > calendar.timegm(time_lastschemachange):
             print(f"Reading from {allescrpktfile}")
             pldfpackets = pl.scan_parquet(allescrpktfile)
-        # else:
-        #     write_allpkts_parquet = True
+        else:
+            write_allpkts_parquet = True
 
     if pldfpackets is None:
         pldfpackets = pl.concat(
@@ -412,17 +412,17 @@ def get_packets_pl(
             rechunk=False,
         )
 
-        if write_allpkts_parquet:
-            print(f"Saving {allescrpktfile}")
-            # pldfpackets = pldfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
-            pldfpackets.collect(streaming=True).write_parquet(
-                allescrpktfile,
-                compression="lz4",
-                row_group_size=1024 * 1024,
-                statistics=True,
-            )
+        pldfpackets = bin_packet_directions_lazypolars(modelpath, pldfpackets)
 
-    pldfpackets = bin_packet_directions_lazypolars(modelpath, pldfpackets)
+    if write_allpkts_parquet:
+        print(f"Saving {allescrpktfile}")
+        pldfpackets = pldfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
+        pldfpackets.collect(streaming=True).write_parquet(
+            allescrpktfile,
+            compression="lz4",
+            row_group_size=1024 * 1024,
+            statistics=True,
+        )
 
     return nprocs_read, pldfpackets
 
