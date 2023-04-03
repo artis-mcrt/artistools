@@ -158,7 +158,7 @@ def read_modelfile(
     if filenameparquet.is_file():
         if not printwarningsonly:
             print(f"  reading {filenameparquet}")
-        dfmodel = pd.read_parquet(filenameparquet)
+        dfmodel = pd.read_parquet(filenameparquet, columns=columns[: ncols_line_even + ncols_line_odd])
     else:
         skiprows: Union[list, int, None]
         if onelinepercellformat:
