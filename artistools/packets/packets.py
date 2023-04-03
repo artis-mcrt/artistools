@@ -333,7 +333,7 @@ def readfile_pl(
     if write_parquet:
         print(f"Saving {packetsfileparquet}")
         dfpackets = dfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
-        dfpackets.collect().write_parquet(packetsfileparquet, compression="lz4", use_pyarrow=True, statistics=True)
+        dfpackets.collect().write_parquet(packetsfileparquet, compression="lz4", statistics=True)
         dfpackets = pl.scan_parquet(packetsfileparquet)
 
     if escape_type is not None:
@@ -393,11 +393,14 @@ def get_packets_pl(
     nprocs_read = len(packetsfiles)
     allescrpktfile = Path(modelpath) / "packets_rpkt_escaped.parquet"
 
+    write_allpkts_parquet = False
     pldfpackets = None
     if maxpacketfiles is None and escape_type == "TYPE_RPKT":
-        if allescrpktfile.is_file():
+        if allescrpktfile.is_file() and os.path.getmtime(allescrpktfile) > calendar.timegm(time_lastschemachange):
             print(f"Reading from {allescrpktfile}")
             pldfpackets = pl.scan_parquet(allescrpktfile)
+        # else:
+        #     write_allpkts_parquet = True
 
     if pldfpackets is None:
         pldfpackets = pl.concat(
@@ -409,14 +412,15 @@ def get_packets_pl(
             rechunk=False,
         )
 
-        # print(f"Saving {allescrpktfile}")
-        # pldfpackets = pldfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
-        # pldfpackets.sink_parquet(
-        #     allescrpktfile,
-        #     compression="lz4",
-        #     row_group_size=65536,
-        #     statistics=True,
-        # )
+        if write_allpkts_parquet:
+            print(f"Saving {allescrpktfile}")
+            # pldfpackets = pldfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
+            pldfpackets.collect(streaming=True).write_parquet(
+                allescrpktfile,
+                compression="lz4",
+                row_group_size=1024 * 1024,
+                statistics=True,
+            )
 
     pldfpackets = bin_packet_directions_lazypolars(modelpath, pldfpackets)
 
