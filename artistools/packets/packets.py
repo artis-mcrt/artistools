@@ -707,68 +707,67 @@ def get_mean_packet_emission_velocity_per_ts(
 
 
 def bin_and_sum(
-    df: Union[pd.DataFrame, pl.DataFrame, pl.LazyFrame],
+    df: Union[pl.DataFrame, pl.LazyFrame],
     bincol: str,
     bins: list[Union[float, int]],
     sumcols: Optional[list[str]] = None,
     getcounts: bool = False,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """bins is a list of lower edges, and the final upper edge"""
 
-    # dfout = pl.DataFrame(pl.Series(bincol + "_bin", np.arange(0, len(bins) - 1)))
-    dfout = pd.DataFrame({bincol + "_bin": np.arange(0, len(bins) - 1)})
-
-    if isinstance(df, pl.LazyFrame):
-        df = df.collect(streaming=False)
-
-    # POLARS METHOD (slower than pandas for some reason)
-    # df = df.with_columns(
-    #     [
-    #         (
-    #             df[bincol]
-    #             .cut(
-    #                 bins=list(bins),
-    #                 category_label=bincol + "_bin",
-    #                 maintain_order=True,
-    #             )
-    #             .get_column(bincol + "_bin")
-    #             .cast(pl.Int64)
-    #             - 1
-    #         )
-    #     ]
-    # )
-    # aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols]
-
-    # if getcounts:
-    #     aggs.append(pl.col(bincol).count().alias("count"))
-
-    # wlbins = df.groupby(bincol + "_bin").agg(aggs)
-
-    # # now we will include the empty bins
-    # dfout = dfout.join(wlbins, how="left", on=bincol + "_bin").fill_null(0.0)
-
-    # PANDAS METHOD
-
-    if isinstance(df, pl.DataFrame):
-        df = df.to_pandas(use_pyarrow_extension_array=True)
-
-    pdbins = pd.cut(
-        x=df[bincol],
-        bins=bins,
-        right=True,
-        labels=range(len(bins) - 1),
-        include_lowest=True,
+    # Polars method
+    df = df.with_columns(
+        [
+            (
+                df.select(bincol)
+                .lazy()
+                .collect()[bincol]
+                .cut(
+                    bins=list(bins),
+                    category_label=bincol + "_bin",
+                    maintain_order=True,
+                )
+                .get_column(bincol + "_bin")
+                .cast(pl.Int32)
+                - 1
+            )
+        ]
     )
 
     if sumcols is not None:
-        for col in sumcols:
-            # dfout = dfout.with_columns(
-            #     [pl.Series(col + "_sum", df[col].groupby(pdbins).sum().values) for col in sumcols]
-            # )
-            dfout[col + "_sum"] = df[col].groupby(pdbins).sum().values
+        aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols]
 
     if getcounts:
-        # dfout = dfout.with_columns([pl.Series("count", df[bincol].groupby(pdbins).count().values)])
-        dfout["count"] = df[bincol].groupby(pdbins).count().values
+        aggs.append(pl.col(bincol).count().alias("count"))
+
+    wlbins = df.groupby(bincol + "_bin").agg(aggs).lazy().collect()
+
+    # now we will include the empty bins
+    dfout = pl.DataFrame(pl.Series(bincol + "_bin", np.arange(0, len(bins) - 1), dtype=pl.Int32))
+    dfout = dfout.join(wlbins, how="left", on=bincol + "_bin").fill_null(0.0)
+
+    # pandas method
+
+    # dfout2 = pd.DataFrame({bincol + "_bin": np.arange(0, len(bins) - 1)})
+    # if isinstance(df, pl.DataFrame):
+    #     df2 = df.to_pandas(use_pyarrow_extension_array=True)
+
+    # pdbins = pd.cut(
+    #     x=df2[bincol],
+    #     bins=bins,
+    #     right=True,
+    #     labels=range(len(bins) - 1),
+    #     include_lowest=True,
+    # )
+
+    # if sumcols is not None:
+    #     for col in sumcols:
+    #         # dfout = dfout.with_columns(
+    #         #     [pl.Series(col + "_sum", df[col].groupby(pdbins).sum().values) for col in sumcols]
+    #         # )
+    #         dfout2[col + "_sum"] = df2[col].groupby(pdbins).sum().values
+    # if getcounts:
+    #     # dfout = dfout.with_columns([pl.Series("count", df[bincol].groupby(pdbins).count().values)])
+    #     dfout2["count"] = df2[bincol].groupby(pdbins).count().values
 
     return dfout

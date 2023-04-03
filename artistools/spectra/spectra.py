@@ -185,7 +185,7 @@ def get_from_packets(
             getcols.append("phibin")
         else:
             getcols.append("dirbin")
-    dfpackets = dfpackets.select(getcols).collect(streaming=True).lazy()
+    dfpackets = dfpackets.select(getcols).collect().lazy()
 
     dfdict = {}
     for dirbin in directionbins:
@@ -195,13 +195,13 @@ def get_from_packets(
         elif average_over_phi:
             assert not average_over_theta
             solidanglefactor = ncosthetabins
-            pldfpackets_dirbin_lazy = dfpackets.filter((pl.col("costhetabin") * 10 == dirbin))
+            pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("costhetabin") * 10 == dirbin)
         elif average_over_theta:
             solidanglefactor = nphibins
-            pldfpackets_dirbin_lazy = dfpackets.filter((pl.col("phibin") == dirbin))
+            pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("phibin") == dirbin)
         else:
             solidanglefactor = ndirbins
-            pldfpackets_dirbin_lazy = dfpackets.filter((pl.col("dirbin") == dirbin))
+            pldfpackets_dirbin_lazy = dfpackets.filter(pl.col("dirbin") == dirbin)
 
         pldfpackets_dirbin = pldfpackets_dirbin_lazy.with_columns(
             [(2.99792458e18 / pl.col("nu_rf")).alias("lambda_angstroms")]
