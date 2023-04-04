@@ -4,6 +4,7 @@ import argparse
 import math
 import multiprocessing
 import os
+import sys
 from pathlib import Path
 
 import matplotlib as mpl
@@ -40,7 +41,7 @@ def annotate_emission_line(ax, y, upperlevel, lowerlevel, label):
     )
 
 
-def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, dfpopthision, args, annotatelines):
+def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, dfpopthision, annotatelines):
     nne, Te, TR, W = (estimators_celltimestep[s] for s in ["nne", "Te", "TR", "W"])
     # comparison to Chianti file
     elsym = at.get_elsymbol(atomic_number)
@@ -86,7 +87,7 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
                         row = line.split()
                         try:
                             levelnum = levelnumofconfigterm[(row[1], row[2])]
-                            if levelnum in dfpopthision["level"].values:
+                            if levelnum in dfpopthision["level"].to_numpy():
                                 levelnums.append(levelnum)
                                 if firstdep < 0:
                                     firstdep = float(row[0])
@@ -127,7 +128,7 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
             # floers_levelnums = floers_levelpops['index'].values - 1
             floers_levelpops = floers_levelpops.sort_values(by="energypercm")
             floers_levelnums = list(range(len(floers_levelpops)))
-            floers_levelpop_values = floers_levelpops["frac_ionpop"].values * dfpopthision["n_NLTE"].sum()
+            floers_levelpop_values = floers_levelpops["frac_ionpop"].to_numpy() * dfpopthision["n_NLTE"].sum()
 
         floersmultizonefilename = None
         if modelpath.stem.startswith("w7_"):
@@ -157,7 +158,7 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
                 if abs(row["vel_outer"] - vel_outer) < 0.5:
                     print(f"  ARTIS cell vel_outter: {vel_outer}, Floersfile: {row['vel_outer']}")
                     print(f"  ARTIS cell Te: {T_e}, Floersfile: {row['Te']}")
-                    floers_levelpops = row.values[4:]
+                    floers_levelpops = row.to_numpy()[4:]
                     if len(dfpopthision["level"]) < len(floers_levelpops):
                         floers_levelpops = floers_levelpops[: len(dfpopthision["level"])]
                     floers_levelnums = list(range(len(floers_levelpops)))
@@ -375,7 +376,7 @@ def make_ionsubplot(
 
     if args.plotrefdata:
         plot_reference_data(
-            ax, atomic_number, ion_stage, estimators[(timestep, modelgridindex)], dfpopthision, args, annotatelines=True
+            ax, atomic_number, ion_stage, estimators[(timestep, modelgridindex)], dfpopthision, annotatelines=True
         )
 
 
@@ -461,7 +462,7 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ionstage, i
 
         if not args.modelgridindex:
             print("Please specify modelgridindex")
-            quit()
+            sys.exit(1)
 
         modelgridindex_list = np.ones_like(timesteps)
         modelgridindex_list = modelgridindex_list * int(args.modelgridindex[0])
@@ -753,13 +754,13 @@ def main(args=None, argsraw=None, **kwargs):
 
         # if not args.timedays:
         #     print("Please specify time range with -timedays")
-        #     quit()
+        #     sys.exit(1)
         if not args.ionstages:
             print("Please specify ionstage")
-            quit()
+            sys.exit(1)
         if not args.levels:
             print("Please specify levels")
-            quit()
+            sys.exit(1)
     else:
         modelpath = args.modelpath
 

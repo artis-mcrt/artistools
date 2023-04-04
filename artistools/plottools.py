@@ -1,10 +1,17 @@
+import sys
+
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import ticker
 
 from .configuration import get_config
 
-plt.style.use("file://" + str(get_config()["path_artistools_dir"] / "matplotlibrc"))
+
+def set_mpl_style() -> None:
+    plt.style.use("file://" + str(get_config()["path_artistools_dir"] / "matplotlibrc"))
+
+
+set_mpl_style()
 
 
 class ExponentLabelFormatter(ticker.ScalarFormatter):
@@ -138,7 +145,7 @@ def imshow_init_for_artis_grid(ngrid, vmax, plot_variable_3d_array, plot_axes="x
     plot_axes_choices = ["xy", "xz"]
     if plot_axes not in plot_axes_choices:
         print(f"Choose plot axes from {plot_axes_choices}")
-        quit()
+        sys.exit(1)
 
     for z in range(0, ngrid):
         for y in range(0, ngrid):

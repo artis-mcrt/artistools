@@ -299,7 +299,7 @@ def bolometric_magnitude(
             magnitudes.append(magnitude)
             times.append(time)
             # print(const.L_sun.to('erg/s').value)
-            # quit()
+            # sys.exit(1)
 
     return times, magnitudes
 

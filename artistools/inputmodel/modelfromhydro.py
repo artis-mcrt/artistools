@@ -4,6 +4,7 @@ import argparse
 import datetime
 import math
 import os.path
+import sys
 from pathlib import Path
 
 import argcomplete
@@ -77,9 +78,9 @@ def get_merger_time_geomunits(pathtogriddata: Path) -> float:
             mergertime_geomunits = float(fmergertimefile.readline())
             print(f"Found simulation merger time to be {mergertime_geomunits} ({mergertime_geomunits * 4.926e-6} s) ")
         return mergertime_geomunits
-    else:
-        print('Make file "tmerger.txt" with time of merger in geom units')
-        quit()
+
+    print('Make file "tmerger.txt" with time of merger in geom units')
+    sys.exit(1)
 
 
 def get_snapshot_time_geomunits(pathtogriddata: Path) -> tuple[float, float]:
@@ -88,11 +89,11 @@ def get_snapshot_time_geomunits(pathtogriddata: Path) -> tuple[float, float]:
     snapshotinfofiles = glob.glob(str(Path(pathtogriddata) / "*_info.dat*"))
     if not snapshotinfofiles:
         print("No info file found for dumpstep")
-        quit()
+        sys.exit(1)
 
     if len(snapshotinfofiles) > 1:
         print("Too many sfho_info.dat files found")
-        quit()
+        sys.exit(1)
     snapshotinfofile = Path(snapshotinfofiles[0])
 
     if snapshotinfofile.is_file():
@@ -109,7 +110,7 @@ def get_snapshot_time_geomunits(pathtogriddata: Path) -> tuple[float, float]:
 
     else:
         print("Could not find snapshot info file to get simulation time")
-        quit()
+        sys.exit(1)
 
     return simulation_end_time_geomunits, mergertime_geomunits
 
@@ -148,7 +149,7 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
         ngrid = int(gridfile.readline().split()[0])
         if ngrid != len(griddata["inputcellid"]):
             print("length of file and ngrid don't match")
-            quit()
+            sys.exit(1)
         extratime_geomunits = float(gridfile.readline().split()[0])
         xmax = abs(float(gridfile.readline().split()[0]))
         xmax = (xmax * factor_position) * (u.km).to(u.cm)
@@ -178,9 +179,9 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
         ncoordgridx = round(len(griddata) ** (1.0 / 3.0))
         xmax = -griddata.pos_x_min.min()
         wid_init = 2 * xmax / ncoordgridx
-        filter = np.logical_and(griddata.tracercount < minparticlespercell, griddata.rho > 0.0)
-        n_ignored = np.count_nonzero(filter)
-        mass_ignored = griddata.loc[filter].rho.sum() * wid_init**3 / 1.989e33
+        cellfilter = np.logical_and(griddata.tracercount < minparticlespercell, griddata.rho > 0.0)
+        n_ignored = np.count_nonzero(cellfilter)
+        mass_ignored = griddata.loc[cellfilter].rho.sum() * wid_init**3 / 1.989e33
         mass_orig = griddata.rho.sum() * wid_init**3 / 1.989e33
 
         print(

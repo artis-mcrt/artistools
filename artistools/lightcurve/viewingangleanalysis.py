@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
 import argparse
 import glob
 import os
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -273,7 +273,7 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, arg
             "Trying to calculate peak time / dm15 / rise time with no time range. "
             "This will give a stupid result. Specify args.timemin and args.timemax"
         )
-        quit()
+        sys.exit(1)
     print(
         "WARNING: Both methods that can be used to fit model light curves to get  "
         "light curve parameters (rise, decline, peak) can be impacted by how much "
@@ -417,7 +417,7 @@ def make_plot_test_viewing_angle_fit(
     plt.axvline(x=float(time_after15days_polyfit), color="black", linestyle="--")
     print("time after 15 days polyfit = ", time_after15days_polyfit)
     plt.tight_layout()
-    plt.savefig(f"{key}" + "_band_" + f"{modelname}" + "_viewing_angle" + str(angle) + ".png")
+    plt.savefig(f"{key}" + "_band_{modelname}" + "_viewing_angle" + str(angle) + ".png")
     plt.close()
 
 
@@ -633,7 +633,7 @@ def make_peak_colour_viewing_angle_plot(args):
         # Get brightness in second band at time of peak in first band
         if len(data[f"time_{bands[0]}max"]) != 100:
             print(f"All 100 angles are not in file {datafilename}. Quitting")
-            quit()
+            sys.exit(1)
 
         second_band_brightness = second_band_brightness_at_peak_first_band(data, bands, modelpath, modelnumber, args)
 

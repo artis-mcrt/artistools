@@ -4,6 +4,7 @@
 import argparse
 import math
 import os
+import sys
 from collections.abc import Collection
 from pathlib import Path
 from typing import Any
@@ -296,7 +297,7 @@ def plot_artis_spectrum(
                         f"Timestep out of range of virtual packets: start time {vpkt_config['initial_time']} days "
                         f"end time {vpkt_config['final_time']} days"
                     )
-                    quit()
+                    sys.exit(1)
 
                 viewinganglespectra = {
                     dirbin: get_vspecpol_spectrum(modelpath, timeavg, dirbin, args, fnufilterfunc=filterfunc)

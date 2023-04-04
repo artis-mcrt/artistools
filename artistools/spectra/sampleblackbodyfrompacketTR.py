@@ -123,7 +123,7 @@ for npacketfile in range(0, nprocs):
         #     print('initial df:')
         #     print((dfpackets[['escape_time', 'escape_time_d', 't_arrive_d', 'em_TR']]))
         #     print('\n\n\n')
-        #     # quit()
+        #     # sys.exit(1)
 
         for _df_index, row in dfpackets_timestep.iterrows():
             TR = row["em_TR"]

@@ -3,6 +3,7 @@ import argparse
 import math
 import multiprocessing
 import os
+import sys
 from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
@@ -266,7 +267,7 @@ def plot_artis_lightcurve(
     modelname = at.get_model_name(modelpath) if label is None else label
     if lcfilename is not None:
         modelname += f" {lcfilename}"
-    if modelname == "":
+    if not modelname:
         print("====> (no series label)")
     else:
         print(f"====> {modelname}")
@@ -516,7 +517,7 @@ def make_lightcurve_plot(
         for bolreflightcurve in args.reflightcurves:
             if args.Lsun:
                 print("Check units - trying to plot ref light curve in erg/s")
-                quit()
+                sys.exit(1)
             bollightcurve_data, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
             axis.scatter(
                 bollightcurve_data["time_days"],
@@ -704,7 +705,7 @@ def set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_
         ax.set_xlabel("Time Since Explosion [days]", fontsize=args.labelfontsize)
     if ylabel is None:
         print("failed to set ylabel")
-        quit()
+        sys.exit(1)
     return fig, ax
 
 
@@ -1596,7 +1597,7 @@ def main(args=None, argsraw=None, **kwargs):
     if args.brightnessattime:
         if args.timedays is None:
             print("Specify timedays")
-            quit()
+            sys.exit(1)
         if not args.plotviewingangle:
             args.plotviewingangle = [-1]
         if not args.colorbarcostheta and not args.colorbarphi:
