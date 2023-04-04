@@ -203,7 +203,7 @@ def average_direction_bins(
     dirbindataframesout: dict[int, pd.DataFrame] = {}
 
     for start_bin in start_bin_range:
-        dirbindataframesout[start_bin] = dirbindataframesout[start_bin].reset_index(drop=True)
+        dirbindataframesout[start_bin] = dirbindataframes[start_bin].reset_index(drop=True)
 
         contribbins = (
             range(start_bin + 1, start_bin + nphibins)
