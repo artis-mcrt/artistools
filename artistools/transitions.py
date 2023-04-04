@@ -68,8 +68,8 @@ def get_nist_transitions(filename):
                 else:
                     # continue
                     A = 1e8
-                lower_energy_ev, upper_energy_ev = [float(x.strip(" []")) for x in row[5].split("-")]
-                lower_g, upper_g = [float(x.strip()) for x in row[12].split("-")]
+                lower_energy_ev, upper_energy_ev = (float(x.strip(" []")) for x in row[5].split("-"))
+                lower_g, upper_g = (float(x.strip()) for x in row[12].split("-"))
                 translist.append(
                     transitiontuple(lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_g, upper_g)
                 )
@@ -182,7 +182,7 @@ def add_upper_lte_pop(dftransitions, T_exc, ionpop, ltepartfunc, columnname=None
     scalefactor = ionpop / ltepartfunc
     if columnname is None:
         columnname = f"upper_pop_lte_{T_exc:.0f}K"
-    dftransitions.eval(f"{columnname} = @scalefactor * upper_g * exp(-upper_energy_ev / @K_B / @T_exc)", inplace=True)
+    dftransitions = dftransitions.eval(f"{columnname} = @scalefactor * upper_g * exp(-upper_energy_ev / @K_B / @T_exc)")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -330,10 +330,7 @@ def main(args=None, argsraw=None, **kwargs):
     else:
         if not args.T:
             args.T = [2000]
-        if len(args.T) == 1:
-            figure_title = f"Te = {args.T[0]:.1f}"
-        else:
-            figure_title = None
+        figure_title = f"Te = {args.T[0]:.1f}" if len(args.T) == 1 else None
 
         temperature_list = []
         vardict = {}
@@ -377,32 +374,32 @@ def main(args=None, argsraw=None, **kwargs):
         )
 
         if not args.include_permitted and not dftransitions.empty:
-            dftransitions.query("forbidden == True", inplace=True)
+            dftransitions = dftransitions.query("forbidden == True")
             print(f"  ({len(ion.transitions):6d} forbidden)")
 
         if not dftransitions.empty:
             if args.atomicdatabase == "artis":
-                dftransitions.eval("upper_energy_ev = @ion.levels.loc[upper].energy_ev.values", inplace=True)
-                dftransitions.eval("lower_energy_ev = @ion.levels.loc[lower].energy_ev.values", inplace=True)
-                dftransitions.eval("lambda_angstroms = @hc / (upper_energy_ev - lower_energy_ev)", inplace=True)
+                dftransitions = dftransitions.eval("upper_energy_ev = @ion.levels.loc[upper].energy_ev.values")
+                dftransitions = dftransitions.eval("lower_energy_ev = @ion.levels.loc[lower].energy_ev.values")
+                dftransitions = dftransitions.eval("lambda_angstroms = @hc / (upper_energy_ev - lower_energy_ev)")
 
-            dftransitions.query(
-                "lambda_angstroms >= @plot_xmin_wide & lambda_angstroms <= @plot_xmax_wide", inplace=True
+            dftransitions = dftransitions.query(
+                "lambda_angstroms >= @plot_xmin_wide & lambda_angstroms <= @plot_xmax_wide"
             )
 
-            dftransitions.sort_values(by="lambda_angstroms", inplace=True)
+            dftransitions = dftransitions.sort_values(by="lambda_angstroms")
 
             print(f"  {len(dftransitions)} plottable transitions")
 
             if args.atomicdatabase == "artis":
-                dftransitions.eval("upper_g = @ion.levels.loc[upper].g.values", inplace=True)
+                dftransitions = dftransitions.eval("upper_g = @ion.levels.loc[upper].g.values")
                 K_B = const.k_B.to("eV / K").value
                 T_exc = vardict["Te"]
                 ltepartfunc = ion.levels.eval("g * exp(-energy_ev / @K_B / @T_exc)").sum()
             else:
                 ltepartfunc = 1.0
 
-            dftransitions.eval("flux_factor = (upper_energy_ev - lower_energy_ev) * A", inplace=True)
+            dftransitions = dftransitions.eval("flux_factor = (upper_energy_ev - lower_energy_ev) * A")
             add_upper_lte_pop(dftransitions, vardict["Te"], ionpopdict[ionid], ltepartfunc, columnname="upper_pop_Te")
 
             for seriesindex, temperature in enumerate(temperature_list):
@@ -420,8 +417,8 @@ def main(args=None, argsraw=None, **kwargs):
                     #     lambda x: nltepopdict.get(x.lower, 0.), axis=1)
 
                     popcolumnname = "upper_pop_nlte"
-                    dftransitions.eval(f"flux_factor_nlte = flux_factor * {popcolumnname}", inplace=True)
-                    dftransitions.eval("upper_departure = upper_pop_nlte / upper_pop_Te", inplace=True)
+                    dftransitions = dftransitions.eval(f"flux_factor_nlte = flux_factor * {popcolumnname}")
+                    dftransitions = dftransitions.eval("upper_departure = upper_pop_nlte / upper_pop_Te")
                     if ionid == (26, 2):
                         fe2depcoeff = dftransitions.query("upper == 16 and lower == 5").iloc[0].upper_departure
                     elif ionid == (28, 2):
@@ -432,7 +429,7 @@ def main(args=None, argsraw=None, **kwargs):
                 else:
                     popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
                     if args.atomicdatabase == "artis":
-                        dftransitions.eval("upper_g = @ion.levels.loc[upper].g.values", inplace=True)
+                        dftransitions = dftransitions.eval("upper_g = @ion.levels.loc[upper].g.values")
                         K_B = const.k_B.to("eV / K").value
                         ltepartfunc = ion.levels.eval("g * exp(-energy_ev / @K_B / @T_exc)").sum()
                     else:
@@ -440,7 +437,7 @@ def main(args=None, argsraw=None, **kwargs):
                     add_upper_lte_pop(dftransitions, T_exc, ionpopdict[ionid], ltepartfunc, columnname=popcolumnname)
 
                 if args.print_lines:
-                    dftransitions.eval(f"flux_factor_{popcolumnname} = flux_factor * {popcolumnname}", inplace=True)
+                    dftransitions = dftransitions.eval(f"flux_factor_{popcolumnname} = flux_factor * {popcolumnname}")
 
                 yvalues[seriesindex][ionindex] = generate_ion_spectrum(
                     dftransitions, xvalues, popcolumnname, plot_resolution, args
@@ -488,10 +485,11 @@ def main(args=None, argsraw=None, **kwargs):
             f"{estimators['populations'][(28, 3)] / estimators['populations'][(28, 2)]:5.2f}"
         )
 
-    if from_model:
-        outputfilename = str(args.outputfile).format(cell=modelgridindex, timestep=timestep, time_days=time_days)
-    else:
-        outputfilename = "plottransitions.pdf"
+    outputfilename = (
+        str(args.outputfile).format(cell=modelgridindex, timestep=timestep, time_days=time_days)
+        if from_model
+        else "plottransitions.pdf"
+    )
 
     make_plot(
         xvalues,

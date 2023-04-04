@@ -115,7 +115,7 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
             arr_ionisation_ion = np.zeros(len(arr_enev), dtype=float)
             frac_ionisation_ion = 0.0
 
-            for index, row in dfcollion_thision.iterrows():
+            for _index, row in dfcollion_thision.iterrows():
                 arr_xs = at.nonthermal.get_arxs_array_shell(arr_enev, row)
                 arr_ionisation_shell = ionpop * arr_y * arr_xs * row.ionpot_ev / total_depev
                 arr_ionisation_ion += arr_ionisation_shell

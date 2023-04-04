@@ -650,7 +650,7 @@ def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[Any]:
     strparts = rng.split("-")
 
     if len(strparts) not in [1, 2]:
-        raise ValueError("Bad range: '%s'" % (rng,))
+        raise ValueError("Bad range: '{}'".format(rng))
 
     parts = [int(i) if i not in dictvars else dictvars[i] for i in strparts]
     start: int = parts[0]

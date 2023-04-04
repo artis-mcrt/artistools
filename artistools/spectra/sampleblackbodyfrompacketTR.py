@@ -97,7 +97,7 @@ nprocs = at.get_nprocs(modelpath)
 for npacketfile in range(0, nprocs):
     dfpackets = at.packets.readfile(packetsfiles[npacketfile])  # , type='TYPE_ESCAPE', escape_type='TYPE_RPKT')
     dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
-    dfpackets.query(f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids["TYPE_RPKT"]}', inplace=True)
+    dfpackets = dfpackets.query(f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids["TYPE_RPKT"]}')
 
     # print(max(dfpackets['t_arrive_d']))
     # print(dfpackets)
@@ -125,7 +125,7 @@ for npacketfile in range(0, nprocs):
         #     print('\n\n\n')
         #     # quit()
 
-        for df_index, row in dfpackets_timestep.iterrows():
+        for _df_index, row in dfpackets_timestep.iterrows():
             TR = row["em_TR"]
             # if TR not in [100, 140000]:
 

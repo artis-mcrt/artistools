@@ -132,7 +132,7 @@ def get_particles_recomb_nuc_energy(traj_root, dfbinding):
     ye_list = []
     elecbinding_en_list = []
     nuclear_released_en_list = []
-    for particleid, ye, pmass in dfsnapshot[["id", "ye", "pmass"]].itertuples(index=False):
+    for particleid, ye, _pmass in dfsnapshot[["id", "ye", "pmass"]].itertuples(index=False):
         try:
             elecbinding_en = get_particle_elec_binding_energy_per_gram(
                 traj_root=traj_root, dictbinding=dictbinding, particleid=particleid, time_s=time_s

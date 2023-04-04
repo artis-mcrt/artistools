@@ -70,7 +70,7 @@ def calculate_timebinned_packet_sum(dfpackets, timearrayplusend):
 
 def get_line_fluxes_from_packets(
     emtypecolumn, emfeatures, modelpath, maxpacketfiles=None, arr_tstart=None, arr_tend=None
-):
+) -> pd.DataFrame:
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times_float(modelpath, loc="start")
     if arr_tend is None:
@@ -111,7 +111,7 @@ def get_line_fluxes_from_packets(
     return lcdata
 
 
-def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=None, arr_tend=None):
+def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=None, arr_tend=None) -> pd.DataFrame:
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times_float(modelpath, loc="start")
     if arr_tend is None:
@@ -210,13 +210,13 @@ def get_closelines(
     dflinelist = at.get_linelist_dataframe(modelpath)
     dflinelistclosematches = dflinelist.query("atomic_number == @atomic_number and ionstage == @ion_stage").copy()
     if lambdamin > 0:
-        dflinelistclosematches.query("@lambdamin < lambda_angstroms", inplace=True)
+        dflinelistclosematches = dflinelistclosematches.query("@lambdamin < lambda_angstroms")
     if lambdamax > 0:
-        dflinelistclosematches.query("@lambdamax > lambda_angstroms", inplace=True)
+        dflinelistclosematches = dflinelistclosematches.query("@lambdamax > lambda_angstroms")
     if lowerlevelindex >= 0:
-        dflinelistclosematches.query("lowerlevelindex==@lowerlevelindex", inplace=True)
+        dflinelistclosematches = dflinelistclosematches.query("lowerlevelindex==@lowerlevelindex")
     if upperlevelindex >= 0:
-        dflinelistclosematches.query("upperlevelindex==@upperlevelindex", inplace=True)
+        dflinelistclosematches = dflinelistclosematches.query("upperlevelindex==@upperlevelindex")
     # print(dflinelistclosematches)
 
     linelistindices = tuple(dflinelistclosematches.index.values)
@@ -300,7 +300,7 @@ def make_flux_ratio_plot(args):
     pd.set_option("display.width", 150)
     pd.options.display.max_rows = 500
 
-    for seriesindex, (modelpath, modellabel, modelcolor) in enumerate(zip(args.modelpath, args.label, args.color)):
+    for _seriesindex, (modelpath, modellabel, modelcolor) in enumerate(zip(args.modelpath, args.label, args.color)):
         print(f"====> {modellabel}")
 
         emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
@@ -319,7 +319,7 @@ def make_flux_ratio_plot(args):
                 arr_tend=args.timebins_tend,
             )
 
-        dflcdata.eval(f"fratio = {emfeatures[1].colname} / {emfeatures[0].colname}", inplace=True)
+        dflcdata = dflcdata.eval(f"fratio = {emfeatures[1].colname} / {emfeatures[0].colname}")
         axis.set_ylabel(
             r"F$_{\mathrm{" + emfeatures[1].featurelabel + r"}}$ / F$_{\mathrm{" + emfeatures[0].featurelabel + r"}}$"
         )
@@ -330,7 +330,7 @@ def make_flux_ratio_plot(args):
 
         axis.plot(
             dflcdata.time,
-            dflcdata["fratio"],
+            dflcdata.fratio,
             label=modellabel,
             marker="x",
             lw=0,
@@ -358,7 +358,7 @@ def make_flux_ratio_plot(args):
         )
 
         amodels = {}
-        for index, row in femis.iterrows():
+        for _index, row in femis.iterrows():
             modelname = row.file.replace("fig-nne_Te_allcells-", "").replace(f"-{row.epoch}d.txt", "")
             if modelname not in amodels:
                 amodels[modelname] = ([], [])
@@ -514,17 +514,17 @@ def plot_nne_te_points(axis, serieslabel, em_log10nne, em_Te, normtotalpackets, 
 def plot_nne_te_bars(axis, serieslabel, em_log10nne, em_Te, color):
     if len(em_log10nne) == 0:
         return
-    errorbarkwargs = dict(
-        xerr=np.std(em_log10nne),
-        yerr=np.std(em_Te),
-        color="black",
-        markersize=10.0,
-        fillstyle="full",
-        capthick=4,
-        capsize=15,
-        linewidth=4.0,
-        alpha=1.0,
-    )
+    errorbarkwargs = {
+        "xerr": np.std(em_log10nne),
+        "yerr": np.std(em_Te),
+        "color": "black",
+        "markersize": 10.0,
+        "fillstyle": "full",
+        "capthick": 4,
+        "capsize": 15,
+        "linewidth": 4.0,
+        "alpha": 1.0,
+    }
     # black larger one for an outline
     axis.errorbar(np.mean(em_log10nne), np.mean(em_Te), **errorbarkwargs)
     errorbarkwargs["markersize"] -= 2
@@ -555,7 +555,7 @@ def make_emitting_regions_plot(args):
             floers_te_nne = json.loads(data_file.read())
 
         # give an ordering and index to dict items
-        refdatakeys[refdataindex] = [t for t in sorted(floers_te_nne.keys(), key=float)]  # strings, not floats
+        refdatakeys[refdataindex] = sorted(floers_te_nne.keys(), key=float)  # strings, not floats
         refdatatimes[refdataindex] = np.array([float(t) for t in refdatakeys[refdataindex]])
         refdatapoints[refdataindex] = [floers_te_nne[t] for t in refdatakeys[refdataindex]]
         print(f"{refdatafilename} data available for times: {list(refdatatimes[refdataindex])}")
@@ -656,7 +656,7 @@ def make_emitting_regions_plot(args):
                 tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.2},
             )
 
-            for refdataindex, f in enumerate(refdatafilenames):
+            for refdataindex, _f in enumerate(refdatafilenames):
                 timeindex = np.abs(refdatatimes[refdataindex] - tmid).argmin()
                 axis.plot(
                     refdatapoints[refdataindex][timeindex]["ne"],

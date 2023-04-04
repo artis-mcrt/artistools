@@ -145,8 +145,8 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
         with at.zopen(phixs_filename) as fphixs:
             for (
                 Z,
-                upperionstage,
-                upperionlevel,
+                _upperionstage,
+                _upperionlevel,
                 lowerionstage,
                 lowerionlevel,
                 phixstargetlist,
@@ -171,12 +171,12 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
 
 def parse_recombratefile(frecomb):
     for line in frecomb:
-        Z, upper_ionstage, t_count = [int(x) for x in line.split()]
+        Z, upper_ionstage, t_count = (int(x) for x in line.split())
         arr_log10t = []
         arr_rrc_low_n = []
         arr_rrc_total = []
         for _ in range(int(t_count)):
-            log10t, rrc_low_n, rrc_total = [float(x) for x in frecomb.readline().split()]
+            log10t, rrc_low_n, rrc_total = (float(x) for x in frecomb.readline().split())
 
             arr_log10t.append(log10t)
             arr_rrc_low_n.append(rrc_low_n)
@@ -186,7 +186,7 @@ def parse_recombratefile(frecomb):
             {"log10T_e": arr_log10t, "rrc_low_n": arr_rrc_low_n, "rrc_total": arr_rrc_total}
         )
 
-        recombdata_thision.eval("T_e = 10 ** log10T_e", inplace=True)
+        recombdata_thision = recombdata_thision.eval("T_e = 10 ** log10T_e")
 
         yield Z, upper_ionstage, recombdata_thision
 

@@ -150,20 +150,16 @@ def read_files(files, modelgridindex=None, timestepmin=None, timestepmax=None, a
             df_thisfile = pd.read_csv(filepath, delim_whitespace=True)
             # df_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
             if modelgridindex:
-                df_thisfile.query("modelgridindex==@modelgridindex", inplace=True)
+                df_thisfile = df_thisfile.query("modelgridindex==@modelgridindex")
             if timestepmin is not None:
-                df_thisfile.query("timestep>=@timestepmin", inplace=True)
+                df_thisfile = df_thisfile.query("timestep>=@timestepmin")
             if timestepmax:
-                df_thisfile.query("timestep<=@timestepmax", inplace=True)
+                df_thisfile = df_thisfile.query("timestep<=@timestepmax")
             if atomic_number:
-                df_thisfile.query("Z==@atomic_number", inplace=True)
+                df_thisfile = df_thisfile.query("Z==@atomic_number")
 
-            if df_thisfile is not None:
-                if len(df_thisfile) > 0:
-                    if dfall is None:
-                        dfall = df_thisfile.copy()
-                    else:
-                        dfall = dfall.append(df_thisfile.copy(), ignore_index=True)
+            if df_thisfile is not None and len(df_thisfile) > 0:
+                dfall = df_thisfile.copy() if dfall is None else dfall.append(df_thisfile.copy(), ignore_index=True)
 
         if dfall is None or len(dfall) == 0:
             print("No data found")

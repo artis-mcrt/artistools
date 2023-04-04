@@ -16,7 +16,7 @@ def test_commands():
     import importlib
 
     # ensure that the commands are pointing to valid submodule.function() targets
-    for command, (submodulename, funcname) in sorted(at.commands.get_commandlist().items()):
+    for _command, (submodulename, funcname) in sorted(at.commands.get_commandlist().items()):
         submodule = importlib.import_module(submodulename, package="artistools")
         assert hasattr(submodule, funcname)
 
@@ -30,7 +30,7 @@ def test_timestep_times():
     assert math.isclose(float(timemidarray[-1]), 349.412, abs_tol=1e-3)
 
     assert all(
-        [tstart < tmid < (tstart + tdelta) for tstart, tdelta, tmid in zip(timestartarray, timedeltarray, timemidarray)]
+        tstart < tmid < (tstart + tdelta) for tstart, tdelta, tmid in zip(timestartarray, timedeltarray, timemidarray)
     )
 
 

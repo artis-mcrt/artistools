@@ -62,11 +62,11 @@ def main(args=None, argsraw=None, **kwargs):
     )
 
     normfactor = dfsolarabund_undecayed.numberfrac.sum()  # convert number fractions in solar to fractions of r-process
-    dfsolarabund_undecayed.eval("numberfrac = numberfrac / @normfactor", inplace=True)
+    dfsolarabund_undecayed = dfsolarabund_undecayed.eval("numberfrac = numberfrac / @normfactor")
 
-    dfsolarabund_undecayed.eval("massfrac = numberfrac * A", inplace=True)
+    dfsolarabund_undecayed = dfsolarabund_undecayed.eval("massfrac = numberfrac * A")
     massfracnormfactor = dfsolarabund_undecayed.massfrac.sum()
-    dfsolarabund_undecayed.eval("massfrac = massfrac / @massfracnormfactor", inplace=True)
+    dfsolarabund_undecayed = dfsolarabund_undecayed.eval("massfrac = massfrac / @massfracnormfactor")
 
     # print(dfsolarabund_undecayed)
 
@@ -83,26 +83,24 @@ def main(args=None, argsraw=None, **kwargs):
         dfdensities["velocity_inner"] = np.concatenate(([0.0], dfdensities["velocity_outer"].values[:-1]))
 
         t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
-        dfdensities.eval(
+        dfdensities = dfdensities.eval(
             (
                 "cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
                 "* (1e5 * @t_model_init_seconds_in) ** 3"
             ),
-            inplace=True,
         )
 
         # now replace the density at the input time with the density at required time
 
-        dfdensities.eval(
+        dfdensities = dfdensities.eval(
             (
                 "rho = cellmass_grams / ("
                 "4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
                 " * (1e5 * @t_model_init_seconds) ** 3)"
             ),
-            inplace=True,
         )
     else:
-        dfdensities = pd.DataFrame(dict(rho=10**-3, velocity_outer=6.0e4), index=[0])
+        dfdensities = pd.DataFrame({"rho": 10**-3, "velocity_outer": 6.0e4}, index=[0])
 
     # print(dfdensities)
     cellcount = len(dfdensities)

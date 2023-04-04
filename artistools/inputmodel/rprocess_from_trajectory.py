@@ -63,7 +63,7 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
                     return io.StringIO(extractedfile.read().decode("utf-8"))
 
     print(f"Member {memberfilename} not found in {tarfilepath}")
-    assert False
+    raise AssertionError
 
 
 @lru_cache(maxsize=16)
@@ -102,7 +102,7 @@ def get_closest_network_timestep(
         return dfevol.query("timesec < @timesec").nstep.max()
 
     else:
-        assert False
+        raise AssertionError
 
     nts: int = dfevol.nstep.values[idx]
 
@@ -261,9 +261,9 @@ def get_modelcellabundance(
     # adjust frac_of_cellmass for missing particles
     cell_frac_sum = sum([frac_of_cellmass for _, frac_of_cellmass in contribparticles])
 
-    nucabundcolnames = set(
-        [col for particleid in dfthiscellcontribs.particleid for col in dict_traj_nuc_abund.get(particleid, {}).keys()]
-    )
+    nucabundcolnames = {
+        col for particleid in dfthiscellcontribs.particleid for col in dict_traj_nuc_abund.get(particleid, {})
+    }
 
     row = {
         nucabundcolname: sum(
@@ -541,12 +541,11 @@ def main(args=None, argsraw=None, **kwargs):
         dfdensities["velocity_inner"] = np.concatenate(([0.0], dfdensities["velocity_outer"].values[:-1]))
 
         t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
-        dfdensities.eval(
+        dfdensities = dfdensities.eval(
             (
                 "cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
                 "* (1e5 * @t_model_init_seconds_in) ** 3"
             ),
-            inplace=True,
         )
 
         # now replace the density at the input time with the density at required time

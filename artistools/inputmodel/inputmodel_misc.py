@@ -64,7 +64,7 @@ def read_modelfile(
                 dimensions = 3
             elif dimensions != 3:
                 print(f" {dimensions} were specified but file appears to be 3D")
-                assert False
+                raise AssertionError from None
 
         except ValueError:
             if dimensions is None:
@@ -73,7 +73,7 @@ def read_modelfile(
                 dimensions = 1
             elif dimensions != 1:
                 print(f" {dimensions} were specified but file appears to be 1D")
-                assert False
+                raise AssertionError from None
 
             fmodel.seek(filepos)  # undo the readline() and go back
 
@@ -121,7 +121,7 @@ def read_modelfile(
                 ][:ncols_line_even]
             else:
                 # TODO: 2D case
-                assert False
+                raise AssertionError
 
         if ncols_line_even == len(columns):
             if not printwarningsonly:
@@ -732,7 +732,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> U
         return float("nan")
     else:
         print(f"Can't find cell with velocity of {velocity}. Velocity list: {arr_vouter}")
-        assert False
+        raise AssertionError
 
 
 @lru_cache(maxsize=8)
@@ -834,7 +834,7 @@ def sphericalaverage(
 
     # dfmodel = dfmodel.query('rho > 0.').copy()
     dfmodel = dfmodel.copy()
-    celldensity = {cellindex: rho for cellindex, rho in dfmodel[["inputcellid", "rho"]].itertuples(index=False)}
+    celldensity = dict(dfmodel[["inputcellid", "rho"]].itertuples(index=False))
 
     dfmodel = add_derived_cols_to_modeldata(
         dfmodel, ["velocity"], dimensions=3, t_model_init_seconds=t_model_init_seconds, wid_init=wid_init

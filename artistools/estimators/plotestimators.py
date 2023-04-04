@@ -347,7 +347,7 @@ def plot_multi_ion_series(
             elif args.ionpoptype == "totalpop":
                 ax.set_ylabel(r"X$_{i}$/X$_{rm tot}$")
             else:
-                assert False
+                raise AssertionError
         else:
             ax.set_ylabel(at.estimators.get_dictlabelreplacements().get(seriestype, seriestype))
 
@@ -383,7 +383,7 @@ def plot_multi_ion_series(
                         totalpop = estimpop["total"]
                         yvalue = nionpop / totalpop  # Plot as fraction of total population
                     else:
-                        assert False
+                        raise AssertionError
                 except ZeroDivisionError:
                     yvalue = 0.0
 

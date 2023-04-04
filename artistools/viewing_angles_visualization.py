@@ -180,15 +180,15 @@ def main(
         animation_frame="Angle-bin",
         hover_name="Angle-bin",
     )
-    fig.update_traces(line=dict(width=linewidth))
+    fig.update_traces(line={"width": linewidth})
     fig.update_layout(
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-        )
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "right",
+            "x": 1,
+        }
     )
 
     fig = fig.add_trace(

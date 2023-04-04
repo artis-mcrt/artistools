@@ -40,7 +40,7 @@ def get_modelgridcells_2D_slice(modeldata, modelpath):
 def get_mgi_of_modeldata(modeldata, modelpath):
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
     readonly_mgi = []
-    for index, row in modeldata.iterrows():
+    for _index, row in modeldata.iterrows():
         if row["rho"] > 0:
             mgi = mgi_of_propcells[int(row["inputcellid"]) - 1]
             readonly_mgi.append(mgi)
@@ -124,7 +124,14 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
     mesh = pv.StructuredGrid(x, y, z)
     mesh["Te [K]"] = grid_Te.ravel(order="F")
 
-    sargs = dict(height=0.75, vertical=True, position_x=0.02, position_y=0.1, title_font_size=22, label_font_size=25)
+    sargs = {
+        "height": 0.75,
+        "vertical": True,
+        "position_x": 0.02,
+        "position_y": 0.1,
+        "title_font_size": 22,
+        "label_font_size": 25,
+    }
 
     pv.set_plot_theme("document")  # set white background
     p = pv.Plotter()

@@ -288,7 +288,7 @@ def rd_sn_hydro_data(file, ncol=8, reverse=False, quiet=False):
         absdiff = np.abs(specfrac[:, spec.index(s)] - sumisofrac)
         relabsdiff = absdiff / sumisofrac
         if np.max(relabsdiff) > MAX_POP_DIFF:
-            sys.exit("ERROR - Maximum absolute difference > MAX_POP_DIFF for species {0:s}".format(s))
+            sys.exit("ERROR - Maximum absolute difference > MAX_POP_DIFF for species {:s}".format(s))
 
     # reversed vectors if reverse=True
     if reverse:

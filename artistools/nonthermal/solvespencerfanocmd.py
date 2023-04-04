@@ -24,12 +24,12 @@ def make_ntstats_plot(ntstatfile: Union[str, Path]) -> None:
     )
 
     dfstats = pd.read_csv(ntstatfile, delim_whitespace=True, escapechar="#")
-    dfstats.fillna(0, inplace=True)
+    dfstats = dfstats.fillna(0)
 
     norm_frac_sum = False
     if norm_frac_sum:
         # scale up (or down) ionisation, excitation, and heating to force frac_sum = 1.0
-        dfstats.eval("frac_sum = frac_ionization + frac_excitation + frac_heating", inplace=True)
+        dfstats = dfstats.eval("frac_sum = frac_ionization + frac_excitation + frac_heating")
         norm_factors = 1.0 / dfstats["frac_sum"]
     else:
         norm_factors = 1.0
@@ -366,6 +366,8 @@ def main(args=None, argsraw=None, **kwargs):
 
     if args.ostat:
         make_ntstats_plot(args.ostat)
+        return None
+    return None
 
 
 if __name__ == "__main__":

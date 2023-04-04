@@ -729,7 +729,7 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
         if not args.filter and args.plotviewingangle:
             lcdataframes = lightcurve_data
 
-        for index, angle in enumerate(angles):
+        for _index, angle in enumerate(angles):
             modelname = at.get_model_name(modelpath)
             modelnames.append(modelname)  # save for later
             print(f"Reading spectra: {modelname}")
@@ -743,7 +743,7 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
             if not args.filter:
                 plottinglist = ["lightcurve"]
 
-            for plotnumber, band_name in enumerate(plottinglist):
+            for _plotnumber, band_name in enumerate(plottinglist):
                 if args.filter:
                     time, brightness = at.lightcurve.get_band_lightcurve(lightcurve_data, band_name, args)
                 else:

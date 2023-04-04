@@ -48,7 +48,7 @@ def plot_polarisation(modelpath: Path, args) -> None:
     timeavg = (args.timemin + args.timemax) / 2.0
 
     def match_closest_time(reftime):
-        return str("{0:.4f}".format(min([float(x) for x in timearray], key=lambda x: abs(x - reftime))))
+        return str("{:.4f}".format(min([float(x) for x in timearray], key=lambda x: abs(x - reftime))))
 
     timeavg = match_closest_time(timeavg)
 
@@ -153,7 +153,7 @@ def plot_reference_spectrum(
         # specdata = scipy.signal.resample(specdata, 10000)
         # specdata = specdata.iloc[::3, :].copy()
         print(f" downsampling to {len(specdata)} points")
-        specdata.query("index % 3 == 0", inplace=True)
+        specdata = specdata.query("index % 3 == 0")
 
     # clamp negative values to zero
     # specdata['f_lambda'] = specdata['f_lambda'].apply(lambda x: max(0, x))

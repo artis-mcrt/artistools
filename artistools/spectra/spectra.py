@@ -881,7 +881,7 @@ def get_flux_contributions_from_packets(
         "emissiontype" if useinternalpackets else "emissiontype" if use_lastemissiontype else "trueemissiontype"
     )
 
-    for index, packetsfile in enumerate(packetsfiles):
+    for _index, packetsfile in enumerate(packetsfiles):
         if useinternalpackets:
             # if we're using packets*.out files, these packets are from the last timestep
             t_seconds = at.get_timestep_times_float(modelpath, loc="start")[-1] * 86400.0
@@ -1061,7 +1061,7 @@ def sort_and_reduce_flux_contribution_list(
         greylist = [str(x) for x in np.linspace(0.4, 0.9, colorcount, endpoint=True)]
         color_list = []
         for c in range(colorcount):
-            for h in hatches:
+            for _h in hatches:
                 color_list.append(greylist[c])
         # color_list = list(plt.get_cmap('tab20')(np.linspace(0, 1.0, 20)))
         mpl.rcParams["hatch.linewidth"] = 0.1

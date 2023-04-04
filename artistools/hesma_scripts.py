@@ -54,7 +54,7 @@ def plothesmaresspec(fig, ax):
         column_names[0] = "lambda"
         print(column_names)
 
-        for i, res_spec in enumerate(res_specdata):
+        for i, _res_spec in enumerate(res_specdata):
             res_specdata[i] = res_specdata[i].rename(columns=column_names).drop(res_specdata[i].index[0])
 
         ax.plot(res_specdata[0]["lambda"], res_specdata[0][11.7935] * (1e-5) ** 2, label="hesma 0")

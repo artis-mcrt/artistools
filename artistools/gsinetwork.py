@@ -442,7 +442,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
 
     dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath)
     if "logrho" not in dfmodel.columns:
-        dfmodel.eval("logrho = log10(rho)", inplace=True)
+        dfmodel = dfmodel.eval("logrho = log10(rho)")
     model_mass_grams = dfmodel.cellmass_grams.sum()
     npts_model = len(dfmodel)
 
@@ -456,8 +456,8 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     dfmodel["n_assoc_cells"] = [len(assoc_cells.get(inputcellid - 1, [])) for inputcellid in dfmodel["inputcellid"]]
 
     # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
-    dfmodel.eval("cellmass_grams_mapped = 10 ** logrho * @wid_init ** 3 * n_assoc_cells", inplace=True)
-    for strnuc, a in zip(arr_strnuc, arr_a):
+    dfmodel = dfmodel.eval("cellmass_grams_mapped = 10 ** logrho * @wid_init ** 3 * n_assoc_cells")
+    for strnuc in arr_strnuc:
         corr = (
             dfmodel.eval(f"X_{strnuc} * cellmass_grams_mapped").sum()
             / dfmodel.eval(f"X_{strnuc} * cellmass_grams").sum()

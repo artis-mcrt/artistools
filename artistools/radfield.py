@@ -47,10 +47,10 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
             # radfielddata_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
 
             if timestep >= 0:
-                radfielddata_thisfile.query("timestep==@timestep", inplace=True)
+                radfielddata_thisfile = radfielddata_thisfile.query("timestep==@timestep")
 
             if modelgridindex >= 0:
-                radfielddata_thisfile.query("modelgridindex==@modelgridindex", inplace=True)
+                radfielddata_thisfile = radfielddata_thisfile.query("modelgridindex==@modelgridindex")
 
             if not radfielddata_thisfile.empty:
                 if timestep >= 0 and modelgridindex >= 0:
@@ -218,8 +218,8 @@ def plot_line_estimators(axis, radfielddata, xmin, xmax, modelgridindex=None, ti
         + (" & timestep==@timestep" if timestep else "")
     )[["nu_upper", "J_nu_avg"]]
 
-    radfielddataselected.eval("lambda_angstroms = 2.99792458e18 / nu_upper", inplace=True)
-    radfielddataselected.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18", inplace=True)
+    radfielddataselected = radfielddataselected.eval("lambda_angstroms = 2.99792458e18 / nu_upper")
+    radfielddataselected = radfielddataselected.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
 
     ymax = radfielddataselected["Jb_lambda"].max()
 
@@ -353,7 +353,7 @@ def get_recombination_emission(
 
     if use_lte_pops:
         upper_level_popfactor_sum = 0
-        for upperlevelnum, upperlevel in lower_ion_data.levels[:200].iterrows():
+        for _upperlevelnum, upperlevel in lower_ion_data.levels[:200].iterrows():
             upper_level_popfactor_sum += upperlevel.g * math.exp(-upperlevel.energy_ev * EV / KB / T_e)
     else:
         dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
@@ -611,12 +611,10 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
         )
         axes[2].plot(arraylambda_angstrom_em, array_jlambda_emission_total, label="Internal radfield from packets")
 
-        fieldlist += list(
-            [
-                (arraylambda_angstrom_em, contribrow.array_flambda_emission, contribrow.linelabel)
-                for contribrow in contribution_list
-            ]
-        )
+        fieldlist += [
+            (arraylambda_angstrom_em, contribrow.array_flambda_emission, contribrow.linelabel)
+            for contribrow in contribution_list
+        ]
         fieldlist += [(arraylambda_angstrom_em, array_jlambda_emission_total, "Total emission")]
 
     # fieldlist += [(arr_lambda_fitted, j_lambda_fitted, 'binned field')]
@@ -666,7 +664,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
 
 
 def get_binedges(radfielddata):
-    return [2.99792458e18 / radfielddata["nu_lower"].iloc[1]] + list(2.99792458e18 / radfielddata["nu_upper"][1:])
+    return [2.99792458e18 / radfielddata["nu_lower"].iloc[1], *list(2.99792458e18 / radfielddata["nu_upper"][1:])]
 
 
 def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridindex, args, normalised=False):
@@ -783,7 +781,7 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
 
     axis.set_xlabel(r"Wavelength ($\mathrm{{\AA}}$)")
     axis.set_ylabel(r"J$_\lambda$ [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]")
-    import matplotlib.ticker as ticker
+    from matplotlib import ticker
 
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
     axis.set_xlim(left=xmin, right=xmax)
@@ -812,7 +810,9 @@ def plot_bin_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex,
         lambda x: j_nu_dbb([nu_line], x.W, x.T_R)[0], axis=1
     )
 
-    radfielddataselected.eval("Jb_lambda_at_line = Jb_nu_at_line * (@nu_line ** 2) / 2.99792458e18", inplace=True)
+    radfielddataselected = radfielddataselected.eval(
+        "Jb_lambda_at_line = Jb_nu_at_line * (@nu_line ** 2) / 2.99792458e18"
+    )
     lambda_angstroms = 2.99792458e18 / nu_line
 
     radfielddataselected.plot(
@@ -831,8 +831,8 @@ def plot_global_fitted_field_evolution(axis, radfielddata, nu_line, modelgridind
         lambda x: j_nu_dbb([nu_line], x.W, x.T_R)[0], axis=1
     )
 
-    radfielddataselected.eval(
-        "J_lambda_fullspec_at_line = J_nu_fullspec_at_line * (@nu_line ** 2) / 2.99792458e18", inplace=True
+    radfielddataselected = radfielddataselected.eval(
+        "J_lambda_fullspec_at_line = J_nu_fullspec_at_line * (@nu_line ** 2) / 2.99792458e18"
     )
     lambda_angstroms = 2.99792458e18 / nu_line
 
@@ -856,8 +856,8 @@ def plot_line_estimator_evolution(
         + (" & timestep <= @timestep_max" if timestep_max else "")
     )[["timestep", "nu_upper", "J_nu_avg"]]
 
-    radfielddataselected.eval("lambda_angstroms = 2.99792458e18 / nu_upper", inplace=True)
-    radfielddataselected.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18", inplace=True)
+    radfielddataselected = radfielddataselected.eval("lambda_angstroms = 2.99792458e18 / nu_upper")
+    radfielddataselected = radfielddataselected.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
 
     axis.plot(
         radfielddataselected["timestep"],
@@ -890,9 +890,9 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
     time_days = float(at.get_timestep_time(modelpath, timestep))
 
     dftopestimators = radfielddataselected.query("timestep==@timestep and bin_num < -1").copy()
-    dftopestimators.eval("lambda_angstroms = 2.99792458e18 / nu_upper", inplace=True)
-    dftopestimators.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18", inplace=True)
-    dftopestimators.sort_values(by="Jb_lambda", ascending=False, inplace=True)
+    dftopestimators = dftopestimators.eval("lambda_angstroms = 2.99792458e18 / nu_upper")
+    dftopestimators = dftopestimators.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
+    dftopestimators = dftopestimators.sort_values(by="Jb_lambda", ascending=False)
     dftopestimators = dftopestimators.iloc[0:nlinesplotted]
 
     print(f"Top estimators at timestep {timestep} t={time_days:.1f}")
@@ -983,10 +983,11 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    if args.xaxis == "lambda":
-        defaultoutputfile = Path("plotradfield_cell{modelgridindex:03d}_ts{timestep:03d}.pdf")
-    else:
-        defaultoutputfile = Path("plotradfield_cell{modelgridindex:03d}_evolution.pdf")
+    defaultoutputfile = (
+        Path("plotradfield_cell{modelgridindex:03d}_ts{timestep:03d}.pdf")
+        if args.xaxis == "lambda"
+        else Path("plotradfield_cell{modelgridindex:03d}_evolution.pdf")
+    )
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
