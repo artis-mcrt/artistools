@@ -995,10 +995,10 @@ def main(args=None, argsraw=None, **kwargs):
         print("No timesteps with data are included")
         return
 
-    if args.plotlist:
-        plotlist = args.plotlist
-    else:
-        plotlist = [
+    plotlist = (
+        args.plotlist
+        if args.plotlist
+        else [
             # [['initabundances', ['Fe', 'Ni_stable', 'Ni_56']]],
             # ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
             #  ['_yscale', 'linear']],
@@ -1031,6 +1031,7 @@ def main(args=None, argsraw=None, **kwargs):
             # [['Alpha_R / RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni III']]],
             # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
         ]
+    )
 
     if args.recombrates:
         plot_recombrates(modelpath, estimators, 26, [2, 3, 4, 5])
