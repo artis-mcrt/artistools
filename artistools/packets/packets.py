@@ -245,9 +245,9 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
             infer_schema_length=10000,
         )
 
-    except Exception as exc:
+    except Exception:
         print(f"Error occured in file {packetsfile}")
-        raise exc
+        raise
 
     dfpackets = dfpackets.drop(["next_trans", "last_cross"])
 
@@ -521,7 +521,7 @@ def bin_packet_directions(modelpath: Union[Path, str], dfpackets: pd.DataFrame) 
     xhat = np.array([1.0, 0.0, 0.0])
     vec2 = np.cross(xhat, syn_dir)
 
-    pktdirvecs = dfpackets[["dirx", "diry", "dirz"]].values
+    pktdirvecs = dfpackets[["dirx", "diry", "dirz"]].to_numpy()
 
     # normalise. might not be needed
     dirmags = np.linalg.norm(pktdirvecs, axis=1)
