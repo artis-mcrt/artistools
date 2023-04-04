@@ -94,7 +94,7 @@ def get_column_names_artiscode(modelpath: Union[str, Path]) -> Optional[list[str
         packet_properties = []
         inputfilename = at.firstexisting(["packet_init.cc", "packet_init.c"], folder=modelpath / "artis")
         print(f"found {inputfilename}: getting packet column names from artis code")
-        with open(inputfilename) as inputfile:
+        with inputfilename.open() as inputfile:
             packet_print_lines = [line.split(",") for line in inputfile if "fprintf(packets_file," in line]
             for line in packet_print_lines:
                 for element in line:
@@ -340,7 +340,7 @@ def readfile_pl(
         dfpackets = dfpackets.filter(
             (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
         )
-    elif packet_type is not None and packet_type != "":
+    elif packet_type is not None and packet_type:
         dfpackets = dfpackets.filter(pl.col("type_id") == type_ids[packet_type])
 
     return dfpackets
@@ -643,8 +643,8 @@ def make_3d_grid(modeldata, vmax_cms):
     xgrid = np.zeros(grid)
     vmax = vmax_cms / CLIGHT
     i = 0
-    for z in range(0, grid):
-        for y in range(0, grid):
+    for _z in range(0, grid):
+        for _y in range(0, grid):
             for x in range(0, grid):
                 xgrid[x] = -vmax + 2 * x * vmax / grid
                 i += 1

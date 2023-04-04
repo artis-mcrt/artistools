@@ -12,7 +12,7 @@ from typing import Optional
 from typing import Union
 
 import argcomplete
-import matplotlib
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -609,7 +609,7 @@ def make_lightcurve_plot(
 def create_axes(args):
     if "labelfontsize" in args:
         font = {"size": args.labelfontsize}
-        matplotlib.rc("font", **font)
+        mpl.rc("font", **font)
 
     args.subplots = False  # todo: set as command line arg
 
@@ -716,8 +716,8 @@ def set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_
 
 
 def make_colorbar_viewingangles_colormap():
-    norm = matplotlib.colors.Normalize(vmin=0, vmax=9)
-    scaledmap = matplotlib.cm.ScalarMappable(cmap="tab10", norm=norm)
+    norm = mpl.colors.Normalize(vmin=0, vmax=9)
+    scaledmap = mpl.cm.ScalarMappable(cmap="tab10", norm=norm)
     scaledmap.set_array([])
     return scaledmap
 
@@ -781,8 +781,8 @@ def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=Non
             cbar = plt.colorbar(scaledmap)
         if label:
             cbar.set_label(label, rotation=0)
-        cbar.locator = matplotlib.ticker.FixedLocator(ticklocs)
-        cbar.formatter = matplotlib.ticker.FixedFormatter(ticklabels)
+        cbar.locator = mpl.ticker.FixedLocator(ticklocs)
+        cbar.formatter = mpl.ticker.FixedFormatter(ticklabels)
         cbar.update_ticks()
 
 
@@ -1104,7 +1104,7 @@ def plot_lightcurve_from_refdata(
     for plotnumber, filter_name in enumerate(filter_names):
         if filter_name == "bol":
             continue
-        f = open(filterdir / Path(f"{filter_name}.txt"))
+        f = filterdir / Path(f"{filter_name}.txt").open()
         lines = f.readlines()
         lambda0 = float(lines[2])
 
@@ -1182,7 +1182,7 @@ def plot_color_evolution_from_data(
 
     filter_data = []
     for i, filter_name in enumerate(filter_names):
-        f = open(filterdir / Path(f"{filter_name}.txt"))
+        f = filterdir / Path(f"{filter_name}.txt").open()
         lines = f.readlines()
         lambda0 = float(lines[2])
 
@@ -1540,11 +1540,10 @@ def main(args=None, argsraw=None, **kwargs):
             print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
             args.average_over_phi_angle = True
 
-    if not args.modelpath and not args.colour_evolution:
+    if not args.modelpath:
         args.modelpath = ["."]
-    elif not args.modelpath and (args.filter or args.colour_evolution):
-        args.modelpath = ["."]
-    elif not isinstance(args.modelpath, Iterable):
+
+    if not isinstance(args.modelpath, Iterable):
         args.modelpath = [args.modelpath]
 
     args.modelpath = at.flatten_list(args.modelpath)
@@ -1577,9 +1576,9 @@ def main(args=None, argsraw=None, **kwargs):
     if not args.outputfile:
         outputfolder = Path()
         args.outputfile = defaultoutputfile
-    elif os.path.isdir(args.outputfile):
+    elif args.outputfile.is_dir():
         outputfolder = Path(args.outputfile)
-        args.outputfile = os.path.join(outputfolder, defaultoutputfile)
+        args.outputfile = outputfolder / defaultoutputfile
     else:
         outputfolder = Path()
 
