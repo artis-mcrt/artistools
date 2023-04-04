@@ -80,7 +80,7 @@ def make_hesma_vspecfiles(modelpath, outpath=None):
         vspecdata_all = at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
         vspecdata = vspecdata_all["I"]
 
-        timearray = vspecdata.columns.values[1:]
+        timearray = vspecdata.columns.to_numpy()[1:]
         vspecdata = vspecdata.sort_values(by="nu", ascending=False)
         vspecdata = vspecdata.eval("lambda_angstroms = 2.99792458e+18 / nu")
         for time in timearray:
