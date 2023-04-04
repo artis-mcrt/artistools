@@ -486,9 +486,9 @@ def add_abundancecontributions(
     dfelabundances = dfmodel[["inputcellid"]].merge(
         dfelabundances_partial, how="left", left_on="inputcellid", right_on="inputcellid"
     )
-    dfnucabundances.set_index("inputcellid", drop=False, inplace=True)
+    dfnucabundances = dfnucabundances.set_index("inputcellid", drop=False)
     dfnucabundances.index.name = None
-    dfelabundances.fillna(0.0, inplace=True)
+    dfelabundances = dfelabundances.fillna(0.0)
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
     print(f" there are {nuclidesincluded} nuclides from {elementsincluded} elements included")
     timestart = time.perf_counter()

@@ -46,10 +46,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     timestepmin = args.timestep
 
-    if not args.timestepmax or args.timestepmax < 0:
-        timestepmax = timestepmin
-    else:
-        timestepmax = args.timestepmax
+    timestepmax = timestepmin if not args.timestepmax or args.timestepmax < 0 else args.timestepmax
 
     input_files = glob.glob(os.path.join(args.modelpath, "macroatom_????.out*"), recursive=True) + glob.glob(
         os.path.join(args.modelpath, "*/macroatom_????.out*"), recursive=True

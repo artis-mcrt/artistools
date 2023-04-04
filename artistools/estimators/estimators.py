@@ -482,7 +482,7 @@ def get_partiallycompletetimesteps(estimators: dict[Any, Any]) -> list[int]:
     """
     timestepcells: dict[int, list[int]] = {}
     all_mgis = set()
-    for nts, mgi in estimators.keys():
+    for nts, mgi in estimators:
         if nts not in timestepcells:
             timestepcells[nts] = []
         timestepcells[nts].append(mgi)

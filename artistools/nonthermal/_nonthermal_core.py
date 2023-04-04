@@ -89,7 +89,7 @@ def read_binding_energies(modelpath: str = ".") -> np.ndarray:
     )
 
     with open(collionfilename) as f:
-        nt_shells, n_z_binding = [int(x) for x in f.readline().split()]
+        nt_shells, n_z_binding = (int(x) for x in f.readline().split())
         electron_binding = np.zeros((n_z_binding, nt_shells))
 
         for i in range(n_z_binding):
@@ -711,10 +711,11 @@ def sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
             if epsilon_lowers1[j - i] <= epsilon_uppers[j]:
                 sfmatrix[i, j] += prefactors[j] * (int_eps_uppers[j] - int_eps_lowers1[j - i])
 
-        if 2 * en + ionpot_ev < engrid[-1] + (engrid[1] - engrid[0]):
-            secondintegralstartindex = get_energyindex_lteq(2 * en + ionpot_ev, engrid)
-        else:
-            secondintegralstartindex = npts + 1
+        secondintegralstartindex = (
+            get_energyindex_lteq(2 * en + ionpot_ev, engrid)
+            if 2 * en + ionpot_ev < engrid[-1] + (engrid[1] - engrid[0])
+            else npts + 1
+        )
 
         # endash ranges from 2 * en + ionpot_ev to SF_EMAX
         # at each endash, the integral in epsilon ranges from
@@ -737,10 +738,7 @@ def differentialsfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
 
     ar_xs_array = at.nonthermal.get_arxs_array_shell(engrid, shell)
 
-    if ionpot_ev <= engrid[0]:
-        xsstartindex = 0
-    else:
-        xsstartindex = get_energyindex_lteq(en_ev=ionpot_ev, engrid=engrid)
+    xsstartindex = 0 if ionpot_ev <= engrid[0] else get_energyindex_lteq(en_ev=ionpot_ev, engrid=engrid)
 
     oneoveratangrid = 1.0 / np.arctan((engrid - ionpot_ev) / 2.0 / J)
 

@@ -335,10 +335,11 @@ def makemodelfromgriddata(
     if getattr(args, "getcellopacityfromYe", False):
         at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, dfmodel)
 
-    if os.path.isfile(Path(gridfolderpath, "gridcontributions.txt")):
-        dfgridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
-    else:
-        dfgridcontributions = None
+    dfgridcontributions = (
+        at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
+        if os.path.isfile(Path(gridfolderpath, "gridcontributions.txt"))
+        else None
+    )
 
     if traj_root is not None:
         print(f"Nuclear network abundances from {traj_root} will be used")

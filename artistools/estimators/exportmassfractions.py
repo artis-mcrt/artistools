@@ -34,7 +34,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
             numberdens = {}
             totaldens = 0.0  # number density times atomic mass summed over all elements
-            for key in popdict.keys():
+            for key in popdict:
                 try:
                     atomic_number = int(key)
                     numberdens[atomic_number] = popdict[atomic_number]
@@ -46,12 +46,12 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
             massfracs = {
                 atomic_number: numberdens[atomic_number] * elmass[atomic_number] / totaldens
-                for atomic_number in numberdens.keys()
+                for atomic_number in numberdens
             }
 
             fout.write(f"{tdays}d shell {modelgridindex}\n")
             massfracsum = 0.0
-            for atomic_number in massfracs.keys():
+            for atomic_number in massfracs:
                 massfracsum += massfracs[atomic_number]
                 fout.write(f"{atomic_number} {at.get_elsymbol(atomic_number)} {massfracs[atomic_number]}\n")
 

@@ -898,40 +898,36 @@ def get_flux_contributions_from_packets(
 
             dfpackets = at.packets.readfile(packetsfile, packet_type="TYPE_RPKT")
             print("Using non-escaped internal r-packets")
-            dfpackets.query(
-                f'type_id == {at.packets.type_ids["TYPE_RPKT"]} and @nu_min <= nu_rf < @nu_max', inplace=True
-            )
+            dfpackets = dfpackets.query(f'type_id == {at.packets.type_ids["TYPE_RPKT"]} and @nu_min <= nu_rf < @nu_max')
             if modelgridindex is not None:
                 assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
                 # dfpackets.eval(f'velocity = sqrt(posx ** 2 + posy ** 2 + posz ** 2) / @t_seconds', inplace=True)
                 # dfpackets.query(f'@v_inner <= velocity <= @v_outer',
                 #                 inplace=True)
-                dfpackets.query("where in @assoc_cells[@modelgridindex]", inplace=True)
+                dfpackets = dfpackets.query("where in @assoc_cells[@modelgridindex]")
             print(f"  {len(dfpackets)} internal r-packets matching frequency range")
         else:
             dfpackets = at.packets.readfile(packetsfile, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
-            dfpackets.query(
+            dfpackets = dfpackets.query(
                 "@nu_min <= nu_rf < @nu_max and trueemissiontype >= 0 and "
                 + (
                     "@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh"
                     if not use_escapetime
                     else "@timelow < escape_time * @betafactor < @timehigh"
                 ),
-                inplace=True,
             )
             print(f"  {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges")
 
             if emissionvelocitycut:
                 dfpackets = at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
 
-                dfpackets.query("(emission_velocity / 1e5) > @emissionvelocitycut", inplace=True)
+                dfpackets = dfpackets.query("(emission_velocity / 1e5) > @emissionvelocitycut")
 
         if np.isscalar(delta_lambda):
-            dfpackets.eval("xindex = floor((2.99792458e18 / nu_rf - @lambda_min) / @delta_lambda)", inplace=True)
+            dfpackets = dfpackets.eval("xindex = floor((2.99792458e18 / nu_rf - @lambda_min) / @delta_lambda)")
             if getabsorption:
-                dfpackets.eval(
+                dfpackets = dfpackets.eval(
                     "xindexabsorbed = floor((2.99792458e18 / absorption_freq - @lambda_min) / @delta_lambda)",
-                    inplace=True,
                 )
         else:
             dfpackets["xindex"] = (

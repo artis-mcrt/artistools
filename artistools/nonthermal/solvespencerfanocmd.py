@@ -309,7 +309,7 @@ def main(args=None, argsraw=None, **kwargs):
             ionpopdict[(compelement_atomicnumber, 2)] = nntot * x_e
 
         ions = []
-        for key in ionpopdict.keys():
+        for key in ionpopdict:
             # keep only the ion populations, not element or total populations
             if isinstance(key, tuple) and len(key) == 2 and ionpopdict[key] / nntot >= minionfraction:
                 ions.append(key)
@@ -360,10 +360,7 @@ def main(args=None, argsraw=None, **kwargs):
                     )
                     for atomic_number, ionstage in ions:
                         nnion = ionpopdict[(atomic_number, ionstage)]
-                        if nnion > 0.0:
-                            frac_ionis_ion = sf.get_frac_ionisation_ion(atomic_number, ionstage)
-                        else:
-                            frac_ionis_ion = 0.0
+                        frac_ionis_ion = sf.get_frac_ionisation_ion(atomic_number, ionstage) if nnion > 0.0 else 0.0
                         strlineout += f" {frac_ionis_ion:.4f}"
                     fstat.write(strlineout + "\n")
 
