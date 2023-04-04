@@ -1103,7 +1103,7 @@ def plot_lightcurve_from_refdata(
 
         if filter_name == "bol":
             continue
-        elif filter_name in filternames_conversion_dict:
+        if filter_name in filternames_conversion_dict:
             filter_name = filternames_conversion_dict[filter_name]
         filter_data[filter_name] = lightcurve_data.loc[lightcurve_data["band"] == filter_name]
         # plt.plot(limits_x, limits_y, 'v', label=None, color=color)

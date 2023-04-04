@@ -251,7 +251,7 @@ def plot_artis_spectrum(
                 # todo: fix this for multispecplot - use args.showtime for now
                 linelabel += f" +{timeavg:.1f}d"
             if not args.hidemodeltimerange and not args.multispecplot:
-                linelabel += r" ($\pm$ " + f"{timedelta:.1f}d)"
+                linelabel += rf" ($\pm$ {timedelta:.1f}d)"
         # Luke: disabled below because line label has already been formatted with e.g. timeavg values
         # formatting for a second time makes it impossible to use curly braces in line labels (needed for LaTeX math)
         # else:
@@ -1331,7 +1331,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         plot_polarisation(args.specpath[0], args)
         return
 
-    elif args.output_spectra:
+    if args.output_spectra:
         for modelpath in args.specpath:
             at.spectra.write_flambda_spectra(modelpath, args)
 

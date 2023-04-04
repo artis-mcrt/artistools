@@ -111,7 +111,7 @@ def get_line_fluxes_from_packets(
     return lcdata
 
 
-def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=None, arr_tend=None) -> pd.DataFrame:
+def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=None) -> pd.DataFrame:
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times_float(modelpath, loc="start")
     if arr_tend is None:
@@ -307,7 +307,7 @@ def make_flux_ratio_plot(args):
 
         if args.frompops:
             dflcdata = get_line_fluxes_from_pops(
-                args.emtypecolumn, emfeatures, modelpath, arr_tstart=args.timebins_tstart, arr_tend=args.timebins_tend
+                emfeatures, modelpath, arr_tstart=args.timebins_tstart, arr_tend=args.timebins_tend
             )
         else:
             dflcdata = get_line_fluxes_from_packets(
@@ -809,10 +809,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-maxpacketfiles", type=int, default=None, help="Limit the number of packet files read")
 
     parser.add_argument("-emfeaturesearch", default=[], nargs="*", help="List of tuples (TODO explain)")
-
-    # parser.add_argument('-emtypecolumn', default='trueemissiontype', choices=['emissiontype', 'trueemissiontype'],
-    #                     help='Packet property for emission type - first thermal emission (trueemissiontype) '
-    #                     'or last emission type (emissiontype)')
 
     parser.add_argument(
         "--frompops", action="store_true", help="Sum up internal emissivity instead of outgoing packets"

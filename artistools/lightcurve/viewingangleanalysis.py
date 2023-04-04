@@ -417,7 +417,7 @@ def make_plot_test_viewing_angle_fit(
     plt.axvline(x=float(time_after15days_polyfit), color="black", linestyle="--")
     print("time after 15 days polyfit = ", time_after15days_polyfit)
     plt.tight_layout()
-    plt.savefig(f"{key}" + "_band_{modelname}" + "_viewing_angle" + str(angle) + ".png")
+    plt.savefig(f"{key}_band_{modelname}_viewing_angle" + str(angle) + ".png")
     plt.close()
 
 
@@ -536,9 +536,9 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, key, 
     for ii, modelname in enumerate(modelnames):
         viewing_angle_plot_data = pd.read_csv(key + "band_" + f"{modelname}" + "_viewing_angle_data.txt", delimiter=" ")
 
-        band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].values
-        band_delta_m15_viewing_angles = viewing_angle_plot_data["deltam15_polyfit"].values
-        band_risetime_viewing_angles = viewing_angle_plot_data["risetime_polyfit"].values
+        band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].to_numpy()
+        band_delta_m15_viewing_angles = viewing_angle_plot_data["deltam15_polyfit"].to_numpy()
+        band_risetime_viewing_angles = viewing_angle_plot_data["risetime_polyfit"].to_numpy()
 
         plotkwargsviewingangles, plotkwargsangleaveraged = set_scatterplot_plotkwargs(ii, args)
 
@@ -595,7 +595,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, key, 
     # ax.set_xlabel(r'Decline Rate ($\Delta$m$_{15}$)', fontsize=14)
 
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
-        xlabel = r"$\Delta$m$_{15}$" + f"({key})"
+        xlabel = rf"$\Delta$m$_{15}$({key})"
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         xlabel = "Rise Time [days]"
 
@@ -627,8 +627,8 @@ def make_peak_colour_viewing_angle_plot(args):
 
         datafilename = bands[0] + "band_" + f"{modelname}" + "_viewing_angle_data.txt"
         viewing_angle_plot_data = pd.read_csv(datafilename, delimiter=" ")
-        data[f"{bands[0]}max"] = viewing_angle_plot_data["peak_mag_polyfit"].values
-        data[f"time_{bands[0]}max"] = viewing_angle_plot_data["risetime_polyfit"].values
+        data[f"{bands[0]}max"] = viewing_angle_plot_data["peak_mag_polyfit"].to_numpy()
+        data[f"time_{bands[0]}max"] = viewing_angle_plot_data["risetime_polyfit"].to_numpy()
 
         # Get brightness in second band at time of peak in first band
         if len(data[f"time_{bands[0]}max"]) != 100:

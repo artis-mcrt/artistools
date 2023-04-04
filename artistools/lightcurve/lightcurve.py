@@ -163,8 +163,6 @@ def generate_band_lightcurve_data(
     args: argparse.Namespace,
     angle: int = -1,
     modelnumber: Optional[int] = None,
-    average_over_phi: bool = False,
-    average_over_theta: bool = False,
 ) -> dict:
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
     from scipy.interpolate import interp1d
@@ -177,7 +175,7 @@ def generate_band_lightcurve_data(
     elif args.plotviewingangle and at.anyexist(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True):
         specfilename = at.firstexisting(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True)
         specdataresdata = pd.read_csv(specfilename, delim_whitespace=True)
-        timearray = [i for i in specdataresdata.columns.values[1:] if i[-2] != "."]
+        timearray = [i for i in specdataresdata.columns.to_numpy()[1:] if i[-2] != "."]
     # elif Path(modelpath, 'specpol.out').is_file():
     #     specfilename = os.path.join(modelpath, "specpol.out")
     #     specdata = pd.read_csv(specfilename, delim_whitespace=True)
@@ -189,9 +187,11 @@ def generate_band_lightcurve_data(
         specfilename = at.firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
         if "specpol.out" in str(specfilename):
-            timearray = [i for i in specdata.columns.values[1:] if i[-2] != "."]  # Ignore Q and U values in pol file
+            timearray = [
+                i for i in specdata.columns.to_numpy()[1:] if i[-2] != "."
+            ]  # Ignore Q and U values in pol file
         else:
-            timearray = specdata.columns.values[1:]
+            timearray = specdata.columns.to_numpy()[1:]
 
     filters_dict = {}
     if not args.filter:
