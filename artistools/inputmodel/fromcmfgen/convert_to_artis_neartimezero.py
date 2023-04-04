@@ -6,7 +6,8 @@
 from math import exp
 
 import numpy as np
-from rd_cmfgen import rd_sn_hydro_data
+
+from .rd_cmfgen import rd_sn_hydro_data
 
 # import math
 
