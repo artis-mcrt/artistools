@@ -231,9 +231,9 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
 
         fpackets.seek(datastartpos)  # go to first data line
 
-    except gzip.BadGzipFile as exc:
+    except gzip.BadGzipFile:
         print(f"\nBad Gzip File: {packetsfile}")
-        raise exc
+        raise
 
     try:
         dfpackets = pl.read_csv(
