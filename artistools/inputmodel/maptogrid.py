@@ -160,18 +160,18 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
 
     dtextra = dtextra_seconds / 4.926e-6  # convert to geom units.
 
-    particleid = dfsnapshot.id.values
-    x = dfsnapshot.x.values
-    y = dfsnapshot.y.values
-    z = dfsnapshot.z.values
-    h = dfsnapshot.h.values
-    vx = dfsnapshot.vx.values
-    vy = dfsnapshot.vy.values
-    vz = dfsnapshot.vz.values
-    pmass = dfsnapshot.pmass.values
-    rho_rst = dfsnapshot.rho_rst.values
-    rho = dfsnapshot.rho.values
-    Ye = dfsnapshot.ye.values
+    particleid = dfsnapshot.id.to_numpy()
+    x = dfsnapshot.x.to_numpy()
+    y = dfsnapshot.y.to_numpy()
+    z = dfsnapshot.z.to_numpy()
+    h = dfsnapshot.h.to_numpy()
+    vx = dfsnapshot.vx.to_numpy()
+    vy = dfsnapshot.vy.to_numpy()
+    vz = dfsnapshot.vz.to_numpy()
+    pmass = dfsnapshot.pmass.to_numpy()
+    rho_rst = dfsnapshot.rho_rst.to_numpy()
+    rho = dfsnapshot.rho.to_numpy()
+    Ye = dfsnapshot.ye.to_numpy()
 
     with open(Path(outputfolderpath, "ejectapartanalysis.dat"), mode="w", encoding="utf-8") as fpartanalysis:
         for n in range(npart):
@@ -202,10 +202,9 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
 
             vrad = (vx[n] * x[n] + vy[n] * y[n] + vz[n] * z[n]) / dis  # radial velocity
 
-            if vtot > vrad:
-                vperp = math.sqrt(vtot * vtot - vrad * vrad)  # velicty perpendicular
-            else:
-                vperp = 0.0  # if we rxtrapolate roundoff error can lead to Nan, ly?
+            # velocity perpendicular
+            # if we extrapolate roundoff error can lead to Nan, ly?
+            vperp = math.sqrt(vtot * vtot - vrad * vrad) if vtot > vrad else 0.0
 
             vratiomean = vratiomean + vperp / vrad
 

@@ -142,8 +142,8 @@ def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=No
         ion = adata.query("Z == @feature.atomic_number and ion_stage == @feature.ion_stage").iloc[0]
 
         for timeindex, timedays in enumerate(arr_tmid):
-            v_inner = modeldata.velocity_inner.values * u.km / u.s
-            v_outer = modeldata.velocity_outer.values * u.km / u.s
+            v_inner = modeldata.velocity_inner.to_numpy() * u.km / u.s
+            v_outer = modeldata.velocity_outer.to_numpy() * u.km / u.s
 
             t_sec = timedays * u.day
             shell_volumes = ((4 * math.pi / 3) * ((v_outer * t_sec) ** 3 - (v_inner * t_sec) ** 3)).to("cm3").value
@@ -174,7 +174,7 @@ def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=No
                         ) * u.eV.to("erg")
 
                         # l = delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
-                        # print(f'  {modelgridindex} outer_velocity {modeldata.velocity_outer.values[modelgridindex]}'
+                        # print(f'  {modelgridindex} outer_velocity {modeldata.velocity_outer.to_numpy()[modelgridindex]}'
                         #       f' km/s shell_vol: {shell_volumes[modelgridindex] + unaccounted_shellvol} cm3'
                         #       f' n_level {levelpop} cm-3 shell_Lum {l} erg/s')
 
@@ -219,9 +219,9 @@ def get_closelines(
         dflinelistclosematches = dflinelistclosematches.query("upperlevelindex==@upperlevelindex")
     # print(dflinelistclosematches)
 
-    linelistindices = tuple(dflinelistclosematches.index.values)
-    upperlevelindicies = tuple(dflinelistclosematches.upperlevelindex.values)
-    lowerlevelindicies = tuple(dflinelistclosematches.lowerlevelindex.values)
+    linelistindices = tuple(dflinelistclosematches.index.to_numpy())
+    upperlevelindicies = tuple(dflinelistclosematches.upperlevelindex.to_numpy())
+    lowerlevelindicies = tuple(dflinelistclosematches.lowerlevelindex.to_numpy())
     lowestlambda = dflinelistclosematches.lambda_angstroms.min()
     highestlamba = dflinelistclosematches.lambda_angstroms.max()
     colname = f"flux_{at.get_ionstring(atomic_number, ion_stage, nospace=True)}_{approxlambda}"
@@ -432,7 +432,7 @@ def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, t
 
     # model_tmids = at.get_timestep_times_float(modelpath, loc='mid')
     # arr_velocity_mid = tuple(list([(float(v1) + float(v2)) * 0.5 for v1, v2 in zip(
-    #     modeldata['velocity_inner'].values, modeldata['velocity_outer'].values)]))
+    #     modeldata['velocity_inner'].to_numpy(), modeldata['velocity_outer'].to_numpy())]))
 
     # from scipy.interpolate import interp1d
     # interp_log10nne, interp_te = {}, {}
@@ -613,8 +613,8 @@ def make_emitting_regions_plot(args):
                         emdata_all[modelindex][(tmid, feature.colname)] = {"em_log10nne": [], "em_Te": []}
                     else:
                         emdata_all[modelindex][(tmid, feature.colname)] = {
-                            "em_log10nne": dfpackets_selected.em_log10nne.values,
-                            "em_Te": dfpackets_selected.em_Te.values,
+                            "em_log10nne": dfpackets_selected.em_log10nne.to_numpy(),
+                            "em_Te": dfpackets_selected.em_Te.to_numpy(),
                         }
 
             estimators = at.estimators.read_estimators(modelpath, get_ion_values=False, get_heatingcooling=False)

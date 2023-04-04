@@ -357,7 +357,7 @@ def get_spectrum(
 
     specdataout: dict[int, pd.DataFrame] = {}
     for dirbin in directionbins:
-        nu = specdata[dirbin].loc[:, "nu"].values
+        nu = specdata[dirbin].loc[:, "nu"].to_numpy()
         arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
         arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
 
@@ -547,9 +547,9 @@ def get_vspecpol_spectrum(
         args.stokesparam = "I"
     vspecdata = stokes_params[args.stokesparam]
 
-    nu = vspecdata.loc[:, "nu"].values
+    nu = vspecdata.loc[:, "nu"].to_numpy()
 
-    arr_tmid = [float(i) for i in vspecdata.columns.values[1:] if i[-2] != "."]
+    arr_tmid = [float(i) for i in vspecdata.columns.to_numpy()[1:] if i[-2] != "."]
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1])] + [arr_tmid[-1] - arr_tmid[-2]]
 
     def match_closest_time(reftime: float) -> str:
@@ -703,7 +703,7 @@ def get_flux_contributions(
                     array_fnu_emission = stackspectra(
                         [
                             (
-                                emissiondata[dbin].iloc[timestep :: len(arr_tmid), selectedcolumn].values,
+                                emissiondata[dbin].iloc[timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
                                 arr_tdelta[timestep] / len(dbinlist),
                             )
                             for timestep in range(timestepmin, timestepmax + 1)
@@ -717,7 +717,7 @@ def get_flux_contributions(
                     array_fnu_absorption = stackspectra(
                         [
                             (
-                                absorptiondata[dbin].iloc[timestep :: len(arr_tmid), selectedcolumn].values,
+                                absorptiondata[dbin].iloc[timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
                                 arr_tdelta[timestep] / len(dbinlist),
                             )
                             for timestep in range(timestepmin, timestepmax + 1)
@@ -1221,8 +1221,8 @@ def get_reference_spectrum(filename: Union[Path, str]) -> tuple[pd.DataFrame, di
         from extinction import apply, ccm89
 
         specdata["f_lambda"] = apply(
-            ccm89(specdata["lambda_angstroms"].values, a_v=-metadata["a_v"], r_v=metadata["r_v"], unit="aa"),
-            specdata["f_lambda"].values,
+            ccm89(specdata["lambda_angstroms"].to_numpy(), a_v=-metadata["a_v"], r_v=metadata["r_v"], unit="aa"),
+            specdata["f_lambda"].to_numpy(),
         )
 
     if "z" in metadata:
@@ -1245,11 +1245,11 @@ def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
     if Path(modelpath, "specpol.out").is_file():
         specfilename = modelpath / "specpol.out"
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
-        timearray = [i for i in specdata.columns.values[1:] if i[-2] != "."]
+        timearray = [i for i in specdata.columns.to_numpy()[1:] if i[-2] != "."]
     else:
         specfilename = at.firstexisting("spec.out", folder=modelpath, tryzipped=True)
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
-        timearray = specdata.columns.values[1:]
+        timearray = specdata.columns.to_numpy()[1:]
 
     number_of_timesteps = len(timearray)
 

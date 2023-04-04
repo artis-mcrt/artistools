@@ -326,7 +326,7 @@ def get_nu_grid(modelpath: Path) -> np.ndarray[Any, np.dtype[np.float64]]:
     """Get an array of frequencies at which the ARTIS spectra are binned by exspec."""
     specfilename = firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
-    return specdata.loc[:, "0"].values
+    return specdata.loc[:, "0"].to_numpy()
 
 
 def get_deposition(modelpath: Path) -> pd.DataFrame:
@@ -595,7 +595,7 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
 def get_elsymbolslist() -> list[str]:
     elsymbols = [
         "n",
-        *list(pd.read_csv(at.get_config()["path_datadir"] / "elements.csv", usecols=["symbol"])["symbol"].values),
+        *list(pd.read_csv(at.get_config()["path_datadir"] / "elements.csv", usecols=["symbol"])["symbol"].to_numpy()),
     ]
 
     return elsymbols
@@ -678,12 +678,9 @@ def makelist(x: Union[None, list, Sequence, str, Path]) -> list[Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
         return []
-    elif isinstance(x, (str, Path)):
-        return [
-            x,
-        ]
-    else:
-        return list(x)
+    if isinstance(x, (str, Path)):
+        return [x]
+    return list(x)
 
 
 def trim_or_pad(requiredlength: int, *listoflistin: list[list[Any]]) -> Iterator[list[Any]]:

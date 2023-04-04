@@ -87,7 +87,7 @@ def get_binaverage_field(radfielddata, modelgridindex=None, timestep=None):
         + (" & timestep==@timestep" if timestep else "")
     )
 
-    arr_lambda = 2.99792458e18 / bindata["nu_upper"].values
+    arr_lambda = 2.99792458e18 / bindata["nu_upper"].to_numpy()
 
     bindata["dlambda"] = bindata.apply(lambda row: 2.99792458e18 * (1 / row["nu_lower"] - 1 / row["nu_upper"]), axis=1)
 
@@ -96,7 +96,7 @@ def get_binaverage_field(radfielddata, modelgridindex=None, timestep=None):
             row["J"] / row["dlambda"] if (not math.isnan(row["J"] / row["dlambda"]) and row["T_R"] >= 0) else 0.0
         ),
         axis=1,
-    ).values
+    ).to_numpy()
 
     # add the starting point
     arr_lambda = np.insert(arr_lambda, 0, 2.99792458e18 / bindata["nu_lower"].iloc[0])

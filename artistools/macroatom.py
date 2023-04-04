@@ -114,8 +114,8 @@ def make_plot(
         fontsize=8,
     )
 
-    lambda_cmf_in = 2.99792458e18 / dfmacroatom["nu_cmf_in"].values
-    lambda_cmf_out = 2.99792458e18 / dfmacroatom["nu_cmf_out"].values
+    lambda_cmf_in = 2.99792458e18 / dfmacroatom["nu_cmf_in"].to_numpy()
+    lambda_cmf_out = 2.99792458e18 / dfmacroatom["nu_cmf_out"].to_numpy()
     # axis.scatter(lambda_cmf_in, lambda_cmf_out, s=1, alpha=0.5, edgecolor='none')
     axis.plot(
         lambda_cmf_in,
