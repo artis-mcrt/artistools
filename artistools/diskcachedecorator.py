@@ -101,9 +101,9 @@ def diskcache(
                     with artistools.misc.zopen(filename, "rb") as f:
                         result, version_filein = pickle.load(f)
 
-                    if version_filein == str_funcversion + argfilesmodifiedhash_strhex:
-                        execfunc = False
-                    elif (not funcversion) and (not version_filein.startswith("funcversion_")):
+                    if (version_filein == str_funcversion + argfilesmodifiedhash_strhex) or (
+                        (not funcversion) and (not version_filein.startswith("funcversion_"))
+                    ):
                         execfunc = False
                     # elif version_filein == sourcehash_strhex:
                     #     execfunc = False

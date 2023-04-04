@@ -1,16 +1,12 @@
+# ruff: noqa
 """various functions to read/write CMFGEN input/output files:
 
 rd_nuc_decay_data
 rd_sn_hydro_data
 """
-# import os
 import sys
 
 import numpy as np
-
-# import re
-
-# from pdb import set_trace as stop
 
 # constants
 DAY2SEC = 86400.0
@@ -179,7 +175,7 @@ def rd_sn_hydro_data(file, ncol=8, reverse=False, quiet=False):
         kappa = np.zeros(nd)  # mass absorption coefficient (cm^2/g)
         okhydro = 0
         while okhydro == 0:
-            while line == "":
+            while not line:
                 line = f.readline()
             if "Radius grid" in line:
                 rad = np.fromfile(f, count=nd, sep=" ", dtype=float)

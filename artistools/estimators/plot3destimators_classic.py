@@ -31,8 +31,8 @@ def get_modelgridcells_along_axis(modelpath):
 def get_modelgridcells_2D_slice(modeldata, modelpath):
     sliceaxis = "z"
 
-    slice = at.initial_composition.get_2D_slice_through_3d_model(modeldata, sliceaxis)
-    readonly_mgi = get_mgi_of_modeldata(slice, modelpath)
+    slicedata = at.initial_composition.get_2D_slice_through_3d_model(modeldata, sliceaxis)
+    readonly_mgi = get_mgi_of_modeldata(slicedata, modelpath)
 
     return readonly_mgi
 
@@ -55,7 +55,7 @@ def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, reado
         associated_modeldata_row_for_mgi = modeldata.loc[modeldata["inputcellid"] == assoc_cells[mgi][0]]
 
         Te = [estimators[(timestep, mgi)]["Te"] for timestep, _ in enumerate(times)]
-        plt.scatter(times, Te, label=f'vel={associated_modeldata_row_for_mgi["vel_y_mid"].values[0] / CLIGHT}')
+        plt.scatter(times, Te, label=f'vel={associated_modeldata_row_for_mgi["vel_y_mid"].to_numpy()[0] / CLIGHT}')
 
     plt.xlabel("time [days]")
     plt.ylabel("Te [K]")
@@ -76,7 +76,7 @@ def plot_Te_vs_velocity(modelpath, modeldata, estimators, readonly_mgi):
         associated_modeldata_rows = [
             modeldata.loc[modeldata["inputcellid"] == assoc_cells[mgi][0]] for mgi in readonly_mgi
         ]
-        velocity = [row["vel_y_mid"].values[0] / CLIGHT for row in associated_modeldata_rows]
+        velocity = [row["vel_y_mid"].to_numpy()[0] / CLIGHT for row in associated_modeldata_rows]
 
         plt.plot(velocity, Te, label=f"{times[timestep]:.2f}", linestyle="-", marker="o")
 
