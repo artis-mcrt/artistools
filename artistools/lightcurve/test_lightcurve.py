@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from pathlib import Path
+from unittest import mock
 
+import matplotlib.axes
 import numpy as np
 
 import artistools as at
@@ -8,9 +10,6 @@ import artistools as at
 modelpath = at.get_config()["path_testartismodel"]
 outputpath = at.get_config()["path_testoutput"]
 at.set_config("enable_diskcache", False)
-
-import matplotlib.axes
-from unittest import mock
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)

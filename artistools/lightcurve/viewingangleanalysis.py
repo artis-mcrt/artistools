@@ -334,8 +334,8 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, arg
 def lightcurve_polyfit(time, magnitude, args, deg=10, kernel_scale=10, lc_error=0.01):
     try:
         import george
-        from george import kernels
         import scipy.optimize as op
+        from george import kernels
 
         kernel = np.var(magnitude) * kernels.Matern32Kernel(kernel_scale)
         gp = george.GP(kernel)

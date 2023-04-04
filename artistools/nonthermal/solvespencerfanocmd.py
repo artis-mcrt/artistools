@@ -12,7 +12,6 @@ import pynonthermal as pynt
 
 import artistools as at
 
-
 minionfraction = 0.0  # minimum number fraction of the total population to include in SF solution
 
 defaultoutputfile = "spencerfano_cell{cell:03d}_ts{timestep:02d}_{timedays:.0f}d.pdf"

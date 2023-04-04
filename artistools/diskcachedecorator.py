@@ -12,8 +12,8 @@ from .configuration import get_config
 def diskcache(
     ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savezipped=False, funcdepends=None, funcversion=None
 ):
-    import pickle
     import hashlib
+    import pickle
 
     def printopt(*args, **kwargs):
         if not quiet:

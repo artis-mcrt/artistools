@@ -38,6 +38,14 @@ where = ["."]
 line-length = 120
 preview = true
 
+[tool.isort]
+profile = "black"
+src_paths = ["artistools"]
+line_length = 120
+force_single_line = true
+case_sensitive = false
+sort_relative_in_force_sorted_sections = true
+
 [tool.mypy]
 python_version = '3.11'
 exclude = "(build)|(tests)"

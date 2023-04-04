@@ -1218,7 +1218,8 @@ def get_reference_spectrum(filename: Union[Path, str]) -> tuple[pd.DataFrame, di
 
     if "a_v" in metadata or "e_bminusv" in metadata:
         print("Correcting for reddening")
-        from extinction import apply, ccm89
+        from extinction import apply
+        from extinction import ccm89
 
         specdata["f_lambda"] = apply(
             ccm89(specdata["lambda_angstroms"].to_numpy(), a_v=-metadata["a_v"], r_v=metadata["r_v"], unit="aa"),

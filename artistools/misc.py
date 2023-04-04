@@ -983,8 +983,8 @@ def get_nprocs(modelpath: Path) -> int:
 @lru_cache(maxsize=8)
 def get_inputparams(modelpath: Path) -> dict[str, Any]:
     """Return parameters specified in input.txt."""
-    from astropy import units as u
     from astropy import constants as const
+    from astropy import units as u
 
     params: dict[str, Any] = {}
     with Path(modelpath, "input.txt").open("r") as inputfile:

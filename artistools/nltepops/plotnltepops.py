@@ -16,7 +16,6 @@ from matplotlib import ticker
 
 import artistools as at
 
-
 defaultoutputfile = "plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
 
 
