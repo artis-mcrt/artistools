@@ -4,7 +4,7 @@ import math
 import os
 from pathlib import Path
 
-import matplotlib
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy import units as u
@@ -77,8 +77,8 @@ def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model, args):
 
     normalise_between_0_and_1 = False
     if normalise_between_0_and_1:
-        norm = matplotlib.colors.Normalize(vmin=0, vmax=1)
-        scaledmap = matplotlib.cm.ScalarMappable(cmap="viridis", norm=norm)
+        norm = mpl.colors.Normalize(vmin=0, vmax=1)
+        scaledmap = mpl.cm.ScalarMappable(cmap="viridis", norm=norm)
         scaledmap.set_array([])
         colorscale = scaledmap.to_rgba(colorscale)  # colorscale fixed between 0 and 1
     else:
@@ -104,7 +104,7 @@ def plot_3d_initial_abundances(modelpath, args=None):
         # 'weight': 'bold',
         "size": 18
     }
-    matplotlib.rc("font", **font)
+    mpl.rc("font", **font)
 
     dfmodel, modelmeta = at.get_modeldata(modelpath, skipabundancecolumns=True, get_elemabundances=True)
     targetmodeltime_days = None
@@ -114,7 +114,7 @@ def plot_3d_initial_abundances(modelpath, args=None):
         )
         # import artistools.inputmodel.modelfromhydro
 
-        at.inputmodel.scale_model_to_time(
+        dfmodel, modelmeta = at.inputmodel.scale_model_to_time(
             targetmodeltime_days=targetmodeltime_days, modelmeta=modelmeta, dfmodel=dfmodel
         )
 
