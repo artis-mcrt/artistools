@@ -334,7 +334,7 @@ def plot_artis_spectrum(
                         viewing_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][dirbin])))
                         linelabel = rf"$\theta$ = {viewing_angle}$^\circ$" if axindex == 0 else None
                     elif args.viewinganglelabelunits == "rad":
-                        linelabel = rf"cos($\theta$) = {vpkt_config['cos_theta'][dirbin]}" if axindex == 0 else None
+                        linelabel = rf"cos $\theta$ = {vpkt_config['cos_theta'][dirbin]}" if axindex == 0 else None
                 else:
                     linelabel = dirbin_definitions[dirbin]
                     print(f" directionbin {dirbin:4d}  {dirbin_definitions[dirbin]}")

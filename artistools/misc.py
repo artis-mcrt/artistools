@@ -1190,16 +1190,16 @@ def get_costhetabin_phibin_labels() -> tuple[list[str], list[str]]:
     # costhetabins_upper = costhetabins_lower + 2. / ncosthetabins
 
     costheta_viewing_angle_bins = [
-        "-1.0 ≤ cos(θ) < -0.8",
-        "-0.8 ≤ cos(θ) < -0.6",
-        "-0.6 ≤ cos(θ) < -0.4",
-        "-0.4 ≤ cos(θ) < -0.2",
-        "-0.2 ≤ cos(θ) <  0.0",
-        " 0.0 ≤ cos(θ) <  0.2",
-        " 0.2 ≤ cos(θ) <  0.4",
-        " 0.4 ≤ cos(θ) <  0.6",
-        " 0.6 ≤ cos(θ) <  0.8",
-        " 0.8 ≤ cos(θ) <  1.0",
+        "-1.0 ≤ cos θ < -0.8",
+        "-0.8 ≤ cos θ < -0.6",
+        "-0.6 ≤ cos θ < -0.4",
+        "-0.4 ≤ cos θ < -0.2",
+        "-0.2 ≤ cos θ <  0.0",
+        " 0.0 ≤ cos θ <  0.2",
+        " 0.2 ≤ cos θ <  0.4",
+        " 0.4 ≤ cos θ <  0.6",
+        " 0.6 ≤ cos θ <  0.8",
+        " 0.8 ≤ cos θ <  1.0",
     ]
     assert len(costheta_viewing_angle_bins) == get_viewingdirection_costhetabincount()
 
