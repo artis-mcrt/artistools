@@ -709,7 +709,7 @@ def flatten_list(listin: list) -> list:
 
 
 def zopen(filename: Union[Path, str], mode: str = "rt", encoding: Optional[str] = None) -> Any:
-    """Open filename, filename.gz or filename.x"""
+    """Open filename, filename.gz or filename.xz"""
     filenamexz = str(filename) if str(filename).endswith(".xz") else str(filename) + ".xz"
     filenamegz = str(filename) if str(filename).endswith(".gz") else str(filename) + ".gz"
     if os.path.exists(filename) and not str(filename).endswith(".gz") and not str(filename).endswith(".xz"):
