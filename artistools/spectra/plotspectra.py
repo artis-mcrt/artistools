@@ -38,7 +38,7 @@ hatches = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]
 def plot_polarisation(modelpath: Path, args) -> None:
     angle = args.plotviewingangle[0]
     stokes_params = get_specpol_data(angle=angle, modelpath=modelpath)
-    stokes_params[args.stokesparam].eval("lambda_angstroms = 2.99792458e18 / nu", inplace=True)
+    stokes_params[args.stokesparam] = stokes_params[args.stokesparam].eval("lambda_angstroms = 2.99792458e18 / nu")
 
     timearray = stokes_params[args.stokesparam].keys()[1:-1]
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(

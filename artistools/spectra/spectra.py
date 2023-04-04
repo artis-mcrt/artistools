@@ -268,7 +268,7 @@ def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
         res_specdata_numpy = res_specdata[dirbin].iloc[:, :numberofIvalues].astype(float).to_numpy()
 
         res_specdata[dirbin] = pd.DataFrame(data=res_specdata_numpy, columns=columns[:numberofIvalues])
-        res_specdata[dirbin].rename(columns={"0": "nu", "0.0": "nu"}, inplace=True)
+        res_specdata[dirbin] = res_specdata[dirbin].rename(columns={"0": "nu", "0.0": "nu"})
 
     return res_specdata
 

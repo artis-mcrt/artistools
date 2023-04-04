@@ -93,7 +93,7 @@ def get_closest_network_timestep(
     dfevol: pd.DataFrame = get_dfevol(traj_root, particleid)
 
     if cond == "nearest":
-        idx = np.abs(dfevol.timesec.values - timesec).argmin()
+        idx = np.abs(dfevol.timesec.to_numpy() - timesec).argmin()
 
     elif cond == "greaterthan":
         return dfevol.query("timesec > @timesec").nstep.min()
@@ -104,7 +104,7 @@ def get_closest_network_timestep(
     else:
         raise AssertionError
 
-    nts: int = dfevol.nstep.values[idx]
+    nts: int = dfevol.nstep.to_numpy()[idx]
 
     return nts
 
@@ -538,7 +538,7 @@ def main(args=None, argsraw=None, **kwargs):
             wollager_profilename, delim_whitespace=True, skiprows=1, names=["cellid", "velocity_outer", "rho"]
         )
         dfdensities["cellid"] = dfdensities["cellid"].astype(int)
-        dfdensities["velocity_inner"] = np.concatenate(([0.0], dfdensities["velocity_outer"].values[:-1]))
+        dfdensities["velocity_inner"] = np.concatenate(([0.0], dfdensities["velocity_outer"].to_numpy()[:-1]))
 
         t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
         dfdensities = dfdensities.eval(

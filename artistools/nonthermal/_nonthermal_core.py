@@ -331,9 +331,9 @@ def get_J(Z, ionstage, ionpot_ev):
     if ionstage == 1:
         if Z == 2:  # He I
             return 15.8
-        elif Z == 10:  # Ne I
+        if Z == 10:  # Ne I
             return 24.2
-        elif Z == 18:  # Ar I
+        if Z == 18:  # Ar I
             return 10.0
 
     return 0.6 * ionpot_ev
@@ -1165,7 +1165,7 @@ def e_s_test(ax, ionpot_ev, J, arr_en_ev, shellstr, color):
     # ax.vlines(ionpot_ev, ymin=0., ymax=max(prob), color=color)
 
 
-def get_epsilon_avg(e_p, J, ionpot_ev, quiet=True):
+def get_epsilon_avg(e_p: float, J: float, ionpot_ev: float, quiet: bool = True) -> float:
     # average energy loss of the primary electron per ionisation in eV
     npts = 1000000
 
@@ -1226,14 +1226,17 @@ def calculate_Latom_excitation(ions, ionpopdict, nntot, en_ev, adata, T_exc=5000
         k_b = 8.617333262145179e-05  # eV / K
         energy_boltzfac_sum = ion.levels.eval("energy_ev * g * exp(- energy_ev / @k_b / @T_exc)").sum()
 
-        populations = ion.levels.eval("g * exp(- energy_ev / @k_b / @T_exc)").values / energy_boltzfac_sum
+        populations = ion.levels.eval("g * exp(- energy_ev / @k_b / @T_exc)").to_numpy() / energy_boltzfac_sum
 
         dftransitions_ion = dftransitions_ion.eval(
-            "epsilon_trans_ev = @ion.levels.loc[upper].energy_ev.values - @ion.levels.loc[lower].energy_ev.values",
+            (
+                "epsilon_trans_ev = @ion.levels.loc[upper].energy_ev.to_numpy() -"
+                " @ion.levels.loc[lower].energy_ev.to_numpy()"
+            ),
         )
 
-        dftransitions_ion = dftransitions_ion.eval("upper_g = @ion.levels.loc[upper].g.values")
-        dftransitions_ion = dftransitions_ion.eval("lower_g = @ion.levels.loc[lower].g.values")
+        dftransitions_ion = dftransitions_ion.eval("upper_g = @ion.levels.loc[upper].g.to_numpy()")
+        dftransitions_ion = dftransitions_ion.eval("lower_g = @ion.levels.loc[lower].g.to_numpy()")
 
         for _, row in dftransitions_ion.iterrows():
             nnlevel = populations[row.lower] * nnion

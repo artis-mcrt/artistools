@@ -72,13 +72,13 @@ def test_spectra_get_spectrum():
     dfspectrum = at.spectra.get_spectrum(modelpath, 55, 65, fnufilterfunc=None)[-1]
     assert len(dfspectrum["lambda_angstroms"]) == 1000
     assert len(dfspectrum["f_lambda"]) == 1000
-    assert abs(dfspectrum["lambda_angstroms"].values[-1] - 29920.601421214415) < 1e-5
-    assert abs(dfspectrum["lambda_angstroms"].values[0] - 600.75759482509852) < 1e-5
+    assert abs(dfspectrum["lambda_angstroms"].to_numpy()[-1] - 29920.601421214415) < 1e-5
+    assert abs(dfspectrum["lambda_angstroms"].to_numpy()[0] - 600.75759482509852) < 1e-5
 
     check_spectrum(dfspectrum)
 
-    lambda_min = dfspectrum["lambda_angstroms"].values[0]
-    lambda_max = dfspectrum["lambda_angstroms"].values[-1]
+    lambda_min = dfspectrum["lambda_angstroms"].to_numpy()[0]
+    lambda_max = dfspectrum["lambda_angstroms"].to_numpy()[-1]
     timelowdays = at.get_timestep_times_float(modelpath)[55]
     timehighdays = at.get_timestep_times_float(modelpath)[65]
 
@@ -99,7 +99,7 @@ def test_spectra_get_flux_contributions():
     integrated_flux_specout = np.trapz(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
 
     specdata = pd.read_csv(modelpath / "spec.out", delim_whitespace=True)
-    arraynu = specdata.loc[:, "0"].values
+    arraynu = specdata.loc[:, "0"].to_numpy()
     arraylambda_angstroms = const.c.to("angstrom/s").value / arraynu
 
     contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
@@ -117,7 +117,7 @@ def test_spectra_get_flux_contributions():
     assert math.isclose(integrated_flux_specout, integrated_flux_emission, rel_tol=4e-3)
 
     # check each bin is not out by a large fraction
-    diff = [abs(x - y) for x, y in zip(array_flambda_emission_total, dfspectrum["f_lambda"].values)]
+    diff = [abs(x - y) for x, y in zip(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy())]
     print(f"Max f_lambda difference {max(diff) / integrated_flux_specout}")
     assert max(diff) / integrated_flux_specout < 2e-3
 

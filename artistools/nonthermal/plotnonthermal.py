@@ -45,8 +45,8 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
             if not nonthermaldata_thisfile.empty:
                 if timestep >= 0 and modelgridindex >= 0:
                     return nonthermaldata_thisfile
-                else:
-                    nonthermaldata = nonthermaldata.append(nonthermaldata_thisfile.copy(), ignore_index=True)
+
+                nonthermaldata = nonthermaldata.append(nonthermaldata_thisfile.copy(), ignore_index=True)
 
     return nonthermaldata
 
