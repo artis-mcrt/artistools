@@ -107,7 +107,7 @@ ignore = ["BLE001", "D211", "D213", "E501", "E741", "ERA001", "FBT001", "FBT002"
 
 # Allow autofix for all enabled rules (when `--fix`) is provided.
 fixable = ["A", "B", "C", "E", "G", "N", "Q", "S", "W", "ARG", "BLE", "DJ", "DTZ", "EM", "ERA", "EXE", "FBT", "ICN", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PT", "PTH", "PYI", "RET", "RSE", "RUF", "SIM", "SLF", "TCH", "TID", "UP", "YTT"]
-unfixable = ["F841", "F401"]
+unfixable = ["F841", "F401", "PD002"]
 
 # larger than black's limit. Let black handle this
 line-length = 200
