@@ -52,8 +52,8 @@ def get_config(key: Optional[str] = None):
         setup_config()
     if key is None:
         return config
-    else:
-        return config[key]
+
+    return config[key]
 
 
 def set_config(key: str, value: Any) -> None:
