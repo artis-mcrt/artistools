@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import artistools as at
 from .packets import add_derived_columns
 from .packets import bin_and_sum

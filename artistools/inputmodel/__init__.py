@@ -19,4 +19,5 @@ from .inputmodel_misc import get_modeldata_tuple
 from .inputmodel_misc import save_empty_abundance_file
 from .inputmodel_misc import save_initelemabundances
 from .inputmodel_misc import save_modeldata
+from .inputmodel_misc import scale_model_to_time
 from .inputmodel_misc import sphericalaverage

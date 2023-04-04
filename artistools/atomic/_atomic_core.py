@@ -195,7 +195,7 @@ def parse_recombratefile(frecomb):
 def get_ionrecombratecalibration(modelpath):
     """Read recombrates file."""
     recombdata = {}
-    with open(Path(modelpath, "recombrates.txt"), "r") as frecomb:
+    with Path(modelpath, "recombrates.txt").open("r") as frecomb:
         for Z, upper_ionstage, dfrrc in parse_recombratefile(frecomb):
             recombdata[(Z, upper_ionstage)] = dfrrc
 

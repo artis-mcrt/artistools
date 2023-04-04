@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""Artistools - spectra related functions."""
+"""Artistools - estimators related functions."""
 from .__main__ import main
 from .estimators import apply_filters
 from .estimators import get_averaged_estimators

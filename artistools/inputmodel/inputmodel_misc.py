@@ -958,3 +958,36 @@ def sphericalaverage(
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
     return dfmodel1d, dfabundances1d, dfgridcontributions1d
+
+
+def scale_model_to_time(
+    targetmodeltime_days: float, t_model_days: Optional[float], dfmodel: pd.DataFrame, modelmeta=None
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Homologously expand model to targetmodeltime_days, reducing density and adjusting position columns to match"""
+
+    if t_model_days is None:
+        assert modelmeta is not None
+        t_model_days = modelmeta["t_model_days"]
+
+    timefactor = targetmodeltime_days / t_model_days
+
+    print(
+        f"Adjusting t_model to {targetmodeltime_days} days (factor {timefactor}) "
+        "using homologous expansion of positions and densities"
+    )
+
+    for col in dfmodel.columns:
+        if col.startwith("pos_"):
+            dfmodel[col] *= timefactor
+        elif col == "rho":
+            dfmodel["rho"] *= timefactor**-3
+        elif col == "logrho":
+            dfmodel["logrho"] += math.log10(timefactor**-3)
+
+    if modelmeta is not None:
+        modelmeta["t_model_days"] = targetmodeltime_days
+        modelmeta.get("headercommentlines", []).append(
+            "scaled from {t_model_days} to {targetmodeltime_days} (no abund change from decays)"
+        )
+
+    return dfmodel, modelmeta

@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""Artistools - light curve functions."""
+"""Artistools - non-LTE population functions."""
 from .__main__ import main
 from .nltepops import add_lte_pops
 from .nltepops import read_file

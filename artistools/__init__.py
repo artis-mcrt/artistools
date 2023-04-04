@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""Artistools.
+"""artistools.
 
 A collection of plotting, analysis, and file format conversion tools
 for the ARTIS radiative transfer code.
