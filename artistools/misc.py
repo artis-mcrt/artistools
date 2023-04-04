@@ -65,7 +65,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
             return opstr
 
         actions = sorted(actions, key=my_sort)
-        super(CustomArgHelpFormatter, self).add_arguments(actions)
+        super().add_arguments(actions)
 
 
 class AppendPath(argparse.Action):
@@ -130,7 +130,7 @@ def get_composition_data(filename: Union[Path, str]) -> pd.DataFrame:
         for _ in range(nelements):
             line = fcompdata.readline()
             linesplit = line.split()
-            row_list = list([int(x) for x in linesplit[:5]]) + list([float(x) for x in linesplit[5:]]) + [startindex]
+            row_list = [int(x) for x in linesplit[:5]] + [float(x) for x in linesplit[5:]] + [startindex]
 
             rowdfs.append(pd.DataFrame([row_list], columns=columns))
 
@@ -159,9 +159,7 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
                 assert Z is not None
                 atomic_composition[Z] = ioncount
 
-    composition_df = pd.DataFrame(
-        [(Z, atomic_composition[Z]) for Z in atomic_composition.keys()], columns=["Z", "nions"]
-    )
+    composition_df = pd.DataFrame([(Z, atomic_composition[Z]) for Z in atomic_composition], columns=["Z", "nions"])
     composition_df["lowermost_ionstage"] = [1] * composition_df.shape[0]
     composition_df["uppermost_ionstage"] = composition_df["nions"]
     return composition_df
@@ -174,10 +172,11 @@ def gather_res_data(res_df: pd.DataFrame, index_of_repeated_value: int = 1) -> d
     index_to_split = res_df.index[res_df.iloc[:, index_of_repeated_value] == res_df.iloc[0, index_of_repeated_value]]
     res_data: dict[int, pd.DataFrame] = {}
     for i, index_value in enumerate(index_to_split):
-        if index_value != index_to_split[-1]:
-            chunk = res_df.iloc[index_to_split[i] : index_to_split[i + 1], :]
-        else:
-            chunk = res_df.iloc[index_to_split[i] :, :]
+        chunk = (
+            res_df.iloc[index_to_split[i] : index_to_split[i + 1], :]
+            if index_value != index_to_split[-1]
+            else res_df.iloc[index_to_split[i] :, :]
+        )
         res_data[i] = chunk
 
     assert len(res_data) == 100

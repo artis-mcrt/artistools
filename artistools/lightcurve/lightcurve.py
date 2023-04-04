@@ -31,7 +31,7 @@ def readfile(
     else:
         lcdata[-1] = pd.read_csv(filepath, sep=" ", engine="pyarrow", header=None, names=["time", "lum", "lum_cmf"])
 
-        if list(lcdata[-1].time.values) != list(sorted(lcdata[-1].time.values)):
+        if list(lcdata[-1].time.values) != sorted(lcdata[-1].time.values):
             # the light_curve.out file repeats x values, so keep the first half only
             lcdata[-1] = lcdata[-1].iloc[: len(lcdata[-1]) // 2]
             lcdata[-1].index.name = "timestep"
@@ -362,10 +362,7 @@ def get_spectrum_in_filter_range(
 def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux: float) -> float:
     cf = flux * transmission
     flux_obs = abs(np.trapz(cf, wavelength_from_spectrum))  # using trapezoidal rule to integrate
-    if flux_obs == 0.0:
-        phot_filtobs_sn = 0.0
-    else:
-        phot_filtobs_sn = -2.5 * np.log10(flux_obs / zeropointenergyflux)
+    phot_filtobs_sn = 0.0 if flux_obs == 0.0 else -2.5 * np.log10(flux_obs / zeropointenergyflux)
 
     return phot_filtobs_sn
 
@@ -394,8 +391,8 @@ def get_colour_delta_mag(band_lightcurve_data, filter_names) -> tuple[list[float
         time_dict_1[float(filter_1[0])] = filter_1[1]
         time_dict_2[float(filter_2[0])] = filter_2[1]
 
-    for time in time_dict_1.keys():
-        if time in time_dict_2.keys():  # Test if time has a magnitude for both filters
+    for time in time_dict_1:
+        if time in time_dict_2:  # Test if time has a magnitude for both filters
             plot_times.append(time)
             colour_delta_mag.append(time_dict_1[time] - time_dict_2[time])
 
@@ -481,7 +478,7 @@ def read_bol_reflightcurve_data(lightcurvefilename):
     }
     if colrenames:
         print(f"{data_path}: renaming columns {colrenames}")
-        dflightcurve.rename(columns=colrenames, inplace=True)
+        dflightcurve = dflightcurve.rename(columns=colrenames)
 
     return dflightcurve, metadata
 
@@ -492,7 +489,7 @@ def get_sn_sample_bol():
 
     print(sn_data)
     bol_luminosity = sn_data["Lmax"].astype(float)
-    bol_magnitude = 4.74 - (2.5 * np.log10((10**bol_luminosity) / const.L_sun.to("erg/s").value))  # 𝑀𝑏𝑜𝑙,𝑠𝑢𝑛 = 4.74
+    bol_magnitude = 4.74 - (2.5 * np.log10((10**bol_luminosity) / const.L_sun.to("erg/s").value))  # Mbol,sun = 4.74
 
     bol_magnitude_error_upper = bol_magnitude - (
         4.74

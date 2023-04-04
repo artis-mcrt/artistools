@@ -249,10 +249,7 @@ def main(args=None, argsraw=None, **kwargs):
     if from_model:
         modelgridindex = args.modelgridindex
 
-        if args.timedays:
-            timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
-        else:
-            timestep = args.timestep
+        timestep = at.get_timestep_of_timedays(modelpath, args.timedays) if args.timedays else args.timestep
 
         modeldata, _ = at.inputmodel.get_modeldata(Path(modelpath, "model.txt"))
         estimators_all = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)

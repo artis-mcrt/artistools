@@ -37,10 +37,10 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
             # radfielddata_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
 
             if timestep >= 0:
-                nonthermaldata_thisfile.query("timestep==@timestep", inplace=True)
+                nonthermaldata_thisfile = nonthermaldata_thisfile.query("timestep==@timestep")
 
             if modelgridindex >= 0:
-                nonthermaldata_thisfile.query("modelgridindex==@modelgridindex", inplace=True)
+                nonthermaldata_thisfile = nonthermaldata_thisfile.query("modelgridindex==@modelgridindex")
 
             if not nonthermaldata_thisfile.empty:
                 if timestep >= 0 and modelgridindex >= 0:
@@ -167,27 +167,25 @@ def make_plot(modelpaths, args):
     if args.kf1992spec:
         kf92spec = pd.read_csv(Path(modelpaths[0], "KF1992spec-fig1.txt"), header=None, names=["e_kev", "log10_y"])
         kf92spec["energy_ev"] = kf92spec["e_kev"] * 1000.0
-        kf92spec.eval("y = 10 ** log10_y", inplace=True)
+        kf92spec = kf92spec.eval("y = 10 ** log10_y")
         axes[0].plot(
             kf92spec["energy_ev"], kf92spec["log10_y"], linewidth=2.0, color="red", label="Kozma & Fransson (1992)"
         )
 
     for index, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
-        if args.velocity >= 0.0:
-            modelgridindex = at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)
-        else:
-            modelgridindex = args.modelgridindex
+        modelgridindex = (
+            at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)
+            if args.velocity >= 0.0
+            else args.modelgridindex
+        )
 
-        if args.timedays:
-            timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
-        else:
-            timestep = args.timestep
+        timestep = at.get_timestep_of_timedays(modelpath, args.timedays) if args.timedays else args.timestep
 
         nonthermaldata = read_files(modelpath=Path(modelpath), modelgridindex=modelgridindex, timestep=timestep)
 
         if args.xmin:
-            nonthermaldata.query("energy_ev >= @args.xmin", inplace=True)
+            nonthermaldata = nonthermaldata.query("energy_ev >= @args.xmin")
 
         if nonthermaldata.empty:
             print(f"No data for timestep {timestep:d}")

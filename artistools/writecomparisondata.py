@@ -30,15 +30,15 @@ def write_spectra(modelpath, model_id, selected_timesteps, outfile):
         lum_lambda[n, :] = fluxes_nu[n, :] * 2.99792458e18 / lambdas[n] / lambdas[n] * area
 
     with open(outfile, "w") as f:
-        f.write("#NTIMES: {0}\n".format(len(selected_timesteps)))
-        f.write("#NWAVE: {0}\n".format(len(lambdas)))
-        f.write("#TIMES[d]: {0}\n".format(" ".join(["{0:.2f}".format(times[ts]) for ts in selected_timesteps])))
+        f.write("#NTIMES: {}\n".format(len(selected_timesteps)))
+        f.write("#NWAVE: {}\n".format(len(lambdas)))
+        f.write("#TIMES[d]: {}\n".format(" ".join(["{:.2f}".format(times[ts]) for ts in selected_timesteps])))
         f.write("#wavelength[Ang] flux_t0[erg/s/Ang] flux_t1[erg/s/Ang] ... flux_tn[erg/s/Ang]\n")
 
         for n in reversed(range(len(lambdas))):
             f.write(
-                "{0:.2f} ".format(lambdas[n])
-                + " ".join(["{0:.2e}".format(lum_lambda[n, ts]) for ts in selected_timesteps])
+                "{:.2f} ".format(lambdas[n])
+                + " ".join(["{:.2e}".format(lum_lambda[n, ts]) for ts in selected_timesteps])
                 + "\n"
             )
 

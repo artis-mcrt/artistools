@@ -31,7 +31,7 @@ types = {
     32: "TYPE_ESCAPE",
 }
 
-type_ids = dict((v, k) for k, v in types.items())
+type_ids = {v: k for k, v in types.items()}
 
 EMTYPE_NOTSET = -9999000
 EMTYPE_FREEFREE = -9999999
@@ -170,11 +170,11 @@ def add_derived_columns(
         return at.get_timestep_of_timedays(modelpath, packet.trueem_time / day_in_s)
 
     if "emission_velocity" in colnames:
-        dfpackets.eval("emission_velocity = sqrt(em_posx ** 2 + em_posy ** 2 + em_posz ** 2) / em_time", inplace=True)
+        dfpackets = dfpackets.eval("emission_velocity = sqrt(em_posx ** 2 + em_posy ** 2 + em_posz ** 2) / em_time")
 
-        dfpackets.eval("em_velx = em_posx / em_time", inplace=True)
-        dfpackets.eval("em_vely = em_posy / em_time", inplace=True)
-        dfpackets.eval("em_velz = em_posz / em_time", inplace=True)
+        dfpackets = dfpackets.eval("em_velx = em_posx / em_time")
+        dfpackets = dfpackets.eval("em_vely = em_posy / em_time")
+        dfpackets = dfpackets.eval("em_velz = em_posz / em_time")
 
     if "em_modelgridindex" in colnames:
         if "emission_velocity" not in dfpackets.columns:
@@ -192,7 +192,7 @@ def add_derived_columns(
     if "em_timestep" in colnames:
         dfpackets["em_timestep"] = dfpackets.apply(em_timestep, axis=1)
 
-    if any((x in colnames for x in ["angle_bin", "dirbin", "costhetabin", "phibin"])):
+    if any(x in colnames for x in ["angle_bin", "dirbin", "costhetabin", "phibin"]):
         dfpackets = bin_packet_directions(modelpath, dfpackets)
 
     return dfpackets
@@ -351,10 +351,7 @@ def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[i
         f_nosuffixes = at.stripallsuffixes(f)
 
         suffix_priority = [[".out", ".gz"], [".out", ".xz"], [".out", ".parquet"]]
-        if f.suffixes in suffix_priority:
-            startindex = suffix_priority.index(f.suffixes) + 1
-        else:
-            startindex = 0
+        startindex = suffix_priority.index(f.suffixes) + 1 if f.suffixes in suffix_priority else 0
 
         if any(f_nosuffixes.with_suffix("".join(s)).is_file() for s in suffix_priority[startindex:]):
             return True
@@ -442,10 +439,11 @@ def get_directionbin(
     vec3 = np.cross(vec2, syn_dir)
     testphi = np.dot(vec1, vec3)
 
-    if testphi > 0:
-        phibin = int(math.acos(cosphi) / 2.0 / np.pi * nphibins)
-    else:
-        phibin = int((math.acos(cosphi) + np.pi) / 2.0 / np.pi * nphibins)
+    phibin = (
+        int(math.acos(cosphi) / 2.0 / np.pi * nphibins)
+        if testphi > 0
+        else int((math.acos(cosphi) + np.pi) / 2.0 / np.pi * nphibins)
+    )
 
     na = (thetabin * nphibins) + phibin
     return na
@@ -586,17 +584,17 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
         if only_packets_0_scatters:
             print("Only using packets with 0 scatters")
             # print(dfpackets[['scat_count', 'interactions', 'nscatterings']])
-            dfpackets.query("nscatterings == 0", inplace=True)
+            dfpackets = dfpackets.query("nscatterings == 0")
 
         # print(dfpackets[['emission_velocity', 'em_velx', 'em_vely', 'em_velz']])
         # select only type escape and type r-pkt (don't include gamma-rays)
-        dfpackets.query(
-            f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids["TYPE_RPKT"]}', inplace=True
+        dfpackets = dfpackets.query(
+            f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids["TYPE_RPKT"]}'
         )
         if em_time:
-            dfpackets.query("@timeminarray[@timestep_min] < em_time/@DAY < @timemaxarray[@timestep_max]", inplace=True)
+            dfpackets = dfpackets.query("@timeminarray[@timestep_min] < em_time/@DAY < @timemaxarray[@timestep_max]")
         else:  # packet arrival time
-            dfpackets.query("@timeminarray[@timestep_min] < t_arrive_d < @timemaxarray[@timestep_max]", inplace=True)
+            dfpackets = dfpackets.query("@timeminarray[@timestep_min] < t_arrive_d < @timemaxarray[@timestep_max]")
 
         emission_position3d[0].extend(list(dfpackets["em_velx"] / CLIGHT))
         emission_position3d[1].extend(list(dfpackets["em_vely"] / CLIGHT))
@@ -680,7 +678,7 @@ def get_mean_packet_emission_velocity_per_ts(
         at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
         if escape_angles is not None:
             dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
-            dfpackets.query("dirbin == @escape_angles", inplace=True)
+            dfpackets = dfpackets.query("dirbin == @escape_angles")
 
         if i == 0:  # make new df
             dfpackets_escape_velocity_and_arrive_time = dfpackets[["t_arrive_d", "emission_velocity"]]

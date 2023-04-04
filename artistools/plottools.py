@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import numpy as np
+from matplotlib import ticker
 
 from .configuration import get_config
 
@@ -146,9 +146,8 @@ def imshow_init_for_artis_grid(ngrid, vmax, plot_variable_3d_array, plot_axes="x
                 if plot_axes == "xy":
                     if z == round(ngrid / 2) - 1:
                         data[y, x] = plot_variable_3d_array[x, y, z]
-                elif plot_axes == "xz":
-                    if y == round(ngrid / 2) - 1:
-                        data[z, x] = plot_variable_3d_array[x, y, z]
+                elif plot_axes == "xz" and y == round(ngrid / 2) - 1:
+                    data[z, x] = plot_variable_3d_array[x, y, z]
 
     return data, extent
 
