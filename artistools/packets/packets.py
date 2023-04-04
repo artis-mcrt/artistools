@@ -445,8 +445,7 @@ def get_directionbin(
         else int((math.acos(cosphi) + np.pi) / 2.0 / np.pi * nphibins)
     )
 
-    na = (thetabin * nphibins) + phibin
-    return na
+    return (thetabin * nphibins) + phibin
 
 
 def bin_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.LazyFrame) -> pl.LazyFrame:
