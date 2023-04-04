@@ -3,6 +3,7 @@ import os.path
 import time
 from functools import wraps
 from pathlib import Path
+from typing import Optional
 
 import artistools.configuration
 import artistools.misc
@@ -10,10 +11,22 @@ from .configuration import get_config
 
 
 def diskcache(
-    ignoreargs=[], ignorekwargs=[], saveonly=False, quiet=False, savezipped=False, funcdepends=None, funcversion=None
+    ignoreargs: Optional[list[int]] = None,
+    ignorekwargs: Optional[list[str]] = None,
+    saveonly: bool = False,
+    quiet: bool = False,
+    savezipped: bool = False,
+    funcdepends=None,
+    funcversion=None,
 ):
     import hashlib
     import pickle
+
+    if ignoreargs is None:
+        ignoreargs = []
+
+    if ignorekwargs is None:
+        ignorekwargs = []
 
     def printopt(*args, **kwargs):
         if not quiet:
@@ -122,14 +135,11 @@ def diskcache(
             if functime > 1:
                 # slow functions are worth saving to disk
                 saveresult = True
-            else:
+            elif (savezipped and filename_nogz.exists()) or (not savezipped and filename_xz.exists()):
                 # check if we need to replace the gzipped or non-gzipped file with the correct one
                 # if we so, need to save the new file even though functime is unknown since we read
                 # from disk version instead of executing the function
-                if savezipped and filename_nogz.exists():
-                    saveresult = True
-                elif not savezipped and filename_xz.exists():
-                    saveresult = True
+                saveresult = True
 
             if saveresult:
                 # if the cache folder doesn't exist, create it
