@@ -186,7 +186,7 @@ def parse_directionbin_args(modelpath: Union[Path, str], args) -> tuple[Sequence
                 assert dirbin % at.get_viewingdirection_phibincount() == 0 or dirbin == -1
 
         if args.average_over_theta_angle:
-            for dirbin in dirbin_definition.keys():
+            for dirbin in dirbin_definition:
                 assert dirbin < at.get_viewingdirection_costhetabincount() or dirbin == -1
 
     return dirbins, dirbin_definition
@@ -563,10 +563,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, key, 
         else:
             args.plotvalues.append((a0, a0))
         if not args.noerrorbars:
-            if args.color:
-                ecolor = args.color
-            else:
-                ecolor = define_colours_list
+            ecolor = args.color if args.color else define_colours_list
 
             ax.errorbar(
                 xvalues_angleaveraged,
@@ -577,10 +574,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, key, 
                 capsize=2,
             )
 
-    if args.label:
-        linelabels = args.label
-    else:
-        linelabels = modelnames
+    linelabels = args.label if args.label else modelnames
 
     # a0, datalabel = at.lightcurve.get_sn_sample_bol()
     # a0, datalabel = at.lightcurve.plot_phillips_relation_data()
@@ -726,10 +720,7 @@ def peakmag_risetime_declinerate_init(modelpaths, filternames_conversion_dict, a
         modelpath = Path(modelpath)
 
         if not args.filter:
-            if args.plotviewingangle:
-                lcname = "light_curve_res.out"
-            else:
-                lcname = "light_curve.out"
+            lcname = "light_curve_res.out" if args.plotviewingangle else "light_curve.out"
             lcpath = at.firstexisting(lcname, folder=modelpath, tryzipped=True)
             lightcurve_data = at.lightcurve.readfile(lcpath)
 

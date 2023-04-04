@@ -294,7 +294,7 @@ def read_emission_absorption_file(emabsfilename: Union[str, Path]) -> pd.DataFra
 
     # check if last column is an artefact of whitespace at end of line (None or NaNs for pyarrow/c engine)
     if pd.isna(dfemabs.iloc[0, -1]):
-        dfemabs.drop(dfemabs.columns[-1], axis=1, inplace=True)
+        dfemabs = dfemabs.drop(dfemabs.columns[-1], axis=1)
 
     return dfemabs
 
@@ -349,7 +349,7 @@ def get_spectrum(
         else:
             specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
 
-    if any([dirbin != -1 for dirbin in directionbins]):
+    if any(dirbin != -1 for dirbin in directionbins):
         assert stokesparam == "I"
         specdata.update(
             get_spec_res(modelpath=modelpath, average_over_theta=average_over_theta, average_over_phi=average_over_phi)
@@ -376,10 +376,10 @@ def get_spectrum(
             f_nu = fnufilterfunc(f_nu)
 
         dfspectrum = pd.DataFrame({"nu": nu, "f_nu": f_nu})
-        dfspectrum.sort_values(by="nu", ascending=False, inplace=True)
+        dfspectrum = dfspectrum.sort_values(by="nu", ascending=False)
 
-        dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18}, inplace=True)
-        dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms", inplace=True)
+        dfspectrum = dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18})
+        dfspectrum = dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms")
 
         specdataout[dirbin] = dfspectrum
 
@@ -415,10 +415,11 @@ def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
         vspecpol_data = []  # list of all predefined vspectra
         for i, index_spectrum_starts in enumerate(index_of_new_spectrum[:nvirtual_spectra]):
             # todo: this is different to at.gather_res_data() -- could be made to be same format to not repeat code
-            if index_spectrum_starts != index_of_new_spectrum[-1]:
-                chunk = vspecpolfile.iloc[index_spectrum_starts : index_of_new_spectrum[i + 1], :]
-            else:
-                chunk = vspecpolfile.iloc[index_spectrum_starts:, :]
+            chunk = (
+                vspecpolfile.iloc[index_spectrum_starts : index_of_new_spectrum[i + 1], :]
+                if index_spectrum_starts != index_of_new_spectrum[-1]
+                else vspecpolfile.iloc[index_spectrum_starts:, :]
+            )
             vspecpol_data.append(chunk)
 
         if len(vspecpol_data_old) > 0:
@@ -475,10 +476,11 @@ def get_specpol_data(
 ) -> dict[str, pd.DataFrame]:
     if specdata is None:
         assert modelpath is not None
-        if angle == -1:
-            specfilename = at.firstexisting("specpol.out", folder=modelpath, tryzipped=True)
-        else:
-            specfilename = at.firstexisting(f"specpol_res_{angle}.out", folder=modelpath, tryzipped=True)
+        specfilename = (
+            at.firstexisting("specpol.out", folder=modelpath, tryzipped=True)
+            if angle == -1
+            else at.firstexisting(f"specpol_res_{angle}.out", folder=modelpath, tryzipped=True)
+        )
 
         print(f"Reading {specfilename}")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
@@ -576,10 +578,10 @@ def get_vspecpol_spectrum(
         f_nu = fnufilterfunc(f_nu)
 
     dfspectrum = pd.DataFrame({"nu": nu, "f_nu": f_nu})
-    dfspectrum.sort_values(by="nu", ascending=False, inplace=True)
+    dfspectrum = dfspectrum.sort_values(by="nu", ascending=False)
 
-    dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18}, inplace=True)
-    dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms", inplace=True)
+    dfspectrum = dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18})
+    dfspectrum = dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms")
 
     return dfspectrum
 
@@ -624,12 +626,9 @@ def get_flux_contributions(
     emissiondata: dict[int, pd.DataFrame] = {}
     absorptiondata: dict[int, pd.DataFrame] = {}
     maxion: Optional[int] = None
-    for i, dbin in enumerate(dbinlist):
+    for dbin in dbinlist:
         if getemission:
-            if use_lastemissiontype:
-                emissionfilenames = ["emission.out", "emissionpol.out"]
-            else:
-                emissionfilenames = ["emissiontrue.out"]
+            emissionfilenames = ["emission.out", "emissionpol.out"] if use_lastemissiontype else ["emissiontrue.out"]
 
             if dbin != -1:
                 emissionfilenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in emissionfilenames]
@@ -878,10 +877,9 @@ def get_flux_contributions_from_packets(
     nu_min = 2.99792458e18 / lambda_max
     nu_max = 2.99792458e18 / lambda_min
 
-    if useinternalpackets:
-        emtypecolumn = "emissiontype"
-    else:
-        emtypecolumn = "emissiontype" if use_lastemissiontype else "trueemissiontype"
+    emtypecolumn = (
+        "emissiontype" if useinternalpackets else "emissiontype" if use_lastemissiontype else "trueemissiontype"
+    )
 
     for index, packetsfile in enumerate(packetsfiles):
         if useinternalpackets:
@@ -1146,9 +1144,9 @@ def print_integrated_flux(
 def get_line_flux(
     lambda_low: float, lambda_high: float, arr_f_lambda: np.ndarray, arr_lambda_angstroms: np.ndarray
 ) -> float:
-    index_low, index_high = [
+    index_low, index_high = (
         int(np.searchsorted(arr_lambda_angstroms, wl, side="left")) for wl in (lambda_low, lambda_high)
-    ]
+    )
     flux_integral = abs(np.trapz(arr_f_lambda[index_low:index_high], x=arr_lambda_angstroms[index_low:index_high]))
     return flux_integral
 

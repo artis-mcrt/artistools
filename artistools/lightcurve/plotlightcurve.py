@@ -297,10 +297,11 @@ def plot_artis_lightcurve(
         )
     else:
         if lcfilename is None:
-            if directionbins != [-1]:
-                lcfilename = "light_curve_res.out"
-            else:
-                lcfilename = "gamma_light_curve.out" if (escape_type == "TYPE_GAMMA") else "light_curve.out"
+            lcfilename = (
+                "light_curve_res.out"
+                if directionbins != [-1]
+                else "gamma_light_curve.out" if escape_type == "TYPE_GAMMA" else "light_curve.out"
+            )
 
         try:
             lcpath = at.firstexisting(lcfilename, folder=modelpath, tryzipped=True)
@@ -483,7 +484,7 @@ def make_lightcurve_plot(
             dflightcurve, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
             lightcurvelabel = metadata.get("label", bolreflightcurve)
             color = ["0.0", "0.5", "0.7"][reflightcurveindex]
-            plotkwargs = dict(label=lightcurvelabel, color=color, zorder=0)
+            plotkwargs = {"label": lightcurvelabel, "color": color, "zorder": 0}
             if (
                 "luminosity_errminus_erg/s" in dflightcurve.columns
                 and "luminosity_errplus_erg/s" in dflightcurve.columns
@@ -557,10 +558,7 @@ def make_lightcurve_plot(
     if args.magnitude:
         axis.set_ylabel("Absolute Bolometric Magnitude")
     else:
-        if not args.Lsun:
-            str_units = " [erg/s]"
-        else:
-            str_units = r"$/ \mathrm{L}_\odot$"
+        str_units = " [erg/s]" if not args.Lsun else "$/ \\mathrm{L}_\\odot$"
         if args.plotdeposition:
             yvarname = ""
         elif escape_type == "TYPE_GAMMA":
@@ -661,10 +659,7 @@ def get_linelabel(
         linelabel = rf"$\theta$ = {viewing_angle}"  # todo: update to be consistent with res definition
     elif args.plotviewingangle and angle is not None and angle != -1:
         assert angle_definition is not None
-        if args.nomodelname:
-            linelabel = f"{angle_definition[angle]}"
-        else:
-            linelabel = f"{modelname} {angle_definition[angle]}"
+        linelabel = f"{angle_definition[angle]}" if args.nomodelname else f"{modelname} {angle_definition[angle]}"
         # linelabel = None
         # linelabel = fr"{modelname} $\theta$ = {angle_names[index]}$^\circ$"
         # plt.plot(time, magnitude, label=linelabel, linewidth=3)
@@ -741,7 +736,7 @@ def get_viewinganglecolor_for_colorbar(
         assert nphibins == 10
         reorderphibins = {5: 9, 6: 8, 7: 7, 8: 6, 9: 5}
         print("Reordering phi bins")
-        if colorindex in reorderphibins.keys():
+        if colorindex in reorderphibins:
             colorindex = reorderphibins[colorindex]
         plotkwargs["color"] = scaledmap.to_rgba(colorindex)
 
@@ -836,10 +831,11 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                         txtlinesout.append(f"{t} {m}")
                     txtout = "\n".join(txtlinesout)
                     if args.write_data:
-                        if angle is not None:
-                            bandoutfile = Path(f"band_{band_name}_angle_{angle}.txt")
-                        else:
-                            bandoutfile = Path(f"band_{band_name}.txt")
+                        bandoutfile = (
+                            Path(f"band_{band_name}_angle_{angle}.txt")
+                            if angle != -1
+                            else Path(f"band_{band_name}.txt")
+                        )
                         with bandoutfile.open("w") as f:
                             f.write(txtout)
                         print(f"Saved {bandoutfile}")
@@ -858,16 +854,13 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 #     global define_colours_list
                 #     plt.plot(time, brightness_in_mag, label=modelname, color=define_colours_list[angle], linewidth=3)
 
-                if (
-                    modelnumber == 0 and args.plot_hesma_model and band_name in hesma_model.keys()
-                ):  # todo: see if this works
+                if modelnumber == 0 and args.plot_hesma_model and band_name in hesma_model:  # todo: see if this works
                     ax.plot(hesma_model.t, hesma_model[band_name], color="black")
 
                 # axarr[plotnumber].axis([0, 60, -16, -19.5])
-                if band_name in filternames_conversion_dict:
-                    text_key = filternames_conversion_dict[band_name]
-                else:
-                    text_key = band_name
+                text_key = (
+                    filternames_conversion_dict[band_name] if band_name in filternames_conversion_dict else band_name
+                )
 
                 if args.subplots:
                     ax[plotnumber].annotate(
@@ -1383,7 +1376,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-filtersavgol",
         nargs=2,
-        help="Savitzky–Golay filter. Specify the window_length and poly_order.e.g. -filtersavgol 5 3",
+        help="Savitzky-Golay filter. Specify the window_length and poly_order.e.g. -filtersavgol 5 3",
     )
 
     parser.add_argument(

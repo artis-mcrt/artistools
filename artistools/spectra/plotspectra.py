@@ -681,7 +681,7 @@ def make_emissionabsorption_plot(
             if not args.showemission:
                 plotobjects.extend(absstackplot)
 
-    plotobjectlabels.extend(list([x.linelabel for x in contributions_sorted_reduced]))
+    plotobjectlabels.extend([x.linelabel for x in contributions_sorted_reduced])
     # print(plotobjectlabels)
     # print(len(plotobjectlabels), len(plotobjects))
 
@@ -1084,7 +1084,7 @@ def addargs(parser) -> None:
     parser.add_argument(
         "-filtersavgol",
         nargs=2,
-        help="Savitzky–Golay filter. Specify the window_length and poly_order.e.g. -filtersavgol 5 3",
+        help="Savitzky-Golay filter. Specify the window_length and poly_order.e.g. -filtersavgol 5 3",
     )
 
     parser.add_argument("-timestep", "-ts", dest="timestep", nargs="?", help="First timestep or a range e.g. 45-65")
