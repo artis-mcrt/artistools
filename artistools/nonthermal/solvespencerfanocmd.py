@@ -40,7 +40,7 @@ def make_ntstats_plot(ntstatfile: Union[str, Path]) -> None:
 
     xarr = np.log10(dfstats.x_e)
     ax.plot(xarr, dfstats.frac_ionization * norm_factors, label="Ionisation")
-    if not max(dfstats.frac_excitation) == 0.0:
+    if max(dfstats.frac_excitation) > 0.0:
         ax.plot(xarr, dfstats.frac_excitation * norm_factors, label="Excitation")
     ax.plot(xarr, dfstats.frac_heating * norm_factors, label="Heating")
     ioncols = [col for col in dfstats.columns.values if col.startswith("frac_ionization_")]
@@ -155,7 +155,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     if args.plotstats:
         make_ntstats_plot(args.plotstats)
-        return
+        return None
 
     # global at.nonthermal.experiment_use_Latom_in_spencerfano
     at.nonthermal.experiment_use_Latom_in_spencerfano = args.atomlossrate

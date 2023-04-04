@@ -100,6 +100,23 @@ disable = """
 [tool.pylint.typecheck]
 ignored-modules = ["astropy", "extinction"]
 
+[tool.ruff]
+select = ["A", "B", "C", "E", "F", "G", "N", "Q", "S", "W", "ARG", "BLE", "DJ", "DTZ", "EM", "ERA", "EXE", "FBT", "ICN", "INP", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PT", "PTH", "PYI", "RET", "RSE", "RUF", "SIM", "SLF", "TCH", "TID", "TRY", "UP", "YTT"]
+ignore = ["D211", "D213", "E501", "E741", "ERA001", "FBT001", "FBT002", "N802", "N803", "N806", "N999", "PD901", "PGH001", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "S101", "UP032", "C9"]
+# F841 Local variable _ is assigned to but never used is a good warning to see, but not worth making into an error
+
+# Allow autofix for all enabled rules (when `--fix`) is provided.
+#fixable = ["A", "B", "C", "E", "F", "G", "N", "Q", "S", "W", "ARG", "BLE", "DJ", "DTZ", "EM", "ERA", "EXE", "FBT", "ICN", "INP", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PT", "PTH", "PYI", "RET", "RSE", "RUF", "SIM", "SLF", "TCH", "TID", "TRY", "UP", "YTT"]
+unfixable = []
+
+# larger than black's limit. Let black handle this
+line-length = 200
+
+target-version = "py39"
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
+
 [tool.setuptools_scm]
 write_to = "_version.py"
 local_scheme = "no-local-version"
