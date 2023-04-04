@@ -66,7 +66,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
     #             'color': color_total,
     #         }))
 
-    color_gamma = next(axis._get_lines.prop_cycler)["color"]
+    color_gamma = next(axis.get_lines().prop_cycler)["color"]
 
     # axis.plot(depdata['tmid_days'], depdata['eps_gamma_Lsun'] * 3.826e33, **dict(
     #     plotkwargs, **{
@@ -80,44 +80,38 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
     axis.plot(
         depdata["tmid_days"],
         gammadep_lsun * 3.826e33,
-        **dict(
-            plotkwargs,
-            **{
-                "label": plotkwargs["label"] + r" $\dot{E}_{dep,\gamma}$",
-                "linestyle": "dashed",
-                "color": color_gamma,
-            },
-        ),
+        **{
+            **plotkwargs,
+            "label": plotkwargs["label"] + r" $\dot{E}_{dep,\gamma}$",
+            "linestyle": "dashed",
+            "color": color_gamma,
+        },
     )
 
-    color_beta = next(axis._get_lines.prop_cycler)["color"]
+    color_beta = next(axis.get_lines().prop_cycler)["color"]
 
     if "eps_elec_Lsun" in depdata:
         axis.plot(
             depdata["tmid_days"],
             depdata["eps_elec_Lsun"] * 3.826e33,
-            **dict(
-                plotkwargs,
-                **{
-                    "label": plotkwargs["label"] + r" $\dot{E}_{rad,\beta^-}$",
-                    "linestyle": "dotted",
-                    "color": color_beta,
-                },
-            ),
+            **{
+                **plotkwargs,
+                "label": plotkwargs["label"] + r" $\dot{E}_{rad,\beta^-}$",
+                "linestyle": "dotted",
+                "color": color_beta,
+            },
         )
 
     if "elecdep_Lsun" in depdata:
         axis.plot(
             depdata["tmid_days"],
             depdata["elecdep_Lsun"] * 3.826e33,
-            **dict(
-                plotkwargs,
-                **{
-                    "label": plotkwargs["label"] + r" $\dot{E}_{dep,\beta^-}$",
-                    "linestyle": "dashed",
-                    "color": color_beta,
-                },
-            ),
+            **{
+                **plotkwargs,
+                "label": plotkwargs["label"] + r" $\dot{E}_{dep,\beta^-}$",
+                "linestyle": "dashed",
+                "color": color_beta,
+            },
         )
 
     c23modelpath = Path(
@@ -169,20 +163,18 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         axistherm.plot(
             depdata["tmid_days"],
             depdata["gammadeppathint_Lsun"] / depdata["eps_gamma_Lsun"],
-            **dict(plotkwargs, **{"label": modelname + r" $f_\gamma$", "linestyle": "solid", "color": color_gamma}),
+            **{**plotkwargs, "label": modelname + r" $f_\gamma$", "linestyle": "solid", "color": color_gamma},
         )
 
         axistherm.plot(
             depdata["tmid_days"],
             depdata["elecdep_Lsun"] / depdata["eps_elec_Lsun"],
-            **dict(
-                plotkwargs,
-                **{
-                    "label": modelname + r" $f_\beta$",
-                    "linestyle": "solid",
-                    "color": color_beta,
-                },
-            ),
+            **{
+                **plotkwargs,
+                "label": modelname + r" $f_\beta$",
+                "linestyle": "solid",
+                "color": color_beta,
+            },
         )
 
         f_alpha = depdata["alphadep_Lsun"] / depdata["eps_alpha_Lsun"]
@@ -193,7 +185,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         axistherm.plot(
             depdata["tmid_days"],
             f_alpha,
-            **dict(plotkwargs, **{"label": modelname + r" $f_\alpha$", "linestyle": "solid", "color": color_alpha}),
+            **{**plotkwargs, "label": modelname + r" $f_\alpha$", "linestyle": "solid", "color": color_alpha},
         )
 
         ejecta_ke: float
@@ -203,6 +195,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         else:
             # velocity_inner is in km/s
             ejecta_ke = dfmodel.eval("0.5 * (cellmass_grams / 1000.) * (1000. * velocity_outer) ** 2").sum()
+
         print(f"  ejecta kinetic energy: {ejecta_ke:.2e} [K] = {ejecta_ke *1e7:.2e} [erg]")
         # velocity derived from ejecta kinetic energy to match Barnes et al. (2016) Section 2.1
         ejecta_v = np.sqrt(2 * ejecta_ke / (model_mass_grams * 1e-3))
@@ -211,38 +204,38 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         m5 = model_mass_grams / (5e-3 * 1.989e33)  # M / (5e-3 Msun)
 
         t_ineff_gamma = 0.5 * np.sqrt(m5) / v2
-        barnes_f_gamma = [1 - math.exp(-((t / t_ineff_gamma) ** -2)) for t in depdata["tmid_days"].values]
+        barnes_f_gamma = [1 - math.exp(-((t / t_ineff_gamma) ** -2)) for t in depdata["tmid_days"].to_numpy()]
 
         axistherm.plot(
             depdata["tmid_days"],
             barnes_f_gamma,
-            **dict(plotkwargs, **{"label": r"Barnes+16 $f_\gamma$", "linestyle": "dashed", "color": color_gamma}),
+            **{**plotkwargs, "label": r"Barnes+16 $f_\gamma$", "linestyle": "dashed", "color": color_gamma},
         )
 
         e0_beta_mev = 0.5
         t_ineff_beta = 7.4 * (e0_beta_mev / 0.5) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
         barnes_f_beta = [
             math.log(1 + 2 * (t / t_ineff_beta) ** 2) / (2 * (t / t_ineff_beta) ** 2)
-            for t in depdata["tmid_days"].values
+            for t in depdata["tmid_days"].to_numpy()
         ]
 
         axistherm.plot(
             depdata["tmid_days"],
             barnes_f_beta,
-            **dict(plotkwargs, **{"label": r"Barnes+16 $f_\beta$", "linestyle": "dashed", "color": color_beta}),
+            **{**plotkwargs, "label": r"Barnes+16 $f_\beta$", "linestyle": "dashed", "color": color_beta},
         )
 
         e0_alpha_mev = 6.0
         t_ineff_alpha = 4.3 * 1.8 * (e0_alpha_mev / 6.0) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
         barnes_f_alpha = [
             math.log(1 + 2 * (t / t_ineff_alpha) ** 2) / (2 * (t / t_ineff_alpha) ** 2)
-            for t in depdata["tmid_days"].values
+            for t in depdata["tmid_days"].to_numpy()
         ]
 
         axistherm.plot(
             depdata["tmid_days"],
             barnes_f_alpha,
-            **dict(plotkwargs, **{"label": r"Barnes+16 $f_\alpha$", "linestyle": "dashed", "color": color_alpha}),
+            **{**plotkwargs, "label": r"Barnes+16 $f_\alpha$", "linestyle": "dashed", "color": color_alpha},
         )
 
 
