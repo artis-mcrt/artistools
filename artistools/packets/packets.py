@@ -204,10 +204,10 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
     skiprows: int = 0
     column_names: Optional[list[str]] = None
     try:
-        fpackets = at.zopen(packetsfile)
+        fpackets = at.zopen(packetsfile, mode="rb")
 
         datastartpos = fpackets.tell()  # will be updated if this was actually the start of a header
-        firstline = fpackets.readline()
+        firstline = fpackets.readline().decode()
 
         if firstline.lstrip().startswith("#"):
             column_names = firstline.lstrip("#").split()
