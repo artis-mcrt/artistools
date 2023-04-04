@@ -788,7 +788,7 @@ def main(args=None, argsraw=None, **kwargs):
     if isinstance(args.elements, str):
         args.elements = [args.elements]
 
-    if isinstance(args.velocity, float) or isinstance(args.velocity, int):
+    if isinstance(args.velocity, (float, int)):
         args.velocity = [args.velocity]
 
     mgilist = []
