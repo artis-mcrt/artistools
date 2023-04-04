@@ -24,7 +24,7 @@ def get_kurucz_transitions():
     )
     translist = []
     ionlist = []
-    with open("gfall.dat", "r") as fnist:
+    with open("gfall.dat") as fnist:
         for line in fnist:
             row = line.split()
             if len(row) >= 24:
@@ -53,7 +53,7 @@ def get_kurucz_transitions():
 def get_nist_transitions(filename):
     transitiontuple = namedtuple("transition", "lambda_angstroms A lower_energy_ev upper_energy_ev lower_g upper_g")
     translist = []
-    with open(filename, "r") as fnist:
+    with open(filename) as fnist:
         for line in fnist:
             row = line.split("|")
             if len(row) == 17 and "-" in row[5]:

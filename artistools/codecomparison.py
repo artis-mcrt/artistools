@@ -27,7 +27,7 @@ def get_timestep_times_float(
 
     filepath = Path(at.get_config()["codecomparisondata1path"], modelname, f"phys_{modelname}_{codename}.txt")
 
-    with open(filepath, "r", encoding="utf-8") as fphys:
+    with open(filepath, encoding="utf-8") as fphys:
         _ = int(fphys.readline().replace("#NTIMES:", ""))
         tmids = np.array([float(x) for x in fphys.readline().replace("#TIMES[d]:", "").split()])
 
@@ -69,7 +69,7 @@ def read_reference_estimators(
     estimators: dict[tuple[int, int], Any] = {}
     cur_timestep = -1
     cur_modelgridindex = -1
-    with open(physfilepath, "rt") as fphys:
+    with open(physfilepath) as fphys:
         ntimes = int(fphys.readline().replace("#NTIMES:", ""))
         arr_timedays = np.array([float(x) for x in fphys.readline().replace("#TIMES[d]:", "").split()])
         assert len(arr_timedays) == ntimes
@@ -106,7 +106,7 @@ def read_reference_estimators(
     for ionfracfilepath in ionfracfilepaths:
         _, element, _, _ = ionfracfilepath.stem.split("_")
 
-        with open(ionfracfilepath, "rt") as fions:
+        with open(ionfracfilepath) as fions:
             print(ionfracfilepath)
             ntimes_2 = int(fions.readline().replace("#NTIMES:", ""))
             assert ntimes_2 == ntimes
@@ -185,7 +185,7 @@ def get_spectra(modelpath: Union[str, Path]) -> tuple[pd.DataFrame, np.ndarray]:
 
     specfilepath = Path(inputmodelfolder, f"spectra_{inputmodel}_{codename}.txt")
 
-    with open(specfilepath, "rt") as fspec:
+    with open(specfilepath) as fspec:
         ntimes = int(fspec.readline().replace("#NTIMES:", ""))
         _ = int(fspec.readline().replace("#NWAVE:", ""))
         arr_timedays = np.array([float(x) for x in fspec.readline().split()[1:]])

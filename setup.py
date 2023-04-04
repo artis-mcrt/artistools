@@ -21,9 +21,9 @@ setup(
     packages=find_namespace_packages(where="."),
     package_dir={"": "."},
     url="https://www.github.com/artis-mcrt/artistools/",
-    long_description=(Path(__file__).absolute().parent / "README.md").open("rt").read(),
+    long_description=(Path(__file__).absolute().parent / "README.md").open().read(),
     long_description_content_type="text/markdown",
-    install_requires=(Path(__file__).absolute().parent / "requirements.txt").open("rt").read().splitlines(),
+    install_requires=(Path(__file__).absolute().parent / "requirements.txt").open().read().splitlines(),
     entry_points={
         "console_scripts": commands.get_console_scripts(),
     },

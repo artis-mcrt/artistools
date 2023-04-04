@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# import glob
-# import itertools
 import argparse
 import math
 import os
@@ -467,7 +464,7 @@ def read_bol_reflightcurve_data(lightcurvefilename):
     metadata = at.get_file_metadata(data_path)
 
     # check for possible header line and read table
-    with open(data_path, "r") as flc:
+    with open(data_path) as flc:
         filepos = flc.tell()
         line = flc.readline()
         if line.startswith("#"):

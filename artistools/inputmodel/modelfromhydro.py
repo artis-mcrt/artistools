@@ -146,7 +146,7 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
 
     griddata["rho"] = griddata["rho"] * 6.176e17  # convert to g/cm3
 
-    with open(griddatfilepath, "r", encoding="utf-8") as gridfile:
+    with open(griddatfilepath, encoding="utf-8") as gridfile:
         ngrid = int(gridfile.readline().split()[0])
         if ngrid != len(griddata["inputcellid"]):
             print("length of file and ngrid don't match")
@@ -171,7 +171,9 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
     )
 
     if targetmodeltime_days is not None:
-        at.inputmodel.scale_model_to_time(targetmodeltime_days, t_model_days, griddata)
+        at.inputmodel.scale_model_to_time(
+            targetmodeltime_days=targetmodeltime_days, t_model_days=t_model_days, dfmodel=griddata
+        )
         t_model_days = targetmodeltime_days
 
     if minparticlespercell > 0:
@@ -199,7 +201,7 @@ def read_mattia_grid_data_file(pathtogriddata):
     griddatfilepath = Path(pathtogriddata) / "1D_m0.01_v0.1.txt"
 
     griddata = pd.read_csv(griddatfilepath, delim_whitespace=True, comment="#", skiprows=1)
-    with open(griddatfilepath, "r") as gridfile:
+    with open(griddatfilepath) as gridfile:
         t_model = float(gridfile.readline())
         print(f"t_model {t_model} seconds")
     xmax = max(griddata["posx"])

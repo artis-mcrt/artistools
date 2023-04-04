@@ -130,7 +130,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
         transition_filename = Path(modelpath, "transitiondata.txt")
         if not quiet:
             print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}")
-        with at.zopen(transition_filename, "rt") as ftransitions:
+        with at.zopen(transition_filename) as ftransitions:
             transitionsdict = {
                 (Z, ionstage): dftransitions
                 for Z, ionstage, dftransitions in parse_transitiondata(ftransitions, ionlist)
@@ -142,7 +142,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
 
         if not quiet:
             print(f"Reading {phixs_filename.relative_to(Path(modelpath).parent)}")
-        with at.zopen(phixs_filename, "rt") as fphixs:
+        with at.zopen(phixs_filename) as fphixs:
             for (
                 Z,
                 upperionstage,
@@ -157,7 +157,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
     level_lists = []
     iontuple = namedtuple("ion", "Z ion_stage level_count ion_pot levels transitions")
 
-    with at.zopen(adatafilename, "rt") as fadata:
+    with at.zopen(adatafilename) as fadata:
         if not quiet:
             print(f"Reading {adatafilename.relative_to(Path(modelpath).parent)}")
 

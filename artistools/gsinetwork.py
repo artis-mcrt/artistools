@@ -415,7 +415,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     griddatafolder: Path = Path("SFHo_snapshot")
     mergermodelfolder: Path = Path("SFHo_short")
     trajfolder: Path = Path("SFHo")
-    with at.zopen(modelpath / "model.txt", "rt") as fmodel:
+    with at.zopen(modelpath / "model.txt") as fmodel:
         while True:
             line = fmodel.readline()
             if line.startswith("#"):

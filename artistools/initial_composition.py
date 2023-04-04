@@ -13,14 +13,14 @@ import artistools as at
 
 
 def plot_2d_initial_abundances(modelpath, args):
-    model = at.inputmodel.get_2d_modeldata(modelpath[0])
-    abundances = at.inputmodel.get_initelemabundances(modelpath[0])
+    model = at.inputmodel.get_2d_modeldata(modelpath)
+    abundances = at.inputmodel.get_initelemabundances(modelpath)
 
     abundances["inputcellid"] = abundances["inputcellid"].apply(float)
 
     merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
 
-    with open(os.path.join(modelpath[0], "model.txt"), "r") as fmodelin:
+    with open(os.path.join(modelpath, "model.txt")) as fmodelin:
         fmodelin.readline()  # npts r, npts z
         t_model = float(fmodelin.readline())  # days
         vmax = float(fmodelin.readline())  # v_max in [cm/s]
@@ -44,30 +44,8 @@ def plot_2d_initial_abundances(modelpath, args):
     # plt.title(f'At {sliceaxis} = {sliceposition}')
 
     outfilename = f"plotcomposition{args.ion}.pdf"
-    plt.savefig(Path(modelpath[0]) / outfilename, format="pdf")
+    plt.savefig(Path(modelpath) / outfilename, format="pdf")
     print(f"Saved {outfilename}")
-
-
-def get_merged_model_abundances(modelpath):
-    # t_model is in days and vmax is in cm/s
-    model, t_model_days, vmax = at.inputmodel.get_modeldata_tuple(modelpath[0], dimensions=3)
-
-    targetmodeltime_days = None
-    if targetmodeltime_days is not None:
-        print(
-            f"Scaling modeldata to {targetmodeltime_days} days. \nWARNING: abundances not scaled for radioactive decays"
-        )
-        import artistools.inputmodel.modelfromhydro
-
-        artistools.inputmodel.modelfromhydro.scale_model_to_time(targetmodeltime_days, t_model_days, model)
-        t_model_days = targetmodeltime_days
-
-    abundances = at.inputmodel.get_initelemabundances(modelpath[0])
-
-    abundances["inputcellid"] = abundances["inputcellid"].apply(float)
-
-    merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
-    return merge_dfs, t_model_days
 
 
 def get_2D_slice_through_3d_model(merge_dfs, sliceaxis, sliceindex=None):
@@ -128,14 +106,23 @@ def plot_3d_initial_abundances(modelpath, args=None):
     }
     matplotlib.rc("font", **font)
 
-    merge_dfs, t_model = get_merged_model_abundances(modelpath)
-    # merge_dfs = plot_most_abundant(modelpath, args)
+    dfmodel, modelmeta = at.get_modeldata(modelpath, skipabundancecolumns=True, get_elemabundances=True)
+    targetmodeltime_days = None
+    if targetmodeltime_days is not None:
+        print(
+            f"Scaling modeldata to {targetmodeltime_days} days. \nWARNING: abundances not scaled for radioactive decays"
+        )
+        # import artistools.inputmodel.modelfromhydro
 
-    plotaxis1 = "y"
-    plotaxis2 = "z"
-    sliceaxis = "x"
+        at.inputmodel.scale_model_to_time(
+            targetmodeltime_days=targetmodeltime_days, modelmeta=modelmeta, dfmodel=dfmodel
+        )
 
-    plotvals = get_2D_slice_through_3d_model(merge_dfs, sliceaxis)
+    plotaxis1 = "x"
+    plotaxis2 = "y"
+    sliceaxis = "z"
+
+    plotvals = get_2D_slice_through_3d_model(dfmodel, sliceaxis)
 
     subplots = False
     if len(args.ion) > 1:
@@ -165,7 +152,9 @@ def plot_3d_initial_abundances(modelpath, args=None):
             ion = "rho"
         if subplots:
             ax = axes[index]
-        im, scaledmap = plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model, args)
+        im, scaledmap = plot_abundances_ion(
+            ax, plotvals, ion, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
+        )
 
     xlabel = rf"v$_{plotaxis1}$ in 10$^3$ km/s"
     ylabel = rf"v$_{plotaxis2}$ in 10$^3$ km/s"
@@ -191,7 +180,7 @@ def plot_3d_initial_abundances(modelpath, args=None):
     #     outfilename = args.outputfile
     # else:
     outfilename = f"plotcomposition{ion}.pdf"
-    plt.savefig(Path(modelpath[0]) / outfilename, format="pdf")
+    plt.savefig(Path(modelpath) / outfilename, format="pdf")
 
     print(f"Saved {outfilename}")
 
@@ -305,10 +294,9 @@ def make_3d_plot(modelpath, args):
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-modelpath",
-        default=[],
-        nargs="*",
-        action=at.AppendPath,
-        help="Path(s) to ARTIS folder (may include wildcards such as * and **)",
+        type=Path,
+        default=Path(),
+        help="Path to ARTIS folder",
     )
 
     parser.add_argument(
@@ -344,14 +332,12 @@ def main(args=None, argsraw=None, **kwargs):
     if not args.modelpath:
         args.modelpath = ["."]
 
-    args.modelpath = at.flatten_list(args.modelpath)
-
     if args.plot3d:
-        make_3d_plot(Path(args.modelpath[0]), args)
+        make_3d_plot(Path(args.modelpath), args)
         return
 
     if not args.modeldim:
-        inputparams = at.get_inputparams(args.modelpath[0])
+        inputparams = at.get_inputparams(args.modelpath)
     else:
         inputparams = {"n_dimensions": args.modeldim}
 

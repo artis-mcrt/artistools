@@ -85,7 +85,7 @@ def get_ionrecombrates_fromfile(filename: Union[Path, str]) -> pd.DataFrame:
     print(f"Reading {filename}")
 
     header_row = []
-    with open(filename, "r") as filein:
+    with open(filename) as filein:
         while True:
             line = filein.readline()
             if line.strip().startswith("TOTAL RECOMBINATION RATE"):
@@ -135,7 +135,7 @@ def parse_estimfile(
     """Generate timestep, modelgridindex, dict from estimator file."""
     # itstep = at.get_inputparams(modelpath)['itstep']
 
-    with at.zopen(estfilepath, "rt") as estimfile:
+    with at.zopen(estfilepath) as estimfile:
         timestep: int = -1
         modelgridindex: int = -1
         estimblock: dict[Any, Any] = {}

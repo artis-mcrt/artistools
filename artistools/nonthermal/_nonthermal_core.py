@@ -88,7 +88,7 @@ def read_binding_energies(modelpath: str = ".") -> np.ndarray:
         ]
     )
 
-    with open(collionfilename, "r") as f:
+    with open(collionfilename) as f:
         nt_shells, n_z_binding = [int(x) for x in f.readline().split()]
         electron_binding = np.zeros((n_z_binding, nt_shells))
 
@@ -468,7 +468,7 @@ def read_colliondata(collionfilename="collion.txt", modelpath=get_config()["path
     collionrow = namedtuple("collionrow", ["Z", "nelec", "n", "l", "ionpot_ev", "A", "B", "C", "D"])
 
     nrows = -1
-    with open(Path(modelpath, collionfilename), "r") as collionfile:
+    with open(Path(modelpath, collionfilename)) as collionfile:
         nrows = int(collionfile.readline().strip())
         # print(f'Collionfile: expecting {nrows} rows')
         dfcollion = pd.read_csv(collionfile, delim_whitespace=True, header=None, names=collionrow._fields)

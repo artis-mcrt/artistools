@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import argparse
 import gzip
 import io
@@ -123,7 +122,7 @@ def get_composition_data(filename: Union[Path, str]) -> pd.DataFrame:
     columns = ("Z,nions,lowermost_ionstage,uppermost_ionstage,nlevelsmax_readin,abundance,mass,startindex").split(",")
 
     rowdfs = []
-    with open(filename, "r") as fcompdata:
+    with open(filename) as fcompdata:
         nelements = int(fcompdata.readline())
         fcompdata.readline()  # T_preset
         fcompdata.readline()  # homogeneous_abundances
@@ -146,7 +145,7 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
     """Read ion list from output file"""
     atomic_composition = {}
 
-    output = open(modelpath / "output_0-0.txt", "rt").read().splitlines()
+    output = open(modelpath / "output_0-0.txt").read().splitlines()
     Z: Optional[int] = None
     ioncount = 0
     for row in output:
@@ -230,7 +229,7 @@ def match_closest_time(reftime: float, searchtimes: list[Any]) -> str:
 def get_vpkt_config(modelpath: Union[Path, str]) -> dict[str, Any]:
     filename = Path(modelpath, "vpkt.txt")
     vpkt_config: dict[str, Any] = {}
-    with open(filename, "r") as vpkt_txt:
+    with open(filename) as vpkt_txt:
         vpkt_config["nobsdirections"] = int(vpkt_txt.readline())
         vpkt_config["cos_theta"] = [float(x) for x in vpkt_txt.readline().split()]
         vpkt_config["phi"] = [float(x) for x in vpkt_txt.readline().split()]
@@ -263,7 +262,7 @@ def get_grid_mapping(modelpath: Union[Path, str]) -> tuple[dict[int, list[int]],
 
     assoc_cells: dict[int, list[int]] = {}
     mgi_of_propcells: dict[int, int] = {}
-    with open(filename, "r") as fgrid:
+    with open(filename) as fgrid:
         for line in fgrid:
             row = line.split()
             propcellid, mgi = int(row[0]), int(row[1])
@@ -316,7 +315,7 @@ def get_syn_dir(modelpath: Path) -> Sequence[int]:
         print(f"{modelpath / 'syn_dir.txt'} does not exist. using x,y,z = 0,0,1")
         return (0, 0, 1)
 
-    with open(modelpath / "syn_dir.txt", "rt") as syn_dir_file:
+    with open(modelpath / "syn_dir.txt") as syn_dir_file:
         syn_dir = [int(x) for x in syn_dir_file.readline().split()]
 
     return syn_dir
@@ -343,7 +342,7 @@ def get_deposition(modelpath: Path) -> pd.DataFrame:
 
     ts_mids = get_timestep_times_float(modelpath, loc="mid")
 
-    with open(depfilepath, "r") as fdep:
+    with open(depfilepath) as fdep:
         filepos = fdep.tell()
         line = fdep.readline()
         if line.startswith("#"):
@@ -581,7 +580,7 @@ def get_model_name(path: Union[Path, str], useplotlabelfile: bool = True) -> str
 
     try:
         plotlabelfile = Path(modelpath, "plotlabel.txt")
-        return open(plotlabelfile, mode="r").readline().strip()
+        return open(plotlabelfile).readline().strip()
     except FileNotFoundError:
         return os.path.basename(modelpath)
 
@@ -711,19 +710,19 @@ def flatten_list(listin: list) -> list:
     return listout
 
 
-def zopen(filename: Union[Path, str], mode: str, encoding: Optional[str] = None) -> Any:
+def zopen(filename: Union[Path, str], mode: str = "rt", encoding: Optional[str] = None) -> Any:
     """Open filename, filename.gz or filename.x"""
     filenamexz = str(filename) if str(filename).endswith(".xz") else str(filename) + ".xz"
     filenamegz = str(filename) if str(filename).endswith(".gz") else str(filename) + ".gz"
     if os.path.exists(filename) and not str(filename).endswith(".gz") and not str(filename).endswith(".xz"):
-        return open(filename, mode, encoding=encoding)
+        return open(filename, mode=mode, encoding=encoding)
     elif os.path.exists(filenamegz) or str(filename).endswith(".gz"):
-        return gzip.open(filenamegz, mode, encoding=encoding)
+        return gzip.open(filenamegz, mode=mode, encoding=encoding)
     elif os.path.exists(filenamexz) or str(filename).endswith(".xz"):
-        return xz.open(filenamexz, mode, encoding=encoding)
+        return xz.open(filenamexz, mode=mode, encoding=encoding)
     else:
         # will raise file not found
-        return open(filename, mode)
+        return open(filename, mode=mode)
 
 
 def firstexisting(
@@ -884,7 +883,7 @@ def get_bflist(modelpath: Union[Path, str]) -> dict[int, tuple[int, int, int, in
     compositiondata = get_composition_data(modelpath)
     bflist = {}
     bflistpath = firstexisting(["bflist.out", "bflist.dat"], folder=modelpath, tryzipped=True)
-    with zopen(bflistpath, "rt") as filein:
+    with zopen(bflistpath) as filein:
         bflistcount = int(filein.readline())
 
         for _ in range(bflistcount):
@@ -982,7 +981,7 @@ def get_npts_model(modelpath: Path) -> int:
         if Path(modelpath).is_file()
         else at.firstexisting("model.txt", folder=modelpath, tryzipped=True)
     )
-    with zopen(modelfilepath, "rt") as modelfile:
+    with zopen(modelfilepath) as modelfile:
         npts_model = int(readnoncommentline(modelfile))
     return npts_model
 
@@ -1035,7 +1034,7 @@ def get_runfolder_timesteps(folderpath: Union[Path, str]) -> tuple[int, ...]:
     """Get the set of timesteps covered by the output files in an ARTIS run folder."""
     folder_timesteps = set()
     try:
-        with zopen(Path(folderpath, "estimators_0000.out"), "rt") as estfile:
+        with zopen(Path(folderpath, "estimators_0000.out")) as estfile:
             restart_timestep = -1
             for line in estfile:
                 if line.startswith("timestep "):

@@ -23,7 +23,7 @@ def rd_nuc_decay_data(file, quiet=False):
     """
 
     # open file
-    with open(file, "r") as f:
+    with open(file) as f:
         # read in header
         while True:
             line = f.readline()
@@ -139,7 +139,7 @@ def rd_sn_hydro_data(file, ncol=8, reverse=False, quiet=False):
     MAX_POP_DIFF = 1e-5  # maximum absolute difference between sum(isofrac) and corresponding specfrac
 
     # open file
-    with open(file, "r") as f:
+    with open(file) as f:
         # read in header
         okhdr = 0
         nd, nspec, niso = 0, 0, 0

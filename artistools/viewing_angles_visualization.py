@@ -7,7 +7,7 @@ import pandas as pd
 
 
 def load_artis_model(modelfile):
-    with open(modelfile, "r") as f:
+    with open(modelfile) as f:
         n = f.readline()
         res = int(np.cbrt(int(n)))
         rho = np.zeros([res, res, res])

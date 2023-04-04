@@ -47,7 +47,7 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
         tarfile.open(tarfilepath, "r:*").extract(path=Path(traj_root, str(particleid)), member=memberfilename)
 
     if path_extracted_file.is_file():
-        return open(path_extracted_file, mode="r", encoding="utf-8")
+        return open(path_extracted_file, encoding="utf-8")
 
     if not tarfilepath.is_file():
         print(f"No network data found for particle {particleid} (so can't access {memberfilename})")

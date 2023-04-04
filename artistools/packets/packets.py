@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import calendar
 import gzip
 import math
@@ -205,7 +204,7 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
     skiprows: int = 0
     column_names: Optional[list[str]] = None
     try:
-        fpackets = at.zopen(packetsfile, "r")
+        fpackets = at.zopen(packetsfile)
 
         datastartpos = fpackets.tell()  # will be updated if this was actually the start of a header
         firstline = fpackets.readline()

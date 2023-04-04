@@ -39,7 +39,7 @@ def read_modelfile(
         print(f"Reading {filename}")
 
     numheaderrows = 0
-    with at.zopen(filename, "rt") as fmodel:
+    with at.zopen(filename) as fmodel:
         line = "#"
         while line.startswith("#"):
             line = fmodel.readline()
@@ -542,7 +542,7 @@ def get_3d_model_data_merged_model_and_abundances_minimal(args):
     model = get_3d_modeldata_minimal(args.modelpath)
     abundances = get_initelemabundances(args.modelpath[0])
 
-    with open(os.path.join(args.modelpath[0], "model.txt"), "r") as fmodelin:
+    with open(os.path.join(args.modelpath[0], "model.txt")) as fmodelin:
         fmodelin.readline()  # npts_model3d
         args.t_model = float(fmodelin.readline())  # days
         args.vmax = float(fmodelin.readline())  # v_max in [cm/s]
@@ -961,8 +961,11 @@ def sphericalaverage(
 
 
 def scale_model_to_time(
-    targetmodeltime_days: float, t_model_days: Optional[float], dfmodel: pd.DataFrame, modelmeta=None
-) -> tuple[pd.DataFrame, dict[str, Any]]:
+    dfmodel: pd.DataFrame,
+    targetmodeltime_days: float,
+    t_model_days: Optional[float] = None,
+    modelmeta: Optional[dict[str, Any]] = None,
+) -> tuple[pd.DataFrame, Optional[dict[str, Any]]]:
     """Homologously expand model to targetmodeltime_days, reducing density and adjusting position columns to match"""
 
     if t_model_days is None:

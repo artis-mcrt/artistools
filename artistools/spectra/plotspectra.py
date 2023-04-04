@@ -173,7 +173,7 @@ def plot_reference_spectrum(
 
 
 def plot_filter_functions(axis: plt.Axes) -> None:
-    filter_names = ["U", "B", "V", "R", "I"]
+    filter_names = ["U", "B", "V", "I"]
     colours = ["r", "b", "g", "c", "m"]
 
     filterdir = os.path.join(at.get_config()["path_artistools_dir"], "data/filters/")

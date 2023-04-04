@@ -57,7 +57,7 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
     listout = []
     dict3dcellidto1dcellid = {}
     outcellid = 0
-    with open(os.path.join(inputfolder, "model.txt"), "r") as fmodelin:
+    with open(os.path.join(inputfolder, "model.txt")) as fmodelin:
         fmodelin.readline()  # npts_model3d
         t_model = fmodelin.readline()  # days
         fmodelin.readline()  # v_max in [cm/s]
@@ -108,7 +108,7 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
 
 def slice_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid):
     with (
-        open(os.path.join(inputfolder, "abundances.txt"), "r") as fabundancesin,
+        open(os.path.join(inputfolder, "abundances.txt")) as fabundancesin,
         open(os.path.join(outputfolder, "abundances.txt"), "w") as fabundancesout,
     ):
         currentblock = []

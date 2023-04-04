@@ -10,7 +10,7 @@ def get_atomic_composition(modelpath):
     """Read ion list from output file"""
     atomic_composition = {}
 
-    output = open(modelpath / "output_0-0.txt", "r").read().splitlines()
+    output = open(modelpath / "output_0-0.txt").read().splitlines()
     ioncount = 0
     for row in output:
         if row.split()[0] == "[input.c]":
@@ -62,7 +62,7 @@ def get_first_ts_in_run_directory(modelpath):
 
     for folder in folderlist_all:
         if os.path.isfile(folder / "output_0-0.txt"):
-            with open(folder / "output_0-0.txt", "r") as output_0:
+            with open(folder / "output_0-0.txt") as output_0:
                 timesteps_in_dir = [
                     line.strip("...\n").split(" ")[-1]
                     for line in output_0
@@ -96,7 +96,7 @@ def read_classic_estimators(modelpath, modeldata, readonly_mgi=False, readonly_t
         timestep = first_timesteps_in_dir[str(estfile).split("/")[0]]  # get the starting timestep for the estfile
         # timestep = first_timesteps_in_dir[str(estfile[:-20])]
         # timestep = 0  # if the first timestep in the file is 0 then this is fine
-        with opener(estfile, "rt") as estfile:
+        with opener(estfile) as estfile:
             modelgridindex = -1
             for line in estfile:
                 row = line.split()
