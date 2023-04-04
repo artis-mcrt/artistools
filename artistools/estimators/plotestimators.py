@@ -285,14 +285,13 @@ def plot_multi_ion_series(
     def get_iontuple(ionstr):
         if ionstr in at.get_elsymbolslist():
             return (at.get_atomic_number(ionstr), "ALL")
-        elif " " in ionstr:
+        if " " in ionstr:
             return (at.get_atomic_number(ionstr.split(" ")[0]), at.decode_roman_numeral(ionstr.split(" ")[1]))
-        elif ionstr.rstrip("-0123456789") in at.get_elsymbolslist():
+        if ionstr.rstrip("-0123456789") in at.get_elsymbolslist():
             atomic_number = at.get_atomic_number(ionstr.rstrip("-0123456789"))
             return (atomic_number, ionstr)
-        else:
-            atomic_number = at.get_atomic_number(ionstr.split("_")[0])
-            return (atomic_number, ionstr)
+        atomic_number = at.get_atomic_number(ionstr.split("_")[0])
+        return (atomic_number, ionstr)
 
     # decoded into atomic number and parameter, e.g., [(26, 1), (26, 2), (26, 'ALL'), (26, 'Fe56')]
     iontuplelist = [get_iontuple(ionstr) for ionstr in ionlist]
@@ -542,7 +541,9 @@ def plot_series(
     ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename, None), **plotkwargs)
 
 
-def get_xlist(xvariable, allnonemptymgilist, estimators, timestepslist, modelpath, args):
+def get_xlist(
+    xvariable, allnonemptymgilist, estimators, timestepslist, modelpath, args
+) -> tuple[list[float], list[float], list[float]]:
     if xvariable in ["cellid", "modelgridindex"]:
         mgilist_out = [mgi for mgi in allnonemptymgilist if mgi <= args.xmax] if args.xmax >= 0 else allnonemptymgilist
         xlist = mgilist_out

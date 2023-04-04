@@ -262,7 +262,7 @@ def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
     columns = res_specdata[0].iloc[0]
     for dirbin in res_specdata:
         res_specdata[dirbin] = res_specdata[dirbin].rename(columns=columns)
-        res_specdata[dirbin].drop(res_specdata[dirbin].index[0], inplace=True)
+        res_specdata[dirbin] = res_specdata[dirbin].drop(res_specdata[dirbin].index[0])
         # These lines remove the Q and U values from the dataframe (I think)
         numberofIvalues = len(res_specdata[dirbin].columns.drop_duplicates())
         res_specdata_numpy = res_specdata[dirbin].iloc[:, :numberofIvalues].astype(float).to_numpy()
@@ -342,7 +342,7 @@ def get_spectrum(
                 print(f"Reading {specfilename}")
 
                 specdata[-1] = pd.read_csv(specfilename, delim_whitespace=True)
-                specdata[-1].rename(columns={"0": "nu"}, inplace=True)
+                specdata[-1] = specdata[-1].rename(columns={"0": "nu"})
             except FileNotFoundError:
                 specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
 
@@ -796,7 +796,7 @@ def get_flux_contributions_from_packets(
                     f"λ{line.lambda_angstroms:.0f} "
                     f"({line.upperlevelindex}-{line.lowerlevelindex})"
                 )
-            elif groupby == "terms":
+            if groupby == "terms":
                 upper_config = (
                     adata.query("Z == @line.atomic_number and ion_stage == @line.ionstage", inplace=False)
                     .iloc[0]
@@ -812,7 +812,7 @@ def get_flux_contributions_from_packets(
                 )
                 lower_term_noj = lower_config.split("_")[-1].split("[")[0]
                 return f"{at.get_ionstring(line.atomic_number, line.ionstage)} {upper_term_noj}->{lower_term_noj}"
-            elif groupby == "upperterm":
+            if groupby == "upperterm":
                 upper_config = (
                     adata.query("Z == @line.atomic_number and ion_stage == @line.ionstage", inplace=False)
                     .iloc[0]
@@ -822,7 +822,7 @@ def get_flux_contributions_from_packets(
                 upper_term_noj = upper_config.split("_")[-1].split("[")[0]
                 return f"{at.get_ionstring(line.atomic_number, line.ionstage)} {upper_term_noj}"
             return f"{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound"
-        elif emtype == -9999999:
+        if emtype == -9999999:
             return "free-free"
 
         bfindex = -emtype - 1

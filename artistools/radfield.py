@@ -629,7 +629,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
             )
             if levelnum < 5:
                 axes[0].plot(
-                    arraylambda_angstrom_recomb, arr_sigma_bf, label=r"$\sigma_{bf}$" + f"({ionstr} {level.levelname})"
+                    arraylambda_angstrom_recomb, arr_sigma_bf, label=rf"$\sigma_{{bf}}$({ionstr} {level.levelname})"
                 )
 
         lw = 1.0
@@ -905,7 +905,7 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
 
         plot_global_fitted_field_evolution(ax, radfielddata, nu_line, modelgridindex=modelgridindex)
         ax.annotate(
-            r"$\lambda$=" f"{lambda_angstroms:.1f} Å in cell {modelgridindex:d}\n",
+            rf"$\lambda$={lambda_angstroms:.1f} Å in cell {modelgridindex:d}\n",
             xy=(0.02, 0.96),
             xycoords="axes fraction",
             horizontalalignment="left",

@@ -50,8 +50,8 @@ def read_3d_gammalightcurve(
 
     res_data = {}
     for angle in np.arange(0, 100):
-        res_data[angle] = lcdata[["time", angle]].copy()
-        res_data[angle].rename(columns={angle: "lum"}, inplace=True)
+        res_data[angle] = lcdata[["time", angle]]
+        res_data[angle] = res_data[angle].rename(columns={angle: "lum"})
 
     return res_data
 
