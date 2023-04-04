@@ -11,9 +11,6 @@ def set_mpl_style() -> None:
     plt.style.use("file://" + str(get_config()["path_artistools_dir"] / "matplotlibrc"))
 
 
-set_mpl_style()
-
-
 class ExponentLabelFormatter(ticker.ScalarFormatter):
     """Formatter to move the 'x10^x' offset text into the axis label."""
 

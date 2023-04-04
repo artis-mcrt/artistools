@@ -107,12 +107,14 @@ select = [
     "SIM", "SLF", "TCH", "TID", "TRY", "UP", "YTT"
 ]
 ignore = [
+    "B007", # variable not used in loop body (but sometimes it is with eval)
     "BLE001",
     "C9",
     "D211", "D213",
     "E501", "E741",
     "EM101","EM102",
     "ERA001",
+    "F841", # Local variableis assigned to but never used is a good warning to see, but not worth making an error
     "N802", "N803", "N806", "N999",
     "PD901",
     "PGH001",
@@ -123,7 +125,6 @@ ignore = [
     "SLF001",
     "TRY003", "UP032",
 ]
-# F841 Local variable _ is assigned to but never used is a good warning to see, but not worth making into an error
 
 # Allow autofix for all enabled rules (when `--fix`) is provided.
 fixable = [

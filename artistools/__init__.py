@@ -14,7 +14,6 @@ import artistools.macroatom
 import artistools.nltepops
 import artistools.nonthermal
 import artistools.packets
-import artistools.plottools  # pylint: disable=unused-import,redefined-outer-name
 import artistools.radfield
 import artistools.spectra
 import artistools.transitions
@@ -92,3 +91,6 @@ from .misc import stripallsuffixes
 from .misc import trim_or_pad
 from .misc import vec_len
 from .misc import zopen
+from .plottools import set_mpl_style
+
+set_mpl_style()

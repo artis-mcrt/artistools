@@ -186,8 +186,6 @@ def plot_levelpop(
     args=None,
     **plotkwargs,
 ):
-    import artistools.plottools  # pylint: disable=unused-import
-
     if seriestype == "levelpopulation_dn_on_dvel":
         ax.set_ylabel("dN/dV [{}km$^{{-1}}$ s]")
         ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))

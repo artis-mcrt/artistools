@@ -15,7 +15,6 @@ from astropy import constants as const
 from matplotlib import ticker
 
 import artistools as at
-import artistools.plottools  # pylint: disable=unused-import,redefined-outer-name
 
 
 defaultoutputfile = "plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
@@ -745,6 +744,8 @@ def main(args=None, argsraw=None, **kwargs):
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
+
+    at.set_mpl_style()
 
     if args.x in ["time", "velocity"]:
         # if len(args.modelpath) == 1:

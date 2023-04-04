@@ -55,8 +55,7 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
             if not radfielddata_thisfile.empty:
                 if timestep >= 0 and modelgridindex >= 0:
                     return radfielddata_thisfile
-                else:
-                    radfielddata = radfielddata.append(radfielddata_thisfile.copy(), ignore_index=True)
+                radfielddata = radfielddata.append(radfielddata_thisfile.copy(), ignore_index=True)
 
     return radfielddata
 
@@ -786,7 +785,6 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
     axis.set_xlim(left=xmin, right=xmax)
     axis.set_ylim(bottom=0.0, top=ymax)
-    import artistools.plottools  # pylint: disable=unused-import,redefined-outer-name
 
     axis.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))
 
@@ -982,6 +980,8 @@ def main(args=None, argsraw=None, **kwargs):
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
+
+    at.set_mpl_style()
 
     defaultoutputfile = (
         Path("plotradfield_cell{modelgridindex:03d}_ts{timestep:03d}.pdf")

@@ -1284,6 +1284,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
             print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
             args.average_over_phi_angle = True
 
+    at.set_mpl_style()
+
     if not args.specpath:
         args.specpath = [Path(".")]
     elif isinstance(args.specpath, (str, Path)):  # or not not isinstance(args.specpath, Iterable)

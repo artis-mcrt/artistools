@@ -5,6 +5,7 @@ import re
 from functools import lru_cache
 from functools import partial
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 from astropy import constants as const
@@ -189,8 +190,11 @@ def read_file_filtered(nltefilepath, strquery=None, dfqueryvars=None):
 
 @lru_cache(maxsize=2)
 @diskcache(savezipped=True, funcversion="2020-07-03.1327", saveonly=False)
-def read_files(modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryvars={}):
+def read_files(modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryvars: Optional[dict] = None):
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
+
+    if dfqueryvars is None:
+        dfqueryvars = {}
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
 

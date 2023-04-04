@@ -22,7 +22,6 @@ from extinction import apply
 from extinction import ccm89
 
 import artistools as at
-import artistools.plottools  # pylint: disable=unused-import,redefined-outer-name
 
 # import glob
 # import itertools
@@ -747,16 +746,16 @@ def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=Non
         print("reordered phi bins")
         phi_viewing_angle_bins_reordered = [
             "0",
-            "\u03c0/5",
-            "2\u03c0/5",
-            "3\u03c0/5",
-            "4\u03c0/5",
-            "\u03c0",
-            "6\u03c0/5",
-            "7\u03c0/5",
-            "8\u03c0/5",
-            "9\u03c0/5",
-            "2\u03c0",
+            "π/5",
+            "2π/5",
+            "3π/5",
+            "4π/5",
+            "π",
+            "6π/5",
+            "7π/5",
+            "8π/5",
+            "9π/5",
+            "2π",
         ]
         ticklabels = phi_viewing_angle_bins_reordered
         # ticklabels = phi_viewing_angle_bins
@@ -923,7 +922,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 else:
                     ax.plot(time, brightness_in_mag, linewidth=3.5, **plotkwargs)  # color=color, linestyle=linestyle)
 
-    import artistools.plottools  # pylint: disable=unused-import,redefined-outer-name,reimported
+    at.set_mpl_style()
 
     ax = at.plottools.set_axis_properties(ax, args)
     fig, ax = set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args, band_name=first_band_name)
@@ -1533,6 +1532,8 @@ def main(args=None, argsraw=None, **kwargs):
         if args.average_every_tenth_viewing_angle:
             print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
             args.average_over_phi_angle = True
+
+    at.set_mpl_style()
 
     if not args.modelpath:
         args.modelpath = ["."]
