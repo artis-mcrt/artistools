@@ -287,11 +287,6 @@ def plot_artis_spectrum(
                 average_over_theta=average_over_theta,
                 fnufilterfunc=filterfunc,
             )
-
-            if args.outputfile is None:
-                statpath = Path()
-            else:
-                statpath = Path(args.outputfile).resolve().parent
         else:
             if args.plotvspecpol is not None:
                 # read virtual packet files (after running plotartisspectrum --makevspecpol)
@@ -763,7 +758,7 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
     if args.classicartis:
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)
         estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
-        allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index]
+        allnonemptymgilist = list(modeldata.index)
 
     else:
         estimators = at.estimators.read_estimators(modelpath=modelpath)
@@ -774,16 +769,16 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, args.maxpacketfiles)
     assert args.timemin is not None
     assert args.timemax is not None
-    tdays_min = float(args.timemin)
-    tdays_max = float(args.timemax)
+    # tdays_min = float(args.timemin)
+    # tdays_max = float(args.timemax)
 
     c_ang_s = 2.99792458e18
-    nu_min = c_ang_s / args.xmax
-    nu_max = c_ang_s / args.xmin
+    # nu_min = c_ang_s / args.xmax
+    # nu_max = c_ang_s / args.xmin
 
     list_lambda: dict[str, list[float]] = {}
     lists_y: dict[str, list[float]] = {}
-    for index, packetsfile in enumerate(packetsfiles):
+    for packetsfile in packetsfiles:
         dfpackets = at.packets.readfile(packetsfile, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
 
         dfpackets_selected = dfpackets.query(

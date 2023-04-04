@@ -346,7 +346,6 @@ def get_spectrum_in_filter_range(
         time=time,
         args=args,
         dirbin=angle,
-        modelnumber=modelnumber,
         average_over_phi=average_over_phi,
         average_over_theta=average_over_theta,
     )

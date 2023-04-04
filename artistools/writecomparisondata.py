@@ -3,7 +3,6 @@ import argparse
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 
 import artistools as at
 
@@ -154,10 +153,10 @@ def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptym
 
 def write_lbol_edep(modelpath, model_id, selected_timesteps, estimators, outputpath):
     # times = at.get_timestep_times_float(modelpath)
-    dflightcurve = at.lightcurve.readfile(Path(modelpath, "light_curve.out"))
+    dflightcurve = at.lightcurve.readfile(Path(modelpath, "light_curve.out"))[-1]
     dfdep = at.get_deposition(modelpath)
 
-    df = pd.merge(dflightcurve, dfdep, left_index=True, right_index=True, suffixes=("", "_dep"))
+    df = dflightcurve.merge(dfdep, left_index=True, right_index=True, suffixes=("", "_dep"))
 
     with open(outputpath, "w") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")

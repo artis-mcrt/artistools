@@ -209,8 +209,8 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
         datastartpos = fpackets.tell()  # will be updated if this was actually the start of a header
         firstline = fpackets.readline()
 
-        if firstline.decode().lstrip().startswith("#"):
-            column_names = firstline.decode().lstrip("#").split()
+        if firstline.lstrip().startswith("#"):
+            column_names = firstline.lstrip("#").split()
             assert column_names is not None
 
             # get the column count from the first data line to check header matched

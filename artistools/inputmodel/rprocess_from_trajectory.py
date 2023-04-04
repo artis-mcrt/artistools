@@ -69,7 +69,7 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
 @lru_cache(maxsize=16)
 def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
     with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/evol.dat") as evolfile:
-        dfevol = pd.read_table(
+        dfevol = pd.read_csv(
             evolfile,
             sep=r"\s+",
             comment="#",
@@ -137,7 +137,7 @@ def get_trajectory_timestepfile_nuc_abund(
         )
 
         # in case the files are inconsistent, switch to an adaptive reader
-        # dfnucabund = pd.read_table(
+        # dfnucabund = pd.read_csv(
         #     trajfile,
         #     skip_blank_lines=True,
         #     skiprows=1,
@@ -164,7 +164,7 @@ def get_trajectory_timestepfile_nuc_abund(
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
     """initial cell energy [erg/g]"""
     with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as enthermofile:
-        dfthermo: pd.DataFrame = pd.read_table(
+        dfthermo: pd.DataFrame = pd.read_csv(
             enthermofile, sep=r"\s+", usecols=["time/s", "Qdot"], engine="c", dtype={0: float, 1: float}
         )
         dfthermo.rename(columns={"time/s": "time_s"}, inplace=True)

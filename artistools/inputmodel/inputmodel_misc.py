@@ -176,7 +176,7 @@ def read_modelfile(
         dtypes["inputcellid"] = np.int32
         dtypes["tracercount"] = np.int32
         # each cell takes up two lines in the model file
-        dfmodel = pd.read_table(
+        dfmodel = pd.read_csv(
             filename,
             sep=r"\s+",
             engine="c",
@@ -197,7 +197,7 @@ def read_modelfile(
                     if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
                 ]
             )
-            dfmodeloddlines = pd.read_table(
+            dfmodeloddlines = pd.read_csv(
                 filename,
                 sep=r"\s+",
                 engine="c",

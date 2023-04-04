@@ -34,8 +34,8 @@ def timeshift_fluxscale_co56law(scaletoreftime: Optional[float], spectime: float
         # Co56 decay flux scaling
         assert spectime > 150
         return math.exp(float(spectime) / 113.7) / math.exp(scaletoreftime / 113.7)
-    else:
-        return 1.0
+
+    return 1.0
 
 
 def get_exspec_bins() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -86,7 +86,6 @@ def get_spectrum_at_time(
     time: float,
     args: Optional[argparse.Namespace],
     dirbin: int = -1,
-    modelnumber: Optional[int] = None,
     average_over_phi: Optional[bool] = None,
     average_over_theta: Optional[bool] = None,
 ) -> pd.DataFrame:
@@ -291,7 +290,7 @@ def read_emission_absorption_file(emabsfilename: Union[str, Path]) -> pd.DataFra
     except AttributeError:
         print(f" Reading {emabsfilename}")
 
-    dfemabs = pd.read_table(
+    dfemabs = pd.read_csv(
         emabsfilename,
         sep=" ",
         engine="pyarrow",

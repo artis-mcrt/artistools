@@ -42,7 +42,7 @@ types = {
     20: "TYPE_NTLEPTON",
     32: "TYPE_ESCAPE",
 }
-type_ids = dict((v, k) for k, v in types.items())
+type_ids = {v: k for k, v in types.items()}
 
 
 def sample_planck(T, nu_max_r, nu_min_r):
