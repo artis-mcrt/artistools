@@ -69,7 +69,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
 
 
 class AppendPath(argparse.Action):
-    def __call__(self, parser, args, values, option_string=None) -> None:  # type: ignore[no-untyped-def]
+    def __call__(self, parser, args, values, option_string=None) -> None:  # type: ignore[no-untyped-def] # noqa: ARG002
         # if getattr(args, self.dest) is None:
         #     setattr(args, self.dest, [])
         if isinstance(values, Iterable):
@@ -91,9 +91,7 @@ def make_namedtuple(typename: str, **fields: dict) -> tuple[Any, ...]:
     return namedtuple(typename, fields)(*fields.values())
 
 
-def showtimesteptimes(
-    modelpath: Optional[Path] = None, numberofcolumns: int = 5, args: Optional[argparse.Namespace] = None
-) -> None:
+def showtimesteptimes(modelpath: Optional[Path] = None, numberofcolumns: int = 5) -> None:
     """Print a table showing the timesteps and their corresponding times."""
     if modelpath is None:
         modelpath = Path()
@@ -408,17 +406,17 @@ def get_timestep_times_float(
     if loc == "mid":
         tmids = np.array([tmin * math.exp((ts + 0.5) * dlogt) for ts in timesteps])
         return tmids
-    elif loc == "start":
+    if loc == "start":
         tstarts = np.array([tmin * math.exp(ts * dlogt) for ts in timesteps])
         return tstarts
-    elif loc == "end":
+    if loc == "end":
         tends = np.array([tmin * math.exp((ts + 1) * dlogt) for ts in timesteps])
         return tends
-    elif loc == "delta":
+    if loc == "delta":
         tdeltas = np.array([tmin * (math.exp((ts + 1) * dlogt) - math.exp(ts * dlogt)) for ts in timesteps])
         return tdeltas
-    else:
-        raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
+
+    raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
 
 
 def get_timestep_of_timedays(modelpath: Path, timedays: Union[str, float]) -> int:
@@ -458,7 +456,7 @@ def get_time_range(
     if timemin and timemin > tends[-1]:
         print(f"{get_model_name(modelpath)}: WARNING timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
         return -1, -1, timemin, timemax
-    elif timemax and timemax < tstarts[0]:
+    if timemax and timemax < tstarts[0]:
         print(
             f"{get_model_name(modelpath)}: WARNING timemax {timemax} is before the first timestep at {tstarts[0]:.1f}"
         )
@@ -561,7 +559,7 @@ def get_escaped_arrivalrange(modelpath: Union[Path, str]) -> tuple[int, Optional
 
 
 @lru_cache(maxsize=8)
-def get_model_name(path: Union[Path, str], useplotlabelfile: bool = True) -> str:
+def get_model_name(path: Union[Path, str]) -> str:
     """Get the name of an ARTIS model from the path to any file inside it.
 
     Name will be either from a special plotlabel.txt file if it exists or the enclosing directory name
@@ -630,17 +628,18 @@ def get_ionstring(
 ) -> str:
     if ionstage == "ALL" or ionstage is None:
         return f"{get_elsymbol(atomic_number)}"
-    elif spectral:
+
+    if spectral:
         return f"{get_elsymbol(atomic_number)}{' ' if not nospace else ''}{roman_numerals[ionstage]}"
+
+    # ion notion e.g. Co+, Fe2+
+    if ionstage > 2:
+        strcharge = r"$^{" + str(ionstage - 1) + r"{+}}$"
+    elif ionstage == 2:
+        strcharge = r"$^{+}$"
     else:
-        # ion notion e.g. Co+, Fe2+
-        if ionstage > 2:
-            strcharge = r"$^{" + str(ionstage - 1) + r"{+}}$"
-        elif ionstage == 2:
-            strcharge = r"$^{+}$"
-        else:
-            strcharge = ""
-        return f"{get_elsymbol(atomic_number)}{strcharge}"
+        strcharge = ""
+    return f"{get_elsymbol(atomic_number)}{strcharge}"
 
 
 # based on code from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
@@ -649,7 +648,7 @@ def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[Any]:
     strparts = rng.split("-")
 
     if len(strparts) not in [1, 2]:
-        raise ValueError("Bad range: '{}'".format(rng))
+        raise ValueError(f"Bad range: '{rng}'")
 
     parts = [int(i) if i not in dictvars else dictvars[i] for i in strparts]
     start: int = parts[0]
@@ -920,9 +919,7 @@ def read_linestatfile(
     return nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
 
 
-def get_linelist_dict(
-    modelpath: Union[Path, str], returntype: Literal["dict", "dataframe"] = "dict"
-) -> dict[int, linetuple]:
+def get_linelist_dict(modelpath: Union[Path, str]) -> dict[int, linetuple]:
     nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
         Path(modelpath, "linestat.out")
     )
@@ -1057,7 +1054,7 @@ def get_runfolders(
             folder_timesteps = get_runfolder_timesteps(folderpath)
             if timesteps is None and timestep is not None and timestep in folder_timesteps:
                 return (folderpath,)
-            elif timesteps is not None and any(ts in folder_timesteps for ts in timesteps):
+            if timesteps is not None and any(ts in folder_timesteps for ts in timesteps):
                 folder_list_matching.append(folderpath)
 
         return tuple(folder_list_matching)
@@ -1079,29 +1076,29 @@ def get_mpiranklist(
     - only_ranks_withgridcells:
         set True to skip ranks that only update packets (i.e. that don't update any grid cells/output estimators)
     """
+
     if modelgridindex is None or modelgridindex == []:
         if only_ranks_withgridcells:
             return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
         return range(get_nprocs(modelpath))
-    else:
-        if isinstance(modelgridindex, Iterable):
-            mpiranklist = set()
-            for mgi in modelgridindex:
-                if mgi < 0:
-                    if only_ranks_withgridcells:
-                        return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
-                    return range(get_nprocs(modelpath))
-                else:
-                    mpiranklist.add(get_mpirankofcell(mgi, modelpath=modelpath))
 
-            return sorted(mpiranklist)
+    if isinstance(modelgridindex, Iterable):
+        mpiranklist = set()
+        for mgi in modelgridindex:
+            if mgi < 0:
+                if only_ranks_withgridcells:
+                    return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
+                return range(get_nprocs(modelpath))
 
-        else:
-            # in case modelgridindex is a single number rather than an iterable
-            if modelgridindex < 0:
-                return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
-            else:
-                return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
+            mpiranklist.add(get_mpirankofcell(mgi, modelpath=modelpath))
+
+        return sorted(mpiranklist)
+
+    # in case modelgridindex is a single number rather than an iterable
+    if modelgridindex < 0:
+        return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
+
+    return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
 def get_cellsofmpirank(mpirank: int, modelpath: Union[Path, str]) -> Iterable[int]:
