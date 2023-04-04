@@ -66,7 +66,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
     #             'color': color_total,
     #         }))
 
-    color_gamma = next(axis.get_lines().prop_cycler)["color"]
+    color_gamma = next(axis._get_lines.prop_cycler)["color"]
 
     # axis.plot(depdata['tmid_days'], depdata['eps_gamma_Lsun'] * 3.826e33, **dict(
     #     plotkwargs, **{
@@ -88,7 +88,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         },
     )
 
-    color_beta = next(axis.get_lines().prop_cycler)["color"]
+    color_beta = next(axis._get_lines.prop_cycler)["color"]
 
     if "eps_elec_Lsun" in depdata:
         axis.plot(
