@@ -391,15 +391,15 @@ def get_timestep_times_float(
     if tsfilepath.exists():
         dftimesteps = pd.read_csv(tsfilepath, delim_whitespace=True, escapechar="#", index_col="timestep")
         if loc == "mid":
-            return dftimesteps.tmid_days.values
-        elif loc == "start":
-            return dftimesteps.tstart_days.values
-        elif loc == "end":
-            return dftimesteps.tstart_days.values + dftimesteps.twidth_days.values
-        elif loc == "delta":
-            return dftimesteps.twidth_days.values
-        else:
-            raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
+            return dftimesteps.tmid_days.to_numpy()
+        if loc == "start":
+            return dftimesteps.tstart_days.to_numpy()
+        if loc == "end":
+            return dftimesteps.tstart_days.to_numpy() + dftimesteps.twidth_days.to_numpy()
+        if loc == "delta":
+            return dftimesteps.twidth_days.to_numpy()
+
+        raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
 
     # older versions of Artis always used logarithmic timesteps and didn't produce a timesteps.out file
     inputparams = get_inputparams(modelpath)
