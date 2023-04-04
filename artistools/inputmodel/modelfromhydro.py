@@ -121,14 +121,13 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
     simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(pathtogriddata)
 
     griddata = pd.read_csv(griddatfilepath, delim_whitespace=True, comment="#", skiprows=3)
-    griddata.rename(
+    griddata = griddata.rename(
         columns={
             "gridindex": "inputcellid",
             "pos_x": "pos_x_min",
             "pos_y": "pos_y_min",
             "pos_z": "pos_z_min",
         },
-        inplace=True,
     )
     # griddata in geom units
     griddata["rho"] = np.nan_to_num(griddata["rho"], nan=0.0)

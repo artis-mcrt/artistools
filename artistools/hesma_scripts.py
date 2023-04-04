@@ -82,8 +82,8 @@ def make_hesma_vspecfiles(modelpath, outpath=None):
         vspecdata = vspecdata_all["I"]
 
         timearray = vspecdata.columns.values[1:]
-        vspecdata.sort_values(by="nu", ascending=False, inplace=True)
-        vspecdata.eval("lambda_angstroms = 2.99792458e+18 / nu", inplace=True)
+        vspecdata = vspecdata.sort_values(by="nu", ascending=False)
+        vspecdata = vspecdata.eval("lambda_angstroms = 2.99792458e+18 / nu")
         for time in timearray:
             vspecdata[time] = vspecdata[time] * vspecdata["nu"] / vspecdata["lambda_angstroms"]
             vspecdata[time] = vspecdata[time] * (1e5) ** 2  # Scale to 10 pc (1 Mpc/10 pc) ** 2
@@ -117,7 +117,7 @@ def make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax):
 
     lightcurvedataframe = at.lightcurve.writebollightcurvedata.get_bol_lc_from_lightcurveout(modelpath)
     print(lightcurvedataframe)
-    lightcurvedataframe.query("time > @timemin and time < @timemax", inplace=True)
+    lightcurvedataframe = lightcurvedataframe.query("time > @timemin and time < @timemax")
 
     modelname = at.get_model_name(modelpath)
     outfilename = f"doubledet_2021_{modelname}.dat"

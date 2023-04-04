@@ -195,7 +195,7 @@ def plot_levelpop(
         ax.set_ylabel("X$_{{i}}$ [{}/cm3]")
         ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))
     else:
-        raise ValueError()
+        raise ValueError
 
     modeldata, _ = at.inputmodel.get_modeldata(modelpath)
     modeldata = modeldata.eval("modelcellvolume = cellmass_grams / (10 ** logrho)")
