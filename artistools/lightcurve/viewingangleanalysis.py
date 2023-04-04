@@ -428,11 +428,10 @@ def set_scatterplot_plotkwargs(modelnumber, args):
     plotkwargsviewingangles["alpha"] = 0.8
     if args.colorbarcostheta or args.colorbarphi:
         update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args)
+    elif args.color:
+        plotkwargsviewingangles["color"] = args.color[modelnumber]
     else:
-        if args.color:
-            plotkwargsviewingangles["color"] = args.color[modelnumber]
-        else:
-            plotkwargsviewingangles["color"] = define_colours_list2[modelnumber]
+        plotkwargsviewingangles["color"] = define_colours_list2[modelnumber]
 
     plotkwargsangleaveraged = {}
     plotkwargsangleaveraged["marker"] = "o"
