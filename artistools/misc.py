@@ -714,13 +714,13 @@ def zopen(filename: Union[Path, str], mode: str = "rt", encoding: Optional[str] 
     filenamegz = str(filename) if str(filename).endswith(".gz") else str(filename) + ".gz"
     if os.path.exists(filename) and not str(filename).endswith(".gz") and not str(filename).endswith(".xz"):
         return open(filename, mode=mode, encoding=encoding)
-    elif os.path.exists(filenamegz) or str(filename).endswith(".gz"):
+    if os.path.exists(filenamegz) or str(filename).endswith(".gz"):
         return gzip.open(filenamegz, mode=mode, encoding=encoding)
-    elif os.path.exists(filenamexz) or str(filename).endswith(".xz"):
+    if os.path.exists(filenamexz) or str(filename).endswith(".xz"):
         return xz.open(filenamexz, mode=mode, encoding=encoding)
-    else:
-        # will raise file not found
-        return open(filename, mode=mode)
+
+    # will raise file not found
+    return open(filename, mode=mode)
 
 
 def firstexisting(
