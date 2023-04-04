@@ -2,6 +2,7 @@
 import argparse
 import math
 import multiprocessing
+import sys
 from collections import namedtuple
 from pathlib import Path
 
@@ -63,11 +64,7 @@ def get_nist_transitions(filename):
                     lambda_angstroms = float(row[1])
                 else:
                     continue
-                if len(row[3].strip()) > 0:
-                    A = float(row[3])
-                else:
-                    # continue
-                    A = 1e8
+                A = float(row[3]) if len(row[3].strip()) > 0 else 1e8
                 lower_energy_ev, upper_energy_ev = (float(x.strip(" []")) for x in row[5].split("-"))
                 lower_g, upper_g = (float(x.strip()) for x in row[12].split("-"))
                 translist.append(
@@ -255,12 +252,13 @@ def main(args=None, argsraw=None, **kwargs):
         modeldata, _ = at.inputmodel.get_modeldata(Path(modelpath, "model.txt"))
         estimators_all = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
         if not estimators_all:
-            return -1
+            print("no estimators")
+            sys.exit(1)
 
         estimators = estimators_all[(timestep, modelgridindex)]
         if estimators["emptycell"]:
             print(f"ERROR: cell {modelgridindex} is marked as empty")
-            return -1
+            sys.exit(1)
 
     # also calculate wavelengths outside the plot range to include lines whose
     # edges pass through the plot range
@@ -304,7 +302,7 @@ def main(args=None, argsraw=None, **kwargs):
 
         if dfnltepops is None or dfnltepops.empty:
             print(f"ERROR: no NLTE populations for cell {modelgridindex} at timestep {timestep}")
-            return -1
+            sys.exit(1)
 
         ionpopdict = {
             (Z, ion_stage): dfnltepops.query("Z==@Z and ion_stage==@ion_stage")["n_NLTE"].sum()
@@ -359,8 +357,8 @@ def main(args=None, argsraw=None, **kwargs):
         ionid = (ion.Z, ion.ion_stage)
         if ionid not in ionlist:
             continue
-        else:
-            ionindex = ionlist.index(ionid)
+
+        ionindex = ionlist.index(ionid)
 
         if args.atomicdatabase == "kurucz":
             dftransitions = dftransgfall.query("Z == @ion.Z and ionstage == @ion.ion_stage", inplace=False).copy()
@@ -413,7 +411,8 @@ def main(args=None, argsraw=None, **kwargs):
                     nltepopdict = {x.level: x["n_NLTE"] for _, x in dfnltepops_thision.iterrows()}
 
                     dftransitions["upper_pop_nlte"] = dftransitions.apply(
-                        lambda x: nltepopdict.get(x.upper, 0.0), axis=1  # pylint: disable=cell-var-from-loop
+                        lambda x: nltepopdict.get(x.upper, 0.0),  # noqa: B023 # pylint: disable=cell-var-from-loop
+                        axis=1,
                     )
 
                     # dftransitions['lower_pop_nlte'] = dftransitions.apply(
