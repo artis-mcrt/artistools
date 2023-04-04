@@ -287,7 +287,7 @@ def plot_artis_spectrum(
                 fnufilterfunc=filterfunc,
             )
         else:
-            if args.plotvspecpol is not None:
+            if args.plotvspecpol is not None:  # noqa: PLR5501
                 # read virtual packet files (after running plotartisspectrum --makevspecpol)
                 vpkt_config = at.get_vpkt_config(modelpath)
                 if vpkt_config["time_limits_enabled"] and (
@@ -483,11 +483,12 @@ def make_spectrum_plot(
 
         if args.write_data and not seriesdata.empty:
             if dfalldata.empty:
-                dfalldata = pd.DataFrame(index=seriesdata["lambda_angstroms"].values)
+                dfalldata = pd.DataFrame(index=seriesdata["lambda_angstroms"].to_numpy())
                 dfalldata.index.name = "lambda_angstroms"
             else:
-                assert np.allclose(dfalldata.index.values, seriesdata["lambda_angstroms"].values)
-            dfalldata[f"f_lambda.{seriesname}"] = seriesdata["f_lambda"].values
+                # make sure we can share the same set of wavelengths for this series
+                assert np.allclose(dfalldata.index.values, seriesdata["lambda_angstroms"].to_numpy())
+            dfalldata[f"f_lambda.{seriesname}"] = seriesdata["f_lambda"].to_numpy()
 
         seriesindex += 1
 

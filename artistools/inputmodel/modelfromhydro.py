@@ -377,7 +377,7 @@ def makemodelfromgriddata(
             dfgridcontributions, Path(outputpath, "gridcontributions.txt")
         )
 
-    headercommentlines.append(f"generated at (UTC): {datetime.datetime.utcnow()}")
+    headercommentlines.append(f"generated at (UTC): {datetime.datetime.now(tz=datetime.timezone.utc)}")
 
     if traj_root is not None:
         print(f'Writing to {Path(outputpath) / "abundances.txt"}...')
