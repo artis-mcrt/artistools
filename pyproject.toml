@@ -101,12 +101,31 @@ disable = """
 ignored-modules = ["astropy", "extinction"]
 
 [tool.ruff]
-select = ["A", "B", "C", "E", "F", "G", "N", "Q", "S", "W", "ARG", "BLE", "DJ", "DTZ", "EM", "ERA", "EXE", "FBT", "ICN", "INP", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PT", "PTH", "PYI", "RET", "RSE", "RUF", "SIM", "SLF", "TCH", "TID", "TRY", "UP", "YTT"]
-ignore = ["BLE001", "D211", "D213", "E501", "E741", "ERA001", "FBT001", "FBT002", "N802", "N803", "N806", "N999", "PD901", "PGH001", "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "PTH112", "PTH113", "PTH123", "RET504", "S101", "TRY003", "UP032", "C9"]
+select = [
+    "A", "B", "C", "E", "F", "G", "N", "Q", "W", "ARG", "BLE", "DJ", "DTZ", "EM", "ERA", "EXE",
+    "ICN", "INP", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PT", "PTH", "PYI", "RET", "RSE", "RUF",
+    "SIM", "SLF", "TCH", "TID", "TRY", "UP", "YTT"
+]
+ignore = [
+    "BLE001",
+    "D211", "D213",
+    "E501", "E741",
+    "ERA001",
+    "N802", "N803", "N806", "N999",
+    "PD901",
+    "PGH001",
+    "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR2004",
+    "PTH112", "PTH113", "PTH123",
+    "RET504", "TRY003", "UP032", "C9"
+]
 # F841 Local variable _ is assigned to but never used is a good warning to see, but not worth making into an error
 
 # Allow autofix for all enabled rules (when `--fix`) is provided.
-fixable = ["A", "B", "C", "E", "G", "N", "Q", "S", "W", "ARG", "BLE", "DJ", "DTZ", "EM", "ERA", "EXE", "FBT", "ICN", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PT", "PTH", "PYI", "RET", "RSE", "RUF", "SIM", "SLF", "TCH", "TID", "UP", "YTT"]
+fixable = [
+    "A", "B", "C", "E", "G", "N", "Q", "W", "ARG", "BLE", "DJ", "DTZ", "EM", "ERA", "EXE",
+    "FBT", "ICN", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PT", "PTH", "PYI", "RET", "RSE",
+    "RUF", "SIM", "SLF", "TCH", "TID", "UP", "YTT"
+]
 unfixable = ["F841", "F401", "PD002"]
 
 # larger than black's limit. Let black handle this
