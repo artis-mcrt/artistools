@@ -115,6 +115,7 @@ select = [
     "SIM", "SLF", "TCH", "TID", "TRY", "UP", "YTT"
 ]
 ignore = [
+    "ARG001", # ignored because variables in df.eval() are not detected
     "B007", # variable not used in loop body (but sometimes it is with eval)
     "BLE001",
     "C9",
@@ -122,7 +123,7 @@ ignore = [
     "E501", "E741",
     "EM101","EM102",
     "ERA001",
-    "F841", # Local variableis assigned to but never used is a good warning to see, but not worth making an error
+    "F841", # ignored because variables in df.eval() are not detected
     "N802", "N803", "N806", "N999",
     "PD901",
     "PGH001",

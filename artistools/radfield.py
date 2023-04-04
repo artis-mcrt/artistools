@@ -287,7 +287,7 @@ def evaluate_phixs(
         nu_factor = nu / nu_threshold
         if nu_factor < phixstable[0, 0]:
             return 0.0
-        elif nu_factor > phixstable[-1, 0]:
+        if nu_factor > phixstable[-1, 0]:
             # return 0.
             return phixstable[-1, 1] * math.pow(phixstable[-1, 0] / nu_factor, 3)
 
@@ -1002,11 +1002,10 @@ def main(args=None, argsraw=None, **kwargs):
 
     if args.velocity >= 0.0:
         modelgridindexlist = [at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)]
+    elif args.modelgridindex is None:
+        modelgridindexlist = [0]
     else:
-        if args.modelgridindex is None:
-            modelgridindexlist = [0]
-        else:
-            modelgridindexlist = at.parse_range_list(args.modelgridindex)
+        modelgridindexlist = at.parse_range_list(args.modelgridindex)
 
     timesteplast = len(at.get_timestep_times_float(modelpath))
     if args.timedays:

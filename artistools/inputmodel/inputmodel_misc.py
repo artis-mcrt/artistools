@@ -161,15 +161,16 @@ def read_modelfile(
         dfmodel = pd.read_parquet(filenameparquet, columns=columns[: ncols_line_even + ncols_line_odd])
     else:
         skiprows: Union[list, int, None]
-        if onelinepercellformat:
-            skiprows = numheaderrows
-        else:
-            # skip the odd rows for the first read in
-            skiprows = [
+
+        skiprows = (
+            numheaderrows
+            if onelinepercellformat
+            else [
                 x
                 for x in range(numheaderrows + modelcellcount * 2)
                 if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
             ]
+        )
         dtypes: defaultdict[str, type] = defaultdict(lambda: np.float32)
         dtypes["inputcellid"] = np.int32
         dtypes["tracercount"] = np.int32
@@ -221,7 +222,7 @@ def read_modelfile(
     # dfmodel.drop('inputcellid', axis=1, inplace=True)
 
     if dimensions == 1:
-        dfmodel["velocity_inner"] = np.concatenate([[0.0], dfmodel["velocity_outer"].values[:-1]])
+        dfmodel["velocity_inner"] = np.concatenate([[0.0], dfmodel["velocity_outer"].to_numpy()[:-1]])
         dfmodel = dfmodel.eval(
             (
                 "cellmass_grams = 10 ** logrho * 4. / 3. * 3.14159265 * (velocity_outer ** 3 - velocity_inner ** 3)"
@@ -571,7 +572,7 @@ def get_3d_modeldata_minimal(modelpath) -> pd.DataFrame:
         "X_Fe52",
         "X_Cr48",
     ]
-    model = pd.DataFrame(model.values.reshape(-1, 10))
+    model = pd.DataFrame(model.to_numpy().reshape(-1, 10))
     model.columns = columns
 
     print("model.txt memory usage:")
@@ -718,7 +719,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> U
 
     if not mgilist:
         mgilist = list(modeldata.index)
-        arr_vouter = modeldata["velocity_outer"].values
+        arr_vouter = modeldata["velocity_outer"].to_numpy()
     else:
         arr_vouter = np.array([modeldata["velocity_outer"][mgi] for mgi in mgilist])
 
@@ -726,13 +727,13 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> U
 
     if velocity < arr_vouter[index_closestvouter] or index_closestvouter + 1 >= len(mgilist):
         return mgilist[index_closestvouter]
-    elif velocity < arr_vouter[index_closestvouter + 1]:
+    if velocity < arr_vouter[index_closestvouter + 1]:
         return mgilist[index_closestvouter + 1]
-    elif np.isnan(velocity):
+    if np.isnan(velocity):
         return float("nan")
-    else:
-        print(f"Can't find cell with velocity of {velocity}. Velocity list: {arr_vouter}")
-        raise AssertionError
+
+    print(f"Can't find cell with velocity of {velocity}. Velocity list: {arr_vouter}")
+    raise AssertionError
 
 
 @lru_cache(maxsize=8)
