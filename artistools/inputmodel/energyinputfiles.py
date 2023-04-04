@@ -119,7 +119,7 @@ def define_heating_rate():
 
 def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
     index_time_greaterthan = energy_thermo_data[energy_thermo_data["time/s"] > 1e7].index  # 1e7 seconds = 116 days
-    energy_thermo_data.drop(index_time_greaterthan, inplace=True)
+    energy_thermo_data = energy_thermo_data.drop(index_time_greaterthan)
     # print("Dropping times later than 116 days")
 
     skipfirstnrows = 0  # not sure first values look sensible -- check this
@@ -180,7 +180,7 @@ def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_tra
         interpolated_trajectories["mean"] = interpolated_trajectories.iloc[:, 1:].mean(axis=1)
 
         index_time_lessthan = interpolated_trajectories[interpolated_trajectories["time/s"] < 1.1e-1].index
-        interpolated_trajectories.drop(index_time_lessthan, inplace=True)
+        interpolated_trajectories = interpolated_trajectories.drop(index_time_lessthan)
 
         interpolated_trajectories.to_csv(path_to_rprocess_calculation / "interpolatedQdot.dat", sep=" ", index=False)
     print(f"sum etot {sum(trajectory_E_tot)}")

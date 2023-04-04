@@ -319,7 +319,7 @@ def read_estimators(
     modeldata, _ = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
     if "velocity_outer" in modeldata.columns:
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-        arr_velocity_outer = tuple(list([float(v) for v in modeldata["velocity_outer"].values]))
+        arr_velocity_outer = tuple([float(v) for v in modeldata["velocity_outer"].values])
     else:
         arr_velocity_outer = None
 
@@ -351,7 +351,7 @@ def read_estimators(
             arr_rankestimators = [processfile(rank) for rank in mpiranklist]
 
         for mpirank, estimators_thisfile in zip(mpiranklist, arr_rankestimators):
-            dupekeys = list(sorted([k for k in estimators_thisfile if k in estimators]))
+            dupekeys = sorted([k for k in estimators_thisfile if k in estimators])
             for k in dupekeys:
                 # dropping the lowest timestep is normal for restarts. Only warn about other cases
                 if k[0] != dupekeys[0][0]:
@@ -385,13 +385,13 @@ def get_averaged_estimators(
 
     # if single timestep, no averaging needed
     if isinstance(timesteps, int):
-        return reduce(lambda d, k: d[k], [(timesteps, modelgridindex)] + keys, estimators)
+        return reduce(lambda d, k: d[k], [(timesteps, modelgridindex), *keys], estimators)
 
-    firsttimestepvalue = reduce(lambda d, k: d[k], [(timesteps[0], modelgridindex)] + keys, estimators)
+    firsttimestepvalue = reduce(lambda d, k: d[k], [(timesteps[0], modelgridindex), *keys], estimators)
     if isinstance(firsttimestepvalue, dict):
         dictout = {
-            k: get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, keys + [k])
-            for k in firsttimestepvalue.keys()
+            k: get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [*keys, k])
+            for k in firsttimestepvalue
         }
 
         return dictout
@@ -402,7 +402,7 @@ def get_averaged_estimators(
         for timestep, tdelta in zip(timesteps, tdeltas):
             for mgi in range(modelgridindex - avgadjcells, modelgridindex + avgadjcells + 1):
                 try:
-                    valuesum += reduce(lambda d, k: d[k], [(timestep, mgi)] + keys, estimators) * tdelta
+                    valuesum += reduce(lambda d, k: d[k], [(timestep, mgi), *keys], estimators) * tdelta
                     tdeltasum += tdelta
                 except KeyError:
                     pass
@@ -421,7 +421,7 @@ def get_averageionisation(populations: dict[Any, float], atomic_number: int) -> 
     free_electron_weighted_pop_sum = 0.0
     found = False
     popsum = 0.0
-    for key in populations.keys():
+    for key in populations:
         if isinstance(key, tuple) and key[0] == atomic_number:
             found = True
             ion_stage = key[1]

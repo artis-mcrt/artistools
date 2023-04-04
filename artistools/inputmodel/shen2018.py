@@ -34,7 +34,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     for species in columns[5:]:
         atomic_number = at.get_atomic_number(species.rstrip("0123456789"))
         atomicnumberofspecies[species] = atomic_number
-        isotopesofelem.setdefault(atomic_number, list()).append(species)
+        isotopesofelem.setdefault(atomic_number, []).append(species)
 
     datain = pd.read_csv(args.inputpath, delim_whitespace=True, skiprows=0, header=[0]).dropna()
 

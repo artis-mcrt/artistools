@@ -452,10 +452,11 @@ def read_reflightcurve_band_data(lightcurvefilename: Union[Path, str]) -> tuple[
 
 
 def read_bol_reflightcurve_data(lightcurvefilename):
-    if Path(lightcurvefilename).is_file():
-        data_path = Path(lightcurvefilename)
-    else:
-        data_path = Path(at.get_config()["path_artistools_dir"], "data/lightcurves/bollightcurves", lightcurvefilename)
+    data_path = (
+        Path(lightcurvefilename)
+        if Path(lightcurvefilename).is_file()
+        else Path(at.get_config()["path_artistools_dir"], "data/lightcurves/bollightcurves", lightcurvefilename)
+    )
 
     metadata = at.get_file_metadata(data_path)
 

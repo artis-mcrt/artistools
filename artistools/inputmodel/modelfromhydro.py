@@ -139,10 +139,9 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
         griddata["Q"] = np.nan_to_num(griddata["Q"], nan=0.0)
 
     factor_position = 1.478  # in km
-    km_to_cm = 1e5
-    griddata.eval("pos_x_min = pos_x_min * @factor_position * @km_to_cm", inplace=True)
-    griddata.eval("pos_y_min = pos_y_min * @factor_position * @km_to_cm", inplace=True)
-    griddata.eval("pos_z_min = pos_z_min * @factor_position * @km_to_cm", inplace=True)
+    griddata = griddata.eval("pos_x_min = pos_x_min * @factor_position * @km_to_cm")
+    griddata = griddata.eval("pos_y_min = pos_y_min * @factor_position * @km_to_cm")
+    griddata = griddata.eval("pos_z_min = pos_z_min * @factor_position * @km_to_cm")
 
     griddata["rho"] = griddata["rho"] * 6.176e17  # convert to g/cm3
 
@@ -444,10 +443,7 @@ def main(args=None, argsraw=None, **kwargs):
         return
         # at.inputmodel.maptogrid.main()
 
-    if args.outputpath is None:
-        outputpath = Path(f"artismodel_{args.dimensions}d")
-    else:
-        outputpath = Path(args.outputpath)
+    outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputpath is None else Path(args.outputpath)
 
     outputpath.mkdir(parents=True, exist_ok=True)
 

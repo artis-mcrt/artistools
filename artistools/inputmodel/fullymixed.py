@@ -19,12 +19,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def eval_mshell(dfmodel, t_model_init_seconds):
-    dfmodel.eval(
+    dfmodel = dfmodel.eval(
         (
             "cellmass_grams = 10 ** logrho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
             "* (1e5 * @t_model_init_seconds) ** 3"
         ),
-        inplace=True,
     )
 
 
@@ -57,13 +56,13 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         integrated_mass_grams = (dfmodel[column_name] * dfmodel.cellmass_grams).sum()
         global_massfrac = integrated_mass_grams / model_mass_grams
         print(f"{column_name:>13s}: {global_massfrac:.3f}  ({integrated_mass_grams * u.g.to('solMass'):.3f} Msun)")
-        dfmodel.eval(f"{column_name} = {global_massfrac}", inplace=True)
+        dfmodel = dfmodel.eval(f"{column_name} = {global_massfrac}")
 
     for column_name in [x for x in dfelabundances.columns if x.startswith("X_")]:
         integrated_mass_grams = (dfelabundances[column_name] * dfmodel.cellmass_grams).sum()
         global_massfrac = integrated_mass_grams / model_mass_grams
         print(f"{column_name:>13s}: {global_massfrac:.3f}  ({integrated_mass_grams * u.g.to('solMass'):.3f} Msun)")
-        dfelabundances.eval(f"{column_name} = {global_massfrac}", inplace=True)
+        dfelabundances = dfelabundances.eval(f"{column_name} = {global_massfrac}")
 
     print(dfmodel)
     print(dfelabundances)

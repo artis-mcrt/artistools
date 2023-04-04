@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from .plotnonthermal import main as plot
 
 

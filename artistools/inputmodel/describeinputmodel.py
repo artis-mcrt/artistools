@@ -68,7 +68,7 @@ def main(args=None, argsraw=None, **kwargs):
         mgi = int(args.cell)
         if mgi >= 0:
             print(f"Selected single cell mgi {mgi}:")
-            dfmodel.query("inputcellid == (@mgi + 1)", inplace=True)
+            dfmodel = dfmodel.query("inputcellid == (@mgi + 1)")
             print(dfmodel.iloc[0])
 
     mass_msun_rho = dfmodel["cellmass_grams"].sum() / 1.989e33

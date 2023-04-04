@@ -565,7 +565,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     arr_time_gsi_days = list(arr_time_gsi_s / 86400)
 
     dfpartcontrib = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
-    dfpartcontrib.query("cellindex <= @npts_model and frac_of_cellmass > 0", inplace=True)
+    dfpartcontrib = dfpartcontrib.query("cellindex <= @npts_model and frac_of_cellmass > 0")
 
     list_particleids_getabund = dfpartcontrib.query("(cellindex - 1) in @mgiplotlist").particleid.unique()
     fworkerwithabund = partial(get_particledata, arr_time_gsi_s_incpremerger, arr_strnuc, traj_root)
@@ -595,9 +595,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     else:
         list_particledata_noabund = [fworkernoabund(particleid) for particleid in list_particleids_noabund]
 
-    allparticledata = {
-        particleid: data for particleid, data in (list_particledata_withabund + list_particledata_noabund)
-    }
+    allparticledata = dict(list_particledata_withabund + list_particledata_noabund)
 
     plot_qdot(
         modelpath,

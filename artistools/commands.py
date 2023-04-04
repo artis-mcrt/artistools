@@ -89,7 +89,7 @@ def setup_completions() -> None:
         f.write(strsplit)
         f.write("\n\n")
 
-        for command in get_commandlist().keys():
+        for command in get_commandlist():
             completecommand = strcommandregister.replace("__MY_COMMAND__", command)
             f.write(completecommand + "\n")
 

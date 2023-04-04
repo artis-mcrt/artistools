@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from .plotnltepops import main as plot
 
 

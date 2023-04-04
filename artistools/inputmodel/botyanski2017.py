@@ -70,7 +70,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     fixed_points = [v_transition, v_ni56]
     regular_points = [v for v in np.arange(0, 14500, 1000)[1:] if min_dist(fixed_points, v) > 200]
-    vlist = sorted(list([*fixed_points, *regular_points]))
+    vlist = sorted([*fixed_points, *regular_points])
 
     v_inner = 0.0  # velocity at inner boundary of cell
     m_tot = 0.0
@@ -91,7 +91,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
         dfmodel.loc[cellid] = [cellid + 1, v_outer, math.log10(rho), *radioabundances]
         dfelabundances.loc[cellid] = [cellid + 1, *abundances[1:31]]
-        r_inner, r_outer = [(v * u.km / u.s * t200 * 200 * u.day).to("cm").value for v in [v_inner, v_outer]]
+        r_inner, r_outer = ((v * u.km / u.s * t200 * 200 * u.day).to("cm").value for v in [v_inner, v_outer])
 
         vol_shell = 4 * math.pi / 3 * (r_outer**3 - r_inner**3)
         m_shell = rho * vol_shell / u.solMass.to("g")

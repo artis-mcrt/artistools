@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from .plotlightcurve import main as plot
 
 

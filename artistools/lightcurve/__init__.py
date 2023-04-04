@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Artistools - light curve functions."""
 from .__main__ import main
 from .lightcurve import bolometric_magnitude

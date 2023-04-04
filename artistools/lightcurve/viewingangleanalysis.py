@@ -182,7 +182,7 @@ def parse_directionbin_args(modelpath: Union[Path, str], args) -> tuple[Sequence
         )
 
         if args.average_over_phi_angle:
-            for dirbin in dirbin_definition.keys():
+            for dirbin in dirbin_definition:
                 assert dirbin % at.get_viewingdirection_phibincount() == 0 or dirbin == -1
 
         if args.average_over_theta_angle:

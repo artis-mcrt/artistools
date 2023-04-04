@@ -14,9 +14,9 @@ from typing import Union
 import argcomplete
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
+from matplotlib import ticker
 from matplotlib.artist import Artist
 
 import artistools as at
@@ -59,10 +59,11 @@ def plot_polarisation(modelpath: Path, args) -> None:
 
     vpkt_config = at.get_vpkt_config(modelpath)
 
-    if args.plotvspecpol:
-        linelabel = rf"{timeavg} days, cos($\theta$) = {vpkt_config['cos_theta'][angle[0]]}"
-    else:
-        linelabel = f"{timeavg} days"
+    linelabel = (
+        f"{timeavg} days, cos($\\theta$) = {vpkt_config['cos_theta'][angle[0]]}"
+        if args.plotvspecpol
+        else f"{timeavg} days"
+    )
 
     if args.binflux:
         new_lambda_angstroms = []
@@ -144,7 +145,7 @@ def plot_reference_spectrum(
 
     print(" metadata: " + ", ".join([f"{k}='{v}'" if hasattr(v, "lower") else f"{k}={v}" for k, v in metadata.items()]))
 
-    specdata.query("lambda_angstroms > @xmin and lambda_angstroms < @xmax", inplace=True)
+    specdata = specdata.query("lambda_angstroms > @xmin and lambda_angstroms < @xmax")
 
     print_integrated_flux(specdata["f_lambda"], specdata["lambda_angstroms"], distance_megaparsec=metadata["dist_mpc"])
 
@@ -243,10 +244,7 @@ def plot_artis_spectrum(
         timeavg = (args.timemin + args.timemax) / 2.0
         timedelta = (args.timemax - args.timemin) / 2
         if linelabel is None:
-            if len(modelname) < 70:
-                linelabel = f"{modelname}"
-            else:
-                linelabel = f"...{modelname[-67:]}"
+            linelabel = f"{modelname}" if len(modelname) < 70 else f"...{modelname[-67:]}"
 
             if not args.hidemodeltime and not args.multispecplot:
                 # todo: fix this for multispecplot - use args.showtime for now
@@ -844,10 +842,7 @@ def make_plot(args) -> None:
     # densityplotyvars = ['emission_velocity', 'Te', 'nne']
     # densityplotyvars = ['true_emission_velocity', 'emission_velocity', 'Te', 'nne']
 
-    if args.multispecplot:
-        nrows = len(args.timedayslist)
-    else:
-        nrows = 1 + len(densityplotyvars)
+    nrows = len(args.timedayslist) if args.multispecplot else 1 + len(densityplotyvars)
 
     fig, axes = plt.subplots(
         nrows=nrows,
@@ -881,7 +876,7 @@ def make_plot(args) -> None:
     else:
         axes[-1].set_ylabel(r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]")
 
-    for index, axis in enumerate(axes):
+    for axis in axes:
         if args.logscale:
             axis.set_yscale("log")
         axis.set_xlim(left=args.xmin, right=args.xmax)

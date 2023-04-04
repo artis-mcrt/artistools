@@ -206,16 +206,17 @@ def average_direction_bins(
         dirbindataframesout[start_bin] = dirbindataframes[start_bin].copy()
         dirbindataframesout[start_bin].reset_index(drop=True, inplace=True)
 
-        if overangle == "phi":
-            contribbins = range(start_bin + 1, start_bin + nphibins)
-        else:
-            contribbins = range(start_bin + ncosthetabins, dirbincount, ncosthetabins)
+        contribbins = (
+            range(start_bin + 1, start_bin + nphibins)
+            if overangle == "phi"
+            else range(start_bin + ncosthetabins, dirbincount, ncosthetabins)
+        )
 
         for dirbin_contrib in contribbins:
             dirbindataframesout[start_bin] += dirbindataframes[dirbin_contrib].reset_index(drop=True)
 
         dirbindataframesout[start_bin] /= 1 + len(contribbins)  # every nth bin is the average of n bins
-        print(f"bin number {start_bin} = the average of bins {[start_bin] + list(contribbins)}")
+        print(f"bin number {start_bin} = the average of bins {[start_bin, *list(contribbins)]}")
 
     return dirbindataframesout
 
@@ -241,9 +242,9 @@ def get_vpkt_config(modelpath: Union[Path, str]) -> dict[str, Any]:
         else:
             vpkt_config["nspectraperobs"] = 1
 
-        vpkt_config["time_limits_enabled"], vpkt_config["initial_time"], vpkt_config["final_time"] = [
+        vpkt_config["time_limits_enabled"], vpkt_config["initial_time"], vpkt_config["final_time"] = (
             int(x) for x in vpkt_txt.readline().split()
-        ]
+        )
 
     return vpkt_config
 
@@ -254,10 +255,7 @@ def get_grid_mapping(modelpath: Union[Path, str]) -> tuple[dict[int, list[int]],
     a dict with the associated model grid cell of each propagration cell."""
 
     modelpath = Path(modelpath)
-    if modelpath.is_dir():
-        filename = firstexisting("grid.out", tryzipped=True, folder=modelpath)
-    else:
-        filename = Path(modelpath)
+    filename = firstexisting("grid.out", tryzipped=True, folder=modelpath) if modelpath.is_dir() else Path(modelpath)
 
     assoc_cells: dict[int, list[int]] = {}
     mgi_of_propcells: dict[int, int] = {}
@@ -469,7 +467,7 @@ def get_time_range(
 
     if timestep_range_str is not None:
         if "-" in timestep_range_str:
-            timestepmin, timestepmax = [int(nts) for nts in timestep_range_str.split("-")]
+            timestepmin, timestepmax = (int(nts) for nts in timestep_range_str.split("-"))
         else:
             timestepmin = int(timestep_range_str)
             timestepmax = timestepmin
@@ -479,7 +477,7 @@ def get_time_range(
         timestepmax = None
         if timedays_range_str is not None:
             if isinstance(timedays_range_str, str) and "-" in timedays_range_str:
-                timemin, timemax = [float(timedays) for timedays in timedays_range_str.split("-")]
+                timemin, timemax = (float(timedays) for timedays in timedays_range_str.split("-"))
             else:
                 timeavg = float(timedays_range_str)
                 timestepmin = get_timestep_of_timedays(modelpath, timeavg)
@@ -596,9 +594,10 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
 
 @lru_cache(maxsize=1)
 def get_elsymbolslist() -> list[str]:
-    elsymbols = ["n"] + list(
-        pd.read_csv(at.get_config()["path_datadir"] / "elements.csv", usecols=["symbol"])["symbol"].values
-    )
+    elsymbols = [
+        "n",
+        *list(pd.read_csv(at.get_config()["path_datadir"] / "elements.csv", usecols=["symbol"])["symbol"].values),
+    ]
 
     return elsymbols
 
@@ -730,7 +729,7 @@ def firstexisting(
     tryzipped: bool = True,
 ) -> Path:
     """Return the first existing file in file list. If none exist, raise exception."""
-    if isinstance(filelist, str) or isinstance(filelist, Path):
+    if isinstance(filelist, (str, Path)):
         filelist = [filelist]
 
     fullpaths = []
@@ -847,7 +846,7 @@ def get_filterfunc(
     if dictargs.get("filtersavgol", False):
         import scipy.signal
 
-        window_length, poly_order = [int(x) for x in args.filtersavgol]
+        window_length, poly_order = (int(x) for x in args.filtersavgol)
 
         def savgolfilterfunc(ylist: Union[list[float], np.ndarray]) -> np.ndarray:
             return scipy.signal.savgol_filter(ylist, window_length, poly_order, mode=mode)
@@ -855,7 +854,7 @@ def get_filterfunc(
         assert filterfunc is None
         filterfunc = savgolfilterfunc
 
-        print("Applying Savitzky–Golay filter")
+        print("Applying Savitzky-Golay filter")
 
     return filterfunc
 
@@ -888,10 +887,7 @@ def get_bflist(modelpath: Union[Path, str]) -> dict[int, tuple[int, int, int, in
         for _ in range(bflistcount):
             rowints = [int(x) for x in filein.readline().split()]
             i, elementindex, ionindex, level = rowints[:4]
-            if len(rowints) > 4:
-                upperionlevel = rowints[4]
-            else:
-                upperionlevel = -1
+            upperionlevel = rowints[4] if len(rowints) > 4 else -1
             atomic_number = compositiondata.Z[elementindex]
             ion_stage = ionindex + compositiondata.lowermost_ionstage[elementindex]
             bflist[i] = (atomic_number, ion_stage, level, upperionlevel)
@@ -1005,21 +1001,21 @@ def get_inputparams(modelpath: Path) -> dict[str, Any]:
         params["ntstep"] = int(readnoncommentline(inputfile).split("#")[0])
 
         # number of start and end time step
-        params["itstep"], params["ftstep"] = [int(x) for x in readnoncommentline(inputfile).split("#")[0].split()]
+        params["itstep"], params["ftstep"] = (int(x) for x in readnoncommentline(inputfile).split("#")[0].split())
 
-        params["tmin"], params["tmax"] = [float(x) for x in readnoncommentline(inputfile).split("#")[0].split()]
+        params["tmin"], params["tmax"] = (float(x) for x in readnoncommentline(inputfile).split("#")[0].split())
 
-        params["nusyn_min"], params["nusyn_max"] = [
+        params["nusyn_min"], params["nusyn_max"] = (
             (float(x) * u.MeV / const.h).to("Hz") for x in readnoncommentline(inputfile).split("#")[0].split()
-        ]
+        )
 
         # number of times for synthesis
         params["nsyn_time"] = int(readnoncommentline(inputfile).split("#")[0])
 
         # start and end times for synthesis
-        params["nsyn_time_start"], params["nsyn_time_end"] = [
+        params["nsyn_time_start"], params["nsyn_time_end"] = (
             float(x) for x in readnoncommentline(inputfile).split("#")[0].split()
-        ]
+        )
 
         params["n_dimensions"] = int(readnoncommentline(inputfile).split("#")[0])
 
@@ -1058,14 +1054,14 @@ def get_runfolders(
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
     The folder list may include non-ARTIS folders if a timestep is not specified."""
-    folderlist_all = tuple(sorted([child for child in Path(modelpath).iterdir() if child.is_dir()]) + [Path(modelpath)])
+    folderlist_all = (*sorted([child for child in Path(modelpath).iterdir() if child.is_dir()]), Path(modelpath))
     folder_list_matching = []
     if (timestep is not None and timestep > -1) or (timesteps is not None and len(timesteps) > 0):
         for folderpath in folderlist_all:
             folder_timesteps = get_runfolder_timesteps(folderpath)
             if timesteps is None and timestep is not None and timestep in folder_timesteps:
                 return (folderpath,)
-            elif timesteps is not None and any([ts in folder_timesteps for ts in timesteps]):
+            elif timesteps is not None and any(ts in folder_timesteps for ts in timesteps):
                 folder_list_matching.append(folderpath)
 
         return tuple(folder_list_matching)
@@ -1102,7 +1098,7 @@ def get_mpiranklist(
                 else:
                     mpiranklist.add(get_mpirankofcell(mgi, modelpath=modelpath))
 
-            return sorted(list(mpiranklist))
+            return sorted(mpiranklist)
 
         else:
             # in case modelgridindex is a single number rather than an iterable
@@ -1137,7 +1133,7 @@ def get_dfrankassignments(modelpath: Union[Path, str]) -> Optional[pd.DataFrame]
     filerankassignments = Path(modelpath, "modelgridrankassignments.out")
     if filerankassignments.is_file():
         df = pd.read_csv(filerankassignments, delim_whitespace=True)
-        df.rename(columns={df.columns[0]: df.columns[0].lstrip("#")}, inplace=True)
+        df = df.rename(columns={df.columns[0]: df.columns[0].lstrip("#")})
         return df
     return None
 
@@ -1164,10 +1160,11 @@ def get_mpirankofcell(modelgridindex: int, modelpath: Union[Path, str]) -> int:
         nblock = npts_model // nprocs
         n_leftover = npts_model % nprocs
 
-        if modelgridindex <= n_leftover * (nblock + 1):
-            mpirank = modelgridindex // (nblock + 1)
-        else:
-            mpirank = n_leftover + (modelgridindex - n_leftover * (nblock + 1)) // nblock
+        mpirank = (
+            modelgridindex // (nblock + 1)
+            if modelgridindex <= n_leftover * (nblock + 1)
+            else n_leftover + (modelgridindex - n_leftover * (nblock + 1)) // nblock
+        )
 
     assert modelgridindex in get_cellsofmpirank(mpirank, modelpath)
 

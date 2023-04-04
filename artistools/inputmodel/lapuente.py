@@ -31,9 +31,9 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     datain = datain_structure.join(datain_abund, rsuffix="abund")
     if "Fe52" not in datain.columns:
-        datain.eval("Fe52 = 0.", inplace=True)
+        datain = datain.eval("Fe52 = 0.")
     if "Cr48" not in datain.columns:
-        datain.eval("Cr48 = 0.", inplace=True)
+        datain = datain.eval("Cr48 = 0.")
 
     dfmodel = pd.DataFrame(
         columns=[

@@ -248,17 +248,11 @@ def get_from_packets(
 @lru_cache(maxsize=16)
 def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
     """Return dataframe of time-series spectra for every viewing direction"""
-    if Path(modelpath).is_file():
-        specfilename = modelpath
-    else:
-        specfilename = at.firstexisting(
-            [
-                "spec_res.out",
-                "specpol_res.out",
-            ],
-            folder=modelpath,
-            tryzipped=True,
-        )
+    specfilename = (
+        modelpath
+        if Path(modelpath).is_file()
+        else at.firstexisting(["spec_res.out", "specpol_res.out"], folder=modelpath, tryzipped=True)
+    )
 
     print(f"Reading {specfilename} (in read_spec_res)")
     res_specdata_in = pd.read_csv(specfilename, delim_whitespace=True, header=None, dtype=str)
@@ -266,7 +260,7 @@ def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
     res_specdata: dict[int, pd.DataFrame] = at.gather_res_data(res_specdata_in)
 
     columns = res_specdata[0].iloc[0]
-    for dirbin in res_specdata.keys():
+    for dirbin in res_specdata:
         res_specdata[dirbin] = res_specdata[dirbin].rename(columns=columns)
         res_specdata[dirbin].drop(res_specdata[dirbin].index[0], inplace=True)
         # These lines remove the Q and U values from the dataframe (I think)

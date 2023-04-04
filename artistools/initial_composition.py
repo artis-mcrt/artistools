@@ -207,7 +207,7 @@ def get_model_abundances_Msun_1D(modelpath):
     merge_dfs = modeldata.merge(abundancedata, how="inner", on="inputcellid")
 
     print("Total mass (Msun):")
-    for key in merge_dfs.keys():
+    for key in merge_dfs:
         if "X_" in key:
             merge_dfs[f"mass_{key}"] = merge_dfs[key] * merge_dfs["mass_shell"] * u.g.to("solMass")
             # get mass of element in each cell
@@ -221,7 +221,7 @@ def plot_most_abundant(modelpath, args):
     abundances = at.inputmodel.get_initelemabundances(modelpath[0])
 
     merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
-    elements = [x for x in merge_dfs.keys() if "X_" in x]
+    elements = [x for x in merge_dfs if "X_" in x]
 
     merge_dfs["max"] = merge_dfs[elements].idxmax(axis=1)
 
@@ -336,10 +336,7 @@ def main(args=None, argsraw=None, **kwargs):
         make_3d_plot(Path(args.modelpath), args)
         return
 
-    if not args.modeldim:
-        inputparams = at.get_inputparams(args.modelpath)
-    else:
-        inputparams = {"n_dimensions": args.modeldim}
+    inputparams = at.get_inputparams(args.modelpath) if not args.modeldim else {"n_dimensions": args.modeldim}
 
     if inputparams["n_dimensions"] == 2:
         plot_2d_initial_abundances(args.modelpath, args)

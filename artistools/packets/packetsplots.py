@@ -35,10 +35,7 @@ def make_2d_packets_plot_imshow(modelpath, timestep_min, timestep_max):
     time_upper = timemaxarray[timestep_max]
     title = f"{time_lower:.2f} - {time_upper:.2f} days"
     print(f"plotting packets between {title}")
-    if em_time:
-        escapetitle = "pktemissiontime"
-    else:
-        escapetitle = "pktarrivetime"
+    escapetitle = "pktemissiontime" if em_time else "pktarrivetime"
     title = title + "\n" + escapetitle
 
     plot_axes_list = ["xz", "xy"]

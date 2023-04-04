@@ -128,7 +128,7 @@ def plot_average_ionisation_excitation(
     elif seriestype == "averageexcitation":
         ax.set_ylabel("Average excitation [eV]")
     else:
-        raise ValueError()
+        raise ValueError
 
     arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
     for paramvalue in params:
@@ -198,7 +198,7 @@ def plot_levelpop(
         raise ValueError()
 
     modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-    modeldata.eval("modelcellvolume = cellmass_grams / (10 ** logrho)", inplace=True)
+    modeldata = modeldata.eval("modelcellvolume = cellmass_grams / (10 ** logrho)")
 
     adata = at.atomic.get_levels(modelpath)
 
@@ -250,10 +250,11 @@ def plot_levelpop(
 
         if dfalldata is not None:
             elsym = at.get_elsymbol(atomic_number).lower()
-            if seriestype == "levelpopulation_dn_on_dvel":
-                colname = f"nlevel_on_dv_{elsym}_ionstage{ion_stage}_level{levelindex}"
-            else:
-                colname = f"nnlevel_{elsym}_ionstage{ion_stage}_level{levelindex}"
+            colname = (
+                f"nlevel_on_dv_{elsym}_ionstage{ion_stage}_level{levelindex}"
+                if seriestype == "levelpopulation_dn_on_dvel"
+                else f"nnlevel_{elsym}_ionstage{ion_stage}_level{levelindex}"
+            )
             dfalldata[colname] = ylist
 
         ylist.insert(0, ylist[0])
@@ -416,10 +417,11 @@ def plot_multi_ion_series(
                     yvalue = float("NaN")
                 ylist.append(yvalue)
 
-        if hasattr(ion_stage, "lower") and ion_stage != "ALL":
-            plotlabel = ion_stage
-        else:
-            plotlabel = at.get_ionstring(atomic_number, ion_stage, spectral=False)
+        plotlabel = (
+            ion_stage
+            if hasattr(ion_stage, "lower") and ion_stage != "ALL"
+            else at.get_ionstring(atomic_number, ion_stage, spectral=False)
+        )
 
         color = get_elemcolor(atomic_number=atomic_number)
 
@@ -544,10 +546,7 @@ def plot_series(
 
 def get_xlist(xvariable, allnonemptymgilist, estimators, timestepslist, modelpath, args):
     if xvariable in ["cellid", "modelgridindex"]:
-        if args.xmax >= 0:
-            mgilist_out = [mgi for mgi in allnonemptymgilist if mgi <= args.xmax]
-        else:
-            mgilist_out = allnonemptymgilist
+        mgilist_out = [mgi for mgi in allnonemptymgilist if mgi <= args.xmax] if args.xmax >= 0 else allnonemptymgilist
         xlist = mgilist_out
         timestepslist_out = timestepslist
     elif xvariable == "timestep":
@@ -571,7 +570,7 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timestepslist, modelpat
             if args.xmax > 0 and xvalue > args.xmax:
                 break
 
-    xlist, mgilist_out, timestepslist_out = zip(*list(sorted(zip(xlist, mgilist_out, timestepslist_out))))
+    xlist, mgilist_out, timestepslist_out = zip(*sorted(zip(xlist, mgilist_out, timestepslist_out)))
 
     assert len(xlist) == len(mgilist_out) == len(timestepslist_out)
 
@@ -719,10 +718,7 @@ def make_plot(
     dfalldata.index.name = "modelgridindex"
     dfalldata[xvariable] = xlist
 
-    if xvariable.startswith("velocity"):
-        xlist = np.insert(xlist, 0, 0.0)
-    else:
-        xlist = np.insert(xlist, 0, xlist[0])
+    xlist = np.insert(xlist, 0, 0.0) if xvariable.startswith("velocity") else np.insert(xlist, 0, xlist[0])
 
     xmin = args.xmin if args.xmin >= 0 else min(xlist)
     xmax = args.xmax if args.xmax > 0 else max(xlist)
@@ -773,7 +769,7 @@ def make_plot(
     # plt.suptitle(figure_title, fontsize=11, verticalalignment='top')
 
     if args.write_data:
-        dfalldata.sort_index(inplace=True)
+        dfalldata = dfalldata.sort_index()
         dataoutfilename = Path(outfilename).with_suffix(".txt")
         dfalldata.to_csv(dataoutfilename)
         print(f"Saved {dataoutfilename}")
@@ -913,7 +909,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-filtersavgol",
         nargs=2,
-        help="Savitzky–Golay filter. Specify the window_length and polyorder.e.g. -filtersavgol 5 3",
+        help="Savitzky-Golay filter. Specify the window_length and polyorder.e.g. -filtersavgol 5 3",
     )
 
     parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
@@ -991,7 +987,7 @@ def main(args=None, argsraw=None, **kwargs):
         )
 
     for ts in reversed(timesteps_included):
-        tswithdata = [ts for (ts, mgi) in estimators.keys()]
+        tswithdata = [ts for (ts, mgi) in estimators]
         for ts in timesteps_included:
             if ts not in tswithdata:
                 timesteps_included.remove(ts)

@@ -149,7 +149,7 @@ def get_trajectory_timestepfile_nuc_abund(
         # )
 
     # dfnucabund.eval('abund = 10 ** log10abund', inplace=True)
-    dfnucabund.eval("massfrac = (N + Z) * (10 ** log10abund)", inplace=True)
+    dfnucabund = dfnucabund.eval("massfrac = (N + Z) * (10 ** log10abund)")
     # dfnucabund.eval('A = N + Z', inplace=True)
     # dfnucabund.query('abund > 0.', inplace=True)
 
@@ -167,11 +167,11 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
         dfthermo: pd.DataFrame = pd.read_csv(
             enthermofile, sep=r"\s+", usecols=["time/s", "Qdot"], engine="c", dtype={0: float, 1: float}
         )
-        dfthermo.rename(columns={"time/s": "time_s"}, inplace=True)
+        dfthermo = dfthermo.rename(columns={"time/s": "time_s"})
         startindex: int = int(np.argmax(dfthermo["time_s"] >= 1))  # start integrating at this number of seconds
 
         assert all(dfthermo["Qdot"][startindex : nts_max + 1] > 0.0)
-        dfthermo.eval("Qdot_expansionadjusted = Qdot * time_s / @t_model_s", inplace=True)
+        dfthermo = dfthermo.eval("Qdot_expansionadjusted = Qdot * time_s / @t_model_s")
 
         qdotintegral: float = np.trapz(
             y=dfthermo["Qdot_expansionadjusted"][startindex : nts_max + 1],
@@ -214,7 +214,7 @@ def get_trajectory_abund_q(
         return {}
 
     massfractotal = dftrajnucabund.massfrac.sum()
-    dftrajnucabund.query("Z >= 1", inplace=True)
+    dftrajnucabund = dftrajnucabund.query("Z >= 1")
 
     dftrajnucabund["nucabundcolname"] = [
         f"X_{at.get_elsymbol(int(row.Z))}{int(row.N + row.Z)}" for row in dftrajnucabund.itertuples()
@@ -317,7 +317,7 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataF
     )
     # after filtering, frac_of_cellmass_includemissing will still include particles with rho but no abundance data
     # frac_of_cellmass will exclude particles with no abundances
-    dfcontribs.eval("frac_of_cellmass_includemissing = frac_of_cellmass", inplace=True)
+    dfcontribs = dfcontribs.eval("frac_of_cellmass_includemissing = frac_of_cellmass")
     # dfcontribs.query('particleid not in @missing_particleids', inplace=True)
     dfcontribs.loc[dfcontribs.eval("particleid in @missing_particleids"), "frac_of_cellmass"] = 0.0
 
@@ -386,7 +386,7 @@ def add_abundancecontributions(
         if len(dfthiscellcontribs) >= minparticlespercell
     ]
 
-    dfcontribs.query("cellindex in @active_inputcellids", inplace=True)
+    dfcontribs = dfcontribs.query("cellindex in @active_inputcellids")
     dfcontribs = filtermissinggridparticlecontributions(traj_root, dfcontribs)
     active_inputcellids = dfcontribs.cellindex.unique()
     active_inputcellcount = len(active_inputcellids)
@@ -444,9 +444,9 @@ def add_abundancecontributions(
     timestart = time.perf_counter()
     print("Creating dfnucabundances...", end="", flush=True)
     dfnucabundances = pd.DataFrame(listcellnucabundances)
-    dfnucabundances.set_index("inputcellid", drop=False, inplace=True)
+    dfnucabundances = dfnucabundances.set_index("inputcellid", drop=False)
     dfnucabundances.index.name = None
-    dfnucabundances.fillna(0.0, inplace=True)
+    dfnucabundances = dfnucabundances.fillna(0.0)
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
     timestart = time.perf_counter()
@@ -494,7 +494,7 @@ def add_abundancecontributions(
     timestart = time.perf_counter()
     print("Merging isotopic abundances into dfmodel...", end="", flush=True)
     dfmodel = dfmodel.merge(dfnucabundances, how="left", left_on="inputcellid", right_on="inputcellid")
-    dfmodel.fillna(0.0, inplace=True)
+    dfmodel = dfmodel.fillna(0.0)
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
     return dfmodel, dfelabundances, dfcontribs
@@ -525,7 +525,7 @@ def main(args=None, argsraw=None, **kwargs):
     dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(
         traj_root, particleid, "./Run_rprocess/tday_nz-plane"
     )
-    dfnucabund.query("Z >= 1", inplace=True)
+    dfnucabund = dfnucabund.query("Z >= 1")
     dfnucabund["radioactive"] = True
 
     t_model_init_days = t_model_init_seconds / (24 * 60 * 60)
@@ -551,18 +551,17 @@ def main(args=None, argsraw=None, **kwargs):
 
         # now replace the density at the input time with the density at required time
 
-        dfdensities.eval(
+        dfdensities = dfdensities.eval(
             (
                 "rho = cellmass_grams / ("
                 "4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
                 " * (1e5 * @t_model_init_seconds) ** 3)"
             ),
-            inplace=True,
         )
     else:
         rho = 1e-11
         print(f"{wollager_profilename} not found. Using rho {rho} g/cm3")
-        dfdensities = pd.DataFrame(dict(rho=rho, velocity_outer=6.0e4), index=[0])
+        dfdensities = pd.DataFrame({"rho": rho, "velocity_outer": 6.0e4}, index=[0])
 
     # print(dfdensities)
 

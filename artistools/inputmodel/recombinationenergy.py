@@ -92,7 +92,7 @@ def get_particle_elec_binding_energy_per_gram(traj_root, dictbinding, particleid
     #     print(dftrajnucabund)
     # assert frac_unaccounted < 0.3
 
-    dftrajnucabund.eval("recombenergy_ev_per_gram = Z_be_tot_ev * massfrac / (Z + N) / @amu_g", inplace=True)
+    dftrajnucabund = dftrajnucabund.eval("recombenergy_ev_per_gram = Z_be_tot_ev * massfrac / (Z + N) / @amu_g")
 
     # contrib_binding_en_ev = speciesabund_g / (massnumber * amu_g) * binding_en_ev
 
@@ -108,9 +108,9 @@ def get_particle_nucenergy_released(traj_root, particleid, tmin_s, time_s_end):
         traj_root=traj_root, particleid=particleid, memberfilename=memberfilename
     ) as fthermo:
         dfthermo = pd.read_csv(fthermo, delim_whitespace=True, usecols=["#count", "time/s", "Qdot", "Ye"])
-        dfthermo.rename(columns={"time/s": "time_s"}, inplace=True)
-        dfthermo.query("time_s >= @tmin_s", inplace=True)
-        dfthermo.query("time_s <= @time_s_end", inplace=True)
+        dfthermo = dfthermo.rename(columns={"time/s": "time_s"})
+        dfthermo = dfthermo.query("time_s >= @tmin_s")
+        dfthermo = dfthermo.query("time_s <= @time_s_end")
         en_released_ev_per_gram = np.trapz(y=dfthermo["Qdot"], x=dfthermo["time_s"]) * erg_to_ev
         # print(dfthermo)
     return en_released_ev_per_gram
@@ -120,9 +120,9 @@ def get_particles_recomb_nuc_energy(traj_root, dfbinding):
     dfsnapshot = at.inputmodel.modelfromhydro.read_ejectasnapshot(
         "/Users/luke/Library/Mobile Documents/com~apple~CloudDocs/Archive/Astronomy/Mergers/SFHo_snapshot"
     )
-    dfsnapshot.sort_values("ye", inplace=True)
+    dfsnapshot = dfsnapshot.sort_values("ye")
 
-    dictbinding = {Z: be_tot_ev for Z, be_tot_ev in dfbinding[["Z", "TotBEn"]].itertuples(index=False)}
+    dictbinding = dict(dfbinding[["Z", "TotBEn"]].itertuples(index=False))
 
     tmin_s = 10
     time_s = 6 * 3600

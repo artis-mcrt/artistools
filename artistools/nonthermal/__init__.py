@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Artistools - spectra related functions."""
 from .__main__ import main
 from ._nonthermal_core import analyse_ntspectrum

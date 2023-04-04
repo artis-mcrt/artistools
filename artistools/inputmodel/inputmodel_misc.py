@@ -165,13 +165,11 @@ def read_modelfile(
             skiprows = numheaderrows
         else:
             # skip the odd rows for the first read in
-            skiprows = list(
-                [
-                    x
-                    for x in range(numheaderrows + modelcellcount * 2)
-                    if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
-                ]
-            )
+            skiprows = [
+                x
+                for x in range(numheaderrows + modelcellcount * 2)
+                if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
+            ]
         dtypes: defaultdict[str, type] = defaultdict(lambda: np.float32)
         dtypes["inputcellid"] = np.int32
         dtypes["tracercount"] = np.int32
@@ -190,13 +188,11 @@ def read_modelfile(
 
         if ncols_line_odd > 0 and not onelinepercellformat:
             # read in the odd rows and merge dataframes
-            skipevenrows = list(
-                [
-                    x
-                    for x in range(numheaderrows + modelcellcount * 2)
-                    if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
-                ]
-            )
+            skipevenrows = [
+                x
+                for x in range(numheaderrows + modelcellcount * 2)
+                if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
+            ]
             dfmodeloddlines = pd.read_csv(
                 filename,
                 sep=r"\s+",
@@ -226,21 +222,20 @@ def read_modelfile(
 
     if dimensions == 1:
         dfmodel["velocity_inner"] = np.concatenate([[0.0], dfmodel["velocity_outer"].values[:-1]])
-        dfmodel.eval(
+        dfmodel = dfmodel.eval(
             (
                 "cellmass_grams = 10 ** logrho * 4. / 3. * 3.14159265 * (velocity_outer ** 3 - velocity_inner ** 3)"
                 "* (1e5 * @t_model_init_seconds) ** 3"
             ),
-            inplace=True,
         )
         vmax_cmps = dfmodel.velocity_outer.max() * 1e5
 
     elif dimensions == 3:
         wid_init = at.get_wid_init_at_tmodel(modelpath, modelcellcount, t_model_init_days, xmax_tmodel)
         modelmeta["wid_init"] = wid_init
-        dfmodel.eval("cellmass_grams = rho * @wid_init ** 3", inplace=True)
+        dfmodel = dfmodel.eval("cellmass_grams = rho * @wid_init ** 3")
 
-        dfmodel.rename(columns={"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"}, inplace=True)
+        dfmodel = dfmodel.rename(columns={"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"})
         if "pos_x_min" in dfmodel.columns and not printwarningsonly:
             print("  model cell positions are defined in the header")
         elif not getheadersonly:
@@ -284,15 +279,13 @@ def read_modelfile(
             assert posmatch_xyz != posmatch_zyx  # one option must match
             if posmatch_xyz:
                 print("  model cell positions are consistent with x-y-z column order")
-                dfmodel.rename(
+                dfmodel = dfmodel.rename(
                     columns={"inputpos_a": "pos_x_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_z_min"},
-                    inplace=True,
                 )
             if posmatch_zyx:
                 print("  cell positions are consistent with z-y-x column order")
-                dfmodel.rename(
+                dfmodel = dfmodel.rename(
                     columns={"inputpos_a": "pos_z_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_x_min"},
-                    inplace=True,
                 )
 
     modelmeta["t_model_init_days"] = t_model_init_days
@@ -406,14 +399,14 @@ def add_derived_cols_to_modeldata(
             dfmodel["vel_y_max"] = (dfmodel["pos_y_min"] + wid_init) / t_model_init_seconds
             dfmodel["vel_z_max"] = (dfmodel["pos_z_min"] + wid_init) / t_model_init_seconds
 
-        if any([col in derived_cols for col in ["velocity", "vel_mid", "vel_mid_radial"]]):
+        if any(col in derived_cols for col in ["velocity", "vel_mid", "vel_mid_radial"]):
             assert wid_init is not None
             assert t_model_init_seconds is not None
             dfmodel["vel_x_mid"] = (dfmodel["pos_x_min"] + (0.5 * wid_init)) / t_model_init_seconds
             dfmodel["vel_y_mid"] = (dfmodel["pos_y_min"] + (0.5 * wid_init)) / t_model_init_seconds
             dfmodel["vel_z_mid"] = (dfmodel["pos_z_min"] + (0.5 * wid_init)) / t_model_init_seconds
 
-            dfmodel.eval("vel_mid_radial = sqrt(vel_x_mid ** 2 + vel_y_mid ** 2 + vel_z_mid ** 2)", inplace=True)
+            dfmodel = dfmodel.eval("vel_mid_radial = sqrt(vel_x_mid ** 2 + vel_y_mid ** 2 + vel_z_mid ** 2)")
 
     if dimensions == 3 and "pos_mid" in derived_cols or "angle_bin" in derived_cols:
         assert wid_init is not None
@@ -422,10 +415,10 @@ def add_derived_cols_to_modeldata(
         dfmodel["pos_z_mid"] = dfmodel["pos_z_min"] + (0.5 * wid_init)
 
     if "logrho" in derived_cols and "logrho" not in dfmodel.columns:
-        dfmodel.eval("logrho = log10(rho)", inplace=True)
+        dfmodel = dfmodel.eval("logrho = log10(rho)")
 
     if "rho" in derived_cols and "rho" not in dfmodel.columns:
-        dfmodel.eval("rho = 10**logrho", inplace=True)
+        dfmodel = dfmodel.eval("rho = 10**logrho")
 
     if "angle_bin" in derived_cols:
         assert modelpath is not None
@@ -498,11 +491,11 @@ def get_mean_cell_properties_of_angle_bin(
             i += 1
             mean_bin_properties[bin_number]["mean_rho"][binindex] += mean_rho
         i = 0
-        if "Ye" in dfmodeldata.keys():
+        if "Ye" in dfmodeldata:
             for binindex, mean_Ye in dfanglebin.groupby(binned)["Ye"].mean().iteritems():
                 i += 1
                 mean_bin_properties[bin_number]["mean_Ye"][binindex] += mean_Ye
-        if "Q" in dfmodeldata.keys():
+        if "Q" in dfmodeldata:
             for binindex, mean_Q in dfanglebin.groupby(binned)["Q"].mean().iteritems():
                 i += 1
                 mean_bin_properties[bin_number]["mean_Q"][binindex] += mean_Q
@@ -625,7 +618,7 @@ def save_modeldata(
     if dimensions == 1:
         standardcols = ["inputcellid", "velocity_outer", "logrho", "X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
     elif dimensions == 3:
-        dfmodel.rename(columns={"gridindex": "inputcellid"}, inplace=True)
+        dfmodel = dfmodel.rename(columns={"gridindex": "inputcellid"})
         griddimension = int(round(len(dfmodel) ** (1.0 / 3.0)))
         print(f" grid size: {len(dfmodel)} ({griddimension}^3)")
         assert griddimension**3 == len(dfmodel)
@@ -664,10 +657,7 @@ def save_modeldata(
     assert modelpath is not None or filename is not None
     if filename is None:
         filename = "model.txt"
-    if modelpath is not None:
-        modelfilepath = Path(modelpath, filename)
-    else:
-        modelfilepath = Path(filename)
+    modelfilepath = Path(modelpath, filename) if modelpath is not None else Path(filename)
 
     with open(modelfilepath, "w", encoding="utf-8") as fmodel:
         if headercommentlines is not None:
@@ -727,7 +717,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> U
     velocity = float(velocity)
 
     if not mgilist:
-        mgilist = [mgi for mgi in modeldata.index]
+        mgilist = list(modeldata.index)
         arr_vouter = modeldata["velocity_outer"].values
     else:
         arr_vouter = np.array([modeldata["velocity_outer"][mgi] for mgi in mgilist])
@@ -926,26 +916,21 @@ def sphericalaverage(
 
         for column in matchedcells.columns:
             if column.startswith("X_") or column in ["cellYe", "q"]:
-                if rhomean > 0.0:
-                    massfrac = np.dot(matchedcells[column], matchedcells.rho) / matchedcellrhosum
-                else:
-                    massfrac = 0.0
+                massfrac = np.dot(matchedcells[column], matchedcells.rho) / matchedcellrhosum if rhomean > 0.0 else 0.0
                 dictcell[column] = massfrac
 
         outcells.append(dictcell)
 
         if dfelabundances is not None:
-            if rhomean > 0.0:
-                abund_matchedcells = dfelabundances.loc[matchedcells.index]
-            else:
-                abund_matchedcells = None
+            abund_matchedcells = dfelabundances.loc[matchedcells.index] if rhomean > 0.0 else None
             dictcellabundances = {"inputcellid": radialcellid}
             for column in dfelabundances.columns:
                 if column.startswith("X_"):
-                    if rhomean > 0.0:
-                        massfrac = np.dot(abund_matchedcells[column], matchedcells.rho) / matchedcellrhosum
-                    else:
-                        massfrac = 0.0
+                    massfrac = (
+                        np.dot(abund_matchedcells[column], matchedcells.rho) / matchedcellrhosum
+                        if rhomean > 0.0
+                        else 0.0
+                    )
                     dictcellabundances[column] = massfrac
 
             outcellabundances.append(dictcellabundances)
