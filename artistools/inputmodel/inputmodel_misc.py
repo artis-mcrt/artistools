@@ -352,7 +352,7 @@ def get_modeldata(
         dfmodel = dfmodel.merge(abundancedata, how="inner", on="inputcellid")
 
     if derived_cols:
-        add_derived_cols_to_modeldata(
+        dfmodel = add_derived_cols_to_modeldata(
             dfmodel=dfmodel,
             derived_cols=derived_cols,
             dimensions=dimensions,
@@ -422,7 +422,7 @@ def add_derived_cols_to_modeldata(
 
     if "angle_bin" in derived_cols:
         assert modelpath is not None
-        get_cell_angle(dfmodel, modelpath)
+        dfmodel = get_cell_angle(dfmodel, modelpath)
 
     # if "Ye" in derived_cols and os.path.isfile(modelpath / "Ye.txt"):
     #     dfmodel["Ye"] = at.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)

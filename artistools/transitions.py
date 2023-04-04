@@ -177,12 +177,13 @@ def make_plot(
     plt.close()
 
 
-def add_upper_lte_pop(dftransitions, T_exc, ionpop, ltepartfunc, columnname=None):
+def add_upper_lte_pop(dftransitions, T_exc, ionpop, ltepartfunc, columnname=None) -> pd.DataFrame:
     K_B = const.k_B.to("eV / K").value
     scalefactor = ionpop / ltepartfunc
     if columnname is None:
         columnname = f"upper_pop_lte_{T_exc:.0f}K"
     dftransitions = dftransitions.eval(f"{columnname} = @scalefactor * upper_g * exp(-upper_energy_ev / @K_B / @T_exc)")
+    return dftransitions
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -400,7 +401,9 @@ def main(args=None, argsraw=None, **kwargs):
                 ltepartfunc = 1.0
 
             dftransitions = dftransitions.eval("flux_factor = (upper_energy_ev - lower_energy_ev) * A")
-            add_upper_lte_pop(dftransitions, vardict["Te"], ionpopdict[ionid], ltepartfunc, columnname="upper_pop_Te")
+            dftransitions = add_upper_lte_pop(
+                dftransitions, vardict["Te"], ionpopdict[ionid], ltepartfunc, columnname="upper_pop_Te"
+            )
 
             for seriesindex, temperature in enumerate(temperature_list):
                 T_exc = eval(temperature, vardict)
@@ -434,7 +437,9 @@ def main(args=None, argsraw=None, **kwargs):
                         ltepartfunc = ion.levels.eval("g * exp(-energy_ev / @K_B / @T_exc)").sum()
                     else:
                         ltepartfunc = 1.0
-                    add_upper_lte_pop(dftransitions, T_exc, ionpopdict[ionid], ltepartfunc, columnname=popcolumnname)
+                    dftransitions = add_upper_lte_pop(
+                        dftransitions, T_exc, ionpopdict[ionid], ltepartfunc, columnname=popcolumnname
+                    )
 
                 if args.print_lines:
                     dftransitions = dftransitions.eval(f"flux_factor_{popcolumnname} = flux_factor * {popcolumnname}")
