@@ -364,7 +364,7 @@ def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[i
         if found_rank and rank >= nprocs:
             print(f"WARNING: nprocs is {nprocs} but file {packetsfiles[-1]} exists")
             packetsfiles = packetsfiles[:-1]
-        elif not found_rank:
+        elif not found_rank and rank < nprocs:
             print(f"WARNING: packets file for rank {rank} was not found.")
 
         if maxpacketfiles is not None and len(packetsfiles) >= maxpacketfiles:
