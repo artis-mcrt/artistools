@@ -734,6 +734,10 @@ def firstexisting(
     fullpaths = []
     for filename in filelist:
         if tryzipped:
+            filenamelz4 = str(filename) if str(filename).endswith(".lz4") else str(filename) + ".lz4"
+            if filenamelz4 not in filelist:
+                fullpaths.append(Path(folder) / filenamelz4)
+
             filenamexz = str(filename) if str(filename).endswith(".xz") else str(filename) + ".xz"
             if filenamexz not in filelist:
                 fullpaths.append(Path(folder) / filenamexz)
