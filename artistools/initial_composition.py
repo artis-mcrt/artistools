@@ -69,7 +69,8 @@ def get_2D_slice_through_3d_model(merge_dfs, sliceaxis: Literal["x", "y", "z"], 
 
 
 def plot_slice_modelcol(ax, plotvals, colname, plotaxis1, plotaxis2, t_model_d, args):
-    colorscale = plotvals[colname] * plotvals["rho"] if colname.startswith("X_") else plotvals[colname]
+    print(colname)
+    colorscale = plotvals[colname] * plotvals[colname] if colname.startswith("X_") else plotvals[colname]
 
     if args.hideemptycells:
         # Don't plot empty cells:
@@ -110,8 +111,11 @@ def plot_slice_modelcol(ax, plotvals, colname, plotaxis1, plotaxis2, t_model_d, 
         interpolation="nearest",
         extent=(arr_x.min(), arr_x.max(), arr_y.min(), arr_y.max()),
         origin="lower",
+        # vmin=0.0,
+        # vmax=1.0,
         # vmax=-9.5,
-        vmin=-11,
+        # vmin=-11,
+        # vmin=1e-11,
     )
 
     plot_vmax = 0.2
@@ -139,7 +143,7 @@ def plot_3d_initial_abundances(modelpath, args=None):
     mpl.rc("font", **font)
 
     dfmodel, modelmeta = at.get_modeldata(
-        modelpath, skipabundancecolumns=False, get_elemabundances=True, dtype_backend="pyarrow"
+        modelpath, skipabundancecolumns=True, get_elemabundances=True, dtype_backend="pyarrow"
     )
     targetmodeltime_days = None
     if targetmodeltime_days is not None:
@@ -184,7 +188,7 @@ def plot_3d_initial_abundances(modelpath, args=None):
             ax.set(aspect="equal")
 
     for index, elem in enumerate(args.elem):
-        colname = "rho" if args.rho or elem == "rho" else f"X_{elem}"
+        colname = elem if args.rho or elem in ["rho", "cellYe", "tracercount"] else f"X_{elem}"
 
         if subplots:
             ax = axes[index]
@@ -205,10 +209,11 @@ def plot_3d_initial_abundances(modelpath, args=None):
         fig.text(0.05, 0.5, ylabel, ha="center", va="center", rotation="vertical")
 
     # cbar.set_label(label="test", size="x-large")  # , fontweight='bold')
-    if args.logcolorscale:
-        cbar.ax.set_title(r"$\rho$ [g/cm3]", size="small")
-    else:
-        cbar.ax.set_title(r"log10($\rho$) [g/cm3]", size="small")
+    if "cellYe" not in args.elem and "tracercount" not in args.elem:
+        if args.logcolorscale:
+            cbar.ax.set_title(r"log10($\rho$) [g/cm3]", size="small")
+        else:
+            cbar.ax.set_title(r"$\rho$ [g/cm3]", size="small")
     # cbar.ax.tick_params(labelsize='x-large')
 
     # plt.tight_layout()
