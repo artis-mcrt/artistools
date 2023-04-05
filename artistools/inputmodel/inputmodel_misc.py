@@ -176,9 +176,14 @@ def read_modelfile(
                 if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
             ]
         )
-        dtypes: defaultdict[str, type] = defaultdict(lambda: pd.ArrowDtype(pa.float32()))
-        dtypes["inputcellid"] = pd.ArrowDtype(pa.int32())
-        dtypes["tracercount"] = pd.ArrowDtype(pa.int32())
+        # dtypes: defaultdict[str, type] = defaultdict(lambda: pd.ArrowDtype(pa.float32()))
+        # dtypes["inputcellid"] = pd.ArrowDtype(pa.int32())
+        # dtypes["tracercount"] = pd.ArrowDtype(pa.int32())
+
+        dtypes: defaultdict[str, type] = defaultdict(lambda: np.float32)
+        dtypes["inputcellid"] = np.int32
+        dtypes["tracercount"] = np.int32
+
         # each cell takes up two lines in the model file
         dfmodel = pd.read_csv(
             filename,
@@ -190,7 +195,7 @@ def read_modelfile(
             usecols=columns[:ncols_line_even],
             nrows=nrows_read,
             dtype=dtypes,
-            dtype_backend="pyarrow",
+            # dtype_backend="pyarrow",
         )
 
         if ncols_line_odd > 0 and not onelinepercellformat:
@@ -209,7 +214,7 @@ def read_modelfile(
                 names=columns[ncols_line_even:],
                 nrows=nrows_read,
                 dtype=dtypes,
-                dtype_backend="pyarrow",
+                # dtype_backend="pyarrow",
             )
             assert len(dfmodel) == len(dfmodeloddlines)
             dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
@@ -756,13 +761,14 @@ def get_initelemabundances(modelpath: Path = Path(), printwarningsonly: bool = F
         if not printwarningsonly:
             print(f"  reading {filenamefeather}")
 
-        abundancedata = pd.read_feather(filenamefeather, dtype_backend="pyarrow")
+        abundancedata = pd.read_feather(filenamefeather)
     else:
         ncols = len(pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, comment="#", nrows=1).columns)
         colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
-        dtypes = {
-            col: pd.ArrowDtype(pa.float32()) if col.startswith("X_") else pd.ArrowDtype(pa.int32()) for col in colnames
-        }
+        # dtypes = {
+        #     col: pd.ArrowDtype(pa.float32()) if col.startswith("X_") else pd.ArrowDtype(pa.int32()) for col in colnames
+        # }
+        dtypes = {col: np.float32 if col.startswith("X_") else np.int32 for col in colnames}
 
         abundancedata = pd.read_csv(
             abundancefilepath,
@@ -771,7 +777,7 @@ def get_initelemabundances(modelpath: Path = Path(), printwarningsonly: bool = F
             comment="#",
             names=colnames,
             dtype=dtypes,
-            dtype_backend="pyarrow",
+            # dtype_backend="pyarrow",
         )
 
         if len(abundancedata) > 1000:
@@ -781,7 +787,7 @@ def get_initelemabundances(modelpath: Path = Path(), printwarningsonly: bool = F
 
     abundancedata.index.name = "modelgridindex"
 
-    abundancedata.index = abundancedata.index.astype(pd.ArrowDtype(pa.int32()))
+    # abundancedata.index = abundancedata.index.astype(pd.ArrowDtype(pa.int32()))
 
     return abundancedata
 
