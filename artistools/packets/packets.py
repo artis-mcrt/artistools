@@ -387,14 +387,16 @@ def get_packets_pl(
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
 
     nprocs_read = len(packetsfiles)
-    allescrpktfile = Path(modelpath) / "packets_rpkt_escaped.parquet"
+    allescrpktfile_parquet = Path(modelpath) / "packets_rpkt_escaped.parquet"
 
     write_allpkts_parquet = False
     pldfpackets = None
     if maxpacketfiles is None and escape_type == "TYPE_RPKT":
-        if allescrpktfile.is_file() and os.path.getmtime(allescrpktfile) > calendar.timegm(time_lastschemachange):
-            print(f"Reading from {allescrpktfile}")
-            pldfpackets = pl.scan_parquet(allescrpktfile)
+        if allescrpktfile_parquet.is_file() and os.path.getmtime(allescrpktfile_parquet) > calendar.timegm(
+            time_lastschemachange
+        ):
+            print(f"Reading from {allescrpktfile_parquet}")
+            pldfpackets = pl.scan_parquet(allescrpktfile_parquet)
         else:
             write_allpkts_parquet = True
 
@@ -411,10 +413,10 @@ def get_packets_pl(
         pldfpackets = bin_packet_directions_lazypolars(modelpath, pldfpackets)
 
     if write_allpkts_parquet:
-        print(f"Saving {allescrpktfile}")
-        pldfpackets = pldfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
+        print(f"Saving {allescrpktfile_parquet}")
+        # pldfpackets = pldfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
         pldfpackets.collect(streaming=True).write_parquet(
-            allescrpktfile,
+            allescrpktfile_parquet,
             compression="lz4",
             row_group_size=1024 * 1024,
             statistics=True,
