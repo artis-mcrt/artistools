@@ -157,12 +157,12 @@ def read_modelfile(
         assert (ncoordgridx * ncoordgridy * ncoordgridz) == modelcellcount
 
     nrows_read = 1 if getheadersonly else modelcellcount
-    filenamefeather = Path(filename).with_suffix(".feather")
-    if filenamefeather.is_file():
+    filenameparquet = Path(filename).with_suffix(".parquet")
+    if filenameparquet.is_file() and not getheadersonly:
         if not printwarningsonly:
-            print(f"  reading {filenamefeather}")
-        dfmodel = pd.read_feather(
-            filenamefeather,
+            print(f"  reading {filenameparquet}")
+        dfmodel = pd.read_parquet(
+            filenameparquet,
             columns=columns[: ncols_line_even + ncols_line_odd],
             dtype_backend=dtype_backend,
         )
@@ -229,8 +229,8 @@ def read_modelfile(
             dfmodel = dfmodel.iloc[:modelcellcount]
 
         if len(dfmodel) > 1000 and not getheadersonly and not skipabundancecolumns:
-            print(f"Saving {filenamefeather}")
-            dfmodel.to_feather(filenamefeather, compression="lz4")
+            print(f"Saving {filenameparquet}")
+            dfmodel.to_parquet(filenameparquet, compression="lz4")
             print("  Done.")
 
     assert len(dfmodel) == modelcellcount or getheadersonly
@@ -768,12 +768,12 @@ def get_initelemabundances(
     """Return a table of elemental mass fractions by cell from abundances."""
     abundancefilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
 
-    filenamefeather = Path(abundancefilepath).with_suffix(".feather")
-    if filenamefeather.is_file():
+    filenameparquet = Path(abundancefilepath).with_suffix(".parquet")
+    if filenameparquet.is_file():
         if not printwarningsonly:
-            print(f"  reading {filenamefeather}")
+            print(f"  reading {filenameparquet}")
 
-        abundancedata = pd.read_feather(filenamefeather, dtype_backend=dtype_backend)
+        abundancedata = pd.read_parquet(filenameparquet, dtype_backend=dtype_backend)
     else:
         ncols = len(pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, comment="#", nrows=1).columns)
         colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
@@ -797,8 +797,8 @@ def get_initelemabundances(
         )
 
         if len(abundancedata) > 1000:
-            print(f"Saving {filenamefeather}")
-            abundancedata.to_feather(filenamefeather, compression="lz4")
+            print(f"Saving {filenameparquet}")
+            abundancedata.to_parquet(filenameparquet, compression="lz4")
             print("  Done.")
 
     abundancedata.index.name = "modelgridindex"
