@@ -143,7 +143,7 @@ def plot_3d_initial_abundances(modelpath, args=None):
     mpl.rc("font", **font)
 
     dfmodel, modelmeta = at.get_modeldata(
-        modelpath, skipabundancecolumns=True, get_elemabundances=True, dtype_backend="pyarrow"
+        modelpath, skipnuclidemassfraccolumns=True, get_elemabundances=True, dtype_backend="pyarrow"
     )
     targetmodeltime_days = None
     if targetmodeltime_days is not None:

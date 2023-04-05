@@ -34,7 +34,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
     axistherm.set_xscale("log")
     if args.plotthermalisation:
         dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(
-            modelpath, skipabundancecolumns=True, derived_cols=["vel_mid_radial"]
+            modelpath, skipnuclidemassfraccolumns=True, derived_cols=["vel_mid_radial"]
         )
         model_mass_grams = dfmodel.cellmass_grams.sum()
         print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")

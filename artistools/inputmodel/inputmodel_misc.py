@@ -25,7 +25,7 @@ def read_modelfile(
     dimensions: Optional[int] = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
-    skipabundancecolumns: bool = False,
+    skipnuclidemassfraccolumns: bool = False,
     dtype_backend: Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
@@ -139,7 +139,7 @@ def read_modelfile(
             assert (ncols_line_even + ncols_line_odd) == len(columns)
             onelinepercellformat = False
 
-    if skipabundancecolumns:
+    if skipnuclidemassfraccolumns:
         if not printwarningsonly:
             print("  skipping abundance columns in model.txt")
         if dimensions == 1:
@@ -228,7 +228,7 @@ def read_modelfile(
         if len(dfmodel) > modelcellcount:
             dfmodel = dfmodel.iloc[:modelcellcount]
 
-        if len(dfmodel) > 1000 and not getheadersonly and not skipabundancecolumns:
+        if len(dfmodel) > 1000 and not getheadersonly and not skipnuclidemassfraccolumns:
             print(f"Saving {filenameparquet}")
             dfmodel.to_parquet(filenameparquet, compression="lz4")
             print("  Done.")
@@ -322,7 +322,7 @@ def get_modeldata(
     derived_cols: Optional[Sequence[str]] = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
-    skipabundancecolumns: bool = False,
+    skipnuclidemassfraccolumns: bool = False,
     dtype_backend: Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
@@ -360,7 +360,7 @@ def get_modeldata(
         dimensions=dimensions,
         printwarningsonly=printwarningsonly,
         getheadersonly=getheadersonly,
-        skipabundancecolumns=skipabundancecolumns,
+        skipnuclidemassfraccolumns=skipnuclidemassfraccolumns,
         dtype_backend=dtype_backend,
     )
 
