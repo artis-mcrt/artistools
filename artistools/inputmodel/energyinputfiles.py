@@ -141,8 +141,7 @@ def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
 
         return times_and_rate, E_tot
 
-    else:
-        return E_tot
+    return E_tot
 
 
 def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_trajectories=False, thermalisation=False):
