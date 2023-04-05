@@ -47,18 +47,6 @@ repos:
       rev: v1.1.1
       hooks:
           - id: mypy
-            # language: system
             additional_dependencies: [numpy, types-PyYAML, types-psutil]
             types: [python]
             require_serial: true
-            # verbose: true
-    # - repo: local
-    #   hooks:
-    #       - id: pylint
-    #         name: pylint
-    #         entry: pylint
-    #         language: python
-    #         # language: system
-    #         types: [python]
-    #         require_serial: true
-    #         args: [-rn, -sn]
