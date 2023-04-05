@@ -133,7 +133,9 @@ ignore = [
     "RET504",
     "SIM115",
     "SLF001",
-    "TRY003", "UP032",
+    "TRY003",
+    "TRY301",
+    "UP032",
 ]
 
 # Allow autofix for all enabled rules (when `--fix`) is provided.
