@@ -163,7 +163,7 @@ def read_modelfile(
         dfmodel = pd.read_feather(
             filenamefeather,
             columns=columns[: ncols_line_even + ncols_line_odd],
-            dtype_backend="pyarrow",
+            # dtype_backend="pyarrow",
         )
     else:
         skiprows: Union[list, int, None]
