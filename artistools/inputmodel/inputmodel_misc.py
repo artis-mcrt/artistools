@@ -191,7 +191,7 @@ def read_modelfile(
 
         # each cell takes up two lines in the model file
         dfmodel = pd.read_csv(
-            filename,
+            at.zopen(filename),
             sep=r"\s+",
             engine="c",
             header=None,
@@ -211,7 +211,7 @@ def read_modelfile(
                 if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
             ]
             dfmodeloddlines = pd.read_csv(
-                filename,
+                at.zopen(filename),
                 sep=r"\s+",
                 engine="c",
                 header=None,
@@ -775,7 +775,9 @@ def get_initelemabundances(
 
         abundancedata = pd.read_parquet(filenameparquet, dtype_backend=dtype_backend)
     else:
-        ncols = len(pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, comment="#", nrows=1).columns)
+        ncols = len(
+            pd.read_csv(at.zopen(abundancefilepath), delim_whitespace=True, header=None, comment="#", nrows=1).columns
+        )
         colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
         dtypes = (
             {
@@ -787,7 +789,7 @@ def get_initelemabundances(
         )
 
         abundancedata = pd.read_csv(
-            abundancefilepath,
+            at.zopen(abundancefilepath),
             delim_whitespace=True,
             header=None,
             comment="#",
