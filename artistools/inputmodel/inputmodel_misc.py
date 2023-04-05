@@ -240,11 +240,12 @@ def read_modelfile(
 
     if dimensions == 1:
         dfmodel["velocity_inner"] = np.concatenate([[0.0], dfmodel["velocity_outer"].to_numpy()[:-1]])
-        dfmodel = dfmodel.eval(
-            (
-                "cellmass_grams = 10 ** logrho * 4. / 3. * 3.14159265 * (velocity_outer ** 3 - velocity_inner ** 3)"
-                "* (1e5 * @t_model_init_seconds) ** 3"
-            ),
+        dfmodel["cellmass_grams"] = (
+            10 ** dfmodel["logrho"]
+            * (4.0 / 3.0)
+            * 3.14159265
+            * (dfmodel["velocity_outer"] ** 3 - dfmodel["velocity_inner"] ** 3)
+            * (1e5 * t_model_init_seconds) ** 3
         )
         vmax_cmps = dfmodel.velocity_outer.max() * 1e5
 
