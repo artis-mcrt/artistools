@@ -171,10 +171,14 @@ def add_derived_columns(
 
     if "emission_velocity" in colnames:
         dfpackets = dfpackets.eval("emission_velocity = sqrt(em_posx ** 2 + em_posy ** 2 + em_posz ** 2) / em_time")
+        dfpackets["emission_velocity"] = (
+            np.sqrt(dfpackets["em_posx"] ** 2 + dfpackets["em_posy"] ** 2 + dfpackets["em_posz"] ** 2)
+            / dfpackets["em_time"]
+        )
 
-        dfpackets = dfpackets.eval("em_velx = em_posx / em_time")
-        dfpackets = dfpackets.eval("em_vely = em_posy / em_time")
-        dfpackets = dfpackets.eval("em_velz = em_posz / em_time")
+        dfpackets["em_velx"] = dfpackets["em_posx"] / dfpackets["em_time"]
+        dfpackets["em_vely"] = dfpackets["em_posy"] / dfpackets["em_time"]
+        dfpackets["em_velz"] = dfpackets["em_posz"] / dfpackets["em_time"]
 
     if "em_modelgridindex" in colnames:
         if "emission_velocity" not in dfpackets.columns:
@@ -732,7 +736,7 @@ def bin_and_sum(
                 )
                 .get_column(bincol + "_bin")
                 .cast(pl.Int32)
-                - 1
+                - 1  # subtract 1 because the returned index 0 is the bin below the start of the first supplied bin
             )
         ]
     )
