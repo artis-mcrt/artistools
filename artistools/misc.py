@@ -17,6 +17,7 @@ from typing import Literal
 from typing import Optional
 from typing import Union
 
+import lz4.frame
 import numpy as np
 import pandas as pd
 import xz
@@ -707,8 +708,11 @@ def zopen(filename: Union[Path, str], mode: str = "rt", encoding: Optional[str] 
     """Open filename, filename.gz or filename.xz"""
     filenamexz = str(filename) if str(filename).endswith(".xz") else str(filename) + ".xz"
     filenamegz = str(filename) if str(filename).endswith(".gz") else str(filename) + ".gz"
-    if os.path.exists(filename) and not str(filename).endswith(".gz") and not str(filename).endswith(".xz"):
+    filenamelz4 = str(filename) if str(filename).endswith(".lz4") else str(filename) + ".lz4"
+    if os.path.exists(filename) and not any(str(filename).endswith(x) for x in [".gz", ".xz", ".lz4"]):
         return open(filename, mode=mode, encoding=encoding)
+    if os.path.exists(filenamegz) or str(filename).endswith(".lz4"):
+        return lz4.frame.open(filenamelz4, mode=mode, encoding=encoding)
     if os.path.exists(filenamegz) or str(filename).endswith(".gz"):
         return gzip.open(filenamegz, mode=mode, encoding=encoding)
     if os.path.exists(filenamexz) or str(filename).endswith(".xz"):

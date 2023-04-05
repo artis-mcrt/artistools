@@ -9,4 +9,5 @@ from .packets import make_3d_grid
 from .packets import make_3d_histogram_from_packets
 from .packets import readfile
 from .packets import readfile_pl
+from .packets import readfile_text
 from .packets import type_ids

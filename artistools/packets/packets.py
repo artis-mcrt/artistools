@@ -347,10 +347,10 @@ def readfile_pl(
 
 
 def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[int] = None) -> list[Path]:
-    def preferred_alternative(f: Path) -> bool:
+    def has_preferred_alternative(f: Path) -> bool:
         f_nosuffixes = at.stripallsuffixes(f)
 
-        suffix_priority = [[".out", ".gz"], [".out", ".xz"], [".out", ".parquet"]]
+        suffix_priority = [[".out", ".gz"], [".out", ".xz"], [".out", ".lz4"], [".out", ".parquet"]]
         startindex = suffix_priority.index(f.suffixes) + 1 if f.suffixes in suffix_priority else 0
 
         if any(f_nosuffixes.with_suffix("".join(s)).is_file() for s in suffix_priority[startindex:]):
@@ -362,7 +362,7 @@ def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[i
     )
 
     # strip out duplicates in the case that some are stored as binary and some are text files
-    packetsfiles = [f for f in packetsfiles if not preferred_alternative(f)]
+    packetsfiles = [f for f in packetsfiles if not has_preferred_alternative(f)]
 
     if maxpacketfiles is not None and len(packetsfiles) > maxpacketfiles:
         print(f"Reading from the first {maxpacketfiles} of {len(packetsfiles)} packets files")
