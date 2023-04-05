@@ -292,7 +292,7 @@ def get_wid_init_at_tmodel(
     if ngridpoints is None or t_model_days is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
         assert modelpath is not None
-        dfmodel, modelmeta = at.get_modeldata(modelpath, getheadersonly=True, skipabundancecolumns=True)
+        dfmodel, modelmeta = at.get_modeldata(modelpath, getheadersonly=True)
         assert modelmeta["dimensions"] == 3
         ngridpoints = len(dfmodel)
         xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400

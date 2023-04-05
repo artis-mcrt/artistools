@@ -72,9 +72,7 @@ def get_from_packets(
     arr_timedelta = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
     # timearray = np.arange(250, 350, 0.1)
     if get_cmf_column:
-        _, modelmeta = at.inputmodel.get_modeldata(
-            modelpath, getheadersonly=True, skipabundancecolumns=True, printwarningsonly=True
-        )
+        _, modelmeta = at.inputmodel.get_modeldata(modelpath, getheadersonly=True, printwarningsonly=True)
         escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
     else:
         escapesurfacegamma = None

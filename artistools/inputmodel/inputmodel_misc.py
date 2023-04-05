@@ -8,15 +8,15 @@ from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from typing import Literal
 from typing import Optional
 from typing import Union
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 
 import artistools as at
-
-# import pyarrow as pa
 
 
 @lru_cache(maxsize=8)
@@ -26,6 +26,7 @@ def read_modelfile(
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
     skipabundancecolumns: bool = False,
+    dtype_backend: Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
     Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
@@ -163,7 +164,7 @@ def read_modelfile(
         dfmodel = pd.read_feather(
             filenamefeather,
             columns=columns[: ncols_line_even + ncols_line_odd],
-            # dtype_backend="pyarrow",
+            dtype_backend=dtype_backend,
         )
     else:
         skiprows: Union[list, int, None]
@@ -177,13 +178,16 @@ def read_modelfile(
                 if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
             ]
         )
-        # dtypes: defaultdict[str, type] = defaultdict(lambda: pd.ArrowDtype(pa.float32()))
-        # dtypes["inputcellid"] = pd.ArrowDtype(pa.int32())
-        # dtypes["tracercount"] = pd.ArrowDtype(pa.int32())
 
-        dtypes: defaultdict[str, type] = defaultdict(lambda: np.float32)
-        dtypes["inputcellid"] = np.int32
-        dtypes["tracercount"] = np.int32
+        dtypes: defaultdict[str, type]
+        if dtype_backend == "pyarrow":
+            dtypes = defaultdict(lambda: pd.ArrowDtype(pa.float32()))
+            dtypes["inputcellid"] = pd.ArrowDtype(pa.int32())
+            dtypes["tracercount"] = pd.ArrowDtype(pa.int32())
+        else:
+            dtypes = defaultdict(lambda: np.float32)
+            dtypes["inputcellid"] = np.int32
+            dtypes["tracercount"] = np.int32
 
         # each cell takes up two lines in the model file
         dfmodel = pd.read_csv(
@@ -196,7 +200,7 @@ def read_modelfile(
             usecols=columns[:ncols_line_even],
             nrows=nrows_read,
             dtype=dtypes,
-            # dtype_backend="pyarrow",
+            dtype_backend=dtype_backend,
         )
 
         if ncols_line_odd > 0 and not onelinepercellformat:
@@ -215,7 +219,7 @@ def read_modelfile(
                 names=columns[ncols_line_even:],
                 nrows=nrows_read,
                 dtype=dtypes,
-                # dtype_backend="pyarrow",
+                dtype_backend=dtype_backend,
             )
             assert len(dfmodel) == len(dfmodeloddlines)
             dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
@@ -318,6 +322,7 @@ def get_modeldata(
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
     skipabundancecolumns: bool = False,
+    dtype_backend: Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
     Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
@@ -355,6 +360,7 @@ def get_modeldata(
         printwarningsonly=printwarningsonly,
         getheadersonly=getheadersonly,
         skipabundancecolumns=skipabundancecolumns,
+        dtype_backend=dtype_backend,
     )
 
     dfmodel = dfmodel.copy()
@@ -362,7 +368,7 @@ def get_modeldata(
     if get_elemabundances:
         if dimensions == 3:
             print("Getting abundances")
-        abundancedata = get_initelemabundances(modelpath)
+        abundancedata = get_initelemabundances(modelpath, dtype_backend=dtype_backend)
         dfmodel = dfmodel.merge(abundancedata, how="inner", on="inputcellid")
 
     if derived_cols:
@@ -753,7 +759,11 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> U
 
 
 @lru_cache(maxsize=8)
-def get_initelemabundances(modelpath: Path = Path(), printwarningsonly: bool = False) -> pd.DataFrame:
+def get_initelemabundances(
+    modelpath: Path = Path(),
+    printwarningsonly: bool = False,
+    dtype_backend: Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
+) -> pd.DataFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
     abundancefilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
 
@@ -762,14 +772,18 @@ def get_initelemabundances(modelpath: Path = Path(), printwarningsonly: bool = F
         if not printwarningsonly:
             print(f"  reading {filenamefeather}")
 
-        abundancedata = pd.read_feather(filenamefeather)
+        abundancedata = pd.read_feather(filenamefeather, dtype_backend=dtype_backend)
     else:
         ncols = len(pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, comment="#", nrows=1).columns)
         colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
-        # dtypes = {
-        #     col: pd.ArrowDtype(pa.float32()) if col.startswith("X_") else pd.ArrowDtype(pa.int32()) for col in colnames
-        # }
-        dtypes = {col: np.float32 if col.startswith("X_") else np.int32 for col in colnames}
+        dtypes = (
+            {
+                col: pd.ArrowDtype(pa.float32()) if col.startswith("X_") else pd.ArrowDtype(pa.int32())
+                for col in colnames
+            }
+            if dtype_backend == "pyarrow"
+            else {col: np.float32 if col.startswith("X_") else np.int32 for col in colnames}
+        )
 
         abundancedata = pd.read_csv(
             abundancefilepath,
@@ -778,7 +792,7 @@ def get_initelemabundances(modelpath: Path = Path(), printwarningsonly: bool = F
             comment="#",
             names=colnames,
             dtype=dtypes,
-            # dtype_backend="pyarrow",
+            dtype_backend=dtype_backend,
         )
 
         if len(abundancedata) > 1000:
@@ -787,8 +801,8 @@ def get_initelemabundances(modelpath: Path = Path(), printwarningsonly: bool = F
             print("  Done.")
 
     abundancedata.index.name = "modelgridindex"
-
-    # abundancedata.index = abundancedata.index.astype(pd.ArrowDtype(pa.int32()))
+    if dtype_backend == "pyarrow":
+        abundancedata.index = abundancedata.index.astype(pd.ArrowDtype(pa.int32()))
 
     return abundancedata
 

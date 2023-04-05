@@ -43,9 +43,10 @@ def main(args=None, argsraw=None, **kwargs):
     if args.noisotopes:
         args.getelemabundances = True
 
-    dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata_tuple(
-        args.inputfile, get_elemabundances=args.getelemabundances, printwarningsonly=False
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(
+        args.inputfile, get_elemabundances=args.getelemabundances, printwarningsonly=False, dtype_backend="pyarrow"
     )
+    t_model_init_days, vmax = modelmeta["t_model_init_days"], modelmeta["vmax_cmps"]
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
     print(f"Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)")
