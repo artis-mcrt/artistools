@@ -13,9 +13,10 @@ from typing import Union
 
 import numpy as np
 import pandas as pd
-import pyarrow as pa
 
 import artistools as at
+
+# import pyarrow as pa
 
 
 @lru_cache(maxsize=8)
