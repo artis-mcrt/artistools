@@ -319,7 +319,7 @@ def read_estimators(
     modeldata, _ = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
     if "velocity_outer" in modeldata.columns:
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-        arr_velocity_outer = tuple([float(v) for v in modeldata["velocity_outer"].values])
+        arr_velocity_outer = tuple([float(v) for v in modeldata["velocity_outer"].to_numpy()])
     else:
         arr_velocity_outer = None
 
@@ -395,18 +395,18 @@ def get_averaged_estimators(
         }
 
         return dictout
-    else:
-        tdeltas = at.get_timestep_times_float(modelpath, loc="delta")
-        valuesum = 0
-        tdeltasum = 0
-        for timestep, tdelta in zip(timesteps, tdeltas):
-            for mgi in range(modelgridindex - avgadjcells, modelgridindex + avgadjcells + 1):
-                try:
-                    valuesum += reduce(lambda d, k: d[k], [(timestep, mgi), *keys], estimators) * tdelta
-                    tdeltasum += tdelta
-                except KeyError:
-                    pass
-        return valuesum / tdeltasum
+
+    tdeltas = at.get_timestep_times_float(modelpath, loc="delta")
+    valuesum = 0
+    tdeltasum = 0
+    for timestep, tdelta in zip(timesteps, tdeltas):
+        for mgi in range(modelgridindex - avgadjcells, modelgridindex + avgadjcells + 1):
+            try:
+                valuesum += reduce(lambda d, k: d[k], [(timestep, mgi), *keys], estimators) * tdelta
+                tdeltasum += tdelta
+            except KeyError:
+                pass
+    return valuesum / tdeltasum
 
     # except KeyError:
     #     if (timestep, modelgridindex) in estimators:
@@ -445,32 +445,32 @@ def get_averageexcitation(
     ionpopsum = 0
     if dfnltepops.empty:
         return float("NaN")
-    else:
-        dfnltepops_ion = dfnltepops.query(
-            "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number & ion_stage==@ion_stage"
+
+    dfnltepops_ion = dfnltepops.query(
+        "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number & ion_stage==@ion_stage"
+    )
+
+    k_b = 8.617333262145179e-05  # eV / K
+
+    ionpopsum = dfnltepops_ion.n_NLTE.sum()
+    energypopsum = (
+        dfnltepops_ion[dfnltepops_ion.level >= 0].eval("@ionlevels.iloc[level].energy_ev.values * n_NLTE").sum()
+    )
+
+    try:
+        superlevelrow = dfnltepops_ion[dfnltepops_ion.level < 0].iloc[0]
+        levelnumber_sl = dfnltepops_ion.level.max() + 1
+
+        energy_boltzfac_sum = (
+            ionlevels.iloc[levelnumber_sl:].eval("energy_ev * g * exp(- energy_ev / @k_b / @T_exc)").sum()
         )
 
-        k_b = 8.617333262145179e-05  # eV / K
-
-        ionpopsum = dfnltepops_ion.n_NLTE.sum()
-        energypopsum = (
-            dfnltepops_ion[dfnltepops_ion.level >= 0].eval("@ionlevels.iloc[level].energy_ev.values * n_NLTE").sum()
-        )
-
-        try:
-            superlevelrow = dfnltepops_ion[dfnltepops_ion.level < 0].iloc[0]
-            levelnumber_sl = dfnltepops_ion.level.max() + 1
-
-            energy_boltzfac_sum = (
-                ionlevels.iloc[levelnumber_sl:].eval("energy_ev * g * exp(- energy_ev / @k_b / @T_exc)").sum()
-            )
-
-            boltzfac_sum = ionlevels.iloc[levelnumber_sl:].eval("g * exp(- energy_ev / @k_b / @T_exc)").sum()
-            # adjust to the actual superlevel population from ARTIS
-            energypopsum += energy_boltzfac_sum * superlevelrow.n_NLTE / boltzfac_sum
-        except IndexError:
-            # no superlevel
-            pass
+        boltzfac_sum = ionlevels.iloc[levelnumber_sl:].eval("g * exp(- energy_ev / @k_b / @T_exc)").sum()
+        # adjust to the actual superlevel population from ARTIS
+        energypopsum += energy_boltzfac_sum * superlevelrow.n_NLTE / boltzfac_sum
+    except IndexError:
+        # no superlevel
+        pass
 
     return energypopsum / ionpopsum
 

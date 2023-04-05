@@ -111,7 +111,7 @@ def make_1D_profile(args):
 
     if not args.positive_axis:
         # Invert rows and *velocity by -1 to make velocities positive for slice on negative axis
-        slice1D.iloc[:] = slice1D.iloc[::-1].values
+        slice1D.iloc[:] = slice1D.iloc[::-1].to_numpy()
         slice1D["vout_kmps"] = slice1D["vout_kmps"].apply(lambda x: x * -1)
 
     # with pd.option_context('display.max_rows', None, 'display.max_columns', None):

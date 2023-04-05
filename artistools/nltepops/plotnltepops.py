@@ -68,7 +68,7 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
                         # bbstr = " with dilute blackbody"
                         # color = "C2"
                         # marker = "+"
-                    else:
+                    else:  # noqa: RET507
                         bbstr = ""
                         color = "C1"
                         marker = "^"
@@ -244,12 +244,13 @@ def make_ionsubplot(
         f"level population of {ionpopulation:.1f} (from estimator file ion pop = {ionpopulation_fromest})"
     )
 
-    if args.departuremode:
+    lte_scalefactor = (
         # scale to match the ground state populations
-        lte_scalefactor = float(dfpopthision["n_NLTE"].iloc[0] / dfpopthision["n_LTE_T_e"].iloc[0])
-    else:
-        # scale to match the ion population
-        lte_scalefactor = float(ionpopulation / dfpopthision["n_LTE_T_e"].sum())
+        float(dfpopthision["n_NLTE"].iloc[0] / dfpopthision["n_LTE_T_e"].iloc[0])
+        if args.departuremode
+        # else scale to match the ion population
+        else float(ionpopulation / dfpopthision["n_LTE_T_e"].sum())
+    )
 
     dfpopthision = dfpopthision.eval("n_LTE_T_e_normed = n_LTE_T_e * @x", local_dict={"x": lte_scalefactor})
 
@@ -489,7 +490,7 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ionstage, i
             for ionlevel in ionlevels:
                 populations[(timestep, ionlevel, mgi)] = timesteppops.loc[timesteppops["level"] == ionlevel][
                     "n_NLTE"
-                ].values[0]
+                ].to_numpy()[0]
                 # populationsLTE[(timestep, ionlevel)] = (timesteppops.loc[timesteppops['level']
                 #                                                          == ionlevel]['n_LTE'].values[0])
 
@@ -619,7 +620,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
             subplot_title += f" timestep {timestep:d}"
         else:
             subplot_title += f" {time_days:.0f}d"
-        subplot_title += f" (Te={T_e:.0f} K, nne={nne:.1e} " + r"cm$^{-3}$, T$_R$=" + f"{T_R:.0f} K, W={W:.1e})"
+        subplot_title += rf" (Te={T_e:.0f} K, nne={nne:.1e} cm$^{-3}$, T$_R$={T_R:.0f} K, W={W:.1e})"
 
         if not args.notitle:
             axes[mgifirstaxindex].set_title(subplot_title, fontsize=10)

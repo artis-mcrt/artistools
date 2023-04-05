@@ -43,11 +43,9 @@ def get_model_recombenergy(dfbinding, args):
                 elsymb = at.get_elsymbol(atomic_number)
                 massnumber = int(species.lstrip("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"))
                 matchrows = dfbinding.query("Z == @atomic_number")
-                if matchrows.empty:
-                    binding_en_ev = 0.0
-                    # print(f'No binding energy for Z={atomic_number}')
-                else:
-                    binding_en_ev = matchrows.iloc[0]["TotBEn"]
+
+                binding_en_ev = 0.0 if matchrows.empty else matchrows.iloc[0]["TotBEn"]
+
                 # print(species, atomic_number, massnumber, el_binding_en_ev)
                 contrib_binding_en_ev = speciesabund_g / (massnumber * amu_g) * binding_en_ev
 

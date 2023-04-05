@@ -116,6 +116,7 @@ select = [
 ]
 ignore = [
     "ARG001", # ignored because variables in df.eval() are not detected
+    "B005",
     "B007", # variable not used in loop body (but sometimes it is with eval)
     "BLE001",
     "C9",

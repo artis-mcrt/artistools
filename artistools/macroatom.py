@@ -42,7 +42,7 @@ def main(args=None, argsraw=None, **kwargs):
     atomic_number = at.get_atomic_number(args.element.lower())
     if atomic_number < 1:
         print(f"Could not find element '{args.element}'")
-        return
+        raise AssertionError
 
     timestepmin = args.timestep
 
@@ -54,9 +54,9 @@ def main(args=None, argsraw=None, **kwargs):
 
     if not input_files:
         print("No macroatom files found")
-        return 1
-    else:
-        dfall = read_files(input_files, args.modelgridindex, timestepmin, timestepmax, atomic_number)
+        raise FileNotFoundError
+
+    dfall = read_files(input_files, args.modelgridindex, timestepmin, timestepmax, atomic_number)
 
     specfilename = os.path.join(args.modelpath, "spec.out")
 
@@ -65,7 +65,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     if not os.path.isfile(specfilename):
         print(f"Could not find {specfilename}")
-        return 1
+        raise FileNotFoundError
 
     outputfile = args.outputfile.format(args.modelgridindex, timestepmin, timestepmax)
     make_plot(

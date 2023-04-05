@@ -10,7 +10,7 @@ import artistools as at
 def get_bol_lc_from_spec(modelpath):
     res_specdata = at.spectra.read_spec_res(modelpath)
     # print(res_specdata)
-    timearray = res_specdata[0].columns.values[1:]
+    timearray = res_specdata[0].columns.to_numpy()[1:]
     times = [time for time in timearray if 5 < float(time) < 80]
     lightcurvedata = {"time": times}
 

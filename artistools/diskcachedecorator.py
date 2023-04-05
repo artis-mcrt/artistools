@@ -132,7 +132,7 @@ def diskcache(
                 result = func(*args, **kwargs)
                 functime = time.perf_counter() - timestart
 
-            if functime > 1:
+            if functime > 1:  # noqa: SIM114
                 # slow functions are worth saving to disk
                 saveresult = True
             elif (savezipped and filename_nogz.exists()) or (not savezipped and filename_xz.exists()):

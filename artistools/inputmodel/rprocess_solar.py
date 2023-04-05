@@ -44,8 +44,7 @@ def main(args=None, argsraw=None, **kwargs):
         dfmasschain = dfbetaminus.query("A == @row.A", inplace=False)
         if not dfmasschain.empty:
             return int(dfmasschain.Z.min())  # decay to top of chain
-        else:
-            return int(row.Z)
+        return int(row.Z)
 
     dfsolarabund_undecayed = dfsolarabund.copy()
     dfsolarabund_undecayed["Z"] = dfsolarabund_undecayed.apply(undecayed_z, axis=1)
@@ -80,7 +79,7 @@ def main(args=None, argsraw=None, **kwargs):
             wollager_profilename, delim_whitespace=True, skiprows=1, names=["cellid", "velocity_outer", "rho"]
         )
         dfdensities["cellid"] = dfdensities["cellid"].astype(int)
-        dfdensities["velocity_inner"] = np.concatenate(([0.0], dfdensities["velocity_outer"].values[:-1]))
+        dfdensities["velocity_inner"] = np.concatenate(([0.0], dfdensities["velocity_outer"].to_numpy()[:-1]))
 
         t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
         dfdensities = dfdensities.eval(

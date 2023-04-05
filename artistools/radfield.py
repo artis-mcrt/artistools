@@ -896,7 +896,9 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
     print(f"Top estimators at timestep {timestep} t={time_days:.1f}")
     print(dftopestimators)
 
-    for ax, bin_num_estimator, nu_line in zip(axes, dftopestimators.bin_num.values, dftopestimators.nu_upper.values):
+    for ax, bin_num_estimator, nu_line in zip(
+        axes, dftopestimators.bin_num.to_numpy(), dftopestimators.nu_upper.to_numpy()
+    ):
         lambda_angstroms = 2.99792458e18 / nu_line
         print(f"Selected line estimator with bin_num {bin_num_estimator}, lambda={lambda_angstroms:.1f}")
         plot_line_estimator_evolution(ax, radfielddataselected, bin_num_estimator, modelgridindex=modelgridindex)

@@ -4,6 +4,7 @@ import os
 from collections import namedtuple
 from math import atan
 from pathlib import Path
+from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,10 +12,6 @@ import pandas as pd
 
 import artistools as at
 from artistools.configuration import get_config
-
-# import matplotlib.ticker as ticker
-# import numba
-# from numpy import arctan as atan
 
 # cgs units to match artis
 EV = 1.6021772e-12  # in erg
@@ -388,7 +385,7 @@ def get_xs_excitation(en_ev, row):
 
         return constantfactor * (en_ev * EV) ** -2
 
-    elif not row.forbidden:
+    if not row.forbidden:
         nu_trans = epsilon_trans / H
         g = row.upper_g / row.lower_g
         fij = g * ME * pow(CLIGHT, 3) / (8 * pow(QE * nu_trans * math.pi, 2)) * row.A
@@ -461,7 +458,10 @@ def get_xs_excitation_vector(engrid, row):
     return xs_excitation_vec
 
 
-def read_colliondata(collionfilename="collion.txt", modelpath=get_config()["path_datadir"]):
+def read_colliondata(collionfilename="collion.txt", modelpath: Union[None, str, Path] = None):
+    if modelpath is None:
+        modelpath = get_config()["path_datadir"]
+
     collionrow = namedtuple("collionrow", ["Z", "nelec", "n", "l", "ionpot_ev", "A", "B", "C", "D"])
 
     nrows = -1
@@ -501,10 +501,11 @@ def get_energyindex_lteq(en_ev, engrid):
 
     if index < 0:
         return 0
-    elif index > len(engrid) - 1:
+
+    if index > len(engrid) - 1:
         return len(engrid) - 1
-    else:
-        return index
+
+    return index
 
 
 def get_energyindex_gteq(en_ev, engrid):
@@ -515,10 +516,11 @@ def get_energyindex_gteq(en_ev, engrid):
 
     if index < 0:
         return 0
-    elif index > len(engrid) - 1:
+
+    if index > len(engrid) - 1:
         return len(engrid) - 1
-    else:
-        return index
+
+    return index
 
 
 def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransitions, noexcitation):
@@ -1102,7 +1104,7 @@ def get_fij_ln_en_ionisation(emax_ev, J, shell):
     e_p_lower = shell.ionpot_ev
     e_p_upper = emax_ev
     delta_e_p = (e_p_upper - e_p_lower) / npts
-    sum = 0.0
+    sumval = 0.0
     for i in range(npts):
         e_p = e_p_lower + i * delta_e_p
         print(i, e_p)
@@ -1110,9 +1112,9 @@ def get_fij_ln_en_ionisation(emax_ev, J, shell):
         sigma = at.nonthermal.ar_xs(e_p, shell.ionpot_ev, shell.A, shell.B, shell.C, shell.D)
         eps_avg = get_epsilon_avg(e_p, J, shell.ionpot_ev)
         if eps_avg > 0:
-            sum += ME * CLIGHT / math.pi / (QE**2) / H * sigma * math.log(eps_avg) * delta_e_p
+            sumval += ME * CLIGHT / math.pi / (QE**2) / H * sigma * math.log(eps_avg) * delta_e_p
 
-    return sum
+    return sumval
 
 
 def e_s_test(ax, ionpot_ev, J, arr_en_ev, shellstr, color):

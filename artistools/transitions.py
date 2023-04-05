@@ -378,8 +378,8 @@ def main(args=None, argsraw=None, **kwargs):
 
         if not dftransitions.empty:
             if args.atomicdatabase == "artis":
-                dftransitions = dftransitions.eval("upper_energy_ev = @ion.levels.loc[upper].energy_ev.values")
-                dftransitions = dftransitions.eval("lower_energy_ev = @ion.levels.loc[lower].energy_ev.values")
+                dftransitions = dftransitions.eval("upper_energy_ev = @ion.levels.loc[upper].energy_ev.to_numpy()")
+                dftransitions = dftransitions.eval("lower_energy_ev = @ion.levels.loc[lower].energy_ev.to_numpy()")
                 dftransitions = dftransitions.eval("lambda_angstroms = @hc / (upper_energy_ev - lower_energy_ev)")
 
             dftransitions = dftransitions.query(
@@ -391,7 +391,7 @@ def main(args=None, argsraw=None, **kwargs):
             print(f"  {len(dftransitions)} plottable transitions")
 
             if args.atomicdatabase == "artis":
-                dftransitions = dftransitions.eval("upper_g = @ion.levels.loc[upper].g.values")
+                dftransitions = dftransitions.eval("upper_g = @ion.levels.loc[upper].g.to_numpy()")
                 K_B = const.k_B.to("eV / K").value
                 T_exc = vardict["Te"]
                 ltepartfunc = ion.levels.eval("g * exp(-energy_ev / @K_B / @T_exc)").sum()
@@ -431,7 +431,7 @@ def main(args=None, argsraw=None, **kwargs):
                 else:
                     popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
                     if args.atomicdatabase == "artis":
-                        dftransitions = dftransitions.eval("upper_g = @ion.levels.loc[upper].g.values")
+                        dftransitions = dftransitions.eval("upper_g = @ion.levels.loc[upper].g.to_numpy()")
                         K_B = const.k_B.to("eV / K").value
                         ltepartfunc = ion.levels.eval("g * exp(-energy_ev / @K_B / @T_exc)").sum()
                     else:

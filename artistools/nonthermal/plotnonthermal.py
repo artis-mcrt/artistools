@@ -83,8 +83,8 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
 
     print(f"Deposition: {total_depev:.1f} [eV/cm3/s]")
 
-    arr_enev = nonthermaldata["energy_ev"].values
-    arr_y = nonthermaldata["y"].values
+    arr_enev = nonthermaldata["energy_ev"].to_numpy()
+    arr_y = nonthermaldata["y"].to_numpy()
 
     frac_ionisation = 0.0
 

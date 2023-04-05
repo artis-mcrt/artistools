@@ -926,7 +926,7 @@ def sphericalaverage(
             # print(radialcellid, volumecorrection)
 
             if rhomean > 0.0 and dfgridcontributions is not None:
-                dfcellcont = dfgridcontributions.query("cellindex in @matchedcells.inputcellid.values")
+                dfcellcont = dfgridcontributions.query("cellindex in @matchedcells.inputcellid.to_numpy()")
 
                 for particleid, dfparticlecontribs in dfcellcont.groupby("particleid"):
                     frac_of_cellmass_avg = (

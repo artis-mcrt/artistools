@@ -42,7 +42,7 @@ def make_ntstats_plot(ntstatfile: Union[str, Path]) -> None:
     if max(dfstats.frac_excitation) > 0.0:
         ax.plot(xarr, dfstats.frac_excitation * norm_factors, label="Excitation")
     ax.plot(xarr, dfstats.frac_heating * norm_factors, label="Heating")
-    ioncols = [col for col in dfstats.columns.values if col.startswith("frac_ionization_")]
+    ioncols = [col for col in dfstats.columns.to_numpy() if col.startswith("frac_ionization_")]
     for ioncol in ioncols:
         ion = ioncol.replace("frac_ionization_", "")
         ax.plot(xarr, dfstats[ioncol] * norm_factors, label=f"{ion} ionisation")

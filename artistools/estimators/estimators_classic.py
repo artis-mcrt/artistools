@@ -100,9 +100,7 @@ def read_classic_estimators(modelpath, modeldata, readonly_mgi=False, readonly_t
             modelgridindex = -1
             for line in estfile:
                 row = line.split()
-                if int(row[0]) < int(modelgridindex):
-                    timestep += 1
-                elif int(row[0]) == int(modelgridindex):
+                if int(row[0]) <= int(modelgridindex):
                     timestep += 1
                 modelgridindex = int(row[0])
 

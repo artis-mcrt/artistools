@@ -28,17 +28,17 @@ repos:
       rev: 0.2.2
       hooks:
           - id: yamlfmt
+    - repo: https://github.com/charliermarsh/ruff-pre-commit
+      rev: v0.0.261
+      hooks:
+          - id: ruff
+            args: [--fix, --exit-non-zero-on-fix]
     - repo: https://github.com/asottile/reorder_python_imports
       rev: v3.9.0
       hooks:
           - id: reorder-python-imports
             types: [python]
             args: [--py39-plus, --exit-zero-even-if-changed]
-    - repo: https://github.com/charliermarsh/ruff-pre-commit
-      rev: v0.0.261
-      hooks:
-          - id: ruff
-            args: [--fix-only]
     - repo: https://github.com/psf/black
       rev: 23.3.0
       hooks:
