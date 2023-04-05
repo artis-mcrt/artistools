@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 import argparse
 import math
 import os
 from pathlib import Path
+from typing import Literal
 
+import argcomplete
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from astropy import units as u
 
 import artistools as at
@@ -28,30 +32,30 @@ def plot_2d_initial_abundances(modelpath, args):
     r = merge_dfs["cellpos_mid[r]"] / t_model * (u.cm / u.day).to("km/s") / 10**3
     z = merge_dfs["cellpos_mid[z]"] / t_model * (u.cm / u.day).to("km/s") / 10**3
 
-    ion = f"X_{args.ion}"
+    colname = f"X_{args.elem}"
     font = {"weight": "bold", "size": 18}
 
     f = plt.figure(figsize=(4, 5))
     ax = f.add_subplot(111)
-    im = ax.scatter(r, z, c=merge_dfs[ion], marker="8")
+    im = ax.scatter(r, z, c=merge_dfs[colname], marker="8")
 
     f.colorbar(im)
     plt.xlabel(r"v$_x$ in 10$^3$ km/s", fontsize="x-large")  # , fontweight='bold')
     plt.ylabel(r"v$_z$ in 10$^3$ km/s", fontsize="x-large")  # , fontweight='bold')
-    plt.text(20, 25, args.ion, color="white", fontweight="bold", fontsize="x-large")
+    plt.text(20, 25, args.elem, color="white", fontweight="bold", fontsize="x-large")
     plt.tight_layout()
     # ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
 
-    outfilename = f"plotcomposition{args.ion}.pdf"
+    outfilename = f"plotcomposition{args.elem}.pdf"
     plt.savefig(Path(modelpath) / outfilename, format="pdf")
     print(f"Saved {outfilename}")
 
 
-def get_2D_slice_through_3d_model(merge_dfs, sliceaxis, sliceindex=None):
+def get_2D_slice_through_3d_model(merge_dfs, sliceaxis: Literal["x", "y", "z"], sliceindex=None) -> pd.DataFrame:
     if not sliceindex:
         # get midpoint
-        sliceposition = merge_dfs.iloc[(merge_dfs["pos_x_min"]).abs().argsort()][:1]["pos_x_min"].item()
+        sliceposition: float = merge_dfs.iloc[(merge_dfs["pos_x_min"]).abs().argsort()][:1]["pos_x_min"].item()
         # Choose position to slice. This gets minimum absolute value as the closest to 0
     else:
         cell_boundaries = []
@@ -64,8 +68,8 @@ def get_2D_slice_through_3d_model(merge_dfs, sliceaxis, sliceindex=None):
     return slicedf
 
 
-def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model, args):
-    colorscale = plotvals[ion]
+def plot_slice_modelcol(ax, plotvals, colname, plotaxis1, plotaxis2, t_model_d, args):
+    colorscale = plotvals[colname] * plotvals["rho"] if colname.startswith("X_") else plotvals[colname]
 
     if args.hideemptycells:
         # Don't plot empty cells:
@@ -74,6 +78,7 @@ def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model, args):
     if args.logcolorscale:
         # logscale for colormap
         colorscale = np.log10(colorscale)
+    colorscale = colorscale.to_numpy()
 
     normalise_between_0_and_1 = False
     if normalise_between_0_and_1:
@@ -84,18 +89,38 @@ def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model, args):
     else:
         scaledmap = None
 
-    x = plotvals[f"pos_{plotaxis1}_min"] / t_model * (u.cm / u.day).to("km/s") / 10**3
-    y = plotvals[f"pos_{plotaxis2}_min"] / t_model * (u.cm / u.day).to("km/s") / 10**3
+    arr_x = plotvals[f"pos_{plotaxis1}_min"] / t_model_d / 86400 / 2.99792458e10
+    arr_y = plotvals[f"pos_{plotaxis2}_min"] / t_model_d / 86400 / 2.99792458e10
 
     # x = plotvals[f'pos_{plotaxis1}'] / t_model * (u.cm/u.day).to('m/s') / 2.99792458e+8
     # y = plotvals[f'pos_{plotaxis2}'] / t_model * (u.cm/u.day).to('m/s') / 2.99792458e+8
 
-    im = ax.scatter(x, y, c=colorscale, marker="8", rasterized=True)  # cmap=plt.get_cmap('PuOr')
+    # im = ax.scatter(x, y, c=colorscale, marker="s", s=30, rasterized=False)  # cmap=plt.get_cmap('PuOr')
 
-    ymin, ymax = ax.get_ylim()
-    xmin, xmax = ax.get_xlim()
-    if "_" in ion:
-        ax.text(xmax * 0.6, ymax * 0.7, ion.split("_")[1], color="k", fontweight="bold")
+    ncoordgrid = 50
+    grid = np.zeros((ncoordgrid, ncoordgrid))
+
+    for x in range(0, ncoordgrid):
+        for y in range(0, ncoordgrid):
+            grid[y, x] = colorscale[y * ncoordgrid + x]
+
+    extent = (arr_x.min(), arr_x.max(), arr_y.min(), arr_y.max())
+    im = ax.imshow(grid, cmap="viridis", interpolation="nearest", extent=extent, origin="lower", vmax=-9.5, vmin=-12)
+
+    plot_vmax = 0.2
+    ax.set_ylim(bottom=-plot_vmax, top=plot_vmax)
+    ax.set_xlim(left=-plot_vmax, right=plot_vmax)
+    if "_" in colname:
+        ax.annotate(
+            colname.split("_")[1],
+            color="white",
+            xy=(0.9, 0.9),
+            xycoords="axes fraction",
+            horizontalalignment="right",
+            verticalalignment="top",
+            # fontsize=10,
+        )
+
     return im, scaledmap
 
 
@@ -125,15 +150,18 @@ def plot_3d_initial_abundances(modelpath, args=None):
     plotvals = get_2D_slice_through_3d_model(dfmodel, sliceaxis)
 
     subplots = False
-    if len(args.ion) > 1:
+    if len(args.elem) > 1:
         subplots = True
 
     if not subplots:
-        fig = plt.figure(figsize=(8, 7))
+        fig = plt.figure(
+            figsize=(8, 7),
+            tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
+        )
         ax = plt.subplot(111, aspect="equal")
     else:
         rows = 1
-        cols = len(args.ion)
+        cols = len(args.elem)
 
         fig, axes = plt.subplots(
             nrows=rows,
@@ -141,26 +169,25 @@ def plot_3d_initial_abundances(modelpath, args=None):
             sharex=True,
             sharey=True,
             figsize=(at.get_config()["figwidth"] * cols, at.get_config()["figwidth"] * 1.4),
-            tight_layout={"pad": 5.0, "w_pad": 0.0, "h_pad": 0.0},
+            # tight_layout={"pad": 5.0, "w_pad": 0.0, "h_pad": 0.0},
         )
         for ax in axes:
             ax.set(aspect="equal")
 
-    for index, ion in enumerate(args.ion):
-        ion = f"X_{ion}"
-        if args.rho:
-            ion = "rho"
+    for index, elem in enumerate(args.elem):
+        colname = "rho" if args.rho or elem == "rho" else f"X_{elem}"
+
         if subplots:
             ax = axes[index]
-        im, scaledmap = plot_abundances_ion(
-            ax, plotvals, ion, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
+        im, scaledmap = plot_slice_modelcol(
+            ax, plotvals, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
         )
 
-    xlabel = rf"v$_{plotaxis1}$ in 10$^3$ km/s"
-    ylabel = rf"v$_{plotaxis2}$ in 10$^3$ km/s"
+    xlabel = rf"v$_{plotaxis1}$ [$c$]"
+    ylabel = rf"v$_{plotaxis2}$ [$c$]"
 
     if not subplots:
-        cbar = plt.colorbar(im)
+        cbar = fig.colorbar(im)
         plt.xlabel(xlabel, fontsize="x-large")  # , fontweight='bold')
         plt.ylabel(ylabel, fontsize="x-large")  # , fontweight='bold')
     else:
@@ -168,18 +195,18 @@ def plot_3d_initial_abundances(modelpath, args=None):
         fig.text(0.5, 0.15, xlabel, ha="center", va="center")
         fig.text(0.05, 0.5, ylabel, ha="center", va="center", rotation="vertical")
 
-    # cbar.set_label(label=ion, size='x-large') #, fontweight='bold')
-    # cbar.ax.set_title(f'{args.ion}', size='small')
+    # cbar.set_label(label="test", size="x-large")  # , fontweight='bold')
+    if args.logcolorscale:
+        cbar.ax.set_title(r"$\rho$ [g/cm3]", size="small")
+    else:
+        cbar.ax.set_title(r"log10($\rho$) [g/cm3]", size="small")
     # cbar.ax.tick_params(labelsize='x-large')
 
     # plt.tight_layout()
     # ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
 
-    # if args.outputfile:
-    #     outfilename = args.outputfile
-    # else:
-    outfilename = f"plotcomposition{ion}.pdf"
+    outfilename = args.outputfile if args.outputfile else f"plotcomposition{','.join(args.elem)}.pdf"
     plt.savefig(Path(modelpath) / outfilename, format="pdf")
 
     print(f"Saved {outfilename}")
@@ -251,8 +278,8 @@ def make_3d_plot(modelpath, args):
         model["opacity"] = at.inputmodel.opacityinputfile.get_opacity_from_file(modelpath)
         coloursurfaceby = "opacity"
     else:
-        print(f"Colours set by X_{args.ion}")
-        coloursurfaceby = f"X_{args.ion}"
+        print(f"Colours set by X_{args.elem}")
+        coloursurfaceby = f"X_{args.elem}"
 
     # generate grid from data
     grid = round(len(model["rho"]) ** (1.0 / 3.0))
@@ -299,11 +326,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Path to ARTIS folder",
     )
 
-    parser.add_argument(
-        "-o", action="store", dest="outputfile", type=Path, default=Path(), help="Filename for PDF file"
-    )
+    parser.add_argument("-o", action="store", dest="outputfile", type=Path, default=None, help="Filename for PDF file")
 
-    parser.add_argument("-ion", type=str, default=["Fe"], nargs="+", help="Choose ion to plot. Default is Fe")
+    parser.add_argument("-elem", type=str, default=["Fe"], nargs="+", help="Choose element to plot. Default is Fe")
 
     parser.add_argument("--rho", action="store_true", help="Plot rho instead of ion")
 
@@ -327,6 +352,7 @@ def main(args=None, argsraw=None, **kwargs):
         )
         addargs(parser)
         parser.set_defaults(**kwargs)
+        argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
     if not args.modelpath:
