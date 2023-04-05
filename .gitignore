@@ -18,6 +18,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 coverage.xml
+.*_cache/
 
 *.so
 
