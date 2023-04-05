@@ -200,7 +200,7 @@ def add_derived_columns(
 
 def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) -> pl.DataFrame:
     """Read a packets*.out(.xz) space-separated text file into a polars DataFrame"""
-
+    print(f"Reading {packetsfile}")
     skiprows: int = 0
     column_names: Optional[list[str]] = None
     try:
@@ -283,18 +283,14 @@ def readfile_pl(
     """Read a packets file into a Polars LazyFrame from either a parquet file or a text file (and save .parquet)."""
 
     packetsfile = Path(packetsfile)
-
-    packetsfileparquet = (
-        packetsfile
-        if packetsfile.suffixes == [".out", ".parquet"]
-        else at.stripallsuffixes(packetsfile).with_suffix(".out.parquet")
-    )
+    packetsfileparquet = at.stripallsuffixes(packetsfile).with_suffix(".out.parquet")
     packetsfiletext = (
         packetsfile
-        if packetsfile.suffixes in [[".out"], [".out", ".gz"], [".out", ".xz"]]
-        else at.firstexisting([at.stripallsuffixes(packetsfile).with_suffix(".out")])
+        if packetsfile.suffixes in [[".out"], [".out", ".gz"], [".out", ".xz"], [".out", ".lz4"]]
+        else at.firstexisting([at.stripallsuffixes(packetsfile).with_suffix(".out")], tryzipped=True)
     )
-    write_parquet = True
+
+    write_parquet = True  # will be set False if parquet file is read
 
     dfpackets = None
     if packetsfile == packetsfileparquet and os.path.getmtime(packetsfileparquet) > calendar.timegm(
@@ -327,7 +323,6 @@ def readfile_pl(
                 ).alias("t_arrive_d"),
             ]
         )
-        write_parquet = True
 
     if write_parquet:
         print(f"Saving {packetsfileparquet}")
@@ -347,26 +342,36 @@ def readfile_pl(
 
 
 def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[int] = None) -> list[Path]:
-    def has_preferred_alternative(f: Path) -> bool:
-        f_nosuffixes = at.stripallsuffixes(f)
+    nprocs = at.get_nprocs(modelpath)
 
-        suffix_priority = [[".out", ".gz"], [".out", ".xz"], [".out", ".lz4"], [".out", ".parquet"]]
-        startindex = suffix_priority.index(f.suffixes) + 1 if f.suffixes in suffix_priority else 0
+    searchfolders = [Path(modelpath, "packets"), Path(modelpath)]
+    # in descending priority (based on speed of reading)
+    suffix_priority = [".out.parquet", ".out.lz4", ".out", ".out.gz", ".out.xz"]
+    packetsfiles = []
 
-        if any(f_nosuffixes.with_suffix("".join(s)).is_file() for s in suffix_priority[startindex:]):
-            return True
-        return False
+    for rank in range(nprocs + 1):
+        name_nosuffix = f"packets00_{rank:04d}"
+        found_rank = False
+        for suffix in suffix_priority:
+            if found_rank:
+                break
+            for folderpath in searchfolders:
+                if (folderpath / name_nosuffix).with_suffix(suffix).is_file():
+                    packetsfiles.append((folderpath / name_nosuffix).with_suffix(suffix))
+                    found_rank = True
+                    break
 
-    packetsfiles = sorted(
-        list(Path(modelpath).glob("packets00_*.out*")) + list(Path(modelpath, "packets").glob("packets00_*.out*"))
-    )
+        if rank >= nprocs:
+            print(f"WARNING: nprocs is {nprocs} but file {packetsfiles[-1]} exists")
+            packetsfiles = packetsfiles[:-1]
+        elif not found_rank:
+            print(f"WARNING: packets file for rank {rank} was not found.")
 
-    # strip out duplicates in the case that some are stored as binary and some are text files
-    packetsfiles = [f for f in packetsfiles if not has_preferred_alternative(f)]
+        if maxpacketfiles is not None and len(packetsfiles) >= maxpacketfiles:
+            break
 
-    if maxpacketfiles is not None and len(packetsfiles) > maxpacketfiles:
+    if maxpacketfiles is not None and nprocs > maxpacketfiles:
         print(f"Reading from the first {maxpacketfiles} of {len(packetsfiles)} packets files")
-        packetsfiles = packetsfiles[:maxpacketfiles]
     else:
         print(f"Reading from {len(packetsfiles)} packets files")
 
