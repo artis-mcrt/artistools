@@ -13,6 +13,7 @@ from typing import Union
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 
 import artistools as at
 
@@ -154,11 +155,15 @@ def read_modelfile(
         assert (ncoordgridx * ncoordgridy * ncoordgridz) == modelcellcount
 
     nrows_read = 1 if getheadersonly else modelcellcount
-    filenameparquet = Path(filename).with_suffix(".parquet")
-    if filenameparquet.is_file():
+    filenamefeather = Path(filename).with_suffix(".feather")
+    if filenamefeather.is_file():
         if not printwarningsonly:
-            print(f"  reading {filenameparquet}")
-        dfmodel = pd.read_parquet(filenameparquet, columns=columns[: ncols_line_even + ncols_line_odd])
+            print(f"  reading {filenamefeather}")
+        dfmodel = pd.read_feather(
+            filenamefeather,
+            columns=columns[: ncols_line_even + ncols_line_odd],
+            dtype_backend="pyarrow",
+        )
     else:
         skiprows: Union[list, int, None]
 
@@ -171,9 +176,9 @@ def read_modelfile(
                 if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
             ]
         )
-        dtypes: defaultdict[str, type] = defaultdict(lambda: np.float32)
-        dtypes["inputcellid"] = np.int32
-        dtypes["tracercount"] = np.int32
+        dtypes: defaultdict[str, type] = defaultdict(lambda: pd.ArrowDtype(pa.float32()))
+        dtypes["inputcellid"] = pd.ArrowDtype(pa.int32())
+        dtypes["tracercount"] = pd.ArrowDtype(pa.int32())
         # each cell takes up two lines in the model file
         dfmodel = pd.read_csv(
             filename,
@@ -185,6 +190,7 @@ def read_modelfile(
             usecols=columns[:ncols_line_even],
             nrows=nrows_read,
             dtype=dtypes,
+            dtype_backend="pyarrow",
         )
 
         if ncols_line_odd > 0 and not onelinepercellformat:
@@ -203,6 +209,7 @@ def read_modelfile(
                 names=columns[ncols_line_even:],
                 nrows=nrows_read,
                 dtype=dtypes,
+                dtype_backend="pyarrow",
             )
             assert len(dfmodel) == len(dfmodeloddlines)
             dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
@@ -212,8 +219,8 @@ def read_modelfile(
             dfmodel = dfmodel.iloc[:modelcellcount]
 
         if len(dfmodel) > 1000 and not getheadersonly and not skipabundancecolumns:
-            print(f"Saving {filenameparquet}")
-            dfmodel.to_parquet(filenameparquet)
+            print(f"Saving {filenamefeather}")
+            dfmodel.to_feather(filenamefeather, compression="lz4")
             print("  Done.")
 
     assert len(dfmodel) == modelcellcount or getheadersonly
@@ -234,7 +241,7 @@ def read_modelfile(
     elif dimensions == 3:
         wid_init = at.get_wid_init_at_tmodel(modelpath, modelcellcount, t_model_init_days, xmax_tmodel)
         modelmeta["wid_init"] = wid_init
-        dfmodel = dfmodel.eval("cellmass_grams = rho * @wid_init ** 3")
+        dfmodel["cellmass_grams"] = dfmodel["rho"] * wid_init**3
 
         dfmodel = dfmodel.rename(columns={"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"})
         if "pos_x_min" in dfmodel.columns and not printwarningsonly:
@@ -361,6 +368,9 @@ def get_modeldata(
             wid_init=modelmeta.get("wid_init", None),
             modelpath=modelpath,
         )
+
+    if len(dfmodel) > 100000:
+        dfmodel.info(verbose=False, memory_usage="deep")
 
     return dfmodel, modelmeta
 
@@ -737,21 +747,41 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> U
 
 
 @lru_cache(maxsize=8)
-def get_initelemabundances(modelpath: Path = Path()) -> pd.DataFrame:
+def get_initelemabundances(modelpath: Path = Path(), printwarningsonly: bool = False) -> pd.DataFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
     abundancefilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
 
-    abundancedata = pd.read_csv(
-        abundancefilepath,
-        delim_whitespace=True,
-        header=None,
-        comment="#",
-    )
+    filenamefeather = Path(abundancefilepath).with_suffix(".feather")
+    if filenamefeather.is_file():
+        if not printwarningsonly:
+            print(f"  reading {filenamefeather}")
+
+        abundancedata = pd.read_feather(filenamefeather, dtype_backend="pyarrow")
+    else:
+        ncols = len(pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, comment="#", nrows=1).columns)
+        colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
+        dtypes = {
+            col: pd.ArrowDtype(pa.float32()) if col.startswith("X_") else pd.ArrowDtype(pa.int32()) for col in colnames
+        }
+
+        abundancedata = pd.read_csv(
+            abundancefilepath,
+            delim_whitespace=True,
+            header=None,
+            comment="#",
+            names=colnames,
+            dtype=dtypes,
+            dtype_backend="pyarrow",
+        )
+
+        if len(abundancedata) > 1000:
+            print(f"Saving {filenamefeather}")
+            abundancedata.to_feather(filenamefeather, compression="lz4")
+            print("  Done.")
+
     abundancedata.index.name = "modelgridindex"
-    abundancedata.columns = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, len(abundancedata.columns))]]
-    if len(abundancedata) > 100000:
-        print("abundancedata memory usage:")
-        abundancedata.info(verbose=False, memory_usage="deep")
+
+    abundancedata.index = abundancedata.index.astype(pd.ArrowDtype(pa.int32()))
 
     return abundancedata
 

@@ -104,8 +104,15 @@ def plot_slice_modelcol(ax, plotvals, colname, plotaxis1, plotaxis2, t_model_d, 
         for y in range(0, ncoordgrid):
             grid[y, x] = colorscale[y * ncoordgrid + x]
 
-    extent = (arr_x.min(), arr_x.max(), arr_y.min(), arr_y.max())
-    im = ax.imshow(grid, cmap="viridis", interpolation="nearest", extent=extent, origin="lower", vmax=-9.5, vmin=-12)
+    im = ax.imshow(
+        grid,
+        cmap="viridis",
+        interpolation="nearest",
+        extent=(arr_x.min(), arr_x.max(), arr_y.min(), arr_y.max()),
+        origin="lower",
+        # vmax=-9.5,
+        vmin=-11,
+    )
 
     plot_vmax = 0.2
     ax.set_ylim(bottom=-plot_vmax, top=plot_vmax)
