@@ -186,12 +186,13 @@ def generate_band_lightcurve_data(
 
         specfilename = at.firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
-        if "specpol.out" in str(specfilename):
-            timearray = [
-                i for i in specdata.columns.to_numpy()[1:] if i[-2] != "."
-            ]  # Ignore Q and U values in pol file
-        else:
-            timearray = specdata.columns.to_numpy()[1:]
+
+        timearray = (
+            # Ignore Q and U values in pol file
+            [i for i in specdata.columns.to_numpy()[1:] if i[-2] != "."]
+            if "specpol.out" in str(specfilename)
+            else specdata.columns.to_numpy()[1:]
+        )
 
     filters_dict = {}
     if not args.filter:
