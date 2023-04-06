@@ -312,17 +312,16 @@ def get_modeldata(
     dtype_backend: Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
-    Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
+    Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
 
     Parameters:
         - inputpath: either a path to model.txt file, or a folder containing model.txt
-        - dimensions: number of dimensions in input file, or None for automatic
         - get_elemabundances: also read elemental abundances (abundances.txt) and
             merge with the output DataFrame
 
     return dfmodel, modelmeta
         - dfmodel: a pandas DataFrame with a row for each model grid cell
-        - modelmeta is a dictionary of model properties, such as t_model_init_days, vmax_cmps, dimensions, etc
+        - modelmeta: a dictionary of input model parameters, with keys such as t_model_init_days, vmax_cmps, dimensions, etc.
     """
 
     inputpath = Path(inputpath)

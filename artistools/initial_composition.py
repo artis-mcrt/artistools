@@ -258,7 +258,7 @@ def get_model_abundances_Msun_1D(modelpath):
 
 
 def plot_most_abundant(modelpath, args):
-    model, _ = at.inputmodel.get_modeldata(modelpath[0], dimensions=3)
+    model, _ = at.inputmodel.get_modeldata(modelpath[0])
     abundances = at.inputmodel.get_initelemabundances(modelpath[0])
 
     merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
@@ -277,7 +277,7 @@ def make_3d_plot(modelpath, args):
 
     pv.set_plot_theme("document")  # set white background
 
-    model, t_model, vmax = at.inputmodel.get_modeldata_tuple(modelpath, dimensions=3, get_elemabundances=False)
+    model, t_model, vmax = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=False)
     abundances = at.inputmodel.get_initelemabundances(modelpath)
 
     abundances["inputcellid"] = abundances["inputcellid"].apply(float)
