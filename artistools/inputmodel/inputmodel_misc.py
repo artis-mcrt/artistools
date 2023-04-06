@@ -23,7 +23,6 @@ import artistools as at
 
 def read_modelfile_text(
     filename: Union[Path, str],
-    dimensions: Optional[int] = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
     skipnuclidemassfraccolumns: bool = False,
@@ -33,7 +32,6 @@ def read_modelfile_text(
     Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
     """
 
-    assert dimensions in [1, 3, None]
     onelinepercellformat = None
 
     modelmeta: dict[str, Any] = {"headercommentlines": []}
@@ -96,7 +94,7 @@ def read_modelfile_text(
         ncols_line_even = len(data_line_even)
 
         if columns is None:
-            if dimensions == 1:
+            if modelmeta["dimensions"] == 1:
                 columns = [
                     "inputcellid",
                     "velocity_outer",
@@ -110,7 +108,7 @@ def read_modelfile_text(
                     "X_Co57",
                 ][:ncols_line_even]
 
-            elif dimensions == 2:
+            elif modelmeta["dimensions"] == 2:
                 columns = [
                     "inputcellid",
                     "pos_r_mid",
@@ -125,7 +123,7 @@ def read_modelfile_text(
                     "X_Co57",
                 ][:ncols_line_even]
 
-            elif dimensions == 3:
+            elif modelmeta["dimensions"] == 3:
                 columns = [
                     "inputcellid",
                     "inputpos_a",
@@ -159,15 +157,15 @@ def read_modelfile_text(
     if skipnuclidemassfraccolumns:
         if not printwarningsonly:
             print("  skipping nuclide abundance columns in model")
-        if dimensions == 1:
+        if modelmeta["dimensions"] == 1:
             ncols_line_even = 3
-        elif dimensions == 2:
+        elif modelmeta["dimensions"] == 2:
             ncols_line_even = 4
-        elif dimensions == 3:
+        elif modelmeta["dimensions"] == 3:
             ncols_line_even = 5
         ncols_line_odd = 0
 
-    if dimensions == 3:
+    if modelmeta["dimensions"] == 3:
         # number of grid cell steps along an axis (same for xyz)
         ncoordgridx = int(round(modelcellcount ** (1.0 / 3.0)))
         ncoordgridy = int(round(modelcellcount ** (1.0 / 3.0)))
@@ -243,7 +241,7 @@ def read_modelfile_text(
     dfmodel.index.name = "cellid"
     # dfmodel.drop('inputcellid', axis=1, inplace=True)
 
-    if dimensions == 1:
+    if modelmeta["dimensions"] == 1:
         dfmodel["velocity_inner"] = np.concatenate([[0.0], dfmodel["velocity_outer"].to_numpy()[:-1]])
         dfmodel["cellmass_grams"] = (
             10 ** dfmodel["logrho"]
@@ -254,7 +252,7 @@ def read_modelfile_text(
         )
         modelmeta["vmax_cmps"] = dfmodel.velocity_outer.max() * 1e5
 
-    elif dimensions == 3:
+    elif modelmeta["dimensions"] == 3:
         wid_init = at.get_wid_init_at_tmodel(modelpath, modelcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
         modelmeta["wid_init"] = wid_init
         dfmodel["cellmass_grams"] = dfmodel["rho"] * wid_init**3
@@ -312,7 +310,6 @@ def read_modelfile_text(
                     columns={"inputpos_a": "pos_z_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_x_min"},
                 )
 
-    modelmeta["dimensions"] = dimensions
     modelmeta["modelcellcount"] = modelcellcount
 
     return dfmodel, modelmeta
