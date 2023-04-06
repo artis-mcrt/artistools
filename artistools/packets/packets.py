@@ -331,7 +331,7 @@ def readfile_pl(
     if write_parquet:
         print(f"Saving {packetsfileparquet}")
         dfpackets = dfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
-        dfpackets.collect().write_parquet(packetsfileparquet, compression="lz4", statistics=True)
+        dfpackets.collect().write_parquet(packetsfileparquet, compression="zstd", statistics=True)
         dfpackets = pl.scan_parquet(packetsfileparquet)
 
     if escape_type is not None:
@@ -426,7 +426,7 @@ def get_packets_pl(
         # pldfpackets = pldfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
         pldfpackets.collect(streaming=True).write_parquet(
             allescrpktfile_parquet,
-            compression="lz4",
+            compression="zstd",
             row_group_size=1024 * 1024,
             statistics=True,
         )

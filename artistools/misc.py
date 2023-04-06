@@ -720,7 +720,7 @@ def zopen(filename: Union[Path, str], mode: str = "rt", encoding: Optional[str] 
 
 
 def firstexisting(
-    filelist: Sequence[Union[str, Path]],
+    filelist: Union[Sequence[Union[str, Path]], str, Path],
     folder: Union[Path, str] = Path("."),
     tryzipped: bool = True,
 ) -> Path:
@@ -796,7 +796,7 @@ def get_file_metadata(filepath: Union[Path, str]) -> dict[str, Any]:
 
     import yaml
 
-    filepath = Path(str(filepath).replace(".xz", ""))
+    filepath = Path(str(filepath).replace(".xz", "").replace(".gz", "").replace(".lz4", "").replace(".zst", ""))
 
     # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
     individualmetafile = filepath.with_suffix(filepath.suffix + ".meta.yml")

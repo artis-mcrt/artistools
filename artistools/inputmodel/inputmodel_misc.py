@@ -230,7 +230,7 @@ def read_modelfile(
 
         if len(dfmodel) > 1000 and not getheadersonly and not skipnuclidemassfraccolumns:
             print(f"Saving {filenameparquet}")
-            dfmodel.to_parquet(filenameparquet, compression="lz4")
+            dfmodel.to_parquet(filenameparquet, compression="zstd")
             print("  Done.")
 
     assert len(dfmodel) == modelcellcount or getheadersonly
@@ -804,7 +804,7 @@ def get_initelemabundances(
 
         if len(abundancedata) > 1000:
             print(f"Saving {filenameparquet}")
-            abundancedata.to_parquet(filenameparquet, compression="lz4")
+            abundancedata.to_parquet(filenameparquet, compression="zstd")
             print("  Done.")
 
     abundancedata.index.name = "modelgridindex"
