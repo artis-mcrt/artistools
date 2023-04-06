@@ -20,6 +20,7 @@ from typing import Union
 import lz4.frame
 import numpy as np
 import pandas as pd
+import pyzstd
 import xz
 
 import artistools as at
@@ -706,20 +707,16 @@ def flatten_list(listin: list) -> list:
 
 def zopen(filename: Union[Path, str], mode: str = "rt", encoding: Optional[str] = None) -> Any:
     """Open filename, filename.gz or filename.xz"""
-    filenamexz = str(filename) if str(filename).endswith(".xz") else str(filename) + ".xz"
-    filenamegz = str(filename) if str(filename).endswith(".gz") else str(filename) + ".gz"
-    filenamelz4 = str(filename) if str(filename).endswith(".lz4") else str(filename) + ".lz4"
-    if os.path.exists(filename) and not any(str(filename).endswith(x) for x in [".gz", ".xz", ".lz4"]):
-        return open(filename, mode=mode, encoding=encoding)
-    if os.path.exists(filenamegz) or str(filename).endswith(".lz4"):
-        return lz4.frame.open(filenamelz4, mode=mode, encoding=encoding)
-    if os.path.exists(filenamegz) or str(filename).endswith(".gz"):
-        return gzip.open(filenamegz, mode=mode, encoding=encoding)
-    if os.path.exists(filenamexz) or str(filename).endswith(".xz"):
-        return xz.open(filenamexz, mode=mode, encoding=encoding)
 
-    # will raise file not found
-    return open(filename, mode=mode)
+    ext_fopen = [(".lz4", lz4.frame.open), (".zst", pyzstd.open), (".gz", gzip.open), (".xz", xz.open)]
+
+    for ext, fopen in ext_fopen:
+        file_ext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
+        if Path(file_ext).exists():
+            return fopen(file_ext, mode=mode, encoding=encoding)
+
+    # open() can raise file not found if this file doesn't exist
+    return open(filename, mode=mode, encoding=encoding)
 
 
 def firstexisting(
@@ -734,17 +731,10 @@ def firstexisting(
     fullpaths = []
     for filename in filelist:
         if tryzipped:
-            filenamelz4 = str(filename) if str(filename).endswith(".lz4") else str(filename) + ".lz4"
-            if filenamelz4 not in filelist:
-                fullpaths.append(Path(folder) / filenamelz4)
-
-            filenamexz = str(filename) if str(filename).endswith(".xz") else str(filename) + ".xz"
-            if filenamexz not in filelist:
-                fullpaths.append(Path(folder) / filenamexz)
-
-            filenamegz = str(filename) if str(filename).endswith(".gz") else str(filename) + ".gz"
-            if filenamegz not in filelist:
-                fullpaths.append(Path(folder) / filenamegz)
+            for ext in [".lz4", ".zst", ".gz", ".xz"]:
+                filenameext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
+                if filenameext not in filelist:
+                    fullpaths.append(Path(folder) / filenameext)
 
         fullpaths.append(Path(folder) / filename)
 

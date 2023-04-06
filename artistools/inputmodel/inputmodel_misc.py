@@ -141,7 +141,7 @@ def read_modelfile(
 
     if skipnuclidemassfraccolumns:
         if not printwarningsonly:
-            print("  skipping abundance columns in model.txt")
+            print("  skipping nuclide abundance columns in model")
         if dimensions == 1:
             ncols_line_even = 3
         elif dimensions == 3:
@@ -160,7 +160,7 @@ def read_modelfile(
     filenameparquet = Path(filename).with_suffix(".parquet")
     if filenameparquet.is_file() and not getheadersonly:
         if not printwarningsonly:
-            print(f"  reading {filenameparquet}")
+            print(f"  reading data table from {filenameparquet}")
         dfmodel = pd.read_parquet(
             filenameparquet,
             columns=columns[: ncols_line_even + ncols_line_odd],
@@ -369,7 +369,9 @@ def get_modeldata(
     if get_elemabundances:
         if dimensions == 3:
             print("Getting abundances")
-        abundancedata = get_initelemabundances(modelpath, dtype_backend=dtype_backend)
+        abundancedata = get_initelemabundances(
+            modelpath, dtype_backend=dtype_backend, printwarningsonly=printwarningsonly
+        )
         dfmodel = dfmodel.merge(abundancedata, how="inner", on="inputcellid")
 
     if derived_cols:
@@ -771,10 +773,12 @@ def get_initelemabundances(
     filenameparquet = Path(abundancefilepath).with_suffix(".parquet")
     if filenameparquet.is_file():
         if not printwarningsonly:
-            print(f"  reading {filenameparquet}")
+            print(f"Reading {filenameparquet}")
 
         abundancedata = pd.read_parquet(filenameparquet, dtype_backend=dtype_backend)
     else:
+        if not printwarningsonly:
+            print(f"Reading {abundancefilepath}")
         ncols = len(
             pd.read_csv(at.zopen(abundancefilepath), delim_whitespace=True, header=None, comment="#", nrows=1).columns
         )
