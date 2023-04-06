@@ -17,11 +17,11 @@ from typing import Literal
 from typing import Optional
 from typing import Union
 
-import lz4.frame
 import numpy as np
 import pandas as pd
 import pyzstd
 import xz
+import zstandard
 
 import artistools as at
 
@@ -708,7 +708,7 @@ def flatten_list(listin: list) -> list:
 def zopen(filename: Union[Path, str], mode: str = "rt", encoding: Optional[str] = None) -> Any:
     """Open filename, filename.gz or filename.xz"""
 
-    ext_fopen = [(".lz4", lz4.frame.open), (".zst", pyzstd.open), (".gz", gzip.open), (".xz", xz.open)]
+    ext_fopen = [(".lz4", zstandard.open), (".zst", pyzstd.open), (".gz", gzip.open), (".xz", xz.open)]
 
     for ext, fopen in ext_fopen:
         file_ext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
