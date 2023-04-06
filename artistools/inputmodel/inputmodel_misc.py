@@ -51,33 +51,35 @@ def read_modelfile_text(
                 modelmeta["headercommentlines"].append(line.removeprefix("#").removeprefix(" ").removesuffix("\n"))
                 numheaderrows += 1
 
-        modelcellcount = int(line)
-        t_model_init_days = float(fmodel.readline())
+        if len(line.strip().split(" ")) == 2:
+            print("  detected 2D model file")
+            modelmeta["dimensions"] = 2
+            ncoordgrid_r, ncoordgrid_z = (int(n) for n in line.strip().split(" "))
+            modelcellcount = ncoordgrid_r * ncoordgrid_z
+        else:
+            modelcellcount = int(line)
+
+        modelmeta["t_model_init_days"] = float(fmodel.readline())
         numheaderrows += 2
-        t_model_init_seconds = t_model_init_days * 24 * 60 * 60
+        t_model_init_seconds = modelmeta["t_model_init_days"] * 24 * 60 * 60
 
         filepos = fmodel.tell()
-        # if the next line is a single float then the model is 3D
+        # if the next line is a single float then the model is 2D or 3D (vmax)
         try:
-            vmax_cmps = float(fmodel.readline())  # velocity max in cm/s
-            xmax_tmodel = vmax_cmps * t_model_init_seconds  # xmax = ymax = zmax
+            modelmeta["vmax_cmps"] = float(fmodel.readline())  # velocity max in cm/s
+            xmax_tmodel = modelmeta["vmax_cmps"] * t_model_init_seconds  # xmax = ymax = zmax
             numheaderrows += 1
-            if dimensions is None:
+            if "dimensions" not in modelmeta:
                 if not printwarningsonly:
                     print("  detected 3D model file")
-                dimensions = 3
-            elif dimensions != 3:
-                print(f" {dimensions} were specified but file appears to be 3D")
-                raise AssertionError from None
+                modelmeta["dimensions"] = 3
 
         except ValueError:
-            if dimensions is None:
+            assert modelmeta.get("dimensions", -1) != 2  # 2D model should have vmax line here
+            if "dimensions" not in modelmeta:
                 if not printwarningsonly:
                     print("  detected 1D model file")
-                dimensions = 1
-            elif dimensions != 1:
-                print(f" {dimensions} were specified but file appears to be 1D")
-                raise AssertionError from None
+                modelmeta["dimensions"] = 1
 
             fmodel.seek(filepos)  # undo the readline() and go back
 
@@ -108,6 +110,21 @@ def read_modelfile_text(
                     "X_Co57",
                 ][:ncols_line_even]
 
+            elif dimensions == 2:
+                columns = [
+                    "inputcellid",
+                    "pos_r_mid",
+                    "pos_z_mid",
+                    "rho",
+                    "X_Fegroup",
+                    "X_Ni56",
+                    "X_Co56",
+                    "X_Fe52",
+                    "X_Cr48",
+                    "X_Ni57",
+                    "X_Co57",
+                ][:ncols_line_even]
+
             elif dimensions == 3:
                 columns = [
                     "inputcellid",
@@ -123,9 +140,8 @@ def read_modelfile_text(
                     "X_Ni57",
                     "X_Co57",
                 ][:ncols_line_even]
-            else:
-                # TODO: 2D case
-                raise AssertionError
+
+        assert columns is not None
 
         if ncols_line_even == len(columns):
             if not printwarningsonly:
@@ -145,6 +161,8 @@ def read_modelfile_text(
             print("  skipping nuclide abundance columns in model")
         if dimensions == 1:
             ncols_line_even = 3
+        elif dimensions == 2:
+            ncols_line_even = 4
         elif dimensions == 3:
             ncols_line_even = 5
         ncols_line_odd = 0
@@ -234,10 +252,10 @@ def read_modelfile_text(
             * (dfmodel["velocity_outer"] ** 3 - dfmodel["velocity_inner"] ** 3)
             * (1e5 * t_model_init_seconds) ** 3
         )
-        vmax_cmps = dfmodel.velocity_outer.max() * 1e5
+        modelmeta["vmax_cmps"] = dfmodel.velocity_outer.max() * 1e5
 
     elif dimensions == 3:
-        wid_init = at.get_wid_init_at_tmodel(modelpath, modelcellcount, t_model_init_days, xmax_tmodel)
+        wid_init = at.get_wid_init_at_tmodel(modelpath, modelcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
         modelmeta["wid_init"] = wid_init
         dfmodel["cellmass_grams"] = dfmodel["rho"] * wid_init**3
 
@@ -294,9 +312,7 @@ def read_modelfile_text(
                     columns={"inputpos_a": "pos_z_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_x_min"},
                 )
 
-    modelmeta["t_model_init_days"] = t_model_init_days
     modelmeta["dimensions"] = dimensions
-    modelmeta["vmax_cmps"] = vmax_cmps
     modelmeta["modelcellcount"] = modelcellcount
 
     return dfmodel, modelmeta
