@@ -350,7 +350,7 @@ def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[i
 
     searchfolders = [Path(modelpath, "packets"), Path(modelpath)]
     # in descending priority (based on speed of reading)
-    suffix_priority = [".out.parquet", ".out.lz4", ".out", ".out.gz", ".out.xz"]
+    suffix_priority = [".out.parquet", ".out.zst", ".out.lz4", ".out.zst", ".out", ".out.gz", ".out.xz"]
     packetsfiles = []
 
     for rank in range(nprocs + 1):
