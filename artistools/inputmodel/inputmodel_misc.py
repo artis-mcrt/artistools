@@ -2,6 +2,7 @@ import errno
 import gc
 import math
 import os.path
+import pickle
 import time
 from collections import defaultdict
 from collections.abc import Sequence
@@ -15,12 +16,13 @@ from typing import Union
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.parquet as pq
 
 import artistools as at
 
 
 @lru_cache(maxsize=8)
-def read_modelfile(
+def read_modelfile_text(
     filename: Union[Path, str],
     dimensions: Optional[int] = None,
     printwarningsonly: bool = False,
@@ -157,86 +159,67 @@ def read_modelfile(
         assert (ncoordgridx * ncoordgridy * ncoordgridz) == modelcellcount
 
     nrows_read = 1 if getheadersonly else modelcellcount
-    filenameparquet = Path(filename).with_suffix(".parquet")
 
-    if filenameparquet.exists() and Path(filename).stat().st_mtime > filenameparquet.stat().st_mtime:
-        print(f"{filename} has been modified after {filenameparquet}. Deleting out of date parquet file.")
-        filenameparquet.unlink()
+    skiprows: Union[list, int, None]
 
-    if filenameparquet.is_file() and not getheadersonly:
-        if not printwarningsonly:
-            print(f"  reading data table from {filenameparquet}")
-        dfmodel = pd.read_parquet(
-            filenameparquet,
-            columns=columns[: ncols_line_even + ncols_line_odd],
-            dtype_backend=dtype_backend,
-        )
+    skiprows = (
+        numheaderrows
+        if onelinepercellformat
+        else [
+            x
+            for x in range(numheaderrows + modelcellcount * 2)
+            if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
+        ]
+    )
+
+    dtypes: defaultdict[str, type]
+    if dtype_backend == "pyarrow":
+        dtypes = defaultdict(lambda: pd.ArrowDtype(pa.float32()))
+        dtypes["inputcellid"] = pd.ArrowDtype(pa.int32())
+        dtypes["tracercount"] = pd.ArrowDtype(pa.int32())
     else:
-        skiprows: Union[list, int, None]
+        dtypes = defaultdict(lambda: np.float32)
+        dtypes["inputcellid"] = np.int32
+        dtypes["tracercount"] = np.int32
 
-        skiprows = (
-            numheaderrows
-            if onelinepercellformat
-            else [
-                x
-                for x in range(numheaderrows + modelcellcount * 2)
-                if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
-            ]
-        )
+    # each cell takes up two lines in the model file
+    dfmodel = pd.read_csv(
+        at.zopen(filename),
+        sep=r"\s+",
+        engine="c",
+        header=None,
+        skiprows=skiprows,
+        names=columns[:ncols_line_even],
+        usecols=columns[:ncols_line_even],
+        nrows=nrows_read,
+        dtype=dtypes,
+        dtype_backend=dtype_backend,
+    )
 
-        dtypes: defaultdict[str, type]
-        if dtype_backend == "pyarrow":
-            dtypes = defaultdict(lambda: pd.ArrowDtype(pa.float32()))
-            dtypes["inputcellid"] = pd.ArrowDtype(pa.int32())
-            dtypes["tracercount"] = pd.ArrowDtype(pa.int32())
-        else:
-            dtypes = defaultdict(lambda: np.float32)
-            dtypes["inputcellid"] = np.int32
-            dtypes["tracercount"] = np.int32
-
-        # each cell takes up two lines in the model file
-        dfmodel = pd.read_csv(
+    if ncols_line_odd > 0 and not onelinepercellformat:
+        # read in the odd rows and merge dataframes
+        skipevenrows = [
+            x
+            for x in range(numheaderrows + modelcellcount * 2)
+            if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
+        ]
+        dfmodeloddlines = pd.read_csv(
             at.zopen(filename),
             sep=r"\s+",
             engine="c",
             header=None,
-            skiprows=skiprows,
-            names=columns[:ncols_line_even],
-            usecols=columns[:ncols_line_even],
+            skiprows=skipevenrows,
+            names=columns[ncols_line_even:],
             nrows=nrows_read,
             dtype=dtypes,
             dtype_backend=dtype_backend,
         )
+        assert len(dfmodel) == len(dfmodeloddlines)
+        dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
+        del dfmodeloddlines
 
-        if ncols_line_odd > 0 and not onelinepercellformat:
-            # read in the odd rows and merge dataframes
-            skipevenrows = [
-                x
-                for x in range(numheaderrows + modelcellcount * 2)
-                if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
-            ]
-            dfmodeloddlines = pd.read_csv(
-                at.zopen(filename),
-                sep=r"\s+",
-                engine="c",
-                header=None,
-                skiprows=skipevenrows,
-                names=columns[ncols_line_even:],
-                nrows=nrows_read,
-                dtype=dtypes,
-                dtype_backend=dtype_backend,
-            )
-            assert len(dfmodel) == len(dfmodeloddlines)
-            dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
-            del dfmodeloddlines
-
-        if len(dfmodel) > modelcellcount:
-            dfmodel = dfmodel.iloc[:modelcellcount]
-
-        if len(dfmodel) > 1000 and not getheadersonly and not skipnuclidemassfraccolumns:
-            print(f"Saving {filenameparquet}")
-            dfmodel.to_parquet(filenameparquet, compression="zstd")
-            print("  Done.")
+    if len(dfmodel) > modelcellcount:
+        dfmodel = dfmodel.iloc[:modelcellcount]
 
     assert len(dfmodel) == modelcellcount or getheadersonly
 
@@ -359,17 +342,60 @@ def get_modeldata(
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
-    # this inner call gets LRU cached, so that we can reuse the cache when changing derived columns, or adding elemental abundances
-    dfmodel, modelmeta = read_modelfile(
-        filename=filename,
-        dimensions=dimensions,
-        printwarningsonly=printwarningsonly,
-        getheadersonly=getheadersonly,
-        skipnuclidemassfraccolumns=skipnuclidemassfraccolumns,
-        dtype_backend=dtype_backend,
-    )
+    dfmodel = None
+    filenameparquet = Path(filename).with_suffix(".txt.parquet")
 
-    dfmodel = dfmodel.copy()
+    source_textfile_details = {"st_size": filename.stat().st_size, "st_mtime": filename.stat().st_mtime}
+
+    if filenameparquet.is_file() and not getheadersonly:
+        if not printwarningsonly:
+            print(f"  reading data table from {filenameparquet}")
+
+        pqmetadata = pq.read_metadata(filenameparquet)
+        if (
+            b"artismodelmeta" not in pqmetadata.metadata
+            or b"source_textfile_details" not in pqmetadata.metadata
+            or pickle.dumps(source_textfile_details) != pqmetadata.metadata[b"source_textfile_details"]
+        ):
+            print(f" text source {filename} doesn't match file header of {filenameparquet}. Removing parquet file")
+            filenameparquet.unlink(missing_ok=True)
+        else:
+            modelmeta = pickle.loads(pqmetadata.metadata[b"artismodelmeta"])
+
+            columns = (
+                [col for col in pqmetadata.schema.names if not col.startswith("X_")]
+                if skipnuclidemassfraccolumns
+                else None
+            )
+            dfmodel = pd.read_parquet(
+                filenameparquet,
+                columns=columns,
+                dtype_backend=dtype_backend,
+            )
+
+    if dfmodel is None:
+        dfmodel, modelmeta = read_modelfile_text(
+            filename=filename,
+            dimensions=dimensions,
+            printwarningsonly=printwarningsonly,
+            getheadersonly=getheadersonly,
+            skipnuclidemassfraccolumns=skipnuclidemassfraccolumns,
+            dtype_backend=dtype_backend,
+        )
+
+        if len(dfmodel) > 1000 and not getheadersonly and not skipnuclidemassfraccolumns:
+            print(f"Saving {filenameparquet}")
+            patable = pa.Table.from_pandas(dfmodel)
+
+            custom_metadata = {
+                b"source_textfile_details": pickle.dumps(source_textfile_details),
+                b"artismodelmeta": pickle.dumps(modelmeta),
+            }
+            merged_metadata = {**custom_metadata, **(patable.schema.metadata or {})}
+            patable = patable.replace_schema_metadata(merged_metadata)
+            pq.write_table(patable, filenameparquet)
+            # dfmodel.to_parquet(filenameparquet, compression="zstd")
+            print("  Done.")
 
     if get_elemabundances:
         if dimensions == 3:
@@ -775,7 +801,7 @@ def get_initelemabundances(
     """Return a table of elemental mass fractions by cell from abundances."""
     abundancefilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
 
-    filenameparquet = Path(abundancefilepath).with_suffix(".parquet")
+    filenameparquet = Path(abundancefilepath).with_suffix(".txt.parquet")
     if filenameparquet.exists() and Path(abundancefilepath).stat().st_mtime > filenameparquet.stat().st_mtime:
         print(f"{abundancefilepath} has been modified after {filenameparquet}. Deleting out of date parquet file.")
         filenameparquet.unlink()
