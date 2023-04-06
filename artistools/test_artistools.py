@@ -3,7 +3,6 @@ import hashlib
 import math
 
 import numpy as np
-import pytest
 
 import artistools as at
 
@@ -57,10 +56,6 @@ def test_get_levels():
 
 
 def test_get_modeldata_tuple():
-    # expect a 3D model but read 1D
-    with pytest.raises(Exception):
-        dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=True)
-
     dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=True)
     assert np.isclose(t_model_init_days, 0.00115740740741, rtol=0.0001)
     assert np.isclose(vmax_cmps, 800000000.0, rtol=0.0001)
