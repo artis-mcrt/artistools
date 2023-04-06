@@ -21,7 +21,6 @@ import pyarrow.parquet as pq
 import artistools as at
 
 
-@lru_cache(maxsize=8)
 def read_modelfile_text(
     filename: Union[Path, str],
     dimensions: Optional[int] = None,
@@ -305,7 +304,6 @@ def read_modelfile_text(
 
 def get_modeldata(
     inputpath: Union[Path, str] = Path(),
-    dimensions: Optional[int] = None,
     get_elemabundances: bool = False,
     derived_cols: Optional[Sequence[str]] = None,
     printwarningsonly: bool = False,
@@ -376,7 +374,6 @@ def get_modeldata(
     if dfmodel is None:
         dfmodel, modelmeta = read_modelfile_text(
             filename=filename,
-            dimensions=dimensions,
             printwarningsonly=printwarningsonly,
             getheadersonly=getheadersonly,
             skipnuclidemassfraccolumns=skipnuclidemassfraccolumns,
@@ -398,8 +395,6 @@ def get_modeldata(
             print("  Done.")
 
     if get_elemabundances:
-        if dimensions == 3:
-            print("Getting abundances")
         abundancedata = get_initelemabundances(
             modelpath, dtype_backend=dtype_backend, printwarningsonly=printwarningsonly
         )
@@ -409,7 +404,7 @@ def get_modeldata(
         dfmodel = add_derived_cols_to_modeldata(
             dfmodel=dfmodel,
             derived_cols=derived_cols,
-            dimensions=dimensions,
+            dimensions=modelmeta["dimensions"],
             t_model_init_seconds=modelmeta["t_model_init_days"] * 86400.0,
             wid_init=modelmeta.get("wid_init", None),
             modelpath=modelpath,
