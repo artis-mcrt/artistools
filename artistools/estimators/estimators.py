@@ -250,15 +250,12 @@ def read_estimators_from_file(
 ) -> dict[tuple[int, int], Any]:
     estimators_thisfile = {}
     estimfilename = f"estimators_{mpirank:04d}.out"
-    estfilepath = Path(folderpath, estimfilename)
-    if not estfilepath.is_file():
-        estfilepath = Path(folderpath, estimfilename + ".gz")
-        if not estfilepath.is_file():
-            estfilepath = Path(folderpath, estimfilename + ".xz")
-            if not estfilepath.is_file():
-                # not worth printing and error, because ranks with no cells to update do not produce an estimator file
-                # print(f'Warning: Could not find {estfilepath.relative_to(modelpath.parent)}')
-                return {}
+    try:
+        estfilepath = at.firstexisting(Path(folderpath, estimfilename), tryzipped=True)
+    except FileNotFoundError:
+        # not worth printing an error, because ranks with no cells to update do not produce an estimator file
+        # print(f'Warning: Could not find {estfilepath.relative_to(modelpath.parent)}')
+        return {}
 
     if printfilename:
         filesize = Path(estfilepath).stat().st_size / 1024 / 1024
