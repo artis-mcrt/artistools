@@ -159,7 +159,7 @@ def read_modelfile(
     nrows_read = 1 if getheadersonly else modelcellcount
     filenameparquet = Path(filename).with_suffix(".parquet")
 
-    if Path(filename).stat().st_mtime > filenameparquet.stat().st_mtime:
+    if filenameparquet.exists() and Path(filename).stat().st_mtime > filenameparquet.stat().st_mtime:
         print(f"{filename} has been modified after {filenameparquet}. Deleting out of date parquet file.")
         filenameparquet.unlink()
 
@@ -776,7 +776,7 @@ def get_initelemabundances(
     abundancefilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
 
     filenameparquet = Path(abundancefilepath).with_suffix(".parquet")
-    if Path(abundancefilepath).stat().st_mtime > filenameparquet.stat().st_mtime:
+    if filenameparquet.exists() and Path(abundancefilepath).stat().st_mtime > filenameparquet.stat().st_mtime:
         print(f"{abundancefilepath} has been modified after {filenameparquet}. Deleting out of date parquet file.")
         filenameparquet.unlink()
 
