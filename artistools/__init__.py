@@ -77,7 +77,6 @@ from .misc import get_wid_init_at_tmodel
 from .misc import get_z_a_nucname
 from .misc import join_pdf_files
 from .misc import linetuple
-from .misc import make_namedtuple
 from .misc import makelist
 from .misc import match_closest_time
 from .misc import namedtuple

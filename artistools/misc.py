@@ -87,12 +87,6 @@ class AppendPath(argparse.Action):
             setattr(args, self.dest, Path(values))
 
 
-def make_namedtuple(typename: str, **fields: dict) -> tuple[Any, ...]:
-    """Make a namedtuple from a dictionary of attributes and values.
-    Example: make_namedtuple('mytuple', x=2, y=3)"""
-    return namedtuple(typename, fields)(*fields.values())
-
-
 def showtimesteptimes(modelpath: Optional[Path] = None, numberofcolumns: int = 5) -> None:
     """Print a table showing the timesteps and their corresponding times."""
     if modelpath is None:
@@ -357,17 +351,6 @@ def get_deposition(modelpath: Path) -> pd.DataFrame:
         assert abs(ts_mids[timestep] / row["tmid_days"] - 1) < 0.01  # deposition times don't match input.txt
 
     return depdata
-
-
-@lru_cache(maxsize=16)
-def get_timestep_times(modelpath: Path) -> list[str]:
-    """Return a list of the mid time in days of each timestep from a spec.out file."""
-    try:
-        specfilename = firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
-        time_columns = pd.read_csv(specfilename, delim_whitespace=True, nrows=0)
-        return list(time_columns.columns[1:])
-    except FileNotFoundError:
-        return [f"{tdays:.3f}" for tdays in get_timestep_times_float(modelpath, loc="mid")]
 
 
 @lru_cache(maxsize=16)
