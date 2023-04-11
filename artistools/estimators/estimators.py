@@ -3,7 +3,6 @@
 
 Examples are temperatures, populations, and heating/cooling rates.
 """
-# import math
 import argparse
 import math
 import multiprocessing

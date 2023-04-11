@@ -17,11 +17,6 @@ import pandas as pd
 
 import artistools as at
 
-# import io
-# import math
-
-# import artistools.estimators
-
 
 def plot_qdot(
     modelpath: Path,

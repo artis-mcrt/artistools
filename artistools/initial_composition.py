@@ -150,7 +150,6 @@ def plot_3d_initial_abundances(modelpath, args=None):
         print(
             f"Scaling modeldata to {targetmodeltime_days} days. \nWARNING: abundances not scaled for radioactive decays"
         )
-        # import artistools.inputmodel.modelfromhydro
 
         dfmodel, modelmeta = at.inputmodel.scale_model_to_time(
             targetmodeltime_days=targetmodeltime_days, modelmeta=modelmeta, dfmodel=dfmodel

@@ -14,10 +14,6 @@ from astropy import units as u
 
 import artistools as at
 
-# import re
-# from itertools import chain
-# import matplotlib.patches as mpatches
-
 H = 6.6260755e-27  # Planck constant [erg s]
 KB = 1.38064852e-16  # Boltzmann constant [erg/K]
 EV = 1.6021772e-12  # eV to ergs [eV/erg]

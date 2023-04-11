@@ -15,9 +15,6 @@ import polars as pl
 
 import artistools as at
 
-# import matplotlib.patches as mpatches
-# from collections import namedtuple
-
 # for the parquet files
 time_lastschemachange = (2023, 4, 2, 22, 13, 0)
 

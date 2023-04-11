@@ -8,8 +8,6 @@ from astropy import units as u
 
 import artistools as at
 
-# import numpy as np
-
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-inputpath", "-i", default="1.00_5050.dat", help="Path of input file")

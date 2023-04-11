@@ -9,8 +9,6 @@ import numpy as np
 
 from .rd_cmfgen import rd_sn_hydro_data
 
-# import math
-
 msun = 1.989e33
 
 model = "DDC25"

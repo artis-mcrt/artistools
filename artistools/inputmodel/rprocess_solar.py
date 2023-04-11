@@ -8,8 +8,6 @@ import pandas as pd
 
 import artistools as at
 
-# import os.path
-
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")

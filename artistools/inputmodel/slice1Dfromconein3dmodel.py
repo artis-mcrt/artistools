@@ -9,11 +9,6 @@ from astropy import units as u
 
 import artistools as at
 
-# import os
-# import pandas as pd
-# import matplotlib
-# from mpl_toolkits.mplot3d import Axes3D
-
 
 def make_cone(args):
     print("Making cone")

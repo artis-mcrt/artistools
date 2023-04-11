@@ -25,13 +25,6 @@ import xz
 
 import artistools as at
 
-# import lzma
-
-# import inspect
-# from functools import partial
-# import scipy.signal
-
-
 roman_numerals = (
     "",
     "I",

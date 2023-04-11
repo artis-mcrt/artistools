@@ -7,9 +7,6 @@ import pandas as pd
 
 import artistools as at
 
-# import artistools.spectra
-# import artistools.lightcurve.writebollightcurvedata
-
 
 def plot_hesma_spectrum(timeavg, axes):
     hesma_file = Path("/Users/ccollins/Downloads/hesma_files/M2a/hesma_specseq.dat")

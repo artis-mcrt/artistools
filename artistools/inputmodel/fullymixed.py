@@ -6,11 +6,6 @@ from astropy import units as u
 
 import artistools as at
 
-# import math
-# import os.path
-# import numpy as np
-# import pandas as pd
-
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-scalefactor", "-s", default=0.5, help="Kinetic energy scale factor")
