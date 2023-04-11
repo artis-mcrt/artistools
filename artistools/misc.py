@@ -20,6 +20,7 @@ from typing import Union
 import lz4.frame
 import numpy as np
 import pandas as pd
+import polars as pl
 import pyzstd
 import xz
 
@@ -152,29 +153,44 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
     return composition_df
 
 
-def gather_res_data(res_df: pd.DataFrame, index_of_repeated_value: int = 1) -> dict[int, pd.DataFrame]:
+def split_df_dirbins(
+    res_df: Union[pl.DataFrame, pd.DataFrame], index_of_repeated_value: int = 0, output_polarsdf: bool = False
+) -> dict[int, Union[pd.DataFrame, pl.DataFrame]]:
     """res files repeat output for each angle.
-    index_of_repeated_value is the value to look for repeating eg. time of ts 0.
-    In spec_res files it's 1, but in lc_res file it's 0"""
-    index_to_split = res_df.index[res_df.iloc[:, index_of_repeated_value] == res_df.iloc[0, index_of_repeated_value]]
-    res_data: dict[int, pd.DataFrame] = {}
-    for i, index_value in enumerate(index_to_split):
-        chunk = (
-            res_df.iloc[index_to_split[i] : index_to_split[i + 1], :]
-            if index_value != index_to_split[-1]
-            else res_df.iloc[index_to_split[i] :, :]
-        )
-        res_data[i] = chunk
+    index_of_repeated_value is the column index to look for repeating eg. time of ts 0.
+    In spec_res files it's 1 , but in lc_res file it's 0"""
 
-    assert len(res_data) == 100
+    if isinstance(res_df, pd.DataFrame):
+        res_df = pl.from_pandas(res_df)
+
+    indexes_to_split = pl.arg_where(
+        res_df[:, index_of_repeated_value] == res_df[0, index_of_repeated_value], eager=True
+    )
+
+    res_data: dict[int, pl.DataFrame] = {}
+    prev_dfshape = None
+    for i, index_value in enumerate(indexes_to_split):
+        chunk = (
+            res_df[indexes_to_split[i] : indexes_to_split[i + 1], :]
+            if index_value != indexes_to_split[-1]
+            else res_df[indexes_to_split[i] :, :]
+        )
+
+        # the number of timesteps should match for all direction bins
+        assert prev_dfshape is None or prev_dfshape == chunk.shape
+        prev_dfshape = chunk.shape
+
+        res_data[i] = chunk if output_polarsdf else chunk.to_pandas(use_pyarrow_extension_array=True)
+
+    assert len(res_data) == at.get_viewingdirectionbincount()
     return res_data
 
 
 def average_direction_bins(
-    dirbindataframes: dict[int, pd.DataFrame],
+    dirbindataframes: dict[int, pl.DataFrame],
     overangle: Literal["phi", "theta"],
-) -> dict[int, pd.DataFrame]:
-    """Will average dict of direction-binned DataFrames according to the phi or theta angle"""
+) -> dict[int, pl.DataFrame]:
+    """Will average dict of direction-binned polars DataFrames according to the phi or theta angle"""
     dirbincount = at.get_viewingdirectionbincount()
     nphibins = at.get_viewingdirection_phibincount()
 
@@ -190,7 +206,7 @@ def average_direction_bins(
     dirbindataframesout: dict[int, pd.DataFrame] = {}
 
     for start_bin in start_bin_range:
-        dirbindataframesout[start_bin] = dirbindataframes[start_bin].reset_index(drop=True)
+        dirbindataframesout[start_bin] = dirbindataframes[start_bin]
 
         contribbins = (
             range(start_bin + 1, start_bin + nphibins)
@@ -199,7 +215,7 @@ def average_direction_bins(
         )
 
         for dirbin_contrib in contribbins:
-            dirbindataframesout[start_bin] += dirbindataframes[dirbin_contrib].reset_index(drop=True)
+            dirbindataframesout[start_bin] += dirbindataframes[dirbin_contrib]
 
         dirbindataframesout[start_bin] /= 1 + len(contribbins)  # every nth bin is the average of n bins
         print(f"bin number {start_bin} = the average of bins {[start_bin, *list(contribbins)]}")

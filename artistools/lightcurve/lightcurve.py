@@ -25,13 +25,17 @@ def readfile(
     print(f"Reading {filepath}")
     lcdata: dict[int, pd.DataFrame] = {}
     if "_res" in str(filepath):
-        # get a list of dfs with light curves at each viewing angle
-        lcdata_res = pd.read_csv(filepath, sep=" ", engine="pyarrow", header=None, names=["time", "lum", "lum_cmf"])
-        lcdata = at.gather_res_data(lcdata_res, index_of_repeated_value=0)
+        # get a dict of dfs with light curves at each viewing direction bin
+        lcdata_res = pl.read_csv(
+            at.zopen(filepath, "rb"), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
+        )
+        lcdata = at.split_df_dirbins(lcdata_res, index_of_repeated_value=0)
     else:
-        lcdata[-1] = pd.read_csv(filepath, sep=" ", engine="pyarrow", header=None, names=["time", "lum", "lum_cmf"])
+        lcdata[-1] = pl.read_csv(
+            at.zopen(filepath, "rb"), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
+        )
 
-        if list(lcdata[-1].time.values) != sorted(lcdata[-1].time.values):
+        if list(lcdata[-1]["time"].to_numpy()) != sorted(lcdata[-1]["time"].to_numpy()):
             # the light_curve.out file repeats x values, so keep the first half only
             lcdata[-1] = lcdata[-1].iloc[: len(lcdata[-1]) // 2]
             lcdata[-1].index.name = "timestep"

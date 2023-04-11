@@ -38,7 +38,7 @@ def get_bol_lc_from_spec(modelpath):
 def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.DataFrame:
     lcfilename = "light_curve_res.out" if res else "light_curve.out"
     lcdata = pd.read_csv(modelpath / lcfilename, delim_whitespace=True, header=None, names=["time", "lum", "lum_cmf"])
-    lcdataframes = at.gather_res_data(lcdata, index_of_repeated_value=0)
+    lcdataframes = at.split_df_dirbins(lcdata, index_of_repeated_value=0)
 
     times = lcdataframes[0]["time"]
     lightcurvedata = {"time": times}

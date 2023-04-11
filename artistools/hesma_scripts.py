@@ -44,7 +44,7 @@ def plothesmaresspec(fig, ax):
         #         chunk = specdata.iloc[index_to_split[i]:, :]
         #     res_specdata.append(chunk)
 
-        res_specdata = at.gather_res_data(specdata)
+        res_specdata = at.split_df_dirbins(specdata)
 
         column_names = res_specdata[0].iloc[0]
         column_names[0] = "lambda"

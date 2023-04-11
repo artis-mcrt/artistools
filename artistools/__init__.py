@@ -38,7 +38,6 @@ from .misc import CustomArgHelpFormatter
 from .misc import decode_roman_numeral
 from .misc import firstexisting
 from .misc import flatten_list
-from .misc import gather_res_data
 from .misc import get_atomic_number
 from .misc import get_bflist
 from .misc import get_cellsofmpirank
@@ -86,6 +85,7 @@ from .misc import read_linestatfile
 from .misc import readnoncommentline
 from .misc import roman_numerals
 from .misc import showtimesteptimes
+from .misc import split_df_dirbins
 from .misc import stripallsuffixes
 from .misc import trim_or_pad
 from .misc import vec_len

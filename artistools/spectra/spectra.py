@@ -255,20 +255,37 @@ def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
     )
 
     print(f"Reading {specfilename} (in read_spec_res)")
-    res_specdata_in = pd.read_csv(specfilename, delim_whitespace=True, header=None, dtype=str)
+    res_specdata_in = pl.read_csv(at.zopen(specfilename, "rb"), separator=" ", has_header=False, infer_schema_length=0)
 
-    res_specdata: dict[int, pd.DataFrame] = at.gather_res_data(res_specdata_in)
+    # drop last column if it's all null (cause by trailing space on each line)
+    if all(res_specdata_in[:, -1].is_null()):
+        res_specdata_in = res_specdata_in[:, :-1]
 
-    columns = res_specdata[0].iloc[0]
+    res_specdata: dict[int, pl.DataFrame] = at.split_df_dirbins(res_specdata_in, output_polarsdf=True)
+    prev_dfshape = None
     for dirbin in res_specdata:
-        res_specdata[dirbin] = res_specdata[dirbin].rename(columns=columns)
-        res_specdata[dirbin] = res_specdata[dirbin].drop(res_specdata[dirbin].index[0])
-        # These lines remove the Q and U values from the dataframe (I think)
-        numberofIvalues = len(res_specdata[dirbin].columns.drop_duplicates())
-        res_specdata_numpy = res_specdata[dirbin].iloc[:, :numberofIvalues].astype(float).to_numpy()
+        newcolnames = [str(x) for x in res_specdata[dirbin][0, :].to_numpy()[0]]
+        newcolnames[0] = "nu"
 
-        res_specdata[dirbin] = pd.DataFrame(data=res_specdata_numpy, columns=columns[:numberofIvalues])
-        res_specdata[dirbin] = res_specdata[dirbin].rename(columns={"0": "nu", "0.0": "nu"})
+        newcolnames_unique = set(newcolnames)
+        oldcolnames = res_specdata[dirbin].columns
+        if len(newcolnames) > len(newcolnames_unique):
+            # for POL_ON, the time columns repeat for Q, U, and V stokes params.
+            # here, we keep the first set (I) and drop the rest of the columns
+            assert len(newcolnames) % len(newcolnames_unique) == 0  # must be an exact multiple
+            newcolnames = newcolnames[: len(newcolnames_unique)]
+            oldcolnames = oldcolnames[: len(newcolnames_unique)]
+            res_specdata[dirbin] = res_specdata[dirbin].select(oldcolnames)
+
+        res_specdata[dirbin] = (
+            res_specdata[dirbin][1:]  # drop the first row that contains time headers
+            .with_columns([pl.col(oldcol).cast(pl.Float64) for oldcol in oldcolnames])
+            .rename(dict(zip(oldcolnames, newcolnames)))
+        )
+
+        # the number of timesteps and nu bins should match for all direction bins
+        assert prev_dfshape is None or prev_dfshape == res_specdata[dirbin].shape
+        prev_dfshape = res_specdata[dirbin].shape
 
     return res_specdata
 
@@ -311,7 +328,7 @@ def get_spec_res(
     if average_over_phi:
         res_specdata = at.average_direction_bins(res_specdata, overangle="phi")
 
-    return res_specdata
+    return {k: v.to_pandas(use_pyarrow_extension_array=True) for k, v in res_specdata.items()}
 
 
 def get_spectrum(
@@ -357,11 +374,11 @@ def get_spectrum(
 
     specdataout: dict[int, pd.DataFrame] = {}
     for dirbin in directionbins:
-        nu = specdata[dirbin]["nu"].to_numpy()
+        arr_nu = specdata[dirbin]["nu"].to_numpy()
         arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
         arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
 
-        f_nu = stackspectra(
+        arr_f_nu = stackspectra(
             [
                 (specdata[dirbin][specdata[dirbin].columns[timestep + 1]], arr_tdelta[timestep])
                 for timestep in range(timestepmin, timestepmax + 1)
@@ -373,13 +390,13 @@ def get_spectrum(
         if fnufilterfunc:
             if dirbin == directionbins[0]:
                 print("Applying filter to ARTIS spectrum")
-            f_nu = fnufilterfunc(f_nu)
+            arr_f_nu = fnufilterfunc(arr_f_nu)
 
-        dfspectrum = pd.DataFrame({"nu": nu, "f_nu": f_nu})
-        dfspectrum = dfspectrum.sort_values(by="nu", ascending=False)
-
-        dfspectrum = dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18})
-        dfspectrum = dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms")
+        c_ang_per_s = 2.99792458e18
+        arr_lambda = c_ang_per_s / arr_nu
+        arr_f_lambda = arr_f_nu * arr_nu / arr_lambda
+        dfspectrum = pd.DataFrame({"lambda_angstroms": arr_lambda, "f_lambda": arr_f_lambda})
+        dfspectrum = dfspectrum.sort_values(by="lambda_angstroms", ascending=True)
 
         specdataout[dirbin] = dfspectrum
 
@@ -414,7 +431,7 @@ def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
         index_of_new_spectrum = vspecpolfile.index[vspecpolfile.iloc[:, 1] == vspecpolfile.iloc[0, 1]]
         vspecpol_data = []  # list of all predefined vspectra
         for i, index_spectrum_starts in enumerate(index_of_new_spectrum[:nvirtual_spectra]):
-            # todo: this is different to at.gather_res_data() -- could be made to be same format to not repeat code
+            # todo: this is different to at.split_df_dirbins() -- could be made to be same format to not repeat code
             chunk = (
                 vspecpolfile.iloc[index_spectrum_starts : index_of_new_spectrum[i + 1], :]
                 if index_spectrum_starts != index_of_new_spectrum[-1]
