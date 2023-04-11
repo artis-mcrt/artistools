@@ -357,7 +357,7 @@ def get_spectrum(
 
     specdataout: dict[int, pd.DataFrame] = {}
     for dirbin in directionbins:
-        nu = specdata[dirbin].loc[:, "nu"].to_numpy()
+        nu = specdata[dirbin]["nu"].to_numpy()
         arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
         arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
 
