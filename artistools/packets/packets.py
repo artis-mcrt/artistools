@@ -252,7 +252,7 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
 
     dfpackets = dfpackets.drop(["next_trans", "last_cross"])
 
-    # space at the end of line made an extra column of Nones
+    # drop last column of nulls (caused by trailing space on each line)
     if dfpackets[dfpackets.columns[-1]].is_null().all():
         dfpackets = dfpackets.drop(dfpackets.columns[-1])
 
