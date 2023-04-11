@@ -37,7 +37,7 @@ def readfile(
 
         if list(lcdata[-1]["time"].to_numpy()) != sorted(lcdata[-1]["time"].to_numpy()):
             # the light_curve.out file repeats x values, so keep the first half only
-            lcdata[-1] = lcdata[-1].iloc[: len(lcdata[-1]) // 2]
+            lcdata[-1] = lcdata[-1][: lcdata[-1].height // 2]
             lcdata[-1].index.name = "timestep"
 
     return lcdata
