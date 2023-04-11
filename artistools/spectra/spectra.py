@@ -257,9 +257,9 @@ def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
     print(f"Reading {specfilename} (in read_spec_res)")
     res_specdata_in = pl.read_csv(at.zopen(specfilename, "rb"), separator=" ", has_header=False, infer_schema_length=0)
 
-    # drop last column if it's all null (cause by trailing space on each line)
-    if all(res_specdata_in[:, -1].is_null()):
-        res_specdata_in = res_specdata_in[:, :-1]
+    # drop last column of nulls (caused by trailing space on each line)
+    if res_specdata_in[res_specdata_in.columns[-1]].is_null().all():
+        res_specdata_in = res_specdata_in.drop(res_specdata_in.columns[-1])
 
     res_specdata: dict[int, pl.DataFrame] = at.split_df_dirbins(res_specdata_in, output_polarsdf=True)
     prev_dfshape = None
@@ -279,7 +279,7 @@ def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
 
         res_specdata[dirbin] = (
             res_specdata[dirbin][1:]  # drop the first row that contains time headers
-            .with_columns([pl.col(oldcol).cast(pl.Float64) for oldcol in oldcolnames])
+            .with_columns(pl.all().cast(pl.Float64))
             .rename(dict(zip(oldcolnames, newcolnames)))
         )
 
@@ -291,7 +291,7 @@ def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
 
 
 @lru_cache(maxsize=200)
-def read_emission_absorption_file(emabsfilename: Union[str, Path]) -> pd.DataFrame:
+def read_emission_absorption_file(emabsfilename: Union[str, Path]) -> pl.DataFrame:
     """Read into a DataFrame one of: emission.out. emissionpol.out, emissiontrue.out, absorption.out"""
 
     try:
@@ -301,17 +301,13 @@ def read_emission_absorption_file(emabsfilename: Union[str, Path]) -> pd.DataFra
     except AttributeError:
         print(f" Reading {emabsfilename}")
 
-    dfemabs = pd.read_csv(
-        emabsfilename,
-        sep=" ",
-        engine="pyarrow",
-        header=None,
-        dtype_backend="pyarrow",
-    )
+    dfemabs = pl.read_csv(
+        at.zopen(emabsfilename, "rb").read(), separator=" ", has_header=False, infer_schema_length=0
+    ).with_columns(pl.all().cast(pl.Float32, strict=False))
 
-    # check if last column is an artefact of whitespace at end of line (None or NaNs for pyarrow/c engine)
-    if pd.isna(dfemabs.iloc[0, -1]):
-        dfemabs = dfemabs.drop(dfemabs.columns[-1], axis=1)
+    # drop last column of nulls (caused by trailing space on each line)
+    if dfemabs[dfemabs.columns[-1]].is_null().all():
+        dfemabs = dfemabs.drop(dfemabs.columns[-1])
 
     return dfemabs
 
@@ -720,7 +716,7 @@ def get_flux_contributions(
                     array_fnu_emission = stackspectra(
                         [
                             (
-                                emissiondata[dbin].iloc[timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
+                                emissiondata[dbin][timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
                                 arr_tdelta[timestep] / len(dbinlist),
                             )
                             for timestep in range(timestepmin, timestepmax + 1)
@@ -734,7 +730,7 @@ def get_flux_contributions(
                     array_fnu_absorption = stackspectra(
                         [
                             (
-                                absorptiondata[dbin].iloc[timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
+                                absorptiondata[dbin][timestep :: len(arr_tmid), selectedcolumn].to_numpy(),
                                 arr_tdelta[timestep] / len(dbinlist),
                             )
                             for timestep in range(timestepmin, timestepmax + 1)
