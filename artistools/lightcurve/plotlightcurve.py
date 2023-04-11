@@ -23,9 +23,6 @@ from extinction import ccm89
 
 import artistools as at
 
-# import glob
-# import itertools
-# import sys
 
 color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
@@ -326,7 +323,7 @@ def plot_artis_lightcurve(
         costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
         scaledmap = make_colorbar_viewingangles_colormap()
 
-    lctimemin, lctimemax = lcdataframes[dirbins[0]].time.min(), lcdataframes[dirbins[0]].time.max()
+    lctimemin, lctimemax = lcdataframes[dirbins[0]]["time"].min(), lcdataframes[dirbins[0]]["time"].max()
 
     print(f" range of light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
     try:
