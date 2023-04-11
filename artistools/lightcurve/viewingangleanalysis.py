@@ -14,7 +14,6 @@ from astropy import constants as const
 from matplotlib.legend_handler import HandlerTuple
 
 import artistools as at
-from artistools.diskcachedecorator import diskcache
 
 define_colours_list = [
     "k",
@@ -672,7 +671,6 @@ def make_peak_colour_viewing_angle_plot(args):
     plt.close()
 
 
-@diskcache(savezipped=True)
 def second_band_brightness_at_peak_first_band(data, bands, modelpath, modelnumber, args):
     second_band_brightness = []
     for anglenumber, time in enumerate(data[f"time_{bands[0]}max"]):

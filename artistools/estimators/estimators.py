@@ -238,7 +238,6 @@ def parse_estimfile(
         yield timestep, modelgridindex, estimblock
 
 
-# @diskcache(ignorekwargs=['printfilename'], quiet=False, funcdepends=parse_estimfile, savezipped=True)
 def read_estimators_from_file(
     folderpath: Union[Path, str],
     modelpath: Path,
@@ -274,7 +273,6 @@ def read_estimators_from_file(
 
 
 @lru_cache(maxsize=16)
-# @diskcache(savezipped=True, funcdepends=[read_estimators_from_file, parse_estimfile])
 def read_estimators(
     modelpath: Union[Path, str],
     modelgridindex: Union[None, int, Sequence[int]] = None,

@@ -110,6 +110,7 @@ ignored-modules = ["astropy", "extinction"]
 
 [tool.ruff]
 select = [
+    #"ALL",
     "A", "B", "C", "E", "F", "G", "N", "Q", "W", "ARG", "BLE", "DJ", "DTZ", "EM", "ERA", "EXE",
     "ICN", "INP", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PT", "PYI", "RET", "RSE", "RUF",
     "SIM", "SLF", "TCH", "TID", "TRY", "UP", "YTT"

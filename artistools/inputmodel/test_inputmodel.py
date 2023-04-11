@@ -4,7 +4,6 @@ import artistools as at
 
 modelpath = at.get_config()["path_testartismodel"]
 outputpath = at.get_config()["path_testoutput"]
-at.set_config("enable_diskcache", False)
 
 
 def test_describeinputmodel():

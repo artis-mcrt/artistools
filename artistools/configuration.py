@@ -30,7 +30,6 @@ def setup_config():
 
     # print(f"Using {num_processes} processes")
 
-    config["enable_diskcache"] = False
     config["num_processes"] = num_processes
 
     config["figwidth"] = 5

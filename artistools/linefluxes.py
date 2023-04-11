@@ -15,11 +15,6 @@ import pandas as pd
 from astropy import units as u
 
 import artistools as at
-from artistools.diskcachedecorator import diskcache
-
-# from functools import lru_cache
-# import matplotlib.ticker as ticker
-# from astropy import constants as const
 
 
 def get_packets_with_emtype_onefile(emtypecolumn, lineindices, packetsfile):
@@ -34,7 +29,6 @@ def get_packets_with_emtype_onefile(emtypecolumn, lineindices, packetsfile):
     return dfpackets.query(f"{emtypecolumn} in @lineindices", inplace=False).copy()
 
 
-@diskcache(savezipped=True)
 def get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles=None):
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
@@ -420,7 +414,6 @@ def make_flux_ratio_plot(args):
     plt.close()
 
 
-@diskcache(savezipped=True)
 def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, tstart, tend, maxpacketfiles=None):
     estimators = at.estimators.read_estimators(modelpath, get_ion_values=False, get_heatingcooling=False)
 
