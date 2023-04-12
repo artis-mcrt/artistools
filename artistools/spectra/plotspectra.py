@@ -49,7 +49,7 @@ def plot_polarisation(modelpath: Path, args) -> None:
     timeavg = (args.timemin + args.timemax) / 2.0
 
     def match_closest_time(reftime):
-        return str("{:.4f}".format(min([float(x) for x in timearray], key=lambda x: abs(x - reftime))))
+        return str(f"{min([float(x) for x in timearray], key=lambda x: abs(x - reftime)):.4f}")
 
     timeavg = match_closest_time(timeavg)
 
@@ -207,8 +207,7 @@ def plot_artis_spectrum(
     maxpacketfiles: Optional[int] = None,
     **plotkwargs,
 ) -> Optional[pd.DataFrame]:
-    """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame"""
-    modelpath_or_file = Path(modelpath)
+    """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame."""
 
     modelpath = Path(modelpath)
     if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/spec.out'
