@@ -200,7 +200,7 @@ def add_derived_columns(
 
 
 def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) -> pl.DataFrame:
-    """Read a packets*.out(.xz) space-separated text file into a polars DataFrame"""
+    """Read a packets*.out(.xz) space-separated text file into a polars DataFrame."""
     print(f"Reading {packetsfile}")
     skiprows: int = 0
     column_names: Optional[list[str]] = None
@@ -242,7 +242,6 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
             separator=" ",
             has_header=False,
             new_columns=column_names,
-            # dtypes={"e_rf": pl.Float64, "e_cmf": pl.Float64, "nu_rf": pl.Float64, "nu_cmf": pl.Float64},
             infer_schema_length=10000,
         )
 
@@ -282,7 +281,6 @@ def readfile_pl(
     escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
 ) -> pl.LazyFrame:
     """Read a packets file into a Polars LazyFrame from either a parquet file or a text file (and save .parquet)."""
-
     packetsfile = Path(packetsfile)
     packetsfileparquet = at.stripallsuffixes(packetsfile).with_suffix(".out.parquet")
     packetsfiletext = (
