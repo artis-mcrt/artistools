@@ -21,7 +21,7 @@ import artistools as at
 
 
 def get_elemabund_from_nucabund(dfnucabund: pd.DataFrame) -> dict[str, float]:
-    """return a dictionary of elemental abundances from nuclear abundance DataFrame"""
+    """Return a dictionary of elemental abundances from nuclear abundance DataFrame."""
     dictelemabund: dict[str, float] = {}
     for atomic_number in range(1, dfnucabund.Z.max() + 1):
         dictelemabund[f"X_{at.get_elsymbol(atomic_number)}"] = dfnucabund.query(
@@ -31,8 +31,7 @@ def get_elemabund_from_nucabund(dfnucabund: pd.DataFrame) -> dict[str, float]:
 
 
 def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename: str):
-    """
-    trajectory files are generally stored as {particleid}.tar.xz, but this is slow
+    """Trajectory files are generally stored as {particleid}.tar.xz, but this is slow
     to access, so first check for extracted files, or decompressed .tar files,
     which are much faster to access.
 
@@ -162,7 +161,7 @@ def get_trajectory_timestepfile_nuc_abund(
 
 
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
-    """initial cell energy [erg/g]"""
+    """Initial cell energy [erg/g]."""
     with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as enthermofile:
         dfthermo: pd.DataFrame = pd.read_csv(
             enthermofile, sep=r"\s+", usecols=["time/s", "Qdot"], engine="c", dtype={0: float, 1: float}
@@ -189,9 +188,8 @@ def get_trajectory_abund_q(
     nts: Optional[int] = None,
     getqdotintegral: bool = False,
 ) -> dict[str, float]:
-    """
-    get the nuclear mass fractions (and Qdotintegral) for a particle particle number as a given time
-    nts: GSI network timestep number
+    """Get the nuclear mass fractions (and Qdotintegral) for a particle particle number as a given time
+    nts: GSI network timestep number.
     """
     assert t_model_s is not None or nts is not None
     try:
@@ -373,7 +371,7 @@ def add_abundancecontributions(
     traj_root: Path,
     minparticlespercell: int = 0,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """contribute trajectory network calculation abundances to model cell abundances"""
+    """Contribute trajectory network calculation abundances to model cell abundances."""
     t_model_s = t_model_days_incpremerger * 86400
     dfcontribs = dfgridcontributions
 
