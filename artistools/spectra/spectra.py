@@ -292,8 +292,7 @@ def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
 
 @lru_cache(maxsize=200)
 def read_emission_absorption_file(emabsfilename: Union[str, Path]) -> pl.DataFrame:
-    """Read into a DataFrame one of: emission.out. emissionpol.out, emissiontrue.out, absorption.out"""
-
+    """Read into a DataFrame one of: emission.out. emissionpol.out, emissiontrue.out, absorption.out."""
     try:
         emissionfilesize = Path(emabsfilename).stat().st_size / 1024 / 1024
         print(f" Reading {emabsfilename} ({emissionfilesize:.2f} MiB)")
@@ -371,7 +370,6 @@ def get_spectrum(
     specdataout: dict[int, pd.DataFrame] = {}
     for dirbin in directionbins:
         arr_nu = specdata[dirbin]["nu"].to_numpy()
-        arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
         arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
 
         arr_f_nu = stackspectra(
@@ -529,7 +527,8 @@ def get_vspecpol_data(
 
 def split_dataframe_stokesparams(specdata: pd.DataFrame) -> dict[str, pd.DataFrame]:
     """DataFrames read from specpol*.out and vspecpol*.out are repeated over I, Q, U
-    parameters. Split these into a dictionary of DataFrames"""
+    parameters. Split these into a dictionary of DataFrames.
+    """
     cols_to_split = []
     stokes_params = {}
     for i, key in enumerate(specdata.keys()):
@@ -953,7 +952,6 @@ def get_flux_contributions_from_packets(
 
         bflist = at.get_bflist(modelpath)
         for _, packet in dfpackets.iterrows():
-            lambda_rf = 2.99792458e18 / packet.nu_rf
             xindex = int(packet.xindex)
             assert xindex >= 0
 
