@@ -323,7 +323,7 @@ def get_spec_res(
     if average_over_phi:
         res_specdata = at.average_direction_bins(res_specdata, overangle="phi")
 
-    return {k: v.to_pandas(use_pyarrow_extension_array=True) for k, v in res_specdata.items()}
+    return dict(res_specdata.items())
 
 
 def get_spectrum(
@@ -353,8 +353,12 @@ def get_spectrum(
 
                 print(f"Reading {specfilename}")
 
-                specdata[-1] = pd.read_csv(specfilename, delim_whitespace=True)
-                specdata[-1] = specdata[-1].rename(columns={"0": "nu"})
+                specdata[-1] = (
+                    pl.read_csv(specfilename, separator=" ", infer_schema_length=0)
+                    .with_columns(pl.all().cast(pl.Float64))
+                    .rename({"0": "nu"})
+                )
+
             except FileNotFoundError:
                 specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
 
@@ -374,7 +378,7 @@ def get_spectrum(
 
         arr_f_nu = stackspectra(
             [
-                (specdata[dirbin][specdata[dirbin].columns[timestep + 1]], arr_tdelta[timestep])
+                (specdata[dirbin][specdata[dirbin].columns[timestep + 1]].to_numpy(), arr_tdelta[timestep])
                 for timestep in range(timestepmin, timestepmax + 1)
             ]
         )

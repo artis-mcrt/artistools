@@ -374,11 +374,9 @@ def plot_artis_spectrum(
 
                 dfspectrum = pd.DataFrame({"lambda_angstroms": new_lambda_angstroms, ycolumnname: binned_flux})
 
-            dfspectrum.plot(
-                x="lambda_angstroms",
-                y=ycolumnname,
-                ax=axis,
-                legend=None,
+            axis.plot(
+                dfspectrum["lambda_angstroms"],
+                dfspectrum[ycolumnname],
                 label=linelabel if axindex == 0 else None,
                 **plotkwargs,
             )
