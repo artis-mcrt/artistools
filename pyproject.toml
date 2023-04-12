@@ -146,7 +146,12 @@ fixable = [
     "FBT", "ICN", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PLR", "PT", "PTH", "PYI", "RET", "RSE",
     "RUF", "SIM", "SLF", "TCH", "TID", "UP", "YTT"
 ]
-unfixable = ["F841", "F401", "PD002"]
+unfixable = [
+    "ERA001",  # commented out code (will just delete it!)
+    "F841",
+    "F401",
+    "PD002"
+]
 
 # larger than black's limit. Let black handle this
 line-length = 200
