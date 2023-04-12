@@ -261,7 +261,7 @@ def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
     if res_specdata_in[res_specdata_in.columns[-1]].is_null().all():
         res_specdata_in = res_specdata_in.drop(res_specdata_in.columns[-1])
 
-    res_specdata: dict[int, pl.DataFrame] = at.split_df_dirbins(res_specdata_in, output_polarsdf=True)
+    res_specdata: dict[int, pl.DataFrame] = at.split_dataframe_dirbins(res_specdata_in, output_polarsdf=True)
     prev_dfshape = None
     for dirbin in res_specdata:
         newcolnames = [str(x) for x in res_specdata[dirbin][0, :].to_numpy()[0]]
@@ -425,7 +425,7 @@ def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
         index_of_new_spectrum = vspecpolfile.index[vspecpolfile.iloc[:, 1] == vspecpolfile.iloc[0, 1]]
         vspecpol_data = []  # list of all predefined vspectra
         for i, index_spectrum_starts in enumerate(index_of_new_spectrum[:nvirtual_spectra]):
-            # todo: this is different to at.split_df_dirbins() -- could be made to be same format to not repeat code
+            # todo: this is different to at.split_dataframe_dirbins() -- could be made to be same format to not repeat code
             chunk = (
                 vspecpolfile.iloc[index_spectrum_starts : index_of_new_spectrum[i + 1], :]
                 if index_spectrum_starts != index_of_new_spectrum[-1]

@@ -29,7 +29,7 @@ def readfile(
         lcdata_res = pl.read_csv(
             at.zopen(filepath, "rb").read(), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
         )
-        lcdata = at.split_df_dirbins(lcdata_res, index_of_repeated_value=0, output_polarsdf=False)
+        lcdata = at.split_dataframe_dirbins(lcdata_res, index_of_repeated_value=0, output_polarsdf=False)
     else:
         dfsphericalaverage = pl.read_csv(
             at.zopen(filepath, "rb").read(), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]

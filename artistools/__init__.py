@@ -85,7 +85,7 @@ from .misc import read_linestatfile
 from .misc import readnoncommentline
 from .misc import roman_numerals
 from .misc import showtimesteptimes
-from .misc import split_df_dirbins
+from .misc import split_dataframe_dirbins
 from .misc import stripallsuffixes
 from .misc import trim_or_pad
 from .misc import vec_len

@@ -153,7 +153,7 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
     return composition_df
 
 
-def split_df_dirbins(
+def split_dataframe_dirbins(
     res_df: Union[pl.DataFrame, pd.DataFrame], index_of_repeated_value: int = 0, output_polarsdf: bool = False
 ) -> dict[int, Union[pd.DataFrame, pl.DataFrame]]:
     """res files repeat output for each angle.
