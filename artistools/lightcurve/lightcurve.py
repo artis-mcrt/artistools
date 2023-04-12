@@ -29,7 +29,7 @@ def readfile(
         lcdata_res = pl.read_csv(
             at.zopen(filepath, "rb").read(), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
         )
-        lcdata = at.split_dataframe_dirbins(lcdata_res, index_of_repeated_value=0, output_polarsdf=False)
+        lcdata = at.split_dataframe_dirbins(lcdata_res, index_of_repeated_value=0, output_polarsdf=True)
     else:
         dfsphericalaverage = pl.read_csv(
             at.zopen(filepath, "rb").read(), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
@@ -38,7 +38,7 @@ def readfile(
         if list(dfsphericalaverage["time"].to_numpy()) != sorted(dfsphericalaverage["time"].to_numpy()):
             # the light_curve.out file repeats x values, so keep the first half only
             dfsphericalaverage = dfsphericalaverage[: dfsphericalaverage.height // 2]
-        lcdata[-1] = dfsphericalaverage.to_pandas(use_pyarrow_extension_array=True)
+        lcdata[-1] = dfsphericalaverage
 
     return lcdata
 

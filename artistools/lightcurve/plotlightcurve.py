@@ -17,6 +17,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import polars as pl
 from astropy import constants as const
 from extinction import apply
 from extinction import ccm89
@@ -373,9 +374,9 @@ def plot_artis_lightcurve(
 
         if not args.Lsun or args.magnitude:
             # convert luminosity from Lsun to erg/s
-            lcdata["lum"] *= 3.826e33
+            lcdata = lcdata.with_columns(pl.col("lum") * 3.826e33)
             if "lum_cmf" in lcdata.columns:
-                lcdata["lum_cmf"] *= 3.826e33
+                lcdata = lcdata.with_columns(pl.col("lum_cmf") * 3.826e33)
 
         if args.magnitude:
             # convert to bol magnitude
@@ -399,10 +400,12 @@ def plot_artis_lightcurve(
             lcdata_after_valid = pd.DataFrame(data=None, columns=lcdata.columns)
             lcdata_valid = pd.DataFrame(data=None, columns=lcdata.columns)
         else:
-            lcdata_valid = lcdata[(lcdata["time"] >= validrange_start_days) & (lcdata["time"] <= validrange_end_days)]
+            lcdata_valid = lcdata.filter(
+                (pl.col("time") >= validrange_start_days) & (pl.col("time") <= validrange_end_days)
+            )
 
-            lcdata_before_valid = lcdata[lcdata["time"] >= lcdata_valid.time.min()]
-            lcdata_after_valid = lcdata[lcdata["time"] >= lcdata_valid.time.max()]
+            lcdata_before_valid = lcdata.filter(pl.col("time") >= lcdata_valid["time"].min())
+            lcdata_after_valid = lcdata.filter(pl.col("time") >= lcdata_valid["time"].max())
 
         axis.plot(lcdata_valid["time"], lcdata_valid[ycolumn], **plotkwargs)
 
