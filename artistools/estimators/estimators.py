@@ -25,8 +25,6 @@ import pandas as pd
 import artistools as at
 import artistools.nltepops
 
-# from itertools import chain
-
 
 def get_variableunits(key: Optional[str] = None) -> Union[str, dict[str, str]]:
     variableunits = {
