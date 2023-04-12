@@ -23,7 +23,6 @@ from extinction import ccm89
 
 import artistools as at
 
-
 color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
 
@@ -437,8 +436,7 @@ def make_lightcurve_plot(
     maxpacketfiles: Optional[int] = None,
     args=None,
 ):
-    """Use light_curve.out or light_curve_res.out files to plot light curve"""
-
+    """Use light_curve.out or light_curve_res.out files to plot light curve."""
     fig, axis = plt.subplots(
         nrows=1,
         ncols=1,
