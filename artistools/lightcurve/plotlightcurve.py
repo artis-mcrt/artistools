@@ -323,7 +323,7 @@ def plot_artis_lightcurve(
         costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
         scaledmap = make_colorbar_viewingangles_colormap()
 
-    lctimemin, lctimemax = lcdataframes[dirbins[0]]["time"].min(), lcdataframes[dirbins[0]]["time"].max()
+    lctimemin, lctimemax = float(lcdataframes[dirbins[0]]["time"].min()), float(lcdataframes[dirbins[0]]["time"].max())
 
     print(f" range of light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
     try:
@@ -370,7 +370,9 @@ def plot_artis_lightcurve(
 
         filterfunc = at.get_filterfunc(args)
         if filterfunc is not None:
-            lcdata["lum"] = filterfunc(lcdata["lum"])
+            lcdata = lcdata.with_columns(
+                pl.from_numpy(filterfunc(lcdata["lum"].to_numpy()), schema=["lum"]).get_column("lum")
+            )
 
         if not args.Lsun or args.magnitude:
             # convert luminosity from Lsun to erg/s
@@ -416,7 +418,7 @@ def plot_artis_lightcurve(
             axis.plot(lcdata_after_valid["time"], lcdata_after_valid[ycolumn], **plotkwargs_invalidrange)
 
         if args.print_data:
-            print(lcdata[["time", ycolumn, "lum_cmf"]].to_string(index=False))
+            print(lcdata[["time", ycolumn, "lum_cmf"]])
 
         if args.plotcmf:
             plotkwargs["linewidth"] = 1
