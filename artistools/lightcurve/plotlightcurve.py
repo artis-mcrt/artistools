@@ -420,7 +420,7 @@ def plot_artis_lightcurve(
             plotkwargs["label"] += " (cmf)"
             plotkwargs["linestyle"] = "dashed"
             # plotkwargs['color'] = 'tab:orange'
-            axis.plot(lcdata.time, lcdata["lum_cmf"], **plotkwargs)
+            axis.plot(lcdata["time"], lcdata["lum_cmf"], **plotkwargs)
 
     if args.plotdeposition or args.plotthermalisation:
         plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkwargs, args)
