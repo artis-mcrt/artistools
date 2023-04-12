@@ -68,7 +68,7 @@ def get_from_packets(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     get_cmf_column: bool = True,
-) -> dict[int, pd.DataFrame]:
+) -> dict[int, pl.DataFrame]:
     """Get ARTIS luminosity vs time from packets files"""
 
     tmidarray = at.get_timestep_times_float(modelpath=modelpath, loc="mid")
@@ -137,7 +137,7 @@ def get_from_packets(
             dftimebinned["e_rf_sum"] / nprocs_read * solidanglefactor * (u.erg / u.day).to("solLum")
         ) / arr_timedelta
 
-        lcdata[dirbin] = pd.DataFrame({"time": tmidarray, "lum": arr_lum})
+        lcdata[dirbin] = pl.DataFrame({"time": tmidarray, "lum": arr_lum})
 
         if get_cmf_column:
             dftimebinned_cmf = at.packets.bin_and_sum(
@@ -148,13 +148,15 @@ def get_from_packets(
             )
 
             assert escapesurfacegamma is not None
-            lcdata[dirbin]["lum_cmf"] = (
-                dftimebinned_cmf["e_cmf_sum"]
-                / nprocs_read
-                * solidanglefactor
-                / escapesurfacegamma
-                * (u.erg / u.day).to("solLum")
-                / arr_timedelta
+            lcdata[dirbin] = lcdata[dirbin].with_columns(
+                (
+                    dftimebinned_cmf["e_cmf_sum"]
+                    / nprocs_read
+                    * solidanglefactor
+                    / escapesurfacegamma
+                    * (u.erg / u.day).to("solLum")
+                    / arr_timedelta
+                ).alias("lum_cmf")
             )
 
     return lcdata
