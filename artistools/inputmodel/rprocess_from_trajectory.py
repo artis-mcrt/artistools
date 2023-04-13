@@ -148,7 +148,7 @@ def get_trajectory_timestepfile_nuc_abund(
         # )
 
     # dfnucabund.eval('abund = 10 ** log10abund', inplace=True)
-    dfnucabund = dfnucabund.eval("massfrac = (N + Z) * (10 ** log10abund)")
+    dfnucabund["massfrac"] = (dfnucabund["N"] + dfnucabund["Z"]) * (10 ** dfnucabund["log10abund"])
     # dfnucabund.eval('A = N + Z', inplace=True)
     # dfnucabund.query('abund > 0.', inplace=True)
 
@@ -163,9 +163,14 @@ def get_trajectory_timestepfile_nuc_abund(
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
     """Initial cell energy [erg/g]."""
     with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as enthermofile:
-        dfthermo: pd.DataFrame = pd.read_csv(
-            enthermofile, sep=r"\s+", usecols=["time/s", "Qdot"], engine="c", dtype={0: float, 1: float}
-        )
+        try:
+            dfthermo: pd.DataFrame = pd.read_csv(
+                enthermofile, sep=r"\s+", usecols=["time/s", "Qdot"], engine="c", dtype={0: float, 1: float}
+            )
+        except pd.errors.EmptyDataError:
+            print(f"Problem with file {enthermofile}")
+            raise
+
         dfthermo = dfthermo.rename(columns={"time/s": "time_s"})
         startindex: int = int(np.argmax(dfthermo["time_s"] >= 1))  # start integrating at this number of seconds
 
@@ -212,7 +217,7 @@ def get_trajectory_abund_q(
         return {}
 
     massfractotal = dftrajnucabund.massfrac.sum()
-    dftrajnucabund = dftrajnucabund.query("Z >= 1")
+    dftrajnucabund = dftrajnucabund.query("Z >= 1").copy()
 
     dftrajnucabund["nucabundcolname"] = [
         f"X_{at.get_elsymbol(int(row.Z))}{int(row.N + row.Z)}" for row in dftrajnucabund.itertuples()
@@ -469,7 +474,7 @@ def add_abundancecontributions(
                 f"X_{at.get_elsymbol(atomic_number)}": (
                     dfnucabundances.eval(
                         f'{" + ".join(elemisotopes[atomic_number])}',
-                        # engine="python" if len(elemisotopes[atomic_number]) > 31 else None
+                        engine="python" if len(elemisotopes[atomic_number]) > 31 else None,
                     )
                     if atomic_number in elemisotopes
                     else np.zeros(len(dfnucabundances))
