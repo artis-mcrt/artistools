@@ -139,9 +139,10 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
         griddata["Q"] = np.nan_to_num(griddata["Q"], nan=0.0)
 
     factor_position = 1.478  # in km
-    griddata = griddata.eval("pos_x_min = pos_x_min * @factor_position * @km_to_cm")
-    griddata = griddata.eval("pos_y_min = pos_y_min * @factor_position * @km_to_cm")
-    griddata = griddata.eval("pos_z_min = pos_z_min * @factor_position * @km_to_cm")
+    km_to_cm = 1e5
+    griddata["pos_x_min"] = griddata["pos_x_min"] * factor_position * km_to_cm
+    griddata["pos_y_min"] = griddata["pos_y_min"] * factor_position * km_to_cm
+    griddata["pos_z_min"] = griddata["pos_z_min"] * factor_position * km_to_cm
 
     griddata["rho"] = griddata["rho"] * 6.176e17  # convert to g/cm3
 
