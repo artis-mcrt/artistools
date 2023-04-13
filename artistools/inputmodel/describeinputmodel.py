@@ -131,7 +131,7 @@ def main(args=None, argsraw=None, **kwargs):
                 elem_mass = speciesmasses.get(elsymb, 0.0)
                 if elem_mass > 0.0:
                     strcomment += f" ({mass_g / elem_mass * 100:6.2f}% of {elsymb} element mass)"
-                if mass_g > elem_mass * (1.0 + 1e-10):
+                if mass_g > elem_mass * (1.0 + 1e-5):
                     strcomment += " ERROR! isotope sum is greater than element abundance"
             zstr = f"Z={atomic_number}"
             print(f"{zstr:>5} {species:9s} {species_mass_msun:.3e} Msun    massfrac {massfrac:.3e}{strcomment}")
