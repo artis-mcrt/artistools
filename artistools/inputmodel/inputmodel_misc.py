@@ -1066,7 +1066,7 @@ def scale_model_to_time(
     )
 
     for col in dfmodel.columns:
-        if col.startwith("pos_"):
+        if col.startswith("pos_"):
             dfmodel[col] *= timefactor
         elif col == "rho":
             dfmodel["rho"] *= timefactor**-3
