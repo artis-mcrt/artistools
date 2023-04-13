@@ -3,7 +3,6 @@
 import argparse
 import datetime
 import math
-import os.path
 import sys
 from pathlib import Path
 
@@ -338,7 +337,7 @@ def makemodelfromgriddata(
 
     dfgridcontributions = (
         at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
-        if os.path.isfile(Path(gridfolderpath, "gridcontributions.txt"))
+        if Path(gridfolderpath, "gridcontributions.txt").is_file()
         else None
     )
 
