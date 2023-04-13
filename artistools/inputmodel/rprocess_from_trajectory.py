@@ -16,6 +16,7 @@ from typing import Union
 import argcomplete
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 
 import artistools as at
 
@@ -75,7 +76,8 @@ def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
             usecols=[0, 1],
             names=["nstep", "timesec"],
             engine="c",
-            dtype={0: int, 1: float},
+            dtype={0: pd.ArrowDtype(pa.int32()), 1: pd.ArrowDtype(pa.float32())},
+            dtype_backend="pyarrow",
         )
 
     return dfevol
@@ -132,7 +134,8 @@ def get_trajectory_timestepfile_nuc_abund(
             colspecs=[(0, 4), (4, 8), (8, 21)],
             engine="c",
             names=["N", "Z", "log10abund"],
-            dtype={0: int, 1: int, 2: float},
+            dtype={0: pd.ArrowDtype(pa.int32()), 1: pd.ArrowDtype(pa.int32()), 2: pd.ArrowDtype(pa.float32())},
+            dtype_backend="pyarrow",
         )
 
         # in case the files are inconsistent, switch to an adaptive reader
@@ -165,7 +168,12 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
     with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as enthermofile:
         try:
             dfthermo: pd.DataFrame = pd.read_csv(
-                enthermofile, sep=r"\s+", usecols=["time/s", "Qdot"], engine="c", dtype={0: float, 1: float}
+                enthermofile,
+                sep=r"\s+",
+                usecols=["time/s", "Qdot"],
+                engine="c",
+                dtype={0: pd.ArrowDtype(pa.float32()), 1: pd.ArrowDtype(pa.float32())},
+                dtype_backend="pyarrow",
             )
         except pd.errors.EmptyDataError:
             print(f"Problem with file {enthermofile}")
@@ -175,7 +183,7 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
         startindex: int = int(np.argmax(dfthermo["time_s"] >= 1))  # start integrating at this number of seconds
 
         assert all(dfthermo["Qdot"][startindex : nts_max + 1] > 0.0)
-        dfthermo = dfthermo.eval("Qdot_expansionadjusted = Qdot * time_s / @t_model_s")
+        dfthermo["Qdot_expansionadjusted"] = dfthermo["Qdot"] * dfthermo["time_s"] / t_model_s
 
         qdotintegral: float = np.trapz(
             y=dfthermo["Qdot_expansionadjusted"][startindex : nts_max + 1],
@@ -217,7 +225,7 @@ def get_trajectory_abund_q(
         return {}
 
     massfractotal = dftrajnucabund.massfrac.sum()
-    dftrajnucabund = dftrajnucabund.query("Z >= 1").copy()
+    dftrajnucabund = dftrajnucabund.loc[dftrajnucabund["Z"] >= 1]
 
     dftrajnucabund["nucabundcolname"] = [
         f"X_{at.get_elsymbol(int(row.Z))}{int(row.N + row.Z)}" for row in dftrajnucabund.itertuples()
@@ -294,7 +302,13 @@ def get_gridparticlecontributions(gridcontribpath: Union[Path, str]) -> pd.DataF
     dfcontribs = pd.read_csv(
         Path(gridcontribpath, "gridcontributions.txt"),
         delim_whitespace=True,
-        dtype={0: int, 1: int, 2: float, 3: float},
+        dtype={
+            0: pd.ArrowDtype(pa.int32()),
+            1: pd.ArrowDtype(pa.int32()),
+            2: pd.ArrowDtype(pa.float32()),
+            3: pd.ArrowDtype(pa.float32()),
+        },
+        dtype_backend="pyarrow",
     )
 
     return dfcontribs
@@ -320,7 +334,7 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataF
     )
     # after filtering, frac_of_cellmass_includemissing will still include particles with rho but no abundance data
     # frac_of_cellmass will exclude particles with no abundances
-    dfcontribs = dfcontribs.eval("frac_of_cellmass_includemissing = frac_of_cellmass")
+    dfcontribs["frac_of_cellmass_includemissing"] = dfcontribs["frac_of_cellmass"]
     # dfcontribs.query('particleid not in @missing_particleids', inplace=True)
     dfcontribs.loc[dfcontribs.eval("particleid in @missing_particleids"), "frac_of_cellmass"] = 0.0
 
@@ -362,11 +376,11 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataF
     return dfcontribs
 
 
-def save_gridparticlecontributions(dfcontribs: pd.DataFrame, gridcontribpath):
+def save_gridparticlecontributions(dfcontribs: pd.DataFrame, gridcontribpath) -> None:
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
         gridcontribpath = Path(gridcontribpath, "gridcontributions.txt")
-    dfcontribs.to_csv(gridcontribpath, sep=" ", index=False)
+    dfcontribs.to_csv(gridcontribpath, sep=" ", index=False, float_format="%.7e")
 
 
 def add_abundancecontributions(
