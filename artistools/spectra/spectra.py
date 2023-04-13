@@ -323,7 +323,7 @@ def get_spec_res(
     if average_over_phi:
         res_specdata = at.average_direction_bins(res_specdata, overangle="phi")
 
-    return dict(res_specdata.items())
+    return res_specdata
 
 
 def get_spectrum(
