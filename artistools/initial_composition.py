@@ -351,8 +351,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--opacity", action="store_true", help="Plot opacity from opacity.txt (if available for model)")
 
-    parser.add_argument("-modeldim", type=int, default=None, help="Choose how many dimensions. 3 for 3D, 2 for 2D")
-
     parser.add_argument("--plot3d", action="store_true", help="Make 3D plot")
 
     parser.add_argument("-surfaces3d", type=float, nargs="+", help="define positions of surfaces for 3D plots")
@@ -375,12 +373,12 @@ def main(args=None, argsraw=None, **kwargs):
         make_3d_plot(Path(args.modelpath), args)
         return
 
-    inputparams = at.get_inputparams(args.modelpath) if not args.modeldim else {"n_dimensions": args.modeldim}
+    _, modelmeta = at.get_modeldata(getheadersonly=True, printwarningsonly=True)
 
-    if inputparams["n_dimensions"] == 2:
+    if modelmeta["dimensions"] == 2:
         plot_2d_initial_abundances(args.modelpath, args)
 
-    if inputparams["n_dimensions"] == 3:
+    elif modelmeta["dimensions"] == 3:
         plot_3d_initial_abundances(args.modelpath, args)
 
 
