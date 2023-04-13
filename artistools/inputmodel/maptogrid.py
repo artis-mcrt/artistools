@@ -84,7 +84,9 @@ def kernelvals2(rij2: float, hmean: float, wij: np.ndarray) -> float:  # ist sch
     return wtij
 
 
-def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoordgrid: int = 50) -> None:
+def maptogrid(
+    ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoordgrid: int = 50, downsamplefactor: int = 1
+) -> None:
     if not ejectasnapshotpath.is_file():
         print(f"{ejectasnapshotpath} not found")
         return
@@ -139,8 +141,15 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
     snapshot_columns_used = ["id", "h", "x", "y", "z", "vx", "vy", "vz", "pmass", "rho", "p", "rho_rst", "ye"]
 
     dfsnapshot = pd.read_csv(
-        ejectasnapshotpath, names=snapshot_columns, delim_whitespace=True, usecols=snapshot_columns_used
+        ejectasnapshotpath,
+        names=snapshot_columns,
+        delim_whitespace=True,
+        usecols=snapshot_columns_used,
+        dtype_backend="pyarrow",
     )
+
+    if downsamplefactor > 1:
+        dfsnapshot = dfsnapshot.sample(len(dfsnapshot) // downsamplefactor)
 
     logprint(dfsnapshot)
 
@@ -161,17 +170,17 @@ def maptogrid(ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoo
     dtextra = dtextra_seconds / 4.926e-6  # convert to geom units.
 
     particleid = dfsnapshot.id.to_numpy()
-    x = dfsnapshot.x.to_numpy()
-    y = dfsnapshot.y.to_numpy()
-    z = dfsnapshot.z.to_numpy()
-    h = dfsnapshot.h.to_numpy()
-    vx = dfsnapshot.vx.to_numpy()
-    vy = dfsnapshot.vy.to_numpy()
-    vz = dfsnapshot.vz.to_numpy()
-    pmass = dfsnapshot.pmass.to_numpy()
-    rho_rst = dfsnapshot.rho_rst.to_numpy()
-    rho = dfsnapshot.rho.to_numpy()
-    Ye = dfsnapshot.ye.to_numpy()
+    x = dfsnapshot["x"].to_numpy().copy()
+    y = dfsnapshot["y"].to_numpy().copy()
+    z = dfsnapshot["z"].to_numpy().copy()
+    h = dfsnapshot["h"].to_numpy().copy()
+    vx = dfsnapshot["vx"].to_numpy()
+    vy = dfsnapshot["vy"].to_numpy()
+    vz = dfsnapshot["vz"].to_numpy()
+    pmass = dfsnapshot["pmass"].to_numpy()
+    rho_rst = dfsnapshot["rho_rst"].to_numpy()
+    rho = dfsnapshot["rho"].to_numpy()
+    Ye = dfsnapshot["ye"].to_numpy()
 
     with open(Path(outputfolderpath, "ejectapartanalysis.dat"), mode="w", encoding="utf-8") as fpartanalysis:
         for n in range(npart):
@@ -416,6 +425,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-ncoordgrid", type=int, default=50, help="Number of grid positions per axis (numcells = ncoordgrid^3)"
     )
+    parser.add_argument(
+        "-downsamplefactor",
+        type=int,
+        default=1,
+        help="Randomly sample particles, reducing the number by this factor (e.g. 2 will ignore half of the particles)",
+    )
     parser.add_argument("-outputfolderpath", "-o", default=".", help="Path for output files")
 
 
@@ -433,7 +448,12 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     ejectasnapshotpath = Path(args.inputpath, "ejectasnapshot.dat")
 
-    maptogrid(ejectasnapshotpath=ejectasnapshotpath, ncoordgrid=args.ncoordgrid, outputfolderpath=args.outputfolderpath)
+    maptogrid(
+        ejectasnapshotpath=ejectasnapshotpath,
+        ncoordgrid=args.ncoordgrid,
+        outputfolderpath=args.outputfolderpath,
+        downsamplefactor=args.downsamplefactor,
+    )
 
 
 if __name__ == "__main__":
