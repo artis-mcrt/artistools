@@ -16,7 +16,6 @@ from typing import Union
 import argcomplete
 import numpy as np
 import pandas as pd
-import pyarrow as pa
 
 import artistools as at
 
@@ -76,7 +75,7 @@ def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
             usecols=[0, 1],
             names=["nstep", "timesec"],
             engine="c",
-            dtype={0: pd.ArrowDtype(pa.int32()), 1: pd.ArrowDtype(pa.float32())},
+            dtype={0: "int32[pyarrow]", 1: "float32[pyarrow]"},
             dtype_backend="pyarrow",
         )
 
@@ -303,10 +302,10 @@ def get_gridparticlecontributions(gridcontribpath: Union[Path, str]) -> pd.DataF
         Path(gridcontribpath, "gridcontributions.txt"),
         delim_whitespace=True,
         dtype={
-            0: pd.ArrowDtype(pa.int32()),
-            1: pd.ArrowDtype(pa.int32()),
-            2: pd.ArrowDtype(pa.float32()),
-            3: pd.ArrowDtype(pa.float32()),
+            0: "int32[pyarrow]",
+            1: "int32[pyarrow]",
+            2: "float32[pyarrow]",
+            3: "float32[pyarrow]",
         },
         dtype_backend="pyarrow",
     )
