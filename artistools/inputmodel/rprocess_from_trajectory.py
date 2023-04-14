@@ -134,7 +134,7 @@ def get_trajectory_timestepfile_nuc_abund(
             colspecs=[(0, 4), (4, 8), (8, 21)],
             engine="c",
             names=["N", "Z", "log10abund"],
-            dtype={0: pd.ArrowDtype(pa.int32()), 1: pd.ArrowDtype(pa.int32()), 2: pd.ArrowDtype(pa.float32())},
+            dtype={0: "int32[pyarrow]", 1: "int32[pyarrow]", 2: "float32[pyarrow]"},
             dtype_backend="pyarrow",
         )
 
@@ -172,7 +172,7 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
                 sep=r"\s+",
                 usecols=["time/s", "Qdot"],
                 engine="c",
-                dtype={0: pd.ArrowDtype(pa.float32()), 1: pd.ArrowDtype(pa.float32())},
+                dtype={0: "float32[pyarrow]", 1: "float32[pyarrow]"},
                 dtype_backend="pyarrow",
             )
         except pd.errors.EmptyDataError:
@@ -521,7 +521,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args=None, argsraw=None, **kwargs) -> None:
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,
