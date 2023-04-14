@@ -542,7 +542,7 @@ def main(args=None, argsraw=None, **kwargs):
     dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(
         traj_root, particleid, "./Run_rprocess/tday_nz-plane"
     )
-    dfnucabund = dfnucabund.query("Z >= 1")
+    dfnucabund = dfnucabund.iloc[dfnucabund["Z"] >= 1]
     dfnucabund["radioactive"] = True
 
     t_model_init_days = t_model_init_seconds / (24 * 60 * 60)
