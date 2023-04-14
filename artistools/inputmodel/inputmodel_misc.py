@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from typing import Callable
 from typing import Literal
 from typing import Optional
 from typing import Union
@@ -187,15 +188,15 @@ def read_modelfile_text(
         ]
     )
 
-    dtypes: defaultdict[str, type]
+    dtypes: defaultdict[str, Union[Callable, str]]
     if dtype_backend == "pyarrow":
-        dtypes = defaultdict(lambda: pd.ArrowDtype(pa.float32()))
-        dtypes["inputcellid"] = pd.ArrowDtype(pa.int32())
-        dtypes["tracercount"] = pd.ArrowDtype(pa.int32())
+        dtypes = defaultdict(lambda: "float32[pyarrow]")
+        dtypes["inputcellid"] = "int32[pyarrow]"
+        dtypes["tracercount"] = "int32[pyarrow]"
     else:
-        dtypes = defaultdict(lambda: np.float32)
-        dtypes["inputcellid"] = np.int32
-        dtypes["tracercount"] = np.int32
+        dtypes = defaultdict(lambda: "float32")
+        dtypes["inputcellid"] = "int32"
+        dtypes["tracercount"] = "int32"
 
     # each cell takes up two lines in the model file
     dfmodel = pd.read_csv(
@@ -832,12 +833,9 @@ def get_initelemabundances(
         )
         colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
         dtypes = (
-            {
-                col: pd.ArrowDtype(pa.float32()) if col.startswith("X_") else pd.ArrowDtype(pa.int32())
-                for col in colnames
-            }
+            {col: "float32[pyarrow]" if col.startswith("X_") else "int32[pyarrow]" for col in colnames}
             if dtype_backend == "pyarrow"
-            else {col: np.float32 if col.startswith("X_") else np.int32 for col in colnames}
+            else {col: "float32" if col.startswith("X_") else "int32" for col in colnames}
         )
 
         abundancedata = pd.read_csv(
@@ -857,7 +855,7 @@ def get_initelemabundances(
 
     abundancedata.index.name = "modelgridindex"
     if dtype_backend == "pyarrow":
-        abundancedata.index = abundancedata.index.astype(pd.ArrowDtype(pa.int32()))
+        abundancedata.index = abundancedata.index.astype("int32[pyarrow]")
 
     return abundancedata
 
