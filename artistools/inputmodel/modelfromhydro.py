@@ -438,6 +438,7 @@ def main(args=None, argsraw=None, **kwargs):
         argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
+    pd.options.mode.copy_on_write = True
     gridfolderpath = args.gridfolderpath
     if not Path(gridfolderpath, "grid.dat").is_file() or not Path(gridfolderpath, "gridcontributions.txt").is_file():
         print("grid.dat and gridcontributions.txt are required. Run artistools-maptogrid")

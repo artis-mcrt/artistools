@@ -652,6 +652,7 @@ def save_modeldata(
     dimensions: Optional[int] = None,
     headercommentlines: Optional[list[str]] = None,
     modelmeta: Optional[dict[str, Any]] = None,
+    twolinespercell: bool = False,
 ) -> None:
     """Save a pandas DataFrame and snapshot time into ARTIS model.txt"""
     if modelmeta:
@@ -747,21 +748,26 @@ def save_modeldata(
         #     fmodel.write('\n')
         if dimensions == 1:
             for cell in dfmodel.itertuples(index=False):
-                fmodel.write(f"{cell.inputcellid:6d} {cell.velocity_outer:9.2f} {cell.logrho:10.8f} ")
+                fmodel.write(f"{cell.inputcellid:d} {cell.velocity_outer:9.2f} {cell.logrho:10.8f} ")
                 fmodel.write(" ".join([f"{getattr(cell, col)}" for col in abundcols]))
                 fmodel.write("\n")
 
         elif dimensions == 3:
-            zeroabund = " ".join(["0" for _ in abundcols])
-
+            # dfmodel.to_csv(fmodel, sep=" ", float_format=lambda x: "%.4e" if x > 0 else "0.0")
+            zeroabund = " ".join(["0.0" for _ in abundcols])
+            line_end = "\n" if twolinespercell else " "
             for inputcellid, posxmin, posymin, poszmin, rho, *othercolvals in dfmodel[
                 ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho", *abundcols]
             ].itertuples(index=False, name=None):
-                fmodel.write(f"{inputcellid:6d} {posxmin} {posymin} {poszmin} {rho}\n")
+                fmodel.write(f"{inputcellid:d} {posxmin} {posymin} {poszmin} {rho}{line_end}")
                 fmodel.write(
                     " ".join(
                         [
-                            f"{colvalue:.4e}" if isinstance(colvalue, float) else f"{colvalue}"
+                            (
+                                (f"{colvalue:.4e}" if colvalue > 0.0 else "0.0")
+                                if isinstance(colvalue, float)
+                                else f"{colvalue}"
+                            )
                             for colvalue in othercolvals
                         ]
                     )
