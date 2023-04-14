@@ -905,7 +905,7 @@ def save_empty_abundance_file(ngrid: int, outputfilepath=Path()) -> None:
     # abundancedata['Z=28'] = np.ones(ngrid)
 
     dfabundances = pd.DataFrame(data=abundancedata).round(decimals=5)
-    dfabundances.to_csv(outputfilepath, header=False, sep="\t", index=False)
+    dfabundances.to_csv(outputfilepath, header=False, sep=" ", index=False)
 
 
 def get_dfmodel_dimensions(dfmodel: pd.DataFrame) -> int:
