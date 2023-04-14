@@ -891,7 +891,7 @@ def save_initelemabundances(
     print(f"Saved {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def save_empty_abundance_file(ngrid: int, outputfilepath=Path()):
+def save_empty_abundance_file(ngrid: int, outputfilepath=Path()) -> None:
     """Dummy abundance file with only zeros"""
     if Path(outputfilepath).is_dir():
         outputfilepath = Path(outputfilepath) / "abundances.txt"
