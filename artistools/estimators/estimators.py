@@ -247,7 +247,7 @@ def read_estimators_from_file(
     estimators_thisfile = {}
     estimfilename = f"estimators_{mpirank:04d}.out"
     try:
-        estfilepath = at.firstexisting(Path(folderpath, estimfilename), tryzipped=True)
+        estfilepath = at.firstexisting(estimfilename, folder=folderpath, tryzipped=True)
     except FileNotFoundError:
         # not worth printing an error, because ranks with no cells to update do not produce an estimator file
         # print(f'Warning: Could not find {estfilepath.relative_to(modelpath.parent)}')
