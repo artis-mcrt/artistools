@@ -354,7 +354,7 @@ def get_modeldata(
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
     dfmodel = None
-    filenameparquet = Path(filename).with_suffix(".txt.parquet")
+    filenameparquet = at.stripallsuffixes(Path(filename)).with_suffix(".txt.parquet")
 
     source_textfile_details = {"st_size": filename.stat().st_size, "st_mtime": filename.stat().st_mtime}
 
@@ -368,7 +368,7 @@ def get_modeldata(
             or b"source_textfile_details" not in pqmetadata.metadata
             or pickle.dumps(source_textfile_details) != pqmetadata.metadata[b"source_textfile_details"]
         ):
-            print(f" text source {filename} doesn't match file header of {filenameparquet}. Removing parquet file")
+            print(f"  text source {filename} doesn't match file header of {filenameparquet}. Removing parquet file")
             filenameparquet.unlink(missing_ok=True)
         else:
             modelmeta = pickle.loads(pqmetadata.metadata[b"artismodelmeta"])
@@ -815,7 +815,7 @@ def get_initelemabundances(
     """Return a table of elemental mass fractions by cell from abundances."""
     abundancefilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
 
-    filenameparquet = Path(abundancefilepath).with_suffix(".txt.parquet")
+    filenameparquet = at.stripallsuffixes(Path(abundancefilepath)).with_suffix(".txt.parquet")
     if filenameparquet.exists() and Path(abundancefilepath).stat().st_mtime > filenameparquet.stat().st_mtime:
         print(f"{abundancefilepath} has been modified after {filenameparquet}. Deleting out of date parquet file.")
         filenameparquet.unlink()
