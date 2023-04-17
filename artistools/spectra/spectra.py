@@ -486,6 +486,7 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
         )
 
 
+@lru_cache(maxsize=4)
 def get_specpol_data(
     angle: int = -1, modelpath: Optional[Path] = None, specdata: Optional[pd.DataFrame] = None
 ) -> dict[str, pd.DataFrame]:
