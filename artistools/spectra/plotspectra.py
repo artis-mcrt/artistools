@@ -331,11 +331,17 @@ def plot_artis_spectrum(
 
             if dirbin != -1:
                 if args.plotvspecpol:
+                    phi_angle = round(vpkt_config["phi"][dirbin])
                     if args.viewinganglelabelunits == "deg":
-                        viewing_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][dirbin])))
-                        linelabel = rf"vspecbin {dirbin}: $\theta$ = {viewing_angle}$^\circ$"
+                        theta_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][dirbin])))
+                        linelabel = (
+                            rf"vspecbin {dirbin}: $\theta$ = {theta_angle}$^\circ$, $\phi$ = {phi_angle}$^\circ$"
+                        )
                     elif args.viewinganglelabelunits == "rad":
-                        linelabel = rf"vspecbin {dirbin}: cos $\theta$ = {vpkt_config['cos_theta'][dirbin]}"
+                        linelabel = (
+                            rf"vspecbin {dirbin}: cos $\theta$ = {vpkt_config['cos_theta'][dirbin]}, $\phi$ ="
+                            rf" {phi_angle}$^\circ$"
+                        )
                 else:
                     linelabel = dirbin_definitions[dirbin]
                     print(f" directionbin {dirbin:4d}  {dirbin_definitions[dirbin]}")
@@ -1285,6 +1291,10 @@ def main(args=None, argsraw=None, **kwargs) -> None:
             args.average_over_phi_angle = True
 
     at.set_mpl_style()
+
+    assert (
+        not args.plotvspecpol or not args.plotviewingangle
+    )  # choose either virtual packet directions or real packet direction bins
 
     if not args.specpath:
         args.specpath = [Path(".")]
