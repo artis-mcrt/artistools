@@ -469,7 +469,7 @@ def make_spectrum_plot(
                 maxpacketfiles=args.maxpacketfiles,
                 filterfunc=filterfunc,
                 plotpacketcount=args.plotpacketcount,
-                directionbins=args.plotviewingangle,
+                directionbins=args.plotviewingangle if not args.plotvspecpol else args.plotvspecpol,
                 average_over_phi=args.average_over_phi_angle,
                 average_over_theta=args.average_over_theta_angle,
                 **plotkwargs,
