@@ -54,10 +54,13 @@ def read_modelfile_text(
             print("  detected 2D model file")
             modelmeta["dimensions"] = 2
             ncoordgrid_r, ncoordgrid_z = (int(n) for n in line.strip().split(" "))
+            modelmeta["ncoordgrid_r"] = ncoordgrid_r
+            modelmeta["ncoordgrid_z"] = ncoordgrid_z
             modelcellcount = ncoordgrid_r * ncoordgrid_z
         else:
             modelcellcount = int(line)
 
+        modelmeta["npts_model"] = modelcellcount
         modelmeta["t_model_init_days"] = float(fmodel.readline())
         numheaderrows += 2
         t_model_init_seconds = modelmeta["t_model_init_days"] * 24 * 60 * 60
@@ -171,6 +174,11 @@ def read_modelfile_text(
         ncoordgridx = int(round(modelcellcount ** (1.0 / 3.0)))
         ncoordgridy = int(round(modelcellcount ** (1.0 / 3.0)))
         ncoordgridz = int(round(modelcellcount ** (1.0 / 3.0)))
+        modelmeta["ncoordgridx"] = ncoordgridx
+        modelmeta["ncoordgridy"] = ncoordgridy
+        modelmeta["ncoordgridz"] = ncoordgridz
+        if ncoordgridx == ncoordgridy == ncoordgridz:
+            modelmeta["ncoordgrid"] = ncoordgridx
 
         assert (ncoordgridx * ncoordgridy * ncoordgridz) == modelcellcount
 
@@ -385,6 +393,7 @@ def get_modeldata(
             )
 
     if dfmodel is None:
+        skipnuclidemassfraccolumns = False
         dfmodel, modelmeta = read_modelfile_text(
             filename=filename,
             printwarningsonly=printwarningsonly,
@@ -403,7 +412,7 @@ def get_modeldata(
             }
             merged_metadata = {**custom_metadata, **(patable.schema.metadata or {})}
             patable = patable.replace_schema_metadata(merged_metadata)
-            pq.write_table(patable, filenameparquet)
+            pq.write_table(patable, filenameparquet, compression="ZSTD")
             # dfmodel.to_parquet(filenameparquet, compression="zstd")
             print("  Done.")
 
