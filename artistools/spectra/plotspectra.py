@@ -269,6 +269,7 @@ def plot_artis_spectrum(
 
         supxmin, supxmax = axis.get_xlim()
         if from_packets:
+            assert args.plotvspecpol is None
             viewinganglespectra = get_from_packets(
                 modelpath,
                 args.timemin,
@@ -301,6 +302,7 @@ def plot_artis_spectrum(
                 viewinganglespectra = {
                     dirbin: get_vspecpol_spectrum(modelpath, timeavg, dirbin, args, fnufilterfunc=filterfunc)
                     for dirbin in dbins_get
+                    if dirbin >= 0
                 }
             else:
                 viewinganglespectra = get_spectrum(
@@ -331,9 +333,9 @@ def plot_artis_spectrum(
                 if args.plotvspecpol:
                     if args.viewinganglelabelunits == "deg":
                         viewing_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][dirbin])))
-                        linelabel = rf"$\theta$ = {viewing_angle}$^\circ$" if axindex == 0 else None
+                        linelabel = rf"vspecbin {dirbin}: $\theta$ = {viewing_angle}$^\circ$"
                     elif args.viewinganglelabelunits == "rad":
-                        linelabel = rf"cos $\theta$ = {vpkt_config['cos_theta'][dirbin]}" if axindex == 0 else None
+                        linelabel = rf"vspecbin {dirbin}: cos $\theta$ = {vpkt_config['cos_theta'][dirbin]}"
                 else:
                     linelabel = dirbin_definitions[dirbin]
                     print(f" directionbin {dirbin:4d}  {dirbin_definitions[dirbin]}")
@@ -403,7 +405,7 @@ def make_spectrum_plot(
         plotkwargs["alpha"] = 0.95
 
         plotkwargs["linestyle"] = args.linestyle[seriesindex]
-        if not args.plotviewingangle:
+        if not args.plotviewingangle and not args.plotvspecpol:
             plotkwargs["color"] = args.color[seriesindex]
         if args.dashes[seriesindex]:
             plotkwargs["dashes"] = args.dashes[seriesindex]

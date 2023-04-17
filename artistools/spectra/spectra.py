@@ -533,7 +533,7 @@ def split_dataframe_stokesparams(specdata: pd.DataFrame) -> dict[str, pd.DataFra
     """DataFrames read from specpol*.out and vspecpol*.out are repeated over I, Q, U
     parameters. Split these into a dictionary of DataFrames.
     """
-    specdata = specdata.rename({"0": "nu"}, axis="columns")
+    specdata = specdata.rename({"0": "nu", "0.0": "nu"}, axis="columns")
     cols_to_split = []
     stokes_params = {}
     for i, key in enumerate(specdata.keys()):
@@ -563,7 +563,7 @@ def get_vspecpol_spectrum(
     args: argparse.Namespace,
     fnufilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
 ) -> pd.DataFrame:
-    stokes_params = get_specpol_data(angle, modelpath=Path(modelpath))
+    stokes_params = get_vspecpol_data(vspecangle=angle, modelpath=Path(modelpath))
     if "stokesparam" not in args:
         args.stokesparam = "I"
     vspecdata = stokes_params[args.stokesparam]
