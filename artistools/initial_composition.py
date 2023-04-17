@@ -32,7 +32,7 @@ def plot_2d_initial_abundances(modelpath, args):
     r = merge_dfs["cellpos_mid[r]"] / t_model * (u.cm / u.day).to("km/s") / 10**3
     z = merge_dfs["cellpos_mid[z]"] / t_model * (u.cm / u.day).to("km/s") / 10**3
 
-    colname = f"X_{args.elem}"
+    colname = f"X_{args.plotvars}"
     font = {"weight": "bold", "size": 18}
 
     f = plt.figure(figsize=(4, 5))
@@ -172,7 +172,7 @@ def plot_3d_initial_abundances(modelpath, args=None) -> None:
     )
 
     subplots = False
-    if len(args.elem) > 1:
+    if len(args.plotvars) > 1:
         subplots = True
 
     if not subplots:
@@ -196,8 +196,8 @@ def plot_3d_initial_abundances(modelpath, args=None) -> None:
         for ax in axes:
             ax.set(aspect="equal")
 
-    for index, elem in enumerate(args.elem):
-        colname = elem if args.rho or elem in ["rho", "cellYe", "tracercount"] else f"X_{elem}"
+    for index, plotvar in enumerate(args.plotvars):
+        colname = plotvar if plotvar in df2dslice.columns else f"X_{plotvar}"
 
         if subplots:
             ax = axes[index]
@@ -218,7 +218,7 @@ def plot_3d_initial_abundances(modelpath, args=None) -> None:
         fig.text(0.05, 0.5, ylabel, ha="center", va="center", rotation="vertical")
 
     # cbar.set_label(label="test", size="x-large")  # , fontweight='bold')
-    if "cellYe" not in args.elem and "tracercount" not in args.elem:
+    if "cellYe" not in args.plotvars and "tracercount" not in args.plotvars:
         if args.logcolorscale:
             cbar.ax.set_title(r"log10($\rho$) [g/cm3]", size="small")
         else:
@@ -229,7 +229,7 @@ def plot_3d_initial_abundances(modelpath, args=None) -> None:
     # ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
 
-    outfilename = args.outputfile if args.outputfile else f"plotcomposition{','.join(args.elem)}.pdf"
+    outfilename = args.outputfile if args.outputfile else f"plotcomposition_{','.join(args.plotvars)}.pdf"
     plt.savefig(Path(modelpath) / outfilename, format="pdf")
 
     print(f"Saved {outfilename}")
@@ -351,9 +351,16 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-o", action="store", dest="outputfile", type=Path, default=None, help="Filename for PDF file")
 
-    parser.add_argument("-elem", type=str, default=["Fe"], nargs="+", help="Choose element to plot. Default is Fe")
-
-    parser.add_argument("--rho", action="store_true", help="Plot rho instead of ion")
+    parser.add_argument(
+        "plotvars",
+        type=str,
+        default=["rho"],
+        nargs="+",
+        help=(
+            "Element symbols (Fe, Ni, Sr) for mass fraction or other model columns (rho, tracercount) to plot. Default"
+            " is rho"
+        ),
+    )
 
     parser.add_argument("--logcolorscale", action="store_true", help="Use log scale for colour map")
 
