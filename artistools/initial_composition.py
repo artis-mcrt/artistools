@@ -4,7 +4,9 @@ import argparse
 import math
 import os
 from pathlib import Path
+from typing import Any
 from typing import Literal
+from typing import Optional
 
 import argcomplete
 import matplotlib as mpl
@@ -53,7 +55,12 @@ def plot_2d_initial_abundances(modelpath, args):
 
 
 def get_2D_slice_through_3d_model(
-    dfmodel, modelmeta, sliceaxis: Literal["x", "y", "z"], plotaxis1, plotaxis2, sliceindex=None
+    dfmodel: pd.DataFrame,
+    sliceaxis: Literal["x", "y", "z"],
+    modelmeta: Optional[dict[str, Any]] = None,
+    plotaxis1: Optional[Literal["x", "y", "z"]] = None,
+    plotaxis2: Optional[Literal["x", "y", "z"]] = None,
+    sliceindex: Optional[int] = None,
 ) -> pd.DataFrame:
     if not sliceindex:
         # get midpoint
@@ -68,7 +75,8 @@ def get_2D_slice_through_3d_model(
 
     slicedf = dfmodel.loc[dfmodel[f"pos_{sliceaxis}_min"] == sliceposition]
 
-    assert slicedf.shape[0] == modelmeta[f"ncoordgrid{plotaxis1}"] * modelmeta[f"ncoordgrid{plotaxis2}"]
+    if modelmeta is not None and plotaxis1 is not None and plotaxis2 is not None:
+        assert slicedf.shape[0] == modelmeta[f"ncoordgrid{plotaxis1}"] * modelmeta[f"ncoordgrid{plotaxis2}"]
 
     return slicedf
 
@@ -163,9 +171,9 @@ def plot_3d_initial_abundances(modelpath, args=None) -> None:
 
     sliceaxis: Literal["x", "y", "z"] = "z"
 
-    axes = ["x", "y", "z"]
-    plotaxis1 = [ax for ax in axes if ax != sliceaxis][0]
-    plotaxis2 = [ax for ax in axes if ax not in [sliceaxis, plotaxis1]][0]
+    axes: list[Literal["x", "y", "z"]] = ["x", "y", "z"]
+    plotaxis1: Literal["x", "y", "z"] = [ax for ax in axes if ax != sliceaxis][0]
+    plotaxis2: Literal["x", "y", "z"] = [ax for ax in axes if ax not in [sliceaxis, plotaxis1]][0]
 
     df2dslice = get_2D_slice_through_3d_model(
         dfmodel=dfmodel, modelmeta=modelmeta, sliceaxis=sliceaxis, plotaxis1=plotaxis1, plotaxis2=plotaxis2
