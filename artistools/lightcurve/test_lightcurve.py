@@ -12,7 +12,7 @@ outputpath = at.get_config()["path_testoutput"]
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
-def test_lightcurve_plot(mockplot):
+def test_lightcurve_plot(mockplot) -> None:
     at.lightcurve.plot(argsraw=[], modelpath=[modelpath], outputfile=outputpath, frompackets=False)
 
     arr_time_d = np.array(mockplot.call_args[0][1])
@@ -32,7 +32,7 @@ def test_lightcurve_plot(mockplot):
 
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
-def test_lightcurve_plot_frompackets(mockplot):
+def test_lightcurve_plot_frompackets(mockplot) -> None:
     at.lightcurve.plot(
         argsraw=[],
         modelpath=modelpath,
@@ -57,17 +57,17 @@ def test_lightcurve_plot_frompackets(mockplot):
     assert np.isclose(arr_lum.std(), 4.4820e38, rtol=1e-4)
 
 
-def test_band_lightcurve_plot():
+def test_band_lightcurve_plot() -> None:
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], outputfile=outputpath)
 
 
-def test_band_lightcurve_subplots():
+def test_band_lightcurve_subplots() -> None:
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["bol", "B"], outputfile=outputpath)
 
 
-def test_colour_evolution_plot():
+def test_colour_evolution_plot() -> None:
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, colour_evolution=["B-V"], outputfile=outputpath)
 
 
-def test_colour_evolution_subplots():
+def test_colour_evolution_subplots() -> None:
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, colour_evolution=["U-B", "B-V"], outputfile=outputpath)

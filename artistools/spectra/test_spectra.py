@@ -12,7 +12,7 @@ modelpath = at.get_config()["path_testartismodel"]
 outputpath = at.get_config()["path_testoutput"]
 
 
-def test_spectraplot():
+def test_spectraplot() -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=[modelpath, "sn2011fe_PTF11kly_20120822_norm.txt"],
@@ -22,7 +22,7 @@ def test_spectraplot():
     )
 
 
-def test_spectra_frompackets():
+def test_spectra_frompackets() -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
@@ -33,11 +33,11 @@ def test_spectra_frompackets():
     )
 
 
-def test_spectra_outputtext():
+def test_spectra_outputtext() -> None:
     at.spectra.plot(argsraw=[], specpath=modelpath, output_spectra=True)
 
 
-def test_spectraemissionplot():
+def test_spectraemissionplot() -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
@@ -49,7 +49,7 @@ def test_spectraemissionplot():
     )
 
 
-def test_spectraemissionplot_nostack():
+def test_spectraemissionplot_nostack() -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
@@ -62,8 +62,8 @@ def test_spectraemissionplot_nostack():
     )
 
 
-def test_spectra_get_spectrum():
-    def check_spectrum(dfspectrumpkts):
+def test_spectra_get_spectrum() -> None:
+    def check_spectrum(dfspectrumpkts) -> None:
         assert math.isclose(max(dfspectrumpkts["f_lambda"]), 2.548532804918824e-13, abs_tol=1e-5)
         assert min(dfspectrumpkts["f_lambda"]) < 1e-9
         assert math.isclose(np.mean(dfspectrumpkts["f_lambda"]), 1.0314682640070206e-14, abs_tol=1e-5)
@@ -88,7 +88,7 @@ def test_spectra_get_spectrum():
     check_spectrum(dfspectrumpkts)
 
 
-def test_spectra_get_flux_contributions():
+def test_spectra_get_flux_contributions() -> None:
     timestepmin = 40
     timestepmax = 80
     dfspectrum = at.spectra.get_spectrum(
@@ -121,7 +121,7 @@ def test_spectra_get_flux_contributions():
     assert max(diff) / integrated_flux_specout < 2e-3
 
 
-def test_spectra_timeseries_subplots():
+def test_spectra_timeseries_subplots() -> None:
     timedayslist = [295, 300]
     at.spectra.plot(
         argsraw=[], specpath=modelpath, outputfile=outputpath, timedayslist=timedayslist, multispecplot=True
