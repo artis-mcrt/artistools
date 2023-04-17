@@ -533,20 +533,25 @@ def split_dataframe_stokesparams(specdata: pd.DataFrame) -> dict[str, pd.DataFra
     """DataFrames read from specpol*.out and vspecpol*.out are repeated over I, Q, U
     parameters. Split these into a dictionary of DataFrames.
     """
+    specdata = specdata.rename({"0": "nu"}, axis="columns")
     cols_to_split = []
     stokes_params = {}
     for i, key in enumerate(specdata.keys()):
         if specdata.keys()[1] in key:
             cols_to_split.append(i)
 
-    stokes_params["I"] = pd.concat([specdata["nu"], specdata.iloc[:, cols_to_split[0] : cols_to_split[1]]], axis=1)
-    stokes_params["Q"] = pd.concat([specdata["nu"], specdata.iloc[:, cols_to_split[1] : cols_to_split[2]]], axis=1)
-    stokes_params["U"] = pd.concat([specdata["nu"], specdata.iloc[:, cols_to_split[2] :]], axis=1)
+    stokes_params["I"] = pd.concat(
+        [specdata["nu"], specdata.iloc[:, cols_to_split[0] : cols_to_split[1]]], axis="columns"
+    )
+    stokes_params["Q"] = pd.concat(
+        [specdata["nu"], specdata.iloc[:, cols_to_split[1] : cols_to_split[2]]], axis="columns"
+    )
+    stokes_params["U"] = pd.concat([specdata["nu"], specdata.iloc[:, cols_to_split[2] :]], axis="columns")
 
     for param in ["Q", "U"]:
         stokes_params[param].columns = stokes_params["I"].keys()
         stokes_params[param + "/I"] = pd.concat(
-            [specdata["nu"], stokes_params[param].iloc[:, 1:] / stokes_params["I"].iloc[:, 1:]], axis=1
+            [specdata["nu"], stokes_params[param].iloc[:, 1:] / stokes_params["I"].iloc[:, 1:]], axis="columns"
         )
     return stokes_params
 
