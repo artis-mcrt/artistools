@@ -52,25 +52,30 @@ def plot_2d_initial_abundances(modelpath, args):
     print(f"Saved {outfilename}")
 
 
-def get_2D_slice_through_3d_model(merge_dfs, sliceaxis: Literal["x", "y", "z"], sliceindex=None) -> pd.DataFrame:
+def get_2D_slice_through_3d_model(
+    dfmodel, modelmeta, sliceaxis: Literal["x", "y", "z"], plotaxis1, plotaxis2, sliceindex=None
+) -> pd.DataFrame:
     if not sliceindex:
         # get midpoint
-        sliceposition: float = merge_dfs.iloc[(merge_dfs["pos_x_min"]).abs().argsort()][:1]["pos_x_min"].item()
+        sliceposition: float = dfmodel.iloc[(dfmodel["pos_x_min"]).abs().argsort()][:1]["pos_x_min"].item()
         # Choose position to slice. This gets minimum absolute value as the closest to 0
     else:
         cell_boundaries = []
-        for x in merge_dfs[f"pos_{sliceaxis}_min"]:
+        for x in dfmodel[f"pos_{sliceaxis}_min"]:
             if x not in cell_boundaries:
                 cell_boundaries.append(x)
         sliceposition = cell_boundaries[sliceindex]
 
-    slicedf = merge_dfs.loc[merge_dfs[f"pos_{sliceaxis}_min"] == sliceposition]
+    slicedf = dfmodel.loc[dfmodel[f"pos_{sliceaxis}_min"] == sliceposition]
+
+    assert slicedf.shape[0] == modelmeta[f"ncoordgrid{plotaxis1}"] * modelmeta[f"ncoordgrid{plotaxis2}"]
+
     return slicedf
 
 
-def plot_slice_modelcol(ax, plotvals, colname, plotaxis1, plotaxis2, t_model_d, args):
+def plot_slice_modelcol(ax, plotvals, modelmeta, colname, plotaxis1, plotaxis2, t_model_d, args):
     print(colname)
-    colorscale = plotvals[colname] * plotvals[colname] if colname.startswith("X_") else plotvals[colname]
+    colorscale = plotvals[colname] * plotvals["rho"] if colname.startswith("X_") else plotvals[colname]
 
     if args.hideemptycells:
         # Don't plot empty cells:
@@ -97,13 +102,13 @@ def plot_slice_modelcol(ax, plotvals, colname, plotaxis1, plotaxis2, t_model_d, 
     # y = plotvals[f'pos_{plotaxis2}'] / t_model * (u.cm/u.day).to('m/s') / 2.99792458e+8
 
     # im = ax.scatter(x, y, c=colorscale, marker="s", s=30, rasterized=False)  # cmap=plt.get_cmap('PuOr')
+    ncoordgrid1 = modelmeta[f"ncoordgrid{plotaxis1}"]
+    ncoordgrid2 = modelmeta[f"ncoordgrid{plotaxis2}"]
+    grid = np.zeros((ncoordgrid1, ncoordgrid2))
 
-    ncoordgrid = 50
-    grid = np.zeros((ncoordgrid, ncoordgrid))
-
-    for x in range(0, ncoordgrid):
-        for y in range(0, ncoordgrid):
-            grid[y, x] = colorscale[y * ncoordgrid + x]
+    for i in range(0, ncoordgrid1):
+        for j in range(0, ncoordgrid2):
+            grid[j, i] = colorscale[j * ncoordgrid1 + i]
 
     im = ax.imshow(
         grid,
@@ -135,7 +140,7 @@ def plot_slice_modelcol(ax, plotvals, colname, plotaxis1, plotaxis2, t_model_d, 
     return im, scaledmap
 
 
-def plot_3d_initial_abundances(modelpath, args=None):
+def plot_3d_initial_abundances(modelpath, args=None) -> None:
     font = {
         # 'weight': 'bold',
         "size": 18
@@ -145,6 +150,7 @@ def plot_3d_initial_abundances(modelpath, args=None):
     dfmodel, modelmeta = at.get_modeldata(
         modelpath, skipnuclidemassfraccolumns=True, get_elemabundances=True, dtype_backend="pyarrow"
     )
+
     targetmodeltime_days = None
     if targetmodeltime_days is not None:
         print(
@@ -155,11 +161,15 @@ def plot_3d_initial_abundances(modelpath, args=None):
             targetmodeltime_days=targetmodeltime_days, modelmeta=modelmeta, dfmodel=dfmodel
         )
 
-    plotaxis1 = "x"
-    plotaxis2 = "y"
-    sliceaxis = "z"
+    sliceaxis: Literal["x", "y", "z"] = "z"
 
-    plotvals = get_2D_slice_through_3d_model(dfmodel, sliceaxis)
+    axes = ["x", "y", "z"]
+    plotaxis1 = [ax for ax in axes if ax != sliceaxis][0]
+    plotaxis2 = [ax for ax in axes if ax not in [sliceaxis, plotaxis1]][0]
+
+    df2dslice = get_2D_slice_through_3d_model(
+        dfmodel=dfmodel, modelmeta=modelmeta, sliceaxis=sliceaxis, plotaxis1=plotaxis1, plotaxis2=plotaxis2
+    )
 
     subplots = False
     if len(args.elem) > 1:
@@ -192,7 +202,7 @@ def plot_3d_initial_abundances(modelpath, args=None):
         if subplots:
             ax = axes[index]
         im, scaledmap = plot_slice_modelcol(
-            ax, plotvals, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
+            ax, df2dslice, modelmeta, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
         )
 
     xlabel = rf"v$_{plotaxis1}$ [$c$]"
