@@ -71,6 +71,7 @@ from .misc import get_viewingdirection_costhetabincount
 from .misc import get_viewingdirection_phibincount
 from .misc import get_viewingdirectionbincount
 from .misc import get_vpkt_config
+from .misc import get_vspec_dir_labels
 from .misc import get_wid_init_at_tmin
 from .misc import get_wid_init_at_tmodel
 from .misc import get_z_a_nucname

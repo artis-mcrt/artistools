@@ -647,11 +647,7 @@ def get_linelabel(
     angle_definition: Optional[dict[int, str]],
     args,
 ) -> str:
-    if args.plotvspecpol and angle is not None and angle != -1 and os.path.isfile(modelpath / "vpkt.txt"):
-        vpkt_config = at.get_vpkt_config(modelpath)
-        viewing_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][angle])))
-        linelabel = rf"$\theta$ = {viewing_angle}"  # todo: update to be consistent with res definition
-    elif args.plotviewingangle and angle is not None and angle != -1:
+    if angle is not None and angle != -1:
         assert angle_definition is not None
         linelabel = f"{angle_definition[angle]}" if args.nomodelname else f"{modelname} {angle_definition[angle]}"
         # linelabel = None
@@ -888,10 +884,11 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                                 plotnumber,
                             )
 
-                if args.color:
-                    plotkwargs["color"] = args.color[modelnumber]
-                else:
-                    plotkwargs["color"] = define_colours_list[modelnumber]
+                if len(angles) == 1:
+                    if args.color:
+                        plotkwargs["color"] = args.color[modelnumber]
+                    else:
+                        plotkwargs["color"] = define_colours_list[modelnumber]
 
                 if args.colorbarcostheta or args.colorbarphi:
                     # Update plotkwargs with viewing angle colour

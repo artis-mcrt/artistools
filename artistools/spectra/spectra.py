@@ -92,6 +92,7 @@ def get_spectrum_at_time(
     if dirbin >= 0:
         if args is not None and args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
             spectrum = get_vspecpol_spectrum(modelpath, time, dirbin, args)
+            return spectrum
 
         assert average_over_phi is not None
         assert average_over_theta is not None
@@ -506,6 +507,7 @@ def get_specpol_data(
     return stokes_params
 
 
+@lru_cache(maxsize=4)
 def get_vspecpol_data(
     vspecangle: Optional[int] = None, modelpath: Optional[Path] = None, specdata: Optional[pd.DataFrame] = None
 ) -> dict[str, pd.DataFrame]:

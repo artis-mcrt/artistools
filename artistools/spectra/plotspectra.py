@@ -2,7 +2,6 @@
 # PYTHON_ARGCOMPLETE_OK
 """Artistools - spectra plotting functions."""
 import argparse
-import math
 import os
 import sys
 from collections.abc import Collection
@@ -315,11 +314,15 @@ def plot_artis_spectrum(
                     fnufilterfunc=filterfunc,
                 )
 
-        dirbin_definitions = at.get_dirbin_labels(
-            dirbins=directionbins,
-            modelpath=modelpath,
-            average_over_phi=average_over_phi,
-            average_over_theta=average_over_theta,
+        dirbin_definitions = (
+            at.get_dirbin_labels(
+                dirbins=directionbins,
+                modelpath=modelpath,
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
+            )
+            if not args.plotvspecpol
+            else at.get_vspec_dir_labels(modelpath=modelpath, viewinganglelabelunits=args.viewinganglelabelunits)
         )
 
         for dirbin in directionbins:
@@ -330,21 +333,8 @@ def plot_artis_spectrum(
             )
 
             if dirbin != -1:
-                if args.plotvspecpol:
-                    phi_angle = round(vpkt_config["phi"][dirbin])
-                    if args.viewinganglelabelunits == "deg":
-                        theta_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][dirbin])))
-                        linelabel = (
-                            rf"vspecbin {dirbin}: $\theta$ = {theta_angle}$^\circ$, $\phi$ = {phi_angle}$^\circ$"
-                        )
-                    elif args.viewinganglelabelunits == "rad":
-                        linelabel = (
-                            rf"vspecbin {dirbin}: cos $\theta$ = {vpkt_config['cos_theta'][dirbin]}, $\phi$ ="
-                            rf" {phi_angle}$^\circ$"
-                        )
-                else:
-                    linelabel = dirbin_definitions[dirbin]
-                    print(f" directionbin {dirbin:4d}  {dirbin_definitions[dirbin]}")
+                linelabel = dirbin_definitions[dirbin]
+                print(f" direction {dirbin:4d}  {dirbin_definitions[dirbin]}")
 
             print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
 

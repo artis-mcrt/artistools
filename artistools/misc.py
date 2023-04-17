@@ -1215,6 +1215,19 @@ def get_costhetabin_phibin_labels() -> tuple[list[str], list[str]]:
     return costheta_viewing_angle_bins, phi_viewing_angle_bins
 
 
+def get_vspec_dir_labels(modelpath: Union[str, Path], viewinganglelabelunits: str = "rad") -> dict[int, str]:
+    vpkt_config = at.get_vpkt_config(modelpath)
+    dirlabels = {}
+    for dirindex in range(vpkt_config["nobsdirections"]):
+        phi_angle = round(vpkt_config["phi"][dirindex])
+        if viewinganglelabelunits == "deg":
+            theta_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][dirindex])))
+            dirlabels[dirindex] = rf"v$\theta$ = {theta_angle}$^\circ$, $\phi$ = {phi_angle}$^\circ$"
+        elif viewinganglelabelunits == "rad":
+            dirlabels[dirindex] = rf"cos $\theta$ = {vpkt_config['cos_theta'][dirindex]}, $\phi$ = {phi_angle}$^\circ$"
+    return dirlabels
+
+
 def get_dirbin_labels(
     dirbins: Union[np.ndarray[Any, np.dtype[Any]], Sequence[int]],
     modelpath: Union[Path, str, None] = None,

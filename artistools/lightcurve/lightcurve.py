@@ -173,7 +173,11 @@ def generate_band_lightcurve_data(
 
     if args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
         print("Found vpkt.txt, using virtual packets")
-        stokes_params = at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
+        stokes_params = (
+            at.spectra.get_vspecpol_data(vspecangle=angle, modelpath=modelpath)
+            if angle >= 0
+            else at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
+        )
         vspecdata = stokes_params["I"]
         timearray = vspecdata.keys()[1:]
     elif args.plotviewingangle and at.anyexist(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True):

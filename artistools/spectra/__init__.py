@@ -11,6 +11,7 @@ from .spectra import get_reference_spectrum
 from .spectra import get_specpol_data
 from .spectra import get_spectrum
 from .spectra import get_spectrum_at_time
+from .spectra import get_vspecpol_data
 from .spectra import get_vspecpol_spectrum
 from .spectra import make_averaged_vspecfiles
 from .spectra import make_virtual_spectra_summed_file

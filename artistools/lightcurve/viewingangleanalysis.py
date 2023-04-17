@@ -171,13 +171,15 @@ def parse_directionbin_args(modelpath: Union[Path, str], args) -> tuple[Sequence
         dirbins = [-1]
 
     dirbin_definition: dict[int, str] = {}
-
-    if not args.plotvspecpol:
+    print(args.plotvspecpol)
+    if args.plotvspecpol:
+        dirbin_definition = at.get_vspec_dir_labels(modelpath=modelpath)
+    else:
         dirbin_definition = at.get_dirbin_labels(
-            dirbins,
+            dirbins=dirbins,
             modelpath=modelpath,
-            average_over_phi=args.average_over_phi_angle,
-            average_over_theta=args.average_over_theta_angle,
+            average_over_phi=args.average_over_phi,
+            average_over_theta=args.average_over_theta,
         )
 
         if args.average_over_phi_angle:
