@@ -355,7 +355,7 @@ def get_spectrum(
                 print(f"Reading {specfilename}")
 
                 specdata[-1] = (
-                    pl.read_csv(specfilename, separator=" ", infer_schema_length=0)
+                    pl.read_csv(at.zopen(specfilename, mode="rb"), separator=" ", infer_schema_length=0)
                     .with_columns(pl.all().cast(pl.Float64))
                     .rename({"0": "nu"})
                 )
