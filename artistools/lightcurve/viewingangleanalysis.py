@@ -178,8 +178,8 @@ def parse_directionbin_args(modelpath: Union[Path, str], args) -> tuple[Sequence
         dirbin_definition = at.get_dirbin_labels(
             dirbins=dirbins,
             modelpath=modelpath,
-            average_over_phi=args.average_over_phi,
-            average_over_theta=args.average_over_theta,
+            average_over_phi=args.average_over_phi_angle,
+            average_over_theta=args.average_over_theta_angle,
         )
 
         if args.average_over_phi_angle:
