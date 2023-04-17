@@ -530,7 +530,7 @@ def make_lightcurve_plot(
     assert plottedsomething
 
     if args.magnitude:
-        plt.gca().invert_yaxis()
+        axis.invert_yaxis()
 
     if args.xmin is not None:
         axis.set_xlim(left=args.xmin)
@@ -910,7 +910,6 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 
                 # if not (args.test_viewing_angle_fit or args.calculate_peak_time_mag_deltam15_bool):
                 curax = ax[plotnumber] if args.subplots else ax
-                curax.invert_yaxis()
                 if args.subplots:
                     if len(angles) > 1 or (args.plotviewingangle and os.path.isfile(modelpath / "specpol_res.out")):
                         ax[plotnumber].plot(time, brightness_in_mag, linewidth=4, **plotkwargs)
@@ -921,7 +920,9 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                         #     ax[plotnumber].plot(
                         #         cmfgen_mags['time[d]'], cmfgen_mags[key], label='CMFGEN', color='k', linewidth=3)
                 else:
-                    ax.plot(time, brightness_in_mag, linewidth=3.5, **plotkwargs)  # color=color, linestyle=linestyle)
+                    curax.plot(
+                        time, brightness_in_mag, linewidth=3.5, **plotkwargs
+                    )  # color=color, linestyle=linestyle)
 
     at.set_mpl_style()
 
@@ -936,6 +937,9 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
         args.outputfile = os.path.join(outputfolder, f"plot{first_band_name}lightcurves.pdf")
     if args.show:
         plt.show()
+
+    ax[0].invert_yaxis()
+
     plt.savefig(args.outputfile, format="pdf")
     print(f"Saved figure: {args.outputfile}")
 

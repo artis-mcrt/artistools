@@ -280,6 +280,7 @@ def bolometric_magnitude(
 
     for timestep, time in enumerate(timearray):
         time = float(time)
+
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
             if angle != -1:
                 if args.plotvspecpol:
