@@ -171,7 +171,7 @@ def parse_directionbin_args(modelpath: Union[Path, str], args) -> tuple[Sequence
         dirbins = [-1]
 
     dirbin_definition: dict[int, str] = {}
-    print(args.plotvspecpol)
+
     if args.plotvspecpol:
         dirbin_definition = at.get_vspec_dir_labels(modelpath=modelpath)
     else:
