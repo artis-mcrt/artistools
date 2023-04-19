@@ -391,6 +391,7 @@ def get_modeldata(
                 columns=columns,
                 dtype_backend=dtype_backend,
             )
+            print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
 
     if dfmodel is None:
         skipnuclidemassfraccolumns = False
