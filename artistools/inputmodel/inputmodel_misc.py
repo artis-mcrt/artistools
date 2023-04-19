@@ -463,36 +463,32 @@ def add_derived_cols_to_modeldata(
     if dimensions == 3:
         if "velocity" in derived_cols or "vel_min" in derived_cols:
             assert t_model_init_seconds is not None
-            dfmodel["vel_x_min"] = dfmodel["pos_x_min"] / t_model_init_seconds
-            dfmodel["vel_y_min"] = dfmodel["pos_y_min"] / t_model_init_seconds
-            dfmodel["vel_z_min"] = dfmodel["pos_z_min"] / t_model_init_seconds
+            for ax in ["x", "y", "z"]:
+                dfmodel[f"vel_{ax}_min"] = dfmodel[f"pos_{ax}_min"] / t_model_init_seconds
 
         if "velocity" in derived_cols or "vel_max" in derived_cols:
             assert t_model_init_seconds is not None
-            dfmodel["vel_x_max"] = (dfmodel["pos_x_min"] + wid_init) / t_model_init_seconds
-            dfmodel["vel_y_max"] = (dfmodel["pos_y_min"] + wid_init) / t_model_init_seconds
-            dfmodel["vel_z_max"] = (dfmodel["pos_z_min"] + wid_init) / t_model_init_seconds
+            for ax in ["x", "y", "z"]:
+                dfmodel[f"vel_{ax}_max"] = (dfmodel[f"pos_{ax}_min"] + wid_init) / t_model_init_seconds
 
         if any(col in derived_cols for col in ["velocity", "vel_mid", "vel_mid_radial"]):
             assert wid_init is not None
             assert t_model_init_seconds is not None
-            dfmodel["vel_x_mid"] = (dfmodel["pos_x_min"] + (0.5 * wid_init)) / t_model_init_seconds
-            dfmodel["vel_y_mid"] = (dfmodel["pos_y_min"] + (0.5 * wid_init)) / t_model_init_seconds
-            dfmodel["vel_z_mid"] = (dfmodel["pos_z_min"] + (0.5 * wid_init)) / t_model_init_seconds
+            for ax in ["x", "y", "z"]:
+                dfmodel[f"vel_{ax}_mid"] = (dfmodel[f"pos_{ax}_min"] + (0.5 * wid_init)) / t_model_init_seconds
 
             dfmodel = dfmodel.eval("vel_mid_radial = sqrt(vel_x_mid ** 2 + vel_y_mid ** 2 + vel_z_mid ** 2)")
 
     if dimensions == 3 and "pos_mid" in derived_cols or "angle_bin" in derived_cols:
         assert wid_init is not None
-        dfmodel["pos_x_mid"] = dfmodel["pos_x_min"] + (0.5 * wid_init)
-        dfmodel["pos_y_mid"] = dfmodel["pos_y_min"] + (0.5 * wid_init)
-        dfmodel["pos_z_mid"] = dfmodel["pos_z_min"] + (0.5 * wid_init)
+        for ax in ["x", "y", "z"]:
+            dfmodel[f"pos_{ax}_mid"] = dfmodel[f"pos_{ax}_min"] + (0.5 * wid_init)
 
     if "logrho" in derived_cols and "logrho" not in dfmodel.columns:
-        dfmodel = dfmodel.eval("logrho = log10(rho)")
+        dfmodel["logrho"] = np.log10(dfmodel["rho"])
 
     if "rho" in derived_cols and "rho" not in dfmodel.columns:
-        dfmodel = dfmodel.eval("rho = 10**logrho")
+        dfmodel["rho"] = 10 ** dfmodel["logrho"]
 
     if "angle_bin" in derived_cols:
         assert modelpath is not None
