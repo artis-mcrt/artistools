@@ -472,6 +472,9 @@ def bin_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.
         ).alias("costheta"),
     )
     dfpackets = dfpackets.with_columns(
+        pl.col("costheta").arccos().alias("theta"),
+    )
+    dfpackets = dfpackets.with_columns(
         ((pl.col("costheta") + 1) / 2.0 * ncosthetabins).cast(pl.Int64).alias("costhetabin"),
     )
     dfpackets = dfpackets.with_columns(
@@ -502,6 +505,18 @@ def bin_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.
         (
             (pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2]) / pl.col("dirmag")
         ).alias("testphi"),
+    )
+
+    dfpackets = dfpackets.with_columns(
+        (
+            pl.when(pl.col("testphi") > 0)
+            .then(pl.col("cosphi").arccos())
+            .otherwise(pl.col("cosphi").mul(-1.0).arccos() + np.pi)
+        ).alias("phi"),
+    )
+
+    dfpackets = dfpackets.with_columns(
+        (pl.col("phi") / 2.0 / np.pi * nphibins).cast(pl.Int64).alias("phibinuniform"),
     )
 
     dfpackets = dfpackets.with_columns(
