@@ -747,15 +747,6 @@ def save_modeldata(
 
         abundcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
 
-        # for cell in dfmodel.itertuples():
-        #     if dimensions == 1:
-        #         fmodel.write(f'{cell.inputcellid:6d}   {cell.velocity_outer:9.2f}   {cell.logrho:10.8f} ')
-        #     elif dimensions == 3:
-        #         fmodel.write(f"{cell.inputcellid:6d} {cell.posx} {cell.posy} {cell.posz} {cell.rho}\n")
-        #
-        #     fmodel.write(" ".join([f'{getattr(cell, col)}' for col in abundcols]))
-        #
-        #     fmodel.write('\n')
         if dimensions == 1:
             for cell in dfmodel.itertuples(index=False):
                 fmodel.write(f"{cell.inputcellid:d} {cell.velocity_outer:9.2f} {cell.logrho:10.8f} ")
