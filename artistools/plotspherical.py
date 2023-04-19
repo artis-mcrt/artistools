@@ -32,13 +32,12 @@ def plot_spherical(
 
     fig, ax = plt.subplots(1, 1, subplot_kw={"projection": "mollweide"})
 
-    # todo: use a groupby
-    for dirbin in range(100):
-        e_rf_sum = dfpackets.filter(pl.col("dirbin") == dirbin).collect(streaming=True).get_column("e_rf").sum()
-        print(dirbin, e_rf_sum)
+    test = dfpackets.groupby("dirbin").agg(pl.col("e_rf").sum().alias("e_rf_sum")).lazy().collect()
+    print(test)
+
     ax.grid(True)
 
-    fig.show()
+    plt.show()
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
