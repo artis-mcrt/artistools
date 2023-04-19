@@ -51,12 +51,12 @@ def read_modelfile_text(
                 numheaderrows += 1
 
         if len(line.strip().split(" ")) == 2:
-            print("  detected 2D model file")
             modelmeta["dimensions"] = 2
             ncoordgrid_r, ncoordgrid_z = (int(n) for n in line.strip().split(" "))
             modelmeta["ncoordgrid_r"] = ncoordgrid_r
             modelmeta["ncoordgrid_z"] = ncoordgrid_z
             modelcellcount = ncoordgrid_r * ncoordgrid_z
+            print(f"  detected 2D model file with {ncoordgrid_r}x{ncoordgrid_z}={modelcellcount} cells")
         else:
             modelcellcount = int(line)
 
@@ -71,16 +71,30 @@ def read_modelfile_text(
             modelmeta["vmax_cmps"] = float(fmodel.readline())  # velocity max in cm/s
             xmax_tmodel = modelmeta["vmax_cmps"] * t_model_init_seconds  # xmax = ymax = zmax
             numheaderrows += 1
-            if "dimensions" not in modelmeta:
-                if not printwarningsonly:
-                    print("  detected 3D model file")
+            if "dimensions" not in modelmeta:  # not already detected as 2D
                 modelmeta["dimensions"] = 3
+                # number of grid cell steps along an axis (currently the same for xyz)
+                ncoordgridx = int(round(modelcellcount ** (1.0 / 3.0)))
+                ncoordgridy = int(round(modelcellcount ** (1.0 / 3.0)))
+                ncoordgridz = int(round(modelcellcount ** (1.0 / 3.0)))
+                assert (ncoordgridx * ncoordgridy * ncoordgridz) == modelcellcount
+                modelmeta["ncoordgridx"] = ncoordgridx
+                modelmeta["ncoordgridy"] = ncoordgridy
+                modelmeta["ncoordgridz"] = ncoordgridz
+                if ncoordgridx == ncoordgridy == ncoordgridz:
+                    modelmeta["ncoordgrid"] = ncoordgridx
+
+                if not printwarningsonly:
+                    print(
+                        "  detected 3D model file with"
+                        f" {ncoordgridx}x{ncoordgridy}x{ncoordgridz}={modelcellcount} cells"
+                    )
 
         except ValueError:
             assert modelmeta.get("dimensions", -1) != 2  # 2D model should have vmax line here
             if "dimensions" not in modelmeta:
                 if not printwarningsonly:
-                    print("  detected 1D model file")
+                    print(f"  detected 1D model file with {modelcellcount} radial zones")
                 modelmeta["dimensions"] = 1
 
             fmodel.seek(filepos)  # undo the readline() and go back
@@ -168,19 +182,6 @@ def read_modelfile_text(
         elif modelmeta["dimensions"] == 3:
             ncols_line_even = 5
         ncols_line_odd = 0
-
-    if modelmeta["dimensions"] == 3:
-        # number of grid cell steps along an axis (same for xyz)
-        ncoordgridx = int(round(modelcellcount ** (1.0 / 3.0)))
-        ncoordgridy = int(round(modelcellcount ** (1.0 / 3.0)))
-        ncoordgridz = int(round(modelcellcount ** (1.0 / 3.0)))
-        modelmeta["ncoordgridx"] = ncoordgridx
-        modelmeta["ncoordgridy"] = ncoordgridy
-        modelmeta["ncoordgridz"] = ncoordgridz
-        if ncoordgridx == ncoordgridy == ncoordgridz:
-            modelmeta["ncoordgrid"] = ncoordgridx
-
-        assert (ncoordgridx * ncoordgridy * ncoordgridz) == modelcellcount
 
     nrows_read = 1 if getheadersonly else modelcellcount
 
