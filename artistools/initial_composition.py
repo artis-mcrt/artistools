@@ -44,12 +44,12 @@ def plot_2d_initial_abundances(modelpath, args):
     f.colorbar(im)
     plt.xlabel(r"v$_x$ in 10$^3$ km/s", fontsize="x-large")  # , fontweight='bold')
     plt.ylabel(r"v$_z$ in 10$^3$ km/s", fontsize="x-large")  # , fontweight='bold')
-    plt.text(20, 25, args.elem, color="white", fontweight="bold", fontsize="x-large")
+    plt.text(20, 25, args.plotvars, color="white", fontweight="bold", fontsize="x-large")
     plt.tight_layout()
     # ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
 
-    outfilename = f"plotcomposition{args.elem}.pdf"
+    outfilename = f"plotcomposition{args.plotvars}.pdf"
     plt.savefig(Path(modelpath) / outfilename, format="pdf")
     print(f"Saved {outfilename}")
 
@@ -191,7 +191,7 @@ def plot_3d_initial_abundances(modelpath, args=None) -> None:
         ax = plt.subplot(111, aspect="equal")
     else:
         rows = 1
-        cols = len(args.elem)
+        cols = len(args.plotvars)
 
         fig, axes = plt.subplots(
             nrows=rows,
@@ -309,8 +309,8 @@ def make_3d_plot(modelpath, args):
         model["opacity"] = at.inputmodel.opacityinputfile.get_opacity_from_file(modelpath)
         coloursurfaceby = "opacity"
     else:
-        print(f"Colours set by X_{args.elem}")
-        coloursurfaceby = f"X_{args.elem}"
+        print(f"Colours set by X_{args.plotvars}")
+        coloursurfaceby = f"X_{args.plotvars}"
 
     # generate grid from data
     grid = round(len(model["rho"]) ** (1.0 / 3.0))
