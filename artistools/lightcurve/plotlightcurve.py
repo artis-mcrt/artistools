@@ -196,7 +196,8 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
             # velocity_inner is in km/s
             ejecta_ke = (0.5 * (dfmodel["cellmass_grams"] / 1000.0) * (1000.0 * dfmodel["velocity_outer"]) ** 2).sum()
 
-        print(f"  ejecta kinetic energy: {ejecta_ke:.2e} [K] = {ejecta_ke *1e7:.2e} [erg]")
+        print(f"  ejecta kinetic energy: {ejecta_ke:.2e} [J] = {ejecta_ke *1e7:.2e} [erg]")
+
         # velocity derived from ejecta kinetic energy to match Barnes et al. (2016) Section 2.1
         ejecta_v = np.sqrt(2 * ejecta_ke / (model_mass_grams * 1e-3))
         v2 = ejecta_v / (0.2 * 299792458)
