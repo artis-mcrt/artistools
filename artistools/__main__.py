@@ -11,14 +11,17 @@ def addargs(parser=None) -> None:
 
 
 dictcommands = {
+    "comparetogsinetwork": ("gsinetwork", "main"),
+    "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
+    "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
+    "estimators": {
+        "plot": ("estimators.plotestimators", "main"),
+    },
     "inputmodel": {
         "describe": ("inputmodel.describeinputmodel", "main"),
         "maptogrid": ("inputmodel.maptogrid", "main"),
         "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
         "makeartismodel": ("inputmodel.makeartismodel", "main"),
-    },
-    "estimators": {
-        "plot": ("estimators.plotestimators", "main"),
     },
     "lightcurves": {
         "plot": ("lightcurve.plotlightcurve", "main"),
@@ -26,7 +29,6 @@ dictcommands = {
     "spectra": {
         "plot": ("spectra.plotspectra", "main"),
     },
-    "comparetogsinetwork": ("gsinetwork", "main"),
 }
 
 
