@@ -663,6 +663,7 @@ def save_modeldata(
     headercommentlines: Optional[list[str]] = None,
     modelmeta: Optional[dict[str, Any]] = None,
     twolinespercell: bool = False,
+    float_format: str = ".4e",
 ) -> None:
     """Save a pandas DataFrame and snapshot time into ARTIS model.txt"""
     if modelmeta:
@@ -718,16 +719,16 @@ def save_modeldata(
     if "X_Co57" in dfmodel.columns:
         standardcols.append("X_Co57")
 
+    # set missing radioabundance columns to zero
+    for col in standardcols:
+        if col not in dfmodel.columns and col.startswith("X_"):
+            dfmodel[col] = 0.0
+
     dfmodel["inputcellid"] = dfmodel["inputcellid"].astype(int)
     customcols = [col for col in dfmodel.columns if col not in standardcols]
     customcols.sort(
         key=lambda col: at.get_z_a_nucname(col) if col.startswith("X_") else (float("inf"), 0)
     )  # sort columns by atomic number, mass number
-
-    # set missing radioabundance columns to zero
-    for col in standardcols:
-        if col not in dfmodel.columns and col.startswith("X_"):
-            dfmodel[col] = 0.0
 
     assert modelpath is not None or filename is not None
     if filename is None:
@@ -765,7 +766,7 @@ def save_modeldata(
                     " ".join(
                         [
                             (
-                                (f"{colvalue:.4e}" if colvalue > 0.0 else "0.0")
+                                (f"{colvalue:{float_format}}" if colvalue > 0.0 else "0.0")
                                 if isinstance(colvalue, float)
                                 else f"{colvalue}"
                             )
