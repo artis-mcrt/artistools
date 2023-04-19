@@ -8,9 +8,6 @@ from astropy import units as u
 
 import artistools as at
 
-# import os.path
-# import numpy as np
-
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-inputpath", "-i", default=".", help="Path of input file")
@@ -34,9 +31,9 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     datain = datain_structure.join(datain_abund, rsuffix="abund")
     if "Fe52" not in datain.columns:
-        datain.eval("Fe52 = 0.", inplace=True)
+        datain = datain.eval("Fe52 = 0.")
     if "Cr48" not in datain.columns:
-        datain.eval("Cr48 = 0.", inplace=True)
+        datain = datain.eval("Cr48 = 0.")
 
     dfmodel = pd.DataFrame(
         columns=[
@@ -100,7 +97,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     print(f'M_Ni56 = {tot_ni56mass /  u.solMass.to("g"):.3f} solMass')
 
     at.save_modeldata(dfmodel, t_model_init_days, Path(args.outputpath, "model.txt"))
-    at.inputmodel.save_initialabundances(dfelabundances, Path(args.outputpath, "abundances.txt"))
+    at.inputmodel.save_initelemabundances(dfelabundances, Path(args.outputpath, "abundances.txt"))
 
 
 if __name__ == "__main__":

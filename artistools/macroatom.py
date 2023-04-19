@@ -7,12 +7,8 @@ import sys
 
 import matplotlib.pyplot as plt
 import pandas as pd
-from astropy import constants as const
 
 import artistools as at
-
-# from astropy import units as u
-# import matplotlib.ticker as ticker
 
 defaultoutputfile = "plotmacroatom_cell{0:03d}_{1:03d}-{2:03d}.pdf"
 
@@ -46,14 +42,11 @@ def main(args=None, argsraw=None, **kwargs):
     atomic_number = at.get_atomic_number(args.element.lower())
     if atomic_number < 1:
         print(f"Could not find element '{args.element}'")
-        return
+        raise AssertionError
 
     timestepmin = args.timestep
 
-    if not args.timestepmax or args.timestepmax < 0:
-        timestepmax = timestepmin
-    else:
-        timestepmax = args.timestepmax
+    timestepmax = timestepmin if not args.timestepmax or args.timestepmax < 0 else args.timestepmax
 
     input_files = glob.glob(os.path.join(args.modelpath, "macroatom_????.out*"), recursive=True) + glob.glob(
         os.path.join(args.modelpath, "*/macroatom_????.out*"), recursive=True
@@ -61,9 +54,9 @@ def main(args=None, argsraw=None, **kwargs):
 
     if not input_files:
         print("No macroatom files found")
-        return 1
-    else:
-        dfall = read_files(input_files, args.modelgridindex, timestepmin, timestepmax, atomic_number)
+        raise FileNotFoundError
+
+    dfall = read_files(input_files, args.modelgridindex, timestepmin, timestepmax, atomic_number)
 
     specfilename = os.path.join(args.modelpath, "spec.out")
 
@@ -72,7 +65,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     if not os.path.isfile(specfilename):
         print(f"Could not find {specfilename}")
-        return 1
+        raise FileNotFoundError
 
     outputfile = args.outputfile.format(args.modelgridindex, timestepmin, timestepmax)
     make_plot(
@@ -121,8 +114,8 @@ def make_plot(
         fontsize=8,
     )
 
-    lambda_cmf_in = 2.99792458e18 / dfmacroatom["nu_cmf_in"].values
-    lambda_cmf_out = 2.99792458e18 / dfmacroatom["nu_cmf_out"].values
+    lambda_cmf_in = 2.99792458e18 / dfmacroatom["nu_cmf_in"].to_numpy()
+    lambda_cmf_out = 2.99792458e18 / dfmacroatom["nu_cmf_out"].to_numpy()
     # axis.scatter(lambda_cmf_in, lambda_cmf_out, s=1, alpha=0.5, edgecolor='none')
     axis.plot(
         lambda_cmf_in,
@@ -157,20 +150,16 @@ def read_files(files, modelgridindex=None, timestepmin=None, timestepmax=None, a
             df_thisfile = pd.read_csv(filepath, delim_whitespace=True)
             # df_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
             if modelgridindex:
-                df_thisfile.query("modelgridindex==@modelgridindex", inplace=True)
+                df_thisfile = df_thisfile.query("modelgridindex==@modelgridindex")
             if timestepmin is not None:
-                df_thisfile.query("timestep>=@timestepmin", inplace=True)
+                df_thisfile = df_thisfile.query("timestep>=@timestepmin")
             if timestepmax:
-                df_thisfile.query("timestep<=@timestepmax", inplace=True)
+                df_thisfile = df_thisfile.query("timestep<=@timestepmax")
             if atomic_number:
-                df_thisfile.query("Z==@atomic_number", inplace=True)
+                df_thisfile = df_thisfile.query("Z==@atomic_number")
 
-            if df_thisfile is not None:
-                if len(df_thisfile) > 0:
-                    if dfall is None:
-                        dfall = df_thisfile.copy()
-                    else:
-                        dfall = dfall.append(df_thisfile.copy(), ignore_index=True)
+            if df_thisfile is not None and len(df_thisfile) > 0:
+                dfall = df_thisfile.copy() if dfall is None else dfall.append(df_thisfile.copy(), ignore_index=True)
 
         if dfall is None or len(dfall) == 0:
             print("No data found")

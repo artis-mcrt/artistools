@@ -9,11 +9,6 @@ from astropy import units as u
 
 import artistools as at
 
-# import os
-# import pandas as pd
-# import matplotlib
-# from mpl_toolkits.mplot3d import Axes3D
-
 
 def make_cone(args):
     print("Making cone")
@@ -58,9 +53,7 @@ def get_profile_along_axis(args=None, modeldata=None, derived_cols=False):
 
     # merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata_tuple(args.modelpath, dimensions=3, get_elemabundances=True)
     if modeldata is None:
-        modeldata, _ = at.inputmodel.get_modeldata(
-            args.modelpath, dimensions=3, get_elemabundances=True, derived_cols=derived_cols
-        )
+        modeldata, _ = at.inputmodel.get_modeldata(args.modelpath, get_elemabundances=True, derived_cols=derived_cols)
 
     position_closest_to_axis = modeldata.iloc[(modeldata[f"pos_{args.other_axis2}_min"]).abs().argsort()][:1][
         f"pos_{args.other_axis2}_min"
@@ -111,7 +104,7 @@ def make_1D_profile(args):
 
     if not args.positive_axis:
         # Invert rows and *velocity by -1 to make velocities positive for slice on negative axis
-        slice1D.iloc[:] = slice1D.iloc[::-1].values
+        slice1D.iloc[:] = slice1D.iloc[::-1].to_numpy()
         slice1D["vout_kmps"] = slice1D["vout_kmps"].apply(lambda x: x * -1)
 
     # with pd.option_context('display.max_rows', None, 'display.max_columns', None):

@@ -1,32 +1,32 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 import argparse
 import math
 import os
 from pathlib import Path
+from typing import Any
+from typing import Literal
+from typing import Optional
 
-import matplotlib
+import argcomplete
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from astropy import units as u
 
 import artistools as at
-import artistools.inputmodel.opacityinputfile
-
-# import pandas as pd
-
-# import artistools.inputmodel
-# from mpl_toolkits.mplot3d import Axes3D
 
 
 def plot_2d_initial_abundances(modelpath, args):
-    model = at.inputmodel.get_2d_modeldata(modelpath[0])
-    abundances = at.inputmodel.get_initialabundances(modelpath[0])
+    model = at.inputmodel.get_2d_modeldata(modelpath)
+    abundances = at.inputmodel.get_initelemabundances(modelpath)
 
-    abundances["inputcellid"] = abundances["inputcellid"].apply(lambda x: float(x))
+    abundances["inputcellid"] = abundances["inputcellid"].apply(float)
 
     merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
 
-    with open(os.path.join(modelpath[0], "model.txt"), "r") as fmodelin:
+    with open(os.path.join(modelpath, "model.txt")) as fmodelin:
         fmodelin.readline()  # npts r, npts z
         t_model = float(fmodelin.readline())  # days
         vmax = float(fmodelin.readline())  # v_max in [cm/s]
@@ -34,64 +34,56 @@ def plot_2d_initial_abundances(modelpath, args):
     r = merge_dfs["cellpos_mid[r]"] / t_model * (u.cm / u.day).to("km/s") / 10**3
     z = merge_dfs["cellpos_mid[z]"] / t_model * (u.cm / u.day).to("km/s") / 10**3
 
-    ion = f"X_{args.ion}"
+    colname = f"X_{args.plotvars}"
     font = {"weight": "bold", "size": 18}
 
     f = plt.figure(figsize=(4, 5))
     ax = f.add_subplot(111)
-    im = ax.scatter(r, z, c=merge_dfs[ion], marker="8")
+    im = ax.scatter(r, z, c=merge_dfs[colname], marker="8")
 
     f.colorbar(im)
     plt.xlabel(r"v$_x$ in 10$^3$ km/s", fontsize="x-large")  # , fontweight='bold')
     plt.ylabel(r"v$_z$ in 10$^3$ km/s", fontsize="x-large")  # , fontweight='bold')
-    plt.text(20, 25, args.ion, color="white", fontweight="bold", fontsize="x-large")
+    plt.text(20, 25, args.plotvars, color="white", fontweight="bold", fontsize="x-large")
     plt.tight_layout()
     # ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
 
-    outfilename = f"plotcomposition{args.ion}.pdf"
-    plt.savefig(Path(modelpath[0]) / outfilename, format="pdf")
+    outfilename = f"plotcomposition{args.plotvars}.pdf"
+    plt.savefig(Path(modelpath) / outfilename, format="pdf")
     print(f"Saved {outfilename}")
 
 
-def get_merged_model_abundances(modelpath):
-    # t_model is in days and vmax is in cm/s
-    model, t_model_days, vmax = at.inputmodel.get_modeldata_tuple(modelpath[0], dimensions=3)
-
-    targetmodeltime_days = None
-    if targetmodeltime_days is not None:
-        print(
-            f"Scaling modeldata to {targetmodeltime_days} days. \nWARNING: abundances not scaled for radioactive decays"
-        )
-        import artistools.inputmodel.modelfromhydro
-
-        artistools.inputmodel.modelfromhydro.scale_model_to_time(targetmodeltime_days, t_model_days, model)
-        t_model_days = targetmodeltime_days
-
-    abundances = at.inputmodel.get_initialabundances(modelpath[0])
-
-    abundances["inputcellid"] = abundances["inputcellid"].apply(lambda x: float(x))
-
-    merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
-    return merge_dfs, t_model_days
-
-
-def get_2D_slice_through_3d_model(merge_dfs, sliceaxis, sliceindex=None):
+def get_2D_slice_through_3d_model(
+    dfmodel: pd.DataFrame,
+    sliceaxis: Literal["x", "y", "z"],
+    modelmeta: Optional[dict[str, Any]] = None,
+    plotaxis1: Optional[Literal["x", "y", "z"]] = None,
+    plotaxis2: Optional[Literal["x", "y", "z"]] = None,
+    sliceindex: Optional[int] = None,
+) -> pd.DataFrame:
     if not sliceindex:
         # get midpoint
-        sliceposition = merge_dfs.iloc[(merge_dfs["pos_x_min"]).abs().argsort()][:1]["pos_x_min"].item()
+        sliceposition: float = dfmodel.iloc[(dfmodel["pos_x_min"]).abs().argsort()][:1]["pos_x_min"].item()
         # Choose position to slice. This gets minimum absolute value as the closest to 0
     else:
         cell_boundaries = []
-        [cell_boundaries.append(x) for x in merge_dfs[f"pos_{sliceaxis}_min"] if x not in cell_boundaries]
+        for x in dfmodel[f"pos_{sliceaxis}_min"]:
+            if x not in cell_boundaries:
+                cell_boundaries.append(x)
         sliceposition = cell_boundaries[sliceindex]
 
-    slicedf = merge_dfs.loc[merge_dfs[f"pos_{sliceaxis}_min"] == sliceposition]
+    slicedf = dfmodel.loc[dfmodel[f"pos_{sliceaxis}_min"] == sliceposition]
+
+    if modelmeta is not None and plotaxis1 is not None and plotaxis2 is not None:
+        assert slicedf.shape[0] == modelmeta[f"ncoordgrid{plotaxis1}"] * modelmeta[f"ncoordgrid{plotaxis2}"]
+
     return slicedf
 
 
-def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model, args):
-    colorscale = plotvals[ion]
+def plot_slice_modelcol(ax, plotvals, modelmeta, colname, plotaxis1, plotaxis2, t_model_d, args):
+    print(colname)
+    colorscale = plotvals[colname] * plotvals["rho"] if colname.startswith("X_") else plotvals[colname]
 
     if args.hideemptycells:
         # Don't plot empty cells:
@@ -100,57 +92,106 @@ def plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model, args):
     if args.logcolorscale:
         # logscale for colormap
         colorscale = np.log10(colorscale)
+    colorscale = colorscale.to_numpy()
 
     normalise_between_0_and_1 = False
     if normalise_between_0_and_1:
-        norm = matplotlib.colors.Normalize(vmin=0, vmax=1)
-        scaledmap = matplotlib.cm.ScalarMappable(cmap="viridis", norm=norm)
+        norm = mpl.colors.Normalize(vmin=0, vmax=1)
+        scaledmap = mpl.cm.ScalarMappable(cmap="viridis", norm=norm)
         scaledmap.set_array([])
         colorscale = scaledmap.to_rgba(colorscale)  # colorscale fixed between 0 and 1
     else:
         scaledmap = None
 
-    x = plotvals[f"pos_{plotaxis1}_min"] / t_model * (u.cm / u.day).to("km/s") / 10**3
-    y = plotvals[f"pos_{plotaxis2}_min"] / t_model * (u.cm / u.day).to("km/s") / 10**3
+    arr_x = plotvals[f"pos_{plotaxis1}_min"] / t_model_d / 86400 / 2.99792458e10
+    arr_y = plotvals[f"pos_{plotaxis2}_min"] / t_model_d / 86400 / 2.99792458e10
 
     # x = plotvals[f'pos_{plotaxis1}'] / t_model * (u.cm/u.day).to('m/s') / 2.99792458e+8
     # y = plotvals[f'pos_{plotaxis2}'] / t_model * (u.cm/u.day).to('m/s') / 2.99792458e+8
 
-    im = ax.scatter(x, y, c=colorscale, marker="8", rasterized=True)  # cmap=plt.get_cmap('PuOr')
+    # im = ax.scatter(x, y, c=colorscale, marker="s", s=30, rasterized=False)  # cmap=plt.get_cmap('PuOr')
+    ncoordgrid1 = modelmeta[f"ncoordgrid{plotaxis1}"]
+    ncoordgrid2 = modelmeta[f"ncoordgrid{plotaxis2}"]
+    grid = np.zeros((ncoordgrid1, ncoordgrid2))
 
-    ymin, ymax = ax.get_ylim()
-    xmin, xmax = ax.get_xlim()
-    if "_" in ion:
-        ax.text(xmax * 0.6, ymax * 0.7, ion.split("_")[1], color="k", fontweight="bold")
+    for i in range(0, ncoordgrid1):
+        for j in range(0, ncoordgrid2):
+            grid[j, i] = colorscale[j * ncoordgrid1 + i]
+
+    im = ax.imshow(
+        grid,
+        cmap="viridis",
+        interpolation="nearest",
+        extent=(arr_x.min(), arr_x.max(), arr_y.min(), arr_y.max()),
+        origin="lower",
+        # vmin=0.0,
+        # vmax=1.0,
+        # vmax=-9.5,
+        # vmin=-11,
+        # vmin=1e-11,
+    )
+
+    plot_vmax = 0.2
+    ax.set_ylim(bottom=-plot_vmax, top=plot_vmax)
+    ax.set_xlim(left=-plot_vmax, right=plot_vmax)
+    if "_" in colname:
+        ax.annotate(
+            colname.split("_")[1],
+            color="white",
+            xy=(0.9, 0.9),
+            xycoords="axes fraction",
+            horizontalalignment="right",
+            verticalalignment="top",
+            # fontsize=10,
+        )
+
     return im, scaledmap
 
 
-def plot_3d_initial_abundances(modelpath, args=None):
+def plot_3d_initial_abundances(modelpath, args=None) -> None:
     font = {
         # 'weight': 'bold',
         "size": 18
     }
-    matplotlib.rc("font", **font)
+    mpl.rc("font", **font)
 
-    merge_dfs, t_model = get_merged_model_abundances(modelpath)
-    # merge_dfs = plot_most_abundant(modelpath, args)
+    dfmodel, modelmeta = at.get_modeldata(
+        modelpath, skipnuclidemassfraccolumns=True, get_elemabundances=True, dtype_backend="pyarrow"
+    )
 
-    plotaxis1 = "y"
-    plotaxis2 = "z"
-    sliceaxis = "x"
+    targetmodeltime_days = None
+    if targetmodeltime_days is not None:
+        print(
+            f"Scaling modeldata to {targetmodeltime_days} days. \nWARNING: abundances not scaled for radioactive decays"
+        )
 
-    plotvals = get_2D_slice_through_3d_model(merge_dfs, sliceaxis)
+        dfmodel, modelmeta = at.inputmodel.scale_model_to_time(
+            targetmodeltime_days=targetmodeltime_days, modelmeta=modelmeta, dfmodel=dfmodel
+        )
+
+    sliceaxis: Literal["x", "y", "z"] = "z"
+
+    axes: list[Literal["x", "y", "z"]] = ["x", "y", "z"]
+    plotaxis1: Literal["x", "y", "z"] = [ax for ax in axes if ax != sliceaxis][0]
+    plotaxis2: Literal["x", "y", "z"] = [ax for ax in axes if ax not in [sliceaxis, plotaxis1]][0]
+
+    df2dslice = get_2D_slice_through_3d_model(
+        dfmodel=dfmodel, modelmeta=modelmeta, sliceaxis=sliceaxis, plotaxis1=plotaxis1, plotaxis2=plotaxis2
+    )
 
     subplots = False
-    if len(args.ion) > 1:
+    if len(args.plotvars) > 1:
         subplots = True
 
     if not subplots:
-        fig = plt.figure(figsize=(8, 7))
+        fig = plt.figure(
+            figsize=(8, 7),
+            tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
+        )
         ax = plt.subplot(111, aspect="equal")
     else:
         rows = 1
-        cols = len(args.ion)
+        cols = len(args.plotvars)
 
         fig, axes = plt.subplots(
             nrows=rows,
@@ -158,24 +199,25 @@ def plot_3d_initial_abundances(modelpath, args=None):
             sharex=True,
             sharey=True,
             figsize=(at.get_config()["figwidth"] * cols, at.get_config()["figwidth"] * 1.4),
-            tight_layout={"pad": 5.0, "w_pad": 0.0, "h_pad": 0.0},
+            # tight_layout={"pad": 5.0, "w_pad": 0.0, "h_pad": 0.0},
         )
         for ax in axes:
             ax.set(aspect="equal")
 
-    for index, ion in enumerate(args.ion):
-        ion = f"X_{ion}"
-        if args.rho:
-            ion = "rho"
+    for index, plotvar in enumerate(args.plotvars):
+        colname = plotvar if plotvar in df2dslice.columns else f"X_{plotvar}"
+
         if subplots:
             ax = axes[index]
-        im, scaledmap = plot_abundances_ion(ax, plotvals, ion, plotaxis1, plotaxis2, t_model, args)
+        im, scaledmap = plot_slice_modelcol(
+            ax, df2dslice, modelmeta, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
+        )
 
-    xlabel = rf"v$_{plotaxis1}$ in 10$^3$ km/s"
-    ylabel = rf"v$_{plotaxis2}$ in 10$^3$ km/s"
+    xlabel = rf"v$_{plotaxis1}$ [$c$]"
+    ylabel = rf"v$_{plotaxis2}$ [$c$]"
 
     if not subplots:
-        cbar = plt.colorbar(im)
+        cbar = fig.colorbar(im)
         plt.xlabel(xlabel, fontsize="x-large")  # , fontweight='bold')
         plt.ylabel(ylabel, fontsize="x-large")  # , fontweight='bold')
     else:
@@ -183,19 +225,20 @@ def plot_3d_initial_abundances(modelpath, args=None):
         fig.text(0.5, 0.15, xlabel, ha="center", va="center")
         fig.text(0.05, 0.5, ylabel, ha="center", va="center", rotation="vertical")
 
-    # cbar.set_label(label=ion, size='x-large') #, fontweight='bold')
-    # cbar.ax.set_title(f'{args.ion}', size='small')
+    # cbar.set_label(label="test", size="x-large")  # , fontweight='bold')
+    if "cellYe" not in args.plotvars and "tracercount" not in args.plotvars:
+        if args.logcolorscale:
+            cbar.ax.set_title(r"log10($\rho$) [g/cm3]", size="small")
+        else:
+            cbar.ax.set_title(r"$\rho$ [g/cm3]", size="small")
     # cbar.ax.tick_params(labelsize='x-large')
 
     # plt.tight_layout()
     # ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
 
-    # if args.outputfile:
-    #     outfilename = args.outputfile
-    # else:
-    outfilename = f"plotcomposition{ion}.pdf"
-    plt.savefig(Path(modelpath[0]) / outfilename, format="pdf")
+    outfilename = args.outputfile if args.outputfile else f"plotcomposition_{','.join(args.plotvars)}.pdf"
+    plt.savefig(Path(modelpath) / outfilename, format="pdf")
 
     print(f"Saved {outfilename}")
 
@@ -203,7 +246,7 @@ def plot_3d_initial_abundances(modelpath, args=None):
 def get_model_abundances_Msun_1D(modelpath):
     filename = modelpath / "model.txt"
     modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(filename)
-    abundancedata = at.inputmodel.get_initialabundances(modelpath)
+    abundancedata = at.inputmodel.get_initelemabundances(modelpath)
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
 
@@ -222,7 +265,7 @@ def get_model_abundances_Msun_1D(modelpath):
     merge_dfs = modeldata.merge(abundancedata, how="inner", on="inputcellid")
 
     print("Total mass (Msun):")
-    for key in merge_dfs.keys():
+    for key in merge_dfs:
         if "X_" in key:
             merge_dfs[f"mass_{key}"] = merge_dfs[key] * merge_dfs["mass_shell"] * u.g.to("solMass")
             # get mass of element in each cell
@@ -232,11 +275,11 @@ def get_model_abundances_Msun_1D(modelpath):
 
 
 def plot_most_abundant(modelpath, args):
-    model, _ = at.inputmodel.get_modeldata(modelpath[0], dimensions=3)
-    abundances = at.inputmodel.get_initialabundances(modelpath[0])
+    model, _ = at.inputmodel.get_modeldata(modelpath[0])
+    abundances = at.inputmodel.get_initelemabundances(modelpath[0])
 
     merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
-    elements = [x for x in merge_dfs.keys() if "X_" in x]
+    elements = [x for x in merge_dfs if "X_" in x]
 
     merge_dfs["max"] = merge_dfs[elements].idxmax(axis=1)
 
@@ -251,10 +294,10 @@ def make_3d_plot(modelpath, args):
 
     pv.set_plot_theme("document")  # set white background
 
-    model, t_model, vmax = at.inputmodel.get_modeldata_tuple(modelpath, dimensions=3, get_elemabundances=False)
-    abundances = at.inputmodel.get_initialabundances(modelpath)
+    model, t_model, vmax = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=False)
+    abundances = at.inputmodel.get_initelemabundances(modelpath)
 
-    abundances["inputcellid"] = abundances["inputcellid"].apply(lambda x: float(x))
+    abundances["inputcellid"] = abundances["inputcellid"].apply(float)
 
     merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
     model = merge_dfs
@@ -266,8 +309,8 @@ def make_3d_plot(modelpath, args):
         model["opacity"] = at.inputmodel.opacityinputfile.get_opacity_from_file(modelpath)
         coloursurfaceby = "opacity"
     else:
-        print(f"Colours set by X_{args.ion}")
-        coloursurfaceby = f"X_{args.ion}"
+        print(f"Colours set by X_{args.plotvars}")
+        coloursurfaceby = f"X_{args.plotvars}"
 
     # generate grid from data
     grid = round(len(model["rho"]) ** (1.0 / 3.0))
@@ -309,27 +352,29 @@ def make_3d_plot(modelpath, args):
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-modelpath",
-        default=[],
-        nargs="*",
-        action=at.AppendPath,
-        help="Path(s) to ARTIS folder (may include wildcards such as * and **)",
+        type=Path,
+        default=Path(),
+        help="Path to ARTIS folder",
     )
+
+    parser.add_argument("-o", action="store", dest="outputfile", type=Path, default=None, help="Filename for PDF file")
 
     parser.add_argument(
-        "-o", action="store", dest="outputfile", type=Path, default=Path(), help="Filename for PDF file"
+        "plotvars",
+        type=str,
+        default=["rho"],
+        nargs="+",
+        help=(
+            "Element symbols (Fe, Ni, Sr) for mass fraction or other model columns (rho, tracercount) to plot. Default"
+            " is rho"
+        ),
     )
-
-    parser.add_argument("-ion", type=str, default=["Fe"], nargs="+", help="Choose ion to plot. Default is Fe")
-
-    parser.add_argument("--rho", action="store_true", help="Plot rho instead of ion")
 
     parser.add_argument("--logcolorscale", action="store_true", help="Use log scale for colour map")
 
     parser.add_argument("--hideemptycells", action="store_true", help="Don't plot empty cells")
 
     parser.add_argument("--opacity", action="store_true", help="Plot opacity from opacity.txt (if available for model)")
-
-    parser.add_argument("-modeldim", type=int, default=None, help="Choose how many dimensions. 3 for 3D, 2 for 2D")
 
     parser.add_argument("--plot3d", action="store_true", help="Make 3D plot")
 
@@ -343,26 +388,22 @@ def main(args=None, argsraw=None, **kwargs):
         )
         addargs(parser)
         parser.set_defaults(**kwargs)
+        argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
     if not args.modelpath:
         args.modelpath = ["."]
 
-    args.modelpath = at.flatten_list(args.modelpath)
-
     if args.plot3d:
-        make_3d_plot(Path(args.modelpath[0]), args)
+        make_3d_plot(Path(args.modelpath), args)
         return
 
-    if not args.modeldim:
-        inputparams = at.get_inputparams(args.modelpath[0])
-    else:
-        inputparams = {"n_dimensions": args.modeldim}
+    _, modelmeta = at.get_modeldata(getheadersonly=True, printwarningsonly=True)
 
-    if inputparams["n_dimensions"] == 2:
+    if modelmeta["dimensions"] == 2:
         plot_2d_initial_abundances(args.modelpath, args)
 
-    if inputparams["n_dimensions"] == 3:
+    elif modelmeta["dimensions"] == 3:
         plot_3d_initial_abundances(args.modelpath, args)
 
 

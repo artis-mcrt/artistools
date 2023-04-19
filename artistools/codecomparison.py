@@ -6,13 +6,13 @@ codecomparison/[modelname]/[codename]
 e.g., codecomparison/DDC10/artisnebular
 """
 import math
-from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 from typing import Literal
 from typing import Union
 
+import matplotlib.axes
 import numpy as np
 import pandas as pd
 
@@ -27,8 +27,8 @@ def get_timestep_times_float(
 
     filepath = Path(at.get_config()["codecomparisondata1path"], modelname, f"phys_{modelname}_{codename}.txt")
 
-    with open(filepath, "r") as fphys:
-        ntimes = int(fphys.readline().replace("#NTIMES:", ""))
+    with open(filepath, encoding="utf-8") as fphys:
+        _ = int(fphys.readline().replace("#NTIMES:", ""))
         tmids = np.array([float(x) for x in fphys.readline().replace("#TIMES[d]:", "").split()])
 
     tstarts = np.zeros_like(tmids)
@@ -41,32 +41,35 @@ def get_timestep_times_float(
 
     if loc == "mid":
         return tmids
-    elif loc == "start":
+    if loc == "start":
         return tstarts
-    elif loc == "end":
+    if loc == "end":
         return tends
-    elif loc == "delta":
+    if loc == "delta":
         tdeltas = tends - tstarts
         return tdeltas
-    else:
-        raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
+
+    raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
 
 
-def read_reference_estimators(modelpath, modelgridindex=None, timestep=None):
+def read_reference_estimators(
+    modelpath: Union[str, Path],
+    modelgridindex: Union[None, int, Sequence[int]] = None,
+    timestep: Union[None, int, Sequence[int]] = None,
+) -> dict[tuple[int, int], Any]:
     """Read estimators from code comparison workshop file."""
 
-    virtualfolder, inputmodel, codename = modelpath.parts
+    virtualfolder, inputmodel, codename = Path(modelpath).parts
     assert virtualfolder == "codecomparison"
 
     inputmodelfolder = Path(at.get_config()["codecomparisondata1path"], inputmodel)
 
     physfilepath = Path(inputmodelfolder, f"phys_{inputmodel}_{codename}.txt")
 
-    estimators = {}
-    cell_vel = {}
+    estimators: dict[tuple[int, int], Any] = {}
     cur_timestep = -1
     cur_modelgridindex = -1
-    with open(physfilepath, "r") as fphys:
+    with open(physfilepath) as fphys:
         ntimes = int(fphys.readline().replace("#NTIMES:", ""))
         arr_timedays = np.array([float(x) for x in fphys.readline().replace("#TIMES[d]:", "").split()])
         assert len(arr_timedays) == ntimes
@@ -81,12 +84,13 @@ def read_reference_estimators(modelpath, modelgridindex=None, timestep=None):
                 assert np.isclose(timedays, arr_timedays[cur_timestep], rtol=0.01)
 
             elif row[0] == "#NVEL:":
-                nvel = int(row[1])
+                _ = int(row[1])
 
             elif not line.lstrip().startswith("#"):
                 cur_modelgridindex += 1
 
                 key = (cur_timestep, cur_modelgridindex)
+
                 if key not in estimators:
                     estimators[key] = {"emptycell": False}
 
@@ -102,7 +106,7 @@ def read_reference_estimators(modelpath, modelgridindex=None, timestep=None):
     for ionfracfilepath in ionfracfilepaths:
         _, element, _, _ = ionfracfilepath.stem.split("_")
 
-        with open(ionfracfilepath, "r") as fions:
+        with open(ionfracfilepath) as fions:
             print(ionfracfilepath)
             ntimes_2 = int(fions.readline().replace("#NTIMES:", ""))
             assert ntimes_2 == ntimes
@@ -172,7 +176,7 @@ def read_reference_estimators(modelpath, modelgridindex=None, timestep=None):
     return estimators
 
 
-def get_spectra(modelpath):
+def get_spectra(modelpath: Union[str, Path]) -> tuple[pd.DataFrame, np.ndarray]:
     modelpath = Path(modelpath)
     virtualfolder, inputmodel, codename = modelpath.parts
     assert virtualfolder == "codecomparison"
@@ -181,20 +185,22 @@ def get_spectra(modelpath):
 
     specfilepath = Path(inputmodelfolder, f"spectra_{inputmodel}_{codename}.txt")
 
-    with open(specfilepath, "r") as fspec:
+    with open(specfilepath) as fspec:
         ntimes = int(fspec.readline().replace("#NTIMES:", ""))
-        nwave = int(fspec.readline().replace("#NWAVE:", ""))
+        _ = int(fspec.readline().replace("#NWAVE:", ""))
         arr_timedays = np.array([float(x) for x in fspec.readline().split()[1:]])
         assert len(arr_timedays) == ntimes
 
         dfspectra = pd.read_csv(
-            fspec, delim_whitespace=True, header=None, names=["lambda"] + list(arr_timedays), comment="#"
+            fspec, delim_whitespace=True, header=None, names=["lambda", *list(arr_timedays)], comment="#"
         )
 
     return dfspectra, arr_timedays
 
 
-def plot_spectrum(modelpath, timedays, ax, **plotkwargs):
+def plot_spectrum(
+    modelpath: Union[str, Path], timedays: Union[str, float], axis: matplotlib.axes.Axes, **plotkwargs
+) -> None:
     dfspectra, arr_timedays = get_spectra(modelpath)
     # print(dfspectra)
     timeindex = (np.abs(arr_timedays - float(timedays))).argmin()
@@ -209,4 +215,4 @@ def plot_spectrum(modelpath, timedays, ax, **plotkwargs):
     megaparsec_to_cm = 3.085677581491367e24
     arr_flux = dfspectra[dfspectra.columns[timeindex + 1]] / 4 / math.pi / (megaparsec_to_cm**2)
 
-    ax.plot(dfspectra["lambda"], arr_flux, label=label, **plotkwargs)
+    axis.plot(dfspectra["lambda"], arr_flux, label=label, **plotkwargs)

@@ -2,8 +2,6 @@ import numpy as np
 
 import artistools as at
 
-# import pandas as pd
-
 CLIGHT = 2.99792458e10
 
 
@@ -16,17 +14,6 @@ def change_cell_positions_to_new_time(dfgriddata, t_model_1d):
     ncoordgridx = round(ngridcells ** (1.0 / 3.0))
     wid_init = 2 * max(dfgriddata["pos_x_min"]) / ncoordgridx
     return dfgriddata, wid_init
-
-
-def get_cell_midpoints(dfgriddata, wid_init):
-    dfgriddata["posx_mid"] = dfgriddata["pos_x_min"] + (0.5 * wid_init)
-    dfgriddata["posy_mid"] = dfgriddata["pos_y_min"] + (0.5 * wid_init)
-    dfgriddata["posz_mid"] = dfgriddata["pos_z_min"] + (0.5 * wid_init)
-
-    dfgriddata["posx_max"] = dfgriddata["pos_x_min"] + (wid_init)
-    dfgriddata["posy_max"] = dfgriddata["pos_y_min"] + (wid_init)
-    dfgriddata["posz_max"] = dfgriddata["pos_z_min"] + (wid_init)
-    return dfgriddata
 
 
 def map_1d_to_3d(dfgriddata, vmax, n_3d_gridcells, data_1d, t_model_1d, wid_init):
@@ -64,9 +51,5 @@ def map_1d_to_3d(dfgriddata, vmax, n_3d_gridcells, data_1d, t_model_1d, wid_init
     print(sum(modelgrid_rho_3d * (wid_init**3)) / CLIGHT)
 
     at.inputmodel.save_modeldata(
-        modelpath=".",
-        dfmodel=dfgriddata,
-        t_model_init_days=t_model_1d / (24 * 60 * 60),
-        dimensions=3,
-        vmax=vmax * CLIGHT,
+        modelpath=".", dfmodel=dfgriddata, t_model_init_days=t_model_1d / (24 * 60 * 60), vmax=vmax * CLIGHT
     )

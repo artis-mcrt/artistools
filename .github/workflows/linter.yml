@@ -78,6 +78,11 @@ jobs:
             - name: Lint with pylint
               run: |
                   pylint artistools
+    ruff:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
+            - uses: chartboost/ruff-action@v1
 
     superlinter:
         name: Super linter
@@ -91,7 +96,7 @@ jobs:
                   fetch-depth: 0
 
             - name: Lint Code Base
-              uses: github/super-linter/slim@v4
+              uses: github/super-linter/slim@v5.0.0
               env:
                   LINTER_RULES_PATH: ./
                   #   LOG_LEVEL: WARNING

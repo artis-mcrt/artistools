@@ -8,8 +8,6 @@ import pandas as pd
 from scipy import integrate
 
 import artistools as at
-import artistools.inputmodel
-
 
 DAY = 86400  # day in seconds
 MSUN = 1.989e33  # solar mass in grams
@@ -84,9 +82,7 @@ def define_heating_rate():
     E_tot = integrate.trapezoid(y=qdot, x=times)  # ergs/s/g
     # print("Etot per gram", E_tot, E_tot*1.989e33*0.01)
 
-    import scipy.integrate
-
-    cumulative_integrated_energy = scipy.integrate.cumulative_trapezoid(y=qdot, x=times)
+    cumulative_integrated_energy = integrate.cumulative_trapezoid(y=qdot, x=times)
     cumulative_integrated_energy = np.insert(cumulative_integrated_energy, 0, 0)
 
     rate = cumulative_integrated_energy / E_tot
@@ -123,7 +119,7 @@ def define_heating_rate():
 
 def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
     index_time_greaterthan = energy_thermo_data[energy_thermo_data["time/s"] > 1e7].index  # 1e7 seconds = 116 days
-    energy_thermo_data.drop(index_time_greaterthan, inplace=True)
+    energy_thermo_data = energy_thermo_data.drop(index_time_greaterthan)
     # print("Dropping times later than 116 days")
 
     skipfirstnrows = 0  # not sure first values look sensible -- check this
@@ -135,9 +131,7 @@ def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
     if get_rate:
         print(f"E_tot {E_tot} erg/g")
 
-        import scipy.integrate
-
-        cumulative_integrated_energy = scipy.integrate.cumulative_trapezoid(y=qdot, x=times)
+        cumulative_integrated_energy = integrate.cumulative_trapezoid(y=qdot, x=times)
         cumulative_integrated_energy = np.insert(cumulative_integrated_energy, 0, 0)
 
         rate = cumulative_integrated_energy / E_tot
@@ -147,8 +141,7 @@ def energy_from_rprocess_calculation(energy_thermo_data, get_rate=True):
 
         return times_and_rate, E_tot
 
-    else:
-        return E_tot
+    return E_tot
 
 
 def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_trajectories=False, thermalisation=False):
@@ -186,7 +179,7 @@ def get_rprocess_calculation_files(path_to_rprocess_calculation, interpolate_tra
         interpolated_trajectories["mean"] = interpolated_trajectories.iloc[:, 1:].mean(axis=1)
 
         index_time_lessthan = interpolated_trajectories[interpolated_trajectories["time/s"] < 1.1e-1].index
-        interpolated_trajectories.drop(index_time_lessthan, inplace=True)
+        interpolated_trajectories = interpolated_trajectories.drop(index_time_lessthan)
 
         interpolated_trajectories.to_csv(path_to_rprocess_calculation / "interpolatedQdot.dat", sep=" ", index=False)
     print(f"sum etot {sum(trajectory_E_tot)}")
@@ -248,3 +241,22 @@ def plot_energy_rate(modelpath):
     plt.plot(
         times_and_rate["times"], np.array(times_and_rate["nuclear_heating_power"]) * Mtot_grams, color="k", zorder=10
     )
+
+
+def get_etot_fromfile(modelpath):
+    energydistribution_data = pd.read_csv(
+        Path(modelpath) / "energydistribution.txt",
+        skiprows=1,
+        delim_whitespace=True,
+        header=None,
+        names=["cellid", "cell_energy"],
+    )
+    etot = energydistribution_data["cell_energy"].sum()
+    return etot, energydistribution_data
+
+
+def get_energy_rate_fromfile(modelpath):
+    energyrate_data = pd.read_csv(
+        Path(modelpath) / "energyrate.txt", skiprows=1, delim_whitespace=True, header=None, names=["times", "rate"]
+    )
+    return energyrate_data

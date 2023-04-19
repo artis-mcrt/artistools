@@ -4,28 +4,17 @@ import argparse
 import math
 import multiprocessing
 import os
+import sys
 from pathlib import Path
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 from astropy import constants as const
+from matplotlib import ticker
 
 import artistools as at
-import artistools.atomic
-import artistools.estimators
-import artistools.nltepops
-import artistools.plottools
-
-# import re
-# import sys
-# from functools import lru_cache
-# from functools import partial
-# from itertools import chain
-# import numpy as np
-
 
 defaultoutputfile = "plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
 
@@ -37,7 +26,7 @@ def annotate_emission_line(ax, y, upperlevel, lowerlevel, label):
         xycoords=("data", "axes fraction"),
         xytext=(upperlevel, y),
         textcoords=("data", "axes fraction"),
-        arrowprops=dict(facecolor="black", width=0.1, headwidth=6),
+        arrowprops={"facecolor": "black", "width": 0.1, "headwidth": 6},
     )
 
     ax.annotate(
@@ -50,8 +39,8 @@ def annotate_emission_line(ax, y, upperlevel, lowerlevel, label):
     )
 
 
-def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, dfpopthision, args, annotatelines):
-    nne, Te, TR, W = [estimators_celltimestep[s] for s in ["nne", "Te", "TR", "W"]]
+def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, dfpopthision, annotatelines):
+    nne, Te, TR, W = (estimators_celltimestep[s] for s in ["nne", "Te", "TR", "W"])
     # comparison to Chianti file
     elsym = at.get_elsymbol(atomic_number)
     elsymlower = elsym.lower()
@@ -76,10 +65,10 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
                 if math.isclose(file_nne, nne, rel_tol=0.01) and math.isclose(file_Te, Te, abs_tol=10):
                     if file_W > 0:
                         continue
-                        bbstr = " with dilute blackbody"
-                        color = "C2"
-                        marker = "+"
-                    else:
+                        # bbstr = " with dilute blackbody"
+                        # color = "C2"
+                        # marker = "+"
+                    else:  # noqa: RET507
                         bbstr = ""
                         color = "C1"
                         marker = "^"
@@ -96,7 +85,7 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
                         row = line.split()
                         try:
                             levelnum = levelnumofconfigterm[(row[1], row[2])]
-                            if levelnum in dfpopthision["level"].values:
+                            if levelnum in dfpopthision["level"].to_numpy():
                                 levelnums.append(levelnum)
                                 if firstdep < 0:
                                     firstdep = float(row[0])
@@ -135,9 +124,9 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
             print(f"reading {floersfilename}")
             floers_levelpops = pd.read_csv(modelpath / floersfilename, comment="#", delim_whitespace=True)
             # floers_levelnums = floers_levelpops['index'].values - 1
-            floers_levelpops.sort_values(by="energypercm", inplace=True)
+            floers_levelpops = floers_levelpops.sort_values(by="energypercm")
             floers_levelnums = list(range(len(floers_levelpops)))
-            floers_levelpop_values = floers_levelpops["frac_ionpop"].values * dfpopthision["n_NLTE"].sum()
+            floers_levelpop_values = floers_levelpops["frac_ionpop"].to_numpy() * dfpopthision["n_NLTE"].sum()
 
         floersmultizonefilename = None
         if modelpath.stem.startswith("w7_"):
@@ -167,7 +156,7 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
                 if abs(row["vel_outer"] - vel_outer) < 0.5:
                     print(f"  ARTIS cell vel_outter: {vel_outer}, Floersfile: {row['vel_outer']}")
                     print(f"  ARTIS cell Te: {T_e}, Floersfile: {row['Te']}")
-                    floers_levelpops = row.values[4:]
+                    floers_levelpops = row.to_numpy()[4:]
                     if len(dfpopthision["level"]) < len(floers_levelpops):
                         floers_levelpops = floers_levelpops[: len(dfpopthision["level"])]
                     floers_levelnums = list(range(len(floers_levelpops)))
@@ -209,7 +198,7 @@ def make_ionsubplot(
     dfpopthision = at.nltepops.add_lte_pops(modelpath, dfpopthision, lte_columns, noprint=False, maxlevel=args.maxlevel)
 
     if args.maxlevel >= 0:
-        dfpopthision.query("level <= @args.maxlevel", inplace=True)
+        dfpopthision = dfpopthision.query("level <= @args.maxlevel")
 
     ionpopulation = dfpopthision["n_NLTE"].sum()
     ionpopulation_fromest = estimators[(timestep, modelgridindex)]["populations"].get((atomic_number, ion_stage), 0.0)
@@ -255,16 +244,17 @@ def make_ionsubplot(
         f"level population of {ionpopulation:.1f} (from estimator file ion pop = {ionpopulation_fromest})"
     )
 
-    if args.departuremode:
+    lte_scalefactor = (
         # scale to match the ground state populations
-        lte_scalefactor = float(dfpopthision["n_NLTE"].iloc[0] / dfpopthision["n_LTE_T_e"].iloc[0])
-    else:
-        # scale to match the ion population
-        lte_scalefactor = float(ionpopulation / dfpopthision["n_LTE_T_e"].sum())
+        float(dfpopthision["n_NLTE"].iloc[0] / dfpopthision["n_LTE_T_e"].iloc[0])
+        if args.departuremode
+        # else scale to match the ion population
+        else float(ionpopulation / dfpopthision["n_LTE_T_e"].sum())
+    )
 
-    dfpopthision.eval("n_LTE_T_e_normed = n_LTE_T_e * @x", local_dict={"x": lte_scalefactor}, inplace=True)
+    dfpopthision = dfpopthision.eval("n_LTE_T_e_normed = n_LTE_T_e * @x", local_dict={"x": lte_scalefactor})
 
-    dfpopthision.eval("departure_coeff = n_NLTE / n_LTE_T_e_normed", inplace=True)
+    dfpopthision = dfpopthision.eval("departure_coeff = n_NLTE / n_LTE_T_e_normed")
 
     pd.set_option("display.max_columns", 150)
     if len(dfpopthision) < 30:
@@ -295,7 +285,7 @@ def make_ionsubplot(
             round((const.h * const.c).to("eV angstrom").value / trans.energy_trans) for _, trans in dftrans.iterrows()
         ]
 
-        dftrans.sort_values("emissionstrength", ascending=False, inplace=True)
+        dftrans = dftrans.sort_values("emissionstrength", ascending=False)
 
         print("\nTop radiative decays")
         print(dftrans[:10].to_string(index=False))
@@ -349,7 +339,7 @@ def make_ionsubplot(
 
         if not args.hide_lte_tr:
             lte_scalefactor = float(ionpopulation / dfpopthision["n_LTE_T_R"].sum())
-            dfpopthision.eval("n_LTE_T_R_normed = n_LTE_T_R * @lte_scalefactor", inplace=True)
+            dfpopthision = dfpopthision.eval("n_LTE_T_R_normed = n_LTE_T_R * @lte_scalefactor")
             ax.plot(
                 dfpopthision["level"],
                 dfpopthision["n_LTE_T_R_normed"],
@@ -385,7 +375,7 @@ def make_ionsubplot(
 
     if args.plotrefdata:
         plot_reference_data(
-            ax, atomic_number, ion_stage, estimators[(timestep, modelgridindex)], dfpopthision, args, annotatelines=True
+            ax, atomic_number, ion_stage, estimators[(timestep, modelgridindex)], dfpopthision, annotatelines=True
         )
 
 
@@ -425,10 +415,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
         ax = ax.flatten()
 
     for plotnumber, timedays in enumerate(timedayslist):
-        if args.subplots:
-            axis = ax[plotnumber]
-        else:
-            axis = ax
+        axis = ax[plotnumber] if args.subplots else ax
         plot_populations_with_time_or_velocity(
             axis, modelpaths, timedays, ionstage, ionlevels, Z, levelconfignames, args
         )
@@ -439,8 +426,6 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     if args.x == "velocity":
         xlabel = r"Zone outer velocity [km s$^{-1}$]"
     ylabel = r"Level population [cm$^{-3}$]"
-
-    import artistools.plottools
 
     at.plottools.set_axis_labels(fig, ax, xlabel, ylabel, labelfontsize, args)
     if args.subplots:
@@ -472,11 +457,11 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
 
 def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ionstage, ionlevels, Z, levelconfignames, args):
     if args.x == "time":
-        timesteps = [time for time in range(args.timestepmin, args.timestepmax)]
+        timesteps = list(range(args.timestepmin, args.timestepmax))
 
         if not args.modelgridindex:
             print("Please specify modelgridindex")
-            quit()
+            sys.exit(1)
 
         modelgridindex_list = np.ones_like(timesteps)
         modelgridindex_list = modelgridindex_list * int(args.modelgridindex[0])
@@ -505,15 +490,15 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ionstage, i
             for ionlevel in ionlevels:
                 populations[(timestep, ionlevel, mgi)] = timesteppops.loc[timesteppops["level"] == ionlevel][
                     "n_NLTE"
-                ].values[0]
+                ].to_numpy()[0]
                 # populationsLTE[(timestep, ionlevel)] = (timesteppops.loc[timesteppops['level']
                 #                                                          == ionlevel]['n_LTE'].values[0])
 
         for ionlevel in ionlevels:
-            plottimesteps = np.array([int(ts) for ts, level, mgi in populations.keys() if level == ionlevel])
+            plottimesteps = np.array([int(ts) for ts, level, mgi in populations if level == ionlevel])
             timedays = [float(at.get_timestep_time(modelpath, ts)) for ts in plottimesteps]
             plotpopulations = np.array(
-                [float(populations[ts, level, mgi]) for ts, level, mgi in populations.keys() if level == ionlevel]
+                [float(populations[ts, level, mgi]) for ts, level, mgi in populations if level == ionlevel]
             )
             # plotpopulationsLTE = np.array([float(populationsLTE[ts, level]) for ts, level in populationsLTE.keys()
             #                             if level == ionlevel])
@@ -542,7 +527,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         print(f"No NLTE population data for modelgrid cell {mgilist[0]} timestep {timestep}")
         return
 
-    dfpop.query("Z == @atomic_number", inplace=True)
+    dfpop = dfpop.query("Z == @atomic_number")
 
     # top_ion = 9999
     max_ion_stage = dfpop.ion_stage.max()
@@ -576,6 +561,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         axes = [axes]
 
     prev_ion_stage = -1
+    assert len(mgilist) > 0
     for mgilistindex, modelgridindex in enumerate(mgilist):
         mgifirstaxindex = mgilistindex
         mgilastaxindex = mgilistindex + len(ion_stage_list) - 1
@@ -609,7 +595,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
             print(f"No NLTE population data for modelgrid cell {modelgridindex} timestep {timestep}")
             return
 
-        dfpop.query("Z == @atomic_number", inplace=True)
+        dfpop = dfpop.query("Z == @atomic_number")
 
         # top_ion = 9999
         max_ion_stage = dfpop.ion_stage.max()
@@ -634,7 +620,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
             subplot_title += f" timestep {timestep:d}"
         else:
             subplot_title += f" {time_days:.0f}d"
-        subplot_title += f" (Te={T_e:.0f} K, nne={nne:.1e} " + r"cm$^{-3}$, T$_R$=" + f"{T_R:.0f} K, W={W:.1e})"
+        subplot_title += rf" (Te={T_e:.0f} K, nne={nne:.1e} cm$^{-3}$, T$_R$={T_R:.0f} K, W={W:.1e})"
 
         if not args.notitle:
             axes[mgifirstaxindex].set_title(subplot_title, fontsize=10)
@@ -681,7 +667,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         axes[-1].set_xlabel(r"Level index")
 
     outputfilename = str(args.outputfile).format(
-        elsymbol=at.get_elsymbol(atomic_number), cell=modelgridindex, timestep=timestep, time_days=time_days
+        elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, time_days=time_days
     )
     fig.savefig(str(outputfilename), format="pdf")
     print(f"Saved {outputfilename}")
@@ -759,6 +745,8 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
+    at.set_mpl_style()
+
     if args.x in ["time", "velocity"]:
         # if len(args.modelpath) == 1:
         #     modelpath = args.modelpath
@@ -767,13 +755,13 @@ def main(args=None, argsraw=None, **kwargs):
 
         # if not args.timedays:
         #     print("Please specify time range with -timedays")
-        #     quit()
+        #     sys.exit(1)
         if not args.ionstages:
             print("Please specify ionstage")
-            quit()
+            sys.exit(1)
         if not args.levels:
             print("Please specify levels")
-            quit()
+            sys.exit(1)
     else:
         modelpath = args.modelpath
 
@@ -801,7 +789,7 @@ def main(args=None, argsraw=None, **kwargs):
     if isinstance(args.elements, str):
         args.elements = [args.elements]
 
-    if isinstance(args.velocity, float) or isinstance(args.velocity, int):
+    if isinstance(args.velocity, (float, int)):
         args.velocity = [args.velocity]
 
     mgilist = []

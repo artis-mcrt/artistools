@@ -3,7 +3,6 @@
 
 Examples are temperatures, populations, and heating/cooling rates.
 """
-# import math
 import argparse
 import math
 import multiprocessing
@@ -25,8 +24,6 @@ import pandas as pd
 
 import artistools as at
 import artistools.nltepops
-
-# from itertools import chain
 
 
 def get_variableunits(key: Optional[str] = None) -> Union[str, dict[str, str]]:
@@ -85,7 +82,7 @@ def get_ionrecombrates_fromfile(filename: Union[Path, str]) -> pd.DataFrame:
     print(f"Reading {filename}")
 
     header_row = []
-    with open(filename, "r") as filein:
+    with open(filename) as filein:
         while True:
             line = filein.readline()
             if line.strip().startswith("TOTAL RECOMBINATION RATE"):
@@ -127,12 +124,15 @@ def get_units_string(variable: str) -> str:
 
 
 def parse_estimfile(
-    estfilepath: Path, modelpath: Path, get_ion_values: bool = True, get_heatingcooling: bool = True
-) -> Iterator[tuple[int, int, dict]]:
+    estfilepath: Path,
+    modelpath: Path,
+    get_ion_values: bool = True,
+    get_heatingcooling: bool = True,
+) -> Iterator[tuple[int, int, dict]]:  # pylint: disable=unused-argument
     """Generate timestep, modelgridindex, dict from estimator file."""
     # itstep = at.get_inputparams(modelpath)['itstep']
 
-    with at.zopen(estfilepath, "rt") as estimfile:
+    with at.zopen(estfilepath) as estimfile:
         timestep: int = -1
         modelgridindex: int = -1
         estimblock: dict[Any, Any] = {}
@@ -235,7 +235,6 @@ def parse_estimfile(
         yield timestep, modelgridindex, estimblock
 
 
-# @at.diskcache(ignorekwargs=['printfilename'], quiet=False, funcdepends=parse_estimfile, savezipped=True)
 def read_estimators_from_file(
     folderpath: Union[Path, str],
     modelpath: Path,
@@ -247,15 +246,12 @@ def read_estimators_from_file(
 ) -> dict[tuple[int, int], Any]:
     estimators_thisfile = {}
     estimfilename = f"estimators_{mpirank:04d}.out"
-    estfilepath = Path(folderpath, estimfilename)
-    if not estfilepath.is_file():
-        estfilepath = Path(folderpath, estimfilename + ".gz")
-        if not estfilepath.is_file():
-            estfilepath = Path(folderpath, estimfilename + ".xz")
-            if not estfilepath.is_file():
-                # not worth printing and error, because ranks with no cells to update do not produce an estimator file
-                # print(f'Warning: Could not find {estfilepath.relative_to(modelpath.parent)}')
-                return {}
+    try:
+        estfilepath = at.firstexisting(estimfilename, folder=folderpath, tryzipped=True)
+    except FileNotFoundError:
+        # not worth printing an error, because ranks with no cells to update do not produce an estimator file
+        # print(f'Warning: Could not find {estfilepath.relative_to(modelpath.parent)}')
+        return {}
 
     if printfilename:
         filesize = Path(estfilepath).stat().st_size / 1024 / 1024
@@ -274,11 +270,10 @@ def read_estimators_from_file(
 
 
 @lru_cache(maxsize=16)
-# @at.diskcache(savezipped=True, funcdepends=[read_estimators_from_file, parse_estimfile])
 def read_estimators(
     modelpath: Union[Path, str],
-    modelgridindex: Optional[Union[int, Sequence[int]]] = None,
-    timestep: Optional[Union[int, Sequence[int]]] = None,
+    modelgridindex: Union[None, int, Sequence[int]] = None,
+    timestep: Union[None, int, Sequence[int]] = None,
     get_ion_values: bool = True,
     get_heatingcooling: bool = True,
 ) -> dict[tuple[int, int], dict]:
@@ -316,7 +311,7 @@ def read_estimators(
     modeldata, _ = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
     if "velocity_outer" in modeldata.columns:
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-        arr_velocity_outer = tuple(list([float(v) for v in modeldata["velocity_outer"].values]))
+        arr_velocity_outer = tuple([float(v) for v in modeldata["velocity_outer"].to_numpy()])
     else:
         arr_velocity_outer = None
 
@@ -348,7 +343,7 @@ def read_estimators(
             arr_rankestimators = [processfile(rank) for rank in mpiranklist]
 
         for mpirank, estimators_thisfile in zip(mpiranklist, arr_rankestimators):
-            dupekeys = list(sorted([k for k in estimators_thisfile if k in estimators]))
+            dupekeys = sorted([k for k in estimators_thisfile if k in estimators])
             for k in dupekeys:
                 # dropping the lowest timestep is normal for restarts. Only warn about other cases
                 if k[0] != dupekeys[0][0]:
@@ -382,28 +377,28 @@ def get_averaged_estimators(
 
     # if single timestep, no averaging needed
     if isinstance(timesteps, int):
-        return reduce(lambda d, k: d[k], [(timesteps, modelgridindex)] + keys, estimators)
+        return reduce(lambda d, k: d[k], [(timesteps, modelgridindex), *keys], estimators)
 
-    firsttimestepvalue = reduce(lambda d, k: d[k], [(timesteps[0], modelgridindex)] + keys, estimators)
+    firsttimestepvalue = reduce(lambda d, k: d[k], [(timesteps[0], modelgridindex), *keys], estimators)
     if isinstance(firsttimestepvalue, dict):
         dictout = {
-            k: get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, keys + [k])
-            for k in firsttimestepvalue.keys()
+            k: get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [*keys, k])
+            for k in firsttimestepvalue
         }
 
         return dictout
-    else:
-        tdeltas = at.get_timestep_times_float(modelpath, loc="delta")
-        valuesum = 0
-        tdeltasum = 0
-        for timestep, tdelta in zip(timesteps, tdeltas):
-            for mgi in range(modelgridindex - avgadjcells, modelgridindex + avgadjcells + 1):
-                try:
-                    valuesum += reduce(lambda d, k: d[k], [(timestep, mgi)] + keys, estimators) * tdelta
-                    tdeltasum += tdelta
-                except KeyError:
-                    pass
-        return valuesum / tdeltasum
+
+    tdeltas = at.get_timestep_times_float(modelpath, loc="delta")
+    valuesum = 0
+    tdeltasum = 0
+    for timestep, tdelta in zip(timesteps, tdeltas):
+        for mgi in range(modelgridindex - avgadjcells, modelgridindex + avgadjcells + 1):
+            try:
+                valuesum += reduce(lambda d, k: d[k], [(timestep, mgi), *keys], estimators) * tdelta
+                tdeltasum += tdelta
+            except KeyError:
+                pass
+    return valuesum / tdeltasum
 
     # except KeyError:
     #     if (timestep, modelgridindex) in estimators:
@@ -418,7 +413,7 @@ def get_averageionisation(populations: dict[Any, float], atomic_number: int) -> 
     free_electron_weighted_pop_sum = 0.0
     found = False
     popsum = 0.0
-    for key in populations.keys():
+    for key in populations:
         if isinstance(key, tuple) and key[0] == atomic_number:
             found = True
             ion_stage = key[1]
@@ -442,32 +437,32 @@ def get_averageexcitation(
     ionpopsum = 0
     if dfnltepops.empty:
         return float("NaN")
-    else:
-        dfnltepops_ion = dfnltepops.query(
-            "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number & ion_stage==@ion_stage"
+
+    dfnltepops_ion = dfnltepops.query(
+        "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number & ion_stage==@ion_stage"
+    )
+
+    k_b = 8.617333262145179e-05  # eV / K
+
+    ionpopsum = dfnltepops_ion.n_NLTE.sum()
+    energypopsum = (
+        dfnltepops_ion[dfnltepops_ion.level >= 0].eval("@ionlevels.iloc[level].energy_ev.values * n_NLTE").sum()
+    )
+
+    try:
+        superlevelrow = dfnltepops_ion[dfnltepops_ion.level < 0].iloc[0]
+        levelnumber_sl = dfnltepops_ion.level.max() + 1
+
+        energy_boltzfac_sum = (
+            ionlevels.iloc[levelnumber_sl:].eval("energy_ev * g * exp(- energy_ev / @k_b / @T_exc)").sum()
         )
 
-        k_b = 8.617333262145179e-05  # eV / K
-
-        ionpopsum = dfnltepops_ion.n_NLTE.sum()
-        energypopsum = (
-            dfnltepops_ion[dfnltepops_ion.level >= 0].eval("@ionlevels.iloc[level].energy_ev.values * n_NLTE").sum()
-        )
-
-        try:
-            superlevelrow = dfnltepops_ion[dfnltepops_ion.level < 0].iloc[0]
-            levelnumber_sl = dfnltepops_ion.level.max() + 1
-
-            energy_boltzfac_sum = (
-                ionlevels.iloc[levelnumber_sl:].eval("energy_ev * g * exp(- energy_ev / @k_b / @T_exc)").sum()
-            )
-
-            boltzfac_sum = ionlevels.iloc[levelnumber_sl:].eval("g * exp(- energy_ev / @k_b / @T_exc)").sum()
-            # adjust to the actual superlevel population from ARTIS
-            energypopsum += energy_boltzfac_sum * superlevelrow.n_NLTE / boltzfac_sum
-        except IndexError:
-            # no superlevel
-            pass
+        boltzfac_sum = ionlevels.iloc[levelnumber_sl:].eval("g * exp(- energy_ev / @k_b / @T_exc)").sum()
+        # adjust to the actual superlevel population from ARTIS
+        energypopsum += energy_boltzfac_sum * superlevelrow.n_NLTE / boltzfac_sum
+    except IndexError:
+        # no superlevel
+        pass
 
     return energypopsum / ionpopsum
 
@@ -479,7 +474,7 @@ def get_partiallycompletetimesteps(estimators: dict[Any, Any]) -> list[int]:
     """
     timestepcells: dict[int, list[int]] = {}
     all_mgis = set()
-    for nts, mgi in estimators.keys():
+    for nts, mgi in estimators:
         if nts not in timestepcells:
             timestepcells[nts] = []
         timestepcells[nts].append(mgi)

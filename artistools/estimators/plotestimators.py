@@ -4,7 +4,6 @@
 
 Examples are temperatures, populations, heating/cooling rates.
 """
-# import math
 import argparse
 import math
 import multiprocessing
@@ -18,8 +17,6 @@ import numpy as np
 import pandas as pd
 
 import artistools as at
-import artistools.initial_composition
-import artistools.nltepops
 
 colors_tab10 = list(plt.get_cmap("tab10")(np.linspace(0, 1.0, 10)))
 
@@ -130,7 +127,7 @@ def plot_average_ionisation_excitation(
     elif seriestype == "averageexcitation":
         ax.set_ylabel("Average excitation [eV]")
     else:
-        raise ValueError()
+        raise ValueError
 
     arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
     for paramvalue in params:
@@ -188,8 +185,6 @@ def plot_levelpop(
     args=None,
     **plotkwargs,
 ):
-    import artistools.plottools
-
     if seriestype == "levelpopulation_dn_on_dvel":
         ax.set_ylabel("dN/dV [{}km$^{{-1}}$ s]")
         ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))
@@ -197,10 +192,10 @@ def plot_levelpop(
         ax.set_ylabel("X$_{{i}}$ [{}/cm3]")
         ax.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(ax.get_ylabel(), useMathText=True))
     else:
-        raise ValueError()
+        raise ValueError
 
     modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-    modeldata.eval("modelcellvolume = cellmass_grams / (10 ** logrho)", inplace=True)
+    modeldata = modeldata.eval("modelcellvolume = cellmass_grams / (10 ** logrho)")
 
     adata = at.atomic.get_levels(modelpath)
 
@@ -252,10 +247,11 @@ def plot_levelpop(
 
         if dfalldata is not None:
             elsym = at.get_elsymbol(atomic_number).lower()
-            if seriestype == "levelpopulation_dn_on_dvel":
-                colname = f"nlevel_on_dv_{elsym}_ionstage{ion_stage}_level{levelindex}"
-            else:
-                colname = f"nnlevel_{elsym}_ionstage{ion_stage}_level{levelindex}"
+            colname = (
+                f"nlevel_on_dv_{elsym}_ionstage{ion_stage}_level{levelindex}"
+                if seriestype == "levelpopulation_dn_on_dvel"
+                else f"nnlevel_{elsym}_ionstage{ion_stage}_level{levelindex}"
+            )
             dfalldata[colname] = ylist
 
         ylist.insert(0, ylist[0])
@@ -288,14 +284,13 @@ def plot_multi_ion_series(
     def get_iontuple(ionstr):
         if ionstr in at.get_elsymbolslist():
             return (at.get_atomic_number(ionstr), "ALL")
-        elif " " in ionstr:
+        if " " in ionstr:
             return (at.get_atomic_number(ionstr.split(" ")[0]), at.decode_roman_numeral(ionstr.split(" ")[1]))
-        elif ionstr.rstrip("-0123456789") in at.get_elsymbolslist():
+        if ionstr.rstrip("-0123456789") in at.get_elsymbolslist():
             atomic_number = at.get_atomic_number(ionstr.rstrip("-0123456789"))
             return (atomic_number, ionstr)
-        else:
-            atomic_number = at.get_atomic_number(ionstr.split("_")[0])
-            return (atomic_number, ionstr)
+        atomic_number = at.get_atomic_number(ionstr.split("_")[0])
+        return (atomic_number, ionstr)
 
     # decoded into atomic number and parameter, e.g., [(26, 1), (26, 2), (26, 'ALL'), (26, 'Fe56')]
     iontuplelist = [get_iontuple(ionstr) for ionstr in ionlist]
@@ -348,7 +343,7 @@ def plot_multi_ion_series(
             elif args.ionpoptype == "totalpop":
                 ax.set_ylabel(r"X$_{i}$/X$_{rm tot}$")
             else:
-                assert False
+                raise AssertionError
         else:
             ax.set_ylabel(at.estimators.get_dictlabelreplacements().get(seriestype, seriestype))
 
@@ -384,7 +379,7 @@ def plot_multi_ion_series(
                         totalpop = estimpop["total"]
                         yvalue = nionpop / totalpop  # Plot as fraction of total population
                     else:
-                        assert False
+                        raise AssertionError
                 except ZeroDivisionError:
                     yvalue = 0.0
 
@@ -418,10 +413,11 @@ def plot_multi_ion_series(
                     yvalue = float("NaN")
                 ylist.append(yvalue)
 
-        if hasattr(ion_stage, "lower") and ion_stage != "ALL":
-            plotlabel = ion_stage
-        else:
-            plotlabel = at.get_ionstring(atomic_number, ion_stage, spectral=False)
+        plotlabel = (
+            ion_stage
+            if hasattr(ion_stage, "lower") and ion_stage != "ALL"
+            else at.get_ionstring(atomic_number, ion_stage, spectral=False)
+        )
 
         color = get_elemcolor(atomic_number=atomic_number)
 
@@ -544,12 +540,11 @@ def plot_series(
     ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename, None), **plotkwargs)
 
 
-def get_xlist(xvariable, allnonemptymgilist, estimators, timestepslist, modelpath, args):
+def get_xlist(
+    xvariable, allnonemptymgilist, estimators, timestepslist, modelpath, args
+) -> tuple[list[float], list[float], list[float]]:
     if xvariable in ["cellid", "modelgridindex"]:
-        if args.xmax >= 0:
-            mgilist_out = [mgi for mgi in allnonemptymgilist if mgi <= args.xmax]
-        else:
-            mgilist_out = allnonemptymgilist
+        mgilist_out = [mgi for mgi in allnonemptymgilist if mgi <= args.xmax] if args.xmax >= 0 else allnonemptymgilist
         xlist = mgilist_out
         timestepslist_out = timestepslist
     elif xvariable == "timestep":
@@ -573,7 +568,7 @@ def get_xlist(xvariable, allnonemptymgilist, estimators, timestepslist, modelpat
             if args.xmax > 0 and xvalue > args.xmax:
                 break
 
-    xlist, mgilist_out, timestepslist_out = zip(*list(sorted(zip(xlist, mgilist_out, timestepslist_out))))
+    xlist, mgilist_out, timestepslist_out = zip(*sorted(zip(xlist, mgilist_out, timestepslist_out)))
 
     assert len(xlist) == len(mgilist_out) == len(timestepslist_out)
 
@@ -588,12 +583,12 @@ def plot_subplot(
     assert len(xlist) - 1 == len(mgilist) == len(timestepslist)
     showlegend = False
 
-    ylabel = "UNDEFINED"
+    ylabel = None
     sameylabel = True
     for variablename in plotitems:
         if not isinstance(variablename, str):
             pass
-        elif ylabel == "UNDEFINED":
+        elif ylabel is None:
             ylabel = get_ylabel(variablename)
         elif ylabel != get_ylabel(variablename):
             sameylabel = False
@@ -601,7 +596,7 @@ def plot_subplot(
 
     for plotitem in plotitems:
         if isinstance(plotitem, str):
-            showlegend = len(plotitems) > 1 or len(variablename) > 20
+            showlegend = len(plotitems) > 1 or len(plotitem) > 20
             plot_series(
                 ax,
                 xlist,
@@ -721,10 +716,7 @@ def make_plot(
     dfalldata.index.name = "modelgridindex"
     dfalldata[xvariable] = xlist
 
-    if xvariable.startswith("velocity"):
-        xlist = np.insert(xlist, 0, 0.0)
-    else:
-        xlist = np.insert(xlist, 0, xlist[0])
+    xlist = np.insert(xlist, 0, 0.0) if xvariable.startswith("velocity") else np.insert(xlist, 0, xlist[0])
 
     xmin = args.xmin if args.xmin >= 0 else min(xlist)
     xmax = args.xmax if args.xmax > 0 else max(xlist)
@@ -775,7 +767,7 @@ def make_plot(
     # plt.suptitle(figure_title, fontsize=11, verticalalignment='top')
 
     if args.write_data:
-        dfalldata.sort_index(inplace=True)
+        dfalldata = dfalldata.sort_index()
         dataoutfilename = Path(outfilename).with_suffix(".txt")
         dfalldata.to_csv(dataoutfilename)
         print(f"Saved {dataoutfilename}")
@@ -915,12 +907,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-filtersavgol",
         nargs=2,
-        help="Savitzky–Golay filter. Specify the window_length and polyorder.e.g. -filtersavgol 5 3",
+        help="Savitzky-Golay filter. Specify the window_length and polyorder.e.g. -filtersavgol 5 3",
     )
 
     parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
 
-    parser.add_argument("-plotlist", type=list, default=[], help="Plot list (when calling from Python only)")  # type: ignore
+    parser.add_argument("-plotlist", type=list, default=[], help="Plot list (when calling from Python only)")  # type: ignore[arg-type]
 
     parser.add_argument(
         "-ionpoptype",
@@ -993,7 +985,7 @@ def main(args=None, argsraw=None, **kwargs):
         )
 
     for ts in reversed(timesteps_included):
-        tswithdata = [ts for (ts, mgi) in estimators.keys()]
+        tswithdata = [ts for (ts, mgi) in estimators]
         for ts in timesteps_included:
             if ts not in tswithdata:
                 timesteps_included.remove(ts)
@@ -1003,10 +995,10 @@ def main(args=None, argsraw=None, **kwargs):
         print("No timesteps with data are included")
         return
 
-    if args.plotlist:
-        plotlist = args.plotlist
-    else:
-        plotlist = [
+    plotlist = (
+        args.plotlist
+        if args.plotlist
+        else [
             # [['initabundances', ['Fe', 'Ni_stable', 'Ni_56']]],
             # ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
             #  ['_yscale', 'linear']],
@@ -1039,6 +1031,7 @@ def main(args=None, argsraw=None, **kwargs):
             # [['Alpha_R / RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni III']]],
             # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
         ]
+    )
 
     if args.recombrates:
         plot_recombrates(modelpath, estimators, 26, [2, 3, 4, 5])

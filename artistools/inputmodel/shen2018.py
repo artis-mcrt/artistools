@@ -8,8 +8,6 @@ from astropy import units as u
 
 import artistools as at
 
-# import numpy as np
-
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-inputpath", "-i", default="1.00_5050.dat", help="Path of input file")
@@ -34,7 +32,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     for species in columns[5:]:
         atomic_number = at.get_atomic_number(species.rstrip("0123456789"))
         atomicnumberofspecies[species] = atomic_number
-        isotopesofelem.setdefault(atomic_number, list()).append(species)
+        isotopesofelem.setdefault(atomic_number, []).append(species)
 
     datain = pd.read_csv(args.inputpath, delim_whitespace=True, skiprows=0, header=[0]).dropna()
 
@@ -94,7 +92,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     print(f'M_Ni56 = {tot_ni56mass /  u.solMass.to("g"):.3f} solMass')
 
     at.save_modeldata(dfmodel, t_model_init_days, os.path.join(args.outputpath, "model.txt"))
-    at.inputmodel.save_initialabundances(dfelabundances, os.path.join(args.outputpath, "abundances.txt"))
+    at.inputmodel.save_initelemabundances(dfelabundances, os.path.join(args.outputpath, "abundances.txt"))
 
 
 if __name__ == "__main__":

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Artistools - NLTE population related functions."""
 import math
 import multiprocessing
@@ -6,24 +5,17 @@ import re
 from functools import lru_cache
 from functools import partial
 from pathlib import Path
+from typing import Optional
+from typing import Union
 
 import pandas as pd
 from astropy import constants as const
 
 import artistools as at
-import artistools.misc
+from artistools.configuration import get_config
 
 
-# import os
-# import sys
-# from itertools import chain
-# import matplotlib.pyplot as plt
-# import matplotlib.ticker as ticker
-# import numpy as np
-# import matplotlib as mpl
-
-
-def texifyterm(strterm):
+def texifyterm(strterm: str) -> str:
     """Replace a term string with TeX notation equivalent."""
     strtermtex = ""
     passed_term_Lchar = False
@@ -51,7 +43,7 @@ def texifyterm(strterm):
     return strtermtex
 
 
-def texifyconfiguration(levelname):
+def texifyconfiguration(levelname: str) -> str:
     """Replace a level configuration with the formatted LaTeX equivalent."""
     # the underscore gets confused with LaTeX subscript operator, so switch it to the hash symbol
     strout = "#".join(levelname.split("_")[:-1]) + "#"
@@ -113,7 +105,7 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
             & (dfpop["level"] != -1)
         )
 
-        def f_ltepop(x, T_exc, gsg, gse, ionlevels):
+        def f_ltepop(x, T_exc: float, gsg: float, gse: float, ionlevels) -> float:
             return (
                 ionlevels.iloc[int(x.level)].g
                 / gsg
@@ -153,11 +145,10 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
     return dfpop
 
 
-@at.diskcache(savezipped=True)
-def read_file(nltefilepath):
+def read_file(nltefilepath: Union[str, Path]) -> pd.DataFrame:
     """Read NLTE populations from one file."""
 
-    if not nltefilepath.is_file():
+    if not Path(nltefilepath).is_file():
         nltefilepathgz = Path(str(nltefilepath) + ".gz")
         nltefilepathxz = Path(str(nltefilepath) + ".xz")
         if nltefilepathxz.is_file():
@@ -183,15 +174,19 @@ def read_file_filtered(nltefilepath, strquery=None, dfqueryvars=None):
     dfpopfile = read_file(nltefilepath)
 
     if strquery and not dfpopfile.empty:
-        dfpopfile.query(strquery, local_dict=dfqueryvars, inplace=True)
+        dfpopfile = dfpopfile.query(strquery, local_dict=dfqueryvars)
 
     return dfpopfile
 
 
 @lru_cache(maxsize=2)
-@at.diskcache(savezipped=True, funcversion="2020-07-03.1327", saveonly=False)
-def read_files(modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryvars={}):
+def read_files(
+    modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryvars: Optional[dict] = None
+) -> pd.DataFrame:
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
+
+    if dfqueryvars is None:
+        dfqueryvars = {}
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
 
@@ -220,8 +215,8 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryv
             dfquery_full = f"({dfquery_full}) and "
         dfquery_full += f"({dfquery})"
 
-    if at.get_config()["num_processes"] > 1:
-        with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
+    if get_config()["num_processes"] > 1:
+        with multiprocessing.Pool(processes=get_config()["num_processes"]) as pool:
             arr_dfnltepop = pool.map(
                 partial(read_file_filtered, strquery=dfquery_full, dfqueryvars=dfqueryvars), nltefilepaths
             )

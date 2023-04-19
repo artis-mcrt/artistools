@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 import argparse
-import math
 from pathlib import Path
 
 import argcomplete
@@ -10,10 +9,6 @@ import numpy as np
 import pandas as pd
 
 import artistools as at
-import artistools.inputmodel
-
-# import os.path
-# import matplotlib
 
 
 def get_model_recombenergy(dfbinding, args):
@@ -48,11 +43,9 @@ def get_model_recombenergy(dfbinding, args):
                 elsymb = at.get_elsymbol(atomic_number)
                 massnumber = int(species.lstrip("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"))
                 matchrows = dfbinding.query("Z == @atomic_number")
-                if matchrows.empty:
-                    binding_en_ev = 0.0
-                    # print(f'No binding energy for Z={atomic_number}')
-                else:
-                    binding_en_ev = matchrows.iloc[0]["TotBEn"]
+
+                binding_en_ev = 0.0 if matchrows.empty else matchrows.iloc[0]["TotBEn"]
+
                 # print(species, atomic_number, massnumber, el_binding_en_ev)
                 contrib_binding_en_ev = speciesabund_g / (massnumber * amu_g) * binding_en_ev
 
@@ -97,7 +90,7 @@ def get_particle_elec_binding_energy_per_gram(traj_root, dictbinding, particleid
     #     print(dftrajnucabund)
     # assert frac_unaccounted < 0.3
 
-    dftrajnucabund.eval("recombenergy_ev_per_gram = Z_be_tot_ev * massfrac / (Z + N) / @amu_g", inplace=True)
+    dftrajnucabund = dftrajnucabund.eval("recombenergy_ev_per_gram = Z_be_tot_ev * massfrac / (Z + N) / @amu_g")
 
     # contrib_binding_en_ev = speciesabund_g / (massnumber * amu_g) * binding_en_ev
 
@@ -113,9 +106,9 @@ def get_particle_nucenergy_released(traj_root, particleid, tmin_s, time_s_end):
         traj_root=traj_root, particleid=particleid, memberfilename=memberfilename
     ) as fthermo:
         dfthermo = pd.read_csv(fthermo, delim_whitespace=True, usecols=["#count", "time/s", "Qdot", "Ye"])
-        dfthermo.rename(columns={"time/s": "time_s"}, inplace=True)
-        dfthermo.query("time_s >= @tmin_s", inplace=True)
-        dfthermo.query("time_s <= @time_s_end", inplace=True)
+        dfthermo = dfthermo.rename(columns={"time/s": "time_s"})
+        dfthermo = dfthermo.query("time_s >= @tmin_s")
+        dfthermo = dfthermo.query("time_s <= @time_s_end")
         en_released_ev_per_gram = np.trapz(y=dfthermo["Qdot"], x=dfthermo["time_s"]) * erg_to_ev
         # print(dfthermo)
     return en_released_ev_per_gram
@@ -125,9 +118,9 @@ def get_particles_recomb_nuc_energy(traj_root, dfbinding):
     dfsnapshot = at.inputmodel.modelfromhydro.read_ejectasnapshot(
         "/Users/luke/Library/Mobile Documents/com~apple~CloudDocs/Archive/Astronomy/Mergers/SFHo_snapshot"
     )
-    dfsnapshot.sort_values("ye", inplace=True)
+    dfsnapshot = dfsnapshot.sort_values("ye")
 
-    dictbinding = {Z: be_tot_ev for Z, be_tot_ev in dfbinding[["Z", "TotBEn"]].itertuples(index=False)}
+    dictbinding = dict(dfbinding[["Z", "TotBEn"]].itertuples(index=False))
 
     tmin_s = 10
     time_s = 6 * 3600
@@ -137,7 +130,7 @@ def get_particles_recomb_nuc_energy(traj_root, dfbinding):
     ye_list = []
     elecbinding_en_list = []
     nuclear_released_en_list = []
-    for particleid, ye, pmass in dfsnapshot[["id", "ye", "pmass"]].itertuples(index=False):
+    for particleid, ye, _pmass in dfsnapshot[["id", "ye", "pmass"]].itertuples(index=False):
         try:
             elecbinding_en = get_particle_elec_binding_energy_per_gram(
                 traj_root=traj_root, dictbinding=dictbinding, particleid=particleid, time_s=time_s
@@ -213,7 +206,7 @@ def main(args=None, argsraw=None, **kwargs):
         argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
-    with open(at.get_config()["path_datadir"] / "ElBiEn_2007.txt", "r") as fbinding:
+    with open(at.get_config()["path_datadir"] / "ElBiEn_2007.txt") as fbinding:
         for _ in range(11):
             header = fbinding.readline().lstrip(" #").split()
         # print(header)

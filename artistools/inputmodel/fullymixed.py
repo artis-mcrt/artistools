@@ -6,11 +6,6 @@ from astropy import units as u
 
 import artistools as at
 
-# import math
-# import os.path
-# import numpy as np
-# import pandas as pd
-
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-scalefactor", "-s", default=0.5, help="Kinetic energy scale factor")
@@ -19,12 +14,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def eval_mshell(dfmodel, t_model_init_seconds):
-    dfmodel.eval(
+    dfmodel = dfmodel.eval(
         (
             "cellmass_grams = 10 ** logrho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
             "* (1e5 * @t_model_init_seconds) ** 3"
         ),
-        inplace=True,
     )
 
 
@@ -41,7 +35,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     dfmodel, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(args.inputpath)
     print("Read model.txt")
-    dfelabundances = at.inputmodel.get_initialabundances(args.inputpath)
+    dfelabundances = at.inputmodel.get_initelemabundances(args.inputpath)
     print("Read abundances.txt")
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
@@ -57,13 +51,13 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         integrated_mass_grams = (dfmodel[column_name] * dfmodel.cellmass_grams).sum()
         global_massfrac = integrated_mass_grams / model_mass_grams
         print(f"{column_name:>13s}: {global_massfrac:.3f}  ({integrated_mass_grams * u.g.to('solMass'):.3f} Msun)")
-        dfmodel.eval(f"{column_name} = {global_massfrac}", inplace=True)
+        dfmodel = dfmodel.eval(f"{column_name} = {global_massfrac}")
 
     for column_name in [x for x in dfelabundances.columns if x.startswith("X_")]:
         integrated_mass_grams = (dfelabundances[column_name] * dfmodel.cellmass_grams).sum()
         global_massfrac = integrated_mass_grams / model_mass_grams
         print(f"{column_name:>13s}: {global_massfrac:.3f}  ({integrated_mass_grams * u.g.to('solMass'):.3f} Msun)")
-        dfelabundances.eval(f"{column_name} = {global_massfrac}", inplace=True)
+        dfelabundances = dfelabundances.eval(f"{column_name} = {global_massfrac}")
 
     print(dfmodel)
     print(dfelabundances)
@@ -73,7 +67,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     print(f"Saved {modeloutfilename}")
 
     abundoutfilename = "abundances_fullymixed.txt"
-    at.inputmodel.save_initialabundances(dfelabundances, Path(args.outputpath, abundoutfilename))
+    at.inputmodel.save_initelemabundances(dfelabundances, Path(args.outputpath, abundoutfilename))
     print(f"Saved {abundoutfilename}")
 
 

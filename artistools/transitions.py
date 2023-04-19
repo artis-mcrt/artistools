@@ -2,6 +2,7 @@
 import argparse
 import math
 import multiprocessing
+import sys
 from collections import namedtuple
 from pathlib import Path
 
@@ -11,14 +12,6 @@ import pandas as pd
 from astropy import constants as const
 
 import artistools as at
-import artistools.estimators
-import artistools.nltepops
-import artistools.spectra
-
-# import glob
-# import re
-# import numexpr as ne
-# from astropy import units as u
 
 defaultoutputfile = "plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
 
@@ -32,7 +25,7 @@ def get_kurucz_transitions():
     )
     translist = []
     ionlist = []
-    with open("gfall.dat", "r") as fnist:
+    with open("gfall.dat") as fnist:
         for line in fnist:
             row = line.split()
             if len(row) >= 24:
@@ -61,7 +54,7 @@ def get_kurucz_transitions():
 def get_nist_transitions(filename):
     transitiontuple = namedtuple("transition", "lambda_angstroms A lower_energy_ev upper_energy_ev lower_g upper_g")
     translist = []
-    with open(filename, "r") as fnist:
+    with open(filename) as fnist:
         for line in fnist:
             row = line.split("|")
             if len(row) == 17 and "-" in row[5]:
@@ -71,13 +64,9 @@ def get_nist_transitions(filename):
                     lambda_angstroms = float(row[1])
                 else:
                     continue
-                if len(row[3].strip()) > 0:
-                    A = float(row[3])
-                else:
-                    # continue
-                    A = 1e8
-                lower_energy_ev, upper_energy_ev = [float(x.strip(" []")) for x in row[5].split("-")]
-                lower_g, upper_g = [float(x.strip()) for x in row[12].split("-")]
+                A = float(row[3]) if len(row[3].strip()) > 0 else 1e8
+                lower_energy_ev, upper_energy_ev = (float(x.strip(" []")) for x in row[5].split("-"))
+                lower_g, upper_g = (float(x.strip()) for x in row[12].split("-"))
                 translist.append(
                     transitiontuple(lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_g, upper_g)
                 )
@@ -148,7 +137,7 @@ def make_plot(
 
         if len(axes) > len(ionlist):
             axes[len(ionlist)].plot(xvalues, yvalues_combined[seriesindex], linewidth=1.5, label=serieslabel)
-            peak_y_value = max(peak_y_value, max(yvalues_combined[seriesindex]))
+            peak_y_value = max(peak_y_value, **yvalues_combined[seriesindex])
 
     axislabels = [
         f"{at.get_elsymbol(Z)} {at.roman_numerals[ion_stage]}\n(pop={ionpopdict[(Z, ion_stage)]:.1e}/cm3)"
@@ -185,12 +174,13 @@ def make_plot(
     plt.close()
 
 
-def add_upper_lte_pop(dftransitions, T_exc, ionpop, ltepartfunc, columnname=None):
+def add_upper_lte_pop(dftransitions, T_exc, ionpop, ltepartfunc, columnname=None) -> pd.DataFrame:
     K_B = const.k_B.to("eV / K").value
     scalefactor = ionpop / ltepartfunc
     if columnname is None:
         columnname = f"upper_pop_lte_{T_exc:.0f}K"
-    dftransitions.eval(f"{columnname} = @scalefactor * upper_g * exp(-upper_energy_ev / @K_B / @T_exc)", inplace=True)
+    dftransitions = dftransitions.eval(f"{columnname} = @scalefactor * upper_g * exp(-upper_energy_ev / @K_B / @T_exc)")
+    return dftransitions
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -257,20 +247,18 @@ def main(args=None, argsraw=None, **kwargs):
     if from_model:
         modelgridindex = args.modelgridindex
 
-        if args.timedays:
-            timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
-        else:
-            timestep = args.timestep
+        timestep = at.get_timestep_of_timedays(modelpath, args.timedays) if args.timedays else args.timestep
 
         modeldata, _ = at.inputmodel.get_modeldata(Path(modelpath, "model.txt"))
         estimators_all = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
         if not estimators_all:
-            return -1
+            print("no estimators")
+            sys.exit(1)
 
         estimators = estimators_all[(timestep, modelgridindex)]
         if estimators["emptycell"]:
             print(f"ERROR: cell {modelgridindex} is marked as empty")
-            return -1
+            sys.exit(1)
 
     # also calculate wavelengths outside the plot range to include lines whose
     # edges pass through the plot range
@@ -314,7 +302,7 @@ def main(args=None, argsraw=None, **kwargs):
 
         if dfnltepops is None or dfnltepops.empty:
             print(f"ERROR: no NLTE populations for cell {modelgridindex} at timestep {timestep}")
-            return -1
+            sys.exit(1)
 
         ionpopdict = {
             (Z, ion_stage): dfnltepops.query("Z==@Z and ion_stage==@ion_stage")["n_NLTE"].sum()
@@ -341,10 +329,7 @@ def main(args=None, argsraw=None, **kwargs):
     else:
         if not args.T:
             args.T = [2000]
-        if len(args.T) == 1:
-            figure_title = f"Te = {args.T[0]:.1f}"
-        else:
-            figure_title = None
+        figure_title = f"Te = {args.T[0]:.1f}" if len(args.T) == 1 else None
 
         temperature_list = []
         vardict = {}
@@ -372,8 +357,8 @@ def main(args=None, argsraw=None, **kwargs):
         ionid = (ion.Z, ion.ion_stage)
         if ionid not in ionlist:
             continue
-        else:
-            ionindex = ionlist.index(ionid)
+
+        ionindex = ionlist.index(ionid)
 
         if args.atomicdatabase == "kurucz":
             dftransitions = dftransgfall.query("Z == @ion.Z and ionstage == @ion.ion_stage", inplace=False).copy()
@@ -388,33 +373,35 @@ def main(args=None, argsraw=None, **kwargs):
         )
 
         if not args.include_permitted and not dftransitions.empty:
-            dftransitions.query("forbidden == True", inplace=True)
+            dftransitions = dftransitions.query("forbidden == True")
             print(f"  ({len(ion.transitions):6d} forbidden)")
 
         if not dftransitions.empty:
             if args.atomicdatabase == "artis":
-                dftransitions.eval("upper_energy_ev = @ion.levels.loc[upper].energy_ev.values", inplace=True)
-                dftransitions.eval("lower_energy_ev = @ion.levels.loc[lower].energy_ev.values", inplace=True)
-                dftransitions.eval("lambda_angstroms = @hc / (upper_energy_ev - lower_energy_ev)", inplace=True)
+                dftransitions = dftransitions.eval("upper_energy_ev = @ion.levels.loc[upper].energy_ev.to_numpy()")
+                dftransitions = dftransitions.eval("lower_energy_ev = @ion.levels.loc[lower].energy_ev.to_numpy()")
+                dftransitions = dftransitions.eval("lambda_angstroms = @hc / (upper_energy_ev - lower_energy_ev)")
 
-            dftransitions.query(
-                "lambda_angstroms >= @plot_xmin_wide & lambda_angstroms <= @plot_xmax_wide", inplace=True
+            dftransitions = dftransitions.query(
+                "lambda_angstroms >= @plot_xmin_wide & lambda_angstroms <= @plot_xmax_wide"
             )
 
-            dftransitions.sort_values(by="lambda_angstroms", inplace=True)
+            dftransitions = dftransitions.sort_values(by="lambda_angstroms")
 
             print(f"  {len(dftransitions)} plottable transitions")
 
             if args.atomicdatabase == "artis":
-                dftransitions.eval("upper_g = @ion.levels.loc[upper].g.values", inplace=True)
+                dftransitions = dftransitions.eval("upper_g = @ion.levels.loc[upper].g.to_numpy()")
                 K_B = const.k_B.to("eV / K").value
                 T_exc = vardict["Te"]
                 ltepartfunc = ion.levels.eval("g * exp(-energy_ev / @K_B / @T_exc)").sum()
             else:
                 ltepartfunc = 1.0
 
-            dftransitions.eval("flux_factor = (upper_energy_ev - lower_energy_ev) * A", inplace=True)
-            add_upper_lte_pop(dftransitions, vardict["Te"], ionpopdict[ionid], ltepartfunc, columnname="upper_pop_Te")
+            dftransitions = dftransitions.eval("flux_factor = (upper_energy_ev - lower_energy_ev) * A")
+            dftransitions = add_upper_lte_pop(
+                dftransitions, vardict["Te"], ionpopdict[ionid], ltepartfunc, columnname="upper_pop_Te"
+            )
 
             for seriesindex, temperature in enumerate(temperature_list):
                 T_exc = eval(temperature, vardict)
@@ -424,15 +411,16 @@ def main(args=None, argsraw=None, **kwargs):
                     nltepopdict = {x.level: x["n_NLTE"] for _, x in dfnltepops_thision.iterrows()}
 
                     dftransitions["upper_pop_nlte"] = dftransitions.apply(
-                        lambda x: nltepopdict.get(x.upper, 0.0), axis=1
+                        lambda x: nltepopdict.get(x.upper, 0.0),  # noqa: B023 # pylint: disable=cell-var-from-loop
+                        axis=1,
                     )
 
                     # dftransitions['lower_pop_nlte'] = dftransitions.apply(
                     #     lambda x: nltepopdict.get(x.lower, 0.), axis=1)
 
                     popcolumnname = "upper_pop_nlte"
-                    dftransitions.eval(f"flux_factor_nlte = flux_factor * {popcolumnname}", inplace=True)
-                    dftransitions.eval("upper_departure = upper_pop_nlte / upper_pop_Te", inplace=True)
+                    dftransitions = dftransitions.eval(f"flux_factor_nlte = flux_factor * {popcolumnname}")
+                    dftransitions = dftransitions.eval("upper_departure = upper_pop_nlte / upper_pop_Te")
                     if ionid == (26, 2):
                         fe2depcoeff = dftransitions.query("upper == 16 and lower == 5").iloc[0].upper_departure
                     elif ionid == (28, 2):
@@ -443,15 +431,17 @@ def main(args=None, argsraw=None, **kwargs):
                 else:
                     popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
                     if args.atomicdatabase == "artis":
-                        dftransitions.eval("upper_g = @ion.levels.loc[upper].g.values", inplace=True)
+                        dftransitions = dftransitions.eval("upper_g = @ion.levels.loc[upper].g.to_numpy()")
                         K_B = const.k_B.to("eV / K").value
                         ltepartfunc = ion.levels.eval("g * exp(-energy_ev / @K_B / @T_exc)").sum()
                     else:
                         ltepartfunc = 1.0
-                    add_upper_lte_pop(dftransitions, T_exc, ionpopdict[ionid], ltepartfunc, columnname=popcolumnname)
+                    dftransitions = add_upper_lte_pop(
+                        dftransitions, T_exc, ionpopdict[ionid], ltepartfunc, columnname=popcolumnname
+                    )
 
                 if args.print_lines:
-                    dftransitions.eval(f"flux_factor_{popcolumnname} = flux_factor * {popcolumnname}", inplace=True)
+                    dftransitions = dftransitions.eval(f"flux_factor_{popcolumnname} = flux_factor * {popcolumnname}")
 
                 yvalues[seriesindex][ionindex] = generate_ion_spectrum(
                     dftransitions, xvalues, popcolumnname, plot_resolution, args
@@ -499,10 +489,11 @@ def main(args=None, argsraw=None, **kwargs):
             f"{estimators['populations'][(28, 3)] / estimators['populations'][(28, 2)]:5.2f}"
         )
 
-    if from_model:
-        outputfilename = str(args.outputfile).format(cell=modelgridindex, timestep=timestep, time_days=time_days)
-    else:
-        outputfilename = "plottransitions.pdf"
+    outputfilename = (
+        str(args.outputfile).format(cell=modelgridindex, timestep=timestep, time_days=time_days)
+        if from_model
+        else "plottransitions.pdf"
+    )
 
     make_plot(
         xvalues,

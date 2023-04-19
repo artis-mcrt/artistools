@@ -42,7 +42,7 @@ types = {
     20: "TYPE_NTLEPTON",
     32: "TYPE_ESCAPE",
 }
-type_ids = dict((v, k) for k, v in types.items())
+type_ids = {v: k for k, v in types.items()}
 
 
 def sample_planck(T, nu_max_r, nu_min_r):
@@ -96,8 +96,8 @@ nprocs = at.get_nprocs(modelpath)
 # nprocs = 100
 for npacketfile in range(0, nprocs):
     dfpackets = at.packets.readfile(packetsfiles[npacketfile])  # , type='TYPE_ESCAPE', escape_type='TYPE_RPKT')
-    dfpackets = at.packets.get_escaping_packet_angle_bin(modelpath, dfpackets)
-    dfpackets.query(f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids["TYPE_RPKT"]}', inplace=True)
+    dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
+    dfpackets = dfpackets.query(f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids["TYPE_RPKT"]}')
 
     # print(max(dfpackets['t_arrive_d']))
     # print(dfpackets)
@@ -123,9 +123,9 @@ for npacketfile in range(0, nprocs):
         #     print('initial df:')
         #     print((dfpackets[['escape_time', 'escape_time_d', 't_arrive_d', 'em_TR']]))
         #     print('\n\n\n')
-        #     # quit()
+        #     # sys.exit(1)
 
-        for df_index, row in dfpackets_timestep.iterrows():
+        for _df_index, row in dfpackets_timestep.iterrows():
             TR = row["em_TR"]
             # if TR not in [100, 140000]:
 

@@ -5,7 +5,6 @@ from pathlib import Path
 import numpy as np
 
 import artistools as at
-import artistools.estimators
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -26,7 +25,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     timestep = 14
     elmass = {el.Z: el.mass for _, el in at.get_composition_data(modelpath).iterrows()}
     outfilename = args.outputpath
-    with open(outfilename, "wt") as fout:
+    with open(outfilename, "w") as fout:
         modelgridindexlist = range(10)
         estimators = at.estimators.read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindexlist)
         for modelgridindex in modelgridindexlist:
@@ -35,7 +34,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
             numberdens = {}
             totaldens = 0.0  # number density times atomic mass summed over all elements
-            for key in popdict.keys():
+            for key in popdict:
                 try:
                     atomic_number = int(key)
                     numberdens[atomic_number] = popdict[atomic_number]
@@ -47,12 +46,12 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
             massfracs = {
                 atomic_number: numberdens[atomic_number] * elmass[atomic_number] / totaldens
-                for atomic_number in numberdens.keys()
+                for atomic_number in numberdens
             }
 
             fout.write(f"{tdays}d shell {modelgridindex}\n")
             massfracsum = 0.0
-            for atomic_number in massfracs.keys():
+            for atomic_number in massfracs:
                 massfracsum += massfracs[atomic_number]
                 fout.write(f"{atomic_number} {at.get_elsymbol(atomic_number)} {massfracs[atomic_number]}\n")
 

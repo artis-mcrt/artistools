@@ -1,16 +1,12 @@
+# ruff: noqa
 """various functions to read/write CMFGEN input/output files:
 
 rd_nuc_decay_data
 rd_sn_hydro_data
 """
-# import os
 import sys
 
 import numpy as np
-
-# import re
-
-# from pdb import set_trace as stop
 
 # constants
 DAY2SEC = 86400.0
@@ -23,7 +19,7 @@ def rd_nuc_decay_data(file, quiet=False):
     """
 
     # open file
-    with open(file, "r") as f:
+    with open(file) as f:
         # read in header
         while True:
             line = f.readline()
@@ -60,7 +56,7 @@ def rd_nuc_decay_data(file, quiet=False):
             isospec.append(linearr[0])
             amu[i] = float(linearr[1])
             aiso[i] = np.rint(amu[i])
-            stable.append(True) if linearr[2] == "s" else stable.append(False)
+            stable.append(linearr[2] == "s")
         if not quiet:
             print("INFO - Read in isotope information")
 
@@ -139,7 +135,7 @@ def rd_sn_hydro_data(file, ncol=8, reverse=False, quiet=False):
     MAX_POP_DIFF = 1e-5  # maximum absolute difference between sum(isofrac) and corresponding specfrac
 
     # open file
-    with open(file, "r") as f:
+    with open(file) as f:
         # read in header
         okhdr = 0
         nd, nspec, niso = 0, 0, 0
@@ -179,7 +175,7 @@ def rd_sn_hydro_data(file, ncol=8, reverse=False, quiet=False):
         kappa = np.zeros(nd)  # mass absorption coefficient (cm^2/g)
         okhydro = 0
         while okhydro == 0:
-            while line == "":
+            while not line:
                 line = f.readline()
             if "Radius grid" in line:
                 rad = np.fromfile(f, count=nd, sep=" ", dtype=float)
@@ -288,7 +284,7 @@ def rd_sn_hydro_data(file, ncol=8, reverse=False, quiet=False):
         absdiff = np.abs(specfrac[:, spec.index(s)] - sumisofrac)
         relabsdiff = absdiff / sumisofrac
         if np.max(relabsdiff) > MAX_POP_DIFF:
-            sys.exit("ERROR - Maximum absolute difference > MAX_POP_DIFF for species {0:s}".format(s))
+            sys.exit("ERROR - Maximum absolute difference > MAX_POP_DIFF for species {:s}".format(s))
 
     # reversed vectors if reverse=True
     if reverse:

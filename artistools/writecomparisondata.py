@@ -3,11 +3,8 @@ import argparse
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 
 import artistools as at
-import artistools.estimators
-import artistools.lightcurve
 
 
 def write_spectra(modelpath, model_id, selected_timesteps, outfile):
@@ -33,15 +30,15 @@ def write_spectra(modelpath, model_id, selected_timesteps, outfile):
         lum_lambda[n, :] = fluxes_nu[n, :] * 2.99792458e18 / lambdas[n] / lambdas[n] * area
 
     with open(outfile, "w") as f:
-        f.write("#NTIMES: {0}\n".format(len(selected_timesteps)))
-        f.write("#NWAVE: {0}\n".format(len(lambdas)))
-        f.write("#TIMES[d]: {0}\n".format(" ".join(["{0:.2f}".format(times[ts]) for ts in selected_timesteps])))
+        f.write("#NTIMES: {}\n".format(len(selected_timesteps)))
+        f.write("#NWAVE: {}\n".format(len(lambdas)))
+        f.write("#TIMES[d]: {}\n".format(" ".join(["{:.2f}".format(times[ts]) for ts in selected_timesteps])))
         f.write("#wavelength[Ang] flux_t0[erg/s/Ang] flux_t1[erg/s/Ang] ... flux_tn[erg/s/Ang]\n")
 
         for n in reversed(range(len(lambdas))):
             f.write(
-                "{0:.2f} ".format(lambdas[n])
-                + " ".join(["{0:.2e}".format(lum_lambda[n, ts]) for ts in selected_timesteps])
+                "{:.2f} ".format(lambdas[n])
+                + " ".join(["{:.2e}".format(lum_lambda[n, ts]) for ts in selected_timesteps])
                 + "\n"
             )
 
@@ -156,10 +153,10 @@ def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptym
 
 def write_lbol_edep(modelpath, model_id, selected_timesteps, estimators, outputpath):
     # times = at.get_timestep_times_float(modelpath)
-    dflightcurve = at.lightcurve.readfile(Path(modelpath, "light_curve.out"))
+    dflightcurve = at.lightcurve.readfile(Path(modelpath, "light_curve.out"))[-1]
     dfdep = at.get_deposition(modelpath)
 
-    df = pd.merge(dflightcurve, dfdep, left_index=True, right_index=True, suffixes=("", "_dep"))
+    df = dflightcurve.merge(dfdep, left_index=True, right_index=True, suffixes=("", "_dep"))
 
     with open(outputpath, "w") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")

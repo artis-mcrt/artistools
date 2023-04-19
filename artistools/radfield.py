@@ -3,7 +3,6 @@ import argparse
 import math
 import multiprocessing
 import os
-import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
@@ -11,17 +10,9 @@ from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from astropy import constants as const
 from astropy import units as u
 
 import artistools as at
-import artistools.estimators
-import artistools.nltepops
-import artistools.spectra
-
-# import re
-# from itertools import chain
-# import matplotlib.patches as mpatches
 
 H = 6.6260755e-27  # Planck constant [erg s]
 KB = 1.38064852e-16  # Boltzmann constant [erg/K]
@@ -42,7 +33,7 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
         for mpirank in mpiranklist:
             radfieldfilename = f"radfield_{mpirank:04d}.out"
             radfieldfilepath = Path(folderpath, radfieldfilename)
-            radfieldfilepath = at.firstexisting(radfieldfilename, path=folderpath, tryzipped=True)
+            radfieldfilepath = at.firstexisting(radfieldfilename, folder=folderpath, tryzipped=True)
 
             if modelgridindex > -1:
                 filesize = Path(radfieldfilepath).stat().st_size / 1024 / 1024
@@ -52,16 +43,15 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
             # radfielddata_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
 
             if timestep >= 0:
-                radfielddata_thisfile.query("timestep==@timestep", inplace=True)
+                radfielddata_thisfile = radfielddata_thisfile.query("timestep==@timestep")
 
             if modelgridindex >= 0:
-                radfielddata_thisfile.query("modelgridindex==@modelgridindex", inplace=True)
+                radfielddata_thisfile = radfielddata_thisfile.query("modelgridindex==@modelgridindex")
 
             if not radfielddata_thisfile.empty:
                 if timestep >= 0 and modelgridindex >= 0:
                     return radfielddata_thisfile
-                else:
-                    radfielddata = radfielddata.append(radfielddata_thisfile.copy(), ignore_index=True)
+                radfielddata = radfielddata.append(radfielddata_thisfile.copy(), ignore_index=True)
 
     return radfielddata
 
@@ -84,7 +74,7 @@ def select_bin(radfielddata, nu=None, lambda_angstroms=None, modelgridindex=None
     return dfselected.iloc[0].bin_num, dfselected.iloc[0].nu_lower, dfselected.iloc[0].nu_upper
 
 
-def get_binaverage_field(axis, radfielddata, modelgridindex=None, timestep=None):
+def get_binaverage_field(radfielddata, modelgridindex=None, timestep=None):
     """Get the dJ/dlambda constant average estimators of each bin."""
     # exclude the global fit parameters and detailed lines with negative "bin_num"
     bindata = radfielddata.copy().query(
@@ -93,7 +83,7 @@ def get_binaverage_field(axis, radfielddata, modelgridindex=None, timestep=None)
         + (" & timestep==@timestep" if timestep else "")
     )
 
-    arr_lambda = 2.99792458e18 / bindata["nu_upper"].values
+    arr_lambda = 2.99792458e18 / bindata["nu_upper"].to_numpy()
 
     bindata["dlambda"] = bindata.apply(lambda row: 2.99792458e18 * (1 / row["nu_lower"] - 1 / row["nu_upper"]), axis=1)
 
@@ -102,7 +92,7 @@ def get_binaverage_field(axis, radfielddata, modelgridindex=None, timestep=None)
             row["J"] / row["dlambda"] if (not math.isnan(row["J"] / row["dlambda"]) and row["T_R"] >= 0) else 0.0
         ),
         axis=1,
-    ).values
+    ).to_numpy()
 
     # add the starting point
     arr_lambda = np.insert(arr_lambda, 0, 2.99792458e18 / bindata["nu_lower"].iloc[0])
@@ -223,8 +213,8 @@ def plot_line_estimators(axis, radfielddata, xmin, xmax, modelgridindex=None, ti
         + (" & timestep==@timestep" if timestep else "")
     )[["nu_upper", "J_nu_avg"]]
 
-    radfielddataselected.eval("lambda_angstroms = 2.99792458e18 / nu_upper", inplace=True)
-    radfielddataselected.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18", inplace=True)
+    radfielddataselected = radfielddataselected.eval("lambda_angstroms = 2.99792458e18 / nu_upper")
+    radfielddataselected = radfielddataselected.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
 
     ymax = radfielddataselected["Jb_lambda"].max()
 
@@ -256,7 +246,7 @@ def plot_specout(
     elif os.path.isfile(specfilename):
         modelpath = Path(specfilename).parent
 
-    dfspectrum = at.spectra.get_spectrum(modelpath, timestep)
+    dfspectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=modelpath)[-1]
     label = "Emergent spectrum"
     if scale_factor is not None:
         label += " (scaled)"
@@ -293,7 +283,7 @@ def evaluate_phixs(
         nu_factor = nu / nu_threshold
         if nu_factor < phixstable[0, 0]:
             return 0.0
-        elif nu_factor > phixstable[-1, 0]:
+        if nu_factor > phixstable[-1, 0]:
             # return 0.
             return phixstable[-1, 1] * math.pow(phixstable[-1, 0] / nu_factor, 3)
 
@@ -358,7 +348,7 @@ def get_recombination_emission(
 
     if use_lte_pops:
         upper_level_popfactor_sum = 0
-        for upperlevelnum, upperlevel in lower_ion_data.levels[:200].iterrows():
+        for _upperlevelnum, upperlevel in lower_ion_data.levels[:200].iterrows():
             upper_level_popfactor_sum += upperlevel.g * math.exp(-upperlevel.energy_ev * EV / KB / T_e)
     else:
         dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
@@ -593,7 +583,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
     # fieldlabel = f'Summed recombination'
     # axes[2].plot(arraylambda_angstrom_recomb, J_lambda_recomb_total, label=fieldlabel)
     # fieldlist += [(arraylambda_angstrom_recomb, J_lambda_recomb_total, fieldlabel)]
-    ymax = max(ymax, max(J_lambda_recomb_total))
+    ymax = max(ymax, J_lambda_recomb_total)
 
     if args.frompackets:
         (
@@ -616,12 +606,10 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
         )
         axes[2].plot(arraylambda_angstrom_em, array_jlambda_emission_total, label="Internal radfield from packets")
 
-        fieldlist += list(
-            [
-                (arraylambda_angstrom_em, contribrow.array_flambda_emission, contribrow.linelabel)
-                for contribrow in contribution_list
-            ]
-        )
+        fieldlist += [
+            (arraylambda_angstrom_em, contribrow.array_flambda_emission, contribrow.linelabel)
+            for contribrow in contribution_list
+        ]
         fieldlist += [(arraylambda_angstrom_em, array_jlambda_emission_total, "Total emission")]
 
     # fieldlist += [(arr_lambda_fitted, j_lambda_fitted, 'binned field')]
@@ -637,7 +625,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
             )
             if levelnum < 5:
                 axes[0].plot(
-                    arraylambda_angstrom_recomb, arr_sigma_bf, label=r"$\sigma_{bf}$" + f"({ionstr} {level.levelname})"
+                    arraylambda_angstrom_recomb, arr_sigma_bf, label=rf"$\sigma_{{bf}}$({ionstr} {level.levelname})"
                 )
 
         lw = 1.0
@@ -671,7 +659,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
 
 
 def get_binedges(radfielddata):
-    return [2.99792458e18 / radfielddata["nu_lower"].iloc[1]] + list(2.99792458e18 / radfielddata["nu_upper"][1:])
+    return [2.99792458e18 / radfielddata["nu_lower"].iloc[1], *list(2.99792458e18 / radfielddata["nu_upper"][1:])]
 
 
 def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridindex, args, normalised=False):
@@ -711,7 +699,7 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
     ymax = max(yvalues)
 
     if not args.nobandaverage:
-        arr_lambda, yvalues = get_binaverage_field(axis, radfielddata, modelgridindex=modelgridindex, timestep=timestep)
+        arr_lambda, yvalues = get_binaverage_field(radfielddata, modelgridindex=modelgridindex, timestep=timestep)
         axis.step(arr_lambda, yvalues, where="pre", label="Band-average field", color="green", linewidth=1.5)
         ymax = max([ymax] + [point[1] for point in zip(arr_lambda, yvalues) if xmin <= point[0] <= xmax])
 
@@ -731,7 +719,7 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
         ymax = args.ymax
 
     try:
-        specfilename = at.firstexisting("spec.out", path=modelpath, tryzipped=True)
+        specfilename = at.firstexisting("spec.out", folder=modelpath, tryzipped=True)
     except FileNotFoundError:
         print("Could not find spec.out")
         args.nospec = True
@@ -788,12 +776,11 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
 
     axis.set_xlabel(r"Wavelength ($\mathrm{{\AA}}$)")
     axis.set_ylabel(r"J$_\lambda$ [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]")
-    import matplotlib.ticker as ticker
+    from matplotlib import ticker
 
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
     axis.set_xlim(left=xmin, right=xmax)
     axis.set_ylim(bottom=0.0, top=ymax)
-    import artistools.plottools
 
     axis.yaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(axis.get_ylabel(), useMathText=True))
 
@@ -817,7 +804,9 @@ def plot_bin_fitted_field_evolution(axis, radfielddata, nu_line, modelgridindex,
         lambda x: j_nu_dbb([nu_line], x.W, x.T_R)[0], axis=1
     )
 
-    radfielddataselected.eval("Jb_lambda_at_line = Jb_nu_at_line * (@nu_line ** 2) / 2.99792458e18", inplace=True)
+    radfielddataselected = radfielddataselected.eval(
+        "Jb_lambda_at_line = Jb_nu_at_line * (@nu_line ** 2) / 2.99792458e18"
+    )
     lambda_angstroms = 2.99792458e18 / nu_line
 
     radfielddataselected.plot(
@@ -836,8 +825,8 @@ def plot_global_fitted_field_evolution(axis, radfielddata, nu_line, modelgridind
         lambda x: j_nu_dbb([nu_line], x.W, x.T_R)[0], axis=1
     )
 
-    radfielddataselected.eval(
-        "J_lambda_fullspec_at_line = J_nu_fullspec_at_line * (@nu_line ** 2) / 2.99792458e18", inplace=True
+    radfielddataselected = radfielddataselected.eval(
+        "J_lambda_fullspec_at_line = J_nu_fullspec_at_line * (@nu_line ** 2) / 2.99792458e18"
     )
     lambda_angstroms = 2.99792458e18 / nu_line
 
@@ -861,8 +850,8 @@ def plot_line_estimator_evolution(
         + (" & timestep <= @timestep_max" if timestep_max else "")
     )[["timestep", "nu_upper", "J_nu_avg"]]
 
-    radfielddataselected.eval("lambda_angstroms = 2.99792458e18 / nu_upper", inplace=True)
-    radfielddataselected.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18", inplace=True)
+    radfielddataselected = radfielddataselected.eval("lambda_angstroms = 2.99792458e18 / nu_upper")
+    radfielddataselected = radfielddataselected.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
 
     axis.plot(
         radfielddataselected["timestep"],
@@ -895,15 +884,17 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
     time_days = float(at.get_timestep_time(modelpath, timestep))
 
     dftopestimators = radfielddataselected.query("timestep==@timestep and bin_num < -1").copy()
-    dftopestimators.eval("lambda_angstroms = 2.99792458e18 / nu_upper", inplace=True)
-    dftopestimators.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18", inplace=True)
-    dftopestimators.sort_values(by="Jb_lambda", ascending=False, inplace=True)
+    dftopestimators = dftopestimators.eval("lambda_angstroms = 2.99792458e18 / nu_upper")
+    dftopestimators = dftopestimators.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
+    dftopestimators = dftopestimators.sort_values(by="Jb_lambda", ascending=False)
     dftopestimators = dftopestimators.iloc[0:nlinesplotted]
 
     print(f"Top estimators at timestep {timestep} t={time_days:.1f}")
     print(dftopestimators)
 
-    for ax, bin_num_estimator, nu_line in zip(axes, dftopestimators.bin_num.values, dftopestimators.nu_upper.values):
+    for ax, bin_num_estimator, nu_line in zip(
+        axes, dftopestimators.bin_num.to_numpy(), dftopestimators.nu_upper.to_numpy()
+    ):
         lambda_angstroms = 2.99792458e18 / nu_line
         print(f"Selected line estimator with bin_num {bin_num_estimator}, lambda={lambda_angstroms:.1f}")
         plot_line_estimator_evolution(ax, radfielddataselected, bin_num_estimator, modelgridindex=modelgridindex)
@@ -912,7 +903,7 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
 
         plot_global_fitted_field_evolution(ax, radfielddata, nu_line, modelgridindex=modelgridindex)
         ax.annotate(
-            r"$\lambda$=" f"{lambda_angstroms:.1f} Å in cell {modelgridindex:d}\n",
+            rf"$\lambda$={lambda_angstroms:.1f} Å in cell {modelgridindex:d}\n",
             xy=(0.02, 0.96),
             xycoords="axes fraction",
             horizontalalignment="left",
@@ -988,10 +979,13 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    if args.xaxis == "lambda":
-        defaultoutputfile = Path("plotradfield_cell{modelgridindex:03d}_ts{timestep:03d}.pdf")
-    else:
-        defaultoutputfile = Path("plotradfield_cell{modelgridindex:03d}_evolution.pdf")
+    at.set_mpl_style()
+
+    defaultoutputfile = (
+        Path("plotradfield_cell{modelgridindex:03d}_ts{timestep:03d}.pdf")
+        if args.xaxis == "lambda"
+        else Path("plotradfield_cell{modelgridindex:03d}_evolution.pdf")
+    )
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
@@ -1006,11 +1000,10 @@ def main(args=None, argsraw=None, **kwargs):
 
     if args.velocity >= 0.0:
         modelgridindexlist = [at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)]
+    elif args.modelgridindex is None:
+        modelgridindexlist = [0]
     else:
-        if args.modelgridindex is None:
-            modelgridindexlist = [0]
-        else:
-            modelgridindexlist = at.parse_range_list(args.modelgridindex)
+        modelgridindexlist = at.parse_range_list(args.modelgridindex)
 
     timesteplast = len(at.get_timestep_times_float(modelpath))
     if args.timedays:
@@ -1054,4 +1047,4 @@ def main(args=None, argsraw=None, **kwargs):
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
-    sys.exit(main())
+    main()

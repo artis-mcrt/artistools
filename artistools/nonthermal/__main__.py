@@ -1,4 +1,4 @@
-from .plotnltepops import main as plot
+from .plotnonthermal import main as plot
 
 
 def main() -> None:
