@@ -325,7 +325,7 @@ def read_modelfile_text(
 
 
 def get_modeldata(
-    inputpath: Union[Path, str] = Path(),
+    modelpath: Union[Path, str] = Path(),
     get_elemabundances: bool = False,
     derived_cols: Optional[Sequence[str]] = None,
     printwarningsonly: bool = False,
@@ -346,7 +346,7 @@ def get_modeldata(
         - modelmeta: a dictionary of input model parameters, with keys such as t_model_init_days, vmax_cmps, dimensions, etc.
     """
 
-    inputpath = Path(inputpath)
+    inputpath = Path(modelpath)
 
     if inputpath.is_dir():
         modelpath = inputpath

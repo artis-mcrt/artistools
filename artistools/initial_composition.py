@@ -398,7 +398,7 @@ def main(args=None, argsraw=None, **kwargs):
         make_3d_plot(Path(args.modelpath), args)
         return
 
-    _, modelmeta = at.get_modeldata(getheadersonly=True, printwarningsonly=True)
+    _, modelmeta = at.get_modeldata(modelpath=args.modelpath, getheadersonly=True, printwarningsonly=True)
 
     if modelmeta["dimensions"] == 2:
         plot_2d_initial_abundances(args.modelpath, args)
