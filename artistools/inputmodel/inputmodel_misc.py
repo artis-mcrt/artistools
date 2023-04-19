@@ -27,7 +27,7 @@ def read_modelfile_text(
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
     skipnuclidemassfraccolumns: bool = False,
-    dtype_backend: Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
+    dtype_backend: Optional[Literal["pyarrow", "numpy_nullable"]] = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
     Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
@@ -331,7 +331,7 @@ def get_modeldata(
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
     skipnuclidemassfraccolumns: bool = False,
-    dtype_backend: Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
+    dtype_backend: Optional[Literal["pyarrow", "numpy_nullable"]] = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
     Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
@@ -809,7 +809,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> U
 def get_initelemabundances(
     modelpath: Path = Path(),
     printwarningsonly: bool = False,
-    dtype_backend: Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
+    dtype_backend: Optional[Literal["pyarrow", "numpy_nullable"]] = None,
 ) -> pd.DataFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
     abundancefilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
