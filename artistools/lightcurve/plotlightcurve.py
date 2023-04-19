@@ -30,9 +30,12 @@ color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkwargs, args) -> None:
     axistherm.set_xscale("log")
     if args.plotthermalisation:
-        dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(
-            modelpath, skipnuclidemassfraccolumns=True, derived_cols=["vel_mid_radial"]
+        dfmodel, modelmeta = at.inputmodel.get_modeldata(
+            modelpath, skipnuclidemassfraccolumns=True, derived_cols=["vel_r_mid"], dtype_backend="pyarrow"
         )
+
+        t_model_init_days = modelmeta["t_model_init_days"]
+        vmax_cmps = modelmeta["vmax_cmps"]
         model_mass_grams = dfmodel.cellmass_grams.sum()
         print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
 
@@ -186,12 +189,12 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         )
 
         ejecta_ke: float
-        if "vel_mid_radial" in dfmodel.columns:
-            # vel_mid_radial is in cm/s
-            ejecta_ke = dfmodel.eval("0.5 * (cellmass_grams / 1000.) * (vel_mid_radial / 100.) ** 2").sum()
+        if "vel_r_mid" in dfmodel.columns:
+            # vel_r_mid is in cm/s
+            ejecta_ke = (0.5 * (dfmodel["cellmass_grams"] / 1000.0) * (dfmodel["vel_r_mid"] / 100.0) ** 2).sum()
         else:
             # velocity_inner is in km/s
-            ejecta_ke = dfmodel.eval("0.5 * (cellmass_grams / 1000.) * (1000. * velocity_outer) ** 2").sum()
+            ejecta_ke = (0.5 * (dfmodel["cellmass_grams"] / 1000.0) * (1000.0 * dfmodel["velocity_outer"]) ** 2).sum()
 
         print(f"  ejecta kinetic energy: {ejecta_ke:.2e} [K] = {ejecta_ke *1e7:.2e} [erg]")
         # velocity derived from ejecta kinetic energy to match Barnes et al. (2016) Section 2.1

@@ -471,13 +471,15 @@ def add_derived_cols_to_modeldata(
             for ax in ["x", "y", "z"]:
                 dfmodel[f"vel_{ax}_max"] = (dfmodel[f"pos_{ax}_min"] + wid_init) / t_model_init_seconds
 
-        if any(col in derived_cols for col in ["velocity", "vel_mid", "vel_mid_radial"]):
+        if any(col in derived_cols for col in ["velocity", "vel_mid", "vel_r_mid"]):
             assert wid_init is not None
             assert t_model_init_seconds is not None
             for ax in ["x", "y", "z"]:
                 dfmodel[f"vel_{ax}_mid"] = (dfmodel[f"pos_{ax}_min"] + (0.5 * wid_init)) / t_model_init_seconds
 
-            dfmodel = dfmodel.eval("vel_mid_radial = sqrt(vel_x_mid ** 2 + vel_y_mid ** 2 + vel_z_mid ** 2)")
+            dfmodel["vel_r_mid"] = np.sqrt(
+                dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2 + dfmodel["vel_z_mid"] ** 2
+            )
 
     if dimensions == 3 and "pos_mid" in derived_cols or "angle_bin" in derived_cols:
         assert wid_init is not None
@@ -555,7 +557,7 @@ def get_mean_cell_properties_of_angle_bin(
         # get cells with bin number
         dfanglebin = dfmodeldata.query("cos_bin == @cos_bin_number", inplace=False)
 
-        binned = pd.cut(dfanglebin["vel_mid_radial"], velocity_bins, labels=False, include_lowest=True)
+        binned = pd.cut(dfanglebin["vel_r_mid"], velocity_bins, labels=False, include_lowest=True)
         i = 0
         for binindex, mean_rho in dfanglebin.groupby(binned)["rho"].mean().iteritems():
             i += 1
@@ -958,7 +960,7 @@ def sphericalaverage(
     highest_active_radialcellid = -1
     for radialcellid, (velocity_inner, velocity_outer) in enumerate(zip(velocity_bins[:-1], velocity_bins[1:]), 1):
         assert velocity_outer > velocity_inner
-        matchedcells = dfmodel.query("vel_mid_radial > @velocity_inner and vel_mid_radial <= @velocity_outer")
+        matchedcells = dfmodel.query("vel_r_mid > @velocity_inner and vel_r_mid <= @velocity_outer")
         matchedcellrhosum = matchedcells.rho.sum()
         # cellidmap_3d_to_1d.update({cellid_3d: radialcellid for cellid_3d in matchedcells.inputcellid})
 
