@@ -5,30 +5,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-
-def load_artis_model(modelfile):
-    with open(modelfile) as f:
-        n = f.readline()
-        res = int(np.cbrt(int(n)))
-        rho = np.zeros([res, res, res])
-        x = np.zeros([res, res, res])
-        y = np.zeros([res, res, res])
-        z = np.zeros([res, res, res])
-
-        t_model = f.readline()
-        _ = f.readline()
-
-        for l in range(0, res):
-            for k in range(0, res):
-                for i in range(0, res):
-                    _, dum2, dum3, dum4, rhoread = f.readline().split()
-                    _, _, _, _, _ = f.readline().split()
-                    rho[i, k, l] = rhoread
-                    x[i, k, l] = dum2
-                    y[i, k, l] = dum3
-                    z[i, k, l] = dum4
-
-    return x, y, z, rho, t_model, res
+import artistools as at
 
 
 def get_theta_phi(anglebin):
@@ -158,8 +135,11 @@ def main(
         sys.exit()
 
     # Load model contents
-    x, y, z, rho, _, res = load_artis_model(modelfile)
-    print("Found model with %d cubed resolution" % res)
+    # x, y, z, rho, _, res = load_artis_model(modelfile)
+    dfmodel, modelmeta = at.get_modeldata(modelfile, derived_cols=["pos_mid"], dtype_backend="pyarrow")
+    x, y, z = (dfmodel[f"pos_{ax}_mid"].to_numpy() for ax in ("x", "y", "z"))
+    rho = dfmodel["rho"].to_numpy()
+    res = modelmeta["ncoordgrid"]
 
     if isomin is None:
         isomin = min(rho.flatten())
