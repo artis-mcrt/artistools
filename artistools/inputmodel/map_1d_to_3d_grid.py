@@ -16,17 +16,6 @@ def change_cell_positions_to_new_time(dfgriddata, t_model_1d):
     return dfgriddata, wid_init
 
 
-def get_cell_midpoints(dfgriddata, wid_init):
-    dfgriddata["posx_mid"] = dfgriddata["pos_x_min"] + (0.5 * wid_init)
-    dfgriddata["posy_mid"] = dfgriddata["pos_y_min"] + (0.5 * wid_init)
-    dfgriddata["posz_mid"] = dfgriddata["pos_z_min"] + (0.5 * wid_init)
-
-    dfgriddata["posx_max"] = dfgriddata["pos_x_min"] + (wid_init)
-    dfgriddata["posy_max"] = dfgriddata["pos_y_min"] + (wid_init)
-    dfgriddata["posz_max"] = dfgriddata["pos_z_min"] + (wid_init)
-    return dfgriddata
-
-
 def map_1d_to_3d(dfgriddata, vmax, n_3d_gridcells, data_1d, t_model_1d, wid_init):
     modelgridindex = np.zeros(n_3d_gridcells)
     modelgrid_rho_3d = np.zeros(n_3d_gridcells)
