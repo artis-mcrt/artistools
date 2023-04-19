@@ -435,7 +435,7 @@ def get_directionbin(
     dirmag = np.sqrt(dirx**2 + diry**2 + dirz**2)
     pkt_dir = [dirx / dirmag, diry / dirmag, dirz / dirmag]
     costheta = np.dot(pkt_dir, syn_dir)
-    thetabin = int((costheta + 1.0) / 2.0 * ncosthetabins)
+    costhetabin = int((costheta + 1.0) / 2.0 * ncosthetabins)
 
     xhat = np.array([1.0, 0.0, 0.0])
     vec1 = np.cross(pkt_dir, syn_dir)
@@ -444,6 +444,7 @@ def get_directionbin(
 
     vec3 = np.cross(vec2, syn_dir)
     testphi = np.dot(vec1, vec3)
+    # phi = math.acos(cosphi) if testphi > 0 else (math.acos(-cosphi) + np.pi)
 
     phibin = (
         int(math.acos(cosphi) / 2.0 / np.pi * nphibins)
@@ -451,7 +452,7 @@ def get_directionbin(
         else int((math.acos(cosphi) + np.pi) / 2.0 / np.pi * nphibins)
     )
 
-    return (thetabin * nphibins) + phibin
+    return (costhetabin * nphibins) + phibin
 
 
 def bin_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.LazyFrame) -> pl.LazyFrame:
