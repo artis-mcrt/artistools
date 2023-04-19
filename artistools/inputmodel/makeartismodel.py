@@ -6,10 +6,6 @@ from pathlib import Path
 import argcomplete
 
 import artistools as at
-import artistools.inputmodel.downscale3dgrid
-import artistools.inputmodel.energyinputfiles
-import artistools.inputmodel.modelfromhydro
-import artistools.inputmodel.opacityinputfile
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

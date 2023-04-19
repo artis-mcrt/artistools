@@ -35,13 +35,12 @@ def main(args=None, argsraw=None, **kwargs):
 
     if not os.path.exists(args.outputfolder):
         os.makedirs(args.outputfolder)
-    else:
-        if os.path.exists(os.path.join(args.outputfolder, "model.txt")):
-            print("ABORT: model.txt already exists")
-            sys.exit()
-        elif os.path.exists(os.path.join(args.outputfolder, "abundances.txt")):
-            print("ABORT: abundances.txt already exists")
-            sys.exit()
+    elif os.path.exists(os.path.join(args.outputfolder, "model.txt")):
+        print("ABORT: model.txt already exists")
+        sys.exit()
+    elif os.path.exists(os.path.join(args.outputfolder, "abundances.txt")):
+        print("ABORT: abundances.txt already exists")
+        sys.exit()
 
     dict3dcellidto1dcellid, xlist, ylists = slice_3dmodel(args.inputfolder, args.outputfolder, args.chosenaxis)
 
@@ -57,7 +56,7 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
     listout = []
     dict3dcellidto1dcellid = {}
     outcellid = 0
-    with open(os.path.join(inputfolder, "model.txt"), "r") as fmodelin:
+    with open(os.path.join(inputfolder, "model.txt")) as fmodelin:
         fmodelin.readline()  # npts_model3d
         t_model = fmodelin.readline()  # days
         fmodelin.readline()  # v_max in [cm/s]
@@ -83,11 +82,11 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
                 print("Wrong line size")
                 sys.exit()
 
-            if cell["pos_x_min"] != "0.0000000" and (chosenaxis != "x" or float(cell["pos_x_min"]) < 0.0):
-                pass
-            elif cell["pos_y_min"] != "0.0000000" and (chosenaxis != "y" or float(cell["pos_y_min"]) < 0.0):
-                pass
-            elif cell["pos_z_min"] != "0.0000000" and (chosenaxis != "z" or float(cell["pos_z_min"]) < 0.0):
+            if (
+                (cell["pos_x_min"] != "0.0000000" and (chosenaxis != "x" or float(cell["pos_x_min"]) < 0.0))
+                or (cell["pos_y_min"] != "0.0000000" and (chosenaxis != "y" or float(cell["pos_y_min"]) < 0.0))
+                or (cell["pos_z_min"] != "0.0000000" and (chosenaxis != "z" or float(cell["pos_z_min"]) < 0.0))
+            ):
                 pass
             else:
                 outcellid += 1
@@ -108,7 +107,7 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
 
 def slice_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid):
     with (
-        open(os.path.join(inputfolder, "abundances.txt"), "r") as fabundancesin,
+        open(os.path.join(inputfolder, "abundances.txt")) as fabundancesin,
         open(os.path.join(outputfolder, "abundances.txt"), "w") as fabundancesout,
     ):
         currentblock = []

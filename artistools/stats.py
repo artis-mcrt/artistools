@@ -26,7 +26,7 @@ def main():
         runfolder = logfilename.split("/output_0-0.txt")[0]
 
         timesteptimes = []
-        with open(runfolder + "/light_curve.out", "r") as lcfile:
+        with open(runfolder + "/light_curve.out") as lcfile:
             for line in lcfile:
                 timesteptimes.append(line.split()[0])
 

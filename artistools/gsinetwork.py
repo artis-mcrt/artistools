@@ -17,11 +17,6 @@ import pandas as pd
 
 import artistools as at
 
-# import io
-# import math
-
-# import artistools.estimators
-
 
 def plot_qdot(
     modelpath: Path,
@@ -204,7 +199,7 @@ def plot_qdot(
 
     # fig.suptitle(f'{modelname}', fontsize=10)
     at.plottools.autoscale(axis, margin=0.0)
-    plt.savefig(pdfoutpath, format="pdf")
+    fig.savefig(pdfoutpath, format="pdf")
     print(f"Saved {pdfoutpath}")
 
 
@@ -310,7 +305,7 @@ def plot_cell_abund_evolution(
 
     fig.suptitle(f"{modelname} cell {mgi}", y=0.995, fontsize=10)
     at.plottools.autoscale(axis, margin=0.05)
-    plt.savefig(pdfoutpath, format="pdf")
+    fig.savefig(pdfoutpath, format="pdf")
     print(f"Saved {pdfoutpath}")
 
 
@@ -415,7 +410,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     griddatafolder: Path = Path("SFHo_snapshot")
     mergermodelfolder: Path = Path("SFHo_short")
     trajfolder: Path = Path("SFHo")
-    with at.zopen(modelpath / "model.txt", "rt") as fmodel:
+    with at.zopen(modelpath / "model.txt") as fmodel:
         while True:
             line = fmodel.readline()
             if line.startswith("#"):
@@ -442,7 +437,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
 
     dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath)
     if "logrho" not in dfmodel.columns:
-        dfmodel.eval("logrho = log10(rho)", inplace=True)
+        dfmodel = dfmodel.eval("logrho = log10(rho)")
     model_mass_grams = dfmodel.cellmass_grams.sum()
     npts_model = len(dfmodel)
 
@@ -452,12 +447,12 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     # WARNING sketchy inference!
     propcellcount = math.ceil(max(mgi_of_propcells.keys()) ** (1 / 3.0)) ** 3
     xmax_tmodel = vmax_cmps * t_model_init_days * 86400
-    wid_init = at.misc.get_wid_init_at_tmodel(modelpath, propcellcount, t_model_init_days, xmax_tmodel)
+    wid_init = at.get_wid_init_at_tmodel(modelpath, propcellcount, t_model_init_days, xmax_tmodel)
     dfmodel["n_assoc_cells"] = [len(assoc_cells.get(inputcellid - 1, [])) for inputcellid in dfmodel["inputcellid"]]
 
     # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
-    dfmodel.eval("cellmass_grams_mapped = 10 ** logrho * @wid_init ** 3 * n_assoc_cells", inplace=True)
-    for strnuc, a in zip(arr_strnuc, arr_a):
+    dfmodel = dfmodel.eval("cellmass_grams_mapped = 10 ** logrho * @wid_init ** 3 * n_assoc_cells")
+    for strnuc in arr_strnuc:
         corr = (
             dfmodel.eval(f"X_{strnuc} * cellmass_grams_mapped").sum()
             / dfmodel.eval(f"X_{strnuc} * cellmass_grams").sum()
@@ -565,7 +560,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     arr_time_gsi_days = list(arr_time_gsi_s / 86400)
 
     dfpartcontrib = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
-    dfpartcontrib.query("cellindex <= @npts_model and frac_of_cellmass > 0", inplace=True)
+    dfpartcontrib = dfpartcontrib.query("cellindex <= @npts_model and frac_of_cellmass > 0")
 
     list_particleids_getabund = dfpartcontrib.query("(cellindex - 1) in @mgiplotlist").particleid.unique()
     fworkerwithabund = partial(get_particledata, arr_time_gsi_s_incpremerger, arr_strnuc, traj_root)
@@ -595,9 +590,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     else:
         list_particledata_noabund = [fworkernoabund(particleid) for particleid in list_particleids_noabund]
 
-    allparticledata = {
-        particleid: data for particleid, data in (list_particledata_withabund + list_particledata_noabund)
-    }
+    allparticledata = dict(list_particledata_withabund + list_particledata_noabund)
 
     plot_qdot(
         modelpath,

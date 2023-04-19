@@ -9,4 +9,7 @@ mkdir -p testmodel/
 tar -xf testmodel.tar.xz --directory testmodel/
 # find testmodel -size +1M -exec xz -v {} \;
 
+if [ ! -f vspecpolmodel.tar.xz ]; then curl -O https://theory.gsi.de/~lshingle/artis_http_public/artistools/vspecpolmodel.tar.xz; fi
+tar -xf vspecpolmodel.tar.xz
+
 set +x

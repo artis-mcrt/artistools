@@ -6,9 +6,8 @@
 from math import exp
 
 import numpy as np
-from rd_cmfgen import rd_sn_hydro_data
 
-# import math
+from .rd_cmfgen import rd_sn_hydro_data
 
 msun = 1.989e33
 
@@ -224,7 +223,7 @@ def main():
             co56frac = a["isofrac"][i, 89]
             cr48frac = a["isofrac"][i, 75]
             v48frac = a["isofrac"][i, 49]
-            strout = "{0:4d} {1:1.7e} {2:1.7e} {3:1.7e} {4:1.7e} {5:1.7e} {6:1.7e} {7:1.7e}\n".format(
+            strout = "{:4d} {:1.7e} {:1.7e} {:1.7e} {:1.7e} {:1.7e} {:1.7e} {:1.7e}\n".format(
                 i + 1, vel, rho, igefrac, ni56frac, co56frac, cr48frac, v48frac
             )
             f.write(strout)

@@ -1,21 +1,9 @@
-#!/usr/bin/env python3
-# import hashlib
-# import math
-# import numpy as np
-# import os
-# import os.path
-from pathlib import Path
-
 import pandas as pd
 
 import artistools as at
-import artistools.inputmodel
-
-# import pytest
 
 modelpath = at.get_config()["path_testartismodel"]
 outputpath = at.get_config()["path_testoutput"]
-at.set_config("enable_diskcache", False)
 
 
 def test_describeinputmodel():

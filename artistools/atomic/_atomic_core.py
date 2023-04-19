@@ -130,7 +130,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
         transition_filename = Path(modelpath, "transitiondata.txt")
         if not quiet:
             print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}")
-        with at.zopen(transition_filename, "rt") as ftransitions:
+        with at.zopen(transition_filename) as ftransitions:
             transitionsdict = {
                 (Z, ionstage): dftransitions
                 for Z, ionstage, dftransitions in parse_transitiondata(ftransitions, ionlist)
@@ -142,11 +142,11 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
 
         if not quiet:
             print(f"Reading {phixs_filename.relative_to(Path(modelpath).parent)}")
-        with at.zopen(phixs_filename, "rt") as fphixs:
+        with at.zopen(phixs_filename) as fphixs:
             for (
                 Z,
-                upperionstage,
-                upperionlevel,
+                _upperionstage,
+                _upperionlevel,
                 lowerionstage,
                 lowerionlevel,
                 phixstargetlist,
@@ -157,7 +157,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
     level_lists = []
     iontuple = namedtuple("ion", "Z ion_stage level_count ion_pot levels transitions")
 
-    with at.zopen(adatafilename, "rt") as fadata:
+    with at.zopen(adatafilename) as fadata:
         if not quiet:
             print(f"Reading {adatafilename.relative_to(Path(modelpath).parent)}")
 
@@ -171,12 +171,12 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
 
 def parse_recombratefile(frecomb):
     for line in frecomb:
-        Z, upper_ionstage, t_count = [int(x) for x in line.split()]
+        Z, upper_ionstage, t_count = (int(x) for x in line.split())
         arr_log10t = []
         arr_rrc_low_n = []
         arr_rrc_total = []
         for _ in range(int(t_count)):
-            log10t, rrc_low_n, rrc_total = [float(x) for x in frecomb.readline().split()]
+            log10t, rrc_low_n, rrc_total = (float(x) for x in frecomb.readline().split())
 
             arr_log10t.append(log10t)
             arr_rrc_low_n.append(rrc_low_n)
@@ -186,7 +186,7 @@ def parse_recombratefile(frecomb):
             {"log10T_e": arr_log10t, "rrc_low_n": arr_rrc_low_n, "rrc_total": arr_rrc_total}
         )
 
-        recombdata_thision.eval("T_e = 10 ** log10T_e", inplace=True)
+        recombdata_thision = recombdata_thision.eval("T_e = 10 ** log10T_e")
 
         yield Z, upper_ionstage, recombdata_thision
 
@@ -195,7 +195,7 @@ def parse_recombratefile(frecomb):
 def get_ionrecombratecalibration(modelpath):
     """Read recombrates file."""
     recombdata = {}
-    with open(Path(modelpath, "recombrates.txt"), "r") as frecomb:
+    with Path(modelpath, "recombrates.txt").open("r") as frecomb:
         for Z, upper_ionstage, dfrrc in parse_recombratefile(frecomb):
             recombdata[(Z, upper_ionstage)] = dfrrc
 

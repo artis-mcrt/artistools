@@ -2,7 +2,7 @@ import subprocess
 from pathlib import Path
 
 
-def get_commandlist():
+def get_commandlist() -> dict[str, tuple[str, str]]:
     commandlist = {
         "at": ("artistools", "main"),
         "artistools": ("artistools", "main"),
@@ -60,29 +60,28 @@ def get_commandlist():
     return commandlist
 
 
-def get_console_scripts():
+def get_console_scripts() -> list[str]:
     console_scripts = [
         f"{command} = {submodulename}:{funcname}" for command, (submodulename, funcname) in get_commandlist().items()
     ]
     return console_scripts
 
 
-def setup_completions():
+def setup_completions() -> None:
     # Add the following lines to your .zshrc file to get command completion:
     # autoload -U bashcompinit
     # bashcompinit
     # source artistoolscompletions.sh
     path_repo = Path(__file__).absolute().parent.parent
-    completioncommands = []
     with open(path_repo / "artistoolscompletions.sh", "w", encoding="utf-8") as f:
         f.write("#!/usr/bin/env zsh\n")
 
-        proc = subprocess.run(["register-python-argcomplete", "__MY_COMMAND__"], capture_output=True, text=True)
+        proc = subprocess.run(
+            ["register-python-argcomplete", "__MY_COMMAND__"], capture_output=True, text=True, check=True
+        )
 
         if proc.stderr:
             print(proc.stderr)
-
-        scriptlines = proc.stdout
 
         strfunctiondefs, strsplit, strcommandregister = proc.stdout.rpartition("}\n")
 
@@ -90,7 +89,7 @@ def setup_completions():
         f.write(strsplit)
         f.write("\n\n")
 
-        for command in get_commandlist().keys():
+        for command in get_commandlist():
             completecommand = strcommandregister.replace("__MY_COMMAND__", command)
             f.write(completecommand + "\n")
 
@@ -98,5 +97,5 @@ def setup_completions():
     print("source artistoolscompletions.sh")
 
 
-def addargs(parser=None):
+def addargs(parser=None) -> None:
     pass

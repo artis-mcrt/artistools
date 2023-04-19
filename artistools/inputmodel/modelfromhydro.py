@@ -3,7 +3,7 @@
 import argparse
 import datetime
 import math
-import os.path
+import sys
 from pathlib import Path
 
 import argcomplete
@@ -77,9 +77,9 @@ def get_merger_time_geomunits(pathtogriddata: Path) -> float:
             mergertime_geomunits = float(fmergertimefile.readline())
             print(f"Found simulation merger time to be {mergertime_geomunits} ({mergertime_geomunits * 4.926e-6} s) ")
         return mergertime_geomunits
-    else:
-        print('Make file "tmerger.txt" with time of merger in geom units')
-        quit()
+
+    print('Make file "tmerger.txt" with time of merger in geom units')
+    sys.exit(1)
 
 
 def get_snapshot_time_geomunits(pathtogriddata: Path) -> tuple[float, float]:
@@ -88,11 +88,11 @@ def get_snapshot_time_geomunits(pathtogriddata: Path) -> tuple[float, float]:
     snapshotinfofiles = glob.glob(str(Path(pathtogriddata) / "*_info.dat*"))
     if not snapshotinfofiles:
         print("No info file found for dumpstep")
-        quit()
+        sys.exit(1)
 
     if len(snapshotinfofiles) > 1:
         print("Too many sfho_info.dat files found")
-        quit()
+        sys.exit(1)
     snapshotinfofile = Path(snapshotinfofiles[0])
 
     if snapshotinfofile.is_file():
@@ -109,21 +109,9 @@ def get_snapshot_time_geomunits(pathtogriddata: Path) -> tuple[float, float]:
 
     else:
         print("Could not find snapshot info file to get simulation time")
-        quit()
+        sys.exit(1)
 
     return simulation_end_time_geomunits, mergertime_geomunits
-
-
-def scale_model_to_time(targetmodeltime_days, t_model_days, modeldata):
-    timefactor = targetmodeltime_days / t_model_days
-    modeldata.eval("pos_x_min = pos_x_min * @timefactor", inplace=True)
-    modeldata.eval("pos_y_min = pos_y_min * @timefactor", inplace=True)
-    modeldata.eval("pos_z_min = pos_z_min * @timefactor", inplace=True)
-    modeldata.eval("rho = rho * @timefactor ** -3", inplace=True)
-    print(
-        f"Adjusting t_model to {targetmodeltime_days} days (factor {timefactor}) "
-        "using homologous expansion of positions and densities"
-    )
 
 
 def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlespercell=0):
@@ -133,14 +121,13 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
     simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(pathtogriddata)
 
     griddata = pd.read_csv(griddatfilepath, delim_whitespace=True, comment="#", skiprows=3)
-    griddata.rename(
+    griddata = griddata.rename(
         columns={
             "gridindex": "inputcellid",
             "pos_x": "pos_x_min",
             "pos_y": "pos_y_min",
             "pos_z": "pos_z_min",
         },
-        inplace=True,
     )
     # griddata in geom units
     griddata["rho"] = np.nan_to_num(griddata["rho"], nan=0.0)
@@ -152,17 +139,17 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
 
     factor_position = 1.478  # in km
     km_to_cm = 1e5
-    griddata.eval("pos_x_min = pos_x_min * @factor_position * @km_to_cm", inplace=True)
-    griddata.eval("pos_y_min = pos_y_min * @factor_position * @km_to_cm", inplace=True)
-    griddata.eval("pos_z_min = pos_z_min * @factor_position * @km_to_cm", inplace=True)
+    griddata["pos_x_min"] = griddata["pos_x_min"] * factor_position * km_to_cm
+    griddata["pos_y_min"] = griddata["pos_y_min"] * factor_position * km_to_cm
+    griddata["pos_z_min"] = griddata["pos_z_min"] * factor_position * km_to_cm
 
     griddata["rho"] = griddata["rho"] * 6.176e17  # convert to g/cm3
 
-    with open(griddatfilepath, "r", encoding="utf-8") as gridfile:
+    with open(griddatfilepath, encoding="utf-8") as gridfile:
         ngrid = int(gridfile.readline().split()[0])
         if ngrid != len(griddata["inputcellid"]):
             print("length of file and ngrid don't match")
-            quit()
+            sys.exit(1)
         extratime_geomunits = float(gridfile.readline().split()[0])
         xmax = abs(float(gridfile.readline().split()[0]))
         xmax = (xmax * factor_position) * (u.km).to(u.cm)
@@ -183,16 +170,18 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
     )
 
     if targetmodeltime_days is not None:
-        scale_model_to_time(targetmodeltime_days, t_model_days, griddata)
+        dfmodel, modelmeta = at.inputmodel.scale_model_to_time(
+            targetmodeltime_days=targetmodeltime_days, t_model_days=t_model_days, dfmodel=griddata
+        )
         t_model_days = targetmodeltime_days
 
     if minparticlespercell > 0:
         ncoordgridx = round(len(griddata) ** (1.0 / 3.0))
         xmax = -griddata.pos_x_min.min()
         wid_init = 2 * xmax / ncoordgridx
-        filter = np.logical_and(griddata.tracercount < minparticlespercell, griddata.rho > 0.0)
-        n_ignored = np.count_nonzero(filter)
-        mass_ignored = griddata.loc[filter].rho.sum() * wid_init**3 / 1.989e33
+        cellfilter = np.logical_and(griddata.tracercount < minparticlespercell, griddata.rho > 0.0)
+        n_ignored = np.count_nonzero(cellfilter)
+        mass_ignored = griddata.loc[cellfilter].rho.sum() * wid_init**3 / 1.989e33
         mass_orig = griddata.rho.sum() * wid_init**3 / 1.989e33
 
         print(
@@ -211,7 +200,7 @@ def read_mattia_grid_data_file(pathtogriddata):
     griddatfilepath = Path(pathtogriddata) / "1D_m0.01_v0.1.txt"
 
     griddata = pd.read_csv(griddatfilepath, delim_whitespace=True, comment="#", skiprows=1)
-    with open(griddatfilepath, "r") as gridfile:
+    with open(griddatfilepath) as gridfile:
         t_model = float(gridfile.readline())
         print(f"t_model {t_model} seconds")
     xmax = max(griddata["posx"])
@@ -346,10 +335,11 @@ def makemodelfromgriddata(
     if getattr(args, "getcellopacityfromYe", False):
         at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, dfmodel)
 
-    if os.path.isfile(Path(gridfolderpath, "gridcontributions.txt")):
-        dfgridcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
-    else:
-        dfgridcontributions = None
+    dfgridcontributions = (
+        at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
+        if Path(gridfolderpath, "gridcontributions.txt").is_file()
+        else None
+    )
 
     if traj_root is not None:
         print(f"Nuclear network abundances from {traj_root} will be used")
@@ -387,11 +377,11 @@ def makemodelfromgriddata(
             dfgridcontributions, Path(outputpath, "gridcontributions.txt")
         )
 
-    headercommentlines.append(f"generated at (UTC): {datetime.datetime.utcnow()}")
+    headercommentlines.append(f"generated at (UTC): {datetime.datetime.now(tz=datetime.timezone.utc)}")
 
     if traj_root is not None:
         print(f'Writing to {Path(outputpath) / "abundances.txt"}...')
-        at.inputmodel.save_initialabundances(
+        at.inputmodel.save_initelemabundances(
             dfelabundances=dfelabundances, abundancefilename=outputpath, headercommentlines=headercommentlines
         )
     else:
@@ -448,16 +438,14 @@ def main(args=None, argsraw=None, **kwargs):
         argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
+    pd.options.mode.copy_on_write = True
     gridfolderpath = args.gridfolderpath
     if not Path(gridfolderpath, "grid.dat").is_file() or not Path(gridfolderpath, "gridcontributions.txt").is_file():
         print("grid.dat and gridcontributions.txt are required. Run artistools-maptogrid")
         return
         # at.inputmodel.maptogrid.main()
 
-    if args.outputpath is None:
-        outputpath = Path(f"artismodel_{args.dimensions}d")
-    else:
-        outputpath = Path(args.outputpath)
+    outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputpath is None else Path(args.outputpath)
 
     outputpath.mkdir(parents=True, exist_ok=True)
 

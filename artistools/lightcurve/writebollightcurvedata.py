@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from pathlib import Path
 
 import numpy as np
@@ -6,13 +5,12 @@ import pandas as pd
 from astropy import units as u
 
 import artistools as at
-import artistools.spectra
 
 
 def get_bol_lc_from_spec(modelpath):
     res_specdata = at.spectra.read_spec_res(modelpath)
     # print(res_specdata)
-    timearray = res_specdata[0].columns.values[1:]
+    timearray = res_specdata[0].columns.to_numpy()[1:]
     times = [time for time in timearray if 5 < float(time) < 80]
     lightcurvedata = {"time": times}
 
@@ -21,9 +19,9 @@ def get_bol_lc_from_spec(modelpath):
         for timestep, time in enumerate(timearray):
             time = float(time)
             if 5 < time < 80:
-                spectrum = at.spectra.get_res_spectrum(
-                    modelpath, timestep, timestep, angle=angle, res_specdata=res_specdata
-                )
+                spectrum = at.spectra.get_spectrum(
+                    modelpath=modelpath, directionbins=[angle], timestepmin=timestep, timestepmax=timestep
+                )[angle]
                 integrated_flux = np.trapz(spectrum["f_lambda"], spectrum["lambda_angstroms"])
                 integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to("cm"), 2)
                 bol_luminosity.append(integrated_luminosity)
@@ -38,12 +36,9 @@ def get_bol_lc_from_spec(modelpath):
 
 
 def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.DataFrame:
-    if res:
-        lcfilename = "light_curve_res.out"
-    else:
-        lcfilename = "light_curve.out"
+    lcfilename = "light_curve_res.out" if res else "light_curve.out"
     lcdata = pd.read_csv(modelpath / lcfilename, delim_whitespace=True, header=None, names=["time", "lum", "lum_cmf"])
-    lcdataframes = at.gather_res_data(lcdata, index_of_repeated_value=0)
+    lcdataframes = at.split_dataframe_dirbins(lcdata, index_of_repeated_value=0)
 
     times = lcdataframes[0]["time"]
     lightcurvedata = {"time": times}

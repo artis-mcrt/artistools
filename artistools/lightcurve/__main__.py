@@ -1,5 +1,9 @@
-import artistools as at
-import artistools.lightcurve.plotlightcurve
+from .plotlightcurve import main as plot
+
+
+def main() -> None:
+    plot()
+
 
 if __name__ == "__main__":
-    at.lightcurve.plotlightcurve.main()
+    main()

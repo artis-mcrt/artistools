@@ -15,26 +15,20 @@ import pandas as pd
 from astropy import units as u
 
 import artistools as at
-import artistools.packets
-
-# from functools import lru_cache
-# import matplotlib.ticker as ticker
-# from astropy import constants as const
 
 
 def get_packets_with_emtype_onefile(emtypecolumn, lineindices, packetsfile):
     import gzip
 
     try:
-        dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
-    except gzip.BadGzipFile:
+        dfpackets = at.packets.readfile(packetsfile, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    except gzip.BadGzipFile as exc:
         print(f"Bad file: {packetsfile}")
-        raise gzip.BadGzipFile
+        raise gzip.BadGzipFile from exc
 
     return dfpackets.query(f"{emtypecolumn} in @lineindices", inplace=False).copy()
 
 
-@at.diskcache(savezipped=True)
 def get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles=None):
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
@@ -70,7 +64,7 @@ def calculate_timebinned_packet_sum(dfpackets, timearrayplusend):
 
 def get_line_fluxes_from_packets(
     emtypecolumn, emfeatures, modelpath, maxpacketfiles=None, arr_tstart=None, arr_tend=None
-):
+) -> pd.DataFrame:
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times_float(modelpath, loc="start")
     if arr_tend is None:
@@ -111,9 +105,7 @@ def get_line_fluxes_from_packets(
     return lcdata
 
 
-def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=None, arr_tend=None):
-    import artistools.nltepops
-
+def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=None) -> pd.DataFrame:
     if arr_tstart is None:
         arr_tstart = at.get_timestep_times_float(modelpath, loc="start")
     if arr_tend is None:
@@ -144,8 +136,8 @@ def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=No
         ion = adata.query("Z == @feature.atomic_number and ion_stage == @feature.ion_stage").iloc[0]
 
         for timeindex, timedays in enumerate(arr_tmid):
-            v_inner = modeldata.velocity_inner.values * u.km / u.s
-            v_outer = modeldata.velocity_outer.values * u.km / u.s
+            v_inner = modeldata.velocity_inner.to_numpy() * u.km / u.s
+            v_outer = modeldata.velocity_outer.to_numpy() * u.km / u.s
 
             t_sec = timedays * u.day
             shell_volumes = ((4 * math.pi / 3) * ((v_outer * t_sec) ** 3 - (v_inner * t_sec) ** 3)).to("cm3").value
@@ -176,7 +168,7 @@ def get_line_fluxes_from_pops(emtypecolumn, emfeatures, modelpath, arr_tstart=No
                         ) * u.eV.to("erg")
 
                         # l = delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
-                        # print(f'  {modelgridindex} outer_velocity {modeldata.velocity_outer.values[modelgridindex]}'
+                        # print(f'  {modelgridindex} outer_velocity {modeldata.velocity_outer.to_numpy()[modelgridindex]}'
                         #       f' km/s shell_vol: {shell_volumes[modelgridindex] + unaccounted_shellvol} cm3'
                         #       f' n_level {levelpop} cm-3 shell_Lum {l} erg/s')
 
@@ -212,18 +204,18 @@ def get_closelines(
     dflinelist = at.get_linelist_dataframe(modelpath)
     dflinelistclosematches = dflinelist.query("atomic_number == @atomic_number and ionstage == @ion_stage").copy()
     if lambdamin > 0:
-        dflinelistclosematches.query("@lambdamin < lambda_angstroms", inplace=True)
+        dflinelistclosematches = dflinelistclosematches.query("@lambdamin < lambda_angstroms")
     if lambdamax > 0:
-        dflinelistclosematches.query("@lambdamax > lambda_angstroms", inplace=True)
+        dflinelistclosematches = dflinelistclosematches.query("@lambdamax > lambda_angstroms")
     if lowerlevelindex >= 0:
-        dflinelistclosematches.query("lowerlevelindex==@lowerlevelindex", inplace=True)
+        dflinelistclosematches = dflinelistclosematches.query("lowerlevelindex==@lowerlevelindex")
     if upperlevelindex >= 0:
-        dflinelistclosematches.query("upperlevelindex==@upperlevelindex", inplace=True)
+        dflinelistclosematches = dflinelistclosematches.query("upperlevelindex==@upperlevelindex")
     # print(dflinelistclosematches)
 
-    linelistindices = tuple(dflinelistclosematches.index.values)
-    upperlevelindicies = tuple(dflinelistclosematches.upperlevelindex.values)
-    lowerlevelindicies = tuple(dflinelistclosematches.lowerlevelindex.values)
+    linelistindices = tuple(dflinelistclosematches.index.to_numpy())
+    upperlevelindicies = tuple(dflinelistclosematches.upperlevelindex.to_numpy())
+    lowerlevelindicies = tuple(dflinelistclosematches.lowerlevelindex.to_numpy())
     lowestlambda = dflinelistclosematches.lambda_angstroms.min()
     highestlamba = dflinelistclosematches.lambda_angstroms.max()
     colname = f"flux_{at.get_ionstring(atomic_number, ion_stage, nospace=True)}_{approxlambda}"
@@ -302,14 +294,14 @@ def make_flux_ratio_plot(args):
     pd.set_option("display.width", 150)
     pd.options.display.max_rows = 500
 
-    for seriesindex, (modelpath, modellabel, modelcolor) in enumerate(zip(args.modelpath, args.label, args.color)):
+    for _seriesindex, (modelpath, modellabel, modelcolor) in enumerate(zip(args.modelpath, args.label, args.color)):
         print(f"====> {modellabel}")
 
         emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
         if args.frompops:
             dflcdata = get_line_fluxes_from_pops(
-                args.emtypecolumn, emfeatures, modelpath, arr_tstart=args.timebins_tstart, arr_tend=args.timebins_tend
+                emfeatures, modelpath, arr_tstart=args.timebins_tstart, arr_tend=args.timebins_tend
             )
         else:
             dflcdata = get_line_fluxes_from_packets(
@@ -321,7 +313,7 @@ def make_flux_ratio_plot(args):
                 arr_tend=args.timebins_tend,
             )
 
-        dflcdata.eval(f"fratio = {emfeatures[1].colname} / {emfeatures[0].colname}", inplace=True)
+        dflcdata = dflcdata.eval(f"fratio = {emfeatures[1].colname} / {emfeatures[0].colname}")
         axis.set_ylabel(
             r"F$_{\mathrm{" + emfeatures[1].featurelabel + r"}}$ / F$_{\mathrm{" + emfeatures[0].featurelabel + r"}}$"
         )
@@ -332,7 +324,7 @@ def make_flux_ratio_plot(args):
 
         axis.plot(
             dflcdata.time,
-            dflcdata["fratio"],
+            dflcdata.fratio,
             label=modellabel,
             marker="x",
             lw=0,
@@ -360,7 +352,7 @@ def make_flux_ratio_plot(args):
         )
 
         amodels = {}
-        for index, row in femis.iterrows():
+        for _index, row in femis.iterrows():
             modelname = row.file.replace("fig-nne_Te_allcells-", "").replace(f"-{row.epoch}d.txt", "")
             if modelname not in amodels:
                 amodels[modelname] = ([], [])
@@ -422,7 +414,6 @@ def make_flux_ratio_plot(args):
     plt.close()
 
 
-@at.diskcache(savezipped=True)
 def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, tstart, tend, maxpacketfiles=None):
     estimators = at.estimators.read_estimators(modelpath, get_ion_values=False, get_heatingcooling=False)
 
@@ -434,7 +425,7 @@ def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, t
 
     # model_tmids = at.get_timestep_times_float(modelpath, loc='mid')
     # arr_velocity_mid = tuple(list([(float(v1) + float(v2)) * 0.5 for v1, v2 in zip(
-    #     modeldata['velocity_inner'].values, modeldata['velocity_outer'].values)]))
+    #     modeldata['velocity_inner'].to_numpy(), modeldata['velocity_outer'].to_numpy())]))
 
     # from scipy.interpolate import interp1d
     # interp_log10nne, interp_te = {}, {}
@@ -516,17 +507,17 @@ def plot_nne_te_points(axis, serieslabel, em_log10nne, em_Te, normtotalpackets, 
 def plot_nne_te_bars(axis, serieslabel, em_log10nne, em_Te, color):
     if len(em_log10nne) == 0:
         return
-    errorbarkwargs = dict(
-        xerr=np.std(em_log10nne),
-        yerr=np.std(em_Te),
-        color="black",
-        markersize=10.0,
-        fillstyle="full",
-        capthick=4,
-        capsize=15,
-        linewidth=4.0,
-        alpha=1.0,
-    )
+    errorbarkwargs = {
+        "xerr": np.std(em_log10nne),
+        "yerr": np.std(em_Te),
+        "color": "black",
+        "markersize": 10.0,
+        "fillstyle": "full",
+        "capthick": 4,
+        "capsize": 15,
+        "linewidth": 4.0,
+        "alpha": 1.0,
+    }
     # black larger one for an outline
     axis.errorbar(np.mean(em_log10nne), np.mean(em_Te), **errorbarkwargs)
     errorbarkwargs["markersize"] -= 2
@@ -539,8 +530,6 @@ def plot_nne_te_bars(axis, serieslabel, em_log10nne, em_Te, color):
 
 
 def make_emitting_regions_plot(args):
-    import artistools.estimators
-
     # font = {'size': 16}
     # matplotlib.rc('font', **font)
     # 'floers_te_nne.json',
@@ -559,9 +548,7 @@ def make_emitting_regions_plot(args):
             floers_te_nne = json.loads(data_file.read())
 
         # give an ordering and index to dict items
-        refdatakeys[refdataindex] = [
-            t for t in sorted(floers_te_nne.keys(), key=lambda x: float(x))
-        ]  # strings, not floats
+        refdatakeys[refdataindex] = sorted(floers_te_nne.keys(), key=float)  # strings, not floats
         refdatatimes[refdataindex] = np.array([float(t) for t in refdatakeys[refdataindex]])
         refdatapoints[refdataindex] = [floers_te_nne[t] for t in refdatakeys[refdataindex]]
         print(f"{refdatafilename} data available for times: {list(refdatatimes[refdataindex])}")
@@ -619,8 +606,8 @@ def make_emitting_regions_plot(args):
                         emdata_all[modelindex][(tmid, feature.colname)] = {"em_log10nne": [], "em_Te": []}
                     else:
                         emdata_all[modelindex][(tmid, feature.colname)] = {
-                            "em_log10nne": dfpackets_selected.em_log10nne.values,
-                            "em_Te": dfpackets_selected.em_Te.values,
+                            "em_log10nne": dfpackets_selected.em_log10nne.to_numpy(),
+                            "em_Te": dfpackets_selected.em_Te.to_numpy(),
                         }
 
             estimators = at.estimators.read_estimators(modelpath, get_ion_values=False, get_heatingcooling=False)
@@ -662,7 +649,7 @@ def make_emitting_regions_plot(args):
                 tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.2},
             )
 
-            for refdataindex, f in enumerate(refdatafilenames):
+            for refdataindex, _f in enumerate(refdatafilenames):
                 timeindex = np.abs(refdatatimes[refdataindex] - tmid).argmin()
                 axis.plot(
                     refdatapoints[refdataindex][timeindex]["ne"],
@@ -815,10 +802,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-maxpacketfiles", type=int, default=None, help="Limit the number of packet files read")
 
     parser.add_argument("-emfeaturesearch", default=[], nargs="*", help="List of tuples (TODO explain)")
-
-    # parser.add_argument('-emtypecolumn', default='trueemissiontype', choices=['emissiontype', 'trueemissiontype'],
-    #                     help='Packet property for emission type - first thermal emission (trueemissiontype) '
-    #                     'or last emission type (emissiontype)')
 
     parser.add_argument(
         "--frompops", action="store_true", help="Sum up internal emissivity instead of outgoing packets"

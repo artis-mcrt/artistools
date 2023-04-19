@@ -13,8 +13,6 @@ from astropy import units as u
 
 import artistools as at
 
-# import matplotlib.ticker as ticker
-
 DEFAULTSPECPATH = "../example_run/spec.out"
 defaultoutputfile = "plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf"
 
@@ -27,7 +25,7 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
     for folderpath in at.get_runfolders(modelpath, timestep=timestep):
         for mpirank in mpiranklist:
-            filepath = at.firstexisting(f"nonthermalspec_{mpirank:04d}.out", path=folderpath, tryzipped=True)
+            filepath = at.firstexisting(f"nonthermalspec_{mpirank:04d}.out", folder=folderpath, tryzipped=True)
 
             if modelgridindex > -1:
                 filesize = Path(filepath).stat().st_size / 1024 / 1024
@@ -37,16 +35,16 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
             # radfielddata_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
 
             if timestep >= 0:
-                nonthermaldata_thisfile.query("timestep==@timestep", inplace=True)
+                nonthermaldata_thisfile = nonthermaldata_thisfile.query("timestep==@timestep")
 
             if modelgridindex >= 0:
-                nonthermaldata_thisfile.query("modelgridindex==@modelgridindex", inplace=True)
+                nonthermaldata_thisfile = nonthermaldata_thisfile.query("modelgridindex==@modelgridindex")
 
             if not nonthermaldata_thisfile.empty:
                 if timestep >= 0 and modelgridindex >= 0:
                     return nonthermaldata_thisfile
-                else:
-                    nonthermaldata = nonthermaldata.append(nonthermaldata_thisfile.copy(), ignore_index=True)
+
+                nonthermaldata = nonthermaldata.append(nonthermaldata_thisfile.copy(), ignore_index=True)
 
     return nonthermaldata
 
@@ -83,8 +81,8 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
 
     print(f"Deposition: {total_depev:.1f} [eV/cm3/s]")
 
-    arr_enev = nonthermaldata["energy_ev"].values
-    arr_y = nonthermaldata["y"].values
+    arr_enev = nonthermaldata["energy_ev"].to_numpy()
+    arr_y = nonthermaldata["y"].to_numpy()
 
     frac_ionisation = 0.0
 
@@ -115,7 +113,7 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
             arr_ionisation_ion = np.zeros(len(arr_enev), dtype=float)
             frac_ionisation_ion = 0.0
 
-            for index, row in dfcollion_thision.iterrows():
+            for _index, row in dfcollion_thision.iterrows():
                 arr_xs = at.nonthermal.get_arxs_array_shell(arr_enev, row)
                 arr_ionisation_shell = ionpop * arr_y * arr_xs * row.ionpot_ev / total_depev
                 arr_ionisation_ion += arr_ionisation_shell
@@ -167,27 +165,25 @@ def make_plot(modelpaths, args):
     if args.kf1992spec:
         kf92spec = pd.read_csv(Path(modelpaths[0], "KF1992spec-fig1.txt"), header=None, names=["e_kev", "log10_y"])
         kf92spec["energy_ev"] = kf92spec["e_kev"] * 1000.0
-        kf92spec.eval("y = 10 ** log10_y", inplace=True)
+        kf92spec = kf92spec.eval("y = 10 ** log10_y")
         axes[0].plot(
             kf92spec["energy_ev"], kf92spec["log10_y"], linewidth=2.0, color="red", label="Kozma & Fransson (1992)"
         )
 
     for index, modelpath in enumerate(modelpaths):
         modelname = at.get_model_name(modelpath)
-        if args.velocity >= 0.0:
-            modelgridindex = at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)
-        else:
-            modelgridindex = args.modelgridindex
+        modelgridindex = (
+            at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)
+            if args.velocity >= 0.0
+            else args.modelgridindex
+        )
 
-        if args.timedays:
-            timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
-        else:
-            timestep = args.timestep
+        timestep = at.get_timestep_of_timedays(modelpath, args.timedays) if args.timedays else args.timestep
 
         nonthermaldata = read_files(modelpath=Path(modelpath), modelgridindex=modelgridindex, timestep=timestep)
 
         if args.xmin:
-            nonthermaldata.query("energy_ev >= @args.xmin", inplace=True)
+            nonthermaldata = nonthermaldata.query("energy_ev >= @args.xmin")
 
         if nonthermaldata.empty:
             print(f"No data for timestep {timestep:d}")

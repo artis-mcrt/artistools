@@ -45,10 +45,10 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     modelpath = Path(args.inputpath)
 
     dfmodel, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(
-        modelpath, get_elemabundances=(args.abundtype == "elemental"), dimensions=1
+        modelpath, get_elemabundances=(args.abundtype == "elemental")
     )
 
-    dfmodel.eval("rho = 10 ** logrho", inplace=True)
+    dfmodel = dfmodel.eval("rho = 10 ** logrho")
 
     if args.abundtype == "nuclear":
         # nuclide abundances

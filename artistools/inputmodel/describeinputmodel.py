@@ -9,8 +9,6 @@ import numpy as np
 
 import artistools as at
 
-# import pandas as pd
-
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-inputfile", "-i", default=Path(), help="Path of input file or folder containing model.txt")
@@ -45,9 +43,10 @@ def main(args=None, argsraw=None, **kwargs):
     if args.noisotopes:
         args.getelemabundances = True
 
-    dfmodel, t_model_init_days, vmax = at.inputmodel.get_modeldata_tuple(
-        args.inputfile, get_elemabundances=args.getelemabundances, printwarningsonly=False
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(
+        args.inputfile, get_elemabundances=args.getelemabundances, printwarningsonly=False, dtype_backend="pyarrow"
     )
+    t_model_init_days, vmax = modelmeta["t_model_init_days"], modelmeta["vmax_cmps"]
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
     print(f"Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)")
@@ -70,7 +69,7 @@ def main(args=None, argsraw=None, **kwargs):
         mgi = int(args.cell)
         if mgi >= 0:
             print(f"Selected single cell mgi {mgi}:")
-            dfmodel.query("inputcellid == (@mgi + 1)", inplace=True)
+            dfmodel = dfmodel.query("inputcellid == (@mgi + 1)")
             print(dfmodel.iloc[0])
 
     mass_msun_rho = dfmodel["cellmass_grams"].sum() / 1.989e33
@@ -132,7 +131,7 @@ def main(args=None, argsraw=None, **kwargs):
                 elem_mass = speciesmasses.get(elsymb, 0.0)
                 if elem_mass > 0.0:
                     strcomment += f" ({mass_g / elem_mass * 100:6.2f}% of {elsymb} element mass)"
-                if mass_g > elem_mass * (1.0 + 1e-10):
+                if mass_g > elem_mass * (1.0 + 1e-5):
                     strcomment += " ERROR! isotope sum is greater than element abundance"
             zstr = f"Z={atomic_number}"
             print(f"{zstr:>5} {species:9s} {species_mass_msun:.3e} Msun    massfrac {massfrac:.3e}{strcomment}")

@@ -41,10 +41,9 @@ jobs:
 
             - name: Cache test data
               uses: actions/cache@v3
-              id: cache-atomicdata
               with:
-                  path: tests/data/testmodel.tar.xz
-                  key: https://theory.gsi.de/~lshingle/artis_http_public/artistools/testmodel.tar.xz
+                  path: tests/data/*.tar.xz
+                  key: testdata20230417
 
             - name: Download/extract test data
               working-directory: tests/data/

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -35,10 +34,7 @@ def make_2d_packets_plot_imshow(modelpath, timestep_min, timestep_max):
     time_upper = timemaxarray[timestep_max]
     title = f"{time_lower:.2f} - {time_upper:.2f} days"
     print(f"plotting packets between {title}")
-    if em_time:
-        escapetitle = "pktemissiontime"
-    else:
-        escapetitle = "pktarrivetime"
+    escapetitle = "pktemissiontime" if em_time else "pktarrivetime"
     title = title + "\n" + escapetitle
 
     plot_axes_list = ["xz", "xy"]
@@ -75,7 +71,14 @@ def make_2d_packets_plot_pyvista(modelpath, timestep):
     mesh["energy [erg/s]"] = hist.ravel(order="F")
     # print(max(mesh['energy [erg/s]']))
 
-    sargs = dict(height=0.75, vertical=True, position_x=0.04, position_y=0.1, title_font_size=22, label_font_size=25)
+    sargs = {
+        "height": 0.75,
+        "vertical": True,
+        "position_x": 0.04,
+        "position_y": 0.1,
+        "title_font_size": 22,
+        "label_font_size": 25,
+    }
 
     pv.set_plot_theme("document")  # set white background
     p = pv.Plotter()

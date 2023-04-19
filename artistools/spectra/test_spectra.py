@@ -1,23 +1,19 @@
 #!/usr/bin/env python3
 import math
 import os.path
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from astropy import constants as const
 
 import artistools as at
-import artistools.spectra
-import artistools.transitions
 
 modelpath = at.get_config()["path_testartismodel"]
 outputpath = at.get_config()["path_testoutput"]
-at.set_config("enable_diskcache", False)
 
 
-def test_spectraplot():
-    at.spectra.main(
+def test_spectraplot() -> None:
+    at.spectra.plot(
         argsraw=[],
         specpath=[modelpath, "sn2011fe_PTF11kly_20120822_norm.txt"],
         outputfile=outputpath,
@@ -26,8 +22,8 @@ def test_spectraplot():
     )
 
 
-def test_spectra_frompackets():
-    at.spectra.main(
+def test_spectra_frompackets() -> None:
+    at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
         outputfile=os.path.join(outputpath, "spectrum_from_packets.pdf"),
@@ -37,12 +33,12 @@ def test_spectra_frompackets():
     )
 
 
-def test_spectra_outputtext():
-    at.spectra.main(argsraw=[], specpath=modelpath, output_spectra=True)
+def test_spectra_outputtext() -> None:
+    at.spectra.plot(argsraw=[], specpath=modelpath, output_spectra=True)
 
 
-def test_spectraemissionplot():
-    at.spectra.main(
+def test_spectraemissionplot() -> None:
+    at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
         outputfile=outputpath,
@@ -53,8 +49,8 @@ def test_spectraemissionplot():
     )
 
 
-def test_spectraemissionplot_nostack():
-    at.spectra.main(
+def test_spectraemissionplot_nostack() -> None:
+    at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
         outputfile=outputpath,
@@ -66,43 +62,43 @@ def test_spectraemissionplot_nostack():
     )
 
 
-def test_spectra_get_spectrum():
-    def check_spectrum(dfspectrumpkts):
+def test_spectra_get_spectrum() -> None:
+    def check_spectrum(dfspectrumpkts) -> None:
         assert math.isclose(max(dfspectrumpkts["f_lambda"]), 2.548532804918824e-13, abs_tol=1e-5)
         assert min(dfspectrumpkts["f_lambda"]) < 1e-9
         assert math.isclose(np.mean(dfspectrumpkts["f_lambda"]), 1.0314682640070206e-14, abs_tol=1e-5)
 
-    dfspectrum = at.spectra.get_spectrum(modelpath, 55, 65, fnufilterfunc=None)
+    dfspectrum = at.spectra.get_spectrum(modelpath, 55, 65, fnufilterfunc=None)[-1]
     assert len(dfspectrum["lambda_angstroms"]) == 1000
     assert len(dfspectrum["f_lambda"]) == 1000
-    assert abs(dfspectrum["lambda_angstroms"].values[-1] - 29920.601421214415) < 1e-5
-    assert abs(dfspectrum["lambda_angstroms"].values[0] - 600.75759482509852) < 1e-5
+    assert abs(dfspectrum["lambda_angstroms"].to_numpy()[-1] - 29920.601421214415) < 1e-5
+    assert abs(dfspectrum["lambda_angstroms"].to_numpy()[0] - 600.75759482509852) < 1e-5
 
     check_spectrum(dfspectrum)
 
-    lambda_min = dfspectrum["lambda_angstroms"].values[0]
-    lambda_max = dfspectrum["lambda_angstroms"].values[-1]
+    lambda_min = dfspectrum["lambda_angstroms"].to_numpy()[0]
+    lambda_max = dfspectrum["lambda_angstroms"].to_numpy()[-1]
     timelowdays = at.get_timestep_times_float(modelpath)[55]
     timehighdays = at.get_timestep_times_float(modelpath)[65]
 
-    dfspectrumpkts = at.spectra.get_spectrum_from_packets(
+    dfspectrumpkts = at.spectra.get_from_packets(
         modelpath, timelowdays=timelowdays, timehighdays=timehighdays, lambda_min=lambda_min, lambda_max=lambda_max
-    )
+    )[-1]
 
     check_spectrum(dfspectrumpkts)
 
 
-def test_spectra_get_flux_contributions():
+def test_spectra_get_flux_contributions() -> None:
     timestepmin = 40
     timestepmax = 80
     dfspectrum = at.spectra.get_spectrum(
-        modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fnufilterfunc=None
-    )
+        modelpath=modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fnufilterfunc=None
+    )[-1]
 
     integrated_flux_specout = np.trapz(dfspectrum["f_lambda"], x=dfspectrum["lambda_angstroms"])
 
     specdata = pd.read_csv(modelpath / "spec.out", delim_whitespace=True)
-    arraynu = specdata.loc[:, "0"].values
+    arraynu = specdata.loc[:, "0"].to_numpy()
     arraylambda_angstroms = const.c.to("angstrom/s").value / arraynu
 
     contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
@@ -120,13 +116,13 @@ def test_spectra_get_flux_contributions():
     assert math.isclose(integrated_flux_specout, integrated_flux_emission, rel_tol=4e-3)
 
     # check each bin is not out by a large fraction
-    diff = [abs(x - y) for x, y in zip(array_flambda_emission_total, dfspectrum["f_lambda"].values)]
+    diff = [abs(x - y) for x, y in zip(array_flambda_emission_total, dfspectrum["f_lambda"].to_numpy())]
     print(f"Max f_lambda difference {max(diff) / integrated_flux_specout}")
     assert max(diff) / integrated_flux_specout < 2e-3
 
 
-def test_spectra_timeseries_subplots():
+def test_spectra_timeseries_subplots() -> None:
     timedayslist = [295, 300]
-    at.spectra.main(
+    at.spectra.plot(
         argsraw=[], specpath=modelpath, outputfile=outputpath, timedayslist=timedayslist, multispecplot=True
     )

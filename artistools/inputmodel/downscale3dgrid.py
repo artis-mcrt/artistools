@@ -32,7 +32,7 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50, plo
     abread = np.zeros(31)
 
     print("reading abundance file")
-    with open(abundancefile, "r") as sourceabundancefile:
+    with open(abundancefile) as sourceabundancefile:
         for z in range(0, grid):
             for y in range(0, grid):
                 for x in range(0, grid):
@@ -40,7 +40,7 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50, plo
                     abund[x, y, z] = abread
 
     print("reading model file")
-    with open(modelfile, "r") as sourcemodelfile:
+    with open(modelfile) as sourcemodelfile:
         x = sourcemodelfile.readline()
         t_model = sourcemodelfile.readline()
         vmax = sourcemodelfile.readline()

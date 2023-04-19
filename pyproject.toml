@@ -36,7 +36,15 @@ where = ["."]
 
 [tool.black]
 line-length = 120
-preview = false
+preview = true
+
+[tool.isort]
+profile = "black"
+src_paths = ["artistools"]
+line_length = 120
+force_single_line = true
+case_sensitive = false
+sort_relative_in_force_sorted_sections = true
 
 [tool.mypy]
 python_version = '3.11'
@@ -46,24 +54,112 @@ ignore_missing_imports = true
 warn_unused_configs = true
 #files = 'artistools/**/*.py'
 plugins = 'numpy.typing.mypy_plugin'
+scripts_are_modules = true
+strict_equality = true
+pretty = true
+error_summary = true
+enable_error_code = [
+  "redundant-expr",
+  "truthy-bool",
+  "ignore-without-code",
+]
 
 [[tool.mypy.overrides]]
 module = [
     "artistools.estimators.estimators",
     "artistools.inputmodel",
+    "artistools.lightcurve",
     "artistools.misc",
+#    "artistools.packets",
     "artistools.spectra.spectra",
 ]
 check_untyped_defs = true
 disallow_untyped_defs = true
 warn_return_any = false
+#strict = true
 
-[tool.pylint]
+[tool.pylint.'MESSAGES CONTROL']
 max-line-length = 120
-errors-only = true
-
+disable = """
+    broad-exception-caught,
+    dangerous-default-value,
+    eval-used,
+    fixme,
+    global-statement,
+    missing-function-docstring,
+    missing-module-docstring,
+    import-outside-toplevel,
+    invalid-name,
+    line-too-long,
+    protected-access,
+    redefined-builtin,
+    redefined-outer-name,
+    too-many-arguments,
+    too-many-branches,
+    too-many-lines,
+    too-many-locals,
+    too-many-statements,
+    unused-argument,
+    unused-variable,
+    unspecified-encoding,
+    C,
+    R,
+"""
 [tool.pylint.typecheck]
 ignored-modules = ["astropy", "extinction"]
+
+[tool.ruff]
+select = [
+    #"ALL",
+    "A", "B", "C", "E", "F", "G", "N", "Q", "W", "ARG", "BLE", "DJ", "DTZ", "EM", "ERA", "EXE",
+    "ICN", "INP", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PT", "PYI", "RET", "RSE", "RUF",
+    "SIM", "SLF", "TCH", "TID", "TRY", "UP", "YTT"
+]
+ignore = [
+    "ARG001", # ignored because variables in df.eval() are not detected
+    "B005",
+    "B007", # variable not used in loop body (but sometimes it is with eval)
+    "BLE001",
+    "C9",
+    "D211", "D213",
+    "E501", "E741",
+    "EM101","EM102",
+    "ERA001",
+    "F841", # ignored because variables in df.eval() are not detected
+    "N802", "N803", "N806", "N999",
+    "PD901",
+    "PGH001",
+    "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR2004",
+    "PLW2901",
+    "PT011",
+    "RET504",
+    "SIM115",
+    "SLF001",
+    "TRY003",
+    "TRY301",
+    "UP032",
+]
+
+# Allow autofix for all enabled rules (when `--fix`) is provided.
+fixable = [
+    "A", "B", "C", "E", "G", "N", "Q", "W", "ARG", "BLE", "DJ", "DTZ", "EM", "ERA", "EXE",
+    "FBT", "ICN", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PLR", "PT", "PTH", "PYI", "RET", "RSE",
+    "RUF", "SIM", "SLF", "TCH", "TID", "UP", "YTT"
+]
+unfixable = [
+    "ERA001",  # commented out code (will just delete it!)
+    "F841",
+    "F401",
+    "PD002"
+]
+
+# larger than black's limit. Let black handle this
+line-length = 200
+
+target-version = "py39"
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
 
 [tool.setuptools_scm]
 write_to = "_version.py"

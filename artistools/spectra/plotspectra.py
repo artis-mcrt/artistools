@@ -2,8 +2,8 @@
 # PYTHON_ARGCOMPLETE_OK
 """Artistools - spectra plotting functions."""
 import argparse
-import math
 import os
+import sys
 from collections.abc import Collection
 from pathlib import Path
 from typing import Any
@@ -14,25 +14,22 @@ from typing import Union
 import argcomplete
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
-from astropy import constants as const
+from matplotlib import ticker
 from matplotlib.artist import Artist
 
 import artistools as at
 import artistools.packets
-import artistools.radfield
-from artistools.spectra.spectra import get_reference_spectrum
-from artistools.spectra.spectra import get_res_spectrum
-from artistools.spectra.spectra import get_specpol_data
-from artistools.spectra.spectra import get_spectrum
-from artistools.spectra.spectra import get_spectrum_from_packets
-from artistools.spectra.spectra import get_vspecpol_spectrum
-from artistools.spectra.spectra import make_averaged_vspecfiles
-from artistools.spectra.spectra import make_virtual_spectra_summed_file
-from artistools.spectra.spectra import print_integrated_flux
-from artistools.spectra.spectra import timeshift_fluxscale_co56law
+from .spectra import get_from_packets
+from .spectra import get_reference_spectrum
+from .spectra import get_specpol_data
+from .spectra import get_spectrum
+from .spectra import get_vspecpol_spectrum
+from .spectra import make_averaged_vspecfiles
+from .spectra import make_virtual_spectra_summed_file
+from .spectra import print_integrated_flux
+from .spectra import timeshift_fluxscale_co56law
 
 hatches = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]  # ,
 
@@ -40,7 +37,7 @@ hatches = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]
 def plot_polarisation(modelpath: Path, args) -> None:
     angle = args.plotviewingangle[0]
     stokes_params = get_specpol_data(angle=angle, modelpath=modelpath)
-    stokes_params[args.stokesparam].eval("lambda_angstroms = 2.99792458e18 / nu", inplace=True)
+    stokes_params[args.stokesparam] = stokes_params[args.stokesparam].eval("lambda_angstroms = 2.99792458e18 / nu")
 
     timearray = stokes_params[args.stokesparam].keys()[1:-1]
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
@@ -51,7 +48,7 @@ def plot_polarisation(modelpath: Path, args) -> None:
     timeavg = (args.timemin + args.timemax) / 2.0
 
     def match_closest_time(reftime):
-        return str("{0:.4f}".format(min([float(x) for x in timearray], key=lambda x: abs(x - reftime))))
+        return str(f"{min([float(x) for x in timearray], key=lambda x: abs(x - reftime)):.4f}")
 
     timeavg = match_closest_time(timeavg)
 
@@ -62,10 +59,11 @@ def plot_polarisation(modelpath: Path, args) -> None:
 
     vpkt_config = at.get_vpkt_config(modelpath)
 
-    if args.plotvspecpol:
-        linelabel = rf"{timeavg} days, cos($\theta$) = {vpkt_config['cos_theta'][angle[0]]}"
-    else:
-        linelabel = f"{timeavg} days"
+    linelabel = (
+        f"{timeavg} days, cos($\\theta$) = {vpkt_config['cos_theta'][angle[0]]}"
+        if args.plotvspecpol
+        else f"{timeavg} days"
+    )
 
     if args.binflux:
         new_lambda_angstroms = []
@@ -147,7 +145,7 @@ def plot_reference_spectrum(
 
     print(" metadata: " + ", ".join([f"{k}='{v}'" if hasattr(v, "lower") else f"{k}={v}" for k, v in metadata.items()]))
 
-    specdata.query("lambda_angstroms > @xmin and lambda_angstroms < @xmax", inplace=True)
+    specdata = specdata.query("lambda_angstroms > @xmin and lambda_angstroms < @xmax")
 
     print_integrated_flux(specdata["f_lambda"], specdata["lambda_angstroms"], distance_megaparsec=metadata["dist_mpc"])
 
@@ -155,7 +153,7 @@ def plot_reference_spectrum(
         # specdata = scipy.signal.resample(specdata, 10000)
         # specdata = specdata.iloc[::3, :].copy()
         print(f" downsampling to {len(specdata)} points")
-        specdata.query("index % 3 == 0", inplace=True)
+        specdata = specdata.query("index % 3 == 0")
 
     # clamp negative values to zero
     # specdata['f_lambda'] = specdata['f_lambda'].apply(lambda x: max(0, x))
@@ -176,7 +174,7 @@ def plot_reference_spectrum(
 
 
 def plot_filter_functions(axis: plt.Axes) -> None:
-    filter_names = ["U", "B", "V", "R", "I"]
+    filter_names = ["U", "B", "V", "I"]
     colours = ["r", "b", "g", "c", "m"]
 
     filterdir = os.path.join(at.get_config()["path_artistools_dir"], "data/filters/")
@@ -202,22 +200,34 @@ def plot_artis_spectrum(
     filterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     linelabel: Optional[str] = None,
     plotpacketcount: bool = False,
+    directionbins: Optional[list[int]] = None,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
+    maxpacketfiles: Optional[int] = None,
     **plotkwargs,
-) -> pd.DataFrame:
-    """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame"""
-    modelpath_or_file = Path(modelpath)
-    modelpath = Path(modelpath) if Path(modelpath).is_dir() else Path(modelpath).parent
+) -> Optional[pd.DataFrame]:
+    """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame."""
 
-    if not Path(modelpath, "input.txt").exists():
-        print(f"Skipping '{modelpath}' (no input.txt found. Not an ARTIS folder?)")
-        return
+    modelpath = Path(modelpath)
+    if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/spec.out'
+        specfilename = Path(modelpath).parts[-1]
+        print("WARNING: ignoring filename of {specfilename}")
+        modelpath = Path(modelpath).parent
+
+    if not modelpath.is_dir():
+        print(f"WARNING: Skipping because {modelpath} does not exist")
+        return None
+
+    if directionbins is None:
+        directionbins = [-1]
 
     if plotpacketcount:
         from_packets = True
-    for index, axis in enumerate(axes):
+
+    for axindex, axis in enumerate(axes):
         if args.multispecplot:
             (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
-                modelpath, timedays_range_str=args.timedayslist[index]
+                modelpath, timedays_range_str=args.timedayslist[axindex]
             )
         else:
             (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
@@ -226,59 +236,57 @@ def plot_artis_spectrum(
 
         modelname = at.get_model_name(modelpath)
         if timestepmin == timestepmax == -1:
-            return
+            return None
 
         assert args.timemin is not None
         assert args.timemax is not None
         timeavg = (args.timemin + args.timemax) / 2.0
         timedelta = (args.timemax - args.timemin) / 2
         if linelabel is None:
-            if len(modelname) < 70:
-                linelabel = f"{modelname}"
-            else:
-                linelabel = f"...{modelname[-67:]}"
+            linelabel = f"{modelname}" if len(modelname) < 70 else f"...{modelname[-67:]}"
 
             if not args.hidemodeltime and not args.multispecplot:
                 # todo: fix this for multispecplot - use args.showtime for now
                 linelabel += f" +{timeavg:.1f}d"
             if not args.hidemodeltimerange and not args.multispecplot:
-                linelabel += r" ($\pm$ " + f"{timedelta:.1f}d)"
+                linelabel += rf" ($\pm$ {timedelta:.1f}d)"
         # Luke: disabled below because line label has already been formatted with e.g. timeavg values
         # formatting for a second time makes it impossible to use curly braces in line labels (needed for LaTeX math)
         # else:
         #     linelabel = linelabel.format(**locals())
+        print(
+            f"====> '{linelabel}' timesteps {timestepmin} to {timestepmax} ({args.timemin:.3f} to {args.timemax:.3f}d)"
+        )
+        print(f" modelpath {modelpath}")
+
         viewinganglespectra: dict[int, pd.DataFrame] = {}
 
+        # have to get the spherical average "bin" if directionbins is None
+        dbins_get = list(directionbins).copy()
+        if -1 not in dbins_get:
+            dbins_get.append(-1)
+
+        supxmin, supxmax = axis.get_xlim()
         if from_packets:
-            spectrum = get_spectrum_from_packets(
+            assert args.plotvspecpol is None
+            viewinganglespectra = get_from_packets(
                 modelpath,
                 args.timemin,
                 args.timemax,
-                lambda_min=args.xmin,
-                lambda_max=args.xmax,
+                lambda_min=supxmin * 0.9,
+                lambda_max=supxmax * 1.1,
                 use_escapetime=args.use_escapetime,
-                maxpacketfiles=args.maxpacketfiles,
+                maxpacketfiles=maxpacketfiles,
                 delta_lambda=args.deltalambda,
                 useinternalpackets=args.internalpackets,
                 getpacketcount=plotpacketcount,
+                directionbins=dbins_get,
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
+                fnufilterfunc=filterfunc,
             )
-
-            if args.outputfile is None:
-                statpath = Path()
-            else:
-                statpath = Path(args.outputfile).resolve().parent
         else:
-            spectrum = get_spectrum(modelpath_or_file, timestepmin, timestepmax, fnufilterfunc=filterfunc)
-
-            angles: Collection[int] = args.plotviewingangle
-
-            if args.plotviewingangle:  # read specpol res.
-                for angle in angles:
-                    viewinganglespectra[angle] = get_res_spectrum(
-                        modelpath, timestepmin, timestepmax, angle=angle, fnufilterfunc=filterfunc, args=args
-                    )
-
-            elif args.plotvspecpol is not None and os.path.isfile(modelpath / "vpkt.txt"):
+            if args.plotvspecpol is not None:  # noqa: PLR5501
                 # read virtual packet files (after running plotartisspectrum --makevspecpol)
                 vpkt_config = at.get_vpkt_config(modelpath)
                 if vpkt_config["time_limits_enabled"] and (
@@ -288,99 +296,90 @@ def plot_artis_spectrum(
                         f"Timestep out of range of virtual packets: start time {vpkt_config['initial_time']} days "
                         f"end time {vpkt_config['final_time']} days"
                     )
-                    quit()
+                    sys.exit(1)
 
-                for angle in angles:
-                    viewinganglespectra[angle] = get_vspecpol_spectrum(
-                        modelpath, timeavg, angle, args, fnufilterfunc=filterfunc
-                    )
+                viewinganglespectra = {
+                    dirbin: get_vspecpol_spectrum(modelpath, timeavg, dirbin, args, fnufilterfunc=filterfunc)
+                    for dirbin in dbins_get
+                    if dirbin >= 0
+                }
+            else:
+                viewinganglespectra = get_spectrum(
+                    modelpath=modelpath,
+                    directionbins=dbins_get,
+                    timestepmin=timestepmin,
+                    timestepmax=timestepmax,
+                    average_over_phi=average_over_phi,
+                    average_over_theta=average_over_theta,
+                    fnufilterfunc=filterfunc,
+                )
 
-        spectrum.query("@args.xmin <= lambda_angstroms and lambda_angstroms <= @args.xmax", inplace=True)
-
-        print(
-            f"Plotting '{linelabel}' timesteps {timestepmin} to {timestepmax} "
-            f"({args.timemin:.3f} to {args.timemax:.3f}d)"
+        dirbin_definitions = (
+            at.get_dirbin_labels(
+                dirbins=directionbins,
+                modelpath=modelpath,
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
+            )
+            if not args.plotvspecpol
+            else at.get_vspec_dir_labels(modelpath=modelpath, viewinganglelabelunits=args.viewinganglelabelunits)
         )
-        print(f" modelpath {modelname}")
-        print_integrated_flux(spectrum["f_lambda"], spectrum["lambda_angstroms"])
 
-        if scale_to_peak:
-            spectrum["f_lambda_scaled"] = spectrum["f_lambda"] / spectrum["f_lambda"].max() * scale_to_peak
-            if args.plotvspecpol is not None:
-                for angle in args.plotvspecpol:
-                    viewinganglespectra[angle]["f_lambda_scaled"] = (
-                        viewinganglespectra[angle]["f_lambda"]
-                        / viewinganglespectra[angle]["f_lambda"].max()
-                        * scale_to_peak
-                    )
+        for dirbin in directionbins:
+            dfspectrum = (
+                viewinganglespectra[dirbin]
+                .query("@supxmin * 0.9 <= lambda_angstroms and lambda_angstroms <= @supxmax * 1.1")
+                .copy()
+            )
 
-            ycolumnname = "f_lambda_scaled"
-        else:
-            ycolumnname = "f_lambda"
+            if dirbin != -1:
+                linelabel = dirbin_definitions[dirbin]
+                print(f" direction {dirbin:4d}  {dirbin_definitions[dirbin]}")
 
-        if plotpacketcount:
-            ycolumnname = "packetcount"
+            print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
 
-        supxmin, supxmax = axis.get_xlim()
+            if scale_to_peak:
+                dfspectrum["f_lambda_scaled"] = dfspectrum["f_lambda"] / dfspectrum["f_lambda"].max() * scale_to_peak
+                if args.plotvspecpol is not None:
+                    for angle in args.plotvspecpol:
+                        viewinganglespectra[angle]["f_lambda_scaled"] = (
+                            viewinganglespectra[angle]["f_lambda"]
+                            / viewinganglespectra[angle]["f_lambda"].max()
+                            * scale_to_peak
+                        )
 
-        if (args.plotvspecpol is not None and os.path.isfile(modelpath / "vpkt.txt")) or args.plotviewingangle:
-            for angle in angles:
-                if args.binflux:
-                    new_lambda_angstroms = []
-                    binned_flux = []
+                ycolumnname = "f_lambda_scaled"
+            else:
+                ycolumnname = "f_lambda"
 
-                    wavelengths = viewinganglespectra[angle]["lambda_angstroms"]
-                    fluxes = viewinganglespectra[angle][ycolumnname]
-                    nbins = 5
+            if plotpacketcount:
+                ycolumnname = "packetcount"
 
-                    for i in np.arange(0, len(wavelengths - nbins), nbins):
-                        new_lambda_angstroms.append(wavelengths[i + int(nbins / 2)])
-                        sum_flux = 0
-                        for j in range(i, i + nbins):
-                            sum_flux += fluxes[j]
-                        binned_flux.append(sum_flux / nbins)
+            if args.binflux:
+                new_lambda_angstroms = []
+                binned_flux = []
 
-                    plt.plot(new_lambda_angstroms, binned_flux)
-                else:
-                    if args.plotvspecpol:
-                        if args.viewinganglelabelunits == "deg":
-                            viewing_angle = round(math.degrees(math.acos(vpkt_config["cos_theta"][angle])))
-                            linelabel = rf"$\theta$ = {viewing_angle}$^\circ$" if index == 0 else None
-                        elif args.viewinganglelabelunits == "rad":
-                            linelabel = rf"cos($\theta$) = {vpkt_config['cos_theta'][angle]}" if index == 0 else None
-                    else:
-                        linelabel = f"bin number {angle}"
-                        if args.average_over_phi_angle:
-                            (
-                                costheta_viewing_angle_bins,
-                                phi_viewing_angle_bins,
-                            ) = at.get_viewinganglebin_definitions()
-                            assert angle % at.get_viewingdirection_phibincount() == 0
-                            linelabel = costheta_viewing_angle_bins[int(angle // 10)]
-                        elif args.average_over_theta_angle:
-                            (
-                                costheta_viewing_angle_bins,
-                                phi_viewing_angle_bins,
-                            ) = at.get_viewinganglebin_definitions()
-                            assert angle < at.get_viewingdirection_costhetabincount()
-                            linelabel = phi_viewing_angle_bins[int(angle)]
+                wavelengths = dfspectrum["lambda_angstroms"]
+                fluxes = dfspectrum[ycolumnname]
+                nbins = 5
 
-                    viewinganglespectra[angle].query(
-                        "@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax"
-                    ).plot(
-                        x="lambda_angstroms", y=ycolumnname, ax=axis, legend=None, label=linelabel
-                    )  # {timeavg:.2f} days {at.get_model_name(modelpath)}
-        else:
-            spectrum.query("@supxmin <= lambda_angstroms and lambda_angstroms <= @supxmax").plot(
-                x="lambda_angstroms",
-                y=ycolumnname,
-                ax=axis,
-                legend=None,
-                label=linelabel if index == 0 else None,
+                for i in np.arange(0, len(wavelengths - nbins), nbins):
+                    new_lambda_angstroms.append(wavelengths[i + int(nbins / 2)])
+                    sum_flux = 0
+                    for j in range(i, i + nbins):
+                        sum_flux += fluxes[j]
+                    binned_flux.append(sum_flux / nbins)
+
+                dfspectrum = pd.DataFrame({"lambda_angstroms": new_lambda_angstroms, ycolumnname: binned_flux})
+
+            axis.plot(
+                dfspectrum["lambda_angstroms"],
+                dfspectrum[ycolumnname],
+                label=linelabel if axindex == 0 else None,
                 **plotkwargs,
             )
 
-    return spectrum[["lambda_angstroms", "f_lambda"]]
+    return dfspectrum[["lambda_angstroms", "f_lambda"]]
 
 
 def make_spectrum_plot(
@@ -402,7 +401,8 @@ def make_spectrum_plot(
         plotkwargs["alpha"] = 0.95
 
         plotkwargs["linestyle"] = args.linestyle[seriesindex]
-        plotkwargs["color"] = args.color[seriesindex]
+        if not args.plotviewingangle and not args.plotvspecpol:
+            plotkwargs["color"] = args.color[seriesindex]
         if args.dashes[seriesindex]:
             plotkwargs["dashes"] = args.dashes[seriesindex]
         if args.linewidth[seriesindex]:
@@ -410,36 +410,7 @@ def make_spectrum_plot(
 
         seriesdata = pd.DataFrame()
 
-        if specpath.is_dir() or specpath.name.endswith(".out"):
-            # ARTIS model spectrum
-            # plotkwargs['dash_capstyle'] = dash_capstyleList[artisindex]
-            if "linewidth" not in plotkwargs:
-                plotkwargs["linewidth"] = 1.3
-
-            plotkwargs["linelabel"] = args.label[seriesindex]
-
-            seriesdata = plot_artis_spectrum(
-                axes,
-                specpath,
-                args=args,
-                scale_to_peak=scale_to_peak,
-                from_packets=args.frompackets,
-                filterfunc=filterfunc,
-                plotpacketcount=args.plotpacketcount,
-                **plotkwargs,
-            )
-            seriesname = at.get_model_name(specpath)
-            artisindex += 1
-
-        elif not specpath.exists() and specpath.parts[0] == "codecomparison":
-            # timeavg = (args.timemin + args.timemax) / 2.
-            (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
-                specpath, args.timestep, args.timemin, args.timemax, args.timedays
-            )
-            timeavg = args.timedays
-            artistools.codecomparison.plot_spectrum(specpath, timedays=timeavg, ax=axes[0], **plotkwargs)
-            refspecindex += 1
-        else:
+        if not Path(specpath).is_dir() and not Path(specpath).exists() and "." in str(specpath):
             # reference spectrum
             if "linewidth" not in plotkwargs:
                 plotkwargs["linewidth"] = 1.1
@@ -458,7 +429,7 @@ def make_spectrum_plot(
                     **plotkwargs,
                 )
             else:
-                for _, axis in enumerate(axes):
+                for axis in axes:
                     supxmin, supxmax = axis.get_xlim()
                     plot_reference_spectrum(
                         specpath,
@@ -471,16 +442,53 @@ def make_spectrum_plot(
                         **plotkwargs,
                     )
             refspecindex += 1
+        elif not specpath.exists() and specpath.parts[0] == "codecomparison":
+            # timeavg = (args.timemin + args.timemax) / 2.
+            (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
+                specpath, args.timestep, args.timemin, args.timemax, args.timedays
+            )
+            timeavg = args.timedays
+            artistools.codecomparison.plot_spectrum(specpath, timedays=timeavg, ax=axes[0], **plotkwargs)
+            refspecindex += 1
+        else:
+            # ARTIS model spectrum
+            # plotkwargs['dash_capstyle'] = dash_capstyleList[artisindex]
+            if "linewidth" not in plotkwargs:
+                plotkwargs["linewidth"] = 1.3
+
+            plotkwargs["linelabel"] = args.label[seriesindex]
+
+            seriesdata = plot_artis_spectrum(
+                axes,
+                specpath,
+                args=args,
+                scale_to_peak=scale_to_peak,
+                from_packets=args.frompackets,
+                maxpacketfiles=args.maxpacketfiles,
+                filterfunc=filterfunc,
+                plotpacketcount=args.plotpacketcount,
+                directionbins=args.plotviewingangle if not args.plotvspecpol else args.plotvspecpol,
+                average_over_phi=args.average_over_phi_angle,
+                average_over_theta=args.average_over_theta_angle,
+                **plotkwargs,
+            )
+            if seriesdata is not None:
+                seriesname = at.get_model_name(specpath)
+                artisindex += 1
 
         if args.write_data and not seriesdata.empty:
             if dfalldata.empty:
-                dfalldata = pd.DataFrame(index=seriesdata["lambda_angstroms"].values)
+                dfalldata = pd.DataFrame(index=seriesdata["lambda_angstroms"].to_numpy())
                 dfalldata.index.name = "lambda_angstroms"
             else:
-                assert np.allclose(dfalldata.index.values, seriesdata["lambda_angstroms"].values)
-            dfalldata[f"f_lambda.{seriesname}"] = seriesdata["f_lambda"].values
+                # make sure we can share the same set of wavelengths for this series
+                assert np.allclose(dfalldata.index.values, seriesdata["lambda_angstroms"].to_numpy())
+            dfalldata[f"f_lambda.{seriesname}"] = seriesdata["f_lambda"].to_numpy()
 
         seriesindex += 1
+
+    plottedsomething = artisindex > 0 or refspecindex > 0
+    assert plottedsomething
 
     for axis in axes:
         if args.showfilterfunctions:
@@ -527,15 +535,15 @@ def make_emissionabsorption_plot(
     args=None,
     scale_to_peak: Optional[float] = None,
 ) -> tuple[list[Artist], list[str], Optional[pd.DataFrame]]:
-    """Plot the emission and absorption by ion for an ARTIS model."""
-    print(modelpath)
-    arraynu = at.misc.get_nu_grid(modelpath)
+    """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""
+    modelname = at.get_model_name(modelpath)
+
+    print(f"====> {modelname}")
+    arraynu = at.get_nu_grid(modelpath)
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
-
-    modelname = at.get_model_name(modelpath)
 
     if timestepmin == timestepmax == -1:
         print(f"Can't plot {modelname}...skipping")
@@ -670,7 +678,7 @@ def make_emissionabsorption_plot(
             if not args.showemission:
                 plotobjects.extend(absstackplot)
 
-    plotobjectlabels.extend(list([x.linelabel for x in contributions_sorted_reduced]))
+    plotobjectlabels.extend([x.linelabel for x in contributions_sorted_reduced])
     # print(plotobjectlabels)
     # print(len(plotobjectlabels), len(plotobjects))
 
@@ -702,17 +710,13 @@ def make_emissionabsorption_plot(
 
     plotlabel = f"{modelname}\n{args.timemin:.2f}d to {args.timemax:.2f}d"
     if args.plotviewingangle:
-        angle = args.plotviewingangle[0]
-        (
-            costheta_viewing_angle_bins,
-            phi_viewing_angle_bins,
-        ) = at.get_viewinganglebin_definitions()
-
-        if args.average_over_phi_angle:
-            assert angle % 10 == 0
-            plotlabel += ", " + costheta_viewing_angle_bins[int(angle // 10)]
-        else:
-            plotlabel += f", directionbin {args.plotviewingangle[0]}"
+        dirbin_definitions = at.get_dirbin_labels(
+            dirbins=args.plotviewingangle,
+            modelpath=modelpath,
+            average_over_phi=args.average_over_phi_angle,
+            average_over_theta=args.average_over_theta_angle,
+        )
+        plotlabel += f", directionbin {dirbin_definitions[args.plotviewingangle[0]]}"
 
     if not args.notitle:
         axis.set_title(plotlabel, fontsize=11)
@@ -740,8 +744,6 @@ def make_emissionabsorption_plot(
 
 
 def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[str], args) -> None:
-    import artistools.packets
-
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
@@ -749,11 +751,9 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
     modeldata, _ = at.inputmodel.get_modeldata(modelpath)
 
     if args.classicartis:
-        import artistools.estimators.estimators_classic
-
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)
         estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
-        allnonemptymgilist = [modelgridindex for modelgridindex in modeldata.index]
+        allnonemptymgilist = list(modeldata.index)
 
     else:
         estimators = at.estimators.read_estimators(modelpath=modelpath)
@@ -764,19 +764,17 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, args.maxpacketfiles)
     assert args.timemin is not None
     assert args.timemax is not None
-    tdays_min = float(args.timemin)
-    tdays_max = float(args.timemax)
+    # tdays_min = float(args.timemin)
+    # tdays_max = float(args.timemax)
 
     c_ang_s = 2.99792458e18
-    nu_min = c_ang_s / args.xmax
-    nu_max = c_ang_s / args.xmin
-
-    querystr = ""
+    # nu_min = c_ang_s / args.xmax
+    # nu_max = c_ang_s / args.xmin
 
     list_lambda: dict[str, list[float]] = {}
     lists_y: dict[str, list[float]] = {}
-    for index, packetsfile in enumerate(packetsfiles):
-        dfpackets = at.packets.readfile(packetsfile, type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    for packetsfile in packetsfiles:
+        dfpackets = at.packets.readfile(packetsfile, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
 
         dfpackets_selected = dfpackets.query(
             "@nu_min <= nu_rf < @nu_max and t_arrive_d >= @tdays_min and t_arrive_d <= @tdays_max", inplace=False
@@ -841,10 +839,7 @@ def make_plot(args) -> None:
     # densityplotyvars = ['emission_velocity', 'Te', 'nne']
     # densityplotyvars = ['true_emission_velocity', 'emission_velocity', 'Te', 'nne']
 
-    if args.multispecplot:
-        nrows = len(args.timedayslist)
-    else:
-        nrows = 1 + len(densityplotyvars)
+    nrows = len(args.timedayslist) if args.multispecplot else 1 + len(densityplotyvars)
 
     fig, axes = plt.subplots(
         nrows=nrows,
@@ -878,7 +873,7 @@ def make_plot(args) -> None:
     else:
         axes[-1].set_ylabel(r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]")
 
-    for index, axis in enumerate(axes):
+    for axis in axes:
         if args.logscale:
             axis.set_yscale("log")
         axis.set_xlim(left=args.xmin, right=args.xmax)
@@ -929,14 +924,14 @@ def make_plot(args) -> None:
             plotobjectlabels,
             loc="upper right",
             frameon=False,
-            handlelength=1,
+            handlelength=2,
             ncol=legendncol,
             numpoints=1,
             fontsize=fs,
         )
         leg.set_zorder(200)
 
-        for artist, text in zip(leg.legendHandles, leg.get_texts()):
+        for artist, text in zip(leg.legend_handles, leg.get_texts()):
             if hasattr(artist, "get_color"):
                 col = artist.get_color()
                 artist.set_linewidth(2.0)
@@ -990,6 +985,7 @@ def make_plot(args) -> None:
     filenameout = str(args.outputfile).format(
         time_days_min=args.timemin, time_days_max=args.timemax, directionbins=strdirectionbins
     )
+
     # plt.text(6000, (args.ymax * 0.9), f'{round(args.timemin) + 1} days', fontsize='large')
 
     if args.showtime and not args.multispecplot:
@@ -1085,7 +1081,7 @@ def addargs(parser) -> None:
     parser.add_argument(
         "-filtersavgol",
         nargs=2,
-        help="Savitzky–Golay filter. Specify the window_length and poly_order.e.g. -filtersavgol 5 3",
+        help="Savitzky-Golay filter. Specify the window_length and poly_order.e.g. -filtersavgol 5 3",
     )
 
     parser.add_argument("-timestep", "-ts", dest="timestep", nargs="?", help="First timestep or a range e.g. 45-65")
@@ -1284,6 +1280,12 @@ def main(args=None, argsraw=None, **kwargs) -> None:
             print("WARNING: --average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
             args.average_over_phi_angle = True
 
+    at.set_mpl_style()
+
+    assert (
+        not args.plotvspecpol or not args.plotviewingangle
+    )  # choose either virtual packet directions or real packet direction bins
+
     if not args.specpath:
         args.specpath = [Path(".")]
     elif isinstance(args.specpath, (str, Path)):  # or not not isinstance(args.specpath, Iterable)
@@ -1328,7 +1330,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         plot_polarisation(args.specpath[0], args)
         return
 
-    elif args.output_spectra:
+    if args.output_spectra:
         for modelpath in args.specpath:
             at.spectra.write_flambda_spectra(modelpath, args)
 

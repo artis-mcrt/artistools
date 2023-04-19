@@ -21,7 +21,7 @@ import artistools as at
 
 
 def get_elemabund_from_nucabund(dfnucabund: pd.DataFrame) -> dict[str, float]:
-    """return a dictionary of elemental abundances from nuclear abundance DataFrame"""
+    """Return a dictionary of elemental abundances from nuclear abundance DataFrame."""
     dictelemabund: dict[str, float] = {}
     for atomic_number in range(1, dfnucabund.Z.max() + 1):
         dictelemabund[f"X_{at.get_elsymbol(atomic_number)}"] = dfnucabund.query(
@@ -31,8 +31,7 @@ def get_elemabund_from_nucabund(dfnucabund: pd.DataFrame) -> dict[str, float]:
 
 
 def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename: str):
-    """
-    trajectory files are generally stored as {particleid}.tar.xz, but this is slow
+    """Trajectory files are generally stored as {particleid}.tar.xz, but this is slow
     to access, so first check for extracted files, or decompressed .tar files,
     which are much faster to access.
 
@@ -47,7 +46,7 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
         tarfile.open(tarfilepath, "r:*").extract(path=Path(traj_root, str(particleid)), member=memberfilename)
 
     if path_extracted_file.is_file():
-        return open(path_extracted_file, mode="r", encoding="utf-8")
+        return open(path_extracted_file, encoding="utf-8")
 
     if not tarfilepath.is_file():
         print(f"No network data found for particle {particleid} (so can't access {memberfilename})")
@@ -63,20 +62,21 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
                     return io.StringIO(extractedfile.read().decode("utf-8"))
 
     print(f"Member {memberfilename} not found in {tarfilepath}")
-    assert False
+    raise AssertionError
 
 
 @lru_cache(maxsize=16)
 def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
     with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/evol.dat") as evolfile:
-        dfevol = pd.read_table(
+        dfevol = pd.read_csv(
             evolfile,
             sep=r"\s+",
             comment="#",
             usecols=[0, 1],
             names=["nstep", "timesec"],
             engine="c",
-            dtype={0: int, 1: float},
+            dtype={0: "int32[pyarrow]", 1: "float32[pyarrow]"},
+            dtype_backend="pyarrow",
         )
 
     return dfevol
@@ -93,7 +93,7 @@ def get_closest_network_timestep(
     dfevol: pd.DataFrame = get_dfevol(traj_root, particleid)
 
     if cond == "nearest":
-        idx = np.abs(dfevol.timesec.values - timesec).argmin()
+        idx = np.abs(dfevol.timesec.to_numpy() - timesec).argmin()
 
     elif cond == "greaterthan":
         return dfevol.query("timesec > @timesec").nstep.min()
@@ -102,9 +102,9 @@ def get_closest_network_timestep(
         return dfevol.query("timesec < @timesec").nstep.max()
 
     else:
-        assert False
+        raise AssertionError
 
-    nts: int = dfevol.nstep.values[idx]
+    nts: int = dfevol.nstep.to_numpy()[idx]
 
     return nts
 
@@ -119,10 +119,10 @@ def get_trajectory_timestepfile_nuc_abund(
     with open_tar_file_or_extracted(traj_root, particleid, memberfilename) as trajfile:
         try:
             _, str_t_model_init_seconds, _, rho, _, _ = trajfile.readline().split()
-        except ValueError:
+        except ValueError as exc:
             print(f"Problem with {memberfilename}")
-            raise ValueError(f"Problem with {memberfilename}")
-            assert False
+            raise ValueError(f"Problem with {memberfilename}") from exc
+
         trajfile.seek(0)
         t_model_init_seconds = float(str_t_model_init_seconds)
 
@@ -133,11 +133,12 @@ def get_trajectory_timestepfile_nuc_abund(
             colspecs=[(0, 4), (4, 8), (8, 21)],
             engine="c",
             names=["N", "Z", "log10abund"],
-            dtype={0: int, 1: int, 2: float},
+            dtype={0: "int32[pyarrow]", 1: "int32[pyarrow]", 2: "float32[pyarrow]"},
+            dtype_backend="pyarrow",
         )
 
         # in case the files are inconsistent, switch to an adaptive reader
-        # dfnucabund = pd.read_table(
+        # dfnucabund = pd.read_csv(
         #     trajfile,
         #     skip_blank_lines=True,
         #     skiprows=1,
@@ -149,7 +150,7 @@ def get_trajectory_timestepfile_nuc_abund(
         # )
 
     # dfnucabund.eval('abund = 10 ** log10abund', inplace=True)
-    dfnucabund.eval("massfrac = (N + Z) * (10 ** log10abund)", inplace=True)
+    dfnucabund["massfrac"] = (dfnucabund["N"] + dfnucabund["Z"]) * (10 ** dfnucabund["log10abund"])
     # dfnucabund.eval('A = N + Z', inplace=True)
     # dfnucabund.query('abund > 0.', inplace=True)
 
@@ -162,16 +163,26 @@ def get_trajectory_timestepfile_nuc_abund(
 
 
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
-    """initial cell energy [erg/g]"""
+    """Initial cell energy [erg/g]."""
     with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as enthermofile:
-        dfthermo: pd.DataFrame = pd.read_table(
-            enthermofile, sep=r"\s+", usecols=["time/s", "Qdot"], engine="c", dtype={0: float, 1: float}
-        )
-        dfthermo.rename(columns={"time/s": "time_s"}, inplace=True)
+        try:
+            dfthermo: pd.DataFrame = pd.read_csv(
+                enthermofile,
+                sep=r"\s+",
+                usecols=["time/s", "Qdot"],
+                engine="c",
+                dtype={0: "float32[pyarrow]", 1: "float32[pyarrow]"},
+                dtype_backend="pyarrow",
+            )
+        except pd.errors.EmptyDataError:
+            print(f"Problem with file {enthermofile}")
+            raise
+
+        dfthermo = dfthermo.rename(columns={"time/s": "time_s"})
         startindex: int = int(np.argmax(dfthermo["time_s"] >= 1))  # start integrating at this number of seconds
 
         assert all(dfthermo["Qdot"][startindex : nts_max + 1] > 0.0)
-        dfthermo.eval("Qdot_expansionadjusted = Qdot * time_s / @t_model_s", inplace=True)
+        dfthermo["Qdot_expansionadjusted"] = dfthermo["Qdot"] * dfthermo["time_s"] / t_model_s
 
         qdotintegral: float = np.trapz(
             y=dfthermo["Qdot_expansionadjusted"][startindex : nts_max + 1],
@@ -189,9 +200,8 @@ def get_trajectory_abund_q(
     nts: Optional[int] = None,
     getqdotintegral: bool = False,
 ) -> dict[str, float]:
-    """
-    get the nuclear mass fractions (and Qdotintegral) for a particle particle number as a given time
-    nts: GSI network timestep number
+    """Get the nuclear mass fractions (and Qdotintegral) for a particle particle number as a given time
+    nts: GSI network timestep number.
     """
     assert t_model_s is not None or nts is not None
     try:
@@ -214,7 +224,7 @@ def get_trajectory_abund_q(
         return {}
 
     massfractotal = dftrajnucabund.massfrac.sum()
-    dftrajnucabund.query("Z >= 1", inplace=True)
+    dftrajnucabund = dftrajnucabund.loc[dftrajnucabund["Z"] >= 1]
 
     dftrajnucabund["nucabundcolname"] = [
         f"X_{at.get_elsymbol(int(row.Z))}{int(row.N + row.Z)}" for row in dftrajnucabund.itertuples()
@@ -261,9 +271,9 @@ def get_modelcellabundance(
     # adjust frac_of_cellmass for missing particles
     cell_frac_sum = sum([frac_of_cellmass for _, frac_of_cellmass in contribparticles])
 
-    nucabundcolnames = set(
-        [col for particleid in dfthiscellcontribs.particleid for col in dict_traj_nuc_abund.get(particleid, {}).keys()]
-    )
+    nucabundcolnames = {
+        col for particleid in dfthiscellcontribs.particleid for col in dict_traj_nuc_abund.get(particleid, {})
+    }
 
     row = {
         nucabundcolname: sum(
@@ -291,7 +301,13 @@ def get_gridparticlecontributions(gridcontribpath: Union[Path, str]) -> pd.DataF
     dfcontribs = pd.read_csv(
         Path(gridcontribpath, "gridcontributions.txt"),
         delim_whitespace=True,
-        dtype={0: int, 1: int, 2: float, 3: float},
+        dtype={
+            0: "int32[pyarrow]",
+            1: "int32[pyarrow]",
+            2: "float32[pyarrow]",
+            3: "float32[pyarrow]",
+        },
+        dtype_backend="pyarrow",
     )
 
     return dfcontribs
@@ -317,7 +333,7 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataF
     )
     # after filtering, frac_of_cellmass_includemissing will still include particles with rho but no abundance data
     # frac_of_cellmass will exclude particles with no abundances
-    dfcontribs.eval("frac_of_cellmass_includemissing = frac_of_cellmass", inplace=True)
+    dfcontribs["frac_of_cellmass_includemissing"] = dfcontribs["frac_of_cellmass"]
     # dfcontribs.query('particleid not in @missing_particleids', inplace=True)
     dfcontribs.loc[dfcontribs.eval("particleid in @missing_particleids"), "frac_of_cellmass"] = 0.0
 
@@ -359,11 +375,11 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataF
     return dfcontribs
 
 
-def save_gridparticlecontributions(dfcontribs: pd.DataFrame, gridcontribpath):
+def save_gridparticlecontributions(dfcontribs: pd.DataFrame, gridcontribpath) -> None:
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
         gridcontribpath = Path(gridcontribpath, "gridcontributions.txt")
-    dfcontribs.to_csv(gridcontribpath, sep=" ", index=False)
+    dfcontribs.to_csv(gridcontribpath, sep=" ", index=False, float_format="%.7e")
 
 
 def add_abundancecontributions(
@@ -373,7 +389,7 @@ def add_abundancecontributions(
     traj_root: Path,
     minparticlespercell: int = 0,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """contribute trajectory network calculation abundances to model cell abundances"""
+    """Contribute trajectory network calculation abundances to model cell abundances."""
     t_model_s = t_model_days_incpremerger * 86400
     dfcontribs = dfgridcontributions
 
@@ -386,7 +402,7 @@ def add_abundancecontributions(
         if len(dfthiscellcontribs) >= minparticlespercell
     ]
 
-    dfcontribs.query("cellindex in @active_inputcellids", inplace=True)
+    dfcontribs = dfcontribs.query("cellindex in @active_inputcellids")
     dfcontribs = filtermissinggridparticlecontributions(traj_root, dfcontribs)
     active_inputcellids = dfcontribs.cellindex.unique()
     active_inputcellcount = len(active_inputcellids)
@@ -444,9 +460,9 @@ def add_abundancecontributions(
     timestart = time.perf_counter()
     print("Creating dfnucabundances...", end="", flush=True)
     dfnucabundances = pd.DataFrame(listcellnucabundances)
-    dfnucabundances.set_index("inputcellid", drop=False, inplace=True)
+    dfnucabundances = dfnucabundances.set_index("inputcellid", drop=False)
     dfnucabundances.index.name = None
-    dfnucabundances.fillna(0.0, inplace=True)
+    dfnucabundances = dfnucabundances.fillna(0.0)
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
     timestart = time.perf_counter()
@@ -471,7 +487,7 @@ def add_abundancecontributions(
                 f"X_{at.get_elsymbol(atomic_number)}": (
                     dfnucabundances.eval(
                         f'{" + ".join(elemisotopes[atomic_number])}',
-                        # engine="python" if len(elemisotopes[atomic_number]) > 31 else None
+                        engine="python" if len(elemisotopes[atomic_number]) > 31 else None,
                     )
                     if atomic_number in elemisotopes
                     else np.zeros(len(dfnucabundances))
@@ -486,15 +502,15 @@ def add_abundancecontributions(
     dfelabundances = dfmodel[["inputcellid"]].merge(
         dfelabundances_partial, how="left", left_on="inputcellid", right_on="inputcellid"
     )
-    dfnucabundances.set_index("inputcellid", drop=False, inplace=True)
+    dfnucabundances = dfnucabundances.set_index("inputcellid", drop=False)
     dfnucabundances.index.name = None
-    dfelabundances.fillna(0.0, inplace=True)
+    dfelabundances = dfelabundances.fillna(0.0)
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
     print(f" there are {nuclidesincluded} nuclides from {elementsincluded} elements included")
     timestart = time.perf_counter()
     print("Merging isotopic abundances into dfmodel...", end="", flush=True)
     dfmodel = dfmodel.merge(dfnucabundances, how="left", left_on="inputcellid", right_on="inputcellid")
-    dfmodel.fillna(0.0, inplace=True)
+    dfmodel = dfmodel.fillna(0.0)
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
     return dfmodel, dfelabundances, dfcontribs
@@ -504,7 +520,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args=None, argsraw=None, **kwargs) -> None:
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,
@@ -525,7 +541,7 @@ def main(args=None, argsraw=None, **kwargs):
     dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(
         traj_root, particleid, "./Run_rprocess/tday_nz-plane"
     )
-    dfnucabund.query("Z >= 1", inplace=True)
+    dfnucabund = dfnucabund.iloc[dfnucabund["Z"] >= 1]
     dfnucabund["radioactive"] = True
 
     t_model_init_days = t_model_init_seconds / (24 * 60 * 60)
@@ -538,31 +554,29 @@ def main(args=None, argsraw=None, **kwargs):
             wollager_profilename, delim_whitespace=True, skiprows=1, names=["cellid", "velocity_outer", "rho"]
         )
         dfdensities["cellid"] = dfdensities["cellid"].astype(int)
-        dfdensities["velocity_inner"] = np.concatenate(([0.0], dfdensities["velocity_outer"].values[:-1]))
+        dfdensities["velocity_inner"] = np.concatenate(([0.0], dfdensities["velocity_outer"].to_numpy()[:-1]))
 
         t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
-        dfdensities.eval(
+        dfdensities = dfdensities.eval(
             (
                 "cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
                 "* (1e5 * @t_model_init_seconds_in) ** 3"
             ),
-            inplace=True,
         )
 
         # now replace the density at the input time with the density at required time
 
-        dfdensities.eval(
+        dfdensities = dfdensities.eval(
             (
                 "rho = cellmass_grams / ("
                 "4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
                 " * (1e5 * @t_model_init_seconds) ** 3)"
             ),
-            inplace=True,
         )
     else:
         rho = 1e-11
         print(f"{wollager_profilename} not found. Using rho {rho} g/cm3")
-        dfdensities = pd.DataFrame(dict(rho=rho, velocity_outer=6.0e4), index=[0])
+        dfdensities = pd.DataFrame({"rho": rho, "velocity_outer": 6.0e4}, index=[0])
 
     # print(dfdensities)
 
@@ -571,7 +585,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     dfelabundances = pd.DataFrame([dict(inputcellid=mgi + 1, **dictelemabund) for mgi in range(len(dfdensities))])
     # print(dfelabundances)
-    at.inputmodel.save_initialabundances(dfelabundances=dfelabundances, abundancefilename=args.outputpath)
+    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, abundancefilename=args.outputpath)
 
     # write model.txt
 

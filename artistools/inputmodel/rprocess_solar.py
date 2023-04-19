@@ -8,8 +8,6 @@ import pandas as pd
 
 import artistools as at
 
-# import os.path
-
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
@@ -44,8 +42,7 @@ def main(args=None, argsraw=None, **kwargs):
         dfmasschain = dfbetaminus.query("A == @row.A", inplace=False)
         if not dfmasschain.empty:
             return int(dfmasschain.Z.min())  # decay to top of chain
-        else:
-            return int(row.Z)
+        return int(row.Z)
 
     dfsolarabund_undecayed = dfsolarabund.copy()
     dfsolarabund_undecayed["Z"] = dfsolarabund_undecayed.apply(undecayed_z, axis=1)
@@ -62,11 +59,11 @@ def main(args=None, argsraw=None, **kwargs):
     )
 
     normfactor = dfsolarabund_undecayed.numberfrac.sum()  # convert number fractions in solar to fractions of r-process
-    dfsolarabund_undecayed.eval("numberfrac = numberfrac / @normfactor", inplace=True)
+    dfsolarabund_undecayed = dfsolarabund_undecayed.eval("numberfrac = numberfrac / @normfactor")
 
-    dfsolarabund_undecayed.eval("massfrac = numberfrac * A", inplace=True)
+    dfsolarabund_undecayed = dfsolarabund_undecayed.eval("massfrac = numberfrac * A")
     massfracnormfactor = dfsolarabund_undecayed.massfrac.sum()
-    dfsolarabund_undecayed.eval("massfrac = massfrac / @massfracnormfactor", inplace=True)
+    dfsolarabund_undecayed = dfsolarabund_undecayed.eval("massfrac = massfrac / @massfracnormfactor")
 
     # print(dfsolarabund_undecayed)
 
@@ -80,29 +77,27 @@ def main(args=None, argsraw=None, **kwargs):
             wollager_profilename, delim_whitespace=True, skiprows=1, names=["cellid", "velocity_outer", "rho"]
         )
         dfdensities["cellid"] = dfdensities["cellid"].astype(int)
-        dfdensities["velocity_inner"] = np.concatenate(([0.0], dfdensities["velocity_outer"].values[:-1]))
+        dfdensities["velocity_inner"] = np.concatenate(([0.0], dfdensities["velocity_outer"].to_numpy()[:-1]))
 
         t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
-        dfdensities.eval(
+        dfdensities = dfdensities.eval(
             (
                 "cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
                 "* (1e5 * @t_model_init_seconds_in) ** 3"
             ),
-            inplace=True,
         )
 
         # now replace the density at the input time with the density at required time
 
-        dfdensities.eval(
+        dfdensities = dfdensities.eval(
             (
                 "rho = cellmass_grams / ("
                 "4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
                 " * (1e5 * @t_model_init_seconds) ** 3)"
             ),
-            inplace=True,
         )
     else:
-        dfdensities = pd.DataFrame(dict(rho=10**-3, velocity_outer=6.0e4), index=[0])
+        dfdensities = pd.DataFrame({"rho": 10**-3, "velocity_outer": 6.0e4}, index=[0])
 
     # print(dfdensities)
     cellcount = len(dfdensities)
@@ -116,7 +111,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     dfelabundances = pd.DataFrame([dict(inputcellid=mgi + 1, **dictelemabund) for mgi in range(cellcount)])
     # print(dfelabundances)
-    at.inputmodel.save_initialabundances(dfelabundances=dfelabundances, abundancefilename=args.outputpath)
+    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, abundancefilename=args.outputpath)
 
     # write model.txt
 

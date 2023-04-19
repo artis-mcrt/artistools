@@ -7,8 +7,6 @@ from typing import Optional
 from astropy import units as u
 
 import artistools as at
-import artistools.inputmodel
-import artistools.nltepops
 
 
 def forward_doubledecay(

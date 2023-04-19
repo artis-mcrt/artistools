@@ -10,8 +10,6 @@ config: dict[str, Any] = {}
 
 
 def setup_config():
-    global config
-
     mp.set_start_method("fork")
     # count the cores (excluding the efficiency cores on ARM)
     try:
@@ -32,16 +30,7 @@ def setup_config():
 
     # print(f"Using {num_processes} processes")
 
-    config["enable_diskcache"] = False
     config["num_processes"] = num_processes
-
-    # pyarrow is faster, if it is installed
-    try:
-        import pyarrow
-
-        config["pandas_engine"] = "pyarrow"
-    except ImportError:
-        config["pandas_engine"] = "c"
 
     config["figwidth"] = 5
     config["codecomparisondata1path"] = Path(
@@ -58,13 +47,12 @@ def setup_config():
 
 
 def get_config(key: Optional[str] = None):
-    global config
     if not config:
         setup_config()
     if key is None:
         return config
-    else:
-        return config[key]
+
+    return config[key]
 
 
 def set_config(key: str, value: Any) -> None:

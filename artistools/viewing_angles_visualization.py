@@ -7,7 +7,7 @@ import pandas as pd
 
 
 def load_artis_model(modelfile):
-    with open(modelfile, "r") as f:
+    with open(modelfile) as f:
         n = f.readline()
         res = int(np.cbrt(int(n)))
         rho = np.zeros([res, res, res])
@@ -151,8 +151,8 @@ def main(
     isomin, isomax : float, float
     """
     try:
-        import plotly.graph_objects as go
         import plotly.express as px
+        import plotly.graph_objects as go
     except ModuleNotFoundError:
         print("Cannot run visualization without plotly...")
         sys.exit()
@@ -180,15 +180,15 @@ def main(
         animation_frame="Angle-bin",
         hover_name="Angle-bin",
     )
-    fig.update_traces(line=dict(width=linewidth))
+    fig.update_traces(line={"width": linewidth})
     fig.update_layout(
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-        )
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "right",
+            "x": 1,
+        }
     )
 
     fig = fig.add_trace(

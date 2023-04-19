@@ -3,6 +3,7 @@ import argparse
 import multiprocessing
 import sys
 from pathlib import Path
+from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,31 +11,24 @@ import pandas as pd
 import pynonthermal as pynt
 
 import artistools as at
-import artistools.estimators
-import artistools.nltepops
-import artistools.nonthermal
-
-# import numba
-# from numpy import arctan as atan
-
 
 minionfraction = 0.0  # minimum number fraction of the total population to include in SF solution
 
 defaultoutputfile = "spencerfano_cell{cell:03d}_ts{timestep:02d}_{timedays:.0f}d.pdf"
 
 
-def make_ntstats_plot(ntstatfile):
+def make_ntstats_plot(ntstatfile: Union[str, Path]) -> None:
     fig, ax = plt.subplots(
         nrows=1, ncols=1, sharex=True, figsize=(4, 3), tight_layout={"pad": 0.5, "w_pad": 0.3, "h_pad": 0.3}
     )
 
     dfstats = pd.read_csv(ntstatfile, delim_whitespace=True, escapechar="#")
-    dfstats.fillna(0, inplace=True)
+    dfstats = dfstats.fillna(0)
 
     norm_frac_sum = False
     if norm_frac_sum:
         # scale up (or down) ionisation, excitation, and heating to force frac_sum = 1.0
-        dfstats.eval("frac_sum = frac_ionization + frac_excitation + frac_heating", inplace=True)
+        dfstats = dfstats.eval("frac_sum = frac_ionization + frac_excitation + frac_heating")
         norm_factors = 1.0 / dfstats["frac_sum"]
     else:
         norm_factors = 1.0
@@ -45,10 +39,10 @@ def make_ntstats_plot(ntstatfile):
 
     xarr = np.log10(dfstats.x_e)
     ax.plot(xarr, dfstats.frac_ionization * norm_factors, label="Ionisation")
-    if not max(dfstats.frac_excitation) == 0.0:
+    if max(dfstats.frac_excitation) > 0.0:
         ax.plot(xarr, dfstats.frac_excitation * norm_factors, label="Excitation")
     ax.plot(xarr, dfstats.frac_heating * norm_factors, label="Heating")
-    ioncols = [col for col in dfstats.columns.values if col.startswith("frac_ionization_")]
+    ioncols = [col for col in dfstats.columns.to_numpy() if col.startswith("frac_ionization_")]
     for ioncol in ioncols:
         ion = ioncol.replace("frac_ionization_", "")
         ax.plot(xarr, dfstats[ioncol] * norm_factors, label=f"{ion} ionisation")
@@ -160,7 +154,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     if args.plotstats:
         make_ntstats_plot(args.plotstats)
-        return
+        return None
 
     # global at.nonthermal.experiment_use_Latom_in_spencerfano
     at.nonthermal.experiment_use_Latom_in_spencerfano = args.atomlossrate
@@ -314,7 +308,7 @@ def main(args=None, argsraw=None, **kwargs):
             ionpopdict[(compelement_atomicnumber, 2)] = nntot * x_e
 
         ions = []
-        for key in ionpopdict.keys():
+        for key in ionpopdict:
             # keep only the ion populations, not element or total populations
             if isinstance(key, tuple) and len(key) == 2 and ionpopdict[key] / nntot >= minionfraction:
                 ions.append(key)
@@ -365,15 +359,14 @@ def main(args=None, argsraw=None, **kwargs):
                     )
                     for atomic_number, ionstage in ions:
                         nnion = ionpopdict[(atomic_number, ionstage)]
-                        if nnion > 0.0:
-                            frac_ionis_ion = sf.get_frac_ionisation_ion(atomic_number, ionstage)
-                        else:
-                            frac_ionis_ion = 0.0
+                        frac_ionis_ion = sf.get_frac_ionisation_ion(atomic_number, ionstage) if nnion > 0.0 else 0.0
                         strlineout += f" {frac_ionis_ion:.4f}"
                     fstat.write(strlineout + "\n")
 
     if args.ostat:
         make_ntstats_plot(args.ostat)
+        return None
+    return None
 
 
 if __name__ == "__main__":

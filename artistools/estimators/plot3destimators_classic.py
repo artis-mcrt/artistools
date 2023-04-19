@@ -6,9 +6,6 @@ import numpy as np
 import pyvista as pv
 
 import artistools as at
-import artistools.estimators.estimators_classic
-import artistools.initial_composition
-import artistools.inputmodel.slice1Dfromconein3dmodel
 
 CLIGHT = 2.99792458e10
 
@@ -34,8 +31,8 @@ def get_modelgridcells_along_axis(modelpath):
 def get_modelgridcells_2D_slice(modeldata, modelpath):
     sliceaxis = "z"
 
-    slice = at.initial_composition.get_2D_slice_through_3d_model(modeldata, sliceaxis)
-    readonly_mgi = get_mgi_of_modeldata(slice, modelpath)
+    slicedata = at.initial_composition.get_2D_slice_through_3d_model(modeldata, sliceaxis)
+    readonly_mgi = get_mgi_of_modeldata(slicedata, modelpath)
 
     return readonly_mgi
 
@@ -43,7 +40,7 @@ def get_modelgridcells_2D_slice(modeldata, modelpath):
 def get_mgi_of_modeldata(modeldata, modelpath):
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
     readonly_mgi = []
-    for index, row in modeldata.iterrows():
+    for _index, row in modeldata.iterrows():
         if row["rho"] > 0:
             mgi = mgi_of_propcells[int(row["inputcellid"]) - 1]
             readonly_mgi.append(mgi)
@@ -58,7 +55,7 @@ def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, reado
         associated_modeldata_row_for_mgi = modeldata.loc[modeldata["inputcellid"] == assoc_cells[mgi][0]]
 
         Te = [estimators[(timestep, mgi)]["Te"] for timestep, _ in enumerate(times)]
-        plt.scatter(times, Te, label=f'vel={associated_modeldata_row_for_mgi["vel_y_mid"].values[0] / CLIGHT}')
+        plt.scatter(times, Te, label=f'vel={associated_modeldata_row_for_mgi["vel_y_mid"].to_numpy()[0] / CLIGHT}')
 
     plt.xlabel("time [days]")
     plt.ylabel("Te [K]")
@@ -79,7 +76,7 @@ def plot_Te_vs_velocity(modelpath, modeldata, estimators, readonly_mgi):
         associated_modeldata_rows = [
             modeldata.loc[modeldata["inputcellid"] == assoc_cells[mgi][0]] for mgi in readonly_mgi
         ]
-        velocity = [row["vel_y_mid"].values[0] / CLIGHT for row in associated_modeldata_rows]
+        velocity = [row["vel_y_mid"].to_numpy()[0] / CLIGHT for row in associated_modeldata_rows]
 
         plt.plot(velocity, Te, label=f"{times[timestep]:.2f}", linestyle="-", marker="o")
 
@@ -127,7 +124,14 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
     mesh = pv.StructuredGrid(x, y, z)
     mesh["Te [K]"] = grid_Te.ravel(order="F")
 
-    sargs = dict(height=0.75, vertical=True, position_x=0.02, position_y=0.1, title_font_size=22, label_font_size=25)
+    sargs = {
+        "height": 0.75,
+        "vertical": True,
+        "position_x": 0.02,
+        "position_y": 0.1,
+        "title_font_size": 22,
+        "label_font_size": 25,
+    }
 
     pv.set_plot_theme("document")  # set white background
     p = pv.Plotter()

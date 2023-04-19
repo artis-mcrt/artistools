@@ -1,43 +1,44 @@
-#!/usr/bin/env python3
-# import glob
-# import itertools
 import argparse
 import math
 import os
 from collections.abc import Collection
 from pathlib import Path
 from typing import Any
+from typing import Literal
 from typing import Optional
 from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import polars as pl
 from astropy import constants as const
 from astropy import units as u
 
 import artistools as at
-import artistools.spectra
 
 
 def readfile(
     filepath: Union[str, Path],
-    modelpath: Optional[Path] = None,
-    args: Union[argparse.Namespace, None] = None,
-) -> Union[pd.DataFrame, dict[int, pd.DataFrame]]:
-    lcdata = pd.read_csv(filepath, delim_whitespace=True, header=None, names=["time", "lum", "lum_cmf"])
+) -> dict[int, pd.DataFrame]:
+    """Read an ARTIS light curve file"""
+    print(f"Reading {filepath}")
+    lcdata: dict[int, pd.DataFrame] = {}
+    if "_res" in str(filepath):
+        # get a dict of dfs with light curves at each viewing direction bin
+        lcdata_res = pl.read_csv(
+            at.zopen(filepath, "rb").read(), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
+        )
+        lcdata = at.split_dataframe_dirbins(lcdata_res, index_of_repeated_value=0, output_polarsdf=True)
+    else:
+        dfsphericalaverage = pl.read_csv(
+            at.zopen(filepath, "rb").read(), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
+        )
 
-    if args is not None and args.gamma and modelpath is not None and at.get_inputparams(modelpath)["n_dimensions"] == 3:
-        lcdata = read_3d_gammalightcurve(filepath)
-
-    elif (args is not None and args.plotviewingangle is not None) or "res" in str(filepath):
-        # get a list of dfs with light curves at each viewing angle
-        lcdata = at.gather_res_data(lcdata, index_of_repeated_value=0)
-
-    elif list(lcdata.time.values) != list(sorted(lcdata.time.values)):
-        # the light_curve.dat file repeats x values, so keep the first half only
-        lcdata = lcdata.iloc[: len(lcdata) // 2]
-        lcdata.index.name = "timestep"
+        if list(dfsphericalaverage["time"].to_numpy()) != sorted(dfsphericalaverage["time"].to_numpy()):
+            # the light_curve.out file repeats x values, so keep the first half only
+            dfsphericalaverage = dfsphericalaverage[: dfsphericalaverage.height // 2]
+        lcdata[-1] = dfsphericalaverage
 
     return lcdata
 
@@ -53,125 +54,136 @@ def read_3d_gammalightcurve(
 
     res_data = {}
     for angle in np.arange(0, 100):
-        res_data[angle] = lcdata[["time", angle]].copy()
-        res_data[angle].rename(columns={angle: "lum"}, inplace=True)
+        res_data[angle] = lcdata[["time", angle]]
+        res_data[angle] = res_data[angle].rename(columns={angle: "lum"})
 
     return res_data
 
 
 def get_from_packets(
-    modelpath: Path,
-    packet_type: str = "TYPE_ESCAPE",
-    escape_type: str = "TYPE_RPKT",
+    modelpath: Union[str, Path],
+    escape_type: Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
     maxpacketfiles: Optional[int] = None,
-) -> pd.DataFrame:
-    import artistools.packets
-
-    packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
-    nprocs_read = len(packetsfiles)
-    assert nprocs_read > 0
+    directionbins: Collection[int] = [-1],
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
+    get_cmf_column: bool = True,
+) -> dict[int, pl.DataFrame]:
+    """Get ARTIS luminosity vs time from packets files"""
 
     tmidarray = at.get_timestep_times_float(modelpath=modelpath, loc="mid")
     timearray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
     arr_timedelta = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
     # timearray = np.arange(250, 350, 0.1)
-    _, _, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath, getheadersonly=True, skipabundancecolumns=True)
-    escapesurfacegamma = math.sqrt(1 - (vmax_cmps / 29979245800) ** 2)
+    if get_cmf_column:
+        _, modelmeta = at.inputmodel.get_modeldata(modelpath, getheadersonly=True, printwarningsonly=True)
+        escapesurfacegamma = math.sqrt(1 - (modelmeta["vmax_cmps"] / 29979245800) ** 2)
+    else:
+        escapesurfacegamma = None
 
     timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
 
-    lcdata = pd.DataFrame(
-        {
-            "time": tmidarray,
-            "lum": np.zeros_like(timearray, dtype=float),
-            "lum_cmf": np.zeros_like(timearray, dtype=float),
-        }
-    )
-
-    sec_to_day = 1 / 86400
-
-    for packetsfile in packetsfiles:
-        dfpackets = at.packets.readfile(packetsfile, type=packet_type, escape_type=escape_type)
-
-        if not (dfpackets.empty):
-            print(f"sum of e_cmf {dfpackets['e_cmf'].sum()} e_rf {dfpackets['e_rf'].sum()}")
-
-            binned = pd.cut(dfpackets["t_arrive_d"], timearrayplusend, labels=False, include_lowest=True)
-            for binindex, e_rf_sum in dfpackets.groupby(binned)["e_rf"].sum().items():
-                lcdata["lum"][binindex] += e_rf_sum
-
-            dfpackets.eval("t_arrive_cmf_d = escape_time * @escapesurfacegamma * @sec_to_day", inplace=True)
-
-            binned_cmf = pd.cut(dfpackets["t_arrive_cmf_d"], timearrayplusend, labels=False, include_lowest=True)
-            for binindex, e_cmf_sum in dfpackets.groupby(binned_cmf)["e_cmf"].sum().items():
-                lcdata["lum_cmf"][binindex] += e_cmf_sum
-
-    lcdata["lum"] = np.divide(lcdata["lum"] / nprocs_read * (u.erg / u.day).to("solLum"), arr_timedelta)
-    lcdata["lum_cmf"] = np.divide(
-        lcdata["lum_cmf"] / nprocs_read / escapesurfacegamma * (u.erg / u.day).to("solLum"), arr_timedelta
-    )
-    return lcdata
-
-
-def average_lightcurve_phi_bins(lcdataframes: dict[int, pd.DataFrame]) -> dict[int, pd.DataFrame]:
-    dirbincount = at.get_viewingdirectionbincount()
-    nphibins = at.get_viewingdirection_phibincount()
-    for start_bin in range(0, dirbincount, nphibins):
-        for bin_number in range(start_bin + 1, start_bin + nphibins):
-            lcdataframes[bin_number] = lcdataframes[bin_number].copy()  # important to not affect the LRU cached copy
-            lcdataframes[bin_number] = lcdataframes[bin_number].set_index(
-                lcdataframes[start_bin].index
-            )  # need indexes to match or else gives NaN
-            lcdataframes[start_bin]["lum"] += lcdataframes[bin_number]["lum"]
-            del lcdataframes[bin_number]
-
-        lcdataframes[start_bin]["lum"] /= nphibins  # every nth bin is the average of n bins
-        print(f"bin number {start_bin} = the average of bins {start_bin} to {start_bin + nphibins-1}")
-
-    return lcdataframes
-
-
-def average_lightcurve_theta_bins(lcdataframes: dict[int, pd.DataFrame]) -> dict[int, pd.DataFrame]:
-    dirbincount = at.get_viewingdirectionbincount()
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
-    for start_bin in range(0, nphibins):
-        contribbins = range(start_bin + ncosthetabins, dirbincount, ncosthetabins)
-        for bin_number in contribbins:
-            lcdataframes[bin_number] = lcdataframes[bin_number].set_index(
-                lcdataframes[start_bin].index
-            )  # need indexes to match or else gives NaN
-            lcdataframes[start_bin]["lum"] += lcdataframes[bin_number]["lum"]
-            del lcdataframes[bin_number]
+    ndirbins = at.get_viewingdirectionbincount()
 
-        lcdataframes[start_bin]["lum"] /= ncosthetabins  # every nth bin is the average of n bins
-        print(f"bin number {start_bin} = the average of bins {[start_bin] + list(contribbins)}")
+    nprocs_read, dfpackets = at.packets.get_packets_pl(
+        modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
+    )
 
-    return lcdataframes
+    if get_cmf_column:
+        dfpackets = dfpackets.with_columns(
+            [
+                (pl.col("escape_time") * escapesurfacegamma / 86400.0).alias("t_arrive_cmf_d"),
+            ]
+        )
+
+    getcols = ["t_arrive_d", "e_rf"]
+    if get_cmf_column:
+        getcols += ["e_cmf", "t_arrive_cmf_d"]
+    if directionbins != [-1]:
+        if average_over_phi:
+            getcols.append("costhetabin")
+        elif average_over_theta:
+            getcols.append("phibin")
+        else:
+            getcols.append("dirbin")
+    dfpackets = dfpackets.select(getcols).collect(streaming=True).lazy()
+
+    lcdata = {}
+    for dirbin in directionbins:
+        if dirbin == -1:
+            solidanglefactor = 1.0
+            pldfpackets_dirbin = dfpackets
+        elif average_over_phi:
+            assert not average_over_theta
+            solidanglefactor = ncosthetabins
+            pldfpackets_dirbin = dfpackets.filter(pl.col("costhetabin") * 10 == dirbin)
+        elif average_over_theta:
+            solidanglefactor = nphibins
+            pldfpackets_dirbin = dfpackets.filter(pl.col("phibin") == dirbin)
+        else:
+            solidanglefactor = ndirbins
+            pldfpackets_dirbin = dfpackets.filter(pl.col("dirbin") == dirbin)
+
+        dftimebinned = at.packets.bin_and_sum(
+            pldfpackets_dirbin,
+            bincol="t_arrive_d",
+            bins=list(timearrayplusend),
+            sumcols=["e_rf"],
+        )
+
+        arr_lum = (
+            dftimebinned["e_rf_sum"] / nprocs_read * solidanglefactor * (u.erg / u.day).to("solLum")
+        ) / arr_timedelta
+
+        lcdata[dirbin] = pl.DataFrame({"time": tmidarray, "lum": arr_lum})
+
+        if get_cmf_column:
+            dftimebinned_cmf = at.packets.bin_and_sum(
+                pldfpackets_dirbin,
+                bincol="t_arrive_cmf_d",
+                bins=list(timearrayplusend),
+                sumcols=["e_cmf"],
+            )
+
+            assert escapesurfacegamma is not None
+            lcdata[dirbin] = lcdata[dirbin].with_columns(
+                (
+                    dftimebinned_cmf["e_cmf_sum"]
+                    / nprocs_read
+                    * solidanglefactor
+                    / escapesurfacegamma
+                    * (u.erg / u.day).to("solLum")
+                    / arr_timedelta
+                ).alias("lum_cmf")
+            )
+
+    return lcdata
 
 
 def generate_band_lightcurve_data(
     modelpath: Path,
     args: argparse.Namespace,
-    angle: Optional[int] = None,
+    angle: int = -1,
     modelnumber: Optional[int] = None,
 ) -> dict:
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
     from scipy.interpolate import interp1d
 
-    if args and args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
+    if args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
         print("Found vpkt.txt, using virtual packets")
-        stokes_params = at.spectra.get_specpol_data(angle, modelpath)
+        stokes_params = (
+            at.spectra.get_vspecpol_data(vspecangle=angle, modelpath=modelpath)
+            if angle >= 0
+            else at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
+        )
         vspecdata = stokes_params["I"]
         timearray = vspecdata.keys()[1:]
-    elif (
-        args
-        and args.plotviewingangle
-        and at.anyexist(["specpol_res.out", "specpol_res.out.xz", "spec_res.out"], path=modelpath)
-    ):
-        specfilename = at.firstexisting(["specpol_res.out", "spec_res.out"], path=modelpath)
+    elif args.plotviewingangle and at.anyexist(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True):
+        specfilename = at.firstexisting(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True)
         specdataresdata = pd.read_csv(specfilename, delim_whitespace=True)
-        timearray = [i for i in specdataresdata.columns.values[1:] if i[-2] != "."]
+        timearray = [i for i in specdataresdata.columns.to_numpy()[1:] if i[-2] != "."]
     # elif Path(modelpath, 'specpol.out').is_file():
     #     specfilename = os.path.join(modelpath, "specpol.out")
     #     specdata = pd.read_csv(specfilename, delim_whitespace=True)
@@ -180,13 +192,15 @@ def generate_band_lightcurve_data(
         if args.plotviewingangle:
             print("WARNING: no direction-resolved spectra available. Using angle-averaged spectra.")
 
-        specfilename = at.firstexisting(["spec.out", "specpol.out"], path=modelpath, tryzipped=True)
-        if "specpol.out" in str(specfilename):
-            specdata = pd.read_csv(specfilename, delim_whitespace=True)
-            timearray = [i for i in specdata.columns.values[1:] if i[-2] != "."]  # Ignore Q and U values in pol file
-        else:
-            specdata = pd.read_csv(specfilename, delim_whitespace=True)
-            timearray = specdata.columns.values[1:]
+        specfilename = at.firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
+        specdata = pd.read_csv(specfilename, delim_whitespace=True)
+
+        timearray = (
+            # Ignore Q and U values in pol file
+            [i for i in specdata.columns.to_numpy()[1:] if i[-2] != "."]
+            if "specpol.out" in str(specfilename)
+            else specdata.columns.to_numpy()[1:]
+        )
 
     filters_dict = {}
     if not args.filter:
@@ -194,20 +208,15 @@ def generate_band_lightcurve_data(
 
     filters_list = args.filter
 
-    res_specdata = None
-    if angle is not None:
-        try:
-            res_specdata = at.spectra.read_spec_res(modelpath).copy()
-            if args and args.average_over_phi_angle:
-                at.spectra.average_phi_bins(res_specdata, angle)
-
-        except FileNotFoundError:
-            pass
-
     for filter_name in filters_list:
         if filter_name == "bol":
             times, bol_magnitudes = bolometric_magnitude(
-                modelpath, timearray, args, angle=angle, res_specdata=res_specdata
+                modelpath,
+                timearray,
+                args,
+                angle=angle,
+                average_over_phi=args.average_over_phi_angle,
+                average_over_theta=args.average_over_theta_angle,
             )
             filters_dict["bol"] = [
                 (time, bol_magnitude)
@@ -230,15 +239,15 @@ def generate_band_lightcurve_data(
             time = float(time)
             if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
                 wavelength_from_spectrum, flux = get_spectrum_in_filter_range(
-                    modelpath,
-                    timestep,
-                    time,
-                    wavefilter_min,
-                    wavefilter_max,
-                    angle,
-                    res_specdata=res_specdata,
-                    modelnumber=modelnumber,
+                    modelpath=modelpath,
+                    timestep=timestep,
+                    time=time,
+                    wavefilter_min=wavefilter_min,
+                    wavefilter_max=wavefilter_max,
+                    angle=angle,
                     args=args,
+                    average_over_phi=args.average_over_phi_angle,
+                    average_over_theta=args.average_over_theta_angle,
                 )
 
                 if len(wavelength_from_spectrum) > len(wavefilter):
@@ -266,28 +275,31 @@ def bolometric_magnitude(
     modelpath: Path,
     timearray: Collection[float],
     args: argparse.Namespace,
-    angle: Optional[int] = None,
-    res_specdata: Optional[dict[int, pd.DataFrame]] = None,
+    angle: int = -1,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
 ) -> tuple[list[float], list[float]]:
     magnitudes = []
     times = []
 
     for timestep, time in enumerate(timearray):
         time = float(time)
+
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
-            if angle is not None:
+            if angle != -1:
                 if args.plotvspecpol:
                     spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
                 else:
-                    if res_specdata is None:
-                        res_specdata = at.spectra.read_spec_res(modelpath)
-                        if args and args.average_over_phi_angle:
-                            at.spectra.average_phi_bins(res_specdata, angle)
-                    spectrum = at.spectra.get_res_spectrum(
-                        modelpath, timestep, timestep, angle=angle, res_specdata=res_specdata
-                    )
+                    spectrum = at.spectra.get_spectrum(
+                        modelpath=modelpath,
+                        directionbins=[angle],
+                        timestepmin=timestep,
+                        timestepmax=timestep,
+                        average_over_phi=average_over_phi,
+                        average_over_theta=average_over_theta,
+                    )[angle]
             else:
-                spectrum = at.spectra.get_spectrum(modelpath, timestep, timestep)
+                spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]
 
             integrated_flux = np.trapz(spectrum["f_lambda"], spectrum["lambda_angstroms"])
             integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to("cm"), 2)
@@ -296,7 +308,7 @@ def bolometric_magnitude(
             magnitudes.append(magnitude)
             times.append(time)
             # print(const.L_sun.to('erg/s').value)
-            # quit()
+            # sys.exit(1)
 
     return times, magnitudes
 
@@ -330,22 +342,21 @@ def get_spectrum_in_filter_range(
     time: float,
     wavefilter_min: float,
     wavefilter_max: float,
-    angle: Optional[int] = None,
-    res_specdata: Optional[dict[int, pd.DataFrame]] = None,
-    modelnumber: Optional[int] = None,
+    angle: int = -1,
     spectrum: Optional[pd.DataFrame] = None,
     args: Optional[argparse.Namespace] = None,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
-    if spectrum is None:
-        spectrum = at.spectra.get_spectrum_at_time(
-            Path(modelpath),
-            timestep=timestep,
-            time=time,
-            args=args,
-            angle=angle,
-            res_specdata=res_specdata,
-            modelnumber=modelnumber,
-        )
+    spectrum = at.spectra.get_spectrum_at_time(
+        Path(modelpath),
+        timestep=timestep,
+        time=time,
+        args=args,
+        dirbin=angle,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+    )
 
     wavelength_from_spectrum, flux = [], []
     for wavelength, flambda in zip(spectrum["lambda_angstroms"], spectrum["f_lambda"]):
@@ -359,10 +370,7 @@ def get_spectrum_in_filter_range(
 def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux: float) -> float:
     cf = flux * transmission
     flux_obs = abs(np.trapz(cf, wavelength_from_spectrum))  # using trapezoidal rule to integrate
-    if flux_obs == 0.0:
-        phot_filtobs_sn = 0.0
-    else:
-        phot_filtobs_sn = -2.5 * np.log10(flux_obs / zeropointenergyflux)
+    phot_filtobs_sn = 0.0 if flux_obs == 0.0 else -2.5 * np.log10(flux_obs / zeropointenergyflux)
 
     return phot_filtobs_sn
 
@@ -391,8 +399,8 @@ def get_colour_delta_mag(band_lightcurve_data, filter_names) -> tuple[list[float
         time_dict_1[float(filter_1[0])] = filter_1[1]
         time_dict_2[float(filter_2[0])] = filter_2[1]
 
-    for time in time_dict_1.keys():
-        if time in time_dict_2.keys():  # Test if time has a magnitude for both filters
+    for time in time_dict_1:
+        if time in time_dict_2:  # Test if time has a magnitude for both filters
             plot_times.append(time)
             colour_delta_mag.append(time_dict_1[time] - time_dict_2[time])
 
@@ -423,7 +431,7 @@ def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
 
 def read_reflightcurve_band_data(lightcurvefilename: Union[Path, str]) -> tuple[pd.DataFrame, dict[str, Any]]:
     filepath = Path(at.get_config()["path_artistools_dir"], "data", "lightcurves", lightcurvefilename)
-    metadata = at.misc.get_file_metadata(filepath)
+    metadata = at.get_file_metadata(filepath)
 
     data_path = os.path.join(at.get_config()["path_artistools_dir"], f"data/lightcurves/{lightcurvefilename}")
     lightcurve_data = pd.read_csv(data_path, comment="#")
@@ -452,15 +460,16 @@ def read_reflightcurve_band_data(lightcurvefilename: Union[Path, str]) -> tuple[
 
 
 def read_bol_reflightcurve_data(lightcurvefilename):
-    if Path(lightcurvefilename).is_file():
-        data_path = Path(lightcurvefilename)
-    else:
-        data_path = Path(at.get_config()["path_artistools_dir"], "data/lightcurves/bollightcurves", lightcurvefilename)
+    data_path = (
+        Path(lightcurvefilename)
+        if Path(lightcurvefilename).is_file()
+        else Path(at.get_config()["path_artistools_dir"], "data/lightcurves/bollightcurves", lightcurvefilename)
+    )
 
-    metadata = at.misc.get_file_metadata(data_path)
+    metadata = at.get_file_metadata(data_path)
 
     # check for possible header line and read table
-    with open(data_path, "r") as flc:
+    with open(data_path) as flc:
         filepos = flc.tell()
         line = flc.readline()
         if line.startswith("#"):
@@ -478,7 +487,7 @@ def read_bol_reflightcurve_data(lightcurvefilename):
     }
     if colrenames:
         print(f"{data_path}: renaming columns {colrenames}")
-        dflightcurve.rename(columns=colrenames, inplace=True)
+        dflightcurve = dflightcurve.rename(columns=colrenames)
 
     return dflightcurve, metadata
 
@@ -489,7 +498,7 @@ def get_sn_sample_bol():
 
     print(sn_data)
     bol_luminosity = sn_data["Lmax"].astype(float)
-    bol_magnitude = 4.74 - (2.5 * np.log10((10**bol_luminosity) / const.L_sun.to("erg/s").value))  # 𝑀𝑏𝑜𝑙,𝑠𝑢𝑛 = 4.74
+    bol_magnitude = 4.74 - (2.5 * np.log10((10**bol_luminosity) / const.L_sun.to("erg/s").value))  # Mbol,sun = 4.74
 
     bol_magnitude_error_upper = bol_magnitude - (
         4.74

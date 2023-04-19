@@ -1,25 +1,20 @@
 #!/usr/bin/env python3
 import hashlib
 import math
-import os.path
-from pathlib import Path
 
 import numpy as np
-import pandas as pd
-import pytest
 
 import artistools as at
 
 modelpath = at.get_config()["path_testartismodel"]
 outputpath = at.get_config()["path_testoutput"]
-at.set_config("enable_diskcache", False)
 
 
 def test_commands():
     import importlib
 
     # ensure that the commands are pointing to valid submodule.function() targets
-    for command, (submodulename, funcname) in sorted(at.commands.get_commandlist().items()):
+    for _command, (submodulename, funcname) in sorted(at.commands.get_commandlist().items()):
         submodule = importlib.import_module(submodulename, package="artistools")
         assert hasattr(submodule, funcname)
 
@@ -33,7 +28,7 @@ def test_timestep_times():
     assert math.isclose(float(timemidarray[-1]), 349.412, abs_tol=1e-3)
 
     assert all(
-        [tstart < tmid < (tstart + tdelta) for tstart, tdelta, tmid in zip(timestartarray, timedeltarray, timemidarray)]
+        tstart < tmid < (tstart + tdelta) for tstart, tdelta, tmid in zip(timestartarray, timedeltarray, timemidarray)
     )
 
 
@@ -42,11 +37,11 @@ def test_deposition():
 
 
 def test_estimator_snapshot():
-    at.estimators.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
+    at.estimators.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
 
 
 def test_estimator_timeevolution():
-    at.estimators.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, modelgridindex=0, x="time")
+    at.estimators.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, modelgridindex=0, x="time")
 
 
 def test_get_inputparams():
@@ -60,12 +55,6 @@ def test_get_levels():
 
 
 def test_get_modeldata_tuple():
-    # expect a 3D model but read 1D
-    with pytest.raises(Exception):
-        dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(
-            modelpath, get_elemabundances=True, dimensions=3
-        )
-
     dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=True)
     assert np.isclose(t_model_init_days, 0.00115740740741, rtol=0.0001)
     assert np.isclose(vmax_cmps, 800000000.0, rtol=0.0001)
@@ -75,47 +64,18 @@ def test_get_modeldata_tuple():
     #     '40a02dfa933f6b28671d42f3cf69a182955a5a89dc93bbcd22c894192375fe9b')
 
 
-def test_lightcurve():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, outputfile=outputpath)
-
-
-def test_lightcurve_frompackets():
-    at.lightcurve.main(
-        argsraw=[],
-        modelpath=modelpath,
-        frompackets=True,
-        outputfile=os.path.join(outputpath, "lightcurve_from_packets.pdf"),
-    )
-
-
-def test_band_lightcurve_plot():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, filter=["B"], outputfile=outputpath)
-
-
-def test_band_lightcurve_subplots():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, filter=["bol", "B"], outputfile=outputpath)
-
-
-def test_colour_evolution_plot():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, colour_evolution=["B-V"], outputfile=outputpath)
-
-
-def test_colour_evolution_subplots():
-    at.lightcurve.main(argsraw=[], modelpath=modelpath, colour_evolution=["U-B", "B-V"], outputfile=outputpath)
-
-
 def test_macroatom():
     at.macroatom.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=10)
 
 
 def test_nltepops():
-    # at.nltepops.main(modelpath=modelpath, outputfile=outputpath, timedays=300),
+    # at.nltepops.plot(modelpath=modelpath, outputfile=outputpath, timedays=300),
     #                    **benchargs)
-    at.nltepops.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40)
+    at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40)
 
 
 def test_nonthermal():
-    at.nonthermal.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=70)
+    at.nonthermal.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=70)
 
 
 def test_radfield():

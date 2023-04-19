@@ -1,10 +1,14 @@
+import sys
+
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import numpy as np
+from matplotlib import ticker
 
-import artistools as at
+from .configuration import get_config
 
-plt.style.use("file://" + str(at.get_config()["path_artistools_dir"] / "matplotlibrc"))
+
+def set_mpl_style() -> None:
+    plt.style.use("file://" + str(get_config()["path_artistools_dir"] / "matplotlibrc"))
 
 
 class ExponentLabelFormatter(ticker.ScalarFormatter):
@@ -138,7 +142,7 @@ def imshow_init_for_artis_grid(ngrid, vmax, plot_variable_3d_array, plot_axes="x
     plot_axes_choices = ["xy", "xz"]
     if plot_axes not in plot_axes_choices:
         print(f"Choose plot axes from {plot_axes_choices}")
-        quit()
+        sys.exit(1)
 
     for z in range(0, ngrid):
         for y in range(0, ngrid):
@@ -146,9 +150,8 @@ def imshow_init_for_artis_grid(ngrid, vmax, plot_variable_3d_array, plot_axes="x
                 if plot_axes == "xy":
                     if z == round(ngrid / 2) - 1:
                         data[y, x] = plot_variable_3d_array[x, y, z]
-                elif plot_axes == "xz":
-                    if y == round(ngrid / 2) - 1:
-                        data[z, x] = plot_variable_3d_array[x, y, z]
+                elif plot_axes == "xz" and y == round(ngrid / 2) - 1:
+                    data[z, x] = plot_variable_3d_array[x, y, z]
 
     return data, extent
 

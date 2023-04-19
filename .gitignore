@@ -18,6 +18,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 coverage.xml
+.*_cache/
 
 *.so
 
@@ -62,3 +63,4 @@ plottingscripts/
 _version.py
 
 .vscode
+.dmypy.json

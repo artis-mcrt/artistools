@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import os
 from pathlib import Path
 
@@ -7,9 +6,6 @@ import numpy as np
 import pandas as pd
 
 import artistools as at
-
-# import artistools.spectra
-# import artistools.lightcurve.writebollightcurvedata
 
 
 def plot_hesma_spectrum(timeavg, axes):
@@ -48,13 +44,13 @@ def plothesmaresspec(fig, ax):
         #         chunk = specdata.iloc[index_to_split[i]:, :]
         #     res_specdata.append(chunk)
 
-        res_specdata = at.gather_res_data(specdata)
+        res_specdata = at.split_dataframe_dirbins(specdata)
 
         column_names = res_specdata[0].iloc[0]
         column_names[0] = "lambda"
         print(column_names)
 
-        for i, res_spec in enumerate(res_specdata):
+        for i, _res_spec in enumerate(res_specdata):
             res_specdata[i] = res_specdata[i].rename(columns=column_names).drop(res_specdata[i].index[0])
 
         ax.plot(res_specdata[0]["lambda"], res_specdata[0][11.7935] * (1e-5) ** 2, label="hesma 0")
@@ -81,9 +77,9 @@ def make_hesma_vspecfiles(modelpath, outpath=None):
         vspecdata_all = at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
         vspecdata = vspecdata_all["I"]
 
-        timearray = vspecdata.columns.values[1:]
-        vspecdata.sort_values(by="nu", ascending=False, inplace=True)
-        vspecdata.eval("lambda_angstroms = 2.99792458e+18 / nu", inplace=True)
+        timearray = vspecdata.columns.to_numpy()[1:]
+        vspecdata = vspecdata.sort_values(by="nu", ascending=False)
+        vspecdata = vspecdata.eval("lambda_angstroms = 2.99792458e+18 / nu")
         for time in timearray:
             vspecdata[time] = vspecdata[time] * vspecdata["nu"] / vspecdata["lambda_angstroms"]
             vspecdata[time] = vspecdata[time] * (1e5) ** 2  # Scale to 10 pc (1 Mpc/10 pc) ** 2
@@ -106,7 +102,9 @@ def make_hesma_vspecfiles(modelpath, outpath=None):
         f.write(
             f"# File contains spectra at observer angles {angle_names} for Model {modelname}.\n# A header line"
             " containing spectra time is repeated at the beginning of each observer angle. Column 0 gives wavelength."
-            " \n# Spectra are at a distance of 10 pc." + "\n" + content
+            " \n# Spectra are at a distance of 10 pc."
+            "\n"
+            + content
         )
 
 
@@ -115,7 +113,7 @@ def make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax):
 
     lightcurvedataframe = at.lightcurve.writebollightcurvedata.get_bol_lc_from_lightcurveout(modelpath)
     print(lightcurvedataframe)
-    lightcurvedataframe.query("time > @timemin and time < @timemax", inplace=True)
+    lightcurvedataframe = lightcurvedataframe.query("time > @timemin and time < @timemax")
 
     modelname = at.get_model_name(modelpath)
     outfilename = f"doubledet_2021_{modelname}.dat"
@@ -144,9 +142,7 @@ def make_hesma_peakmag_dm15_dm40(band, pathtofiles, modelname, outpath, dm40=Fal
         )
 
     angles = np.arange(0, 100)
-    angle_definition = at.lightcurve.viewingangleanalysis.calculate_costheta_phi_for_viewing_angles(
-        angles, modelpath=None
-    )
+    angle_definition = at.get_dirbin_labels(angles, modelpath=None)
 
     outdata = {}
     outdata["peakmag"] = dm15data["peakmag"]  # dm15 peak mag probably more accurate - shorter time window
