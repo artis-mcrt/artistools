@@ -86,6 +86,10 @@ def test_get_ionrecombratecalibration():
     at.atomic.get_ionrecombratecalibration(modelpath=modelpath)
 
 
+def test_plotspherical() -> None:
+    at.plotspherical.main(argsraw=[], modelpath=modelpath, interpolate=True, outputfile=outputpath)
+
+
 def test_spencerfano():
     at.nonthermal.solvespencerfanocmd.main(
         argsraw=[], modelpath=modelpath, timedays=300, makeplot=True, npts=200, noexcitation=True, outputfile=outputpath

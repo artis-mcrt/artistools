@@ -292,7 +292,7 @@ def readfile_pl(
     write_parquet = True  # will be set False if parquet file is read
 
     dfpackets = None
-    if packetsfile == packetsfileparquet and os.path.getmtime(packetsfileparquet) > calendar.timegm(
+    if packetsfile == packetsfileparquet and (packetsfileparquet).stat().st_mtime > calendar.timegm(
         time_lastschemachange
     ):
         try:

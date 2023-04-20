@@ -88,25 +88,38 @@ def plot_spherical(
     costhetagrid = np.linspace(1, -1, ncosthetabins, endpoint=True)
     thetagrid = np.arccos(costhetagrid) - np.pi / 2
     # thetagrid = np.linspace(-np.pi / 2.0, np.pi / 2.0, ncosthetabins)
+    # cmap = "rainbow"
+    # cmap = "viridis"
+    # cmap = "hot"
+    # cmap = "Blues_r"
+    cmap = None
+
+    # import scipy.ndimage
+
+    # data = scipy.ndimage.gaussian_filter(data, sigma=1)
 
     if not interpolate:
         meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
-        colormesh = ax.pcolormesh(meshgrid_phi, meshgrid_theta, data, rasterized=True)
+        colormesh = ax.pcolormesh(meshgrid_phi, meshgrid_theta, data, rasterized=True, cmap=cmap)
     else:
         from scipy.interpolate import interp2d
 
         finterp = interp2d(phigrid, thetagrid, data, kind="cubic")
-        phigrid_highres = np.linspace(-np.pi, np.pi, 512)
-        thetagrid_highres = np.linspace(-np.pi / 2.0, np.pi / 2.0, 256)
+        phigrid_highres = np.linspace(-np.pi, np.pi, 1024)
+        thetagrid_highres = np.linspace(-np.pi / 2.0, np.pi / 2.0, 1024)
         data1 = finterp(phigrid_highres, thetagrid_highres)
         meshgrid_phi_highres, meshgrid_theta_highres = np.meshgrid(phigrid_highres, thetagrid_highres)
-        colormesh = ax.pcolormesh(meshgrid_phi_highres, meshgrid_theta_highres, data1, rasterized=True)
+        colormesh = ax.pcolormesh(meshgrid_phi_highres, meshgrid_theta_highres, data1, rasterized=True, cmap=cmap)
 
     cbar = fig.colorbar(colormesh)
     cbar.ax.set_title(r"Luminosity$\times4\pi/\sigma$ [erg/s]", size="small")
 
-    ax.xaxis.label.set_color("red")
-    ax.grid(True)
+    # ax.set_xlabel("Azimuthal angle")
+    # ax.set_ylabel("Polar angle")
+    # ax.tick_params(colors="white", axis="x", which="both")
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    # ax.grid(True)
 
     fig.savefig(outputfile)
     print(f"Saved {outputfile}")
