@@ -82,8 +82,8 @@ def get_2D_slice_through_3d_model(
 
 
 def plot_slice_modelcol(ax, plotvals, modelmeta, colname, plotaxis1, plotaxis2, t_model_d, args):
-    print(colname)
-    colorscale = plotvals[colname] * plotvals["rho"] if colname.startswith("X_") else plotvals[colname]
+    print(f"plotting {colname}")
+    colorscale = (plotvals[colname] * plotvals["rho"] if colname.startswith("X_") else plotvals[colname]).to_numpy()
 
     if args.hideemptycells:
         # Don't plot empty cells:
@@ -91,8 +91,8 @@ def plot_slice_modelcol(ax, plotvals, modelmeta, colname, plotaxis1, plotaxis2, 
 
     if args.logcolorscale:
         # logscale for colormap
-        colorscale = np.log10(colorscale)
-    colorscale = colorscale.to_numpy()
+        with np.errstate(divide="ignore"):
+            colorscale = np.log10(colorscale)
 
     normalise_between_0_and_1 = False
     if normalise_between_0_and_1:
@@ -103,32 +103,27 @@ def plot_slice_modelcol(ax, plotvals, modelmeta, colname, plotaxis1, plotaxis2, 
     else:
         scaledmap = None
 
-    arr_x = plotvals[f"pos_{plotaxis1}_min"] / t_model_d / 86400 / 2.99792458e10
-    arr_y = plotvals[f"pos_{plotaxis2}_min"] / t_model_d / 86400 / 2.99792458e10
+    cmps_to_kmps = 1e-5
+    cmps_to_beta = 1.0 / (2.99792458e10)
+    unitfactor = cmps_to_beta
+    t_model_s = t_model_d * 86400.0
 
-    # x = plotvals[f'pos_{plotaxis1}'] / t_model * (u.cm/u.day).to('m/s') / 2.99792458e+8
-    # y = plotvals[f'pos_{plotaxis2}'] / t_model * (u.cm/u.day).to('m/s') / 2.99792458e+8
-
-    # im = ax.scatter(x, y, c=colorscale, marker="s", s=30, rasterized=False)  # cmap=plt.get_cmap('PuOr')
-    ncoordgrid1 = modelmeta[f"ncoordgrid{plotaxis1}"]
-    ncoordgrid2 = modelmeta[f"ncoordgrid{plotaxis2}"]
-    grid = np.zeros((ncoordgrid1, ncoordgrid2))
-
-    for i in range(0, ncoordgrid1):
-        for j in range(0, ncoordgrid2):
-            grid[j, i] = colorscale[j * ncoordgrid1 + i]
+    # take flat array and turn in into 2D array
+    grid = colorscale.reshape((modelmeta[f"ncoordgrid{plotaxis1}"], modelmeta[f"ncoordgrid{plotaxis2}"]))
 
     im = ax.imshow(
         grid,
         cmap="viridis",
         interpolation="nearest",
-        extent=(arr_x.min(), arr_x.max(), arr_y.min(), arr_y.max()),
+        extent=(
+            plotvals[f"pos_{plotaxis1}_min"].min() / t_model_s * unitfactor,
+            plotvals[f"pos_{plotaxis1}_max"].max() / t_model_s * unitfactor,
+            plotvals[f"pos_{plotaxis2}_min"].min() / t_model_s * unitfactor,
+            plotvals[f"pos_{plotaxis2}_max"].max() / t_model_s * unitfactor,
+        ),
         origin="lower",
         # vmin=0.0,
         # vmax=1.0,
-        # vmax=-9.5,
-        # vmin=-11,
-        # vmin=1e-11,
     )
 
     plot_vmax = 0.2
@@ -156,7 +151,11 @@ def plot_3d_initial_abundances(modelpath, args=None) -> None:
     mpl.rc("font", **font)
 
     dfmodel, modelmeta = at.get_modeldata(
-        modelpath, skipnuclidemassfraccolumns=True, get_elemabundances=True, dtype_backend="pyarrow"
+        modelpath,
+        skipnuclidemassfraccolumns=True,
+        get_elemabundances=True,
+        dtype_backend="pyarrow",
+        derived_cols=["pos_max"],
     )
 
     targetmodeltime_days = None
@@ -184,11 +183,7 @@ def plot_3d_initial_abundances(modelpath, args=None) -> None:
         subplots = True
 
     if not subplots:
-        fig = plt.figure(
-            figsize=(8, 7),
-            tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
-        )
-        ax = plt.subplot(111, aspect="equal")
+        fig, ax = plt.subplots(1, 1, figsize=(8, 7), tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0})
     else:
         rows = 1
         cols = len(args.plotvars)
