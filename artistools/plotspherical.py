@@ -112,7 +112,7 @@ def plot_spherical(
         colormesh = ax.pcolormesh(meshgrid_phi_highres, meshgrid_theta_highres, data1, rasterized=True, cmap=cmap)
 
     cbar = fig.colorbar(colormesh)
-    cbar.ax.set_title(r"Luminosity$\times4\pi/\sigma$ [erg/s]", size="small")
+    cbar.ax.set_title(r"Luminosity$I_{e,\Omega}\times4\pi/\Omega$ [erg/s]")
 
     # ax.set_xlabel("Azimuthal angle")
     # ax.set_ylabel("Polar angle")
