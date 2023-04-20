@@ -50,7 +50,6 @@ def addsubparsers(parser, parentcommand, dictcommands, depth: int = 1) -> None:
 
 def main(args=None, argsraw=None, **kwargs) -> None:
     """Parse and run artistools commands."""
-
     parser = argparse.ArgumentParser()
     parser.set_defaults(func=None)
 

@@ -7,7 +7,7 @@ import artistools as at
 
 
 def get_atomic_composition(modelpath):
-    """Read ion list from output file"""
+    """Read ion list from output file."""
     atomic_composition = {}
 
     output = open(modelpath / "output_0-0.txt").read().splitlines()

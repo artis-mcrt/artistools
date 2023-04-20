@@ -468,9 +468,8 @@ def get_averageexcitation(
 
 
 def get_partiallycompletetimesteps(estimators: dict[Any, Any]) -> list[int]:
-    """
-    During a simulation, some estimator files can contain information for some cells but not others
-    for the current timestep
+    """During a simulation, some estimator files can contain information for some cells but not others
+    for the current timestep.
     """
     timestepcells: dict[int, list[int]] = {}
     all_mgis = set()

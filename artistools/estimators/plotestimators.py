@@ -819,7 +819,6 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
         # sort the pairs by temperature ascending
         listT_e, list_rrc, list_rrc2 = zip(*sorted(zip(listT_e, list_rrc, list_rrc2), key=lambda x: x[0]))
 
-        # markersize=4, marker='s',
         ax.plot(listT_e, list_rrc, linewidth=2, label=f"{ionstr} ARTIS RRC_LTE_Nahar", **plotkwargs)
         ax.plot(listT_e, list_rrc2, linewidth=2, label=f"{ionstr} ARTIS Alpha_R", **plotkwargs)
 

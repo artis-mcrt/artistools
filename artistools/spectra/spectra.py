@@ -69,8 +69,8 @@ def stackspectra(
     spectra_and_factors: list[tuple[np.ndarray[Any, np.dtype[np.float64]], float]]
 ) -> np.ndarray[Any, np.dtype[np.float64]]:
     """Add spectra using weighting factors, i.e., specout[nu] = spec1[nu] * factor1 + spec2[nu] * factor2 + ...
-    spectra_and_factors should be a list of tuples: spectra[], factor"""
-
+    spectra_and_factors should be a list of tuples: spectra[], factor.
+    """
     factor_sum = sum([factor for _, factor in spectra_and_factors])
 
     stackedspectrum = np.zeros_like(spectra_and_factors[0][0], dtype=float)

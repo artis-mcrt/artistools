@@ -483,7 +483,6 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
 
             if first_mgi is None:
                 first_mgi = mgi
-            # time_days = float(estimators[(nts, mgi)]['tdays'])
             time_days = tmids[nts]
 
             if mgi == first_mgi:
