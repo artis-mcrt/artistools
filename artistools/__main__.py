@@ -14,6 +14,7 @@ dictcommands = {
     "comparetogsinetwork": ("gsinetwork", "main"),
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
     "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
+    "plotspherical": ("plotspherical", "main"),
     "estimators": {
         "plot": ("estimators.plotestimators", "main"),
     },

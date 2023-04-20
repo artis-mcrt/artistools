@@ -14,6 +14,7 @@ import artistools.macroatom
 import artistools.nltepops
 import artistools.nonthermal
 import artistools.packets
+import artistools.plotspherical
 import artistools.radfield
 import artistools.spectra
 import artistools.transitions

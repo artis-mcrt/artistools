@@ -1155,7 +1155,7 @@ def get_mpirankofcell(modelgridindex: int, modelpath: Union[Path, str]) -> int:
 
 
 def get_viewingdirectionbincount() -> int:
-    return 100
+    return get_viewingdirection_phibincount() * get_viewingdirection_costhetabincount()
 
 
 def get_viewingdirection_phibincount() -> int:

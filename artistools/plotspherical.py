@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 import argparse
+import math
 from pathlib import Path
 from typing import Optional
 from typing import Union
@@ -32,42 +33,64 @@ def plot_spherical(
     if timemaxdays is not None:
         dfpackets = dfpackets.filter(pl.col("t_arrive_d") <= timemaxdays)
 
-    dfpackets = dfpackets.select(
-        [
-            "e_rf",
-            "theta",
-            "phi",
-        ]
-    ).collect(
-        streaming=True
-    )  # .lazy()
-    print(dfpackets)
     fig, ax = plt.subplots(
         1,
         1,
-        # subplot_kw={"projection": "mollweide"},
+        figsize=(8, 4),
+        subplot_kw={"projection": "mollweide"},
+        tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
     )
 
     # phi definition (with syn_dir=[0 0 1])
     # x=math.cos(-phi)
     # y=math.sin(-phi)
 
-    long = dfpackets["phi"].to_numpy() - np.pi
-    lat = dfpackets["theta"].to_numpy() - np.pi / 2
+    ntheta = nphi = 64
 
-    ax.hist2d(
-        long * 0.9,
-        lat * 0.9,
-        bins=300,
-        weights=dfpackets["e_rf"].to_numpy(),
-    )
+    dfpackets = dfpackets.select(
+        [
+            "e_rf",
+            "phi",
+            "costheta",
+        ]
+    )  # .lazy()
 
-    # test = dfpackets.groupby("dirbin").agg(pl.col("e_rf").sum().alias("e_rf_sum"))  # .lazy().collect()
-    # nbins = 50
-    # lon_edges = np.linspace(-np.pi, np.pi, nbins + 1)
-    # lat_edges = np.linspace(-np.pi / 2.0, np.pi / 2.0, nbins + 1)
+    # print(dfpackets)
+    data = np.zeros((ntheta, nphi))
 
-    # ax.grid(True)
+    for x in range(nphi):
+        phi_low = 2 * math.pi / nphi * x
+        phi_high = 2 * math.pi / nphi * (x + 1)
+        dfpackets_phibin = dfpackets.filter((pl.col("phi") >= phi_low) & (pl.col("phi") <= phi_high)).collect()
+        for y in range(ntheta):
+            costheta_low = 1 - 2 / ntheta * (y + 1)
+            costheta_high = 1 - 2 / ntheta * y
+            e_rf_sum = (
+                dfpackets_phibin.filter((pl.col("costheta") >= costheta_low) & (pl.col("costheta") <= costheta_high))
+                .get_column("e_rf")
+                .sum()
+            )
+            data[y, x] = e_rf_sum
+
+    # these phi and theta angle ranges are defined differently to artis
+    phigrid = np.linspace(-np.pi, np.pi, nphi)
+
+    costhetagrid = np.linspace(1, -1, ntheta)
+    thetagrid = np.arccos(costhetagrid) - np.pi / 2
+    # thetagrid = np.linspace(-np.pi / 2.0, np.pi / 2.0, ntheta)
+
+    meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
+    ax.pcolormesh(meshgrid_phi, meshgrid_theta, data, rasterized=True)
+
+    # finterp = interp2d(phigrid, thetagrid, data, kind="cubic")
+    # phigrid_highres = np.linspace(-np.pi, np.pi, 256)
+    # thetagrid_highres = np.linspace(-np.pi / 2.0, np.pi / 2.0, 128)
+    # data1 = finterp(phigrid_highres, thetagrid_highres)
+    # meshgrid_phi_highres, meshgrid_theta_highres = np.meshgrid(phigrid_highres, thetagrid_highres)
+    # ax.pcolormesh(meshgrid_phi_highres, meshgrid_theta_highres, data1, rasterized=True)
+
+    ax.xaxis.label.set_color("red")
+    # ax.grid(True, color="white")
 
     fig.savefig(outputfile)
     print(f"Saved {outputfile}")
@@ -86,7 +109,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Filename for PDF file",
     )
     parser.add_argument(
-        dest="modelpath",
+        "-modelpath",
         type=Path,
         default=Path(),
         help="Path to ARTIS folder",
