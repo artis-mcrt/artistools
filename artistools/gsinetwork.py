@@ -315,8 +315,7 @@ def get_particledata(
     traj_root: Path,
     particleid: int,
 ) -> tuple[int, dict[str, np.ndarray]]:
-    """
-    for an array of times (NSM time including time before merger), interpolate the heating rates of various decay channels
+    """For an array of times (NSM time including time before merger), interpolate the heating rates of various decay channels
     and (if arr_strnuc is not empty) the nuclear mass fractions.
     """
     try:

@@ -130,7 +130,7 @@ def get_composition_data(filename: Union[Path, str]) -> pd.DataFrame:
 
 
 def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
-    """Read ion list from output file"""
+    """Read ion list from output file."""
     atomic_composition = {}
 
     output = open(modelpath / "output_0-0.txt").read().splitlines()
@@ -156,10 +156,10 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
 def split_dataframe_dirbins(
     res_df: Union[pl.DataFrame, pd.DataFrame], index_of_repeated_value: int = 0, output_polarsdf: bool = False
 ) -> dict[int, Union[pd.DataFrame, pl.DataFrame]]:
-    """res files repeat output for each angle.
+    """Res files repeat output for each angle.
     index_of_repeated_value is the column index to look for repeating eg. time of ts 0.
-    In spec_res files it's 1 , but in lc_res file it's 0"""
-
+    In spec_res files it's 1 , but in lc_res file it's 0.
+    """
     if isinstance(res_df, pd.DataFrame):
         res_df = pl.from_pandas(res_df)
 
@@ -190,7 +190,7 @@ def average_direction_bins(
     dirbindataframes: dict[int, pl.DataFrame],
     overangle: Literal["phi", "theta"],
 ) -> dict[int, pl.DataFrame]:
-    """Will average dict of direction-binned polars DataFrames according to the phi or theta angle"""
+    """Will average dict of direction-binned polars DataFrames according to the phi or theta angle."""
     dirbincount = at.get_viewingdirectionbincount()
     nphibins = at.get_viewingdirection_phibincount()
 
@@ -224,7 +224,7 @@ def average_direction_bins(
 
 
 def match_closest_time(reftime: float, searchtimes: list[Any]) -> str:
-    """Get time closest to reftime in list of times (searchtimes)"""
+    """Get time closest to reftime in list of times (searchtimes)."""
     return str("{}".format(min([float(x) for x in searchtimes], key=lambda x: abs(x - reftime))))
 
 
@@ -254,8 +254,8 @@ def get_vpkt_config(modelpath: Union[Path, str]) -> dict[str, Any]:
 @lru_cache(maxsize=8)
 def get_grid_mapping(modelpath: Union[Path, str]) -> tuple[dict[int, list[int]], dict[int, int]]:
     """Return dict with the associated propagation cells for each model grid cell and
-    a dict with the associated model grid cell of each propagration cell."""
-
+    a dict with the associated model grid cell of each propagration cell.
+    """
     modelpath = Path(modelpath)
     filename = firstexisting("grid.out", tryzipped=True, folder=modelpath) if modelpath.is_dir() else Path(modelpath)
 
@@ -367,7 +367,6 @@ def get_timestep_times_float(
     modelpath: Union[Path, str], loc: Literal["mid", "start", "end", "delta"] = "mid"
 ) -> np.ndarray[Any, np.dtype[np.float64]]:
     """Return a list of the time in days of each timestep."""
-
     modelpath = Path(modelpath)
     # virtual path to code comparison workshop models
     if not modelpath.exists() and modelpath.parts[0] == "codecomparison":
@@ -415,7 +414,6 @@ def get_timestep_times_float(
 
 def get_timestep_of_timedays(modelpath: Path, timedays: Union[str, float]) -> int:
     """Return the timestep containing the given time in days."""
-
     if isinstance(timedays, str):
         # could be a string like '330d'
         timedays = timedays.rstrip("d")
@@ -515,7 +513,7 @@ def get_time_range(
 
 
 def get_timestep_time(modelpath: Union[Path, str], timestep: int) -> float:
-    """Return the time in days of the midpoint of a timestep number"""
+    """Return the time in days of the midpoint of a timestep number."""
     timearray = get_timestep_times_float(modelpath, loc="mid")
     if timearray is not None:
         return timearray[timestep]
@@ -558,7 +556,6 @@ def get_model_name(path: Union[Path, str]) -> str:
 
     Name will be either from a special plotlabel.txt file if it exists or the enclosing directory name
     """
-
     if not Path(path).exists() and Path(path).parts[0] == "codecomparison":
         return str(path)
 
@@ -574,7 +571,7 @@ def get_model_name(path: Union[Path, str]) -> str:
 
 
 def get_z_a_nucname(nucname: str) -> tuple[int, int]:
-    """return atomic number and mass number from a string like 'Pb208' (returns 92, 208)"""
+    """Return atomic number and mass number from a string like 'Pb208' (returns 92, 208)."""
     if nucname.startswith("X_"):
         nucname = nucname[2:]
     z = get_atomic_number(nucname.rstrip("0123456789"))
@@ -677,7 +674,7 @@ def makelist(x: Union[None, list, Sequence, str, Path]) -> list[Any]:
 
 
 def trim_or_pad(requiredlength: int, *listoflistin: list[list[Any]]) -> Iterator[list[Any]]:
-    """Make lists equal in length to requiredlength either by padding with None or truncating"""
+    """Make lists equal in length to requiredlength either by padding with None or truncating."""
     for listin in listoflistin:
         listin = makelist(listin)
 
@@ -698,8 +695,7 @@ def flatten_list(listin: list) -> list:
 
 
 def zopen(filename: Union[Path, str], mode: str = "rt", encoding: Optional[str] = None) -> Any:
-    """Open filename, filename.gz or filename.xz"""
-
+    """Open filename, filename.gz or filename.xz."""
     ext_fopen = [(".lz4", lz4.frame.open), (".zst", pyzstd.open), (".gz", gzip.open), (".xz", xz.open)]
 
     for ext, fopen in ext_fopen:
@@ -743,7 +739,6 @@ def anyexist(
     tryzipped: bool = True,
 ) -> bool:
     """Return true if any files in file list exist."""
-
     try:
         firstexisting(filelist=filelist, folder=folder, tryzipped=tryzipped)
     except FileNotFoundError:
@@ -753,7 +748,7 @@ def anyexist(
 
 
 def stripallsuffixes(f: Path) -> Path:
-    """Take a file path (e.g. packets00_0000.out.gz) and return the Path with no suffixes (e.g. packets)"""
+    """Take a file path (e.g. packets00_0000.out.gz) and return the Path with no suffixes (e.g. packets)."""
     f_nosuffixes = Path(f)
     for _ in f.suffixes:
         f_nosuffixes = f_nosuffixes.with_suffix("")  # each call removes only one suffix
@@ -762,8 +757,7 @@ def stripallsuffixes(f: Path) -> Path:
 
 
 def readnoncommentline(file: io.TextIOBase) -> str:
-    """Read a line from the text file, skipping blank and comment lines that begin with #"""
-
+    """Read a line from the text file, skipping blank and comment lines that begin with #."""
     line = ""
 
     while not line.strip() or line.strip().lstrip().startswith("#"):
@@ -814,7 +808,6 @@ def get_filterfunc(
     args: argparse.Namespace, mode: str = "interp"
 ) -> Optional[Callable[[Union[list[float], np.ndarray]], np.ndarray]]:
     """Using command line arguments to determine the appropriate filter function."""
-
     filterfunc: Optional[Callable[[Union[list[float], np.ndarray]], np.ndarray]] = None
     dictargs = vars(args)
 
@@ -887,7 +880,6 @@ def read_linestatfile(
     filepath: Union[Path, str]
 ) -> tuple[int, list[float], list[int], list[int], list[int], list[int]]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
-
     print(f"Loading {filepath}")
     data = np.loadtxt(filepath)
     lambda_angstroms = data[0] * 1e8
@@ -1036,7 +1028,8 @@ def get_runfolders(
 ) -> Collection[Path]:
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
-    The folder list may include non-ARTIS folders if a timestep is not specified."""
+    The folder list may include non-ARTIS folders if a timestep is not specified.
+    """
     folderlist_all = (*sorted([child for child in Path(modelpath).iterdir() if child.is_dir()]), Path(modelpath))
     folder_list_matching = []
     if (timestep is not None and timestep > -1) or (timesteps is not None and len(timesteps) > 0):
@@ -1057,16 +1050,14 @@ def get_mpiranklist(
     modelgridindex: Optional[Union[Iterable[int], int]] = None,
     only_ranks_withgridcells: bool = False,
 ) -> Sequence[int]:
-    """
-    Get a list of rank ids. Parameters:
+    """Get a list of rank ids. Parameters:
     - modelpath:
         pathlib.Path() to ARTIS model folder
     - modelgridindex:
         give a cell number to only return the rank number that updates this cell (and outputs its estimators)
     - only_ranks_withgridcells:
-        set True to skip ranks that only update packets (i.e. that don't update any grid cells/output estimators)
+        set True to skip ranks that only update packets (i.e. that don't update any grid cells/output estimators).
     """
-
     if modelgridindex is None or modelgridindex == []:
         if only_ranks_withgridcells:
             return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))

@@ -30,10 +30,7 @@ def read_modelfile_text(
     skipnuclidemassfraccolumns: bool = False,
     dtype_backend: Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
-    """
-    Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
-    """
-
+    """Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides."""
     onelinepercellformat = None
 
     modelmeta: dict[str, Any] = {"headercommentlines": []}
@@ -336,10 +333,10 @@ def get_modeldata(
     dtype_backend: Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
     use_polars: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
-    """
-    Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
+    """Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
 
-    Parameters:
+    Parameters
+    ----------
         - inputpath: either a path to model.txt file, or a folder containing model.txt
         - get_elemabundances: also read elemental abundances (abundances.txt) and
             merge with the output DataFrame
@@ -348,7 +345,6 @@ def get_modeldata(
         - dfmodel: a pandas DataFrame with a row for each model grid cell
         - modelmeta: a dictionary of input model parameters, with keys such as t_model_init_days, vmax_cmps, dimensions, etc.
     """
-
     inputpath = Path(modelpath)
     if use_polars:
         dtype_backend = "pyarrow"
@@ -449,9 +445,8 @@ def get_modeldata(
 
 
 def get_modeldata_tuple(*args, **kwargs) -> tuple[pd.DataFrame, float, float]:
-    """
-    Deprecated but included for compatibility with fixed length tuple return type
-    Use get_modeldata() instead!
+    """Deprecated but included for compatibility with fixed length tuple return type
+    Use get_modeldata() instead!.
     """
     dfmodel, modelmeta = get_modeldata(*args, **kwargs)
 
@@ -466,7 +461,7 @@ def add_derived_cols_to_modeldata(
     wid_init: Optional[float] = None,
     modelpath: Optional[Path] = None,
 ) -> pl.LazyFrame:
-    """add columns to modeldata using e.g. derived_cols = ('velocity', 'Ye')"""
+    """Add columns to modeldata using e.g. derived_cols = ('velocity', 'Ye')."""
     if dimensions is None:
         dimensions = get_dfmodel_dimensions(dfmodel)
 
@@ -530,7 +525,7 @@ def add_derived_cols_to_modeldata(
 
 
 def get_cell_angle(dfmodel: pd.DataFrame, modelpath: Path) -> pd.DataFrame:
-    """get angle between origin to cell midpoint and the syn_dir axis"""
+    """Get angle between origin to cell midpoint and the syn_dir axis."""
     syn_dir = at.get_syn_dir(modelpath)
 
     cos_theta = np.zeros(len(dfmodel))
@@ -628,7 +623,8 @@ def get_2d_modeldata(modelpath):
 
 def get_3d_model_data_merged_model_and_abundances_minimal(args):
     """Get 3D data without generating all the extra columns in standard routine.
-    Needed for large (eg. 200^3) models"""
+    Needed for large (eg. 200^3) models.
+    """
     model = get_3d_modeldata_minimal(args.modelpath)
     abundances = get_initelemabundances(args.modelpath[0])
 
@@ -652,7 +648,8 @@ def get_3d_model_data_merged_model_and_abundances_minimal(args):
 
 def get_3d_modeldata_minimal(modelpath) -> pd.DataFrame:
     """Read 3D model without generating all the extra columns in standard routine.
-    Needed for large (eg. 200^3) models"""
+    Needed for large (eg. 200^3) models.
+    """
     model = pd.read_csv(
         os.path.join(modelpath[0], "model.txt"), delim_whitespace=True, header=None, skiprows=3, dtype=np.float64
     )
@@ -688,7 +685,7 @@ def save_modeldata(
     twolinespercell: bool = False,
     float_format: str = ".4e",
 ) -> None:
-    """Save a pandas DataFrame and snapshot time into ARTIS model.txt"""
+    """Save a pandas DataFrame and snapshot time into ARTIS model.txt."""
     if modelmeta:
         if "headercommentlines" in modelmeta:
             assert headercommentlines is None
@@ -806,7 +803,8 @@ def save_modeldata(
 
 def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> Union[int, float]:
     """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
-    If mgilist is given, then chose from these cells only"""
+    If mgilist is given, then chose from these cells only.
+    """
     modeldata, _, _ = get_modeldata_tuple(modelpath)
 
     velocity = float(velocity)
@@ -892,7 +890,7 @@ def save_initelemabundances(
     """Save a DataFrame (same format as get_initelemabundances) to abundances.txt.
     columns must be:
         - inputcellid: integer index to match model.txt (starting from 1)
-        - X_El: mass fraction of element with two-letter code 'El' (e.g., X_H, X_He, H_Li, ...)
+        - X_El: mass fraction of element with two-letter code 'El' (e.g., X_H, X_He, H_Li, ...).
     """
     timestart = time.perf_counter()
     if Path(abundancefilename).is_dir():
@@ -920,7 +918,7 @@ def save_initelemabundances(
 
 
 def save_empty_abundance_file(ngrid: int, outputfilepath=Path()) -> None:
-    """Dummy abundance file with only zeros"""
+    """Dummy abundance file with only zeros."""
     if Path(outputfilepath).is_dir():
         outputfilepath = Path(outputfilepath) / "abundances.txt"
 
@@ -954,7 +952,7 @@ def sphericalaverage(
     dfgridcontributions: Optional[pd.DataFrame] = None,
     nradialbins: Optional[int] = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Convert 3D Cartesian grid model to 1D spherical"""
+    """Convert 3D Cartesian grid model to 1D spherical."""
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
     xmax = vmax * t_model_init_seconds
     ngridpoints = len(dfmodel)
@@ -1083,8 +1081,7 @@ def scale_model_to_time(
     t_model_days: Optional[float] = None,
     modelmeta: Optional[dict[str, Any]] = None,
 ) -> tuple[pd.DataFrame, Optional[dict[str, Any]]]:
-    """Homologously expand model to targetmodeltime_days, reducing density and adjusting position columns to match"""
-
+    """Homologously expand model to targetmodeltime_days, reducing density and adjusting position columns to match."""
     if t_model_days is None:
         assert modelmeta is not None
         t_model_days = modelmeta["t_model_days"]

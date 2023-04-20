@@ -281,7 +281,6 @@ def read_estimators(
 
     Speed it up by only retrieving estimators for a particular timestep(s) or modelgrid cells.
     """
-
     match_modelgridindex: Collection[int]
     if modelgridindex is None:
         match_modelgridindex = []

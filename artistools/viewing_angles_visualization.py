@@ -95,8 +95,7 @@ def main(
     linelength=1.0,
     show_plot=False,
 ):
-    """
-    Tool to generate a 3D visualization of an ARTIS model.
+    """Tool to generate a 3D visualization of an ARTIS model.
     Viewing angle bins will get overplottet with an animation.
 
     Parameters

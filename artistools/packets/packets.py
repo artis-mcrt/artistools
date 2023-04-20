@@ -773,8 +773,7 @@ def bin_and_sum(
     sumcols: Optional[list[str]] = None,
     getcounts: bool = False,
 ) -> pl.DataFrame:
-    """bins is a list of lower edges, and the final upper edge"""
-
+    """Bins is a list of lower edges, and the final upper edge."""
     # Polars method
     df = df.with_columns(
         [

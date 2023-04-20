@@ -1,7 +1,6 @@
-"""
-File readers for Blondin et al. code comparison file formats
+"""File readers for Blondin et al. code comparison file formats
 The model paths are not real file system paths, but take a form like this:
-codecomparison/[modelname]/[codename]
+codecomparison/[modelname]/[codename].
 
 e.g., codecomparison/DDC10/artisnebular
 """
@@ -58,7 +57,6 @@ def read_reference_estimators(
     timestep: Union[None, int, Sequence[int]] = None,
 ) -> dict[tuple[int, int], Any]:
     """Read estimators from code comparison workshop file."""
-
     virtualfolder, inputmodel, codename = Path(modelpath).parts
     assert virtualfolder == "codecomparison"
 

@@ -85,10 +85,9 @@ def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
 def get_closest_network_timestep(
     traj_root: Path, particleid: int, timesec: float, cond: Literal["lessthan", "greaterthan", "nearest"] = "nearest"
 ) -> int:
-    """
-    cond:
-        'lessthan': find highest timestep less than time_sec
-        'greaterthan': find lowest timestep greater than time_sec
+    """cond:
+    'lessthan': find highest timestep less than time_sec
+    'greaterthan': find lowest timestep greater than time_sec.
     """
     dfevol: pd.DataFrame = get_dfevol(traj_root, particleid)
 
@@ -112,9 +111,8 @@ def get_closest_network_timestep(
 def get_trajectory_timestepfile_nuc_abund(
     traj_root: Path, particleid: int, memberfilename: str
 ) -> tuple[pd.DataFrame, float]:
-    """
-    get the nuclear abundances for a particular trajectory id number and time
-    memberfilename should be something like "./Run_rprocess/tday_nz-plane"
+    """Get the nuclear abundances for a particular trajectory id number and time
+    memberfilename should be something like "./Run_rprocess/tday_nz-plane".
     """
     with open_tar_file_or_extracted(traj_root, particleid, memberfilename) as trajfile:
         try:

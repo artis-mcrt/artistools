@@ -28,7 +28,7 @@ def write_energyrate_file(energy_rate_data, outputfilepath="."):
 
 
 def rprocess_const_and_powerlaw():
-    """Following eqn 4 Korobkin 2012"""
+    """Following eqn 4 Korobkin 2012."""
 
     def integrand(t_days, t0, epsilon0, sigma, alpha, thermalisation_factor):
         return (epsilon0 * ((1 / 2) - (1 / np.pi * np.arctan((t_days - t0) / sigma))) ** alpha) * (

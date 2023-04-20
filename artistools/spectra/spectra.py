@@ -248,7 +248,7 @@ def get_from_packets(
 
 @lru_cache(maxsize=16)
 def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
-    """Return dataframe of time-series spectra for every viewing direction"""
+    """Return dataframe of time-series spectra for every viewing direction."""
     specfilename = (
         modelpath
         if Path(modelpath).is_file()
