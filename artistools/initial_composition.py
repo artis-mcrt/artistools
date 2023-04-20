@@ -81,9 +81,11 @@ def get_2D_slice_through_3d_model(
     return slicedf
 
 
-def plot_slice_modelcol(ax, plotvals, modelmeta, colname, plotaxis1, plotaxis2, t_model_d, args):
+def plot_slice_modelcol(ax, dfmodelslice, modelmeta, colname, plotaxis1, plotaxis2, t_model_d, args):
     print(f"plotting {colname}")
-    colorscale = (plotvals[colname] * plotvals["rho"] if colname.startswith("X_") else plotvals[colname]).to_numpy()
+    colorscale = (
+        dfmodelslice[colname] * dfmodelslice["rho"] if colname.startswith("X_") else dfmodelslice[colname]
+    ).to_numpy()
 
     if args.hideemptycells:
         # Don't plot empty cells:
@@ -116,10 +118,10 @@ def plot_slice_modelcol(ax, plotvals, modelmeta, colname, plotaxis1, plotaxis2, 
         cmap="viridis",
         interpolation="nearest",
         extent=(
-            plotvals[f"pos_{plotaxis1}_min"].min() / t_model_s * unitfactor,
-            plotvals[f"pos_{plotaxis1}_max"].max() / t_model_s * unitfactor,
-            plotvals[f"pos_{plotaxis2}_min"].min() / t_model_s * unitfactor,
-            plotvals[f"pos_{plotaxis2}_max"].max() / t_model_s * unitfactor,
+            dfmodelslice[f"pos_{plotaxis1}_min"].min() / t_model_s * unitfactor,
+            dfmodelslice[f"pos_{plotaxis1}_max"].max() / t_model_s * unitfactor,
+            dfmodelslice[f"pos_{plotaxis2}_min"].min() / t_model_s * unitfactor,
+            dfmodelslice[f"pos_{plotaxis2}_max"].max() / t_model_s * unitfactor,
         ),
         origin="lower",
         # vmin=0.0,
@@ -156,6 +158,7 @@ def plot_3d_initial_abundances(modelpath, args=None) -> None:
         get_elemabundances=True,
         dtype_backend="pyarrow",
         derived_cols=["pos_max"],
+        use_polars=False,
     )
 
     targetmodeltime_days = None
