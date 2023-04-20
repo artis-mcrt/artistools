@@ -370,7 +370,7 @@ def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[i
             break
 
     if maxpacketfiles is not None and nprocs > maxpacketfiles:
-        print(f"Reading from the first {maxpacketfiles} of {len(packetsfiles)} packets files")
+        print(f"Reading from the first {maxpacketfiles} of {nprocs} packets files")
     else:
         print(f"Reading from {len(packetsfiles)} packets files")
 
@@ -391,6 +391,8 @@ def get_packets_pl(
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
 
     nprocs_read = len(packetsfiles)
+    packetsdatasize_gb = nprocs_read * Path(packetsfiles[0]).stat().st_size / 1024 / 1024 / 1024
+    print(f" data size is {packetsdatasize_gb:.1f} GB")
     allescrpktfile_parquet = Path(modelpath) / "packets_rpkt_escaped.parquet"
 
     write_allpkts_parquet = False
@@ -403,7 +405,8 @@ def get_packets_pl(
             try:
                 pldfpackets = pl.scan_parquet(allescrpktfile_parquet)
             except pl.ArrowError:
-                print(f"Problem with {allescrpktfile_parquet}. Will overwrite it")
+                print(f"Problem with {allescrpktfile_parquet}. Deleting it")
+                allescrpktfile_parquet.unlink(missing_ok=True)
                 write_allpkts_parquet = True
 
         else:
@@ -427,7 +430,11 @@ def get_packets_pl(
         pldfpackets = bin_packet_directions_lazypolars(modelpath, pldfpackets)
         write_allpkts_parquet = True
 
-    if write_allpkts_parquet:
+    if write_allpkts_parquet and packetsdatasize_gb > 10:
+        print(f"Would write to {allescrpktfile_parquet} but the data size is to large ({packetsdatasize_gb:.1f} GB)")
+        write_allpkts_parquet = False
+
+    if write_allpkts_parquet and maxpacketfiles is None:
         print(f"Saving {allescrpktfile_parquet}")
         # pldfpackets = pldfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
         pldfpackets.collect(streaming=True).write_parquet(
