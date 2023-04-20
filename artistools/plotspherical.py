@@ -61,9 +61,8 @@ def plot_spherical(
             "phi",
             "costheta",
         ]
-    )  # .lazy()
+    )
 
-    # print(dfpackets)
     e_rf_sumgrid = np.zeros((ncosthetabins, nphibins))
 
     for x in range(nphibins):
