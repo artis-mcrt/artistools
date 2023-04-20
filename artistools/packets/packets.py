@@ -400,7 +400,12 @@ def get_packets_pl(
             time_lastschemachange
         ):
             print(f"Reading from {allescrpktfile_parquet}")
-            pldfpackets = pl.scan_parquet(allescrpktfile_parquet)
+            try:
+                pldfpackets = pl.scan_parquet(allescrpktfile_parquet)
+            except pl.ArrowError:
+                print(f"Problem with {allescrpktfile_parquet}. Will overwrite it")
+                write_allpkts_parquet = True
+
         else:
             write_allpkts_parquet = True
 
