@@ -186,7 +186,7 @@ def autoscale(ax=None, axis="y", margin=0.1):
         return low, high
 
     def get_xy(artist):
-        """Gets the xy coordinates of a given artist."""
+        """Get the xy coordinates of a given artist."""
         if "Collection" in str(artist):
             x, y = artist.get_offsets().T
         elif "Line" in str(artist):
