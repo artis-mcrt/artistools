@@ -16,6 +16,7 @@ from typing import Union
 
 import numpy as np
 import pandas as pd
+import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
 
@@ -333,6 +334,7 @@ def get_modeldata(
     getheadersonly: bool = False,
     skipnuclidemassfraccolumns: bool = False,
     dtype_backend: Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
+    use_polars: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
     Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
@@ -348,6 +350,8 @@ def get_modeldata(
     """
 
     inputpath = Path(modelpath)
+    if use_polars:
+        dtype_backend = "pyarrow"
 
     if inputpath.is_dir():
         modelpath = inputpath
@@ -418,11 +422,13 @@ def get_modeldata(
             # dfmodel.to_parquet(filenameparquet, compression="zstd")
             print("  Done.")
 
+    dfmodel = pl.from_pandas(dfmodel).lazy()
+
     if get_elemabundances:
         abundancedata = get_initelemabundances(
             modelpath, dtype_backend=dtype_backend, printwarningsonly=printwarningsonly
         )
-        dfmodel = dfmodel.merge(abundancedata, how="inner", on="inputcellid")
+        dfmodel = dfmodel.join(abundancedata, how="inner", on="inputcellid")
 
     if derived_cols:
         dfmodel = add_derived_cols_to_modeldata(
@@ -434,8 +440,10 @@ def get_modeldata(
             modelpath=modelpath,
         )
 
-    if len(dfmodel) > 100000:
-        dfmodel.info(verbose=False, memory_usage="deep")
+    if not use_polars:
+        dfmodel = dfmodel.collect().to_pandas(use_pyarrow_extension_array=(dtype_backend == "pyarrow"))
+        if modelmeta["npts_model"] > 100000 and not getheadersonly:
+            dfmodel.info(verbose=False, memory_usage="deep")
 
     return dfmodel, modelmeta
 
@@ -451,52 +459,67 @@ def get_modeldata_tuple(*args, **kwargs) -> tuple[pd.DataFrame, float, float]:
 
 
 def add_derived_cols_to_modeldata(
-    dfmodel: pd.DataFrame,
+    dfmodel: Union[pl.DataFrame, pl.LazyFrame],
     derived_cols: Sequence[str],
     dimensions: Optional[int] = None,
     t_model_init_seconds: Optional[float] = None,
     wid_init: Optional[float] = None,
     modelpath: Optional[Path] = None,
-) -> pd.DataFrame:
+) -> pl.LazyFrame:
     """add columns to modeldata using e.g. derived_cols = ('velocity', 'Ye')"""
     if dimensions is None:
         dimensions = get_dfmodel_dimensions(dfmodel)
 
+    dfmodel = dfmodel.lazy()
+    newcols = []
+
     if dimensions == 3:
+        axes = ["x", "y", "z"]
         if "velocity" in derived_cols or "vel_min" in derived_cols:
             assert t_model_init_seconds is not None
-            for ax in ["x", "y", "z"]:
-                dfmodel[f"vel_{ax}_min"] = dfmodel[f"pos_{ax}_min"] / t_model_init_seconds
+            newcols += [(pl.col(f"pos_{ax}_min") / t_model_init_seconds).alias(f"vel_{ax}_min") for ax in axes]
 
         if "velocity" in derived_cols or "vel_max" in derived_cols:
             assert t_model_init_seconds is not None
-            for ax in ["x", "y", "z"]:
-                dfmodel[f"vel_{ax}_max"] = (dfmodel[f"pos_{ax}_min"] + wid_init) / t_model_init_seconds
+            newcols += [
+                ((pl.col(f"pos_{ax}_min") + wid_init) / t_model_init_seconds).alias(f"vel_{ax}_max") for ax in axes
+            ]
 
         if any(col in derived_cols for col in ["velocity", "vel_mid", "vel_r_mid"]):
             assert wid_init is not None
             assert t_model_init_seconds is not None
-            for ax in ["x", "y", "z"]:
-                dfmodel[f"vel_{ax}_mid"] = (dfmodel[f"pos_{ax}_min"] + (0.5 * wid_init)) / t_model_init_seconds
+            dfmodel = dfmodel.with_columns(
+                [
+                    ((pl.col(f"pos_{ax}_min") + (0.5 * wid_init)) / t_model_init_seconds).alias(f"vel_{ax}_mid")
+                    for ax in axes
+                ]
+            )
 
-            dfmodel["vel_r_mid"] = np.sqrt(
-                dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2 + dfmodel["vel_z_mid"] ** 2
+            newcols.append(
+                (pl.col("vel_x_mid").pow(2) + pl.col("vel_y_mid").pow(2) + pl.col("vel_z_mid").pow(2))
+                .sqrt()
+                .alias("vel_r_mid")
             )
 
     if dimensions == 3 and "pos_mid" in derived_cols or "angle_bin" in derived_cols:
         assert wid_init is not None
-        for ax in ["x", "y", "z"]:
-            dfmodel[f"pos_{ax}_mid"] = dfmodel[f"pos_{ax}_min"] + (0.5 * wid_init)
+        newcols += [(pl.col(f"pos_{ax}_min") + 0.5 * wid_init).alias(f"pos_{ax}_mid") for ax in axes]
+
+    if dimensions == 3 and "pos_max" in derived_cols:
+        assert wid_init is not None
+        newcols += [(pl.col(f"pos_{ax}_min") + wid_init).alias(f"pos_{ax}_max") for ax in axes]
 
     if "logrho" in derived_cols and "logrho" not in dfmodel.columns:
-        dfmodel["logrho"] = np.log10(dfmodel["rho"])
+        newcols.append(pl.col("rho").log10().alias("logrho"))
 
     if "rho" in derived_cols and "rho" not in dfmodel.columns:
-        dfmodel["rho"] = 10 ** dfmodel["logrho"]
+        newcols.append((10 ** pl.col("logrho")).alias("rho"))
+
+    dfmodel = dfmodel.with_columns(newcols)
 
     if "angle_bin" in derived_cols:
         assert modelpath is not None
-        dfmodel = get_cell_angle(dfmodel, modelpath)
+        dfmodel = pl.from_pandas(get_cell_angle(dfmodel.collect().to_pandas(), modelpath)).lazy()
 
     # if "Ye" in derived_cols and os.path.isfile(modelpath / "Ye.txt"):
     #     dfmodel["Ye"] = at.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
@@ -913,9 +936,12 @@ def save_empty_abundance_file(ngrid: int, outputfilepath=Path()) -> None:
     dfabundances.to_csv(outputfilepath, header=False, sep=" ", index=False)
 
 
-def get_dfmodel_dimensions(dfmodel: pd.DataFrame) -> int:
+def get_dfmodel_dimensions(dfmodel: Union[pd.DataFrame, pl.DataFrame, pl.LazyFrame]) -> int:
     if "pos_x_min" in dfmodel.columns:
         return 3
+
+    if "pos_z_mid" in dfmodel.columns:
+        return 2
 
     return 1
 
