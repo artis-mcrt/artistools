@@ -1166,53 +1166,43 @@ def get_viewingdirection_costhetabincount() -> int:
     return 10
 
 
+def get_phi_bins() -> tuple[np.ndarray, np.ndarray, list[str]]:
+    nphibins = at.get_viewingdirection_phibincount()
+    # pi/2 must be an exact boundary because of the change in behaviour there
+    assert nphibins % 2 == 0
+
+    # for historical reasons, phi bins ordered by ascending phi are
+    # [0, 1, 2, 3, 4, 9, 8, 7, 6, 5] for nphibins == 10
+
+    # convert phibin number to what the number would be if things were sane
+    phisteps = list(range(nphibins // 2)) + list(reversed(range(nphibins // 2, nphibins)))
+
+    phi_lower = np.array([step * 2 * math.pi / nphibins for step in phisteps])
+    phi_upper = np.array([(step + 1) * 2 * math.pi / nphibins for step in phisteps])
+
+    binlabels = []
+    for phibin, step in enumerate(phisteps):
+        str_phi_lower = f"{step}π/{nphibins // 2}" if step > 0 else "0"
+        lower_compare = "≤" if phibin < (nphibins // 2) else "<"
+        str_phi_upper = f"{step+1}π/{nphibins // 2}" if step < nphibins - 1 else "2π"
+        upper_compare = "≤" if phibin > (nphibins // 2) else "<"
+        binlabels.append(f"{str_phi_lower} {lower_compare} ϕ {upper_compare} {str_phi_upper}")
+
+    return phi_lower, phi_upper, binlabels
+
+
+def get_costheta_bins() -> tuple[np.ndarray, np.ndarray, list[str]]:
+    ncosthetabins = at.get_viewingdirection_costhetabincount()
+    costhetabins_lower = np.arange(-1.0, 1.0, 2.0 / ncosthetabins)
+    costhetabins_upper = costhetabins_lower + 2.0 / ncosthetabins
+    binlabels = [f"{lower:.1f} ≤ cos θ < {upper:.1f}" for lower, upper in zip(costhetabins_lower, costhetabins_upper)]
+    return costhetabins_lower, costhetabins_upper, binlabels
+
+
 def get_costhetabin_phibin_labels() -> tuple[list[str], list[str]]:
-    # todo: replace with general code for any bin count:
-    # ncosthetabins = at.get_viewingdirection_costhetabincount()
-    # costhetabins_lower = np.arange(-1., 1., 2. / ncosthetabins)
-    # costhetabins_upper = costhetabins_lower + 2. / ncosthetabins
-
-    costheta_viewing_angle_bins = [
-        "-1.0 ≤ cos θ < -0.8",
-        "-0.8 ≤ cos θ < -0.6",
-        "-0.6 ≤ cos θ < -0.4",
-        "-0.4 ≤ cos θ < -0.2",
-        "-0.2 ≤ cos θ <  0.0",
-        " 0.0 ≤ cos θ <  0.2",
-        " 0.2 ≤ cos θ <  0.4",
-        " 0.4 ≤ cos θ <  0.6",
-        " 0.6 ≤ cos θ <  0.8",
-        " 0.8 ≤ cos θ <  1.0",
-    ]
-    assert len(costheta_viewing_angle_bins) == get_viewingdirection_costhetabincount()
-
-    # this is not correct because the phi bins are not in ascending order
-    # nphibins = at.get_viewingdirection_phibincount()
-    # thetabins_lower = np.arange(0, 2 * math.pi, 2 * math.pi / nphibins)
-    # thetabins_upper = thetabins_lower + 2 * math.pi / nphibins
-
-    phi_viewing_angle_bins = [
-        "0 ≤ ϕ < π/5",
-        "π/5 ≤ ϕ < 2π/5",
-        "2π/5 ≤ ϕ < 3π/5",
-        "3π/5 ≤ ϕ < 4π/5",
-        "4π/5 ≤ ϕ < π",
-        "9π/5 < ϕ < 2π",
-        "8π/5 < ϕ ≤ 9π/5",
-        "7π/5 < ϕ ≤ 8π/5",
-        "6π/5 < ϕ ≤ 7π/5",
-        "π < ϕ ≤ 6π/5",
-    ]
-    assert len(phi_viewing_angle_bins) == get_viewingdirection_phibincount()
-    assert len(costheta_viewing_angle_bins) * len(phi_viewing_angle_bins) == get_viewingdirectionbincount()
-
-    # label orders changed so that bins are in order. Not used yet.
-    # phi_viewing_angle_bins_reordered = ['0 ≤ ϕ < π/5', 'π/5 ≤ ϕ < 2π/5',
-    #                                     '2π/5 ≤ ϕ < 3π/5', '3π/5 ≤ ϕ < 4π/5',
-    #                                     '4π/5 ≤ ϕ < π', 'π < ϕ ≤ 6π/5',
-    #                                     '6π/5 < ϕ ≤ 7π/5', '7π/5 < ϕ ≤ 8π/5',
-    #                                     '8π/5 < ϕ ≤ 9π/5', '9π/5 < ϕ < 2π']
-    return costheta_viewing_angle_bins, phi_viewing_angle_bins
+    _, _, costhetabinlabels = get_costheta_bins()
+    _, _, phibinlabels = get_phi_bins()
+    return costhetabinlabels, phibinlabels
 
 
 def get_vspec_dir_labels(modelpath: Union[str, Path], viewinganglelabelunits: str = "rad") -> dict[int, str]:
@@ -1241,7 +1231,8 @@ def get_dirbin_labels(
             assert len(list(Path(modelpath).glob(f"*_res_{MABINS-1:02d}.out*"))) > 0  # check last bin exists
             assert len(list(Path(modelpath).glob(f"*_res_{MABINS:02d}.out*"))) == 0  # check one beyond does not exist
 
-    strlist_costheta_bins, strlist_phi_bins = at.get_costhetabin_phibin_labels()
+    _, _, costhetabinlabels = get_costheta_bins()
+    _, _, phibinlabels = get_phi_bins()
 
     nphibins = at.get_viewingdirection_phibincount()
 
@@ -1255,13 +1246,13 @@ def get_dirbin_labels(
         phi_index = dirbin % nphibins
 
         if average_over_phi:
-            angle_definitions[dirbin] = f"{strlist_costheta_bins[costheta_index]}"
+            angle_definitions[dirbin] = f"{costhetabinlabels[costheta_index]}"
             assert phi_index == 0
             assert not average_over_theta
         elif average_over_theta:
-            angle_definitions[dirbin] = f"{strlist_phi_bins[phi_index]}"
+            angle_definitions[dirbin] = f"{phibinlabels[phi_index]}"
             assert costheta_index == 0
         else:
-            angle_definitions[dirbin] = f"{strlist_costheta_bins[costheta_index]}, {strlist_phi_bins[phi_index]}"
+            angle_definitions[dirbin] = f"{costhetabinlabels[costheta_index]}, {phibinlabels[phi_index]}"
 
     return angle_definitions

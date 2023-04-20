@@ -43,6 +43,7 @@ from .misc import get_bflist
 from .misc import get_cellsofmpirank
 from .misc import get_composition_data
 from .misc import get_composition_data_from_outputfile
+from .misc import get_costheta_bins
 from .misc import get_costhetabin_phibin_labels
 from .misc import get_deposition
 from .misc import get_dirbin_labels
@@ -61,6 +62,7 @@ from .misc import get_mpiranklist
 from .misc import get_mpirankofcell
 from .misc import get_nprocs
 from .misc import get_nu_grid
+from .misc import get_phi_bins
 from .misc import get_runfolders
 from .misc import get_syn_dir
 from .misc import get_time_range
