@@ -35,13 +35,13 @@ def plot_spherical(
         dfpackets = dfpackets.filter(pl.col("t_arrive_d") >= timemindays)
     else:
         timemindays = float(dfpackets.select("t_arrive_d").collect().get_column("t_arrive_d").to_numpy().min())
-        print(f"time min is {timemindays} d")
+        print(f"time min is {timemindays:.2d} d")
 
     if timemaxdays is not None:
         dfpackets = dfpackets.filter(pl.col("t_arrive_d") <= timemaxdays)
     else:
         timemaxdays = float(dfpackets.select("t_arrive_d").collect().get_column("t_arrive_d").to_numpy().max())
-        print(f"time max is {timemaxdays} d")
+        print(f"time max is {timemaxdays:.2d} d")
 
     fig, ax = plt.subplots(
         1,
@@ -98,21 +98,23 @@ def plot_spherical(
 
     # data = scipy.ndimage.gaussian_filter(data, sigma=1)
 
+    meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
     if not interpolate:
-        meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
         colormesh = ax.pcolormesh(meshgrid_phi, meshgrid_theta, data, rasterized=True, cmap=cmap)
     else:
-        from scipy.interpolate import interp2d
-
-        finterp = interp2d(phigrid, thetagrid, data, kind="cubic")
         phigrid_highres = np.linspace(-np.pi, np.pi, 1024)
         thetagrid_highres = np.linspace(-np.pi / 2.0, np.pi / 2.0, 1024)
-        data1 = finterp(phigrid_highres, thetagrid_highres)
+        from scipy.interpolate import CloughTocher2DInterpolator
+
+        finterp = CloughTocher2DInterpolator(
+            list(zip(meshgrid_phi.flatten(), meshgrid_theta.flatten())), data.flatten()
+        )
         meshgrid_phi_highres, meshgrid_theta_highres = np.meshgrid(phigrid_highres, thetagrid_highres)
-        colormesh = ax.pcolormesh(meshgrid_phi_highres, meshgrid_theta_highres, data1, rasterized=True, cmap=cmap)
+        data_interp = finterp(meshgrid_phi_highres, meshgrid_theta_highres)
+        colormesh = ax.pcolormesh(meshgrid_phi_highres, meshgrid_theta_highres, data_interp, rasterized=True, cmap=cmap)
 
     cbar = fig.colorbar(colormesh)
-    cbar.ax.set_title(r"Luminosity$I_{e,\Omega}\times4\pi/\Omega$ [erg/s]")
+    cbar.ax.set_title(r"$I_{e,\Omega}\cdot4\pi/\Omega$ [erg/s]")
 
     # ax.set_xlabel("Azimuthal angle")
     # ax.set_ylabel("Polar angle")
@@ -133,8 +135,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=Path(),
         help="Path to ARTIS folder",
     )
-    parser.add_argument("-tmin", action="store", type=float, default=None, help="Time minimum [d]")
-    parser.add_argument("-tmax", action="store", type=float, default=None, help="Time maximum [d]")
+    parser.add_argument("-timemin", action="store", type=float, default=None, help="Time minimum [d]")
+    parser.add_argument("-timemax", action="store", type=float, default=None, help="Time maximum [d]")
     parser.add_argument("-nphibins", action="store", type=int, default=32, help="Number of azimuthal bins")
     parser.add_argument("-ncosthetabins", action="store", type=int, default=32, help="Number of polar angle bins")
     parser.add_argument("-maxpacketfiles", type=int, default=None, help="Limit the number of packet files read")
@@ -166,8 +168,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     plot_spherical(
         modelpath=args.modelpath,
-        timemindays=args.tmin,
-        timemaxdays=args.tmax,
+        timemindays=args.timemin,
+        timemaxdays=args.timemax,
         nphibins=args.nphibins,
         ncosthetabins=args.ncosthetabins,
         maxpacketfiles=args.maxpacketfiles,
