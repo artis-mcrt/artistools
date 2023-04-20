@@ -116,7 +116,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
 
     c23modelpath = Path(
         "/Users/luke/Library/CloudStorage/GoogleDrive-luke@lukeshingles.com/Shared"
-        " drives/ARTIS/artis_runs_published/Collinsetal2023-KN/sfho_long_1-35-135Msun"
+        " drives/ARTIS/artis_runs_published/Collinsetal2023/sfho_long_1-35-135Msun"
     )
 
     c23energyrate = at.inputmodel.energyinputfiles.get_energy_rate_fromfile(c23modelpath)
