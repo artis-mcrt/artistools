@@ -35,13 +35,13 @@ def plot_spherical(
         dfpackets = dfpackets.filter(pl.col("t_arrive_d") >= timemindays)
     else:
         timemindays = float(dfpackets.select("t_arrive_d").collect().get_column("t_arrive_d").to_numpy().min())
-        print(f"time min is {timemindays:.2d} d")
+        print(f"time min is {timemindays:.2f} d")
 
     if timemaxdays is not None:
         dfpackets = dfpackets.filter(pl.col("t_arrive_d") <= timemaxdays)
     else:
         timemaxdays = float(dfpackets.select("t_arrive_d").collect().get_column("t_arrive_d").to_numpy().max())
-        print(f"time max is {timemaxdays:.2d} d")
+        print(f"time max is {timemaxdays:.2f} d")
 
     fig, ax = plt.subplots(
         1,
