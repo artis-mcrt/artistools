@@ -111,7 +111,7 @@ ignored-modules = ["astropy", "extinction"]
 [tool.ruff]
 select = [
     #"ALL",
-    "A", "B", "C", "E", "F", "G", "N", "Q", "W", "ARG", "BLE", "DJ", "DTZ", "EM", "ERA", "EXE",
+    "A", "B", "C", "D", "E", "F", "G", "N", "Q", "W", "ARG", "BLE", "DJ", "DTZ", "EM", "ERA", "EXE",
     "ICN", "INP", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PT", "PYI", "RET", "RSE", "RUF",
     "SIM", "SLF", "TCH", "TID", "TRY", "UP", "YTT"
 ]
@@ -121,7 +121,7 @@ ignore = [
     "B007", # variable not used in loop body (but sometimes it is with eval)
     "BLE001",
     "C9",
-    "D211", "D213",
+    "D100", "D101", "D102", "D103", "D104", "D107", "D203", "D205", "D213", "D401", "D417",
     "E501", "E741",
     "EM101","EM102",
     "ERA001",
@@ -142,7 +142,7 @@ ignore = [
 
 # Allow autofix for all enabled rules (when `--fix`) is provided.
 fixable = [
-    "A", "B", "C", "E", "G", "N", "Q", "W", "ARG", "BLE", "DJ", "DTZ", "EM", "ERA", "EXE",
+    "A", "B", "C", "D", "E", "G", "N", "Q", "W", "ARG", "BLE", "DJ", "DTZ", "EM", "ERA", "EXE",
     "FBT", "ICN", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PLR", "PT", "PTH", "PYI", "RET", "RSE",
     "RUF", "SIM", "SLF", "TCH", "TID", "UP", "YTT"
 ]

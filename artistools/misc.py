@@ -807,7 +807,7 @@ def get_file_metadata(filepath: Union[Path, str]) -> dict[str, Any]:
 def get_filterfunc(
     args: argparse.Namespace, mode: str = "interp"
 ) -> Optional[Callable[[Union[list[float], np.ndarray]], np.ndarray]]:
-    """Using command line arguments to determine the appropriate filter function."""
+    """Use command line arguments to determine the appropriate filter function."""
     filterfunc: Optional[Callable[[Union[list[float], np.ndarray]], np.ndarray]] = None
     dictargs = vars(args)
 
@@ -1050,7 +1050,8 @@ def get_mpiranklist(
     modelgridindex: Optional[Union[Iterable[int], int]] = None,
     only_ranks_withgridcells: bool = False,
 ) -> Sequence[int]:
-    """Get a list of rank ids. Parameters:
+    """Get a list of rank ids.
+
     - modelpath:
         pathlib.Path() to ARTIS model folder
     - modelgridindex:
