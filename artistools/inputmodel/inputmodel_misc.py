@@ -425,9 +425,9 @@ def get_modeldata(
     dfmodel = pl.from_pandas(dfmodel).lazy()
 
     if get_elemabundances:
-        abundancedata = get_initelemabundances(
-            modelpath, dtype_backend=dtype_backend, printwarningsonly=printwarningsonly
-        )
+        abundancedata = pl.from_pandas(
+            get_initelemabundances(modelpath, dtype_backend=dtype_backend, printwarningsonly=printwarningsonly)
+        ).lazy()
         dfmodel = dfmodel.join(abundancedata, how="inner", on="inputcellid")
 
     if derived_cols:
