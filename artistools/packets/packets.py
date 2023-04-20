@@ -466,7 +466,7 @@ def get_directionbin(
 
     phibin = (
         int(math.acos(cosphi) / 2.0 / np.pi * nphibins)
-        if testphi > 0
+        if testphi >= 0
         else int((math.acos(cosphi) + np.pi) / 2.0 / np.pi * nphibins)
     )
 
@@ -531,7 +531,7 @@ def add_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.
     if "phi" not in dfpackets.columns:
         dfpackets = dfpackets.with_columns(
             (
-                pl.when(pl.col("testphi") > 0)
+                pl.when(pl.col("testphi") >= 0)
                 .then(pl.col("cosphi").arccos())
                 .otherwise(pl.col("cosphi").mul(-1.0).arccos() + np.pi)
             ).alias("phi"),
@@ -562,7 +562,7 @@ def bin_packet_directions_lazypolars(
 
     dfpackets = dfpackets.with_columns(
         (
-            pl.when(pl.col("testphi") > 0)
+            pl.when(pl.col("testphi") >= 0)
             .then(pl.col("cosphi").arccos() / 2.0 / np.pi * nphibins)
             .otherwise((pl.col("cosphi").arccos() + np.pi) / 2.0 / np.pi * nphibins)
         )
@@ -601,7 +601,7 @@ def bin_packet_directions(modelpath: Union[Path, str], dfpackets: pd.DataFrame) 
     arr_testphi = np.dot(arr_vec1, vec3)
 
     arr_phibin = np.zeros(len(pktdirvecs), dtype=int)
-    filta = arr_testphi > 0
+    filta = arr_testphi >= 0
     arr_phibin[filta] = np.arccos(arr_cosphi[filta]) / 2.0 / np.pi * nphibins
     filtb = np.invert(filta)
     arr_phibin[filtb] = (np.arccos(arr_cosphi[filtb]) + np.pi) / 2.0 / np.pi * nphibins
