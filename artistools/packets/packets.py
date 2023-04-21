@@ -1,7 +1,6 @@
 import calendar
 import gzip
 import math
-import os
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -271,10 +270,7 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
     if "true_emission_velocity" in dfpackets.columns:
         dfpackets = dfpackets.with_columns([pl.col("true_emission_velocity").cast(pl.Float32)])
 
-    # cast Int64 to Int32
-    dfpackets = dfpackets.with_columns(
-        [pl.col(col).cast(pl.Int32) for col in dfpackets.columns if dfpackets[col].dtype == pl.Int64]
-    )
+    dfpackets = dfpackets.with_columns([pl.col(pl.Int64).cast(pl.Int32)])
 
     return dfpackets
 
@@ -411,7 +407,7 @@ def get_packets_pl(
     write_allpkts_parquet = False
     pldfpackets = None
     if maxpacketfiles is None and escape_type == "TYPE_RPKT":
-        if allescrpktfile_parquet.is_file() and os.path.getmtime(allescrpktfile_parquet) > calendar.timegm(
+        if allescrpktfile_parquet.is_file() and allescrpktfile_parquet.stat().st_mtime > calendar.timegm(
             time_lastschemachange
         ):
             print(f"Reading from {allescrpktfile_parquet}")
