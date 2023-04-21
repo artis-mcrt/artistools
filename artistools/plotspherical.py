@@ -101,7 +101,8 @@ def plot_spherical(
     if gaussian_sigma is not None and gaussian_sigma > 0:
         import scipy.ndimage
 
-        data = scipy.ndimage.gaussian_filter(data, sigma=gaussian_sigma, mode="wrap")
+        sigma_bins = gaussian_sigma / 360 * nphibins
+        data = scipy.ndimage.gaussian_filter(data, sigma=sigma_bins, mode="wrap")
 
     meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
     if not interpolate:
