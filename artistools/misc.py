@@ -536,10 +536,16 @@ def get_escaped_arrivalrange(modelpath: Union[Path, str]) -> tuple[int, Optional
     # earliest completely valid time is tmin plus maximum possible travel time from corner to origin
     validrange_start_days = at.get_timestep_times_float(modelpath, loc="start")[0] * (1 + vmax_tmin / 29979245800)
 
+    t_end = at.get_timestep_times_float(modelpath, loc="end")
     # find the last possible escape time and subtract the largest possible travel time (observer time correction)
-    depdata = at.get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
-    nts_last = depdata.ts.max() if "ts" in depdata.columns else len(depdata) - 1
-    nts_last_tend = at.get_timestep_times_float(modelpath, loc="end")[nts_last]
+    try:
+        depdata = at.get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
+        nts_last = depdata.ts.max() if "ts" in depdata.columns else len(depdata) - 1
+    except FileNotFoundError:
+        print("WARNING: No deposition.out file found. Assuming all timesteps have been computed")
+        nts_last = len(t_end) - 1
+
+    nts_last_tend = t_end[nts_last]
 
     # latest possible valid range is the end of the latest computed timestep plus the longest travel time
     validrange_end_days = nts_last_tend * (1 - cornervmax / 29979245800)
