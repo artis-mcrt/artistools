@@ -31,17 +31,35 @@ def plot_spherical(
         modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
-    if timemindays is not None:
-        dfpackets = dfpackets.filter(pl.col("t_arrive_d") >= timemindays)
+    _, tmin_d_valid, tmax_d_valid = at.get_escaped_arrivalrange(modelpath)
+    if tmin_d_valid is None or tmax_d_valid is None:
+        print("WARNING! The observer never gets light from the entire ejecta. Plotting all packets anyway")
+        timemindays, timemaxdays = (
+            dfpackets.select(pl.col("t_arrive_d").min().alias("tmin"), pl.col("t_arrive_d").max().alias("tmax"))
+            .collect()
+            .to_numpy()[0]
+        )
     else:
-        timemindays = float(dfpackets.select("t_arrive_d").collect().get_column("t_arrive_d").to_numpy().min())
-        print(f"time min is {timemindays:.2f} d")
+        if timemindays is None:
+            print(f"setting timemin to start of valid observable range {tmin_d_valid:.2f} d")
+            timemindays = tmin_d_valid
+        elif timemindays < tmin_d_valid:
+            print(
+                f"WARNING! timemindays {timemindays} is too early for light to travel from the entire ejecta "
+                f" ({tmin_d_valid} d)"
+            )
 
-    if timemaxdays is not None:
-        dfpackets = dfpackets.filter(pl.col("t_arrive_d") <= timemaxdays)
-    else:
-        timemaxdays = float(dfpackets.select("t_arrive_d").collect().get_column("t_arrive_d").to_numpy().max())
-        print(f"time max is {timemaxdays:.2f} d")
+        if timemaxdays is None:
+            print(f"setting timemin to end of valid observable range {tmax_d_valid:.2f} d")
+            timemaxdays = tmax_d_valid
+        elif timemaxdays > tmax_d_valid:
+            print(
+                f"WARNING! timemaxdays {timemaxdays} is too late to recieve light from the entire ejecta "
+                f" ({tmin_d_valid} d)"
+            )
+        dfpackets = dfpackets.filter((pl.col("t_arrive_d") >= timemindays) & (pl.col("t_arrive_d") <= timemaxdays))
+    assert timemindays is not None
+    assert timemaxdays is not None
 
     fig, ax = plt.subplots(
         1,
