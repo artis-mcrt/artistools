@@ -88,12 +88,10 @@ def plot_spherical(
     phigrid = np.linspace(-np.pi, np.pi, nphibins)
 
     # costhetabin zero is (0,0,-1) so theta angle
-    costhetagrid = np.linspace(-1, 1, ncosthetabins, endpoint=False)
+    costhetagrid = np.linspace(-1, 1, ncosthetabins, endpoint=True)
     # for Molleweide projection, theta range is [-pi/2, +pi/2]
     thetagrid = np.arccos(costhetagrid) - np.pi / 2
-    # print(thetagrid)
-    # thetagrid = np.linspace(np.pi / 2.0, -np.pi / 2.0, ncosthetabins)
-    # print(thetagrid)
+
     # cmap = "rainbow"
     # cmap = "viridis"
     # cmap = "hot"
@@ -103,7 +101,7 @@ def plot_spherical(
     if gaussian_sigma is not None and gaussian_sigma > 0:
         import scipy.ndimage
 
-        data = scipy.ndimage.gaussian_filter(data, sigma=gaussian_sigma)
+        data = scipy.ndimage.gaussian_filter(data, sigma=gaussian_sigma, mode="wrap")
 
     meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
     if not interpolate:
