@@ -107,15 +107,26 @@ def plot_spherical(
     if not interpolate:
         colormesh = ax.pcolormesh(meshgrid_phi, meshgrid_theta, data, rasterized=True, cmap=cmap)
     else:
-        phigrid_highres = np.linspace(-np.pi, np.pi, 1024)
-        thetagrid_highres = np.linspace(-np.pi / 2.0, np.pi / 2.0, 1024)
+        ngridhighres = 512
+        print(f"interpolating onto {ngridhighres}^2 grid")
+
+        phigrid_highres = np.linspace(-np.pi, np.pi, ngridhighres + 1, endpoint=True)
+        thetagrid_highres = np.linspace(-np.pi / 2.0, np.pi / 2.0, ngridhighres + 1, endpoint=True)
+
+        meshgrid_phi_highres_noendpoint, meshgrid_theta_highres_noendpoint = np.meshgrid(
+            phigrid_highres[:-1], thetagrid_highres[:-1]
+        )
+
         from scipy.interpolate import CloughTocher2DInterpolator
 
+        meshgrid_phi_noendpoint, meshgrid_theta_noendpoint = np.meshgrid(phigrid[:-1], thetagrid[:-1])
         finterp = CloughTocher2DInterpolator(
-            list(zip(meshgrid_phi.flatten(), meshgrid_theta.flatten())), data.flatten()
+            list(zip(meshgrid_phi_noendpoint.flatten(), meshgrid_theta_noendpoint.flatten())), data.flatten()
         )
+
         meshgrid_phi_highres, meshgrid_theta_highres = np.meshgrid(phigrid_highres, thetagrid_highres)
         data_interp = finterp(meshgrid_phi_highres, meshgrid_theta_highres)
+
         colormesh = ax.pcolormesh(meshgrid_phi_highres, meshgrid_theta_highres, data_interp, rasterized=True, cmap=cmap)
 
     cbar = fig.colorbar(colormesh)
