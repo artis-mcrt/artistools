@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 import argparse
-import math
 from pathlib import Path
 from typing import Optional
 from typing import Union
@@ -23,6 +22,7 @@ def plot_spherical(
     outputfile: Union[Path, str],
     maxpacketfiles: Optional[int] = None,
     interpolate: bool = False,
+    gaussian_sigma: Optional[int] = None,
 ) -> None:
     _, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=True, printwarningsonly=True)
 
@@ -73,47 +73,37 @@ def plot_spherical(
     # x=math.cos(-phi)
     # y=math.sin(-phi)
 
-    dfpackets = dfpackets.select(
-        [
-            "e_rf",
-            "phi",
-            "costheta",
-        ]
+    dfpackets = at.packets.bin_packet_directions_lazypolars(
+        modelpath=modelpath, dfpackets=dfpackets, nphibins=nphibins, nthetabins=ncosthetabins, phibintype="monotonic"
     )
+    dfpackets = dfpackets.groupby("dirbin").agg(pl.col("e_rf").sum())
 
-    e_rf_sumgrid = np.zeros((ncosthetabins, nphibins))
-
-    for x in range(nphibins):
-        phi_low = 2 * math.pi / nphibins * x
-        phi_high = 2 * math.pi / nphibins * (x + 1)
-        dfpackets_phibin = dfpackets.filter((pl.col("phi") >= phi_low) & (pl.col("phi") <= phi_high)).collect()
-        for y in range(ncosthetabins):
-            costheta_low = 1 - 2 / ncosthetabins * (y + 1)
-            costheta_high = 1 - 2 / ncosthetabins * y
-            e_rf_sum = (
-                dfpackets_phibin.filter((pl.col("costheta") >= costheta_low) & (pl.col("costheta") <= costheta_high))
-                .get_column("e_rf")
-                .sum()
-            )
-            e_rf_sumgrid[y, x] = e_rf_sum
+    alldirbins = pl.DataFrame([pl.Series("dirbin", np.arange(0, nphibins * ncosthetabins), dtype=pl.Int32)])
+    alldirbins = alldirbins.join(dfpackets.collect(), how="left", on="dirbin").fill_null(0)
+    e_rf_sumgrid = alldirbins.get_column("e_rf").to_numpy().reshape((ncosthetabins, nphibins))
 
     solidanglefactor = nphibins * ncosthetabins
     data = e_rf_sumgrid / nprocs_read * solidanglefactor / (timemaxdays - timemindays) / 86400
     # these phi and theta angle ranges are defined differently to artis
     phigrid = np.linspace(-np.pi, np.pi, nphibins)
 
-    costhetagrid = np.linspace(1, -1, ncosthetabins, endpoint=True)
+    # costhetabin zero is (0,0,-1) so theta angle
+    costhetagrid = np.linspace(-1, 1, ncosthetabins, endpoint=False)
+    # for Molleweide projection, theta range is [-pi/2, +pi/2]
     thetagrid = np.arccos(costhetagrid) - np.pi / 2
-    # thetagrid = np.linspace(-np.pi / 2.0, np.pi / 2.0, ncosthetabins)
+    # print(thetagrid)
+    # thetagrid = np.linspace(np.pi / 2.0, -np.pi / 2.0, ncosthetabins)
+    # print(thetagrid)
     # cmap = "rainbow"
     # cmap = "viridis"
     # cmap = "hot"
     # cmap = "Blues_r"
     cmap = None
 
-    # import scipy.ndimage
+    if gaussian_sigma is not None and gaussian_sigma > 0:
+        import scipy.ndimage
 
-    # data = scipy.ndimage.gaussian_filter(data, sigma=1)
+        data = scipy.ndimage.gaussian_filter(data, sigma=gaussian_sigma)
 
     meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
     if not interpolate:
@@ -157,6 +147,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-nphibins", action="store", type=int, default=32, help="Number of azimuthal bins")
     parser.add_argument("-ncosthetabins", action="store", type=int, default=32, help="Number of polar angle bins")
     parser.add_argument("-maxpacketfiles", type=int, default=None, help="Limit the number of packet files read")
+    parser.add_argument("-gaussian_sigma", type=int, default=None, help="Apply Gaussian filter")
 
     parser.add_argument("--interpolate", action="store_true", help="Interpolate grid to higher resolution")
 
@@ -192,6 +183,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         maxpacketfiles=args.maxpacketfiles,
         outputfile=args.outputfile,
         interpolate=args.interpolate,
+        gaussian_sigma=args.gaussian_sigma,
     )
 
 
