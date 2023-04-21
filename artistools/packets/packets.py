@@ -803,7 +803,7 @@ def bin_and_sum(
 
     # now we will include the empty bins
     dfout = pl.DataFrame(pl.Series(bincol + "_bin", np.arange(0, len(bins) - 1), dtype=pl.Int32))
-    dfout = dfout.join(wlbins, how="left", on=bincol + "_bin").fill_null(0.0)
+    dfout = dfout.join(wlbins, how="left", on=bincol + "_bin").fill_null(0)
 
     # pandas method
 
