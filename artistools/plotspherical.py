@@ -107,7 +107,7 @@ def plot_spherical(
     if not interpolate:
         colormesh = ax.pcolormesh(meshgrid_phi, meshgrid_theta, data, rasterized=True, cmap=cmap)
     else:
-        ngridhighres = 512
+        ngridhighres = 1024
         print(f"interpolating onto {ngridhighres}^2 grid")
 
         phigrid_highres = np.linspace(-np.pi, np.pi, ngridhighres + 1, endpoint=True)
