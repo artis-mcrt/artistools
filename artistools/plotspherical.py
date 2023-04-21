@@ -46,7 +46,7 @@ def plot_spherical(
         elif timemindays < tmin_d_valid:
             print(
                 f"WARNING! timemindays {timemindays} is too early for light to travel from the entire ejecta "
-                f" ({tmin_d_valid} d)"
+                f" ({tmin_d_valid:.2f} d)"
             )
 
         if timemaxdays is None:
@@ -55,7 +55,7 @@ def plot_spherical(
         elif timemaxdays > tmax_d_valid:
             print(
                 f"WARNING! timemaxdays {timemaxdays} is too late to recieve light from the entire ejecta "
-                f" ({tmin_d_valid} d)"
+                f" ({tmax_d_valid:.2f} d)"
             )
         dfpackets = dfpackets.filter((pl.col("t_arrive_d") >= timemindays) & (pl.col("t_arrive_d") <= timemaxdays))
     assert timemindays is not None
