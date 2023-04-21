@@ -426,7 +426,7 @@ def get_packets_pl(
         pldfpackets = add_packet_directions_lazypolars(modelpath, pldfpackets)
         write_allpkts_parquet = True
 
-    if any(x not in pldfpackets.columns for x in ["costhetabin", "phibin", "phibinuniform"]):
+    if any(x not in pldfpackets.columns for x in ["costhetabin", "phibin"]):
         pldfpackets = bin_packet_directions_lazypolars(modelpath, pldfpackets)
         write_allpkts_parquet = True
 
