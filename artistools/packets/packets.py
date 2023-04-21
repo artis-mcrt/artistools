@@ -545,6 +545,7 @@ def bin_packet_directions_lazypolars(
     dfpackets: pl.LazyFrame,
     nphibins: Optional[int] = None,
     nthetabins: Optional[int] = None,
+    phibintype: Literal["artis_pi_reversal", "monotonic"] = "artis_pi_reversal",
 ) -> pl.LazyFrame:
     if nphibins is None:
         nphibins = at.get_viewingdirection_phibincount()
@@ -556,19 +557,22 @@ def bin_packet_directions_lazypolars(
         ((pl.col("costheta") + 1) / 2.0 * nthetabins).cast(pl.Int32).alias("costhetabin"),
     )
 
-    dfpackets = dfpackets.with_columns(
-        (pl.col("phi") / 2.0 / np.pi * nphibins).cast(pl.Int32).alias("phibinuniform"),
-    )
-
-    dfpackets = dfpackets.with_columns(
-        (
-            pl.when(pl.col("testphi") >= 0)
-            .then(pl.col("cosphi").arccos() / 2.0 / np.pi * nphibins)
-            .otherwise((pl.col("cosphi").arccos() + np.pi) / 2.0 / np.pi * nphibins)
+    if phibintype == "monotonic":
+        dfpackets = dfpackets.with_columns(
+            (pl.col("phi") / 2.0 / np.pi * nphibins).cast(pl.Int32).alias("phibin"),
         )
-        .cast(pl.Int32)
-        .alias("phibin"),
-    )
+    else:
+        # for historical consistency, this binning is not monotonically increasing in phi angle,
+        # but switches to decreasing for phi > pi
+        dfpackets = dfpackets.with_columns(
+            (
+                pl.when(pl.col("testphi") >= 0)
+                .then(pl.col("cosphi").arccos() / 2.0 / np.pi * nphibins)
+                .otherwise((pl.col("cosphi").arccos() + np.pi) / 2.0 / np.pi * nphibins)
+            )
+            .cast(pl.Int32)
+            .alias("phibin"),
+        )
 
     dfpackets = dfpackets.with_columns(
         (pl.col("costhetabin") * nphibins + pl.col("phibin")).alias("dirbin"),
