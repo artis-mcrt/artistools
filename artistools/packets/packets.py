@@ -145,7 +145,7 @@ def add_derived_columns(
 ) -> pd.DataFrame:
     cm_to_km = 1e-5
     day_in_s = 86400
-    if dfpackets.empty:
+    if isinstance(dfpackets, pd.DataFrame) and dfpackets.empty:
         return dfpackets
 
     colnames = at.makelist(colnames)
@@ -167,7 +167,6 @@ def add_derived_columns(
         return at.get_timestep_of_timedays(modelpath, packet.trueem_time / day_in_s)
 
     if "emission_velocity" in colnames:
-        dfpackets = dfpackets.eval("emission_velocity = sqrt(em_posx ** 2 + em_posy ** 2 + em_posz ** 2) / em_time")
         dfpackets["emission_velocity"] = (
             np.sqrt(dfpackets["em_posx"] ** 2 + dfpackets["em_posy"] ** 2 + dfpackets["em_posz"] ** 2)
             / dfpackets["em_time"]
@@ -196,6 +195,20 @@ def add_derived_columns(
     if any(x in colnames for x in ["angle_bin", "dirbin", "costhetabin", "phibin"]):
         dfpackets = bin_packet_directions(modelpath, dfpackets)
 
+    return dfpackets
+
+
+def add_derived_columns_lazy(
+    dfpackets: pl.LazyFrame,
+    colnames: Sequence[str],
+) -> pl.LazyFrame:
+    dfpackets = dfpackets.with_columns(
+        [
+            (
+                (pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2 + pl.col("em_posz") ** 2).sqrt() / pl.col("em_time")
+            ).alias("emission_velocity")
+        ]
+    )
     return dfpackets
 
 

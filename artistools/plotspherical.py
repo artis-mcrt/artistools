@@ -2,6 +2,7 @@
 # PYTHON_ARGCOMPLETE_OK
 import argparse
 from pathlib import Path
+from typing import Literal
 from typing import Optional
 from typing import Union
 
@@ -23,6 +24,8 @@ def plot_spherical(
     maxpacketfiles: Optional[int] = None,
     interpolate: bool = False,
     gaussian_sigma: Optional[int] = None,
+    plotvar: Literal["luminosity", "photvelocityoverc"] = "luminosity",
+    cmap: Optional[str] = None,
 ) -> None:
     _, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=True, printwarningsonly=True)
 
@@ -76,14 +79,32 @@ def plot_spherical(
     dfpackets = at.packets.bin_packet_directions_lazypolars(
         modelpath=modelpath, dfpackets=dfpackets, nphibins=nphibins, nthetabins=ncosthetabins, phibintype="monotonic"
     )
-    dfpackets = dfpackets.groupby("dirbin").agg(pl.col("e_rf").sum())
+    dfpackets = at.packets.add_derived_columns_lazy(dfpackets, colnames=["emission_velocity"])
+    dfpackets = dfpackets.with_columns(pl.col("emission_velocity").mul(1 / 29979245800.0))
+
+    if plotvar == "photvelocityoverc":
+        colorbartitle = r"Photospheric velocity [c]"
+        dfpackets = dfpackets.groupby("dirbin").agg(
+            ((pl.col("emission_velocity") * pl.col("e_rf")).mean() / pl.col("e_rf").mean()).alias("photvelocityoverc")
+        )
+    elif plotvar == "luminosity":
+        colorbartitle = r"$I_{e,\Omega}\cdot4\pi/\Omega$ [erg/s]"
+        dfpackets = dfpackets.groupby("dirbin").agg(pl.col("e_rf").sum())
+        solidanglefactor = nphibins * ncosthetabins
+        dfpackets = dfpackets.with_columns(
+            [
+                (pl.col("e_rf") / nprocs_read * solidanglefactor / (timemaxdays - timemindays) / 86400).alias(
+                    "luminosity"
+                )
+            ]
+        )
+    else:
+        raise AssertionError
 
     alldirbins = pl.DataFrame([pl.Series("dirbin", np.arange(0, nphibins * ncosthetabins), dtype=pl.Int32)])
     alldirbins = alldirbins.join(dfpackets.collect(), how="left", on="dirbin").fill_null(0)
-    e_rf_sumgrid = alldirbins.get_column("e_rf").to_numpy().reshape((ncosthetabins, nphibins))
+    data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
 
-    solidanglefactor = nphibins * ncosthetabins
-    data = e_rf_sumgrid / nprocs_read * solidanglefactor / (timemaxdays - timemindays) / 86400
     # these phi and theta angle ranges are defined differently to artis
     phigrid = np.linspace(-np.pi, np.pi, nphibins + 1, endpoint=True)
 
@@ -91,12 +112,6 @@ def plot_spherical(
     costhetagrid = np.linspace(-1, 1, ncosthetabins + 1, endpoint=True)
     # for Molleweide projection, theta range is [-pi/2, +pi/2]
     thetagrid = np.arccos(costhetagrid) - np.pi / 2
-
-    # cmap = "rainbow"
-    # cmap = "viridis"
-    # cmap = "hot"
-    # cmap = "Blues_r"
-    cmap = None
 
     if gaussian_sigma is not None and gaussian_sigma > 0:
         import scipy.ndimage
@@ -131,7 +146,7 @@ def plot_spherical(
         colormesh = ax.pcolormesh(meshgrid_phi_highres, meshgrid_theta_highres, data_interp, rasterized=True, cmap=cmap)
 
     cbar = fig.colorbar(colormesh)
-    cbar.ax.set_title(r"$I_{e,\Omega}\cdot4\pi/\Omega$ [erg/s]")
+    cbar.ax.set_title(colorbartitle)
 
     # ax.set_xlabel("Azimuthal angle")
     # ax.set_ylabel("Polar angle")
@@ -158,6 +173,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-ncosthetabins", action="store", type=int, default=32, help="Number of polar angle bins")
     parser.add_argument("-maxpacketfiles", type=int, default=None, help="Limit the number of packet files read")
     parser.add_argument("-gaussian_sigma", type=int, default=None, help="Apply Gaussian filter")
+    parser.add_argument(
+        "-plotvar", default="luminosity", choices=["luminosity", "photvelocityoverc"], help="Variable to plot"
+    )
+    parser.add_argument("-cmap", default=None, type=str, help="Matplotlib color map name")
 
     parser.add_argument("--interpolate", action="store_true", help="Interpolate grid to higher resolution")
 
@@ -194,6 +213,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         outputfile=args.outputfile,
         interpolate=args.interpolate,
         gaussian_sigma=args.gaussian_sigma,
+        plotvar=args.plotvar,
+        cmap=args.cmap,
     )
 
 

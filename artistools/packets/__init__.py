@@ -1,5 +1,6 @@
 import artistools as at
 from .packets import add_derived_columns
+from .packets import add_derived_columns_lazy
 from .packets import bin_and_sum
 from .packets import bin_packet_directions
 from .packets import bin_packet_directions_lazypolars
