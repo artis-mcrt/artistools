@@ -85,10 +85,10 @@ def plot_spherical(
     solidanglefactor = nphibins * ncosthetabins
     data = e_rf_sumgrid / nprocs_read * solidanglefactor / (timemaxdays - timemindays) / 86400
     # these phi and theta angle ranges are defined differently to artis
-    phigrid = np.linspace(-np.pi, np.pi, nphibins)
+    phigrid = np.linspace(-np.pi, np.pi, nphibins + 1, endpoint=True)
 
     # costhetabin zero is (0,0,-1) so theta angle
-    costhetagrid = np.linspace(-1, 1, ncosthetabins, endpoint=True)
+    costhetagrid = np.linspace(-1, 1, ncosthetabins + 1, endpoint=True)
     # for Molleweide projection, theta range is [-pi/2, +pi/2]
     thetagrid = np.arccos(costhetagrid) - np.pi / 2
 
