@@ -332,6 +332,9 @@ def readfile_pl(
             ]
         )
 
+    if "true_emission_velocity" in dfpackets.columns:
+        dfpackets = dfpackets.with_columns([pl.col("true_emission_velocity").cast(pl.Float32)])
+
     if write_parquet:
         print(f"Saving {packetsfileparquet}")
         dfpackets = dfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
@@ -413,6 +416,7 @@ def get_packets_pl(
             print(f"Reading from {allescrpktfile_parquet}")
             try:
                 pldfpackets = pl.scan_parquet(allescrpktfile_parquet)
+
             except pl.ArrowError:
                 print(f"Problem with {allescrpktfile_parquet}. Deleting it")
                 allescrpktfile_parquet.unlink(missing_ok=True)
@@ -503,12 +507,7 @@ def add_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.
             ).alias("costheta"),
         )
 
-    if "theta" not in dfpackets.columns:
-        dfpackets = dfpackets.with_columns(
-            pl.col("costheta").arccos().alias("theta"),
-        )
-
-    if any(x not in dfpackets.columns for x in ["cosphi", "testphi", "phi"]):
+    if "phi" not in dfpackets.columns:
         dfpackets = dfpackets.with_columns(
             ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
             ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
@@ -540,7 +539,6 @@ def add_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.
             ).alias("testphi"),
         )
 
-    if "phi" not in dfpackets.columns:
         dfpackets = dfpackets.with_columns(
             (
                 pl.when(pl.col("testphi") >= 0)
@@ -548,6 +546,8 @@ def add_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.
                 .otherwise(pl.col("cosphi").mul(-1.0).arccos() + np.pi)
             ).alias("phi"),
         )
+
+    dfpackets = dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"])
 
     return dfpackets
 
@@ -791,6 +791,7 @@ def bin_and_sum(
 ) -> pl.DataFrame:
     """Bins is a list of lower edges, and the final upper edge."""
     # Polars method
+
     df = df.with_columns(
         [
             (
