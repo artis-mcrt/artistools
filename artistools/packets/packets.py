@@ -15,7 +15,7 @@ import polars as pl
 import artistools as at
 
 # for the parquet files
-time_lastschemachange = (2023, 4, 2, 22, 13, 0)
+time_lastschemachange = (2023, 4, 21, 19, 10, 0)
 
 CLIGHT = 2.99792458e10
 DAY = 86400
@@ -301,8 +301,8 @@ def readfile_pl(
     write_parquet = True  # will be set False if parquet file is read
 
     dfpackets = None
-    if packetsfile == packetsfileparquet and (packetsfileparquet).stat().st_mtime > calendar.timegm(
-        time_lastschemachange
+    if packetsfile == packetsfileparquet and (
+        packetsfileparquet.stat().st_mtime > calendar.timegm(time_lastschemachange)
     ):
         try:
             dfpackets = pl.scan_parquet(packetsfileparquet)
@@ -407,8 +407,8 @@ def get_packets_pl(
     write_allpkts_parquet = False
     pldfpackets = None
     if maxpacketfiles is None and escape_type == "TYPE_RPKT":
-        if allescrpktfile_parquet.is_file() and allescrpktfile_parquet.stat().st_mtime > calendar.timegm(
-            time_lastschemachange
+        if allescrpktfile_parquet.is_file() and (
+            allescrpktfile_parquet.stat().st_mtime > calendar.timegm(time_lastschemachange)
         ):
             print(f"Reading from {allescrpktfile_parquet}")
             try:
@@ -431,13 +431,16 @@ def get_packets_pl(
             rechunk=False,
         )
 
-    if any(x not in pldfpackets.columns for x in ["costheta", "theta", "phi"]):
+    if any(x not in pldfpackets.columns for x in ["costheta", "phi"]):
         pldfpackets = add_packet_directions_lazypolars(modelpath, pldfpackets)
         write_allpkts_parquet = True
 
     if any(x not in pldfpackets.columns for x in ["costhetabin", "phibin"]):
         pldfpackets = bin_packet_directions_lazypolars(modelpath, pldfpackets)
         write_allpkts_parquet = True
+
+    if maxpacketfiles is not None and escape_type != "TYPE_RPKT":
+        write_allpkts_parquet = False
 
     if write_allpkts_parquet and packetsdatasize_gb > 10:
         print(f"Would write to {allescrpktfile_parquet} but the data size is to large ({packetsdatasize_gb:.1f} GB)")
