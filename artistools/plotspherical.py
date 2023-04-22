@@ -126,21 +126,20 @@ def plot_spherical(
         ngridhighres = 1024
         print(f"interpolating onto {ngridhighres}^2 grid")
 
-        phigrid_highres = np.linspace(-np.pi, np.pi, ngridhighres + 1, endpoint=True)
-        thetagrid_highres = np.linspace(-np.pi / 2.0, np.pi / 2.0, ngridhighres + 1, endpoint=True)
-
-        meshgrid_phi_highres_noendpoint, meshgrid_theta_highres_noendpoint = np.meshgrid(
-            phigrid_highres[:-1], thetagrid_highres[:-1]
-        )
-
         from scipy.interpolate import CloughTocher2DInterpolator
 
-        meshgrid_phi_noendpoint, meshgrid_theta_noendpoint = np.meshgrid(phigrid[:-1], thetagrid[:-1])
+        meshgrid_phi_input, meshgrid_theta_input = np.meshgrid(
+            np.linspace(-np.pi, np.pi, nphibins, endpoint=True),
+            np.arccos(np.linspace(-1, 1, ncosthetabins, endpoint=True)) - np.pi / 2,
+        )
         finterp = CloughTocher2DInterpolator(
-            list(zip(meshgrid_phi_noendpoint.flatten(), meshgrid_theta_noendpoint.flatten())), data.flatten()
+            list(zip(meshgrid_phi_input.flatten(), meshgrid_theta_input.flatten())), data.flatten()
         )
 
-        meshgrid_phi_highres, meshgrid_theta_highres = np.meshgrid(phigrid_highres, thetagrid_highres)
+        meshgrid_phi_highres, meshgrid_theta_highres = np.meshgrid(
+            np.linspace(-np.pi, np.pi, ngridhighres + 1, endpoint=True),
+            np.linspace(-np.pi / 2.0, np.pi / 2.0, ngridhighres + 1, endpoint=True),
+        )
         data_interp = finterp(meshgrid_phi_highres, meshgrid_theta_highres)
 
         colormesh = ax.pcolormesh(meshgrid_phi_highres, meshgrid_theta_highres, data_interp, rasterized=True, cmap=cmap)
@@ -167,9 +166,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=Path(),
         help="Path to ARTIS folder",
     )
-    parser.add_argument("-timemin", action="store", type=float, default=None, help="Time minimum [d]")
-    parser.add_argument("-timemax", action="store", type=float, default=None, help="Time maximum [d]")
-    parser.add_argument("-nphibins", action="store", type=int, default=32, help="Number of azimuthal bins")
+    parser.add_argument("-timemin", "-tmin", action="store", type=float, default=None, help="Time minimum [d]")
+    parser.add_argument("-timemax", "-tmax", action="store", type=float, default=None, help="Time maximum [d]")
+    parser.add_argument("-nphibins", action="store", type=int, default=64, help="Number of azimuthal bins")
     parser.add_argument("-ncosthetabins", action="store", type=int, default=32, help="Number of polar angle bins")
     parser.add_argument("-maxpacketfiles", type=int, default=None, help="Limit the number of packet files read")
     parser.add_argument("-gaussian_sigma", type=int, default=None, help="Apply Gaussian filter")
