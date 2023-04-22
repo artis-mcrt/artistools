@@ -365,9 +365,7 @@ def readfile_pl(
     return dfpackets
 
 
-def get_packetsfilepaths(
-    modelpath: Union[str, Path], maxpacketfiles: Optional[int] = None, filter_missing_parquet: bool = False
-) -> list[Path]:
+def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[int] = None) -> list[Path]:
     nprocs = at.get_nprocs(modelpath)
 
     searchfolders = [Path(modelpath, "packets"), Path(modelpath)]
@@ -380,9 +378,7 @@ def get_packetsfilepaths(
         found_rank = False
         for suffix in suffix_priority:
             for folderpath in searchfolders:
-                if (folderpath / name_nosuffix).with_suffix(suffix).is_file() and (
-                    not filter_missing_parquet or suffix != ".out.parquet"
-                ):
+                if (folderpath / name_nosuffix).with_suffix(suffix).is_file():
                     packetsfiles.append((folderpath / name_nosuffix).with_suffix(suffix))
                     found_rank = True
                     break
