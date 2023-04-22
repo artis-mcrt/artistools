@@ -800,11 +800,7 @@ def bin_and_sum(
         .lazy()
         .collect()
         .get_column(bincol)
-        .cut(
-            bins=list(bins),
-            category_label=bincol + "_bin",
-            maintain_order=True,
-        )
+        .cut(bins=list(bins), category_label=bincol + "_bin", maintain_order=True)
         .get_column(bincol + "_bin")
         .cast(pl.Int32)
         - 1  # subtract 1 because the returned index 0 is the bin below the start of the first supplied bin
