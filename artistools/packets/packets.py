@@ -15,7 +15,7 @@ import polars as pl
 import artistools as at
 
 # for the parquet files
-time_lastschemachange = (2023, 4, 21, 19, 10, 0)
+time_lastschemachange = (2023, 4, 22, 8, 57, 0)
 
 CLIGHT = 2.99792458e10
 DAY = 86400
