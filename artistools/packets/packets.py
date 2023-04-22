@@ -270,7 +270,9 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
     if "true_emission_velocity" in dfpackets.columns:
         dfpackets = dfpackets.with_columns([pl.col("true_emission_velocity").cast(pl.Float32)])
 
-    dfpackets = dfpackets.with_columns([pl.col(pl.Int64).cast(pl.Int32)])
+    dfpackets = dfpackets.with_columns(
+        [pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).exclude(["e_rf", "nu_rf"]).cast(pl.Float32)]
+    )
 
     return dfpackets
 
@@ -793,22 +795,21 @@ def bin_and_sum(
 ) -> pl.DataFrame:
     """Bins is a list of lower edges, and the final upper edge."""
     # Polars method
-
-    df = df.with_columns(
-        [
-            df.select(bincol)
-            .lazy()
-            .collect()[bincol]
-            .cut(
-                bins=list(bins),
-                category_label=bincol + "_bin",
-                maintain_order=True,
-            )
-            .get_column(bincol + "_bin")
-            .cast(pl.Int32)
-            - 1  # subtract 1 because the returned index 0 is the bin below the start of the first supplied bin
-        ]
+    binindex = (
+        df.select(bincol)
+        .lazy()
+        .collect()
+        .get_column(bincol)
+        .cut(
+            bins=list(bins),
+            category_label=bincol + "_bin",
+            maintain_order=True,
+        )
+        .get_column(bincol + "_bin")
+        .cast(pl.Int32)
+        - 1  # subtract 1 because the returned index 0 is the bin below the start of the first supplied bin
     )
+    df = df.with_columns([binindex])
 
     if sumcols is not None:
         aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols]
