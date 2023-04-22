@@ -1,8 +1,10 @@
 import calendar
 import gzip
 import math
+import multiprocessing
 from collections.abc import Sequence
 from functools import lru_cache
+from functools import partial
 from pathlib import Path
 from typing import Literal
 from typing import Optional
@@ -15,7 +17,7 @@ import polars as pl
 import artistools as at
 
 # for the parquet files
-time_lastschemachange = (2023, 4, 22, 8, 57, 0)
+time_lastschemachange = (2023, 4, 22, 12, 31, 0)
 
 CLIGHT = 2.99792458e10
 DAY = 86400
@@ -268,10 +270,15 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
         dfpackets = dfpackets.drop(dfpackets.columns[-1])
 
     if "true_emission_velocity" in dfpackets.columns:
+        # some packets don't have this set, which confused read_csv to mark it as str
         dfpackets = dfpackets.with_columns([pl.col("true_emission_velocity").cast(pl.Float32)])
 
+    if "originated_from_positron" in dfpackets.columns:
+        dfpackets = dfpackets.with_columns([pl.col("originated_from_positron").cast(pl.Boolean)])
+
+    # Luke: for some reason, e_rf and e_cmf get turned into all inf when cast from Float64 to Float32
     dfpackets = dfpackets.with_columns(
-        [pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).exclude(["e_rf", "nu_rf"]).cast(pl.Float32)]
+        [pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).exclude(["e_rf", "e_cmf"]).cast(pl.Float32)]
     )
 
     return dfpackets
@@ -288,6 +295,7 @@ def readfile(
 
 def readfile_pl(
     packetsfile: Union[Path, str],
+    modelpath: Union[None, Path, str] = None,
     packet_type: Optional[str] = None,
     escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
 ) -> pl.LazyFrame:
@@ -315,8 +323,6 @@ def readfile_pl(
 
     if dfpackets is None:
         dfpackets = readfile_text(packetsfiletext).lazy()
-
-    if "t_arrive_d" not in dfpackets.columns:
         dfpackets = dfpackets.with_columns(
             [
                 (
@@ -336,11 +342,14 @@ def readfile_pl(
             ]
         )
 
-    if "true_emission_velocity" in dfpackets.columns:
-        dfpackets = dfpackets.with_columns([pl.col("true_emission_velocity").cast(pl.Float32)])
+        if modelpath is not None:
+            dfpackets = add_packet_directions_lazypolars(modelpath, dfpackets)
+            dfpackets = bin_packet_directions_lazypolars(modelpath, dfpackets)
+        else:
+            write_parquet = False
 
     if write_parquet:
-        print(f"Saving {packetsfileparquet}")
+        # print(f"Saving {packetsfileparquet}")
         dfpackets = dfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
         dfpackets.collect().write_parquet(packetsfileparquet, compression="zstd", statistics=True)
         dfpackets = pl.scan_parquet(packetsfileparquet)
@@ -356,7 +365,9 @@ def readfile_pl(
     return dfpackets
 
 
-def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[int] = None) -> list[Path]:
+def get_packetsfilepaths(
+    modelpath: Union[str, Path], maxpacketfiles: Optional[int] = None, filter_missing_parquet: bool = False
+) -> list[Path]:
     nprocs = at.get_nprocs(modelpath)
 
     searchfolders = [Path(modelpath, "packets"), Path(modelpath)]
@@ -368,13 +379,15 @@ def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[i
         name_nosuffix = f"packets00_{rank:04d}"
         found_rank = False
         for suffix in suffix_priority:
-            if found_rank:
-                break
             for folderpath in searchfolders:
-                if (folderpath / name_nosuffix).with_suffix(suffix).is_file():
+                if (folderpath / name_nosuffix).with_suffix(suffix).is_file() and (
+                    not filter_missing_parquet or suffix != ".out.parquet"
+                ):
                     packetsfiles.append((folderpath / name_nosuffix).with_suffix(suffix))
                     found_rank = True
                     break
+            if found_rank:
+                break
 
         if found_rank and rank >= nprocs:
             print(f"WARNING: nprocs is {nprocs} but file {packetsfiles[-1]} exists")
@@ -408,61 +421,19 @@ def get_packets_pl(
 
     nprocs_read = len(packetsfiles)
     packetsdatasize_gb = nprocs_read * Path(packetsfiles[0]).stat().st_size / 1024 / 1024 / 1024
-    print(f" data size is {packetsdatasize_gb:.1f} GB")
-    allescrpktfile_parquet = Path(modelpath) / "packets_rpkt_escaped.parquet"
+    print(f" data size is {packetsdatasize_gb:.1f} GB (size of {packetsfiles[0].parts[-1]} * {nprocs_read})")
 
-    write_allpkts_parquet = False
-    pldfpackets = None
-    if maxpacketfiles is None and escape_type == "TYPE_RPKT":
-        if allescrpktfile_parquet.is_file() and (
-            allescrpktfile_parquet.stat().st_mtime > calendar.timegm(time_lastschemachange)
-        ):
-            print(f"Reading from {allescrpktfile_parquet}")
-            try:
-                pldfpackets = pl.scan_parquet(allescrpktfile_parquet)
+    fworker = partial(at.packets.readfile_pl, packet_type=packet_type, escape_type=escape_type, modelpath=modelpath)
+    with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
+        allfiles = pool.map(fworker, packetsfiles)
+        pool.close()
+        pool.join()
 
-            except pl.ArrowError:
-                print(f"Problem with {allescrpktfile_parquet}. Deleting it")
-                allescrpktfile_parquet.unlink(missing_ok=True)
-                write_allpkts_parquet = True
-
-        else:
-            write_allpkts_parquet = True
-
-    if pldfpackets is None:
-        pldfpackets = pl.concat(
-            [
-                at.packets.readfile_pl(packetsfile, packet_type=packet_type, escape_type=escape_type)
-                for packetsfile in packetsfiles
-            ],
-            how="vertical",
-            rechunk=False,
-        )
-
-    if any(x not in pldfpackets.columns for x in ["costheta", "phi"]):
-        pldfpackets = add_packet_directions_lazypolars(modelpath, pldfpackets)
-        write_allpkts_parquet = True
-
-    if any(x not in pldfpackets.columns for x in ["costhetabin", "phibin"]):
-        pldfpackets = bin_packet_directions_lazypolars(modelpath, pldfpackets)
-        write_allpkts_parquet = True
-
-    if maxpacketfiles is not None and escape_type != "TYPE_RPKT":
-        write_allpkts_parquet = False
-
-    if write_allpkts_parquet and packetsdatasize_gb > 10:
-        print(f"Would write to {allescrpktfile_parquet} but the data size is to large ({packetsdatasize_gb:.1f} GB)")
-        write_allpkts_parquet = False
-
-    if write_allpkts_parquet and maxpacketfiles is None:
-        print(f"Saving {allescrpktfile_parquet}")
-        # pldfpackets = pldfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
-        pldfpackets.collect(streaming=True).write_parquet(
-            allescrpktfile_parquet,
-            compression="zstd",
-            row_group_size=1024 * 1024,
-            statistics=True,
-        )
+    pldfpackets = pl.concat(
+        allfiles,
+        how="vertical",
+        rechunk=False,
+    )
 
     return nprocs_read, pldfpackets
 
@@ -801,6 +772,7 @@ def bin_and_sum(
 ) -> pl.DataFrame:
     """Bins is a list of lower edges, and the final upper edge."""
     # Polars method
+
     binindex = (
         df.select(bincol)
         .lazy()
