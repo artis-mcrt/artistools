@@ -508,7 +508,9 @@ def add_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.
             (
                 (pl.col("dirx") * syn_dir[0] + pl.col("diry") * syn_dir[1] + pl.col("dirz") * syn_dir[2])
                 / pl.col("dirmag")
-            ).alias("costheta"),
+            )
+            .cast(pl.Float32)
+            .alias("costheta"),
         )
 
     if "phi" not in dfpackets.columns:
@@ -523,7 +525,9 @@ def add_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.
                 (pl.col("vec1_x") * vec2[0] + pl.col("vec1_y") * vec2[1] + pl.col("vec1_z") * vec2[2])
                 / (pl.col("vec1_x") ** 2 + pl.col("vec1_y") ** 2 + pl.col("vec1_z") ** 2).sqrt()
                 / float(np.linalg.norm(vec2))
-            ).alias("cosphi"),
+            )
+            .cast(pl.Float32)
+            .alias("cosphi"),
         )
 
         # vec1 = dir cross syn_dir
@@ -548,7 +552,9 @@ def add_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.
                 pl.when(pl.col("testphi") >= 0)
                 .then(pl.col("cosphi").arccos())
                 .otherwise(pl.col("cosphi").mul(-1.0).arccos() + np.pi)
-            ).alias("phi"),
+            )
+            .cast(pl.Float32)
+            .alias("phi"),
         )
 
     dfpackets = dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"])
