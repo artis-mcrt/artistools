@@ -328,7 +328,9 @@ def readfile_pl(
                         / 29979245800.0
                     )
                     / 86400.0
-                ).alias("t_arrive_d"),
+                )
+                .cast(pl.Float32)
+                .alias("t_arrive_d"),
             ]
         )
 
