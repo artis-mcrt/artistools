@@ -15,7 +15,7 @@ import polars as pl
 import artistools as at
 
 # for the parquet files
-time_lastschemachange = (2023, 4, 21, 19, 10, 0)
+time_lastschemachange = (2023, 4, 2, 22, 13, 0)
 
 CLIGHT = 2.99792458e10
 DAY = 86400
@@ -270,7 +270,7 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
     if "true_emission_velocity" in dfpackets.columns:
         dfpackets = dfpackets.with_columns([pl.col("true_emission_velocity").cast(pl.Float32)])
 
-    dfpackets = dfpackets.with_columns([pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).cast(pl.Float32)])
+    dfpackets = dfpackets.with_columns([pl.col(pl.Int64).cast(pl.Int32)])
 
     return dfpackets
 
@@ -301,8 +301,8 @@ def readfile_pl(
     write_parquet = True  # will be set False if parquet file is read
 
     dfpackets = None
-    if packetsfile == packetsfileparquet and (
-        packetsfileparquet.stat().st_mtime > calendar.timegm(time_lastschemachange)
+    if packetsfile == packetsfileparquet and (packetsfileparquet).stat().st_mtime > calendar.timegm(
+        time_lastschemachange
     ):
         try:
             dfpackets = pl.scan_parquet(packetsfileparquet)
@@ -328,14 +328,9 @@ def readfile_pl(
                         / 29979245800.0
                     )
                     / 86400.0
-                )
-                .cast(pl.Float32)
-                .alias("t_arrive_d"),
+                ).alias("t_arrive_d"),
             ]
         )
-
-    if "true_emission_velocity" in dfpackets.columns:
-        dfpackets = dfpackets.with_columns([pl.col("true_emission_velocity").cast(pl.Float32)])
 
     if write_parquet:
         print(f"Saving {packetsfileparquet}")
@@ -412,13 +407,12 @@ def get_packets_pl(
     write_allpkts_parquet = False
     pldfpackets = None
     if maxpacketfiles is None and escape_type == "TYPE_RPKT":
-        if allescrpktfile_parquet.is_file() and (
-            allescrpktfile_parquet.stat().st_mtime > calendar.timegm(time_lastschemachange)
+        if allescrpktfile_parquet.is_file() and allescrpktfile_parquet.stat().st_mtime > calendar.timegm(
+            time_lastschemachange
         ):
             print(f"Reading from {allescrpktfile_parquet}")
             try:
                 pldfpackets = pl.scan_parquet(allescrpktfile_parquet)
-
             except pl.ArrowError:
                 print(f"Problem with {allescrpktfile_parquet}. Deleting it")
                 allescrpktfile_parquet.unlink(missing_ok=True)
@@ -437,7 +431,7 @@ def get_packets_pl(
             rechunk=False,
         )
 
-    if any(x not in pldfpackets.columns for x in ["costheta", "phi"]):
+    if any(x not in pldfpackets.columns for x in ["costheta", "theta", "phi"]):
         pldfpackets = add_packet_directions_lazypolars(modelpath, pldfpackets)
         write_allpkts_parquet = True
 
@@ -445,18 +439,14 @@ def get_packets_pl(
         pldfpackets = bin_packet_directions_lazypolars(modelpath, pldfpackets)
         write_allpkts_parquet = True
 
-    if maxpacketfiles is not None and escape_type != "TYPE_RPKT":
-        write_allpkts_parquet = False
-
     if write_allpkts_parquet and packetsdatasize_gb > 10:
         print(f"Would write to {allescrpktfile_parquet} but the data size is to large ({packetsdatasize_gb:.1f} GB)")
         write_allpkts_parquet = False
 
     if write_allpkts_parquet and maxpacketfiles is None:
-        pldfpackets = pldfpackets.with_columns([pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).cast(pl.Float32)])
         print(f"Saving {allescrpktfile_parquet}")
         # pldfpackets = pldfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
-        pldfpackets.collect(streaming=False).write_parquet(
+        pldfpackets.collect(streaming=True).write_parquet(
             allescrpktfile_parquet,
             compression="zstd",
             row_group_size=1024 * 1024,
@@ -510,7 +500,12 @@ def add_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.
             ).alias("costheta"),
         )
 
-    if "phi" not in dfpackets.columns:
+    if "theta" not in dfpackets.columns:
+        dfpackets = dfpackets.with_columns(
+            pl.col("costheta").arccos().alias("theta"),
+        )
+
+    if any(x not in dfpackets.columns for x in ["cosphi", "testphi", "phi"]):
         dfpackets = dfpackets.with_columns(
             ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
             ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
@@ -542,6 +537,7 @@ def add_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.
             ).alias("testphi"),
         )
 
+    if "phi" not in dfpackets.columns:
         dfpackets = dfpackets.with_columns(
             (
                 pl.when(pl.col("testphi") >= 0)
@@ -549,8 +545,6 @@ def add_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.
                 .otherwise(pl.col("cosphi").mul(-1.0).arccos() + np.pi)
             ).alias("phi"),
         )
-
-    dfpackets = dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"])
 
     return dfpackets
 
@@ -794,7 +788,6 @@ def bin_and_sum(
 ) -> pl.DataFrame:
     """Bins is a list of lower edges, and the final upper edge."""
     # Polars method
-
     df = df.with_columns(
         [
             (
