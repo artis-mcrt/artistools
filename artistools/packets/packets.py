@@ -513,10 +513,9 @@ def add_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.
 
         # arr_testphi = np.dot(arr_vec1, vec3)
         dfpackets = dfpackets.with_columns(
-            (
-                (pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2])
-                / pl.col("dirmag")
-            ).alias("testphi"),
+            ((pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2]) / pl.col("dirmag"))
+            .cast(pl.Float32)
+            .alias("testphi"),
         )
 
         dfpackets = dfpackets.with_columns(
@@ -548,12 +547,12 @@ def bin_packet_directions_lazypolars(
         nthetabins = at.get_viewingdirection_costhetabincount()
 
     dfpackets = dfpackets.with_columns(
-        ((pl.col("costheta") + 1) / 2.0 * nthetabins).cast(pl.Int32).alias("costhetabin"),
+        ((pl.col("costheta") + 1) / 2.0 * nthetabins).fill_nan(0.0).cast(pl.Int32).alias("costhetabin"),
     )
 
     if phibintype == "monotonic":
         dfpackets = dfpackets.with_columns(
-            (pl.col("phi") / 2.0 / np.pi * nphibins).cast(pl.Int32).alias("phibin"),
+            (pl.col("phi") / 2.0 / np.pi * nphibins).fill_nan(0.0).cast(pl.Int32).alias("phibin"),
         )
     else:
         # for historical consistency, this binning is not monotonically increasing in phi angle,
@@ -564,6 +563,7 @@ def bin_packet_directions_lazypolars(
                 .then(pl.col("cosphi").arccos() / 2.0 / np.pi * nphibins)
                 .otherwise((pl.col("cosphi").arccos() + np.pi) / 2.0 / np.pi * nphibins)
             )
+            .fill_nan(0.0)
             .cast(pl.Int32)
             .alias("phibin"),
         )
