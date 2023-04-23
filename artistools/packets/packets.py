@@ -569,7 +569,7 @@ def bin_packet_directions_lazypolars(
         )
 
     dfpackets = dfpackets.with_columns(
-        (pl.col("costhetabin") * nphibins + pl.col("phibin")).alias("dirbin"),
+        (pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"),
     )
 
     return dfpackets
