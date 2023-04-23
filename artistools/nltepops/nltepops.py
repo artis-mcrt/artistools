@@ -214,7 +214,7 @@ def read_files(
         dfquery_full += f"({dfquery})"
 
     if get_config()["num_processes"] > 1:
-        with multiprocessing.Pool(processes=get_config()["num_processes"]) as pool:
+        with multiprocessing.get_context("fork").Pool(processes=get_config()["num_processes"]) as pool:
             arr_dfnltepop = pool.map(
                 partial(read_file_filtered, strquery=dfquery_full, dfqueryvars=dfqueryvars), nltefilepaths
             )
