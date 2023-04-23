@@ -7,10 +7,11 @@ on:
 
 jobs:
     pytest:
+        timeout-minutes: 10
         runs-on: ${{ matrix.os }}
         strategy:
             matrix:
-                # os: [ubuntu-latest, macos-latest]
+        # os: [ubuntu-latest, macos-latest]
                 os: [ubuntu-latest]
                 python-version: ['3.9', '3.10', '3.11']
         env:
@@ -58,10 +59,10 @@ jobs:
               with:
                   token: ${{ secrets.CODECOV_TOKEN }}
                   files: ./coverage.xml
-                  # directory: ./coverage/reports/
+          # directory: ./coverage/reports/
                   flags: unittests
                   env_vars: OS,PYTHON
                   name: codecov-umbrella
                   fail_ci_if_error: true
-                  # path_to_write_report: ./coverage/codecov_report.txt
+          # path_to_write_report: ./coverage/codecov_report.txt
                   verbose: true
