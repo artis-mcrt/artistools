@@ -416,7 +416,7 @@ def get_packets_pl(
         if packet_type is None:
             packet_type = "TYPE_ESCAPE"
 
-    packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
+    packetsfiles = get_packetsfilepaths(modelpath, maxpacketfiles)
 
     nprocs_read = len(packetsfiles)
     packetsdatasize_gb = nprocs_read * Path(packetsfiles[0]).stat().st_size / 1024 / 1024 / 1024
