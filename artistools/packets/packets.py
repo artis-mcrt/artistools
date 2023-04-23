@@ -365,7 +365,9 @@ def readfile_pl(
     return dfpackets
 
 
-def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[int] = None) -> list[Path]:
+def get_packetsfilepaths(
+    modelpath: Union[str, Path], maxpacketfiles: Optional[int] = None, printwarningsonly: bool = False
+) -> list[Path]:
     nprocs = at.get_nprocs(modelpath)
 
     searchfolders = [Path(modelpath, "packets"), Path(modelpath)]
@@ -394,10 +396,11 @@ def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[i
         if maxpacketfiles is not None and len(packetsfiles) >= maxpacketfiles:
             break
 
-    if maxpacketfiles is not None and nprocs > maxpacketfiles:
-        print(f"Reading from the first {maxpacketfiles} of {nprocs} packets files")
-    else:
-        print(f"Reading from {len(packetsfiles)} packets files")
+    if not printwarningsonly:
+        if maxpacketfiles is not None and nprocs > maxpacketfiles:
+            print(f"Reading from the first {maxpacketfiles} of {nprocs} packets files")
+        else:
+            print(f"Reading from {len(packetsfiles)} packets files")
 
     return packetsfiles
 
