@@ -422,6 +422,8 @@ def get_packets_pl(
     print(f" data size is {packetsdatasize_gb:.1f} GB (size of {packetsfiles[0].parts[-1]} * {nprocs_read})")
 
     fworker = partial(at.packets.readfile_pl, packet_type=packet_type, escape_type=escape_type, modelpath=modelpath)
+    # import multiprocessing
+
     # with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
     #     allfiles = pool.map(fworker, packetsfiles)
     #     pool.close()
