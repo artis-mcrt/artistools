@@ -2,7 +2,6 @@
 # PYTHON_ARGCOMPLETE_OK
 import argparse
 from pathlib import Path
-from typing import Literal
 from typing import Optional
 from typing import Union
 
@@ -22,9 +21,11 @@ def plot_spherical(
     ncosthetabins: int,
     outputfile: Union[Path, str],
     maxpacketfiles: Optional[int] = None,
+    atomic_number: Optional[int] = None,
+    ion_stage: Optional[int] = None,
     interpolate: bool = False,
     gaussian_sigma: Optional[int] = None,
-    plotvars: Optional[list[Literal["luminosity", "emvelocityoverc", "emlosvelocityoverc"]]] = None,
+    plotvars: Optional[list[str]] = None,
     cmap: Optional[str] = None,
 ) -> None:
     if plotvars is None:
@@ -47,7 +48,7 @@ def plot_spherical(
         )
     else:
         if timemindays is None:
-            print(f"setting timemin to start of valid observable range {tmin_d_valid:.2f} d")
+            print(f"setting timemindays to start of valid observable range {tmin_d_valid:.2f} d")
             timemindays = tmin_d_valid
         elif timemindays < tmin_d_valid:
             print(
@@ -56,7 +57,7 @@ def plot_spherical(
             )
 
         if timemaxdays is None:
-            print(f"setting timemin to end of valid observable range {tmax_d_valid:.2f} d")
+            print(f"setting timemaxdays to end of valid observable range {tmax_d_valid:.2f} d")
             timemaxdays = tmax_d_valid
         elif timemaxdays > tmax_d_valid:
             print(
@@ -87,6 +88,7 @@ def plot_spherical(
         modelpath=modelpath, dfpackets=dfpackets, nphibins=nphibins, nthetabins=ncosthetabins, phibintype="monotonic"
     )
 
+    solidanglefactor = nphibins * ncosthetabins
     aggs = []
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets)
     if "emvelocityoverc" in plotvars:
@@ -104,12 +106,22 @@ def plot_spherical(
         )
 
     if "luminosity" in plotvars:
-        solidanglefactor = nphibins * ncosthetabins
         aggs.append(
             (pl.col("e_rf").sum() / nprocs_read * solidanglefactor / (timemaxdays - timemindays) / 86400).alias(
                 "luminosity"
             )
         )
+
+    if atomic_number is not None or ion_stage is not None:
+        dflinelist = at.get_linelist_pldf(modelpath)
+        if atomic_number is not None:
+            print(f"Including only packets emitted by Z={atomic_number} {at.get_elsymbol(atomic_number)}")
+            dflinelist = dflinelist.filter(pl.col("atomic_number") == atomic_number)
+        if ion_stage is not None:
+            print(f"Including only packets emitted by ionisation stage {ion_stage}")
+            dflinelist = dflinelist.filter(pl.col("ion_stage") == ion_stage)
+
+        dfpackets = dfpackets.filter(pl.col("emissiontype").is_in(dflinelist.get_column("lineindex")))
 
     dfpackets = dfpackets.groupby("dirbin").agg(aggs)
 
@@ -203,7 +215,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=["luminosity", "emvelocityoverc", "emlosvelocityoverc"],
         choices=["luminosity", "emvelocityoverc", "emlosvelocityoverc"],
         nargs="+",
-        help="Variable to plot",
+        help="Variable to plot: luminosity, emvelocityoverc, emlosvelocityoverc",
+    )
+    parser.add_argument("-elem", type=str, default=None, help="Filter emitted packets by element of last emission")
+    parser.add_argument(
+        "-atomic_number", type=int, default=None, help="Filter emitted packets by element of last emission"
+    )
+    parser.add_argument(
+        "-ion_stage", type=int, default=None, help="Filter emitted packets by ionistion stage of last emission"
     )
     parser.add_argument("-cmap", default=None, type=str, help="Matplotlib color map name")
 
@@ -232,6 +251,10 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     if not args.modelpath:
         args.modelpath = ["."]
 
+    if args.elem is not None:
+        assert args.atomic_number is None
+        args.atomic_number = at.get_atomic_number(args.elem)
+
     plot_spherical(
         modelpath=args.modelpath,
         timemindays=args.timemin,
@@ -242,6 +265,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         outputfile=args.outputfile,
         interpolate=args.interpolate,
         gaussian_sigma=args.gaussian_sigma,
+        atomic_number=args.atomic_number,
+        ion_stage=args.ion_stage,
         plotvars=args.plotvars,
         cmap=args.cmap,
     )

@@ -887,7 +887,8 @@ def read_linestatfile(
 ) -> tuple[int, list[float], list[int], list[int], list[int], list[int]]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     print(f"Loading {filepath}")
-    data = np.loadtxt(filepath)
+
+    data = np.loadtxt(zopen(filepath))
     lambda_angstroms = data[0] * 1e8
     nlines = len(lambda_angstroms)
 
@@ -905,6 +906,27 @@ def read_linestatfile(
     assert len(lower_levels) == nlines
 
     return nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
+
+
+def get_linelist_pldf(modelpath: Union[Path, str]) -> pl.DataFrame:
+    nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
+        Path(modelpath, "linestat.out")
+    )
+    pldf = (
+        pl.DataFrame(
+            {
+                "lambda_angstroms": lambda_angstroms,
+                "atomic_number": atomic_numbers,
+                "ion_stage": ion_stages,
+                "upper_level": upper_levels,
+                "lower_level": lower_levels,
+            },
+        )
+        # .with_columns(pl.col(pl.Int64).cast(pl.Int32))
+        .with_row_count(name="lineindex")
+    )
+
+    return pldf
 
 
 def get_linelist_dict(modelpath: Union[Path, str]) -> dict[int, linetuple]:

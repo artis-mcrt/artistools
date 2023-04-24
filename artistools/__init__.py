@@ -58,6 +58,7 @@ from .misc import get_inputparams
 from .misc import get_ionstring
 from .misc import get_linelist_dataframe
 from .misc import get_linelist_dict
+from .misc import get_linelist_pldf
 from .misc import get_model_name
 from .misc import get_mpiranklist
 from .misc import get_mpirankofcell
