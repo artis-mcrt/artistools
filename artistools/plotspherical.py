@@ -130,22 +130,20 @@ def plot_spherical(
     aggs.append(pl.count())
 
     dfpackets = dfpackets.groupby(["costhetabin", "phibin"]).agg(aggs)
+    dfpackets = dfpackets.select(["costhetabin", "phibin", "count", *plotvars])
 
+    ndirbins = nphibins * ncosthetabins
+    alldirbins = pl.DataFrame(
+        {"phibin": (d % nphibins for d in range(ndirbins)), "costhetabin": (d // nphibins for d in range(ndirbins))}
+    ).with_columns(pl.all().cast(pl.Int32))
     alldirbins = (
-        dfpackets.select(["costhetabin", "phibin", "count", *plotvars])
-        .join(
-            pl.DataFrame({"phibin": range(nphibins)}).with_columns(pl.all().cast(pl.Int32)).lazy(),
-            how="outer",
-            on=["phibin"],
-        )
-        .join(
-            pl.DataFrame({"costhetabin": range(ncosthetabins)}).with_columns(pl.all().cast(pl.Int32)).lazy(),
-            how="outer",
-            on=["costhetabin"],
+        alldirbins.join(
+            dfpackets.collect(),
+            how="left",
+            on=["costhetabin", "phibin"],
         )
         .fill_null(0)
         .sort(["costhetabin", "phibin"])
-        .collect()
     )
 
     print(f'total packets contributed: {alldirbins.select("count").sum().to_numpy()[0][0]:.1e}')
