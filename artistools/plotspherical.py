@@ -121,7 +121,8 @@ def plot_spherical(
             print(f"Including only packets emitted by ionisation stage {ion_stage}")
             dflinelist = dflinelist.filter(pl.col("ion_stage") == ion_stage)
 
-        dfpackets = dfpackets.filter(pl.col("emissiontype").is_in(dflinelist.get_column("lineindex")))
+        selected_emtypes = dflinelist.select("lineindex").collect().get_column("lineindex")
+        dfpackets = dfpackets.filter(pl.col("emissiontype").is_in(selected_emtypes))
 
     dfpackets = dfpackets.groupby("dirbin").agg(aggs)
 

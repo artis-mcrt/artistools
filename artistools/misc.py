@@ -908,25 +908,31 @@ def read_linestatfile(
     return nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
 
 
-def get_linelist_pldf(modelpath: Union[Path, str]) -> pl.DataFrame:
-    nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
-        Path(modelpath, "linestat.out")
-    )
-    pldf = (
-        pl.DataFrame(
-            {
-                "lambda_angstroms": lambda_angstroms,
-                "atomic_number": atomic_numbers,
-                "ion_stage": ion_stages,
-                "upper_level": upper_levels,
-                "lower_level": lower_levels,
-            },
-        )
-        # .with_columns(pl.col(pl.Int64).cast(pl.Int32))
-        .with_row_count(name="lineindex")
-    )
+def get_linelist_pldf(modelpath: Union[Path, str]) -> pl.LazyFrame:
+    textfile = at.firstexisting("linestat.out", folder=modelpath)
+    parquetfile = Path(modelpath, "linelist.out.parquet")
+    if not parquetfile.is_file() or parquetfile.stat().st_mtime < textfile.stat().st_mtime:
+        _, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
 
-    return pldf
+        pldf = (
+            pl.DataFrame(
+                {
+                    "lambda_angstroms": lambda_angstroms,
+                    "atomic_number": atomic_numbers,
+                    "ion_stage": ion_stages,
+                    "upper_level": upper_levels,
+                    "lower_level": lower_levels,
+                },
+            )
+            # .with_columns(pl.col(pl.Int64).cast(pl.Int32))
+            .with_row_count(name="lineindex")
+        )
+        pldf.write_parquet(parquetfile, compression="zstd")
+        print(f"Saved {parquetfile}")
+    else:
+        print(f"Reading {parquetfile}")
+
+    return pl.scan_parquet(parquetfile)
 
 
 def get_linelist_dict(modelpath: Union[Path, str]) -> dict[int, linetuple]:
