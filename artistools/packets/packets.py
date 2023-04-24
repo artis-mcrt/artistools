@@ -550,17 +550,17 @@ def bin_packet_directions_lazypolars(
     modelpath: Union[Path, str],
     dfpackets: pl.LazyFrame,
     nphibins: Optional[int] = None,
-    nthetabins: Optional[int] = None,
+    ncosthetabins: Optional[int] = None,
     phibintype: Literal["artis_pi_reversal", "monotonic"] = "artis_pi_reversal",
 ) -> pl.LazyFrame:
     if nphibins is None:
         nphibins = at.get_viewingdirection_phibincount()
 
-    if nthetabins is None:
-        nthetabins = at.get_viewingdirection_costhetabincount()
+    if ncosthetabins is None:
+        ncosthetabins = at.get_viewingdirection_costhetabincount()
 
     dfpackets = dfpackets.with_columns(
-        ((pl.col("costheta") + 1) / 2.0 * nthetabins).fill_nan(0.0).cast(pl.Int32).alias("costhetabin"),
+        ((pl.col("costheta") + 1) / 2.0 * ncosthetabins).fill_nan(0.0).cast(pl.Int32).alias("costhetabin"),
     )
 
     if phibintype == "monotonic":
