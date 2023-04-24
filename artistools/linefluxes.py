@@ -7,6 +7,8 @@ import multiprocessing
 from collections import namedtuple
 from functools import partial
 from pathlib import Path
+from typing import Optional
+from typing import Union
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -193,23 +195,23 @@ def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=N
 
 def get_closelines(
     modelpath,
-    atomic_number,
-    ion_stage,
-    approxlambda,
-    lambdamin=-1,
-    lambdamax=-1,
-    lowerlevelindex=-1,
-    upperlevelindex=-1,
+    atomic_number: int,
+    ion_stage: int,
+    approxlambdalabel: Union[str, int],
+    lambdamin: Optional[float] = None,
+    lambdamax: Optional[float] = None,
+    lowerlevelindex: Optional[int] = None,
+    upperlevelindex: Optional[int] = None,
 ):
     dflinelist = at.get_linelist_dataframe(modelpath)
     dflinelistclosematches = dflinelist.query("atomic_number == @atomic_number and ionstage == @ion_stage").copy()
-    if lambdamin > 0:
+    if lambdamin is not None:
         dflinelistclosematches = dflinelistclosematches.query("@lambdamin < lambda_angstroms")
-    if lambdamax > 0:
+    if lambdamax is not None:
         dflinelistclosematches = dflinelistclosematches.query("@lambdamax > lambda_angstroms")
-    if lowerlevelindex >= 0:
+    if lowerlevelindex is not None:
         dflinelistclosematches = dflinelistclosematches.query("lowerlevelindex==@lowerlevelindex")
-    if upperlevelindex >= 0:
+    if upperlevelindex is not None:
         dflinelistclosematches = dflinelistclosematches.query("upperlevelindex==@upperlevelindex")
     # print(dflinelistclosematches)
 
@@ -218,13 +220,13 @@ def get_closelines(
     lowerlevelindicies = tuple(dflinelistclosematches.lowerlevelindex.to_numpy())
     lowestlambda = dflinelistclosematches.lambda_angstroms.min()
     highestlamba = dflinelistclosematches.lambda_angstroms.max()
-    colname = f"flux_{at.get_ionstring(atomic_number, ion_stage, nospace=True)}_{approxlambda}"
-    featurelabel = f"{at.get_ionstring(atomic_number, ion_stage)} {approxlambda} Å"
+    colname = f"flux_{at.get_ionstring(atomic_number, ion_stage, nospace=True)}_{approxlambdalabel}"
+    featurelabel = f"{at.get_ionstring(atomic_number, ion_stage)} {approxlambdalabel} Å"
 
     return (
         colname,
         featurelabel,
-        approxlambda,
+        approxlambdalabel,
         linelistindices,
         lowestlambda,
         highestlamba,
