@@ -127,11 +127,13 @@ def plot_spherical(
         selected_emtypes = dflinelist.select("lineindex").collect().get_column("lineindex")
         dfpackets = dfpackets.filter(pl.col("emissiontype").is_in(selected_emtypes))
 
+    aggs.append(pl.count())
     dfpackets = dfpackets.groupby("dirbin").agg(aggs)
 
     alldirbins = pl.DataFrame([pl.Series("dirbin", np.arange(0, nphibins * ncosthetabins), dtype=pl.Int32)])
-    dfpackets = dfpackets.select(["dirbin", *plotvars])
+    dfpackets = dfpackets.select(["dirbin", "count", *plotvars])
     alldirbins = alldirbins.join(dfpackets.collect(), how="left", on="dirbin").fill_null(0)
+    print(f'total packets contributed: {alldirbins.select("count").sum().to_numpy()[0][0]:.1e}')
 
     for ax, plotvar in zip(axes, plotvars):
         data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
