@@ -131,32 +131,37 @@ def plot_spherical(
 
     dfpackets = dfpackets.groupby(["costhetabin", "phibin"]).agg(aggs)
 
-    dirbins = range(nphibins * ncosthetabins)
-
-    alldirbins = pl.DataFrame(
-        {"costhetabin": [d // nphibins for d in dirbins], "phibin": [d % nphibins for d in dirbins]},
-        infer_schema_length=0,
-    ).with_columns(pl.all().cast(pl.Int32))
-
-    dfpackets = dfpackets.select(["costhetabin", "phibin", "count", *plotvars])
     alldirbins = (
-        alldirbins.join(dfpackets.collect(), how="left", on=["costhetabin", "phibin"])
+        dfpackets.select(["costhetabin", "phibin", "count", *plotvars])
+        .join(
+            pl.DataFrame({"phibin": range(nphibins)}).with_columns(pl.all().cast(pl.Int32)).lazy(),
+            how="outer",
+            on=["phibin"],
+        )
+        .join(
+            pl.DataFrame({"costhetabin": range(ncosthetabins)}).with_columns(pl.all().cast(pl.Int32)).lazy(),
+            how="outer",
+            on=["costhetabin"],
+        )
         .fill_null(0)
         .sort(["costhetabin", "phibin"])
+        .collect()
     )
 
     print(f'total packets contributed: {alldirbins.select("count").sum().to_numpy()[0][0]:.1e}')
 
+    # these phi and theta angle ranges are defined differently to artis
+    phigrid = np.linspace(-np.pi, np.pi, nphibins + 1, endpoint=True)
+
+    # costhetabin zero is (0,0,-1) so theta angle
+    costhetagrid = np.linspace(-1, 1, ncosthetabins + 1, endpoint=True)
+    # for Molleweide projection, theta range is [-pi/2, +pi/2]
+    thetagrid = np.arccos(costhetagrid) - np.pi / 2
+
+    meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
+
     for ax, plotvar in zip(axes, plotvars):
         data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
-
-        # these phi and theta angle ranges are defined differently to artis
-        phigrid = np.linspace(-np.pi, np.pi, nphibins + 1, endpoint=True)
-
-        # costhetabin zero is (0,0,-1) so theta angle
-        costhetagrid = np.linspace(-1, 1, ncosthetabins + 1, endpoint=True)
-        # for Molleweide projection, theta range is [-pi/2, +pi/2]
-        thetagrid = np.arccos(costhetagrid) - np.pi / 2
 
         if gaussian_sigma is not None and gaussian_sigma > 0:
             import scipy.ndimage
@@ -164,7 +169,6 @@ def plot_spherical(
             sigma_bins = gaussian_sigma / 360 * nphibins
             data = scipy.ndimage.gaussian_filter(data, sigma=sigma_bins, mode="wrap")
 
-        meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
         if not interpolate:
             colormesh = ax.pcolormesh(meshgrid_phi, meshgrid_theta, data, rasterized=True, cmap=cmap)
         else:
