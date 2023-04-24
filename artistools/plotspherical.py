@@ -24,9 +24,12 @@ def plot_spherical(
     maxpacketfiles: Optional[int] = None,
     interpolate: bool = False,
     gaussian_sigma: Optional[int] = None,
-    plotvars: Literal["luminosity", "emvelocityoverc"] = "luminosity",
+    plotvars: Optional[list[Literal["luminosity", "emvelocityoverc", "emlosvelocityoverc"]]] = None,
     cmap: Optional[str] = None,
 ) -> None:
+    if plotvars is None:
+        plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc"]
+
     _, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=True, printwarningsonly=True)
 
     dfpackets: Union[pl.LazyFrame, pl.DataFrame]
