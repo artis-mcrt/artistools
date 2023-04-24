@@ -198,10 +198,9 @@ def add_derived_columns(
     return dfpackets
 
 
-def add_derived_columns_lazy(
-    dfpackets: pl.LazyFrame,
-    colnames: Sequence[str],
-) -> pl.LazyFrame:
+def add_derived_columns_lazy(dfpackets: pl.LazyFrame) -> pl.LazyFrame:
+    # we might as well add everything, since the columns only get calculated when they are actually used
+
     dfpackets = dfpackets.with_columns(
         [
             (
@@ -209,6 +208,20 @@ def add_derived_columns_lazy(
             ).alias("emission_velocity")
         ]
     )
+
+    dfpackets = dfpackets.with_columns(
+        [
+            (
+                (
+                    (pl.col("em_posx") * pl.col("dirx")) ** 2
+                    + (pl.col("em_posy") * pl.col("diry")) ** 2
+                    + (pl.col("em_posz") * pl.col("dirz")) ** 2
+                ).sqrt()
+                / pl.col("em_time")
+            ).alias("emission_velocity_lineofsight")
+        ]
+    )
+
     return dfpackets
 
 

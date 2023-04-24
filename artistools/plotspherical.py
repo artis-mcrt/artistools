@@ -24,7 +24,7 @@ def plot_spherical(
     maxpacketfiles: Optional[int] = None,
     interpolate: bool = False,
     gaussian_sigma: Optional[int] = None,
-    plotvar: Literal["luminosity", "photvelocityoverc"] = "luminosity",
+    plotvars: Literal["luminosity", "emvelocityoverc"] = "luminosity",
     cmap: Optional[str] = None,
 ) -> None:
     _, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=True, printwarningsonly=True)
@@ -61,16 +61,20 @@ def plot_spherical(
                 f" ({tmax_d_valid:.2f} d)"
             )
         dfpackets = dfpackets.filter((pl.col("t_arrive_d") >= timemindays) & (pl.col("t_arrive_d") <= timemaxdays))
+
     assert timemindays is not None
     assert timemaxdays is not None
 
-    fig, ax = plt.subplots(
+    fig, axes = plt.subplots(
         1,
-        1,
-        figsize=(8, 4),
+        len(plotvars),
+        figsize=(4 * len(plotvars), 3),
         subplot_kw={"projection": "mollweide"},
-        tight_layout={"pad": 0.1, "w_pad": 0.0, "h_pad": 0.0},
+        tight_layout={"pad": 0.1, "w_pad": 1.5, "h_pad": 0.0},
     )
+
+    if len(plotvars) == 1:
+        axes = [axes]
 
     # phi definition (with syn_dir=[0 0 1])
     # x=math.cos(-phi)
@@ -79,80 +83,99 @@ def plot_spherical(
     dfpackets = at.packets.bin_packet_directions_lazypolars(
         modelpath=modelpath, dfpackets=dfpackets, nphibins=nphibins, nthetabins=ncosthetabins, phibintype="monotonic"
     )
-    dfpackets = at.packets.add_derived_columns_lazy(dfpackets, colnames=["emission_velocity"])
-    dfpackets = dfpackets.with_columns(pl.col("emission_velocity").mul(1 / 29979245800.0))
 
-    if plotvar == "photvelocityoverc":
-        colorbartitle = r"Photospheric velocity [c]"
-        dfpackets = dfpackets.groupby("dirbin").agg(
-            ((pl.col("emission_velocity") * pl.col("e_rf")).mean() / pl.col("e_rf").mean()).alias("photvelocityoverc")
+    aggs = []
+    dfpackets = at.packets.add_derived_columns_lazy(dfpackets)
+    if "emvelocityoverc" in plotvars:
+        aggs.append(
+            ((pl.col("emission_velocity") * pl.col("e_rf")).mean() / pl.col("e_rf").mean() / 29979245800).alias(
+                "emvelocityoverc"
+            )
         )
-    elif plotvar == "luminosity":
-        colorbartitle = r"$I_{e,\Omega}\cdot4\pi/\Omega$ [erg/s]"
-        dfpackets = dfpackets.groupby("dirbin").agg(pl.col("e_rf").sum())
+
+    if "emlosvelocityoverc" in plotvars:
+        aggs.append(
+            (
+                (pl.col("emission_velocity_lineofsight") * pl.col("e_rf")).mean() / pl.col("e_rf").mean() / 29979245800
+            ).alias("emlosvelocityoverc")
+        )
+
+    if "luminosity" in plotvars:
         solidanglefactor = nphibins * ncosthetabins
-        dfpackets = dfpackets.with_columns(
-            [
-                (pl.col("e_rf") / nprocs_read * solidanglefactor / (timemaxdays - timemindays) / 86400).alias(
-                    "luminosity"
-                )
-            ]
+        aggs.append(
+            (pl.col("e_rf").sum() / nprocs_read * solidanglefactor / (timemaxdays - timemindays) / 86400).alias(
+                "luminosity"
+            )
         )
-    else:
-        raise AssertionError
+
+    dfpackets = dfpackets.groupby("dirbin").agg(aggs)
 
     alldirbins = pl.DataFrame([pl.Series("dirbin", np.arange(0, nphibins * ncosthetabins), dtype=pl.Int32)])
+    dfpackets = dfpackets.select(["dirbin", *plotvars])
     alldirbins = alldirbins.join(dfpackets.collect(), how="left", on="dirbin").fill_null(0)
-    data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
 
-    # these phi and theta angle ranges are defined differently to artis
-    phigrid = np.linspace(-np.pi, np.pi, nphibins + 1, endpoint=True)
+    for ax, plotvar in zip(axes, plotvars):
+        data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
 
-    # costhetabin zero is (0,0,-1) so theta angle
-    costhetagrid = np.linspace(-1, 1, ncosthetabins + 1, endpoint=True)
-    # for Molleweide projection, theta range is [-pi/2, +pi/2]
-    thetagrid = np.arccos(costhetagrid) - np.pi / 2
+        # these phi and theta angle ranges are defined differently to artis
+        phigrid = np.linspace(-np.pi, np.pi, nphibins + 1, endpoint=True)
 
-    if gaussian_sigma is not None and gaussian_sigma > 0:
-        import scipy.ndimage
+        # costhetabin zero is (0,0,-1) so theta angle
+        costhetagrid = np.linspace(-1, 1, ncosthetabins + 1, endpoint=True)
+        # for Molleweide projection, theta range is [-pi/2, +pi/2]
+        thetagrid = np.arccos(costhetagrid) - np.pi / 2
 
-        sigma_bins = gaussian_sigma / 360 * nphibins
-        data = scipy.ndimage.gaussian_filter(data, sigma=sigma_bins, mode="wrap")
+        if gaussian_sigma is not None and gaussian_sigma > 0:
+            import scipy.ndimage
 
-    meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
-    if not interpolate:
-        colormesh = ax.pcolormesh(meshgrid_phi, meshgrid_theta, data, rasterized=True, cmap=cmap)
-    else:
-        ngridhighres = 1024
-        print(f"interpolating onto {ngridhighres}^2 grid")
+            sigma_bins = gaussian_sigma / 360 * nphibins
+            data = scipy.ndimage.gaussian_filter(data, sigma=sigma_bins, mode="wrap")
 
-        from scipy.interpolate import CloughTocher2DInterpolator
+        meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
+        if not interpolate:
+            colormesh = ax.pcolormesh(meshgrid_phi, meshgrid_theta, data, rasterized=True, cmap=cmap)
+        else:
+            ngridhighres = 1024
+            print(f"interpolating onto {ngridhighres}^2 grid")
 
-        meshgrid_phi_input, meshgrid_theta_input = np.meshgrid(
-            np.linspace(-np.pi, np.pi, nphibins, endpoint=True),
-            np.arccos(np.linspace(-1, 1, ncosthetabins, endpoint=True)) - np.pi / 2,
-        )
-        finterp = CloughTocher2DInterpolator(
-            list(zip(meshgrid_phi_input.flatten(), meshgrid_theta_input.flatten())), data.flatten()
-        )
+            from scipy.interpolate import CloughTocher2DInterpolator
 
-        meshgrid_phi_highres, meshgrid_theta_highres = np.meshgrid(
-            np.linspace(-np.pi, np.pi, ngridhighres + 1, endpoint=True),
-            np.linspace(-np.pi / 2.0, np.pi / 2.0, ngridhighres + 1, endpoint=True),
-        )
-        data_interp = finterp(meshgrid_phi_highres, meshgrid_theta_highres)
+            meshgrid_phi_input, meshgrid_theta_input = np.meshgrid(
+                np.linspace(-np.pi, np.pi, nphibins, endpoint=True),
+                np.arccos(np.linspace(-1, 1, ncosthetabins, endpoint=True)) - np.pi / 2,
+            )
+            finterp = CloughTocher2DInterpolator(
+                list(zip(meshgrid_phi_input.flatten(), meshgrid_theta_input.flatten())), data.flatten()
+            )
 
-        colormesh = ax.pcolormesh(meshgrid_phi_highres, meshgrid_theta_highres, data_interp, rasterized=True, cmap=cmap)
+            meshgrid_phi_highres, meshgrid_theta_highres = np.meshgrid(
+                np.linspace(-np.pi, np.pi, ngridhighres + 1, endpoint=True),
+                np.linspace(-np.pi / 2.0, np.pi / 2.0, ngridhighres + 1, endpoint=True),
+            )
+            data_interp = finterp(meshgrid_phi_highres, meshgrid_theta_highres)
 
-    cbar = fig.colorbar(colormesh)
-    cbar.ax.set_title(colorbartitle)
+            colormesh = ax.pcolormesh(
+                meshgrid_phi_highres, meshgrid_theta_highres, data_interp, rasterized=True, cmap=cmap
+            )
 
-    # ax.set_xlabel("Azimuthal angle")
-    # ax.set_ylabel("Polar angle")
-    # ax.tick_params(colors="white", axis="x", which="both")
-    ax.set_xticklabels([])
-    ax.set_yticklabels([])
-    # ax.grid(True)
+        if plotvar == "emvelocityoverc":
+            colorbartitle = r"Mean radial velocity [c]"
+        elif plotvar == "emlosvelocityoverc":
+            colorbartitle = r"Mean line of sight velocity [c]"
+        elif plotvar == "luminosity":
+            colorbartitle = r"$I_{e,\Omega}\cdot4\pi/\Omega$ [erg/s]"
+        else:
+            raise AssertionError
+
+        cbar = fig.colorbar(colormesh, location="bottom")
+        cbar.ax.set_title(colorbartitle)
+
+        # ax.set_xlabel("Azimuthal angle")
+        # ax.set_ylabel("Polar angle")
+        # ax.tick_params(colors="white", axis="x", which="both")
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        # ax.grid(True)
 
     fig.savefig(outputfile)
     print(f"Saved {outputfile}")
@@ -173,7 +196,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-maxpacketfiles", type=int, default=None, help="Limit the number of packet files read")
     parser.add_argument("-gaussian_sigma", type=int, default=None, help="Apply Gaussian filter")
     parser.add_argument(
-        "-plotvar", default="luminosity", choices=["luminosity", "photvelocityoverc"], help="Variable to plot"
+        "-plotvars",
+        default=["luminosity", "emvelocityoverc", "emlosvelocityoverc"],
+        choices=["luminosity", "emvelocityoverc", "emlosvelocityoverc"],
+        nargs="+",
+        help="Variable to plot",
     )
     parser.add_argument("-cmap", default=None, type=str, help="Matplotlib color map name")
 
@@ -212,7 +239,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         outputfile=args.outputfile,
         interpolate=args.interpolate,
         gaussian_sigma=args.gaussian_sigma,
-        plotvar=args.plotvar,
+        plotvars=args.plotvars,
         cmap=args.cmap,
     )
 
