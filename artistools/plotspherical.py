@@ -88,6 +88,9 @@ def plot_spherical(
         modelpath=modelpath, dfpackets=dfpackets, nphibins=nphibins, nthetabins=ncosthetabins, phibintype="monotonic"
     )
 
+    # for figuring out where the axes are on the plot, make a cut
+    # dfpackets = dfpackets.filter(pl.col("dirz") < -0.9)
+
     solidanglefactor = nphibins * ncosthetabins
     aggs = []
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets)
@@ -175,7 +178,7 @@ def plot_spherical(
             )
 
         if plotvar == "emvelocityoverc":
-            colorbartitle = r"Mean radial velocity [c]"
+            colorbartitle = r"Last interaction ejecta velocity [c]"
         elif plotvar == "emlosvelocityoverc":
             colorbartitle = r"Mean line of sight velocity [c]"
         elif plotvar == "luminosity":
@@ -185,6 +188,7 @@ def plot_spherical(
 
         cbar = fig.colorbar(colormesh, location="bottom")
         cbar.ax.set_title(colorbartitle)
+        cbar.outline.set_linewidth(0)
 
         # ax.set_xlabel("Azimuthal angle")
         # ax.set_ylabel("Polar angle")
@@ -192,10 +196,10 @@ def plot_spherical(
         ax.set_xticklabels([])
         ax.set_yticklabels([])
         # ax.grid(True)
+        ax.axis("off")
 
     fig.savefig(outputfile)
     print(f"Saved {outputfile}")
-    # plt.show()
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
