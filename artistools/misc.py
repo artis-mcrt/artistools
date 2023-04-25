@@ -309,13 +309,14 @@ def get_wid_init_at_tmodel(
     return wid_init
 
 
-def get_syn_dir(modelpath: Path) -> Sequence[int]:
+def get_syn_dir(modelpath: Path) -> tuple[float, float, float]:
     if not (modelpath / "syn_dir.txt").is_file():
         print(f"{modelpath / 'syn_dir.txt'} does not exist. using x,y,z = 0,0,1")
-        return (0, 0, 1)
+        return (0.0, 0.0, 1.0)
 
     with open(modelpath / "syn_dir.txt") as syn_dir_file:
-        syn_dir = [int(x) for x in syn_dir_file.readline().split()]
+        x, y, z = (float(i) for i in syn_dir_file.readline().split())
+        syn_dir = (x, y, z)
 
     return syn_dir
 

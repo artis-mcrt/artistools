@@ -331,17 +331,14 @@ def convert_text_to_parquet(
         ]
     )
 
-    modelpath = None
+    syn_dir = (0.0, 0.0, 1.0)
     for p in packetsfiletext.parents:
         if Path(p, "syn_dir.txt").is_file():
-            modelpath = p
+            syn_dir = at.get_syn_dir(p)
             break
 
-    if modelpath is None:
-        raise FileNotFoundError
-
-    dfpackets = add_packet_directions_lazypolars(modelpath, dfpackets)
-    dfpackets = bin_packet_directions_lazypolars(modelpath, dfpackets)
+    dfpackets = add_packet_directions_lazypolars(dfpackets, syn_dir)
+    dfpackets = bin_packet_directions_lazypolars(dfpackets)
 
     # print(f"Saving {packetsfileparquet}")
     dfpackets = dfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
@@ -497,8 +494,8 @@ def get_directionbin(
     return (costhetabin * nphibins) + phibin
 
 
-def add_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.LazyFrame) -> pl.LazyFrame:
-    syn_dir = at.get_syn_dir(Path(modelpath))
+def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame, syn_dir: tuple[float, float, float]) -> pl.LazyFrame:
+    assert len(syn_dir) == 3
     xhat = np.array([1.0, 0.0, 0.0])
     vec2 = np.cross(xhat, syn_dir)
 
@@ -566,7 +563,6 @@ def add_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.
 
 
 def bin_packet_directions_lazypolars(
-    modelpath: Union[Path, str],
     dfpackets: pl.LazyFrame,
     nphibins: Optional[int] = None,
     ncosthetabins: Optional[int] = None,
