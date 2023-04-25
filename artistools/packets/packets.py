@@ -1,9 +1,9 @@
 import calendar
 import gzip
 import math
+import multiprocessing as mp
 from collections.abc import Sequence
 from functools import lru_cache
-from functools import partial
 from pathlib import Path
 from typing import Literal
 from typing import Optional
@@ -305,13 +305,9 @@ def readfile(
     return readfile_pl(packetsfile, packet_type=packet_type, escape_type=escape_type).collect().to_pandas()
 
 
-def readfile_pl(
+def ensure_valid_parquet(
     packetsfile: Union[Path, str],
-    modelpath: Union[None, Path, str] = None,
-    packet_type: Optional[str] = None,
-    escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
-) -> pl.LazyFrame:
-    """Read a packets file into a Polars LazyFrame from either a parquet file or a text file (and save .parquet)."""
+) -> Path:
     packetsfile = Path(packetsfile)
     packetsfileparquet = at.stripallsuffixes(packetsfile).with_suffix(".out.parquet")
     packetsfiletext = (
@@ -320,51 +316,60 @@ def readfile_pl(
         else at.firstexisting([at.stripallsuffixes(packetsfile).with_suffix(".out")], tryzipped=True)
     )
 
-    write_parquet = True  # will be set False if parquet file is read
+    if packetsfile == packetsfileparquet:
+        if packetsfileparquet.stat().st_mtime > calendar.timegm(time_lastschemachange):
+            return packetsfileparquet
 
-    dfpackets = None
-    if packetsfile == packetsfileparquet and (
-        packetsfileparquet.stat().st_mtime > calendar.timegm(time_lastschemachange)
-    ):
-        try:
-            dfpackets = pl.scan_parquet(packetsfileparquet)
-            write_parquet = False
-        except Exception as exc:
-            print(exc)
-            print(f"Error occured in file {packetsfile}. Reading from text version.")
+        print(f"{packetsfile} is out of date.")
 
-    if dfpackets is None:
-        dfpackets = readfile_text(packetsfiletext).lazy()
-        dfpackets = dfpackets.with_columns(
-            [
+    dfpackets = readfile_text(packetsfiletext).lazy()
+    dfpackets = dfpackets.with_columns(
+        [
+            (
                 (
-                    (
-                        pl.col("escape_time")
-                        - (
-                            pl.col("posx") * pl.col("dirx")
-                            + pl.col("posy") * pl.col("diry")
-                            + pl.col("posz") * pl.col("dirz")
-                        )
-                        / 29979245800.0
+                    pl.col("escape_time")
+                    - (
+                        pl.col("posx") * pl.col("dirx")
+                        + pl.col("posy") * pl.col("diry")
+                        + pl.col("posz") * pl.col("dirz")
                     )
-                    / 86400.0
+                    / 29979245800.0
                 )
-                .cast(pl.Float32)
-                .alias("t_arrive_d"),
-            ]
-        )
+                / 86400.0
+            )
+            .cast(pl.Float32)
+            .alias("t_arrive_d"),
+        ]
+    )
 
-        if modelpath is not None:
-            dfpackets = add_packet_directions_lazypolars(modelpath, dfpackets)
-            dfpackets = bin_packet_directions_lazypolars(modelpath, dfpackets)
-        else:
-            write_parquet = False
+    for p in packetsfile.parents:
+        if Path(p, "syn_dir.txt").is_file():
+            modelpath = p
+            break
 
-    if write_parquet:
-        # print(f"Saving {packetsfileparquet}")
-        dfpackets = dfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
-        dfpackets.collect().write_parquet(packetsfileparquet, compression="zstd", statistics=True)
-        dfpackets = pl.scan_parquet(packetsfileparquet)
+    if modelpath is None:
+        raise FileNotFoundError
+
+    dfpackets = add_packet_directions_lazypolars(modelpath, dfpackets)
+    dfpackets = bin_packet_directions_lazypolars(modelpath, dfpackets)
+
+    # print(f"Saving {packetsfileparquet}")
+    dfpackets = dfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
+    dfpackets.collect().write_parquet(packetsfileparquet, compression="zstd", statistics=True)
+
+    return packetsfileparquet
+
+
+def readfile_pl(
+    packetsfile: Union[Path, str],
+    modelpath: Union[None, Path, str] = None,
+    packet_type: Optional[str] = None,
+    escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
+) -> pl.LazyFrame:
+    """Read a packets file into a Polars LazyFrame from either a parquet file or a text file (and save .parquet)."""
+    packetsfileparquet = ensure_valid_parquet(packetsfile)
+
+    dfpackets = pl.scan_parquet(packetsfileparquet)
 
     if escape_type is not None:
         assert packet_type is None or packet_type == "TYPE_ESCAPE"
@@ -434,20 +439,23 @@ def get_packets_pl(
     packetsdatasize_gb = nprocs_read * Path(packetsfiles[0]).stat().st_size / 1024 / 1024 / 1024
     print(f" data size is {packetsdatasize_gb:.1f} GB (size of {packetsfiles[0].parts[-1]} * {nprocs_read})")
 
-    fworker = partial(at.packets.readfile_pl, packet_type=packet_type, escape_type=escape_type, modelpath=modelpath)
-    # import multiprocessing
-
-    # with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
-    #     allfiles = pool.map(fworker, packetsfiles)
-    #     pool.close()
-    #     pool.join()
-    allfiles = (fworker(packetsfile) for packetsfile in packetsfiles)
+    with mp.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
+        parquetpacketsfiles = pool.imap_unordered(ensure_valid_parquet, packetsfiles)
+        pool.close()
+        pool.join()
 
     pldfpackets = pl.concat(
-        allfiles,
+        (pl.scan_parquet(packetsfile) for packetsfile in parquetpacketsfiles),
         how="vertical",
-        rechunk=False,
     )
+
+    if escape_type is not None:
+        assert packet_type is None or packet_type == "TYPE_ESCAPE"
+        dfpackets = pldfpackets.filter(
+            (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
+        )
+    elif packet_type is not None and packet_type:
+        pldfpackets = pldfpackets.filter(pl.col("type_id") == type_ids[packet_type])
 
     return nprocs_read, pldfpackets
 
