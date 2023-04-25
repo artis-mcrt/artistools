@@ -469,7 +469,7 @@ def get_packets_pl(
 
 
 def get_directionbin(
-    dirx: float, diry: float, dirz: float, nphibins: int, ncosthetabins: int, syn_dir: Sequence[float]
+    dirx: float, diry: float, dirz: float, nphibins: int, ncosthetabins: int, syn_dir: tuple[float, float, float]
 ) -> int:
     dirmag = np.sqrt(dirx**2 + diry**2 + dirz**2)
     pkt_dir = [dirx / dirmag, diry / dirmag, dirz / dirmag]
