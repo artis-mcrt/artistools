@@ -305,7 +305,7 @@ def readfile(
     return readfile_pl(packetsfile, packet_type=packet_type, escape_type=escape_type).collect().to_pandas()
 
 
-def ensure_valid_parquet(
+def get_valid_parquet_packetsfile(
     packetsfile: Union[Path, str],
 ) -> Path:
     packetsfile = Path(packetsfile)
@@ -367,7 +367,7 @@ def readfile_pl(
     escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
 ) -> pl.LazyFrame:
     """Read a packets file into a Polars LazyFrame from either a parquet file or a text file (and save .parquet)."""
-    packetsfileparquet = ensure_valid_parquet(packetsfile)
+    packetsfileparquet = get_valid_parquet_packetsfile(packetsfile)
 
     dfpackets = pl.scan_parquet(packetsfileparquet)
 
@@ -441,7 +441,7 @@ def get_packets_pl(
     print(f" data size is {packetsdatasize_gb:.1f} GB (size of {packetsfiles[0].parts[-1]} * {nprocs_read})")
 
     with mp.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
-        parquetpacketsfiles = pool.imap_unordered(ensure_valid_parquet, packetsfiles)
+        parquetpacketsfiles = pool.imap_unordered(get_valid_parquet_packetsfile, packetsfiles)
         pool.close()
         pool.join()
 
