@@ -814,12 +814,14 @@ def get_flux_contributions_from_packets(
     ) -> str:
         if emtype >= 0:
             line = linelist[emtype]
+
             if groupby == "line":
                 return (
                     f"{at.get_ionstring(line.atomic_number, line.ionstage)} "
                     f"λ{line.lambda_angstroms:.0f} "
                     f"({line.upperlevelindex}-{line.lowerlevelindex})"
                 )
+
             if groupby == "terms":
                 upper_config = (
                     adata.query("Z == @line.atomic_number and ion_stage == @line.ionstage", inplace=False)
@@ -836,6 +838,7 @@ def get_flux_contributions_from_packets(
                 )
                 lower_term_noj = lower_config.split("_")[-1].split("[")[0]
                 return f"{at.get_ionstring(line.atomic_number, line.ionstage)} {upper_term_noj}->{lower_term_noj}"
+
             if groupby == "upperterm":
                 upper_config = (
                     adata.query("Z == @line.atomic_number and ion_stage == @line.ionstage", inplace=False)
@@ -845,7 +848,9 @@ def get_flux_contributions_from_packets(
                 )
                 upper_term_noj = upper_config.split("_")[-1].split("[")[0]
                 return f"{at.get_ionstring(line.atomic_number, line.ionstage)} {upper_term_noj}"
+
             return f"{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound"
+
         if emtype == -9999999:
             return "free-free"
 
@@ -855,6 +860,7 @@ def get_flux_contributions_from_packets(
             if groupby == "line":
                 return f"{at.get_ionstring(atomic_number, ionstage)} bound-free {level}"
             return f"{at.get_ionstring(atomic_number, ionstage)} bound-free"
+
         return f"? bound-free (bfindex={bfindex})"
 
     def get_absprocesslabel(linelist: dict[int, at.linetuple], abstype: int) -> str:
