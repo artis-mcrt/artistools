@@ -316,7 +316,7 @@ def readfile_pl(
     packetsfileparquet = at.stripallsuffixes(packetsfile).with_suffix(".out.parquet")
     packetsfiletext = (
         packetsfile
-        if packetsfile.suffixes in [[".out"], [".out", ".gz"], [".out", ".xz"], [".out", ".lz4"]]
+        if packetsfile.suffixes in [[".out"], [".out", ".gz"], [".out", ".xz"], [".out", ".lz4"], [".out", ".zst"]]
         else at.firstexisting([at.stripallsuffixes(packetsfile).with_suffix(".out")], tryzipped=True)
     )
 
