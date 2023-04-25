@@ -130,7 +130,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args=None, argsraw=None, **kwargs):
     if args is None:
         parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter, description="Make 1D model from cone in 3D model."
+            formatter_class=at.CustomArgHelpFormatter, description="Plot durations from log files."
         )
         addargs(parser)
         parser.set_defaults(**kwargs)
