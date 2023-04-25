@@ -100,5 +100,7 @@ def test_transitions() -> None:
     at.transitions.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
 
 
-def write_comparisondata() -> None:
-    at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=outputpath, selected_timesteps=range(99))
+def test_write_comparisondata() -> None:
+    at.writecomparisondata.main(
+        argsraw=[], modelpath=modelpath, outputpath=outputpath, selected_timesteps=list(range(99))
+    )

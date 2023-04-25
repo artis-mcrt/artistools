@@ -120,7 +120,7 @@ def write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnone
             pathfileout.unlink()
 
 
-def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, outputpath):
+def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, outputpath) -> None:
     times = at.get_timestep_times_float(modelpath)
     modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath)
     with open(Path(outputpath, f"phys_{model_id}_artisnebular.txt"), "w") as f:
@@ -201,6 +201,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     for modelpath in modelpathlist:
         model_id = str(modelpath.name).split("_")[0]
+        print(f"{model_id=}")
 
         modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath)
         estimators = at.estimators.read_estimators(modelpath=modelpath)
