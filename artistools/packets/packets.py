@@ -305,22 +305,11 @@ def readfile(
     return readfile_pl(packetsfile, packet_type=packet_type, escape_type=escape_type).collect().to_pandas()
 
 
-def get_valid_parquet_packetsfile(
-    packetsfile: Union[Path, str],
+def convert_text_to_parquet(
+    packetsfiletext: Union[Path, str],
 ) -> Path:
-    packetsfile = Path(packetsfile)
-    packetsfileparquet = at.stripallsuffixes(packetsfile).with_suffix(".out.parquet")
-    packetsfiletext = (
-        packetsfile
-        if packetsfile.suffixes in [[".out"], [".out", ".gz"], [".out", ".xz"], [".out", ".lz4"], [".out", ".zst"]]
-        else at.firstexisting([at.stripallsuffixes(packetsfile).with_suffix(".out")], tryzipped=True)
-    )
-
-    if packetsfile == packetsfileparquet:
-        if packetsfileparquet.stat().st_mtime > calendar.timegm(time_lastschemachange):
-            return packetsfileparquet
-
-        print(f"{packetsfile} is out of date.")
+    packetsfiletext = Path(packetsfiletext)
+    packetsfileparquet = at.stripallsuffixes(packetsfiletext).with_suffix(".out.parquet")
 
     dfpackets = readfile_text(packetsfiletext).lazy()
     dfpackets = dfpackets.with_columns(
@@ -342,7 +331,7 @@ def get_valid_parquet_packetsfile(
         ]
     )
 
-    for p in packetsfile.parents:
+    for p in packetsfiletext.parents:
         if Path(p, "syn_dir.txt").is_file():
             modelpath = p
             break
@@ -367,9 +356,7 @@ def readfile_pl(
     escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
 ) -> pl.LazyFrame:
     """Read a packets file into a Polars LazyFrame from either a parquet file or a text file (and save .parquet)."""
-    packetsfileparquet = get_valid_parquet_packetsfile(packetsfile)
-
-    dfpackets = pl.scan_parquet(packetsfileparquet)
+    dfpackets = pl.scan_parquet(packetsfile)
 
     if escape_type is not None:
         assert packet_type is None or packet_type == "TYPE_ESCAPE"
@@ -389,38 +376,65 @@ def get_packetsfilepaths(
 
     searchfolders = [Path(modelpath, "packets"), Path(modelpath)]
     # in descending priority (based on speed of reading)
-    suffix_priority = [".out.parquet", ".out.zst", ".out.lz4", ".out.zst", ".out", ".out.gz", ".out.xz"]
-    packetsfiles = []
+    suffix_priority = [".out.zst", ".out.lz4", ".out.zst", ".out", ".out.gz", ".out.xz"]
+    t_lastschemachange = calendar.timegm(time_lastschemachange)
+
+    parquetpacketsfiles = []
+    parquetrequiredfiles = []
 
     for rank in range(nprocs + 1):
         name_nosuffix = f"packets00_{rank:04d}"
         found_rank = False
-        for suffix in suffix_priority:
-            for folderpath in searchfolders:
-                filepath = (folderpath / name_nosuffix).with_suffix(suffix)
-                if filepath.is_file():
-                    packetsfiles.append(filepath)
+
+        for folderpath in searchfolders:
+            filepath = (folderpath / name_nosuffix).with_suffix(".out.parquet")
+            if filepath.is_file():
+                if filepath.stat().st_mtime < t_lastschemachange:
+                    filepath.unlink(missing_ok=True)
+                    print(f"{filepath} is out of date.")
+                else:
+                    if rank < nprocs:
+                        parquetpacketsfiles.append(filepath)
                     found_rank = True
+
+        if not found_rank:
+            for suffix in suffix_priority:
+                for folderpath in searchfolders:
+                    filepath = (folderpath / name_nosuffix).with_suffix(suffix)
+                    if filepath.is_file():
+                        if rank < nprocs:
+                            parquetrequiredfiles.append(filepath)
+                        found_rank = True
+                        break
+
+                if found_rank:
                     break
-            if found_rank:
-                break
 
         if found_rank and rank >= nprocs:
-            print(f"WARNING: nprocs is {nprocs} but file {packetsfiles[-1]} exists")
-            packetsfiles = packetsfiles[:-1]
+            print(f"WARNING: nprocs is {nprocs} but file {filepath} exists")
         elif not found_rank and rank < nprocs:
             print(f"WARNING: packets file for rank {rank} was not found.")
 
-        if maxpacketfiles is not None and len(packetsfiles) >= maxpacketfiles:
+        if maxpacketfiles is not None and (len(parquetpacketsfiles) + len(parquetrequiredfiles)) >= maxpacketfiles:
             break
+
+    if len(parquetrequiredfiles) >= 20:
+        with mp.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
+            convertedparquetpacketsfiles = pool.map(convert_text_to_parquet, parquetrequiredfiles)
+            pool.close()
+            pool.join()
+    else:
+        convertedparquetpacketsfiles = [convert_text_to_parquet(p) for p in parquetrequiredfiles]
+
+    parquetpacketsfiles += list(convertedparquetpacketsfiles)
 
     if not printwarningsonly:
         if maxpacketfiles is not None and nprocs > maxpacketfiles:
             print(f"Reading from the first {maxpacketfiles} of {nprocs} packets files")
         else:
-            print(f"Reading from {len(packetsfiles)} packets files")
+            print(f"Reading from {len(parquetpacketsfiles)} packets files")
 
-    return packetsfiles
+    return parquetpacketsfiles
 
 
 def get_packets_pl(
@@ -440,13 +454,8 @@ def get_packets_pl(
     packetsdatasize_gb = nprocs_read * Path(packetsfiles[0]).stat().st_size / 1024 / 1024 / 1024
     print(f" data size is {packetsdatasize_gb:.1f} GB (size of {packetsfiles[0].parts[-1]} * {nprocs_read})")
 
-    with mp.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
-        parquetpacketsfiles = pool.imap_unordered(get_valid_parquet_packetsfile, packetsfiles)
-        pool.close()
-        pool.join()
-
     pldfpackets = pl.concat(
-        (pl.scan_parquet(packetsfile) for packetsfile in parquetpacketsfiles),
+        (pl.scan_parquet(packetsfile) for packetsfile in packetsfiles),
         how="vertical",
     )
 
