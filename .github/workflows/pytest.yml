@@ -11,7 +11,7 @@ jobs:
         runs-on: ${{ matrix.os }}
         strategy:
             matrix:
-        # os: [ubuntu-latest, macos-latest]
+                # os: [ubuntu-latest, macos-latest]
                 os: [ubuntu-latest]
                 python-version: ['3.9', '3.10', '3.11']
         env:
@@ -51,18 +51,20 @@ jobs:
               run: source ./setuptestdata.sh
 
             - name: Test with pytest
-              run: |
-                  pytest --cov=./ --cov-report=xml --durations=0
+              run: pytest --cov=./ --cov-report=xml --durations=0
+
+            - name: Report coverage
+              run: coverage report
 
             - name: Upload coverage to Codecov
               uses: codecov/codecov-action@v3
               with:
                   token: ${{ secrets.CODECOV_TOKEN }}
                   files: ./coverage.xml
-          # directory: ./coverage/reports/
+                  # directory: ./coverage/reports/
                   flags: unittests
                   env_vars: OS,PYTHON
                   name: codecov-umbrella
                   fail_ci_if_error: true
-          # path_to_write_report: ./coverage/codecov_report.txt
+                  # path_to_write_report: ./coverage/codecov_report.txt
                   verbose: true
