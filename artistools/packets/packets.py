@@ -288,7 +288,7 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
     if "originated_from_positron" in dfpackets.columns:
         dfpackets = dfpackets.with_columns([pl.col("originated_from_positron").cast(pl.Boolean)])
 
-    # Luke: for some reason, e_rf and e_cmf get turned into all inf when cast from Float64 to Float32
+    # Luke: packet energies in ergs can be huge (>1e39) which is too large for Float32
     dfpackets = dfpackets.with_columns(
         [pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).exclude(["e_rf", "e_cmf"]).cast(pl.Float32)]
     )
