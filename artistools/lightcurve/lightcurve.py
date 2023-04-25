@@ -133,11 +133,15 @@ def get_from_packets(
             sumcols=["e_rf"],
         )
 
-        arr_lum = (
-            dftimebinned["e_rf_sum"] / nprocs_read * solidanglefactor * (u.erg / u.day).to("solLum")
-        ) / arr_timedelta
+        unitfactor = float((u.erg / u.day).to("solLum"))
+        dftimebinned = dftimebinned.with_columns(
+            [
+                pl.Series(name="time", values=tmidarray),
+                ((pl.col("e_rf_sum") / nprocs_read * solidanglefactor * unitfactor) / arr_timedelta).alias("lum"),
+            ]
+        ).drop(["e_rf_sum", "t_arrive_d_bin"])
 
-        lcdata[dirbin] = pl.DataFrame({"time": tmidarray, "lum": arr_lum})
+        lcdata[dirbin] = dftimebinned
 
         if get_cmf_column:
             dftimebinned_cmf = at.packets.bin_and_sum(
