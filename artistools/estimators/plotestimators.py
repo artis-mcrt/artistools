@@ -6,7 +6,6 @@ Examples are temperatures, populations, heating/cooling rates.
 """
 import argparse
 import math
-import multiprocessing
 import os
 import sys
 from pathlib import Path
@@ -1091,5 +1090,4 @@ def main(args=None, argsraw=None, **kwargs):
 
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
     main()

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import argparse
 import glob
-import multiprocessing
 import os.path
 import sys
 
@@ -168,5 +167,4 @@ def read_files(files, modelgridindex=None, timestepmin=None, timestepmax=None, a
 
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
     sys.exit(main())

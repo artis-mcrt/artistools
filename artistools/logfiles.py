@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import multiprocessing
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -144,5 +143,4 @@ def main(args=None, argsraw=None, **kwargs):
 
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
     main()

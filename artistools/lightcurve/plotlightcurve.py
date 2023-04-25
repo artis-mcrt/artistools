@@ -1,7 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
 import argparse
 import math
-import multiprocessing
 import os
 import sys
 from collections.abc import Iterable
@@ -1631,5 +1630,4 @@ def main(args=None, argsraw=None, **kwargs):
 
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
     main()

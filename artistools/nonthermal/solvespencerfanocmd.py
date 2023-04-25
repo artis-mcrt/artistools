@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import multiprocessing
 import sys
 from pathlib import Path
 from typing import Union
@@ -370,5 +369,4 @@ def main(args=None, argsraw=None, **kwargs):
 
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
     main()

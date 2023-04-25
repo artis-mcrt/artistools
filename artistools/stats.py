@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import glob
-import multiprocessing
 import sys
 
 import matplotlib.pyplot as plt
@@ -66,5 +65,4 @@ def main():
 
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
     main()

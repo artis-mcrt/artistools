@@ -1,7 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
 import argparse
 import importlib
-import multiprocessing
 
 import argcomplete
 
@@ -61,5 +60,4 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
     main()
