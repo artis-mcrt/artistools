@@ -18,6 +18,7 @@ import artistools.plotspherical
 import artistools.radfield
 import artistools.spectra
 import artistools.transitions
+import artistools.writecomparisondata
 from .__main__ import addargs
 from .__main__ import main
 from .configuration import get_config

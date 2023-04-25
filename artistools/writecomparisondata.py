@@ -173,9 +173,7 @@ def write_lbol_edep(modelpath, model_id, selected_timesteps, estimators, outputp
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-modelpath", default=[], nargs="*", action=at.AppendPath, help="Paths to ARTIS folders")
 
-    parser.add_argument(
-        "-selected_timesteps", default=[], nargs="*", action=at.AppendPath, help="Selected ARTIS timesteps"
-    )
+    parser.add_argument("-selected_timesteps", default=[], nargs="*", type=int, help="Selected ARTIS timesteps")
 
     parser.add_argument("-outputpath", "-o", action="store", type=Path, default=Path(), help="path for output files")
 
@@ -191,7 +189,7 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    if not args.modelpath and not args.specpath:
+    if not args.modelpath:
         args.modelpath = [Path(".")]
     elif isinstance(args.modelpath, (str, Path)):
         args.modelpath = [args.modelpath]
@@ -212,13 +210,16 @@ def main(args=None, argsraw=None, **kwargs):
             if not estimators[(selected_timesteps[0], modelgridindex)]["emptycell"]
         ]
 
-        write_lbol_edep(
-            modelpath,
-            model_id,
-            selected_timesteps,
-            estimators,
-            Path(args.outputpath, "lbol_edep_" + model_id + "_artisnebular.txt"),
-        )
+        try:
+            write_lbol_edep(
+                modelpath,
+                model_id,
+                selected_timesteps,
+                estimators,
+                Path(args.outputpath, "lbol_edep_" + model_id + "_artisnebular.txt"),
+            )
+        except FileNotFoundError:
+            print("Can't write deposition because files are missing")
 
         write_spectra(
             modelpath, model_id, selected_timesteps, Path(args.outputpath, "spectra_" + model_id + "_artisnebular.txt")

@@ -10,7 +10,7 @@ modelpath = at.get_config()["path_testartismodel"]
 outputpath = at.get_config()["path_testoutput"]
 
 
-def test_commands():
+def test_commands() -> None:
     import importlib
 
     # ensure that the commands are pointing to valid submodule.function() targets
@@ -19,7 +19,7 @@ def test_commands():
         assert hasattr(submodule, funcname)
 
 
-def test_timestep_times():
+def test_timestep_times() -> None:
     timestartarray = at.get_timestep_times_float(modelpath, loc="start")
     timedeltarray = at.get_timestep_times_float(modelpath, loc="delta")
     timemidarray = at.get_timestep_times_float(modelpath, loc="mid")
@@ -32,29 +32,29 @@ def test_timestep_times():
     )
 
 
-def test_deposition():
+def test_deposition() -> None:
     at.deposition.main(argsraw=[], modelpath=modelpath)
 
 
-def test_estimator_snapshot():
+def test_estimator_snapshot() -> None:
     at.estimators.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
 
 
-def test_estimator_timeevolution():
+def test_estimator_timeevolution() -> None:
     at.estimators.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, modelgridindex=0, x="time")
 
 
-def test_get_inputparams():
+def test_get_inputparams() -> None:
     inputparams = at.get_inputparams(modelpath)
     dicthash = hashlib.sha256(str(sorted(inputparams.items())).encode("utf-8")).hexdigest()
     assert dicthash == "ce7d04d6944207673a105cba8d2430055d0b53b7f3e92db3964d2dca285a3adb"
 
 
-def test_get_levels():
+def test_get_levels() -> None:
     at.atomic.get_levels(modelpath, get_transitions=True, get_photoionisations=True)
 
 
-def test_get_modeldata_tuple():
+def test_get_modeldata_tuple() -> None:
     dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=True)
     assert np.isclose(t_model_init_days, 0.00115740740741, rtol=0.0001)
     assert np.isclose(vmax_cmps, 800000000.0, rtol=0.0001)
@@ -64,25 +64,25 @@ def test_get_modeldata_tuple():
     #     '40a02dfa933f6b28671d42f3cf69a182955a5a89dc93bbcd22c894192375fe9b')
 
 
-def test_macroatom():
+def test_macroatom() -> None:
     at.macroatom.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=10)
 
 
-def test_nltepops():
+def test_nltepops() -> None:
     # at.nltepops.plot(modelpath=modelpath, outputfile=outputpath, timedays=300),
     #                    **benchargs)
     at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40)
 
 
-def test_nonthermal():
+def test_nonthermal() -> None:
     at.nonthermal.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=70)
 
 
-def test_radfield():
+def test_radfield() -> None:
     at.radfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=outputpath)
 
 
-def test_get_ionrecombratecalibration():
+def test_get_ionrecombratecalibration() -> None:
     at.atomic.get_ionrecombratecalibration(modelpath=modelpath)
 
 
@@ -90,11 +90,15 @@ def test_plotspherical() -> None:
     at.plotspherical.main(argsraw=[], modelpath=modelpath, interpolate=True, outputfile=outputpath)
 
 
-def test_spencerfano():
+def test_spencerfano() -> None:
     at.nonthermal.solvespencerfanocmd.main(
         argsraw=[], modelpath=modelpath, timedays=300, makeplot=True, npts=200, noexcitation=True, outputfile=outputpath
     )
 
 
-def test_transitions():
+def test_transitions() -> None:
     at.transitions.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
+
+
+def write_comparisondata() -> None:
+    at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=outputpath, selected_timesteps=range(99))
