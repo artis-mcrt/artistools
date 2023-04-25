@@ -331,6 +331,7 @@ def convert_text_to_parquet(
         ]
     )
 
+    modelpath = None
     for p in packetsfiletext.parents:
         if Path(p, "syn_dir.txt").is_file():
             modelpath = p
