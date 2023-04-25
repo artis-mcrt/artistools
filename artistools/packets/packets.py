@@ -397,8 +397,9 @@ def get_packetsfilepaths(
         found_rank = False
         for suffix in suffix_priority:
             for folderpath in searchfolders:
-                if (folderpath / name_nosuffix).with_suffix(suffix).is_file():
-                    packetsfiles.append((folderpath / name_nosuffix).with_suffix(suffix))
+                filepath = (folderpath / name_nosuffix).with_suffix(suffix)
+                if filepath.is_file():
+                    packetsfiles.append(filepath)
                     found_rank = True
                     break
             if found_rank:
