@@ -459,7 +459,7 @@ def get_packets_pl(
 
     if escape_type is not None:
         assert packet_type is None or packet_type == "TYPE_ESCAPE"
-        dfpackets = pldfpackets.filter(
+        pldfpackets = pldfpackets.filter(
             (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
         )
     elif packet_type is not None and packet_type:
