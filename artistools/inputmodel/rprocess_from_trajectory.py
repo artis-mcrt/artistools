@@ -89,21 +89,21 @@ def get_closest_network_timestep(
     'lessthan': find highest timestep less than time_sec
     'greaterthan': find lowest timestep greater than time_sec.
     """
-    dfevol: pd.DataFrame = get_dfevol(traj_root, particleid)
+    dfevol = get_dfevol(traj_root, particleid)
 
     if cond == "nearest":
         idx = np.abs(dfevol.timesec.to_numpy() - timesec).argmin()
 
     elif cond == "greaterthan":
-        return dfevol.query("timesec > @timesec").nstep.min()
+        return dfevol.query("timesec > @timesec")["nstep"].min()
 
     elif cond == "lessthan":
-        return dfevol.query("timesec < @timesec").nstep.max()
+        return dfevol.query("timesec < @timesec")["nstep"].max()
 
     else:
         raise AssertionError
 
-    nts: int = dfevol.nstep.to_numpy()[idx]
+    nts: int = dfevol["nstep"].to_numpy()[idx]
 
     return nts
 
