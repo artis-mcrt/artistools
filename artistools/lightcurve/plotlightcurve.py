@@ -204,7 +204,9 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         print(f"  Barnes average ejecta velocity: {ejecta_v / 299792458:.2f}c")
         m5 = model_mass_grams / (5e-3 * 1.989e33)  # M / (5e-3 Msun)
 
+        # Barnes et al (2016) equation 17 for e0_gamma > 1 MeV
         t_ineff_gamma = 0.5 * np.sqrt(m5) / v2
+        # Barnes et al (2016) equation 33
         barnes_f_gamma = [1 - math.exp(-((t / t_ineff_gamma) ** -2)) for t in depdata["tmid_days"].to_numpy()]
 
         axistherm.plot(
@@ -214,7 +216,9 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         )
 
         e0_beta_mev = 0.5
+        # Barnes et al (2016) equation 20
         t_ineff_beta = 7.4 * (e0_beta_mev / 0.5) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
+        # Barnes et al (2016) equation 32
         barnes_f_beta = [
             math.log(1 + 2 * (t / t_ineff_beta) ** 2) / (2 * (t / t_ineff_beta) ** 2)
             for t in depdata["tmid_days"].to_numpy()
@@ -227,7 +231,9 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         )
 
         e0_alpha_mev = 6.0
+        # Barnes et al (2016) equation 25 times equation 16 for t_peak
         t_ineff_alpha = 4.3 * 1.8 * (e0_alpha_mev / 6.0) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
+        # Barnes et al (2016) equation 32
         barnes_f_alpha = [
             math.log(1 + 2 * (t / t_ineff_alpha) ** 2) / (2 * (t / t_ineff_alpha) ** 2)
             for t in depdata["tmid_days"].to_numpy()
