@@ -209,10 +209,10 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         print(f"  Barnes average ejecta velocity: {ejecta_v / 299792458:.2f}c")
         m5 = model_mass_grams / (5e-3 * 1.989e33)  # M / (5e-3 Msun)
 
-        # Barnes et al (2016) equation 17 for e0_gamma > 1 MeV
-        t_ineff_gamma = 0.5 * np.sqrt(m5) / v2
+        # Barnes et al (2016) scaling form from equation 17, with fiducial t_ineff_gamma of 1.4 days
+        t_ineff_gamma = 1.4 * np.sqrt(m5) / v2
         # Barnes et al (2016) equation 33
-        barnes_f_gamma = [1 - math.exp(-((t / t_ineff_gamma) ** -2)) for t in depdata["tmid_days"].to_numpy()]
+        barnes_f_gamma = [1 - math.exp(-((t / t_ineff_gamma) ** -2)) for t in depdata["tmid_days"]]
 
         axistherm.plot(
             depdata["tmid_days"],
@@ -225,8 +225,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         t_ineff_beta = 7.4 * (e0_beta_mev / 0.5) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
         # Barnes et al (2016) equation 32
         barnes_f_beta = [
-            math.log(1 + 2 * (t / t_ineff_beta) ** 2) / (2 * (t / t_ineff_beta) ** 2)
-            for t in depdata["tmid_days"].to_numpy()
+            math.log(1 + 2 * (t / t_ineff_beta) ** 2) / (2 * (t / t_ineff_beta) ** 2) for t in depdata["tmid_days"]
         ]
 
         axistherm.plot(
@@ -240,8 +239,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         t_ineff_alpha = 4.3 * 1.8 * (e0_alpha_mev / 6.0) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
         # Barnes et al (2016) equation 32
         barnes_f_alpha = [
-            math.log(1 + 2 * (t / t_ineff_alpha) ** 2) / (2 * (t / t_ineff_alpha) ** 2)
-            for t in depdata["tmid_days"].to_numpy()
+            math.log(1 + 2 * (t / t_ineff_alpha) ** 2) / (2 * (t / t_ineff_alpha) ** 2) for t in depdata["tmid_days"]
         ]
 
         axistherm.plot(
@@ -338,9 +336,7 @@ def plot_artis_lightcurve(
         costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
         scaledmap = make_colorbar_viewingangles_colormap()
 
-    lctimemin, lctimemax = float(lcdataframes[dirbins[0]]["time"].to_numpy().min()), float(
-        lcdataframes[dirbins[0]]["time"].to_numpy().max()
-    )
+    lctimemin, lctimemax = float(lcdataframes[dirbins[0]]["time"].min()), float(lcdataframes[dirbins[0]]["time"].max())
 
     print(f" range of light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
     try:
@@ -472,7 +468,7 @@ def make_lightcurve_plot(
             nrows=1,
             ncols=1,
             sharex=True,
-            figsize=(args.figscale * at.get_config()["figwidth"] * 1.4, args.figscale * at.get_config()["figwidth"]),
+            figsize=(args.figscale * at.get_config()["figwidth"] * 1.6, args.figscale * at.get_config()["figwidth"]),
             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
         )
     else:
