@@ -966,9 +966,7 @@ def sphericalaverage(
     dfmodel = dfmodel.copy()
     celldensity = dict(dfmodel[["inputcellid", "rho"]].itertuples(index=False))
 
-    dfmodel = add_derived_cols_to_modeldata(
-        dfmodel, ["velocity"], dimensions=3, t_model_init_seconds=t_model_init_seconds, wid_init=wid_init
-    )
+    dfmodel["vel_r_mid"] = np.sqrt(dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2 + dfmodel["vel_z_mid"] ** 2)
     # print(dfmodel)
     # print(dfelabundances)
     km_to_cm = 1e5
