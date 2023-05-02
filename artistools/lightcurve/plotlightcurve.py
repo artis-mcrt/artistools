@@ -27,7 +27,13 @@ color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
 
 def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkwargs, args) -> None:
-    axistherm.set_xscale("log")
+    if args.logscalex:
+        axistherm.set_xscale("log")
+
+    # if args.logscaley:
+    #     axistherm.set_yscale("log")
+    #     axistherm.set_ylim(bottom=0.1, top=1.0)
+
     if args.plotthermalisation:
         dfmodel, modelmeta = at.inputmodel.get_modeldata(
             modelpath, skipnuclidemassfraccolumns=True, derived_cols=["vel_r_mid"], dtype_backend="pyarrow"
