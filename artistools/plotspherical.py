@@ -70,9 +70,9 @@ def plot_spherical(
     assert timemaxdays is not None
 
     fig, axes = plt.subplots(
-        1,
         len(plotvars),
-        figsize=(4 * len(plotvars), 3),
+        1,
+        figsize=(4, 3 * len(plotvars)),
         subplot_kw={"projection": "mollweide"},
         tight_layout={"pad": 0.1, "w_pad": 1.5, "h_pad": 0.0},
     )
