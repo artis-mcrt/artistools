@@ -192,7 +192,8 @@ def autoscale(ax=None, axis="y", margin=0.1):
         elif "Line" in str(artist):
             x, y = artist.get_xdata(), artist.get_ydata()
         else:
-            raise ValueError("This type of object isn't implemented yet")
+            msg = "This type of object isn't implemented yet"
+            raise ValueError(msg)
         return x, y
 
     if ax is None:

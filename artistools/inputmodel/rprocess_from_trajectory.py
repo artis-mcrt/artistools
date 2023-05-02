@@ -119,7 +119,8 @@ def get_trajectory_timestepfile_nuc_abund(
             _, str_t_model_init_seconds, _, rho, _, _ = trajfile.readline().split()
         except ValueError as exc:
             print(f"Problem with {memberfilename}")
-            raise ValueError(f"Problem with {memberfilename}") from exc
+            msg = f"Problem with {memberfilename}"
+            raise ValueError(msg) from exc
 
         trajfile.seek(0)
         t_model_init_seconds = float(str_t_model_init_seconds)
@@ -210,7 +211,8 @@ def get_trajectory_abund_q(
             nts = get_closest_network_timestep(traj_root, particleid, t_model_s)
             memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
         else:
-            raise ValueError("Either t_model_s or nts must be specified")
+            msg = "Either t_model_s or nts must be specified"
+            raise ValueError(msg)
 
         dftrajnucabund, traj_time_s = get_trajectory_timestepfile_nuc_abund(traj_root, particleid, memberfilename)
 
