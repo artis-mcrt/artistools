@@ -388,7 +388,8 @@ def get_timestep_times_float(
         if loc == "delta":
             return dftimesteps.twidth_days.to_numpy()
 
-        raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
+        msg = "loc must be one of 'mid', 'start', 'end', or 'delta'"
+        raise ValueError(msg)
 
     # older versions of Artis always used logarithmic timesteps and didn't produce a timesteps.out file
     inputparams = get_inputparams(modelpath)
