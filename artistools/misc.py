@@ -55,7 +55,6 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def add_arguments(self, actions: Iterable[argparse.Action]) -> None:
         def my_sort(arg: Any) -> str:
             opstr: str = arg.option_strings[0] if len(arg.option_strings) > 0 else ""
-            # chars = 'abcdefghijklmnopqrstuvwxyz-'
             opstr = opstr.upper().replace("-", "z")  # push dash chars below alphabet
 
             return opstr
@@ -74,7 +73,6 @@ class AppendPath(argparse.Action):
             # instead of from the command line
             if not pathlist:
                 for pathstr in values:
-                    # print(f"pathstr {pathstr}")
                     # if Path(pathstr) not in pathlist:
                     pathlist.append(Path(pathstr))
         else:
@@ -225,7 +223,7 @@ def average_direction_bins(
 
 def match_closest_time(reftime: float, searchtimes: list[Any]) -> str:
     """Get time closest to reftime in list of times (searchtimes)."""
-    return str("{}".format(min([float(x) for x in searchtimes], key=lambda x: abs(x - reftime))))
+    return str(f"{min([float(x) for x in searchtimes], key=lambda x: abs(x - reftime))}")
 
 
 def get_vpkt_config(modelpath: Union[Path, str]) -> dict[str, Any]:
@@ -410,7 +408,8 @@ def get_timestep_times_float(
         tdeltas = np.array([tmin * (math.exp((ts + 1) * dlogt) - math.exp(ts * dlogt)) for ts in timesteps])
         return tdeltas
 
-    raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
+    msg = "loc must be one of 'mid', 'start', 'end', or 'delta'"
+    raise ValueError(msg)
 
 
 def get_timestep_of_timedays(modelpath: Path, timedays: Union[str, float]) -> int:
@@ -430,7 +429,8 @@ def get_timestep_of_timedays(modelpath: Path, timedays: Union[str, float]) -> in
         if timedays_float >= tstart and timedays_float < tend:
             return ts
 
-    raise ValueError(f"Could not find timestep bracketing time {timedays_float}")
+    msg = f"Could not find timestep bracketing time {timedays_float}"
+    raise ValueError(msg)
 
 
 def get_time_range(
@@ -497,9 +497,11 @@ def get_time_range(
                 timestepmax = timestep
 
         if timestepmax < timestepmin:
-            raise ValueError("Specified time range does not include any full timesteps.")
+            msg = "Specified time range does not include any full timesteps."
+            raise ValueError(msg)
     else:
-        raise ValueError("Either time or timesteps must be specified.")
+        msg = "Either time or timesteps must be specified."
+        raise ValueError(msg)
 
     timesteplast = len(tmids) - 1
     if timestepmax is not None and timestepmax > timesteplast:
@@ -646,7 +648,8 @@ def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[Any]:
     strparts = rng.split("-")
 
     if len(strparts) not in [1, 2]:
-        raise ValueError(f"Bad range: '{rng}'")
+        msg = f"Bad range: '{rng}'"
+        raise ValueError(msg)
 
     parts = [int(i) if i not in dictvars else dictvars[i] for i in strparts]
     start: int = parts[0]
@@ -737,7 +740,8 @@ def firstexisting(
         if fullpath.exists():
             return fullpath
 
-    raise FileNotFoundError(f'None of these files exist in {folder}: {", ".join([str(x) for x in fullpaths])}')
+    msg = f"None of these files exist in {folder}: {', '.join([str(x) for x in fullpaths])}"
+    raise FileNotFoundError(msg)
 
 
 def anyexist(

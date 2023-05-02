@@ -134,7 +134,6 @@ def main(
         sys.exit()
 
     # Load model contents
-    # x, y, z, rho, _, res = load_artis_model(modelfile)
     dfmodel, modelmeta = at.get_modeldata(modelfile, derived_cols=["pos_mid"], dtype_backend="pyarrow")
     x, y, z = (dfmodel[f"pos_{ax}_mid"].to_numpy() for ax in ("x", "y", "z"))
     rho = dfmodel["rho"].to_numpy()

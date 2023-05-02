@@ -48,7 +48,8 @@ def get_timestep_times_float(
         tdeltas = tends - tstarts
         return tdeltas
 
-    raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
+    msg = "loc must be one of 'mid', 'start', 'end', or 'delta'"
+    raise ValueError(msg)
 
 
 def read_reference_estimators(
