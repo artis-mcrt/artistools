@@ -14,7 +14,7 @@ def set_mpl_style() -> None:
 class ExponentLabelFormatter(ticker.ScalarFormatter):
     """Formatter to move the 'x10^x' offset text into the axis label."""
 
-    def __init__(self, labeltemplate, useMathText=True, decimalplaces=None):
+    def __init__(self, labeltemplate, useMathText=True, decimalplaces=None) -> None:
         self.set_labeltemplate(labeltemplate)
         self.decimalplaces = decimalplaces
         super().__init__(useOffset=True, useMathText=useMathText)
