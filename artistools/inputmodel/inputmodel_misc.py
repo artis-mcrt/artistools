@@ -966,6 +966,9 @@ def sphericalaverage(
     dfmodel = dfmodel.copy()
     celldensity = dict(dfmodel[["inputcellid", "rho"]].itertuples(index=False))
 
+    for ax in ["x", "y", "z"]:
+        dfmodel[f"vel_{ax}_mid"] = (dfmodel[f"pos_{ax}_min"] + (0.5 * wid_init)) / t_model_init_seconds
+
     dfmodel["vel_r_mid"] = np.sqrt(dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2 + dfmodel["vel_z_mid"] ** 2)
     # print(dfmodel)
     # print(dfelabundances)
