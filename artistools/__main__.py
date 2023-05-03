@@ -14,18 +14,15 @@ dictcommands = {
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
     "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
     "maptogrid": ("inputmodel.maptogrid", "main"),
+    "plotestimators": ("estimators.plotestimators", "main"),
+    "plotlightcurves": ("lightcurve.plotlightcurve", "main"),
+    "plotspectra": ("spectra.plotspectra", "main"),
     "plotspherical": ("plotspherical", "main"),
-    "estimators": {
-        "plot": ("estimators.plotestimators", "main"),
-    },
     "inputmodel": {
         "describe": ("inputmodel.describeinputmodel", "main"),
         "maptogrid": ("inputmodel.maptogrid", "main"),
         "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
         "makeartismodel": ("inputmodel.makeartismodel", "main"),
-    },
-    "lightcurves": {
-        "plot": ("lightcurve.plotlightcurve", "main"),
     },
     "spectra": {
         "plot": ("spectra.plotspectra", "main"),
