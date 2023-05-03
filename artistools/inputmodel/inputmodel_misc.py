@@ -16,6 +16,7 @@ from typing import Union
 
 import numpy as np
 import pandas as pd
+import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
 
@@ -29,10 +30,7 @@ def read_modelfile_text(
     skipnuclidemassfraccolumns: bool = False,
     dtype_backend: Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
-    """
-    Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides.
-    """
-
+    """Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides."""
     onelinepercellformat = None
 
     modelmeta: dict[str, Any] = {"headercommentlines": []}
@@ -51,12 +49,12 @@ def read_modelfile_text(
                 numheaderrows += 1
 
         if len(line.strip().split(" ")) == 2:
-            print("  detected 2D model file")
             modelmeta["dimensions"] = 2
             ncoordgrid_r, ncoordgrid_z = (int(n) for n in line.strip().split(" "))
             modelmeta["ncoordgrid_r"] = ncoordgrid_r
             modelmeta["ncoordgrid_z"] = ncoordgrid_z
             modelcellcount = ncoordgrid_r * ncoordgrid_z
+            print(f"  detected 2D model file with {ncoordgrid_r}x{ncoordgrid_z}={modelcellcount} cells")
         else:
             modelcellcount = int(line)
 
@@ -71,16 +69,30 @@ def read_modelfile_text(
             modelmeta["vmax_cmps"] = float(fmodel.readline())  # velocity max in cm/s
             xmax_tmodel = modelmeta["vmax_cmps"] * t_model_init_seconds  # xmax = ymax = zmax
             numheaderrows += 1
-            if "dimensions" not in modelmeta:
-                if not printwarningsonly:
-                    print("  detected 3D model file")
+            if "dimensions" not in modelmeta:  # not already detected as 2D
                 modelmeta["dimensions"] = 3
+                # number of grid cell steps along an axis (currently the same for xyz)
+                ncoordgridx = int(round(modelcellcount ** (1.0 / 3.0)))
+                ncoordgridy = int(round(modelcellcount ** (1.0 / 3.0)))
+                ncoordgridz = int(round(modelcellcount ** (1.0 / 3.0)))
+                assert (ncoordgridx * ncoordgridy * ncoordgridz) == modelcellcount
+                modelmeta["ncoordgridx"] = ncoordgridx
+                modelmeta["ncoordgridy"] = ncoordgridy
+                modelmeta["ncoordgridz"] = ncoordgridz
+                if ncoordgridx == ncoordgridy == ncoordgridz:
+                    modelmeta["ncoordgrid"] = ncoordgridx
+
+                if not printwarningsonly:
+                    print(
+                        "  detected 3D model file with"
+                        f" {ncoordgridx}x{ncoordgridy}x{ncoordgridz}={modelcellcount} cells"
+                    )
 
         except ValueError:
             assert modelmeta.get("dimensions", -1) != 2  # 2D model should have vmax line here
             if "dimensions" not in modelmeta:
                 if not printwarningsonly:
-                    print("  detected 1D model file")
+                    print(f"  detected 1D model file with {modelcellcount} radial zones")
                 modelmeta["dimensions"] = 1
 
             fmodel.seek(filepos)  # undo the readline() and go back
@@ -168,19 +180,6 @@ def read_modelfile_text(
         elif modelmeta["dimensions"] == 3:
             ncols_line_even = 5
         ncols_line_odd = 0
-
-    if modelmeta["dimensions"] == 3:
-        # number of grid cell steps along an axis (same for xyz)
-        ncoordgridx = int(round(modelcellcount ** (1.0 / 3.0)))
-        ncoordgridy = int(round(modelcellcount ** (1.0 / 3.0)))
-        ncoordgridz = int(round(modelcellcount ** (1.0 / 3.0)))
-        modelmeta["ncoordgridx"] = ncoordgridx
-        modelmeta["ncoordgridy"] = ncoordgridy
-        modelmeta["ncoordgridz"] = ncoordgridz
-        if ncoordgridx == ncoordgridy == ncoordgridz:
-            modelmeta["ncoordgrid"] = ncoordgridx
-
-        assert (ncoordgridx * ncoordgridy * ncoordgridz) == modelcellcount
 
     nrows_read = 1 if getheadersonly else modelcellcount
 
@@ -325,18 +324,19 @@ def read_modelfile_text(
 
 
 def get_modeldata(
-    inputpath: Union[Path, str] = Path(),
+    modelpath: Union[Path, str] = Path(),
     get_elemabundances: bool = False,
     derived_cols: Optional[Sequence[str]] = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
     skipnuclidemassfraccolumns: bool = False,
     dtype_backend: Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
+    use_polars: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
-    """
-    Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
+    """Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
 
-    Parameters:
+    Parameters
+    ----------
         - inputpath: either a path to model.txt file, or a folder containing model.txt
         - get_elemabundances: also read elemental abundances (abundances.txt) and
             merge with the output DataFrame
@@ -345,8 +345,9 @@ def get_modeldata(
         - dfmodel: a pandas DataFrame with a row for each model grid cell
         - modelmeta: a dictionary of input model parameters, with keys such as t_model_init_days, vmax_cmps, dimensions, etc.
     """
-
-    inputpath = Path(inputpath)
+    inputpath = Path(modelpath)
+    if use_polars:
+        dtype_backend = "pyarrow"
 
     if inputpath.is_dir():
         modelpath = inputpath
@@ -391,6 +392,7 @@ def get_modeldata(
                 columns=columns,
                 dtype_backend=dtype_backend,
             )
+            print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
 
     if dfmodel is None:
         skipnuclidemassfraccolumns = False
@@ -416,11 +418,13 @@ def get_modeldata(
             # dfmodel.to_parquet(filenameparquet, compression="zstd")
             print("  Done.")
 
+    dfmodel = pl.from_pandas(dfmodel).lazy()
+
     if get_elemabundances:
-        abundancedata = get_initelemabundances(
-            modelpath, dtype_backend=dtype_backend, printwarningsonly=printwarningsonly
-        )
-        dfmodel = dfmodel.merge(abundancedata, how="inner", on="inputcellid")
+        abundancedata = pl.from_pandas(
+            get_initelemabundances(modelpath, dtype_backend=dtype_backend, printwarningsonly=printwarningsonly)
+        ).lazy()
+        dfmodel = dfmodel.join(abundancedata, how="inner", on="inputcellid")
 
     if derived_cols:
         dfmodel = add_derived_cols_to_modeldata(
@@ -432,16 +436,17 @@ def get_modeldata(
             modelpath=modelpath,
         )
 
-    if len(dfmodel) > 100000:
-        dfmodel.info(verbose=False, memory_usage="deep")
+    if not use_polars:
+        dfmodel = dfmodel.collect().to_pandas(use_pyarrow_extension_array=(dtype_backend == "pyarrow"))
+        if modelmeta["npts_model"] > 100000 and not getheadersonly:
+            dfmodel.info(verbose=False, memory_usage="deep")
 
     return dfmodel, modelmeta
 
 
 def get_modeldata_tuple(*args, **kwargs) -> tuple[pd.DataFrame, float, float]:
-    """
-    Deprecated but included for compatibility with fixed length tuple return type
-    Use get_modeldata() instead!
+    """Deprecated but included for compatibility with fixed length tuple return type
+    Use get_modeldata() instead!.
     """
     dfmodel, modelmeta = get_modeldata(*args, **kwargs)
 
@@ -449,52 +454,67 @@ def get_modeldata_tuple(*args, **kwargs) -> tuple[pd.DataFrame, float, float]:
 
 
 def add_derived_cols_to_modeldata(
-    dfmodel: pd.DataFrame,
+    dfmodel: Union[pl.DataFrame, pl.LazyFrame],
     derived_cols: Sequence[str],
     dimensions: Optional[int] = None,
     t_model_init_seconds: Optional[float] = None,
     wid_init: Optional[float] = None,
     modelpath: Optional[Path] = None,
-) -> pd.DataFrame:
-    """add columns to modeldata using e.g. derived_cols = ('velocity', 'Ye')"""
+) -> pl.LazyFrame:
+    """Add columns to modeldata using e.g. derived_cols = ('velocity', 'Ye')."""
     if dimensions is None:
         dimensions = get_dfmodel_dimensions(dfmodel)
 
+    dfmodel = dfmodel.lazy()
+    newcols = []
+
     if dimensions == 3:
+        axes = ["x", "y", "z"]
         if "velocity" in derived_cols or "vel_min" in derived_cols:
             assert t_model_init_seconds is not None
-            for ax in ["x", "y", "z"]:
-                dfmodel[f"vel_{ax}_min"] = dfmodel[f"pos_{ax}_min"] / t_model_init_seconds
+            newcols += [(pl.col(f"pos_{ax}_min") / t_model_init_seconds).alias(f"vel_{ax}_min") for ax in axes]
 
         if "velocity" in derived_cols or "vel_max" in derived_cols:
             assert t_model_init_seconds is not None
-            for ax in ["x", "y", "z"]:
-                dfmodel[f"vel_{ax}_max"] = (dfmodel[f"pos_{ax}_min"] + wid_init) / t_model_init_seconds
+            newcols += [
+                ((pl.col(f"pos_{ax}_min") + wid_init) / t_model_init_seconds).alias(f"vel_{ax}_max") for ax in axes
+            ]
 
         if any(col in derived_cols for col in ["velocity", "vel_mid", "vel_r_mid"]):
             assert wid_init is not None
             assert t_model_init_seconds is not None
-            for ax in ["x", "y", "z"]:
-                dfmodel[f"vel_{ax}_mid"] = (dfmodel[f"pos_{ax}_min"] + (0.5 * wid_init)) / t_model_init_seconds
+            dfmodel = dfmodel.with_columns(
+                [
+                    ((pl.col(f"pos_{ax}_min") + (0.5 * wid_init)) / t_model_init_seconds).alias(f"vel_{ax}_mid")
+                    for ax in axes
+                ]
+            )
 
-            dfmodel["vel_r_mid"] = np.sqrt(
-                dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2 + dfmodel["vel_z_mid"] ** 2
+            newcols.append(
+                (pl.col("vel_x_mid").pow(2) + pl.col("vel_y_mid").pow(2) + pl.col("vel_z_mid").pow(2))
+                .sqrt()
+                .alias("vel_r_mid")
             )
 
     if dimensions == 3 and "pos_mid" in derived_cols or "angle_bin" in derived_cols:
         assert wid_init is not None
-        for ax in ["x", "y", "z"]:
-            dfmodel[f"pos_{ax}_mid"] = dfmodel[f"pos_{ax}_min"] + (0.5 * wid_init)
+        newcols += [(pl.col(f"pos_{ax}_min") + 0.5 * wid_init).alias(f"pos_{ax}_mid") for ax in axes]
+
+    if dimensions == 3 and "pos_max" in derived_cols:
+        assert wid_init is not None
+        newcols += [(pl.col(f"pos_{ax}_min") + wid_init).alias(f"pos_{ax}_max") for ax in axes]
 
     if "logrho" in derived_cols and "logrho" not in dfmodel.columns:
-        dfmodel["logrho"] = np.log10(dfmodel["rho"])
+        newcols.append(pl.col("rho").log10().alias("logrho"))
 
     if "rho" in derived_cols and "rho" not in dfmodel.columns:
-        dfmodel["rho"] = 10 ** dfmodel["logrho"]
+        newcols.append((10 ** pl.col("logrho")).alias("rho"))
+
+    dfmodel = dfmodel.with_columns(newcols)
 
     if "angle_bin" in derived_cols:
         assert modelpath is not None
-        dfmodel = get_cell_angle(dfmodel, modelpath)
+        dfmodel = pl.from_pandas(get_cell_angle(dfmodel.collect().to_pandas(), modelpath)).lazy()
 
     # if "Ye" in derived_cols and os.path.isfile(modelpath / "Ye.txt"):
     #     dfmodel["Ye"] = at.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
@@ -505,7 +525,7 @@ def add_derived_cols_to_modeldata(
 
 
 def get_cell_angle(dfmodel: pd.DataFrame, modelpath: Path) -> pd.DataFrame:
-    """get angle between origin to cell midpoint and the syn_dir axis"""
+    """Get angle between origin to cell midpoint and the syn_dir axis."""
     syn_dir = at.get_syn_dir(modelpath)
 
     cos_theta = np.zeros(len(dfmodel))
@@ -603,7 +623,8 @@ def get_2d_modeldata(modelpath):
 
 def get_3d_model_data_merged_model_and_abundances_minimal(args):
     """Get 3D data without generating all the extra columns in standard routine.
-    Needed for large (eg. 200^3) models"""
+    Needed for large (eg. 200^3) models.
+    """
     model = get_3d_modeldata_minimal(args.modelpath)
     abundances = get_initelemabundances(args.modelpath[0])
 
@@ -627,7 +648,8 @@ def get_3d_model_data_merged_model_and_abundances_minimal(args):
 
 def get_3d_modeldata_minimal(modelpath) -> pd.DataFrame:
     """Read 3D model without generating all the extra columns in standard routine.
-    Needed for large (eg. 200^3) models"""
+    Needed for large (eg. 200^3) models.
+    """
     model = pd.read_csv(
         os.path.join(modelpath[0], "model.txt"), delim_whitespace=True, header=None, skiprows=3, dtype=np.float64
     )
@@ -663,7 +685,7 @@ def save_modeldata(
     twolinespercell: bool = False,
     float_format: str = ".4e",
 ) -> None:
-    """Save a pandas DataFrame and snapshot time into ARTIS model.txt"""
+    """Save a pandas DataFrame and snapshot time into ARTIS model.txt."""
     if modelmeta:
         if "headercommentlines" in modelmeta:
             assert headercommentlines is None
@@ -781,7 +803,8 @@ def save_modeldata(
 
 def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> Union[int, float]:
     """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
-    If mgilist is given, then chose from these cells only"""
+    If mgilist is given, then chose from these cells only.
+    """
     modeldata, _, _ = get_modeldata_tuple(modelpath)
 
     velocity = float(velocity)
@@ -867,7 +890,7 @@ def save_initelemabundances(
     """Save a DataFrame (same format as get_initelemabundances) to abundances.txt.
     columns must be:
         - inputcellid: integer index to match model.txt (starting from 1)
-        - X_El: mass fraction of element with two-letter code 'El' (e.g., X_H, X_He, H_Li, ...)
+        - X_El: mass fraction of element with two-letter code 'El' (e.g., X_H, X_He, H_Li, ...).
     """
     timestart = time.perf_counter()
     if Path(abundancefilename).is_dir():
@@ -895,7 +918,7 @@ def save_initelemabundances(
 
 
 def save_empty_abundance_file(ngrid: int, outputfilepath=Path()) -> None:
-    """Dummy abundance file with only zeros"""
+    """Dummy abundance file with only zeros."""
     if Path(outputfilepath).is_dir():
         outputfilepath = Path(outputfilepath) / "abundances.txt"
 
@@ -911,9 +934,12 @@ def save_empty_abundance_file(ngrid: int, outputfilepath=Path()) -> None:
     dfabundances.to_csv(outputfilepath, header=False, sep=" ", index=False)
 
 
-def get_dfmodel_dimensions(dfmodel: pd.DataFrame) -> int:
+def get_dfmodel_dimensions(dfmodel: Union[pd.DataFrame, pl.DataFrame, pl.LazyFrame]) -> int:
     if "pos_x_min" in dfmodel.columns:
         return 3
+
+    if "pos_z_mid" in dfmodel.columns:
+        return 2
 
     return 1
 
@@ -926,7 +952,7 @@ def sphericalaverage(
     dfgridcontributions: Optional[pd.DataFrame] = None,
     nradialbins: Optional[int] = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Convert 3D Cartesian grid model to 1D spherical"""
+    """Convert 3D Cartesian grid model to 1D spherical."""
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
     xmax = vmax * t_model_init_seconds
     ngridpoints = len(dfmodel)
@@ -940,9 +966,10 @@ def sphericalaverage(
     dfmodel = dfmodel.copy()
     celldensity = dict(dfmodel[["inputcellid", "rho"]].itertuples(index=False))
 
-    dfmodel = add_derived_cols_to_modeldata(
-        dfmodel, ["velocity"], dimensions=3, t_model_init_seconds=t_model_init_seconds, wid_init=wid_init
-    )
+    for ax in ["x", "y", "z"]:
+        dfmodel[f"vel_{ax}_mid"] = (dfmodel[f"pos_{ax}_min"] + (0.5 * wid_init)) / t_model_init_seconds
+
+    dfmodel["vel_r_mid"] = np.sqrt(dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2 + dfmodel["vel_z_mid"] ** 2)
     # print(dfmodel)
     # print(dfelabundances)
     km_to_cm = 1e5
@@ -1055,8 +1082,7 @@ def scale_model_to_time(
     t_model_days: Optional[float] = None,
     modelmeta: Optional[dict[str, Any]] = None,
 ) -> tuple[pd.DataFrame, Optional[dict[str, Any]]]:
-    """Homologously expand model to targetmodeltime_days, reducing density and adjusting position columns to match"""
-
+    """Homologously expand model to targetmodeltime_days, reducing density and adjusting position columns to match."""
     if t_model_days is None:
         assert modelmeta is not None
         t_model_days = modelmeta["t_model_days"]

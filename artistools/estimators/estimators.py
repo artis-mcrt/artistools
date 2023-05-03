@@ -281,7 +281,6 @@ def read_estimators(
 
     Speed it up by only retrieving estimators for a particular timestep(s) or modelgrid cells.
     """
-
     match_modelgridindex: Collection[int]
     if modelgridindex is None:
         match_modelgridindex = []
@@ -334,7 +333,7 @@ def read_estimators(
         )
 
         if at.get_config()["num_processes"] > 1:
-            with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
+            with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
                 arr_rankestimators = pool.map(processfile, mpiranklist)
                 pool.close()
                 pool.join()
@@ -468,9 +467,8 @@ def get_averageexcitation(
 
 
 def get_partiallycompletetimesteps(estimators: dict[Any, Any]) -> list[int]:
-    """
-    During a simulation, some estimator files can contain information for some cells but not others
-    for the current timestep
+    """During a simulation, some estimator files can contain information for some cells but not others
+    for the current timestep.
     """
     timestepcells: dict[int, list[int]] = {}
     all_mgis = set()

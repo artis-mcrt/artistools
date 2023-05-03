@@ -109,48 +109,43 @@ disable = """
 ignored-modules = ["astropy", "extinction"]
 
 [tool.ruff]
-select = [
-    #"ALL",
-    "A", "B", "C", "E", "F", "G", "N", "Q", "W", "ARG", "BLE", "DJ", "DTZ", "EM", "ERA", "EXE",
-    "ICN", "INP", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PT", "PYI", "RET", "RSE", "RUF",
-    "SIM", "SLF", "TCH", "TID", "TRY", "UP", "YTT"
-]
+select = ["ALL"]
 ignore = [
     "ARG001", # ignored because variables in df.eval() are not detected
+    "ANN",
     "B005",
     "B007", # variable not used in loop body (but sometimes it is with eval)
     "BLE001",
     "C9",
-    "D211", "D213",
+    "COM812",
+    "D100", "D101", "D102", "D103", "D104", "D107", "D203", "D205", "D213", "D401", "D417",
     "E501", "E741",
-    "EM101","EM102",
     "ERA001",
     "F841", # ignored because variables in df.eval() are not detected
+    "FBT",
+    "I", # let reorder-python-imports handle this
     "N802", "N803", "N806", "N999",
     "PD901",
     "PGH001",
     "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR2004",
+    "PTH",
     "PLW2901",
     "PT011",
     "RET504",
     "SIM115",
+    "S",
     "SLF001",
+    "T",
     "TRY003",
     "TRY301",
     "UP032",
 ]
 
 # Allow autofix for all enabled rules (when `--fix`) is provided.
-fixable = [
-    "A", "B", "C", "E", "G", "N", "Q", "W", "ARG", "BLE", "DJ", "DTZ", "EM", "ERA", "EXE",
-    "FBT", "ICN", "ISC", "NPY", "PD", "PGH", "PIE", "PL", "PLR", "PT", "PTH", "PYI", "RET", "RSE",
-    "RUF", "SIM", "SLF", "TCH", "TID", "UP", "YTT"
-]
+fixable = ["ALL"]
 unfixable = [
     "ERA001",  # commented out code (will just delete it!)
-    "F841",
-    "F401",
-    "PD002"
+    "F841",  # Local variable {name} is assigned to but never used
 ]
 
 # larger than black's limit. Let black handle this

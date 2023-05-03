@@ -1,7 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
 import argparse
 import math
-import multiprocessing
 import os
 import sys
 from collections.abc import Iterable
@@ -28,7 +27,13 @@ color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
 
 def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkwargs, args) -> None:
-    axistherm.set_xscale("log")
+    if args.logscalex:
+        axistherm.set_xscale("log")
+
+    # if args.logscaley:
+    #     axistherm.set_yscale("log")
+    #     axistherm.set_ylim(bottom=0.1, top=1.0)
+
     if args.plotthermalisation:
         dfmodel, modelmeta = at.inputmodel.get_modeldata(
             modelpath, skipnuclidemassfraccolumns=True, derived_cols=["vel_r_mid"], dtype_backend="pyarrow"
@@ -66,6 +71,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
     #             'color': color_total,
     #         }))
 
+    color_gamma = next(axis._get_lines.prop_cycler)["color"]
     color_gamma = next(axis._get_lines.prop_cycler)["color"]
 
     # axis.plot(depdata['tmid_days'], depdata['eps_gamma_Lsun'] * 3.826e33, **dict(
@@ -116,7 +122,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
 
     c23modelpath = Path(
         "/Users/luke/Library/CloudStorage/GoogleDrive-luke@lukeshingles.com/Shared"
-        " drives/ARTIS/artis_runs_published/Collinsetal2023-KN/sfho_long_1-35-135Msun"
+        " drives/ARTIS/artis_runs_published/Collinsetal2023/sfho_long_1-35-135Msun"
     )
 
     c23energyrate = at.inputmodel.energyinputfiles.get_energy_rate_fromfile(c23modelpath)
@@ -178,10 +184,9 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         )
 
         f_alpha = depdata["alphadep_Lsun"] / depdata["eps_alpha_Lsun"]
-        kernel_size = 5
-        if len(f_alpha) > kernel_size:
-            kernel = np.ones(kernel_size) / kernel_size
-            f_alpha = np.convolve(f_alpha, kernel, mode="same")
+        import scipy.signal
+
+        f_alpha = scipy.signal.savgol_filter(f_alpha, 9, 3, mode="interp")
         axistherm.plot(
             depdata["tmid_days"],
             f_alpha,
@@ -204,8 +209,10 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         print(f"  Barnes average ejecta velocity: {ejecta_v / 299792458:.2f}c")
         m5 = model_mass_grams / (5e-3 * 1.989e33)  # M / (5e-3 Msun)
 
-        t_ineff_gamma = 0.5 * np.sqrt(m5) / v2
-        barnes_f_gamma = [1 - math.exp(-((t / t_ineff_gamma) ** -2)) for t in depdata["tmid_days"].to_numpy()]
+        # Barnes et al (2016) scaling form from equation 17, with fiducial t_ineff_gamma of 1.4 days
+        t_ineff_gamma = 1.4 * np.sqrt(m5) / v2
+        # Barnes et al (2016) equation 33
+        barnes_f_gamma = [1 - math.exp(-((t / t_ineff_gamma) ** -2)) for t in depdata["tmid_days"]]
 
         axistherm.plot(
             depdata["tmid_days"],
@@ -214,10 +221,11 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         )
 
         e0_beta_mev = 0.5
+        # Barnes et al (2016) equation 20
         t_ineff_beta = 7.4 * (e0_beta_mev / 0.5) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
+        # Barnes et al (2016) equation 32
         barnes_f_beta = [
-            math.log(1 + 2 * (t / t_ineff_beta) ** 2) / (2 * (t / t_ineff_beta) ** 2)
-            for t in depdata["tmid_days"].to_numpy()
+            math.log(1 + 2 * (t / t_ineff_beta) ** 2) / (2 * (t / t_ineff_beta) ** 2) for t in depdata["tmid_days"]
         ]
 
         axistherm.plot(
@@ -227,10 +235,11 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         )
 
         e0_alpha_mev = 6.0
+        # Barnes et al (2016) equation 25 times equation 16 for t_peak
         t_ineff_alpha = 4.3 * 1.8 * (e0_alpha_mev / 6.0) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
+        # Barnes et al (2016) equation 32
         barnes_f_alpha = [
-            math.log(1 + 2 * (t / t_ineff_alpha) ** 2) / (2 * (t / t_ineff_alpha) ** 2)
-            for t in depdata["tmid_days"].to_numpy()
+            math.log(1 + 2 * (t / t_ineff_alpha) ** 2) / (2 * (t / t_ineff_alpha) ** 2) for t in depdata["tmid_days"]
         ]
 
         axistherm.plot(
@@ -461,7 +470,7 @@ def make_lightcurve_plot(
             nrows=1,
             ncols=1,
             sharex=True,
-            figsize=(args.figscale * at.get_config()["figwidth"] * 1.4, args.figscale * at.get_config()["figwidth"]),
+            figsize=(args.figscale * at.get_config()["figwidth"] * 1.6, args.figscale * at.get_config()["figwidth"]),
             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
         )
     else:
@@ -1630,5 +1639,4 @@ def main(args=None, argsraw=None, **kwargs):
 
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
     main()

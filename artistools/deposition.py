@@ -46,8 +46,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main_analytical(args: Optional[argparse.Namespace] = None, argsraw: Optional[list[str]] = None, **kwargs) -> None:
-    """Use the model initial conditions to calculate the deposition rates"""
-
+    """Use the model initial conditions to calculate the deposition rates."""
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter, description="Plot deposition rate of a model at time t (days)."

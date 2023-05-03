@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import math
-import os.path
+from pathlib import Path
+from unittest import mock
 
+import matplotlib.axes
 import numpy as np
 import pandas as pd
 from astropy import constants as const
@@ -12,7 +14,8 @@ modelpath = at.get_config()["path_testartismodel"]
 outputpath = at.get_config()["path_testoutput"]
 
 
-def test_spectraplot() -> None:
+@mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+def test_spectraplot(mockplot) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=[modelpath, "sn2011fe_PTF11kly_20120822_norm.txt"],
@@ -21,16 +24,30 @@ def test_spectraplot() -> None:
         timemax=320,
     )
 
+    arr_lambda = np.array(mockplot.call_args[0][1])
+    arr_f_lambda = np.array(mockplot.call_args[0][2])
 
-def test_spectra_frompackets() -> None:
+    integral = np.trapz(y=arr_f_lambda, x=arr_lambda)
+    assert np.isclose(integral, 5.870730903198916e-11, atol=1e-14)
+
+
+@mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+def test_spectra_frompackets(mockplot) -> None:
     at.spectra.plot(
         argsraw=[],
         specpath=modelpath,
-        outputfile=os.path.join(outputpath, "spectrum_from_packets.pdf"),
+        outputfile=Path(outputpath, "spectrum_from_packets.pdf"),
         timemin=290,
         timemax=320,
         frompackets=True,
     )
+
+    arr_lambda = np.array(mockplot.call_args[0][1])
+    arr_f_lambda = np.array(mockplot.call_args[0][2])
+
+    integral = np.trapz(y=arr_f_lambda, x=arr_lambda)
+
+    assert np.isclose(integral, 6.7118e-12, atol=1e-14)
 
 
 def test_spectra_outputtext() -> None:

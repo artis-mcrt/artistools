@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 import glob
-import multiprocessing
 import sys
 
 import matplotlib.pyplot as plt
 
 xminvalue, xmaxvalue = 3500, 7000
-# xminvalue, xmaxvalue = 10000, 20000
 
 h = 6.62607004e-34  # m^2 kg / s
 c = 299792458  # m / s
@@ -48,7 +46,6 @@ def main():
         linelabel = runfolder
 
         linestyle = ["-", "--"][int(index / 7)]
-        # xvalues = range(len(stats))
         yvalues = [timestepstats["k_stat_to_r_fb"] for timestepstats in stats]
         axes[0].plot(timesteptimes, yvalues, linestyle=linestyle, linewidth=1.5, label=linelabel)
         yvalues = [timestepstats["k_stat_to_ma_collexc"] for timestepstats in stats]
@@ -56,7 +53,6 @@ def main():
 
     for axis in axes:
         axis.set_xlim(250, 300)
-        # axis.set_ylim(-0.1, 1.3)
 
     axes[0].legend(loc="best", handlelength=2, frameon=False, numpoints=1, prop={"size": 9})
     axes[-1].set_xlabel(r"Time (days)")
@@ -69,5 +65,4 @@ def main():
 
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
     main()

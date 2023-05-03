@@ -14,7 +14,7 @@ def set_mpl_style() -> None:
 class ExponentLabelFormatter(ticker.ScalarFormatter):
     """Formatter to move the 'x10^x' offset text into the axis label."""
 
-    def __init__(self, labeltemplate, useMathText=True, decimalplaces=None):
+    def __init__(self, labeltemplate, useMathText=True, decimalplaces=None) -> None:
         self.set_labeltemplate(labeltemplate)
         self.decimalplaces = decimalplaces
         super().__init__(useOffset=True, useMathText=useMathText)
@@ -159,7 +159,7 @@ def imshow_init_for_artis_grid(ngrid, vmax, plot_variable_3d_array, plot_axes="x
 def autoscale(ax=None, axis="y", margin=0.1):
     """Autoscales the x or y axis of a given matplotlib ax object
     to fit the margins set by manually limits of the other axis,
-    with margins in fraction of the width of the plot
+    with margins in fraction of the width of the plot.
 
     Defaults to current axes object if not specified.
     From https://stackoverflow.com/questions/29461608/matplotlib-fixing-x-axis-scale-and-autoscale-y-axis
@@ -167,7 +167,7 @@ def autoscale(ax=None, axis="y", margin=0.1):
 
     def calculate_new_limit(fixed, dependent, limit):
         """Calculates the min/max of the dependent axis given
-        a fixed axis with limits
+        a fixed axis with limits.
         """
         if len(fixed) > 2:
             mask = (fixed > limit[0]) & (fixed < limit[1]) & (~np.isnan(dependent)) & (~np.isnan(fixed))
@@ -186,13 +186,14 @@ def autoscale(ax=None, axis="y", margin=0.1):
         return low, high
 
     def get_xy(artist):
-        """Gets the xy coordinates of a given artist"""
+        """Get the xy coordinates of a given artist."""
         if "Collection" in str(artist):
             x, y = artist.get_offsets().T
         elif "Line" in str(artist):
             x, y = artist.get_xdata(), artist.get_ydata()
         else:
-            raise ValueError("This type of object isn't implemented yet")
+            msg = "This type of object isn't implemented yet"
+            raise ValueError(msg)
         return x, y
 
     if ax is None:

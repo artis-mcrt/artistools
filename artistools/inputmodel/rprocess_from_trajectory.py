@@ -85,26 +85,25 @@ def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
 def get_closest_network_timestep(
     traj_root: Path, particleid: int, timesec: float, cond: Literal["lessthan", "greaterthan", "nearest"] = "nearest"
 ) -> int:
+    """cond:
+    'lessthan': find highest timestep less than time_sec
+    'greaterthan': find lowest timestep greater than time_sec.
     """
-    cond:
-        'lessthan': find highest timestep less than time_sec
-        'greaterthan': find lowest timestep greater than time_sec
-    """
-    dfevol: pd.DataFrame = get_dfevol(traj_root, particleid)
+    dfevol = get_dfevol(traj_root, particleid)
 
     if cond == "nearest":
         idx = np.abs(dfevol.timesec.to_numpy() - timesec).argmin()
 
     elif cond == "greaterthan":
-        return dfevol.query("timesec > @timesec").nstep.min()
+        return dfevol.query("timesec > @timesec")["nstep"].min()
 
     elif cond == "lessthan":
-        return dfevol.query("timesec < @timesec").nstep.max()
+        return dfevol.query("timesec < @timesec")["nstep"].max()
 
     else:
         raise AssertionError
 
-    nts: int = dfevol.nstep.to_numpy()[idx]
+    nts: int = dfevol["nstep"].to_numpy()[idx]
 
     return nts
 
@@ -112,16 +111,16 @@ def get_closest_network_timestep(
 def get_trajectory_timestepfile_nuc_abund(
     traj_root: Path, particleid: int, memberfilename: str
 ) -> tuple[pd.DataFrame, float]:
-    """
-    get the nuclear abundances for a particular trajectory id number and time
-    memberfilename should be something like "./Run_rprocess/tday_nz-plane"
+    """Get the nuclear abundances for a particular trajectory id number and time
+    memberfilename should be something like "./Run_rprocess/tday_nz-plane".
     """
     with open_tar_file_or_extracted(traj_root, particleid, memberfilename) as trajfile:
         try:
             _, str_t_model_init_seconds, _, rho, _, _ = trajfile.readline().split()
         except ValueError as exc:
             print(f"Problem with {memberfilename}")
-            raise ValueError(f"Problem with {memberfilename}") from exc
+            msg = f"Problem with {memberfilename}"
+            raise ValueError(msg) from exc
 
         trajfile.seek(0)
         t_model_init_seconds = float(str_t_model_init_seconds)
@@ -212,7 +211,8 @@ def get_trajectory_abund_q(
             nts = get_closest_network_timestep(traj_root, particleid, t_model_s)
             memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
         else:
-            raise ValueError("Either t_model_s or nts must be specified")
+            msg = "Either t_model_s or nts must be specified"
+            raise ValueError(msg)
 
         dftrajnucabund, traj_time_s = get_trajectory_timestepfile_nuc_abund(traj_root, particleid, memberfilename)
 
@@ -421,7 +421,7 @@ def add_abundancecontributions(
     trajworker = partial(get_trajectory_abund_q, t_model_s=t_model_s, traj_root=traj_root, getqdotintegral=True)
 
     if at.get_config()["num_processes"] > 1:
-        with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
+        with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
             list_traj_nuc_abund = pool.map(trajworker, dfcontribs_particlegroups.groups)
             pool.close()
             pool.join()
@@ -447,7 +447,7 @@ def add_abundancecontributions(
 
     if at.get_config()["num_processes"] > 1:
         chunksize = math.ceil(len(dfcontribs_cellgroups) / at.get_config()["num_processes"])
-        with multiprocessing.Pool(processes=at.get_config()["num_processes"]) as pool:
+        with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
             listcellnucabundances = pool.map(cellabundworker, dfcontribs_cellgroups, chunksize=chunksize)
             pool.close()
             pool.join()

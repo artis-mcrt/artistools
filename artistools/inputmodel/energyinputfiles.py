@@ -28,7 +28,7 @@ def write_energyrate_file(energy_rate_data, outputfilepath="."):
 
 
 def rprocess_const_and_powerlaw():
-    """Following eqn 4 Korobkin 2012"""
+    """Following eqn 4 Korobkin 2012."""
 
     def integrand(t_days, t0, epsilon0, sigma, alpha, thermalisation_factor):
         return (epsilon0 * ((1 / 2) - (1 / np.pi * np.arctan((t_days - t0) / sigma))) ** alpha) * (
@@ -103,16 +103,16 @@ def define_heating_rate():
     dt = np.diff(times * 24 * 60 * 60)
 
     # check energy rate is on top of power law line
-    plt.plot(times_and_rate["times"][1:], (dE / dt) * 0.01 * MSUN)
-    plt.plot(times_and_rate["times"], qdot * 0.01 * MSUN)
-    plt.yscale("log")
-    plt.xscale("log")
+    # plt.plot(times_and_rate["times"][1:], (dE / dt) * 0.01 * MSUN)
+    # plt.plot(times_and_rate["times"], qdot * 0.01 * MSUN)
+    # plt.yscale("log")
+    # plt.xscale("log")
 
-    plt.xlabel("Time [days]")
-    plt.ylabel("Q [erg/g/s]")
-    # plt.xlim(0.1, 20)
-    # plt.ylim(5e39, 2e41)
-    plt.show()
+    # plt.xlabel("Time [days]")
+    # plt.ylabel("Q [erg/g/s]")
+    # # plt.xlim(0.1, 20)
+    # # plt.ylim(5e39, 2e41)
+    # plt.show()
 
     return times_and_rate, E_tot
 

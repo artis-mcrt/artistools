@@ -149,17 +149,17 @@ def plot_reference_spectrum(
 
     print_integrated_flux(specdata["f_lambda"], specdata["lambda_angstroms"], distance_megaparsec=metadata["dist_mpc"])
 
-    if len(specdata) > 5000:
-        # specdata = scipy.signal.resample(specdata, 10000)
-        # specdata = specdata.iloc[::3, :].copy()
-        print(f" downsampling to {len(specdata)} points")
-        specdata = specdata.query("index % 3 == 0")
+    # if len(specdata) > 5000:
+    #     # specdata = scipy.signal.resample(specdata, 10000)
+    #     # specdata = specdata.iloc[::3, :].copy()
+    #     print(f" downsampling to {len(specdata)} points")
+    #     specdata = specdata.query("index % 3 == 0")
 
     # clamp negative values to zero
     # specdata['f_lambda'] = specdata['f_lambda'].apply(lambda x: max(0, x))
 
     if flambdafilterfunc:
-        specdata["f_lambda"] = flambdafilterfunc(specdata["f_lambda"])
+        specdata.loc[:, "f_lambda"] = flambdafilterfunc(specdata["f_lambda"])
 
     if scale_to_peak:
         specdata["f_lambda_scaled"] = specdata["f_lambda"] / specdata["f_lambda"].max() * scale_to_peak
@@ -207,7 +207,6 @@ def plot_artis_spectrum(
     **plotkwargs,
 ) -> Optional[pd.DataFrame]:
     """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame."""
-
     modelpath = Path(modelpath)
     if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/spec.out'
         specfilename = Path(modelpath).parts[-1]
@@ -993,7 +992,16 @@ def make_plot(args) -> None:
             ymin, ymax = ax.get_ylim()
         else:
             ymax = args.ymax
-        plt.text(5500, (ymax * 0.9), f"{int(round(args.timemin) + 1)} days", fontsize="large")
+
+        timeavg = (args.timemin + args.timemax) / 2.0
+        ax.annotate(
+            f"{timeavg:.2f} days",
+            xy=(0.03, 0.97),
+            xycoords="axes fraction",
+            horizontalalignment="left",
+            verticalalignment="top",
+            fontsize="x-large",
+        )
 
     if args.write_data and not dfalldata.empty:
         print(dfalldata)
