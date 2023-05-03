@@ -147,7 +147,6 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
 
 def read_file(nltefilepath: Union[str, Path]) -> pd.DataFrame:
     """Read NLTE populations from one file."""
-
     if not Path(nltefilepath).is_file():
         nltefilepathgz = Path(str(nltefilepath) + ".gz")
         nltefilepathxz = Path(str(nltefilepath) + ".xz")
@@ -184,7 +183,6 @@ def read_files(
     modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryvars: Optional[dict] = None
 ) -> pd.DataFrame:
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
-
     if dfqueryvars is None:
         dfqueryvars = {}
 
@@ -216,7 +214,7 @@ def read_files(
         dfquery_full += f"({dfquery})"
 
     if get_config()["num_processes"] > 1:
-        with multiprocessing.Pool(processes=get_config()["num_processes"]) as pool:
+        with multiprocessing.get_context("fork").Pool(processes=get_config()["num_processes"]) as pool:
             arr_dfnltepop = pool.map(
                 partial(read_file_filtered, strquery=dfquery_full, dfqueryvars=dfqueryvars), nltefilepaths
             )

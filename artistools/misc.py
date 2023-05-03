@@ -55,7 +55,6 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def add_arguments(self, actions: Iterable[argparse.Action]) -> None:
         def my_sort(arg: Any) -> str:
             opstr: str = arg.option_strings[0] if len(arg.option_strings) > 0 else ""
-            # chars = 'abcdefghijklmnopqrstuvwxyz-'
             opstr = opstr.upper().replace("-", "z")  # push dash chars below alphabet
 
             return opstr
@@ -74,7 +73,6 @@ class AppendPath(argparse.Action):
             # instead of from the command line
             if not pathlist:
                 for pathstr in values:
-                    # print(f"pathstr {pathstr}")
                     # if Path(pathstr) not in pathlist:
                     pathlist.append(Path(pathstr))
         else:
@@ -130,7 +128,7 @@ def get_composition_data(filename: Union[Path, str]) -> pd.DataFrame:
 
 
 def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
-    """Read ion list from output file"""
+    """Read ion list from output file."""
     atomic_composition = {}
 
     output = open(modelpath / "output_0-0.txt").read().splitlines()
@@ -156,10 +154,10 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
 def split_dataframe_dirbins(
     res_df: Union[pl.DataFrame, pd.DataFrame], index_of_repeated_value: int = 0, output_polarsdf: bool = False
 ) -> dict[int, Union[pd.DataFrame, pl.DataFrame]]:
-    """res files repeat output for each angle.
+    """Res files repeat output for each angle.
     index_of_repeated_value is the column index to look for repeating eg. time of ts 0.
-    In spec_res files it's 1 , but in lc_res file it's 0"""
-
+    In spec_res files it's 1 , but in lc_res file it's 0.
+    """
     if isinstance(res_df, pd.DataFrame):
         res_df = pl.from_pandas(res_df)
 
@@ -190,7 +188,7 @@ def average_direction_bins(
     dirbindataframes: dict[int, pl.DataFrame],
     overangle: Literal["phi", "theta"],
 ) -> dict[int, pl.DataFrame]:
-    """Will average dict of direction-binned polars DataFrames according to the phi or theta angle"""
+    """Will average dict of direction-binned polars DataFrames according to the phi or theta angle."""
     dirbincount = at.get_viewingdirectionbincount()
     nphibins = at.get_viewingdirection_phibincount()
 
@@ -224,8 +222,8 @@ def average_direction_bins(
 
 
 def match_closest_time(reftime: float, searchtimes: list[Any]) -> str:
-    """Get time closest to reftime in list of times (searchtimes)"""
-    return str("{}".format(min([float(x) for x in searchtimes], key=lambda x: abs(x - reftime))))
+    """Get time closest to reftime in list of times (searchtimes)."""
+    return str(f"{min([float(x) for x in searchtimes], key=lambda x: abs(x - reftime))}")
 
 
 def get_vpkt_config(modelpath: Union[Path, str]) -> dict[str, Any]:
@@ -254,8 +252,8 @@ def get_vpkt_config(modelpath: Union[Path, str]) -> dict[str, Any]:
 @lru_cache(maxsize=8)
 def get_grid_mapping(modelpath: Union[Path, str]) -> tuple[dict[int, list[int]], dict[int, int]]:
     """Return dict with the associated propagation cells for each model grid cell and
-    a dict with the associated model grid cell of each propagration cell."""
-
+    a dict with the associated model grid cell of each propagration cell.
+    """
     modelpath = Path(modelpath)
     filename = firstexisting("grid.out", tryzipped=True, folder=modelpath) if modelpath.is_dir() else Path(modelpath)
 
@@ -309,13 +307,14 @@ def get_wid_init_at_tmodel(
     return wid_init
 
 
-def get_syn_dir(modelpath: Path) -> Sequence[int]:
+def get_syn_dir(modelpath: Path) -> tuple[float, float, float]:
     if not (modelpath / "syn_dir.txt").is_file():
         print(f"{modelpath / 'syn_dir.txt'} does not exist. using x,y,z = 0,0,1")
-        return (0, 0, 1)
+        return (0.0, 0.0, 1.0)
 
     with open(modelpath / "syn_dir.txt") as syn_dir_file:
-        syn_dir = [int(x) for x in syn_dir_file.readline().split()]
+        x, y, z = (float(i) for i in syn_dir_file.readline().split())
+        syn_dir = (x, y, z)
 
     return syn_dir
 
@@ -367,7 +366,6 @@ def get_timestep_times_float(
     modelpath: Union[Path, str], loc: Literal["mid", "start", "end", "delta"] = "mid"
 ) -> np.ndarray[Any, np.dtype[np.float64]]:
     """Return a list of the time in days of each timestep."""
-
     modelpath = Path(modelpath)
     # virtual path to code comparison workshop models
     if not modelpath.exists() and modelpath.parts[0] == "codecomparison":
@@ -390,7 +388,8 @@ def get_timestep_times_float(
         if loc == "delta":
             return dftimesteps.twidth_days.to_numpy()
 
-        raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
+        msg = "loc must be one of 'mid', 'start', 'end', or 'delta'"
+        raise ValueError(msg)
 
     # older versions of Artis always used logarithmic timesteps and didn't produce a timesteps.out file
     inputparams = get_inputparams(modelpath)
@@ -410,12 +409,12 @@ def get_timestep_times_float(
         tdeltas = np.array([tmin * (math.exp((ts + 1) * dlogt) - math.exp(ts * dlogt)) for ts in timesteps])
         return tdeltas
 
-    raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
+    msg = "loc must be one of 'mid', 'start', 'end', or 'delta'"
+    raise ValueError(msg)
 
 
 def get_timestep_of_timedays(modelpath: Path, timedays: Union[str, float]) -> int:
     """Return the timestep containing the given time in days."""
-
     if isinstance(timedays, str):
         # could be a string like '330d'
         timedays = timedays.rstrip("d")
@@ -431,7 +430,8 @@ def get_timestep_of_timedays(modelpath: Path, timedays: Union[str, float]) -> in
         if timedays_float >= tstart and timedays_float < tend:
             return ts
 
-    raise ValueError(f"Could not find timestep bracketing time {timedays_float}")
+    msg = f"Could not find timestep bracketing time {timedays_float}"
+    raise ValueError(msg)
 
 
 def get_time_range(
@@ -498,9 +498,11 @@ def get_time_range(
                 timestepmax = timestep
 
         if timestepmax < timestepmin:
-            raise ValueError("Specified time range does not include any full timesteps.")
+            msg = "Specified time range does not include any full timesteps."
+            raise ValueError(msg)
     else:
-        raise ValueError("Either time or timesteps must be specified.")
+        msg = "Either time or timesteps must be specified."
+        raise ValueError(msg)
 
     timesteplast = len(tmids) - 1
     if timestepmax is not None and timestepmax > timesteplast:
@@ -515,7 +517,7 @@ def get_time_range(
 
 
 def get_timestep_time(modelpath: Union[Path, str], timestep: int) -> float:
-    """Return the time in days of the midpoint of a timestep number"""
+    """Return the time in days of the midpoint of a timestep number."""
     timearray = get_timestep_times_float(modelpath, loc="mid")
     if timearray is not None:
         return timearray[timestep]
@@ -538,10 +540,16 @@ def get_escaped_arrivalrange(modelpath: Union[Path, str]) -> tuple[int, Optional
     # earliest completely valid time is tmin plus maximum possible travel time from corner to origin
     validrange_start_days = at.get_timestep_times_float(modelpath, loc="start")[0] * (1 + vmax_tmin / 29979245800)
 
+    t_end = at.get_timestep_times_float(modelpath, loc="end")
     # find the last possible escape time and subtract the largest possible travel time (observer time correction)
-    depdata = at.get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
-    nts_last = depdata.ts.max() if "ts" in depdata.columns else len(depdata) - 1
-    nts_last_tend = at.get_timestep_times_float(modelpath, loc="end")[nts_last]
+    try:
+        depdata = at.get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
+        nts_last = depdata.ts.max() if "ts" in depdata.columns else len(depdata) - 1
+    except FileNotFoundError:
+        print("WARNING: No deposition.out file found. Assuming all timesteps have been computed")
+        nts_last = len(t_end) - 1
+
+    nts_last_tend = t_end[nts_last]
 
     # latest possible valid range is the end of the latest computed timestep plus the longest travel time
     validrange_end_days = nts_last_tend * (1 - cornervmax / 29979245800)
@@ -558,7 +566,6 @@ def get_model_name(path: Union[Path, str]) -> str:
 
     Name will be either from a special plotlabel.txt file if it exists or the enclosing directory name
     """
-
     if not Path(path).exists() and Path(path).parts[0] == "codecomparison":
         return str(path)
 
@@ -574,7 +581,7 @@ def get_model_name(path: Union[Path, str]) -> str:
 
 
 def get_z_a_nucname(nucname: str) -> tuple[int, int]:
-    """return atomic number and mass number from a string like 'Pb208' (returns 92, 208)"""
+    """Return atomic number and mass number from a string like 'Pb208' (returns 92, 208)."""
     if nucname.startswith("X_"):
         nucname = nucname[2:]
     z = get_atomic_number(nucname.rstrip("0123456789"))
@@ -642,7 +649,8 @@ def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[Any]:
     strparts = rng.split("-")
 
     if len(strparts) not in [1, 2]:
-        raise ValueError(f"Bad range: '{rng}'")
+        msg = f"Bad range: '{rng}'"
+        raise ValueError(msg)
 
     parts = [int(i) if i not in dictvars else dictvars[i] for i in strparts]
     start: int = parts[0]
@@ -677,7 +685,7 @@ def makelist(x: Union[None, list, Sequence, str, Path]) -> list[Any]:
 
 
 def trim_or_pad(requiredlength: int, *listoflistin: list[list[Any]]) -> Iterator[list[Any]]:
-    """Make lists equal in length to requiredlength either by padding with None or truncating"""
+    """Make lists equal in length to requiredlength either by padding with None or truncating."""
     for listin in listoflistin:
         listin = makelist(listin)
 
@@ -698,8 +706,7 @@ def flatten_list(listin: list) -> list:
 
 
 def zopen(filename: Union[Path, str], mode: str = "rt", encoding: Optional[str] = None) -> Any:
-    """Open filename, filename.gz or filename.xz"""
-
+    """Open filename, filename.gz or filename.xz."""
     ext_fopen = [(".lz4", lz4.frame.open), (".zst", pyzstd.open), (".gz", gzip.open), (".xz", xz.open)]
 
     for ext, fopen in ext_fopen:
@@ -734,7 +741,8 @@ def firstexisting(
         if fullpath.exists():
             return fullpath
 
-    raise FileNotFoundError(f'None of these files exist in {folder}: {", ".join([str(x) for x in fullpaths])}')
+    msg = f"None of these files exist in {folder}: {', '.join([str(x) for x in fullpaths])}"
+    raise FileNotFoundError(msg)
 
 
 def anyexist(
@@ -743,7 +751,6 @@ def anyexist(
     tryzipped: bool = True,
 ) -> bool:
     """Return true if any files in file list exist."""
-
     try:
         firstexisting(filelist=filelist, folder=folder, tryzipped=tryzipped)
     except FileNotFoundError:
@@ -753,7 +760,7 @@ def anyexist(
 
 
 def stripallsuffixes(f: Path) -> Path:
-    """Take a file path (e.g. packets00_0000.out.gz) and return the Path with no suffixes (e.g. packets)"""
+    """Take a file path (e.g. packets00_0000.out.gz) and return the Path with no suffixes (e.g. packets)."""
     f_nosuffixes = Path(f)
     for _ in f.suffixes:
         f_nosuffixes = f_nosuffixes.with_suffix("")  # each call removes only one suffix
@@ -762,8 +769,7 @@ def stripallsuffixes(f: Path) -> Path:
 
 
 def readnoncommentline(file: io.TextIOBase) -> str:
-    """Read a line from the text file, skipping blank and comment lines that begin with #"""
-
+    """Read a line from the text file, skipping blank and comment lines that begin with #."""
     line = ""
 
     while not line.strip() or line.strip().lstrip().startswith("#"):
@@ -813,8 +819,7 @@ def get_file_metadata(filepath: Union[Path, str]) -> dict[str, Any]:
 def get_filterfunc(
     args: argparse.Namespace, mode: str = "interp"
 ) -> Optional[Callable[[Union[list[float], np.ndarray]], np.ndarray]]:
-    """Using command line arguments to determine the appropriate filter function."""
-
+    """Use command line arguments to determine the appropriate filter function."""
     filterfunc: Optional[Callable[[Union[list[float], np.ndarray]], np.ndarray]] = None
     dictargs = vars(args)
 
@@ -887,9 +892,9 @@ def read_linestatfile(
     filepath: Union[Path, str]
 ) -> tuple[int, list[float], list[int], list[int], list[int], list[int]]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
-
     print(f"Loading {filepath}")
-    data = np.loadtxt(filepath)
+
+    data = np.loadtxt(zopen(filepath))
     lambda_angstroms = data[0] * 1e8
     nlines = len(lambda_angstroms)
 
@@ -907,6 +912,33 @@ def read_linestatfile(
     assert len(lower_levels) == nlines
 
     return nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
+
+
+def get_linelist_pldf(modelpath: Union[Path, str]) -> pl.LazyFrame:
+    textfile = at.firstexisting("linestat.out", folder=modelpath)
+    parquetfile = Path(modelpath, "linelist.out.parquet")
+    if not parquetfile.is_file() or parquetfile.stat().st_mtime < textfile.stat().st_mtime:
+        _, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
+
+        pldf = (
+            pl.DataFrame(
+                {
+                    "lambda_angstroms": lambda_angstroms,
+                    "atomic_number": atomic_numbers,
+                    "ion_stage": ion_stages,
+                    "upper_level": upper_levels,
+                    "lower_level": lower_levels,
+                },
+            )
+            # .with_columns(pl.col(pl.Int64).cast(pl.Int32))
+            .with_row_count(name="lineindex")
+        )
+        pldf.write_parquet(parquetfile, compression="zstd")
+        print(f"Saved {parquetfile}")
+    else:
+        print(f"Reading {parquetfile}")
+
+    return pl.scan_parquet(parquetfile)
 
 
 def get_linelist_dict(modelpath: Union[Path, str]) -> dict[int, linetuple]:
@@ -1036,7 +1068,8 @@ def get_runfolders(
 ) -> Collection[Path]:
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
-    The folder list may include non-ARTIS folders if a timestep is not specified."""
+    The folder list may include non-ARTIS folders if a timestep is not specified.
+    """
     folderlist_all = (*sorted([child for child in Path(modelpath).iterdir() if child.is_dir()]), Path(modelpath))
     folder_list_matching = []
     if (timestep is not None and timestep > -1) or (timesteps is not None and len(timesteps) > 0):
@@ -1057,16 +1090,15 @@ def get_mpiranklist(
     modelgridindex: Optional[Union[Iterable[int], int]] = None,
     only_ranks_withgridcells: bool = False,
 ) -> Sequence[int]:
-    """
-    Get a list of rank ids. Parameters:
+    """Get a list of rank ids.
+
     - modelpath:
         pathlib.Path() to ARTIS model folder
     - modelgridindex:
         give a cell number to only return the rank number that updates this cell (and outputs its estimators)
     - only_ranks_withgridcells:
-        set True to skip ranks that only update packets (i.e. that don't update any grid cells/output estimators)
+        set True to skip ranks that only update packets (i.e. that don't update any grid cells/output estimators).
     """
-
     if modelgridindex is None or modelgridindex == []:
         if only_ranks_withgridcells:
             return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
@@ -1155,7 +1187,7 @@ def get_mpirankofcell(modelgridindex: int, modelpath: Union[Path, str]) -> int:
 
 
 def get_viewingdirectionbincount() -> int:
-    return 100
+    return get_viewingdirection_phibincount() * get_viewingdirection_costhetabincount()
 
 
 def get_viewingdirection_phibincount() -> int:
@@ -1166,53 +1198,43 @@ def get_viewingdirection_costhetabincount() -> int:
     return 10
 
 
+def get_phi_bins() -> tuple[np.ndarray, np.ndarray, list[str]]:
+    nphibins = at.get_viewingdirection_phibincount()
+    # pi/2 must be an exact boundary because of the change in behaviour there
+    assert nphibins % 2 == 0
+
+    # for historical reasons, phi bins ordered by ascending phi are
+    # [0, 1, 2, 3, 4, 9, 8, 7, 6, 5] for nphibins == 10
+
+    # convert phibin number to what the number would be if things were sane
+    phisteps = list(range(nphibins // 2)) + list(reversed(range(nphibins // 2, nphibins)))
+
+    phi_lower = np.array([step * 2 * math.pi / nphibins for step in phisteps])
+    phi_upper = np.array([(step + 1) * 2 * math.pi / nphibins for step in phisteps])
+
+    binlabels = []
+    for phibin, step in enumerate(phisteps):
+        str_phi_lower = f"{step}π/{nphibins // 2}" if step > 0 else "0"
+        lower_compare = "≤" if phibin < (nphibins // 2) else "<"
+        str_phi_upper = f"{step+1}π/{nphibins // 2}" if step < nphibins - 1 else "2π"
+        upper_compare = "≤" if phibin > (nphibins // 2) else "<"
+        binlabels.append(f"{str_phi_lower} {lower_compare} ϕ {upper_compare} {str_phi_upper}")
+
+    return phi_lower, phi_upper, binlabels
+
+
+def get_costheta_bins() -> tuple[np.ndarray, np.ndarray, list[str]]:
+    ncosthetabins = at.get_viewingdirection_costhetabincount()
+    costhetabins_lower = np.arange(-1.0, 1.0, 2.0 / ncosthetabins)
+    costhetabins_upper = costhetabins_lower + 2.0 / ncosthetabins
+    binlabels = [f"{lower:.1f} ≤ cos θ < {upper:.1f}" for lower, upper in zip(costhetabins_lower, costhetabins_upper)]
+    return costhetabins_lower, costhetabins_upper, binlabels
+
+
 def get_costhetabin_phibin_labels() -> tuple[list[str], list[str]]:
-    # todo: replace with general code for any bin count:
-    # ncosthetabins = at.get_viewingdirection_costhetabincount()
-    # costhetabins_lower = np.arange(-1., 1., 2. / ncosthetabins)
-    # costhetabins_upper = costhetabins_lower + 2. / ncosthetabins
-
-    costheta_viewing_angle_bins = [
-        "-1.0 ≤ cos θ < -0.8",
-        "-0.8 ≤ cos θ < -0.6",
-        "-0.6 ≤ cos θ < -0.4",
-        "-0.4 ≤ cos θ < -0.2",
-        "-0.2 ≤ cos θ <  0.0",
-        " 0.0 ≤ cos θ <  0.2",
-        " 0.2 ≤ cos θ <  0.4",
-        " 0.4 ≤ cos θ <  0.6",
-        " 0.6 ≤ cos θ <  0.8",
-        " 0.8 ≤ cos θ <  1.0",
-    ]
-    assert len(costheta_viewing_angle_bins) == get_viewingdirection_costhetabincount()
-
-    # this is not correct because the phi bins are not in ascending order
-    # nphibins = at.get_viewingdirection_phibincount()
-    # thetabins_lower = np.arange(0, 2 * math.pi, 2 * math.pi / nphibins)
-    # thetabins_upper = thetabins_lower + 2 * math.pi / nphibins
-
-    phi_viewing_angle_bins = [
-        "0 ≤ ϕ < π/5",
-        "π/5 ≤ ϕ < 2π/5",
-        "2π/5 ≤ ϕ < 3π/5",
-        "3π/5 ≤ ϕ < 4π/5",
-        "4π/5 ≤ ϕ < π",
-        "9π/5 < ϕ < 2π",
-        "8π/5 < ϕ ≤ 9π/5",
-        "7π/5 < ϕ ≤ 8π/5",
-        "6π/5 < ϕ ≤ 7π/5",
-        "π < ϕ ≤ 6π/5",
-    ]
-    assert len(phi_viewing_angle_bins) == get_viewingdirection_phibincount()
-    assert len(costheta_viewing_angle_bins) * len(phi_viewing_angle_bins) == get_viewingdirectionbincount()
-
-    # label orders changed so that bins are in order. Not used yet.
-    # phi_viewing_angle_bins_reordered = ['0 ≤ ϕ < π/5', 'π/5 ≤ ϕ < 2π/5',
-    #                                     '2π/5 ≤ ϕ < 3π/5', '3π/5 ≤ ϕ < 4π/5',
-    #                                     '4π/5 ≤ ϕ < π', 'π < ϕ ≤ 6π/5',
-    #                                     '6π/5 < ϕ ≤ 7π/5', '7π/5 < ϕ ≤ 8π/5',
-    #                                     '8π/5 < ϕ ≤ 9π/5', '9π/5 < ϕ < 2π']
-    return costheta_viewing_angle_bins, phi_viewing_angle_bins
+    _, _, costhetabinlabels = get_costheta_bins()
+    _, _, phibinlabels = get_phi_bins()
+    return costhetabinlabels, phibinlabels
 
 
 def get_vspec_dir_labels(modelpath: Union[str, Path], viewinganglelabelunits: str = "rad") -> dict[int, str]:
@@ -1241,7 +1263,8 @@ def get_dirbin_labels(
             assert len(list(Path(modelpath).glob(f"*_res_{MABINS-1:02d}.out*"))) > 0  # check last bin exists
             assert len(list(Path(modelpath).glob(f"*_res_{MABINS:02d}.out*"))) == 0  # check one beyond does not exist
 
-    strlist_costheta_bins, strlist_phi_bins = at.get_costhetabin_phibin_labels()
+    _, _, costhetabinlabels = get_costheta_bins()
+    _, _, phibinlabels = get_phi_bins()
 
     nphibins = at.get_viewingdirection_phibincount()
 
@@ -1255,13 +1278,13 @@ def get_dirbin_labels(
         phi_index = dirbin % nphibins
 
         if average_over_phi:
-            angle_definitions[dirbin] = f"{strlist_costheta_bins[costheta_index]}"
+            angle_definitions[dirbin] = f"{costhetabinlabels[costheta_index]}"
             assert phi_index == 0
             assert not average_over_theta
         elif average_over_theta:
-            angle_definitions[dirbin] = f"{strlist_phi_bins[phi_index]}"
+            angle_definitions[dirbin] = f"{phibinlabels[phi_index]}"
             assert costheta_index == 0
         else:
-            angle_definitions[dirbin] = f"{strlist_costheta_bins[costheta_index]}, {strlist_phi_bins[phi_index]}"
+            angle_definitions[dirbin] = f"{costhetabinlabels[costheta_index]}, {phibinlabels[phi_index]}"
 
     return angle_definitions

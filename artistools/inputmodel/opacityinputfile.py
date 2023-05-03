@@ -15,7 +15,7 @@ def all_cells_same_opacity(modelpath, ngrid):
 
 
 def opacity_by_Ye(outputfilepath, griddata):
-    """Opacities from Table 1 Tanaka 2020"""
+    """Opacities from Table 1 Tanaka 2020."""
     griddata = pd.DataFrame(griddata)
     print("Getting opacity kappa from Ye")
 

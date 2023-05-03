@@ -1,7 +1,6 @@
-"""
-File readers for Blondin et al. code comparison file formats
+"""File readers for Blondin et al. code comparison file formats
 The model paths are not real file system paths, but take a form like this:
-codecomparison/[modelname]/[codename]
+codecomparison/[modelname]/[codename].
 
 e.g., codecomparison/DDC10/artisnebular
 """
@@ -49,7 +48,8 @@ def get_timestep_times_float(
         tdeltas = tends - tstarts
         return tdeltas
 
-    raise ValueError("loc must be one of 'mid', 'start', 'end', or 'delta'")
+    msg = "loc must be one of 'mid', 'start', 'end', or 'delta'"
+    raise ValueError(msg)
 
 
 def read_reference_estimators(
@@ -58,7 +58,6 @@ def read_reference_estimators(
     timestep: Union[None, int, Sequence[int]] = None,
 ) -> dict[tuple[int, int], Any]:
     """Read estimators from code comparison workshop file."""
-
     virtualfolder, inputmodel, codename = Path(modelpath).parts
     assert virtualfolder == "codecomparison"
 
@@ -202,14 +201,12 @@ def plot_spectrum(
     modelpath: Union[str, Path], timedays: Union[str, float], axis: matplotlib.axes.Axes, **plotkwargs
 ) -> None:
     dfspectra, arr_timedays = get_spectra(modelpath)
-    # print(dfspectra)
     timeindex = (np.abs(arr_timedays - float(timedays))).argmin()
     timedays_found = dfspectra.columns[timeindex + 1]
 
     print(f"{modelpath}: requested spectrum at {timedays} days. Closest matching spectrum is at {timedays_found} days")
     assert np.isclose(arr_timedays[timeindex], float(timedays_found), rtol=0.01)  # check columns match
     assert np.isclose(float(timedays), float(timedays_found), rtol=0.1)  # found a detect match to requested time
-    # print(dfspectra[['lambda', timedays_found]])
     label = str(modelpath).lstrip("_") + f" {timedays_found}d"
 
     megaparsec_to_cm = 3.085677581491367e24

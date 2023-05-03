@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import multiprocessing
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -322,5 +321,4 @@ def main(args=None, argsraw=None, **kwargs):
 
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
     main()

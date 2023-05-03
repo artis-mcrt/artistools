@@ -1,7 +1,7 @@
 import calendar
 import gzip
 import math
-import os
+import multiprocessing as mp
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -16,7 +16,7 @@ import polars as pl
 import artistools as at
 
 # for the parquet files
-time_lastschemachange = (2023, 4, 2, 22, 13, 0)
+time_lastschemachange = (2023, 4, 22, 12, 31, 0)
 
 CLIGHT = 2.99792458e10
 DAY = 86400
@@ -145,7 +145,7 @@ def add_derived_columns(
 ) -> pd.DataFrame:
     cm_to_km = 1e-5
     day_in_s = 86400
-    if dfpackets.empty:
+    if isinstance(dfpackets, pd.DataFrame) and dfpackets.empty:
         return dfpackets
 
     colnames = at.makelist(colnames)
@@ -167,7 +167,6 @@ def add_derived_columns(
         return at.get_timestep_of_timedays(modelpath, packet.trueem_time / day_in_s)
 
     if "emission_velocity" in colnames:
-        dfpackets = dfpackets.eval("emission_velocity = sqrt(em_posx ** 2 + em_posy ** 2 + em_posz ** 2) / em_time")
         dfpackets["emission_velocity"] = (
             np.sqrt(dfpackets["em_posx"] ** 2 + dfpackets["em_posy"] ** 2 + dfpackets["em_posz"] ** 2)
             / dfpackets["em_time"]
@@ -195,6 +194,33 @@ def add_derived_columns(
 
     if any(x in colnames for x in ["angle_bin", "dirbin", "costhetabin", "phibin"]):
         dfpackets = bin_packet_directions(modelpath, dfpackets)
+
+    return dfpackets
+
+
+def add_derived_columns_lazy(dfpackets: pl.LazyFrame) -> pl.LazyFrame:
+    # we might as well add everything, since the columns only get calculated when they are actually used
+
+    dfpackets = dfpackets.with_columns(
+        [
+            (
+                (pl.col("em_posx") ** 2 + pl.col("em_posy") ** 2 + pl.col("em_posz") ** 2).sqrt() / pl.col("em_time")
+            ).alias("emission_velocity")
+        ]
+    )
+
+    dfpackets = dfpackets.with_columns(
+        [
+            (
+                (
+                    (pl.col("em_posx") * pl.col("dirx")) ** 2
+                    + (pl.col("em_posy") * pl.col("diry")) ** 2
+                    + (pl.col("em_posz") * pl.col("dirz")) ** 2
+                ).sqrt()
+                / pl.col("em_time")
+            ).alias("emission_velocity_lineofsight")
+        ]
+    )
 
     return dfpackets
 
@@ -256,11 +282,15 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
         dfpackets = dfpackets.drop(dfpackets.columns[-1])
 
     if "true_emission_velocity" in dfpackets.columns:
+        # some packets don't have this set, which confused read_csv to mark it as str
         dfpackets = dfpackets.with_columns([pl.col("true_emission_velocity").cast(pl.Float32)])
 
-    # cast Int64 to Int32
+    if "originated_from_positron" in dfpackets.columns:
+        dfpackets = dfpackets.with_columns([pl.col("originated_from_positron").cast(pl.Boolean)])
+
+    # Luke: packet energies in ergs can be huge (>1e39) which is too large for Float32
     dfpackets = dfpackets.with_columns(
-        [pl.col(col).cast(pl.Int32) for col in dfpackets.columns if dfpackets[col].dtype == pl.Int64]
+        [pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).exclude(["e_rf", "e_cmf"]).cast(pl.Float32)]
     )
 
     return dfpackets
@@ -275,59 +305,56 @@ def readfile(
     return readfile_pl(packetsfile, packet_type=packet_type, escape_type=escape_type).collect().to_pandas()
 
 
+def convert_text_to_parquet(
+    packetsfiletext: Union[Path, str],
+) -> Path:
+    packetsfiletext = Path(packetsfiletext)
+    packetsfileparquet = at.stripallsuffixes(packetsfiletext).with_suffix(".out.parquet")
+
+    dfpackets = readfile_text(packetsfiletext).lazy()
+    dfpackets = dfpackets.with_columns(
+        [
+            (
+                (
+                    pl.col("escape_time")
+                    - (
+                        pl.col("posx") * pl.col("dirx")
+                        + pl.col("posy") * pl.col("diry")
+                        + pl.col("posz") * pl.col("dirz")
+                    )
+                    / 29979245800.0
+                )
+                / 86400.0
+            )
+            .cast(pl.Float32)
+            .alias("t_arrive_d"),
+        ]
+    )
+
+    syn_dir = (0.0, 0.0, 1.0)
+    for p in packetsfiletext.parents:
+        if Path(p, "syn_dir.txt").is_file():
+            syn_dir = at.get_syn_dir(p)
+            break
+
+    dfpackets = add_packet_directions_lazypolars(dfpackets, syn_dir)
+    dfpackets = bin_packet_directions_lazypolars(dfpackets)
+
+    # print(f"Saving {packetsfileparquet}")
+    dfpackets = dfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
+    dfpackets.collect().write_parquet(packetsfileparquet, compression="zstd", statistics=True)
+
+    return packetsfileparquet
+
+
 def readfile_pl(
     packetsfile: Union[Path, str],
+    modelpath: Union[None, Path, str] = None,
     packet_type: Optional[str] = None,
     escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
 ) -> pl.LazyFrame:
     """Read a packets file into a Polars LazyFrame from either a parquet file or a text file (and save .parquet)."""
-    packetsfile = Path(packetsfile)
-    packetsfileparquet = at.stripallsuffixes(packetsfile).with_suffix(".out.parquet")
-    packetsfiletext = (
-        packetsfile
-        if packetsfile.suffixes in [[".out"], [".out", ".gz"], [".out", ".xz"], [".out", ".lz4"]]
-        else at.firstexisting([at.stripallsuffixes(packetsfile).with_suffix(".out")], tryzipped=True)
-    )
-
-    write_parquet = True  # will be set False if parquet file is read
-
-    dfpackets = None
-    if packetsfile == packetsfileparquet and os.path.getmtime(packetsfileparquet) > calendar.timegm(
-        time_lastschemachange
-    ):
-        try:
-            dfpackets = pl.scan_parquet(packetsfileparquet)
-            write_parquet = False
-        except Exception as exc:
-            print(exc)
-            print(f"Error occured in file {packetsfile}. Reading from text version.")
-
-    if dfpackets is None:
-        dfpackets = readfile_text(packetsfiletext).lazy()
-
-    if "t_arrive_d" not in dfpackets.columns:
-        dfpackets = dfpackets.with_columns(
-            [
-                (
-                    (
-                        pl.col("escape_time")
-                        - (
-                            pl.col("posx") * pl.col("dirx")
-                            + pl.col("posy") * pl.col("diry")
-                            + pl.col("posz") * pl.col("dirz")
-                        )
-                        / 29979245800.0
-                    )
-                    / 86400.0
-                ).alias("t_arrive_d"),
-            ]
-        )
-
-    if write_parquet:
-        print(f"Saving {packetsfileparquet}")
-        dfpackets = dfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
-        dfpackets.collect().write_parquet(packetsfileparquet, compression="zstd", statistics=True)
-        dfpackets = pl.scan_parquet(packetsfileparquet)
+    dfpackets = pl.scan_parquet(packetsfile)
 
     if escape_type is not None:
         assert packet_type is None or packet_type == "TYPE_ESCAPE"
@@ -340,41 +367,72 @@ def readfile_pl(
     return dfpackets
 
 
-def get_packetsfilepaths(modelpath: Union[str, Path], maxpacketfiles: Optional[int] = None) -> list[Path]:
+def get_packetsfilepaths(
+    modelpath: Union[str, Path], maxpacketfiles: Optional[int] = None, printwarningsonly: bool = False
+) -> list[Path]:
     nprocs = at.get_nprocs(modelpath)
 
     searchfolders = [Path(modelpath, "packets"), Path(modelpath)]
     # in descending priority (based on speed of reading)
-    suffix_priority = [".out.parquet", ".out.zst", ".out.lz4", ".out.zst", ".out", ".out.gz", ".out.xz"]
-    packetsfiles = []
+    suffix_priority = [".out.zst", ".out.lz4", ".out.zst", ".out", ".out.gz", ".out.xz"]
+    t_lastschemachange = calendar.timegm(time_lastschemachange)
+
+    parquetpacketsfiles = []
+    parquetrequiredfiles = []
 
     for rank in range(nprocs + 1):
         name_nosuffix = f"packets00_{rank:04d}"
         found_rank = False
-        for suffix in suffix_priority:
-            if found_rank:
-                break
-            for folderpath in searchfolders:
-                if (folderpath / name_nosuffix).with_suffix(suffix).is_file():
-                    packetsfiles.append((folderpath / name_nosuffix).with_suffix(suffix))
+
+        for folderpath in searchfolders:
+            filepath = (folderpath / name_nosuffix).with_suffix(".out.parquet")
+            if filepath.is_file():
+                if filepath.stat().st_mtime < t_lastschemachange:
+                    filepath.unlink(missing_ok=True)
+                    print(f"{filepath} is out of date.")
+                else:
+                    if rank < nprocs:
+                        parquetpacketsfiles.append(filepath)
                     found_rank = True
+
+        if not found_rank:
+            for suffix in suffix_priority:
+                for folderpath in searchfolders:
+                    filepath = (folderpath / name_nosuffix).with_suffix(suffix)
+                    if filepath.is_file():
+                        if rank < nprocs:
+                            parquetrequiredfiles.append(filepath)
+                        found_rank = True
+                        break
+
+                if found_rank:
                     break
 
         if found_rank and rank >= nprocs:
-            print(f"WARNING: nprocs is {nprocs} but file {packetsfiles[-1]} exists")
-            packetsfiles = packetsfiles[:-1]
+            print(f"WARNING: nprocs is {nprocs} but file {filepath} exists")
         elif not found_rank and rank < nprocs:
             print(f"WARNING: packets file for rank {rank} was not found.")
 
-        if maxpacketfiles is not None and len(packetsfiles) >= maxpacketfiles:
+        if maxpacketfiles is not None and (len(parquetpacketsfiles) + len(parquetrequiredfiles)) >= maxpacketfiles:
             break
 
-    if maxpacketfiles is not None and nprocs > maxpacketfiles:
-        print(f"Reading from the first {maxpacketfiles} of {len(packetsfiles)} packets files")
+    if len(parquetrequiredfiles) >= 20:
+        with mp.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
+            convertedparquetpacketsfiles = pool.map(convert_text_to_parquet, parquetrequiredfiles)
+            pool.close()
+            pool.join()
     else:
-        print(f"Reading from {len(packetsfiles)} packets files")
+        convertedparquetpacketsfiles = [convert_text_to_parquet(p) for p in parquetrequiredfiles]
 
-    return packetsfiles
+    parquetpacketsfiles += list(convertedparquetpacketsfiles)
+
+    if not printwarningsonly:
+        if maxpacketfiles is not None and nprocs > maxpacketfiles:
+            print(f"Reading from the first {maxpacketfiles} of {nprocs} packets files")
+        else:
+            print(f"Reading from {len(parquetpacketsfiles)} packets files")
+
+    return parquetpacketsfiles
 
 
 def get_packets_pl(
@@ -388,54 +446,35 @@ def get_packets_pl(
         if packet_type is None:
             packet_type = "TYPE_ESCAPE"
 
-    packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
+    packetsfiles = get_packetsfilepaths(modelpath, maxpacketfiles)
 
     nprocs_read = len(packetsfiles)
-    allescrpktfile_parquet = Path(modelpath) / "packets_rpkt_escaped.parquet"
+    packetsdatasize_gb = nprocs_read * Path(packetsfiles[0]).stat().st_size / 1024 / 1024 / 1024
+    print(f" data size is {packetsdatasize_gb:.1f} GB (size of {packetsfiles[0].parts[-1]} * {nprocs_read})")
 
-    write_allpkts_parquet = False
-    pldfpackets = None
-    if maxpacketfiles is None and escape_type == "TYPE_RPKT":
-        if allescrpktfile_parquet.is_file() and os.path.getmtime(allescrpktfile_parquet) > calendar.timegm(
-            time_lastschemachange
-        ):
-            print(f"Reading from {allescrpktfile_parquet}")
-            pldfpackets = pl.scan_parquet(allescrpktfile_parquet)
-        else:
-            write_allpkts_parquet = True
+    pldfpackets = pl.concat(
+        (pl.scan_parquet(packetsfile) for packetsfile in packetsfiles),
+        how="vertical",
+    )
 
-    if pldfpackets is None:
-        pldfpackets = pl.concat(
-            [
-                at.packets.readfile_pl(packetsfile, packet_type=packet_type, escape_type=escape_type)
-                for packetsfile in packetsfiles
-            ],
-            how="vertical",
-            rechunk=False,
+    if escape_type is not None:
+        assert packet_type is None or packet_type == "TYPE_ESCAPE"
+        pldfpackets = pldfpackets.filter(
+            (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
         )
-
-        pldfpackets = bin_packet_directions_lazypolars(modelpath, pldfpackets)
-
-    if write_allpkts_parquet:
-        print(f"Saving {allescrpktfile_parquet}")
-        # pldfpackets = pldfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
-        pldfpackets.collect(streaming=True).write_parquet(
-            allescrpktfile_parquet,
-            compression="zstd",
-            row_group_size=1024 * 1024,
-            statistics=True,
-        )
+    elif packet_type is not None and packet_type:
+        pldfpackets = pldfpackets.filter(pl.col("type_id") == type_ids[packet_type])
 
     return nprocs_read, pldfpackets
 
 
 def get_directionbin(
-    dirx: float, diry: float, dirz: float, nphibins: int, ncosthetabins: int, syn_dir: Sequence[float]
+    dirx: float, diry: float, dirz: float, nphibins: int, ncosthetabins: int, syn_dir: tuple[float, float, float]
 ) -> int:
     dirmag = np.sqrt(dirx**2 + diry**2 + dirz**2)
     pkt_dir = [dirx / dirmag, diry / dirmag, dirz / dirmag]
     costheta = np.dot(pkt_dir, syn_dir)
-    thetabin = int((costheta + 1.0) / 2.0 * ncosthetabins)
+    costhetabin = int((costheta + 1.0) / 2.0 * ncosthetabins)
 
     xhat = np.array([1.0, 0.0, 0.0])
     vec1 = np.cross(pkt_dir, syn_dir)
@@ -444,76 +483,121 @@ def get_directionbin(
 
     vec3 = np.cross(vec2, syn_dir)
     testphi = np.dot(vec1, vec3)
+    # phi = math.acos(cosphi) if testphi > 0 else (math.acos(-cosphi) + np.pi)
 
     phibin = (
         int(math.acos(cosphi) / 2.0 / np.pi * nphibins)
-        if testphi > 0
+        if testphi >= 0
         else int((math.acos(cosphi) + np.pi) / 2.0 / np.pi * nphibins)
     )
 
-    return (thetabin * nphibins) + phibin
+    return (costhetabin * nphibins) + phibin
 
 
-def bin_packet_directions_lazypolars(modelpath: Union[Path, str], dfpackets: pl.LazyFrame) -> pl.LazyFrame:
-    nphibins = at.get_viewingdirection_phibincount()
-    ncosthetabins = at.get_viewingdirection_costhetabincount()
-
-    syn_dir = at.get_syn_dir(Path(modelpath))
+def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame, syn_dir: tuple[float, float, float]) -> pl.LazyFrame:
+    assert len(syn_dir) == 3
     xhat = np.array([1.0, 0.0, 0.0])
     vec2 = np.cross(xhat, syn_dir)
 
-    dfpackets = dfpackets.with_columns(
-        (pl.col("dirx") ** 2 + pl.col("diry") ** 2 + pl.col("dirz") ** 2).sqrt().alias("dirmag"),
-    )
-    dfpackets = dfpackets.with_columns(
-        (
-            (pl.col("dirx") * syn_dir[0] + pl.col("diry") * syn_dir[1] + pl.col("dirz") * syn_dir[2]) / pl.col("dirmag")
-        ).alias("costheta"),
-    )
-    dfpackets = dfpackets.with_columns(
-        ((pl.col("costheta") + 1) / 2.0 * ncosthetabins).cast(pl.Int64).alias("costhetabin"),
-    )
-    dfpackets = dfpackets.with_columns(
-        ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
-        ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
-        ((pl.col("dirx") * syn_dir[1] - pl.col("diry") * syn_dir[0]) / pl.col("dirmag")).alias("vec1_z"),
-    )
-
-    dfpackets = dfpackets.with_columns(
-        (
-            (pl.col("vec1_x") * vec2[0] + pl.col("vec1_y") * vec2[1] + pl.col("vec1_z") * vec2[2])
-            / (pl.col("vec1_x") ** 2 + pl.col("vec1_y") ** 2 + pl.col("vec1_z") ** 2).sqrt()
-            / float(np.linalg.norm(vec2))
-        ).alias("cosphi"),
-    )
-
-    # vec1 = dir cross syn_dir
-    dfpackets = dfpackets.with_columns(
-        ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
-        ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
-        ((pl.col("dirx") * syn_dir[1] - pl.col("diry") * syn_dir[0]) / pl.col("dirmag")).alias("vec1_z"),
-    )
-
-    vec3 = np.cross(vec2, syn_dir)
-
-    # arr_testphi = np.dot(arr_vec1, vec3)
-    dfpackets = dfpackets.with_columns(
-        (
-            (pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2]) / pl.col("dirmag")
-        ).alias("testphi"),
-    )
-
-    dfpackets = dfpackets.with_columns(
-        (
-            pl.when(pl.col("testphi") > 0)
-            .then(pl.col("cosphi").arccos() / 2.0 / np.pi * nphibins)
-            .otherwise((pl.col("cosphi").arccos() + np.pi) / 2.0 / np.pi * nphibins)
+    if "dirmag" not in dfpackets.columns:
+        dfpackets = dfpackets.with_columns(
+            (pl.col("dirx") ** 2 + pl.col("diry") ** 2 + pl.col("dirz") ** 2).sqrt().alias("dirmag"),
         )
-        .cast(pl.Int64)
-        .alias("phibin"),
-    )
+
+    if "costheta" not in dfpackets.columns:
+        dfpackets = dfpackets.with_columns(
+            (
+                (pl.col("dirx") * syn_dir[0] + pl.col("diry") * syn_dir[1] + pl.col("dirz") * syn_dir[2])
+                / pl.col("dirmag")
+            )
+            .cast(pl.Float32)
+            .alias("costheta"),
+        )
+
+    if "phi" not in dfpackets.columns:
+        dfpackets = dfpackets.with_columns(
+            ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
+            ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
+            ((pl.col("dirx") * syn_dir[1] - pl.col("diry") * syn_dir[0]) / pl.col("dirmag")).alias("vec1_z"),
+        )
+
+        dfpackets = dfpackets.with_columns(
+            (
+                (pl.col("vec1_x") * vec2[0] + pl.col("vec1_y") * vec2[1] + pl.col("vec1_z") * vec2[2])
+                / (pl.col("vec1_x") ** 2 + pl.col("vec1_y") ** 2 + pl.col("vec1_z") ** 2).sqrt()
+                / float(np.linalg.norm(vec2))
+            )
+            .cast(pl.Float32)
+            .alias("cosphi"),
+        )
+
+        # vec1 = dir cross syn_dir
+        dfpackets = dfpackets.with_columns(
+            ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
+            ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
+            ((pl.col("dirx") * syn_dir[1] - pl.col("diry") * syn_dir[0]) / pl.col("dirmag")).alias("vec1_z"),
+        )
+
+        vec3 = np.cross(vec2, syn_dir)
+
+        # arr_testphi = np.dot(arr_vec1, vec3)
+        dfpackets = dfpackets.with_columns(
+            ((pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2]) / pl.col("dirmag"))
+            .cast(pl.Float32)
+            .alias("testphi"),
+        )
+
+        dfpackets = dfpackets.with_columns(
+            (
+                pl.when(pl.col("testphi") >= 0)
+                .then(pl.col("cosphi").arccos())
+                .otherwise(pl.col("cosphi").mul(-1.0).arccos() + np.pi)
+            )
+            .cast(pl.Float32)
+            .alias("phi"),
+        )
+
+    dfpackets = dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"])
+
+    return dfpackets
+
+
+def bin_packet_directions_lazypolars(
+    dfpackets: pl.LazyFrame,
+    nphibins: Optional[int] = None,
+    ncosthetabins: Optional[int] = None,
+    phibintype: Literal["artis_pi_reversal", "monotonic"] = "artis_pi_reversal",
+) -> pl.LazyFrame:
+    if nphibins is None:
+        nphibins = at.get_viewingdirection_phibincount()
+
+    if ncosthetabins is None:
+        ncosthetabins = at.get_viewingdirection_costhetabincount()
+
     dfpackets = dfpackets.with_columns(
-        (pl.col("costhetabin") * nphibins + pl.col("phibin")).alias("dirbin"),
+        ((pl.col("costheta") + 1) / 2.0 * ncosthetabins).fill_nan(0.0).cast(pl.Int32).alias("costhetabin"),
+    )
+
+    if phibintype == "monotonic":
+        dfpackets = dfpackets.with_columns(
+            (pl.col("phi") / 2.0 / np.pi * nphibins).fill_nan(0.0).cast(pl.Int32).alias("phibin"),
+        )
+    else:
+        # for historical consistency, this binning is not monotonically increasing in phi angle,
+        # but switches to decreasing for phi > pi
+        dfpackets = dfpackets.with_columns(
+            (
+                pl.when(pl.col("testphi") >= 0)
+                .then(pl.col("cosphi").arccos() / 2.0 / np.pi * nphibins)
+                .otherwise((pl.col("cosphi").arccos() + np.pi) / 2.0 / np.pi * nphibins)
+            )
+            .fill_nan(0.0)
+            .cast(pl.Int32)
+            .alias("phibin"),
+        )
+
+    dfpackets = dfpackets.with_columns(
+        (pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"),
     )
 
     return dfpackets
@@ -543,7 +627,7 @@ def bin_packet_directions(modelpath: Union[Path, str], dfpackets: pd.DataFrame) 
     arr_testphi = np.dot(arr_vec1, vec3)
 
     arr_phibin = np.zeros(len(pktdirvecs), dtype=int)
-    filta = arr_testphi > 0
+    filta = arr_testphi >= 0
     arr_phibin[filta] = np.arccos(arr_cosphi[filta]) / 2.0 / np.pi * nphibins
     filtb = np.invert(filta)
     arr_phibin[filtb] = (np.arccos(arr_cosphi[filtb]) + np.pi) / 2.0 / np.pi * nphibins
@@ -715,26 +799,20 @@ def bin_and_sum(
     sumcols: Optional[list[str]] = None,
     getcounts: bool = False,
 ) -> pl.DataFrame:
-    """bins is a list of lower edges, and the final upper edge"""
-
+    """Bins is a list of lower edges, and the final upper edge."""
     # Polars method
-    df = df.with_columns(
-        [
-            (
-                df.select(bincol)
-                .lazy()
-                .collect()[bincol]
-                .cut(
-                    bins=list(bins),
-                    category_label=bincol + "_bin",
-                    maintain_order=True,
-                )
-                .get_column(bincol + "_bin")
-                .cast(pl.Int32)
-                - 1  # subtract 1 because the returned index 0 is the bin below the start of the first supplied bin
-            )
-        ]
+
+    binindex = (
+        df.select(bincol)
+        .lazy()
+        .collect()
+        .get_column(bincol)
+        .cut(bins=list(bins), category_label=bincol + "_bin", maintain_order=True)
+        .get_column(bincol + "_bin")
+        .cast(pl.Int32)
+        - 1  # subtract 1 because the returned index 0 is the bin below the start of the first supplied bin
     )
+    df = df.with_columns([binindex])
 
     if sumcols is not None:
         aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols]
@@ -745,8 +823,8 @@ def bin_and_sum(
     wlbins = df.groupby(bincol + "_bin").agg(aggs).lazy().collect()
 
     # now we will include the empty bins
-    dfout = pl.DataFrame(pl.Series(bincol + "_bin", np.arange(0, len(bins) - 1), dtype=pl.Int32))
-    dfout = dfout.join(wlbins, how="left", on=bincol + "_bin").fill_null(0.0)
+    dfout = pl.DataFrame(pl.Series(name=bincol + "_bin", values=np.arange(0, len(bins) - 1), dtype=pl.Int32))
+    dfout = dfout.join(wlbins, how="left", on=bincol + "_bin").fill_null(0)
 
     # pandas method
 

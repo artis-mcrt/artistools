@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import argparse
 import math
-import multiprocessing
 import sys
 from collections import namedtuple
 from pathlib import Path
@@ -510,5 +509,4 @@ def main(args=None, argsraw=None, **kwargs):
 
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
     main()

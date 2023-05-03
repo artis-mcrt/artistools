@@ -21,7 +21,7 @@ import artistools as at
 def readfile(
     filepath: Union[str, Path],
 ) -> dict[int, pd.DataFrame]:
-    """Read an ARTIS light curve file"""
+    """Read an ARTIS light curve file."""
     print(f"Reading {filepath}")
     lcdata: dict[int, pd.DataFrame] = {}
     if "_res" in str(filepath):
@@ -69,8 +69,7 @@ def get_from_packets(
     average_over_theta: bool = False,
     get_cmf_column: bool = True,
 ) -> dict[int, pl.DataFrame]:
-    """Get ARTIS luminosity vs time from packets files"""
-
+    """Get ARTIS luminosity vs time from packets files."""
     tmidarray = at.get_timestep_times_float(modelpath=modelpath, loc="mid")
     timearray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
     arr_timedelta = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
@@ -108,6 +107,7 @@ def get_from_packets(
             getcols.append("phibin")
         else:
             getcols.append("dirbin")
+
     dfpackets = dfpackets.select(getcols).collect(streaming=True).lazy()
 
     lcdata = {}
@@ -133,11 +133,15 @@ def get_from_packets(
             sumcols=["e_rf"],
         )
 
-        arr_lum = (
-            dftimebinned["e_rf_sum"] / nprocs_read * solidanglefactor * (u.erg / u.day).to("solLum")
-        ) / arr_timedelta
+        unitfactor = float((u.erg / u.day).to("solLum"))
+        dftimebinned = dftimebinned.with_columns(
+            [
+                pl.Series(name="time", values=tmidarray),
+                ((pl.col("e_rf_sum") / nprocs_read * solidanglefactor * unitfactor) / arr_timedelta).alias("lum"),
+            ]
+        ).drop(["e_rf_sum", "t_arrive_d_bin"])
 
-        lcdata[dirbin] = pl.DataFrame({"time": tmidarray, "lum": arr_lum})
+        lcdata[dirbin] = dftimebinned
 
         if get_cmf_column:
             dftimebinned_cmf = at.packets.bin_and_sum(
@@ -168,7 +172,7 @@ def generate_band_lightcurve_data(
     angle: int = -1,
     modelnumber: Optional[int] = None,
 ) -> dict:
-    """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py"""
+    """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
     from scipy.interpolate import interp1d
 
     if args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
@@ -316,8 +320,7 @@ def bolometric_magnitude(
 def get_filter_data(
     filterdir: Union[Path, str], filter_name: str
 ) -> tuple[float, np.ndarray, np.ndarray, float, float]:
-    """Filter data in 'data/filters' taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata"""
-
+    """Filter data in 'data/filters' taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata."""
     with Path(filterdir, filter_name + ".txt").open("r") as filter_metadata:  # defintion of the file
         line_in_filter_metadata = filter_metadata.readlines()  # list of lines
 

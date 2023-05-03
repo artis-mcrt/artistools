@@ -5,8 +5,8 @@ import numpy as np
 
 def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50, plot=False):
     """Should be same as downscale_3d_grid.pro
-    Expects a 3D model with grid^3 cells and outputs 3D model with smallgrid^3 cells"""
-
+    Expects a 3D model with grid^3 cells and outputs 3D model with smallgrid^3 cells.
+    """
     # Check if modelpath is a pathlib.path object
     if not isinstance(modelpath, pathlib.Path):
         modelpath = pathlib.Path(modelpath)

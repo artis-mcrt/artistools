@@ -1,4 +1,3 @@
-import multiprocessing as mp
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -10,7 +9,6 @@ config: dict[str, Any] = {}
 
 
 def setup_config():
-    mp.set_start_method("fork")
     # count the cores (excluding the efficiency cores on ARM)
     try:
         num_processes = int(

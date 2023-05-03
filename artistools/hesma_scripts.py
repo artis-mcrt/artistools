@@ -109,8 +109,7 @@ def make_hesma_vspecfiles(modelpath, outpath=None):
 
 
 def make_hesma_bol_lightcurve(modelpath, outpath, timemin, timemax):
-    """UVOIR bolometric light curve (angle-averaged)"""
-
+    """UVOIR bolometric light curve (angle-averaged)."""
     lightcurvedataframe = at.lightcurve.writebollightcurvedata.get_bol_lc_from_lightcurveout(modelpath)
     print(lightcurvedataframe)
     lightcurvedataframe = lightcurvedataframe.query("time > @timemin and time < @timemax")

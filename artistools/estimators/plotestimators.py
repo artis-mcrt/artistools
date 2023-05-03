@@ -6,7 +6,6 @@ Examples are temperatures, populations, heating/cooling rates.
 """
 import argparse
 import math
-import multiprocessing
 import os
 import sys
 from pathlib import Path
@@ -819,7 +818,6 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
         # sort the pairs by temperature ascending
         listT_e, list_rrc, list_rrc2 = zip(*sorted(zip(listT_e, list_rrc, list_rrc2), key=lambda x: x[0]))
 
-        # markersize=4, marker='s',
         ax.plot(listT_e, list_rrc, linewidth=2, label=f"{ionstr} ARTIS RRC_LTE_Nahar", **plotkwargs)
         ax.plot(listT_e, list_rrc2, linewidth=2, label=f"{ionstr} ARTIS Alpha_R", **plotkwargs)
 
@@ -1047,7 +1045,8 @@ def main(args=None, argsraw=None, **kwargs):
             mgilist = [args.modelgridindex] * len(timesteps_included)
             timesteplist_unfiltered = [(ts,) for ts in timesteps_included]
             if estimators[(args.modelgridindex, timesteps_included[0])]["emptycell"]:
-                raise ValueError(f"cell {args.modelgridindex} is empty. no estimators available")
+                msg = f"cell {args.modelgridindex} is empty. no estimators available"
+                raise ValueError(msg)
             make_plot(modelpath, timesteplist_unfiltered, mgilist, estimators, args.x, plotlist, args)
         else:
             # plot a range of cells in a time snapshot showing internal structure
@@ -1092,5 +1091,4 @@ def main(args=None, argsraw=None, **kwargs):
 
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
     main()
