@@ -11,44 +11,44 @@ def addargs(parser=None) -> None:
 
 dictcommands = {
     "comparetogsinetwork": ("gsinetwork", "main"),
-    "deposition": ("artistools.deposition", "main_analytical"),
+    "deposition": ("deposition", "main_analytical"),
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
-    "spencerfano": ("artistools.nonthermal.solvespencerfanocmd", "main"),
+    "exportmassfractions": ("estimators.exportmassfractions", "main"),
+    "listtimesteps": ("", "showtimesteptimes"),
     "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
+    "maketardismodelfromartis": ("inputmodel.maketardismodelfromartis", "main"),
     "maptogrid": ("inputmodel.maptogrid", "main"),
     "plotestimators": ("estimators.plotestimators", "main"),
+    "plotinitialcomposition": ("initial_composition", "main"),
     "plotlightcurves": ("lightcurve.plotlightcurve", "main"),
+    "plotmodeldensity": ("inputmodel.plotdensity", "main"),
+    "plotmodeldeposition": ("deposition", "main"),
+    "plotlinefluxes": ("linefluxes", "main"),
+    "plotmacroatom": ("macroatom", "main"),
+    "plotnltepops": ("nltepops.plotnltepops", "main"),
+    "plotnonthermal": ("nonthermal", "main"),
+    "plotradfield": ("radfield", "main"),
     "plotspectra": ("spectra.plotspectra", "main"),
     "plotspherical": ("plotspherical", "main"),
-    "listtimesteps": ("artistools", "showtimesteptimes"),
-    "maketardismodelfromartis": ("artistools.inputmodel.maketardismodelfromartis", "main"),
-    "plotmodeldensity": ("artistools.inputmodel.plotdensity", "main"),
-    "plotmodeldeposition": ("artistools.deposition", "main"),
-    "exportmassfractions": ("artistools.estimators.exportmassfractions", "main"),
-    "plotlinefluxes": ("artistools.linefluxes", "main"),
-    "plotmacroatom": ("artistools.macroatom", "main"),
-    "plotnltepops": ("artistools.nltepops.plotnltepops", "main"),
-    "plotnonthermal": ("artistools.nonthermal", "main"),
-    "plotradfield": ("artistools.radfield", "main"),
-    "plottransitions": ("artistools.transitions", "main"),
-    "plotinitialcomposition": ("artistools.initial_composition", "main"),
-    "setupcompletions": ("artistools.commands", "setup_completions"),
-    "plotviewingangles": ("artistools.viewing_angles_visualization", "cli"),
-    "writecodecomparisondata": ("artistools.writecomparisondata", "main"),
+    "plottransitions": ("transitions", "main"),
+    "plotviewingangles": ("viewing_angles_visualization", "cli"),
+    "setupcompletions": ("commands", "setup_completions"),
+    "spencerfano": ("nonthermal.solvespencerfanocmd", "main"),
+    "writecodecomparisondata": ("writecomparisondata", "main"),
     "inputmodel": {
         "describe": ("inputmodel.describeinputmodel", "main"),
         "maptogrid": ("inputmodel.maptogrid", "main"),
         "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
         "makeartismodel": ("inputmodel.makeartismodel", "main"),
-        "artistools-make1dslicefrom3dmodel": ("artistools.inputmodel.1dslicefrom3d", "main"),
-        "makeartismodel1dslicefromcone": ("artistools.inputmodel.slice1Dfromconein3dmodel", "main"),
-        "makeartismodelbotyanski2017": ("artistools.inputmodel.botyanski2017", "main"),
-        "makeartismodelfromshen2018": ("artistools.inputmodel.shen2018", "main"),
-        "makeartismodelfromlapuente": ("artistools.inputmodel.lapuente", "main"),
-        "makeartismodelscalevelocity": ("artistools.inputmodel.scalevelocity", "main"),
-        "makeartismodelfullymixed": ("artistools.inputmodel.fullymixed", "main"),
-        "makeartismodelsolar_rprocess": ("artistools.inputmodel.rprocess_solar", "main"),
-        "makeartismodelfromsingletrajectory": ("artistools.inputmodel.rprocess_from_trajectory", "main"),
+        "artistools-make1dslicefrom3dmodel": ("inputmodel.1dslicefrom3d", "main"),
+        "makeartismodel1dslicefromcone": ("inputmodel.slice1Dfromconein3dmodel", "main"),
+        "makeartismodelbotyanski2017": ("inputmodel.botyanski2017", "main"),
+        "makeartismodelfromshen2018": ("inputmodel.shen2018", "main"),
+        "makeartismodelfromlapuente": ("inputmodel.lapuente", "main"),
+        "makeartismodelscalevelocity": ("inputmodel.scalevelocity", "main"),
+        "makeartismodelfullymixed": ("inputmodel.fullymixed", "main"),
+        "makeartismodelsolar_rprocess": ("inputmodel.rprocess_solar", "main"),
+        "makeartismodelfromsingletrajectory": ("inputmodel.rprocess_from_trajectory", "main"),
     },
     "spectra": {
         "plot": ("spectra.plotspectra", "main"),
@@ -64,9 +64,8 @@ def addsubparsers(parser, parentcommand, dictcommands, depth: int = 1) -> None:
             addsubparsers(subparser, subcommand, subcommands, depth=depth + 1)
         else:
             submodulename, funcname = subcommands
-            submodule = importlib.import_module(
-                f"artistools.{submodulename.removeprefix('artistools.')}", package="artistools"
-            )
+            namestr = f"artistools.{submodulename.removeprefix('artistools.')}" if submodulename else "artistools"
+            submodule = importlib.import_module(namestr, package="artistools")
             submodule.addargs(subparser)
             subparser.set_defaults(func=getattr(submodule, funcname))
 
