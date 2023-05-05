@@ -1,8 +1,12 @@
 import subprocess
 from pathlib import Path
+from typing import TypeAlias
+from typing import Union
 
 
-dictcommands = {
+cmdtype: TypeAlias = dict[str, Union[tuple[str, str], "cmdtype"]]
+
+dictcommands: cmdtype = {
     "comparetogsinetwork": ("gsinetwork", "main"),
     "deposition": ("deposition", "main_analytical"),
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
