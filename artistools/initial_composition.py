@@ -380,10 +380,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args=None, argsraw=None, **kwargs) -> None:
+    """Plot ARTIS input model composition."""
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter, description="Plot ARTIS input model composition"
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
         addargs(parser)
         parser.set_defaults(**kwargs)
         argcomplete.autocomplete(parser)

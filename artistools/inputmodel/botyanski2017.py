@@ -27,10 +27,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args=None, argsraw=None, **kwargs) -> None:
+    """Create Botyanski et al. 2017 model."""
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter, description="Create Botyanski et al. 2017 ."
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
 
         addargs(parser)
         parser.set_defaults(**kwargs)

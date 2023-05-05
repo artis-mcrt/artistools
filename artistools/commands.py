@@ -2,6 +2,50 @@ import subprocess
 from pathlib import Path
 
 
+dictcommands = {
+    "comparetogsinetwork": ("gsinetwork", "main"),
+    "deposition": ("deposition", "main_analytical"),
+    "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
+    "exportmassfractions": ("estimators.exportmassfractions", "main"),
+    "listtimesteps": ("", "showtimesteptimes"),
+    "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
+    "maketardismodelfromartis": ("inputmodel.maketardismodelfromartis", "main"),
+    "maptogrid": ("inputmodel.maptogrid", "main"),
+    "plotestimators": ("estimators.plotestimators", "main"),
+    "plotinitialcomposition": ("initial_composition", "main"),
+    "plotlightcurves": ("lightcurve.plotlightcurve", "main"),
+    "plotlinefluxes": ("linefluxes", "main"),
+    "plotmodeldensity": ("inputmodel.plotdensity", "main"),
+    "plotmodeldeposition": ("deposition", "main"),
+    "plotmacroatom": ("macroatom", "main"),
+    "plotnltepops": ("nltepops.plotnltepops", "main"),
+    "plotnonthermal": ("nonthermal", "main"),
+    "plotradfield": ("radfield", "main"),
+    "plotspectra": ("spectra.plotspectra", "main"),
+    "plotspherical": ("plotspherical", "main"),
+    "plottransitions": ("transitions", "main"),
+    "plotviewingangles": ("viewing_angles_visualization", "main"),
+    "setupcompletions": ("commands", "setup_completions"),
+    "spencerfano": ("nonthermal.solvespencerfanocmd", "main"),
+    "writecodecomparisondata": ("writecomparisondata", "main"),
+    "inputmodel": {
+        "describe": ("inputmodel.describeinputmodel", "main"),
+        "maptogrid": ("inputmodel.maptogrid", "main"),
+        "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
+        "makeartismodel": ("inputmodel.makeartismodel", "main"),
+        "artistools-make1dslicefrom3dmodel": ("inputmodel.1dslicefrom3d", "main"),
+        "makeartismodel1dslicefromcone": ("inputmodel.slice1Dfromconein3dmodel", "main"),
+        "makeartismodelbotyanski2017": ("inputmodel.botyanski2017", "main"),
+        "makeartismodelfromshen2018": ("inputmodel.shen2018", "main"),
+        "makeartismodelfromlapuente": ("inputmodel.lapuente", "main"),
+        "makeartismodelscalevelocity": ("inputmodel.scalevelocity", "main"),
+        "makeartismodelfullymixed": ("inputmodel.fullymixed", "main"),
+        "makeartismodelsolar_rprocess": ("inputmodel.rprocess_solar", "main"),
+        "makeartismodelfromsingletrajectory": ("inputmodel.rprocess_from_trajectory", "main"),
+    },
+}
+
+
 def get_commandlist() -> dict[str, tuple[str, str]]:
     commandlist = {
         "at": ("artistools", "main"),
@@ -53,8 +97,8 @@ def get_commandlist() -> dict[str, tuple[str, str]]:
         "artistools-initialcomposition": ("artistools.initial_composition", "main"),
         "artistools-writecodecomparisondata": ("artistools.writecomparisondata", "main"),
         "artistools-setup_completions": ("artistools.commands", "setup_completions"),
-        "artistools-viewingangles": ("artistools.viewing_angles_visualization", "cli"),
-        "plotartisviewingangles": ("artistools.viewing_angles_visualization", "cli"),
+        "artistools-viewingangles": ("artistools.viewing_angles_visualization", "main"),
+        "plotartisviewingangles": ("artistools.viewing_angles_visualization", "main"),
     }
 
     return commandlist
@@ -67,7 +111,7 @@ def get_console_scripts() -> list[str]:
     return console_scripts
 
 
-def setup_completions() -> None:
+def setup_completions(*args, **kwargs) -> None:
     # Add the following lines to your .zshrc file to get command completion:
     # autoload -U bashcompinit
     # bashcompinit

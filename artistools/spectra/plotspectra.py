@@ -1276,9 +1276,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,
-            description=(
-                "Plot ARTIS model spectra by finding spec.out files in the current directory or subdirectories."
-            ),
+            description=__doc__,
         )
         addargs(parser)
         parser.set_defaults(**kwargs)

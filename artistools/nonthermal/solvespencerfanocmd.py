@@ -142,10 +142,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args=None, argsraw=None, **kwargs):
+    """Solve Spencer-Fano equation using data from ARTIS cell at some timestep."""
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,
-            description="Plot estimated spectra from bound-bound transitions.",
+            description=__doc__,
         )
         addargs(parser)
         parser.set_defaults(**kwargs)

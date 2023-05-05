@@ -29,10 +29,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args=None, argsraw=None, **kwargs) -> None:
+    """Convert an ARTIS format model to TARDIS format."""
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter, description="Convert an ARTIS format model to TARDIS format."
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
 
         addargs(parser)
         parser.set_defaults(**kwargs)

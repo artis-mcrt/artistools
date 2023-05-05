@@ -1,9 +1,4 @@
-from .plotnonthermal import main as plot
-
-
-def main() -> None:
-    plot()
-
+from .plotnonthermal import main
 
 if __name__ == "__main__":
     main()

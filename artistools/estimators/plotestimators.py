@@ -6,7 +6,6 @@ Examples are temperatures, populations, heating/cooling rates.
 """
 import argparse
 import math
-import os
 import sys
 from pathlib import Path
 
@@ -739,8 +738,8 @@ def make_plot(
         figure_title = f"{modelname}\nCell {mgilist[0]}"
 
         defaultoutputfile = Path("plotestimators_cell{modelgridindex:03d}.pdf")
-        if os.path.isdir(args.outputfile):
-            args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+        if Path(args.outputfile).is_dir():
+            args.outputfile = str(Path(args.outputfile, defaultoutputfile))
 
         outfilename = str(args.outputfile).format(modelgridindex=mgilist[0])
 
@@ -756,8 +755,8 @@ def make_plot(
             figure_title = f"{modelname}\nTimestep {timestepslist[0]} ({timeavg:.2f}d)"
 
         defaultoutputfile = Path("plotestimators_ts{timestep:02d}_{timeavg:.0f}d.pdf")
-        if os.path.isdir(args.outputfile):
-            args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+        if Path(args.outputfile).is_dir():
+            args.outputfile = str(Path(args.outputfile, defaultoutputfile))
 
         outfilename = str(args.outputfile).format(timestep=timestepslist[0][0], timeavg=timeavg)
 
@@ -945,10 +944,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args=None, argsraw=None, **kwargs):
+    """Plot ARTIS estimators."""
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter, description="Plot ARTIS estimators."
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
         addargs(parser)
         parser.set_defaults(**kwargs)
         argcomplete.autocomplete(parser)

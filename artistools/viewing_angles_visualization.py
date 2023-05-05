@@ -84,7 +84,7 @@ def gen_viewing_angle_df(l):
     return pd.DataFrame(viewing_angles)
 
 
-def main(
+def viewing_angles_visualisation(
     modelfile,
     outfile=None,
     isomin=None,
@@ -251,14 +251,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def cli():
+def main() -> None:
+    """Tool to generate a 3D visualization of an ARTIS model."""
     parser = argparse.ArgumentParser()
 
     addargs(parser)
 
     args = parser.parse_args()
 
-    main(
+    viewing_angles_visualisation(
         modelfile=args.modelfile,
         outfile=args.outfile,
         isomin=args.isomin,
@@ -272,4 +273,4 @@ def cli():
 
 
 if __name__ == "__main__":
-    cli()
+    main()
