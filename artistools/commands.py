@@ -1,8 +1,11 @@
 import subprocess
 from pathlib import Path
-from typing import TypeAlias
 from typing import Union
 
+try:
+    from typing_extensions import TypeAlias
+except ImportError:
+    from typing import TypeAlias
 
 cmdtype: TypeAlias = dict[str, Union[tuple[str, str], "cmdtype"]]
 
