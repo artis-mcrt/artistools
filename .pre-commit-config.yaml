@@ -25,7 +25,7 @@ repos:
           - id: requirements-txt-fixer
           - id: trailing-whitespace
     - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
-      rev: 0.2.2
+      rev: 0.2.3
       hooks:
           - id: yamlfmt
     - repo: https://github.com/charliermarsh/ruff-pre-commit
