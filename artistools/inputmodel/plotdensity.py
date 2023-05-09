@@ -20,11 +20,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args=None, argsraw=None, **kwargs) -> None:
+    """Plot the radial density profile of an ARTIS model."""
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,
-            description="Plot the radial density profile of an ARTIS model",
+            description=__doc__,
         )
 
         addargs(parser)

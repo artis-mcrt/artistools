@@ -5,6 +5,7 @@ import math
 import os
 import sys
 from pathlib import Path
+from typing import Union
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -737,9 +738,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputfile", "-o", type=Path, default=defaultoutputfile, help="path/filename for PDF file")
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args=None, argsraw=None, **kwargs) -> None:
+    """Plot ARTIS non-LTE populations."""
     if args is None:
-        parser = argparse.ArgumentParser(description="Plot ARTIS non-LTE corrections.")
+        parser = argparse.ArgumentParser(description=__doc__)
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
@@ -791,7 +793,7 @@ def main(args=None, argsraw=None, **kwargs):
     if isinstance(args.velocity, (float, int)):
         args.velocity = [args.velocity]
 
-    mgilist = []
+    mgilist: list[Union[int, float]] = []
     for mgi in args.modelgridindex:
         mgilist.append(int(mgi))
 

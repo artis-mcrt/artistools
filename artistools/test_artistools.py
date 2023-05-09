@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import hashlib
 import math
+from typing import Any
 
 import numpy as np
 
@@ -17,6 +18,18 @@ def test_commands() -> None:
     for _command, (submodulename, funcname) in sorted(at.commands.get_commandlist().items()):
         submodule = importlib.import_module(submodulename, package="artistools")
         assert hasattr(submodule, funcname)
+
+    def recursive_check(dictcmd: dict[str, Any]) -> None:
+        for cmd, cmdtarget in dictcmd.items():
+            if isinstance(cmdtarget, dict):
+                recursive_check(cmdtarget)
+            else:
+                submodulename, funcname = cmdtarget
+                namestr = f"artistools.{submodulename.removeprefix('artistools.')}" if submodulename else "artistools"
+                submodule = importlib.import_module(namestr, package="artistools")
+                assert hasattr(submodule, funcname)
+
+    recursive_check(at.commands.dictcommands)
 
 
 def test_timestep_times() -> None:

@@ -29,10 +29,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args=None, argsraw=None, **kwargs):
+    """Describe an ARTIS input model, such as the mass, velocity structure, and abundances."""
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,
-            description="Scale the velocity of an ARTIS model, keeping mass constant and saving back to ARTIS format.",
+            description=__doc__,
         )
 
         addargs(parser)

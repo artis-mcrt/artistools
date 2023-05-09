@@ -52,9 +52,15 @@ roman_numerals = (
 
 
 class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        kwargs["max_help_position"] = 39
+        super().__init__(*args, **kwargs)
+
     def add_arguments(self, actions: Iterable[argparse.Action]) -> None:
-        def my_sort(arg: Any) -> str:
-            opstr: str = arg.option_strings[0] if len(arg.option_strings) > 0 else ""
+        getinvocation = super()._format_action_invocation
+
+        def my_sort(action: argparse.Action) -> str:
+            opstr = getinvocation(action)
             opstr = opstr.upper().replace("-", "z")  # push dash chars below alphabet
 
             return opstr
@@ -331,7 +337,7 @@ def get_nu_grid(modelpath: Path) -> np.ndarray[Any, np.dtype[np.float64]]:
     return specdata.loc[:, "0"].to_numpy()
 
 
-def get_deposition(modelpath: Path) -> pd.DataFrame:
+def get_deposition(modelpath: Union[Path, str] = ".") -> pd.DataFrame:
     if Path(modelpath).is_file():
         depfilepath = modelpath
         modelpath = Path(modelpath).parent

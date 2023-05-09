@@ -29,10 +29,11 @@ def eval_mshell(dfmodel: pd.DataFrame, t_model_init_seconds: float) -> None:
 
 
 def main(args=None, argsraw=None, **kwargs) -> None:
+    """Scale the velocity of an ARTIS model, keeping mass constant and saving back to ARTIS format."""
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,
-            description="Scale the velocity of an ARTIS model, keeping mass constant and saving back to ARTIS format.",
+            description=__doc__,
         )
 
         addargs(parser)

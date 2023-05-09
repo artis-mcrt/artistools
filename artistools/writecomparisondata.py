@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Tools to get artis output in the required format for the code comparison workshop."""
 import argparse
 from pathlib import Path
 
@@ -179,11 +180,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args=None, argsraw=None, **kwargs):
-    """Plot spectra from ARTIS and reference data."""
+    """Write ARTIS model data out in code comparison workshop format."""
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,
-            description="Write ARTIS model data out in code comparison workshop format.",
+            description=__doc__,
         )
         addargs(parser)
         parser.set_defaults(**kwargs)

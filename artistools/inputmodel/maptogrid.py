@@ -435,10 +435,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args=None, argsraw=None, **kwargs) -> None:
+    """Map tracer particle trajectories to a Cartesian grid."""
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,
-            description="Map tracer particle trajectories to a Cartesian grid.",
+            description=__doc__,
         )
 
         addargs(parser)

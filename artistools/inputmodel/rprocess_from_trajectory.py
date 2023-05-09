@@ -521,10 +521,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args=None, argsraw=None, **kwargs) -> None:
+    """Create ARTIS model from single trajectory abundances."""
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,
-            description="Create ARTIS model from single trajectory abundances.",
+            description=__doc__,
         )
 
         addargs(parser)
