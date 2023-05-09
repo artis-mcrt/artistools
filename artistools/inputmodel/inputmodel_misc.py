@@ -94,6 +94,7 @@ def read_modelfile_text(
                 if not printwarningsonly:
                     print(f"  detected 1D model file with {modelcellcount} radial zones")
                 modelmeta["dimensions"] = 1
+                getheadersonly = False
 
             fmodel.seek(filepos)  # undo the readline() and go back
 

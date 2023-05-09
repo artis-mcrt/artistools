@@ -175,7 +175,7 @@ def generate_band_lightcurve_data(
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
     from scipy.interpolate import interp1d
 
-    if args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
+    if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
         print("Found vpkt.txt, using virtual packets")
         stokes_params = (
             at.spectra.get_vspecpol_data(vspecangle=angle, modelpath=modelpath)

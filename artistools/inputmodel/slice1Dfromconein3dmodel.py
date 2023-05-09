@@ -205,10 +205,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args=None, argsraw=None, **kwargs):
+    """Make 1D model from cone in 3D model."""
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,
-            description='Make 1D model from cone in 3D model. Call with "makeartismodel1dslicefromcone"',
+            description=__doc__,
         )
         addargs(parser)
         parser.set_defaults(**kwargs)
@@ -225,6 +226,7 @@ def main(args=None, argsraw=None, **kwargs):
             args.other_axis1 = ax
         elif args.other_axis2 is None and ax != args.sliceaxis:
             args.other_axis2 = ax
+
     # remember: models before scaling down to artis input have x and z axis swapped compared to artis input files
 
     make_1D_model_files(args)

@@ -1,8 +1,4 @@
-from .plotnltepops import main as plot
-
-
-def main() -> None:
-    plot()
+from .plotnltepops import main
 
 
 if __name__ == "__main__":

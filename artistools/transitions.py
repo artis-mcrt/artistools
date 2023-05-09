@@ -223,11 +223,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args=None, argsraw=None, **kwargs) -> None:
+    """Plot estimated spectra from bound-bound transitions."""
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,
-            description="Plot estimated spectra from bound-bound transitions.",
+            description=__doc__,
         )
         addargs(parser)
         parser.set_defaults(**kwargs)
@@ -328,7 +329,7 @@ def main(args=None, argsraw=None, **kwargs):
     else:
         if not args.T:
             args.T = [2000]
-        figure_title = f"Te = {args.T[0]:.1f}" if len(args.T) == 1 else None
+        figure_title = f"Te = {args.T[0]:.1f}" if len(args.T) == 1 else ""
 
         temperature_list = []
         vardict = {}

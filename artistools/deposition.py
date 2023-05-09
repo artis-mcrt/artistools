@@ -48,9 +48,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main_analytical(args: Optional[argparse.Namespace] = None, argsraw: Optional[list[str]] = None, **kwargs) -> None:
     """Use the model initial conditions to calculate the deposition rates."""
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter, description="Plot deposition rate of a model at time t (days)."
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
@@ -116,12 +114,11 @@ def main_analytical(args: Optional[argparse.Namespace] = None, argsraw: Optional
     print(f'Global posdep: {global_posdep.to("solLum"):.3e}')
 
 
-def main(args: Optional[argparse.Namespace] = None, argsraw: Optional[list[str]] = None, **kwargs):
+def main(args: Optional[argparse.Namespace] = None, argsraw: Optional[list[str]] = None, **kwargs) -> None:
+    """Plot deposition rate of a model at time t (days)."""
     main_analytical(args=args, argsraw=argsraw, **kwargs)
     if args is None:
-        parser = argparse.ArgumentParser(
-            formatter_class=at.CustomArgHelpFormatter, description="Plot deposition rate of a model at time t (days)."
-        )
+        parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
