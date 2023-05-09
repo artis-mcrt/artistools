@@ -15,9 +15,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--downscale3dgrid", action="store_true", help="Downscale a 3D ARTIS model to smaller grid size"
     )
 
-    parser.add_argument("-inputgridsize", default=200, help="Size of big model grid for downscale script")
+    parser.add_argument("-inputgridsize", default=200, type=int, help="Size of big model grid for downscale script")
 
-    parser.add_argument("-outputgridsize", default=50, help="Size of small model grid for downscale script")
+    parser.add_argument("-outputgridsize", default=50, type=int, help="Size of small model grid for downscale script")
 
     parser.add_argument(
         "--makemodelfromgriddata", action="store_true", help="Make ARTIS model files from arepo grid.dat file"
