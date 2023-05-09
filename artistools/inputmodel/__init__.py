@@ -1,7 +1,9 @@
 import artistools.inputmodel.botyanski2017
 import artistools.inputmodel.describeinputmodel
+import artistools.inputmodel.downscale3dgrid
 import artistools.inputmodel.energyinputfiles
 import artistools.inputmodel.makeartismodel
+import artistools.inputmodel.maketardismodelfromartis
 import artistools.inputmodel.modelfromhydro
 import artistools.inputmodel.opacityinputfile
 import artistools.inputmodel.rprocess_from_trajectory
