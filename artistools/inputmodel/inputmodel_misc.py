@@ -109,6 +109,7 @@ def read_modelfile_text(
 
         data_line_even = fmodel.readline().split()
         ncols_line_even = len(data_line_even)
+        ncols_line_odd = len(fmodel.readline().split())
 
         if columns is None:
             if modelmeta["dimensions"] == 1:
@@ -123,7 +124,7 @@ def read_modelfile_text(
                     "X_Cr48",
                     "X_Ni57",
                     "X_Co57",
-                ][:ncols_line_even]
+                ]
 
             elif modelmeta["dimensions"] == 2:
                 columns = [
@@ -138,7 +139,7 @@ def read_modelfile_text(
                     "X_Cr48",
                     "X_Ni57",
                     "X_Co57",
-                ][:ncols_line_even]
+                ]
 
             elif modelmeta["dimensions"] == 3:
                 columns = [
@@ -154,10 +155,15 @@ def read_modelfile_text(
                     "X_Cr48",
                     "X_Ni57",
                     "X_Co57",
-                ][:ncols_line_even]
+                ]
+            # last two abundances are optional
+            assert columns is not None
+            assert len(columns) == (ncols_line_even + ncols_line_odd) or len(columns) == (
+                ncols_line_even + ncols_line_odd + 2
+            )
+            columns = columns[: ncols_line_even + ncols_line_odd]
 
         assert columns is not None
-
         if ncols_line_even == len(columns):
             if not printwarningsonly:
                 print("  model file is one line per cell")
@@ -167,7 +173,6 @@ def read_modelfile_text(
             if not printwarningsonly:
                 print("  model file format is two lines per cell")
             # columns split over two lines
-            ncols_line_odd = len(fmodel.readline().split())
             assert (ncols_line_even + ncols_line_odd) == len(columns)
             onelinepercellformat = False
 
