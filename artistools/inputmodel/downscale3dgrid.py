@@ -1,15 +1,17 @@
-import pathlib
+from pathlib import Path
+from typing import Union
 
 import numpy as np
 
 
-def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50, plot=False):
+def make_downscaled_3d_grid(
+    modelpath: Union[str, Path], inputgridsize: int = 200, outputgridsize: int = 50, plot: bool = False
+) -> None:
     """Should be same as downscale_3d_grid.pro
     Expects a 3D model with grid^3 cells and outputs 3D model with smallgrid^3 cells.
     """
-    # Check if modelpath is a pathlib.path object
-    if not isinstance(modelpath, pathlib.Path):
-        modelpath = pathlib.Path(modelpath)
+    assert inputgridsize % outputgridsize == 0
+    modelpath = Path(modelpath)
 
     grid = int(inputgridsize)
     smallgrid = int(outputgridsize)
@@ -19,8 +21,10 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50, plo
 
     modelfile = modelpath / "model.txt"
     abundancefile = modelpath / "abundances.txt"
-    smallmodelfile = modelpath / "model_small.txt"
-    smallabundancefile = modelpath / "abundances_small.txt"
+    outfolder = Path(modelpath, f"downscale_{outputgridsize}^3")
+    outfolder.mkdir(exist_ok=True)
+    smallmodelfile = outfolder / "model.txt"
+    smallabundancefile = outfolder / "abundances.txt"
 
     rho = np.zeros((grid, grid, grid))
     ffe = np.zeros((grid, grid, grid))
@@ -28,20 +32,23 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50, plo
     fco = np.zeros((grid, grid, grid))
     ffe52 = np.zeros((grid, grid, grid))
     fcr48 = np.zeros((grid, grid, grid))
+    fni57 = np.zeros((grid, grid, grid))
+    fco57 = np.zeros((grid, grid, grid))
     abund = np.zeros((grid, grid, grid, 31))
     abread = np.zeros(31)
+    nabundcols = None
 
     print("reading abundance file")
     with open(abundancefile) as sourceabundancefile:
         for z in range(0, grid):
             for y in range(0, grid):
                 for x in range(0, grid):
-                    abread = sourceabundancefile.readline().split()
+                    abread = np.array(float(x) for x in sourceabundancefile.readline().split())
                     abund[x, y, z] = abread
 
     print("reading model file")
     with open(modelfile) as sourcemodelfile:
-        x = sourcemodelfile.readline()
+        _ = sourcemodelfile.readline()
         t_model = sourcemodelfile.readline()
         vmax = sourcemodelfile.readline()
 
@@ -50,19 +57,30 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50, plo
                 for x in range(0, grid):
                     dum1, dum2, dum3, dum4, rhoread = sourcemodelfile.readline().split()
                     rho[x, y, z] = rhoread
-                    fferead, fniread, fcoread, ffe52read, fcr48read = sourcemodelfile.readline().split()
-                    ffe[x, y, z] = fferead
-                    fni[x, y, z] = fniread
-                    fco[x, y, z] = fcoread
-                    ffe52[x, y, z] = ffe52read
-                    fcr48[x, y, z] = fcr48read
+                    radioabunds = sourcemodelfile.readline().split()
+                    if nabundcols is None:
+                        nabundcols = len(radioabunds)
+                    else:
+                        assert nabundcols == len(radioabunds)
 
+                    ffe[x, y, z] = radioabunds[0]
+                    fni[x, y, z] = radioabunds[1]
+                    fco[x, y, z] = radioabunds[2]
+                    ffe52[x, y, z] = radioabunds[3]
+                    fcr48[x, y, z] = radioabunds[4]
+                    if len(radioabunds) > 5:
+                        fni57[x, y, z] = radioabunds[5]
+                        fco57[x, y, z] = radioabunds[6]
+
+    assert nabundcols is not None
     rho_small = np.zeros((smallgrid, smallgrid, smallgrid))
     ffe_small = np.zeros((smallgrid, smallgrid, smallgrid))
     fni_small = np.zeros((smallgrid, smallgrid, smallgrid))
     fco_small = np.zeros((smallgrid, smallgrid, smallgrid))
     ffe52_small = np.zeros((smallgrid, smallgrid, smallgrid))
     fcr48_small = np.zeros((smallgrid, smallgrid, smallgrid))
+    fni57_small = np.zeros((smallgrid, smallgrid, smallgrid))
+    fco57_small = np.zeros((smallgrid, smallgrid, smallgrid))
     abund_small = np.zeros((smallgrid, smallgrid, smallgrid, 31))
 
     for z in range(0, smallgrid):
@@ -92,6 +110,14 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50, plo
                                 fcr48[x * merge + xx, y * merge + yy, z * merge + zz]
                                 * rho[x * merge + xx, y * merge + yy, z * merge + zz]
                             )
+                            fni57_small[x, y, z] += (
+                                fni57[x * merge + xx, y * merge + yy, z * merge + zz]
+                                * rho[x * merge + xx, y * merge + yy, z * merge + zz]
+                            )
+                            fco57_small[x, y, z] += (
+                                fco57[x * merge + xx, y * merge + yy, z * merge + zz]
+                                * rho[x * merge + xx, y * merge + yy, z * merge + zz]
+                            )
                             abund_small[x, y, z, :] += (
                                 abund[x * merge + xx, y * merge + yy, z * merge + zz]
                                 * rho[x * merge + xx, y * merge + yy, z * merge + zz]
@@ -106,6 +132,8 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50, plo
                     fco_small[x, y, z] /= rho_small[x, y, z]
                     ffe52_small[x, y, z] /= rho_small[x, y, z]
                     fcr48_small[x, y, z] /= rho_small[x, y, z]
+                    fni57_small[x, y, z] /= rho_small[x, y, z]
+                    fco57_small[x, y, z] /= rho_small[x, y, z]
                     for i in range(1, 31):  # check this
                         abund_small[x, y, z, i] /= rho_small[x, y, z]
                     rho_small[x, y, z] /= merge**3
@@ -148,6 +176,9 @@ def make_downscaled_3d_grid(modelpath, inputgridsize=200, outputgridsize=50, plo
                         ffe52_small[x, y, z],
                         fcr48_small[x, y, z],
                     ]
+                    if nabundcols > 5:
+                        line2.append(fni57_small[x, y, z])
+                        line2.append(fco57_small[x, y, z])
                     i += 1
                     newmodelfile.writelines("%g " % item for item in line1)
                     newmodelfile.writelines("\n")
