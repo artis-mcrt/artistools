@@ -64,7 +64,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     if args.downscale3dgrid:
         at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(
-            modelpath=Path(args.modelpath[0]), inputgridsize=args.inputgridsize, outputgridsize=args.outputgridsize
+            modelpath=Path(args.modelpath[0]), outputgridsize=args.outputgridsize
         )
         return
 
@@ -75,15 +75,11 @@ def main(args=None, argsraw=None, **kwargs):
         )
 
     if args.makeenergyinputfiles:
-        model, t_model, vmax = at.inputmodel.get_modeldata_tuple(args.modelpath[0])
-        if args.modeldim == 1:
-            rho = 10 ** model["logrho"]
-            Mtot_grams = model["cellmass_grams"].sum()
+        model, _ = at.inputmodel.get_modeldata(args.modelpath[0])
+        rho = 10 ** model["logrho"] if args.modeldim == 1 else model["rho"]
+        Mtot_grams = model["cellmass_grams"].sum()
 
-        else:
-            rho = model["rho"]
-            Mtot_grams = model["cellmass_grams"].sum()
-        print(f"total mass { Mtot_grams / 1.989e33} Msun")
+        print(f"total mass {Mtot_grams / 1.989e33} Msun")
 
         at.inputmodel.energyinputfiles.make_energy_files(rho, Mtot_grams, outputpath=args.outputpath)
 

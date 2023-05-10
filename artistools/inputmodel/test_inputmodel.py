@@ -39,6 +39,22 @@ def test_get_modeldata_3d() -> None:
     assert np.isclose(dfmodel.cellmass_grams.sum(), 2.7861855e33)
 
 
+def test_downscale_3dmodel() -> None:
+    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, get_elemabundances=True)
+    modelpath_3d_small = at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(modelpath_3d, outputgridsize=2)
+    dfmodel_small, modelmeta_small = at.get_modeldata(modelpath_3d_small, get_elemabundances=True)
+    assert np.isclose(dfmodel["cellmass_grams"].sum(), dfmodel_small["cellmass_grams"].sum())
+    assert np.isclose(modelmeta["vmax_cmps"], modelmeta_small["vmax_cmps"])
+    assert np.isclose(modelmeta["t_model_init_days"], modelmeta_small["t_model_init_days"])
+
+    abundcols = (x for x in dfmodel.columns if x.startswith("X_"))
+    for abundcol in abundcols:
+        assert np.isclose(
+            (dfmodel[abundcol] * dfmodel["cellmass_grams"]).sum(),
+            (dfmodel_small[abundcol] * dfmodel_small["cellmass_grams"]).sum(),
+        )
+
+
 def test_makemodel_botyanski2017() -> None:
     at.inputmodel.botyanski2017.main(argsraw=[], outputpath=outputpath)
 

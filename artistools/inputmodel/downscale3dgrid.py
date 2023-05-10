@@ -3,85 +3,68 @@ from typing import Union
 
 import numpy as np
 
+import artistools as at
 
-def make_downscaled_3d_grid(
-    modelpath: Union[str, Path], inputgridsize: int = 200, outputgridsize: int = 50, plot: bool = False
-) -> None:
+
+def make_downscaled_3d_grid(modelpath: Union[str, Path], outputgridsize: int = 50, plot: bool = False) -> Path:
     """Should be same as downscale_3d_grid.pro
     Expects a 3D model with grid^3 cells and outputs 3D model with smallgrid^3 cells.
     """
-    assert inputgridsize % outputgridsize == 0
     modelpath = Path(modelpath)
 
+    dfmodel, modelmeta = at.get_modeldata(modelpath, dtype_backend="pyarrow")
+    dfelemabund = at.inputmodel.get_initelemabundances(modelpath, dtype_backend="pyarrow")
+
+    inputgridsize = modelmeta["ncoordgrid"]
     grid = int(inputgridsize)
+
+    assert inputgridsize % outputgridsize == 0
     smallgrid = int(outputgridsize)
 
     merge = grid / smallgrid
     merge = int(merge)
 
-    modelfile = modelpath / "model.txt"
-    abundancefile = modelpath / "abundances.txt"
+    modelfile = at.firstexisting("model.txt", folder=modelpath)
+    abundancefile = at.firstexisting("abundances.txt", folder=modelpath)
     outfolder = Path(modelpath, f"downscale_{outputgridsize}^3")
     outfolder.mkdir(exist_ok=True)
     smallmodelfile = outfolder / "model.txt"
     smallabundancefile = outfolder / "abundances.txt"
 
+    abundcols = [x for x in dfmodel.columns if x.startswith("X_")]
+    nabundcols = len(abundcols)
     rho = np.zeros((grid, grid, grid))
-    ffe = np.zeros((grid, grid, grid))
-    fni = np.zeros((grid, grid, grid))
-    fco = np.zeros((grid, grid, grid))
-    ffe52 = np.zeros((grid, grid, grid))
-    fcr48 = np.zeros((grid, grid, grid))
-    fni57 = np.zeros((grid, grid, grid))
-    fco57 = np.zeros((grid, grid, grid))
-    abund = np.zeros((grid, grid, grid, 31))
-    abread = np.zeros(31)
-    nabundcols = None
+    radioabunds = np.zeros((grid, grid, grid, nabundcols))
+
+    max_atomic_number = len(dfelemabund.columns) - 1
+    assert max_atomic_number == 30
+    abund = np.zeros((grid, grid, grid, max_atomic_number + 1))
 
     print("reading abundance file")
-    with open(abundancefile) as sourceabundancefile:
-        for z in range(0, grid):
-            for y in range(0, grid):
-                for x in range(0, grid):
-                    abread = np.array(float(x) for x in sourceabundancefile.readline().split())
-                    abund[x, y, z] = abread
+
+    cellindex = 0
+    for z in range(0, grid):
+        for y in range(0, grid):
+            for x in range(0, grid):
+                abund[x, y, z] = dfelemabund.iloc[cellindex].to_numpy()
+                cellindex += 1
 
     print("reading model file")
-    with open(modelfile) as sourcemodelfile:
-        _ = sourcemodelfile.readline()
-        t_model = sourcemodelfile.readline()
-        vmax = sourcemodelfile.readline()
+    t_model_days = modelmeta["t_model_init_days"]
+    vmax = modelmeta["vmax_cmps"]
 
-        for z in range(0, grid):
-            for y in range(0, grid):
-                for x in range(0, grid):
-                    dum1, dum2, dum3, dum4, rhoread = sourcemodelfile.readline().split()
-                    rho[x, y, z] = rhoread
-                    radioabunds = sourcemodelfile.readline().split()
-                    if nabundcols is None:
-                        nabundcols = len(radioabunds)
-                    else:
-                        assert nabundcols == len(radioabunds)
+    cellindex = 0
+    for z in range(0, grid):
+        for y in range(0, grid):
+            for x in range(0, grid):
+                rho[x, y, z] = dfmodel.iloc[cellindex]["rho"]
+                radioabunds[x, y, z, :] = dfmodel.iloc[cellindex][abundcols]
 
-                    ffe[x, y, z] = radioabunds[0]
-                    fni[x, y, z] = radioabunds[1]
-                    fco[x, y, z] = radioabunds[2]
-                    ffe52[x, y, z] = radioabunds[3]
-                    fcr48[x, y, z] = radioabunds[4]
-                    if len(radioabunds) > 5:
-                        fni57[x, y, z] = radioabunds[5]
-                        fco57[x, y, z] = radioabunds[6]
+                cellindex += 1
 
-    assert nabundcols is not None
     rho_small = np.zeros((smallgrid, smallgrid, smallgrid))
-    ffe_small = np.zeros((smallgrid, smallgrid, smallgrid))
-    fni_small = np.zeros((smallgrid, smallgrid, smallgrid))
-    fco_small = np.zeros((smallgrid, smallgrid, smallgrid))
-    ffe52_small = np.zeros((smallgrid, smallgrid, smallgrid))
-    fcr48_small = np.zeros((smallgrid, smallgrid, smallgrid))
-    fni57_small = np.zeros((smallgrid, smallgrid, smallgrid))
-    fco57_small = np.zeros((smallgrid, smallgrid, smallgrid))
-    abund_small = np.zeros((smallgrid, smallgrid, smallgrid, 31))
+    radioabunds_small = np.zeros((smallgrid, smallgrid, smallgrid, nabundcols))
+    abund_small = np.zeros((smallgrid, smallgrid, smallgrid, max_atomic_number + 1))
 
     for z in range(0, smallgrid):
         for y in range(0, smallgrid):
@@ -90,34 +73,12 @@ def make_downscaled_3d_grid(
                     for yy in range(0, merge):
                         for xx in range(0, merge):
                             rho_small[x, y, z] += rho[x * merge + xx, y * merge + yy, z * merge + zz]
-                            ffe_small[x, y, z] += (
-                                ffe[x * merge + xx, y * merge + yy, z * merge + zz]
-                                * rho[x * merge + xx, y * merge + yy, z * merge + zz]
-                            )
-                            fni_small[x, y, z] += (
-                                fni[x * merge + xx, y * merge + yy, z * merge + zz]
-                                * rho[x * merge + xx, y * merge + yy, z * merge + zz]
-                            )
-                            fco_small[x, y, z] += (
-                                fco[x * merge + xx, y * merge + yy, z * merge + zz]
-                                * rho[x * merge + xx, y * merge + yy, z * merge + zz]
-                            )
-                            ffe52_small[x, y, z] += (
-                                ffe52[x * merge + xx, y * merge + yy, z * merge + zz]
-                                * rho[x * merge + xx, y * merge + yy, z * merge + zz]
-                            )
-                            fcr48_small[x, y, z] += (
-                                fcr48[x * merge + xx, y * merge + yy, z * merge + zz]
-                                * rho[x * merge + xx, y * merge + yy, z * merge + zz]
-                            )
-                            fni57_small[x, y, z] += (
-                                fni57[x * merge + xx, y * merge + yy, z * merge + zz]
-                                * rho[x * merge + xx, y * merge + yy, z * merge + zz]
-                            )
-                            fco57_small[x, y, z] += (
-                                fco57[x * merge + xx, y * merge + yy, z * merge + zz]
-                                * rho[x * merge + xx, y * merge + yy, z * merge + zz]
-                            )
+                            for i in range(nabundcols):
+                                radioabunds_small[x, y, z, i] += (
+                                    radioabunds[x * merge + xx, y * merge + yy, z * merge + zz, i]
+                                    * rho[x * merge + xx, y * merge + yy, z * merge + zz]
+                                )
+
                             abund_small[x, y, z, :] += (
                                 abund[x * merge + xx, y * merge + yy, z * merge + zz]
                                 * rho[x * merge + xx, y * merge + yy, z * merge + zz]
@@ -127,14 +88,9 @@ def make_downscaled_3d_grid(
         for y in range(0, smallgrid):
             for x in range(0, smallgrid):
                 if rho_small[x, y, z] > 0:
-                    ffe_small[x, y, z] /= rho_small[x, y, z]
-                    fni_small[x, y, z] /= rho_small[x, y, z]
-                    fco_small[x, y, z] /= rho_small[x, y, z]
-                    ffe52_small[x, y, z] /= rho_small[x, y, z]
-                    fcr48_small[x, y, z] /= rho_small[x, y, z]
-                    fni57_small[x, y, z] /= rho_small[x, y, z]
-                    fco57_small[x, y, z] /= rho_small[x, y, z]
-                    for i in range(1, 31):  # check this
+                    radioabunds_small[x, y, z, :] /= rho_small[x, y, z]
+
+                    for i in range(1, max_atomic_number + 1):  # check this
                         abund_small[x, y, z, i] /= rho_small[x, y, z]
                     rho_small[x, y, z] /= merge**3
 
@@ -151,39 +107,30 @@ def make_downscaled_3d_grid(
                     newabundancefile.writelines("\n")
 
     print("writing model file")
-    xmax = float(vmax) * float(t_model) * 3600 * 24
-    i = 0
+    xmax = vmax * t_model_days * 3600 * 24
+    cellindex = 0
     with open(modelpath / smallmodelfile, "w") as newmodelfile:
         gridsize = int(smallgrid**3)
         newmodelfile.write(f"{gridsize}\n")
-        newmodelfile.write(f"{t_model}")
-        newmodelfile.write(f"{vmax}")
+        newmodelfile.write(f"{t_model_days}\n")
+        newmodelfile.write(f"{vmax}\n")
 
         for z in range(0, smallgrid):
             for y in range(0, smallgrid):
                 for x in range(0, smallgrid):
                     line1 = [
-                        int(i + 1),
+                        int(cellindex + 1),
                         -xmax + 2 * x * xmax / smallgrid,
                         -xmax + 2 * y * xmax / smallgrid,
                         -xmax + 2 * z * xmax / smallgrid,
                         rho_small[x, y, z],
                     ]
-                    line2 = [
-                        ffe_small[x, y, z],
-                        fni_small[x, y, z],
-                        fco_small[x, y, z],
-                        ffe52_small[x, y, z],
-                        fcr48_small[x, y, z],
-                    ]
-                    if nabundcols > 5:
-                        line2.append(fni57_small[x, y, z])
-                        line2.append(fco57_small[x, y, z])
-                    i += 1
+                    line2 = radioabunds_small[x, y, z, :]
                     newmodelfile.writelines("%g " % item for item in line1)
                     newmodelfile.writelines("\n")
                     newmodelfile.writelines("%g " % item for item in line2)
                     newmodelfile.writelines("\n")
+                    cellindex += 1
 
     if plot:
         print("making diagnostic plot")
@@ -192,7 +139,7 @@ def make_downscaled_3d_grid(
             from mpl_toolkits.axes_grid1 import make_axes_locatable
         except ModuleNotFoundError:
             print("matplotlib not found, skipping")
-            return
+            return outfolder
 
         fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(6.8 * 1.5, 4.8))
 
@@ -224,4 +171,4 @@ def make_downscaled_3d_grid(
             bbox_inches="tight",
         )
 
-    return
+    return outfolder
