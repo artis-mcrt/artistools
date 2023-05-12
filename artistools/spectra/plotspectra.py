@@ -210,7 +210,7 @@ def plot_artis_spectrum(
     modelpath = Path(modelpath)
     if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/spec.out'
         specfilename = Path(modelpath).parts[-1]
-        print("WARNING: ignoring filename of {specfilename}")
+        print(f"WARNING: ignoring filename of {specfilename}")
         modelpath = Path(modelpath).parent
 
     if not modelpath.is_dir():
