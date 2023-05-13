@@ -1311,6 +1311,6 @@ def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
 
     with open(outdirectory / "time_list.txt", "w+") as time_list:
         for time in arr_tmid:
-            time_list.write(f"{str(time)} \n")
+            time_list.write(f"{time} \n")
 
     print(f"Saved in {outdirectory}")
