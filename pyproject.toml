@@ -145,7 +145,7 @@ unfixable = [
     "ERA001",  # commented out code (will just delete it!)
     "F841",  # Local variable {name} is assigned to but never used
 ]
-line-length = 200
+line-length = 120
 target-version = "py39"
 fix = true
 show-fixes = true
