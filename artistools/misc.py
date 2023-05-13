@@ -137,19 +137,19 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
     """Read ion list from output file."""
     atomic_composition = {}
 
-    output = open(modelpath / "output_0-0.txt").read().splitlines()
-    Z: Optional[int] = None
-    ioncount = 0
-    for row in output:
-        if row.split()[0] == "[input.c]":
-            split_row = row.split()
-            if split_row[1] == "element":
-                Z = int(split_row[4])
-                ioncount = 0
-            elif split_row[1] == "ion":
-                ioncount += 1
-                assert Z is not None
-                atomic_composition[Z] = ioncount
+    with open(modelpath / "output_0-0.txt") as foutput:
+        Z: Optional[int] = None
+        ioncount = 0
+        for row in foutput:
+            if row.split()[0] == "[input.c]":
+                split_row = row.split()
+                if split_row[1] == "element":
+                    Z = int(split_row[4])
+                    ioncount = 0
+                elif split_row[1] == "ion":
+                    ioncount += 1
+                    assert Z is not None
+                    atomic_composition[Z] = ioncount
 
     composition_df = pd.DataFrame([(Z, atomic_composition[Z]) for Z in atomic_composition], columns=["Z", "nions"])
     composition_df["lowermost_ionstage"] = [1] * composition_df.shape[0]
@@ -581,7 +581,8 @@ def get_model_name(path: Union[Path, str]) -> str:
 
     try:
         plotlabelfile = Path(modelpath, "plotlabel.txt")
-        return open(plotlabelfile).readline().strip()
+        with open(plotlabelfile) as f:
+            return f.readline().strip()
     except FileNotFoundError:
         return os.path.basename(modelpath)
 
@@ -721,7 +722,7 @@ def zopen(filename: Union[Path, str], mode: str = "rt", encoding: Optional[str] 
             return fopen(file_ext, mode=mode, encoding=encoding)
 
     # open() can raise file not found if this file doesn't exist
-    return open(filename, mode=mode, encoding=encoding)
+    return open(filename, mode=mode, encoding=encoding)  # noqa: SIM115
 
 
 def firstexisting(
@@ -862,7 +863,7 @@ def join_pdf_files(pdf_list: list[str], modelpath_list: list[Path]) -> None:
 
     for pdf, modelpath in zip(pdf_list, modelpath_list):
         fullpath = firstexisting([pdf], folder=modelpath)
-        merger.append(open(fullpath, "rb"))
+        merger.append(open(fullpath, "rb"))  # noqa: SIM115
         os.remove(fullpath)
 
     resultfilename = f'{pdf_list[0].split(".")[0]}-{pdf_list[-1].split(".")[0]}'
