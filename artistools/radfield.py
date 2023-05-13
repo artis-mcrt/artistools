@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 import argparse
 import math
-import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
+from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -231,7 +231,7 @@ def plot_line_estimators(axis, radfielddata, xmin, xmax, modelgridindex=None, ti
 
 def plot_specout(
     axis,
-    specfilename,
+    specfilename: Union[str, Path],
     timestep: int,
     peak_value: Optional[float] = None,
     scale_factor: Optional[float] = None,
@@ -240,12 +240,13 @@ def plot_specout(
     """Plot the ARTIS spectrum."""
     print(f"Plotting {specfilename}")
 
-    if os.path.isdir(specfilename):
+    specfilename = Path(specfilename)
+    if specfilename.is_dir():
         modelpath = specfilename
-    elif os.path.isfile(specfilename):
+    elif specfilename.is_file():
         modelpath = Path(specfilename).parent
 
-    dfspectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=modelpath)[-1]
+    dfspectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep)[-1]
     label = "Emergent spectrum"
     if scale_factor is not None:
         label += " (scaled)"

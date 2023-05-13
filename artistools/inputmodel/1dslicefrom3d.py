@@ -3,6 +3,7 @@ import argparse
 import math
 import os
 import sys
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 
@@ -33,12 +34,12 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args()
 
-    if not os.path.exists(args.outputfolder):
-        os.makedirs(args.outputfolder)
-    elif os.path.exists(os.path.join(args.outputfolder, "model.txt")):
+    if not Path(args.outputfolder).exists():
+        Path(args.outputfolder).mkdir(parents=True)
+    elif Path(args.outputfolder, "model.txt").exists():
         print("ABORT: model.txt already exists")
         sys.exit()
-    elif os.path.exists(os.path.join(args.outputfolder, "abundances.txt")):
+    elif Path(args.outputfolder, "abundances.txt").exists():
         print("ABORT: abundances.txt already exists")
         sys.exit()
 

@@ -515,7 +515,7 @@ def get_vspecpol_data(
         assert modelpath is not None
         # alternatively use f'vspecpol_averaged-{angle}.out' ?
         vspecpath = modelpath
-        if os.path.isdir(modelpath / "vspecpol"):
+        if (modelpath / "vspecpol").is_dir():
             vspecpath = modelpath / "vspecpol"
 
         try:

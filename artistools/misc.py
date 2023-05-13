@@ -572,12 +572,13 @@ def get_model_name(path: Union[Path, str]) -> str:
 
     Name will be either from a special plotlabel.txt file if it exists or the enclosing directory name
     """
-    if not Path(path).exists() and Path(path).parts[0] == "codecomparison":
+    path = Path(path)
+    if not path.exists() and path.parts[0] == "codecomparison":
         return str(path)
 
-    abspath = os.path.abspath(path)
+    abspath = path.resolve()
 
-    modelpath = abspath if os.path.isdir(abspath) else os.path.dirname(abspath)
+    modelpath = abspath if abspath.is_dir() else abspath.parent
 
     try:
         plotlabelfile = Path(modelpath, "plotlabel.txt")
@@ -864,7 +865,7 @@ def join_pdf_files(pdf_list: list[str], modelpath_list: list[Path]) -> None:
     for pdf, modelpath in zip(pdf_list, modelpath_list):
         fullpath = firstexisting([pdf], folder=modelpath)
         merger.append(open(fullpath, "rb"))  # noqa: SIM115
-        os.remove(fullpath)
+        fullpath.unlink()
 
     resultfilename = f'{pdf_list[0].split(".")[0]}-{pdf_list[-1].split(".")[0]}'
     with open(f"{resultfilename}.pdf", "wb") as resultfile:

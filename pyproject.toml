@@ -116,7 +116,7 @@ ignore = [
     "B005",
     "B007", # variable not used in loop body (but sometimes it is with eval)
     "BLE001",
-    "C9",
+    "C901",
     "COM812",
     "D100", "D101", "D102", "D103", "D104", "D107", "D203", "D205", "D213", "D401", "D417",
     "E501", "E741",
@@ -127,13 +127,17 @@ ignore = [
     "PD901",
     "PGH001",
     "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR2004",
-    "PTH",
+    "PTH112",
+    "PTH113",
+    "PTH123",
+    "PTH118",
+    "PTH119",
+    "PTH120",
     "PLW2901",
     "RET504",
     "S",
     "SLF001",
-    "T",
-    "TRY003",
+    "T201",
     "TRY301",
 ]
 fixable = ["ALL"]
@@ -146,6 +150,9 @@ target-version = "py39"
 fix = true
 show-fixes = true
 ignore-init-module-imports = true
+
+[tool.ruff.flake8-annotations]
+ignore-fully-untyped = true
 
 [tool.ruff.flake8-import-conventions.extend-aliases]
 "artistools" = "at"
