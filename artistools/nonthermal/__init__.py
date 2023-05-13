@@ -1,5 +1,6 @@
 """Artistools - spectra related functions."""
 import artistools.nonthermal.solvespencerfanocmd
+
 from .__main__ import main
 from ._nonthermal_core import analyse_ntspectrum
 from ._nonthermal_core import ar_xs

@@ -21,6 +21,7 @@ from matplotlib.artist import Artist
 
 import artistools as at
 import artistools.packets
+
 from .spectra import get_from_packets
 from .spectra import get_reference_spectrum
 from .spectra import get_specpol_data
