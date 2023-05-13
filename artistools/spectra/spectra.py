@@ -577,7 +577,7 @@ def get_vspecpol_spectrum(
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1])] + [arr_tmid[-1] - arr_tmid[-2]]
 
     def match_closest_time(reftime: float) -> str:
-        return str("{}".format(min([float(x) for x in arr_tmid], key=lambda x: abs(x - reftime))))
+        return str(f"{min([float(x) for x in arr_tmid], key=lambda x: abs(x - reftime))}")
 
     # if 'timemin' and 'timemax' in args:
     #     timelower = match_closest_time(args.timemin)  # how timemin, timemax are used changed at some point

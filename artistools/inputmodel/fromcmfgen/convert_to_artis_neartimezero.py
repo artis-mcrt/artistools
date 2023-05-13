@@ -73,7 +73,7 @@ def reverse_doubledecay(
                 print(
                     "shell",
                     s,
-                    " goes fully to top isotope Z={} A={} of the chain at time zero".format(zparent, numnucleons),
+                    f" goes fully to top isotope Z={zparent} A={numnucleons} of the chain at time zero",
                 )
             else:
                 print(

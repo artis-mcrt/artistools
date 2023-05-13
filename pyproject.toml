@@ -137,11 +137,11 @@ ignore = [
     "T",
     "TRY003",
     "TRY301",
-    "UP032",
 ]
 # Allow autofix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
 unfixable = [
+    "COM812",
     "ERA001",  # commented out code (will just delete it!)
     "F841",  # Local variable {name} is assigned to but never used
 ]

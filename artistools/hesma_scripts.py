@@ -14,7 +14,7 @@ def plot_hesma_spectrum(timeavg, axes):
     # print(hesma_spec)
 
     def match_closest_time(reftime):
-        return str("{}".format(min([float(x) for x in hesma_spec.keys()[1:]], key=lambda x: abs(x - reftime))))
+        return str(f"{min([float(x) for x in hesma_spec.keys()[1:]], key=lambda x: abs(x - reftime))}")
 
     closest_time = match_closest_time(timeavg)
     closest_time = f"{closest_time:.2f}"
