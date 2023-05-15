@@ -142,11 +142,20 @@ def plot_spherical(
             get_ion_values=False,
             get_heatingcooling=False,
         )
-        dfpackets = dfpackets.with_columns(
-            pl.struct(["em_timestep", "em_modelgridindex"])
-            .apply(lambda x: estimators[(x["em_timestep"], x["em_modelgridindex"])].get("TR", float("nan")))
-            .alias("em_TR")
+        df_estimators = (
+            pl.DataFrame(
+                {
+                    "em_timestep": (tsmgi[0] for tsmgi in estimators),
+                    "em_modelgridindex": (tsmgi[1] for tsmgi in estimators),
+                    "em_TR": (estimators[tsmgi].get("TR", -1) for tsmgi in estimators),
+                },
+            )
+            .filter(pl.col("em_TR") >= 0)
+            .with_columns(pl.col(pl.Int64).cast(pl.Int32))
+            .lazy()
         )
+
+        dfpackets = dfpackets.join(df_estimators, on=["em_timestep", "em_modelgridindex"], how="left")
         aggs.append(((pl.col("em_TR") * pl.col("e_rf")).mean() / pl.col("e_rf").mean()).alias("temperature"))
 
     if atomic_number is not None or ion_stage is not None:
