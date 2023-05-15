@@ -269,7 +269,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-gaussian_sigma", type=int, default=None, help="Apply Gaussian filter")
     parser.add_argument(
         "-plotvars",
-        default=["luminosity", "emvelocityoverc", "emlosvelocityoverc", "temperature"],
+        default=["luminosity", "emvelocityoverc", "emlosvelocityoverc"],
         choices=["luminosity", "emvelocityoverc", "emlosvelocityoverc", "temperature"],
         nargs="+",
         help="Variable to plot: luminosity, emvelocityoverc, emlosvelocityoverc, temperature",
