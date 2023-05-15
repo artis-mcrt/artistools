@@ -50,9 +50,9 @@ def write_ntimes_nvel(f, selected_timesteps, modelpath):
     f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
 
 
-def write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, outfile, keyname):
+def write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, outfile, keyname) -> None:
     modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath)
-    with open(outfile, "w") as f:
+    with Path(outfile).open("w") as f:
         write_ntimes_nvel(f, selected_timesteps, modelpath)
         if keyname == "total_dep":
             f.write("#vel_mid[km/s] Edep_t0[erg/s/cm^3] Edep_t1[erg/s/cm^3] ... Edep_tn[erg/s/cm^3]\n")

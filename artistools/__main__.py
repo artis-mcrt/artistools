@@ -9,7 +9,7 @@ from .commands import dictcommands as atdictcommands
 from .misc import CustomArgHelpFormatter
 
 
-def addargs(parser=None) -> None:
+def addargs(parser: argparse.ArgumentParser) -> None:
     pass
 
 

@@ -66,12 +66,14 @@ enable_error_code = [
 
 [[tool.mypy.overrides]]
 module = [
-    "artistools.estimators.estimators",
+    "artistools",
+    "artistools.estimators",
+    "artistools.commands",
     "artistools.inputmodel",
     "artistools.lightcurve",
     "artistools.misc",
-#    "artistools.packets",
-    "artistools.spectra.spectra",
+    "artistools.packets",
+    "artistools.spectra",
 ]
 check_untyped_defs = true
 disallow_untyped_defs = true
@@ -140,6 +142,7 @@ ignore = [
 ]
 fixable = ["ALL"]
 unfixable = [
+    "COM812",
     "ERA001",  # commented out code (will just delete it!)
     "F841",  # Local variable {name} is assigned to but never used
 ]
