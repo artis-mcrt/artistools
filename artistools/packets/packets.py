@@ -149,13 +149,18 @@ def add_derived_columns(
         return dfpackets
 
     colnames = at.makelist(colnames)
+    dimensions = at.get_inputparams(modelpath)["n_dimensions"]
 
     def em_modelgridindex(packet) -> Union[int, float]:
+        assert dimensions == 1
+
         return at.inputmodel.get_mgi_of_velocity_kms(
             modelpath, packet.emission_velocity * cm_to_km, mgilist=allnonemptymgilist
         )
 
     def emtrue_modelgridindex(packet) -> Union[int, float]:
+        assert dimensions == 1
+
         return at.inputmodel.get_mgi_of_velocity_kms(
             modelpath, packet.true_emission_velocity * cm_to_km, mgilist=allnonemptymgilist
         )
@@ -198,7 +203,7 @@ def add_derived_columns(
     return dfpackets
 
 
-def add_derived_columns_lazy(dfpackets: pl.LazyFrame) -> pl.LazyFrame:
+def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: Optional[dict] = None) -> pl.LazyFrame:
     # we might as well add everything, since the columns only get calculated when they are actually used
 
     dfpackets = dfpackets.with_columns(
@@ -221,6 +226,26 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame) -> pl.LazyFrame:
             ).alias("emission_velocity_lineofsight")
         ]
     )
+
+    if modelmeta is not None and modelmeta["dimensions"] == 3:
+        t_model_s = modelmeta["t_model_init_days"] * 86400.0
+        vmax = modelmeta["vmax_cmps"]
+        vwidth = modelmeta["wid_init"] / t_model_s
+        dfpackets = dfpackets.with_columns(
+            [
+                ((pl.col(f"em_pos{ax}") / pl.col("em_time") + vmax) / vwidth).cast(pl.Int32).alias(f"coordpointnum{ax}")
+                for ax in ["x", "y", "z"]
+            ]
+        )
+        dfpackets = dfpackets.with_columns(
+            [
+                (
+                    pl.col("coordpointnumz") * modelmeta["ncoordgridy"] * modelmeta["ncoordgridx"]
+                    + pl.col("coordpointnumy") * modelmeta["ncoordgridx"]
+                    + pl.col("coordpointnumx")
+                ).alias("em_modelgridindex")
+            ]
+        )
 
     return dfpackets
 

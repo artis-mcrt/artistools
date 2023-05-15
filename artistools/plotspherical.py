@@ -93,7 +93,7 @@ def plot_spherical(
 
     solidanglefactor = nphibins * ncosthetabins
     aggs = []
-    dfpackets = at.packets.add_derived_columns_lazy(dfpackets)
+    dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelmeta=modelmeta)
     if "emvelocityoverc" in plotvars:
         aggs.append(
             ((pl.col("emission_velocity") * pl.col("e_rf")).mean() / pl.col("e_rf").mean() / 29979245800).alias(
@@ -114,6 +114,40 @@ def plot_spherical(
                 "luminosity"
             )
         )
+
+    if "temperature" in plotvars:
+        timebins = [
+            *at.get_timestep_times_float(modelpath, loc="start") * 86400.0,
+            at.get_timestep_times_float(modelpath, loc="end")[-1] * 86400.0,
+        ]
+
+        binindex = (
+            dfpackets.select("em_time")
+            .lazy()
+            .collect()
+            .get_column("em_time")
+            .cut(bins=list(timebins), category_label="em_timestep", maintain_order=True)
+            .get_column("em_timestep")
+            .cast(pl.Int32)
+            - 1  # subtract 1 because the returned index 0 is the bin below the start of the first supplied bin
+        )
+        dfpackets = dfpackets.with_columns([binindex])
+        unique_ts = tuple(dfpackets.select("em_timestep").unique().collect().get_column("em_timestep"))
+        unique_mgi = tuple(dfpackets.select("em_modelgridindex").unique().collect().get_column("em_modelgridindex"))
+
+        estimators = at.estimators.read_estimators(
+            modelpath,
+            timestep=unique_ts,
+            modelgridindex=unique_mgi,
+            get_ion_values=False,
+            get_heatingcooling=False,
+        )
+        dfpackets = dfpackets.with_columns(
+            pl.struct(["em_timestep", "em_modelgridindex"])
+            .apply(lambda x: estimators[(x["em_timestep"], x["em_modelgridindex"])].get("TR", float("nan")))
+            .alias("em_TR")
+        )
+        aggs.append(((pl.col("em_TR") * pl.col("e_rf")).mean() / pl.col("e_rf").mean()).alias("temperature"))
 
     if atomic_number is not None or ion_stage is not None:
         dflinelist = at.get_linelist_pldf(modelpath)
@@ -199,6 +233,8 @@ def plot_spherical(
             colorbartitle = r"Mean line of sight velocity [c]"
         elif plotvar == "luminosity":
             colorbartitle = r"$I_{e,\Omega}\cdot4\pi/\Omega$ [erg/s]"
+        elif plotvar == "temperature":
+            colorbartitle = r"Temperature [K]"
         else:
             raise AssertionError
 
@@ -233,10 +269,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-gaussian_sigma", type=int, default=None, help="Apply Gaussian filter")
     parser.add_argument(
         "-plotvars",
-        default=["luminosity", "emvelocityoverc", "emlosvelocityoverc"],
-        choices=["luminosity", "emvelocityoverc", "emlosvelocityoverc"],
+        default=["luminosity", "emvelocityoverc", "emlosvelocityoverc", "temperature"],
+        choices=["luminosity", "emvelocityoverc", "emlosvelocityoverc", "temperature"],
         nargs="+",
-        help="Variable to plot: luminosity, emvelocityoverc, emlosvelocityoverc",
+        help="Variable to plot: luminosity, emvelocityoverc, emlosvelocityoverc, temperature",
     )
     parser.add_argument("-elem", type=str, default=None, help="Filter emitted packets by element of last emission")
     parser.add_argument(
