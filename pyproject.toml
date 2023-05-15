@@ -82,7 +82,6 @@ warn_return_any = false
 max-line-length = 120
 disable = """
     broad-exception-caught,
-    dangerous-default-value,
     eval-used,
     fixme,
     global-statement,
