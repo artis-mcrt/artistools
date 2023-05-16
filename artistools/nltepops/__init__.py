@@ -8,3 +8,4 @@ from .nltepops import texifyconfiguration
 from .nltepops import texifyterm
 from .plotnltepops import addargs
 from .plotnltepops import main
+from .plotnltepops import main as plot
