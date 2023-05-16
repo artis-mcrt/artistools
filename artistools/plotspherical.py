@@ -132,29 +132,28 @@ def plot_spherical(
             - 1  # subtract 1 because the returned index 0 is the bin below the start of the first supplied bin
         )
         dfpackets = dfpackets.with_columns([binindex])
-        unique_ts = tuple(dfpackets.select("em_timestep").unique().collect().get_column("em_timestep"))
-        unique_mgi = tuple(dfpackets.select("em_modelgridindex").unique().collect().get_column("em_modelgridindex"))
+        dfest_parquetfile = Path(modelpath, "temperatures.parquet.tmp")
 
-        estimators = at.estimators.read_estimators(
-            modelpath,
-            timestep=unique_ts,
-            modelgridindex=unique_mgi,
-            get_ion_values=False,
-            get_heatingcooling=False,
-        )
-        df_estimators = (
+        if not dfest_parquetfile.is_file():
+            estimators = at.estimators.read_estimators(
+                modelpath,
+                get_ion_values=False,
+                get_heatingcooling=False,
+                skip_emptycells=True,
+            )
             pl.DataFrame(
                 {
-                    "em_timestep": (tsmgi[0] for tsmgi in estimators),
-                    "em_modelgridindex": (tsmgi[1] for tsmgi in estimators),
-                    "em_TR": (estimators[tsmgi].get("TR", -1) for tsmgi in estimators),
+                    "timestep": (tsmgi[0] for tsmgi in estimators),
+                    "modelgridindex": (tsmgi[1] for tsmgi in estimators),
+                    "TR": (estimators[tsmgi].get("TR", -1) for tsmgi in estimators),
                 },
+            ).filter(pl.col("TR") >= 0).with_columns(pl.col(pl.Int64).cast(pl.Int32)).write_parquet(
+                dfest_parquetfile, compression="zstd"
             )
-            .filter(pl.col("em_TR") >= 0)
-            .with_columns(pl.col(pl.Int64).cast(pl.Int32))
-            .lazy()
-        )
 
+        df_estimators = pl.scan_parquet(dfest_parquetfile).rename(
+            {"timestep": "em_timestep", "modelgridindex": "em_modelgridindex", "TR": "em_TR"}
+        )
         dfpackets = dfpackets.join(df_estimators, on=["em_timestep", "em_modelgridindex"], how="left")
         aggs.append(((pl.col("em_TR") * pl.col("e_rf")).mean() / pl.col("e_rf").mean()).alias("temperature"))
 
