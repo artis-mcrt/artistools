@@ -17,6 +17,7 @@ from .lightcurve import read_reflightcurve_band_data
 from .lightcurve import readfile
 from .plotlightcurve import addargs
 from .plotlightcurve import main
+from .plotlightcurve import main as plot
 from .viewingangleanalysis import calculate_peak_time_mag_deltam15
 from .viewingangleanalysis import lightcurve_polyfit
 from .viewingangleanalysis import make_peak_colour_viewing_angle_plot
