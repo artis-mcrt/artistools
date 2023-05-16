@@ -475,7 +475,7 @@ def get_packets_pl(
 
     nprocs_read = len(packetsfiles)
     packetsdatasize_gb = nprocs_read * Path(packetsfiles[0]).stat().st_size / 1024 / 1024 / 1024
-    print(f" data size is {packetsdatasize_gb:.1f} GB (size of {packetsfiles[0].parts[-1]} * {nprocs_read})")
+    print(f" data size is {packetsdatasize_gb:.1f} GB ({nprocs_read} * size of {packetsfiles[0].parts[-1]})")
 
     pldfpackets = pl.concat(
         (pl.scan_parquet(packetsfile) for packetsfile in packetsfiles),
