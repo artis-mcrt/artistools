@@ -158,11 +158,13 @@ def read_modelfile_text(
                 ]
             # last two abundances are optional
             assert columns is not None
+            if ncols_line_even == ncols_line_odd and (ncols_line_even + ncols_line_odd) > len(columns):
+                # one line per cell format
+                ncols_line_odd = 0
+
             assert len(columns) in [
                 ncols_line_even + ncols_line_odd,
                 ncols_line_even + ncols_line_odd + 2,
-                ncols_line_even,
-                ncols_line_even + 2,
             ]
             columns = columns[: ncols_line_even + ncols_line_odd]
 
