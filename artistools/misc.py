@@ -4,7 +4,6 @@ import io
 import math
 import os
 from collections import namedtuple
-from collections.abc import Collection
 from collections.abc import Iterable
 from collections.abc import Iterator
 from collections.abc import Sequence
@@ -1073,7 +1072,7 @@ def get_runfolder_timesteps(folderpath: Union[Path, str]) -> tuple[int, ...]:
 
 def get_runfolders(
     modelpath: Union[Path, str], timestep: Optional[int] = None, timesteps: Optional[Sequence[int]] = None
-) -> Collection[Path]:
+) -> Sequence[Path]:
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
     The folder list may include non-ARTIS folders if a timestep is not specified.
