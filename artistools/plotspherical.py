@@ -93,7 +93,7 @@ def plot_spherical(
 
     solidanglefactor = nphibins * ncosthetabins
     aggs = []
-    dfpackets = at.packets.add_derived_columns_lazy(dfpackets)
+    dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelmeta=modelmeta)
     if "emvelocityoverc" in plotvars:
         aggs.append(
             ((pl.col("emission_velocity") * pl.col("e_rf")).mean() / pl.col("e_rf").mean() / 29979245800).alias(
@@ -114,6 +114,48 @@ def plot_spherical(
                 "luminosity"
             )
         )
+
+    if "temperature" in plotvars:
+        timebins = [
+            *at.get_timestep_times_float(modelpath, loc="start") * 86400.0,
+            at.get_timestep_times_float(modelpath, loc="end")[-1] * 86400.0,
+        ]
+
+        binindex = (
+            dfpackets.select("em_time")
+            .lazy()
+            .collect()
+            .get_column("em_time")
+            .cut(bins=list(timebins), category_label="em_timestep", maintain_order=True)
+            .get_column("em_timestep")
+            .cast(pl.Int32)
+            - 1  # subtract 1 because the returned index 0 is the bin below the start of the first supplied bin
+        )
+        dfpackets = dfpackets.with_columns([binindex])
+        dfest_parquetfile = Path(modelpath, "temperatures.parquet.tmp")
+
+        if not dfest_parquetfile.is_file():
+            estimators = at.estimators.read_estimators(
+                modelpath,
+                get_ion_values=False,
+                get_heatingcooling=False,
+                skip_emptycells=True,
+            )
+            pl.DataFrame(
+                {
+                    "timestep": (tsmgi[0] for tsmgi in estimators),
+                    "modelgridindex": (tsmgi[1] for tsmgi in estimators),
+                    "TR": (estimators[tsmgi].get("TR", -1) for tsmgi in estimators),
+                },
+            ).filter(pl.col("TR") >= 0).with_columns(pl.col(pl.Int64).cast(pl.Int32)).write_parquet(
+                dfest_parquetfile, compression="zstd"
+            )
+
+        df_estimators = pl.scan_parquet(dfest_parquetfile).rename(
+            {"timestep": "em_timestep", "modelgridindex": "em_modelgridindex", "TR": "em_TR"}
+        )
+        dfpackets = dfpackets.join(df_estimators, on=["em_timestep", "em_modelgridindex"], how="left")
+        aggs.append(((pl.col("em_TR") * pl.col("e_rf")).mean() / pl.col("e_rf").mean()).alias("temperature"))
 
     if atomic_number is not None or ion_stage is not None:
         dflinelist = at.get_linelist_pldf(modelpath)
@@ -199,6 +241,8 @@ def plot_spherical(
             colorbartitle = r"Mean line of sight velocity [c]"
         elif plotvar == "luminosity":
             colorbartitle = r"$I_{e,\Omega}\cdot4\pi/\Omega$ [erg/s]"
+        elif plotvar == "temperature":
+            colorbartitle = r"Temperature [K]"
         else:
             raise AssertionError
 
@@ -234,9 +278,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-plotvars",
         default=["luminosity", "emvelocityoverc", "emlosvelocityoverc"],
-        choices=["luminosity", "emvelocityoverc", "emlosvelocityoverc"],
+        choices=["luminosity", "emvelocityoverc", "emlosvelocityoverc", "temperature"],
         nargs="+",
-        help="Variable to plot: luminosity, emvelocityoverc, emlosvelocityoverc",
+        help="Variable to plot: luminosity, emvelocityoverc, emlosvelocityoverc, temperature",
     )
     parser.add_argument("-elem", type=str, default=None, help="Filter emitted packets by element of last emission")
     parser.add_argument(
