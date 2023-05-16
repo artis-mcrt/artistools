@@ -285,7 +285,7 @@ def read_estimators(
     get_ion_values: bool = True,
     get_heatingcooling: bool = True,
     skip_emptycells: bool = False,
-    add_velocity: bool = False,
+    add_velocity: bool = True,
 ) -> dict[tuple[int, int], dict]:
     """Read estimator files into a nested dictionary structure.
 
