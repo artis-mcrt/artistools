@@ -1,5 +1,4 @@
 """Artistools - light curve functions."""
-from .__main__ import main
 from .lightcurve import bolometric_magnitude
 from .lightcurve import evaluate_magnitudes
 from .lightcurve import generate_band_lightcurve_data
@@ -17,6 +16,7 @@ from .lightcurve import read_hesma_lightcurve
 from .lightcurve import read_reflightcurve_band_data
 from .lightcurve import readfile
 from .plotlightcurve import addargs
+from .plotlightcurve import main
 from .plotlightcurve import main as plot
 from .viewingangleanalysis import calculate_peak_time_mag_deltam15
 from .viewingangleanalysis import lightcurve_polyfit
