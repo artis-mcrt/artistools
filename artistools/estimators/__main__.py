@@ -1,9 +1,4 @@
-from .plotestimators import main as plot
-
-
-def main() -> None:
-    plot()
-
+from .plotestimators import main
 
 if __name__ == "__main__":
     main()

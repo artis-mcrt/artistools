@@ -1,5 +1,5 @@
 """Artistools - estimators related functions."""
-from .__main__ import main
+
 from .estimators import apply_filters
 from .estimators import get_averaged_estimators
 from .estimators import get_averageexcitation
@@ -14,4 +14,4 @@ from .estimators import parse_estimfile
 from .estimators import read_estimators
 from .estimators import read_estimators_from_file
 from .plotestimators import addargs
-from .plotestimators import main as plot
+from .plotestimators import main
