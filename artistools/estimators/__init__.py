@@ -15,3 +15,4 @@ from .estimators import read_estimators
 from .estimators import read_estimators_from_file
 from .plotestimators import addargs
 from .plotestimators import main
+from .plotestimators import main as plot
