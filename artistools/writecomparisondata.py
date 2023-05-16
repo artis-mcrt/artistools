@@ -31,17 +31,13 @@ def write_spectra(modelpath, model_id, selected_timesteps, outfile):
         lum_lambda[n, :] = fluxes_nu[n, :] * 2.99792458e18 / lambdas[n] / lambdas[n] * area
 
     with open(outfile, "w") as f:
-        f.write("#NTIMES: {}\n".format(len(selected_timesteps)))
-        f.write("#NWAVE: {}\n".format(len(lambdas)))
-        f.write("#TIMES[d]: {}\n".format(" ".join(["{:.2f}".format(times[ts]) for ts in selected_timesteps])))
+        f.write(f"#NTIMES: {len(selected_timesteps)}\n")
+        f.write(f"#NWAVE: {len(lambdas)}\n")
+        f.write("#TIMES[d]: {}\n".format(" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])))
         f.write("#wavelength[Ang] flux_t0[erg/s/Ang] flux_t1[erg/s/Ang] ... flux_tn[erg/s/Ang]\n")
 
         for n in reversed(range(len(lambdas))):
-            f.write(
-                "{:.2f} ".format(lambdas[n])
-                + " ".join(["{:.2e}".format(lum_lambda[n, ts]) for ts in selected_timesteps])
-                + "\n"
-            )
+            f.write(f"{lambdas[n]:.2f} " + " ".join([f"{lum_lambda[n, ts]:.2e}" for ts in selected_timesteps]) + "\n")
 
         f.close()
 
@@ -54,9 +50,9 @@ def write_ntimes_nvel(f, selected_timesteps, modelpath):
     f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
 
 
-def write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, outfile, keyname):
+def write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, outfile, keyname) -> None:
     modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath)
-    with open(outfile, "w") as f:
+    with Path(outfile).open("w") as f:
         write_ntimes_nvel(f, selected_timesteps, modelpath)
         if keyname == "total_dep":
             f.write("#vel_mid[km/s] Edep_t0[erg/s/cm^3] Edep_t1[erg/s/cm^3] ... Edep_tn[erg/s/cm^3]\n")
@@ -114,7 +110,7 @@ def write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnone
                         ionfrac = ionabund / elabund if elabund > 0 else 0
                         if ionfrac > 0.0:
                             fileisallzeros = False
-                        f.write(" {:.4e}".format(ionfrac))
+                        f.write(f" {ionfrac:.4e}")
                     f.write("\n")
         if fileisallzeros:
             print(f"Deleting {pathfileout} because it is all zeros")
@@ -148,7 +144,7 @@ def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptym
                 f.write(f"{v_mid:.2f}")
                 for keyname in ("Te", "rho", "nne", "nntot"):
                     estvalue = estimators[(timestep, modelgridindex)][keyname]
-                    f.write(" {:.4e}".format(estvalue))
+                    f.write(f" {estvalue:.4e}")
                 f.write("\n")
 
 

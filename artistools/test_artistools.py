@@ -20,7 +20,7 @@ def test_commands() -> None:
         assert hasattr(submodule, funcname)
 
     def recursive_check(dictcmd: dict[str, Any]) -> None:
-        for cmd, cmdtarget in dictcmd.items():
+        for cmdtarget in dictcmd.values():
             if isinstance(cmdtarget, dict):
                 recursive_check(cmdtarget)
             else:

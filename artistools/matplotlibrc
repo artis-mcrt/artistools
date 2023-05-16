@@ -1,6 +1,6 @@
 pdf.fonttype: 42
 font.family: sans-serif
-font.sans-serif: Tahoma
+font.sans-serif: Tahoma, 'DejaVu Sans', 'Lucida Grande', Verdana
 #figure.constrained_layout.use: True
 # figure.figsize: 4.5, 4.
 

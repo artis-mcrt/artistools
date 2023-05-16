@@ -81,7 +81,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
     #         'color': color_gamma,
     #     }))
 
-    gammadep_lsun = depdata["gammadeppathint_Lsun"] if "gammadeppathint_Lsun" in depdata else depdata["gammadep_Lsun"]
+    gammadep_lsun = depdata["gammadep_Lsun"]
 
     axis.plot(
         depdata["tmid_days"],
@@ -168,7 +168,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
     if args.plotthermalisation:
         axistherm.plot(
             depdata["tmid_days"],
-            depdata["gammadeppathint_Lsun"] / depdata["eps_gamma_Lsun"],
+            depdata["gammadep_Lsun"] / depdata["eps_gamma_Lsun"],
             **{**plotkwargs, "label": modelname + r" $f_\gamma$", "linestyle": "solid", "color": color_gamma},
         )
 
@@ -258,7 +258,7 @@ def plot_artis_lightcurve(
     frompackets: bool = False,
     maxpacketfiles: Optional[int] = None,
     axistherm=None,
-    directionbins: Sequence[int] = [-1],
+    directionbins: Optional[Sequence[int]] = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     args=None,

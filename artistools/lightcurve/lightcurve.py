@@ -64,12 +64,14 @@ def get_from_packets(
     modelpath: Union[str, Path],
     escape_type: Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
     maxpacketfiles: Optional[int] = None,
-    directionbins: Collection[int] = [-1],
+    directionbins: Optional[Collection[int]] = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     get_cmf_column: bool = True,
 ) -> dict[int, pl.DataFrame]:
     """Get ARTIS luminosity vs time from packets files."""
+    if directionbins is None:
+        directionbins = [-1]
     tmidarray = at.get_timestep_times_float(modelpath=modelpath, loc="mid")
     timearray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
     arr_timedelta = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
