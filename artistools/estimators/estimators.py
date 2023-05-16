@@ -277,17 +277,21 @@ def read_estimators_from_file(
 
 
 def read_estimators(
-    modelpath: Union[Path, str],
+    modelpath: Union[Path, str] = Path(),
     modelgridindex: Union[None, int, Sequence[int]] = None,
     timestep: Union[None, int, Sequence[int]] = None,
+    mpirank: Optional[int] = None,
+    runfolder: Union[None, str, Path] = None,
     get_ion_values: bool = True,
     get_heatingcooling: bool = True,
     skip_emptycells: bool = False,
+    add_velocity: bool = False,
 ) -> dict[tuple[int, int], dict]:
     """Read estimator files into a nested dictionary structure.
 
     Speed it up by only retrieving estimators for a particular timestep(s) or modelgrid cells.
     """
+    modelpath = Path(modelpath)
     match_modelgridindex: Collection[int]
     if modelgridindex is None:
         match_modelgridindex = []
@@ -314,20 +318,29 @@ def read_estimators(
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
 
-    modeldata, _ = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
-    if "velocity_outer" in modeldata.columns:
-        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-        arr_velocity_outer = tuple([float(v) for v in modeldata["velocity_outer"].to_numpy()])
-    else:
-        arr_velocity_outer = None
+    arr_velocity_outer = None
+    if add_velocity:
+        modeldata, _ = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
+        if "velocity_outer" in modeldata.columns:
+            modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+            arr_velocity_outer = tuple([float(v) for v in modeldata["velocity_outer"].to_numpy()])
 
-    mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex, only_ranks_withgridcells=True)
+    mpiranklist = (
+        at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex, only_ranks_withgridcells=True)
+        if mpirank is None
+        else [mpirank]
+    )
+
+    runfolders = at.get_runfolders(modelpath, timesteps=match_timestep) if runfolder is None else [Path(runfolder)]
 
     printfilename = len(mpiranklist) < 10
 
     estimators = {}
-    for folderpath in at.get_runfolders(modelpath, timesteps=match_timestep):
-        print(f"Reading {len(list(mpiranklist))} estimator files in {folderpath.relative_to(Path(modelpath).parent)}")
+    for folderpath in runfolders:
+        if not printfilename:
+            print(
+                f"Reading {len(list(mpiranklist))} estimator files in {folderpath.relative_to(Path(modelpath).parent)}"
+            )
 
         processfile = partial(
             read_estimators_from_file,
