@@ -1,7 +1,7 @@
 import calendar
 import gzip
 import math
-import multiprocessing as mp
+import multiprocessing
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -16,7 +16,7 @@ import polars as pl
 import artistools as at
 
 # for the parquet files
-time_lastschemachange = (2023, 4, 22, 12, 31, 0)
+time_parquetschemachange = (2023, 4, 22, 12, 31, 0)
 
 CLIGHT = 2.99792458e10
 DAY = 86400
@@ -149,13 +149,18 @@ def add_derived_columns(
         return dfpackets
 
     colnames = at.makelist(colnames)
+    dimensions = at.get_inputparams(modelpath)["n_dimensions"]
 
     def em_modelgridindex(packet) -> Union[int, float]:
+        assert dimensions == 1
+
         return at.inputmodel.get_mgi_of_velocity_kms(
             modelpath, packet.emission_velocity * cm_to_km, mgilist=allnonemptymgilist
         )
 
     def emtrue_modelgridindex(packet) -> Union[int, float]:
+        assert dimensions == 1
+
         return at.inputmodel.get_mgi_of_velocity_kms(
             modelpath, packet.true_emission_velocity * cm_to_km, mgilist=allnonemptymgilist
         )
@@ -198,7 +203,7 @@ def add_derived_columns(
     return dfpackets
 
 
-def add_derived_columns_lazy(dfpackets: pl.LazyFrame) -> pl.LazyFrame:
+def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: Optional[dict] = None) -> pl.LazyFrame:
     # we might as well add everything, since the columns only get calculated when they are actually used
 
     dfpackets = dfpackets.with_columns(
@@ -221,6 +226,26 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame) -> pl.LazyFrame:
             ).alias("emission_velocity_lineofsight")
         ]
     )
+
+    if modelmeta is not None and modelmeta["dimensions"] == 3:
+        t_model_s = modelmeta["t_model_init_days"] * 86400.0
+        vmax = modelmeta["vmax_cmps"]
+        vwidth = modelmeta["wid_init"] / t_model_s
+        dfpackets = dfpackets.with_columns(
+            [
+                ((pl.col(f"em_pos{ax}") / pl.col("em_time") + vmax) / vwidth).cast(pl.Int32).alias(f"coordpointnum{ax}")
+                for ax in ["x", "y", "z"]
+            ]
+        )
+        dfpackets = dfpackets.with_columns(
+            [
+                (
+                    pl.col("coordpointnumz") * modelmeta["ncoordgridy"] * modelmeta["ncoordgridx"]
+                    + pl.col("coordpointnumy") * modelmeta["ncoordgridx"]
+                    + pl.col("coordpointnumx")
+                ).alias("em_modelgridindex")
+            ]
+        )
 
     return dfpackets
 
@@ -375,7 +400,7 @@ def get_packetsfilepaths(
     searchfolders = [Path(modelpath, "packets"), Path(modelpath)]
     # in descending priority (based on speed of reading)
     suffix_priority = [".out.zst", ".out.lz4", ".out.zst", ".out", ".out.gz", ".out.xz"]
-    t_lastschemachange = calendar.timegm(time_lastschemachange)
+    t_lastschemachange = calendar.timegm(time_parquetschemachange)
 
     parquetpacketsfiles = []
     parquetrequiredfiles = []
@@ -417,7 +442,7 @@ def get_packetsfilepaths(
             break
 
     if len(parquetrequiredfiles) >= 20:
-        with mp.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
+        with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
             convertedparquetpacketsfiles = pool.map(convert_text_to_parquet, parquetrequiredfiles)
             pool.close()
             pool.join()
@@ -450,7 +475,7 @@ def get_packets_pl(
 
     nprocs_read = len(packetsfiles)
     packetsdatasize_gb = nprocs_read * Path(packetsfiles[0]).stat().st_size / 1024 / 1024 / 1024
-    print(f" data size is {packetsdatasize_gb:.1f} GB (size of {packetsfiles[0].parts[-1]} * {nprocs_read})")
+    print(f" data size is {packetsdatasize_gb:.1f} GB ({nprocs_read} * size of {packetsfiles[0].parts[-1]})")
 
     pldfpackets = pl.concat(
         (pl.scan_parquet(packetsfile) for packetsfile in packetsfiles),
