@@ -515,7 +515,7 @@ def get_vspecpol_data(
         assert modelpath is not None
         # alternatively use f'vspecpol_averaged-{angle}.out' ?
         vspecpath = modelpath
-        if os.path.isdir(modelpath / "vspecpol"):
+        if (modelpath / "vspecpol").is_dir():
             vspecpath = modelpath / "vspecpol"
 
         try:
@@ -577,7 +577,7 @@ def get_vspecpol_spectrum(
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1])] + [arr_tmid[-1] - arr_tmid[-2]]
 
     def match_closest_time(reftime: float) -> str:
-        return str("{}".format(min([float(x) for x in arr_tmid], key=lambda x: abs(x - reftime))))
+        return str(f"{min([float(x) for x in arr_tmid], key=lambda x: abs(x - reftime))}")
 
     # if 'timemin' and 'timemax' in args:
     #     timelower = match_closest_time(args.timemin)  # how timemin, timemax are used changed at some point
@@ -1311,6 +1311,6 @@ def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
 
     with open(outdirectory / "time_list.txt", "w+") as time_list:
         for time in arr_tmid:
-            time_list.write(f"{str(time)} \n")
+            time_list.write(f"{time} \n")
 
     print(f"Saved in {outdirectory}")

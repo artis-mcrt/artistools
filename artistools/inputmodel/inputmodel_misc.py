@@ -603,7 +603,8 @@ def get_mean_cell_properties_of_angle_bin(
 
 def get_2d_modeldata(modelpath):
     filepath = os.path.join(modelpath, "model.txt")
-    num_lines = sum(1 for line in open(filepath))
+    with open(filepath) as f:
+        num_lines = sum(1 for _ in f)
     skiprowlist = [0, 1, 2]
     skiprowlistodds = skiprowlist + [i for i in range(3, num_lines) if i % 2 == 1]
     skiprowlistevens = skiprowlist + [i for i in range(3, num_lines) if i % 2 == 0]

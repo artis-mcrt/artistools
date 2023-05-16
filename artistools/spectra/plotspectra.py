@@ -21,6 +21,7 @@ from matplotlib.artist import Artist
 
 import artistools as at
 import artistools.packets
+
 from .spectra import get_from_packets
 from .spectra import get_reference_spectrum
 from .spectra import get_specpol_data
@@ -210,7 +211,7 @@ def plot_artis_spectrum(
     modelpath = Path(modelpath)
     if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/spec.out'
         specfilename = Path(modelpath).parts[-1]
-        print("WARNING: ignoring filename of {specfilename}")
+        print(f"WARNING: ignoring filename of {specfilename}")
         modelpath = Path(modelpath).parent
 
     if not modelpath.is_dir():

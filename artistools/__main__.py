@@ -5,11 +5,11 @@ from typing import Optional
 
 import argcomplete
 
-from .commands import dictcommands
+from .commands import dictcommands as atdictcommands
 from .misc import CustomArgHelpFormatter
 
 
-def addargs(parser=None) -> None:
+def addargs(parser: argparse.ArgumentParser) -> None:
     pass
 
 
@@ -49,7 +49,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     )
     parser.set_defaults(func=None)
 
-    addsubparsers(parser, "artistools", dictcommands)
+    addsubparsers(parser, "artistools", atdictcommands)
 
     argcomplete.autocomplete(parser)
     args = parser.parse_args(argsraw)

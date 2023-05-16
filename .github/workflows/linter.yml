@@ -15,28 +15,6 @@ jobs:
               with:
                   options: --check --verbose
 
-    flake8:
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout Code
-              uses: actions/checkout@v3
-
-            - name: Set up Python
-              uses: actions/setup-python@v4
-              with:
-                  cache: pip
-                  python-version-file: .python-version
-
-            - name: Install dependencies
-              run: |
-                  python3 -m pip install --upgrade pip wheel flake8
-                  # python3 -m pip install -r requirements.txt
-
-            - name: Lint with flake8
-              run: |
-                  # stop the build if there are Python syntax errors or undefined names
-                  flake8 . --count --show-source --statistics
-
     mypy:
         runs-on: ubuntu-latest
         steps:

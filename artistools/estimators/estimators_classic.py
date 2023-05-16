@@ -10,17 +10,17 @@ def get_atomic_composition(modelpath):
     """Read ion list from output file."""
     atomic_composition = {}
 
-    output = open(modelpath / "output_0-0.txt").read().splitlines()
-    ioncount = 0
-    for row in output:
-        if row.split()[0] == "[input.c]":
-            split_row = row.split()
-            if split_row[1] == "element":
-                Z = int(split_row[4])
-                ioncount = 0
-            elif split_row[1] == "ion":
-                ioncount += 1
-                atomic_composition[Z] = ioncount
+    with open(modelpath / "output_0-0.txt") as foutput:
+        ioncount = 0
+        for row in foutput:
+            if row.split()[0] == "[input.c]":
+                split_row = row.split()
+                if split_row[1] == "element":
+                    Z = int(split_row[4])
+                    ioncount = 0
+                elif split_row[1] == "ion":
+                    ioncount += 1
+                    atomic_composition[Z] = ioncount
     return atomic_composition
 
 

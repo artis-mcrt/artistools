@@ -1,5 +1,7 @@
+import argparse
 import subprocess
 from pathlib import Path
+from typing import Any
 from typing import Union
 
 try:
@@ -118,7 +120,7 @@ def get_console_scripts() -> list[str]:
     return console_scripts
 
 
-def setup_completions(*args, **kwargs) -> None:
+def setup_completions(*args: Any, **kwargs: Any) -> None:
     # Add the following lines to your .zshrc file to get command completion:
     # autoload -U bashcompinit
     # bashcompinit
@@ -148,5 +150,5 @@ def setup_completions(*args, **kwargs) -> None:
     print("source artistoolscompletions.sh")
 
 
-def addargs(parser=None) -> None:
+def addargs(parser: argparse.ArgumentParser) -> None:
     pass
