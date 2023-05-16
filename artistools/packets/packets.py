@@ -1,7 +1,7 @@
 import calendar
 import gzip
 import math
-import multiprocessing as mp
+import multiprocessing
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -16,7 +16,7 @@ import polars as pl
 import artistools as at
 
 # for the parquet files
-time_lastschemachange = (2023, 4, 22, 12, 31, 0)
+time_parquetschemachange = (2023, 4, 22, 12, 31, 0)
 
 CLIGHT = 2.99792458e10
 DAY = 86400
@@ -400,7 +400,7 @@ def get_packetsfilepaths(
     searchfolders = [Path(modelpath, "packets"), Path(modelpath)]
     # in descending priority (based on speed of reading)
     suffix_priority = [".out.zst", ".out.lz4", ".out.zst", ".out", ".out.gz", ".out.xz"]
-    t_lastschemachange = calendar.timegm(time_lastschemachange)
+    t_lastschemachange = calendar.timegm(time_parquetschemachange)
 
     parquetpacketsfiles = []
     parquetrequiredfiles = []
@@ -442,7 +442,7 @@ def get_packetsfilepaths(
             break
 
     if len(parquetrequiredfiles) >= 20:
-        with mp.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
+        with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
             convertedparquetpacketsfiles = pool.map(convert_text_to_parquet, parquetrequiredfiles)
             pool.close()
             pool.join()
