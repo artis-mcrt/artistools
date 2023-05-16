@@ -371,6 +371,10 @@ def get_modeldata(
     dfmodel = None
     filenameparquet = at.stripallsuffixes(Path(filename)).with_suffix(".txt.parquet")
 
+    if filenameparquet.exists() and Path(filename).stat().st_mtime > filenameparquet.stat().st_mtime:
+        print(f"{filename} has been modified after {filenameparquet}. Deleting out of date parquet file.")
+        filenameparquet.unlink()
+
     source_textfile_details = {"st_size": filename.stat().st_size, "st_mtime": filename.stat().st_mtime}
 
     if filenameparquet.is_file() and not getheadersonly:
