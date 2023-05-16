@@ -354,7 +354,7 @@ def read_estimators(
         )
 
         if at.get_config()["num_processes"] > 1:
-            with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
+            with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
                 arr_rankestimators = pool.map(processfile, mpiranklist)
                 pool.close()
                 pool.join()
