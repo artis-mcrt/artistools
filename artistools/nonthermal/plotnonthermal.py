@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
 import os
 from functools import lru_cache
@@ -17,7 +19,7 @@ defaultoutputfile = "plotnonthermal_cell{0:03d}_timestep{1:03d}.pdf"
 
 
 @lru_cache(maxsize=4)
-def read_files(modelpath, timestep=-1, modelgridindex=-1):
+def read_files(modelpath: Path, timestep: int = -1, modelgridindex: int = -1) -> pd.DataFrame:
     """Read ARTIS -thermal spectrum data into a pandas DataFrame."""
     nonthermaldata = pd.DataFrame()
 
@@ -48,7 +50,7 @@ def read_files(modelpath, timestep=-1, modelgridindex=-1):
     return nonthermaldata
 
 
-def make_xs_plot(axis, nonthermaldata, args):
+def make_xs_plot(axis: plt.Axes, nonthermaldata: pd.DataFrame, args: argparse.Namespace) -> None:
     dfcollion = at.nonthermal.read_colliondata()
 
     arr_en = nonthermaldata["energy_ev"].unique()
@@ -65,17 +67,11 @@ def make_xs_plot(axis, nonthermaldata, args):
         axis.legend(loc="upper center", handlelength=2, frameon=False, numpoints=1, prop={"size": 13})
 
 
-def inteuler(x, y):
-    dx = y[1:] - y[:-1]
-    return np.dot(x[:-1], dx)
-
-
 def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata, args):
     estimators = at.estimators.read_estimators(
         modelpath, get_ion_values=True, get_heatingcooling=True, modelgridindex=modelgridindex, timestep=timestep
     )
 
-    # print(estimators[(timestep, modelgridindex)].keys())
     total_depev = estimators[(timestep, modelgridindex)]["total_dep"] * u.erg.to("eV")
 
     print(f"Deposition: {total_depev:.1f} [eV/cm3/s]")
@@ -141,7 +137,7 @@ def plot_contributions(axis, modelpath, timestep, modelgridindex, nonthermaldata
     axis.legend(loc="best", handlelength=2, frameon=False, numpoints=1, prop={"size": 11})
 
 
-def make_plot(modelpaths, args):
+def make_plot(modelpaths: list[Path], args: argparse.Namespace) -> None:
     nplots = 1
     if args.xsplot:
         nplots += 1
@@ -287,7 +283,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args=None, argsraw=None, **kwargs) -> None:
     """Plot ARTIS non-thermal electron energy spectrum."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
