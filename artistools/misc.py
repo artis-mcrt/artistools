@@ -631,8 +631,10 @@ def get_elsymbol(atomic_number: int) -> str:
 
 
 @lru_cache(maxsize=16)
-def get_ionstring(atomic_number: int, ionstage: int | None, spectral: bool = True, nospace: bool = False) -> str:
-    if ionstage is None:
+def get_ionstring(
+    atomic_number: int, ionstage: int | None | t.Literal["ALL"], spectral: bool = True, nospace: bool = False
+) -> str:
+    if ionstage is None or ionstage == "ALL":
         return f"{get_elsymbol(atomic_number)}"
 
     if spectral:
