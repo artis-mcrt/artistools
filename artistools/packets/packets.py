@@ -1,19 +1,22 @@
+from __future__ import annotations
+
 import calendar
 import gzip
 import math
 import multiprocessing
-from collections.abc import Sequence
+import typing as t
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
-from typing import Optional
-from typing import Union
 
 import numpy as np
 import pandas as pd
 import polars as pl
 
 import artistools as at
+
+if t.TYPE_CHECKING:
+    from collections.abc import Sequence
+
 
 # for the parquet files
 time_parquetschemachange = (2023, 4, 22, 12, 31, 0)
@@ -84,7 +87,7 @@ columns_full = [
 
 
 @lru_cache(maxsize=16)
-def get_column_names_artiscode(modelpath: Union[str, Path]) -> Optional[list[str]]:
+def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
     modelpath = Path(modelpath)
     if Path(modelpath, "artis").is_dir():
         print("detected artis code directory")
@@ -141,7 +144,7 @@ def add_derived_columns(
     dfpackets: pd.DataFrame,
     modelpath: Path,
     colnames: Sequence[str],
-    allnonemptymgilist: Optional[Sequence[int]] = None,
+    allnonemptymgilist: Sequence[int] | None = None,
 ) -> pd.DataFrame:
     cm_to_km = 1e-5
     day_in_s = 86400
@@ -151,14 +154,14 @@ def add_derived_columns(
     colnames = at.makelist(colnames)
     dimensions = at.get_inputparams(modelpath)["n_dimensions"]
 
-    def em_modelgridindex(packet) -> Union[int, float]:
+    def em_modelgridindex(packet) -> int | float:
         assert dimensions == 1
 
         return at.inputmodel.get_mgi_of_velocity_kms(
             modelpath, packet.emission_velocity * cm_to_km, mgilist=allnonemptymgilist
         )
 
-    def emtrue_modelgridindex(packet) -> Union[int, float]:
+    def emtrue_modelgridindex(packet) -> int | float:
         assert dimensions == 1
 
         return at.inputmodel.get_mgi_of_velocity_kms(
@@ -203,7 +206,7 @@ def add_derived_columns(
     return dfpackets
 
 
-def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: Optional[dict] = None) -> pl.LazyFrame:
+def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict | None = None) -> pl.LazyFrame:
     # we might as well add everything, since the columns only get calculated when they are actually used
 
     dfpackets = dfpackets.with_columns(
@@ -250,11 +253,11 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: Optional[dict] 
     return dfpackets
 
 
-def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) -> pl.DataFrame:
+def readfile_text(packetsfile: Path | str, modelpath: Path = Path(".")) -> pl.DataFrame:
     """Read a packets*.out(.xz) space-separated text file into a polars DataFrame."""
     print(f"Reading {packetsfile}")
     skiprows: int = 0
-    column_names: Optional[list[str]] = None
+    column_names: list[str] | None = None
     try:
         fpackets = at.zopen(packetsfile, mode="rb")
 
@@ -322,16 +325,16 @@ def readfile_text(packetsfile: Union[Path, str], modelpath: Path = Path(".")) ->
 
 
 def readfile(
-    packetsfile: Union[Path, str],
-    packet_type: Optional[str] = None,
-    escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
+    packetsfile: Path | str,
+    packet_type: str | None = None,
+    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
 ) -> pd.DataFrame:
     """Read a packet file into a Pandas DataFrame."""
     return readfile_pl(packetsfile, packet_type=packet_type, escape_type=escape_type).collect().to_pandas()
 
 
 def convert_text_to_parquet(
-    packetsfiletext: Union[Path, str],
+    packetsfiletext: Path | str,
 ) -> Path:
     packetsfiletext = Path(packetsfiletext)
     packetsfileparquet = at.stripallsuffixes(packetsfiletext).with_suffix(".out.parquet")
@@ -373,10 +376,10 @@ def convert_text_to_parquet(
 
 
 def readfile_pl(
-    packetsfile: Union[Path, str],
-    modelpath: Union[None, Path, str] = None,
-    packet_type: Optional[str] = None,
-    escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
+    packetsfile: Path | str,
+    modelpath: None | Path | str = None,
+    packet_type: str | None = None,
+    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
 ) -> pl.LazyFrame:
     """Read a packets file into a Polars LazyFrame from either a parquet file or a text file (and save .parquet)."""
     dfpackets = pl.scan_parquet(packetsfile)
@@ -393,7 +396,7 @@ def readfile_pl(
 
 
 def get_packetsfilepaths(
-    modelpath: Union[str, Path], maxpacketfiles: Optional[int] = None, printwarningsonly: bool = False
+    modelpath: str | Path, maxpacketfiles: int | None = None, printwarningsonly: bool = False
 ) -> list[Path]:
     nprocs = at.get_nprocs(modelpath)
 
@@ -461,10 +464,10 @@ def get_packetsfilepaths(
 
 
 def get_packets_pl(
-    modelpath: Union[str, Path],
-    maxpacketfiles: Optional[int] = None,
-    packet_type: Optional[str] = None,
-    escape_type: Optional[Literal["TYPE_RPKT", "TYPE_GAMMA"]] = None,
+    modelpath: str | Path,
+    maxpacketfiles: int | None = None,
+    packet_type: str | None = None,
+    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
 ) -> tuple[int, pl.LazyFrame]:
     if escape_type is not None:
         assert packet_type in [None, "TYPE_ESCAPE"]
@@ -589,9 +592,9 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame, syn_dir: tuple[flo
 
 def bin_packet_directions_lazypolars(
     dfpackets: pl.LazyFrame,
-    nphibins: Optional[int] = None,
-    ncosthetabins: Optional[int] = None,
-    phibintype: Literal["artis_pi_reversal", "monotonic"] = "artis_pi_reversal",
+    nphibins: int | None = None,
+    ncosthetabins: int | None = None,
+    phibintype: t.Literal["artis_pi_reversal", "monotonic"] = "artis_pi_reversal",
 ) -> pl.LazyFrame:
     if nphibins is None:
         nphibins = at.get_viewingdirection_phibincount()
@@ -628,7 +631,7 @@ def bin_packet_directions_lazypolars(
     return dfpackets
 
 
-def bin_packet_directions(modelpath: Union[Path, str], dfpackets: pd.DataFrame) -> pd.DataFrame:
+def bin_packet_directions(modelpath: Path | str, dfpackets: pd.DataFrame) -> pd.DataFrame:
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
 
@@ -818,10 +821,10 @@ def get_mean_packet_emission_velocity_per_ts(
 
 
 def bin_and_sum(
-    df: Union[pl.DataFrame, pl.LazyFrame],
+    df: pl.DataFrame | pl.LazyFrame,
     bincol: str,
-    bins: list[Union[float, int]],
-    sumcols: Optional[list[str]] = None,
+    bins: list[float | int],
+    sumcols: list[str] | None = None,
     getcounts: bool = False,
 ) -> pl.DataFrame:
     """Bins is a list of lower edges, and the final upper edge."""

@@ -1,18 +1,15 @@
+from __future__ import annotations
+
 import errno
 import gc
 import math
 import os.path
 import pickle
 import time
+import typing as t
 from collections import defaultdict
-from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
-from typing import Callable
-from typing import Literal
-from typing import Optional
-from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -22,18 +19,21 @@ import pyarrow.parquet as pq
 
 import artistools as at
 
+if t.TYPE_CHECKING:
+    from collections.abc import Sequence
+
 
 def read_modelfile_text(
-    filename: Union[Path, str],
+    filename: Path | str,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
     skipnuclidemassfraccolumns: bool = False,
-    dtype_backend: Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
-) -> tuple[pd.DataFrame, dict[str, Any]]:
+    dtype_backend: t.Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
+) -> tuple[pd.DataFrame, dict[str, t.Any]]:
     """Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides."""
     onelinepercellformat = None
 
-    modelmeta: dict[str, Any] = {"headercommentlines": []}
+    modelmeta: dict[str, t.Any] = {"headercommentlines": []}
 
     modelpath = Path(filename).parent
     if not printwarningsonly:
@@ -156,7 +156,7 @@ def read_modelfile_text(
                     "X_Ni57",
                     "X_Co57",
                 ]
-            # last two abundances are optional
+            # last two abundances are t.Optional
             assert columns is not None
             if ncols_line_even == ncols_line_odd and (ncols_line_even + ncols_line_odd) > len(columns):
                 # one line per cell format
@@ -194,7 +194,7 @@ def read_modelfile_text(
 
     nrows_read = 1 if getheadersonly else modelcellcount
 
-    skiprows: Union[list, int, None]
+    skiprows: list | int | None
 
     skiprows = (
         numheaderrows
@@ -206,7 +206,7 @@ def read_modelfile_text(
         ]
     )
 
-    dtypes: defaultdict[str, Union[Callable, str]]
+    dtypes: defaultdict[str, t.Callable | str]
     if dtype_backend == "pyarrow":
         dtypes = defaultdict(lambda: "float32[pyarrow]")
         dtypes["inputcellid"] = "int32[pyarrow]"
@@ -335,15 +335,15 @@ def read_modelfile_text(
 
 
 def get_modeldata(
-    modelpath: Union[Path, str] = Path(),
+    modelpath: Path | str = Path(),
     get_elemabundances: bool = False,
-    derived_cols: Optional[Sequence[str]] = None,
+    derived_cols: Sequence[str] | None = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
     skipnuclidemassfraccolumns: bool = False,
-    dtype_backend: Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
+    dtype_backend: t.Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
     use_polars: bool = False,
-) -> tuple[pd.DataFrame, dict[str, Any]]:
+) -> tuple[pd.DataFrame, dict[str, t.Any]]:
     """Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
 
     Parameters
@@ -469,12 +469,12 @@ def get_modeldata_tuple(*args, **kwargs) -> tuple[pd.DataFrame, float, float]:
 
 
 def add_derived_cols_to_modeldata(
-    dfmodel: Union[pl.DataFrame, pl.LazyFrame],
+    dfmodel: pl.DataFrame | pl.LazyFrame,
     derived_cols: Sequence[str],
-    dimensions: Optional[int] = None,
-    t_model_init_seconds: Optional[float] = None,
-    wid_init: Optional[float] = None,
-    modelpath: Optional[Path] = None,
+    dimensions: int | None = None,
+    t_model_init_seconds: float | None = None,
+    wid_init: float | None = None,
+    modelpath: Path | None = None,
 ) -> pl.LazyFrame:
     """Add columns to modeldata using e.g. derived_cols = ('velocity', 'Ye')."""
     if dimensions is None:
@@ -691,13 +691,13 @@ def get_3d_modeldata_minimal(modelpath) -> pd.DataFrame:
 
 def save_modeldata(
     dfmodel: pd.DataFrame,
-    t_model_init_days: Optional[float] = None,
-    filename: Union[Path, str, None] = None,
-    modelpath: Union[Path, str, None] = None,
-    vmax: Optional[float] = None,
-    dimensions: Optional[int] = None,
-    headercommentlines: Optional[list[str]] = None,
-    modelmeta: Optional[dict[str, Any]] = None,
+    t_model_init_days: float | None = None,
+    filename: Path | str | None = None,
+    modelpath: Path | str | None = None,
+    vmax: float | None = None,
+    dimensions: int | None = None,
+    headercommentlines: list[str] | None = None,
+    modelmeta: dict[str, t.Any] | None = None,
     twolinespercell: bool = False,
     float_format: str = ".4e",
 ) -> None:
@@ -748,7 +748,7 @@ def save_modeldata(
             "X_Cr48",
         ]
 
-    # these two columns are optional, but position is important and they must appear before any other custom cols
+    # these two columns are t.Optional, but position is important and they must appear before t.Any other custom cols
     if "X_Ni57" in dfmodel.columns:
         standardcols.append("X_Ni57")
 
@@ -817,7 +817,7 @@ def save_modeldata(
     print(f"Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> Union[int, float]:
+def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> int | float:
     """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
     If mgilist is given, then chose from these cells only.
     """
@@ -848,7 +848,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> U
 def get_initelemabundances(
     modelpath: Path = Path(),
     printwarningsonly: bool = False,
-    dtype_backend: Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
+    dtype_backend: t.Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
 ) -> pd.DataFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
     abundancefilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
@@ -900,8 +900,8 @@ def get_initelemabundances(
 
 def save_initelemabundances(
     dfelabundances: pd.DataFrame,
-    abundancefilename: Union[Path, str],
-    headercommentlines: Optional[Sequence[str]] = None,
+    abundancefilename: Path | str,
+    headercommentlines: Sequence[str] | None = None,
 ) -> None:
     """Save a DataFrame (same format as get_initelemabundances) to abundances.txt.
     columns must be:
@@ -940,7 +940,7 @@ def save_empty_abundance_file(ngrid: int, outputfilepath=Path()) -> None:
 
     Z_atomic = np.arange(1, 31)
 
-    abundancedata: dict[str, Any] = {"cellid": range(1, ngrid + 1)}
+    abundancedata: dict[str, t.Any] = {"cellid": range(1, ngrid + 1)}
     for atomic_number in Z_atomic:
         abundancedata[f"Z={atomic_number}"] = np.zeros(ngrid)
 
@@ -950,7 +950,7 @@ def save_empty_abundance_file(ngrid: int, outputfilepath=Path()) -> None:
     dfabundances.to_csv(outputfilepath, header=False, sep=" ", index=False)
 
 
-def get_dfmodel_dimensions(dfmodel: Union[pd.DataFrame, pl.DataFrame, pl.LazyFrame]) -> int:
+def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) -> int:
     if "pos_x_min" in dfmodel.columns:
         return 3
 
@@ -964,9 +964,9 @@ def sphericalaverage(
     dfmodel: pd.DataFrame,
     t_model_init_days: float,
     vmax: float,
-    dfelabundances: Optional[pd.DataFrame] = None,
-    dfgridcontributions: Optional[pd.DataFrame] = None,
-    nradialbins: Optional[int] = None,
+    dfelabundances: pd.DataFrame | None = None,
+    dfgridcontributions: pd.DataFrame | None = None,
+    nradialbins: int | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Convert 3D Cartesian grid model to 1D spherical."""
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
@@ -1095,9 +1095,9 @@ def sphericalaverage(
 def scale_model_to_time(
     dfmodel: pd.DataFrame,
     targetmodeltime_days: float,
-    t_model_days: Optional[float] = None,
-    modelmeta: Optional[dict[str, Any]] = None,
-) -> tuple[pd.DataFrame, Optional[dict[str, Any]]]:
+    t_model_days: float | None = None,
+    modelmeta: dict[str, t.Any] | None = None,
+) -> tuple[pd.DataFrame, dict[str, t.Any] | None]:
     """Homologously expand model to targetmodeltime_days, reducing density and adjusting position columns to match."""
     if t_model_days is None:
         assert modelmeta is not None

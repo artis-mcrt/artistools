@@ -1,18 +1,17 @@
 """Artistools - NLTE population related functions."""
+from __future__ import annotations
+
 import math
 import multiprocessing
 import re
 from functools import lru_cache
 from functools import partial
 from pathlib import Path
-from typing import Optional
-from typing import Union
 
 import pandas as pd
 from astropy import constants as const
 
 import artistools as at
-from artistools.configuration import get_config
 
 
 def texifyterm(strterm: str) -> str:
@@ -145,7 +144,7 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
     return dfpop
 
 
-def read_file(nltefilepath: Union[str, Path]) -> pd.DataFrame:
+def read_file(nltefilepath: str | Path) -> pd.DataFrame:
     """Read NLTE populations from one file."""
     if not Path(nltefilepath).is_file():
         nltefilepathgz = Path(str(nltefilepath) + ".gz")
@@ -180,7 +179,7 @@ def read_file_filtered(nltefilepath, strquery=None, dfqueryvars=None):
 
 @lru_cache(maxsize=2)
 def read_files(
-    modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryvars: Optional[dict] = None
+    modelpath, timestep=-1, modelgridindex=-1, dfquery=None, dfqueryvars: dict | None = None
 ) -> pd.DataFrame:
     """Read in NLTE populations from a model for a particular timestep and grid cell."""
     if dfqueryvars is None:
@@ -213,8 +212,8 @@ def read_files(
             dfquery_full = f"({dfquery_full}) and "
         dfquery_full += f"({dfquery})"
 
-    if get_config()["num_processes"] > 1:
-        with multiprocessing.get_context("fork").Pool(processes=get_config()["num_processes"]) as pool:
+    if at.get_config()["num_processes"] > 1:
+        with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
             arr_dfnltepop = pool.map(
                 partial(read_file_filtered, strquery=dfquery_full, dfqueryvars=dfqueryvars), nltefilepaths
             )

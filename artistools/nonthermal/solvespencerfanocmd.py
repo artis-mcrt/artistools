@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
 import sys
 from pathlib import Path
-from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,7 +17,7 @@ minionfraction = 0.0  # minimum number fraction of the total population to inclu
 defaultoutputfile = "spencerfano_cell{cell:03d}_ts{timestep:02d}_{timedays:.0f}d.pdf"
 
 
-def make_ntstats_plot(ntstatfile: Union[str, Path]) -> None:
+def make_ntstats_plot(ntstatfile: str | Path) -> None:
     fig, ax = plt.subplots(
         nrows=1, ncols=1, sharex=True, figsize=(4, 3), tight_layout={"pad": 0.5, "w_pad": 0.3, "h_pad": 0.3}
     )

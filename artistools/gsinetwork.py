@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
+from __future__ import annotations
+
 import argparse
 import math
 import multiprocessing
-from collections.abc import Collection
-from collections.abc import Sequence
+import typing as t
 from functools import partial
 from pathlib import Path
-from typing import Any
-from typing import Union
 
 import argcomplete
 import matplotlib.pyplot as plt
@@ -16,6 +15,10 @@ import numpy as np
 import pandas as pd
 
 import artistools as at
+
+if t.TYPE_CHECKING:
+    from collections.abc import Collection
+    from collections.abc import Sequence
 
 
 def plot_qdot(
@@ -26,7 +29,7 @@ def plot_qdot(
     arr_time_artis_days: Collection[float],
     arr_artis_ye: Collection[float],
     arr_time_gsi_days: Collection[float],
-    pdfoutpath: Union[Path, str],
+    pdfoutpath: Path | str,
 ) -> None:
     try:
         depdata = at.get_deposition(modelpath=modelpath)
@@ -222,7 +225,7 @@ def plot_cell_abund_evolution(
     # if arr_strnuc[0] != 'Ye':
     #     arr_strnuc.insert(0, 'Ye')
 
-    arr_abund_gsi: dict[str, np.ndarray[Any, np.dtype[np.float64]]] = {}
+    arr_abund_gsi: dict[str, np.ndarray[t.Any, np.dtype[np.float64]]] = {}
 
     for strnuc in arr_strnuc:
         arr_abund_gsi[strnuc] = np.zeros_like(arr_time_gsi_days)

@@ -1,18 +1,13 @@
 """Artistools - spectra related functions."""
-import argparse
+from __future__ import annotations
+
 import math
 import os
 import re
+import typing as t
 from collections import namedtuple
-from collections.abc import Collection
-from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
-from typing import Callable
-from typing import Literal
-from typing import Optional
-from typing import Union
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -24,12 +19,17 @@ from astropy import units as u
 
 import artistools as at
 
+if t.TYPE_CHECKING:
+    import argparse
+    from collections.abc import Collection
+    from collections.abc import Sequence
+
 fluxcontributiontuple = namedtuple(
     "fluxcontributiontuple", "fluxcontrib linelabel array_flambda_emission array_flambda_absorption color"
 )
 
 
-def timeshift_fluxscale_co56law(scaletoreftime: Optional[float], spectime: float) -> float:
+def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -> float:
     if scaletoreftime is not None:
         # Co56 decay flux scaling
         assert spectime > 150
@@ -66,8 +66,8 @@ def get_exspec_bins() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 
 def stackspectra(
-    spectra_and_factors: list[tuple[np.ndarray[Any, np.dtype[np.float64]], float]]
-) -> np.ndarray[Any, np.dtype[np.float64]]:
+    spectra_and_factors: list[tuple[np.ndarray[t.Any, np.dtype[np.float64]], float]]
+) -> np.ndarray[t.Any, np.dtype[np.float64]]:
     """Add spectra using weighting factors, i.e., specout[nu] = spec1[nu] * factor1 + spec2[nu] * factor2 + ...
     spectra_and_factors should be a list of tuples: spectra[], factor.
     """
@@ -84,10 +84,10 @@ def get_spectrum_at_time(
     modelpath: Path,
     timestep: int,
     time: float,
-    args: Optional[argparse.Namespace],
+    args: argparse.Namespace | None,
     dirbin: int = -1,
-    average_over_phi: Optional[bool] = None,
-    average_over_theta: Optional[bool] = None,
+    average_over_phi: bool | None = None,
+    average_over_theta: bool | None = None,
 ) -> pd.DataFrame:
     if dirbin >= 0:
         if args is not None and args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
@@ -118,15 +118,15 @@ def get_from_packets(
     timehighdays: float,
     lambda_min: float,
     lambda_max: float,
-    delta_lambda: Union[None, float, np.ndarray] = None,
+    delta_lambda: None | float | np.ndarray = None,
     use_escapetime: bool = False,
-    maxpacketfiles: Optional[int] = None,
+    maxpacketfiles: int | None = None,
     useinternalpackets: bool = False,
     getpacketcount: bool = False,
-    directionbins: Optional[Collection[int]] = None,
+    directionbins: Collection[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
-    fnufilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+    fnufilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> pd.DataFrame:
     """Get a spectrum dataframe using the packets files as input."""
     assert not useinternalpackets
@@ -292,7 +292,7 @@ def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
 
 
 @lru_cache(maxsize=200)
-def read_emission_absorption_file(emabsfilename: Union[str, Path]) -> pl.DataFrame:
+def read_emission_absorption_file(emabsfilename: str | Path) -> pl.DataFrame:
     """Read into a DataFrame one of: emission.out. emissionpol.out, emissiontrue.out, absorption.out."""
     try:
         emissionfilesize = Path(emabsfilename).stat().st_size / 1024 / 1024
@@ -330,12 +330,12 @@ def get_spec_res(
 def get_spectrum(
     modelpath: Path,
     timestepmin: int,
-    timestepmax: Optional[int] = None,
-    directionbins: Optional[Sequence[int]] = None,
-    fnufilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+    timestepmax: int | None = None,
+    directionbins: Sequence[int] | None = None,
+    fnufilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
     average_over_theta: bool = False,
     average_over_phi: bool = False,
-    stokesparam: Literal["I", "Q", "U"] = "I",
+    stokesparam: t.Literal["I", "Q", "U"] = "I",
 ) -> dict[int, pd.DataFrame]:
     """Return a pandas DataFrame containing an ARTIS emergent spectrum."""
     if timestepmax is None or timestepmax < 0:
@@ -464,10 +464,10 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
             filenames.append(vspecfile)
 
     def sorted_by_number(l: list) -> list:
-        def convert(text: str) -> Union[int, str]:
+        def convert(text: str) -> int | str:
             return int(text) if text.isdigit() else text
 
-        def alphanum_key(key: str) -> list[Union[int, str]]:
+        def alphanum_key(key: str) -> list[int | str]:
             return [convert(c) for c in re.split("([0-9]+)", key)]
 
         return sorted(l, key=alphanum_key)
@@ -489,7 +489,7 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
 
 @lru_cache(maxsize=4)
 def get_specpol_data(
-    angle: int = -1, modelpath: Optional[Path] = None, specdata: Optional[pd.DataFrame] = None
+    angle: int = -1, modelpath: Path | None = None, specdata: pd.DataFrame | None = None
 ) -> dict[str, pd.DataFrame]:
     if specdata is None:
         assert modelpath is not None
@@ -509,7 +509,7 @@ def get_specpol_data(
 
 @lru_cache(maxsize=4)
 def get_vspecpol_data(
-    vspecangle: Optional[int] = None, modelpath: Optional[Path] = None, specdata: Optional[pd.DataFrame] = None
+    vspecangle: int | None = None, modelpath: Path | None = None, specdata: pd.DataFrame | None = None
 ) -> dict[str, pd.DataFrame]:
     if specdata is None:
         assert modelpath is not None
@@ -560,11 +560,11 @@ def split_dataframe_stokesparams(specdata: pd.DataFrame) -> dict[str, pd.DataFra
 
 
 def get_vspecpol_spectrum(
-    modelpath: Union[Path, str],
+    modelpath: Path | str,
     timeavg: float,
     angle: int,
     args: argparse.Namespace,
-    fnufilterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+    fnufilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> pd.DataFrame:
     stokes_params = get_vspecpol_data(vspecangle=angle, modelpath=Path(modelpath))
     if "stokesparam" not in args:
@@ -613,13 +613,13 @@ def get_vspecpol_spectrum(
 @lru_cache(maxsize=4)
 def get_flux_contributions(
     modelpath: Path,
-    filterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+    filterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
     timestepmin: int = -1,
     timestepmax: int = -1,
     getemission: bool = True,
     getabsorption: bool = True,
     use_lastemissiontype: bool = True,
-    directionbin: Optional[int] = None,
+    directionbin: int | None = None,
     averageoverphi: bool = False,
     averageovertheta: bool = False,
 ) -> tuple[list[fluxcontributiontuple], np.ndarray]:
@@ -649,7 +649,7 @@ def get_flux_contributions(
 
     emissiondata: dict[int, pd.DataFrame] = {}
     absorptiondata: dict[int, pd.DataFrame] = {}
-    maxion: Optional[int] = None
+    maxion: int | None = None
     for dbin in dbinlist:
         if getemission:
             emissionfilenames = ["emission.out", "emissionpol.out"] if use_lastemissiontype else ["emissiontrue.out"]
@@ -792,17 +792,17 @@ def get_flux_contributions_from_packets(
     timeupperdays: float,
     lambda_min: float,
     lambda_max: float,
-    delta_lambda: Union[None, float, np.ndarray] = None,
+    delta_lambda: None | float | np.ndarray = None,
     getemission: bool = True,
     getabsorption: bool = True,
-    maxpacketfiles: Optional[int] = None,
-    filterfunc: Optional[Callable[[np.ndarray], np.ndarray]] = None,
-    groupby: Optional[Literal["ion", "line", "upperterm", "terms"]] = "ion",
-    modelgridindex: Optional[int] = None,
+    maxpacketfiles: int | None = None,
+    filterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
+    groupby: t.Literal["ion", "line", "upperterm", "terms"] | None = "ion",
+    modelgridindex: int | None = None,
     use_escapetime: bool = False,
     use_lastemissiontype: bool = True,
     useinternalpackets: bool = False,
-    emissionvelocitycut: Optional[float] = None,
+    emissionvelocitycut: float | None = None,
 ) -> tuple[list[fluxcontributiontuple], np.ndarray, np.ndarray]:
     assert groupby in [None, "ion", "line", "upperterm", "terms"]
 
@@ -1054,7 +1054,7 @@ def sort_and_reduce_flux_contribution_list(
     contribution_list_in: list[fluxcontributiontuple],
     maxseriescount: int,
     arraylambda_angstroms: np.ndarray,
-    fixedionlist: Optional[list[str]] = None,
+    fixedionlist: list[str] | None = None,
     hideother: bool = False,
     greyscale: bool = False,
 ) -> list[fluxcontributiontuple]:
@@ -1191,7 +1191,7 @@ def print_floers_line_ratio(
             f.write(f"{timedays:.1f} {fratio:.3e}\n")
 
 
-def get_reference_spectrum(filename: Union[Path, str]) -> tuple[pd.DataFrame, dict[str, Any]]:
+def get_reference_spectrum(filename: Path | str) -> tuple[pd.DataFrame, dict[str, t.Any]]:
     if Path(filename).is_file():
         filepath = Path(filename)
     else:

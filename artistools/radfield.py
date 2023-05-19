@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
 import math
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
-from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -111,9 +111,7 @@ def j_nu_dbb(arr_nu_hz, W, T):
     return [0.0 for _ in arr_nu_hz]
 
 
-def get_fullspecfittedfield(
-    radfielddata, xmin, xmax, modelgridindex: Optional[int] = None, timestep: Optional[int] = None
-):
+def get_fullspecfittedfield(radfielddata, xmin, xmax, modelgridindex: int | None = None, timestep: int | None = None):
     row = (
         radfielddata.query(
             "bin_num == -1"
@@ -136,11 +134,11 @@ def get_fullspecfittedfield(
 
 def get_fitted_field(
     radfielddata,
-    modelgridindex: Optional[int] = None,
-    timestep: Optional[int] = None,
+    modelgridindex: int | None = None,
+    timestep: int | None = None,
     print_bins: bool = False,
-    lambdamin: Optional[float] = None,
-    lambdamax: Optional[float] = None,
+    lambdamin: float | None = None,
+    lambdamax: float | None = None,
 ) -> tuple[list[float], list[float]]:
     """Return the fitted dilute blackbody (list of lambda, list of j_nu) made up of all bins."""
     arr_lambda = []
@@ -231,10 +229,10 @@ def plot_line_estimators(axis, radfielddata, xmin, xmax, modelgridindex=None, ti
 
 def plot_specout(
     axis,
-    specfilename: Union[str, Path],
+    specfilename: str | Path,
     timestep: int,
-    peak_value: Optional[float] = None,
-    scale_factor: Optional[float] = None,
+    peak_value: float | None = None,
+    scale_factor: float | None = None,
     **plotkwargs,
 ) -> None:
     """Plot the ARTIS spectrum."""

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Artistools - NLTE population related functions."""
+from __future__ import annotations
+
 import argparse
 import math
 import os
 import sys
 from pathlib import Path
-from typing import Union
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -19,7 +20,7 @@ import artistools as at
 defaultoutputfile = "plotnlte_{elsymbol}_cell{cell:03d}_ts{timestep:02d}_{time_days:.0f}d.pdf"
 
 
-def annotate_emission_line(ax, y, upperlevel, lowerlevel, label):
+def annotate_emission_line(ax: plt.Axes, y: float, upperlevel: int, lowerlevel: int, label: str) -> None:
     ax.annotate(
         "",
         xy=(lowerlevel, y),
@@ -39,7 +40,7 @@ def annotate_emission_line(ax, y, upperlevel, lowerlevel, label):
     )
 
 
-def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, dfpopthision, annotatelines):
+def plot_reference_data(ax, atomic_number: int, ion_stage: int, estimators_celltimestep, dfpopthision, annotatelines):
     nne, Te, TR, W = (estimators_celltimestep[s] for s in ["nne", "Te", "TR", "W"])
     # comparison to Chianti file
     elsym = at.get_elsymbol(atomic_number)
@@ -80,7 +81,7 @@ def plot_reference_data(ax, atomic_number, ion_stage, estimators_celltimestep, d
                     )
                     levelnums = []
                     depcoeffs = []
-                    firstdep = -1
+                    firstdep = -1.0
                     for line in depfile:
                         row = line.split()
                         try:
@@ -793,7 +794,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     if isinstance(args.velocity, (float, int)):
         args.velocity = [args.velocity]
 
-    mgilist: list[Union[int, float]] = []
+    mgilist: list[int | float] = []
     for mgi in args.modelgridindex:
         mgilist.append(int(mgi))
 

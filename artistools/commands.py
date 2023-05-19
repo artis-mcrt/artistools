@@ -1,15 +1,13 @@
-import argparse
+from __future__ import annotations
+
 import subprocess
+import typing as t
 from pathlib import Path
-from typing import Any
-from typing import Union
 
-try:
-    from typing_extensions import TypeAlias
-except ImportError:
-    from typing import TypeAlias
+if t.TYPE_CHECKING:
+    import argparse
 
-cmdtype: TypeAlias = dict[str, Union[tuple[str, str], "cmdtype"]]
+cmdtype: t.TypeAlias = dict[str, t.Union[tuple[str, str], "cmdtype"]]
 
 dictcommands: cmdtype = {
     "comparetogsinetwork": ("gsinetwork", "main"),
@@ -120,7 +118,7 @@ def get_console_scripts() -> list[str]:
     return console_scripts
 
 
-def setup_completions(*args: Any, **kwargs: Any) -> None:
+def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:
     # Add the following lines to your .zshrc file to get command completion:
     # autoload -U bashcompinit
     # bashcompinit
