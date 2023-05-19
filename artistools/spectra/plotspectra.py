@@ -719,14 +719,15 @@ def make_emissionabsorption_plot(
     ymax = max(ymaxrefall, scalefactor * max_flambda_emission_total * 1.2)
     axis.set_ylim(top=ymax)
 
-    if scale_to_peak:
-        axis.set_ylabel(r"Scaled F$_\lambda$")
-    elif args.internalpackets:
-        if args.logscale:
-            # don't include the {} that will be replaced with the power of 10 by the custom formatter
-            axis.set_ylabel(r"J$_\lambda$ [erg/s/cm$^2$/$\mathrm{{\AA}}$]")
-        else:
-            axis.set_ylabel(r"J$_\lambda$ [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]")
+    if not args.hideyticklabels:
+        if scale_to_peak:
+            axis.set_ylabel(r"Scaled F$_\lambda$")
+        elif args.internalpackets:
+            if args.logscale:
+                # don't include the {} that will be replaced with the power of 10 by the custom formatter
+                axis.set_ylabel(r"J$_\lambda$ [erg/s/cm$^2$/$\mathrm{{\AA}}$]")
+            else:
+                axis.set_ylabel(r"J$_\lambda$ [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]")
 
     if args.showbinedges:
         radfielddata = at.radfield.read_files(modelpath, timestep=timestepmax, modelgridindex=30)
@@ -809,7 +810,8 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
 
     for ax, yvar in zip(axes, densityplotyvars):
         # ax.set_ylabel(r'velocity [{} km/s]')
-        ax.set_ylabel(yvar + " " + at.estimators.get_units_string(yvar))
+        if not args.hideyticklabels:
+            ax.set_ylabel(yvar + " " + at.estimators.get_units_string(yvar))
         # ax.plot(list_lambda, list_yvar, lw=0, marker='o', markersize=0.5)
         # ax.hexbin(list_lambda[yvar], lists_y[yvar], gridsize=100, cmap=plt.cm.BuGn_r)
         ax.hist2d(list_lambda[yvar], lists_y[yvar], bins=(50, 30), cmap=plt.cm.Greys)  # pylint: disable=no-member
@@ -856,15 +858,16 @@ def make_plot(args) -> None:
 
     dfalldata = pd.DataFrame()
 
-    if args.multispecplot:
-        for ax in axes:
-            ax.set_ylabel(r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]")
+    if not args.hideyticklabels:
+        if args.multispecplot:
+            for ax in axes:
+                ax.set_ylabel(r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]")
 
-    elif args.logscale:
-        # don't include the {} that will be replaced with the power of 10 by the custom formatter
-        axes[-1].set_ylabel(r"F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\mathrm{{\AA}}$]")
-    else:
-        axes[-1].set_ylabel(r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]")
+        elif args.logscale:
+            # don't include the {} that will be replaced with the power of 10 by the custom formatter
+            axes[-1].set_ylabel(r"F$_\lambda$ at 1 Mpc [erg/s/cm$^2$/$\mathrm{{\AA}}$]")
+        else:
+            axes[-1].set_ylabel(r"F$_\lambda$ at 1 Mpc [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]")
 
     for axis in axes:
         if args.logscale:
@@ -878,6 +881,9 @@ def make_plot(args) -> None:
             axis.xaxis.set_major_locator(ticker.MultipleLocator(base=1000))
             axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
         elif (args.xmax - args.xmin) < 14000:
+            axis.xaxis.set_major_locator(ticker.MultipleLocator(base=2000))
+            axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
+        else:
             axis.xaxis.set_major_locator(ticker.MultipleLocator(base=2000))
             axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
 
@@ -955,8 +961,13 @@ def make_plot(args) -> None:
             ax.tick_params(
                 axis="x",
                 which="both",
-                # bottom=True, top=True,
                 labelbottom=False,
+            )
+        if args.hideyticklabels:
+            ax.tick_params(
+                axis="y",
+                which="both",
+                labelleft=False,
             )
         ax.set_xlabel("")
 
@@ -964,7 +975,8 @@ def make_plot(args) -> None:
             ymin, ymax = ax.get_ylim()
             ax.text(5500, ymax * 0.9, f"{args.timedayslist[index]} days")  # multispecplot text
 
-    axes[-1].set_xlabel(args.xlabel)
+    if not args.hidexticklabels:
+        axes[-1].set_xlabel(args.xlabel)
 
     if not args.outputfile:
         args.outputfile = defaultoutputfile
@@ -1004,8 +1016,6 @@ def make_plot(args) -> None:
         print(f"Saved {datafilenameout}")
 
     # plt.minorticks_on()
-    # plt.tick_params(axis='x', which='minor', length=5, width=2, labelsize=18)
-    # plt.tick_params(axis='both', which='major', length=8, width=2, labelsize=18)
 
     fig.savefig(filenameout)
     # plt.show()
@@ -1178,9 +1188,11 @@ def addargs(parser) -> None:
 
     parser.add_argument("--reverselegendorder", action="store_true", help="Reverse the order of legend items")
 
-    parser.add_argument("--hidexticklabels", action="store_true", help="Dont show numbers on the x axis")
+    parser.add_argument("--hidexticklabels", action="store_true", help="Don't show numbers or a label on the x axis")
 
     parser.add_argument("-xlabel", default=r"Wavelength $\left[\mathrm{{\AA}}\right]$", help="Label for the x axis")
+
+    parser.add_argument("--hideyticklabels", action="store_true", help="Don't show numbers or a label on the y axis")
 
     parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a CSV file")
 

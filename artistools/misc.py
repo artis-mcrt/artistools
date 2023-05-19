@@ -733,6 +733,7 @@ def firstexisting(
     """Return the first existing file in file list. If none exist, raise exception."""
     if isinstance(filelist, (str, Path)):
         filelist = [filelist]
+    folder = Path(folder)
 
     fullpaths = []
     for filename in filelist:
@@ -742,13 +743,14 @@ def firstexisting(
             for ext in [".lz4", ".zst", ".gz", ".xz"]:
                 filenameext = str(filename) if str(filename).endswith(ext) else str(filename) + ext
                 if filenameext not in filelist:
-                    fullpaths.append(Path(folder) / filenameext)
+                    fullpaths.append(folder / filenameext)
 
     for fullpath in fullpaths:
         if fullpath.exists():
             return fullpath
 
-    msg = f"None of these files exist in {folder}: {', '.join([str(x) for x in fullpaths])}"
+    filelist = "\n  ".join([str(x.relative_to(folder)) for x in fullpaths])
+    msg = f"None of these files exist in {folder}: \n  {filelist}"
     raise FileNotFoundError(msg)
 
 
