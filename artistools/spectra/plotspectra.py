@@ -17,14 +17,6 @@ import pandas as pd
 from matplotlib import ticker
 
 import artistools as at
-from artistools.spectra import get_reference_spectrum
-from artistools.spectra import get_specpol_data
-from artistools.spectra import get_spectrum
-from artistools.spectra import get_vspecpol_spectrum
-from artistools.spectra import make_averaged_vspecfiles
-from artistools.spectra import make_virtual_spectra_summed_file
-from artistools.spectra import print_integrated_flux
-from artistools.spectra import timeshift_fluxscale_co56law
 
 if t.TYPE_CHECKING:
     from collections.abc import Collection
@@ -37,7 +29,7 @@ hatches = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]
 
 def plot_polarisation(modelpath: Path, args) -> None:
     angle = args.plotviewingangle[0]
-    stokes_params = get_specpol_data(angle=angle, modelpath=modelpath)
+    stokes_params = at.spectra.get_specpol_data(angle=angle, modelpath=modelpath)
     stokes_params[args.stokesparam] = stokes_params[args.stokesparam].eval("lambda_angstroms = 2.99792458e18 / nu")
 
     timearray = stokes_params[args.stokesparam].keys()[1:-1]
@@ -122,7 +114,7 @@ def plot_reference_spectrum(
     The filename must be in space separated text formated with the first two
     columns being wavelength in Angstroms, and F_lambda
     """
-    specdata, metadata = get_reference_spectrum(filename)
+    specdata, metadata = at.spectra.get_reference_spectrum(filename)
 
     # scale to flux at required distance
     if scale_to_dist_mpc:
@@ -134,7 +126,7 @@ def plot_reference_spectrum(
         plotkwargs["label"] = metadata["label"] if "label" in metadata else filename
 
     if scaletoreftime is not None:
-        timefactor = timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
+        timefactor = at.spectra.timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
         print(f" Scale from time {metadata['t']} to {scaletoreftime}, factor {timefactor} using Co56 decay law")
         specdata["f_lambda"] *= timefactor
         plotkwargs["label"] += f" * {timefactor:.2f}"
@@ -148,7 +140,9 @@ def plot_reference_spectrum(
 
     specdata = specdata.query("lambda_angstroms > @xmin and lambda_angstroms < @xmax")
 
-    print_integrated_flux(specdata["f_lambda"], specdata["lambda_angstroms"], distance_megaparsec=metadata["dist_mpc"])
+    at.spectra.print_integrated_flux(
+        specdata["f_lambda"], specdata["lambda_angstroms"], distance_megaparsec=metadata["dist_mpc"]
+    )
 
     # if len(specdata) > 5000:
     #     # specdata = scipy.signal.resample(specdata, 10000)
@@ -298,12 +292,12 @@ def plot_artis_spectrum(
                 sys.exit(1)
 
             viewinganglespectra = {
-                dirbin: get_vspecpol_spectrum(modelpath, timeavg, dirbin, args, fnufilterfunc=filterfunc)
+                dirbin: at.spectra.get_vspecpol_spectrum(modelpath, timeavg, dirbin, args, fnufilterfunc=filterfunc)
                 for dirbin in dbins_get
                 if dirbin >= 0
             }
         else:
-            viewinganglespectra = get_spectrum(
+            viewinganglespectra = at.spectra.get_spectrum(
                 modelpath=modelpath,
                 directionbins=dbins_get,
                 timestepmin=timestepmin,
@@ -335,7 +329,7 @@ def plot_artis_spectrum(
                 linelabel = dirbin_definitions[dirbin]
                 print(f" direction {dirbin:4d}  {dirbin_definitions[dirbin]}")
 
-            print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
+            at.spectra.print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
 
             if scale_to_peak:
                 dfspectrum["f_lambda_scaled"] = dfspectrum["f_lambda"] / dfspectrum["f_lambda"].max() * scale_to_peak
@@ -1325,11 +1319,11 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         args.frompackets = True
 
     if args.makevspecpol:
-        make_virtual_spectra_summed_file(args.specpath[0])
+        at.spectra.make_virtual_spectra_summed_file(args.specpath[0])
         return
 
     if args.averagevspecpolfiles:
-        make_averaged_vspecfiles(args)
+        at.spectra.make_averaged_vspecfiles(args)
         return
 
     if "/" in args.stokesparam:
