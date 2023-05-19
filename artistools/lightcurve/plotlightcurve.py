@@ -1,4 +1,6 @@
 # PYTHON_ARGCOMPLETE_OK
+from __future__ import annotations
+
 import argparse
 import math
 import os
@@ -8,8 +10,6 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 from typing import Literal
-from typing import Optional
-from typing import Union
 
 import argcomplete
 import matplotlib as mpl
@@ -250,19 +250,19 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
 
 
 def plot_artis_lightcurve(
-    modelpath: Union[str, Path],
+    modelpath: str | Path,
     axis,
     lcindex: int = 0,
-    label: Optional[str] = None,
+    label: str | None = None,
     escape_type: Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
     frompackets: bool = False,
-    maxpacketfiles: Optional[int] = None,
+    maxpacketfiles: int | None = None,
     axistherm=None,
-    directionbins: Optional[Sequence[int]] = None,
+    directionbins: Sequence[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     args=None,
-) -> Optional[pd.DataFrame]:
+) -> pd.DataFrame | None:
     lcfilename = None
     modelpath = Path(modelpath)
     if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/light_curve.out'
@@ -449,11 +449,11 @@ def plot_artis_lightcurve(
 
 
 def make_lightcurve_plot(
-    modelpaths: Sequence[Union[str, Path]],
+    modelpaths: Sequence[str | Path],
     filenameout: str,
     frompackets: bool = False,
     escape_type: Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
-    maxpacketfiles: Optional[int] = None,
+    maxpacketfiles: int | None = None,
     args=None,
 ):
     """Use light_curve.out or light_curve_res.out files to plot light curve."""
@@ -656,8 +656,8 @@ def get_linelabel(
     modelpath: Path,
     modelname: str,
     modelnumber: int,
-    angle: Optional[int],
-    angle_definition: Optional[dict[int, str]],
+    angle: int | None,
+    angle_definition: dict[int, str] | None,
     args,
 ) -> str:
     if angle is not None and angle != -1:

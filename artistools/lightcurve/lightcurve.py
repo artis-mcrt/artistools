@@ -1,12 +1,9 @@
-import argparse
+from __future__ import annotations
+
 import math
 import os
-from collections.abc import Collection
+import typing as t
 from pathlib import Path
-from typing import Any
-from typing import Literal
-from typing import Optional
-from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,9 +14,13 @@ from astropy import units as u
 
 import artistools as at
 
+if t.TYPE_CHECKING:
+    import argparse
+    from collections.abc import Collection
+
 
 def readfile(
-    filepath: Union[str, Path],
+    filepath: str | Path,
 ) -> dict[int, pd.DataFrame]:
     """Read an ARTIS light curve file."""
     print(f"Reading {filepath}")
@@ -44,7 +45,7 @@ def readfile(
 
 
 def read_3d_gammalightcurve(
-    filepath: Union[str, Path],
+    filepath: str | Path,
 ) -> dict[int, pd.DataFrame]:
     columns = ["time"]
     columns.extend(np.arange(0, 100))
@@ -61,10 +62,10 @@ def read_3d_gammalightcurve(
 
 
 def get_from_packets(
-    modelpath: Union[str, Path],
-    escape_type: Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
-    maxpacketfiles: Optional[int] = None,
-    directionbins: Optional[Collection[int]] = None,
+    modelpath: str | Path,
+    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
+    maxpacketfiles: int | None = None,
+    directionbins: Collection[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     get_cmf_column: bool = True,
@@ -172,7 +173,7 @@ def generate_band_lightcurve_data(
     modelpath: Path,
     args: argparse.Namespace,
     angle: int = -1,
-    modelnumber: Optional[int] = None,
+    modelnumber: int | None = None,
 ) -> dict:
     """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
     from scipy.interpolate import interp1d
@@ -319,9 +320,7 @@ def bolometric_magnitude(
     return times, magnitudes
 
 
-def get_filter_data(
-    filterdir: Union[Path, str], filter_name: str
-) -> tuple[float, np.ndarray, np.ndarray, float, float]:
+def get_filter_data(filterdir: Path | str, filter_name: str) -> tuple[float, np.ndarray, np.ndarray, float, float]:
     """Filter data in 'data/filters' taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata."""
     with Path(filterdir, filter_name + ".txt").open("r") as filter_metadata:  # defintion of the file
         line_in_filter_metadata = filter_metadata.readlines()  # list of lines
@@ -342,14 +341,14 @@ def get_filter_data(
 
 
 def get_spectrum_in_filter_range(
-    modelpath: Union[Path, str],
+    modelpath: Path | str,
     timestep: int,
     time: float,
     wavefilter_min: float,
     wavefilter_max: float,
     angle: int = -1,
-    spectrum: Optional[pd.DataFrame] = None,
-    args: Optional[argparse.Namespace] = None,
+    spectrum: pd.DataFrame | None = None,
+    args: argparse.Namespace | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -434,7 +433,7 @@ def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
     return hesma_model
 
 
-def read_reflightcurve_band_data(lightcurvefilename: Union[Path, str]) -> tuple[pd.DataFrame, dict[str, Any]]:
+def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.DataFrame, dict[str, t.Any]]:
     filepath = Path(at.get_config()["path_artistools_dir"], "data", "lightcurves", lightcurvefilename)
     metadata = at.get_file_metadata(filepath)
 

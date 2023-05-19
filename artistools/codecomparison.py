@@ -4,23 +4,26 @@ codecomparison/[modelname]/[codename].
 
 e.g., codecomparison/DDC10/artisnebular
 """
-import math
-from collections.abc import Sequence
-from pathlib import Path
-from typing import Any
-from typing import Literal
-from typing import Union
+from __future__ import annotations
 
-import matplotlib.axes
+import math
+import typing as t
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
 import artistools as at
 
+if t.TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    import matplotlib.axes
+
 
 def get_timestep_times_float(
-    modelpath: Union[Path, str], loc: Literal["start", "mid", "end", "delta"] = "mid"
-) -> np.ndarray[Any, np.dtype[np.float64]]:
+    modelpath: Path | str, loc: t.Literal["start", "mid", "end", "delta"] = "mid"
+) -> np.ndarray[t.Any, np.dtype[np.float64]]:
     modelpath = Path(modelpath)
     _, modelname, codename = modelpath.parts
 
@@ -53,10 +56,10 @@ def get_timestep_times_float(
 
 
 def read_reference_estimators(
-    modelpath: Union[str, Path],
-    modelgridindex: Union[None, int, Sequence[int]] = None,
-    timestep: Union[None, int, Sequence[int]] = None,
-) -> dict[tuple[int, int], Any]:
+    modelpath: str | Path,
+    modelgridindex: None | int | Sequence[int] = None,
+    timestep: None | int | Sequence[int] = None,
+) -> dict[tuple[int, int], t.Any]:
     """Read estimators from code comparison workshop file."""
     virtualfolder, inputmodel, codename = Path(modelpath).parts
     assert virtualfolder == "codecomparison"
@@ -65,7 +68,7 @@ def read_reference_estimators(
 
     physfilepath = Path(inputmodelfolder, f"phys_{inputmodel}_{codename}.txt")
 
-    estimators: dict[tuple[int, int], Any] = {}
+    estimators: dict[tuple[int, int], t.Any] = {}
     cur_timestep = -1
     cur_modelgridindex = -1
     with open(physfilepath) as fphys:
@@ -175,7 +178,7 @@ def read_reference_estimators(
     return estimators
 
 
-def get_spectra(modelpath: Union[str, Path]) -> tuple[pd.DataFrame, np.ndarray]:
+def get_spectra(modelpath: str | Path) -> tuple[pd.DataFrame, np.ndarray]:
     modelpath = Path(modelpath)
     virtualfolder, inputmodel, codename = modelpath.parts
     assert virtualfolder == "codecomparison"
@@ -197,9 +200,7 @@ def get_spectra(modelpath: Union[str, Path]) -> tuple[pd.DataFrame, np.ndarray]:
     return dfspectra, arr_timedays
 
 
-def plot_spectrum(
-    modelpath: Union[str, Path], timedays: Union[str, float], axis: matplotlib.axes.Axes, **plotkwargs
-) -> None:
+def plot_spectrum(modelpath: str | Path, timedays: str | float, axis: matplotlib.axes.Axes, **plotkwargs) -> None:
     dfspectra, arr_timedays = get_spectra(modelpath)
     timeindex = (np.abs(arr_timedays - float(timedays))).argmin()
     timedays_found = dfspectra.columns[timeindex + 1]

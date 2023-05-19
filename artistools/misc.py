@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import argparse
 import gzip
-import io
 import math
 import os
+import typing as t
 from collections import namedtuple
 from collections.abc import Iterable
 from collections.abc import Iterator
@@ -10,11 +12,6 @@ from collections.abc import Sequence
 from functools import lru_cache
 from itertools import chain
 from pathlib import Path
-from typing import Any
-from typing import Callable
-from typing import Literal
-from typing import Optional
-from typing import Union
 
 import lz4.frame
 import numpy as np
@@ -24,6 +21,9 @@ import pyzstd
 import xz
 
 import artistools as at
+
+if t.TYPE_CHECKING:
+    import io
 
 roman_numerals = (
     "",
@@ -51,7 +51,7 @@ roman_numerals = (
 
 
 class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
         kwargs["max_help_position"] = 39
         super().__init__(*args, **kwargs)
 
@@ -84,7 +84,7 @@ class AppendPath(argparse.Action):
             setattr(args, self.dest, Path(values))
 
 
-def showtimesteptimes(modelpath: Optional[Path] = None, numberofcolumns: int = 5) -> None:
+def showtimesteptimes(modelpath: Path | None = None, numberofcolumns: int = 5) -> None:
     """Print a table showing the timesteps and their corresponding times."""
     if modelpath is None:
         modelpath = Path()
@@ -105,7 +105,7 @@ def showtimesteptimes(modelpath: Optional[Path] = None, numberofcolumns: int = 5
 
 
 @lru_cache(maxsize=8)
-def get_composition_data(filename: Union[Path, str]) -> pd.DataFrame:
+def get_composition_data(filename: Path | str) -> pd.DataFrame:
     """Return a pandas DataFrame containing details of included elements and ions."""
     if os.path.isdir(Path(filename)):
         filename = os.path.join(filename, "compositiondata.txt")
@@ -137,7 +137,7 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
     atomic_composition = {}
 
     with open(modelpath / "output_0-0.txt") as foutput:
-        Z: Optional[int] = None
+        Z: int | None = None
         ioncount = 0
         for row in foutput:
             if row.split()[0] == "[input.c]":
@@ -157,8 +157,8 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
 
 
 def split_dataframe_dirbins(
-    res_df: Union[pl.DataFrame, pd.DataFrame], index_of_repeated_value: int = 0, output_polarsdf: bool = False
-) -> dict[int, Union[pd.DataFrame, pl.DataFrame]]:
+    res_df: pl.DataFrame | pd.DataFrame, index_of_repeated_value: int = 0, output_polarsdf: bool = False
+) -> dict[int, pd.DataFrame | pl.DataFrame]:
     """Res files repeat output for each angle.
     index_of_repeated_value is the column index to look for repeating eg. time of ts 0.
     In spec_res files it's 1 , but in lc_res file it's 0.
@@ -191,7 +191,7 @@ def split_dataframe_dirbins(
 
 def average_direction_bins(
     dirbindataframes: dict[int, pl.DataFrame],
-    overangle: Literal["phi", "theta"],
+    overangle: t.Literal["phi", "theta"],
 ) -> dict[int, pl.DataFrame]:
     """Will average dict of direction-binned polars DataFrames according to the phi or theta angle."""
     dirbincount = at.get_viewingdirectionbincount()
@@ -226,14 +226,14 @@ def average_direction_bins(
     return dirbindataframesout
 
 
-def match_closest_time(reftime: float, searchtimes: list[Any]) -> str:
+def match_closest_time(reftime: float, searchtimes: list[t.Any]) -> str:
     """Get time closest to reftime in list of times (searchtimes)."""
     return str(f"{min([float(x) for x in searchtimes], key=lambda x: abs(x - reftime))}")
 
 
-def get_vpkt_config(modelpath: Union[Path, str]) -> dict[str, Any]:
+def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
     filename = Path(modelpath, "vpkt.txt")
-    vpkt_config: dict[str, Any] = {}
+    vpkt_config: dict[str, t.Any] = {}
     with open(filename) as vpkt_txt:
         vpkt_config["nobsdirections"] = int(vpkt_txt.readline())
         vpkt_config["cos_theta"] = [float(x) for x in vpkt_txt.readline().split()]
@@ -255,7 +255,7 @@ def get_vpkt_config(modelpath: Union[Path, str]) -> dict[str, Any]:
 
 
 @lru_cache(maxsize=8)
-def get_grid_mapping(modelpath: Union[Path, str]) -> tuple[dict[int, list[int]], dict[int, int]]:
+def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[int, int]]:
     """Return dict with the associated propagation cells for each model grid cell and
     a dict with the associated model grid cell of each propagration cell.
     """
@@ -292,10 +292,10 @@ def get_wid_init_at_tmin(modelpath: Path) -> float:
 
 
 def get_wid_init_at_tmodel(
-    modelpath: Union[Path, str, None] = None,
-    ngridpoints: Optional[int] = None,
-    t_model_days: Optional[float] = None,
-    xmax: Optional[float] = None,
+    modelpath: Path | str | None = None,
+    ngridpoints: int | None = None,
+    t_model_days: float | None = None,
+    xmax: float | None = None,
 ) -> float:
     if ngridpoints is None or t_model_days is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
@@ -324,19 +324,19 @@ def get_syn_dir(modelpath: Path) -> tuple[float, float, float]:
     return syn_dir
 
 
-def vec_len(vec: Union[Sequence[float], np.ndarray[Any, np.dtype[np.float64]]]) -> float:
+def vec_len(vec: Sequence[float] | np.ndarray[t.Any, np.dtype[np.float64]]) -> float:
     return float(np.sqrt(np.dot(vec, vec)))
 
 
 @lru_cache(maxsize=16)
-def get_nu_grid(modelpath: Path) -> np.ndarray[Any, np.dtype[np.float64]]:
+def get_nu_grid(modelpath: Path) -> np.ndarray[t.Any, np.dtype[np.float64]]:
     """Get an array of frequencies at which the ARTIS spectra are binned by exspec."""
     specfilename = firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     return specdata.loc[:, "0"].to_numpy()
 
 
-def get_deposition(modelpath: Union[Path, str] = ".") -> pd.DataFrame:
+def get_deposition(modelpath: Path | str = ".") -> pd.DataFrame:
     if Path(modelpath).is_file():
         depfilepath = modelpath
         modelpath = Path(modelpath).parent
@@ -368,8 +368,8 @@ def get_deposition(modelpath: Union[Path, str] = ".") -> pd.DataFrame:
 
 @lru_cache(maxsize=16)
 def get_timestep_times_float(
-    modelpath: Union[Path, str], loc: Literal["mid", "start", "end", "delta"] = "mid"
-) -> np.ndarray[Any, np.dtype[np.float64]]:
+    modelpath: Path | str, loc: t.Literal["mid", "start", "end", "delta"] = "mid"
+) -> np.ndarray[t.Any, np.dtype[np.float64]]:
     """Return a list of the time in days of each timestep."""
     modelpath = Path(modelpath)
     # virtual path to code comparison workshop models
@@ -418,7 +418,7 @@ def get_timestep_times_float(
     raise ValueError(msg)
 
 
-def get_timestep_of_timedays(modelpath: Path, timedays: Union[str, float]) -> int:
+def get_timestep_of_timedays(modelpath: Path, timedays: str | float) -> int:
     """Return the timestep containing the given time in days."""
     if isinstance(timedays, str):
         # could be a string like '330d'
@@ -441,11 +441,11 @@ def get_timestep_of_timedays(modelpath: Path, timedays: Union[str, float]) -> in
 
 def get_time_range(
     modelpath: Path,
-    timestep_range_str: Optional[str] = None,
-    timemin: Optional[float] = None,
-    timemax: Optional[float] = None,
-    timedays_range_str: Union[None, str, float] = None,
-) -> tuple[int, int, Optional[float], Optional[float]]:
+    timestep_range_str: str | None = None,
+    timemin: float | None = None,
+    timemax: float | None = None,
+    timedays_range_str: None | str | float = None,
+) -> tuple[int, int, float | None, float | None]:
     """Handle a time range specified in either days or timesteps."""
     # assertions make sure time is specified either by timesteps or times in days, but not both!
     tstarts = get_timestep_times_float(modelpath, loc="start")
@@ -521,7 +521,7 @@ def get_time_range(
     return timestepmin, timestepmax, time_days_lower, time_days_upper
 
 
-def get_timestep_time(modelpath: Union[Path, str], timestep: int) -> float:
+def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
     """Return the time in days of the midpoint of a timestep number."""
     timearray = get_timestep_times_float(modelpath, loc="mid")
     if timearray is not None:
@@ -530,7 +530,7 @@ def get_timestep_time(modelpath: Union[Path, str], timestep: int) -> float:
     return -1
 
 
-def get_escaped_arrivalrange(modelpath: Union[Path, str]) -> tuple[int, Optional[float], Optional[float]]:
+def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, float | None]:
     modelpath = Path(modelpath)
     dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True, getheadersonly=True)
     vmax = modelmeta["vmax_cmps"]
@@ -566,7 +566,7 @@ def get_escaped_arrivalrange(modelpath: Union[Path, str]) -> tuple[int, Optional
 
 
 @lru_cache(maxsize=8)
-def get_model_name(path: Union[Path, str]) -> str:
+def get_model_name(path: Path | str) -> str:
     """Get the name of an ARTIS model from the path to any file inside it.
 
     Name will be either from a special plotlabel.txt file if it exists or the enclosing directory name
@@ -631,10 +631,8 @@ def get_elsymbol(atomic_number: int) -> str:
 
 
 @lru_cache(maxsize=16)
-def get_ionstring(
-    atomic_number: int, ionstage: Union[int, Literal["ALL"], None], spectral: bool = True, nospace: bool = False
-) -> str:
-    if ionstage == "ALL" or ionstage is None:
+def get_ionstring(atomic_number: int, ionstage: int | None, spectral: bool = True, nospace: bool = False) -> str:
+    if ionstage is None:
         return f"{get_elsymbol(atomic_number)}"
 
     if spectral:
@@ -651,7 +649,7 @@ def get_ionstring(
 
 
 # based on code from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
-def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[Any]:
+def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[t.Any]:
     """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars."""
     strparts = rng.split("-")
 
@@ -669,7 +667,7 @@ def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[Any]:
     return range(start, end + 1)
 
 
-def parse_range_list(rngs: Union[str, list], dictvars: Optional[dict] = None) -> list[Any]:
+def parse_range_list(rngs: str | list, dictvars: dict | None = None) -> list[t.Any]:
     """Parse a string with comma-separated ranges or a list of range strings.
 
     Return a sorted list of integers in any of the ranges.
@@ -682,7 +680,7 @@ def parse_range_list(rngs: Union[str, list], dictvars: Optional[dict] = None) ->
     return sorted(set(chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
 
 
-def makelist(x: Union[None, list, Sequence, str, Path]) -> list[Any]:
+def makelist(x: None | list | Sequence | str | Path) -> list[t.Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
         return []
@@ -691,7 +689,7 @@ def makelist(x: Union[None, list, Sequence, str, Path]) -> list[Any]:
     return list(x)
 
 
-def trim_or_pad(requiredlength: int, *listoflistin: list[list[Any]]) -> Iterator[list[Any]]:
+def trim_or_pad(requiredlength: int, *listoflistin: list[list[t.Any]]) -> Iterator[list[t.Any]]:
     """Make lists equal in length to requiredlength either by padding with None or truncating."""
     for listin in listoflistin:
         listin = makelist(listin)
@@ -712,7 +710,7 @@ def flatten_list(listin: list) -> list:
     return listout
 
 
-def zopen(filename: Union[Path, str], mode: str = "rt", encoding: Optional[str] = None) -> Any:
+def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any:
     """Open filename, filename.gz or filename.xz."""
     ext_fopen = [(".lz4", lz4.frame.open), (".zst", pyzstd.open), (".gz", gzip.open), (".xz", xz.open)]
 
@@ -726,8 +724,8 @@ def zopen(filename: Union[Path, str], mode: str = "rt", encoding: Optional[str] 
 
 
 def firstexisting(
-    filelist: Union[Sequence[Union[str, Path]], str, Path],
-    folder: Union[Path, str] = Path("."),
+    filelist: Sequence[str | Path] | str | Path,
+    folder: Path | str = Path("."),
     tryzipped: bool = True,
 ) -> Path:
     """Return the first existing file in file list. If none exist, raise exception."""
@@ -753,8 +751,8 @@ def firstexisting(
 
 
 def anyexist(
-    filelist: Sequence[Union[str, Path]],
-    folder: Union[Path, str] = Path("."),
+    filelist: Sequence[str | Path],
+    folder: Path | str = Path("."),
     tryzipped: bool = True,
 ) -> bool:
     """Return true if any files in file list exist."""
@@ -786,10 +784,10 @@ def readnoncommentline(file: io.TextIOBase) -> str:
 
 
 @lru_cache(maxsize=24)
-def get_file_metadata(filepath: Union[Path, str]) -> dict[str, Any]:
+def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     filepath = Path(filepath)
 
-    def add_derived_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    def add_derived_metadata(metadata: dict[str, t.Any]) -> dict[str, t.Any]:
         if "a_v" in metadata and "e_bminusv" in metadata and "r_v" not in metadata:
             metadata["r_v"] = metadata["a_v"] / metadata["e_bminusv"]
         elif "e_bminusv" in metadata and "r_v" in metadata and "a_v" not in metadata:
@@ -825,14 +823,14 @@ def get_file_metadata(filepath: Union[Path, str]) -> dict[str, Any]:
 
 def get_filterfunc(
     args: argparse.Namespace, mode: str = "interp"
-) -> Optional[Callable[[Union[list[float], np.ndarray]], np.ndarray]]:
+) -> t.Callable[[list[float] | np.ndarray], np.ndarray] | None:
     """Use command line arguments to determine the appropriate filter function."""
-    filterfunc: Optional[Callable[[Union[list[float], np.ndarray]], np.ndarray]] = None
+    filterfunc: t.Callable[[list[float] | np.ndarray], np.ndarray] | None = None
     dictargs = vars(args)
 
     if dictargs.get("filtermovingavg", False):
 
-        def movavgfilterfunc(ylist: Union[list[float], np.ndarray]) -> np.ndarray:
+        def movavgfilterfunc(ylist: list[float] | np.ndarray) -> np.ndarray:
             n = args.filtermovingavg
             arr_padded = np.pad(ylist, (n // 2, n - 1 - n // 2), mode="edge")
             return np.convolve(arr_padded, np.ones((n,)) / n, mode="valid")
@@ -845,7 +843,7 @@ def get_filterfunc(
 
         window_length, poly_order = (int(x) for x in args.filtersavgol)
 
-        def savgolfilterfunc(ylist: Union[list[float], np.ndarray]) -> np.ndarray:
+        def savgolfilterfunc(ylist: list[float] | np.ndarray) -> np.ndarray:
             return scipy.signal.savgol_filter(ylist, window_length, poly_order, mode=mode)
 
         assert filterfunc is None
@@ -874,7 +872,7 @@ def join_pdf_files(pdf_list: list[str], modelpath_list: list[Path]) -> None:
 
 
 @lru_cache(maxsize=2)
-def get_bflist(modelpath: Union[Path, str]) -> dict[int, tuple[int, int, int, int]]:
+def get_bflist(modelpath: Path | str) -> dict[int, tuple[int, int, int, int]]:
     compositiondata = get_composition_data(modelpath)
     bflist = {}
     bflistpath = firstexisting(["bflist.out", "bflist.dat"], folder=modelpath, tryzipped=True)
@@ -895,9 +893,7 @@ def get_bflist(modelpath: Union[Path, str]) -> dict[int, tuple[int, int, int, in
 linetuple = namedtuple("linetuple", "lambda_angstroms atomic_number ionstage upperlevelindex lowerlevelindex")
 
 
-def read_linestatfile(
-    filepath: Union[Path, str]
-) -> tuple[int, list[float], list[int], list[int], list[int], list[int]]:
+def read_linestatfile(filepath: Path | str) -> tuple[int, list[float], list[int], list[int], list[int], list[int]]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     print(f"Loading {filepath}")
 
@@ -921,7 +917,7 @@ def read_linestatfile(
     return nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
 
 
-def get_linelist_pldf(modelpath: Union[Path, str]) -> pl.LazyFrame:
+def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     textfile = at.firstexisting("linestat.out", folder=modelpath)
     parquetfile = Path(modelpath, "linelist.out.parquet")
     if not parquetfile.is_file() or parquetfile.stat().st_mtime < textfile.stat().st_mtime:
@@ -948,7 +944,7 @@ def get_linelist_pldf(modelpath: Union[Path, str]) -> pl.LazyFrame:
     return pl.scan_parquet(parquetfile)
 
 
-def get_linelist_dict(modelpath: Union[Path, str]) -> dict[int, linetuple]:
+def get_linelist_dict(modelpath: Path | str) -> dict[int, linetuple]:
     nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
         Path(modelpath, "linestat.out")
     )
@@ -963,7 +959,7 @@ def get_linelist_dict(modelpath: Union[Path, str]) -> dict[int, linetuple]:
 
 @lru_cache(maxsize=8)
 def get_linelist_dataframe(
-    modelpath: Union[Path, str],
+    modelpath: Path | str,
 ) -> pd.DataFrame:
     nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
         Path(modelpath, "linestat.out")
@@ -1010,12 +1006,12 @@ def get_nprocs(modelpath: Path) -> int:
 
 
 @lru_cache(maxsize=8)
-def get_inputparams(modelpath: Path) -> dict[str, Any]:
+def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
     """Return parameters specified in input.txt."""
     from astropy import constants as const
     from astropy import units as u
 
-    params: dict[str, Any] = {}
+    params: dict[str, t.Any] = {}
     with Path(modelpath, "input.txt").open("r") as inputfile:
         params["pre_zseed"] = int(readnoncommentline(inputfile).split("#")[0])
 
@@ -1047,7 +1043,7 @@ def get_inputparams(modelpath: Path) -> dict[str, Any]:
 
 
 @lru_cache(maxsize=16)
-def get_runfolder_timesteps(folderpath: Union[Path, str]) -> tuple[int, ...]:
+def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
     """Get the set of timesteps covered by the output files in an ARTIS run folder."""
     folder_timesteps = set()
     try:
@@ -1071,7 +1067,7 @@ def get_runfolder_timesteps(folderpath: Union[Path, str]) -> tuple[int, ...]:
 
 
 def get_runfolders(
-    modelpath: Union[Path, str], timestep: Optional[int] = None, timesteps: Optional[Sequence[int]] = None
+    modelpath: Path | str, timestep: int | None = None, timesteps: Sequence[int] | None = None
 ) -> Sequence[Path]:
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
@@ -1093,8 +1089,8 @@ def get_runfolders(
 
 
 def get_mpiranklist(
-    modelpath: Union[Path, str],
-    modelgridindex: Optional[Union[Iterable[int], int]] = None,
+    modelpath: Path | str,
+    modelgridindex: Iterable[int] | int | None = None,
     only_ranks_withgridcells: bool = False,
 ) -> Sequence[int]:
     """Get a list of rank ids.
@@ -1130,7 +1126,7 @@ def get_mpiranklist(
     return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
-def get_cellsofmpirank(mpirank: int, modelpath: Union[Path, str]) -> Iterable[int]:
+def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
     """Return an iterable of the cell numbers processed by a given MPI rank."""
     npts_model = get_npts_model(modelpath)
     nprocs = get_nprocs(modelpath)
@@ -1151,7 +1147,7 @@ def get_cellsofmpirank(mpirank: int, modelpath: Union[Path, str]) -> Iterable[in
 
 
 @lru_cache(maxsize=16)
-def get_dfrankassignments(modelpath: Union[Path, str]) -> Optional[pd.DataFrame]:
+def get_dfrankassignments(modelpath: Path | str) -> pd.DataFrame | None:
     filerankassignments = Path(modelpath, "modelgridrankassignments.out")
     if filerankassignments.is_file():
         df = pd.read_csv(filerankassignments, delim_whitespace=True)
@@ -1160,7 +1156,7 @@ def get_dfrankassignments(modelpath: Union[Path, str]) -> Optional[pd.DataFrame]
     return None
 
 
-def get_mpirankofcell(modelgridindex: int, modelpath: Union[Path, str]) -> int:
+def get_mpirankofcell(modelgridindex: int, modelpath: Path | str) -> int:
     """Return the rank number of the MPI process responsible for handling a specified cell's updating and output."""
     modelpath = Path(modelpath)
     npts_model = get_npts_model(modelpath)
@@ -1244,7 +1240,7 @@ def get_costhetabin_phibin_labels() -> tuple[list[str], list[str]]:
     return costhetabinlabels, phibinlabels
 
 
-def get_vspec_dir_labels(modelpath: Union[str, Path], viewinganglelabelunits: str = "rad") -> dict[int, str]:
+def get_vspec_dir_labels(modelpath: str | Path, viewinganglelabelunits: str = "rad") -> dict[int, str]:
     vpkt_config = at.get_vpkt_config(modelpath)
     dirlabels = {}
     for dirindex in range(vpkt_config["nobsdirections"]):
@@ -1258,8 +1254,8 @@ def get_vspec_dir_labels(modelpath: Union[str, Path], viewinganglelabelunits: st
 
 
 def get_dirbin_labels(
-    dirbins: Union[np.ndarray[Any, np.dtype[Any]], Sequence[int]],
-    modelpath: Union[Path, str, None] = None,
+    dirbins: np.ndarray[t.Any, np.dtype[t.Any]] | Sequence[int],
+    modelpath: Path | str | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
 ) -> dict[int, str]:

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import math
 import os
 from collections import namedtuple
 from math import atan
 from pathlib import Path
-from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -458,7 +459,7 @@ def get_xs_excitation_vector(engrid, row):
     return xs_excitation_vec
 
 
-def read_colliondata(collionfilename="collion.txt", modelpath: Union[None, str, Path] = None):
+def read_colliondata(collionfilename="collion.txt", modelpath: None | str | Path = None):
     if modelpath is None:
         modelpath = get_config()["path_datadir"]
 

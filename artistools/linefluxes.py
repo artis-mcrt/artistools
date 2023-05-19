@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Artistools - spectra related functions."""
+from __future__ import annotations
+
 import argparse
 import json
 import math
@@ -7,8 +9,6 @@ import multiprocessing
 from collections import namedtuple
 from functools import partial
 from pathlib import Path
-from typing import Optional
-from typing import Union
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -19,7 +19,7 @@ from astropy import units as u
 import artistools as at
 
 
-def get_packets_with_emtype_onefile(emtypecolumn, lineindices, packetsfile):
+def get_packets_with_emtype_onefile(emtypecolumn: str, lineindices, packetsfile: Path | str) -> pd.DataFrame:
     import gzip
 
     try:
@@ -197,11 +197,11 @@ def get_closelines(
     modelpath,
     atomic_number: int,
     ion_stage: int,
-    approxlambdalabel: Union[str, int],
-    lambdamin: Optional[float] = None,
-    lambdamax: Optional[float] = None,
-    lowerlevelindex: Optional[int] = None,
-    upperlevelindex: Optional[int] = None,
+    approxlambdalabel: str | int,
+    lambdamin: float | None = None,
+    lambdamax: float | None = None,
+    lowerlevelindex: int | None = None,
+    upperlevelindex: int | None = None,
 ):
     dflinelist = at.get_linelist_dataframe(modelpath)
     dflinelistclosematches = dflinelist.query("atomic_number == @atomic_number and ionstage == @ion_stage").copy()

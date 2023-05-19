@@ -1,11 +1,10 @@
-import argparse
+from __future__ import annotations
+
 import glob
 import os
 import sys
-from collections.abc import Sequence
+import typing as t
 from pathlib import Path
-from typing import Any
-from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,6 +13,10 @@ from astropy import constants as const
 from matplotlib.legend_handler import HandlerTuple
 
 import artistools as at
+
+if t.TYPE_CHECKING:
+    import argparse
+    from collections.abc import Sequence
 
 define_colours_list = [
     "k",
@@ -147,7 +150,7 @@ define_colours_list2 = [
 ]
 
 
-def parse_directionbin_args(modelpath: Union[Path, str], args) -> tuple[Sequence[int], dict[int, str]]:
+def parse_directionbin_args(modelpath: Path | str, args) -> tuple[Sequence[int], dict[int, str]]:
     modelpath = Path(modelpath)
     viewing_angle_data = False
     if len(glob.glob(str(modelpath / "*_res.out*"))) >= 1:
@@ -451,8 +454,8 @@ def set_scatterplot_plotkwargs(modelnumber, args):
 
 
 def update_plotkwargs_for_viewingangle_colorbar(
-    plotkwargsviewingangles: dict[str, Any], args: argparse.Namespace
-) -> dict[str, Any]:
+    plotkwargsviewingangles: dict[str, t.Any], args: argparse.Namespace
+) -> dict[str, t.Any]:
     costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 

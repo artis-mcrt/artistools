@@ -1,12 +1,13 @@
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Union
 
 import numpy as np
 
 import artistools as at
 
 
-def make_downscaled_3d_grid(modelpath: Union[str, Path], outputgridsize: int = 50, plot: bool = False) -> Path:
+def make_downscaled_3d_grid(modelpath: str | Path, outputgridsize: int = 50, plot: bool = False) -> Path:
     """Should be same as downscale_3d_grid.pro
     Expects a 3D model with grid^3 cells and outputs 3D model with smallgrid^3 cells.
     """
