@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
+from __future__ import annotations
+
 import argparse
 from pathlib import Path
-from typing import Optional
-from typing import Union
 
 import argcomplete
 import matplotlib.pyplot as plt
@@ -14,26 +14,26 @@ import artistools as at
 
 
 def plot_spherical(
-    modelpath: Union[str, Path],
-    timemindays: Optional[float],
-    timemaxdays: Optional[float],
+    modelpath: str | Path,
+    timemindays: float | None,
+    timemaxdays: float | None,
     nphibins: int,
     ncosthetabins: int,
-    outputfile: Union[Path, str],
-    maxpacketfiles: Optional[int] = None,
-    atomic_number: Optional[int] = None,
-    ion_stage: Optional[int] = None,
+    outputfile: Path | str,
+    maxpacketfiles: int | None = None,
+    atomic_number: int | None = None,
+    ion_stage: int | None = None,
     interpolate: bool = False,
-    gaussian_sigma: Optional[int] = None,
-    plotvars: Optional[list[str]] = None,
-    cmap: Optional[str] = None,
+    gaussian_sigma: int | None = None,
+    plotvars: list[str] | None = None,
+    cmap: str | None = None,
 ) -> None:
     if plotvars is None:
         plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc"]
 
     _, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=True, printwarningsonly=True)
 
-    dfpackets: Union[pl.LazyFrame, pl.DataFrame]
+    dfpackets: pl.LazyFrame | pl.DataFrame
     nprocs_read, dfpackets = at.packets.get_packets_pl(
         modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )

@@ -1,7 +1,8 @@
 # PYTHON_ARGCOMPLETE_OK
+from __future__ import annotations
+
 import argparse
 import importlib
-from typing import Optional
 
 import argcomplete
 
@@ -21,7 +22,7 @@ def addsubparsers(parser, parentcommand, dictcommands, depth: int = 1) -> None:
     subparsers = parser.add_subparsers(dest=f"{parentcommand} command", required=False)
 
     for subcommand, subcommands in dictcommands.items():
-        strhelp: Optional[str]
+        strhelp: str | None
         if isinstance(subcommands, dict):
             strhelp = "command group"
             submodule = None

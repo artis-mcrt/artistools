@@ -3,29 +3,31 @@
 
 Examples are temperatures, populations, and heating/cooling rates.
 """
-import argparse
+from __future__ import annotations
+
 import math
 import multiprocessing
 import sys
+import typing as t
 from collections import namedtuple
-from collections.abc import Collection
-from collections.abc import Iterator
-from collections.abc import Sequence
 from functools import partial
 from functools import reduce
 from pathlib import Path
-from typing import Any
-from typing import Optional
-from typing import Union
 
-import numpy as np
 import pandas as pd
 
 import artistools as at
-import artistools.nltepops
+
+if t.TYPE_CHECKING:
+    import argparse
+    from collections.abc import Collection
+    from collections.abc import Iterator
+    from collections.abc import Sequence
+
+    import numpy as np
 
 
-def get_variableunits(key: Optional[str] = None) -> Union[str, dict[str, str]]:
+def get_variableunits(key: str | None = None) -> str | dict[str, str]:
     variableunits = {
         "time": "days",
         "gamma_NT": "/s",
@@ -43,7 +45,7 @@ def get_variableunits(key: Optional[str] = None) -> Union[str, dict[str, str]]:
     return variableunits[key] if key else variableunits
 
 
-def get_variablelongunits(key: Optional[str] = None) -> Union[str, dict[str, str]]:
+def get_variablelongunits(key: str | None = None) -> str | dict[str, str]:
     variablelongunits = {
         "heating_dep/total_dep": "",
         "TR": "Temperature [K]",
@@ -53,7 +55,7 @@ def get_variablelongunits(key: Optional[str] = None) -> Union[str, dict[str, str
     return variablelongunits[key] if key else variablelongunits
 
 
-def get_dictlabelreplacements(key: Optional[str] = None) -> Union[str, dict[str, str]]:
+def get_dictlabelreplacements(key: str | None = None) -> str | dict[str, str]:
     dictlabelreplacements = {
         "lognne": "Log nne",
         "Te": "T$_e$",
@@ -66,8 +68,8 @@ def get_dictlabelreplacements(key: Optional[str] = None) -> Union[str, dict[str,
 
 
 def apply_filters(
-    xlist: Union[list, np.ndarray], ylist: Union[list, np.ndarray], args: argparse.Namespace
-) -> tuple[Union[list, np.ndarray], Union[list, np.ndarray]]:
+    xlist: list | np.ndarray, ylist: list | np.ndarray, args: argparse.Namespace
+) -> tuple[list | np.ndarray, list | np.ndarray]:
     filterfunc = at.get_filterfunc(args)
 
     if filterfunc is not None:
@@ -76,7 +78,7 @@ def apply_filters(
     return xlist, ylist
 
 
-def get_ionrecombrates_fromfile(filename: Union[Path, str]) -> pd.DataFrame:
+def get_ionrecombrates_fromfile(filename: Path | str) -> pd.DataFrame:
     """WARNING: copy pasted from artis-atomic! replace with a package import soon ionstage is the lower ion stage."""
     print(f"Reading {filename}")
 
@@ -133,7 +135,7 @@ def parse_estimfile(
     with at.zopen(estfilepath) as estimfile:
         timestep: int = -1
         modelgridindex: int = -1
-        estimblock: dict[Any, Any] = {}
+        estimblock: dict[t.Any, t.Any] = {}
         for line in estimfile:
             row: list[str] = line.split()
             if not row:
@@ -238,15 +240,15 @@ def parse_estimfile(
 
 
 def read_estimators_from_file(
-    folderpath: Union[Path, str],
+    folderpath: Path | str,
     modelpath: Path,
-    arr_velocity_outer: Optional[Sequence[float]],
+    arr_velocity_outer: Sequence[float] | None,
     mpirank: int,
     printfilename: bool = False,
     get_ion_values: bool = True,
     get_heatingcooling: bool = True,
     skip_emptycells: bool = False,
-) -> dict[tuple[int, int], Any]:
+) -> dict[tuple[int, int], t.Any]:
     estimators_thisfile = {}
     estimfilename = f"estimators_{mpirank:04d}.out"
     try:
@@ -277,11 +279,11 @@ def read_estimators_from_file(
 
 
 def read_estimators(
-    modelpath: Union[Path, str] = Path(),
-    modelgridindex: Union[None, int, Sequence[int]] = None,
-    timestep: Union[None, int, Sequence[int]] = None,
-    mpirank: Optional[int] = None,
-    runfolder: Union[None, str, Path] = None,
+    modelpath: Path | str = Path(),
+    modelgridindex: None | int | Sequence[int] = None,
+    timestep: None | int | Sequence[int] = None,
+    mpirank: int | None = None,
+    runfolder: None | str | Path = None,
     get_ion_values: bool = True,
     get_heatingcooling: bool = True,
     skip_emptycells: bool = False,
@@ -312,9 +314,7 @@ def read_estimators(
         match_timestep = tuple(timestep)
 
     if not Path(modelpath).exists() and Path(modelpath).parts[0] == "codecomparison":
-        return artistools.codecomparison.read_reference_estimators(
-            modelpath, timestep=timestep, modelgridindex=modelgridindex
-        )
+        return at.codecomparison.read_reference_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
 
@@ -381,13 +381,13 @@ def read_estimators(
 
 
 def get_averaged_estimators(
-    modelpath: Union[Path, str],
+    modelpath: Path | str,
     estimators: dict[tuple[int, int], dict],
-    timesteps: Union[int, Sequence[int]],
+    timesteps: int | Sequence[int],
     modelgridindex: int,
-    keys: Union[str, list],
+    keys: str | list,
     avgadjcells: int = 0,
-) -> Union[Any, float]:
+) -> t.Any | float:
     """Get the average of estimators[(timestep, modelgridindex)][keys[0]]...[keys[-1]] across timesteps."""
     if isinstance(keys, str):
         keys = [keys]
@@ -429,7 +429,7 @@ def get_averaged_estimators(
     #     sys.exit()
 
 
-def get_averageionisation(populations: dict[Any, float], atomic_number: int) -> float:
+def get_averageionisation(populations: dict[t.Any, float], atomic_number: int) -> float:
     free_electron_weighted_pop_sum = 0.0
     found = False
     popsum = 0.0
@@ -487,7 +487,7 @@ def get_averageexcitation(
     return energypopsum / ionpopsum
 
 
-def get_partiallycompletetimesteps(estimators: dict[Any, Any]) -> list[int]:
+def get_partiallycompletetimesteps(estimators: dict[t.Any, t.Any]) -> list[int]:
     """During a simulation, some estimator files can contain information for some cells but not others
     for the current timestep.
     """

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
+from __future__ import annotations
+
 import argparse
 import io
 import math
@@ -10,8 +12,6 @@ from functools import lru_cache
 from functools import partial
 from pathlib import Path
 from typing import Literal
-from typing import Optional
-from typing import Union
 
 import argcomplete
 import numpy as np
@@ -195,8 +195,8 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
 def get_trajectory_abund_q(
     particleid: int,
     traj_root: Path,
-    t_model_s: Optional[float] = None,
-    nts: Optional[int] = None,
+    t_model_s: float | None = None,
+    nts: int | None = None,
     getqdotintegral: bool = False,
 ) -> dict[str, float]:
     """Get the nuclear mass fractions (and Qdotintegral) for a particle particle number as a given time
@@ -252,7 +252,7 @@ def get_trajectory_abund_q(
 
 def get_modelcellabundance(
     dict_traj_nuc_abund: dict[int, pd.DataFrame], minparticlespercell: int, cellgroup: tuple[int, pd.DataFrame]
-) -> Optional[dict[str, float]]:
+) -> dict[str, float] | None:
     cellindex: int
     dfthiscellcontribs: pd.DataFrame
     cellindex, dfthiscellcontribs = cellgroup
@@ -297,7 +297,7 @@ def get_modelcellabundance(
     return row
 
 
-def get_gridparticlecontributions(gridcontribpath: Union[Path, str]) -> pd.DataFrame:
+def get_gridparticlecontributions(gridcontribpath: Path | str) -> pd.DataFrame:
     dfcontribs = pd.read_csv(
         Path(gridcontribpath, "gridcontributions.txt"),
         delim_whitespace=True,

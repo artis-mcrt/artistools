@@ -2,10 +2,11 @@
 # PYTHON_ARGCOMPLETE_OK
 # adapted from Fortran maptogrid.f90 and kernelmodule.f90
 # original Fortran code by Andreas Bauswein
+from __future__ import annotations
+
 import argparse
 import math
 from pathlib import Path
-from typing import Union
 
 import argcomplete
 import numpy as np
@@ -85,7 +86,7 @@ def kernelvals2(rij2: float, hmean: float, wij: np.ndarray) -> float:  # ist sch
 
 
 def maptogrid(
-    ejectasnapshotpath: Path, outputfolderpath: Union[Path, str], ncoordgrid: int = 50, downsamplefactor: int = 1
+    ejectasnapshotpath: Path, outputfolderpath: Path | str, ncoordgrid: int = 50, downsamplefactor: int = 1
 ) -> None:
     if not ejectasnapshotpath.is_file():
         print(f"{ejectasnapshotpath} not found")
