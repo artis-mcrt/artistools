@@ -156,7 +156,7 @@ def read_modelfile_text(
                     "X_Ni57",
                     "X_Co57",
                 ]
-            # last two abundances are t.Optional
+            # last two abundances are Optional
             assert columns is not None
             if ncols_line_even == ncols_line_odd and (ncols_line_even + ncols_line_odd) > len(columns):
                 # one line per cell format
@@ -748,7 +748,7 @@ def save_modeldata(
             "X_Cr48",
         ]
 
-    # these two columns are t.Optional, but position is important and they must appear before t.Any other custom cols
+    # these two columns are Optional, but position is important and they must appear before t.Any other custom cols
     if "X_Ni57" in dfmodel.columns:
         standardcols.append("X_Ni57")
 

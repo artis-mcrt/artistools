@@ -5,11 +5,10 @@ import argparse
 import math
 import os
 import sys
+import typing as t
 from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
-from typing import Literal
 
 import argcomplete
 import matplotlib as mpl
@@ -253,7 +252,7 @@ def plot_artis_lightcurve(
     axis,
     lcindex: int = 0,
     label: str | None = None,
-    escape_type: Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
+    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
     frompackets: bool = False,
     maxpacketfiles: int | None = None,
     axistherm=None,
@@ -319,7 +318,7 @@ def plot_artis_lightcurve(
         if average_over_theta:
             lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta")
 
-    plotkwargs: dict[str, Any] = {}
+    plotkwargs: dict[str, t.Any] = {}
     plotkwargs["label"] = modelname
     plotkwargs["linestyle"] = args.linestyle[lcindex]
     plotkwargs["color"] = args.color[lcindex]
@@ -451,7 +450,7 @@ def make_lightcurve_plot(
     modelpaths: Sequence[str | Path],
     filenameout: str,
     frompackets: bool = False,
-    escape_type: Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
+    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
     maxpacketfiles: int | None = None,
     args=None,
 ):
@@ -796,7 +795,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     args.labelfontsize = 22  # todo: make command line arg
     fig, ax = create_axes(args)
 
-    plotkwargs: dict[str, Any] = {}
+    plotkwargs: dict[str, t.Any] = {}
 
     if args.colorbarcostheta or args.colorbarphi:
         costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
@@ -823,14 +822,14 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
             for plotnumber, band_name in enumerate(band_lightcurve_data):
                 if first_band_name is None:
                     first_band_name = band_name
-                time, brightness_in_mag = at.lightcurve.get_band_lightcurve(band_lightcurve_data, band_name, args)
+                times, brightness_in_mag = at.lightcurve.get_band_lightcurve(band_lightcurve_data, band_name, args)
 
                 if args.print_data or args.write_data:
                     txtlinesout = []
                     txtlinesout.append(f"# band: {band_name}")
                     txtlinesout.append(f"# model: {modelname}")
                     txtlinesout.append("# time_days magnitude")
-                    for t, m in zip(time, brightness_in_mag):
+                    for time, m in zip(times, brightness_in_mag):
                         txtlinesout.append(f"{t} {m}")
                     txtout = "\n".join(txtlinesout)
                     if args.write_data:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import hashlib
 import math
-from typing import Any
+import typing as t
 
 import numpy as np
 
@@ -19,7 +19,7 @@ def test_commands() -> None:
         submodule = importlib.import_module(submodulename, package="artistools")
         assert hasattr(submodule, funcname)
 
-    def recursive_check(dictcmd: dict[str, Any]) -> None:
+    def recursive_check(dictcmd: dict[str, t.Any]) -> None:
         for cmdtarget in dictcmd.values():
             if isinstance(cmdtarget, dict):
                 recursive_check(cmdtarget)
