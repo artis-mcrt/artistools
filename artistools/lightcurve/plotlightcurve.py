@@ -27,8 +27,8 @@ color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
 
 def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkwargs, args) -> None:
-    if args.logscalex:
-        axistherm.set_xscale("log")
+    # if args.logscalex:
+    #     axistherm.set_xscale("log")
 
     # if args.logscaley:
     #     axistherm.set_yscale("log")
@@ -121,8 +121,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         )
 
     c23modelpath = Path(
-        "/Users/luke/Library/CloudStorage/GoogleDrive-luke@lukeshingles.com/Shared"
-        " drives/ARTIS/artis_runs_published/Collinsetal2023/sfho_long_1-35-135Msun"
+        Path.home(), "Google Drive/Shared drives/ARTIS/artis_runs_published/Collinsetal2023/sfho_long_1-35-135Msun"
     )
 
     c23energyrate = at.inputmodel.energyinputfiles.get_energy_rate_fromfile(c23modelpath)
