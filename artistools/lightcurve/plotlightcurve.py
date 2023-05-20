@@ -822,15 +822,15 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
             for plotnumber, band_name in enumerate(band_lightcurve_data):
                 if first_band_name is None:
                     first_band_name = band_name
-                times, brightness_in_mag = at.lightcurve.get_band_lightcurve(band_lightcurve_data, band_name, args)
+                time, brightness_in_mag = at.lightcurve.get_band_lightcurve(band_lightcurve_data, band_name, args)
 
                 if args.print_data or args.write_data:
                     txtlinesout = []
                     txtlinesout.append(f"# band: {band_name}")
                     txtlinesout.append(f"# model: {modelname}")
                     txtlinesout.append("# time_days magnitude")
-                    for time, m in zip(times, brightness_in_mag):
-                        txtlinesout.append(f"{t} {m}")
+                    for t_d, m in zip(time, brightness_in_mag):
+                        txtlinesout.append(f"{t_d} {m}")
                     txtout = "\n".join(txtlinesout)
                     if args.write_data:
                         bandoutfile = (
