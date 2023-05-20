@@ -19,15 +19,15 @@ def plot_spherical(
     timemaxdays: float | None,
     nphibins: int,
     ncosthetabins: int,
-    outputfile: Path | str,
     maxpacketfiles: int | None = None,
     atomic_number: int | None = None,
     ion_stage: int | None = None,
     interpolate: bool = False,
     gaussian_sigma: int | None = None,
     plotvars: list[str] | None = None,
+    figscale: float = 1.0,
     cmap: str | None = None,
-) -> None:
+) -> tuple[plt.Figure, plt.Axes]:
     if plotvars is None:
         plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc"]
 
@@ -68,17 +68,6 @@ def plot_spherical(
 
     assert timemindays is not None
     assert timemaxdays is not None
-
-    fig, axes = plt.subplots(
-        len(plotvars),
-        1,
-        figsize=(4, 3 * len(plotvars)),
-        subplot_kw={"projection": "mollweide"},
-        tight_layout={"pad": 0.1, "w_pad": 1.5, "h_pad": 0.0},
-    )
-
-    if len(plotvars) == 1:
-        axes = [axes]
 
     # phi definition (with syn_dir=[0 0 1])
     # x=math.cos(-phi)
@@ -200,6 +189,17 @@ def plot_spherical(
 
     meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
 
+    fig, axes = plt.subplots(
+        len(plotvars),
+        1,
+        figsize=(figscale * at.get_config()["figwidth"], 3.7 * len(plotvars)),
+        subplot_kw={"projection": "mollweide"},
+        tight_layout={"pad": 0.1, "w_pad": 0.0, "h_pad": 0.0},
+    )
+
+    if len(plotvars) == 1:
+        axes = [axes]
+
     for ax, plotvar in zip(axes, plotvars):
         data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
 
@@ -246,20 +246,31 @@ def plot_spherical(
         else:
             raise AssertionError
 
-        cbar = fig.colorbar(colormesh, location="bottom")
-        cbar.ax.set_title(colorbartitle)
+        cbar = fig.colorbar(colormesh, ax=ax, location="bottom")
+        cbar.ax.tick_params(axis="both", direction="out")
+        cbar.ax.xaxis.set_ticks_position("top")
+        # cbar.ax.set_title(colorbartitle)
+        cbar.ax.set_xlabel(colorbartitle)
+        cbar.ax.xaxis.set_label_position("top")
         cbar.outline.set_linewidth(0)
 
         # ax.set_xlabel("Azimuthal angle")
         # ax.set_ylabel("Polar angle")
-        # ax.tick_params(colors="white", axis="x", which="both")
-        ax.set_xticklabels([])
-        ax.set_yticklabels([])
-        # ax.grid(True)
+        # ax.set_xlabel(r"$\phi$")
+        # ax.set_ylabel(r"$\theta$")
+        # ax.set_xticklabels([])
+        # ax.set_yticklabels([])
+        # ax.grid(visible=True, color="black")
         ax.axis("off")
+        # xticks_deg = np.arange(0, 360, 90)[1:]
+        # ax.set_xticks(ticks=xticks_deg / 180 * np.pi - np.pi, labels=[rf"${deg:.0f}\degree$" for deg in xticks_deg])
 
-    fig.savefig(outputfile)
-    print(f"Saved {outputfile}")
+        # yticks_deg = np.linspace(0, 180, 7)
+        # ax.set_yticks(
+        #     ticks=-yticks_deg / 180 * np.pi + np.pi / 2.0, labels=[rf"${deg:.0f}\degree$" for deg in yticks_deg]
+        # )
+
+    return fig, axes
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -294,6 +305,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--interpolate", action="store_true", help="Interpolate grid to higher resolution")
 
     parser.add_argument(
+        "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 is for single-column"
+    )
+
+    parser.add_argument(
         "-o",
         action="store",
         dest="outputfile",
@@ -319,21 +334,24 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         assert args.atomic_number is None
         args.atomic_number = at.get_atomic_number(args.elem)
 
-    plot_spherical(
+    fig, axes = plot_spherical(
         modelpath=args.modelpath,
         timemindays=args.timemin,
         timemaxdays=args.timemax,
         nphibins=args.nphibins,
         ncosthetabins=args.ncosthetabins,
         maxpacketfiles=args.maxpacketfiles,
-        outputfile=args.outputfile,
         interpolate=args.interpolate,
         gaussian_sigma=args.gaussian_sigma,
         atomic_number=args.atomic_number,
         ion_stage=args.ion_stage,
         plotvars=args.plotvars,
         cmap=args.cmap,
+        figscale=args.figscale,
     )
+
+    fig.savefig(args.outputfile)
+    print(f"Saved {args.outputfile}")
 
 
 if __name__ == "__main__":

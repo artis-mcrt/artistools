@@ -457,11 +457,12 @@ def make_lightcurve_plot(
     args=None,
 ):
     """Use light_curve.out or light_curve_res.out files to plot light curve."""
+    conffigwidth = float(at.get_config()["figwidth"])
     fig, axis = plt.subplots(
         nrows=1,
         ncols=1,
         sharex=True,
-        figsize=(args.figscale * at.get_config()["figwidth"] * 1.6, args.figscale * at.get_config()["figwidth"]),
+        figsize=(args.figscale * conffigwidth, args.figscale * conffigwidth / 1.6),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 
@@ -470,7 +471,7 @@ def make_lightcurve_plot(
             nrows=1,
             ncols=1,
             sharex=True,
-            figsize=(args.figscale * at.get_config()["figwidth"] * 1.6, args.figscale * at.get_config()["figwidth"]),
+            figsize=(args.figscale * conffigwidth, args.figscale * conffigwidth / 1.6),
             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
         )
     else:
@@ -1271,7 +1272,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
 
     parser.add_argument(
-        "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 is for single-column"
+        "-figscale", type=float, default=1.6, help="Scale factor for plot area. 1.0 is for single-column"
     )
 
     parser.add_argument("--frompackets", action="store_true", help="Read packets files instead of light_curve.out")

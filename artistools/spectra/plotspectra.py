@@ -132,7 +132,17 @@ def plot_reference_spectrum(
         plotkwargs["label"] += f" * {timefactor:.2f}"
     if "scale_factor" in metadata:
         specdata["f_lambda"] *= metadata["scale_factor"]
-
+    if metadata.get("mask_telluric", False):
+        print("Masking telluric regions")
+        z = metadata["z"]
+        bands = [(1.35e4, 1.44e4), (1.8e4, 1.94e4)]  # [Angstroms]
+        for band_low_rest, band_high_rest in bands:
+            band_low = band_low_rest / (1 + z)
+            band_high = band_high_rest / (1 + z)
+            # specdata = specdata.query("lambda_angstroms < @band_low or lambda_angstroms > @band_high")
+            specdata.loc[
+                (specdata["lambda_angstroms"] >= band_low) & (specdata["lambda_angstroms"] <= band_high), "f_lambda"
+            ] = float("nan")
     print(f"Reference spectrum '{plotkwargs['label']}' has {len(specdata)} points in the plot range")
     print(f" file: {filename}")
 
@@ -517,6 +527,18 @@ def make_spectrum_plot(
             axis.set_ylabel(r"Scaled F$_\lambda$")
         if args.plotpacketcount:
             axis.set_ylabel(r"Monte Carlo packets per bin")
+        if not args.notitle and args.title:
+            if args.inset_title:
+                axis.annotate(
+                    args.title,
+                    xy=(0.03, 0.97),
+                    xycoords="axes fraction",
+                    horizontalalignment="left",
+                    verticalalignment="top",
+                    fontsize="x-large",
+                )
+            else:
+                axis.set_title(args.title, fontsize=11)
 
     return dfalldata
 
@@ -682,6 +704,7 @@ def make_emissionabsorption_plot(
             continue
         if index < len(args.color):
             plotkwargs["color"] = args.color[index]
+            plotkwargs["label"] = args.label[index]
 
         supxmin, supxmax = axis.get_xlim()
         plotobj, serieslabel, ymaxref = plot_reference_spectrum(
@@ -701,18 +724,32 @@ def make_emissionabsorption_plot(
 
     axis.axhline(color="white", linewidth=0.5)
 
-    plotlabel = f"{modelname}\n{args.timemin:.2f}d to {args.timemax:.2f}d"
-    if args.plotviewingangle:
-        dirbin_definitions = at.get_dirbin_labels(
-            dirbins=args.plotviewingangle,
-            modelpath=modelpath,
-            average_over_phi=args.average_over_phi_angle,
-            average_over_theta=args.average_over_theta_angle,
-        )
-        plotlabel += f", directionbin {dirbin_definitions[args.plotviewingangle[0]]}"
+    if args.title:
+        plotlabel = args.title
+    else:
+        plotlabel = f"{modelname}\n{args.timemin:.2f}d to {args.timemax:.2f}d"
+        if args.plotviewingangle:
+            dirbin_definitions = at.get_dirbin_labels(
+                dirbins=args.plotviewingangle,
+                modelpath=modelpath,
+                average_over_phi=args.average_over_phi_angle,
+                average_over_theta=args.average_over_theta_angle,
+            )
+            plotlabel += f", directionbin {dirbin_definitions[args.plotviewingangle[0]]}"
 
     if not args.notitle:
-        axis.set_title(plotlabel, fontsize=11)
+        if args.inset_title:
+            axis.annotate(
+                plotlabel,
+                xy=(0.03, 0.95),
+                xycoords="axes fraction",
+                horizontalalignment="left",
+                verticalalignment="top",
+                fontsize="large",
+            )
+        else:
+            axis.set_title(plotlabel, fontsize=11)
+
     # axis.annotate(plotlabel, xy=(0.97, 0.03), xycoords='axes fraction',
     #               horizontalalignment='right', verticalalignment='bottom', fontsize=7)
 
@@ -826,7 +863,7 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
         # ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.BuGn_r)
 
 
-def make_plot(args) -> None:
+def make_plot(args) -> tuple[plt.Figure, plt.Axes, pd.DataFrame]:
     # font = {'size': 16}
     # mpl.rc('font', **font)
 
@@ -917,7 +954,6 @@ def make_plot(args) -> None:
         if args.reverselegendorder:
             plotobjects, plotobjectlabels = plotobjects[::-1], plotobjectlabels[::-1]
 
-        fs = 12 if (args.showemission or args.showabsorption) else None
         leg = axes[-1].legend(
             plotobjects,
             plotobjectlabels,
@@ -926,7 +962,6 @@ def make_plot(args) -> None:
             handlelength=2,
             ncol=legendncol,
             numpoints=1,
-            fontsize=fs,
         )
         leg.set_zorder(200)
 
@@ -983,14 +1018,6 @@ def make_plot(args) -> None:
     elif not Path(args.outputfile).suffixes:
         args.outputfile = args.outputfile / defaultoutputfile
 
-    strdirectionbins = ""
-    if args.plotviewingangle:
-        strdirectionbins = "_direction" + "_".join([f"{angle:02d}" for angle in args.plotviewingangle])
-
-    filenameout = str(args.outputfile).format(
-        time_days_min=args.timemin, time_days_max=args.timemax, directionbins=strdirectionbins
-    )
-
     # plt.text(6000, (args.ymax * 0.9), f'{round(args.timemin) + 1} days', fontsize='large')
 
     if args.showtime and not args.multispecplot:
@@ -1009,18 +1036,7 @@ def make_plot(args) -> None:
             fontsize="x-large",
         )
 
-    if args.write_data and not dfalldata.empty:
-        print(dfalldata)
-        datafilenameout = Path(filenameout).with_suffix(".txt")
-        dfalldata.to_csv(datafilenameout)
-        print(f"Saved {datafilenameout}")
-
-    # plt.minorticks_on()
-
-    fig.savefig(filenameout)
-    # plt.show()
-    print(f"Saved {filenameout}")
-    plt.close()
+    return fig, axes, dfalldata
 
 
 def addargs(parser) -> None:
@@ -1183,6 +1199,10 @@ def addargs(parser) -> None:
     parser.add_argument("--hideother", action="store_true", help="Hide other contributions")
 
     parser.add_argument("--notitle", action="store_true", help="Suppress the top title from the plot")
+
+    parser.add_argument("-title", action="store_true", help="Set the plot title")
+
+    parser.add_argument("--inset_title", action="store_true", help="Place title inside the plot")
 
     parser.add_argument("--nolegend", action="store_true", help="Suppress the legend from the plot")
 
@@ -1351,7 +1371,28 @@ def main(args=None, argsraw=None, **kwargs) -> None:
             args.showemission = True
             args.showabsorption = True
 
-        make_plot(args)
+        fig, axes, dfalldata = make_plot(args)
+        strdirectionbins = (
+            "_direction" + "_".join([f"{angle:02d}" for angle in args.plotviewingangle])
+            if args.plotviewingangle
+            else ""
+        )
+        filenameout = str(args.outputfile).format(
+            time_days_min=args.timemin, time_days_max=args.timemax, directionbins=strdirectionbins
+        )
+
+        if args.write_data and not dfalldata.empty:
+            print(dfalldata)
+            datafilenameout = Path(filenameout).with_suffix(".txt")
+            dfalldata.to_csv(datafilenameout)
+            print(f"Saved {datafilenameout}")
+
+        # plt.minorticks_on()
+
+        fig.savefig(filenameout)
+        # plt.show()
+        print(f"Saved {filenameout}")
+        plt.close()
 
 
 if __name__ == "__main__":
