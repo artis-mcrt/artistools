@@ -250,7 +250,7 @@ def plot_artis_spectrum(
             linelabel = f"{modelname}" if len(modelname) < 70 else f"...{modelname[-67:]}"
 
             if not args.hidemodeltime and not args.multispecplot:
-                # todo: fix this for multispecplot - use args.showtime for now
+                # TODO: fix this for multispecplot - use args.showtime for now
                 linelabel += f" +{timeavg:.1f}d"
             if not args.hidemodeltimerange and not args.multispecplot:
                 linelabel += rf" ($\pm$ {timedelta:.1f}d)"
@@ -811,7 +811,7 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
             "@nu_min <= nu_rf < @nu_max and t_arrive_d >= @tdays_min and t_arrive_d <= @tdays_max", inplace=False
         ).copy()
 
-        # todo: optimize this to avoid calculating unused columns
+        # TODO: optimize this to avoid calculating unused columns
         dfpackets_selected = at.packets.add_derived_columns(
             dfpackets_selected,
             modelpath,

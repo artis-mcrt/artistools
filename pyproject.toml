@@ -160,7 +160,8 @@ ignore = [
     "S607",  # start-process-with-partial-path
     "SLF001",  # private-member-access
     "T201",  # print found
-    "TD",
+    "TD002",  # missing-todo-author
+    "TD003",  # missing-todo-link
     "TRY301",  # raise-within-try
 ]
 fixable = ["ALL"]

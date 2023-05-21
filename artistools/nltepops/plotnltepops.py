@@ -149,7 +149,7 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
                 floersmultizonefilename = "level_pops_subch_shen2018-247d.csv"
 
         if floersmultizonefilename and os.path.isfile(floersmultizonefilename):
-            modeldata, _ = at.inputmodel.get_modeldata(modelpath)  # todo: move into modelpath loop
+            modeldata, _ = at.inputmodel.get_modeldata(modelpath)  # TODO: move into modelpath loop
             vel_outer = modeldata.iloc[modelgridindex].velocity_outer
             print(f"  reading {floersmultizonefilename}", vel_outer, T_e)
             dffloers = pd.read_csv(floersmultizonefilename)
@@ -468,7 +468,7 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ionstage, i
         modelgridindex_list = modelgridindex_list * int(args.modelgridindex[0])
 
     if args.x == "velocity":
-        modeldata, _ = at.inputmodel.get_modeldata(modelpaths[0])  # todo: move into modelpath loop
+        modeldata, _ = at.inputmodel.get_modeldata(modelpaths[0])  # TODO: move into modelpath loop
         velocity = modeldata["velocity_outer"]
         modelgridindex_list = [mgi for mgi, _ in enumerate(velocity)]
 
@@ -773,7 +773,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
                 modelpath, timedays_range_str=args.timedays
             )
         else:
-            timestep = at.get_timestep_of_timedays(modelpath, args.timedays)  # todo: use args.timestep instead
+            timestep = at.get_timestep_of_timedays(modelpath, args.timedays)  # TODO: use args.timestep instead
             args.timestep = at.get_timestep_of_timedays(modelpath, args.timedays)
     elif args.timedayslist:
         print(args.timedayslist)

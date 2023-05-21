@@ -617,7 +617,7 @@ def create_axes(args):
         font = {"size": args.labelfontsize}
         mpl.rc("font", **font)
 
-    args.subplots = False  # todo: set as command line arg
+    args.subplots = False  # TODO: set as command line arg
 
     if (args.filter and len(args.filter) > 1) or args.subplots is True:
         args.subplots = True
@@ -792,7 +792,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     # angle_names = [0, 45, 90, 180]
     # plt.style.use('dark_background')
 
-    args.labelfontsize = 22  # todo: make command line arg
+    args.labelfontsize = 22  # TODO: make command line arg
     fig, ax = create_axes(args)
 
     plotkwargs: dict[str, t.Any] = {}
@@ -815,7 +815,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 modelpath, args, angle, modelnumber=modelnumber
             )
 
-            if modelnumber == 0 and args.plot_hesma_model:  # Todo: does this work?
+            if modelnumber == 0 and args.plot_hesma_model:  # TODO: does this work?
                 hesma_model = at.lightcurve.read_hesma_lightcurve(args)
                 plotkwargs["label"] = str(args.plot_hesma_model).split("_")[:3]
 
@@ -856,7 +856,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 #     global define_colours_list
                 #     plt.plot(time, brightness_in_mag, label=modelname, color=define_colours_list[angle], linewidth=3)
 
-                if modelnumber == 0 and args.plot_hesma_model and band_name in hesma_model:  # todo: see if this works
+                if modelnumber == 0 and args.plot_hesma_model and band_name in hesma_model:  # TODO: see if this works
                     ax.plot(hesma_model.t, hesma_model[band_name], color="black")
 
                 # axarr[plotnumber].axis([0, 60, -16, -19.5])
@@ -983,7 +983,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 
 
 def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
-    args.labelfontsize = 24  # todo: make command line arg
+    args.labelfontsize = 24  # TODO: make command line arg
     angle_counter = 0
 
     fig, ax = create_axes(args)
