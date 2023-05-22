@@ -169,6 +169,8 @@ unfixable = [
     "COM812",  # missing-trailing-comma
     "ERA001",  # commented-out-code (will just delete it!)
     "F841",  # unused-variable
+    "SIM222", # expr-or-true
+    "SIM223", # expr-and-false
 ]
 line-length = 120
 target-version = "py39"

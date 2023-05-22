@@ -243,7 +243,7 @@ def plot_spherical(
         elif plotvar == "luminosity":
             colorbartitle = r"Radiant intensity $\cdot\,4π$ [{}erg/s]"
         elif plotvar == "temperature":
-            colorbartitle = r"Temperature [K]"
+            colorbartitle = r"Temperature [{}K]"
         else:
             raise AssertionError
 
