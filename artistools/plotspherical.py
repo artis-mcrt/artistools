@@ -241,19 +241,21 @@ def plot_spherical(
         elif plotvar == "emlosvelocityoverc":
             colorbartitle = r"Mean line of sight velocity [c]"
         elif plotvar == "luminosity":
-            colorbartitle = r"Radiant intensity $\cdot\,4π$ [erg/s]"
+            colorbartitle = r"Radiant intensity $\cdot\,4π$ [{}erg/s]"
         elif plotvar == "temperature":
             colorbartitle = r"Temperature [K]"
         else:
             raise AssertionError
 
         cbar = fig.colorbar(colormesh, ax=ax, location="bottom")
+        cbar.outline.set_linewidth(0)
         cbar.ax.tick_params(axis="both", direction="out")
         cbar.ax.xaxis.set_ticks_position("top")
         # cbar.ax.set_title(colorbartitle)
         cbar.ax.set_xlabel(colorbartitle)
         cbar.ax.xaxis.set_label_position("top")
-        cbar.outline.set_linewidth(0)
+        if r"{}" in colorbartitle:
+            cbar.ax.xaxis.set_major_formatter(at.plottools.ExponentLabelFormatter(colorbartitle, useMathText=True))
 
         # ax.set_xlabel("Azimuthal angle")
         # ax.set_ylabel("Polar angle")
