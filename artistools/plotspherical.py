@@ -130,6 +130,7 @@ def plot_spherical(
                 get_heatingcooling=False,
                 skip_emptycells=True,
             )
+            assert len(estimators) > 0
             pl.DataFrame(
                 {
                     "timestep": (tsmgi[0] for tsmgi in estimators),
@@ -240,7 +241,7 @@ def plot_spherical(
         elif plotvar == "emlosvelocityoverc":
             colorbartitle = r"Mean line of sight velocity [c]"
         elif plotvar == "luminosity":
-            colorbartitle = r"$I_{e,\Omega}\cdot4\pi/\Omega$ [erg/s]"
+            colorbartitle = r"Radiant intensity $\cdot\,4π$ [erg/s]"
         elif plotvar == "temperature":
             colorbartitle = r"Temperature [K]"
         else:
