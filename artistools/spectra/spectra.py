@@ -430,7 +430,7 @@ def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
         index_of_new_spectrum = vspecpolfile.index[vspecpolfile.iloc[:, 1] == vspecpolfile.iloc[0, 1]]
         vspecpol_data = []  # list of all predefined vspectra
         for i, index_spectrum_starts in enumerate(index_of_new_spectrum[:nvirtual_spectra]):
-            # todo: this is different to at.split_dataframe_dirbins() -- could be made to be same format to not repeat code
+            # TODO: this is different to at.split_dataframe_dirbins() -- could be made to be same format to not repeat code
             chunk = (
                 vspecpolfile.iloc[index_spectrum_starts : index_of_new_spectrum[i + 1], :]
                 if index_spectrum_starts != index_of_new_spectrum[-1]
