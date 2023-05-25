@@ -4,7 +4,7 @@ name: Version Updater
 on:
     schedule:
     # Automatically run every day
-        - cron: 0 0 * * *
+        - cron: 30 * * * *
 
 jobs:
     update-ghactions:
