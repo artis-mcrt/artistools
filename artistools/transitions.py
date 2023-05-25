@@ -447,7 +447,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
                     dftransitions, xvalues, popcolumnname, plot_resolution, args
                 )
                 if args.normalised:
-                    yvalues[seriesindex][ionindex] /= max(yvalues[seriesindex][ionindex])  # todo: move to ax.plot line
+                    yvalues[seriesindex][ionindex] /= max(yvalues[seriesindex][ionindex])  # TODO: move to ax.plot line
 
         if args.print_lines:
             print(dftransitions.columns)

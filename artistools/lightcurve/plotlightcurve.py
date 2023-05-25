@@ -5,11 +5,10 @@ import argparse
 import math
 import os
 import sys
+import typing as t
 from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
-from typing import Literal
 
 import argcomplete
 import matplotlib as mpl
@@ -27,8 +26,8 @@ color_list = list(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
 
 
 def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkwargs, args) -> None:
-    if args.logscalex:
-        axistherm.set_xscale("log")
+    # if args.logscalex:
+    #     axistherm.set_xscale("log")
 
     # if args.logscaley:
     #     axistherm.set_yscale("log")
@@ -120,25 +119,24 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
             },
         )
 
-    c23modelpath = Path(
-        "/Users/luke/Library/CloudStorage/GoogleDrive-luke@lukeshingles.com/Shared"
-        " drives/ARTIS/artis_runs_published/Collinsetal2023/sfho_long_1-35-135Msun"
-    )
+    # c23modelpath = Path(
+    #     Path.home(), "Google Drive/Shared drives/ARTIS/artis_runs_published/Collinsetal2023/sfho_long_1-35-135Msun"
+    # )
 
-    c23energyrate = at.inputmodel.energyinputfiles.get_energy_rate_fromfile(c23modelpath)
-    c23etot, c23energydistribution_data = at.inputmodel.energyinputfiles.get_etot_fromfile(c23modelpath)
+    # c23energyrate = at.inputmodel.energyinputfiles.get_energy_rate_fromfile(c23modelpath)
+    # c23etot, c23energydistribution_data = at.inputmodel.energyinputfiles.get_etot_fromfile(c23modelpath)
 
-    dE = np.diff(c23energyrate["rate"] * c23etot)
-    dt = np.diff(c23energyrate["times"] * 24 * 60 * 60)
+    # dE = np.diff(c23energyrate["rate"] * c23etot)
+    # dt = np.diff(c23energyrate["times"] * 24 * 60 * 60)
 
-    axis.plot(
-        c23energyrate["times"][1:],
-        dE / dt * 0.308,
-        color="grey",
-        linestyle="--",
-        zorder=20,
-        label=r"Collins+23 $\dot{E}_{rad,\beta^-}$",
-    )
+    # axis.plot(
+    #     c23energyrate["times"][1:],
+    #     dE / dt * 0.308,
+    #     color="grey",
+    #     linestyle="--",
+    #     zorder=20,
+    #     label=r"Collins+23 $\dot{E}_{rad,\beta^-}$",
+    # )
 
     # color_alpha = next(axis._get_lines.prop_cycler)['color']
     color_alpha = "C1"
@@ -254,7 +252,7 @@ def plot_artis_lightcurve(
     axis,
     lcindex: int = 0,
     label: str | None = None,
-    escape_type: Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
+    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
     frompackets: bool = False,
     maxpacketfiles: int | None = None,
     axistherm=None,
@@ -320,7 +318,7 @@ def plot_artis_lightcurve(
         if average_over_theta:
             lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta")
 
-    plotkwargs: dict[str, Any] = {}
+    plotkwargs: dict[str, t.Any] = {}
     plotkwargs["label"] = modelname
     plotkwargs["linestyle"] = args.linestyle[lcindex]
     plotkwargs["color"] = args.color[lcindex]
@@ -452,16 +450,17 @@ def make_lightcurve_plot(
     modelpaths: Sequence[str | Path],
     filenameout: str,
     frompackets: bool = False,
-    escape_type: Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
+    escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
     maxpacketfiles: int | None = None,
     args=None,
 ):
     """Use light_curve.out or light_curve_res.out files to plot light curve."""
+    conffigwidth = float(at.get_config()["figwidth"])
     fig, axis = plt.subplots(
         nrows=1,
         ncols=1,
         sharex=True,
-        figsize=(args.figscale * at.get_config()["figwidth"] * 1.6, args.figscale * at.get_config()["figwidth"]),
+        figsize=(args.figscale * conffigwidth, args.figscale * conffigwidth / 1.6),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 
@@ -470,7 +469,7 @@ def make_lightcurve_plot(
             nrows=1,
             ncols=1,
             sharex=True,
-            figsize=(args.figscale * at.get_config()["figwidth"] * 1.6, args.figscale * at.get_config()["figwidth"]),
+            figsize=(args.figscale * conffigwidth, args.figscale * conffigwidth / 1.6),
             tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
         )
     else:
@@ -618,7 +617,7 @@ def create_axes(args):
         font = {"size": args.labelfontsize}
         mpl.rc("font", **font)
 
-    args.subplots = False  # todo: set as command line arg
+    args.subplots = False  # TODO: set as command line arg
 
     if (args.filter and len(args.filter) > 1) or args.subplots is True:
         args.subplots = True
@@ -793,10 +792,10 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     # angle_names = [0, 45, 90, 180]
     # plt.style.use('dark_background')
 
-    args.labelfontsize = 22  # todo: make command line arg
+    args.labelfontsize = 22  # TODO: make command line arg
     fig, ax = create_axes(args)
 
-    plotkwargs: dict[str, Any] = {}
+    plotkwargs: dict[str, t.Any] = {}
 
     if args.colorbarcostheta or args.colorbarphi:
         costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
@@ -816,7 +815,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 modelpath, args, angle, modelnumber=modelnumber
             )
 
-            if modelnumber == 0 and args.plot_hesma_model:  # Todo: does this work?
+            if modelnumber == 0 and args.plot_hesma_model:  # TODO: does this work?
                 hesma_model = at.lightcurve.read_hesma_lightcurve(args)
                 plotkwargs["label"] = str(args.plot_hesma_model).split("_")[:3]
 
@@ -830,8 +829,8 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                     txtlinesout.append(f"# band: {band_name}")
                     txtlinesout.append(f"# model: {modelname}")
                     txtlinesout.append("# time_days magnitude")
-                    for t, m in zip(time, brightness_in_mag):
-                        txtlinesout.append(f"{t} {m}")
+                    for t_d, m in zip(time, brightness_in_mag):
+                        txtlinesout.append(f"{t_d} {m}")
                     txtout = "\n".join(txtlinesout)
                     if args.write_data:
                         bandoutfile = (
@@ -857,7 +856,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 #     global define_colours_list
                 #     plt.plot(time, brightness_in_mag, label=modelname, color=define_colours_list[angle], linewidth=3)
 
-                if modelnumber == 0 and args.plot_hesma_model and band_name in hesma_model:  # todo: see if this works
+                if modelnumber == 0 and args.plot_hesma_model and band_name in hesma_model:  # TODO: see if this works
                     ax.plot(hesma_model.t, hesma_model[band_name], color="black")
 
                 # axarr[plotnumber].axis([0, 60, -16, -19.5])
@@ -984,7 +983,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
 
 
 def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder, args):
-    args.labelfontsize = 24  # todo: make command line arg
+    args.labelfontsize = 24  # TODO: make command line arg
     angle_counter = 0
 
     fig, ax = create_axes(args)
@@ -1271,7 +1270,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
 
     parser.add_argument(
-        "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 is for single-column"
+        "-figscale", type=float, default=1.6, help="Scale factor for plot area. 1.0 is for single-column"
     )
 
     parser.add_argument("--frompackets", action="store_true", help="Read packets files instead of light_curve.out")

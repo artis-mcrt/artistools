@@ -22,7 +22,9 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
 
     def _set_formatted_label_text(self):
         # or use self.orderOfMagnitude
-        stroffset = self.get_offset().replace(r"$\times", "$") + " "
+        stroffset = self.get_offset()
+        if stroffset:
+            stroffset = stroffset.replace(r"$\times", "$") + " "
         strnewlabel = self.labeltemplate.format(stroffset)
         self.axis.set_label_text(strnewlabel)
         assert self.offset == 0

@@ -114,39 +114,63 @@ select = ["ALL"]
 ignore = [
     "ARG001", # ignored because variables in df.eval() are not detected
     "ANN",
-    "B005",
-    "B007", # variable not used in loop body (but sometimes it is with eval)
-    "BLE001",
-    "C901",
-    "COM812",
-    "D100", "D101", "D102", "D103", "D104", "D107", "D203", "D205", "D213", "D401", "D417",
-    "E501", "E741",
-    "ERA001",
-    "F841", # ignored because variables in df.eval() are not detected
+    "B005",  # strip-with-multi-characters
+    "B007",  # variable not used in loop body (but sometimes it is with eval)
+    "C901",  # complex-structure
+    "COM812",  # missing-trailing-comma
+    "D100",  # undocumented-public-module
+    "D101",  # undocumented-public-class
+    "D102",  # undocumented-public-method
+    "D103",  # undocumented-public-function
+    "D104",  # undocumented-public-package
+    "D107",  # undocumented-public-init
+    "D203",  # one-blank-line-before-class
+    "D205",  # blank-line-after-summary
+    "D213",  # multi-line-summary-second-line
+    "D401",  # non-imperative-mood
+    "D417",  # undocumented-param
+    "E501", # Line too long
+    "E741", # Ambiguous variable name
+    "ERA001",  # commented-out-code
+    "F841", # unused-variable. ignored because variables in df.eval() are not detected
     "FBT",
-    "N802", "N803", "N806", "N999",
-    "PD901",
-    "PGH001",
-    "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR2004",
-    "PTH112",
-    "PTH113",
-    "PTH123",
-    "PTH118",
-    "PTH119",
-    "PTH120",
-    "PLW2901",
-    "RET504",
-    "S",
-    "SLF001",
-    "T201",
-    "TD",
-    "TRY301",
+    "N802",  # Function name should be lowercase
+    "N803",  # Argument name should be lowercase
+    "N806",  # Variable should be lowercase
+    "N999",  # invalid-module-name
+    "PD901",  # df is a bad variable name
+    "PGH001",  # No builtin `eval()` allowed
+    "PLR0911",  # too-many-return-statements
+    "PLR0912",  # too-many-branches
+    "PLR0913",  # too-many-arguments
+    "PLR0915",  # too-many-statements
+    "PLR2004",  # magic-value-comparison
+    "PTH112",  # os-path-isdir
+    "PTH113",  # os-path-isfile
+    "PTH118",  # os-path-join
+    "PTH119",  # os-path-basename
+    "PTH123",  # builtin-openß
+    "PLW2901",  #
+    "RET504",  # unnecessary-assign
+    "S101",  # Use of assert detected
+    "S301",  # suspicious-pickle-usage
+    "S311",  # suspicious-non-cryptographic-random-usage
+    "S506",  # unsafe-yaml-load
+    "S603",  # subprocess-without-shell-equals-true
+    "S607",  # start-process-with-partial-path
+    "SLF001",  # private-member-access
+    "T201",  # print found
+    "TD002",  # missing-todo-author
+    "TD003",  # missing-todo-link
+    "TRY301",  # raise-within-try
 ]
 fixable = ["ALL"]
 unfixable = [
-    "COM812",
-    "ERA001",  # commented out code (will just delete it!)
-    "F841",  # Local variable {name} is assigned to but never used
+    "COM812",  # missing-trailing-comma
+    "ERA001",  # commented-out-code (will just delete it!)
+    "F841",  # unused-variable
+    "SIM222", # expr-or-true
+    "SIM223", # expr-and-false
 ]
 line-length = 120
 target-version = "py39"

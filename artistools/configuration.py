@@ -1,14 +1,15 @@
+from __future__ import annotations
+
 import subprocess
+import typing as t
 from pathlib import Path
-from typing import Any
-from typing import Optional
 
 import psutil
 
-config: dict[str, Any] = {}
+config: dict[str, t.Any] = {}
 
 
-def setup_config():
+def setup_config() -> None:
     # count the cores (excluding the efficiency cores on ARM)
     try:
         num_processes = int(
@@ -44,7 +45,7 @@ def setup_config():
     config["path_testoutput"] = Path(config["path_artistools_repository"], "tests", "output")
 
 
-def get_config(key: Optional[str] = None):
+def get_config(key: str | None = None) -> dict[str, t.Any] | t.Any:
     if not config:
         setup_config()
     if key is None:
@@ -53,7 +54,7 @@ def get_config(key: Optional[str] = None):
     return config[key]
 
 
-def set_config(key: str, value: Any) -> None:
+def set_config(key: str, value: t.Any) -> None:
     if not config:
         setup_config()
     config[key] = value

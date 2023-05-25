@@ -8,10 +8,10 @@ import math
 import multiprocessing
 import tarfile
 import time
+import typing as t
 from functools import lru_cache
 from functools import partial
 from pathlib import Path
-from typing import Literal
 
 import argcomplete
 import numpy as np
@@ -83,7 +83,7 @@ def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
 
 
 def get_closest_network_timestep(
-    traj_root: Path, particleid: int, timesec: float, cond: Literal["lessthan", "greaterthan", "nearest"] = "nearest"
+    traj_root: Path, particleid: int, timesec: float, cond: t.Literal["lessthan", "greaterthan", "nearest"] = "nearest"
 ) -> int:
     """cond:
     'lessthan': find highest timestep less than time_sec

@@ -77,7 +77,7 @@ jobs:
               uses: github/super-linter/slim@v5.0.0
               env:
                   LINTER_RULES_PATH: ./
-                  #   LOG_LEVEL: WARNING
+                  LOG_LEVEL: WARN
                   VALIDATE_GITLEAKS: false
                   VALIDATE_JSCPD: false
                   VALIDATE_PYTHON_BLACK: false

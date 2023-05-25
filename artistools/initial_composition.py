@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
+from __future__ import annotations
+
 import argparse
 import math
 import os
+import typing as t
 from pathlib import Path
-from typing import Any
-from typing import Literal
-from typing import Optional
 
 import argcomplete
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from astropy import units as u
 
 import artistools as at
+
+if t.TYPE_CHECKING:
+    import pandas as pd
 
 
 def plot_2d_initial_abundances(modelpath, args):
@@ -56,11 +58,11 @@ def plot_2d_initial_abundances(modelpath, args):
 
 def get_2D_slice_through_3d_model(
     dfmodel: pd.DataFrame,
-    sliceaxis: Literal["x", "y", "z"],
-    modelmeta: Optional[dict[str, Any]] = None,
-    plotaxis1: Optional[Literal["x", "y", "z"]] = None,
-    plotaxis2: Optional[Literal["x", "y", "z"]] = None,
-    sliceindex: Optional[int] = None,
+    sliceaxis: t.Literal["x", "y", "z"],
+    modelmeta: dict[str, t.Any] | None = None,
+    plotaxis1: t.Literal["x", "y", "z"] | None = None,
+    plotaxis2: t.Literal["x", "y", "z"] | None = None,
+    sliceindex: int | None = None,
 ) -> pd.DataFrame:
     if not sliceindex:
         # get midpoint
@@ -171,11 +173,11 @@ def plot_3d_initial_abundances(modelpath, args=None) -> None:
             targetmodeltime_days=targetmodeltime_days, modelmeta=modelmeta, dfmodel=dfmodel
         )
 
-    sliceaxis: Literal["x", "y", "z"] = "z"
+    sliceaxis: t.Literal["x", "y", "z"] = "z"
 
-    axes: list[Literal["x", "y", "z"]] = ["x", "y", "z"]
-    plotaxis1: Literal["x", "y", "z"] = [ax for ax in axes if ax != sliceaxis][0]
-    plotaxis2: Literal["x", "y", "z"] = [ax for ax in axes if ax not in [sliceaxis, plotaxis1]][0]
+    axes: list[t.Literal["x", "y", "z"]] = ["x", "y", "z"]
+    plotaxis1: t.Literal["x", "y", "z"] = [ax for ax in axes if ax != sliceaxis][0]
+    plotaxis2: t.Literal["x", "y", "z"] = [ax for ax in axes if ax not in [sliceaxis, plotaxis1]][0]
 
     df2dslice = get_2D_slice_through_3d_model(
         dfmodel=dfmodel, modelmeta=modelmeta, sliceaxis=sliceaxis, plotaxis1=plotaxis1, plotaxis2=plotaxis2
