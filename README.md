@@ -49,6 +49,7 @@ There is a Zenodo entry for Artistools. If you make use of Artistools please cit
 
 Bibtex:
 ```bibtex
+
 @software{luke_shingles_2023_7942849,
   author       = {Luke Shingles and
                   Christine E. Collins and
