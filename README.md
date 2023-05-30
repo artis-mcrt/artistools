@@ -48,19 +48,19 @@ Distributed under the MIT license. See [LICENSE](https://github.com/artis-mcrt/a
 There is a Zenodo entry for Artistools. If you make use of Artistools please cite this record.
 
 Bibtex:
-```
+```bibtex
 @software{luke_shingles_2023_7942849,
   author       = {Luke Shingles and
                   Christine E. Collins and
                   Alexander Holas and
                   Fionntan Callan and
                   Stuart Sim},
-  title        = {artis-mcrt/artistools: v2023.5.16.3},
+  title        = {artis-mcrt/artistools},
   month        = may,
   year         = 2023,
   publisher    = {Zenodo},
   version      = {v2023.5.16.3},
-  doi          = {10.5281/zenodo.7942849},
+  doi          = {10.5281/zenodo.6418832},
   url          = {https://doi.org/10.5281/zenodo.7942849}
 }
 ```
