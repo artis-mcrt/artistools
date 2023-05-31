@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: Shingles
+    given-names: Luke J.
+    orcid: https://orcid.org/0000-0002-5738-1612
+    email: luke.shingles@gmail.com
+  - family-names: Collins
+    given-names: Christine E.
+    orcid: https://orcid.org/0000-0002-0313-7817
+    email: c.collins@gsi.de
+  - family-names: Holas
+    given-names: Alexander
+  - family-names: Callan
+    given-names: Fionntan
+  - family-names: Sim
+    given-names: Stuart
+title: artistools
+doi: 10.5281/zenodo.6418832
+license: MIT
+repository-code: 'https://github.com/artis-mcrt/artistools'
+abstract: >-
+  Artistools is collection of plotting, analysis, and file
+  format conversion tools for the ARTIS radiative transfer
+  code.
