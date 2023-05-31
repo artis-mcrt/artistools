@@ -10,12 +10,10 @@
 ## Installation
 Requires Python >= 3.9
 
-First clone the repository, for example:
+artistools can be installed from PyPI using `pip install artistools'. For development, clone the repository and make an editable install:
 ```sh
 git clone https://github.com/artis-mcrt/artistools.git
-```
-Then from within the repository directory run:
-```sh
+cd artistools
 python3 -m pip install -e .
 pre-commit install
 ```
