@@ -5,7 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "artistools"
 authors = [
-    {name = "ARTIS Collaboration", email = "luke.shingles@gmail.com"},
+    {name = "Luke J. Shingles", email = "luke.shingles@gmail.com"},
+    {name = "Christine E. Collins", email = "c.collins@gsi.de"},
+    {name = "Alexander Holas", email = "alexander.holas@h-its.org"},
+    {name = "Fionntan Callan", email = "fcallan02@qub.ac.uk"},
+    {name = "Stuart Sim", email = "s.sim@qub.ac.uk"},
 ]
 description="Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code."
 classifiers = [
