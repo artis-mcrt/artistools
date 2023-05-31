@@ -18,6 +18,8 @@ authors:
 title: artistools
 doi: 10.5281/zenodo.6418832
 license: MIT
+version: 2023
+date-released: 2023
 repository-code: 'https://github.com/artis-mcrt/artistools'
 abstract: >-
   Artistools is collection of plotting, analysis, and file
