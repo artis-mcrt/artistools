@@ -2,6 +2,7 @@
 
 > Artistools is collection of plotting, analysis, and file format conversion tools for the [ARTIS](https://github.com/artis-mcrt/artis) radiative transfer code.
 
+[![DOI](https://zenodo.org/badge/53433932.svg)](https://zenodo.org/badge/latestdoi/53433932)
 ![GitHub Build and test status](https://github.com/artis-mcrt/artistools/workflows/Build%20and%20test/badge.svg)
 [![codecov](https://codecov.io/gh/artis-mcrt/artistools/branch/main/graph/badge.svg?token=XFlarJqeZd)](https://codecov.io/gh/artis-mcrt/artistools)
 [![CodeFactor](https://www.codefactor.io/repository/github/artis-mcrt/artistools/badge)](https://www.codefactor.io/repository/github/artis-mcrt/artistools)
@@ -9,12 +10,10 @@
 ## Installation
 Requires Python >= 3.9
 
-First clone the repository, for example:
+artistools can be installed from PyPI using `pip install artistools'. For development, clone the repository and make an editable install:
 ```sh
 git clone https://github.com/artis-mcrt/artistools.git
-```
-Then from within the repository directory run:
-```sh
+cd artistools
 python3 -m pip install -e .
 pre-commit install
 ```
@@ -40,3 +39,8 @@ Use the -h option to get a list of command-line arguments for each command. Most
 Distributed under the MIT license. See [LICENSE](https://github.com/artis-mcrt/artistools/blob/main/LICENSE) for more information.
 
 [https://github.com/artis-mcrt/artistools](https://github.com/artis-mcrt/artistools)
+
+
+## Citing Artistools
+
+If you make use of artistools please cite it. For details, see [https://zenodo.org/badge/latestdoi/53433932](https://zenodo.org/badge/latestdoi/53433932).
