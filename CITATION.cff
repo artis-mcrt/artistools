@@ -16,10 +16,10 @@ authors:
   - family-names: Sim
     given-names: Stuart
 title: artistools
+version: v2023.5.16.3
+date-released: 2023-05-16
 doi: 10.5281/zenodo.6418832
 license: MIT
-version: 2023
-date-released: 2023
 repository-code: 'https://github.com/artis-mcrt/artistools'
 abstract: >-
   Artistools is collection of plotting, analysis, and file
