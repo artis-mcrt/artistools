@@ -299,7 +299,7 @@ def get_modelcellabundance(
 
 def get_gridparticlecontributions(gridcontribpath: Path | str) -> pd.DataFrame:
     dfcontribs = pd.read_csv(
-        Path(gridcontribpath, "gridcontributions.txt"),
+        at.zopen(Path(gridcontribpath, "gridcontributions.txt")),
         delim_whitespace=True,
         dtype={
             0: "int32[pyarrow]",

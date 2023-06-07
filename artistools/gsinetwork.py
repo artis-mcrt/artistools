@@ -424,8 +424,8 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
             else:
                 break
 
-    # merger_root = Path(Path.home() / "Google Drive/Shared Drives/GSI NSM/Mergers")
-    merger_root = Path("/Users/luke/Downloads/Mergers")
+    merger_root = Path(Path.home() / "Google Drive/Shared Drives/GSI NSM/Mergers")
+    # merger_root = Path("/Users/luke/Downloads/Mergers")
     griddata_root = Path(merger_root, mergermodelfolder, griddatafolder)
     traj_root = Path(merger_root, mergermodelfolder, trajfolder)
     print(f"model.txt traj_root: {traj_root}")
