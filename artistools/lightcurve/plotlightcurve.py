@@ -845,7 +845,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                         print(txtout)
 
                 plotkwargs["label"] = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
-                # plotkwargs['label'] = '\n'.join(wrap(linelabel, 40))  # todo: could be arg? wraps text in label
+                # plotkwargs['label'] = '\n'.join(wrap(linelabel, 40))  # TODO: could be arg? wraps text in label
 
                 filterfunc = at.get_filterfunc(args)
                 if filterfunc is not None:
