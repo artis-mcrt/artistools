@@ -1238,6 +1238,14 @@ def get_costheta_bins() -> tuple[np.ndarray, np.ndarray, list[str]]:
     return costhetabins_lower, costhetabins_upper, binlabels
 
 
+def get_theta_bins_degrees() -> tuple[np.ndarray, np.ndarray, list[str]]:
+    costhetabins_lower, costhetabins_upper, _ = get_costheta_bins()
+    thetabins_lower = 180 - np.arccos(costhetabins_lower) / np.pi * 180
+    thetabins_upper = 180 - np.arccos(costhetabins_upper) / np.pi * 180
+    binlabels = [f"{lower:.1f}° ≤ θ < {upper:.1f}°" for lower, upper in zip(thetabins_lower, thetabins_upper)]
+    return costhetabins_lower, costhetabins_upper, binlabels
+
+
 def get_costhetabin_phibin_labels() -> tuple[list[str], list[str]]:
     _, _, costhetabinlabels = get_costheta_bins()
     _, _, phibinlabels = get_phi_bins()
