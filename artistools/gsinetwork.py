@@ -222,14 +222,9 @@ def plot_cell_abund_evolution(
     dfpartcontrib_thiscell = dfpartcontrib.query("cellindex == (@mgi + 1) and particleid in @allparticledata.keys()")
     frac_of_cellmass_sum = dfpartcontrib_thiscell.frac_of_cellmass.sum()
     print(f"frac_of_cellmass_sum: {frac_of_cellmass_sum} (can be < 1.0 because of missing particles)")
-    # if arr_strnuc[0] != 'Ye':
-    #     arr_strnuc.insert(0, 'Ye')
-
-    arr_abund_gsi: dict[str, np.ndarray[t.Any, np.dtype[np.float64]]] = {}
-
-    for strnuc in arr_strnuc:
-        arr_abund_gsi[strnuc] = np.zeros_like(arr_time_gsi_days)
-
+    arr_abund_gsi: dict[str, np.ndarray[t.Any, np.dtype[np.float64]]] = {
+        strnuc: np.zeros_like(arr_time_gsi_days) for strnuc in arr_strnuc
+    }
     # calculate the GSI values from the particles contributing to this cell
     for particleid, frac_of_cellmass in dfpartcontrib_thiscell[["particleid", "frac_of_cellmass"]].itertuples(
         index=False

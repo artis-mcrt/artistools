@@ -116,8 +116,7 @@ def main():
         dE_on_dx = dE_on_dx_ionexc
         if steps % 100000 == 0:
             print(
-                f"E: {energy / CONST_EV_IN_J:.1f} eV x: {x:.1e} dE_on_dx_ionexc: "
-                f"{dE_on_dx_ionexc}, dE_on_dx_plasma: {dE_on_dx_plasma}"
+                f"E: {energy / CONST_EV_IN_J:.1f} eV x: {x:.1e} dE_on_dx_ionexc: {dE_on_dx}, dE_on_dx_plasma: {dE_on_dx_plasma}"
             )
         x += delta_energy / dE_on_dx
         mean_free_path += -x * delta_energy / E_0

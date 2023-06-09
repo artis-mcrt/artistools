@@ -36,53 +36,32 @@ def get_wij() -> np.ndarray:
     #  a) v less than 1
     #
     wij = np.zeros(itab + 1)
-    if igphi == 1:
-        for i in range(1, i1 + 1):
-            v2 = i * dvtable
-            v = math.sqrt(v2)
-            v3 = v * v2
+    for i in range(1, i1 + 1):
+        v2 = i * dvtable
+        v = math.sqrt(v2)
+        v3 = v * v2
+        if igphi == 1:
             v4 = v * v3
-            vsum = 1.0 - 1.5 * v2 + 0.75 * v3
-            wij[i] = cnormk * vsum
-    else:
-        for i in range(1, i1 + 1):
-            v2 = i * dvtable
-            v = math.sqrt(v2)
-            v3 = v * v2
-            vsum = 1.0 - 1.5 * v2 + 0.75 * v3
-            wij[i] = cnormk * vsum
-
-    #
-    #  b) v greater than 1
-    #
-    if igphi == 1:
-        for i in range(i1 + 1, itable + 1):
-            v2 = i * dvtable
-            v = math.sqrt(v2)
-            dif2 = 2.0 - v
-            vsum = 0.25 * dif2 * dif2 * dif2
-            wij[i] = cnormk * vsum
-    else:
-        for i in range(i1 + 1, itable + 1):
-            v2 = i * dvtable
-            v = math.sqrt(v2)
-            dif2 = 2.0 - v
-            vsum = 0.25 * dif2 * dif2 * dif2
-            wij[i] = cnormk * vsum
-
+        vsum = 1.0 - 1.5 * v2 + 0.75 * v3
+        wij[i] = cnormk * vsum
+    for i in range(i1 + 1, itable + 1):
+        v2 = i * dvtable
+        v = math.sqrt(v2)
+        dif2 = 2.0 - v
+        vsum = 0.25 * dif2 * dif2 * dif2
+        wij[i] = cnormk * vsum
     return wij
 
 
 def kernelvals2(rij2: float, hmean: float, wij: np.ndarray) -> float:  # ist schnell berechnet aber keine Gradienten
-    hmean21 = 1.0 / (hmean * hmean)
+    hmean21 = 1.0 / hmean**2
     hmean31 = hmean21 / hmean
     v2 = rij2 * hmean21
     index = math.floor(v2 / dvtable)
     dxx = v2 - index * dvtable
     index1 = index + 1
     dwdx = (wij[index1] - wij[index]) / dvtable
-    wtij = (wij[index] + dwdx * dxx) * hmean31
-    return wtij
+    return (wij[index] + dwdx * dxx) * hmean31
 
 
 def maptogrid(

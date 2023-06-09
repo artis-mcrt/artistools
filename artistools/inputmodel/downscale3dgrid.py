@@ -20,7 +20,7 @@ def make_downscaled_3d_grid(modelpath: str | Path, outputgridsize: int = 50, plo
     grid = int(inputgridsize)
 
     assert inputgridsize % outputgridsize == 0
-    smallgrid = int(outputgridsize)
+    smallgrid = outputgridsize
 
     merge = grid / smallgrid
     merge = int(merge)

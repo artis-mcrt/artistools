@@ -70,8 +70,7 @@ def get_nist_transitions(filename):
                     transitiontuple(lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_g, upper_g)
                 )
 
-    dftransitions = pd.DataFrame(translist, columns=transitiontuple._fields)
-    return dftransitions
+    return pd.DataFrame(translist, columns=transitiontuple._fields)
 
 
 def generate_ion_spectrum(transitions, xvalues, popcolumn, plot_resolution, args):

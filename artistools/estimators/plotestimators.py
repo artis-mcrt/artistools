@@ -748,7 +748,7 @@ def make_plot(
         if args.multiplot and not args.classicartis:
             tdays = estimators[(timestepslist[0][0], mgilist[0])]["tdays"]
             figure_title = f"{modelname}\nTimestep {timestepslist[0]} ({tdays:.2f}d)"
-        elif args.multiplot and args.classicartis:
+        elif args.multiplot:
             timedays = float(at.get_timestep_time(modelpath, timestepslist[0]))
             figure_title = f"{modelname}\nTimestep {timestepslist[0]} ({timedays:.2f}d)"
         else:

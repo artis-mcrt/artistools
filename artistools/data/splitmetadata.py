@@ -9,7 +9,7 @@ def main():
         metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
 
     for obsfile in metadata:
-        metafilepath = Path(obsfile).with_suffix(Path(obsfile).suffix + ".meta.yml")
+        metafilepath = Path(obsfile).with_suffix(f"{Path(obsfile).suffix}.meta.yml")
         with open(metafilepath, "w") as metafile:
             yaml.dump(metadata[obsfile], metafile)
 

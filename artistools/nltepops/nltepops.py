@@ -147,8 +147,8 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
 def read_file(nltefilepath: str | Path) -> pd.DataFrame:
     """Read NLTE populations from one file."""
     if not Path(nltefilepath).is_file():
-        nltefilepathgz = Path(str(nltefilepath) + ".gz")
-        nltefilepathxz = Path(str(nltefilepath) + ".xz")
+        nltefilepathgz = Path(f"{str(nltefilepath)}.gz")
+        nltefilepathxz = Path(f"{str(nltefilepath)}.xz")
         if nltefilepathxz.is_file():
             nltefilepath = nltefilepathxz
         elif nltefilepathgz.is_file():
@@ -198,10 +198,7 @@ def read_files(
     dfqueryvars["modelgridindex"] = modelgridindex
     dfqueryvars["timestep"] = timestep
 
-    dfquery_full = ""
-    if timestep >= 0:
-        dfquery_full = "timestep==@timestep"
-
+    dfquery_full = "timestep==@timestep" if timestep >= 0 else ""
     if modelgridindex >= 0:
         if dfquery_full:
             dfquery_full += " and "

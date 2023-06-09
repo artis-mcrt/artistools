@@ -544,11 +544,9 @@ def get_cell_angle(dfmodel: pd.DataFrame, modelpath: Path) -> pd.DataFrame:
     syn_dir = at.get_syn_dir(modelpath)
 
     cos_theta = np.zeros(len(dfmodel))
-    i = 0
-    for _, cell in dfmodel.iterrows():
+    for i, (_, cell) in enumerate(dfmodel.iterrows()):
         mid_point = [cell["pos_x_mid"], cell["pos_y_mid"], cell["pos_z_mid"]]
         cos_theta[i] = (np.dot(mid_point, syn_dir)) / (at.vec_len(mid_point) * at.vec_len(syn_dir))
-        i += 1
     dfmodel["cos_theta"] = cos_theta
     cos_bins = [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1]  # including end bin
     labels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]  # to agree with escaping packet bin numbers
@@ -575,9 +573,8 @@ def get_mean_cell_properties_of_angle_bin(
     mid_velocities = np.unique(dfmodeldata["vel_x_mid"].values)
     mid_velocities = mid_velocities[mid_velocities >= 0]
 
-    mean_bin_properties = {}
-    for bin_number in range(10):
-        mean_bin_properties[bin_number] = pd.DataFrame(
+    mean_bin_properties = {
+        bin_number: pd.DataFrame(
             {
                 "velocity": mid_velocities,
                 "mean_rho": np.zeros_like(mid_velocities, dtype=float),
@@ -585,7 +582,8 @@ def get_mean_cell_properties_of_angle_bin(
                 "mean_Q": np.zeros_like(mid_velocities, dtype=float),
             }
         )
-
+        for bin_number in range(10)
+    }
     # cos_bin_number = 90
     for bin_number in range(10):
         cos_bin_number = bin_number * 10
@@ -823,7 +821,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> i
     """
     modeldata, _, _ = get_modeldata_tuple(modelpath)
 
-    velocity = float(velocity)
+    velocity = velocity
 
     if not mgilist:
         mgilist = list(modeldata.index)
@@ -954,10 +952,7 @@ def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) 
     if "pos_x_min" in dfmodel.columns:
         return 3
 
-    if "pos_z_mid" in dfmodel.columns:
-        return 2
-
-    return 1
+    return 2 if "pos_z_mid" in dfmodel.columns else 1
 
 
 def sphericalaverage(
@@ -1023,10 +1018,10 @@ def sphericalaverage(
                 for particleid, dfparticlecontribs in dfcellcont.groupby("particleid"):
                     frac_of_cellmass_avg = (
                         sum(
-                            [
-                                (row.frac_of_cellmass * celldensity[row.cellindex])
-                                for row in dfparticlecontribs.itertuples(index=False)
-                            ]
+                            row.frac_of_cellmass * celldensity[row.cellindex]
+                            for row in dfparticlecontribs.itertuples(
+                                index=False
+                            )
                         )
                         / matchedcellrhosum
                     )
@@ -1040,10 +1035,11 @@ def sphericalaverage(
                     if includemissingcolexists:
                         frac_of_cellmass_includemissing_avg = (
                             sum(
-                                [
-                                    (row.frac_of_cellmass_includemissing * celldensity[row.cellindex])
-                                    for row in dfparticlecontribs.itertuples(index=False)
-                                ]
+                                row.frac_of_cellmass_includemissing
+                                * celldensity[row.cellindex]
+                                for row in dfparticlecontribs.itertuples(
+                                    index=False
+                                )
                             )
                             / matchedcellrhosum
                         )

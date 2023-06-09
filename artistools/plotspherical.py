@@ -77,10 +77,6 @@ def plot_spherical(
         dfpackets=dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins, phibintype="monotonic"
     )
 
-    # for figuring out where the axes are on the plot, make a cut
-    # dfpackets = dfpackets.filter(pl.col("dirz") < -0.9)
-
-    solidanglefactor = nphibins * ncosthetabins
     aggs = []
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelmeta=modelmeta)
     if "emvelocityoverc" in plotvars:
@@ -98,6 +94,10 @@ def plot_spherical(
         )
 
     if "luminosity" in plotvars:
+        # for figuring out where the axes are on the plot, make a cut
+        # dfpackets = dfpackets.filter(pl.col("dirz") < -0.9)
+
+        solidanglefactor = nphibins * ncosthetabins
         aggs.append(
             (pl.col("e_rf").sum() / nprocs_read * solidanglefactor / (timemaxdays - timemindays) / 86400).alias(
                 "luminosity"
@@ -236,10 +236,10 @@ def plot_spherical(
                 meshgrid_phi_highres, meshgrid_theta_highres, data_interp, rasterized=True, cmap=cmap
             )
 
-        if plotvar == "emvelocityoverc":
-            colorbartitle = r"Last interaction ejecta velocity [c]"
-        elif plotvar == "emlosvelocityoverc":
+        if plotvar == "emlosvelocityoverc":
             colorbartitle = r"Mean line of sight velocity [c]"
+        elif plotvar == "emvelocityoverc":
+            colorbartitle = r"Last interaction ejecta velocity [c]"
         elif plotvar == "luminosity":
             colorbartitle = r"Radiant intensity $\cdot\,4π$ [{}erg/s]"
         elif plotvar == "temperature":
@@ -265,13 +265,13 @@ def plot_spherical(
         # ax.set_yticklabels([])
         # ax.grid(visible=True, color="black")
         ax.axis("off")
-        # xticks_deg = np.arange(0, 360, 90)[1:]
-        # ax.set_xticks(ticks=xticks_deg / 180 * np.pi - np.pi, labels=[rf"${deg:.0f}\degree$" for deg in xticks_deg])
+            # xticks_deg = np.arange(0, 360, 90)[1:]
+            # ax.set_xticks(ticks=xticks_deg / 180 * np.pi - np.pi, labels=[rf"${deg:.0f}\degree$" for deg in xticks_deg])
 
-        # yticks_deg = np.linspace(0, 180, 7)
-        # ax.set_yticks(
-        #     ticks=-yticks_deg / 180 * np.pi + np.pi / 2.0, labels=[rf"${deg:.0f}\degree$" for deg in yticks_deg]
-        # )
+            # yticks_deg = np.linspace(0, 180, 7)
+            # ax.set_yticks(
+            #     ticks=-yticks_deg / 180 * np.pi + np.pi / 2.0, labels=[rf"${deg:.0f}\degree$" for deg in yticks_deg]
+            # )
 
     return fig, axes
 

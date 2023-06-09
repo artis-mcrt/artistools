@@ -293,36 +293,35 @@ def bolometric_magnitude(
         time = float(time)
 
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
-            if angle != -1:
-                if args.plotvspecpol:
-                    spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
-                else:
-                    spectrum = at.spectra.get_spectrum(
-                        modelpath=modelpath,
-                        directionbins=[angle],
-                        timestepmin=timestep,
-                        timestepmax=timestep,
-                        average_over_phi=average_over_phi,
-                        average_over_theta=average_over_theta,
-                    )[angle]
-            else:
+            if angle == -1:
                 spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]
 
+            elif args.plotvspecpol:
+                spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
+            else:
+                spectrum = at.spectra.get_spectrum(
+                    modelpath=modelpath,
+                    directionbins=[angle],
+                    timestepmin=timestep,
+                    timestepmax=timestep,
+                    average_over_phi=average_over_phi,
+                    average_over_theta=average_over_theta,
+                )[angle]
             integrated_flux = np.trapz(spectrum["f_lambda"], spectrum["lambda_angstroms"])
             integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to("cm"), 2)
             Mbol_sun = 4.74
             magnitude = Mbol_sun - (2.5 * np.log10(integrated_luminosity / const.L_sun.to("erg/s").value))
             magnitudes.append(magnitude)
             times.append(time)
-            # print(const.L_sun.to('erg/s').value)
-            # sys.exit(1)
+                    # print(const.L_sun.to('erg/s').value)
+                    # sys.exit(1)
 
     return times, magnitudes
 
 
 def get_filter_data(filterdir: Path | str, filter_name: str) -> tuple[float, np.ndarray, np.ndarray, float, float]:
     """Filter data in 'data/filters' taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata."""
-    with Path(filterdir, filter_name + ".txt").open("r") as filter_metadata:  # defintion of the file
+    with Path(filterdir, f"{filter_name}.txt").open("r") as filter_metadata:  # defintion of the file
         line_in_filter_metadata = filter_metadata.readlines()  # list of lines
 
     zeropointenergyflux = float(line_in_filter_metadata[0])
@@ -374,9 +373,11 @@ def get_spectrum_in_filter_range(
 def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointenergyflux: float) -> float:
     cf = flux * transmission
     flux_obs = abs(np.trapz(cf, wavelength_from_spectrum))  # using trapezoidal rule to integrate
-    phot_filtobs_sn = 0.0 if flux_obs == 0.0 else -2.5 * np.log10(flux_obs / zeropointenergyflux)
-
-    return phot_filtobs_sn
+    return (
+        0.0
+        if flux_obs == 0.0
+        else -2.5 * np.log10(flux_obs / zeropointenergyflux)
+    )
 
 
 def get_band_lightcurve(band_lightcurve_data, band_name, args: argparse.Namespace) -> tuple[list[float], np.ndarray]:
@@ -420,10 +421,7 @@ def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
     with open(hesma_modelname) as f:
         first_line = f.readline()
         if "#" in first_line:
-            for i in first_line:
-                if i != "#" and i != " " and i != "\n":
-                    column_names.append(i)
-
+            column_names.extend(i for i in first_line if i not in ["#", " ", "\n"])
             hesma_model = pd.read_csv(
                 hesma_modelname, delim_whitespace=True, header=None, comment="#", names=column_names
             )
@@ -484,12 +482,14 @@ def read_bol_reflightcurve_data(lightcurvefilename):
 
         dflightcurve = pd.read_csv(flc, delim_whitespace=True, header=None, names=columns)
 
-    colrenames = {
+    if colrenames := {
         k: v
-        for k, v in {dflightcurve.columns[0]: "time_days", dflightcurve.columns[1]: "luminosity_erg/s"}.items()
+        for k, v in {
+            dflightcurve.columns[0]: "time_days",
+            dflightcurve.columns[1]: "luminosity_erg/s",
+        }.items()
         if k != v
-    }
-    if colrenames:
+    }:
         print(f"{data_path}: renaming columns {colrenames}")
         dflightcurve = dflightcurve.rename(columns=colrenames)
 

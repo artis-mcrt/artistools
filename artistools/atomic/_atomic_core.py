@@ -20,8 +20,6 @@ def parse_adata(fadata, phixsdict, ionlist):
         Z = int(ionheader[0])
         ionstage = int(ionheader[1])
         level_count = int(ionheader[2])
-        ionisation_energy_ev = float(ionheader[3])
-
         if not ionlist or (Z, ionstage) in ionlist:
             level_list = []
             for levelindex in range(level_count):
@@ -37,6 +35,8 @@ def parse_adata(fadata, phixsdict, ionlist):
             dflevels = pd.DataFrame(
                 level_list, columns=["energy_ev", "g", "transition_count", "levelname", "phixstargetlist", "phixstable"]
             )
+
+            ionisation_energy_ev = float(ionheader[3])
 
             yield Z, ionstage, level_count, ionisation_energy_ev, dflevels
 
@@ -108,9 +108,7 @@ def parse_phixsdata(fphixs, ionlist):
                 targetlist.append((int(level) - firstlevelnumber, float(fraction)))
 
         if not ionlist or (Z, lowerionstage) in ionlist:
-            phixslist = []
-            for _ in range(nphixspoints):
-                phixslist.append(float(fphixs.readline()) * 1e-18)
+            phixslist = [float(fphixs.readline()) * 1e-18 for _ in range(nphixspoints)]
             phixstable = np.array(list(zip(xgrid, phixslist)))
 
             yield Z, upperionstage, upperionlevel, lowerionstage, lowerionlevel, targetlist, phixstable
@@ -165,8 +163,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
             translist = transitionsdict.get((Z, ionstage), pd.DataFrame())
             level_lists.append(iontuple(Z, ionstage, level_count, ionisation_energy_ev, dflevels, translist))
 
-    dfadata = pd.DataFrame(level_lists)
-    return dfadata
+    return pd.DataFrame(level_lists)
 
 
 def parse_recombratefile(frecomb):

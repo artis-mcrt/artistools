@@ -48,10 +48,7 @@ def setup_config() -> None:
 def get_config(key: str | None = None) -> dict[str, t.Any] | t.Any:
     if not config:
         setup_config()
-    if key is None:
-        return config
-
-    return config[key]
+    return config if key is None else config[key]
 
 
 def set_config(key: str, value: t.Any) -> None:

@@ -75,7 +75,10 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
         X_Fegroup = 0.0
         for atomic_number in range(1, 31):
-            abundances[atomic_number] = sum([float(shell[species]) for species in isotopesofelem[atomic_number]])
+            abundances[atomic_number] = sum(
+                float(shell[species])
+                for species in isotopesofelem[atomic_number]
+            )
             if atomic_number >= 26:
                 X_Fegroup += abundances[atomic_number]
 

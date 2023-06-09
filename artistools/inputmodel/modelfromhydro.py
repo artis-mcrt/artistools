@@ -53,19 +53,15 @@ def read_ejectasnapshot(pathtosnapshot):
     ]
 
     types_dict = {"id": int}
-    types_dict.update({col: float for col in column_names if col not in types_dict})
+    types_dict |= {col: float for col in column_names if col not in types_dict}
 
-    ejectasnapshot = pd.read_csv(
+    return pd.read_csv(
         Path(pathtosnapshot) / "ejectasnapshot.dat",
         delim_whitespace=True,
         header=None,
         names=column_names,
         dtype=types_dict,
     )
-
-    # Everything is in geometric units here
-
-    return ejectasnapshot
 
 
 def get_merger_time_geomunits(pathtogriddata: Path) -> float:
@@ -205,7 +201,7 @@ def read_mattia_grid_data_file(pathtogriddata):
         print(f"t_model {t_model} seconds")
     xmax = max(griddata["posx"])
     vmax = xmax / t_model  # cm/s
-    t_model = t_model / (24.0 * 3600)  # days
+    t_model /= 24.0 * 3600
     ngrid = len(griddata["posx"])
 
     griddata["rho"][griddata["rho"] <= 1e-50] = 0.0
@@ -302,8 +298,7 @@ def add_mass_to_center(griddata, t_model_in_days, vmax, args):
                 cellid, griddata["pos_x_min"][i], griddata["pos_y_min"][i], griddata["pos_z_min"][i], griddata["rho"][i]
             )
             griddata["rho"][i] += density_hole
-            if griddata["cellYe"][i] < 0.4:
-                griddata["cellYe"][i] = 0.4
+            griddata["cellYe"][i] = max(griddata["cellYe"][i], 0.4)
             # print("Inner empty cells filled")
             print(
                 cellid, griddata["pos_x_min"][i], griddata["pos_y_min"][i], griddata["pos_z_min"][i], griddata["rho"][i]

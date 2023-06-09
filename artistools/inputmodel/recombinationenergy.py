@@ -56,9 +56,6 @@ def get_model_recombenergy(dfbinding, args):
             elif species.lower() != "fegroup":  # ignore special group abundance
                 pass
 
-            else:
-                pass
-
     def sortkey(item):
         return at.get_atomic_number(item[0])
 

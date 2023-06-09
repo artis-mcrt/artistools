@@ -152,10 +152,7 @@ define_colours_list2 = [
 
 def parse_directionbin_args(modelpath: Path | str, args) -> tuple[Sequence[int], dict[int, str]]:
     modelpath = Path(modelpath)
-    viewing_angle_data = False
-    if len(glob.glob(str(modelpath / "*_res.out*"))) >= 1:
-        viewing_angle_data = True
-
+    viewing_angle_data = bool(glob.glob(str(modelpath / "*_res.out*")))
     if args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
         dirbins = args.plotvspecpol
     elif args.plotviewingangle and args.plotviewingangle[0] == -1 and viewing_angle_data:
@@ -290,7 +287,9 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, arg
     fxfit, xfit = lightcurve_polyfit(time, magnitude, args)
 
     def match_closest_time_polyfit(reftime_polyfit):
-        return str(f"{min([float(x) for x in xfit], key=lambda x: abs(x - reftime_polyfit))}")
+        return str(
+            f"{min((float(x) for x in xfit), key=lambda x: abs(x - reftime_polyfit))}"
+        )
 
     index_min = np.argmin(fxfit)
     tmax_polyfit = xfit[index_min]
@@ -421,15 +420,12 @@ def make_plot_test_viewing_angle_fit(
     plt.axvline(x=float(time_after15days_polyfit), color="black", linestyle="--")
     print("time after 15 days polyfit = ", time_after15days_polyfit)
     plt.tight_layout()
-    plt.savefig(f"{key}_band_{modelname}_viewing_angle" + str(angle) + ".png")
+    plt.savefig(f"{key}_band_{modelname}_viewing_angle{str(angle)}.png")
     plt.close()
 
 
 def set_scatterplot_plotkwargs(modelnumber, args):
-    plotkwargsviewingangles = {}
-    plotkwargsviewingangles["marker"] = "x"
-    plotkwargsviewingangles["zorder"] = 0
-    plotkwargsviewingangles["alpha"] = 0.8
+    plotkwargsviewingangles = {"marker": "x", "zorder": 0, "alpha": 0.8}
     if args.colorbarcostheta or args.colorbarphi:
         update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args)
     elif args.color:
@@ -437,16 +433,15 @@ def set_scatterplot_plotkwargs(modelnumber, args):
     else:
         plotkwargsviewingangles["color"] = define_colours_list2[modelnumber]
 
-    plotkwargsangleaveraged = {}
-    plotkwargsangleaveraged["marker"] = "o"
-    plotkwargsangleaveraged["zorder"] = 10
-    plotkwargsangleaveraged["edgecolor"] = "k"
-    plotkwargsangleaveraged["s"] = 120
-    if args.color:
-        plotkwargsangleaveraged["color"] = args.color[modelnumber]
-    else:
-        plotkwargsangleaveraged["color"] = define_colours_list[modelnumber]
-
+    plotkwargsangleaveraged = {
+        "marker": "o",
+        "zorder": 10,
+        "edgecolor": "k",
+        "s": 120,
+        "color": args.color[modelnumber]
+        if args.color
+        else define_colours_list[modelnumber],
+    }
     if args.colorbarcostheta or args.colorbarphi:
         update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args)
 
@@ -599,7 +594,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, key, 
     # ax.set_xlabel(r'Decline Rate ($\Delta$m$_{15}$)', fontsize=14)
 
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
-        xlabel = rf"$\Delta$m$_{15}$({key})"
+        xlabel = f"$\Delta$m$_15$({key})"
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         xlabel = "Rise Time [days]"
 
@@ -627,11 +622,13 @@ def make_peak_colour_viewing_angle_plot(args):
 
         bands = [args.filter[0], args.filter[1]]
 
-        data = {}
-
         datafilename = bands[0] + "band_" + f"{modelname}" + "_viewing_angle_data.txt"
         viewing_angle_plot_data = pd.read_csv(datafilename, delimiter=" ")
-        data[f"{bands[0]}max"] = viewing_angle_plot_data["peak_mag_polyfit"].to_numpy()
+        data = {
+            f"{bands[0]}max": viewing_angle_plot_data[
+                "peak_mag_polyfit"
+            ].to_numpy()
+        }
         data[f"time_{bands[0]}max"] = viewing_angle_plot_data["risetime_polyfit"].to_numpy()
 
         # Get brightness in second band at time of peak in first band

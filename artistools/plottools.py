@@ -36,9 +36,9 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
 
     def set_locs(self, locs):
         if self.decimalplaces is not None:
-            self.format = "%1." + str(self.decimalplaces) + "f"
+            self.format = f"%1.{str(self.decimalplaces)}f"
             if self._usetex:
-                self.format = "$%s$" % self.format
+                self.format = f"${self.format}$"
             elif self._useMathText:
                 self.format = "$%s$" % ("\\mathdefault{%s}" % self.format)
         super().set_locs(locs)
@@ -46,8 +46,13 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         if self.decimalplaces is not None:
             # rounding the tick labels will make the locations incorrect unless we round these too
             newlocs = [
-                float(("%1." + str(self.decimalplaces) + "f") % (x / (10**self.orderOfMagnitude)))
-                * (10**self.orderOfMagnitude)
+                (
+                    float(
+                        f"%1.{str(self.decimalplaces)}f"
+                        % (x / (10**self.orderOfMagnitude))
+                    )
+                    * 10**self.orderOfMagnitude
+                )
                 for x in self.locs
             ]
             super().set_locs(newlocs)

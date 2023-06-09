@@ -66,13 +66,9 @@ def plot_reference_data(ax, atomic_number: int, ion_stage: int, estimators_cellt
                 if math.isclose(file_nne, nne, rel_tol=0.01) and math.isclose(file_Te, Te, abs_tol=10):
                     if file_W > 0:
                         continue
-                        # bbstr = " with dilute blackbody"
-                        # color = "C2"
-                        # marker = "+"
-                    else:  # noqa: RET507
-                        bbstr = ""
-                        color = "C1"
-                        marker = "^"
+                    bbstr = ""
+                    color = "C1"
+                    marker = "^"
 
                     print(f"Plotting reference data from {depfilepath},")
                     print(
@@ -424,7 +420,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     labelfontsize = 20
     if args.x == "time":
         xlabel = "Time Since Explosion [days]"
-    if args.x == "velocity":
+    elif args.x == "velocity":
         xlabel = r"Zone outer velocity [km s$^{-1}$]"
     ylabel = r"Level population [cm$^{-3}$]"
 
@@ -445,7 +441,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
         title = f"Z={Z}, ionstage={ionstage}"
         if args.x == "time":
             title = title + f", mgi = {args.modelgridindex[0]}"
-        if args.x == "velocity":
+        elif args.x == "velocity":
             title = title + f", {args.timedays} days"
         plt.title(title)
 
@@ -621,7 +617,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
             subplot_title += f" timestep {timestep:d}"
         else:
             subplot_title += f" {time_days:.0f}d"
-        subplot_title += rf" (Te={T_e:.0f} K, nne={nne:.1e} cm$^{-3}$, T$_R$={T_R:.0f} K, W={W:.1e})"
+        subplot_title += f" (Te={T_e:.0f} K, nne={nne:.1e} cm$^-3$, T$_R$={T_R:.0f} K, W={W:.1e})"
 
         if not args.notitle:
             axes[mgifirstaxindex].set_title(subplot_title, fontsize=10)
@@ -670,7 +666,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
     outputfilename = str(args.outputfile).format(
         elsymbol=at.get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, time_days=time_days
     )
-    fig.savefig(str(outputfilename), format="pdf")
+    fig.savefig(outputfilename, format="pdf")
     print(f"Saved {outputfilename}")
     plt.close()
 
@@ -749,10 +745,10 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     at.set_mpl_style()
 
+    # if len(args.modelpath) == 1:
+    #     modelpath = args.modelpath
+    modelpath = args.modelpath
     if args.x in ["time", "velocity"]:
-        # if len(args.modelpath) == 1:
-        #     modelpath = args.modelpath
-        modelpath = args.modelpath
         args.modelpath = [args.modelpath]
 
         # if not args.timedays:
@@ -764,9 +760,6 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         if not args.levels:
             print("Please specify levels")
             sys.exit(1)
-    else:
-        modelpath = args.modelpath
-
     if args.timedays:
         if "-" in args.timedays:
             args.timestepmin, args.timestepmax, time_days_lower, time_days_upper = at.get_time_range(
@@ -794,13 +787,11 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     if isinstance(args.velocity, (float, int)):
         args.velocity = [args.velocity]
 
-    mgilist: list[int | float] = []
-    for mgi in args.modelgridindex:
-        mgilist.append(int(mgi))
-
-    for vel in args.velocity:
-        mgilist.append(at.inputmodel.get_mgi_of_velocity_kms(modelpath, vel))
-
+    mgilist: list[int | float] = [int(mgi) for mgi in args.modelgridindex]
+    mgilist.extend(
+        at.inputmodel.get_mgi_of_velocity_kms(modelpath, vel)
+        for vel in args.velocity
+    )
     if not mgilist:
         mgilist.append(0)
 

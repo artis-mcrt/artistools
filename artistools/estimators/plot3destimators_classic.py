@@ -23,28 +23,23 @@ def get_modelgridcells_along_axis(modelpath):
     args = ArgsTuple(modelpath=modelpath, sliceaxis="x", other_axis1="z", other_axis2="y", positive_axis=True)
 
     profile1d = at.inputmodel.slice1Dfromconein3dmodel.get_profile_along_axis(args=args)
-    readonly_mgi = get_mgi_of_modeldata(profile1d, modelpath)
-
-    return readonly_mgi
+    return get_mgi_of_modeldata(profile1d, modelpath)
 
 
 def get_modelgridcells_2D_slice(modeldata, modelpath):
     sliceaxis = "z"
 
     slicedata = at.initial_composition.get_2D_slice_through_3d_model(modeldata, sliceaxis)
-    readonly_mgi = get_mgi_of_modeldata(slicedata, modelpath)
-
-    return readonly_mgi
+    return get_mgi_of_modeldata(slicedata, modelpath)
 
 
 def get_mgi_of_modeldata(modeldata, modelpath):
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
-    readonly_mgi = []
-    for _index, row in modeldata.iterrows():
-        if row["rho"] > 0:
-            mgi = mgi_of_propcells[int(row["inputcellid"]) - 1]
-            readonly_mgi.append(mgi)
-    return readonly_mgi
+    return [
+        mgi_of_propcells[int(row["inputcellid"]) - 1]
+        for _index, row in modeldata.iterrows()
+        if row["rho"] > 0
+    ]
 
 
 def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, readonly_mgi):
@@ -90,7 +85,7 @@ def plot_Te_vs_velocity(modelpath, modeldata, estimators, readonly_mgi):
 def get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, timestep):
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
     times = at.get_timestep_times_float(modelpath)
-    print([(ts, time) for ts, time in enumerate(times)])
+    print(list(enumerate(times)))
     time = times[timestep]
     print(f"time {time} days")
 

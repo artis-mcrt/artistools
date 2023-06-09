@@ -41,7 +41,9 @@ def plot_polarisation(modelpath: Path, args) -> None:
     timeavg = (args.timemin + args.timemax) / 2.0
 
     def match_closest_time(reftime):
-        return str(f"{min([float(x) for x in timearray], key=lambda x: abs(x - reftime)):.4f}")
+        return str(
+            f"{min((float(x) for x in timearray), key=lambda x: abs(x - reftime)):.4f}"
+        )
 
     timeavg = match_closest_time(timeavg)
 
@@ -367,10 +369,8 @@ def plot_artis_spectrum(
                 nbins = 5
 
                 for i in np.arange(0, len(wavelengths - nbins), nbins):
-                    new_lambda_angstroms.append(wavelengths[i + int(nbins / 2)])
-                    sum_flux = 0
-                    for j in range(i, i + nbins):
-                        sum_flux += fluxes[j]
+                    new_lambda_angstroms.append(wavelengths[i + nbins // 2])
+                    sum_flux = sum(fluxes[j] for j in range(i, i + nbins))
                     binned_flux.append(sum_flux / nbins)
 
                 dfspectrum = pd.DataFrame({"lambda_angstroms": new_lambda_angstroms, ycolumnname: binned_flux})
@@ -400,10 +400,10 @@ def make_spectrum_plot(
 
     for seriesindex, specpath in enumerate(speclist):
         specpath = Path(specpath)
-        plotkwargs: dict[str, t.Any] = {}
-        plotkwargs["alpha"] = 0.95
-
-        plotkwargs["linestyle"] = args.linestyle[seriesindex]
+        plotkwargs: dict[str, t.Any] = {
+            "alpha": 0.95,
+            "linestyle": args.linestyle[seriesindex],
+        }
         if not args.plotviewingangle and not args.plotvspecpol:
             plotkwargs["color"] = args.color[seriesindex]
         if args.dashes[seriesindex]:

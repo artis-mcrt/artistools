@@ -36,12 +36,12 @@ def rd_nuc_decay_data(file, quiet=False):
                 nreac = int(linearr[0])
                 break
         if not quiet:
-            print("*** INPUT FILE: " + file)
-            print("Format date: " + str(date))
-            print("Number of species: " + str(nspec))
-            print("Total number of isotopes: " + str(niso))
-            print("Maximum number of isotopes/species: " + str(maxisospec))
-            print("Number of reactions: " + str(nreac))
+            print(f"*** INPUT FILE: {file}")
+            print(f"Format date: {str(date)}")
+            print(f"Number of species: {str(nspec)}")
+            print(f"Total number of isotopes: {str(niso)}")
+            print(f"Maximum number of isotopes/species: {str(maxisospec)}")
+            print(f"Number of reactions: {str(nreac)}")
 
         # isotopes
         isospec = []
@@ -50,7 +50,7 @@ def rd_nuc_decay_data(file, quiet=False):
         stable = []  # True or False
         for i in range(niso):
             line = ""
-            while len(line.strip()) == 0 or line[0] == "!":
+            while not line.strip() or line[0] == "!":
                 line = f.readline()
             linearr = line.split()
             isospec.append(linearr[0])
@@ -76,7 +76,7 @@ def rd_nuc_decay_data(file, quiet=False):
         nchains = 0
         for i in range(nreac):
             line = ""
-            while len(line.strip()) == 0 or line[0] == "!":
+            while not line.strip() or line[0] == "!":
                 line = f.readline()
             linearr = line.split()
             isospec_parent.append(linearr[0])
@@ -95,32 +95,29 @@ def rd_nuc_decay_data(file, quiet=False):
         if not quiet:
             print("INFO - Read in decay chains")
 
-    # output
-    out = {}
-    out["date"] = date
-    out["nspec"] = nspec
-    out["niso"] = niso
-    out["maxisospec"] = maxisospec
-    out["nreac"] = nreac
-    out["nchains"] = nchains
-    out["isospec"] = isospec
-    out["amu"] = amu
-    out["aiso"] = aiso
-    out["stable"] = stable
-    out["isospec_parent"] = isospec_parent
-    out["amu_parent"] = amu_parent
-    out["aiso_parent"] = aiso_parent
-    out["thalf"] = thalf
-    out["decay_const"] = decay_const
-    out["isospec_daughter"] = isospec_daughter
-    out["amu_daughter"] = amu_daughter
-    out["aiso_daughter"] = aiso_daughter
-    out["edec"] = edec
-    out["seqnum"] = seqnum
-    out["nlines"] = nlines
-
-    # end
-    return out
+    return {
+        "date": date,
+        "nspec": nspec,
+        "niso": niso,
+        "maxisospec": maxisospec,
+        "nreac": nreac,
+        "nchains": nchains,
+        "isospec": isospec,
+        "amu": amu,
+        "aiso": aiso,
+        "stable": stable,
+        "isospec_parent": isospec_parent,
+        "amu_parent": amu_parent,
+        "aiso_parent": aiso_parent,
+        "thalf": thalf,
+        "decay_const": decay_const,
+        "isospec_daughter": isospec_daughter,
+        "amu_daughter": amu_daughter,
+        "aiso_daughter": aiso_daughter,
+        "edec": edec,
+        "seqnum": seqnum,
+        "nlines": nlines,
+    }
 
 
 ###############################################################################

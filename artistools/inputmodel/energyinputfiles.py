@@ -256,7 +256,10 @@ def get_etot_fromfile(modelpath):
 
 
 def get_energy_rate_fromfile(modelpath):
-    energyrate_data = pd.read_csv(
-        Path(modelpath) / "energyrate.txt", skiprows=1, delim_whitespace=True, header=None, names=["times", "rate"]
+    return pd.read_csv(
+        Path(modelpath) / "energyrate.txt",
+        skiprows=1,
+        delim_whitespace=True,
+        header=None,
+        names=["times", "rate"],
     )
-    return energyrate_data

@@ -48,9 +48,7 @@ def opacity_by_Ye(outputfilepath, griddata):
 
 def get_opacity_from_file(modelpath):
     opacity_file_contents = np.loadtxt(Path(modelpath) / "opacity.txt", unpack=True, skiprows=1)
-    opacity = opacity_file_contents[1]
-
-    return opacity
+    return opacity_file_contents[1]
 
 
 def write_Ye_file(outputfilepath, griddata):

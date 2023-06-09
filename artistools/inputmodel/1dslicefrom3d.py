@@ -84,12 +84,22 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
                 sys.exit()
 
             if (
-                (cell["pos_x_min"] != "0.0000000" and (chosenaxis != "x" or float(cell["pos_x_min"]) < 0.0))
-                or (cell["pos_y_min"] != "0.0000000" and (chosenaxis != "y" or float(cell["pos_y_min"]) < 0.0))
-                or (cell["pos_z_min"] != "0.0000000" and (chosenaxis != "z" or float(cell["pos_z_min"]) < 0.0))
+                (
+                    cell["pos_x_min"] == "0.0000000"
+                    or chosenaxis == "x"
+                    and float(cell["pos_x_min"]) >= 0.0
+                )
+                and (
+                    cell["pos_y_min"] == "0.0000000"
+                    or chosenaxis == "y"
+                    and float(cell["pos_y_min"]) >= 0.0
+                )
+                and (
+                    cell["pos_z_min"] == "0.0000000"
+                    or chosenaxis == "z"
+                    and float(cell["pos_z_min"]) >= 0.0
+                )
             ):
-                pass
-            else:
                 outcellid += 1
                 dict3dcellidto1dcellid[int(cell["cellid"])] = outcellid
                 append_cell_to_output(cell, outcellid, t_model, listout, xlist, ylists)

@@ -97,10 +97,7 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
         with inputfilename.open() as inputfile:
             packet_print_lines = [line.split(",") for line in inputfile if "fprintf(packets_file," in line]
             for line in packet_print_lines:
-                for element in line:
-                    if "pkt[i]." in element:
-                        packet_properties.append(element)
-
+                packet_properties.extend(element for element in line if "pkt[i]." in element)
         for i, element in enumerate(packet_properties):
             packet_properties[i] = element.split(".")[1].split(")")[0]
 
@@ -359,12 +356,14 @@ def convert_text_to_parquet(
         ]
     )
 
-    syn_dir = (0.0, 0.0, 1.0)
-    for p in packetsfiletext.parents:
-        if Path(p, "syn_dir.txt").is_file():
-            syn_dir = at.get_syn_dir(p)
-            break
-
+    syn_dir = next(
+        (
+            at.get_syn_dir(p)
+            for p in packetsfiletext.parents
+            if Path(p, "syn_dir.txt").is_file()
+        ),
+        (0.0, 0.0, 1.0),
+    )
     dfpackets = add_packet_directions_lazypolars(dfpackets, syn_dir)
     dfpackets = bin_packet_directions_lazypolars(dfpackets)
 
@@ -691,13 +690,13 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
     e_rf = []
     e_cmf = []
 
+    only_packets_0_scatters = False
     for packetsfile in packetsfiles:
         # for npacketfile in range(0, 1):
         dfpackets = at.packets.readfile(packetsfile)
         at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
         dfpackets = dfpackets.dropna(subset=["emission_velocity"])  # drop rows where emission_vel is NaN
 
-        only_packets_0_scatters = False
         if only_packets_0_scatters:
             print("Only using packets with 0 scatters")
             # print(dfpackets[['scat_count', 'interactions', 'nscatterings']])
@@ -835,10 +834,14 @@ def bin_and_sum(
         .lazy()
         .collect()
         .get_column(bincol)
-        .cut(bins=list(bins), category_label=bincol + "_bin", maintain_order=True)
-        .get_column(bincol + "_bin")
+        .cut(
+            bins=list(bins),
+            category_label=f"{bincol}_bin",
+            maintain_order=True,
+        )
+        .get_column(f"{bincol}_bin")
         .cast(pl.Int32)
-        - 1  # subtract 1 because the returned index 0 is the bin below the start of the first supplied bin
+        - 1
     )
     df = df.with_columns([binindex])
 
@@ -848,11 +851,17 @@ def bin_and_sum(
     if getcounts:
         aggs.append(pl.col(bincol).count().alias("count"))
 
-    wlbins = df.groupby(bincol + "_bin").agg(aggs).lazy().collect()
+    wlbins = df.groupby(f"{bincol}_bin").agg(aggs).lazy().collect()
 
     # now we will include the empty bins
-    dfout = pl.DataFrame(pl.Series(name=bincol + "_bin", values=np.arange(0, len(bins) - 1), dtype=pl.Int32))
-    dfout = dfout.join(wlbins, how="left", on=bincol + "_bin").fill_null(0)
+    dfout = pl.DataFrame(
+        pl.Series(
+            name=f"{bincol}_bin",
+            values=np.arange(0, len(bins) - 1),
+            dtype=pl.Int32,
+        )
+    )
+    dfout = dfout.join(wlbins, how="left", on=f"{bincol}_bin").fill_null(0)
 
     # pandas method
 

@@ -119,28 +119,6 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
             },
         )
 
-    # c23modelpath = Path(
-    #     Path.home(), "Google Drive/Shared drives/ARTIS/artis_runs_published/Collinsetal2023/sfho_long_1-35-135Msun"
-    # )
-
-    # c23energyrate = at.inputmodel.energyinputfiles.get_energy_rate_fromfile(c23modelpath)
-    # c23etot, c23energydistribution_data = at.inputmodel.energyinputfiles.get_etot_fromfile(c23modelpath)
-
-    # dE = np.diff(c23energyrate["rate"] * c23etot)
-    # dt = np.diff(c23energyrate["times"] * 24 * 60 * 60)
-
-    # axis.plot(
-    #     c23energyrate["times"][1:],
-    #     dE / dt * 0.308,
-    #     color="grey",
-    #     linestyle="--",
-    #     zorder=20,
-    #     label=r"Collins+23 $\dot{E}_{rad,\beta^-}$",
-    # )
-
-    # color_alpha = next(axis._get_lines.prop_cycler)['color']
-    color_alpha = "C1"
-
     # if 'eps_alpha_ana_Lsun' in depdata:
     #     axis.plot(depdata['tmid_days'], depdata['eps_alpha_ana_Lsun'] * 3.826e33, **dict(
     #         plotkwargs, **{
@@ -185,6 +163,28 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         import scipy.signal
 
         f_alpha = scipy.signal.savgol_filter(f_alpha, 9, 3, mode="interp")
+        # c23modelpath = Path(
+        #     Path.home(), "Google Drive/Shared drives/ARTIS/artis_runs_published/Collinsetal2023/sfho_long_1-35-135Msun"
+        # )
+
+        # c23energyrate = at.inputmodel.energyinputfiles.get_energy_rate_fromfile(c23modelpath)
+        # c23etot, c23energydistribution_data = at.inputmodel.energyinputfiles.get_etot_fromfile(c23modelpath)
+
+        # dE = np.diff(c23energyrate["rate"] * c23etot)
+        # dt = np.diff(c23energyrate["times"] * 24 * 60 * 60)
+
+        # axis.plot(
+        #     c23energyrate["times"][1:],
+        #     dE / dt * 0.308,
+        #     color="grey",
+        #     linestyle="--",
+        #     zorder=20,
+        #     label=r"Collins+23 $\dot{E}_{rad,\beta^-}$",
+        # )
+
+        # color_alpha = next(axis._get_lines.prop_cycler)['color']
+        color_alpha = "C1"
+
         axistherm.plot(
             depdata["tmid_days"],
             f_alpha,
@@ -218,9 +218,8 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
             **{**plotkwargs, "label": r"Barnes+16 $f_\gamma$", "linestyle": "dashed", "color": color_gamma},
         )
 
-        e0_beta_mev = 0.5
         # Barnes et al (2016) equation 20
-        t_ineff_beta = 7.4 * (e0_beta_mev / 0.5) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
+        t_ineff_beta = 7.4 * 1.0**-0.5 * m5**0.5 * v2 ** (-3.0 / 2)
         # Barnes et al (2016) equation 32
         barnes_f_beta = [
             math.log(1 + 2 * (t / t_ineff_beta) ** 2) / (2 * (t / t_ineff_beta) ** 2) for t in depdata["tmid_days"]
@@ -232,9 +231,8 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
             **{**plotkwargs, "label": r"Barnes+16 $f_\beta$", "linestyle": "dashed", "color": color_beta},
         )
 
-        e0_alpha_mev = 6.0
         # Barnes et al (2016) equation 25 times equation 16 for t_peak
-        t_ineff_alpha = 4.3 * 1.8 * (e0_alpha_mev / 6.0) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
+        t_ineff_alpha = 4.3 * 1.8 * 1.0**-0.5 * m5**0.5 * v2 ** (-3.0 / 2)
         # Barnes et al (2016) equation 32
         barnes_f_alpha = [
             math.log(1 + 2 * (t / t_ineff_alpha) ** 2) / (2 * (t / t_ineff_alpha) ** 2) for t in depdata["tmid_days"]
@@ -318,10 +316,11 @@ def plot_artis_lightcurve(
         if average_over_theta:
             lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta")
 
-    plotkwargs: dict[str, t.Any] = {}
-    plotkwargs["label"] = modelname
-    plotkwargs["linestyle"] = args.linestyle[lcindex]
-    plotkwargs["color"] = args.color[lcindex]
+    plotkwargs: dict[str, t.Any] = {
+        "label": modelname,
+        "linestyle": args.linestyle[lcindex],
+        "color": args.color[lcindex],
+    }
     if args.dashes[lcindex]:
         plotkwargs["dashes"] = args.dashes[lcindex]
     if args.linewidth[lcindex]:
@@ -589,7 +588,7 @@ def make_lightcurve_plot(
     if args.show:
         plt.show()
 
-    fig.savefig(str(filenameout), format="pdf")
+    fig.savefig(filenameout, format="pdf")
     print(f"Saved {filenameout}")
 
     if args.plotthermalisation:
@@ -605,8 +604,8 @@ def make_lightcurve_plot(
         # axistherm.set_ylim(top=1.05)
 
         # filenameout2 = "plotthermalisation.pdf"
-        filenameout2 = str(filenameout).replace(".pdf", "_thermalisation.pdf")
-        figtherm.savefig(str(filenameout2), format="pdf")
+        filenameout2 = filenameout.replace(".pdf", "_thermalisation.pdf")
+        figtherm.savefig(filenameout2, format="pdf")
         print(f"Saved {filenameout2}")
 
     plt.close()
@@ -619,11 +618,11 @@ def create_axes(args):
 
     args.subplots = False  # TODO: set as command line arg
 
-    if (args.filter and len(args.filter) > 1) or args.subplots is True:
+    if (args.filter and len(args.filter) > 1) or args.subplots:
         args.subplots = True
         rows = 2
         cols = 3
-    elif (args.colour_evolution and len(args.colour_evolution) > 1) or args.subplots is True:
+    elif args.colour_evolution and len(args.colour_evolution) > 1:
         args.subplots = True
         rows = 1
         cols = 3
@@ -825,24 +824,24 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 time, brightness_in_mag = at.lightcurve.get_band_lightcurve(band_lightcurve_data, band_name, args)
 
                 if args.print_data or args.write_data:
-                    txtlinesout = []
-                    txtlinesout.append(f"# band: {band_name}")
-                    txtlinesout.append(f"# model: {modelname}")
-                    txtlinesout.append("# time_days magnitude")
-                    for t_d, m in zip(time, brightness_in_mag):
-                        txtlinesout.append(f"{t_d} {m}")
+                    txtlinesout = [
+                        f"# band: {band_name}",
+                        f"# model: {modelname}",
+                        "# time_days magnitude",
+                    ]
+                    txtlinesout.extend(f"{t_d} {m}" for t_d, m in zip(time, brightness_in_mag))
                     txtout = "\n".join(txtlinesout)
-                    if args.write_data:
-                        bandoutfile = (
-                            Path(f"band_{band_name}_angle_{angle}.txt")
-                            if angle != -1
-                            else Path(f"band_{band_name}.txt")
-                        )
-                        with bandoutfile.open("w") as f:
-                            f.write(txtout)
-                        print(f"Saved {bandoutfile}")
-                    if args.print_data:
-                        print(txtout)
+                if args.write_data:
+                    bandoutfile = (
+                        Path(f"band_{band_name}_angle_{angle}.txt")
+                        if angle != -1
+                        else Path(f"band_{band_name}.txt")
+                    )
+                    with bandoutfile.open("w") as f:
+                        f.write(txtout)
+                    print(f"Saved {bandoutfile}")
+                if args.print_data:
+                    print(txtout)
 
                 plotkwargs["label"] = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
                 # plotkwargs['label'] = '\n'.join(wrap(linelabel, 40))  # TODO: could be arg? wraps text in label
@@ -1020,7 +1019,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                     )
                     # plotkwargs["color"] = color_list[angle_counter]  # index instaed of angle_counter??
                     angle_counter += 1
-                elif args.plotviewingangle and not args.color:
+                elif args.plotviewingangle:
                     plotkwargs["color"] = color_list[angle_counter]
                     angle_counter += 1
                 elif args.color:
@@ -1062,14 +1061,14 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                     fontsize="x-large",
                 )
 
-        # UNCOMMENT TO ESTIMATE COLOUR AT TIME B MAX
-        # def match_closest_time(reftime):
-        #     return ("{}".format(min([float(x) for x in plot_times], key=lambda x: abs(x - reftime))))
-        #
-        # tmax_B = 17.0  # CHANGE TO TIME OF B MAX
-        # tmax_B = float(match_closest_time(tmax_B))
-        # print(f'{filter_names[0]} - {filter_names[1]} at t_Bmax ({tmax_B}) = '
-        #       f'{diff[plot_times.index(tmax_B)]}')
+            # UNCOMMENT TO ESTIMATE COLOUR AT TIME B MAX
+            # def match_closest_time(reftime):
+            #     return ("{}".format(min([float(x) for x in plot_times], key=lambda x: abs(x - reftime))))
+            #
+            # tmax_B = 17.0  # CHANGE TO TIME OF B MAX
+            # tmax_B = float(match_closest_time(tmax_B))
+            # print(f'{filter_names[0]} - {filter_names[1]} at t_Bmax ({tmax_B}) = '
+            #       f'{diff[plot_times.index(tmax_B)]}')
 
     fig, ax = set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args)
     ax = at.plottools.set_axis_properties(ax, args)

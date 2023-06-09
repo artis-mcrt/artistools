@@ -22,11 +22,12 @@ import artistools as at
 
 def get_elemabund_from_nucabund(dfnucabund: pd.DataFrame) -> dict[str, float]:
     """Return a dictionary of elemental abundances from nuclear abundance DataFrame."""
-    dictelemabund: dict[str, float] = {}
-    for atomic_number in range(1, dfnucabund.Z.max() + 1):
-        dictelemabund[f"X_{at.get_elsymbol(atomic_number)}"] = dfnucabund.query(
+    dictelemabund: dict[str, float] = {
+        f"X_{at.get_elsymbol(atomic_number)}": dfnucabund.query(
             "Z == @atomic_number", inplace=False
         ).massfrac.sum()
+        for atomic_number in range(1, dfnucabund.Z.max() + 1)
+    }
     return dictelemabund
 
 
@@ -269,7 +270,9 @@ def get_modelcellabundance(
     ]
 
     # adjust frac_of_cellmass for missing particles
-    cell_frac_sum = sum([frac_of_cellmass for _, frac_of_cellmass in contribparticles])
+    cell_frac_sum = sum(
+        frac_of_cellmass for _, frac_of_cellmass in contribparticles
+    )
 
     nucabundcolnames = {
         col for particleid in dfthiscellcontribs.particleid for col in dict_traj_nuc_abund.get(particleid, {})
@@ -277,10 +280,10 @@ def get_modelcellabundance(
 
     row = {
         nucabundcolname: sum(
-            [
-                frac_of_cellmass * traj_nuc_abund.get(nucabundcolname, 0.0) / cell_frac_sum
-                for traj_nuc_abund, frac_of_cellmass in contribparticles
-            ]
+            frac_of_cellmass
+            * traj_nuc_abund.get(nucabundcolname, 0.0)
+            / cell_frac_sum
+            for traj_nuc_abund, frac_of_cellmass in contribparticles
         )
         for nucabundcolname in nucabundcolnames
     }
@@ -298,7 +301,7 @@ def get_modelcellabundance(
 
 
 def get_gridparticlecontributions(gridcontribpath: Path | str) -> pd.DataFrame:
-    dfcontribs = pd.read_csv(
+    return pd.read_csv(
         at.zopen(Path(gridcontribpath, "gridcontributions.txt")),
         delim_whitespace=True,
         dtype={
@@ -310,20 +313,17 @@ def get_gridparticlecontributions(gridcontribpath: Path | str) -> pd.DataFrame:
         dtype_backend="pyarrow",
     )
 
-    return dfcontribs
-
 
 def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataFrame) -> pd.DataFrame:
-    missing_particleids = []
-    for particleid in sorted(dfcontribs.particleid.unique()):
+    missing_particleids = [
+        particleid
+        for particleid in sorted(dfcontribs.particleid.unique())
         if (
             not Path(traj_root, f"{particleid}.tar.xz").is_file()
             and not Path(traj_root, f"{particleid}.tar").is_file()
             and not Path(traj_root, str(particleid)).is_dir()
-        ):
-            missing_particleids.append(particleid)
-            # print(f' WARNING particle {particleid} not found!')
-
+        )
+    ]
     print(
         (
             f"Adding gridcontributions column that excludes {len(missing_particleids)} "
@@ -607,17 +607,15 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         A = row.N + row.Z
         rowdict[f"X_{at.get_elsymbol(row.Z)}{A}"] = row.massfrac
 
-    modeldata = []
-    for mgi, densityrow in dfdensities.iterrows():
-        # print(mgi, densityrow)
-        modeldata.append(
-            dict(
-                inputcellid=mgi + 1,
-                velocity_outer=densityrow["velocity_outer"],
-                logrho=math.log10(densityrow["rho"]),
-                **rowdict,
-            )
+    modeldata = [
+        dict(
+            inputcellid=mgi + 1,
+            velocity_outer=densityrow["velocity_outer"],
+            logrho=math.log10(densityrow["rho"]),
+            **rowdict,
         )
+        for mgi, densityrow in dfdensities.iterrows()
+    ]
     # print(modeldata)
 
     dfmodel = pd.DataFrame(modeldata)
@@ -626,7 +624,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     with open(Path(args.outputpath, "gridcontributions.txt"), "w") as fcontribs:
         fcontribs.write("particleid cellindex frac_of_cellmass\n")
         for cell in dfmodel.itertuples(index=False):
-            fcontribs.write(f"{particleid} {cell.inputcellid} {1.}\n")
+            fcontribs.write(f"{particleid} {cell.inputcellid} 1.0\n")
 
 
 if __name__ == "__main__":

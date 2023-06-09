@@ -191,7 +191,7 @@ def viewing_angles_visualisation(
             fig.write_html(outfile, auto_play=False)
         else:
             fig.write_image(outfile)
-        print("Figure saved as %s" % outfile)
+        print(f"Figure saved as {outfile}")
 
     if show_plot:
         fig.show()
