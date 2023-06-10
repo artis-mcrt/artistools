@@ -673,7 +673,7 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
     T_R = radfielddata.query("bin_num == -1").iloc[0].T_R
     print(f"T_R = {T_R}")
 
-    nrows = 1 if not args.photoionrates else 3
+    nrows = 3 if args.photoionrates else 1
     fig, axes = plt.subplots(
         nrows=nrows,
         ncols=1,
