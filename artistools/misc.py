@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import gzip
 import math
 import os
@@ -93,7 +94,7 @@ def showtimesteptimes(modelpath: Path | None = None, numberofcolumns: int = 5) -
 
     times = get_timestep_times_float(modelpath, loc="mid")
     indexendofcolumnone = math.ceil((len(times) - 1) / numberofcolumns)
-    for rownum in range(0, indexendofcolumnone):
+    for rownum in range(indexendofcolumnone):
         strline = ""
         for colnum in range(numberofcolumns):
             if colnum > 0:
@@ -127,9 +128,7 @@ def get_composition_data(filename: Path | str) -> pd.DataFrame:
 
             startindex += int(rowdfs[-1].iloc[0]["nions"])
 
-    compdf = pd.concat(rowdfs, ignore_index=True)
-
-    return compdf
+    return pd.concat(rowdfs, ignore_index=True)
 
 
 def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
@@ -202,7 +201,7 @@ def average_direction_bins(
         start_bin_range = range(0, dirbincount, nphibins)
     elif overangle == "theta":
         ncosthetabins = at.get_viewingdirection_costhetabincount()
-        start_bin_range = range(0, nphibins)
+        start_bin_range = range(nphibins)
 
     # we will make a copy to ensure that we don't cause side effects from altering the original DataFrames
     # that might be returned again later by an lru_cached function
@@ -228,7 +227,7 @@ def average_direction_bins(
 
 def match_closest_time(reftime: float, searchtimes: list[t.Any]) -> str:
     """Get time closest to reftime in list of times (searchtimes)."""
-    return str(f"{min([float(x) for x in searchtimes], key=lambda x: abs(x - reftime))}")
+    return str(f"{min((float(x) for x in searchtimes), key=lambda x: abs(x - reftime))}")
 
 
 def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
@@ -287,8 +286,7 @@ def get_wid_init_at_tmin(modelpath: Path) -> float:
     coordmax0 = rmax
     ncoordgrid0 = 50
 
-    wid_init = 2 * coordmax0 / ncoordgrid0
-    return wid_init
+    return 2 * coordmax0 / ncoordgrid0
 
 
 def get_wid_init_at_tmodel(
@@ -307,9 +305,7 @@ def get_wid_init_at_tmodel(
     ncoordgridx: int = round(ngridpoints ** (1.0 / 3.0))
 
     assert xmax is not None
-    wid_init = 2.0 * xmax / ncoordgridx
-
-    return wid_init
+    return 2.0 * xmax / ncoordgridx
 
 
 def get_syn_dir(modelpath: Path) -> tuple[float, float, float]:
@@ -402,18 +398,13 @@ def get_timestep_times_float(
     dlogt = (math.log(inputparams["tmax"]) - math.log(tmin)) / inputparams["ntstep"]
     timesteps = range(inputparams["ntstep"])
     if loc == "mid":
-        tmids = np.array([tmin * math.exp((ts + 0.5) * dlogt) for ts in timesteps])
-        return tmids
+        return np.array([tmin * math.exp((ts + 0.5) * dlogt) for ts in timesteps])
     if loc == "start":
-        tstarts = np.array([tmin * math.exp(ts * dlogt) for ts in timesteps])
-        return tstarts
+        return np.array([tmin * math.exp(ts * dlogt) for ts in timesteps])
     if loc == "end":
-        tends = np.array([tmin * math.exp((ts + 1) * dlogt) for ts in timesteps])
-        return tends
+        return np.array([tmin * math.exp((ts + 1) * dlogt) for ts in timesteps])
     if loc == "delta":
-        tdeltas = np.array([tmin * (math.exp((ts + 1) * dlogt) - math.exp(ts * dlogt)) for ts in timesteps])
-        return tdeltas
-
+        return np.array([tmin * (math.exp((ts + 1) * dlogt) - math.exp(ts * dlogt)) for ts in timesteps])
     msg = "loc must be one of 'mid', 'start', 'end', or 'delta'"
     raise ValueError(msg)
 
@@ -524,10 +515,7 @@ def get_time_range(
 def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
     """Return the time in days of the midpoint of a timestep number."""
     timearray = get_timestep_times_float(modelpath, loc="mid")
-    if timearray is not None:
-        return timearray[timestep]
-
-    return -1
+    return timearray[timestep]
 
 
 def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, float | None]:
@@ -599,12 +587,15 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
 
 @lru_cache(maxsize=1)
 def get_elsymbolslist() -> list[str]:
-    elsymbols = [
+    return [
         "n",
-        *list(pd.read_csv(at.get_config()["path_datadir"] / "elements.csv", usecols=["symbol"])["symbol"].to_numpy()),
+        *list(
+            pd.read_csv(
+                at.get_config()["path_datadir"] / "elements.csv",
+                usecols=["symbol"],
+            )["symbol"].to_numpy()
+        ),
     ]
-
-    return elsymbols
 
 
 def get_atomic_number(elsymbol: str) -> int:
@@ -638,7 +629,7 @@ def get_ionstring(
         return f"{get_elsymbol(atomic_number)}"
 
     if spectral:
-        return f"{get_elsymbol(atomic_number)}{' ' if not nospace else ''}{roman_numerals[ionstage]}"
+        return f"{get_elsymbol(atomic_number)}{'' if nospace else ' '}{roman_numerals[ionstage]}"
 
     # ion notion e.g. Co+, Fe2+
     if ionstage > 2:
@@ -686,9 +677,7 @@ def makelist(x: None | list | Sequence | str | Path) -> list[t.Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
         return []
-    if isinstance(x, (str, Path)):
-        return [x]
-    return list(x)
+    return [x] if isinstance(x, (str, Path)) else list(x)
 
 
 def trim_or_pad(requiredlength: int, *listoflistin: list[list[t.Any]]) -> Iterator[list[t.Any]]:
@@ -806,7 +795,7 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     filepath = Path(str(filepath).replace(".xz", "").replace(".gz", "").replace(".lz4", "").replace(".zst", ""))
 
     # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
-    individualmetafile = filepath.with_suffix(filepath.suffix + ".meta.yml")
+    individualmetafile = filepath.with_suffix(f"{filepath.suffix}.meta.yml")
     if individualmetafile.exists():
         with individualmetafile.open("r") as yamlfile:
             metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
@@ -952,13 +941,17 @@ def get_linelist_dict(modelpath: Path | str) -> dict[int, linetuple]:
     nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
         Path(modelpath, "linestat.out")
     )
-    linelistdict = {
+    return {
         index: linetuple(lambda_a, Z, ionstage, upper, lower)
         for index, lambda_a, Z, ionstage, upper, lower in zip(
-            range(nlines), lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
+            range(nlines),
+            lambda_angstroms,
+            atomic_numbers,
+            ion_stages,
+            upper_levels,
+            lower_levels,
         )
     }
-    return linelistdict
 
 
 @lru_cache(maxsize=8)
@@ -1050,22 +1043,18 @@ def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
 def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
     """Get the set of timesteps covered by the output files in an ARTIS run folder."""
     folder_timesteps = set()
-    try:
-        with zopen(Path(folderpath, "estimators_0000.out")) as estfile:
-            restart_timestep = -1
-            for line in estfile:
-                if line.startswith("timestep "):
-                    timestep = int(line.split()[1])
+    with contextlib.suppress(FileNotFoundError), zopen(Path(folderpath, "estimators_0000.out")) as estfile:
+        restart_timestep = -1
+        for line in estfile:
+            if line.startswith("timestep "):
+                timestep = int(line.split()[1])
 
-                    if restart_timestep < 0 and timestep != 0 and 0 not in folder_timesteps:
-                        # the first timestep of a restarted run is duplicate and should be ignored
-                        restart_timestep = timestep
+                if restart_timestep < 0 and timestep != 0 and 0 not in folder_timesteps:
+                    # the first timestep of a restarted run is duplicate and should be ignored
+                    restart_timestep = timestep
 
-                    if timestep != restart_timestep:
-                        folder_timesteps.add(timestep)
-
-    except FileNotFoundError:
-        pass
+                if timestep != restart_timestep:
+                    folder_timesteps.add(timestep)
 
     return tuple(folder_timesteps)
 
@@ -1078,8 +1067,8 @@ def get_runfolders(
     The folder list may include non-ARTIS folders if a timestep is not specified.
     """
     folderlist_all = (*sorted([child for child in Path(modelpath).iterdir() if child.is_dir()]), Path(modelpath))
-    folder_list_matching = []
     if (timestep is not None and timestep > -1) or (timesteps is not None and len(timesteps) > 0):
+        folder_list_matching = []
         for folderpath in folderlist_all:
             folder_timesteps = get_runfolder_timesteps(folderpath)
             if timesteps is None and timestep is not None and timestep in folder_timesteps:
@@ -1274,9 +1263,12 @@ def get_dirbin_labels(
     if modelpath:
         modelpath = Path(modelpath)
         MABINS = at.get_viewingdirectionbincount()
-        if len(list(Path(modelpath).glob("*_res_00.out*"))) > 0:  # if the first direction bin file exists
-            assert len(list(Path(modelpath).glob(f"*_res_{MABINS-1:02d}.out*"))) > 0  # check last bin exists
-            assert len(list(Path(modelpath).glob(f"*_res_{MABINS:02d}.out*"))) == 0  # check one beyond does not exist
+        if list(Path(modelpath).glob("*_res_00.out*")):
+            # if the first direction bin file exists, check:
+            # check last bin exists
+            assert list(Path(modelpath).glob(f"*_res_{MABINS-1:02d}.out*"))
+            # check one beyond does not exist
+            assert not list(Path(modelpath).glob(f"*_res_{MABINS:02d}.out*"))
 
     _, _, costhetabinlabels = get_costheta_bins()
     _, _, phibinlabels = get_phi_bins()
