@@ -529,15 +529,16 @@ def split_dataframe_stokesparams(specdata: pd.DataFrame) -> dict[str, pd.DataFra
     parameters. Split these into a dictionary of DataFrames.
     """
     specdata = specdata.rename({"0": "nu", "0.0": "nu"}, axis="columns")
-    cols_to_split = []
-    stokes_params = {}
-    for i, key in enumerate(specdata.keys()):
-        if specdata.keys()[1] in key:
-            cols_to_split.append(i)
-
-    stokes_params["I"] = pd.concat(
-        [specdata["nu"], specdata.iloc[:, cols_to_split[0] : cols_to_split[1]]], axis="columns"
-    )
+    cols_to_split = [i for i, key in enumerate(specdata.keys()) if specdata.keys()[1] in key]
+    stokes_params = {
+        "I": pd.concat(
+            [
+                specdata["nu"],
+                specdata.iloc[:, cols_to_split[0] : cols_to_split[1]],
+            ],
+            axis="columns",
+        )
+    }
     stokes_params["Q"] = pd.concat(
         [specdata["nu"], specdata.iloc[:, cols_to_split[1] : cols_to_split[2]]], axis="columns"
     )
