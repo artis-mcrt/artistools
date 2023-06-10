@@ -25,28 +25,13 @@ ignore: # A list of paths or files which Sourcery will ignore.
 rule_settings:
     enable:
         - default
+        # - gpsg
     disable: [] # A list of rule IDs Sourcery will never suggest.
     rule_types:
         - refactoring
         - suggestion
         - comment
     python_version: '3.8' # A string specifying the lowest Python version your project supports. Sourcery will not suggest refactorings requiring a higher Python version.
-
-# rules:  # A list of custom rules Sourcery will include in its analysis.
-# - id: no-print-statements
-#   description: Do not use print statements in the test directory.
-#   pattern: print(...)
-#   language: python
-#   replacement:
-#   condition:
-#   explanation:
-#   paths:
-#     include:
-#     - test
-#     exclude:
-#     - conftest.py
-#   tests: []
-#   tags: []
 
 # rule_tags: {} # Additional rule tags.
 
@@ -60,10 +45,10 @@ rule_settings:
 #   request_review: author
 #   sourcery_branch: sourcery/{base_branch}
 
-# clone_detection:
-#   min_lines: 3
-#   min_duplicates: 2
-#   identical_clones_only: false
+clone_detection:
+    min_lines: 4
+    min_duplicates: 2
+    identical_clones_only: false
 
 # proxy:
 #   url:
