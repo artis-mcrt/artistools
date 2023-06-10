@@ -225,10 +225,9 @@ def plot_cell_abund_evolution(
     # if arr_strnuc[0] != 'Ye':
     #     arr_strnuc.insert(0, 'Ye')
 
-    arr_abund_gsi: dict[str, np.ndarray[t.Any, np.dtype[np.float64]]] = {}
-
-    for strnuc in arr_strnuc:
-        arr_abund_gsi[strnuc] = np.zeros_like(arr_time_gsi_days)
+    arr_abund_gsi: dict[str, np.ndarray[t.Any, np.dtype[np.float64]]] = {
+        strnuc: np.zeros_like(arr_time_gsi_days) for strnuc in arr_strnuc
+    }
 
     # calculate the GSI values from the particles contributing to this cell
     for particleid, frac_of_cellmass in dfpartcontrib_thiscell[["particleid", "frac_of_cellmass"]].itertuples(
@@ -415,14 +414,13 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     with at.zopen(modelpath / "model.txt") as fmodel:
         while True:
             line = fmodel.readline()
-            if line.startswith("#"):
-                if line.startswith("# gridfolder:"):
-                    griddatafolder = Path(line.strip().removeprefix("# gridfolder: "))
-                    mergermodelfolder = Path(line.strip().removeprefix("# gridfolder: ").removesuffix("_snapshot"))
-                elif line.startswith("# trajfolder:"):
-                    trajfolder = Path(line.strip().removeprefix("# trajfolder: ").replace("SFHO", "SFHo"))
-            else:
+            if not line.startswith("#"):
                 break
+            if line.startswith("# gridfolder:"):
+                griddatafolder = Path(line.strip().removeprefix("# gridfolder: "))
+                mergermodelfolder = Path(line.strip().removeprefix("# gridfolder: ").removesuffix("_snapshot"))
+            elif line.startswith("# trajfolder:"):
+                trajfolder = Path(line.strip().removeprefix("# trajfolder: ").replace("SFHO", "SFHo"))
 
     merger_root = Path(Path.home() / "Google Drive/Shared Drives/GSI NSM/Mergers")
     # merger_root = Path("/Users/luke/Downloads/Mergers")
