@@ -318,14 +318,14 @@ def plot_artis_spectrum(
             )
 
         dirbin_definitions = (
-            at.get_dirbin_labels(
+            at.get_vspec_dir_labels(modelpath=modelpath, viewinganglelabelunits=args.viewinganglelabelunits)
+            if args.plotvspecpol
+            else at.get_dirbin_labels(
                 dirbins=directionbins,
                 modelpath=modelpath,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
             )
-            if not args.plotvspecpol
-            else at.get_vspec_dir_labels(modelpath=modelpath, viewinganglelabelunits=args.viewinganglelabelunits)
         )
 
         for dirbin in directionbins:
@@ -470,7 +470,7 @@ def make_spectrum_plot(
                 maxpacketfiles=args.maxpacketfiles,
                 filterfunc=filterfunc,
                 plotpacketcount=args.plotpacketcount,
-                directionbins=args.plotviewingangle if not args.plotvspecpol else args.plotvspecpol,
+                directionbins=args.plotvspecpol or args.plotviewingangle,
                 average_over_phi=args.average_over_phi_angle,
                 average_over_theta=args.average_over_theta_angle,
                 **plotkwargs,
