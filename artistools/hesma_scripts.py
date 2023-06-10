@@ -14,7 +14,7 @@ def plot_hesma_spectrum(timeavg, axes):
     # print(hesma_spec)
 
     def match_closest_time(reftime):
-        return str(f"{min([float(x) for x in hesma_spec.keys()[1:]], key=lambda x: abs(x - reftime))}")
+        return str(f"{min((float(x) for x in hesma_spec.keys()[1:]), key=lambda x: abs(x - reftime))}")
 
     closest_time = match_closest_time(timeavg)
     closest_time = f"{closest_time:.2f}"
@@ -143,9 +143,10 @@ def make_hesma_peakmag_dm15_dm40(band, pathtofiles, modelname, outpath, dm40=Fal
     angles = np.arange(0, 100)
     angle_definition = at.get_dirbin_labels(angles, modelpath=None)
 
-    outdata = {}
-    outdata["peakmag"] = dm15data["peakmag"]  # dm15 peak mag probably more accurate - shorter time window
-    outdata["dm15"] = dm15data["dm15"]
+    outdata = {
+        "peakmag": dm15data["peakmag"],  # dm15 peak mag probably more accurate - shorter time window
+        "dm15": dm15data["dm15"],
+    }
     if dm40:
         outdata["dm40"] = dm40data["dm40"]
     outdata["angle_bin"] = angle_definition.values()
