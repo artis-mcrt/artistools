@@ -146,9 +146,9 @@ def imshow_init_for_artis_grid(ngrid, vmax, plot_variable_3d_array, plot_axes="x
         print(f"Choose plot axes from {plot_axes_choices}")
         sys.exit(1)
 
-    for z in range(0, ngrid):
-        for y in range(0, ngrid):
-            for x in range(0, ngrid):
+    for z in range(ngrid):
+        for y in range(ngrid):
+            for x in range(ngrid):
                 if plot_axes == "xy":
                     if z == round(ngrid / 2) - 1:
                         data[y, x] = plot_variable_3d_array[x, y, z]
