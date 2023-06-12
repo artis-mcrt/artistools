@@ -620,11 +620,11 @@ def create_axes(args):
 
     args.subplots = False  # TODO: set as command line arg
 
-    if (args.filter and len(args.filter) > 1) or args.subplots is True:
+    if (args.filter and len(args.filter) > 1) or args.subplots:
         args.subplots = True
         rows = 2
         cols = 3
-    elif (args.colour_evolution and len(args.colour_evolution) > 1) or args.subplots is True:
+    elif args.colour_evolution and len(args.colour_evolution) > 1:
         args.subplots = True
         rows = 1
         cols = 3
