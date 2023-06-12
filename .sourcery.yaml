@@ -29,7 +29,6 @@ ignore: # A list of paths or files which Sourcery will ignore.
 rule_settings:
     enable:
         - default
-        - gpsg-lambda
         - gpsg-standard-import-alias
     disable: [] # A list of rule IDs Sourcery will never suggest.
     rule_types:
