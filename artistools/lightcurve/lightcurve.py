@@ -293,21 +293,20 @@ def bolometric_magnitude(
         time = float(time)
 
         if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time):
-            if angle != -1:
-                if args.plotvspecpol:
-                    spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
-                else:
-                    spectrum = at.spectra.get_spectrum(
-                        modelpath=modelpath,
-                        directionbins=[angle],
-                        timestepmin=timestep,
-                        timestepmax=timestep,
-                        average_over_phi=average_over_phi,
-                        average_over_theta=average_over_theta,
-                    )[angle]
-            else:
+            if angle == -1:
                 spectrum = at.spectra.get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]
 
+            elif args.plotvspecpol:
+                spectrum = at.spectra.get_vspecpol_spectrum(modelpath, time, angle, args)
+            else:
+                spectrum = at.spectra.get_spectrum(
+                    modelpath=modelpath,
+                    directionbins=[angle],
+                    timestepmin=timestep,
+                    timestepmax=timestep,
+                    average_over_phi=average_over_phi,
+                    average_over_theta=average_over_theta,
+                )[angle]
             integrated_flux = np.trapz(spectrum["f_lambda"], spectrum["lambda_angstroms"])
             integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to("cm"), 2)
             Mbol_sun = 4.74
@@ -322,7 +321,7 @@ def bolometric_magnitude(
 
 def get_filter_data(filterdir: Path | str, filter_name: str) -> tuple[float, np.ndarray, np.ndarray, float, float]:
     """Filter data in 'data/filters' taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata."""
-    with Path(filterdir, filter_name + ".txt").open("r") as filter_metadata:  # defintion of the file
+    with Path(filterdir, f"{filter_name}.txt").open("r") as filter_metadata:  # defintion of the file
         line_in_filter_metadata = filter_metadata.readlines()  # list of lines
 
     zeropointenergyflux = float(line_in_filter_metadata[0])
