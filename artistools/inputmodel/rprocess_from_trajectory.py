@@ -22,11 +22,10 @@ import artistools as at
 
 def get_elemabund_from_nucabund(dfnucabund: pd.DataFrame) -> dict[str, float]:
     """Return a dictionary of elemental abundances from nuclear abundance DataFrame."""
-    dictelemabund: dict[str, float] = {}
-    for atomic_number in range(1, dfnucabund.Z.max() + 1):
-        dictelemabund[f"X_{at.get_elsymbol(atomic_number)}"] = dfnucabund.query(
-            "Z == @atomic_number", inplace=False
-        ).massfrac.sum()
+    dictelemabund: dict[str, float] = {
+        f"X_{at.get_elsymbol(atomic_number)}": dfnucabund.query("Z == @atomic_number", inplace=False).massfrac.sum()
+        for atomic_number in range(1, dfnucabund.Z.max() + 1)
+    }
     return dictelemabund
 
 
@@ -269,7 +268,7 @@ def get_modelcellabundance(
     ]
 
     # adjust frac_of_cellmass for missing particles
-    cell_frac_sum = sum([frac_of_cellmass for _, frac_of_cellmass in contribparticles])
+    cell_frac_sum = sum(frac_of_cellmass for _, frac_of_cellmass in contribparticles)
 
     nucabundcolnames = {
         col for particleid in dfthiscellcontribs.particleid for col in dict_traj_nuc_abund.get(particleid, {})
@@ -277,10 +276,8 @@ def get_modelcellabundance(
 
     row = {
         nucabundcolname: sum(
-            [
-                frac_of_cellmass * traj_nuc_abund.get(nucabundcolname, 0.0) / cell_frac_sum
-                for traj_nuc_abund, frac_of_cellmass in contribparticles
-            ]
+            frac_of_cellmass * traj_nuc_abund.get(nucabundcolname, 0.0) / cell_frac_sum
+            for traj_nuc_abund, frac_of_cellmass in contribparticles
         )
         for nucabundcolname in nucabundcolnames
     }
@@ -298,7 +295,7 @@ def get_modelcellabundance(
 
 
 def get_gridparticlecontributions(gridcontribpath: Path | str) -> pd.DataFrame:
-    dfcontribs = pd.read_csv(
+    return pd.read_csv(
         at.zopen(Path(gridcontribpath, "gridcontributions.txt")),
         delim_whitespace=True,
         dtype={
@@ -309,8 +306,6 @@ def get_gridparticlecontributions(gridcontribpath: Path | str) -> pd.DataFrame:
         },
         dtype_backend="pyarrow",
     )
-
-    return dfcontribs
 
 
 def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataFrame) -> pd.DataFrame:
