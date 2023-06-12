@@ -364,8 +364,10 @@ def get_spectrum(
 
     if any(dirbin != -1 for dirbin in directionbins):
         assert stokesparam == "I"
-        specdata.update(
-            get_spec_res(modelpath=modelpath, average_over_theta=average_over_theta, average_over_phi=average_over_phi)
+        specdata |= get_spec_res(
+            modelpath=modelpath,
+            average_over_theta=average_over_theta,
+            average_over_phi=average_over_phi,
         )
 
     specdataout: dict[int, pd.DataFrame] = {}
