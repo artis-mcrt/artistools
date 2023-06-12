@@ -577,8 +577,7 @@ def get_model_name(path: Path | str) -> str:
 
 def get_z_a_nucname(nucname: str) -> tuple[int, int]:
     """Return atomic number and mass number from a string like 'Pb208' (returns 92, 208)."""
-    if nucname.startswith("X_"):
-        nucname = nucname[2:]
+    nucname = nucname.removeprefix("X_")
     z = get_atomic_number(nucname.rstrip("0123456789"))
     assert z > 0
     a = int(nucname.lower().lstrip("abcdefghijklmnopqrstuvwxyz"))
@@ -600,9 +599,7 @@ def get_elsymbolslist() -> list[str]:
 
 def get_atomic_number(elsymbol: str) -> int:
     assert elsymbol is not None
-    if elsymbol.startswith("X_"):
-        elsymbol = elsymbol[2:]
-
+    elsymbol = elsymbol.removeprefix("X_")
     elsymbol = elsymbol.split("_")[0].split("-")[0].rstrip("0123456789")
 
     if elsymbol.title() in get_elsymbolslist():
