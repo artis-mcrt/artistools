@@ -208,6 +208,7 @@ def plot_artis_spectrum(
     directionbins: list[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
+    usedegrees: bool = False,
     maxpacketfiles: int | None = None,
     **plotkwargs,
 ) -> pd.DataFrame | None:
@@ -325,6 +326,7 @@ def plot_artis_spectrum(
                 modelpath=modelpath,
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
+                usedegrees=usedegrees,
             )
         )
 
@@ -473,6 +475,7 @@ def make_spectrum_plot(
                 directionbins=args.plotvspecpol or args.plotviewingangle,
                 average_over_phi=args.average_over_phi_angle,
                 average_over_theta=args.average_over_theta_angle,
+                usedegrees=args.usedegrees,
                 **plotkwargs,
             )
             if seriesdata is not None:
@@ -734,6 +737,7 @@ def make_emissionabsorption_plot(
                 modelpath=modelpath,
                 average_over_phi=args.average_over_phi_angle,
                 average_over_theta=args.average_over_theta_angle,
+                usedegrees=args.usedegrees,
             )
             plotlabel += f", directionbin {dirbin_definitions[args.plotviewingangle[0]]}"
 
