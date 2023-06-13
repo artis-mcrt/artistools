@@ -1225,7 +1225,7 @@ def get_costheta_bins(usedegrees: bool) -> tuple[np.ndarray, np.ndarray, list[st
     if usedegrees:
         thetabins_upper = np.arccos(costhetabins_lower) / np.pi * 180
         thetabins_lower = np.arccos(costhetabins_upper) / np.pi * 180
-        binlabels = [f"{lower:.0f}° < θ ≤ {upper:.0f}°" for lower, upper in zip(thetabins_lower, thetabins_upper)]
+        binlabels = [f"{lower:.0f}° < θ < {upper:.0f}°" for lower, upper in zip(thetabins_lower, thetabins_upper)]
     else:
         binlabels = [
             f"{lower:.1f} ≤ cos θ < {upper:.1f}" for lower, upper in zip(costhetabins_lower, costhetabins_upper)
