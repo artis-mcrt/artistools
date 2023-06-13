@@ -152,10 +152,7 @@ define_colours_list2 = [
 
 def parse_directionbin_args(modelpath: Path | str, args) -> tuple[Sequence[int], dict[int, str]]:
     modelpath = Path(modelpath)
-    viewing_angle_data = False
-    if len(glob.glob(str(modelpath / "*_res.out*"))) >= 1:
-        viewing_angle_data = True
-
+    viewing_angle_data = bool(glob.glob(str(modelpath / "*_res.out*")))
     if args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
         dirbins = args.plotvspecpol
     elif args.plotviewingangle and args.plotviewingangle[0] == -1 and viewing_angle_data:
