@@ -1265,12 +1265,12 @@ def get_dirbin_labels(
     if modelpath:
         modelpath = Path(modelpath)
         MABINS = at.get_viewingdirectionbincount()
-        if list(Path(modelpath).glob("*_res_00.out*")):
+        if list(modelpath.glob("*_res_00.out*")):
             # if the first direction bin file exists, check:
             # check last bin exists
-            assert list(Path(modelpath).glob(f"*_res_{MABINS-1:02d}.out*"))
+            assert list(modelpath.glob(f"*_res_{MABINS-1:02d}.out*"))
             # check one beyond does not exist
-            assert not list(Path(modelpath).glob(f"*_res_{MABINS:02d}.out*"))
+            assert not list(modelpath.glob(f"*_res_{MABINS:02d}.out*"))
 
     _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees)
     _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)
