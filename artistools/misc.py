@@ -959,7 +959,7 @@ def get_linelist_dataframe(
         Path(modelpath, "linestat.out")
     )
 
-    dflinelist = pd.DataFrame(
+    return pd.DataFrame(
         {
             "lambda_angstroms": lambda_angstroms,
             "atomic_number": atomic_numbers,
@@ -975,9 +975,6 @@ def get_linelist_dataframe(
             "lowerlevelindex": int,
         },
     )
-    dflinelist.index.name = "linelistindex"
-
-    return dflinelist
 
 
 @lru_cache(maxsize=8)
