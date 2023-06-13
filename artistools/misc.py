@@ -1223,9 +1223,9 @@ def get_costheta_bins(usedegrees: bool) -> tuple[np.ndarray, np.ndarray, list[st
     costhetabins_lower = np.arange(-1.0, 1.0, 2.0 / ncosthetabins)
     costhetabins_upper = costhetabins_lower + 2.0 / ncosthetabins
     if usedegrees:
-        thetabins_lower = np.arccos(costhetabins_lower) / np.pi * 180
-        thetabins_upper = np.arccos(costhetabins_upper) / np.pi * 180
-        binlabels = [f"{lower:.0f}° ≤ θ < {upper:.0f}°" for lower, upper in zip(thetabins_lower, thetabins_upper)]
+        thetabins_upper = np.arccos(costhetabins_lower) / np.pi * 180
+        thetabins_lower = np.arccos(costhetabins_upper) / np.pi * 180
+        binlabels = [f"{lower:.0f}° < θ ≤ {upper:.0f}°" for lower, upper in zip(thetabins_lower, thetabins_upper)]
     else:
         binlabels = [
             f"{lower:.1f} ≤ cos θ < {upper:.1f}" for lower, upper in zip(costhetabins_lower, costhetabins_upper)
@@ -1253,7 +1253,7 @@ def get_vspec_dir_labels(modelpath: str | Path, viewinganglelabelunits: str = "r
 
 
 def get_dirbin_labels(
-    dirbins: np.ndarray[t.Any, np.dtype[t.Any]] | Sequence[int],
+    dirbins: np.ndarray[t.Any, np.dtype[t.Any]] | Sequence[int] | None = None,
     modelpath: Path | str | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
@@ -1273,6 +1273,14 @@ def get_dirbin_labels(
     _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)
 
     nphibins = at.get_viewingdirection_phibincount()
+
+    if dirbins is None:
+        if average_over_phi:
+            dirbins = np.arange(at.get_viewingdirection_costhetabincount()) * 10
+        elif average_over_theta:
+            dirbins = np.arange(nphibins)
+        else:
+            dirbins = np.arange(at.get_viewingdirectionbincount())
 
     angle_definitions: dict[int, str] = {}
     for dirbin in dirbins:
