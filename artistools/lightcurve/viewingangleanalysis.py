@@ -183,6 +183,7 @@ def parse_directionbin_args(modelpath: Path | str, args) -> tuple[Sequence[int],
             modelpath=modelpath,
             average_over_phi=args.average_over_phi_angle,
             average_over_theta=args.average_over_theta_angle,
+            usedegrees=args.usedegrees,
         )
 
         if args.average_over_phi_angle:
@@ -421,7 +422,7 @@ def make_plot_test_viewing_angle_fit(
     plt.axvline(x=float(time_after15days_polyfit), color="black", linestyle="--")
     print("time after 15 days polyfit = ", time_after15days_polyfit)
     plt.tight_layout()
-    plt.savefig(f"{key}_band_{modelname}_viewing_angle" + str(angle) + ".png")
+    plt.savefig(f"{key}_band_{modelname}_viewing_angle{angle!s}.png")
     plt.close()
 
 
@@ -456,7 +457,7 @@ def set_scatterplot_plotkwargs(modelnumber, args):
 def update_plotkwargs_for_viewingangle_colorbar(
     plotkwargsviewingangles: dict[str, t.Any], args: argparse.Namespace
 ) -> dict[str, t.Any]:
-    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
+    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
     angles = np.arange(0, at.get_viewingdirectionbincount())
@@ -486,7 +487,9 @@ def set_scatterplot_plot_params(args):
     plt.tight_layout()
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(
+            usedegrees=args.usedegrees
+        )
         scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
         at.lightcurve.plotlightcurve.make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args)
 
@@ -566,7 +569,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, key, 
         else:
             args.plotvalues.append((a0, a0))
         if not args.noerrorbars:
-            ecolor = args.color if args.color else define_colours_list
+            ecolor = args.color or define_colours_list
 
             ax.errorbar(
                 xvalues_angleaveraged,
@@ -577,7 +580,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, key, 
                 capsize=2,
             )
 
-    linelabels = args.label if args.label else modelnames
+    linelabels = args.label or modelnames
 
     # a0, datalabel = at.lightcurve.get_sn_sample_bol()
     # a0, datalabel = at.lightcurve.plot_phillips_relation_data()
@@ -799,7 +802,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath, args):
 
     angles, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
-    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
+    costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=args.usedegrees)
     scaledmap = at.lightcurve.plotlightcurve.make_colorbar_viewingangles_colormap()
 
     plotkwargs = {}

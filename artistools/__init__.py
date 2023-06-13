@@ -69,7 +69,6 @@ from .misc import get_nu_grid
 from .misc import get_phi_bins
 from .misc import get_runfolders
 from .misc import get_syn_dir
-from .misc import get_theta_bins_degrees
 from .misc import get_time_range
 from .misc import get_timestep_of_timedays
 from .misc import get_timestep_time

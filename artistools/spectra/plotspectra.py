@@ -41,7 +41,7 @@ def plot_polarisation(modelpath: Path, args) -> None:
     timeavg = (args.timemin + args.timemax) / 2.0
 
     def match_closest_time(reftime):
-        return str(f"{min([float(x) for x in timearray], key=lambda x: abs(x - reftime)):.4f}")
+        return str(f"{min((float(x) for x in timearray), key=lambda x: abs(x - reftime)):.4f}")
 
     timeavg = match_closest_time(timeavg)
 
@@ -367,7 +367,7 @@ def plot_artis_spectrum(
                 nbins = 5
 
                 for i in np.arange(0, len(wavelengths - nbins), nbins):
-                    new_lambda_angstroms.append(wavelengths[i + int(nbins / 2)])
+                    new_lambda_angstroms.append(wavelengths[i + nbins // 2])
                     sum_flux = 0
                     for j in range(i, i + nbins):
                         sum_flux += fluxes[j]
@@ -1251,7 +1251,13 @@ def addargs(parser) -> None:
         type=int,
         metavar="n",
         nargs="+",
-        help="Plot viewing angles. Expects int for angle number in specpol_res.out",
+        help="Plot viewing angles. Expects int for direction bin in specpol_res.out",
+    )
+
+    parser.add_argument(
+        "--usedegrees",
+        action="store_true",
+        help="Use degrees instead of radians for viewing angles. Only works with -plotviewingangle",
     )
 
     parser.add_argument(

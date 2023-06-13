@@ -1191,7 +1191,7 @@ def get_viewingdirection_costhetabincount() -> int:
     return 10
 
 
-def get_phi_bins() -> tuple[np.ndarray, np.ndarray, list[str]]:
+def get_phi_bins(usedegrees: bool) -> tuple[np.ndarray, np.ndarray, list[str]]:
     nphibins = at.get_viewingdirection_phibincount()
     # pi/2 must be an exact boundary because of the change in behaviour there
     assert nphibins % 2 == 0
@@ -1207,34 +1207,38 @@ def get_phi_bins() -> tuple[np.ndarray, np.ndarray, list[str]]:
 
     binlabels = []
     for phibin, step in enumerate(phisteps):
-        str_phi_lower = f"{step}π/{nphibins // 2}" if step > 0 else "0"
+        if usedegrees:
+            str_phi_lower = f"{phi_lower[step]/math.pi*180:.0f}°"
+            str_phi_upper = f"{phi_upper[step]/math.pi*180:.0f}°"
+        else:
+            str_phi_lower = f"{step}π/{nphibins // 2}" if step > 0 else "0"
+            str_phi_upper = f"{step+1}π/{nphibins // 2}" if step < nphibins - 1 else "2π"
+
         lower_compare = "≤" if phibin < (nphibins // 2) else "<"
-        str_phi_upper = f"{step+1}π/{nphibins // 2}" if step < nphibins - 1 else "2π"
         upper_compare = "≤" if phibin > (nphibins // 2) else "<"
         binlabels.append(f"{str_phi_lower} {lower_compare} ϕ {upper_compare} {str_phi_upper}")
 
     return phi_lower, phi_upper, binlabels
 
 
-def get_costheta_bins() -> tuple[np.ndarray, np.ndarray, list[str]]:
+def get_costheta_bins(usedegrees: bool) -> tuple[np.ndarray, np.ndarray, list[str]]:
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     costhetabins_lower = np.arange(-1.0, 1.0, 2.0 / ncosthetabins)
     costhetabins_upper = costhetabins_lower + 2.0 / ncosthetabins
-    binlabels = [f"{lower:.1f} ≤ cos θ < {upper:.1f}" for lower, upper in zip(costhetabins_lower, costhetabins_upper)]
+    if usedegrees:
+        thetabins_lower = np.arccos(costhetabins_lower) / np.pi * 180
+        thetabins_upper = np.arccos(costhetabins_upper) / np.pi * 180
+        binlabels = [f"{lower:.0f}° ≤ θ < {upper:.0f}°" for lower, upper in zip(thetabins_lower, thetabins_upper)]
+    else:
+        binlabels = [
+            f"{lower:.1f} ≤ cos θ < {upper:.1f}" for lower, upper in zip(costhetabins_lower, costhetabins_upper)
+        ]
     return costhetabins_lower, costhetabins_upper, binlabels
 
 
-def get_theta_bins_degrees() -> tuple[np.ndarray, np.ndarray, list[str]]:
-    costhetabins_lower, costhetabins_upper, _ = get_costheta_bins()
-    thetabins_lower = np.arccos(costhetabins_lower) / np.pi * 180
-    thetabins_upper = np.arccos(costhetabins_upper) / np.pi * 180
-    binlabels = [f"{lower:.1f}° ≤ θ < {upper:.1f}°" for lower, upper in zip(thetabins_lower, thetabins_upper)]
-    return costhetabins_lower, costhetabins_upper, binlabels
-
-
-def get_costhetabin_phibin_labels() -> tuple[list[str], list[str]]:
-    _, _, costhetabinlabels = get_costheta_bins()
-    _, _, phibinlabels = get_phi_bins()
+def get_costhetabin_phibin_labels(usedegrees: bool) -> tuple[list[str], list[str]]:
+    _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees)
+    _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)
     return costhetabinlabels, phibinlabels
 
 
@@ -1256,6 +1260,7 @@ def get_dirbin_labels(
     modelpath: Path | str | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
+    usedegrees: bool = False,
 ) -> dict[int, str]:
     if modelpath:
         modelpath = Path(modelpath)
@@ -1267,8 +1272,8 @@ def get_dirbin_labels(
             # check one beyond does not exist
             assert not list(Path(modelpath).glob(f"*_res_{MABINS:02d}.out*"))
 
-    _, _, costhetabinlabels = get_costheta_bins()
-    _, _, phibinlabels = get_phi_bins()
+    _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees)
+    _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)
 
     nphibins = at.get_viewingdirection_phibincount()
 

@@ -259,6 +259,7 @@ def plot_artis_lightcurve(
     directionbins: Sequence[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
+    usedegrees: bool = False,
     args=None,
 ) -> pd.DataFrame | None:
     lcfilename = None
@@ -332,7 +333,7 @@ def plot_artis_lightcurve(
     dirbins, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=usedegrees)
         scaledmap = make_colorbar_viewingangles_colormap()
 
     lctimemin, lctimemax = float(lcdataframes[dirbins[0]]["time"].to_numpy().min()), float(
@@ -522,6 +523,7 @@ def make_lightcurve_plot(
                 directionbins=args.plotviewingangle if args.plotviewingangle is not None else [-1],
                 average_over_phi=args.average_over_phi_angle,
                 average_over_theta=args.average_over_theta_angle,
+                usedegrees=args.usedegrees,
                 args=args,
             )
             plottedsomething = plottedsomething or (lcdataframes is not None)
@@ -577,7 +579,9 @@ def make_lightcurve_plot(
         axis.set_ylabel(yvarname + str_units)
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(
+            usedegrees=args.usedegrees
+        )
         scaledmap = make_colorbar_viewingangles_colormap()
         make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args)
 
@@ -799,7 +803,9 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     plotkwargs: dict[str, t.Any] = {}
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(
+            usedegrees=args.usedegrees
+        )
         scaledmap = make_colorbar_viewingangles_colormap()
 
     first_band_name = None
@@ -1346,6 +1352,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "use args = -1 to select all the viewing angles"
         ),
     )
+    parser.add_argument(
+        "--usedegrees",
+        action="store_true",
+        help="Use degrees instead of radians for viewing angles. Only works with -plotviewingangle",
+    )
 
     parser.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis")
 
@@ -1463,12 +1474,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "--noangleaveraged", action="store_true", help="Don't plot angle averaged values on viewing angle scatter plots"
-    )
-
-    parser.add_argument(
-        "--plotviewingangles_lightcurves",
-        action="store_true",
-        help="Make lightcurve plots for the viewing angles and models specified",
     )
 
     parser.add_argument(
