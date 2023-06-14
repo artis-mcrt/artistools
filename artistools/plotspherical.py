@@ -78,7 +78,7 @@ def plot_spherical(
     )
 
     # for figuring out where the axes are on the plot, make a cut
-    # dfpackets = dfpackets.filter(pl.col("dirz") < -0.9)
+    # dfpackets = dfpackets.filter(pl.col("dirz") > 0.9)
 
     aggs = []
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelmeta=modelmeta)
@@ -186,7 +186,7 @@ def plot_spherical(
     # costhetabin zero is (0,0,-1) so theta angle
     costhetagrid = np.linspace(-1, 1, ncosthetabins + 1, endpoint=True)
     # for Molleweide projection, theta range is [-pi/2, +pi/2]
-    thetagrid = np.arccos(costhetagrid) - np.pi / 2
+    thetagrid = np.pi / 2 - np.arccos(costhetagrid)
 
     meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
 
