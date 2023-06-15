@@ -39,7 +39,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     def undecayed_z(row):
         dfmasschain = dfbetaminus.query("A == @row.A", inplace=False)
-        return int(dfmasschain.Z.min()) if not dfmasschain.empty else int(row.Z)
+        return int(row.Z) if dfmasschain.empty else int(dfmasschain.Z.min())
 
     dfsolarabund_undecayed = dfsolarabund.copy()
     dfsolarabund_undecayed["Z"] = dfsolarabund_undecayed.apply(undecayed_z, axis=1)
