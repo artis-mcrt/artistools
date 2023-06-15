@@ -92,19 +92,15 @@ def get_closest_network_timestep(
 
     if cond == "nearest":
         idx = np.abs(dfevol.timesec.to_numpy() - timesec).argmin()
+        return dfevol["nstep"].to_numpy()[idx]
 
-    elif cond == "greaterthan":
-        return dfevol.query("timesec > @timesec")["nstep"].min()
+    if cond == "greaterthan":
+        return dfevol[dfevol["timesec"] > timesec]["nstep"].min()
 
-    elif cond == "lessthan":
-        return dfevol.query("timesec < @timesec")["nstep"].max()
+    if cond == "lessthan":
+        return dfevol[dfevol["timesec"] < timesec]["nstep"].max()
 
-    else:
-        raise AssertionError
-
-    nts: int = dfevol["nstep"].to_numpy()[idx]
-
-    return nts
+    raise AssertionError
 
 
 def get_trajectory_timestepfile_nuc_abund(
