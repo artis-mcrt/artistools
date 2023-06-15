@@ -311,7 +311,7 @@ def plot_cell_abund_evolution(
 
         axis.legend(loc="best", frameon=False, handlelength=1, ncol=1, numpoints=1)
 
-    fig.suptitle(f"{modelname} cell {mgi}", y=0.995, fontsize=10)
+    # fig.suptitle(f"{modelname} cell {mgi}", y=0.995, fontsize=10)
     at.plottools.autoscale(axis, margin=0.05)
     fig.savefig(pdfoutpath, format="pdf")
     print(f"Saved {pdfoutpath}")
@@ -652,22 +652,27 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     arr_el_a = [
-        # ("He", 4),
-        ("Ga", 72),
+        ("He", 4),
+        # ("Ga", 72),
         ("Sr", 89),
+        ("Sr", 91),
+        ("Sr", 92),
+        ("Y", 92),
+        ("Y", 93),
+        ("Zr", 93),
         ("Ba", 140),
         ("Ce", 141),
         ("Nd", 147),
         # ('Rn', 222),
-        ("Ra", 223),
-        ("Ra", 224),
-        ("Ra", 225),
+        # ("Ra", 223),
+        # ("Ra", 224),
+        # ("Ra", 225),
         # ("Ac", 225),
         # ('Th', 234),
         # ('Pa', 233),
         # ('U', 235),
     ]
-    arr_el_a.sort(key=lambda x: (at.get_atomic_number(x[0]), -x[1]))
+    arr_el_a.sort(key=lambda x: (at.get_atomic_number(x[0]), x[1]))
 
     modelpath = Path(args.modelpath)
     if args.modelgridindex is None:
