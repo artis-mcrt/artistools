@@ -50,8 +50,8 @@ def plot_qdot(
     model_mass_grams = dfmodel.cellmass_grams.sum()
     print(f"model mass: {model_mass_grams / 1.989e33:.3f} Msun")
 
-    # calculate global heating rates from the individual particle heating rates
-    dfpartcontrib_nomissing = dfpartcontrib.query("particleid in @allparticledata.keys()")
+    print("Calculating global heating rates from the individual particle heating rates...")
+    dfpartcontrib_nomissing = dfpartcontrib[dfpartcontrib["particleid"].isin(allparticledata.keys())]
     for cellindex, dfpartcontribthiscell in dfpartcontrib_nomissing.groupby("cellindex"):
         if cellindex >= len(dfmodel):
             continue
@@ -69,6 +69,8 @@ def plot_qdot(
             thisparticledata = allparticledata[particleid]
             for col in heatcols:
                 arr_heat[col] += thisparticledata[col] * cell_mass_frac * frac_of_cellmass / frac_of_cellmass_sum
+
+    print("  done.")
 
     show_ye = False
     nrows = 2 if show_ye else 1
@@ -572,7 +574,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     fworkerwithabund = partial(get_particledata, arr_time_gsi_s_incpremerger, arr_strnuc, traj_root, verbose=True)
 
     print(f"Reading trajectories from {traj_root}")
-    print(f"  Reading Qdot/thermo and abundance data for {len(list_particleids_getabund)} particles")
+    print(f"Reading Qdot/thermo and abundance data for {len(list_particleids_getabund)} particles")
 
     if at.get_config()["num_processes"] > 1:
         with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
@@ -586,7 +588,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
         pid for pid in dfpartcontrib.particleid.unique() if pid not in list_particleids_getabund
     ]
     fworkernoabund = partial(get_particledata, arr_time_gsi_s_incpremerger, [], traj_root)
-    print(f"  Reading for Qdot/thermo data (no abundances needed) for {len(list_particleids_noabund)} particles")
+    print(f"Reading for Qdot/thermo data (no abundances needed) for {len(list_particleids_noabund)} particles")
 
     if at.get_config()["num_processes"] > 1:
         with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
