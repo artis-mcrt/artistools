@@ -173,9 +173,9 @@ def plot_reference_spectrum(
         ycolumnname = "f_lambda"
 
     ymax = max(specdata[ycolumnname])
-    lineplot = specdata.plot(x="lambda_angstroms", y=ycolumnname, ax=axis, legend=None, **plotkwargs)
+    (lineplot,) = axis.plot(specdata["lambda_angstroms"], specdata[ycolumnname], **plotkwargs)
 
-    return mpatches.Patch(color=lineplot.get_lines()[0].get_color()), plotkwargs["label"], ymax
+    return lineplot, plotkwargs["label"], ymax
 
 
 def plot_filter_functions(axis: plt.Axes) -> None:
@@ -401,7 +401,7 @@ def make_spectrum_plot(
     for seriesindex, specpath in enumerate(speclist):
         specpath = Path(specpath)
         plotkwargs: dict[str, t.Any] = {}
-        plotkwargs["alpha"] = 0.95
+        plotkwargs["alpha"] = args.linealpha[seriesindex]
 
         plotkwargs["linestyle"] = args.linestyle[seriesindex]
         if not args.plotviewingangle and not args.plotvspecpol:
@@ -623,21 +623,18 @@ def make_emissionabsorption_plot(
     plotobjects = []
 
     max_flambda_emission_total = max(
-        [
-            flambda if (xmin < lambda_ang < xmax) else -99.0
-            for lambda_ang, flambda in zip(arraylambda_angstroms, array_flambda_emission_total)
-        ]
+        flambda if (xmin < lambda_ang < xmax) else -99.0
+        for lambda_ang, flambda in zip(arraylambda_angstroms, array_flambda_emission_total)
     )
 
     scalefactor = scale_to_peak / max_flambda_emission_total if scale_to_peak else 1.0
 
     if not args.hidenetspectrum:
-        plotobjectlabels.append("Net spectrum")
-        line = axis.plot(
+        plotobjectlabels.append("Spectrum")
+        (line,) = axis.plot(
             arraylambda_angstroms, array_flambda_emission_total * scalefactor, linewidth=1.5, color="black", zorder=100
         )
-        linecolor = line[0].get_color()
-        plotobjects.append(mpatches.Patch(color=linecolor))
+        plotobjects.append(line)
 
     dfaxisdata = pd.DataFrame(index=arraylambda_angstroms)
     dfaxisdata.index.name = "lambda_angstroms"
@@ -650,11 +647,11 @@ def make_emissionabsorption_plot(
     if args.nostack:
         for x in contributions_sorted_reduced:
             if args.showemission:
-                emissioncomponentplot = axis.plot(
+                (emissioncomponentplot,) = axis.plot(
                     arraylambda_angstroms, x.array_flambda_emission * scalefactor, linewidth=1, color=x.color
                 )
 
-                linecolor = emissioncomponentplot[0].get_color()
+                linecolor = emissioncomponentplot.get_color()
             else:
                 linecolor = None
             plotobjects.append(mpatches.Patch(color=linecolor))
@@ -706,6 +703,7 @@ def make_emissionabsorption_plot(
         if index < len(args.color):
             plotkwargs["color"] = args.color[index]
             plotkwargs["label"] = args.label[index]
+            plotkwargs["alpha"] = args.linealpha[index]
 
         supxmin, supxmax = axis.get_xlim()
         plotobj, serieslabel, ymaxref = plot_reference_spectrum(
@@ -953,7 +951,7 @@ def make_plot(args) -> tuple[plt.Figure, plt.Axes, pd.DataFrame]:
             plotobjects, plotobjectlabels = axes[-1].get_legend_handles_labels()
 
     if not args.nolegend:
-        if args.reverselegendorder:
+        if args.reverselegendorder:  # TODO: consider ax.legend(reverse=True)
             plotobjects, plotobjectlabels = plotobjects[::-1], plotobjectlabels[::-1]
 
         leg = axes[-1].legend(
@@ -961,12 +959,14 @@ def make_plot(args) -> tuple[plt.Figure, plt.Axes, pd.DataFrame]:
             plotobjectlabels,
             loc="upper right",
             frameon=False,
-            handlelength=2,
+            handlelength=1 if args.showemission or args.showabsorption else 2,
             ncol=legendncol,
             numpoints=1,
+            columnspacing=1.0,
         )
         leg.set_zorder(200)
 
+        # Luke: I don't know what this code is for
         for artist, text in zip(leg.legend_handles, leg.get_texts()):
             if hasattr(artist, "get_color"):
                 col = artist.get_color()
@@ -1057,6 +1057,8 @@ def addargs(parser) -> None:
     parser.add_argument("-linestyle", default=[], nargs="*", help="List of line styles")
 
     parser.add_argument("-linewidth", default=[], nargs="*", help="List of line widths")
+
+    parser.add_argument("-linealpha", default=[], nargs="*", help="List of line alphas (opacities)")
 
     parser.add_argument("-dashes", default=[], nargs="*", help="Dashes property of lines")
 
@@ -1351,8 +1353,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
                 args.color.append(refspeccolors[refspecnum])
                 refspecnum += 1
 
-    args.color, args.label, args.linestyle, args.dashes, args.linewidth = at.trim_or_pad(
-        len(args.specpath), args.color, args.label, args.linestyle, args.dashes, args.linewidth
+    args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth = at.trim_or_pad(
+        len(args.specpath), args.color, args.label, args.linestyle, args.linealpha, args.dashes, args.linewidth
     )
 
     if args.emissionvelocitycut:
