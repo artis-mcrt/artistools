@@ -237,7 +237,7 @@ def plot_3d_initial_abundances(modelpath, args=None) -> None:
     # ax.labelsize: 'large'
     # plt.title(f'At {sliceaxis} = {sliceposition}')
 
-    outfilename = args.outputfile if args.outputfile else f"plotcomposition_{','.join(args.plotvars)}.pdf"
+    outfilename = args.outputfile or f"plotcomposition_{','.join(args.plotvars)}.pdf"
     plt.savefig(Path(modelpath) / outfilename, format="pdf")
 
     print(f"Saved {outfilename}")
@@ -320,9 +320,9 @@ def make_3d_plot(modelpath, args):
     surfacearr = np.array(model[coloursurfaceby])
 
     i = 0
-    for z in range(0, grid):
-        for y in range(0, grid):
-            for x in range(0, grid):
+    for z in range(grid):
+        for y in range(grid):
+            for x in range(grid):
                 surfacecolorscale[x, y, z] = surfacearr[i]
                 xgrid[x] = -vmax + 2 * x * vmax / grid
                 i += 1

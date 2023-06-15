@@ -259,6 +259,7 @@ def plot_artis_lightcurve(
     directionbins: Sequence[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
+    usedegrees: bool = False,
     args=None,
 ) -> pd.DataFrame | None:
     lcfilename = None
@@ -318,10 +319,11 @@ def plot_artis_lightcurve(
         if average_over_theta:
             lcdataframes = at.average_direction_bins(lcdataframes, overangle="theta")
 
-    plotkwargs: dict[str, t.Any] = {}
-    plotkwargs["label"] = modelname
-    plotkwargs["linestyle"] = args.linestyle[lcindex]
-    plotkwargs["color"] = args.color[lcindex]
+    plotkwargs: dict[str, t.Any] = {
+        "label": modelname,
+        "linestyle": args.linestyle[lcindex],
+        "color": args.color[lcindex],
+    }
     if args.dashes[lcindex]:
         plotkwargs["dashes"] = args.dashes[lcindex]
     if args.linewidth[lcindex]:
@@ -331,7 +333,7 @@ def plot_artis_lightcurve(
     dirbins, angle_definition = at.lightcurve.parse_directionbin_args(modelpath, args)
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=usedegrees)
         scaledmap = make_colorbar_viewingangles_colormap()
 
     lctimemin, lctimemax = float(lcdataframes[dirbins[0]]["time"].to_numpy().min()), float(
@@ -521,6 +523,7 @@ def make_lightcurve_plot(
                 directionbins=args.plotviewingangle if args.plotviewingangle is not None else [-1],
                 average_over_phi=args.average_over_phi_angle,
                 average_over_theta=args.average_over_theta_angle,
+                usedegrees=args.usedegrees,
                 args=args,
             )
             plottedsomething = plottedsomething or (lcdataframes is not None)
@@ -564,7 +567,7 @@ def make_lightcurve_plot(
     if args.magnitude:
         axis.set_ylabel("Absolute Bolometric Magnitude")
     else:
-        str_units = " [erg/s]" if not args.Lsun else "$/ \\mathrm{L}_\\odot$"
+        str_units = "$/ \\mathrm{L}_\\odot$" if args.Lsun else " [erg/s]"
         if args.plotdeposition:
             yvarname = ""
         elif escape_type == "TYPE_GAMMA":
@@ -576,7 +579,9 @@ def make_lightcurve_plot(
         axis.set_ylabel(yvarname + str_units)
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(
+            usedegrees=args.usedegrees
+        )
         scaledmap = make_colorbar_viewingangles_colormap()
         make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args)
 
@@ -619,11 +624,11 @@ def create_axes(args):
 
     args.subplots = False  # TODO: set as command line arg
 
-    if (args.filter and len(args.filter) > 1) or args.subplots is True:
+    if (args.filter and len(args.filter) > 1) or args.subplots:
         args.subplots = True
         rows = 2
         cols = 3
-    elif (args.colour_evolution and len(args.colour_evolution) > 1) or args.subplots is True:
+    elif args.colour_evolution and len(args.colour_evolution) > 1:
         args.subplots = True
         rows = 1
         cols = 3
@@ -798,7 +803,9 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
     plotkwargs: dict[str, t.Any] = {}
 
     if args.colorbarcostheta or args.colorbarphi:
-        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels()
+        costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(
+            usedegrees=args.usedegrees
+        )
         scaledmap = make_colorbar_viewingangles_colormap()
 
     first_band_name = None
@@ -825,24 +832,22 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 time, brightness_in_mag = at.lightcurve.get_band_lightcurve(band_lightcurve_data, band_name, args)
 
                 if args.print_data or args.write_data:
-                    txtlinesout = []
-                    txtlinesout.append(f"# band: {band_name}")
-                    txtlinesout.append(f"# model: {modelname}")
-                    txtlinesout.append("# time_days magnitude")
-                    for t_d, m in zip(time, brightness_in_mag):
-                        txtlinesout.append(f"{t_d} {m}")
+                    txtlinesout = [
+                        f"# band: {band_name}",
+                        f"# model: {modelname}",
+                        "# time_days magnitude",
+                    ]
+                    txtlinesout.extend(f"{t_d} {m}" for t_d, m in zip(time, brightness_in_mag))
                     txtout = "\n".join(txtlinesout)
-                    if args.write_data:
-                        bandoutfile = (
-                            Path(f"band_{band_name}_angle_{angle}.txt")
-                            if angle != -1
-                            else Path(f"band_{band_name}.txt")
-                        )
-                        with bandoutfile.open("w") as f:
-                            f.write(txtout)
-                        print(f"Saved {bandoutfile}")
-                    if args.print_data:
-                        print(txtout)
+                if args.write_data:
+                    bandoutfile = (
+                        Path(f"band_{band_name}_angle_{angle}.txt") if angle != -1 else Path(f"band_{band_name}.txt")
+                    )
+                    with bandoutfile.open("w") as f:
+                        f.write(txtout)
+                    print(f"Saved {bandoutfile}")
+                if args.print_data:
+                    print(txtout)
 
                 plotkwargs["label"] = get_linelabel(modelpath, modelname, modelnumber, angle, angle_definition, args)
                 # plotkwargs['label'] = '\n'.join(wrap(linelabel, 40))  # TODO: could be arg? wraps text in label
@@ -1020,7 +1025,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                     )
                     # plotkwargs["color"] = color_list[angle_counter]  # index instaed of angle_counter??
                     angle_counter += 1
-                elif args.plotviewingangle and not args.color:
+                elif args.plotviewingangle:
                     plotkwargs["color"] = color_list[angle_counter]
                     angle_counter += 1
                 elif args.color:
@@ -1062,14 +1067,14 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
                     fontsize="x-large",
                 )
 
-        # UNCOMMENT TO ESTIMATE COLOUR AT TIME B MAX
-        # def match_closest_time(reftime):
-        #     return ("{}".format(min([float(x) for x in plot_times], key=lambda x: abs(x - reftime))))
-        #
-        # tmax_B = 17.0  # CHANGE TO TIME OF B MAX
-        # tmax_B = float(match_closest_time(tmax_B))
-        # print(f'{filter_names[0]} - {filter_names[1]} at t_Bmax ({tmax_B}) = '
-        #       f'{diff[plot_times.index(tmax_B)]}')
+            # UNCOMMENT TO ESTIMATE COLOUR AT TIME B MAX
+            # def match_closest_time(reftime):
+            #     return ("{}".format(min([float(x) for x in plot_times], key=lambda x: abs(x - reftime))))
+            #
+            # tmax_B = 17.0  # CHANGE TO TIME OF B MAX
+            # tmax_B = float(match_closest_time(tmax_B))
+            # print(f'{filter_names[0]} - {filter_names[1]} at t_Bmax ({tmax_B}) = '
+            #       f'{diff[plot_times.index(tmax_B)]}')
 
     fig, ax = set_lightcurve_plot_labels(fig, ax, filternames_conversion_dict, args)
     ax = at.plottools.set_axis_properties(ax, args)
@@ -1347,6 +1352,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "use args = -1 to select all the viewing angles"
         ),
     )
+    parser.add_argument(
+        "--usedegrees",
+        action="store_true",
+        help="Use degrees instead of radians for viewing angles. Only works with -plotviewingangle",
+    )
 
     parser.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis")
 
@@ -1464,12 +1474,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "--noangleaveraged", action="store_true", help="Don't plot angle averaged values on viewing angle scatter plots"
-    )
-
-    parser.add_argument(
-        "--plotviewingangles_lightcurves",
-        action="store_true",
-        help="Make lightcurve plots for the viewing angles and models specified",
     )
 
     parser.add_argument(

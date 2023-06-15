@@ -103,8 +103,7 @@ def get_line_fluxes_from_packets(
         fluxdata = np.divide(energysumsreduced * normfactor, arr_timedelta * 86400.0)
         dictlcdata[feature.colname] = fluxdata
 
-    lcdata = pd.DataFrame(dictlcdata)
-    return lcdata
+    return pd.DataFrame(dictlcdata)
 
 
 def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=None) -> pd.DataFrame:
@@ -189,8 +188,7 @@ def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=N
 
         dictlcdata[feature.colname] = fluxdata
 
-    lcdata = pd.DataFrame(dictlcdata)
-    return lcdata
+    return pd.DataFrame(dictlcdata)
 
 
 def get_closelines(

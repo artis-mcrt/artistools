@@ -954,10 +954,7 @@ def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) 
     if "pos_x_min" in dfmodel.columns:
         return 3
 
-    if "pos_z_mid" in dfmodel.columns:
-        return 2
-
-    return 1
+    return 2 if "pos_z_mid" in dfmodel.columns else 1
 
 
 def sphericalaverage(
@@ -1023,10 +1020,8 @@ def sphericalaverage(
                 for particleid, dfparticlecontribs in dfcellcont.groupby("particleid"):
                     frac_of_cellmass_avg = (
                         sum(
-                            [
-                                (row.frac_of_cellmass * celldensity[row.cellindex])
-                                for row in dfparticlecontribs.itertuples(index=False)
-                            ]
+                            row.frac_of_cellmass * celldensity[row.cellindex]
+                            for row in dfparticlecontribs.itertuples(index=False)
                         )
                         / matchedcellrhosum
                     )
@@ -1040,10 +1035,8 @@ def sphericalaverage(
                     if includemissingcolexists:
                         frac_of_cellmass_includemissing_avg = (
                             sum(
-                                [
-                                    (row.frac_of_cellmass_includemissing * celldensity[row.cellindex])
-                                    for row in dfparticlecontribs.itertuples(index=False)
-                                ]
+                                row.frac_of_cellmass_includemissing * celldensity[row.cellindex]
+                                for row in dfparticlecontribs.itertuples(index=False)
                             )
                             / matchedcellrhosum
                         )

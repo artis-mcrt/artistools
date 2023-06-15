@@ -138,6 +138,7 @@ ignore = [
     "ERA001",  # commented-out-code
     "F841", # unused-variable. ignored because variables in df.eval() are not detected
     "FBT",
+    "FIX002",  # line contains TODO
     "N802",  # Function name should be lowercase
     "N803",  # Argument name should be lowercase
     "N806",  # Variable should be lowercase
@@ -163,7 +164,6 @@ ignore = [
     "S603",  # subprocess-without-shell-equals-true
     "S607",  # start-process-with-partial-path
     "SLF001",  # private-member-access
-    "T002",  # line contains TODO
     "T201",  # print found
     "TD002",  # missing-todo-author
     "TD003",  # missing-todo-link
