@@ -304,17 +304,20 @@ def get_gridparticlecontributions(gridcontribpath: Path | str) -> pd.DataFrame:
     )
 
 
-def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataFrame) -> pd.DataFrame:
-    missing_particleids = []
-    for particleid in sorted(dfcontribs.particleid.unique()):
-        if (
-            not Path(traj_root, f"{particleid}.tar.xz").is_file()
-            and not Path(traj_root, f"{particleid}.tar").is_file()
-            and not Path(traj_root, str(particleid)).is_dir()
-        ):
-            missing_particleids.append(particleid)
-            # print(f' WARNING particle {particleid} not found!')
+def particlenetworkdatafound(traj_root: Path, particleid: int) -> bool:
+    return (
+        (traj_root / f"{particleid}.tar.xz").is_file()
+        or (traj_root / f"{particleid}.tar").is_file()
+        or (traj_root / str(particleid)).is_dir()
+    )
 
+
+def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataFrame) -> pd.DataFrame:
+    missing_particleids = [
+        particleid
+        for particleid in sorted(dfcontribs.particleid.unique())
+        if not particlenetworkdatafound(traj_root, particleid)
+    ]
     print(
         (
             f"Adding gridcontributions column that excludes {len(missing_particleids)} "
