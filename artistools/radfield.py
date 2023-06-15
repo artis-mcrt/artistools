@@ -301,10 +301,9 @@ def get_kappa_bf_ion(atomic_number, lower_ion_stage, modelgridindex, timestep, m
 
     lowerionpopdensity = estimators[(timestep, modelgridindex)]["populations"][(atomic_number, lower_ion_stage)]
 
-    ion_popfactor_sum = 0
-    for _, level in ion_data.levels[:max_levels].iterrows():
-        ion_popfactor_sum += level.g * math.exp(-level.energy_ev * EV / KB / T_e)
-
+    ion_popfactor_sum = sum(
+        level.g * math.exp(-level.energy_ev * EV / KB / T_e) for _, level in ion_data.levels[:max_levels].iterrows()
+    )
     array_kappa_bf_nu_ion = np.zeros_like(arr_nu_hz)
     for levelnum, lowerlevel in ion_data.levels[:max_levels].iterrows():
         levelpopfrac = lowerlevel.g * math.exp(-lowerlevel.energy_ev * EV / KB / T_e) / ion_popfactor_sum
@@ -345,9 +344,10 @@ def get_recombination_emission(
     print(f"Recombination from {upperionstr} -> {lowerionstr} ({upperionstr} pop = {upperionpopdensity:.1e}/cm3)")
 
     if use_lte_pops:
-        upper_level_popfactor_sum = 0
-        for _upperlevelnum, upperlevel in lower_ion_data.levels[:200].iterrows():
-            upper_level_popfactor_sum += upperlevel.g * math.exp(-upperlevel.energy_ev * EV / KB / T_e)
+        upper_level_popfactor_sum = sum(
+            upperlevel.g * math.exp(-upperlevel.energy_ev * EV / KB / T_e)
+            for _upperlevelnum, upperlevel in lower_ion_data.levels[:200].iterrows()
+        )
     else:
         dfnltepops = at.nltepops.read_files(modelpath, modelgridindex=modelgridindex, timestep=timestep)
         dfnltepops_upperion = dfnltepops.query("Z==@atomic_number & ion_stage==@upper_ion_stage")
@@ -447,10 +447,9 @@ def get_ion_gamma_dnu(modelpath, modelgridindex, timestep, atomic_number, ion_st
     upper_ion_data = adata.query("Z == @atomic_number and ion_stage == (@ion_stage + 1)").iloc[0]
     ionstr = at.get_ionstring(atomic_number, ion_stage)
 
-    ion_popfactor_sum = 0
-    for _, level in ion_data.levels[:max_levels].iterrows():
-        ion_popfactor_sum += level.g * math.exp(-level.energy_ev * EV / KB / T_e)
-
+    ion_popfactor_sum = sum(
+        level.g * math.exp(-level.energy_ev * EV / KB / T_e) for _, level in ion_data.levels[:max_levels].iterrows()
+    )
     arr_gamma_dnu = np.zeros_like(arr_nu_hz)
     for levelnum, level in ion_data.levels[:max_levels].iterrows():
         levelpopfrac = level.g * math.exp(-level.energy_ev * EV / KB / T_e) / ion_popfactor_sum
@@ -673,7 +672,7 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
     T_R = radfielddata.query("bin_num == -1").iloc[0].T_R
     print(f"T_R = {T_R}")
 
-    nrows = 1 if not args.photoionrates else 3
+    nrows = 3 if args.photoionrates else 1
     fig, axes = plt.subplots(
         nrows=nrows,
         ncols=1,
@@ -712,10 +711,7 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
         axis, radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep, zorder=-2, color="red"
     )
 
-    ymax = max(ymax, ymax3)
-    if args.ymax >= 0:
-        ymax = args.ymax
-
+    ymax = args.ymax if args.ymax >= 0 else max(ymax, ymax3)
     try:
         specfilename = at.firstexisting("spec.out", folder=modelpath, tryzipped=True)
     except FileNotFoundError:
@@ -885,7 +881,7 @@ def plot_timeevolution(modelpath, outputfile, modelgridindex, args):
     dftopestimators = dftopestimators.eval("lambda_angstroms = 2.99792458e18 / nu_upper")
     dftopestimators = dftopestimators.eval("Jb_lambda = J_nu_avg * (nu_upper ** 2) / 2.99792458e18")
     dftopestimators = dftopestimators.sort_values(by="Jb_lambda", ascending=False)
-    dftopestimators = dftopestimators.iloc[0:nlinesplotted]
+    dftopestimators = dftopestimators.iloc[:nlinesplotted]
 
     print(f"Top estimators at timestep {timestep} t={time_days:.1f}")
     print(dftopestimators)

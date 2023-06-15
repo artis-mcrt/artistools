@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import gzip
 import math
 import os
@@ -93,7 +94,7 @@ def showtimesteptimes(modelpath: Path | None = None, numberofcolumns: int = 5) -
 
     times = get_timestep_times_float(modelpath, loc="mid")
     indexendofcolumnone = math.ceil((len(times) - 1) / numberofcolumns)
-    for rownum in range(0, indexendofcolumnone):
+    for rownum in range(indexendofcolumnone):
         strline = ""
         for colnum in range(numberofcolumns):
             if colnum > 0:
@@ -127,9 +128,7 @@ def get_composition_data(filename: Path | str) -> pd.DataFrame:
 
             startindex += int(rowdfs[-1].iloc[0]["nions"])
 
-    compdf = pd.concat(rowdfs, ignore_index=True)
-
-    return compdf
+    return pd.concat(rowdfs, ignore_index=True)
 
 
 def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
@@ -202,7 +201,7 @@ def average_direction_bins(
         start_bin_range = range(0, dirbincount, nphibins)
     elif overangle == "theta":
         ncosthetabins = at.get_viewingdirection_costhetabincount()
-        start_bin_range = range(0, nphibins)
+        start_bin_range = range(nphibins)
 
     # we will make a copy to ensure that we don't cause side effects from altering the original DataFrames
     # that might be returned again later by an lru_cached function
@@ -228,7 +227,7 @@ def average_direction_bins(
 
 def match_closest_time(reftime: float, searchtimes: list[t.Any]) -> str:
     """Get time closest to reftime in list of times (searchtimes)."""
-    return str(f"{min([float(x) for x in searchtimes], key=lambda x: abs(x - reftime))}")
+    return str(f"{min((float(x) for x in searchtimes), key=lambda x: abs(x - reftime))}")
 
 
 def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
@@ -287,8 +286,7 @@ def get_wid_init_at_tmin(modelpath: Path) -> float:
     coordmax0 = rmax
     ncoordgrid0 = 50
 
-    wid_init = 2 * coordmax0 / ncoordgrid0
-    return wid_init
+    return 2 * coordmax0 / ncoordgrid0
 
 
 def get_wid_init_at_tmodel(
@@ -307,9 +305,7 @@ def get_wid_init_at_tmodel(
     ncoordgridx: int = round(ngridpoints ** (1.0 / 3.0))
 
     assert xmax is not None
-    wid_init = 2.0 * xmax / ncoordgridx
-
-    return wid_init
+    return 2.0 * xmax / ncoordgridx
 
 
 def get_syn_dir(modelpath: Path) -> tuple[float, float, float]:
@@ -402,18 +398,13 @@ def get_timestep_times_float(
     dlogt = (math.log(inputparams["tmax"]) - math.log(tmin)) / inputparams["ntstep"]
     timesteps = range(inputparams["ntstep"])
     if loc == "mid":
-        tmids = np.array([tmin * math.exp((ts + 0.5) * dlogt) for ts in timesteps])
-        return tmids
+        return np.array([tmin * math.exp((ts + 0.5) * dlogt) for ts in timesteps])
     if loc == "start":
-        tstarts = np.array([tmin * math.exp(ts * dlogt) for ts in timesteps])
-        return tstarts
+        return np.array([tmin * math.exp(ts * dlogt) for ts in timesteps])
     if loc == "end":
-        tends = np.array([tmin * math.exp((ts + 1) * dlogt) for ts in timesteps])
-        return tends
+        return np.array([tmin * math.exp((ts + 1) * dlogt) for ts in timesteps])
     if loc == "delta":
-        tdeltas = np.array([tmin * (math.exp((ts + 1) * dlogt) - math.exp(ts * dlogt)) for ts in timesteps])
-        return tdeltas
-
+        return np.array([tmin * (math.exp((ts + 1) * dlogt) - math.exp(ts * dlogt)) for ts in timesteps])
     msg = "loc must be one of 'mid', 'start', 'end', or 'delta'"
     raise ValueError(msg)
 
@@ -524,10 +515,7 @@ def get_time_range(
 def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
     """Return the time in days of the midpoint of a timestep number."""
     timearray = get_timestep_times_float(modelpath, loc="mid")
-    if timearray is not None:
-        return timearray[timestep]
-
-    return -1
+    return timearray[timestep]
 
 
 def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, float | None]:
@@ -589,8 +577,7 @@ def get_model_name(path: Path | str) -> str:
 
 def get_z_a_nucname(nucname: str) -> tuple[int, int]:
     """Return atomic number and mass number from a string like 'Pb208' (returns 92, 208)."""
-    if nucname.startswith("X_"):
-        nucname = nucname[2:]
+    nucname = nucname.removeprefix("X_")
     z = get_atomic_number(nucname.rstrip("0123456789"))
     assert z > 0
     a = int(nucname.lower().lstrip("abcdefghijklmnopqrstuvwxyz"))
@@ -599,19 +586,20 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
 
 @lru_cache(maxsize=1)
 def get_elsymbolslist() -> list[str]:
-    elsymbols = [
+    return [
         "n",
-        *list(pd.read_csv(at.get_config()["path_datadir"] / "elements.csv", usecols=["symbol"])["symbol"].to_numpy()),
+        *list(
+            pd.read_csv(
+                at.get_config()["path_datadir"] / "elements.csv",
+                usecols=["symbol"],
+            )["symbol"].to_numpy()
+        ),
     ]
-
-    return elsymbols
 
 
 def get_atomic_number(elsymbol: str) -> int:
     assert elsymbol is not None
-    if elsymbol.startswith("X_"):
-        elsymbol = elsymbol[2:]
-
+    elsymbol = elsymbol.removeprefix("X_")
     elsymbol = elsymbol.split("_")[0].split("-")[0].rstrip("0123456789")
 
     if elsymbol.title() in get_elsymbolslist():
@@ -638,7 +626,7 @@ def get_ionstring(
         return f"{get_elsymbol(atomic_number)}"
 
     if spectral:
-        return f"{get_elsymbol(atomic_number)}{' ' if not nospace else ''}{roman_numerals[ionstage]}"
+        return f"{get_elsymbol(atomic_number)}{'' if nospace else ' '}{roman_numerals[ionstage]}"
 
     # ion notion e.g. Co+, Fe2+
     if ionstage > 2:
@@ -686,9 +674,7 @@ def makelist(x: None | list | Sequence | str | Path) -> list[t.Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
         return []
-    if isinstance(x, (str, Path)):
-        return [x]
-    return list(x)
+    return [x] if isinstance(x, (str, Path)) else list(x)
 
 
 def trim_or_pad(requiredlength: int, *listoflistin: list[list[t.Any]]) -> Iterator[list[t.Any]]:
@@ -806,7 +792,7 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     filepath = Path(str(filepath).replace(".xz", "").replace(".gz", "").replace(".lz4", "").replace(".zst", ""))
 
     # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
-    individualmetafile = filepath.with_suffix(filepath.suffix + ".meta.yml")
+    individualmetafile = filepath.with_suffix(f"{filepath.suffix}.meta.yml")
     if individualmetafile.exists():
         with individualmetafile.open("r") as yamlfile:
             metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
@@ -952,13 +938,17 @@ def get_linelist_dict(modelpath: Path | str) -> dict[int, linetuple]:
     nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
         Path(modelpath, "linestat.out")
     )
-    linelistdict = {
+    return {
         index: linetuple(lambda_a, Z, ionstage, upper, lower)
         for index, lambda_a, Z, ionstage, upper, lower in zip(
-            range(nlines), lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
+            range(nlines),
+            lambda_angstroms,
+            atomic_numbers,
+            ion_stages,
+            upper_levels,
+            lower_levels,
         )
     }
-    return linelistdict
 
 
 @lru_cache(maxsize=8)
@@ -969,7 +959,7 @@ def get_linelist_dataframe(
         Path(modelpath, "linestat.out")
     )
 
-    dflinelist = pd.DataFrame(
+    return pd.DataFrame(
         {
             "lambda_angstroms": lambda_angstroms,
             "atomic_number": atomic_numbers,
@@ -985,9 +975,6 @@ def get_linelist_dataframe(
             "lowerlevelindex": int,
         },
     )
-    dflinelist.index.name = "linelistindex"
-
-    return dflinelist
 
 
 @lru_cache(maxsize=8)
@@ -1050,22 +1037,18 @@ def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
 def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
     """Get the set of timesteps covered by the output files in an ARTIS run folder."""
     folder_timesteps = set()
-    try:
-        with zopen(Path(folderpath, "estimators_0000.out")) as estfile:
-            restart_timestep = -1
-            for line in estfile:
-                if line.startswith("timestep "):
-                    timestep = int(line.split()[1])
+    with contextlib.suppress(FileNotFoundError), zopen(Path(folderpath, "estimators_0000.out")) as estfile:
+        restart_timestep = -1
+        for line in estfile:
+            if line.startswith("timestep "):
+                timestep = int(line.split()[1])
 
-                    if restart_timestep < 0 and timestep != 0 and 0 not in folder_timesteps:
-                        # the first timestep of a restarted run is duplicate and should be ignored
-                        restart_timestep = timestep
+                if restart_timestep < 0 and timestep != 0 and 0 not in folder_timesteps:
+                    # the first timestep of a restarted run is duplicate and should be ignored
+                    restart_timestep = timestep
 
-                    if timestep != restart_timestep:
-                        folder_timesteps.add(timestep)
-
-    except FileNotFoundError:
-        pass
+                if timestep != restart_timestep:
+                    folder_timesteps.add(timestep)
 
     return tuple(folder_timesteps)
 
@@ -1078,8 +1061,8 @@ def get_runfolders(
     The folder list may include non-ARTIS folders if a timestep is not specified.
     """
     folderlist_all = (*sorted([child for child in Path(modelpath).iterdir() if child.is_dir()]), Path(modelpath))
-    folder_list_matching = []
     if (timestep is not None and timestep > -1) or (timesteps is not None and len(timesteps) > 0):
+        folder_list_matching = []
         for folderpath in folderlist_all:
             folder_timesteps = get_runfolder_timesteps(folderpath)
             if timesteps is None and timestep is not None and timestep in folder_timesteps:
@@ -1205,7 +1188,7 @@ def get_viewingdirection_costhetabincount() -> int:
     return 10
 
 
-def get_phi_bins() -> tuple[np.ndarray, np.ndarray, list[str]]:
+def get_phi_bins(usedegrees: bool) -> tuple[np.ndarray, np.ndarray, list[str]]:
     nphibins = at.get_viewingdirection_phibincount()
     # pi/2 must be an exact boundary because of the change in behaviour there
     assert nphibins % 2 == 0
@@ -1221,26 +1204,38 @@ def get_phi_bins() -> tuple[np.ndarray, np.ndarray, list[str]]:
 
     binlabels = []
     for phibin, step in enumerate(phisteps):
-        str_phi_lower = f"{step}π/{nphibins // 2}" if step > 0 else "0"
+        if usedegrees:
+            str_phi_lower = f"{phi_lower[step]/math.pi*180:.0f}°"
+            str_phi_upper = f"{phi_upper[step]/math.pi*180:.0f}°"
+        else:
+            str_phi_lower = f"{step}π/{nphibins // 2}" if step > 0 else "0"
+            str_phi_upper = f"{step+1}π/{nphibins // 2}" if step < nphibins - 1 else "2π"
+
         lower_compare = "≤" if phibin < (nphibins // 2) else "<"
-        str_phi_upper = f"{step+1}π/{nphibins // 2}" if step < nphibins - 1 else "2π"
         upper_compare = "≤" if phibin > (nphibins // 2) else "<"
         binlabels.append(f"{str_phi_lower} {lower_compare} ϕ {upper_compare} {str_phi_upper}")
 
     return phi_lower, phi_upper, binlabels
 
 
-def get_costheta_bins() -> tuple[np.ndarray, np.ndarray, list[str]]:
+def get_costheta_bins(usedegrees: bool) -> tuple[np.ndarray, np.ndarray, list[str]]:
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     costhetabins_lower = np.arange(-1.0, 1.0, 2.0 / ncosthetabins)
     costhetabins_upper = costhetabins_lower + 2.0 / ncosthetabins
-    binlabels = [f"{lower:.1f} ≤ cos θ < {upper:.1f}" for lower, upper in zip(costhetabins_lower, costhetabins_upper)]
+    if usedegrees:
+        thetabins_upper = np.arccos(costhetabins_lower) / np.pi * 180
+        thetabins_lower = np.arccos(costhetabins_upper) / np.pi * 180
+        binlabels = [f"{lower:.0f}° < θ < {upper:.0f}°" for lower, upper in zip(thetabins_lower, thetabins_upper)]
+    else:
+        binlabels = [
+            f"{lower:.1f} ≤ cos θ < {upper:.1f}" for lower, upper in zip(costhetabins_lower, costhetabins_upper)
+        ]
     return costhetabins_lower, costhetabins_upper, binlabels
 
 
-def get_costhetabin_phibin_labels() -> tuple[list[str], list[str]]:
-    _, _, costhetabinlabels = get_costheta_bins()
-    _, _, phibinlabels = get_phi_bins()
+def get_costhetabin_phibin_labels(usedegrees: bool) -> tuple[list[str], list[str]]:
+    _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees)
+    _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)
     return costhetabinlabels, phibinlabels
 
 
@@ -1258,22 +1253,34 @@ def get_vspec_dir_labels(modelpath: str | Path, viewinganglelabelunits: str = "r
 
 
 def get_dirbin_labels(
-    dirbins: np.ndarray[t.Any, np.dtype[t.Any]] | Sequence[int],
+    dirbins: np.ndarray[t.Any, np.dtype[t.Any]] | Sequence[int] | None = None,
     modelpath: Path | str | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
+    usedegrees: bool = False,
 ) -> dict[int, str]:
     if modelpath:
         modelpath = Path(modelpath)
         MABINS = at.get_viewingdirectionbincount()
-        if len(list(Path(modelpath).glob("*_res_00.out*"))) > 0:  # if the first direction bin file exists
-            assert len(list(Path(modelpath).glob(f"*_res_{MABINS-1:02d}.out*"))) > 0  # check last bin exists
-            assert len(list(Path(modelpath).glob(f"*_res_{MABINS:02d}.out*"))) == 0  # check one beyond does not exist
+        if list(modelpath.glob("*_res_00.out*")):
+            # if the first direction bin file exists, check:
+            # check last bin exists
+            assert list(modelpath.glob(f"*_res_{MABINS-1:02d}.out*"))
+            # check one beyond does not exist
+            assert not list(modelpath.glob(f"*_res_{MABINS:02d}.out*"))
 
-    _, _, costhetabinlabels = get_costheta_bins()
-    _, _, phibinlabels = get_phi_bins()
+    _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees)
+    _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)
 
     nphibins = at.get_viewingdirection_phibincount()
+
+    if dirbins is None:
+        if average_over_phi:
+            dirbins = np.arange(at.get_viewingdirection_costhetabincount()) * 10
+        elif average_over_theta:
+            dirbins = np.arange(nphibins)
+        else:
+            dirbins = np.arange(at.get_viewingdirectionbincount())
 
     angle_definitions: dict[int, str] = {}
     for dirbin in dirbins:

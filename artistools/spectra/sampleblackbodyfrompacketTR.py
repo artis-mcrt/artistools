@@ -94,7 +94,7 @@ specpol_res_data_bb = [copy.deepcopy(specpol_data_bb) for _ in range(n_angle_bin
 packetsfiles = at.packets.get_packetsfilepaths(modelpath)
 nprocs = at.get_nprocs(modelpath)
 # nprocs = 100
-for npacketfile in range(0, nprocs):
+for npacketfile in range(nprocs):
     dfpackets = at.packets.readfile(packetsfiles[npacketfile])  # , type='TYPE_ESCAPE', escape_type='TYPE_RPKT')
     dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)
     dfpackets = dfpackets.query(f'type_id == {type_ids["TYPE_ESCAPE"]} and escape_type_id == {type_ids["TYPE_RPKT"]}')

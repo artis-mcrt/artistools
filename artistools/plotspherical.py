@@ -78,9 +78,8 @@ def plot_spherical(
     )
 
     # for figuring out where the axes are on the plot, make a cut
-    # dfpackets = dfpackets.filter(pl.col("dirz") < -0.9)
+    # dfpackets = dfpackets.filter(pl.col("dirz") > 0.9)
 
-    solidanglefactor = nphibins * ncosthetabins
     aggs = []
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelmeta=modelmeta)
     if "emvelocityoverc" in plotvars:
@@ -98,6 +97,7 @@ def plot_spherical(
         )
 
     if "luminosity" in plotvars:
+        solidanglefactor = nphibins * ncosthetabins
         aggs.append(
             (pl.col("e_rf").sum() / nprocs_read * solidanglefactor / (timemaxdays - timemindays) / 86400).alias(
                 "luminosity"
@@ -186,7 +186,7 @@ def plot_spherical(
     # costhetabin zero is (0,0,-1) so theta angle
     costhetagrid = np.linspace(-1, 1, ncosthetabins + 1, endpoint=True)
     # for Molleweide projection, theta range is [-pi/2, +pi/2]
-    thetagrid = np.arccos(costhetagrid) - np.pi / 2
+    thetagrid = np.pi / 2 - np.arccos(costhetagrid)
 
     meshgrid_phi, meshgrid_theta = np.meshgrid(phigrid, thetagrid)
 
@@ -236,10 +236,10 @@ def plot_spherical(
                 meshgrid_phi_highres, meshgrid_theta_highres, data_interp, rasterized=True, cmap=cmap
             )
 
-        if plotvar == "emvelocityoverc":
-            colorbartitle = r"Last interaction ejecta velocity [c]"
-        elif plotvar == "emlosvelocityoverc":
+        if plotvar == "emlosvelocityoverc":
             colorbartitle = r"Mean line of sight velocity [c]"
+        elif plotvar == "emvelocityoverc":
+            colorbartitle = r"Last interaction ejecta velocity [c]"
         elif plotvar == "luminosity":
             colorbartitle = r"Radiant intensity $\cdot\,4π$ [{}erg/s]"
         elif plotvar == "temperature":

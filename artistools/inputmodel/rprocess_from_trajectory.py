@@ -22,11 +22,10 @@ import artistools as at
 
 def get_elemabund_from_nucabund(dfnucabund: pd.DataFrame) -> dict[str, float]:
     """Return a dictionary of elemental abundances from nuclear abundance DataFrame."""
-    dictelemabund: dict[str, float] = {}
-    for atomic_number in range(1, dfnucabund.Z.max() + 1):
-        dictelemabund[f"X_{at.get_elsymbol(atomic_number)}"] = dfnucabund.query(
-            "Z == @atomic_number", inplace=False
-        ).massfrac.sum()
+    dictelemabund: dict[str, float] = {
+        f"X_{at.get_elsymbol(atomic_number)}": dfnucabund.query("Z == @atomic_number", inplace=False).massfrac.sum()
+        for atomic_number in range(1, dfnucabund.Z.max() + 1)
+    }
     return dictelemabund
 
 
@@ -93,19 +92,15 @@ def get_closest_network_timestep(
 
     if cond == "nearest":
         idx = np.abs(dfevol.timesec.to_numpy() - timesec).argmin()
+        return dfevol["nstep"].to_numpy()[idx]
 
-    elif cond == "greaterthan":
-        return dfevol.query("timesec > @timesec")["nstep"].min()
+    if cond == "greaterthan":
+        return dfevol[dfevol["timesec"] > timesec]["nstep"].min()
 
-    elif cond == "lessthan":
-        return dfevol.query("timesec < @timesec")["nstep"].max()
+    if cond == "lessthan":
+        return dfevol[dfevol["timesec"] < timesec]["nstep"].max()
 
-    else:
-        raise AssertionError
-
-    nts: int = dfevol["nstep"].to_numpy()[idx]
-
-    return nts
+    raise AssertionError
 
 
 def get_trajectory_timestepfile_nuc_abund(
@@ -269,7 +264,7 @@ def get_modelcellabundance(
     ]
 
     # adjust frac_of_cellmass for missing particles
-    cell_frac_sum = sum([frac_of_cellmass for _, frac_of_cellmass in contribparticles])
+    cell_frac_sum = sum(frac_of_cellmass for _, frac_of_cellmass in contribparticles)
 
     nucabundcolnames = {
         col for particleid in dfthiscellcontribs.particleid for col in dict_traj_nuc_abund.get(particleid, {})
@@ -277,10 +272,8 @@ def get_modelcellabundance(
 
     row = {
         nucabundcolname: sum(
-            [
-                frac_of_cellmass * traj_nuc_abund.get(nucabundcolname, 0.0) / cell_frac_sum
-                for traj_nuc_abund, frac_of_cellmass in contribparticles
-            ]
+            frac_of_cellmass * traj_nuc_abund.get(nucabundcolname, 0.0) / cell_frac_sum
+            for traj_nuc_abund, frac_of_cellmass in contribparticles
         )
         for nucabundcolname in nucabundcolnames
     }
@@ -298,7 +291,7 @@ def get_modelcellabundance(
 
 
 def get_gridparticlecontributions(gridcontribpath: Path | str) -> pd.DataFrame:
-    dfcontribs = pd.read_csv(
+    return pd.read_csv(
         at.zopen(Path(gridcontribpath, "gridcontributions.txt")),
         delim_whitespace=True,
         dtype={
@@ -310,20 +303,21 @@ def get_gridparticlecontributions(gridcontribpath: Path | str) -> pd.DataFrame:
         dtype_backend="pyarrow",
     )
 
-    return dfcontribs
+
+def particlenetworkdatafound(traj_root: Path, particleid: int) -> bool:
+    return (
+        (traj_root / f"{particleid}.tar.xz").is_file()
+        or (traj_root / f"{particleid}.tar").is_file()
+        or (traj_root / str(particleid)).is_dir()
+    )
 
 
 def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataFrame) -> pd.DataFrame:
-    missing_particleids = []
-    for particleid in sorted(dfcontribs.particleid.unique()):
-        if (
-            not Path(traj_root, f"{particleid}.tar.xz").is_file()
-            and not Path(traj_root, f"{particleid}.tar").is_file()
-            and not Path(traj_root, str(particleid)).is_dir()
-        ):
-            missing_particleids.append(particleid)
-            # print(f' WARNING particle {particleid} not found!')
-
+    missing_particleids = [
+        particleid
+        for particleid in sorted(dfcontribs.particleid.unique())
+        if not particlenetworkdatafound(traj_root, particleid)
+    ]
     print(
         (
             f"Adding gridcontributions column that excludes {len(missing_particleids)} "

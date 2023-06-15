@@ -71,7 +71,7 @@ def stackspectra(
     """Add spectra using weighting factors, i.e., specout[nu] = spec1[nu] * factor1 + spec2[nu] * factor2 + ...
     spectra_and_factors should be a list of tuples: spectra[], factor.
     """
-    factor_sum = sum([factor for _, factor in spectra_and_factors])
+    factor_sum = sum(factor for _, factor in spectra_and_factors)
 
     stackedspectrum = np.zeros_like(spectra_and_factors[0][0], dtype=float)
     for spectrum, factor in spectra_and_factors:
@@ -91,16 +91,14 @@ def get_spectrum_at_time(
 ) -> pd.DataFrame:
     if dirbin >= 0:
         if args is not None and args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
-            spectrum = get_vspecpol_spectrum(modelpath, time, dirbin, args)
-            return spectrum
-
+            return get_vspecpol_spectrum(modelpath, time, dirbin, args)
         assert average_over_phi is not None
         assert average_over_theta is not None
     else:
         average_over_phi = False
         average_over_theta = False
 
-    spectrum = get_spectrum(
+    return get_spectrum(
         modelpath=modelpath,
         directionbins=[dirbin],
         timestepmin=timestep,
@@ -108,8 +106,6 @@ def get_spectrum_at_time(
         average_over_phi=average_over_phi,
         average_over_theta=average_over_theta,
     )[dirbin]
-
-    return spectrum
 
 
 def get_from_packets(
@@ -214,7 +210,7 @@ def get_from_packets(
             getcounts=getpacketcount,
         )
         array_flambda = (
-            dfbinned[encol + "_sum"]
+            dfbinned[f"{encol}_sum"]
             / delta_lambda
             / (timehigh - timelow)
             / (4 * math.pi)
@@ -368,8 +364,10 @@ def get_spectrum(
 
     if any(dirbin != -1 for dirbin in directionbins):
         assert stokesparam == "I"
-        specdata.update(
-            get_spec_res(modelpath=modelpath, average_over_theta=average_over_theta, average_over_phi=average_over_phi)
+        specdata |= get_spec_res(
+            modelpath=modelpath,
+            average_over_theta=average_over_theta,
+            average_over_phi=average_over_phi,
         )
 
     specdataout: dict[int, pd.DataFrame] = {}
@@ -502,9 +500,7 @@ def get_specpol_data(
         print(f"Reading {specfilename}")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
 
-    stokes_params = split_dataframe_stokesparams(specdata)
-
-    return stokes_params
+    return split_dataframe_stokesparams(specdata)
 
 
 @lru_cache(maxsize=4)
@@ -527,9 +523,7 @@ def get_vspecpol_data(
         print(f"Reading {specfilename}")
         specdata = pd.read_csv(specfilename, delim_whitespace=True)
 
-    stokes_params = split_dataframe_stokesparams(specdata)
-
-    return stokes_params
+    return split_dataframe_stokesparams(specdata)
 
 
 def split_dataframe_stokesparams(specdata: pd.DataFrame) -> dict[str, pd.DataFrame]:
@@ -537,15 +531,16 @@ def split_dataframe_stokesparams(specdata: pd.DataFrame) -> dict[str, pd.DataFra
     parameters. Split these into a dictionary of DataFrames.
     """
     specdata = specdata.rename({"0": "nu", "0.0": "nu"}, axis="columns")
-    cols_to_split = []
-    stokes_params = {}
-    for i, key in enumerate(specdata.keys()):
-        if specdata.keys()[1] in key:
-            cols_to_split.append(i)
-
-    stokes_params["I"] = pd.concat(
-        [specdata["nu"], specdata.iloc[:, cols_to_split[0] : cols_to_split[1]]], axis="columns"
-    )
+    cols_to_split = [i for i, key in enumerate(specdata.keys()) if specdata.keys()[1] in key]
+    stokes_params = {
+        "I": pd.concat(
+            [
+                specdata["nu"],
+                specdata.iloc[:, cols_to_split[0] : cols_to_split[1]],
+            ],
+            axis="columns",
+        )
+    }
     stokes_params["Q"] = pd.concat(
         [specdata["nu"], specdata.iloc[:, cols_to_split[1] : cols_to_split[2]]], axis="columns"
     )
@@ -577,7 +572,7 @@ def get_vspecpol_spectrum(
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1])] + [arr_tmid[-1] - arr_tmid[-2]]
 
     def match_closest_time(reftime: float) -> str:
-        return str(f"{min([float(x) for x in arr_tmid], key=lambda x: abs(x - reftime))}")
+        return str(f"{min((float(x) for x in arr_tmid), key=lambda x: abs(x - reftime))}")
 
     # if 'timemin' and 'timemax' in args:
     #     timelower = match_closest_time(args.timemin)  # how timemin, timemax are used changed at some point
@@ -875,9 +870,7 @@ def get_flux_contributions_from_packets(
             return f"{at.get_ionstring(line.atomic_number, line.ionstage)} bound-bound"
         if abstype == -1:
             return "free-free"
-        if abstype == -2:
-            return "bound-free"
-        return "? other absorp."
+        return "bound-free" if abstype == -2 else "? other absorp."
 
     array_lambdabinedges: np.ndarray
     if delta_lambda is not None:
@@ -941,9 +934,9 @@ def get_flux_contributions_from_packets(
             dfpackets = dfpackets.query(
                 "@nu_min <= nu_rf < @nu_max and trueemissiontype >= 0 and "
                 + (
-                    "@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh"
-                    if not use_escapetime
-                    else "@timelow < escape_time * @betafactor < @timehigh"
+                    "@timelow < escape_time * @betafactor < @timehigh"
+                    if use_escapetime
+                    else "@timelow < (escape_time - (posx * dirx + posy * diry + posz * dirz) / @c_cgs) < @timehigh"
                 ),
             )
             print(f"  {len(dfpackets)} escaped r-packets matching frequency and arrival time ranges")
@@ -1172,8 +1165,12 @@ def get_line_flux(
     index_low, index_high = (
         int(np.searchsorted(arr_lambda_angstroms, wl, side="left")) for wl in (lambda_low, lambda_high)
     )
-    flux_integral = abs(np.trapz(arr_f_lambda[index_low:index_high], x=arr_lambda_angstroms[index_low:index_high]))
-    return flux_integral
+    return abs(
+        np.trapz(
+            arr_f_lambda[index_low:index_high],
+            x=arr_lambda_angstroms[index_low:index_high],
+        )
+    )
 
 
 def print_floers_line_ratio(
@@ -1198,11 +1195,11 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pd.DataFrame, dict[str
         filepath = Path(at.get_config()["path_artistools_dir"], "data", "refspectra", filename)
 
         if not filepath.is_file():
-            filepathxz = filepath.with_suffix(filepath.suffix + ".xz")
+            filepathxz = filepath.with_suffix(f"{filepath.suffix}.xz")
             if filepathxz.is_file():
                 filepath = filepathxz
             else:
-                filepathgz = filepath.with_suffix(filepath.suffix + ".gz")
+                filepathgz = filepath.with_suffix(f"{filepath.suffix}.gz")
                 if filepathgz.is_file():
                     filepath = filepathgz
 

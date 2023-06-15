@@ -48,9 +48,7 @@ def get_timestep_times_float(
     if loc == "end":
         return tends
     if loc == "delta":
-        tdeltas = tends - tstarts
-        return tdeltas
-
+        return tends - tstarts
     msg = "loc must be one of 'mid', 'start', 'end', or 'delta'"
     raise ValueError(msg)
 

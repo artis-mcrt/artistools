@@ -50,8 +50,8 @@ def plot_qdot(
     model_mass_grams = dfmodel.cellmass_grams.sum()
     print(f"model mass: {model_mass_grams / 1.989e33:.3f} Msun")
 
-    # calculate global heating rates from the individual particle heating rates
-    dfpartcontrib_nomissing = dfpartcontrib.query("particleid in @allparticledata.keys()")
+    print("Calculating global heating rates from the individual particle heating rates...")
+    dfpartcontrib_nomissing = dfpartcontrib[dfpartcontrib["particleid"].isin(allparticledata.keys())]
     for cellindex, dfpartcontribthiscell in dfpartcontrib_nomissing.groupby("cellindex"):
         if cellindex >= len(dfmodel):
             continue
@@ -69,6 +69,8 @@ def plot_qdot(
             thisparticledata = allparticledata[particleid]
             for col in heatcols:
                 arr_heat[col] += thisparticledata[col] * cell_mass_frac * frac_of_cellmass / frac_of_cellmass_sum
+
+    print("  done.")
 
     show_ye = False
     nrows = 2 if show_ye else 1
@@ -219,22 +221,25 @@ def plot_cell_abund_evolution(
     pdfoutpath: Path,
     mgi: int,
 ) -> None:
-    dfpartcontrib_thiscell = dfpartcontrib.query("cellindex == (@mgi + 1) and particleid in @allparticledata.keys()")
+    dfpartcontrib_thiscell = dfpartcontrib[
+        (dfpartcontrib["cellindex"] == (mgi + 1)) & (dfpartcontrib["particleid"].isin(allparticledata.keys()))
+    ]
     frac_of_cellmass_sum = dfpartcontrib_thiscell.frac_of_cellmass.sum()
     print(f"frac_of_cellmass_sum: {frac_of_cellmass_sum} (can be < 1.0 because of missing particles)")
     # if arr_strnuc[0] != 'Ye':
     #     arr_strnuc.insert(0, 'Ye')
 
-    arr_abund_gsi: dict[str, np.ndarray[t.Any, np.dtype[np.float64]]] = {}
-
-    for strnuc in arr_strnuc:
-        arr_abund_gsi[strnuc] = np.zeros_like(arr_time_gsi_days)
+    arr_abund_gsi: dict[str, np.ndarray[t.Any, np.dtype[np.float64]]] = {
+        strnuc: np.zeros_like(arr_time_gsi_days) for strnuc in arr_strnuc
+    }
 
     # calculate the GSI values from the particles contributing to this cell
     for particleid, frac_of_cellmass in dfpartcontrib_thiscell[["particleid", "frac_of_cellmass"]].itertuples(
         index=False
     ):
-        frac_of_cellmass = dfpartcontrib_thiscell.query("particleid == @particleid").frac_of_cellmass.sum()
+        frac_of_cellmass = dfpartcontrib_thiscell[dfpartcontrib_thiscell["particleid"] == particleid][
+            "frac_of_cellmass"
+        ].sum()
 
         for strnuc in arr_strnuc:
             arr_abund_gsi[strnuc] += allparticledata[particleid][strnuc] * frac_of_cellmass / frac_of_cellmass_sum
@@ -317,6 +322,7 @@ def get_particledata(
     arr_strnuc: list[str],
     traj_root: Path,
     particleid: int,
+    verbose: bool = False,
 ) -> tuple[int, dict[str, np.ndarray]]:
     """For an array of times (NSM time including time before merger), interpolate the heating rates of various decay channels
     and (if arr_strnuc is not empty) the nuclear mass fractions.
@@ -337,10 +343,11 @@ def get_particledata(
         assert not arr_strnuc
         return -1, {}
 
-    print(
-        "Reading network calculation heating.dat,"
-        f" energy_thermo.dat{', and nz-plane abundances' if arr_strnuc else ''} for particle {particleid}..."
-    )
+    if verbose:
+        print(
+            "Reading network calculation heating.dat,"
+            f" energy_thermo.dat{', and nz-plane abundances' if arr_strnuc else ''} for particle {particleid}..."
+        )
 
     particledata = {}
     nstep_timesec = {}
@@ -415,14 +422,13 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     with at.zopen(modelpath / "model.txt") as fmodel:
         while True:
             line = fmodel.readline()
-            if line.startswith("#"):
-                if line.startswith("# gridfolder:"):
-                    griddatafolder = Path(line.strip().removeprefix("# gridfolder: "))
-                    mergermodelfolder = Path(line.strip().removeprefix("# gridfolder: ").removesuffix("_snapshot"))
-                elif line.startswith("# trajfolder:"):
-                    trajfolder = Path(line.strip().removeprefix("# trajfolder: ").replace("SFHO", "SFHo"))
-            else:
+            if not line.startswith("#"):
                 break
+            if line.startswith("# gridfolder:"):
+                griddatafolder = Path(line.strip().removeprefix("# gridfolder: "))
+                mergermodelfolder = Path(line.strip().removeprefix("# gridfolder: ").removesuffix("_snapshot"))
+            elif line.startswith("# trajfolder:"):
+                trajfolder = Path(line.strip().removeprefix("# trajfolder: ").replace("SFHO", "SFHo"))
 
     merger_root = Path(Path.home() / "Google Drive/Shared Drives/GSI NSM/Mergers")
     # merger_root = Path("/Users/luke/Downloads/Mergers")
@@ -561,13 +567,14 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
     arr_time_gsi_days = list(arr_time_gsi_s / 86400)
 
     dfpartcontrib = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
-    dfpartcontrib = dfpartcontrib.query("cellindex <= @npts_model and frac_of_cellmass > 0")
+    dfpartcontrib = dfpartcontrib[(dfpartcontrib["cellindex"] <= npts_model) & (dfpartcontrib["frac_of_cellmass"] > 0)]
 
-    list_particleids_getabund = dfpartcontrib.query("(cellindex - 1) in @mgiplotlist").particleid.unique()
-    fworkerwithabund = partial(get_particledata, arr_time_gsi_s_incpremerger, arr_strnuc, traj_root)
+    mgiplotlistplus1 = (mgi + 1 for mgi in mgiplotlist)
+    list_particleids_getabund = dfpartcontrib[dfpartcontrib["cellindex"].isin(mgiplotlistplus1)].particleid.unique()
+    fworkerwithabund = partial(get_particledata, arr_time_gsi_s_incpremerger, arr_strnuc, traj_root, verbose=True)
 
     print(f"Reading trajectories from {traj_root}")
-    print(f"  Reading Qdot/thermo and abundance data for {len(list_particleids_getabund)} particles")
+    print(f"Reading Qdot/thermo and abundance data for {len(list_particleids_getabund)} particles")
 
     if at.get_config()["num_processes"] > 1:
         with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
@@ -581,7 +588,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
         pid for pid in dfpartcontrib.particleid.unique() if pid not in list_particleids_getabund
     ]
     fworkernoabund = partial(get_particledata, arr_time_gsi_s_incpremerger, [], traj_root)
-    print(f"  Reading for Qdot/thermo data (no abundances needed) for {len(list_particleids_noabund)} particles")
+    print(f"Reading for Qdot/thermo data (no abundances needed) for {len(list_particleids_noabund)} particles")
 
     if at.get_config()["num_processes"] > 1:
         with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
