@@ -1218,14 +1218,23 @@ def get_phi_bins(usedegrees: bool) -> tuple[np.ndarray, np.ndarray, list[str]]:
     return phi_lower, phi_upper, binlabels
 
 
-def get_costheta_bins(usedegrees: bool) -> tuple[np.ndarray, np.ndarray, list[str]]:
+def get_costheta_bins(usedegrees: bool, usepiminustheta: bool = False) -> tuple[np.ndarray, np.ndarray, list[str]]:
     ncosthetabins = at.get_viewingdirection_costhetabincount()
     costhetabins_lower = np.arange(-1.0, 1.0, 2.0 / ncosthetabins)
     costhetabins_upper = costhetabins_lower + 2.0 / ncosthetabins
     if usedegrees:
-        thetabins_upper = np.arccos(costhetabins_lower) / np.pi * 180
-        thetabins_lower = np.arccos(costhetabins_upper) / np.pi * 180
-        binlabels = [f"{lower:.0f}° < θ < {upper:.0f}°" for lower, upper in zip(thetabins_lower, thetabins_upper)]
+        if usepiminustheta:
+            thetabins_upper = (np.pi - np.arccos(costhetabins_upper)) / np.pi * 180
+            thetabins_lower = (np.pi - np.arccos(costhetabins_lower)) / np.pi * 180
+            binlabels = [
+                rf"{lower:.0f}° < $\pi$-$\theta$ < {upper:.0f}°"
+                for lower, upper in zip(thetabins_lower, thetabins_upper)
+            ]
+        else:
+            thetabins_upper = np.arccos(costhetabins_lower) / np.pi * 180
+            thetabins_lower = np.arccos(costhetabins_upper) / np.pi * 180
+
+            binlabels = [f"{lower:.0f}° < θ < {upper:.0f}°" for lower, upper in zip(thetabins_lower, thetabins_upper)]
     else:
         binlabels = [
             f"{lower:.1f} ≤ cos θ < {upper:.1f}" for lower, upper in zip(costhetabins_lower, costhetabins_upper)
@@ -1258,6 +1267,7 @@ def get_dirbin_labels(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     usedegrees: bool = False,
+    usepiminustheta: bool = False,
 ) -> dict[int, str]:
     if modelpath:
         modelpath = Path(modelpath)
@@ -1269,7 +1279,7 @@ def get_dirbin_labels(
             # check one beyond does not exist
             assert not list(modelpath.glob(f"*_res_{MABINS:02d}.out*"))
 
-    _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees)
+    _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees, usepiminustheta=usepiminustheta)
     _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)
 
     nphibins = at.get_viewingdirection_phibincount()
