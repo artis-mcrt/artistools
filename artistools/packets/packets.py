@@ -761,9 +761,9 @@ def make_3d_grid(modeldata, vmax_cms):
     xgrid = np.zeros(grid)
     vmax = vmax_cms / CLIGHT
     i = 0
-    for _z in range(0, grid):
-        for _y in range(0, grid):
-            for x in range(0, grid):
+    for _z in range(grid):
+        for _y in range(grid):
+            for x in range(grid):
                 xgrid[x] = -vmax + 2 * x * vmax / grid
                 i += 1
 
