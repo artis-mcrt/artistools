@@ -584,7 +584,7 @@ def make_lightcurve_plot(
     else:
         str_units = "$/ \\mathrm{L}_\\odot$" if args.Lsun else " [erg/s]"
         if args.plotdeposition:
-            yvarname = ""
+            yvarname = r"$L$ or $\dot{E}$"
         elif escape_type == "TYPE_GAMMA":
             yvarname = r"$\mathrm{L}_\gamma$"
         elif escape_type == "TYPE_RPKT":
