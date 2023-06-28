@@ -24,11 +24,9 @@ def main():
         runfolder = logfilename.split("/output_0-0.txt")[0]
 
         timesteptimes = []
-        with open(runfolder + "/light_curve.out") as lcfile:
-            for line in lcfile:
-                timesteptimes.append(line.split()[0])
-
-        timesteptimes = timesteptimes[: int(len(timesteptimes) / 2)]
+        with open(f"{runfolder}/light_curve.out") as lcfile:
+            timesteptimes.extend(line.split()[0] for line in lcfile)
+        timesteptimes = timesteptimes[: len(timesteptimes) // 2]
 
         stats = []
 
