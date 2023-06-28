@@ -719,7 +719,7 @@ def make_emissionabsorption_plot(
         plotobjects.append(plotobj)
         plotobjectlabels.append(serieslabel)
 
-    axis.axhline(color="white", linewidth=0.5)
+    axis.axhline(color="black", linewidth=1)
 
     if args.title:
         plotlabel = args.title
@@ -871,11 +871,10 @@ def make_plot(args) -> tuple[plt.Figure, plt.Axes, pd.DataFrame]:
 
     nrows = len(args.timedayslist) if args.multispecplot else 1 + len(densityplotyvars)
 
-    absorptionheightfactor = 1.4 if args.showabsorption else 1.0  # add space below the axis
     figwidth = args.figscale * at.get_config()["figwidth"]
-    figheight = args.figscale * at.get_config()["figwidth"] * (0.25 + nrows * 0.4) * absorptionheightfactor
+    figheight = args.figscale * at.get_config()["figwidth"] * (0.25 + nrows * 0.4)
     if args.showabsorption:
-        figheight *= 1.4
+        figheight *= 1.56
     if args.hidexticklabels:
         figheight *= 0.87
 
