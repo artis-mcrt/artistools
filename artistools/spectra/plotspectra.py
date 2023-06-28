@@ -400,10 +400,8 @@ def make_spectrum_plot(
 
     for seriesindex, specpath in enumerate(speclist):
         specpath = Path(specpath)
-        plotkwargs: dict[str, t.Any] = {}
-        plotkwargs["alpha"] = args.linealpha[seriesindex]
+        plotkwargs: dict[str, t.Any] = {"alpha": args.linealpha[seriesindex], "linestyle": args.linestyle[seriesindex]}
 
-        plotkwargs["linestyle"] = args.linestyle[seriesindex]
         if not args.plotviewingangle and not args.plotvspecpol:
             plotkwargs["color"] = args.color[seriesindex]
         if args.dashes[seriesindex]:
@@ -741,7 +739,7 @@ def make_emissionabsorption_plot(
         if args.inset_title:
             axis.annotate(
                 plotlabel,
-                xy=(0.03, 0.95),
+                xy=(0.03, 0.96),
                 xycoords="axes fraction",
                 horizontalalignment="left",
                 verticalalignment="top",
@@ -873,16 +871,21 @@ def make_plot(args) -> tuple[plt.Figure, plt.Axes, pd.DataFrame]:
 
     nrows = len(args.timedayslist) if args.multispecplot else 1 + len(densityplotyvars)
 
+    absorptionheightfactor = 1.4 if args.showabsorption else 1.0  # add space below the axis
+    figwidth = args.figscale * at.get_config()["figwidth"]
+    figheight = args.figscale * at.get_config()["figwidth"] * (0.25 + nrows * 0.4) * absorptionheightfactor
+    if args.showabsorption:
+        figheight *= 1.4
+    if args.hidexticklabels:
+        figheight *= 0.87
+
     fig, axes = plt.subplots(
         nrows=nrows,
         ncols=1,
         sharey=False,
         sharex=True,
         squeeze=True,
-        figsize=(
-            args.figscale * at.get_config()["figwidth"],
-            args.figscale * at.get_config()["figwidth"] * (0.25 + nrows * 0.4),
-        ),
+        figsize=(figwidth, figheight),
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 
