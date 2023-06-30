@@ -1149,7 +1149,9 @@ def sort_and_reduce_flux_contribution_list(
 def print_integrated_flux(
     arr_f_lambda: np.ndarray, arr_lambda_angstroms: np.ndarray, distance_megaparsec: float = 1.0
 ) -> float:
-    integrated_flux = abs(np.trapz(arr_f_lambda, x=arr_lambda_angstroms)) * u.erg / u.s / (u.cm**2)
+    integrated_flux = (
+        abs(np.trapz(np.nan_to_num(arr_f_lambda, nan=0.0), x=arr_lambda_angstroms)) * u.erg / u.s / (u.cm**2)
+    )
     print(
         f" integrated flux ({arr_lambda_angstroms.min():.1f} to "
         f"{arr_lambda_angstroms.max():.1f} A): {integrated_flux:.3e}"

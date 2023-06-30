@@ -53,19 +53,15 @@ def read_ejectasnapshot(pathtosnapshot):
     ]
 
     types_dict = {"id": int}
-    types_dict.update({col: float for col in column_names if col not in types_dict})
+    types_dict |= {col: float for col in column_names if col not in types_dict}
 
-    ejectasnapshot = pd.read_csv(
+    return pd.read_csv(
         Path(pathtosnapshot) / "ejectasnapshot.dat",
         delim_whitespace=True,
         header=None,
         names=column_names,
         dtype=types_dict,
     )
-
-    # Everything is in geometric units here
-
-    return ejectasnapshot
 
 
 def get_merger_time_geomunits(pathtogriddata: Path) -> float:
@@ -224,19 +220,19 @@ def mirror_model_in_axis(griddata):
     Q = np.zeros((grid, grid, grid))
 
     i = 0
-    for z in range(0, grid):
-        for y in range(0, grid):
-            for x in range(0, grid):
+    for z in range(grid):
+        for y in range(grid):
+            for x in range(grid):
                 rho[x, y, z] = griddata["rho"][i]
                 cellYe[x, y, z] = griddata["cellYe"][i]
                 tracercount[x, y, z] = griddata["tracercount"][i]
                 Q[x, y, z] = griddata["Q"][i]
                 i += 1
 
-    for z in range(0, grid):
+    for z in range(grid):
         z_mirror = grid - 1 - z
-        for y in range(0, grid):
-            for x in range(0, grid):
+        for y in range(grid):
+            for x in range(grid):
                 if z < 50:
                     rho[x, y, z] = rho[x, y, z]
                     cellYe[x, y, z] = cellYe[x, y, z]
@@ -253,9 +249,9 @@ def mirror_model_in_axis(griddata):
     tracercount_1d_array = np.zeros(len(griddata))
     Q_1d_array = np.zeros(len(griddata))
     i = 0
-    for z in range(0, grid):
-        for y in range(0, grid):
-            for x in range(0, grid):
+    for z in range(grid):
+        for y in range(grid):
+            for x in range(grid):
                 rho_1d_array[i] = rho[x, y, z]
                 cellYe_1d_array[i] = cellYe[x, y, z]
                 tracercount_1d_array[i] = tracercount[x, y, z]
@@ -302,8 +298,7 @@ def add_mass_to_center(griddata, t_model_in_days, vmax, args):
                 cellid, griddata["pos_x_min"][i], griddata["pos_y_min"][i], griddata["pos_z_min"][i], griddata["rho"][i]
             )
             griddata["rho"][i] += density_hole
-            if griddata["cellYe"][i] < 0.4:
-                griddata["cellYe"][i] = 0.4
+            griddata["cellYe"][i] = max(griddata["cellYe"][i], 0.4)
             # print("Inner empty cells filled")
             print(
                 cellid, griddata["pos_x_min"][i], griddata["pos_y_min"][i], griddata["pos_z_min"][i], griddata["rho"][i]
