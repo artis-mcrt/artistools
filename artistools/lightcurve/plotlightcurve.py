@@ -141,28 +141,43 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
     # color_alpha = next(axis._get_lines.prop_cycler)['color']
     color_alpha = "C1"
 
-    # if 'eps_alpha_ana_Lsun' in depdata:
-    #     axis.plot(depdata['tmid_days'], depdata['eps_alpha_ana_Lsun'] * 3.826e33, **dict(
-    #         plotkwargs, **{
-    #             'label': plotkwargs['label'] + r' $\dot{E}_{rad,\alpha}$ analytical',
-    #             'linestyle': 'solid',
-    #             'color': color_alpha,
-    #         }))
+    plotalphadep = False
+    if plotalphadep:
+        if "eps_alpha_ana_Lsun" in depdata:
+            axis.plot(
+                depdata["tmid_days"],
+                depdata["eps_alpha_ana_Lsun"] * 3.826e33,
+                **{
+                    **plotkwargs,
+                    "label": plotkwargs["label"] + r" $\dot{E}_{rad,\alpha}$ analytical",
+                    "linestyle": "solid",
+                    "color": color_alpha,
+                },
+            )
 
-    # if 'eps_alpha_Lsun' in depdata:
-    #     axis.plot(depdata['tmid_days'], depdata['eps_alpha_Lsun'] * 3.826e33, **dict(
-    #         plotkwargs, **{
-    #             'label': plotkwargs['label'] + r' $\dot{E}_{rad,\alpha}$',
-    #             'linestyle': 'dashed',
-    #             'color': color_alpha,
-    #         }))
+        if "eps_alpha_Lsun" in depdata:
+            axis.plot(
+                depdata["tmid_days"],
+                depdata["eps_alpha_Lsun"] * 3.826e33,
+                **{
+                    **plotkwargs,
+                    "label": plotkwargs["label"] + r" $\dot{E}_{rad,\alpha}$",
+                    "linestyle": "dashed",
+                    "color": color_alpha,
+                },
+            )
 
-    # axis.plot(depdata['tmid_days'], depdata['alphadep_Lsun'] * 3.826e33, **dict(
-    #     plotkwargs, **{
-    #         'label': plotkwargs['label'] + r' $\dot{E}_{dep,\alpha}$',
-    #         'linestyle': 'dotted',
-    #         'color': color_alpha,
-    #     }))
+        axis.plot(
+            depdata["tmid_days"],
+            depdata["alphadep_Lsun"] * 3.826e33,
+            **{
+                **plotkwargs,
+                "label": plotkwargs["label"] + r" $\dot{E}_{dep,\alpha}$",
+                "linestyle": "dotted",
+                "color": color_alpha,
+            },
+        )
+
     if args.plotthermalisation:
         axistherm.plot(
             depdata["tmid_days"],
@@ -490,7 +505,7 @@ def make_lightcurve_plot(
             bolreflightcurve = Path(modelpath)
 
             dflightcurve, metadata = at.lightcurve.read_bol_reflightcurve_data(bolreflightcurve)
-            lightcurvelabel = metadata.get("label", bolreflightcurve)
+            lightcurvelabel = args.label[lcindex] or metadata.get("label", bolreflightcurve)
             color = ["0.0", "0.5", "0.7"][reflightcurveindex]
             plotkwargs = {"label": lightcurvelabel, "color": color, "zorder": 0}
             if (
@@ -569,7 +584,7 @@ def make_lightcurve_plot(
     else:
         str_units = "$/ \\mathrm{L}_\\odot$" if args.Lsun else " [erg/s]"
         if args.plotdeposition:
-            yvarname = ""
+            yvarname = r"$L$ or $\dot{E}$"
         elif escape_type == "TYPE_GAMMA":
             yvarname = r"$\mathrm{L}_\gamma$"
         elif escape_type == "TYPE_RPKT":

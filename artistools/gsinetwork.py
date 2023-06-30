@@ -21,6 +21,14 @@ if t.TYPE_CHECKING:
     from collections.abc import Sequence
 
 
+def strnuc_to_latex(strnuc: str):
+    """Convert a string like sr89 to $^{89}$Sr."""
+    elsym = strnuc.rstrip("0123456789")
+    massnum = strnuc.removeprefix(elsym)
+
+    return rf"$^{{{massnum}}}${elsym.title()}"
+
+
 def plot_qdot(
     modelpath: Path,
     dfpartcontrib: pd.DataFrame,
@@ -30,6 +38,7 @@ def plot_qdot(
     arr_artis_ye: Collection[float],
     arr_time_gsi_days: Collection[float],
     pdfoutpath: Path | str,
+    xmax: None | float = None,
 ) -> None:
     try:
         depdata = at.get_deposition(modelpath=modelpath)
@@ -90,7 +99,7 @@ def plot_qdot(
     # axis.set_ylim(bottom=1e7, top=2e10)
     # axis.set_xlim(left=tstart, right=tend)
     xmin = min(arr_time_gsi_days) * 0.9
-    xmax = max(arr_time_gsi_days) * 1.03
+    xmax = xmax or max(arr_time_gsi_days) * 1.03
     axis.set_xlim(left=xmin, right=xmax)
 
     # axis.set_xscale('log')
@@ -163,7 +172,7 @@ def plot_qdot(
         linestyle="dotted",
         # marker='x', markersize=8,
         # color='black',
-        label=r"$\dot{Q}_{hbfis}$ GSI Network",
+        label=r"$\dot{Q}_{\beta fis}$ GSI Network",
     )
 
     axis.plot(
@@ -173,7 +182,7 @@ def plot_qdot(
         linestyle="dotted",
         # marker='x', markersize=8,
         # color='black',
-        label=r"$\dot{Q}_{spof}$ GSI Network",
+        label=r"$\dot{Q}_{sponfis}$ GSI Network",
     )
 
     axis.legend(loc="best", frameon=False, handlelength=1, ncol=3, numpoints=1)
@@ -220,6 +229,8 @@ def plot_cell_abund_evolution(
     dfcell: pd.DataFrame,
     pdfoutpath: Path,
     mgi: int,
+    hideinputmodelpoints: bool = True,
+    xmax: None | float = None,
 ) -> None:
     dfpartcontrib_thiscell = dfpartcontrib[
         (dfpartcontrib["cellindex"] == (mgi + 1)) & (dfpartcontrib["particleid"].isin(allparticledata.keys()))
@@ -263,8 +274,7 @@ def plot_cell_abund_evolution(
     for axis, strnuc in zip(axes, arr_strnuc):
         # print(arr_time_artis_days)
         xmin = min(arr_time_gsi_days) * 0.9
-        xmax = max(arr_time_gsi_days) * 1.03
-        # xmax = 5  # TODO: remove
+        xmax = xmax or max(arr_time_gsi_days) * 1.03
         axis.set_xlim(left=xmin, right=xmax)
         # axis.set_yscale('log')
         # axis.set_ylabel(f'X({strnuc})')
@@ -273,6 +283,8 @@ def plot_cell_abund_evolution(
         else:
             axis.set_ylabel("Mass fraction")
 
+        strnuc_latex = strnuc_to_latex(strnuc)
+
         axis.plot(
             arr_time_gsi_days,
             arr_abund_gsi[strnuc],
@@ -280,7 +292,7 @@ def plot_cell_abund_evolution(
             linewidth=2,
             marker="x",
             markersize=8,
-            label=f"{strnuc} GSI Network",
+            label=f"{strnuc_latex} Network",
             color="black",
         )
 
@@ -291,18 +303,18 @@ def plot_cell_abund_evolution(
                 linewidth=2,
                 # linestyle='None',
                 # marker='+', markersize=15,
-                label=f"{strnuc} ARTIS",
+                label=f"{strnuc_latex} ARTIS",
                 color="red",
             )
 
-        if f"X_{strnuc}" in dfcell:
+        if f"X_{strnuc}" in dfcell and not hideinputmodelpoints:
             axis.plot(
                 t_model_init_days,
                 dfcell[f"X_{strnuc}"],
                 marker="+",
                 markersize=15,
                 markeredgewidth=2,
-                label=f"{strnuc} ARTIS inputmodel",
+                label=f"{strnuc_latex} ARTIS inputmodel",
                 color="blue",
             )
             print(
@@ -311,7 +323,9 @@ def plot_cell_abund_evolution(
 
         axis.legend(loc="best", frameon=False, handlelength=1, ncol=1, numpoints=1)
 
-    fig.suptitle(f"{modelname} cell {mgi}", y=0.995, fontsize=10)
+        at.plottools.autoscale(ax=axis)
+
+    # fig.suptitle(f"{modelname} cell {mgi}", y=0.995, fontsize=10)
     at.plottools.autoscale(axis, margin=0.05)
     fig.savefig(pdfoutpath, format="pdf")
     print(f"Saved {pdfoutpath}")
@@ -414,7 +428,9 @@ def get_particledata(
     return particleid, particledata
 
 
-def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_el_a: list[tuple[str, int]]):
+def plot_qdot_abund_modelcells(
+    modelpath: Path, mgiplotlist: Sequence[int], arr_el_a: list[tuple[str, int]], xmax: None | float = None
+):
     # default values, because early model.txt didn't specify this
     griddatafolder: Path = Path("SFHo_snapshot")
     mergermodelfolder: Path = Path("SFHo_short")
@@ -609,6 +625,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
         arr_artis_ye,
         arr_time_gsi_days,
         pdfoutpath=Path(modelpath, "gsinetwork_global-qdot.pdf"),
+        xmax=xmax,
     )
 
     for mgi in mgiplotlist:
@@ -624,6 +641,7 @@ def plot_qdot_abund_modelcells(modelpath: Path, mgiplotlist: Sequence[int], arr_
             dfmodel.iloc[mgi],
             mgi=mgi,
             pdfoutpath=Path(modelpath, f"gsinetwork_cell{mgi}-abundance.pdf"),
+            xmax=xmax,
         )
 
 
@@ -631,6 +649,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-modelpath", default=".", help="Path for ARTIS files")
 
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
+
+    parser.add_argument("-xmax", default=None, type=int, help="Maximum time in days to plot")
 
     parser.add_argument(
         "-modelgridindex",
@@ -652,22 +672,42 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     arr_el_a = [
-        # ("He", 4),
-        ("Ga", 72),
+        ("He", 4),
+        # ("Ga", 72),
         ("Sr", 89),
+        ("Sr", 91),
+        ("Sr", 92),
+        ("Y", 92),
+        ("Y", 93),
+        ("Zr", 93),
         ("Ba", 140),
         ("Ce", 141),
         ("Nd", 147),
         # ('Rn', 222),
-        ("Ra", 223),
-        ("Ra", 224),
-        ("Ra", 225),
+        # ("Ra", 223),
+        # ("Ra", 224),
+        # ("Ra", 225),
         # ("Ac", 225),
         # ('Th', 234),
         # ('Pa', 233),
         # ('U', 235),
     ]
-    arr_el_a.sort(key=lambda x: (at.get_atomic_number(x[0]), -x[1]))
+
+    # arr_el_a = [
+    #     ("He", 4),
+    #     ("Ga", 72),
+    #     ("Sr", 91),
+    #     ("Sr", 92),
+    # ]
+
+    # arr_el_a = [
+    #     ("Y", 92),
+    #     ("Zr", 93),
+    #     ("Ce", 141),
+    #     ("Nd", 147),
+    # ]
+
+    arr_el_a.sort(key=lambda x: (at.get_atomic_number(x[0]), x[1]))
 
     modelpath = Path(args.modelpath)
     if args.modelgridindex is None:
@@ -677,7 +717,7 @@ def main(args=None, argsraw=None, **kwargs):
     else:
         mgiplotlist = [int(args.modelgridindex)]
 
-    plot_qdot_abund_modelcells(modelpath, mgiplotlist, arr_el_a)
+    plot_qdot_abund_modelcells(modelpath, mgiplotlist, arr_el_a, xmax=args.xmax)
 
 
 if __name__ == "__main__":

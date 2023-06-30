@@ -761,9 +761,9 @@ def make_3d_grid(modeldata, vmax_cms):
     xgrid = np.zeros(grid)
     vmax = vmax_cms / CLIGHT
     i = 0
-    for _z in range(0, grid):
-        for _y in range(0, grid):
-            for x in range(0, grid):
+    for _z in range(grid):
+        for _y in range(grid):
+            for x in range(grid):
                 xgrid[x] = -vmax + 2 * x * vmax / grid
                 i += 1
 
@@ -835,10 +835,10 @@ def bin_and_sum(
         .lazy()
         .collect()
         .get_column(bincol)
-        .cut(bins=list(bins), category_label=bincol + "_bin", maintain_order=True)
-        .get_column(bincol + "_bin")
+        .cut(bins=list(bins), category_label=f"{bincol}_bin", maintain_order=True)
+        .get_column(f"{bincol}_bin")
         .cast(pl.Int32)
-        - 1  # subtract 1 because the returned index 0 is the bin below the start of the first supplied bin
+        - 1
     )
     df = df.with_columns([binindex])
 
@@ -848,11 +848,11 @@ def bin_and_sum(
     if getcounts:
         aggs.append(pl.col(bincol).count().alias("count"))
 
-    wlbins = df.groupby(bincol + "_bin").agg(aggs).lazy().collect()
+    wlbins = df.groupby(f"{bincol}_bin").agg(aggs).lazy().collect()
 
     # now we will include the empty bins
-    dfout = pl.DataFrame(pl.Series(name=bincol + "_bin", values=np.arange(0, len(bins) - 1), dtype=pl.Int32))
-    dfout = dfout.join(wlbins, how="left", on=bincol + "_bin").fill_null(0)
+    dfout = pl.DataFrame(pl.Series(name=f"{bincol}_bin", values=np.arange(0, len(bins) - 1), dtype=pl.Int32))
+    dfout = dfout.join(wlbins, how="left", on=f"{bincol}_bin").fill_null(0)
 
     # pandas method
 
