@@ -6,7 +6,6 @@ from unittest import mock
 import matplotlib.axes
 import numpy as np
 import pandas as pd
-from astropy import constants as const
 
 import artistools as at
 
@@ -116,7 +115,8 @@ def test_spectra_get_flux_contributions() -> None:
 
     specdata = pd.read_csv(modelpath / "spec.out", delim_whitespace=True)
     arraynu = specdata.loc[:, "0"].to_numpy()
-    arraylambda_angstroms = const.c.to("angstrom/s").value / arraynu
+    c_ang_per_s = 2.99792458e18
+    arraylambda_angstroms = c_ang_per_s / arraynu
 
     contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
         modelpath,
