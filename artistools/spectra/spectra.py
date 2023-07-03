@@ -183,6 +183,7 @@ def get_from_packets(
     dfpackets = dfpackets.select(getcols).collect().lazy()
 
     dfdict = {}
+    megaparsec_to_cm = 3.085677581491367e24
     for dirbin in directionbins:
         if dirbin == -1:
             solidanglefactor = 1.0
@@ -209,7 +210,6 @@ def get_from_packets(
             sumcols=[encol],
             getcounts=getpacketcount,
         )
-        megaparsec_to_cm = 3.085677581491367e24
         array_flambda = (
             dfbinned[f"{encol}_sum"]
             / delta_lambda
