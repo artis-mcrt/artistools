@@ -113,6 +113,10 @@ disable = """
 [tool.pylint.typecheck]
 ignored-modules = ["astropy", "extinction"]
 
+[tool.pyright]
+exclude=['**/node_modules','**/__pycache__','**/.*', 'build']
+useLibraryCodeForTypes = false
+
 [tool.ruff]
 select = ["ALL"]
 ignore = [
