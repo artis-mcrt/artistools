@@ -203,7 +203,7 @@ def average_direction_bins(
 
     # we will make a copy to ensure that we don't cause side effects from altering the original DataFrames
     # that might be returned again later by an lru_cached function
-    dirbindataframesout: dict[int, pd.DataFrame] = {}
+    dirbindataframesout: dict[int, pl.DataFrame] = {}
 
     for start_bin in start_bin_range:
         dirbindataframesout[start_bin] = dirbindataframes[start_bin]
@@ -1133,7 +1133,7 @@ def get_dfrankassignments(modelpath: Path | str) -> pd.DataFrame | None:
     filerankassignments = Path(modelpath, "modelgridrankassignments.out")
     if filerankassignments.is_file():
         df = pd.read_csv(filerankassignments, delim_whitespace=True)
-        return df.rename(columns={df.columns[0]: df.columns[0].lstrip("#")})
+        return df.rename(columns={df.columns[0]: str(df.columns[0]).lstrip("#")})
     return None
 
 

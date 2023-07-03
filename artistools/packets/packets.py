@@ -836,8 +836,7 @@ def bin_and_sum(
     )
     df = df.with_columns([binindex])
 
-    if sumcols is not None:
-        aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols]
+    aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols] if sumcols is not None else []
 
     if getcounts:
         aggs.append(pl.col(bincol).count().alias("count"))
