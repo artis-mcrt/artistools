@@ -81,8 +81,7 @@ def kernelvals2(rij2: float, hmean: float, wij: np.ndarray) -> float:  # ist sch
     dxx = v2 - index * dvtable
     index1 = index + 1
     dwdx = (wij[index1] - wij[index]) / dvtable
-    wtij = (wij[index] + dwdx * dxx) * hmean31
-    return wtij
+    return (wij[index] + dwdx * dxx) * hmean31
 
 
 def maptogrid(
