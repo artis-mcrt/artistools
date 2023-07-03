@@ -600,9 +600,7 @@ def get_vspecpol_spectrum(
     dfspectrum = dfspectrum.sort_values(by="nu", ascending=False)
 
     dfspectrum = dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18})
-    dfspectrum = dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms")
-
-    return dfspectrum
+    return dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms")
 
 
 @lru_cache(maxsize=4)

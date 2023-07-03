@@ -165,8 +165,7 @@ def get_levels(modelpath, ionlist=None, get_transitions=False, get_photoionisati
             translist = transitionsdict.get((Z, ionstage), pd.DataFrame())
             level_lists.append(iontuple(Z, ionstage, level_count, ionisation_energy_ev, dflevels, translist))
 
-    dfadata = pd.DataFrame(level_lists)
-    return dfadata
+    return pd.DataFrame(level_lists)
 
 
 def parse_recombratefile(frecomb):

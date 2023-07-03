@@ -112,8 +112,7 @@ def get_ionrecombrates_fromfile(filename: Path | str) -> pd.DataFrame:
                     sys.exit()
                 records.append(recomb_tuple(*[float(row[index]) for index in [index_logt, index_low_n, index_tot]]))
 
-    dfrecombrates = pd.DataFrame.from_records(records, columns=recomb_tuple._fields)
-    return dfrecombrates
+    return pd.DataFrame.from_records(records, columns=recomb_tuple._fields)
 
 
 def get_units_string(variable: str) -> str:
@@ -401,12 +400,10 @@ def get_averaged_estimators(
 
     firsttimestepvalue = reduce(lambda d, k: d[k], [(timesteps[0], modelgridindex), *keys], estimators)
     if isinstance(firsttimestepvalue, dict):
-        dictout = {
+        return {
             k: get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [*keys, k])
             for k in firsttimestepvalue
         }
-
-        return dictout
 
     tdeltas = at.get_timestep_times_float(modelpath, loc="delta")
     valuesum = 0

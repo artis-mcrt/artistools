@@ -67,7 +67,7 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
 @lru_cache(maxsize=16)
 def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
     with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/evol.dat") as evolfile:
-        dfevol = pd.read_csv(
+        return pd.read_csv(
             evolfile,
             sep=r"\s+",
             comment="#",
@@ -77,8 +77,6 @@ def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
             dtype={0: "int32[pyarrow]", 1: "float32[pyarrow]"},
             dtype_backend="pyarrow",
         )
-
-    return dfevol
 
 
 def get_closest_network_timestep(

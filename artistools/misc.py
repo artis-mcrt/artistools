@@ -61,9 +61,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
 
         def my_sort(action: argparse.Action) -> str:
             opstr = getinvocation(action)
-            opstr = opstr.upper().replace("-", "z")  # push dash chars below alphabet
-
-            return opstr
+            return opstr.upper().replace("-", "z")  # push dash chars below alphabet
 
         actions = sorted(actions, key=my_sort)
         super().add_arguments(actions)
@@ -315,9 +313,7 @@ def get_syn_dir(modelpath: Path) -> tuple[float, float, float]:
 
     with open(modelpath / "syn_dir.txt") as syn_dir_file:
         x, y, z = (float(i) for i in syn_dir_file.readline().split())
-        syn_dir = (x, y, z)
-
-    return syn_dir
+        return (x, y, z)
 
 
 def vec_len(vec: Sequence[float] | np.ndarray[t.Any, np.dtype[np.float64]]) -> float:
@@ -986,8 +982,7 @@ def get_npts_model(modelpath: Path) -> int:
         else at.firstexisting("model.txt", folder=modelpath, tryzipped=True)
     )
     with zopen(modelfilepath) as modelfile:
-        npts_model = int(readnoncommentline(modelfile))
-    return npts_model
+        return int(readnoncommentline(modelfile))
 
 
 @lru_cache(maxsize=8)
@@ -1138,8 +1133,7 @@ def get_dfrankassignments(modelpath: Path | str) -> pd.DataFrame | None:
     filerankassignments = Path(modelpath, "modelgridrankassignments.out")
     if filerankassignments.is_file():
         df = pd.read_csv(filerankassignments, delim_whitespace=True)
-        df = df.rename(columns={df.columns[0]: df.columns[0].lstrip("#")})
-        return df
+        return df.rename(columns={df.columns[0]: df.columns[0].lstrip("#")})
     return None
 
 

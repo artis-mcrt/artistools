@@ -156,7 +156,7 @@ ignore = [
     "PTH119",  # os-path-basename
     "PTH123",  # builtin-openß
     "PLW2901",  #
-    "RET504",  # unnecessary-assign
+    #"RET504",  # unnecessary-assign
     "S101",  # Use of assert detected
     "S301",  # suspicious-pickle-usage
     "S311",  # suspicious-non-cryptographic-random-usage

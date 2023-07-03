@@ -802,7 +802,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
         listT_e = []
         list_rrc = []
         list_rrc2 = []
-        for _, dicttimestepmodelgrid in estimators.items():
+        for dicttimestepmodelgrid in estimators.values():
             if (
                 not dicttimestepmodelgrid["emptycell"]
                 and (atomic_number, ion_stage) in dicttimestepmodelgrid["RRC_LTE_Nahar"]

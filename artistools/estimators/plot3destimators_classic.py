@@ -12,10 +12,9 @@ CLIGHT = 2.99792458e10
 
 def read_selected_mgi(modelpath, readonly_mgi, readonly_timestep=False):
     modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-    estimators = at.estimators.estimators_classic.read_classic_estimators(
+    return at.estimators.estimators_classic.read_classic_estimators(
         modelpath, modeldata, readonly_mgi=readonly_mgi, readonly_timestep=readonly_timestep
     )
-    return estimators
 
 
 def get_modelgridcells_along_axis(modelpath):
@@ -23,18 +22,14 @@ def get_modelgridcells_along_axis(modelpath):
     args = ArgsTuple(modelpath=modelpath, sliceaxis="x", other_axis1="z", other_axis2="y", positive_axis=True)
 
     profile1d = at.inputmodel.slice1Dfromconein3dmodel.get_profile_along_axis(args=args)
-    readonly_mgi = get_mgi_of_modeldata(profile1d, modelpath)
-
-    return readonly_mgi
+    return get_mgi_of_modeldata(profile1d, modelpath)
 
 
 def get_modelgridcells_2D_slice(modeldata, modelpath):
     sliceaxis = "z"
 
     slicedata = at.initial_composition.get_2D_slice_through_3d_model(modeldata, sliceaxis)
-    readonly_mgi = get_mgi_of_modeldata(slicedata, modelpath)
-
-    return readonly_mgi
+    return get_mgi_of_modeldata(slicedata, modelpath)
 
 
 def get_mgi_of_modeldata(modeldata, modelpath):

@@ -284,9 +284,7 @@ def plot_most_abundant(modelpath, args):
     merge_dfs["max"] = merge_dfs[elements].idxmax(axis=1)
 
     merge_dfs["max"] = merge_dfs["max"].apply(lambda x: at.get_atomic_number(x[2:]))
-    merge_dfs = merge_dfs[merge_dfs["max"] != 1]
-
-    return merge_dfs
+    return merge_dfs[merge_dfs["max"] != 1]
 
 
 def make_3d_plot(modelpath, args):

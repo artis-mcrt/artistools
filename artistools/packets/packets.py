@@ -148,7 +148,7 @@ def add_derived_columns(
 ) -> pd.DataFrame:
     cm_to_km = 1e-5
     day_in_s = 86400
-    if isinstance(dfpackets, pd.DataFrame) and dfpackets.empty:
+    if dfpackets.empty:
         return dfpackets
 
     colnames = at.makelist(colnames)
@@ -317,11 +317,9 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path(".")) -> pl.Da
         dfpackets = dfpackets.with_columns([pl.col("originated_from_positron").cast(pl.Boolean)])
 
     # Luke: packet energies in ergs can be huge (>1e39) which is too large for Float32
-    dfpackets = dfpackets.with_columns(
+    return dfpackets.with_columns(
         [pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).exclude(["e_rf", "e_cmf"]).cast(pl.Float32)]
     )
-
-    return dfpackets
 
 
 def readfile(
@@ -585,9 +583,7 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame, syn_dir: tuple[flo
             .alias("phi"),
         )
 
-    dfpackets = dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"])
-
-    return dfpackets
+    return dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"])
 
 
 def bin_packet_directions_lazypolars(
@@ -624,11 +620,9 @@ def bin_packet_directions_lazypolars(
             .alias("phibin"),
         )
 
-    dfpackets = dfpackets.with_columns(
+    return dfpackets.with_columns(
         (pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"),
     )
-
-    return dfpackets
 
 
 def bin_packet_directions(modelpath: Path | str, dfpackets: pd.DataFrame) -> pd.DataFrame:
@@ -785,7 +779,7 @@ def get_mean_packet_emission_velocity_per_ts(
     arr_timedelta = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
     timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
 
-    dfpackets_escape_velocity_and_arrive_time = pd.DataFrame
+    dfpackets_escape_velocity_and_arrive_time = pd.DataFrame()
     emission_data = pd.DataFrame(
         {"t_arrive_d": timearray, "mean_emission_velocity": np.zeros_like(timearray, dtype=float)}
     )
@@ -852,7 +846,7 @@ def bin_and_sum(
 
     # now we will include the empty bins
     dfout = pl.DataFrame(pl.Series(name=f"{bincol}_bin", values=np.arange(0, len(bins) - 1), dtype=pl.Int32))
-    dfout = dfout.join(wlbins, how="left", on=f"{bincol}_bin").fill_null(0)
+    return dfout.join(wlbins, how="left", on=f"{bincol}_bin").fill_null(0)
 
     # pandas method
 
@@ -877,5 +871,3 @@ def bin_and_sum(
     # if getcounts:
     #     # dfout = dfout.with_columns([pl.Series("count", df[bincol].groupby(pdbins).count().values)])
     #     dfout2["count"] = df2[bincol].groupby(pdbins).count().values
-
-    return dfout

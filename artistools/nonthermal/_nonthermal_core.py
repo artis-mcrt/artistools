@@ -353,11 +353,7 @@ def ar_xs(energy_ev, ionpot_ev, A, B, C, D):
 
 
 def get_arxs_array_shell(arr_enev, shell):
-    ar_xs_array = np.array(
-        [ar_xs(energy_ev, shell.ionpot_ev, shell.A, shell.B, shell.C, shell.D) for energy_ev in arr_enev]
-    )
-
-    return ar_xs_array
+    return np.array([ar_xs(energy_ev, shell.ionpot_ev, shell.A, shell.B, shell.C, shell.D) for energy_ev in arr_enev])
 
 
 def get_arxs_array_ion(arr_enev, dfcollion, Z, ionstage):
@@ -472,9 +468,7 @@ def read_colliondata(collionfilename="collion.txt", modelpath: None | str | Path
         dfcollion = pd.read_csv(collionfile, delim_whitespace=True, header=None, names=collionrow._fields)
 
     # assert len(dfcollion) == nrows  # artis enforces this, but last 10 rows were not inportant anyway (high ionized Ni)
-    dfcollion = dfcollion.eval("ionstage = Z - nelec + 1")
-
-    return dfcollion
+    return dfcollion.eval("ionstage = Z - nelec + 1")
 
 
 def calculate_nt_frac_excitation(engrid, dftransitions, yvec, deposition_density_ev):

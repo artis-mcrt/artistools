@@ -70,8 +70,7 @@ def get_nist_transitions(filename):
                     transitiontuple(lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_g, upper_g)
                 )
 
-    dftransitions = pd.DataFrame(translist, columns=transitiontuple._fields)
-    return dftransitions
+    return pd.DataFrame(translist, columns=transitiontuple._fields)
 
 
 def generate_ion_spectrum(transitions, xvalues, popcolumn, plot_resolution, args):
@@ -178,8 +177,7 @@ def add_upper_lte_pop(dftransitions, T_exc, ionpop, ltepartfunc, columnname=None
     scalefactor = ionpop / ltepartfunc
     if columnname is None:
         columnname = f"upper_pop_lte_{T_exc:.0f}K"
-    dftransitions = dftransitions.eval(f"{columnname} = @scalefactor * upper_g * exp(-upper_energy_ev / @K_B / @T_exc)")
-    return dftransitions
+    return dftransitions.eval(f"{columnname} = @scalefactor * upper_g * exp(-upper_energy_ev / @K_B / @T_exc)")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

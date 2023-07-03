@@ -202,9 +202,7 @@ def make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams):
     energydistdata = {"cellid": np.arange(1, len(rho) + 1), "cell_energy": cellenergy}
 
     print(f"sum energy cells {sum(energydistdata['cell_energy'])} should equal Etot")
-    energydistdata = pd.DataFrame(data=energydistdata)
-
-    return energydistdata
+    return pd.DataFrame(data=energydistdata)
 
 
 def make_energy_files(rho, Mtot_grams, outputpath=None, modelpath=None, model=None):
@@ -256,7 +254,6 @@ def get_etot_fromfile(modelpath):
 
 
 def get_energy_rate_fromfile(modelpath):
-    energyrate_data = pd.read_csv(
+    return pd.read_csv(
         Path(modelpath) / "energyrate.txt", skiprows=1, delim_whitespace=True, header=None, names=["times", "rate"]
     )
-    return energyrate_data

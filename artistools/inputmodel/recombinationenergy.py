@@ -109,9 +109,8 @@ def get_particle_nucenergy_released(traj_root, particleid, tmin_s, time_s_end):
         dfthermo = dfthermo.rename(columns={"time/s": "time_s"})
         dfthermo = dfthermo.query("time_s >= @tmin_s")
         dfthermo = dfthermo.query("time_s <= @time_s_end")
-        en_released_ev_per_gram = np.trapz(y=dfthermo["Qdot"], x=dfthermo["time_s"]) * erg_to_ev
+        return np.trapz(y=dfthermo["Qdot"], x=dfthermo["time_s"]) * erg_to_ev
         # print(dfthermo)
-    return en_released_ev_per_gram
 
 
 def get_particles_recomb_nuc_energy(traj_root, dfbinding):

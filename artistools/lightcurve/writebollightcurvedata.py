@@ -56,9 +56,7 @@ def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.Data
         lightcurvedata[columnname] = bol_luminosity
 
     lightcurvedataframe = pd.DataFrame(lightcurvedata)
-    lightcurvedataframe = lightcurvedataframe.replace([np.inf, -np.inf], 0)
-
-    return lightcurvedataframe
+    return lightcurvedataframe.replace([np.inf, -np.inf], 0)
 
 
 # modelnames = ['M08_03', 'M08_05', 'M08_10', 'M09_03', 'M09_05', 'M09_10',

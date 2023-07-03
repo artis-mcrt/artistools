@@ -45,14 +45,12 @@ def parse_ion_row_classic(row, outdict, atomic_composition):
 
 
 def get_estimator_files(modelpath):
-    estimfiles = (
+    return (
         glob.glob(os.path.join(modelpath, "estimators_????.out"), recursive=True)
         + glob.glob(os.path.join(modelpath, "estimators_????.out.gz"), recursive=True)
         + glob.glob(os.path.join(modelpath, "*/estimators_????.out"), recursive=True)
         + glob.glob(os.path.join(modelpath, "*/estimators_????.out.gz"), recursive=True)
     )
-
-    return estimfiles
 
 
 def get_first_ts_in_run_directory(modelpath):

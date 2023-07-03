@@ -38,8 +38,7 @@ def texifyterm(strterm: str) -> str:
             # extra number after S char
             strtermtex += termpiece
 
-    strtermtex = strtermtex.replace("$$", "")
-    return strtermtex
+    return strtermtex.replace("$$", "")
 
 
 def texifyconfiguration(levelname: str) -> str:
@@ -60,9 +59,7 @@ def texifyconfiguration(levelname: str) -> str:
     strout += " " + texifyterm(strterm)
 
     strout = strout.replace("#", "")
-    strout = strout.replace("$$", "")
-    # print(f"Replacing levelname '{levelname}' with '{strout}'")
-    return strout
+    return strout.replace("$$", "")
 
 
 def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxlevel=-1):
@@ -147,8 +144,8 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
 def read_file(nltefilepath: str | Path) -> pd.DataFrame:
     """Read NLTE populations from one file."""
     if not Path(nltefilepath).is_file():
-        nltefilepathgz = Path(str(nltefilepath) + ".gz")
-        nltefilepathxz = Path(str(nltefilepath) + ".xz")
+        nltefilepathgz = Path(f"{nltefilepath!s}.gz")
+        nltefilepathxz = Path(f"{nltefilepath!s}.xz")
         if nltefilepathxz.is_file():
             nltefilepath = nltefilepathxz
         elif nltefilepathgz.is_file():
@@ -223,6 +220,4 @@ def read_files(
     else:
         arr_dfnltepop = [read_file_filtered(f, strquery=dfquery_full, dfqueryvars=dfqueryvars) for f in nltefilepaths]
 
-    dfpop = pd.concat(arr_dfnltepop).copy()
-
-    return dfpop
+    return pd.concat(arr_dfnltepop).copy()
