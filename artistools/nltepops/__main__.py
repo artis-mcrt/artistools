@@ -1,4 +1,4 @@
-from .plotnltepops import main
+from . import plotnltepops
 
 if __name__ == "__main__":
-    main()
+    plotnltepops.main()
