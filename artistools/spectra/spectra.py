@@ -475,9 +475,9 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
     filenames = sorted_by_number(filenames)
 
     for spec_index, filename in enumerate(filenames):  # vspecpol-total files
-        vspecdata = []
-        for modelpath in args.modelpath:
-            vspecdata.append(pd.read_csv(modelpath / filename, delim_whitespace=True, header=None))
+        vspecdata = [
+            pd.read_csv(modelpath / filename, delim_whitespace=True, header=None) for modelpath in args.modelpath
+        ]
         for i in range(1, len(vspecdata)):
             vspecdata[0].iloc[1:, 1:] += vspecdata[i].iloc[1:, 1:]
 
