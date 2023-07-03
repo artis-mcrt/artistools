@@ -3,23 +3,23 @@
 A collection of plotting, analysis, and file format conversion tools
 for the ARTIS radiative transfer code.
 """
-import artistools.atomic
-import artistools.codecomparison
-import artistools.commands
-import artistools.deposition
-import artistools.estimators
-import artistools.inputmodel
-import artistools.lightcurve
-import artistools.macroatom
-import artistools.nltepops
-import artistools.nonthermal
-import artistools.packets
-import artistools.plotspherical
-import artistools.radfield
-import artistools.spectra
-import artistools.transitions
-import artistools.writecomparisondata
 
+from . import atomic
+from . import codecomparison
+from . import commands
+from . import deposition
+from . import estimators
+from . import inputmodel
+from . import lightcurve
+from . import macroatom
+from . import nltepops
+from . import nonthermal
+from . import packets
+from . import plotspherical
+from . import radfield
+from . import spectra
+from . import transitions
+from . import writecomparisondata
 from .__main__ import addargs
 from .__main__ import main
 from .configuration import get_config
