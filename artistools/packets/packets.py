@@ -682,13 +682,13 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
     e_rf = []
     e_cmf = []
 
+    only_packets_0_scatters = False
     for packetsfile in packetsfiles:
         # for npacketfile in range(0, 1):
         dfpackets = at.packets.readfile(packetsfile)
         at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
         dfpackets = dfpackets.dropna(subset=["emission_velocity"])  # drop rows where emission_vel is NaN
 
-        only_packets_0_scatters = False
         if only_packets_0_scatters:
             print("Only using packets with 0 scatters")
             # print(dfpackets[['scat_count', 'interactions', 'nscatterings']])
