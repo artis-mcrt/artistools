@@ -123,7 +123,7 @@ def get_from_packets(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     fnufilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
-) -> pd.DataFrame:
+) -> dict[int, pd.DataFrame]:
     """Get a spectrum dataframe using the packets files as input."""
     assert not useinternalpackets
     if directionbins is None:
@@ -209,13 +209,14 @@ def get_from_packets(
             sumcols=[encol],
             getcounts=getpacketcount,
         )
+        megaparsec_to_cm = 3.085677581491367e24
         array_flambda = (
             dfbinned[f"{encol}_sum"]
             / delta_lambda
             / (timehigh - timelow)
             / (4 * math.pi)
             * solidanglefactor
-            / (u.megaparsec.to("cm") ** 2)
+            / (megaparsec_to_cm**2)
             / nprocs_read
         )
 
@@ -243,7 +244,7 @@ def get_from_packets(
 
 
 @lru_cache(maxsize=16)
-def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
+def read_spec_res(modelpath: Path) -> dict[int, pl.DataFrame]:
     """Return dataframe of time-series spectra for every viewing direction."""
     specfilename = (
         modelpath
@@ -258,7 +259,8 @@ def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
     if res_specdata_in[res_specdata_in.columns[-1]].is_null().all():
         res_specdata_in = res_specdata_in.drop(res_specdata_in.columns[-1])
 
-    res_specdata: dict[int, pl.DataFrame] = at.split_dataframe_dirbins(res_specdata_in, output_polarsdf=True)
+    res_specdata = at.split_dataframe_dirbins(res_specdata_in, output_polarsdf=True)
+    assert isinstance(res_specdata, pl.DataFrame)
     prev_dfshape = None
     for dirbin in res_specdata:
         newcolnames = [str(x) for x in res_specdata[dirbin][0, :].to_numpy()[0]]
@@ -313,7 +315,7 @@ def get_spec_res(
     modelpath: Path,
     average_over_theta: bool = False,
     average_over_phi: bool = False,
-) -> dict[int, pd.DataFrame]:
+) -> dict[int, pl.DataFrame]:
     res_specdata = read_spec_res(modelpath)
     if average_over_theta:
         res_specdata = at.average_direction_bins(res_specdata, overangle="theta")
@@ -1010,9 +1012,8 @@ def get_flux_contributions_from_packets(
             print("volume", volume, "shell volume", volume_shells, "-------------------------------------------------")
         normfactor = c_cgs / 4 / math.pi / delta_lambda / volume / nprocs_read
     else:
-        normfactor = (
-            1.0 / delta_lambda / (timehigh - timelow) / 4 / math.pi / (u.megaparsec.to("cm") ** 2) / nprocs_read
-        )
+        megaparsec_to_cm = 3.085677581491367e24
+        normfactor = 1.0 / delta_lambda / (timehigh - timelow) / 4 / math.pi / (megaparsec_to_cm**2) / nprocs_read
 
     array_flambda_emission_total = energysum_spectrum_emission_total * normfactor
 

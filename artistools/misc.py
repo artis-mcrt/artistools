@@ -167,7 +167,7 @@ def split_dataframe_dirbins(
         res_df[:, index_of_repeated_value] == res_df[0, index_of_repeated_value], eager=True
     )
 
-    res_data: dict[int, pl.DataFrame] = {}
+    res_data: dict[int, pd.DataFrame | pl.DataFrame] = {}
     prev_dfshape = None
     for i, index_value in enumerate(indexes_to_split):
         chunk = (
