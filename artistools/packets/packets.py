@@ -354,12 +354,10 @@ def convert_text_to_parquet(
         ]
     )
 
-    syn_dir = (0.0, 0.0, 1.0)
-    for p in packetsfiletext.parents:
-        if Path(p, "syn_dir.txt").is_file():
-            syn_dir = at.get_syn_dir(p)
-            break
-
+    syn_dir = next(
+        (at.get_syn_dir(p) for p in packetsfiletext.parents if Path(p, "syn_dir.txt").is_file()),
+        (0.0, 0.0, 1.0),
+    )
     dfpackets = add_packet_directions_lazypolars(dfpackets, syn_dir)
     dfpackets = bin_packet_directions_lazypolars(dfpackets)
 
