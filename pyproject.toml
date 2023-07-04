@@ -27,20 +27,14 @@ requires-python = ">=3.9"
 #[project.scripts]
 #atcompletions = "artistoolscompletions.sh"
 
-#[tool.setuptools]
-#packages = ["artistools"]
-
-[tool.setuptools.dynamic]
-readme = {file = ["README.md"]}
-dependencies = {file = ["requirements.txt"]}
-#entry-points = {attr = "artistools.commands.console_scripts"}
-
-[tool.setuptools.packages.find]
-where = ["."]
 
 [tool.black]
 line-length = 120
 preview = true
+
+
+[tool.setuptools.packages.find]
+where = ["."]
 
 [tool.isort]
 profile = "black"
@@ -220,23 +214,14 @@ ignore-fully-untyped = true
 force-single-line = true
 order-by-type = false
 
+#[tool.setuptools]
+#packages = ["artistools"]
+
+[tool.setuptools.dynamic]
+readme = {file = ["README.md"]}
+dependencies = {file = ["requirements.txt"]}
+#entry-points = {attr = "artistools.commands.console_scripts"}
+
 [tool.setuptools_scm]
 write_to = "_version.py"
 local_scheme = "no-local-version"
-
-[tool.tomlsort]
-all = true
-in_place = false
-no_comments = false
-no_header_comments = false
-no_footer_comments = false
-no_inline_comments = false
-no_block_comments = false
-no_sort_tables = true
-sort_table_keys = true
-sort_inline_tables = true
-sort_inline_arrays = true
-spaces_before_inline_comment = 1
-spaces_indent_inline_array = 4
-trailing_comma_inline_array = true
-ignore_case = true
