@@ -97,7 +97,7 @@ def maptogrid(
 
     def logprint(*args, **kwargs):
         print(*args, **kwargs)
-        with open(logfilepath, "at", encoding="utf-8") as logfile:
+        with open(logfilepath, "a", encoding="utf-8") as logfile:
             logfile.write(" ".join([str(x) for x in args]) + "\n")
 
     wij = get_wij()
