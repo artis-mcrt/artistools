@@ -226,18 +226,17 @@ local_scheme = "no-local-version"
 
 [tool.tomlsort]
 all = true
-in_place = true
-no_comments = true
-no_header_comments = true
-no_footer_comments = true
-no_inline_comments = true
-no_block_comments = true
+in_place = false
+no_comments = false
+no_header_comments = false
+no_footer_comments = false
+no_inline_comments = false
+no_block_comments = false
 no_sort_tables = true
 sort_table_keys = true
 sort_inline_tables = true
 sort_inline_arrays = true
-spaces_before_inline_comment = 2
+spaces_before_inline_comment = 1
 spaces_indent_inline_array = 4
 trailing_comma_inline_array = true
-check = true
 ignore_case = true
