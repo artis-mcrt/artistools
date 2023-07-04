@@ -789,7 +789,7 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
         allnonemptymgilist = [
             modelgridindex for modelgridindex in modeldata.index if not estimators[(0, modelgridindex)]["emptycell"]
         ]
-
+    assert estimators is not None
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, args.maxpacketfiles)
     assert args.timemin is not None
     assert args.timemax is not None
@@ -838,7 +838,7 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
                         list_lambda[v].append(c_ang_s / packet.nu_rf)
                         lists_y[v].append(packet.true_emission_velocity / 1e5)
                 else:
-                    k = (packet["em_timestep"], packet["emtrue_modelgridindex"])
+                    k: tuple[int, int] = (packet["em_timestep"], packet["emtrue_modelgridindex"])
                     if k in estimators:
                         list_lambda[v].append(c_ang_s / packet.nu_rf)
                         lists_y[v].append(estimators[k][v])

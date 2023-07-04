@@ -68,8 +68,8 @@ def get_dictlabelreplacements(key: str | None = None) -> str | dict[str, str]:
 
 
 def apply_filters(
-    xlist: list | np.ndarray, ylist: list | np.ndarray, args: argparse.Namespace
-) -> tuple[list | np.ndarray, list | np.ndarray]:
+    xlist: list[float] | np.ndarray, ylist: list[float] | np.ndarray, args: argparse.Namespace
+) -> tuple[list[float] | np.ndarray, list[float] | np.ndarray]:
     filterfunc = at.get_filterfunc(args)
 
     if filterfunc is not None:

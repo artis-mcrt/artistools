@@ -680,7 +680,7 @@ def trim_or_pad(requiredlength: int, *listoflistin: list[list[t.Any]]) -> Iterat
         yield listout
 
 
-def flatten_list(listin: list) -> list:
+def flatten_list(listin: list[t.Any]) -> list[t.Any]:
     listout = []
     for elem in listin:
         if isinstance(elem, list):

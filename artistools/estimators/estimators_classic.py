@@ -1,12 +1,15 @@
 import glob
 import gzip
 import os
+import typing as t
 from pathlib import Path
+
+import pandas as pd
 
 import artistools as at
 
 
-def get_atomic_composition(modelpath):
+def get_atomic_composition(modelpath: Path) -> dict[int, int]:
     """Read ion list from output file."""
     atomic_composition = {}
 
@@ -24,7 +27,7 @@ def get_atomic_composition(modelpath):
     return atomic_composition
 
 
-def parse_ion_row_classic(row, outdict, atomic_composition):
+def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_composition: dict[int, int]) -> None:
     outdict["populations"] = {}
 
     elements = atomic_composition.keys()
@@ -44,7 +47,7 @@ def parse_ion_row_classic(row, outdict, atomic_composition):
             outdict["populations"]["total"] = totalpop + value_thision
 
 
-def get_estimator_files(modelpath):
+def get_estimator_files(modelpath: str | Path) -> list[str]:
     return (
         glob.glob(os.path.join(modelpath, "estimators_????.out"), recursive=True)
         + glob.glob(os.path.join(modelpath, "estimators_????.out.gz"), recursive=True)
@@ -53,7 +56,7 @@ def get_estimator_files(modelpath):
     )
 
 
-def get_first_ts_in_run_directory(modelpath):
+def get_first_ts_in_run_directory(modelpath) -> dict[str, int]:
     folderlist_all = (*sorted([child for child in Path(modelpath).iterdir() if child.is_dir()]), Path(modelpath))
 
     first_timesteps_in_dir = {}
@@ -72,11 +75,16 @@ def get_first_ts_in_run_directory(modelpath):
     return first_timesteps_in_dir
 
 
-def read_classic_estimators(modelpath, modeldata, readonly_mgi=False, readonly_timestep=False):
+def read_classic_estimators(
+    modelpath: Path,
+    modeldata: pd.DataFrame,
+    readonly_mgi: list[int] | None = None,
+    readonly_timestep: list[int] | None = None,
+) -> dict[tuple[int, int], t.Any] | None:
     estimfiles = get_estimator_files(modelpath)
     if not estimfiles:
         print("No estimator files found")
-        return False
+        return None
     print(f"Reading {len(estimfiles)} estimator files...")
 
     first_timesteps_in_dir = get_first_ts_in_run_directory(modelpath)
@@ -85,9 +93,9 @@ def read_classic_estimators(modelpath, modeldata, readonly_mgi=False, readonly_t
     inputparams = at.get_inputparams(modelpath)
     ndimensions = inputparams["n_dimensions"]
 
-    estimators = {}
+    estimators: dict[tuple[int, int], t.Any] = {}
     for estfile in estimfiles:
-        opener = gzip.open if estfile.endswith(".gz") else open
+        opener: t.Any = gzip.open if estfile.endswith(".gz") else open
 
         # If classic plots break it's probably getting first timestep here
         # Try either of the next two lines
@@ -102,8 +110,8 @@ def read_classic_estimators(modelpath, modeldata, readonly_mgi=False, readonly_t
                     timestep += 1
                 modelgridindex = int(row[0])
 
-                if (readonly_mgi is False or modelgridindex in readonly_mgi) and (
-                    readonly_timestep is False or timestep in readonly_timestep
+                if (not readonly_mgi or modelgridindex in readonly_mgi) and (
+                    not readonly_timestep or timestep in readonly_timestep
                 ):
                     estimators[(timestep, modelgridindex)] = {}
 

@@ -20,7 +20,7 @@ if t.TYPE_CHECKING:
     import pandas as pd
 
 
-def plot_2d_initial_abundances(modelpath, args):
+def plot_2d_initial_abundances(modelpath: Path, args: argparse.Namespace) -> None:
     model = at.inputmodel.get_2d_modeldata(modelpath)
     abundances = at.inputmodel.get_initelemabundances(modelpath)
 
@@ -183,10 +183,7 @@ def plot_3d_initial_abundances(modelpath, args=None) -> None:
         dfmodel=dfmodel, modelmeta=modelmeta, sliceaxis=sliceaxis, plotaxis1=plotaxis1, plotaxis2=plotaxis2
     )
 
-    subplots = False
-    if len(args.plotvars) > 1:
-        subplots = True
-
+    subplots = bool(len(args.plotvars) > 1)
     if not subplots:
         fig, ax = plt.subplots(1, 1, figsize=(8, 7), tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0})
     else:
@@ -225,7 +222,6 @@ def plot_3d_initial_abundances(modelpath, args=None) -> None:
         fig.text(0.5, 0.15, xlabel, ha="center", va="center")
         fig.text(0.05, 0.5, ylabel, ha="center", va="center", rotation="vertical")
 
-    # cbar.set_label(label="test", size="x-large")  # , fontweight='bold')
     if "cellYe" not in args.plotvars and "tracercount" not in args.plotvars:
         if args.logcolorscale:
             cbar.ax.set_title(r"log10($\rho$) [g/cm3]", size="small")
@@ -243,7 +239,7 @@ def plot_3d_initial_abundances(modelpath, args=None) -> None:
     print(f"Saved {outfilename}")
 
 
-def get_model_abundances_Msun_1D(modelpath):
+def get_model_abundances_Msun_1D(modelpath: Path) -> pd.DataFrame:
     filename = modelpath / "model.txt"
     modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(filename)
     abundancedata = at.inputmodel.get_initelemabundances(modelpath)

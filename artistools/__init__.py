@@ -9,6 +9,7 @@ from . import codecomparison
 from . import commands
 from . import deposition
 from . import estimators
+from . import initial_composition
 from . import inputmodel
 from . import lightcurve
 from . import macroatom

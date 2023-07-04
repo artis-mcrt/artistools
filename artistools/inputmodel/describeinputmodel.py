@@ -28,7 +28,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--getelemabundances", action="store_true", help="Get elemental abundance masses")
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args=None, argsraw=None, **kwargs) -> None:
     """Describe an ARTIS input model, such as the mass, velocity structure, and abundances."""
     if args is None:
         parser = argparse.ArgumentParser(
@@ -77,7 +77,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     mass_msun_isotopes = 0.0
     mass_msun_elem = 0.0
-    speciesmasses = {}
+    speciesmasses: dict[str, float] = {}
     for column in dfmodel.columns:
         if column.startswith("X_"):
             species = column.replace("X_", "")

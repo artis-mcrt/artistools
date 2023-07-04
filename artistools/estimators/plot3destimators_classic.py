@@ -1,3 +1,4 @@
+import typing as t
 from collections import namedtuple
 from pathlib import Path
 
@@ -10,7 +11,9 @@ import artistools as at
 CLIGHT = 2.99792458e10
 
 
-def read_selected_mgi(modelpath, readonly_mgi, readonly_timestep=False):
+def read_selected_mgi(
+    modelpath: Path, readonly_mgi: None | list[int] = None, readonly_timestep: None | list[int] = None
+) -> dict[tuple[int, int], t.Any] | None:
     modeldata, _ = at.inputmodel.get_modeldata(modelpath)
     return at.estimators.estimators_classic.read_classic_estimators(
         modelpath, modeldata, readonly_mgi=readonly_mgi, readonly_timestep=readonly_timestep
@@ -18,28 +21,23 @@ def read_selected_mgi(modelpath, readonly_mgi, readonly_timestep=False):
 
 
 def get_modelgridcells_along_axis(modelpath):
-    ArgsTuple = namedtuple("args", "modelpath sliceaxis other_axis1 other_axis2 positive_axis")
+    ArgsTuple = namedtuple("ArgsTuple", "modelpath sliceaxis other_axis1 other_axis2 positive_axis")
     args = ArgsTuple(modelpath=modelpath, sliceaxis="x", other_axis1="z", other_axis2="y", positive_axis=True)
 
     profile1d = at.inputmodel.slice1Dfromconein3dmodel.get_profile_along_axis(args=args)
     return get_mgi_of_modeldata(profile1d, modelpath)
 
 
-def get_modelgridcells_2D_slice(modeldata, modelpath):
-    sliceaxis = "z"
+def get_modelgridcells_2D_slice(modeldata, modelpath) -> list[int]:
+    sliceaxis: t.Literal["x", "y", "z"] = "z"
 
     slicedata = at.initial_composition.get_2D_slice_through_3d_model(modeldata, sliceaxis)
     return get_mgi_of_modeldata(slicedata, modelpath)
 
 
-def get_mgi_of_modeldata(modeldata, modelpath):
+def get_mgi_of_modeldata(modeldata, modelpath) -> list[int]:
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
-    readonly_mgi = []
-    for _index, row in modeldata.iterrows():
-        if row["rho"] > 0:
-            mgi = mgi_of_propcells[int(row["inputcellid"]) - 1]
-            readonly_mgi.append(mgi)
-    return readonly_mgi
+    return [mgi_of_propcells[int(row["inputcellid"]) - 1] for _index, row in modeldata.iterrows() if row["rho"] > 0]
 
 
 def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, readonly_mgi):
@@ -85,7 +83,7 @@ def plot_Te_vs_velocity(modelpath, modeldata, estimators, readonly_mgi):
 def get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, timestep):
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
     times = at.get_timestep_times_float(modelpath)
-    print([(ts, time) for ts, time in enumerate(times)])
+    print(list(enumerate(times)))
     time = times[timestep]
     print(f"time {time} days")
 
@@ -101,9 +99,9 @@ def get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, 
 
     vmax = vmax / CLIGHT
     i = 0
-    for z in range(0, grid):
-        for y in range(0, grid):
-            for x in range(0, grid):
+    for z in range(grid):
+        for y in range(grid):
+            for x in range(grid):
                 grid_Te[x, y, z] = Te[i]
                 if modeldata["rho"][i] == 0.0:
                     grid_Te[x, y, z] = None
@@ -150,7 +148,7 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
     p.show(screenshot=modelpath / f"3Dplot_Te{time:.1f}days_disk.png")
 
 
-def main():
+def main() -> None:
     modelpath = Path(".")
     modeldata, _, vmax = at.inputmodel.get_modeldata_tuple(modelpath)
 
