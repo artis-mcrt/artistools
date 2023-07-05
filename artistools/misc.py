@@ -4,7 +4,6 @@ import argparse
 import contextlib
 import gzip
 import math
-import os
 import typing as t
 from collections import namedtuple
 from collections.abc import Iterable
@@ -563,7 +562,7 @@ def get_model_name(path: Path | str) -> str:
         with open(plotlabelfile) as f:
             return f.readline().strip()
     except FileNotFoundError:
-        return os.path.basename(modelpath)
+        return Path(modelpath).name
 
 
 def get_z_a_nucname(nucname: str) -> tuple[int, int]:

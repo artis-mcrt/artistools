@@ -172,7 +172,6 @@ ignore = [
     "PLR2004",  # magic-value-comparison
     "PTH113",  # os-path-isfile
     "PTH118",  # os-path-join
-    "PTH119",  # os-path-basename
     "PTH123",  # builtin-open
     "PLW2901",  # redefined-loop-name
     "S101",  # Use of assert detected

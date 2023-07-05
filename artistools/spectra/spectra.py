@@ -1183,7 +1183,7 @@ def print_floers_line_ratio(
     if f_7155 > 0 and f_12570 > 0:
         fratio = f_12570 / f_7155
         print(f"f_12570/f_7122 = {fratio:.2e} (log10 is {math.log10(fratio):.2e})")
-        outfilename = f"fe2_nir_vis_ratio_{os.path.basename(modelpath)}.txt"
+        outfilename = f"fe2_nir_vis_ratio_{modelpath.name}.txt"
         print(f" saved to {outfilename}")
         with open(outfilename, "a+") as f:
             f.write(f"{timedays:.1f} {fratio:.3e}\n")
