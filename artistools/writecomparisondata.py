@@ -33,7 +33,7 @@ def write_spectra(modelpath, model_id, selected_timesteps, outfile):
     with open(outfile, "w") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")
         f.write(f"#NWAVE: {len(lambdas)}\n")
-        f.write("#TIMES[d]: {}\n".format(" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])))
+        f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
         f.write("#wavelength[Ang] flux_t0[erg/s/Ang] flux_t1[erg/s/Ang] ... flux_tn[erg/s/Ang]\n")
 
         for n in reversed(range(len(lambdas))):
@@ -214,13 +214,16 @@ def main(args=None, argsraw=None, **kwargs):
                 model_id,
                 selected_timesteps,
                 estimators,
-                Path(args.outputpath, "lbol_edep_" + model_id + "_artisnebular.txt"),
+                Path(args.outputpath, f"lbol_edep_{model_id}_artisnebular.txt"),
             )
         except FileNotFoundError:
             print("Can't write deposition because files are missing")
 
         write_spectra(
-            modelpath, model_id, selected_timesteps, Path(args.outputpath, "spectra_" + model_id + "_artisnebular.txt")
+            modelpath,
+            model_id,
+            selected_timesteps,
+            Path(args.outputpath, f"spectra_{model_id}_artisnebular.txt"),
         )
 
         # write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist,
@@ -231,7 +234,7 @@ def main(args=None, argsraw=None, **kwargs):
             selected_timesteps,
             estimators,
             allnonemptymgilist,
-            Path(args.outputpath, "edep_" + model_id + "_artisnebular.txt"),
+            Path(args.outputpath, f"edep_{model_id}_artisnebular.txt"),
             keyname="total_dep",
         )
 
