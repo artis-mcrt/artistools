@@ -54,11 +54,16 @@ warn_unused_configs = true
 plugins = 'numpy.typing.mypy_plugin'
 scripts_are_modules = true
 strict_equality = true
+strict_concatenate = true
 pretty = true
 disallow_untyped_calls = false
 disallow_any_generics = false
 disallow_any_explicit = false
+disallow_incomplete_defs = false
+disallow_subclassing_any = false
+disallow_untyped_defs = false
 implicit_reexport = true
+check_untyped_defs = false
 error_summary = true
 enable_error_code = [
   "redundant-expr",
@@ -66,6 +71,7 @@ enable_error_code = [
   "ignore-without-code",
 ]
 warn_redundant_casts = true
+warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
 module = [
@@ -78,19 +84,14 @@ module = [
     "artistools.packets",
     "artistools.spectra",
 ]
-disallow_any_explicit = false
+disallow_incomplete_defs = true
 disallow_untyped_calls = true
 disallow_untyped_defs = true
-disallow_incomplete_defs = true
 check_untyped_defs = true
 disallow_untyped_decorators = true
-warn_unused_ignores = true
 warn_return_any = false
 disallow_any_generics = false
 disallow_subclassing_any = true
-implicit_reexport = true
-strict_equality = true
-strict_concatenate = true
 
 [[tool.mypy.overrides]]
 module = "pyvista"

@@ -19,7 +19,9 @@ from astropy import units as u
 import artistools as at
 
 
-def get_packets_with_emtype_onefile(emtypecolumn: str, lineindices, packetsfile: Path | str) -> pd.DataFrame:
+def get_packets_with_emtype_onefile(
+    emtypecolumn: str, lineindices: tuple[int], packetsfile: Path | str
+) -> pd.DataFrame:
     import gzip
 
     try:
@@ -83,7 +85,7 @@ def get_line_fluxes_from_packets(
 
     dictlcdata = {"time": arr_tmid}
 
-    linelistindices_allfeatures = tuple([l for feature in emfeatures for l in feature.linelistindices])
+    linelistindices_allfeatures = tuple(l for feature in emfeatures for l in feature.linelistindices)
 
     dfpackets, nprocs_read = get_packets_with_emtype(
         modelpath, emtypecolumn, linelistindices_allfeatures, maxpacketfiles=maxpacketfiles
@@ -237,7 +239,7 @@ def get_closelines(
 
 def get_labelandlineindices(modelpath, emfeaturesearch):
     featuretuple = namedtuple(
-        "feature",
+        "featuretuple",
         [
             "colname",
             "featurelabel",
@@ -267,7 +269,7 @@ def get_labelandlineindices(modelpath, emfeaturesearch):
     return labelandlineindices
 
 
-def make_flux_ratio_plot(args):
+def make_flux_ratio_plot(args: argparse.Namespace) -> None:
     # font = {'size': 16}
     # matplotlib.rc('font', **font)
     nrows = 1
@@ -351,7 +353,7 @@ def make_flux_ratio_plot(args):
             "generateplots/floers_model_NIR_VIS_ratio_20201126.csv"
         )
 
-        amodels = {}
+        amodels: dict[str, tuple[list, list]] = {}
         for _index, row in femis.iterrows():
             modelname = row.file.replace("fig-nne_Te_allcells-", "").replace(f"-{row.epoch}d.txt", "")
             if modelname not in amodels:
@@ -363,8 +365,8 @@ def make_flux_ratio_plot(args):
         aindex = 0
         # for amodelname, (xlist, ylist) in amodels.items():
         for amodelname, alabel in [
-            # ('w7', 'W7'),
-            # ('subch', 'S0'),
+            ("w7", "W7"),
+            ("subch", "S0"),
             # ('subch_shen2018', r'1M$_\odot$'),
             # ('subch_shen2018_electronlossboost4x', '1M$_\odot$ (Shen+18) 4x e- loss'),
             # ('subch_shen2018_electronlossboost8x', r'1M$_\odot$ heatboost8'),

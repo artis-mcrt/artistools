@@ -150,7 +150,7 @@ define_colours_list2 = [
 ]
 
 
-def parse_directionbin_args(modelpath: Path | str, args) -> tuple[Sequence[int], dict[int, str]]:
+def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
     modelpath = Path(modelpath)
     viewing_angle_data = bool(glob.glob(str(modelpath / "*_res.out*")))
     if args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
@@ -398,7 +398,7 @@ def make_plot_test_viewing_angle_fit(
     modelname,
     angle,
     args,
-) -> None:
+):
     plt.plot(time, magnitude)
     plt.plot(xfit, fxfit)
 
