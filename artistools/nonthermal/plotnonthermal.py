@@ -305,7 +305,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         else:
             modelpaths.append(elem)
 
-    if os.path.isdir(args.outputfile):
+    if Path(args.outputfile).is_dir():
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     if args.listtimesteps:

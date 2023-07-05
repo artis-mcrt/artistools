@@ -3,6 +3,7 @@ import argparse
 import glob
 import os.path
 import sys
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -35,7 +36,7 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    if os.path.isdir(args.outputfile):
+    if Path(args.outputfile).is_dir():
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     atomic_number = at.get_atomic_number(args.element.lower())

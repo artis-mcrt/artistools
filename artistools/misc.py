@@ -102,13 +102,12 @@ def showtimesteptimes(modelpath: Path | None = None, numberofcolumns: int = 5) -
 @lru_cache(maxsize=8)
 def get_composition_data(filename: Path | str) -> pd.DataFrame:
     """Return a pandas DataFrame containing details of included elements and ions."""
-    if os.path.isdir(Path(filename)):
-        filename = os.path.join(filename, "compositiondata.txt")
+    filename = Path(filename, "compositiondata.txt") if Path(filename).is_dir() else Path(filename)
 
     columns = ("Z,nions,lowermost_ionstage,uppermost_ionstage,nlevelsmax_readin,abundance,mass,startindex").split(",")
 
     rowdfs = []
-    with open(filename) as fcompdata:
+    with filename.open() as fcompdata:
         nelements = int(fcompdata.readline())
         fcompdata.readline()  # T_preset
         fcompdata.readline()  # homogeneous_abundances

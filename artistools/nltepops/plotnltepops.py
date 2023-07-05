@@ -780,7 +780,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     else:
         timestep = int(args.timestep)
 
-    if os.path.isdir(args.outputfile):
+    if Path(args.outputfile).is_dir():
         args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
 
     ionstages_permitted = at.parse_range_list(args.ionstages) if args.ionstages else None

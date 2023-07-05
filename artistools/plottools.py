@@ -1,3 +1,4 @@
+"""Matplotlib-related plotting functions."""
 import sys
 
 import matplotlib.pyplot as plt
