@@ -175,10 +175,10 @@ ignore = [
     "PTH118",  # os-path-join
     "PTH119",  # os-path-basename
     "PTH123",  # builtin-openß
-    "PLW2901",  #
-    #"RET504",  # unnecessary-assign
+    "PLW2901",  # redefined-loop-name
     "S101",  # Use of assert detected
     "S301",  # suspicious-pickle-usage
+    "S307",  # suspicious-eval-usage
     "S311",  # suspicious-non-cryptographic-random-usage
     "S506",  # unsafe-yaml-load
     "S603",  # subprocess-without-shell-equals-true
