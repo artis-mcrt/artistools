@@ -82,6 +82,7 @@ module = [
     "artistools.lightcurve",
     "artistools.misc",
     "artistools.packets",
+    "artistools.plotspherical",
     "artistools.spectra",
 ]
 disallow_incomplete_defs = true

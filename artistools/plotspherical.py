@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
+# mypy: warn-unused-configs, disallow-any-generics, disallow-subclassing-any, disallow-untyped-calls,
+# mypy: disallow-untyped-defs, disallow-incomplete-defs, check-untyped-defs, disallow-untyped-decorators,
+# mypy: warn-redundant-casts, warn-unused-ignores, warn-return-any, no-implicit-reexport, strict-equality, strict-concatenate
 from __future__ import annotations
 
 import argparse
+import typing as t
 from pathlib import Path
 
 import argcomplete
@@ -321,7 +325,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = None, **kwargs: t.Any) -> None:
     """Plot direction maps based on escaped packets."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
