@@ -539,36 +539,12 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     t_model_init_days = t_model_init_seconds / (24 * 60 * 60)
 
-    wollager_profilename = "wollager_ejectaprofile_10bins.txt"
-    if Path(wollager_profilename).exists():
-        print(f"{wollager_profilename} found")
-        t_model_init_days_in = float(Path(wollager_profilename).open("rt").readline().strip().removesuffix(" day"))
-        dfdensities = pd.read_csv(
-            wollager_profilename, delim_whitespace=True, skiprows=1, names=["cellid", "velocity_outer", "rho"]
-        )
-        dfdensities["cellid"] = dfdensities["cellid"].astype(int)
-        dfdensities["velocity_inner"] = np.concatenate(([0.0], dfdensities["velocity_outer"].to_numpy()[:-1]))
-
-        t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
-        dfdensities = dfdensities.eval(
-            (
-                "cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
-                "* (1e5 * @t_model_init_seconds_in) ** 3"
-            ),
-        )
-
-        # now replace the density at the input time with the density at required time
-
-        dfdensities = dfdensities.eval(
-            (
-                "rho = cellmass_grams / ("
-                "4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
-                " * (1e5 * @t_model_init_seconds) ** 3)"
-            ),
-        )
+    wollaeger_profilename = "wollaeger_ejectaprofile_10bins.txt"
+    if Path(wollaeger_profilename).exists():
+        dfdensities = get_wollaeger_density_profile(wollaeger_profilename)
     else:
         rho = 1e-11
-        print(f"{wollager_profilename} not found. Using rho {rho} g/cm3")
+        print(f"{wollaeger_profilename} not found. Using rho {rho} g/cm3")
         dfdensities = pd.DataFrame({"rho": rho, "velocity_outer": 6.0e4}, index=[0])
 
     # print(dfdensities)
@@ -599,17 +575,15 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         A = row.N + row.Z
         rowdict[f"X_{at.get_elsymbol(row.Z)}{A}"] = row.massfrac
 
-    modeldata = []
-    for mgi, densityrow in dfdensities.iterrows():
-        # print(mgi, densityrow)
-        modeldata.append(
-            dict(
-                inputcellid=mgi + 1,
-                velocity_outer=densityrow["velocity_outer"],
-                logrho=math.log10(densityrow["rho"]),
-                **rowdict,
-            )
+    modeldata = [
+        dict(
+            inputcellid=mgi + 1,
+            velocity_outer=densityrow["velocity_outer"],
+            logrho=math.log10(densityrow["rho"]),
+            **rowdict,
         )
+        for mgi, densityrow in dfdensities.iterrows()
+    ]
     # print(modeldata)
 
     dfmodel = pd.DataFrame(modeldata)
@@ -618,7 +592,34 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     with open(Path(args.outputpath, "gridcontributions.txt"), "w") as fcontribs:
         fcontribs.write("particleid cellindex frac_of_cellmass\n")
         for cell in dfmodel.itertuples(index=False):
-            fcontribs.write(f"{particleid} {cell.inputcellid} {1.}\n")
+            fcontribs.write(f"{particleid} {cell.inputcellid} 1.0\n")
+
+
+def get_wollaeger_density_profile(wollaeger_profilename):
+    print(f"{wollaeger_profilename} found")
+    t_model_init_days_in = float(Path(wollaeger_profilename).open("rt").readline().strip().removesuffix(" day"))
+    result = pd.read_csv(
+        wollaeger_profilename,
+        delim_whitespace=True,
+        skiprows=1,
+        names=["cellid", "velocity_outer", "rho"],
+    )
+    result["cellid"] = result["cellid"].astype(int)
+    result["velocity_inner"] = np.concatenate(([0.0], result["velocity_outer"].to_numpy()[:-1]))
+
+    t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
+    result = result.eval(
+        "cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
+        "* (1e5 * @t_model_init_seconds_in) ** 3"
+    )
+
+    # now replace the density at the input time with the density at required time
+
+    return result.eval(
+        "rho = cellmass_grams / ("
+        "4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
+        " * (1e5 * @t_model_init_seconds) ** 3)"
+    )
 
 
 if __name__ == "__main__":
