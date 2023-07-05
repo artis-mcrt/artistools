@@ -56,6 +56,7 @@ scripts_are_modules = true
 strict_equality = true
 strict_concatenate = true
 pretty = true
+implicit_optional = false
 disallow_untyped_calls = false
 disallow_any_generics = false
 disallow_any_explicit = false
