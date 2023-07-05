@@ -155,7 +155,7 @@ def get_trajectory_timestepfile_nuc_abund(
 
 
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
-    """Initial cell energy [erg/g]."""
+    """Calculate initial cell energy [erg/g] from reactions t < t_model_s (reduced by work done)."""
     with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as enthermofile:
         try:
             dfthermo: pd.DataFrame = pd.read_csv(

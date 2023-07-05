@@ -150,7 +150,6 @@ ignore = [
     "D203",  # one-blank-line-before-class
     "D205",  # blank-line-after-summary
     "D213",  # multi-line-summary-second-line
-    "D401",  # non-imperative-mood
     "D417",  # undocumented-param
     "E501", # Line too long
     "E741", # Ambiguous variable name
@@ -160,7 +159,7 @@ ignore = [
     "FIX002",  # line contains TODO
     "N802",  # Function name should be lowercase
     "N803",  # Argument name should be lowercase
-    "N806",  # Variable should be lowercase
+    "N806",  # non-lowercase-variable-in-function
     "N999",  # invalid-module-name
     "PD901",  # df is a bad variable name
     "PERF401", # manual-list-comprehension

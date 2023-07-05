@@ -461,8 +461,8 @@ def get_modeldata(
 
 
 def get_modeldata_tuple(*args: t.Any, **kwargs: t.Any) -> tuple[pd.DataFrame, float, float]:
-    """Deprecated but included for compatibility with fixed length tuple return type
-    Use get_modeldata() instead!.
+    """Get model from model.txt file
+    DEPRECATED: Use get_modeldata() instead.
     """
     dfmodel, modelmeta = get_modeldata(*args, **kwargs)
 
@@ -935,7 +935,7 @@ def save_initelemabundances(
 
 
 def save_empty_abundance_file(ngrid: int, outputfilepath: str | Path = Path()) -> None:
-    """Dummy abundance file with only zeros."""
+    """Save dummy abundance file with only zeros."""
     if Path(outputfilepath).is_dir():
         outputfilepath = Path(outputfilepath) / "abundances.txt"
 

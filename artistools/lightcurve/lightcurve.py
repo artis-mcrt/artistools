@@ -175,7 +175,7 @@ def generate_band_lightcurve_data(
     angle: int = -1,
     modelnumber: int | None = None,
 ) -> dict:
-    """Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
+    """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
     from scipy.interpolate import interp1d
 
     if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():

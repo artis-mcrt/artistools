@@ -181,9 +181,7 @@ def autoscale(ax=None, axis="y", margin=0.1):
     """
 
     def calculate_new_limit(fixed, dependent, limit):
-        """Calculates the min/max of the dependent axis given
-        a fixed axis with limits.
-        """
+        """Calculate the min/max of the dependent axis given a fixed axis with limits."""
         if len(fixed) > 2:
             mask = (fixed > limit[0]) & (fixed < limit[1]) & (~np.isnan(dependent)) & (~np.isnan(fixed))
             window = dependent[mask]
