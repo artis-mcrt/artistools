@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import glob
-import os
 import sys
 import typing as t
 from pathlib import Path
@@ -153,7 +152,7 @@ define_colours_list2 = [
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
     modelpath = Path(modelpath)
     viewing_angle_data = bool(glob.glob(str(modelpath / "*_res.out*")))
-    if args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
+    if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
         dirbins = args.plotvspecpol
     elif args.plotviewingangle and args.plotviewingangle[0] == -1 and viewing_angle_data:
         dirbins = np.arange(0, 100, 1, dtype=int)

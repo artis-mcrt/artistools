@@ -414,7 +414,7 @@ def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
     hesma_modelname = hesma_directory / filename
 
     column_names: list[str] = []
-    with open(hesma_modelname) as f:
+    with hesma_modelname.open() as f:
         first_line = f.readline()
         if "#" in first_line:
             column_names.extend(i for i in first_line if i not in ["#", " ", "\n"])
@@ -467,7 +467,7 @@ def read_bol_reflightcurve_data(lightcurvefilename):
     metadata = at.get_file_metadata(data_path)
 
     # check for possible header line and read table
-    with open(data_path) as flc:
+    with data_path.open() as flc:
         filepos = flc.tell()
         line = flc.readline()
         if line.startswith("#"):

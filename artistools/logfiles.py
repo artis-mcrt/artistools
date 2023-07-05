@@ -41,7 +41,7 @@ def read_time_taken(logfilepaths):
 
     for logfilepath in logfilepaths:
         mpi_process = int(str(logfilepath).split("/")[-1].split("-")[0].split("_")[-1])
-        with open(logfilepath) as logfile:
+        with Path(logfilepath).open() as logfile:
             lineswithtimes = [line.split(" ") for line in logfile if "took" in line]
 
         # for line in lineswithtimes:

@@ -121,7 +121,7 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
     # comparison to Andeas Floers's NLTE pops for Shingles et al. (2022)
     if atomic_number == 26 and ion_stage in [2, 3]:
         floersfilename = "andreas_level_populations_fe2.txt" if ion_stage == 2 else "andreas_level_populations_fe3.txt"
-        if os.path.isfile(modelpath / floersfilename):
+        if Path(modelpath / floersfilename).is_file():
             print(f"reading {floersfilename}")
             floers_levelpops = pd.read_csv(modelpath / floersfilename, comment="#", delim_whitespace=True)
             # floers_levelnums = floers_levelpops['index'].values - 1
@@ -148,7 +148,7 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
                 print("Shen2018 SubMch detected")
                 floersmultizonefilename = "level_pops_subch_shen2018-247d.csv"
 
-        if floersmultizonefilename and os.path.isfile(floersmultizonefilename):
+        if floersmultizonefilename and Path(floersmultizonefilename).is_file():
             modeldata, _ = at.inputmodel.get_modeldata(modelpath)  # TODO: move into modelpath loop
             vel_outer = modeldata.iloc[modelgridindex].velocity_outer
             print(f"  reading {floersmultizonefilename}", vel_outer, T_e)

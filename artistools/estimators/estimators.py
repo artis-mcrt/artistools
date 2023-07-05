@@ -83,7 +83,7 @@ def get_ionrecombrates_fromfile(filename: Path | str) -> pd.DataFrame:
     print(f"Reading {filename}")
 
     header_row = []
-    with open(filename) as filein:
+    with Path(filename).open() as filein:
         while True:
             line = filein.readline()
             if line.strip().startswith("TOTAL RECOMBINATION RATE"):

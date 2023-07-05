@@ -86,7 +86,7 @@ def read_binding_energies(modelpath: str = ".") -> np.ndarray:
         ]
     )
 
-    with open(collionfilename) as f:
+    with Path(collionfilename).open() as f:
         nt_shells, n_z_binding = (int(x) for x in f.readline().split())
         electron_binding = np.zeros((n_z_binding, nt_shells))
 
@@ -249,7 +249,7 @@ def get_lotz_xs_ionisation(atomic_number, ion_stage, electron_binding, ionpot_ev
                 assert electron_loop == 8
                 # print("Z = %d, ion_stage = %d\n", get_element(element), get_ionstage(element, ion));
 
-        p = use3 if use2 < use3 else use2
+        p = max(use2, use3)
 
         if 0.5 * beta**2 * ME * CLIGHT**2 > p:
             part_sigma += (
@@ -462,7 +462,7 @@ def read_colliondata(collionfilename="collion.txt", modelpath: None | str | Path
     collionrow = namedtuple("collionrow", ["Z", "nelec", "n", "l", "ionpot_ev", "A", "B", "C", "D"])
 
     nrows = -1
-    with open(Path(modelpath, collionfilename)) as collionfile:
+    with Path(modelpath, collionfilename).open() as collionfile:
         nrows = int(collionfile.readline().strip())
         # print(f'Collionfile: expecting {nrows} rows')
         dfcollion = pd.read_csv(collionfile, delim_whitespace=True, header=None, names=collionrow._fields)
@@ -645,7 +645,7 @@ def sfmatrix_add_excitation(engrid, dftransitions_ion, nnion, sfmatrix):
             for i, en in enumerate(engrid):
                 stopindex = get_energyindex_lteq(en_ev=en + epsilon_trans_ev, engrid=engrid)
 
-                startindex = i if i > xsstartindex else xsstartindex
+                startindex = max(i, xsstartindex)
                 # for j in range(startindex, stopindex):
                 sfmatrix[i, startindex:stopindex] += vec_xs_excitation_nnlevel_deltae[startindex:stopindex]
 

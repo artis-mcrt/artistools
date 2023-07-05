@@ -323,7 +323,7 @@ def main(args=None, argsraw=None, **kwargs):
             adata = at.atomic.get_levels(modelpath, get_transitions=True, ionlist=tuple(ions))
 
         if step == 0 and args.ostat:
-            with open(args.ostat, "w") as fstat:
+            with Path(args.ostat).open("w") as fstat:
                 strheader = "#emin emax npts x_e frac_sum frac_excitation frac_ionization frac_heating"
                 for atomic_number, ion_stage in ions:
                     strheader += " frac_ionization_" + at.get_ionstring(atomic_number, ion_stage, nospace=True)
@@ -352,7 +352,7 @@ def main(args=None, argsraw=None, **kwargs):
                 sf.plot_spec_channels(outputfilename=outputfilename)
 
             if args.ostat:
-                with open(args.ostat, "a") as fstat:
+                with Path(args.ostat).open("a") as fstat:
                     strlineout = (
                         f"{emin} {emax} {npts} {x_e:7.2e} {sf.get_frac_sum():6.3f} "
                         f"{sf.get_frac_excitation_tot():6.3f} {sf.get_frac_ionisation_tot():6.3f} "

@@ -73,7 +73,7 @@ for modelname in modelnames:
 
     lightcurvedataframe.to_csv(outfilepath / f"bol_lightcurvedata_{modelname}.txt", sep=" ", index=False, header=False)
 
-    with open(outfilepath / f"bol_lightcurvedata_{modelname}.txt", "r+") as f:  # add comment to start of file
+    with (outfilepath / f"bol_lightcurvedata_{modelname}.txt").open("r+") as f:  # add comment to start of file
         content = f.read()
         f.seek(0, 0)
         f.write(

@@ -940,7 +940,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                 # if not (args.test_viewing_angle_fit or args.calculate_peak_time_mag_deltam15_bool):
                 curax = ax[plotnumber] if args.subplots else ax
                 if args.subplots:
-                    if len(angles) > 1 or (args.plotviewingangle and os.path.isfile(modelpath / "specpol_res.out")):
+                    if len(angles) > 1 or (args.plotviewingangle and (modelpath / "specpol_res.out").is_file()):
                         ax[plotnumber].plot(time, brightness_in_mag, linewidth=4, **plotkwargs)
                     # I think this was just to have a different line style for viewing angles....
                     else:

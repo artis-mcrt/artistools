@@ -85,7 +85,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
             ]
         },
     }
-    with open(outputfilepath, "w") as fileout:
+    with outputfilepath.open("w") as fileout:
         fileout.write("---\n")
         yamldump(dictmeta, fileout, sort_keys=False)
         fileout.write("---\n")
@@ -95,7 +95,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         # fileout.write(f'{0.},{0.:.4e},{0.},{0.},{",".join([f"{0.:.4e}" for _ in listspecies])}\n')
 
         for cell in dfmodel.itertuples(index=False):
-            abundlist = [f'{getattr(cell, "X_" + strnuc):.4e}' for strnuc in listspecies]
+            abundlist = [f'{getattr(cell, f"X_{strnuc}"):.4e}' for strnuc in listspecies]
             fileout.write(
                 f'{cell.velocity_outer},{cell.rho:.4e},{temperature},{dilution_factor},{",".join(abundlist)}\n'
             )

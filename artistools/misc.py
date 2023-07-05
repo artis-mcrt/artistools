@@ -127,7 +127,7 @@ def get_composition_data_from_outputfile(modelpath: Path) -> pd.DataFrame:
     """Read ion list from output file."""
     atomic_composition = {}
 
-    with open(modelpath / "output_0-0.txt") as foutput:
+    with (modelpath / "output_0-0.txt").open() as foutput:
         Z: int | None = None
         ioncount = 0
         for row in foutput:
@@ -225,7 +225,7 @@ def match_closest_time(reftime: float, searchtimes: list[t.Any]) -> str:
 def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
     filename = Path(modelpath, "vpkt.txt")
     vpkt_config: dict[str, t.Any] = {}
-    with open(filename) as vpkt_txt:
+    with filename.open() as vpkt_txt:
         vpkt_config["nobsdirections"] = int(vpkt_txt.readline())
         vpkt_config["cos_theta"] = [float(x) for x in vpkt_txt.readline().split()]
         vpkt_config["phi"] = [float(x) for x in vpkt_txt.readline().split()]
@@ -255,7 +255,7 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
 
     assoc_cells: dict[int, list[int]] = {}
     mgi_of_propcells: dict[int, int] = {}
-    with open(filename) as fgrid:
+    with filename.open() as fgrid:
         for line in fgrid:
             row = line.split()
             propcellid, mgi = int(row[0]), int(row[1])
@@ -305,7 +305,7 @@ def get_syn_dir(modelpath: Path) -> tuple[float, float, float]:
         print(f"{modelpath / 'syn_dir.txt'} does not exist. using x,y,z = 0,0,1")
         return (0.0, 0.0, 1.0)
 
-    with open(modelpath / "syn_dir.txt") as syn_dir_file:
+    with (modelpath / "syn_dir.txt").open() as syn_dir_file:
         x, y, z = (float(i) for i in syn_dir_file.readline().split())
         return (x, y, z)
 
@@ -324,14 +324,14 @@ def get_nu_grid(modelpath: Path) -> np.ndarray[t.Any, np.dtype[np.float64]]:
 
 def get_deposition(modelpath: Path | str = ".") -> pd.DataFrame:
     if Path(modelpath).is_file():
-        depfilepath = modelpath
+        depfilepath = Path(modelpath)
         modelpath = Path(modelpath).parent
     else:
         depfilepath = Path(modelpath, "deposition.out")
 
     ts_mids = get_timestep_times_float(modelpath, loc="mid")
 
-    with open(depfilepath) as fdep:
+    with depfilepath.open() as fdep:
         filepos = fdep.tell()
         line = fdep.readline()
         if line.startswith("#"):
@@ -559,7 +559,7 @@ def get_model_name(path: Path | str) -> str:
 
     try:
         plotlabelfile = Path(modelpath, "plotlabel.txt")
-        with open(plotlabelfile) as f:
+        with plotlabelfile.open() as f:
             return f.readline().strip()
     except FileNotFoundError:
         return Path(modelpath).name
@@ -698,7 +698,7 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
             return fopen(file_ext, mode=mode, encoding=encoding)
 
     # open() can raise file not found if this file doesn't exist
-    return open(filename, mode=mode, encoding=encoding)  # noqa: SIM115
+    return Path(filename).open(mode=mode, encoding=encoding)
 
 
 def firstexisting(
@@ -841,11 +841,11 @@ def join_pdf_files(pdf_list: list[str], modelpath_list: list[Path]) -> None:
 
     for pdf, modelpath in zip(pdf_list, modelpath_list):
         fullpath = firstexisting([pdf], folder=modelpath)
-        merger.append(open(fullpath, "rb"))  # noqa: SIM115
+        merger.append(fullpath.open("rb"))
         fullpath.unlink()
 
     resultfilename = f'{pdf_list[0].split(".")[0]}-{pdf_list[-1].split(".")[0]}'
-    with open(f"{resultfilename}.pdf", "wb") as resultfile:
+    with Path(f"{resultfilename}.pdf").open("wb") as resultfile:
         merger.write(resultfile)
 
     print(f"Files merged and saved to {resultfilename}.pdf")

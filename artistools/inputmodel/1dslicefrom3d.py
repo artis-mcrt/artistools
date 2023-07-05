@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import argparse
 import math
-import os
 import sys
 from pathlib import Path
 
@@ -57,7 +56,7 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
     listout = []
     dict3dcellidto1dcellid = {}
     outcellid = 0
-    with open(os.path.join(inputfolder, "model.txt")) as fmodelin:
+    with Path(inputfolder, "model.txt").open() as fmodelin:
         fmodelin.readline()  # npts_model3d
         t_model = fmodelin.readline()  # days
         fmodelin.readline()  # v_max in [cm/s]
@@ -97,7 +96,7 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
                 print(f"Cell {outcellid:4d} input2: {block[1].rstrip()}")
                 print(f"Cell {outcellid:4d} output: {listout[-1]}")
 
-    with open(os.path.join(outputfolder, "model.txt"), "w") as fmodelout:
+    with Path(outputfolder, "model.txt").open("w") as fmodelout:
         fmodelout.write(f"{outcellid:7d}\n")
         fmodelout.write(t_model)
         for line in listout:
@@ -108,8 +107,8 @@ def slice_3dmodel(inputfolder, outputfolder, chosenaxis):
 
 def slice_abundance_file(inputfolder, outputfolder, dict3dcellidto1dcellid):
     with (
-        open(os.path.join(inputfolder, "abundances.txt")) as fabundancesin,
-        open(os.path.join(outputfolder, "abundances.txt"), "w") as fabundancesout,
+        Path(inputfolder, "abundances.txt").open() as fabundancesin,
+        Path(outputfolder, "abundances.txt").open("w") as fabundancesout,
     ):
         currentblock = []
         keepcurrentblock = False

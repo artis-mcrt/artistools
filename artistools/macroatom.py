@@ -58,12 +58,9 @@ def main(args=None, argsraw=None, **kwargs):
 
     dfall = read_files(input_files, args.modelgridindex, timestepmin, timestepmax, atomic_number)
 
-    specfilename = os.path.join(args.modelpath, "spec.out")
+    specfilename = Path(args.modelpath, "spec.out")
 
-    if not os.path.isfile(specfilename):
-        specfilename = os.path.join(args.modelpath, "../example_run/spec.out")
-
-    if not os.path.isfile(specfilename):
+    if not specfilename.is_file():
         print(f"Could not find {specfilename}")
         raise FileNotFoundError
 
@@ -71,7 +68,7 @@ def main(args=None, argsraw=None, **kwargs):
     make_plot(
         dfall,
         args.modelpath,
-        specfilename,
+        str(specfilename),
         timestepmin,
         timestepmax,
         outputfile,

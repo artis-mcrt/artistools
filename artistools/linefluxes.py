@@ -546,7 +546,7 @@ def make_emitting_regions_plot(args):
     refdatatimes = [None for _ in refdatafilenames]
     refdatapoints = [None for _ in refdatafilenames]
     for refdataindex, refdatafilename in enumerate(refdatafilenames):
-        with open(refdatafilename, encoding="utf-8") as data_file:
+        with Path(refdatafilename).open(encoding="utf-8") as data_file:
             floers_te_nne = json.loads(data_file.read())
 
         # give an ordering and index to dict items

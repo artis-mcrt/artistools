@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import math
-import os
 import typing as t
 from pathlib import Path
 
@@ -28,7 +27,7 @@ def plot_2d_initial_abundances(modelpath: Path, args: argparse.Namespace) -> Non
 
     merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
 
-    with open(os.path.join(modelpath, "model.txt")) as fmodelin:
+    with Path(modelpath, "model.txt").open() as fmodelin:
         fmodelin.readline()  # npts r, npts z
         t_model = float(fmodelin.readline())  # days
         vmax = float(fmodelin.readline())  # v_max in [cm/s]

@@ -610,8 +610,8 @@ def get_mean_cell_properties_of_angle_bin(
 
 
 def get_2d_modeldata(modelpath: str | Path) -> pd.DataFrame:
-    filepath = os.path.join(modelpath, "model.txt")
-    with open(filepath) as f:
+    filepath = Path(modelpath, "model.txt")
+    with filepath.open() as f:
         num_lines = sum(1 for _ in f)
     skiprowlist = [0, 1, 2]
     skiprowlistodds = skiprowlist + [i for i in range(3, num_lines) if i % 2 == 1]
@@ -643,7 +643,7 @@ def get_3d_model_data_merged_model_and_abundances_minimal(args: argparse.Namespa
     model = get_3d_modeldata_minimal(args.modelpath)
     abundances = get_initelemabundances(args.modelpath[0])
 
-    with open(os.path.join(args.modelpath[0], "model.txt")) as fmodelin:
+    with Path(args.modelpath[0], "model.txt").open() as fmodelin:
         fmodelin.readline()  # npts_model3d
         args.t_model = float(fmodelin.readline())  # days
         args.vmax = float(fmodelin.readline())  # v_max in [cm/s]
@@ -770,7 +770,7 @@ def save_modeldata(
         filename = "model.txt"
     modelfilepath = Path(modelpath, filename) if modelpath is not None else Path(filename)
 
-    with open(modelfilepath, "w", encoding="utf-8") as fmodel:
+    with modelfilepath.open("w", encoding="utf-8") as fmodel:
         if headercommentlines is not None:
             fmodel.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
         fmodel.write(f"{len(dfmodel)}\n")
@@ -921,7 +921,7 @@ def save_initelemabundances(
         if col not in dfelabundances.columns:
             dfelabundances[col] = 0.0
 
-    with open(abundancefilename, "w", encoding="utf-8") as fabund:
+    with Path(abundancefilename).open("w", encoding="utf-8") as fabund:
         if headercommentlines is not None:
             fabund.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
         for row in dfelabundances.itertuples(index=False):

@@ -2,6 +2,7 @@
 """Convert a CMFGEN model file to ARTIS format. Original script possibly by Markus Kromer?."""
 # from rd_cmfgen import rd_nuc_decay_data
 from math import exp
+from pathlib import Path
 
 import numpy as np
 
@@ -209,7 +210,7 @@ def main():
     dm = 4 / 3 * np.pi * (rout**3 - rin**3) * a["dens"] / msun
     print(dm.sum(), dm.sum() / (a["dmass"].sum() / msun))  # Check total mass
 
-    with open(model + "/model.txt", "w") as f:
+    with Path(model, "model.txt").open("w") as f:
         f.write(str(a["nd"]) + "\n")
         f.write(str(a["time"]) + "\n")
 

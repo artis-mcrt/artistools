@@ -129,7 +129,7 @@ def make_1D_model_files(args):
 
     abundances_df.to_csv(args.modelpath[0] / "abundances_1D.txt", sep=" ", header=False)  # write abundances.txt
 
-    with open(args.modelpath[0] / "model_1D.txt", "r+") as f:  # add number of cells and tmodel to start of file
+    with Path(args.modelpath[0], "model_1D.txt").open("r+") as f:  # add number of cells and tmodel to start of file
         content = f.read()
         f.seek(0, 0)
         f.write(f"{model_df.shape[0]}\n{args.t_model}".rstrip("\r\n") + "\n" + content)

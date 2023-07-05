@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Tools to get artis output in the required format for the code comparison workshop."""
 import argparse
+import typing as t
+from io import TextIOBase
 from pathlib import Path
 
 import numpy as np
@@ -8,7 +10,7 @@ import numpy as np
 import artistools as at
 
 
-def write_spectra(modelpath, model_id, selected_timesteps, outfile):
+def write_spectra(modelpath: str | Path, model_id: int, selected_timesteps: t.Sequence[int], outfile: Path):
     spec_data = np.loadtxt(Path(modelpath, "spec.out"))
 
     times = spec_data[0, 1:]
@@ -30,7 +32,7 @@ def write_spectra(modelpath, model_id, selected_timesteps, outfile):
         # 2.99792458e18 is c in Angstrom / second
         lum_lambda[n, :] = fluxes_nu[n, :] * 2.99792458e18 / lambdas[n] / lambdas[n] * area
 
-    with open(outfile, "w") as f:
+    with outfile.open("w") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")
         f.write(f"#NWAVE: {len(lambdas)}\n")
         f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
@@ -42,7 +44,7 @@ def write_spectra(modelpath, model_id, selected_timesteps, outfile):
         f.close()
 
 
-def write_ntimes_nvel(f, selected_timesteps, modelpath):
+def write_ntimes_nvel(f: TextIOBase, selected_timesteps: t.Sequence[int], modelpath: str | Path) -> None:
     times = at.get_timestep_times_float(modelpath)
     modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath)
     f.write(f"#NTIMES: {len(selected_timesteps)}\n")
@@ -87,7 +89,7 @@ def write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnone
         nions = elementlist.nions[element]
         pathfileout = Path(outputpath, f"ionfrac_{elsymb}_{model_id}_artisnebular.txt")
         fileisallzeros = True  # will be changed when a non-zero is encountered
-        with open(pathfileout, "w") as f:
+        with pathfileout.open("w") as f:
             f.write(f"#NTIMES: {len(selected_timesteps)}\n")
             f.write(f"#NSTAGES: {nions}\n")
             f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
@@ -120,7 +122,7 @@ def write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnone
 def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, outputpath) -> None:
     times = at.get_timestep_times_float(modelpath)
     modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath)
-    with open(Path(outputpath, f"phys_{model_id}_artisnebular.txt"), "w") as f:
+    with Path(outputpath, f"phys_{model_id}_artisnebular.txt").open("w") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")
         f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
         f.write("#\n")
@@ -148,14 +150,16 @@ def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptym
                 f.write("\n")
 
 
-def write_lbol_edep(modelpath, model_id, selected_timesteps, estimators, outputpath):
+def write_lbol_edep(
+    modelpath: str | Path, model_id: int, selected_timesteps: t.Sequence[int], outputpath: Path
+) -> None:
     # times = at.get_timestep_times_float(modelpath)
     dflightcurve = at.lightcurve.readfile(Path(modelpath, "light_curve.out"))[-1]
     dfdep = at.get_deposition(modelpath)
 
     df = dflightcurve.merge(dfdep, left_index=True, right_index=True, suffixes=("", "_dep"))
 
-    with open(outputpath, "w") as f:
+    with outputpath.open("w") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")
         f.write("#time[d] Lbol[erg/s] Edep[erg/s] \n")
 
@@ -213,7 +217,6 @@ def main(args=None, argsraw=None, **kwargs):
                 modelpath,
                 model_id,
                 selected_timesteps,
-                estimators,
                 Path(args.outputpath, f"lbol_edep_{model_id}_artisnebular.txt"),
             )
         except FileNotFoundError:

@@ -205,7 +205,7 @@ def main(args=None, argsraw=None, **kwargs):
         argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
-    with open(at.get_config()["path_datadir"] / "ElBiEn_2007.txt") as fbinding:
+    with Path(at.get_config()["path_datadir"], "ElBiEn_2007.txt").open() as fbinding:
         for _ in range(11):
             header = fbinding.readline().lstrip(" #").split()
         # print(header)

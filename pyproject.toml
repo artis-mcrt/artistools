@@ -170,9 +170,7 @@ ignore = [
     "PLR0913",  # too-many-arguments
     "PLR0915",  # too-many-statements
     "PLR2004",  # magic-value-comparison
-    "PTH113",  # os-path-isfile
     "PTH118",  # os-path-join
-    "PTH123",  # builtin-open
     "PLW2901",  # redefined-loop-name
     "S101",  # Use of assert detected
     "S301",  # suspicious-pickle-usage

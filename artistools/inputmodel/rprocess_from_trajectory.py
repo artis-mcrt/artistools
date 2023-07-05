@@ -45,7 +45,7 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
         tarfile.open(tarfilepath, "r:*").extract(path=Path(traj_root, str(particleid)), member=memberfilename)
 
     if path_extracted_file.is_file():
-        return open(path_extracted_file, encoding="utf-8")  # noqa: SIM115
+        return path_extracted_file.open(encoding="utf-8")
 
     if not tarfilepath.is_file():
         print(f"No network data found for particle {particleid} (so can't access {memberfilename})")
@@ -589,7 +589,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     dfmodel = pd.DataFrame(modeldata)
     # print(dfmodel)
     at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, modelpath=Path(args.outputpath))
-    with open(Path(args.outputpath, "gridcontributions.txt"), "w") as fcontribs:
+    with Path(args.outputpath, "gridcontributions.txt").open("w") as fcontribs:
         fcontribs.write("particleid cellindex frac_of_cellmass\n")
         for cell in dfmodel.itertuples(index=False):
             fcontribs.write(f"{particleid} {cell.inputcellid} 1.0\n")

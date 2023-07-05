@@ -90,7 +90,7 @@ def get_spectrum_at_time(
     average_over_theta: bool | None = None,
 ) -> pd.DataFrame:
     if dirbin >= 0:
-        if args is not None and args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
+        if args is not None and args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
             return get_vspecpol_spectrum(modelpath, time, dirbin, args)
         assert average_over_phi is not None
         assert average_over_theta is not None
@@ -1183,9 +1183,9 @@ def print_floers_line_ratio(
     if f_7155 > 0 and f_12570 > 0:
         fratio = f_12570 / f_7155
         print(f"f_12570/f_7122 = {fratio:.2e} (log10 is {math.log10(fratio):.2e})")
-        outfilename = f"fe2_nir_vis_ratio_{modelpath.name}.txt"
+        outfilename = Path(f"fe2_nir_vis_ratio_{modelpath.name}.txt")
         print(f" saved to {outfilename}")
-        with open(outfilename, "a+") as f:
+        with outfilename.open("a+") as f:
             f.write(f"{timedays:.1f} {fratio:.3e}\n")
 
 
@@ -1288,7 +1288,7 @@ def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
 
-    with open(outdirectory / "spectra_list.txt", "w+") as spectra_list:
+    with (outdirectory / "spectra_list.txt").open("w+") as spectra_list:
         arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
 
         for timestep in range(timestepmin, timestepmax + 1):
@@ -1297,7 +1297,7 @@ def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
 
             outfilepath = outdirectory / f"spectrum_ts{timestep:02.0f}_{tmid:.2f}d.txt"
 
-            with open(outfilepath, "w") as spec_file:
+            with outfilepath.open("w") as spec_file:
                 spec_file.write("#lambda f_lambda_1Mpc\n")
                 spec_file.write("#[A] [erg/s/cm2/A]\n")
 
@@ -1307,7 +1307,7 @@ def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
 
             spectra_list.write(str(outfilepath.absolute()) + "\n")
 
-    with open(outdirectory / "time_list.txt", "w+") as time_list:
+    with (outdirectory / "time_list.txt").open("w+") as time_list:
         for time in arr_tmid:
             time_list.write(f"{time} \n")
 
