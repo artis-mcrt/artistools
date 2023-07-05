@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import math
-import os
 from collections import namedtuple
 from math import atan
 from pathlib import Path
@@ -81,12 +80,12 @@ def get_nnetot(ions: list[tuple[int, int]], ionpopdict: dict[tuple[int, int], fl
 def read_binding_energies(modelpath: str = ".") -> np.ndarray:
     collionfilename = at.firstexisting(
         [
-            os.path.join(modelpath, "binding_energies.txt"),
-            os.path.join(get_config()["path_artistools_dir"], "data", "binding_energies.txt"),
+            Path(modelpath, "binding_energies.txt"),
+            Path(get_config()["path_artistools_dir"], "data", "binding_energies.txt"),
         ]
     )
 
-    with Path(collionfilename).open() as f:
+    with collionfilename.open() as f:
         nt_shells, n_z_binding = (int(x) for x in f.readline().split())
         electron_binding = np.zeros((n_z_binding, nt_shells))
 

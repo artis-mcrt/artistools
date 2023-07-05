@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import math
-import os
 import sys
 from pathlib import Path
 
@@ -781,7 +780,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         timestep = int(args.timestep)
 
     if Path(args.outputfile).is_dir():
-        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+        args.outputfile = Path(args.outputfile, defaultoutputfile)
 
     ionstages_permitted = at.parse_range_list(args.ionstages) if args.ionstages else None
 

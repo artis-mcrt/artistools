@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import os
 import typing as t
 from pathlib import Path
 
@@ -233,7 +232,7 @@ def generate_band_lightcurve_data(
         elif filter_name not in filters_dict:
             filters_dict[filter_name] = []
 
-    filterdir = os.path.join(at.get_config()["path_artistools_dir"], "data/filters/")
+    filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
 
     for filter_name in filters_list:
         if filter_name == "bol":
@@ -409,7 +408,7 @@ def get_colour_delta_mag(band_lightcurve_data, filter_names) -> tuple[list[float
 
 
 def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
-    hesma_directory = os.path.join(at.get_config()["path_artistools_dir"], "data/hesma")
+    hesma_directory = Path(at.get_config()["path_artistools_dir"], "data/hesma")
     filename = args.plot_hesma_model
     hesma_modelname = hesma_directory / filename
 
@@ -431,7 +430,7 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pd.Dat
     filepath = Path(at.get_config()["path_artistools_dir"], "data", "lightcurves", lightcurvefilename)
     metadata = at.get_file_metadata(filepath)
 
-    data_path = os.path.join(at.get_config()["path_artistools_dir"], f"data/lightcurves/{lightcurvefilename}")
+    data_path = Path(at.get_config()["path_artistools_dir"], f"data/lightcurves/{lightcurvefilename}")
     lightcurve_data = pd.read_csv(data_path, comment="#")
     if len(lightcurve_data.keys()) == 1:
         lightcurve_data = pd.read_csv(data_path, comment="#", delim_whitespace=True)

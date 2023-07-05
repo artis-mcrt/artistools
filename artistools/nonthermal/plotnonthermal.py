@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -306,7 +305,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
             modelpaths.append(elem)
 
     if Path(args.outputfile).is_dir():
-        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+        args.outputfile = Path(args.outputfile, defaultoutputfile)
 
     if args.listtimesteps:
         at.showtimesteptimes()

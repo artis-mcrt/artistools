@@ -665,9 +665,7 @@ def get_3d_modeldata_minimal(modelpath: str | Path) -> pd.DataFrame:
     """Read 3D model without generating all the extra columns in standard routine.
     Needed for large (eg. 200^3) models.
     """
-    model = pd.read_csv(
-        os.path.join(modelpath, "model.txt"), delim_whitespace=True, header=None, skiprows=3, dtype=np.float64
-    )
+    model = pd.read_csv(Path(modelpath, "model.txt"), delim_whitespace=True, header=None, skiprows=3, dtype=np.float64)
     columns = [
         "inputcellid",
         "cellpos_in[z]",

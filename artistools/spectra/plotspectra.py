@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 import typing as t
 from pathlib import Path
@@ -182,10 +181,10 @@ def plot_filter_functions(axis: plt.Axes) -> None:
     filter_names = ["U", "B", "V", "I"]
     colours = ["r", "b", "g", "c", "m"]
 
-    filterdir = os.path.join(at.get_config()["path_artistools_dir"], "data/filters/")
+    filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
     for index, filter_name in enumerate(filter_names):
         filter_data = pd.read_csv(
-            filterdir / Path(f"{filter_name}.txt"),
+            filterdir / f"{filter_name}.txt",
             delim_whitespace=True,
             header=None,
             skiprows=4,

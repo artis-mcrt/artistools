@@ -37,7 +37,7 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     if Path(args.outputfile).is_dir():
-        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+        args.outputfile = str(Path(args.outputfile, defaultoutputfile))
 
     atomic_number = at.get_atomic_number(args.element.lower())
     if atomic_number < 1:

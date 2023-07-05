@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import math
-import os
 import sys
 import typing as t
 from collections.abc import Iterable
@@ -963,7 +962,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
         make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=fig, ax=ax)
 
     if args.filter and len(band_lightcurve_data) == 1:
-        args.outputfile = os.path.join(outputfolder, f"plot{first_band_name}lightcurves.pdf")
+        args.outputfile = Path(outputfolder, f"plot{first_band_name}lightcurves.pdf")
     if args.show:
         plt.show()
 
@@ -1095,7 +1094,7 @@ def colour_evolution_plot(modelpaths, filternames_conversion_dict, outputfolder,
     ax = at.plottools.set_axis_properties(ax, args)
     set_lightcurveplot_legend(ax, args)
 
-    args.outputfile = os.path.join(outputfolder, f"plotcolorevolution{filter_names[0]}-{filter_names[1]}.pdf")
+    args.outputfile = Path(outputfolder, f"plotcolorevolution{filter_names[0]}-{filter_names[1]}.pdf")
     for i in range(2):
         if filter_names[i] in filternames_conversion_dict:
             filter_names[i] = filternames_conversion_dict[filter_names[i]]
@@ -1125,13 +1124,13 @@ def plot_lightcurve_from_refdata(
 ):
     lightcurve_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
     linename = metadata["label"] if plotnumber == 0 else None
-    filterdir = os.path.join(at.get_config()["path_artistools_dir"], "data/filters/")
+    filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
 
     filter_data = {}
     for plotnumber, filter_name in enumerate(filter_names):
         if filter_name == "bol":
             continue
-        f = filterdir / Path(f"{filter_name}.txt").open()
+        f = Path(filterdir / f"{filter_name}.txt").open()
         lines = f.readlines()
         lambda0 = float(lines[2])
 
@@ -1205,7 +1204,7 @@ def plot_color_evolution_from_data(
     filter_names, lightcurvefilename, color, marker, filternames_conversion_dict, ax, plotnumber, args
 ):
     lightcurve_from_data, metadata = at.lightcurve.read_reflightcurve_band_data(lightcurvefilename)
-    filterdir = os.path.join(at.get_config()["path_artistools_dir"], "data/filters/")
+    filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
 
     filter_data = []
     for i, filter_name in enumerate(filter_names):
