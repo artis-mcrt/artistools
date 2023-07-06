@@ -818,18 +818,11 @@ def bin_and_sum(
 ) -> pl.DataFrame:
     """Bins is a list of lower edges, and the final upper edge."""
     # Polars method
-
-    binindex = (
-        df.select(bincol)
-        .lazy()
-        .collect()
-        .get_column(bincol)
-        .cut(bins=list(bins), category_label=f"{bincol}_bin", maintain_order=True)
-        .get_column(f"{bincol}_bin")
-        .cast(pl.Int32)
-        - 1
-    )
-    df = df.with_columns([binindex])
+    dfbincol = df.select(bincol).lazy().collect()
+    assert isinstance(dfbincol, pl.DataFrame)
+    dfbincolcut = dfbincol.get_column(bincol).cut(bins=list(bins), category_label=f"{bincol}_bin", maintain_order=True)
+    assert isinstance(dfbincolcut, pl.DataFrame)
+    df = df.with_columns([dfbincolcut.get_column(f"{bincol}_bin").cast(pl.Int32) - 1])
 
     aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols] if sumcols is not None else []
 

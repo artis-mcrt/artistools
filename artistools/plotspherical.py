@@ -113,18 +113,18 @@ def plot_spherical(
             *at.get_timestep_times_float(modelpath, loc="start") * 86400.0,
             at.get_timestep_times_float(modelpath, loc="end")[-1] * 86400.0,
         ]
-
-        binindex = (
-            dfpackets.select("em_time")
-            .lazy()
-            .collect()
-            .get_column("em_time")
-            .cut(bins=list(timebins), category_label="em_timestep", maintain_order=True)
-            .get_column("em_timestep")
-            .cast(pl.Int32)
-            - 1  # subtract 1 because the returned index 0 is the bin below the start of the first supplied bin
+        dfem_time = dfpackets.select("em_time").lazy().collect()
+        assert isinstance(dfem_time, pl.DataFrame)
+        dfem_time_cut = dfem_time.get_column("em_time").cut(
+            bins=list(timebins), category_label="em_timestep", maintain_order=True
         )
-        dfpackets = dfpackets.with_columns([binindex])
+        assert isinstance(dfem_time_cut, pl.DataFrame)
+        dfpackets = dfpackets.with_columns(
+            [
+                dfem_time_cut.get_column("em_timestep").cast(pl.Int32)
+                - 1  # subtract 1 because the returned index 0 is the bin below the start of the first supplied bin
+            ]
+        )
         dfest_parquetfile = Path(modelpath, "temperatures.parquet.tmp")
 
         if not dfest_parquetfile.is_file():
