@@ -603,7 +603,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         if len(dfpop.query("ion_stage == @max_ion_stage")) == 1:  # single-level ion, so skip it
             max_ion_stage -= 1
 
-        # timearray = at.get_timestep_times_float(modelpath)
+        # timearray = at.get_timestep_times(modelpath)
         nne = estimators[(timestep, modelgridindex)]["nne"]
         W = estimators[(timestep, modelgridindex)]["W"]
 

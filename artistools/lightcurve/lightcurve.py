@@ -72,9 +72,9 @@ def get_from_packets(
     """Get ARTIS luminosity vs time from packets files."""
     if directionbins is None:
         directionbins = [-1]
-    tmidarray = at.get_timestep_times_float(modelpath=modelpath, loc="mid")
-    timearray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
-    arr_timedelta = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
+    tmidarray = at.get_timestep_times(modelpath=modelpath, loc="mid")
+    timearray = at.get_timestep_times(modelpath=modelpath, loc="start")
+    arr_timedelta = at.get_timestep_times(modelpath=modelpath, loc="delta")
     # timearray = np.arange(250, 350, 0.1)
     if get_cmf_column:
         _, modelmeta = at.inputmodel.get_modeldata(modelpath, getheadersonly=True, printwarningsonly=True)

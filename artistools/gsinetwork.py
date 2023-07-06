@@ -484,7 +484,7 @@ def plot_qdot_abund_modelcells(
         # print(strnuc, corr)
         correction_factors[strnuc] = corr
 
-    tmids = at.get_timestep_times_float(modelpath, loc="mid")
+    tmids = at.get_timestep_times(modelpath, loc="mid")
     MH = 1.67352e-24  # g
 
     arr_time_artis_days: list[float] = []
@@ -568,7 +568,7 @@ def plot_qdot_abund_modelcells(
     except FileNotFoundError:
         pass
 
-    arr_time_artis_days_alltimesteps = at.get_timestep_times_float(modelpath)
+    arr_time_artis_days_alltimesteps = at.get_timestep_times(modelpath)
     arr_time_artis_s_alltimesteps = np.array([t * 8.640000e04 for t in arr_time_artis_days_alltimesteps])
     # no completed timesteps yet, so display full set of timesteps that artis will compute
     if len(arr_time_artis_days) == 0:

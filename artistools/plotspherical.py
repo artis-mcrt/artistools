@@ -110,8 +110,8 @@ def plot_spherical(
 
     if "temperature" in plotvars:
         timebins = [
-            *at.get_timestep_times_float(modelpath, loc="start") * 86400.0,
-            at.get_timestep_times_float(modelpath, loc="end")[-1] * 86400.0,
+            *at.get_timestep_times(modelpath, loc="start") * 86400.0,
+            at.get_timestep_times(modelpath, loc="end")[-1] * 86400.0,
         ]
         dfem_time = dfpackets.select("em_time").lazy().collect()
         assert isinstance(dfem_time, pl.DataFrame)

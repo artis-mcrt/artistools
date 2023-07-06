@@ -42,7 +42,7 @@ def get_mgi_of_modeldata(modeldata, modelpath) -> list[int]:
 
 def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, readonly_mgi):
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
-    times = at.get_timestep_times_float(modelpath)
+    times = at.get_timestep_times(modelpath)
 
     for mgi in readonly_mgi:
         associated_modeldata_row_for_mgi = modeldata.loc[modeldata["inputcellid"] == assoc_cells[mgi][0]]
@@ -60,7 +60,7 @@ def plot_Te_vs_time_lineofsight_3d_model(modelpath, modeldata, estimators, reado
 
 def plot_Te_vs_velocity(modelpath, modeldata, estimators, readonly_mgi):
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
-    times = at.get_timestep_times_float(modelpath)
+    times = at.get_timestep_times(modelpath)
     timesteps = [50, 55, 60, 65, 70, 75, 80, 90]
 
     for timestep in timesteps:
@@ -82,7 +82,7 @@ def plot_Te_vs_velocity(modelpath, modeldata, estimators, readonly_mgi):
 
 def get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, timestep):
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath=modelpath)
-    times = at.get_timestep_times_float(modelpath)
+    times = at.get_timestep_times(modelpath)
     print(list(enumerate(times)))
     time = times[timestep]
     print(f"time {time} days")
@@ -157,7 +157,7 @@ def main() -> None:
     readonly_mgi = get_modelgridcells_2D_slice(modeldata, modelpath)
     #
     timestep = 82
-    times = at.get_timestep_times_float(modelpath)
+    times = at.get_timestep_times(modelpath)
     time = times[timestep]
     estimators = read_selected_mgi(modelpath, readonly_mgi=readonly_mgi, readonly_timestep=[timestep])
     grid_Te, xgrid = get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, timestep)

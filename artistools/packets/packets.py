@@ -663,9 +663,9 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
         timestep_max = timestep_min
     modeldata, _, vmax_cms = at.inputmodel.get_modeldata_tuple(modelpath)
 
-    timeminarray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
-    # timedeltaarray = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
-    timemaxarray = at.get_timestep_times_float(modelpath=modelpath, loc="end")
+    timeminarray = at.get_timestep_times(modelpath=modelpath, loc="start")
+    # timedeltaarray = at.get_timestep_times(modelpath=modelpath, loc="delta")
+    timemaxarray = at.get_timestep_times(modelpath=modelpath, loc="end")
 
     # timestep = 63 # 82 73 #63 #54 46 #27
     # print([(ts, time) for ts, time in enumerate(timeminarray)])
@@ -770,8 +770,8 @@ def get_mean_packet_emission_velocity_per_ts(
     nprocs_read = len(packetsfiles)
     assert nprocs_read > 0
 
-    timearray = at.get_timestep_times_float(modelpath=modelpath, loc="mid")
-    arr_timedelta = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
+    timearray = at.get_timestep_times(modelpath=modelpath, loc="mid")
+    arr_timedelta = at.get_timestep_times(modelpath=modelpath, loc="delta")
     timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
 
     dfpackets_escape_velocity_and_arrive_time = pd.DataFrame()

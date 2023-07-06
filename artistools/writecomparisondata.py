@@ -49,7 +49,7 @@ def write_spectra(modelpath: str | Path, model_id: int, selected_timesteps: t.Se
 
 
 def write_ntimes_nvel(f: TextIOBase, selected_timesteps: t.Sequence[int], modelpath: str | Path) -> None:
-    times = at.get_timestep_times_float(modelpath)
+    times = at.get_timestep_times(modelpath)
     modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath)
     f.write(f"#NTIMES: {len(selected_timesteps)}\n")
     f.write(f"#NVEL: {len(modeldata)}\n")
@@ -83,7 +83,7 @@ def write_single_estimator(modelpath, selected_timesteps, estimators, allnonempt
 
 
 def write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, outputpath):
-    times = at.get_timestep_times_float(modelpath)
+    times = at.get_timestep_times(modelpath)
     modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath)
     elementlist = at.get_composition_data(modelpath)
     nelements = len(elementlist)
@@ -124,7 +124,7 @@ def write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnone
 
 
 def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, outputpath) -> None:
-    times = at.get_timestep_times_float(modelpath)
+    times = at.get_timestep_times(modelpath)
     modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath)
     with Path(outputpath, f"phys_{model_id}_artisnebular.txt").open("w") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")
@@ -157,7 +157,7 @@ def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptym
 def write_lbol_edep(
     modelpath: str | Path, model_id: int, selected_timesteps: t.Sequence[int], outputpath: Path
 ) -> None:
-    # times = at.get_timestep_times_float(modelpath)
+    # times = at.get_timestep_times(modelpath)
     dflightcurve = at.lightcurve.readfile(Path(modelpath, "light_curve.out"))[-1]
     dfdep = at.get_deposition(modelpath)
 

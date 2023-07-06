@@ -129,7 +129,7 @@ def plot_average_ionisation_excitation(
     else:
         raise ValueError
 
-    arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
+    arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
     for paramvalue in params:
         if seriestype == "averageionisation":
             atomic_number = at.get_atomic_number(paramvalue)
@@ -199,7 +199,7 @@ def plot_levelpop(
 
     adata = at.atomic.get_levels(modelpath)
 
-    arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
+    arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
     for paramvalue in params:
         paramsplit = paramvalue.split(" ")
         atomic_number = at.get_atomic_number(paramsplit[0])
@@ -553,7 +553,7 @@ def get_xlist(
         timestepslist_out = timestepslist
     elif xvariable == "time":
         mgilist_out = allnonemptymgilist
-        timearray = at.get_timestep_times_float(modelpath)
+        timearray = at.get_timestep_times(modelpath)
         xlist = [np.mean([timearray[ts] for ts in tslist]) for tslist in timestepslist]
         timestepslist_out = timestepslist
     else:
@@ -956,7 +956,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     modelname = at.get_model_name(modelpath)
 
     if not args.timedays and not args.timestep and args.modelgridindex > -1:
-        args.timestep = f"0-{len(at.get_timestep_times_float(modelpath)) - 1}"
+        args.timestep = f"0-{len(at.get_timestep_times(modelpath)) - 1}"
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays

@@ -405,7 +405,7 @@ def get_averaged_estimators(
             for k in firsttimestepvalue
         }
 
-    tdeltas = at.get_timestep_times_float(modelpath, loc="delta")
+    tdeltas = at.get_timestep_times(modelpath, loc="delta")
     valuesum = 0
     tdeltasum = 0
     for timestep, tdelta in zip(timesteps, tdeltas):

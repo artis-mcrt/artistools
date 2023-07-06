@@ -85,7 +85,7 @@ def showtimesteptimes(modelpath: Path | None = None, numberofcolumns: int = 5) -
 
     print("Timesteps and midpoint times in days:\n")
 
-    times = get_timestep_times_float(modelpath, loc="mid")
+    times = get_timestep_times(modelpath, loc="mid")
     indexendofcolumnone = math.ceil((len(times) - 1) / numberofcolumns)
     for rownum in range(indexendofcolumnone):
         strline = ""
@@ -270,7 +270,7 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
 def get_wid_init_at_tmin(modelpath: Path) -> float:
     # cell width in cm at time tmin
     day_to_sec = 86400
-    tmin = get_timestep_times_float(modelpath, loc="start")[0] * day_to_sec
+    tmin = get_timestep_times(modelpath, loc="start")[0] * day_to_sec
     _, modelmeta = at.get_modeldata(modelpath)
 
     rmax: float = modelmeta["vmax_cmps"] * tmin
@@ -329,7 +329,7 @@ def get_deposition(modelpath: Path | str = ".") -> pd.DataFrame:
     else:
         depfilepath = Path(modelpath, "deposition.out")
 
-    ts_mids = get_timestep_times_float(modelpath, loc="mid")
+    ts_mids = get_timestep_times(modelpath, loc="mid")
 
     with depfilepath.open() as fdep:
         filepos = fdep.tell()
@@ -353,7 +353,7 @@ def get_deposition(modelpath: Path | str = ".") -> pd.DataFrame:
 
 
 @lru_cache(maxsize=16)
-def get_timestep_times_float(
+def get_timestep_times(
     modelpath: Path | str, loc: t.Literal["mid", "start", "end", "delta"] = "mid"
 ) -> np.ndarray[t.Any, np.dtype[np.float64]]:
     """Return a list of the time in days of each timestep."""
@@ -362,7 +362,7 @@ def get_timestep_times_float(
     if not modelpath.exists() and modelpath.parts[0] == "codecomparison":
         import artistools.codecomparison
 
-        return artistools.codecomparison.get_timestep_times_float(modelpath=modelpath, loc=loc)
+        return artistools.codecomparison.get_timestep_times(modelpath=modelpath, loc=loc)
 
     modelpath = modelpath if modelpath.is_dir() else modelpath.parent
 
@@ -407,8 +407,8 @@ def get_timestep_of_timedays(modelpath: Path, timedays: str | float) -> int:
 
     timedays_float = float(timedays)
 
-    arr_tstart = get_timestep_times_float(modelpath, loc="start")
-    arr_tend = get_timestep_times_float(modelpath, loc="end")
+    arr_tstart = get_timestep_times(modelpath, loc="start")
+    arr_tend = get_timestep_times(modelpath, loc="end")
     # to avoid roundoff errors, use the next timestep's tstart at each timestep's tend (t_width is not exact)
     arr_tend[:-1] = arr_tstart[1:]
 
@@ -429,9 +429,9 @@ def get_time_range(
 ) -> tuple[int, int, float | None, float | None]:
     """Handle a time range specified in either days or timesteps."""
     # assertions make sure time is specified either by timesteps or times in days, but not both!
-    tstarts = get_timestep_times_float(modelpath, loc="start")
-    tmids = get_timestep_times_float(modelpath, loc="mid")
-    tends = get_timestep_times_float(modelpath, loc="end")
+    tstarts = get_timestep_times(modelpath, loc="start")
+    tmids = get_timestep_times(modelpath, loc="mid")
+    tends = get_timestep_times(modelpath, loc="end")
 
     if timemin and timemin > tends[-1]:
         print(f"{get_model_name(modelpath)}: WARNING timemin {timemin} is after the last timestep at {tends[-1]:.1f}")
@@ -504,7 +504,7 @@ def get_time_range(
 
 def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
     """Return the time in days of the midpoint of a timestep number."""
-    timearray = get_timestep_times_float(modelpath, loc="mid")
+    timearray = get_timestep_times(modelpath, loc="mid")
     return timearray[timestep]
 
 
@@ -521,9 +521,9 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
     vmax_tmin = cornervmax if at.inputmodel.get_dfmodel_dimensions(dfmodel) == 3 else vmax
 
     # earliest completely valid time is tmin plus maximum possible travel time from corner to origin
-    validrange_start_days = at.get_timestep_times_float(modelpath, loc="start")[0] * (1 + vmax_tmin / 29979245800)
+    validrange_start_days = at.get_timestep_times(modelpath, loc="start")[0] * (1 + vmax_tmin / 29979245800)
 
-    t_end = at.get_timestep_times_float(modelpath, loc="end")
+    t_end = at.get_timestep_times(modelpath, loc="end")
     # find the last possible escape time and subtract the largest possible travel time (observer time correction)
     try:
         depdata = at.get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep

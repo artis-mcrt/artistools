@@ -21,7 +21,7 @@ if t.TYPE_CHECKING:
     import matplotlib.axes
 
 
-def get_timestep_times_float(
+def get_timestep_times(
     modelpath: Path | str, loc: t.Literal["start", "mid", "end", "delta"] = "mid"
 ) -> np.ndarray[t.Any, np.dtype[np.float64]]:
     modelpath = Path(modelpath)

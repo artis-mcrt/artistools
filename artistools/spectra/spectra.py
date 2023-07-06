@@ -375,7 +375,7 @@ def get_spectrum(
     specdataout: dict[int, pd.DataFrame] = {}
     for dirbin in directionbins:
         arr_nu = specdata[dirbin]["nu"].to_numpy()
-        arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
+        arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
 
         arr_f_nu = stackspectra(
             [
@@ -618,8 +618,8 @@ def get_flux_contributions(
     averageoverphi: bool = False,
     averageovertheta: bool = False,
 ) -> tuple[list[fluxcontributiontuple], np.ndarray]:
-    arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
-    arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
+    arr_tmid = at.get_timestep_times(modelpath, loc="mid")
+    arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
     arraynu = at.get_nu_grid(modelpath)
     arraylambda = 2.99792458e18 / arraynu
     if not Path(modelpath, "compositiondata.txt").is_file():
@@ -907,7 +907,7 @@ def get_flux_contributions_from_packets(
     for _index, packetsfile in enumerate(packetsfiles):
         if useinternalpackets:
             # if we're using packets*.out files, these packets are from the last timestep
-            t_seconds = at.get_timestep_times_float(modelpath, loc="start")[-1] * 86400.0
+            t_seconds = at.get_timestep_times(modelpath, loc="start")[-1] * 86400.0
 
             if modelgridindex is not None:
                 v_inner = at.inputmodel.get_modeldata_tuple(modelpath)[0]["velocity_inner"].iloc[modelgridindex] * 1e5
@@ -1289,7 +1289,7 @@ def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
     )
 
     with (outdirectory / "spectra_list.txt").open("w+") as spectra_list:
-        arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
+        arr_tmid = at.get_timestep_times(modelpath, loc="mid")
 
         for timestep in range(timestepmin, timestepmax + 1):
             dfspectrum = get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]

@@ -73,7 +73,7 @@ from .misc import get_syn_dir
 from .misc import get_time_range
 from .misc import get_timestep_of_timedays
 from .misc import get_timestep_time
-from .misc import get_timestep_times_float
+from .misc import get_timestep_times
 from .misc import get_viewingdirection_costhetabincount
 from .misc import get_viewingdirection_phibincount
 from .misc import get_viewingdirectionbincount

@@ -427,7 +427,7 @@ def get_recombination_emission(
     print(f"  {upperionstr} Alpha_R2 = {alpha_ion2:.2e} Alpha_R2*nne = {nne*alpha_ion2:.2e}")
 
     # vmax = at.inputmodel.get_modeldata_tuple(modelpath)[0]['velocity_outer'].iloc[-1] * 1e5
-    # t_seconds = at.get_timestep_times_float(modelpath, loc="start")[timestep] * 86400.0
+    # t_seconds = at.get_timestep_times(modelpath, loc="start")[timestep] * 86400.0
 
     # mean_free_path = vmax * t_seconds
 
@@ -667,7 +667,7 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
         return False
 
     modelname = at.get_model_name(modelpath)
-    time_days = at.get_timestep_times_float(modelpath)[timestep]
+    time_days = at.get_timestep_times(modelpath)[timestep]
     print(f"Plotting {modelname} timestep {timestep:d} (t={time_days:.3f}d)")
     T_R = radfielddata.query("bin_num == -1").iloc[0].T_R
     print(f"T_R = {T_R}")
@@ -997,7 +997,7 @@ def main(args=None, argsraw=None, **kwargs):
     else:
         modelgridindexlist = at.parse_range_list(args.modelgridindex)
 
-    timesteplast = len(at.get_timestep_times_float(modelpath))
+    timesteplast = len(at.get_timestep_times(modelpath))
     if args.timedays:
         timesteplist = [at.get_timestep_of_timedays(modelpath, args.timedays)]
     elif args.timestep:

@@ -94,8 +94,8 @@ def test_spectra_get_spectrum() -> None:
 
     lambda_min = dfspectrum["lambda_angstroms"].to_numpy()[0]
     lambda_max = dfspectrum["lambda_angstroms"].to_numpy()[-1]
-    timelowdays = at.get_timestep_times_float(modelpath)[55]
-    timehighdays = at.get_timestep_times_float(modelpath)[65]
+    timelowdays = at.get_timestep_times(modelpath)[55]
+    timehighdays = at.get_timestep_times(modelpath)[65]
 
     dfspectrumpkts = at.spectra.get_from_packets(
         modelpath, timelowdays=timelowdays, timehighdays=timehighdays, lambda_min=lambda_min, lambda_max=lambda_max

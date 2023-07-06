@@ -70,9 +70,9 @@ def get_line_fluxes_from_packets(
     emtypecolumn, emfeatures, modelpath, maxpacketfiles=None, arr_tstart=None, arr_tend=None
 ) -> pd.DataFrame:
     if arr_tstart is None:
-        arr_tstart = at.get_timestep_times_float(modelpath, loc="start")
+        arr_tstart = at.get_timestep_times(modelpath, loc="start")
     if arr_tend is None:
-        arr_tend = at.get_timestep_times_float(modelpath, loc="end")
+        arr_tend = at.get_timestep_times(modelpath, loc="end")
 
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = arr_tend = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
@@ -110,9 +110,9 @@ def get_line_fluxes_from_packets(
 
 def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=None) -> pd.DataFrame:
     if arr_tstart is None:
-        arr_tstart = at.get_timestep_times_float(modelpath, loc="start")
+        arr_tstart = at.get_timestep_times(modelpath, loc="start")
     if arr_tend is None:
-        arr_tend = at.get_timestep_times_float(modelpath, loc="end")
+        arr_tend = at.get_timestep_times(modelpath, loc="end")
 
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = arr_tend = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
@@ -425,7 +425,7 @@ def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, t
         modelgridindex for modelgridindex in modeldata.index if not estimators[(ts, modelgridindex)]["emptycell"]
     ]
 
-    # model_tmids = at.get_timestep_times_float(modelpath, loc='mid')
+    # model_tmids = at.get_timestep_times(modelpath, loc='mid')
     # arr_velocity_mid = tuple(list([(float(v1) + float(v2)) * 0.5 for v1, v2 in zip(
     #     modeldata['velocity_inner'].to_numpy(), modeldata['velocity_outer'].to_numpy())]))
 
@@ -619,8 +619,8 @@ def make_emitting_regions_plot(args):
             for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend):
                 Tedata_all[modelindex][tmid] = []
                 log10nnedata_all[modelindex][tmid] = []
-                tstartlist = at.get_timestep_times_float(modelpath, loc="start")
-                tendlist = at.get_timestep_times_float(modelpath, loc="end")
+                tstartlist = at.get_timestep_times(modelpath, loc="start")
+                tendlist = at.get_timestep_times(modelpath, loc="end")
                 tslist = [ts for ts in range(len(tstartlist)) if tendlist[ts] >= tstart and tstartlist[ts] <= tend]
                 for timestep in tslist:
                     for modelgridindex in modeldata.index:
