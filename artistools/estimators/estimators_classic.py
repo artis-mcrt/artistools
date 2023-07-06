@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import glob
 import gzip
-import os
 import typing as t
 from pathlib import Path
 
@@ -50,15 +48,6 @@ def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_comp
             outdict["populations"]["total"] = totalpop + value_thision
 
 
-def get_estimator_files(modelpath: str | Path) -> list[str]:
-    return (
-        glob.glob(os.path.join(modelpath, "estimators_????.out"), recursive=True)
-        + glob.glob(os.path.join(modelpath, "estimators_????.out.gz"), recursive=True)
-        + glob.glob(os.path.join(modelpath, "*/estimators_????.out"), recursive=True)
-        + glob.glob(os.path.join(modelpath, "*/estimators_????.out.gz"), recursive=True)
-    )
-
-
 def get_first_ts_in_run_directory(modelpath) -> dict[str, int]:
     folderlist_all = (*sorted([child for child in Path(modelpath).iterdir() if child.is_dir()]), Path(modelpath))
 
@@ -84,7 +73,7 @@ def read_classic_estimators(
     readonly_mgi: list[int] | None = None,
     readonly_timestep: list[int] | None = None,
 ) -> dict[tuple[int, int], t.Any] | None:
-    estimfiles = get_estimator_files(modelpath)
+    estimfiles = list(Path(modelpath).glob("**/estimators_????.out"))
     if not estimfiles:
         print("No estimator files found")
         return None
@@ -97,15 +86,15 @@ def read_classic_estimators(
     ndimensions = inputparams["n_dimensions"]
 
     estimators: dict[tuple[int, int], t.Any] = {}
-    for estfile in estimfiles:
-        opener: t.Any = gzip.open if estfile.endswith(".gz") else open
+    for estfilepath in estimfiles:
+        opener: t.Any = gzip.open if str(estfilepath).endswith(".gz") else open
 
         # If classic plots break it's probably getting first timestep here
         # Try either of the next two lines
-        timestep = first_timesteps_in_dir[str(estfile).split("/")[0]]  # get the starting timestep for the estfile
+        timestep = first_timesteps_in_dir[str(estfilepath).split("/")[0]]  # get the starting timestep for the estfile
         # timestep = first_timesteps_in_dir[str(estfile[:-20])]
         # timestep = 0  # if the first timestep in the file is 0 then this is fine
-        with opener(estfile) as estfile:
+        with opener(estfilepath) as estfile:
             modelgridindex = -1
             for line in estfile:
                 row = line.split()

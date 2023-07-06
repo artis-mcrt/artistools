@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import glob
-import os.path
 import sys
 from pathlib import Path
 
@@ -48,9 +46,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     timestepmax = timestepmin if not args.timestepmax or args.timestepmax < 0 else args.timestepmax
 
-    input_files = glob.glob(os.path.join(args.modelpath, "macroatom_????.out*"), recursive=True) + glob.glob(
-        os.path.join(args.modelpath, "*/macroatom_????.out*"), recursive=True
-    )
+    input_files = Path(args.modelpath).glob("**/macroatom_????.out*")
 
     if not input_files:
         print("No macroatom files found")
@@ -141,7 +137,7 @@ def read_files(files, modelgridindex=None, timestepmin=None, timestepmax=None, a
     if not files:
         print("No files")
     else:
-        for _, filepath in enumerate(files):
+        for filepath in files:
             print(f"Loading {filepath}...")
 
             df_thisfile = pd.read_csv(filepath, delim_whitespace=True)
