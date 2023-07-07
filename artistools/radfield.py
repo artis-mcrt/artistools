@@ -609,6 +609,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
         ]
         fieldlist += [(arraylambda_angstrom_em, array_jlambda_emission_total, "Total emission")]
 
+    lw = 1.0
     # fieldlist += [(arr_lambda_fitted, j_lambda_fitted, 'binned field')]
 
     for atomic_number, ion_stage in photoionlist:
@@ -625,7 +626,6 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
                     arraylambda_angstrom_recomb, arr_sigma_bf, label=rf"$\sigma_{{bf}}$({ionstr} {level.levelname})"
                 )
 
-        lw = 1.0
         for arraylambda_angstrom, J_lambda_arr, linelabel in fieldlist:
             # lw -= 0.4
             arr_nu_hz = 2.99792458e18 / np.array(arraylambda_angstrom)
@@ -1010,7 +1010,7 @@ def main(args=None, argsraw=None, **kwargs):
         if args.xaxis == "lambda":
             for timestep in timesteplist:
                 outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
-                make_plot = plot_celltimestep(
+                if make_plot := plot_celltimestep(
                     modelpath,
                     timestep,
                     outputfile,
@@ -1019,8 +1019,7 @@ def main(args=None, argsraw=None, **kwargs):
                     modelgridindex=modelgridindex,
                     args=args,
                     normalised=args.normalised,
-                )
-                if make_plot:
+                ):
                     pdf_list.append(outputfile)
                     modelpath_list.append(args.modelpath)
         elif args.xaxis == "timestep":
