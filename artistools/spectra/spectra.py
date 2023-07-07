@@ -24,6 +24,8 @@ if t.TYPE_CHECKING:
     from collections.abc import Collection
     from collections.abc import Sequence
 
+    import numpy.typing as npt
+
 fluxcontributiontuple = namedtuple(
     "fluxcontributiontuple", "fluxcontrib linelabel array_flambda_emission array_flambda_absorption color"
 )
@@ -218,7 +220,7 @@ def get_from_packets(
             * solidanglefactor
             / (megaparsec_to_cm**2)
             / nprocs_read
-        )
+        ).to_numpy()
 
         if use_escapetime:
             assert escapesurfacegamma is not None
@@ -263,6 +265,7 @@ def read_spec_res(modelpath: Path) -> dict[int, pl.DataFrame]:
 
     prev_dfshape = None
     for dirbin in res_specdata:
+        assert isinstance(res_specdata[dirbin], pl.DataFrame)
         newcolnames = [str(x) for x in res_specdata[dirbin][0, :].to_numpy()[0]]
         newcolnames[0] = "nu"
 
@@ -330,7 +333,7 @@ def get_spectrum(
     timestepmin: int,
     timestepmax: int | None = None,
     directionbins: Sequence[int] | None = None,
-    fnufilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
+    fnufilterfunc: t.Callable[[npt.NDArray[np.floating]], npt.NDArray[np.floating]] | None = None,
     average_over_theta: bool = False,
     average_over_phi: bool = False,
     stokesparam: t.Literal["I", "Q", "U"] = "I",
@@ -617,7 +620,7 @@ def get_flux_contributions(
     directionbin: int | None = None,
     averageoverphi: bool = False,
     averageovertheta: bool = False,
-) -> tuple[list[fluxcontributiontuple], np.ndarray]:
+) -> tuple[list[fluxcontributiontuple], npt.NDArray[np.float64]]:
     arr_tmid = at.get_timestep_times(modelpath, loc="mid")
     arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
     arraynu = at.get_nu_grid(modelpath)
