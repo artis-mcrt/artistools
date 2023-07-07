@@ -16,7 +16,6 @@ def read_logfiles(modelpath):
     logfilepaths = []
 
     for folderpath in at.get_runfolders(modelpath):
-        nfilesread_thisfolder = 0
         # for mpirank in range(nprocs):
         for mpirank in mpiranklist:
             logfilename = f"output_{mpirank}-0.txt"
