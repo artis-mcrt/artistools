@@ -32,6 +32,7 @@ rule_settings:
         - gpsg-standard-import-alias
     disable:
         - inline-variable
+        - missing-dict-items
     rule_types:
         - refactoring
         - suggestion
