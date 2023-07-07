@@ -515,10 +515,10 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
 
         if not noexcitation and (Z, ionstage) in dftransitions:
             for _, row in dftransitions[(Z, ionstage)].iterrows():
-                nnlevel = row.lower_pop
                 epsilon_trans_ev = row.epsilon_trans_ev
                 if energy_ev + epsilon_trans_ev >= engrid[0]:
                     i = get_energyindex_lteq(en_ev=energy_ev + epsilon_trans_ev, engrid=engrid)
+                    nnlevel = row.lower_pop
                     N_e_ion += (nnlevel / nnion) * yvec[i] * get_xs_excitation(engrid[i], row)
                     # enbelow = engrid[i]
                     # enabove = engrid[i + 1]
@@ -619,9 +619,9 @@ def calculate_frac_heating(
 def sfmatrix_add_excitation(engrid, dftransitions_ion, nnion, sfmatrix):
     deltaen = engrid[1] - engrid[0]
     for _, row in dftransitions_ion.iterrows():
-        nnlevel = row.lower_pop
         epsilon_trans_ev = row.epsilon_trans_ev
         if epsilon_trans_ev >= engrid[0]:
+            nnlevel = row.lower_pop
             vec_xs_excitation_nnlevel_deltae = nnlevel * deltaen * get_xs_excitation_vector(engrid, row)
             xsstartindex = get_energyindex_lteq(en_ev=epsilon_trans_ev, engrid=engrid)
 
@@ -651,11 +651,7 @@ def sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
     if ionpot_ev <= engrid[0]:
         xsstartindex = 0
     else:
-        xsstartindex = npts + 1
-        for i in range(npts):
-            if ar_xs_array[i] > 0.0:
-                xsstartindex = i
-                break
+        xsstartindex = next((i for i in range(npts) if ar_xs_array[i] > 0.0), npts + 1)
         xsstartindex = get_energyindex_gteq(en_ev=ionpot_ev, engrid=engrid)
 
     # J * atan[(epsilon - ionpot_ev) / J] is the indefinite integral of
@@ -1185,15 +1181,14 @@ def get_epsilon_avg(e_p: float, J: float, ionpot_ev: float, quiet: bool = True) 
 
 def calculate_Latom_excitation(ions, ionpopdict, nntot, en_ev, adata, T_exc=5000):
     L_atom_sum = 0.0
+    maxnlevelslower = 5
+    maxnlevelsupper = 250
+
+    k_b = 8.617333262145179e-05  # eV / K
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
 
         ion = adata.query("Z == @Z and ion_stage == @ionstage").iloc[0]
-        dftransitions_ion = ion.transitions
-
-        maxnlevelslower = 5
-        maxnlevelsupper = 250
-
         # filterquery = 'collstr >= 0 or forbidden == False'
         filterquery = "collstr != -999"
         if maxnlevelslower is not None:
@@ -1201,9 +1196,9 @@ def calculate_Latom_excitation(ions, ionpopdict, nntot, en_ev, adata, T_exc=5000
         if maxnlevelsupper is not None:
             filterquery += " and upper < @maxnlevelsupper"
 
+        dftransitions_ion = ion.transitions
         dftransitions_ion = dftransitions_ion.query(filterquery, inplace=False).copy()
 
-        k_b = 8.617333262145179e-05  # eV / K
         energy_boltzfac_sum = ion.levels.eval("energy_ev * g * exp(- energy_ev / @k_b / @T_exc)").sum()
 
         populations = ion.levels.eval("g * exp(- energy_ev / @k_b / @T_exc)").to_numpy() / energy_boltzfac_sum
@@ -1386,7 +1381,7 @@ def workfunction_tests(modelpath, args):
         print(f"\n workfn_limit_ev_sim {workfn_limit_ev_sim:.2f} eV")
         print(f"   eta_ion  {ionpot_valence_ev / workfn_limit_ev_sim:.3f}")
         print(f"   eta_heat {1 - ionpot_valence_ev / workfn_limit_ev_sim:.3f}")
-        arr_workfn_limit_sim = np.array([workfn_limit_ev_sim for x in arr_en_ev])
+        arr_workfn_limit_sim = np.array([workfn_limit_ev_sim for _ in arr_en_ev])
 
         arr_xs_ar92 = at.nonthermal.get_arxs_array_ion(arr_en_ev, dfcollion_thision, Z, ionstage)
         Latom_ionisation_ar92 = arr_xs_ar92 * (ionpot_valence_ev * EV)
@@ -1409,7 +1404,7 @@ def workfunction_tests(modelpath, args):
         print(f"\n workfn_limit_axelrod: {workfn_limit_axelrod:.2f} eV")
         print(f"   eta_ion  {ionpot_valence_ev / workfn_limit_axelrod:.3f}")
         print(f"   eta_heat {1 - ionpot_valence_ev / workfn_limit_axelrod:.3f}")
-        arr_workfn_limit_axelrod = np.array([workfn_limit_axelrod for x in arr_en_ev])
+        arr_workfn_limit_axelrod = np.array([workfn_limit_axelrod for _ in arr_en_ev])
 
         # Approximation to Axelrod 1980 Eq 3.20 (left Latom part) where the transition energy
         # of every ionisation is just the valence potential
