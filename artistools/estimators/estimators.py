@@ -3,8 +3,10 @@
 
 Examples are temperatures, populations, and heating/cooling rates.
 """
+
 from __future__ import annotations
 
+import contextlib
 import math
 import multiprocessing
 import sys
@@ -103,8 +105,7 @@ def get_ionrecombrates_fromfile(filename: Path | str) -> pd.DataFrame:
         recomb_tuple = namedtuple("recomb_tuple", ["logT", "RRC_low_n", "RRC_total"])
         records = []
         for line in filein:
-            row = line.split()
-            if row:
+            if row := line.split():
                 if len(row) != len(header_row):
                     print("Row contains wrong number of items for header:")
                     print(header_row)
@@ -221,7 +222,7 @@ def parse_estimfile(
 
             elif row[0] == "heating:" and get_heatingcooling:
                 for heatingtype, value in zip(row[1::2], row[2::2]):
-                    key = "heating_" + heatingtype if not heatingtype.startswith("heating_") else heatingtype
+                    key = heatingtype if heatingtype.startswith("heating_") else "heating_" + heatingtype
                     estimblock[key] = float(value)
 
                 if "heating_gamma/gamma_dep" in estimblock and estimblock["heating_gamma/gamma_dep"] > 0:
@@ -322,7 +323,7 @@ def read_estimators(
         modeldata, _ = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
         if "velocity_outer" in modeldata.columns:
             modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-            arr_velocity_outer = tuple([float(v) for v in modeldata["velocity_outer"].to_numpy()])
+            arr_velocity_outer = tuple(float(v) for v in modeldata["velocity_outer"].to_numpy())
 
     mpiranklist = (
         at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex, only_ranks_withgridcells=True)
@@ -334,7 +335,7 @@ def read_estimators(
 
     printfilename = len(mpiranklist) < 10
 
-    estimators = {}
+    estimators: dict[tuple[int, int], dict] = {}
     for folderpath in runfolders:
         if not printfilename:
             print(
@@ -374,7 +375,7 @@ def read_estimators(
 
                 del estimators_thisfile[k]
 
-            estimators.update(estimators_thisfile)
+            estimators |= estimators_thisfile
 
     return estimators
 
@@ -410,11 +411,9 @@ def get_averaged_estimators(
     tdeltasum = 0
     for timestep, tdelta in zip(timesteps, tdeltas):
         for mgi in range(modelgridindex - avgadjcells, modelgridindex + avgadjcells + 1):
-            try:
+            with contextlib.suppress(KeyError):
                 valuesum += reduce(lambda d, k: d[k], [(timestep, mgi), *keys], estimators) * tdelta
                 tdeltasum += tdelta
-            except KeyError:
-                pass
     return valuesum / tdeltasum
 
     # except KeyError:
@@ -484,7 +483,7 @@ def get_averageexcitation(
     return energypopsum / ionpopsum
 
 
-def get_partiallycompletetimesteps(estimators: dict[t.Any, t.Any]) -> list[int]:
+def get_partiallycompletetimesteps(estimators: dict[tuple[int, int], dict]) -> list[int]:
     """During a simulation, some estimator files can contain information for some cells but not others
     for the current timestep.
     """
@@ -496,9 +495,4 @@ def get_partiallycompletetimesteps(estimators: dict[t.Any, t.Any]) -> list[int]:
         timestepcells[nts].append(mgi)
         all_mgis.add(mgi)
 
-    nts_incomplete = []
-    for nts, mgilist in timestepcells.items():
-        if len(mgilist) < len(all_mgis):
-            nts_incomplete.append(nts)
-
-    return nts_incomplete
+    return [nts for nts, mgilist in timestepcells.items() if len(mgilist) < len(all_mgis)]
