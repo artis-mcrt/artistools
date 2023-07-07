@@ -39,11 +39,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
                     atomic_number = int(key)
                     numberdens[atomic_number] = popdict[atomic_number]
                     totaldens += numberdens[atomic_number] * elmass[atomic_number]
-                except ValueError:
+                except (ValueError, TypeError):
                     pass
-                except TypeError:
-                    pass
-
             massfracs = {
                 atomic_number: numberdens[atomic_number] * elmass[atomic_number] / totaldens
                 for atomic_number in numberdens
