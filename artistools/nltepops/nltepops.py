@@ -195,10 +195,7 @@ def read_files(
     dfqueryvars["modelgridindex"] = modelgridindex
     dfqueryvars["timestep"] = timestep
 
-    dfquery_full = ""
-    if timestep >= 0:
-        dfquery_full = "timestep==@timestep"
-
+    dfquery_full = "timestep==@timestep" if timestep >= 0 else ""
     if modelgridindex >= 0:
         if dfquery_full:
             dfquery_full += " and "

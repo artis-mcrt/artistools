@@ -436,12 +436,8 @@ def set_scatterplot_plotkwargs(modelnumber, args):
         "zorder": 10,
         "edgecolor": "k",
         "s": 120,
+        "color": args.color[modelnumber] if args.color else define_colours_list[modelnumber],
     }
-    if args.color:
-        plotkwargsangleaveraged["color"] = args.color[modelnumber]
-    else:
-        plotkwargsangleaveraged["color"] = define_colours_list[modelnumber]
-
     if args.colorbarcostheta or args.colorbarphi:
         update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args)
 
@@ -624,11 +620,9 @@ def make_peak_colour_viewing_angle_plot(args):
 
         bands = [args.filter[0], args.filter[1]]
 
-        data = {}
-
         datafilename = bands[0] + "band_" + f"{modelname}" + "_viewing_angle_data.txt"
         viewing_angle_plot_data = pd.read_csv(datafilename, delimiter=" ")
-        data[f"{bands[0]}max"] = viewing_angle_plot_data["peak_mag_polyfit"].to_numpy()
+        data = {f"{bands[0]}max": viewing_angle_plot_data["peak_mag_polyfit"].to_numpy()}
         data[f"time_{bands[0]}max"] = viewing_angle_plot_data["risetime_polyfit"].to_numpy()
 
         # Get brightness in second band at time of peak in first band

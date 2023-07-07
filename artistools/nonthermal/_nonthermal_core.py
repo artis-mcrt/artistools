@@ -171,10 +171,7 @@ def get_mean_binding_energy(
                 )
                 assert electron_loop == 8
                 # print("Z = %d, ion_stage = %d\n", get_element(element), get_ionstage(element, ion));
-        if use2 < use3:
-            total += electronsinshell / use3
-        else:
-            total += electronsinshell / use2
+        total += electronsinshell / use3 if use2 < use3 else electronsinshell / use2
         # print("total total)
 
     return total
@@ -206,11 +203,7 @@ def get_mean_binding_energy_alt(atomic_number, ion_stage, electron_binding, ionp
                 )
                 assert electron_loop == 8
                 # print("Z = %d, ion_stage = %d\n", get_element(element), get_ionstage(element, ion));
-        if use2 < use3:
-            total += electronsinshell * use3
-        else:
-            total += electronsinshell * use2
-
+        total += electronsinshell * use3 if use2 < use3 else electronsinshell * use2
     assert ecount == (atomic_number - ion_stage + 1)
 
     return total / ecount
@@ -493,13 +486,7 @@ def get_energyindex_lteq(en_ev, engrid):
 
     index = math.floor((en_ev - engrid[0]) / deltaen)
 
-    if index < 0:
-        return 0
-
-    if index > len(engrid) - 1:
-        return len(engrid) - 1
-
-    return index
+    return 0 if index < 0 else min(index, len(engrid) - 1)
 
 
 def get_energyindex_gteq(en_ev, engrid):
@@ -508,13 +495,7 @@ def get_energyindex_gteq(en_ev, engrid):
 
     index = math.ceil((en_ev - engrid[0]) / deltaen)
 
-    if index < 0:
-        return 0
-
-    if index > len(engrid) - 1:
-        return len(engrid) - 1
-
-    return index
+    return 0 if index < 0 else min(index, len(engrid) - 1)
 
 
 def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransitions, noexcitation):

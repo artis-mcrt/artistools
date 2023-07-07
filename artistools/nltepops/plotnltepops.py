@@ -794,9 +794,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         args.velocity = [args.velocity]
 
     mgilist: list[int | float] = [int(mgi) for mgi in args.modelgridindex]
-    for vel in args.velocity:
-        mgilist.append(at.inputmodel.get_mgi_of_velocity_kms(modelpath, vel))
-
+    mgilist.extend(at.inputmodel.get_mgi_of_velocity_kms(modelpath, vel) for vel in args.velocity)
     if not mgilist:
         mgilist.append(0)
 
