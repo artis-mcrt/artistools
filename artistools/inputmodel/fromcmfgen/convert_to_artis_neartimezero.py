@@ -159,8 +159,8 @@ def timeshift_double_decay(
     a, indexofatomicnumber, indexofisotope, zparent, numnucleons, timeold, timenew, meanlife1_days, meanlife2_days
 ):
     # take abundances back to time zero and then forward to the selected model time
-    elfracsum_before = sum([a["specfrac"][:, indexofatomicnumber[zparent - i]] for i in range(3)])
-    isofracsum_before = sum([a["isofrac"][:, indexofisotope[(zparent - i, numnucleons)]] for i in range(3)])
+    elfracsum_before = sum(a["specfrac"][:, indexofatomicnumber[zparent - i]] for i in range(3))
+    isofracsum_before = sum(a["isofrac"][:, indexofisotope[(zparent - i, numnucleons)]] for i in range(3))
 
     reverse_doubledecay(
         a,
@@ -184,8 +184,8 @@ def timeshift_double_decay(
         meanlife2_days=meanlife2_days,
     )
 
-    elfracsum_after = sum([a["specfrac"][:, indexofatomicnumber[zparent - i]] for i in range(3)])
-    isofracsum_after = sum([a["isofrac"][:, indexofisotope[(zparent - i, numnucleons)]] for i in range(3)])
+    elfracsum_after = sum(a["specfrac"][:, indexofatomicnumber[zparent - i]] for i in range(3))
+    isofracsum_after = sum(a["isofrac"][:, indexofisotope[(zparent - i, numnucleons)]] for i in range(3))
     assert np.all(abs(elfracsum_before - elfracsum_after) < 1e-10)
 
 

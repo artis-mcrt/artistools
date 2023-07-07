@@ -588,7 +588,7 @@ def make_emitting_regions_plot(args):
 
             emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
-            linelistindices_allfeatures = tuple([l for feature in emfeatures for l in feature.linelistindices])
+            linelistindices_allfeatures = tuple(l for feature in emfeatures for l in feature.linelistindices)
 
             for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend):
                 dfpackets = get_packets_with_emission_conditions(

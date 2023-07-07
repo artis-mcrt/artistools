@@ -287,7 +287,7 @@ def calculate_peak_time_mag_deltam15(time, magnitude, modelname, angle, key, arg
     fxfit, xfit = lightcurve_polyfit(time, magnitude, args)
 
     def match_closest_time_polyfit(reftime_polyfit):
-        return str(f"{min([float(x) for x in xfit], key=lambda x: abs(x - reftime_polyfit))}")
+        return str(f"{min((float(x) for x in xfit), key=lambda x: abs(x - reftime_polyfit))}")
 
     index_min = np.argmin(fxfit)
     tmax_polyfit = xfit[index_min]

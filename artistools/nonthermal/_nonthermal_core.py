@@ -580,12 +580,15 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
             # integral from 2E + I up to E_max
             integral2startindex = get_energyindex_lteq(en_ev=2 * energy_ev + ionpot_ev, engrid=engrid)
             N_e_ion += deltaen * sum(
-                [
-                    yvec[j]
-                    * ar_xs_array[j]
-                    * Psecondary(e_p=engrid[j], epsilon=energy_ev + ionpot_ev, ionpot_ev=ionpot_ev, J=J)
-                    for j in range(integral2startindex, len(engrid))
-                ]
+                yvec[j]
+                * ar_xs_array[j]
+                * Psecondary(
+                    e_p=engrid[j],
+                    epsilon=energy_ev + ionpot_ev,
+                    ionpot_ev=ionpot_ev,
+                    J=J,
+                )
+                for j in range(integral2startindex, len(engrid))
             )
 
         N_e += nnion * N_e_ion
@@ -605,7 +608,7 @@ def calculate_frac_heating(
 
     deltaen = engrid[1] - engrid[0]
     frac_heating += (
-        deltaen / deposition_density_ev * sum([lossfunction(en_ev, nne) * yvec[i] for i, en_ev in enumerate(engrid)])
+        deltaen / deposition_density_ev * sum(lossfunction(en_ev, nne) * yvec[i] for i, en_ev in enumerate(engrid))
     )
 
     frac_heating_E_0_part = E_0 * yvec[0] * lossfunction(E_0, nne) / deposition_density_ev
