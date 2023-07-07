@@ -74,7 +74,7 @@ def get_wij() -> np.ndarray:
 
 
 def kernelvals2(rij2: float, hmean: float, wij: np.ndarray) -> float:  # ist schnell berechnet aber keine Gradienten
-    hmean21 = 1.0 / (hmean * hmean)
+    hmean21 = 1.0 / hmean**2
     hmean31 = hmean21 / hmean
     v2 = rij2 * hmean21
     index = math.floor(v2 / dvtable)
