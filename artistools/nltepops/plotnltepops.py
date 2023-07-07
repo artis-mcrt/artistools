@@ -748,10 +748,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     at.set_mpl_style()
 
+    modelpath = args.modelpath
     if args.x in ["time", "velocity"]:
-        # if len(args.modelpath) == 1:
-        #     modelpath = args.modelpath
-        modelpath = args.modelpath
         args.modelpath = [args.modelpath]
 
         # if not args.timedays:
@@ -763,8 +761,6 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         if not args.levels:
             print("Please specify levels")
             sys.exit(1)
-    else:
-        modelpath = args.modelpath
 
     if args.timedays:
         if "-" in args.timedays:
