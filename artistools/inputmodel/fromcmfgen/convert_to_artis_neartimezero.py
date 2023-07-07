@@ -80,9 +80,7 @@ def reverse_doubledecay(
                 print(
                     "shell",
                     s,
-                    " has none of the last isotope Z={} A={} of the chain at time zero".format(
-                        zparent - 2, numnucleons
-                    ),
+                    f" has none of the last isotope Z={zparent - 2} A={numnucleons} of the chain at time zero",
                 )
         else:
             iso3fromdecay[s] = (
@@ -239,7 +237,7 @@ def main():
 
     # Write to file abundances.txt
     fmtstring = "%d " + "%1.7e " * 30
-    np.savetxt(model + "/abundances.txt", abund[:, :], fmt=fmtstring)
+    np.savetxt(f"{model}/abundances.txt", abund[:, :], fmt=fmtstring)
 
     # M = 0
     # for i in range(a['nd']):

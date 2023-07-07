@@ -17,7 +17,6 @@ import pandas as pd
 import artistools as at
 
 if t.TYPE_CHECKING:
-    from collections.abc import Collection
     from collections.abc import Sequence
 
 
@@ -34,9 +33,9 @@ def plot_qdot(
     dfpartcontrib: pd.DataFrame,
     dfmodel: pd.DataFrame,
     allparticledata: dict[int, dict[str, np.ndarray]],
-    arr_time_artis_days: Collection[float],
-    arr_artis_ye: Collection[float],
-    arr_time_gsi_days: Collection[float],
+    arr_time_artis_days: Sequence[float],
+    arr_artis_ye: Sequence[float],
+    arr_time_gsi_days: Sequence[float],
     pdfoutpath: Path | str,
     xmax: None | float = None,
 ) -> None:
@@ -571,7 +570,7 @@ def plot_qdot_abund_modelcells(
     arr_time_artis_days_alltimesteps = at.get_timestep_times(modelpath)
     arr_time_artis_s_alltimesteps = np.array([t * 8.640000e04 for t in arr_time_artis_days_alltimesteps])
     # no completed timesteps yet, so display full set of timesteps that artis will compute
-    if len(arr_time_artis_days) == 0:
+    if not arr_time_artis_days:
         arr_time_artis_days = list(arr_time_artis_days_alltimesteps)
 
     arr_time_gsi_s = np.array([t_model_init_days * 86400, *arr_time_artis_s_alltimesteps])
