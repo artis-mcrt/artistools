@@ -547,7 +547,7 @@ def plot_qdot_abund_modelcells(
                     if isinstance(popkey, str) and abund > 0.0:
                         if popkey.endswith("_otherstable"):
                             # TODO: use mean molecular weight, but this is not needed for kilonova input files anyway
-                            pass
+                            print(f"WARNING {popkey}={abund} not contributed")
                         else:
                             try:
                                 z, a = at.get_z_a_nucname(popkey)
