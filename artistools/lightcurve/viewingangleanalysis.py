@@ -423,10 +423,7 @@ def make_plot_test_viewing_angle_fit(
 
 
 def set_scatterplot_plotkwargs(modelnumber, args):
-    plotkwargsviewingangles = {}
-    plotkwargsviewingangles["marker"] = "x"
-    plotkwargsviewingangles["zorder"] = 0
-    plotkwargsviewingangles["alpha"] = 0.8
+    plotkwargsviewingangles = {"marker": "x", "zorder": 0, "alpha": 0.8}
     if args.colorbarcostheta or args.colorbarphi:
         update_plotkwargs_for_viewingangle_colorbar(plotkwargsviewingangles, args)
     elif args.color:
@@ -434,11 +431,12 @@ def set_scatterplot_plotkwargs(modelnumber, args):
     else:
         plotkwargsviewingangles["color"] = define_colours_list2[modelnumber]
 
-    plotkwargsangleaveraged = {}
-    plotkwargsangleaveraged["marker"] = "o"
-    plotkwargsangleaveraged["zorder"] = 10
-    plotkwargsangleaveraged["edgecolor"] = "k"
-    plotkwargsangleaveraged["s"] = 120
+    plotkwargsangleaveraged = {
+        "marker": "o",
+        "zorder": 10,
+        "edgecolor": "k",
+        "s": 120,
+    }
     if args.color:
         plotkwargsangleaveraged["color"] = args.color[modelnumber]
     else:
