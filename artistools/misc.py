@@ -268,7 +268,7 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
 
 
 def get_wid_init_at_tmin(modelpath: Path) -> float:
-    # cell width in cm at time tmin
+    """`Return the Cartesian cell width [cm] at the simulation start time (tmin)."""
     day_to_sec = 86400
     tmin = get_timestep_times(modelpath, loc="start")[0] * day_to_sec
     _, modelmeta = at.get_modeldata(modelpath)
@@ -287,6 +287,7 @@ def get_wid_init_at_tmodel(
     t_model_days: float | None = None,
     xmax: float | None = None,
 ) -> float:
+    """Return the Cartesian cell width [cm] at the model snapshot time."""
     if ngridpoints is None or t_model_days is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
         assert modelpath is not None
@@ -301,6 +302,7 @@ def get_wid_init_at_tmodel(
 
 
 def get_syn_dir(modelpath: Path) -> tuple[float, float, float]:
+    """Return the direction from which theta angle is measured."""
     if not (modelpath / "syn_dir.txt").is_file():
         print(f"{modelpath / 'syn_dir.txt'} does not exist. using x,y,z = 0,0,1")
         return (0.0, 0.0, 1.0)
@@ -316,13 +318,14 @@ def vec_len(vec: Sequence[float] | np.ndarray[t.Any, np.dtype[np.float64]]) -> f
 
 @lru_cache(maxsize=16)
 def get_nu_grid(modelpath: Path) -> np.ndarray[t.Any, np.dtype[np.float64]]:
-    """Get an array of frequencies at which the ARTIS spectra are binned by exspec."""
+    """Return an array of frequencies at which the ARTIS spectra are binned by exspec."""
     specfilename = firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
     specdata = pd.read_csv(specfilename, delim_whitespace=True)
     return specdata.loc[:, "0"].to_numpy()
 
 
 def get_deposition(modelpath: Path | str = ".") -> pd.DataFrame:
+    """Return a pandas DataFrame containing the deposition data."""
     if Path(modelpath).is_file():
         depfilepath = Path(modelpath)
         modelpath = Path(modelpath).parent
@@ -356,7 +359,7 @@ def get_deposition(modelpath: Path | str = ".") -> pd.DataFrame:
 def get_timestep_times(
     modelpath: Path | str, loc: t.Literal["mid", "start", "end", "delta"] = "mid"
 ) -> np.ndarray[t.Any, np.dtype[np.float64]]:
-    """Return a list of the time in days of each timestep."""
+    """Return a list of the times in days of each timestep."""
     modelpath = Path(modelpath)
     # virtual path to code comparison workshop models
     if not modelpath.exists() and modelpath.parts[0] == "codecomparison":
@@ -366,7 +369,7 @@ def get_timestep_times(
 
     modelpath = modelpath if modelpath.is_dir() else modelpath.parent
 
-    # custom timestep file
+    # use timestep.out if possible (allowing arbitrary timestep lengths)
     tsfilepath = Path(modelpath, "timesteps.out")
     if tsfilepath.exists():
         dftimesteps = pd.read_csv(tsfilepath, delim_whitespace=True, escapechar="#", index_col="timestep")
@@ -509,6 +512,7 @@ def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
 
 
 def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, float | None]:
+    """Return the time range for which the entire model can send light signals the observer."""
     modelpath = Path(modelpath)
     dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True, getheadersonly=True)
     vmax = modelmeta["vmax_cmps"]
@@ -576,6 +580,13 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
 
 @lru_cache(maxsize=1)
 def get_elsymbolslist() -> list[str]:
+    """Return a list of element symbols.
+
+
+    Example:
+    -------
+    elsymbolslist()[26] = 'Fe'.
+    """
     return [
         "n",
         *list(
@@ -588,6 +599,7 @@ def get_elsymbolslist() -> list[str]:
 
 
 def get_atomic_number(elsymbol: str) -> int:
+    """Return the atomic number of an element symbol."""
     assert elsymbol is not None
     elsymbol = elsymbol.removeprefix("X_")
     elsymbol = elsymbol.split("_")[0].split("-")[0].rstrip("0123456789")
@@ -599,12 +611,14 @@ def get_atomic_number(elsymbol: str) -> int:
 
 
 def decode_roman_numeral(strin: str) -> int:
+    """Return the integer corresponding to a Roman numeral."""
     if strin.upper() in roman_numerals:
         return roman_numerals.index(strin.upper())
     return -1
 
 
 def get_elsymbol(atomic_number: int) -> str:
+    """Return the element symbol of an atomic number."""
     return get_elsymbolslist()[atomic_number]
 
 
@@ -612,6 +626,7 @@ def get_elsymbol(atomic_number: int) -> str:
 def get_ionstring(
     atomic_number: int, ionstage: int | None | t.Literal["ALL"], spectral: bool = True, nospace: bool = False
 ) -> str:
+    """Return a string with the element symbol and ionisation stage."""
     if ionstage is None or ionstage == "ALL":
         return f"{get_elsymbol(atomic_number)}"
 
@@ -679,6 +694,7 @@ def trim_or_pad(requiredlength: int, *listoflistin: list[list[t.Any]]) -> Iterat
 
 
 def flatten_list(listin: list[t.Any]) -> list[t.Any]:
+    """Flatten a list of lists."""
     listout = []
     for elem in listin:
         if isinstance(elem, list):
@@ -765,6 +781,7 @@ def readnoncommentline(file: io.TextIOBase) -> str:
 
 @lru_cache(maxsize=24)
 def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
+    """Return a dict of metadata for a file, either from a metadata file or from the big combined metadata file."""
     filepath = Path(filepath)
 
     def add_derived_metadata(metadata: dict[str, t.Any]) -> dict[str, t.Any]:
@@ -835,6 +852,7 @@ def get_filterfunc(
 
 
 def join_pdf_files(pdf_list: list[str], modelpath_list: list[Path]) -> None:
+    """Merge a list of PDF files into a single PDF file."""
     from PyPDF2 import PdfFileMerger
 
     merger = PdfFileMerger()
@@ -853,6 +871,7 @@ def join_pdf_files(pdf_list: list[str], modelpath_list: list[Path]) -> None:
 
 @lru_cache(maxsize=2)
 def get_bflist(modelpath: Path | str) -> dict[int, tuple[int, int, int, int]]:
+    """Return a dict of bound-free transitions from bflist.out."""
     compositiondata = get_composition_data(modelpath)
     bflist = {}
     bflistpath = firstexisting(["bflist.out", "bflist.dat"], folder=modelpath, tryzipped=True)
@@ -925,6 +944,7 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
 
 
 def get_linelist_dict(modelpath: Path | str) -> dict[int, linetuple]:
+    """Return a dict of line tuples from linestat.out."""
     nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(
         Path(modelpath, "linestat.out")
     )
@@ -1257,6 +1277,7 @@ def get_dirbin_labels(
     usedegrees: bool = False,
     usepiminustheta: bool = False,
 ) -> dict[int, str]:
+    """Return a dict of text labels for viewing direction bins."""
     if modelpath:
         modelpath = Path(modelpath)
         MABINS = at.get_viewingdirectionbincount()
