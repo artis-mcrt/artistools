@@ -184,7 +184,7 @@ def average_direction_bins(
     dirbindataframes: dict[int, pl.DataFrame],
     overangle: t.Literal["phi", "theta"],
 ) -> dict[int, pl.DataFrame]:
-    """Will average dict of direction-binned polars DataFrames according to the phi or theta angle."""
+    """Average dict of direction-binned polars DataFrames according to the phi or theta angle."""
     dirbincount = at.get_viewingdirectionbincount()
     nphibins = at.get_viewingdirection_phibincount()
 
