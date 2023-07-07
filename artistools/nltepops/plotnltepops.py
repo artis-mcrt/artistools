@@ -423,7 +423,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     labelfontsize = 20
     if args.x == "time":
         xlabel = "Time Since Explosion [days]"
-    if args.x == "velocity":
+    elif args.x == "velocity":
         xlabel = r"Zone outer velocity [km s$^{-1}$]"
     ylabel = r"Level population [cm$^{-3}$]"
 
@@ -444,7 +444,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
         title = f"Z={Z}, ionstage={ionstage}"
         if args.x == "time":
             title = title + f", mgi = {args.modelgridindex[0]}"
-        if args.x == "velocity":
+        elif args.x == "velocity":
             title = title + f", {args.timedays} days"
         plt.title(title)
 

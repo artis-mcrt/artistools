@@ -283,18 +283,18 @@ def main(args=None, argsraw=None, **kwargs):
         emin = args.emin
         emax = args.emax
         npts = args.npts
-        if args.vary == "emin":
-            emin *= 2**step
-        elif args.vary == "emax":
+        if args.vary == "emax":
             emax *= 2**step
+        elif args.vary == "emax,npts":
+            npts *= 2**step
+            emax *= 2**step
+
+        elif args.vary == "emin":
+            emin *= 2**step
         elif args.vary == "npts":
             npts *= 2**step
         elif args.vary == "x_e":
             assert args.composition != "artis"
-        if args.vary == "emax,npts":
-            npts *= 2**step
-            emax *= 2**step
-
         if args.composition != "artis":
             compelement = args.composition
             compelement_atomicnumber = at.get_atomic_number(compelement)
