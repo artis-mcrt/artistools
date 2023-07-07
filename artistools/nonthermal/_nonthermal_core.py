@@ -1296,12 +1296,8 @@ def workfunction_tests(modelpath, args):
         (26, 2): 1e5,
     }
 
-    ions = []
-    for key in ionpopdict:
-        # keep only the ion populations, not element or total populations
-        if isinstance(key, tuple) and len(key) == 2:
-            ions.append(key)
-
+    # keep only the ion populations, not element or total populations
+    ions = [key for key in ionpopdict if isinstance(key, tuple) and len(key) == 2]
     ions.sort()
 
     nntot = get_nntot(ions=ions, ionpopdict=ionpopdict)

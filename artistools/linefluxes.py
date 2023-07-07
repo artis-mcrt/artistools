@@ -119,10 +119,7 @@ def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=N
 
     modeldata, _ = at.inputmodel.get_modeldata(modelpath)
 
-    ionlist = []
-    for feature in emfeatures:
-        ionlist.append((feature.atomic_number, feature.ion_stage))
-
+    ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
     adata = at.atomic.get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True, get_photoionisations=False)
 
     timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])

@@ -793,10 +793,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     if isinstance(args.velocity, (float, int)):
         args.velocity = [args.velocity]
 
-    mgilist: list[int | float] = []
-    for mgi in args.modelgridindex:
-        mgilist.append(int(mgi))
-
+    mgilist: list[int | float] = [int(mgi) for mgi in args.modelgridindex]
     for vel in args.velocity:
         mgilist.append(at.inputmodel.get_mgi_of_velocity_kms(modelpath, vel))
 

@@ -308,12 +308,12 @@ def main(args=None, argsraw=None, **kwargs):
             ionpopdict[(compelement_atomicnumber, 1)] = nntot * (1.0 - x_e)
             ionpopdict[(compelement_atomicnumber, 2)] = nntot * x_e
 
-        ions = []
-        for key in ionpopdict:
-            # keep only the ion populations, not element or total populations
-            if isinstance(key, tuple) and len(key) == 2 and ionpopdict[key] / nntot >= minionfraction:
-                ions.append(key)
-
+        # keep only the ion populations, not element or total populations
+        ions = [
+            key
+            for key in ionpopdict
+            if isinstance(key, tuple) and len(key) == 2 and ionpopdict[key] / nntot >= minionfraction
+        ]
         ions.sort()
 
         if args.noexcitation:
