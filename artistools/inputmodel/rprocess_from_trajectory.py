@@ -317,10 +317,8 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataF
         if not particlenetworkdatafound(traj_root, particleid)
     ]
     print(
-        (
-            f"Adding gridcontributions column that excludes {len(missing_particleids)} "
-            "particles without abundance data and renormalising..."
-        ),
+        f"Adding gridcontributions column that excludes {len(missing_particleids)} "
+        "particles without abundance data and renormalising...",
         end="",
     )
     # after filtering, frac_of_cellmass_includemissing will still include particles with rho but no abundance data

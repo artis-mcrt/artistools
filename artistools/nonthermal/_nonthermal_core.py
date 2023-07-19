@@ -1204,10 +1204,8 @@ def calculate_Latom_excitation(ions, ionpopdict, nntot, en_ev, adata, T_exc=5000
         populations = ion.levels.eval("g * exp(- energy_ev / @k_b / @T_exc)").to_numpy() / energy_boltzfac_sum
 
         dftransitions_ion = dftransitions_ion.eval(
-            (
-                "epsilon_trans_ev = @ion.levels.loc[upper].energy_ev.to_numpy() -"
-                " @ion.levels.loc[lower].energy_ev.to_numpy()"
-            ),
+            "epsilon_trans_ev = @ion.levels.loc[upper].energy_ev.to_numpy() -"
+            " @ion.levels.loc[lower].energy_ev.to_numpy()",
         )
 
         dftransitions_ion = dftransitions_ion.eval("upper_g = @ion.levels.loc[upper].g.to_numpy()")
