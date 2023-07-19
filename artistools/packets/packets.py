@@ -818,11 +818,15 @@ def bin_and_sum(
 ) -> pl.DataFrame:
     """Bins is a list of lower edges, and the final upper edge."""
     # Polars method
-    dfbincol = df.select(bincol).lazy().collect()
-    assert isinstance(dfbincol, pl.DataFrame)
-    dfbincolcut = dfbincol.get_column(bincol).cut(bins=list(bins), category_label=f"{bincol}_bin", maintain_order=True)
-    assert isinstance(dfbincolcut, pl.DataFrame)
-    df = df.with_columns([dfbincolcut.get_column(f"{bincol}_bin").cast(pl.Int32) - 1])
+
+    df = df.with_columns(
+        (
+            pl.col(bincol)
+            .cut(breaks=list(bins), labels=[str(x) for x in range(-1, len(bins))])
+            .cast(str)
+            .cast(pl.Int32)
+        ).alias(f"{bincol}_bin")
+    )
 
     aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols] if sumcols is not None else []
 
@@ -837,9 +841,11 @@ def bin_and_sum(
 
     # pandas method
 
-    # dfout2 = pd.DataFrame({bincol + "_bin": np.arange(0, len(bins) - 1)})
+    # dfout2 = pd.DataFrame({f"{bincol}_bin": np.arange(0, len(bins) - 1)})
     # if isinstance(df, pl.DataFrame):
     #     df2 = df.to_pandas(use_pyarrow_extension_array=True)
+    # elif isinstance(df, pl.LazyFrame):
+    #     df2 = df.collect().to_pandas(use_pyarrow_extension_array=True)
 
     # pdbins = pd.cut(
     #     x=df2[bincol],
@@ -858,3 +864,6 @@ def bin_and_sum(
     # if getcounts:
     #     # dfout = dfout.with_columns([pl.Series("count", df[bincol].groupby(pdbins).count().values)])
     #     dfout2["count"] = df2[bincol].groupby(pdbins).count().values
+
+    # print(dfout2)
+    # return dfout2
