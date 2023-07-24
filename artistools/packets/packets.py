@@ -250,7 +250,7 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict | None = N
     return dfpackets
 
 
-def readfile_text(packetsfile: Path | str, modelpath: Path = Path(".")) -> pl.DataFrame:
+def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataFrame:
     """Read a packets*.out(.xz) space-separated text file into a polars DataFrame."""
     print(f"Reading {packetsfile}")
     skiprows: int = 0

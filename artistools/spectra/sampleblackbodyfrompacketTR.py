@@ -16,7 +16,7 @@ PARSEC = 3.086e18
 c_cgs = const.c.to("cm/s").value
 c_ang_s = const.c.to("angstrom/s").value
 
-modelpath = Path(".")
+modelpath = Path()
 
 xmin = 2500  # Angstroms
 xmax = 30000

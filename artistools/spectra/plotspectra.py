@@ -1330,7 +1330,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     )  # choose either virtual packet directions or real packet direction bins
 
     if not args.specpath:
-        args.specpath = [Path(".")]
+        args.specpath = [Path()]
     elif isinstance(args.specpath, (str, Path)):  # or not not isinstance(args.specpath, Iterable)
         args.specpath = [args.specpath]
 

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Artistools - NLTE population related functions."""
+
 from __future__ import annotations
 
 import argparse
+import contextlib
 import math
 import sys
 from pathlib import Path
@@ -83,15 +85,13 @@ def plot_reference_data(ax, atomic_number: int, ion_stage: int, estimators_cellt
                     firstdep = -1.0
                     for line in depfile:
                         row = line.split()
-                        try:
+                        with contextlib.suppress(KeyError, IndexError, ValueError):
                             levelnum = levelnumofconfigterm[(row[1], row[2])]
                             if levelnum in dfpopthision["level"].to_numpy():
                                 levelnums.append(levelnum)
                                 if firstdep < 0:
                                     firstdep = float(row[0])
                                 depcoeffs.append(float(row[0]) / firstdep)
-                        except (KeyError, IndexError, ValueError):
-                            pass
                     ionstr = at.get_ionstring(atomic_number, ion_stage, spectral=False)
                     ax.plot(
                         levelnums,
@@ -618,7 +618,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
             subplot_title += f" timestep {timestep:d}"
         else:
             subplot_title += f" {time_days:.0f}d"
-        subplot_title += rf" (Te={T_e:.0f} K, nne={nne:.1e} cm$^{-3}$, T$_R$={T_R:.0f} K, W={W:.1e})"
+        subplot_title += rf" (Te={T_e:.0f} K, nne={nne:.1e} cm$^{{-3}}$, T$_R$={T_R:.0f} K, W={W:.1e})"
 
         if not args.notitle:
             axes[mgifirstaxindex].set_title(subplot_title, fontsize=10)

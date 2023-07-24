@@ -151,7 +151,7 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
 
 
 def main() -> None:
-    modelpath = Path(".")
+    modelpath = Path()
     modeldata, _, vmax = at.inputmodel.get_modeldata_tuple(modelpath)
 
     # # Get mgi of grid cells along axis for 1D plot

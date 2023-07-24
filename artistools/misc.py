@@ -719,7 +719,7 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
 
 def firstexisting(
     filelist: Sequence[str | Path] | str | Path,
-    folder: Path | str = Path("."),
+    folder: Path | str = Path(),
     tryzipped: bool = True,
 ) -> Path:
     """Return the first existing file in file list. If none exist, raise exception."""
@@ -748,7 +748,7 @@ def firstexisting(
 
 def anyexist(
     filelist: Sequence[str | Path],
-    folder: Path | str = Path("."),
+    folder: Path | str = Path(),
     tryzipped: bool = True,
 ) -> bool:
     """Return true if any files in file list exist."""

@@ -133,7 +133,7 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     if not args.modelpath:
-        args.modelpath = [Path(".")]
+        args.modelpath = [Path()]
 
     # make_plot(logfiledict)
 

@@ -188,7 +188,7 @@ def make_plot(modelpaths: list[Path], args: argparse.Namespace) -> None:
         else:
             model_label = f"{modelname} cell {modelgridindex} at timestep {timestep}"
             try:
-                time_days = float(at.get_timestep_time(Path("."), timestep))
+                time_days = float(at.get_timestep_time(Path(), timestep))
             except FileNotFoundError:
                 time_days = 0
             else:
@@ -292,7 +292,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         args = parser.parse_args(argsraw)
 
     if not args.modelpath:
-        args.modelpath = [Path(".")]
+        args.modelpath = [Path()]
     elif isinstance(args.modelpath, (str, Path)):
         args.modelpath = [args.modelpath]
 
