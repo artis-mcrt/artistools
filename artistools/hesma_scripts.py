@@ -96,7 +96,7 @@ def make_hesma_vspecfiles(modelpath, outpath=None):
             # append to file
             vspecdata.to_csv(outpath / outfilename, mode="a", sep=" ", index=False)
 
-    with open(outpath / outfilename, "r+") as f:  # add comment to start of file
+    with (outpath / outfilename).open("r+") as f:  # add comment to start of file
         content = f.read()
         f.seek(0, 0)
         f.write(

@@ -1,5 +1,8 @@
 recursive-include artistools *.csv
 recursive-include artistools *.txt
 recursive-include artistools matplotlibrc
+global-include *.pyi
+global-include *.typed
+global-include *.md
+global-include *.cff
 include LICENSE.txt
-include README.md

@@ -33,9 +33,9 @@ def test_commands() -> None:
 
 
 def test_timestep_times() -> None:
-    timestartarray = at.get_timestep_times_float(modelpath, loc="start")
-    timedeltarray = at.get_timestep_times_float(modelpath, loc="delta")
-    timemidarray = at.get_timestep_times_float(modelpath, loc="mid")
+    timestartarray = at.get_timestep_times(modelpath, loc="start")
+    timedeltarray = at.get_timestep_times(modelpath, loc="delta")
+    timemidarray = at.get_timestep_times(modelpath, loc="mid")
     assert len(timestartarray) == 100
     assert math.isclose(float(timemidarray[0]), 250.421, abs_tol=1e-3)
     assert math.isclose(float(timemidarray[-1]), 349.412, abs_tol=1e-3)

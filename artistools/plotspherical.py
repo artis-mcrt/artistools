@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
+# mypy: warn-unused-configs, disallow-any-generics, disallow-subclassing-any, disallow-untyped-calls,
+# mypy: disallow-untyped-defs, disallow-incomplete-defs, check-untyped-defs, disallow-untyped-decorators,
+# mypy: warn-redundant-casts, warn-unused-ignores, warn-return-any, no-implicit-reexport, strict-equality, strict-concatenate
 from __future__ import annotations
 
 import argparse
+import typing as t
 from pathlib import Path
 
 import argcomplete
@@ -106,21 +110,18 @@ def plot_spherical(
 
     if "temperature" in plotvars:
         timebins = [
-            *at.get_timestep_times_float(modelpath, loc="start") * 86400.0,
-            at.get_timestep_times_float(modelpath, loc="end")[-1] * 86400.0,
+            *at.get_timestep_times(modelpath, loc="start") * 86400.0,
+            at.get_timestep_times(modelpath, loc="end")[-1] * 86400.0,
         ]
-
-        binindex = (
-            dfpackets.select("em_time")
-            .lazy()
-            .collect()
-            .get_column("em_time")
-            .cut(bins=list(timebins), category_label="em_timestep", maintain_order=True)
-            .get_column("em_timestep")
-            .cast(pl.Int32)
-            - 1  # subtract 1 because the returned index 0 is the bin below the start of the first supplied bin
+        dfpackets = dfpackets.with_columns(
+            (
+                pl.col("em_time")
+                .cut(breaks=list(timebins), labels=[str(x) for x in range(-1, len(timebins))])
+                .cast(str)
+                .cast(pl.Int32)
+            ).alias("em_timestep")
         )
-        dfpackets = dfpackets.with_columns([binindex])
+
         dfest_parquetfile = Path(modelpath, "temperatures.parquet.tmp")
 
         if not dfest_parquetfile.is_file():
@@ -321,7 +322,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = None, **kwargs: t.Any) -> None:
     """Plot direction maps based on escaped packets."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

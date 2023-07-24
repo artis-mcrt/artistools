@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 import argparse
-import glob
-import os.path
 import sys
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -35,8 +34,8 @@ def main(args=None, argsraw=None, **kwargs):
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    if os.path.isdir(args.outputfile):
-        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+    if Path(args.outputfile).is_dir():
+        args.outputfile = str(Path(args.outputfile, defaultoutputfile))
 
     atomic_number = at.get_atomic_number(args.element.lower())
     if atomic_number < 1:
@@ -47,9 +46,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     timestepmax = timestepmin if not args.timestepmax or args.timestepmax < 0 else args.timestepmax
 
-    input_files = glob.glob(os.path.join(args.modelpath, "macroatom_????.out*"), recursive=True) + glob.glob(
-        os.path.join(args.modelpath, "*/macroatom_????.out*"), recursive=True
-    )
+    input_files = Path(args.modelpath).glob("**/macroatom_????.out*")
 
     if not input_files:
         print("No macroatom files found")
@@ -57,12 +54,9 @@ def main(args=None, argsraw=None, **kwargs):
 
     dfall = read_files(input_files, args.modelgridindex, timestepmin, timestepmax, atomic_number)
 
-    specfilename = os.path.join(args.modelpath, "spec.out")
+    specfilename = Path(args.modelpath, "spec.out")
 
-    if not os.path.isfile(specfilename):
-        specfilename = os.path.join(args.modelpath, "../example_run/spec.out")
-
-    if not os.path.isfile(specfilename):
+    if not specfilename.is_file():
         print(f"Could not find {specfilename}")
         raise FileNotFoundError
 
@@ -70,7 +64,7 @@ def main(args=None, argsraw=None, **kwargs):
     make_plot(
         dfall,
         args.modelpath,
-        specfilename,
+        str(specfilename),
         timestepmin,
         timestepmax,
         outputfile,
@@ -143,7 +137,7 @@ def read_files(files, modelgridindex=None, timestepmin=None, timestepmax=None, a
     if not files:
         print("No files")
     else:
-        for _, filepath in enumerate(files):
+        for filepath in files:
             print(f"Loading {filepath}...")
 
             df_thisfile = pd.read_csv(filepath, delim_whitespace=True)

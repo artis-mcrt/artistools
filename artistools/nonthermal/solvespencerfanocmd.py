@@ -283,18 +283,18 @@ def main(args=None, argsraw=None, **kwargs):
         emin = args.emin
         emax = args.emax
         npts = args.npts
-        if args.vary == "emin":
-            emin *= 2**step
-        elif args.vary == "emax":
+        if args.vary == "emax":
             emax *= 2**step
+        elif args.vary == "emax,npts":
+            npts *= 2**step
+            emax *= 2**step
+
+        elif args.vary == "emin":
+            emin *= 2**step
         elif args.vary == "npts":
             npts *= 2**step
         elif args.vary == "x_e":
             assert args.composition != "artis"
-        if args.vary == "emax,npts":
-            npts *= 2**step
-            emax *= 2**step
-
         if args.composition != "artis":
             compelement = args.composition
             compelement_atomicnumber = at.get_atomic_number(compelement)
@@ -308,12 +308,12 @@ def main(args=None, argsraw=None, **kwargs):
             ionpopdict[(compelement_atomicnumber, 1)] = nntot * (1.0 - x_e)
             ionpopdict[(compelement_atomicnumber, 2)] = nntot * x_e
 
-        ions = []
-        for key in ionpopdict:
-            # keep only the ion populations, not element or total populations
-            if isinstance(key, tuple) and len(key) == 2 and ionpopdict[key] / nntot >= minionfraction:
-                ions.append(key)
-
+        # keep only the ion populations, not element or total populations
+        ions = [
+            key
+            for key in ionpopdict
+            if isinstance(key, tuple) and len(key) == 2 and ionpopdict[key] / nntot >= minionfraction
+        ]
         ions.sort()
 
         if args.noexcitation:
@@ -323,7 +323,7 @@ def main(args=None, argsraw=None, **kwargs):
             adata = at.atomic.get_levels(modelpath, get_transitions=True, ionlist=tuple(ions))
 
         if step == 0 and args.ostat:
-            with open(args.ostat, "w") as fstat:
+            with Path(args.ostat).open("w") as fstat:
                 strheader = "#emin emax npts x_e frac_sum frac_excitation frac_ionization frac_heating"
                 for atomic_number, ion_stage in ions:
                     strheader += " frac_ionization_" + at.get_ionstring(atomic_number, ion_stage, nospace=True)
@@ -352,7 +352,7 @@ def main(args=None, argsraw=None, **kwargs):
                 sf.plot_spec_channels(outputfilename=outputfilename)
 
             if args.ostat:
-                with open(args.ostat, "a") as fstat:
+                with Path(args.ostat).open("a") as fstat:
                     strlineout = (
                         f"{emin} {emax} {npts} {x_e:7.2e} {sf.get_frac_sum():6.3f} "
                         f"{sf.get_frac_excitation_tot():6.3f} {sf.get_frac_ionisation_tot():6.3f} "

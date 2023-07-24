@@ -56,9 +56,6 @@ def get_model_recombenergy(dfbinding, args):
             elif species.lower() != "fegroup":  # ignore special group abundance
                 pass
 
-            else:
-                pass
-
     def sortkey(item):
         return at.get_atomic_number(item[0])
 
@@ -109,9 +106,8 @@ def get_particle_nucenergy_released(traj_root, particleid, tmin_s, time_s_end):
         dfthermo = dfthermo.rename(columns={"time/s": "time_s"})
         dfthermo = dfthermo.query("time_s >= @tmin_s")
         dfthermo = dfthermo.query("time_s <= @time_s_end")
-        en_released_ev_per_gram = np.trapz(y=dfthermo["Qdot"], x=dfthermo["time_s"]) * erg_to_ev
+        return np.trapz(y=dfthermo["Qdot"], x=dfthermo["time_s"]) * erg_to_ev
         # print(dfthermo)
-    return en_released_ev_per_gram
 
 
 def get_particles_recomb_nuc_energy(traj_root, dfbinding):
@@ -206,7 +202,7 @@ def main(args=None, argsraw=None, **kwargs):
         argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
-    with open(at.get_config()["path_datadir"] / "ElBiEn_2007.txt") as fbinding:
+    with Path(at.get_config()["path_datadir"], "ElBiEn_2007.txt").open() as fbinding:
         for _ in range(11):
             header = fbinding.readline().lstrip(" #").split()
         # print(header)

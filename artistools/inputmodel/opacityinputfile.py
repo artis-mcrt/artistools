@@ -7,7 +7,7 @@ import pandas as pd
 def all_cells_same_opacity(modelpath, ngrid):
     cell_opacities = np.array([0.1] * ngrid)
 
-    with open(Path(modelpath) / "opacity.txt", "w") as fopacity:
+    with Path(modelpath, "opacity.txt").open("w") as fopacity:
         fopacity.write(f"{ngrid}\n")
 
         for cellid, opacity in enumerate(cell_opacities):
@@ -41,20 +41,18 @@ def opacity_by_Ye(outputfilepath, griddata):
 
     griddata["opacity"] = cell_opacities
 
-    with open(Path(outputfilepath) / "opacity.txt", "w") as fopacity:
+    with Path(outputfilepath, "opacity.txt").open("w") as fopacity:
         fopacity.write(f'{len(griddata["inputcellid"])}\n')
         griddata[["inputcellid", "opacity"]].to_csv(fopacity, sep="\t", index=False, header=False, float_format="%.10f")
 
 
 def get_opacity_from_file(modelpath):
     opacity_file_contents = np.loadtxt(Path(modelpath) / "opacity.txt", unpack=True, skiprows=1)
-    opacity = opacity_file_contents[1]
-
-    return opacity
+    return opacity_file_contents[1]
 
 
 def write_Ye_file(outputfilepath, griddata):
-    with open(Path(outputfilepath) / "Ye.txt", "w") as fYe:
+    with Path(outputfilepath, "Ye.txt").open("w") as fYe:
         fYe.write(f'{len(griddata["inputcellid"])}\n')
         griddata[["inputcellid", "cellYe"]].to_csv(fYe, sep="\t", index=False, header=False, float_format="%.10f")
 

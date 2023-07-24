@@ -8,8 +8,8 @@ import artistools as at
 
 
 def make_downscaled_3d_grid(modelpath: str | Path, outputgridsize: int = 50, plot: bool = False) -> Path:
-    """Should be same as downscale_3d_grid.pro
-    Expects a 3D model with grid^3 cells and outputs 3D model with smallgrid^3 cells.
+    """Get a 3D model with smallgrid^3 cells from a 3D model with grid^3 cells.
+    Should be same as downscale_3d_grid.pro.
     """
     modelpath = Path(modelpath)
 
@@ -44,9 +44,9 @@ def make_downscaled_3d_grid(modelpath: str | Path, outputgridsize: int = 50, plo
     print("reading abundance file")
 
     cellindex = 0
-    for z in range(0, grid):
-        for y in range(0, grid):
-            for x in range(0, grid):
+    for z in range(grid):
+        for y in range(grid):
+            for x in range(grid):
                 abund[x, y, z] = dfelemabund.iloc[cellindex].to_numpy()
                 cellindex += 1
 
@@ -55,9 +55,9 @@ def make_downscaled_3d_grid(modelpath: str | Path, outputgridsize: int = 50, plo
     vmax = modelmeta["vmax_cmps"]
 
     cellindex = 0
-    for z in range(0, grid):
-        for y in range(0, grid):
-            for x in range(0, grid):
+    for z in range(grid):
+        for y in range(grid):
+            for x in range(grid):
                 rho[x, y, z] = dfmodel.iloc[cellindex]["rho"]
                 radioabunds[x, y, z, :] = dfmodel.iloc[cellindex][abundcols]
 
@@ -67,12 +67,12 @@ def make_downscaled_3d_grid(modelpath: str | Path, outputgridsize: int = 50, plo
     radioabunds_small = np.zeros((smallgrid, smallgrid, smallgrid, nabundcols))
     abund_small = np.zeros((smallgrid, smallgrid, smallgrid, max_atomic_number + 1))
 
-    for z in range(0, smallgrid):
-        for y in range(0, smallgrid):
-            for x in range(0, smallgrid):
-                for zz in range(0, merge):
-                    for yy in range(0, merge):
-                        for xx in range(0, merge):
+    for z in range(smallgrid):
+        for y in range(smallgrid):
+            for x in range(smallgrid):
+                for zz in range(merge):
+                    for yy in range(merge):
+                        for xx in range(merge):
                             rho_small[x, y, z] += rho[x * merge + xx, y * merge + yy, z * merge + zz]
                             for i in range(nabundcols):
                                 radioabunds_small[x, y, z, i] += (
@@ -85,9 +85,9 @@ def make_downscaled_3d_grid(modelpath: str | Path, outputgridsize: int = 50, plo
                                 * rho[x * merge + xx, y * merge + yy, z * merge + zz]
                             )
 
-    for z in range(0, smallgrid):
-        for y in range(0, smallgrid):
-            for x in range(0, smallgrid):
+    for z in range(smallgrid):
+        for y in range(smallgrid):
+            for x in range(smallgrid):
                 if rho_small[x, y, z] > 0:
                     radioabunds_small[x, y, z, :] /= rho_small[x, y, z]
 
@@ -97,10 +97,10 @@ def make_downscaled_3d_grid(modelpath: str | Path, outputgridsize: int = 50, plo
 
     print("writing abundance file")
     i = 0
-    with open(modelpath / smallabundancefile, "w") as newabundancefile:
-        for z in range(0, smallgrid):
-            for y in range(0, smallgrid):
-                for x in range(0, smallgrid):
+    with (modelpath / smallabundancefile).open("w") as newabundancefile:
+        for z in range(smallgrid):
+            for y in range(smallgrid):
+                for x in range(smallgrid):
                     line = abund_small[x, y, z, :].tolist()  # index 1:30 are abundances
                     line[0] = int(i + 1)  # replace index 0 with index id
                     i += 1
@@ -110,15 +110,15 @@ def make_downscaled_3d_grid(modelpath: str | Path, outputgridsize: int = 50, plo
     print("writing model file")
     xmax = vmax * t_model_days * 3600 * 24
     cellindex = 0
-    with open(modelpath / smallmodelfile, "w") as newmodelfile:
+    with (modelpath / smallmodelfile).open("w") as newmodelfile:
         gridsize = int(smallgrid**3)
         newmodelfile.write(f"{gridsize}\n")
         newmodelfile.write(f"{t_model_days}\n")
         newmodelfile.write(f"{vmax}\n")
 
-        for z in range(0, smallgrid):
-            for y in range(0, smallgrid):
-                for x in range(0, smallgrid):
+        for z in range(smallgrid):
+            for y in range(smallgrid):
+                for x in range(smallgrid):
                     line1 = [
                         int(cellindex + 1),
                         -xmax + 2 * x * xmax / smallgrid,

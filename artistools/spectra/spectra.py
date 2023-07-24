@@ -24,6 +24,8 @@ if t.TYPE_CHECKING:
     from collections.abc import Collection
     from collections.abc import Sequence
 
+    import numpy.typing as npt
+
 fluxcontributiontuple = namedtuple(
     "fluxcontributiontuple", "fluxcontrib linelabel array_flambda_emission array_flambda_absorption color"
 )
@@ -90,7 +92,7 @@ def get_spectrum_at_time(
     average_over_theta: bool | None = None,
 ) -> pd.DataFrame:
     if dirbin >= 0:
-        if args is not None and args.plotvspecpol and os.path.isfile(modelpath / "vpkt.txt"):
+        if args is not None and args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
             return get_vspecpol_spectrum(modelpath, time, dirbin, args)
         assert average_over_phi is not None
         assert average_over_theta is not None
@@ -123,7 +125,7 @@ def get_from_packets(
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     fnufilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
-) -> pd.DataFrame:
+) -> dict[int, pd.DataFrame]:
     """Get a spectrum dataframe using the packets files as input."""
     assert not useinternalpackets
     if directionbins is None:
@@ -183,6 +185,7 @@ def get_from_packets(
     dfpackets = dfpackets.select(getcols).collect().lazy()
 
     dfdict = {}
+    megaparsec_to_cm = 3.085677581491367e24
     for dirbin in directionbins:
         if dirbin == -1:
             solidanglefactor = 1.0
@@ -215,9 +218,9 @@ def get_from_packets(
             / (timehigh - timelow)
             / (4 * math.pi)
             * solidanglefactor
-            / (u.megaparsec.to("cm") ** 2)
+            / (megaparsec_to_cm**2)
             / nprocs_read
-        )
+        ).to_numpy()
 
         if use_escapetime:
             assert escapesurfacegamma is not None
@@ -243,8 +246,8 @@ def get_from_packets(
 
 
 @lru_cache(maxsize=16)
-def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
-    """Return dataframe of time-series spectra for every viewing direction."""
+def read_spec_res(modelpath: Path) -> dict[int, pl.DataFrame]:
+    """Return a dataframe of time-series spectra for every viewing direction."""
     specfilename = (
         modelpath
         if Path(modelpath).is_file()
@@ -258,9 +261,11 @@ def read_spec_res(modelpath: Path) -> dict[int, pd.DataFrame]:
     if res_specdata_in[res_specdata_in.columns[-1]].is_null().all():
         res_specdata_in = res_specdata_in.drop(res_specdata_in.columns[-1])
 
-    res_specdata: dict[int, pl.DataFrame] = at.split_dataframe_dirbins(res_specdata_in, output_polarsdf=True)
+    res_specdata = at.split_dataframe_dirbins(res_specdata_in, output_polarsdf=True)
+
     prev_dfshape = None
     for dirbin in res_specdata:
+        assert isinstance(res_specdata[dirbin], pl.DataFrame)
         newcolnames = [str(x) for x in res_specdata[dirbin][0, :].to_numpy()[0]]
         newcolnames[0] = "nu"
 
@@ -313,7 +318,7 @@ def get_spec_res(
     modelpath: Path,
     average_over_theta: bool = False,
     average_over_phi: bool = False,
-) -> dict[int, pd.DataFrame]:
+) -> dict[int, pl.DataFrame]:
     res_specdata = read_spec_res(modelpath)
     if average_over_theta:
         res_specdata = at.average_direction_bins(res_specdata, overangle="theta")
@@ -328,7 +333,7 @@ def get_spectrum(
     timestepmin: int,
     timestepmax: int | None = None,
     directionbins: Sequence[int] | None = None,
-    fnufilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
+    fnufilterfunc: t.Callable[[npt.NDArray[np.floating]], npt.NDArray[np.floating]] | None = None,
     average_over_theta: bool = False,
     average_over_phi: bool = False,
     stokesparam: t.Literal["I", "Q", "U"] = "I",
@@ -373,7 +378,7 @@ def get_spectrum(
     specdataout: dict[int, pd.DataFrame] = {}
     for dirbin in directionbins:
         arr_nu = specdata[dirbin]["nu"].to_numpy()
-        arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
+        arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
 
         arr_f_nu = stackspectra(
             [
@@ -473,9 +478,9 @@ def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
     filenames = sorted_by_number(filenames)
 
     for spec_index, filename in enumerate(filenames):  # vspecpol-total files
-        vspecdata = []
-        for modelpath in args.modelpath:
-            vspecdata.append(pd.read_csv(modelpath / filename, delim_whitespace=True, header=None))
+        vspecdata = [
+            pd.read_csv(modelpath / filename, delim_whitespace=True, header=None) for modelpath in args.modelpath
+        ]
         for i in range(1, len(vspecdata)):
             vspecdata[0].iloc[1:, 1:] += vspecdata[i].iloc[1:, 1:]
 
@@ -600,9 +605,7 @@ def get_vspecpol_spectrum(
     dfspectrum = dfspectrum.sort_values(by="nu", ascending=False)
 
     dfspectrum = dfspectrum.eval("lambda_angstroms = @c / nu", local_dict={"c": 2.99792458e18})
-    dfspectrum = dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms")
-
-    return dfspectrum
+    return dfspectrum.eval("f_lambda = f_nu * nu / lambda_angstroms")
 
 
 @lru_cache(maxsize=4)
@@ -617,9 +620,9 @@ def get_flux_contributions(
     directionbin: int | None = None,
     averageoverphi: bool = False,
     averageovertheta: bool = False,
-) -> tuple[list[fluxcontributiontuple], np.ndarray]:
-    arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
-    arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
+) -> tuple[list[fluxcontributiontuple], npt.NDArray[np.float64]]:
+    arr_tmid = at.get_timestep_times(modelpath, loc="mid")
+    arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
     arraynu = at.get_nu_grid(modelpath)
     arraylambda = 2.99792458e18 / arraynu
     if not Path(modelpath, "compositiondata.txt").is_file():
@@ -907,7 +910,7 @@ def get_flux_contributions_from_packets(
     for _index, packetsfile in enumerate(packetsfiles):
         if useinternalpackets:
             # if we're using packets*.out files, these packets are from the last timestep
-            t_seconds = at.get_timestep_times_float(modelpath, loc="start")[-1] * 86400.0
+            t_seconds = at.get_timestep_times(modelpath, loc="start")[-1] * 86400.0
 
             if modelgridindex is not None:
                 v_inner = at.inputmodel.get_modeldata_tuple(modelpath)[0]["velocity_inner"].iloc[modelgridindex] * 1e5
@@ -1012,9 +1015,8 @@ def get_flux_contributions_from_packets(
             print("volume", volume, "shell volume", volume_shells, "-------------------------------------------------")
         normfactor = c_cgs / 4 / math.pi / delta_lambda / volume / nprocs_read
     else:
-        normfactor = (
-            1.0 / delta_lambda / (timehigh - timelow) / 4 / math.pi / (u.megaparsec.to("cm") ** 2) / nprocs_read
-        )
+        megaparsec_to_cm = 3.085677581491367e24
+        normfactor = 1.0 / delta_lambda / (timehigh - timelow) / 4 / math.pi / (megaparsec_to_cm**2) / nprocs_read
 
     array_flambda_emission_total = energysum_spectrum_emission_total * normfactor
 
@@ -1184,9 +1186,9 @@ def print_floers_line_ratio(
     if f_7155 > 0 and f_12570 > 0:
         fratio = f_12570 / f_7155
         print(f"f_12570/f_7122 = {fratio:.2e} (log10 is {math.log10(fratio):.2e})")
-        outfilename = f"fe2_nir_vis_ratio_{os.path.basename(modelpath)}.txt"
+        outfilename = Path(f"fe2_nir_vis_ratio_{modelpath.name}.txt")
         print(f" saved to {outfilename}")
-        with open(outfilename, "a+") as f:
+        with outfilename.open("a+") as f:
             f.write(f"{timedays:.1f} {fratio:.3e}\n")
 
 
@@ -1289,8 +1291,8 @@ def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
 
-    with open(outdirectory / "spectra_list.txt", "w+") as spectra_list:
-        arr_tmid = at.get_timestep_times_float(modelpath, loc="mid")
+    with (outdirectory / "spectra_list.txt").open("w+") as spectra_list:
+        arr_tmid = at.get_timestep_times(modelpath, loc="mid")
 
         for timestep in range(timestepmin, timestepmax + 1):
             dfspectrum = get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]
@@ -1298,7 +1300,7 @@ def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
 
             outfilepath = outdirectory / f"spectrum_ts{timestep:02.0f}_{tmid:.2f}d.txt"
 
-            with open(outfilepath, "w") as spec_file:
+            with outfilepath.open("w") as spec_file:
                 spec_file.write("#lambda f_lambda_1Mpc\n")
                 spec_file.write("#[A] [erg/s/cm2/A]\n")
 
@@ -1308,7 +1310,7 @@ def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
 
             spectra_list.write(str(outfilepath.absolute()) + "\n")
 
-    with open(outdirectory / "time_list.txt", "w+") as time_list:
+    with (outdirectory / "time_list.txt").open("w+") as time_list:
         for time in arr_tmid:
             time_list.write(f"{time} \n")
 

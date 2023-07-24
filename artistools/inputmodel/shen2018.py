@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import math
-import os.path
+from pathlib import Path
 
 import pandas as pd
 from astropy import units as u
@@ -23,7 +23,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    with open(args.inputpath) as infile:
+    with Path(args.inputpath).open() as infile:
         columns = infile.readline().split()
 
     atomicnumberofspecies = {}
@@ -90,8 +90,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     print(f'M_tot  = {m_enc_outer /  u.solMass.to("g"):.3f} solMass')
     print(f'M_Ni56 = {tot_ni56mass /  u.solMass.to("g"):.3f} solMass')
 
-    at.save_modeldata(dfmodel, t_model_init_days, os.path.join(args.outputpath, "model.txt"))
-    at.inputmodel.save_initelemabundances(dfelabundances, os.path.join(args.outputpath, "abundances.txt"))
+    at.save_modeldata(dfmodel, t_model_init_days, Path(args.outputpath, "model.txt"))
+    at.inputmodel.save_initelemabundances(dfelabundances, Path(args.outputpath, "abundances.txt"))
 
 
 if __name__ == "__main__":

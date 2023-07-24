@@ -56,7 +56,7 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     if not args.modelpath:
-        args.modelpath = [Path(".")]
+        args.modelpath = [Path()]
     elif isinstance(args.modelpath, (str, Path)):
         args.modelpath = [args.modelpath]
 

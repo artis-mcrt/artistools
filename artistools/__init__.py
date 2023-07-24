@@ -3,23 +3,24 @@
 A collection of plotting, analysis, and file format conversion tools
 for the ARTIS radiative transfer code.
 """
-import artistools.atomic
-import artistools.codecomparison
-import artistools.commands
-import artistools.deposition
-import artistools.estimators
-import artistools.inputmodel
-import artistools.lightcurve
-import artistools.macroatom
-import artistools.nltepops
-import artistools.nonthermal
-import artistools.packets
-import artistools.plotspherical
-import artistools.radfield
-import artistools.spectra
-import artistools.transitions
-import artistools.writecomparisondata
 
+from . import atomic
+from . import codecomparison
+from . import commands
+from . import deposition
+from . import estimators
+from . import initial_composition
+from . import inputmodel
+from . import lightcurve
+from . import macroatom
+from . import nltepops
+from . import nonthermal
+from . import packets
+from . import plotspherical
+from . import radfield
+from . import spectra
+from . import transitions
+from . import writecomparisondata
 from .__main__ import addargs
 from .__main__ import main
 from .configuration import get_config
@@ -72,7 +73,7 @@ from .misc import get_syn_dir
 from .misc import get_time_range
 from .misc import get_timestep_of_timedays
 from .misc import get_timestep_time
-from .misc import get_timestep_times_float
+from .misc import get_timestep_times
 from .misc import get_viewingdirection_costhetabincount
 from .misc import get_viewingdirection_phibincount
 from .misc import get_viewingdirectionbincount

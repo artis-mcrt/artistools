@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import math
-import os
 from collections import namedtuple
 from math import atan
 from pathlib import Path
@@ -81,12 +80,12 @@ def get_nnetot(ions: list[tuple[int, int]], ionpopdict: dict[tuple[int, int], fl
 def read_binding_energies(modelpath: str = ".") -> np.ndarray:
     collionfilename = at.firstexisting(
         [
-            os.path.join(modelpath, "binding_energies.txt"),
-            os.path.join(get_config()["path_artistools_dir"], "data", "binding_energies.txt"),
+            Path(modelpath, "binding_energies.txt"),
+            Path(get_config()["path_artistools_dir"], "data", "binding_energies.txt"),
         ]
     )
 
-    with open(collionfilename) as f:
+    with collionfilename.open() as f:
         nt_shells, n_z_binding = (int(x) for x in f.readline().split())
         electron_binding = np.zeros((n_z_binding, nt_shells))
 
@@ -172,10 +171,7 @@ def get_mean_binding_energy(
                 )
                 assert electron_loop == 8
                 # print("Z = %d, ion_stage = %d\n", get_element(element), get_ionstage(element, ion));
-        if use2 < use3:
-            total += electronsinshell / use3
-        else:
-            total += electronsinshell / use2
+        total += electronsinshell / use3 if use2 < use3 else electronsinshell / use2
         # print("total total)
 
     return total
@@ -207,11 +203,7 @@ def get_mean_binding_energy_alt(atomic_number, ion_stage, electron_binding, ionp
                 )
                 assert electron_loop == 8
                 # print("Z = %d, ion_stage = %d\n", get_element(element), get_ionstage(element, ion));
-        if use2 < use3:
-            total += electronsinshell * use3
-        else:
-            total += electronsinshell * use2
-
+        total += electronsinshell * use3 if use2 < use3 else electronsinshell * use2
     assert ecount == (atomic_number - ion_stage + 1)
 
     return total / ecount
@@ -249,7 +241,7 @@ def get_lotz_xs_ionisation(atomic_number, ion_stage, electron_binding, ionpot_ev
                 assert electron_loop == 8
                 # print("Z = %d, ion_stage = %d\n", get_element(element), get_ionstage(element, ion));
 
-        p = use3 if use2 < use3 else use2
+        p = max(use2, use3)
 
         if 0.5 * beta**2 * ME * CLIGHT**2 > p:
             part_sigma += (
@@ -353,11 +345,7 @@ def ar_xs(energy_ev, ionpot_ev, A, B, C, D):
 
 
 def get_arxs_array_shell(arr_enev, shell):
-    ar_xs_array = np.array(
-        [ar_xs(energy_ev, shell.ionpot_ev, shell.A, shell.B, shell.C, shell.D) for energy_ev in arr_enev]
-    )
-
-    return ar_xs_array
+    return np.array([ar_xs(energy_ev, shell.ionpot_ev, shell.A, shell.B, shell.C, shell.D) for energy_ev in arr_enev])
 
 
 def get_arxs_array_ion(arr_enev, dfcollion, Z, ionstage):
@@ -466,15 +454,13 @@ def read_colliondata(collionfilename="collion.txt", modelpath: None | str | Path
     collionrow = namedtuple("collionrow", ["Z", "nelec", "n", "l", "ionpot_ev", "A", "B", "C", "D"])
 
     nrows = -1
-    with open(Path(modelpath, collionfilename)) as collionfile:
+    with Path(modelpath, collionfilename).open() as collionfile:
         nrows = int(collionfile.readline().strip())
         # print(f'Collionfile: expecting {nrows} rows')
         dfcollion = pd.read_csv(collionfile, delim_whitespace=True, header=None, names=collionrow._fields)
 
     # assert len(dfcollion) == nrows  # artis enforces this, but last 10 rows were not inportant anyway (high ionized Ni)
-    dfcollion = dfcollion.eval("ionstage = Z - nelec + 1")
-
-    return dfcollion
+    return dfcollion.eval("ionstage = Z - nelec + 1")
 
 
 def calculate_nt_frac_excitation(engrid, dftransitions, yvec, deposition_density_ev):
@@ -500,13 +486,7 @@ def get_energyindex_lteq(en_ev, engrid):
 
     index = math.floor((en_ev - engrid[0]) / deltaen)
 
-    if index < 0:
-        return 0
-
-    if index > len(engrid) - 1:
-        return len(engrid) - 1
-
-    return index
+    return 0 if index < 0 else min(index, len(engrid) - 1)
 
 
 def get_energyindex_gteq(en_ev, engrid):
@@ -515,13 +495,7 @@ def get_energyindex_gteq(en_ev, engrid):
 
     index = math.ceil((en_ev - engrid[0]) / deltaen)
 
-    if index < 0:
-        return 0
-
-    if index > len(engrid) - 1:
-        return len(engrid) - 1
-
-    return index
+    return 0 if index < 0 else min(index, len(engrid) - 1)
 
 
 def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransitions, noexcitation):
@@ -541,10 +515,10 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
 
         if not noexcitation and (Z, ionstage) in dftransitions:
             for _, row in dftransitions[(Z, ionstage)].iterrows():
-                nnlevel = row.lower_pop
                 epsilon_trans_ev = row.epsilon_trans_ev
                 if energy_ev + epsilon_trans_ev >= engrid[0]:
                     i = get_energyindex_lteq(en_ev=energy_ev + epsilon_trans_ev, engrid=engrid)
+                    nnlevel = row.lower_pop
                     N_e_ion += (nnlevel / nnion) * yvec[i] * get_xs_excitation(engrid[i], row)
                     # enbelow = engrid[i]
                     # enabove = engrid[i + 1]
@@ -587,12 +561,15 @@ def calculate_N_e(energy_ev, engrid, ions, ionpopdict, dfcollion, yvec, dftransi
             # integral from 2E + I up to E_max
             integral2startindex = get_energyindex_lteq(en_ev=2 * energy_ev + ionpot_ev, engrid=engrid)
             N_e_ion += deltaen * sum(
-                [
-                    yvec[j]
-                    * ar_xs_array[j]
-                    * Psecondary(e_p=engrid[j], epsilon=energy_ev + ionpot_ev, ionpot_ev=ionpot_ev, J=J)
-                    for j in range(integral2startindex, len(engrid))
-                ]
+                yvec[j]
+                * ar_xs_array[j]
+                * Psecondary(
+                    e_p=engrid[j],
+                    epsilon=energy_ev + ionpot_ev,
+                    ionpot_ev=ionpot_ev,
+                    J=J,
+                )
+                for j in range(integral2startindex, len(engrid))
             )
 
         N_e += nnion * N_e_ion
@@ -612,7 +589,7 @@ def calculate_frac_heating(
 
     deltaen = engrid[1] - engrid[0]
     frac_heating += (
-        deltaen / deposition_density_ev * sum([lossfunction(en_ev, nne) * yvec[i] for i, en_ev in enumerate(engrid)])
+        deltaen / deposition_density_ev * sum(lossfunction(en_ev, nne) * yvec[i] for i, en_ev in enumerate(engrid))
     )
 
     frac_heating_E_0_part = E_0 * yvec[0] * lossfunction(E_0, nne) / deposition_density_ev
@@ -642,16 +619,16 @@ def calculate_frac_heating(
 def sfmatrix_add_excitation(engrid, dftransitions_ion, nnion, sfmatrix):
     deltaen = engrid[1] - engrid[0]
     for _, row in dftransitions_ion.iterrows():
-        nnlevel = row.lower_pop
         epsilon_trans_ev = row.epsilon_trans_ev
         if epsilon_trans_ev >= engrid[0]:
+            nnlevel = row.lower_pop
             vec_xs_excitation_nnlevel_deltae = nnlevel * deltaen * get_xs_excitation_vector(engrid, row)
             xsstartindex = get_energyindex_lteq(en_ev=epsilon_trans_ev, engrid=engrid)
 
             for i, en in enumerate(engrid):
                 stopindex = get_energyindex_lteq(en_ev=en + epsilon_trans_ev, engrid=engrid)
 
-                startindex = i if i > xsstartindex else xsstartindex
+                startindex = max(i, xsstartindex)
                 # for j in range(startindex, stopindex):
                 sfmatrix[i, startindex:stopindex] += vec_xs_excitation_nnlevel_deltae[startindex:stopindex]
 
@@ -674,11 +651,7 @@ def sfmatrix_add_ionization_shell(engrid, nnion, shell, sfmatrix):
     if ionpot_ev <= engrid[0]:
         xsstartindex = 0
     else:
-        xsstartindex = npts + 1
-        for i in range(npts):
-            if ar_xs_array[i] > 0.0:
-                xsstartindex = i
-                break
+        xsstartindex = next((i for i in range(npts) if ar_xs_array[i] > 0.0), npts + 1)
         xsstartindex = get_energyindex_gteq(en_ev=ionpot_ev, engrid=engrid)
 
     # J * atan[(epsilon - ionpot_ev) / J] is the indefinite integral of
@@ -1208,15 +1181,14 @@ def get_epsilon_avg(e_p: float, J: float, ionpot_ev: float, quiet: bool = True) 
 
 def calculate_Latom_excitation(ions, ionpopdict, nntot, en_ev, adata, T_exc=5000):
     L_atom_sum = 0.0
+    maxnlevelslower = 5
+    maxnlevelsupper = 250
+
+    k_b = 8.617333262145179e-05  # eV / K
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
 
         ion = adata.query("Z == @Z and ion_stage == @ionstage").iloc[0]
-        dftransitions_ion = ion.transitions
-
-        maxnlevelslower = 5
-        maxnlevelsupper = 250
-
         # filterquery = 'collstr >= 0 or forbidden == False'
         filterquery = "collstr != -999"
         if maxnlevelslower is not None:
@@ -1224,18 +1196,16 @@ def calculate_Latom_excitation(ions, ionpopdict, nntot, en_ev, adata, T_exc=5000
         if maxnlevelsupper is not None:
             filterquery += " and upper < @maxnlevelsupper"
 
+        dftransitions_ion = ion.transitions
         dftransitions_ion = dftransitions_ion.query(filterquery, inplace=False).copy()
 
-        k_b = 8.617333262145179e-05  # eV / K
         energy_boltzfac_sum = ion.levels.eval("energy_ev * g * exp(- energy_ev / @k_b / @T_exc)").sum()
 
         populations = ion.levels.eval("g * exp(- energy_ev / @k_b / @T_exc)").to_numpy() / energy_boltzfac_sum
 
         dftransitions_ion = dftransitions_ion.eval(
-            (
-                "epsilon_trans_ev = @ion.levels.loc[upper].energy_ev.to_numpy() -"
-                " @ion.levels.loc[lower].energy_ev.to_numpy()"
-            ),
+            "epsilon_trans_ev = @ion.levels.loc[upper].energy_ev.to_numpy() -"
+            " @ion.levels.loc[lower].energy_ev.to_numpy()",
         )
 
         dftransitions_ion = dftransitions_ion.eval("upper_g = @ion.levels.loc[upper].g.to_numpy()")
@@ -1300,12 +1270,8 @@ def workfunction_tests(modelpath, args):
         (26, 2): 1e5,
     }
 
-    ions = []
-    for key in ionpopdict:
-        # keep only the ion populations, not element or total populations
-        if isinstance(key, tuple) and len(key) == 2:
-            ions.append(key)
-
+    # keep only the ion populations, not element or total populations
+    ions = [key for key in ionpopdict if isinstance(key, tuple) and len(key) == 2]
     ions.sort()
 
     nntot = get_nntot(ions=ions, ionpopdict=ionpopdict)
@@ -1413,7 +1379,7 @@ def workfunction_tests(modelpath, args):
         print(f"\n workfn_limit_ev_sim {workfn_limit_ev_sim:.2f} eV")
         print(f"   eta_ion  {ionpot_valence_ev / workfn_limit_ev_sim:.3f}")
         print(f"   eta_heat {1 - ionpot_valence_ev / workfn_limit_ev_sim:.3f}")
-        arr_workfn_limit_sim = np.array([workfn_limit_ev_sim for x in arr_en_ev])
+        arr_workfn_limit_sim = np.array([workfn_limit_ev_sim for _ in arr_en_ev])
 
         arr_xs_ar92 = at.nonthermal.get_arxs_array_ion(arr_en_ev, dfcollion_thision, Z, ionstage)
         Latom_ionisation_ar92 = arr_xs_ar92 * (ionpot_valence_ev * EV)
@@ -1436,7 +1402,7 @@ def workfunction_tests(modelpath, args):
         print(f"\n workfn_limit_axelrod: {workfn_limit_axelrod:.2f} eV")
         print(f"   eta_ion  {ionpot_valence_ev / workfn_limit_axelrod:.3f}")
         print(f"   eta_heat {1 - ionpot_valence_ev / workfn_limit_axelrod:.3f}")
-        arr_workfn_limit_axelrod = np.array([workfn_limit_axelrod for x in arr_en_ev])
+        arr_workfn_limit_axelrod = np.array([workfn_limit_axelrod for _ in arr_en_ev])
 
         # Approximation to Axelrod 1980 Eq 3.20 (left Latom part) where the transition energy
         # of every ionisation is just the valence potential

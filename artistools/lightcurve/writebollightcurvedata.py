@@ -42,9 +42,7 @@ def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.Data
     times = lcdataframes[0]["time"]
     lightcurvedata = {"time": times}
 
-    nangles = len(lcdataframes)
-    if not res:
-        nangles = 1
+    nangles = len(lcdataframes) if res else 1
     for angle in range(nangles):
         lcdata = lcdataframes[angle]
         bol_luminosity = np.array(lcdata["lum"]) * 3.826e33  # Luminosity in erg/s
@@ -56,9 +54,7 @@ def get_bol_lc_from_lightcurveout(modelpath: Path, res: bool = False) -> pd.Data
         lightcurvedata[columnname] = bol_luminosity
 
     lightcurvedataframe = pd.DataFrame(lightcurvedata)
-    lightcurvedataframe = lightcurvedataframe.replace([np.inf, -np.inf], 0)
-
-    return lightcurvedataframe
+    return lightcurvedataframe.replace([np.inf, -np.inf], 0)
 
 
 # modelnames = ['M08_03', 'M08_05', 'M08_10', 'M09_03', 'M09_05', 'M09_10',
@@ -75,7 +71,7 @@ for modelname in modelnames:
 
     lightcurvedataframe.to_csv(outfilepath / f"bol_lightcurvedata_{modelname}.txt", sep=" ", index=False, header=False)
 
-    with open(outfilepath / f"bol_lightcurvedata_{modelname}.txt", "r+") as f:  # add comment to start of file
+    with (outfilepath / f"bol_lightcurvedata_{modelname}.txt").open("r+") as f:  # add comment to start of file
         content = f.read()
         f.seek(0, 0)
         f.write(

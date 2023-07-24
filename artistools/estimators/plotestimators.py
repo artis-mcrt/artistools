@@ -4,7 +4,9 @@
 
 Examples are temperatures, populations, heating/cooling rates.
 """
+
 import argparse
+import contextlib
 import math
 import sys
 from pathlib import Path
@@ -127,7 +129,7 @@ def plot_average_ionisation_excitation(
     else:
         raise ValueError
 
-    arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
+    arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
     for paramvalue in params:
         if seriestype == "averageionisation":
             atomic_number = at.get_atomic_number(paramvalue)
@@ -197,7 +199,7 @@ def plot_levelpop(
 
     adata = at.atomic.get_levels(modelpath)
 
-    arr_tdelta = at.get_timestep_times_float(modelpath, loc="delta")
+    arr_tdelta = at.get_timestep_times(modelpath, loc="delta")
     for paramvalue in params:
         paramsplit = paramvalue.split(" ")
         atomic_number = at.get_atomic_number(paramsplit[0])
@@ -535,7 +537,7 @@ def plot_series(
 
     xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
 
-    ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename, None), **plotkwargs)
+    ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename), **plotkwargs)
 
 
 def get_xlist(
@@ -551,7 +553,7 @@ def get_xlist(
         timestepslist_out = timestepslist
     elif xvariable == "time":
         mgilist_out = allnonemptymgilist
-        timearray = at.get_timestep_times_float(modelpath)
+        timearray = at.get_timestep_times(modelpath)
         xlist = [np.mean([timearray[ts] for ts in tslist]) for tslist in timestepslist]
         timestepslist_out = timestepslist
     else:
@@ -748,7 +750,7 @@ def make_plot(
         if args.multiplot and not args.classicartis:
             tdays = estimators[(timestepslist[0][0], mgilist[0])]["tdays"]
             figure_title = f"{modelname}\nTimestep {timestepslist[0]} ({tdays:.2f}d)"
-        elif args.multiplot and args.classicartis:
+        elif args.multiplot:
             timedays = float(at.get_timestep_time(modelpath, timestepslist[0]))
             figure_title = f"{modelname}\nTimestep {timestepslist[0]} ({timedays:.2f}d)"
         else:
@@ -802,7 +804,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
         listT_e = []
         list_rrc = []
         list_rrc2 = []
-        for _, dicttimestepmodelgrid in estimators.items():
+        for dicttimestepmodelgrid in estimators.values():
             if (
                 not dicttimestepmodelgrid["emptycell"]
                 and (atomic_number, ion_stage) in dicttimestepmodelgrid["RRC_LTE_Nahar"]
@@ -820,7 +822,7 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
         ax.plot(listT_e, list_rrc, linewidth=2, label=f"{ionstr} ARTIS RRC_LTE_Nahar", **plotkwargs)
         ax.plot(listT_e, list_rrc2, linewidth=2, label=f"{ionstr} ARTIS Alpha_R", **plotkwargs)
 
-        try:
+        with contextlib.suppress(KeyError):
             dfrates = recombcalibrationdata[(atomic_number, ion_stage)].query(
                 "T_e > @T_e_min & T_e < @T_e_max", local_dict={"T_e_min": min(listT_e), "T_e_max": max(listT_e)}
             )
@@ -834,9 +836,6 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
                 marker="s",
                 **plotkwargs,
             )
-        except KeyError:
-            pass
-
         # rrcfiles = glob.glob(
         #     f'/Users/lshingles/Library/Mobile Documents/com~apple~CloudDocs/GitHub/'
         #     f'artis-atomic/atomic-data-nahar/{at.get_elsymbol(atomic_number).lower()}{ion_stage - 1}.rrc*.txt')
@@ -943,7 +942,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args=None, argsraw=None, **kwargs) -> None:
     """Plot ARTIS estimators."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
@@ -957,7 +956,7 @@ def main(args=None, argsraw=None, **kwargs):
     modelname = at.get_model_name(modelpath)
 
     if not args.timedays and not args.timestep and args.modelgridindex > -1:
-        args.timestep = f"0-{len(at.get_timestep_times_float(modelpath)) - 1}"
+        args.timestep = f"0-{len(at.get_timestep_times(modelpath)) - 1}"
 
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
@@ -979,6 +978,7 @@ def main(args=None, argsraw=None, **kwargs):
         estimators = at.estimators.read_estimators(
             modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included)
         )
+    assert estimators is not None
 
     for ts in reversed(timesteps_included):
         tswithdata = [ts for (ts, mgi) in estimators]
@@ -991,101 +991,98 @@ def main(args=None, argsraw=None, **kwargs):
         print("No timesteps with data are included")
         return
 
-    plotlist = (
-        args.plotlist
-        if args.plotlist
-        else [
-            # [['initabundances', ['Fe', 'Ni_stable', 'Ni_56']]],
-            # ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
-            #  ['_yscale', 'linear']],
-            # ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff',
-            #  ['_yscale', 'linear']],
-            # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
-            # ['heating_gamma/gamma_dep'],
-            # ['nne'],
-            ["TR", "Te", "TJ", ["_yscale", "linear"]],
-            # ['Te'],
-            # [['averageionisation', ['Fe', 'Ni']]],
-            # [['averageexcitation', ['Fe II', 'Fe III']]],
-            # [['populations', ['Sr89', 'Sr90', 'Sr91', 'Sr92', 'Sr93', 'Sr94', 'Sr95']],
-            #  ['_ymin', 1e-3], ['_ymax', 5]],
-            [["populations", ["Fe", "Co", "Ni", "Sr", "Nd", "U"]]],
-            # [['populations', ['He I', 'He II', 'He III']]],
-            # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
-            # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
-            # [['populations', ['Ne I', 'Ne II', 'Ne III', 'Ne IV', 'Ne V']]],
-            # [['populations', ['Si I', 'Si II', 'Si III', 'Si IV', 'Si V']]],
-            # [['populations', ['Cr I', 'Cr II', 'Cr III', 'Cr IV', 'Cr V']]],
-            # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Fe VI', 'Fe VII', 'Fe VIII']]],
-            # [['populations', ['Co I', 'Co II', 'Co III', 'Co IV', 'Co V', 'Co VI', 'Co VII']]],
-            # [['populations', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
-            # [['populations', ['Fe II', 'Fe III', 'Co II', 'Co III', 'Ni II', 'Ni III']]],
-            # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
-            # [['RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V']]],
-            # [['RRC_LTE_Nahar', ['Co II', 'Co III', 'Co IV', 'Co V']]],
-            # [['RRC_LTE_Nahar', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
-            # [['Alpha_R / RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni III']]],
-            # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
-        ]
-    )
+    plotlist = args.plotlist or [
+        # [['initabundances', ['Fe', 'Ni_stable', 'Ni_56']]],
+        # ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
+        #  ['_yscale', 'linear']],
+        # ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff',
+        #  ['_yscale', 'linear']],
+        # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
+        # ['heating_gamma/gamma_dep'],
+        # ['nne'],
+        ["TR", "Te", "TJ", ["_yscale", "linear"]],
+        # ['Te'],
+        # [['averageionisation', ['Fe', 'Ni']]],
+        # [['averageexcitation', ['Fe II', 'Fe III']]],
+        # [['populations', ['Sr89', 'Sr90', 'Sr91', 'Sr92', 'Sr93', 'Sr94', 'Sr95']],
+        #  ['_ymin', 1e-3], ['_ymax', 5]],
+        [["populations", ["Fe", "Co", "Ni", "Sr", "Nd", "U"]]],
+        # [['populations', ['He I', 'He II', 'He III']]],
+        # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
+        # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
+        # [['populations', ['Ne I', 'Ne II', 'Ne III', 'Ne IV', 'Ne V']]],
+        # [['populations', ['Si I', 'Si II', 'Si III', 'Si IV', 'Si V']]],
+        # [['populations', ['Cr I', 'Cr II', 'Cr III', 'Cr IV', 'Cr V']]],
+        # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Fe VI', 'Fe VII', 'Fe VIII']]],
+        # [['populations', ['Co I', 'Co II', 'Co III', 'Co IV', 'Co V', 'Co VI', 'Co VII']]],
+        # [['populations', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
+        # [['populations', ['Fe II', 'Fe III', 'Co II', 'Co III', 'Ni II', 'Ni III']]],
+        # [['populations', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
+        # [['RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V']]],
+        # [['RRC_LTE_Nahar', ['Co II', 'Co III', 'Co IV', 'Co V']]],
+        # [['RRC_LTE_Nahar', ['Ni I', 'Ni II', 'Ni III', 'Ni IV', 'Ni V', 'Ni VI', 'Ni VII']]],
+        # [['Alpha_R / RRC_LTE_Nahar', ['Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni III']]],
+        # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
+    ]
 
     if args.recombrates:
         plot_recombrates(modelpath, estimators, 26, [2, 3, 4, 5])
         plot_recombrates(modelpath, estimators, 27, [3, 4])
         plot_recombrates(modelpath, estimators, 28, [3, 4, 5])
+
+        return
+    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+
+    if args.modelgridindex > -1 or args.x in ["time", "timestep"]:
+        # plot time evolution in specific cell
+        if not args.x:
+            args.x = "time"
+        mgilist = [args.modelgridindex] * len(timesteps_included)
+        timesteplist_unfiltered = [[ts] for ts in timesteps_included]
+        if estimators[(args.modelgridindex, timesteps_included[0])]["emptycell"]:
+            msg = f"cell {args.modelgridindex} is empty. no estimators available"
+            raise ValueError(msg)
+        make_plot(modelpath, timesteplist_unfiltered, mgilist, estimators, args.x, plotlist, args)
     else:
-        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+        # plot a range of cells in a time snapshot showing internal structure
 
-        if args.modelgridindex > -1 or args.x in ["time", "timestep"]:
-            # plot time evolution in specific cell
-            if not args.x:
-                args.x = "time"
-            mgilist = [args.modelgridindex] * len(timesteps_included)
-            timesteplist_unfiltered = [(ts,) for ts in timesteps_included]
-            if estimators[(args.modelgridindex, timesteps_included[0])]["emptycell"]:
-                msg = f"cell {args.modelgridindex} is empty. no estimators available"
-                raise ValueError(msg)
-            make_plot(modelpath, timesteplist_unfiltered, mgilist, estimators, args.x, plotlist, args)
+        if not args.x:
+            args.x = "velocity_outer"
+
+        if args.classicartis:
+            allnonemptymgilist = [
+                modelgridindex
+                for modelgridindex in modeldata.index
+                if (timesteps_included[0], modelgridindex) in estimators
+            ]
         else:
-            # plot a range of cells in a time snapshot showing internal structure
+            allnonemptymgilist = [
+                modelgridindex
+                for modelgridindex in modeldata.index
+                if not estimators[(timesteps_included[0], modelgridindex)]["emptycell"]
+            ]
 
-            if not args.x:
-                args.x = "velocity_outer"
+        if args.multiplot:
+            pdf_list = []
+            modelpath_list = []
+            for timestep in range(timestepmin, timestepmax + 1):
+                timesteplist_unfiltered = [[timestep]] * len(allnonemptymgilist)
+                outfilename = make_plot(
+                    modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist, args
+                )
 
-            if args.classicartis:
-                allnonemptymgilist = [
-                    modelgridindex
-                    for modelgridindex in modeldata.index
-                    if (timesteps_included[0], modelgridindex) in estimators
-                ]
-            else:
-                allnonemptymgilist = [
-                    modelgridindex
-                    for modelgridindex in modeldata.index
-                    if not estimators[(timesteps_included[0], modelgridindex)]["emptycell"]
-                ]
+                if "/" in outfilename:
+                    outfilename = outfilename.split("/")[1]
 
-            if args.multiplot:
-                pdf_list = []
-                modelpath_list = []
-                for timestep in range(timestepmin, timestepmax + 1):
-                    timesteplist_unfiltered = [[timestep]] * len(allnonemptymgilist)
-                    outfilename = make_plot(
-                        modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist, args
-                    )
+                pdf_list.append(outfilename)
+                modelpath_list.append(modelpath)
 
-                    if "/" in outfilename:
-                        outfilename = outfilename.split("/")[1]
+            if len(pdf_list) > 1:
+                at.join_pdf_files(pdf_list, modelpath_list)
 
-                    pdf_list.append(outfilename)
-                    modelpath_list.append(modelpath)
-
-                if len(pdf_list) > 1:
-                    at.join_pdf_files(pdf_list, modelpath_list)
-
-            else:
-                timesteplist_unfiltered = [timesteps_included] * len(allnonemptymgilist)
-                make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist, args)
+        else:
+            timesteplist_unfiltered = [timesteps_included] * len(allnonemptymgilist)
+            make_plot(modelpath, timesteplist_unfiltered, allnonemptymgilist, estimators, args.x, plotlist, args)
 
 
 if __name__ == "__main__":

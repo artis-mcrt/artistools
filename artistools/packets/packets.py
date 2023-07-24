@@ -91,16 +91,13 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
     modelpath = Path(modelpath)
     if Path(modelpath, "artis").is_dir():
         print("detected artis code directory")
-        packet_properties = []
+        packet_properties: list[str] = []
         inputfilename = at.firstexisting(["packet_init.cc", "packet_init.c"], folder=modelpath / "artis")
         print(f"found {inputfilename}: getting packet column names from artis code")
         with inputfilename.open() as inputfile:
             packet_print_lines = [line.split(",") for line in inputfile if "fprintf(packets_file," in line]
             for line in packet_print_lines:
-                for element in line:
-                    if "pkt[i]." in element:
-                        packet_properties.append(element)
-
+                packet_properties.extend(element for element in line if "pkt[i]." in element)
         for i, element in enumerate(packet_properties):
             packet_properties[i] = element.split(".")[1].split(")")[0]
 
@@ -148,7 +145,7 @@ def add_derived_columns(
 ) -> pd.DataFrame:
     cm_to_km = 1e-5
     day_in_s = 86400
-    if isinstance(dfpackets, pd.DataFrame) and dfpackets.empty:
+    if dfpackets.empty:
         return dfpackets
 
     colnames = at.makelist(colnames)
@@ -253,7 +250,7 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict | None = N
     return dfpackets
 
 
-def readfile_text(packetsfile: Path | str, modelpath: Path = Path(".")) -> pl.DataFrame:
+def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataFrame:
     """Read a packets*.out(.xz) space-separated text file into a polars DataFrame."""
     print(f"Reading {packetsfile}")
     skiprows: int = 0
@@ -317,11 +314,9 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path(".")) -> pl.Da
         dfpackets = dfpackets.with_columns([pl.col("originated_from_positron").cast(pl.Boolean)])
 
     # Luke: packet energies in ergs can be huge (>1e39) which is too large for Float32
-    dfpackets = dfpackets.with_columns(
+    return dfpackets.with_columns(
         [pl.col(pl.Int64).cast(pl.Int32), pl.col(pl.Float64).exclude(["e_rf", "e_cmf"]).cast(pl.Float32)]
     )
-
-    return dfpackets
 
 
 def readfile(
@@ -359,12 +354,10 @@ def convert_text_to_parquet(
         ]
     )
 
-    syn_dir = (0.0, 0.0, 1.0)
-    for p in packetsfiletext.parents:
-        if Path(p, "syn_dir.txt").is_file():
-            syn_dir = at.get_syn_dir(p)
-            break
-
+    syn_dir = next(
+        (at.get_syn_dir(p) for p in packetsfiletext.parents if Path(p, "syn_dir.txt").is_file()),
+        (0.0, 0.0, 1.0),
+    )
     dfpackets = add_packet_directions_lazypolars(dfpackets, syn_dir)
     dfpackets = bin_packet_directions_lazypolars(dfpackets)
 
@@ -585,9 +578,7 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame, syn_dir: tuple[flo
             .alias("phi"),
         )
 
-    dfpackets = dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"])
-
-    return dfpackets
+    return dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"])
 
 
 def bin_packet_directions_lazypolars(
@@ -624,11 +615,9 @@ def bin_packet_directions_lazypolars(
             .alias("phibin"),
         )
 
-    dfpackets = dfpackets.with_columns(
+    return dfpackets.with_columns(
         (pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"),
     )
-
-    return dfpackets
 
 
 def bin_packet_directions(modelpath: Path | str, dfpackets: pd.DataFrame) -> pd.DataFrame:
@@ -674,9 +663,9 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
         timestep_max = timestep_min
     modeldata, _, vmax_cms = at.inputmodel.get_modeldata_tuple(modelpath)
 
-    timeminarray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
-    # timedeltaarray = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
-    timemaxarray = at.get_timestep_times_float(modelpath=modelpath, loc="end")
+    timeminarray = at.get_timestep_times(modelpath=modelpath, loc="start")
+    # timedeltaarray = at.get_timestep_times(modelpath=modelpath, loc="delta")
+    timemaxarray = at.get_timestep_times(modelpath=modelpath, loc="end")
 
     # timestep = 63 # 82 73 #63 #54 46 #27
     # print([(ts, time) for ts, time in enumerate(timeminarray)])
@@ -691,13 +680,13 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
     e_rf = []
     e_cmf = []
 
+    only_packets_0_scatters = False
     for packetsfile in packetsfiles:
         # for npacketfile in range(0, 1):
         dfpackets = at.packets.readfile(packetsfile)
         at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
         dfpackets = dfpackets.dropna(subset=["emission_velocity"])  # drop rows where emission_vel is NaN
 
-        only_packets_0_scatters = False
         if only_packets_0_scatters:
             print("Only using packets with 0 scatters")
             # print(dfpackets[['scat_count', 'interactions', 'nscatterings']])
@@ -781,11 +770,11 @@ def get_mean_packet_emission_velocity_per_ts(
     nprocs_read = len(packetsfiles)
     assert nprocs_read > 0
 
-    timearray = at.get_timestep_times_float(modelpath=modelpath, loc="mid")
-    arr_timedelta = at.get_timestep_times_float(modelpath=modelpath, loc="delta")
+    timearray = at.get_timestep_times(modelpath=modelpath, loc="mid")
+    arr_timedelta = at.get_timestep_times(modelpath=modelpath, loc="delta")
     timearrayplusend = np.concatenate([timearray, [timearray[-1] + arr_timedelta[-1]]])
 
-    dfpackets_escape_velocity_and_arrive_time = pd.DataFrame
+    dfpackets_escape_velocity_and_arrive_time = pd.DataFrame()
     emission_data = pd.DataFrame(
         {"t_arrive_d": timearray, "mean_emission_velocity": np.zeros_like(timearray, dtype=float)}
     )
@@ -830,20 +819,16 @@ def bin_and_sum(
     """Bins is a list of lower edges, and the final upper edge."""
     # Polars method
 
-    binindex = (
-        df.select(bincol)
-        .lazy()
-        .collect()
-        .get_column(bincol)
-        .cut(bins=list(bins), category_label=f"{bincol}_bin", maintain_order=True)
-        .get_column(f"{bincol}_bin")
-        .cast(pl.Int32)
-        - 1
+    df = df.with_columns(
+        (
+            pl.col(bincol)
+            .cut(breaks=list(bins), labels=[str(x) for x in range(-1, len(bins))])
+            .cast(str)
+            .cast(pl.Int32)
+        ).alias(f"{bincol}_bin")
     )
-    df = df.with_columns([binindex])
 
-    if sumcols is not None:
-        aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols]
+    aggs = [pl.col(col).sum().alias(col + "_sum") for col in sumcols] if sumcols is not None else []
 
     if getcounts:
         aggs.append(pl.col(bincol).count().alias("count"))
@@ -852,13 +837,15 @@ def bin_and_sum(
 
     # now we will include the empty bins
     dfout = pl.DataFrame(pl.Series(name=f"{bincol}_bin", values=np.arange(0, len(bins) - 1), dtype=pl.Int32))
-    dfout = dfout.join(wlbins, how="left", on=f"{bincol}_bin").fill_null(0)
+    return dfout.join(wlbins, how="left", on=f"{bincol}_bin").fill_null(0)
 
     # pandas method
 
-    # dfout2 = pd.DataFrame({bincol + "_bin": np.arange(0, len(bins) - 1)})
+    # dfout2 = pd.DataFrame({f"{bincol}_bin": np.arange(0, len(bins) - 1)})
     # if isinstance(df, pl.DataFrame):
     #     df2 = df.to_pandas(use_pyarrow_extension_array=True)
+    # elif isinstance(df, pl.LazyFrame):
+    #     df2 = df.collect().to_pandas(use_pyarrow_extension_array=True)
 
     # pdbins = pd.cut(
     #     x=df2[bincol],
@@ -878,4 +865,5 @@ def bin_and_sum(
     #     # dfout = dfout.with_columns([pl.Series("count", df[bincol].groupby(pdbins).count().values)])
     #     dfout2["count"] = df2[bincol].groupby(pdbins).count().values
 
-    return dfout
+    # print(dfout2)
+    # return dfout2

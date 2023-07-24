@@ -427,7 +427,7 @@ def get_recombination_emission(
     print(f"  {upperionstr} Alpha_R2 = {alpha_ion2:.2e} Alpha_R2*nne = {nne*alpha_ion2:.2e}")
 
     # vmax = at.inputmodel.get_modeldata_tuple(modelpath)[0]['velocity_outer'].iloc[-1] * 1e5
-    # t_seconds = at.get_timestep_times_float(modelpath, loc="start")[timestep] * 86400.0
+    # t_seconds = at.get_timestep_times(modelpath, loc="start")[timestep] * 86400.0
 
     # mean_free_path = vmax * t_seconds
 
@@ -609,6 +609,7 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
         ]
         fieldlist += [(arraylambda_angstrom_em, array_jlambda_emission_total, "Total emission")]
 
+    lw = 1.0
     # fieldlist += [(arr_lambda_fitted, j_lambda_fitted, 'binned field')]
 
     for atomic_number, ion_stage in photoionlist:
@@ -625,7 +626,6 @@ def calculate_photoionrates(axes, modelpath, radfielddata, modelgridindex, times
                     arraylambda_angstrom_recomb, arr_sigma_bf, label=rf"$\sigma_{{bf}}$({ionstr} {level.levelname})"
                 )
 
-        lw = 1.0
         for arraylambda_angstrom, J_lambda_arr, linelabel in fieldlist:
             # lw -= 0.4
             arr_nu_hz = 2.99792458e18 / np.array(arraylambda_angstrom)
@@ -667,7 +667,7 @@ def plot_celltimestep(modelpath, timestep, outputfile, xmin, xmax, modelgridinde
         return False
 
     modelname = at.get_model_name(modelpath)
-    time_days = at.get_timestep_times_float(modelpath)[timestep]
+    time_days = at.get_timestep_times(modelpath)[timestep]
     print(f"Plotting {modelname} timestep {timestep:d} (t={time_days:.3f}d)")
     T_R = radfielddata.query("bin_num == -1").iloc[0].T_R
     print(f"T_R = {T_R}")
@@ -997,7 +997,7 @@ def main(args=None, argsraw=None, **kwargs):
     else:
         modelgridindexlist = at.parse_range_list(args.modelgridindex)
 
-    timesteplast = len(at.get_timestep_times_float(modelpath))
+    timesteplast = len(at.get_timestep_times(modelpath))
     if args.timedays:
         timesteplist = [at.get_timestep_of_timedays(modelpath, args.timedays)]
     elif args.timestep:
@@ -1010,7 +1010,7 @@ def main(args=None, argsraw=None, **kwargs):
         if args.xaxis == "lambda":
             for timestep in timesteplist:
                 outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
-                make_plot = plot_celltimestep(
+                if make_plot := plot_celltimestep(
                     modelpath,
                     timestep,
                     outputfile,
@@ -1019,8 +1019,7 @@ def main(args=None, argsraw=None, **kwargs):
                     modelgridindex=modelgridindex,
                     args=args,
                     normalised=args.normalised,
-                )
-                if make_plot:
+                ):
                     pdf_list.append(outputfile)
                     modelpath_list.append(args.modelpath)
         elif args.xaxis == "timestep":

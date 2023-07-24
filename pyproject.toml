@@ -11,7 +11,7 @@ authors = [
     {name = "Fionntan Callan", email = "fcallan02@qub.ac.uk"},
     {name = "Stuart Sim", email = "s.sim@qub.ac.uk"},
 ]
-description="Plotting and analysis tools for the ARTIS 3D supernova radiative transfer code."
+description="Plotting and analysis tools for the ARTIS 3D radiative transfer code for supernovae and kilonovae."
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Development Status :: 3 - Alpha",
@@ -27,20 +27,12 @@ requires-python = ">=3.9"
 #[project.scripts]
 #atcompletions = "artistoolscompletions.sh"
 
-#[tool.setuptools]
-#packages = ["artistools"]
-
-[tool.setuptools.dynamic]
-readme = {file = ["README.md"]}
-dependencies = {file = ["requirements.txt"]}
-#entry-points = {attr = "artistools.commands.console_scripts"}
-
-[tool.setuptools.packages.find]
-where = ["."]
-
 [tool.black]
 line-length = 120
 preview = true
+
+[tool.setuptools.packages.find]
+where = ["."]
 
 [tool.isort]
 profile = "black"
@@ -60,13 +52,25 @@ warn_unused_configs = true
 plugins = 'numpy.typing.mypy_plugin'
 scripts_are_modules = true
 strict_equality = true
+strict_concatenate = true
 pretty = true
+implicit_optional = false
+disallow_untyped_calls = false
+disallow_any_generics = false
+disallow_any_explicit = false
+disallow_incomplete_defs = false
+disallow_subclassing_any = false
+disallow_untyped_defs = false
+implicit_reexport = true
+check_untyped_defs = false
 error_summary = true
 enable_error_code = [
   "redundant-expr",
   "truthy-bool",
   "ignore-without-code",
 ]
+warn_redundant_casts = true
+warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
 module = [
@@ -77,12 +81,21 @@ module = [
     "artistools.lightcurve",
     "artistools.misc",
     "artistools.packets",
+    "artistools.plotspherical",
     "artistools.spectra",
 ]
-check_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
 disallow_untyped_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
 warn_return_any = false
-#strict = true
+disallow_any_generics = false
+disallow_subclassing_any = true
+
+[[tool.mypy.overrides]]
+module = "pyvista"
+ignore_errors = true
 
 [tool.pylint.'MESSAGES CONTROL']
 max-line-length = 120
@@ -113,6 +126,10 @@ disable = """
 [tool.pylint.typecheck]
 ignored-modules = ["astropy", "extinction"]
 
+[tool.pyright]
+exclude=['**/node_modules','**/__pycache__','**/.*', 'build']
+useLibraryCodeForTypes = false
+
 [tool.ruff]
 select = ["ALL"]
 ignore = [
@@ -131,7 +148,6 @@ ignore = [
     "D203",  # one-blank-line-before-class
     "D205",  # blank-line-after-summary
     "D213",  # multi-line-summary-second-line
-    "D401",  # non-imperative-mood
     "D417",  # undocumented-param
     "E501", # Line too long
     "E741", # Ambiguous variable name
@@ -141,24 +157,21 @@ ignore = [
     "FIX002",  # line contains TODO
     "N802",  # Function name should be lowercase
     "N803",  # Argument name should be lowercase
-    "N806",  # Variable should be lowercase
+    "N806",  # non-lowercase-variable-in-function
     "N999",  # invalid-module-name
     "PD901",  # df is a bad variable name
+    "PERF401", # manual-list-comprehension
+    "PERF203", # try-except-in-loop
     "PGH001",  # No builtin `eval()` allowed
     "PLR0911",  # too-many-return-statements
     "PLR0912",  # too-many-branches
     "PLR0913",  # too-many-arguments
     "PLR0915",  # too-many-statements
     "PLR2004",  # magic-value-comparison
-    "PTH112",  # os-path-isdir
-    "PTH113",  # os-path-isfile
-    "PTH118",  # os-path-join
-    "PTH119",  # os-path-basename
-    "PTH123",  # builtin-openß
-    "PLW2901",  #
-    "RET504",  # unnecessary-assign
+    "PLW2901",  # redefined-loop-name
     "S101",  # Use of assert detected
     "S301",  # suspicious-pickle-usage
+    "S307",  # suspicious-eval-usage
     "S311",  # suspicious-non-cryptographic-random-usage
     "S506",  # unsafe-yaml-load
     "S603",  # subprocess-without-shell-equals-true
@@ -196,6 +209,20 @@ ignore-fully-untyped = true
 force-single-line = true
 order-by-type = false
 
+#[tool.setuptools]
+#packages = ["artistools"]
+
+[tool.setuptools.dynamic]
+readme = {file = ["README.md"]}
+dependencies = {file = ["requirements.txt"]}
+#entry-points = {attr = "artistools.commands.console_scripts"}
+
 [tool.setuptools_scm]
 write_to = "_version.py"
 local_scheme = "no-local-version"
+
+[tool.vulture]
+exclude = [".*", "build/", ".eggs/"]
+#ignore_names = ["visit_*", "do_*"]
+paths = ["artistools"]
+sort_by_size = true

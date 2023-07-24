@@ -16,7 +16,7 @@ PARSEC = 3.086e18
 c_cgs = const.c.to("cm/s").value
 c_ang_s = const.c.to("angstrom/s").value
 
-modelpath = Path(".")
+modelpath = Path()
 
 xmin = 2500  # Angstroms
 xmax = 30000
@@ -73,8 +73,8 @@ def sample_planck(T, nu_max_r, nu_min_r):
 #     time_list = [float(x) for x in specpol_res_file.readline().split()]
 #
 # column_names = time_list[:int(len(time_list)/3)+1]
-arr_tstart = at.get_timestep_times_float(modelpath, loc="start")
-arr_tend = at.get_timestep_times_float(modelpath, loc="end")
+arr_tstart = at.get_timestep_times(modelpath, loc="start")
+arr_tend = at.get_timestep_times(modelpath, loc="end")
 column_names = np.append(arr_tstart, arr_tend[-1])
 column_names = np.insert(column_names, 0, 0.0, axis=0)
 

@@ -16,7 +16,6 @@ def read_logfiles(modelpath):
     logfilepaths = []
 
     for folderpath in at.get_runfolders(modelpath):
-        nfilesread_thisfolder = 0
         # for mpirank in range(nprocs):
         for mpirank in mpiranklist:
             logfilename = f"output_{mpirank}-0.txt"
@@ -33,15 +32,13 @@ def read_logfiles(modelpath):
 
 
 def read_time_taken(logfilepaths):
-    logfiledict = {}
-
     updategrid_dict = {}
     updatepackets_dict = {}
     writeestimators_dict = {}
 
     for logfilepath in logfilepaths:
         mpi_process = int(str(logfilepath).split("/")[-1].split("-")[0].split("_")[-1])
-        with open(logfilepath) as logfile:
+        with Path(logfilepath).open() as logfile:
             lineswithtimes = [line.split(" ") for line in logfile if "took" in line]
 
         # for line in lineswithtimes:
@@ -89,12 +86,11 @@ def read_time_taken(logfilepaths):
             if process not in writeestimators_dict[timestep]:
                 writeestimators_dict[timestep][process] = timetaken
 
-    # print(updatepackets_dict[30])
-    logfiledict["update_grid"] = updategrid_dict
-    logfiledict["update_packets"] = updatepackets_dict
-    logfiledict["write_estimators"] = writeestimators_dict
-    # print(logfiledict['update_packets'][30])
-    return logfiledict
+    return {
+        "update_grid": updategrid_dict,
+        "update_packets": updatepackets_dict,
+        "write_estimators": writeestimators_dict,
+    }
 
 
 def make_plot(logfiledict):
@@ -137,7 +133,7 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     if not args.modelpath:
-        args.modelpath = [Path(".")]
+        args.modelpath = [Path()]
 
     # make_plot(logfiledict)
 

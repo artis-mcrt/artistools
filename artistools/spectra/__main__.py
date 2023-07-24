@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from .plotspectra import main
+from . import plotspectra
 
 if __name__ == "__main__":
-    main()
+    plotspectra.main()
