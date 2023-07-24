@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 import typing as t
 from pathlib import Path
@@ -182,10 +181,10 @@ def plot_filter_functions(axis: plt.Axes) -> None:
     filter_names = ["U", "B", "V", "I"]
     colours = ["r", "b", "g", "c", "m"]
 
-    filterdir = os.path.join(at.get_config()["path_artistools_dir"], "data/filters/")
+    filterdir = Path(at.get_config()["path_artistools_dir"], "data/filters/")
     for index, filter_name in enumerate(filter_names):
         filter_data = pd.read_csv(
-            filterdir / Path(f"{filter_name}.txt"),
+            filterdir / f"{filter_name}.txt",
             delim_whitespace=True,
             header=None,
             skiprows=4,
@@ -789,7 +788,7 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
         allnonemptymgilist = [
             modelgridindex for modelgridindex in modeldata.index if not estimators[(0, modelgridindex)]["emptycell"]
         ]
-
+    assert estimators is not None
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, args.maxpacketfiles)
     assert args.timemin is not None
     assert args.timemax is not None
@@ -838,7 +837,7 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
                         list_lambda[v].append(c_ang_s / packet.nu_rf)
                         lists_y[v].append(packet.true_emission_velocity / 1e5)
                 else:
-                    k = (packet["em_timestep"], packet["emtrue_modelgridindex"])
+                    k: tuple[int, int] = (packet["em_timestep"], packet["emtrue_modelgridindex"])
                     if k in estimators:
                         list_lambda[v].append(c_ang_s / packet.nu_rf)
                         lists_y[v].append(estimators[k][v])
@@ -1331,7 +1330,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     )  # choose either virtual packet directions or real packet direction bins
 
     if not args.specpath:
-        args.specpath = [Path(".")]
+        args.specpath = [Path()]
     elif isinstance(args.specpath, (str, Path)):  # or not not isinstance(args.specpath, Iterable)
         args.specpath = [args.specpath]
 

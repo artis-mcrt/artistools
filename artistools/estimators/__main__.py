@@ -1,4 +1,4 @@
-from .plotestimators import main
+from . import plotestimators
 
 if __name__ == "__main__":
-    main()
+    plotestimators.main()

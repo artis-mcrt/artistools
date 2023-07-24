@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import math
-import os.path
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -99,8 +99,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         v_inner = v_outer
     print(f"M_tot = {m_tot:.3f} solMass")
 
-    at.inputmodel.save_modeldata(dfmodel, t_model_init_days, os.path.join(args.outputpath, "model.txt"))
-    at.inputmodel.save_initelemabundances(dfelabundances, os.path.join(args.outputpath, "abundances.txt"))
+    at.inputmodel.save_modeldata(dfmodel, t_model_init_days, Path(args.outputpath, "model.txt"))
+    at.inputmodel.save_initelemabundances(dfelabundances, Path(args.outputpath, "abundances.txt"))
 
 
 if __name__ == "__main__":

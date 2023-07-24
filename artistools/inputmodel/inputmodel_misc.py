@@ -20,6 +20,7 @@ import pyarrow.parquet as pq
 import artistools as at
 
 if t.TYPE_CHECKING:
+    import argparse
     from collections.abc import Sequence
 
 
@@ -194,7 +195,7 @@ def read_modelfile_text(
 
     nrows_read = 1 if getheadersonly else modelcellcount
 
-    skiprows: list | int | None
+    skiprows: list[int] | int | None
 
     skiprows = (
         numheaderrows
@@ -206,7 +207,7 @@ def read_modelfile_text(
         ]
     )
 
-    dtypes: defaultdict[str, t.Callable | str]
+    dtypes: defaultdict[str, str]
     if dtype_backend == "pyarrow":
         dtypes = defaultdict(lambda: "float32[pyarrow]")
         dtypes["inputcellid"] = "int32[pyarrow]"
@@ -281,7 +282,7 @@ def read_modelfile_text(
             print("  model cell positions are defined in the header")
         elif not getheadersonly:
 
-            def vectormatch(vec1, vec2):
+            def vectormatch(vec1: list[float], vec2: list[float]) -> bool:
                 xclose = np.isclose(vec1[0], vec2[0], atol=xmax_tmodel / ncoordgridx)
                 yclose = np.isclose(vec1[1], vec2[1], atol=xmax_tmodel / ncoordgridy)
                 zclose = np.isclose(vec1[2], vec2[2], atol=xmax_tmodel / ncoordgridz)
@@ -459,9 +460,9 @@ def get_modeldata(
     return dfmodel, modelmeta
 
 
-def get_modeldata_tuple(*args, **kwargs) -> tuple[pd.DataFrame, float, float]:
-    """Deprecated but included for compatibility with fixed length tuple return type
-    Use get_modeldata() instead!.
+def get_modeldata_tuple(*args: t.Any, **kwargs: t.Any) -> tuple[pd.DataFrame, float, float]:
+    """Get model from model.txt file
+    DEPRECATED: Use get_modeldata() instead.
     """
     dfmodel, modelmeta = get_modeldata(*args, **kwargs)
 
@@ -544,11 +545,9 @@ def get_cell_angle(dfmodel: pd.DataFrame, modelpath: Path) -> pd.DataFrame:
     syn_dir = at.get_syn_dir(modelpath)
 
     cos_theta = np.zeros(len(dfmodel))
-    i = 0
-    for _, cell in dfmodel.iterrows():
+    for i, (_, cell) in enumerate(dfmodel.iterrows()):
         mid_point = [cell["pos_x_mid"], cell["pos_y_mid"], cell["pos_z_mid"]]
         cos_theta[i] = (np.dot(mid_point, syn_dir)) / (at.vec_len(mid_point) * at.vec_len(syn_dir))
-        i += 1
     dfmodel["cos_theta"] = cos_theta
     cos_bins = [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1]  # including end bin
     labels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]  # to agree with escaping packet bin numbers
@@ -561,7 +560,7 @@ def get_cell_angle(dfmodel: pd.DataFrame, modelpath: Path) -> pd.DataFrame:
 
 
 def get_mean_cell_properties_of_angle_bin(
-    dfmodeldata: pd.DataFrame, vmax_cmps: float, modelpath=None
+    dfmodeldata: pd.DataFrame, vmax_cmps: float, modelpath: Path
 ) -> dict[int, pd.DataFrame]:
     if "cos_bin" not in dfmodeldata:
         get_cell_angle(dfmodeldata, modelpath)
@@ -575,9 +574,8 @@ def get_mean_cell_properties_of_angle_bin(
     mid_velocities = np.unique(dfmodeldata["vel_x_mid"].values)
     mid_velocities = mid_velocities[mid_velocities >= 0]
 
-    mean_bin_properties = {}
-    for bin_number in range(10):
-        mean_bin_properties[bin_number] = pd.DataFrame(
+    mean_bin_properties = {
+        bin_number: pd.DataFrame(
             {
                 "velocity": mid_velocities,
                 "mean_rho": np.zeros_like(mid_velocities, dtype=float),
@@ -585,7 +583,8 @@ def get_mean_cell_properties_of_angle_bin(
                 "mean_Q": np.zeros_like(mid_velocities, dtype=float),
             }
         )
-
+        for bin_number in range(10)
+    }
     # cos_bin_number = 90
     for bin_number in range(10):
         cos_bin_number = bin_number * 10
@@ -610,9 +609,9 @@ def get_mean_cell_properties_of_angle_bin(
     return mean_bin_properties
 
 
-def get_2d_modeldata(modelpath):
-    filepath = os.path.join(modelpath, "model.txt")
-    with open(filepath) as f:
+def get_2d_modeldata(modelpath: str | Path) -> pd.DataFrame:
+    filepath = Path(modelpath, "model.txt")
+    with filepath.open() as f:
         num_lines = sum(1 for _ in f)
     skiprowlist = [0, 1, 2]
     skiprowlistodds = skiprowlist + [i for i in range(3, num_lines) if i % 2 == 1]
@@ -637,14 +636,14 @@ def get_2d_modeldata(modelpath):
     return model
 
 
-def get_3d_model_data_merged_model_and_abundances_minimal(args):
+def get_3d_model_data_merged_model_and_abundances_minimal(args: argparse.Namespace) -> pd.DataFrame:
     """Get 3D data without generating all the extra columns in standard routine.
     Needed for large (eg. 200^3) models.
     """
     model = get_3d_modeldata_minimal(args.modelpath)
     abundances = get_initelemabundances(args.modelpath[0])
 
-    with open(os.path.join(args.modelpath[0], "model.txt")) as fmodelin:
+    with Path(args.modelpath[0], "model.txt").open() as fmodelin:
         fmodelin.readline()  # npts_model3d
         args.t_model = float(fmodelin.readline())  # days
         args.vmax = float(fmodelin.readline())  # v_max in [cm/s]
@@ -662,13 +661,11 @@ def get_3d_model_data_merged_model_and_abundances_minimal(args):
     return merge_dfs
 
 
-def get_3d_modeldata_minimal(modelpath) -> pd.DataFrame:
+def get_3d_modeldata_minimal(modelpath: str | Path) -> pd.DataFrame:
     """Read 3D model without generating all the extra columns in standard routine.
     Needed for large (eg. 200^3) models.
     """
-    model = pd.read_csv(
-        os.path.join(modelpath[0], "model.txt"), delim_whitespace=True, header=None, skiprows=3, dtype=np.float64
-    )
+    model = pd.read_csv(Path(modelpath, "model.txt"), delim_whitespace=True, header=None, skiprows=3, dtype=np.float64)
     columns = [
         "inputcellid",
         "cellpos_in[z]",
@@ -771,7 +768,7 @@ def save_modeldata(
         filename = "model.txt"
     modelfilepath = Path(modelpath, filename) if modelpath is not None else Path(filename)
 
-    with open(modelfilepath, "w", encoding="utf-8") as fmodel:
+    with modelfilepath.open("w", encoding="utf-8") as fmodel:
         if headercommentlines is not None:
             fmodel.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
         fmodel.write(f"{len(dfmodel)}\n")
@@ -817,7 +814,7 @@ def save_modeldata(
     print(f"Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> int | float:
+def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: Sequence[int] | None = None) -> int | float:
     """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
     If mgilist is given, then chose from these cells only.
     """
@@ -831,7 +828,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist=None) -> i
     else:
         arr_vouter = np.array([modeldata["velocity_outer"][mgi] for mgi in mgilist])
 
-    index_closestvouter = np.abs(arr_vouter - velocity).argmin()
+    index_closestvouter = int(np.abs(arr_vouter - velocity).argmin())
 
     if velocity < arr_vouter[index_closestvouter] or index_closestvouter + 1 >= len(mgilist):
         return mgilist[index_closestvouter]
@@ -922,7 +919,7 @@ def save_initelemabundances(
         if col not in dfelabundances.columns:
             dfelabundances[col] = 0.0
 
-    with open(abundancefilename, "w", encoding="utf-8") as fabund:
+    with Path(abundancefilename).open("w", encoding="utf-8") as fabund:
         if headercommentlines is not None:
             fabund.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
         for row in dfelabundances.itertuples(index=False):
@@ -933,8 +930,8 @@ def save_initelemabundances(
     print(f"Saved {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def save_empty_abundance_file(ngrid: int, outputfilepath=Path()) -> None:
-    """Dummy abundance file with only zeros."""
+def save_empty_abundance_file(ngrid: int, outputfilepath: str | Path = Path()) -> None:
+    """Save dummy abundance file with only zeros."""
     if Path(outputfilepath).is_dir():
         outputfilepath = Path(outputfilepath) / "abundances.txt"
 

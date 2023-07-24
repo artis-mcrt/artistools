@@ -19,7 +19,9 @@ from astropy import units as u
 import artistools as at
 
 
-def get_packets_with_emtype_onefile(emtypecolumn: str, lineindices, packetsfile: Path | str) -> pd.DataFrame:
+def get_packets_with_emtype_onefile(
+    emtypecolumn: str, lineindices: tuple[int], packetsfile: Path | str
+) -> pd.DataFrame:
     import gzip
 
     try:
@@ -68,9 +70,9 @@ def get_line_fluxes_from_packets(
     emtypecolumn, emfeatures, modelpath, maxpacketfiles=None, arr_tstart=None, arr_tend=None
 ) -> pd.DataFrame:
     if arr_tstart is None:
-        arr_tstart = at.get_timestep_times_float(modelpath, loc="start")
+        arr_tstart = at.get_timestep_times(modelpath, loc="start")
     if arr_tend is None:
-        arr_tend = at.get_timestep_times_float(modelpath, loc="end")
+        arr_tend = at.get_timestep_times(modelpath, loc="end")
 
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = arr_tend = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
@@ -83,7 +85,7 @@ def get_line_fluxes_from_packets(
 
     dictlcdata = {"time": arr_tmid}
 
-    linelistindices_allfeatures = tuple([l for feature in emfeatures for l in feature.linelistindices])
+    linelistindices_allfeatures = tuple(l for feature in emfeatures for l in feature.linelistindices)
 
     dfpackets, nprocs_read = get_packets_with_emtype(
         modelpath, emtypecolumn, linelistindices_allfeatures, maxpacketfiles=maxpacketfiles
@@ -108,19 +110,16 @@ def get_line_fluxes_from_packets(
 
 def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=None) -> pd.DataFrame:
     if arr_tstart is None:
-        arr_tstart = at.get_timestep_times_float(modelpath, loc="start")
+        arr_tstart = at.get_timestep_times(modelpath, loc="start")
     if arr_tend is None:
-        arr_tend = at.get_timestep_times_float(modelpath, loc="end")
+        arr_tend = at.get_timestep_times(modelpath, loc="end")
 
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = arr_tend = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
 
     modeldata, _ = at.inputmodel.get_modeldata(modelpath)
 
-    ionlist = []
-    for feature in emfeatures:
-        ionlist.append((feature.atomic_number, feature.ion_stage))
-
+    ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
     adata = at.atomic.get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True, get_photoionisations=False)
 
     timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
@@ -237,7 +236,7 @@ def get_closelines(
 
 def get_labelandlineindices(modelpath, emfeaturesearch):
     featuretuple = namedtuple(
-        "feature",
+        "featuretuple",
         [
             "colname",
             "featurelabel",
@@ -267,7 +266,7 @@ def get_labelandlineindices(modelpath, emfeaturesearch):
     return labelandlineindices
 
 
-def make_flux_ratio_plot(args):
+def make_flux_ratio_plot(args: argparse.Namespace) -> None:
     # font = {'size': 16}
     # matplotlib.rc('font', **font)
     nrows = 1
@@ -294,17 +293,20 @@ def make_flux_ratio_plot(args):
     pd.set_option("display.width", 150)
     pd.options.display.max_rows = 500
 
-    for _seriesindex, (modelpath, modellabel, modelcolor) in enumerate(zip(args.modelpath, args.label, args.color)):
+    for modelpath, modellabel, modelcolor in zip(args.modelpath, args.label, args.color):
         print(f"====> {modellabel}")
 
         emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
-        if args.frompops:
-            dflcdata = get_line_fluxes_from_pops(
-                emfeatures, modelpath, arr_tstart=args.timebins_tstart, arr_tend=args.timebins_tend
+        dflcdata = (
+            get_line_fluxes_from_pops(
+                emfeatures,
+                modelpath,
+                arr_tstart=args.timebins_tstart,
+                arr_tend=args.timebins_tend,
             )
-        else:
-            dflcdata = get_line_fluxes_from_packets(
+            if args.frompops
+            else get_line_fluxes_from_packets(
                 args.emtypecolumn,
                 emfeatures,
                 modelpath,
@@ -312,7 +314,7 @@ def make_flux_ratio_plot(args):
                 arr_tstart=args.timebins_tstart,
                 arr_tend=args.timebins_tend,
             )
-
+        )
         dflcdata = dflcdata.eval(f"fratio = {emfeatures[1].colname} / {emfeatures[0].colname}")
         axis.set_ylabel(
             r"F$_{\mathrm{" + emfeatures[1].featurelabel + r"}}$ / F$_{\mathrm{" + emfeatures[0].featurelabel + r"}}$"
@@ -351,7 +353,7 @@ def make_flux_ratio_plot(args):
             "generateplots/floers_model_NIR_VIS_ratio_20201126.csv"
         )
 
-        amodels = {}
+        amodels: dict[str, tuple[list, list]] = {}
         for _index, row in femis.iterrows():
             modelname = row.file.replace("fig-nne_Te_allcells-", "").replace(f"-{row.epoch}d.txt", "")
             if modelname not in amodels:
@@ -360,16 +362,17 @@ def make_flux_ratio_plot(args):
                 amodels[modelname][0].append(row.epoch)
                 amodels[modelname][1].append(row.NIR_VIS_ratio)
 
-        aindex = 0
         # for amodelname, (xlist, ylist) in amodels.items():
-        for amodelname, alabel in [
-            # ('w7', 'W7'),
-            # ('subch', 'S0'),
-            # ('subch_shen2018', r'1M$_\odot$'),
-            # ('subch_shen2018_electronlossboost4x', '1M$_\odot$ (Shen+18) 4x e- loss'),
-            # ('subch_shen2018_electronlossboost8x', r'1M$_\odot$ heatboost8'),
-            # ('subch_shen2018_electronlossboost12x', '1M$_\odot$ (Shen+18) 12x e- loss'),
-        ]:
+        for aindex, (amodelname, alabel) in enumerate(
+            [
+                ("w7", "W7"),
+                ("subch", "S0"),
+                # ('subch_shen2018', r'1M$_\odot$'),
+                # ('subch_shen2018_electronlossboost4x', '1M$_\odot$ (Shen+18) 4x e- loss'),
+                # ('subch_shen2018_electronlossboost8x', r'1M$_\odot$ heatboost8'),
+                # ('subch_shen2018_electronlossboost12x', '1M$_\odot$ (Shen+18) 12x e- loss'),
+            ]
+        ):
             xlist, ylist = amodels[amodelname]
             color = args.color[aindex] if aindex < len(args.color) else None
             print(amodelname, xlist, ylist)
@@ -384,8 +387,6 @@ def make_flux_ratio_plot(args):
                 lw=0,
                 alpha=0.8,
             )
-            aindex += 1
-
     m18_tdays = np.array([206, 229, 303, 339])
     m18_pew = {}
     # m18_pew[(26, 2, 12570)] = np.array([2383, 1941, 2798, 6770])
@@ -423,7 +424,7 @@ def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, t
         modelgridindex for modelgridindex in modeldata.index if not estimators[(ts, modelgridindex)]["emptycell"]
     ]
 
-    # model_tmids = at.get_timestep_times_float(modelpath, loc='mid')
+    # model_tmids = at.get_timestep_times(modelpath, loc='mid')
     # arr_velocity_mid = tuple(list([(float(v1) + float(v2)) * 0.5 for v1, v2 in zip(
     #     modeldata['velocity_inner'].to_numpy(), modeldata['velocity_outer'].to_numpy())]))
 
@@ -544,7 +545,7 @@ def make_emitting_regions_plot(args):
     refdatatimes = [None for _ in refdatafilenames]
     refdatapoints = [None for _ in refdatafilenames]
     for refdataindex, refdatafilename in enumerate(refdatafilenames):
-        with open(refdatafilename, encoding="utf-8") as data_file:
+        with Path(refdatafilename).open(encoding="utf-8") as data_file:
             floers_te_nne = json.loads(data_file.read())
 
         # give an ordering and index to dict items
@@ -586,7 +587,7 @@ def make_emitting_regions_plot(args):
 
             emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
-            linelistindices_allfeatures = tuple([l for feature in emfeatures for l in feature.linelistindices])
+            linelistindices_allfeatures = tuple(l for feature in emfeatures for l in feature.linelistindices)
 
             for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend):
                 dfpackets = get_packets_with_emission_conditions(
@@ -617,8 +618,8 @@ def make_emitting_regions_plot(args):
             for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend):
                 Tedata_all[modelindex][tmid] = []
                 log10nnedata_all[modelindex][tmid] = []
-                tstartlist = at.get_timestep_times_float(modelpath, loc="start")
-                tendlist = at.get_timestep_times_float(modelpath, loc="end")
+                tstartlist = at.get_timestep_times(modelpath, loc="start")
+                tendlist = at.get_timestep_times(modelpath, loc="end")
                 tslist = [ts for ts in range(len(tstartlist)) if tendlist[ts] >= tstart and tstartlist[ts] <= tend]
                 for timestep in tslist:
                     for modelgridindex in modeldata.index:
@@ -633,10 +634,10 @@ def make_emitting_regions_plot(args):
         if modeltag != "all":
             continue
 
+        nrows = 1
         for tmid in times_days:
             print(f"  Plot at {tmid} days")
 
-            nrows = 1
             fig, axis = plt.subplots(
                 nrows=nrows,
                 ncols=1,
@@ -858,7 +859,7 @@ def main(args=None, argsraw=None, **kwargs):
         args = parser.parse_args(argsraw)
 
     if not args.modelpath:
-        args.modelpath = [Path(".")]
+        args.modelpath = [Path()]
     elif isinstance(args.modelpath, (str, Path)):
         args.modelpath = [args.modelpath]
 

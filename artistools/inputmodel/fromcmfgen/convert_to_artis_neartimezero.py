@@ -2,6 +2,7 @@
 """Convert a CMFGEN model file to ARTIS format. Original script possibly by Markus Kromer?."""
 # from rd_cmfgen import rd_nuc_decay_data
 from math import exp
+from pathlib import Path
 
 import numpy as np
 
@@ -79,9 +80,7 @@ def reverse_doubledecay(
                 print(
                     "shell",
                     s,
-                    " has none of the last isotope Z={} A={} of the chain at time zero".format(
-                        zparent - 2, numnucleons
-                    ),
+                    f" has none of the last isotope Z={zparent - 2} A={numnucleons} of the chain at time zero",
                 )
         else:
             iso3fromdecay[s] = (
@@ -158,8 +157,8 @@ def timeshift_double_decay(
     a, indexofatomicnumber, indexofisotope, zparent, numnucleons, timeold, timenew, meanlife1_days, meanlife2_days
 ):
     # take abundances back to time zero and then forward to the selected model time
-    elfracsum_before = sum([a["specfrac"][:, indexofatomicnumber[zparent - i]] for i in range(3)])
-    isofracsum_before = sum([a["isofrac"][:, indexofisotope[(zparent - i, numnucleons)]] for i in range(3)])
+    elfracsum_before = sum(a["specfrac"][:, indexofatomicnumber[zparent - i]] for i in range(3))
+    isofracsum_before = sum(a["isofrac"][:, indexofisotope[(zparent - i, numnucleons)]] for i in range(3))
 
     reverse_doubledecay(
         a,
@@ -183,8 +182,8 @@ def timeshift_double_decay(
         meanlife2_days=meanlife2_days,
     )
 
-    elfracsum_after = sum([a["specfrac"][:, indexofatomicnumber[zparent - i]] for i in range(3)])
-    isofracsum_after = sum([a["isofrac"][:, indexofisotope[(zparent - i, numnucleons)]] for i in range(3)])
+    elfracsum_after = sum(a["specfrac"][:, indexofatomicnumber[zparent - i]] for i in range(3))
+    isofracsum_after = sum(a["isofrac"][:, indexofisotope[(zparent - i, numnucleons)]] for i in range(3))
     assert np.all(abs(elfracsum_before - elfracsum_after) < 1e-10)
 
 
@@ -209,7 +208,7 @@ def main():
     dm = 4 / 3 * np.pi * (rout**3 - rin**3) * a["dens"] / msun
     print(dm.sum(), dm.sum() / (a["dmass"].sum() / msun))  # Check total mass
 
-    with open(model + "/model.txt", "w") as f:
+    with Path(model, "model.txt").open("w") as f:
         f.write(str(a["nd"]) + "\n")
         f.write(str(a["time"]) + "\n")
 
@@ -238,7 +237,7 @@ def main():
 
     # Write to file abundances.txt
     fmtstring = "%d " + "%1.7e " * 30
-    np.savetxt(model + "/abundances.txt", abund[:, :], fmt=fmtstring)
+    np.savetxt(f"{model}/abundances.txt", abund[:, :], fmt=fmtstring)
 
     # M = 0
     # for i in range(a['nd']):

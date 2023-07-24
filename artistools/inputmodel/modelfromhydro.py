@@ -141,7 +141,7 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
 
     griddata["rho"] = griddata["rho"] * 6.176e17  # convert to g/cm3
 
-    with open(griddatfilepath, encoding="utf-8") as gridfile:
+    with griddatfilepath.open(encoding="utf-8") as gridfile:
         ngrid = int(gridfile.readline().split()[0])
         if ngrid != len(griddata["inputcellid"]):
             print("length of file and ngrid don't match")
@@ -196,12 +196,12 @@ def read_mattia_grid_data_file(pathtogriddata):
     griddatfilepath = Path(pathtogriddata) / "1D_m0.01_v0.1.txt"
 
     griddata = pd.read_csv(griddatfilepath, delim_whitespace=True, comment="#", skiprows=1)
-    with open(griddatfilepath) as gridfile:
+    with griddatfilepath.open() as gridfile:
         t_model = float(gridfile.readline())
         print(f"t_model {t_model} seconds")
     xmax = max(griddata["posx"])
     vmax = xmax / t_model  # cm/s
-    t_model = t_model / (24.0 * 3600)  # days
+    t_model /= 24.0 * 3600
     ngrid = len(griddata["posx"])
 
     griddata["rho"][griddata["rho"] <= 1e-50] = 0.0

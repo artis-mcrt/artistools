@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import glob
 import sys
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 
@@ -24,13 +25,13 @@ def main():
         runfolder = logfilename.split("/output_0-0.txt")[0]
 
         timesteptimes = []
-        with open(f"{runfolder}/light_curve.out") as lcfile:
+        with Path(f"{runfolder}/light_curve.out").open() as lcfile:
             timesteptimes.extend(line.split()[0] for line in lcfile)
         timesteptimes = timesteptimes[: len(timesteptimes) // 2]
 
         stats = []
 
-        with open(logfilename) as flog:
+        with Path(logfilename).open() as flog:
             for line in flog:
                 if line.startswith("timestep "):
                     currenttimestep = int(line.split(" ")[1].split(",")[0])

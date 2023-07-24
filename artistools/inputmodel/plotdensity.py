@@ -50,22 +50,19 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         label = at.get_model_name(modelpath)
         enclosed_xvals = []
         enclosed_yvals = []
-        binned_xvals = []
-        binned_yvals = []
+        binned_xvals: list[float] = []
+        binned_yvals: list[float] = []
         mass_cumulative = 0.0
         enclosed_xvals = [0.0]
         enclosed_yvals = [0.0]
 
         # total_mass = dfmodel.cellmass_grams.sum() / 1.989e33
         for cell in dfmodel.itertuples(index=False):
-            binned_xvals.append(cell.velocity_inner / 299792.458)
-            binned_xvals.append(cell.velocity_outer / 299792.458)
+            binned_xvals.extend((cell.velocity_inner / 299792.458, cell.velocity_outer / 299792.458))
             delta_beta = (cell.velocity_outer - cell.velocity_inner) / 299792.458
 
             yval = cell.cellmass_grams / 1.989e33 / delta_beta
-            binned_yvals.append(yval)
-            binned_yvals.append(yval)
-
+            binned_yvals.extend((yval, yval))
             enclosed_xvals.append(cell.velocity_outer / 299792.458)
             mass_cumulative += cell.cellmass_grams / 1.989e33
             enclosed_yvals.append(mass_cumulative)

@@ -196,7 +196,7 @@ def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:
     # bashcompinit
     # source artistoolscompletions.sh
     path_repo = Path(__file__).absolute().parent.parent
-    with open(path_repo / "artistoolscompletions.sh", "w", encoding="utf-8") as f:
+    with (path_repo / "artistoolscompletions.sh").open("w", encoding="utf-8") as f:
         f.write("#!/usr/bin/env zsh\n")
 
         proc = subprocess.run(

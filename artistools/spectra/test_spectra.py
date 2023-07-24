@@ -6,7 +6,6 @@ from unittest import mock
 import matplotlib.axes
 import numpy as np
 import pandas as pd
-from astropy import constants as const
 
 import artistools as at
 
@@ -95,8 +94,8 @@ def test_spectra_get_spectrum() -> None:
 
     lambda_min = dfspectrum["lambda_angstroms"].to_numpy()[0]
     lambda_max = dfspectrum["lambda_angstroms"].to_numpy()[-1]
-    timelowdays = at.get_timestep_times_float(modelpath)[55]
-    timehighdays = at.get_timestep_times_float(modelpath)[65]
+    timelowdays = at.get_timestep_times(modelpath)[55]
+    timehighdays = at.get_timestep_times(modelpath)[65]
 
     dfspectrumpkts = at.spectra.get_from_packets(
         modelpath, timelowdays=timelowdays, timehighdays=timehighdays, lambda_min=lambda_min, lambda_max=lambda_max
@@ -116,7 +115,8 @@ def test_spectra_get_flux_contributions() -> None:
 
     specdata = pd.read_csv(modelpath / "spec.out", delim_whitespace=True)
     arraynu = specdata.loc[:, "0"].to_numpy()
-    arraylambda_angstroms = const.c.to("angstrom/s").value / arraynu
+    c_ang_per_s = 2.99792458e18
+    arraylambda_angstroms = c_ang_per_s / arraynu
 
     contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
         modelpath,

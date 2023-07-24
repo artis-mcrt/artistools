@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Artistools - NLTE population related functions."""
+
 from __future__ import annotations
 
 import argparse
+import contextlib
 import math
-import os
 import sys
 from pathlib import Path
 
@@ -84,15 +85,13 @@ def plot_reference_data(ax, atomic_number: int, ion_stage: int, estimators_cellt
                     firstdep = -1.0
                     for line in depfile:
                         row = line.split()
-                        try:
+                        with contextlib.suppress(KeyError, IndexError, ValueError):
                             levelnum = levelnumofconfigterm[(row[1], row[2])]
                             if levelnum in dfpopthision["level"].to_numpy():
                                 levelnums.append(levelnum)
                                 if firstdep < 0:
                                     firstdep = float(row[0])
                                 depcoeffs.append(float(row[0]) / firstdep)
-                        except (KeyError, IndexError, ValueError):
-                            pass
                     ionstr = at.get_ionstring(atomic_number, ion_stage, spectral=False)
                     ax.plot(
                         levelnums,
@@ -121,7 +120,7 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
     # comparison to Andeas Floers's NLTE pops for Shingles et al. (2022)
     if atomic_number == 26 and ion_stage in [2, 3]:
         floersfilename = "andreas_level_populations_fe2.txt" if ion_stage == 2 else "andreas_level_populations_fe3.txt"
-        if os.path.isfile(modelpath / floersfilename):
+        if Path(modelpath / floersfilename).is_file():
             print(f"reading {floersfilename}")
             floers_levelpops = pd.read_csv(modelpath / floersfilename, comment="#", delim_whitespace=True)
             # floers_levelnums = floers_levelpops['index'].values - 1
@@ -148,7 +147,7 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
                 print("Shen2018 SubMch detected")
                 floersmultizonefilename = "level_pops_subch_shen2018-247d.csv"
 
-        if floersmultizonefilename and os.path.isfile(floersmultizonefilename):
+        if floersmultizonefilename and Path(floersmultizonefilename).is_file():
             modeldata, _ = at.inputmodel.get_modeldata(modelpath)  # TODO: move into modelpath loop
             vel_outer = modeldata.iloc[modelgridindex].velocity_outer
             print(f"  reading {floersmultizonefilename}", vel_outer, T_e)
@@ -185,10 +184,8 @@ def make_ionsubplot(
     ionstr = at.get_ionstring(atomic_number, ion_stage, spectral=False)
 
     dfpopthision = dfpop.query(
-        (
-            "modelgridindex == @modelgridindex and timestep == @timestep "
-            "and Z == @atomic_number and ion_stage == @ion_stage"
-        ),
+        "modelgridindex == @modelgridindex and timestep == @timestep "
+        "and Z == @atomic_number and ion_stage == @ion_stage",
         inplace=False,
     ).copy()
 
@@ -424,7 +421,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
     labelfontsize = 20
     if args.x == "time":
         xlabel = "Time Since Explosion [days]"
-    if args.x == "velocity":
+    elif args.x == "velocity":
         xlabel = r"Zone outer velocity [km s$^{-1}$]"
     ylabel = r"Level population [cm$^{-3}$]"
 
@@ -445,7 +442,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths, args):
         title = f"Z={Z}, ionstage={ionstage}"
         if args.x == "time":
             title = title + f", mgi = {args.modelgridindex[0]}"
-        if args.x == "velocity":
+        elif args.x == "velocity":
             title = title + f", {args.timedays} days"
         plt.title(title)
 
@@ -604,7 +601,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         if len(dfpop.query("ion_stage == @max_ion_stage")) == 1:  # single-level ion, so skip it
             max_ion_stage -= 1
 
-        # timearray = at.get_timestep_times_float(modelpath)
+        # timearray = at.get_timestep_times(modelpath)
         nne = estimators[(timestep, modelgridindex)]["nne"]
         W = estimators[(timestep, modelgridindex)]["W"]
 
@@ -621,7 +618,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
             subplot_title += f" timestep {timestep:d}"
         else:
             subplot_title += f" {time_days:.0f}d"
-        subplot_title += rf" (Te={T_e:.0f} K, nne={nne:.1e} cm$^{-3}$, T$_R$={T_R:.0f} K, W={W:.1e})"
+        subplot_title += rf" (Te={T_e:.0f} K, nne={nne:.1e} cm$^{{-3}}$, T$_R$={T_R:.0f} K, W={W:.1e})"
 
         if not args.notitle:
             axes[mgifirstaxindex].set_title(subplot_title, fontsize=10)
@@ -749,10 +746,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     at.set_mpl_style()
 
+    modelpath = args.modelpath
     if args.x in ["time", "velocity"]:
-        # if len(args.modelpath) == 1:
-        #     modelpath = args.modelpath
-        modelpath = args.modelpath
         args.modelpath = [args.modelpath]
 
         # if not args.timedays:
@@ -764,8 +759,6 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         if not args.levels:
             print("Please specify levels")
             sys.exit(1)
-    else:
-        modelpath = args.modelpath
 
     if args.timedays:
         if "-" in args.timedays:
@@ -780,8 +773,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     else:
         timestep = int(args.timestep)
 
-    if os.path.isdir(args.outputfile):
-        args.outputfile = os.path.join(args.outputfile, defaultoutputfile)
+    if Path(args.outputfile).is_dir():
+        args.outputfile = Path(args.outputfile, defaultoutputfile)
 
     ionstages_permitted = at.parse_range_list(args.ionstages) if args.ionstages else None
 
@@ -794,13 +787,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     if isinstance(args.velocity, (float, int)):
         args.velocity = [args.velocity]
 
-    mgilist: list[int | float] = []
-    for mgi in args.modelgridindex:
-        mgilist.append(int(mgi))
-
-    for vel in args.velocity:
-        mgilist.append(at.inputmodel.get_mgi_of_velocity_kms(modelpath, vel))
-
+    mgilist: list[int | float] = [int(mgi) for mgi in args.modelgridindex]
+    mgilist.extend(at.inputmodel.get_mgi_of_velocity_kms(modelpath, vel) for vel in args.velocity)
     if not mgilist:
         mgilist.append(0)
 

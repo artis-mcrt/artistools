@@ -15,14 +15,14 @@ MSUN = 1.989e33  # solar mass in grams
 
 def write_energydistribution_file(energydistdata, outputfilepath="."):
     print("Writing energydistribution.txt")
-    with open(Path(outputfilepath) / "energydistribution.txt", "w") as fmodel:
+    with Path(outputfilepath, "energydistribution.txt").open("w") as fmodel:
         fmodel.write(f'{len(energydistdata["cell_energy"])}\n')  # write number of points
         energydistdata.to_csv(fmodel, header=False, sep="\t", index=False, float_format="%g")
 
 
 def write_energyrate_file(energy_rate_data, outputfilepath="."):
     print("Writing energyrate.txt")
-    with open(Path(outputfilepath) / "energyrate.txt", "w") as fmodel:
+    with Path(outputfilepath, "energyrate.txt").open("w") as fmodel:
         fmodel.write(f'{len(energy_rate_data["times"])}\n')  # write number of points
         energy_rate_data.to_csv(fmodel, sep="\t", index=False, header=False, float_format="%.10f")
 
@@ -202,9 +202,7 @@ def make_energydistribution_weightedbyrho(rho, E_tot_per_gram, Mtot_grams):
     energydistdata = {"cellid": np.arange(1, len(rho) + 1), "cell_energy": cellenergy}
 
     print(f"sum energy cells {sum(energydistdata['cell_energy'])} should equal Etot")
-    energydistdata = pd.DataFrame(data=energydistdata)
-
-    return energydistdata
+    return pd.DataFrame(data=energydistdata)
 
 
 def make_energy_files(rho, Mtot_grams, outputpath=None, modelpath=None, model=None):
@@ -256,7 +254,6 @@ def get_etot_fromfile(modelpath):
 
 
 def get_energy_rate_fromfile(modelpath):
-    energyrate_data = pd.read_csv(
+    return pd.read_csv(
         Path(modelpath) / "energyrate.txt", skiprows=1, delim_whitespace=True, header=None, names=["times", "rate"]
     )
-    return energyrate_data

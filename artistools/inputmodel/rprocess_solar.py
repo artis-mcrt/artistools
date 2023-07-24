@@ -78,20 +78,16 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
         t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
         dfdensities = dfdensities.eval(
-            (
-                "cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
-                "* (1e5 * @t_model_init_seconds_in) ** 3"
-            ),
+            "cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
+            "* (1e5 * @t_model_init_seconds_in) ** 3",
         )
 
         # now replace the density at the input time with the density at required time
 
         dfdensities = dfdensities.eval(
-            (
-                "rho = cellmass_grams / ("
-                "4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
-                " * (1e5 * @t_model_init_seconds) ** 3)"
-            ),
+            "rho = cellmass_grams / ("
+            "4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
+            " * (1e5 * @t_model_init_seconds) ** 3)",
         )
     else:
         dfdensities = pd.DataFrame({"rho": 10**-3, "velocity_outer": 6.0e4}, index=[0])

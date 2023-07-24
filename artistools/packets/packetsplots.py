@@ -28,8 +28,8 @@ def make_2d_packets_plot_imshow(modelpath, timestep_min, timestep_max):
     #                 hist[x, y, z] = None
     #             i += 1
 
-    timeminarray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
-    timemaxarray = at.get_timestep_times_float(modelpath=modelpath, loc="end")
+    timeminarray = at.get_timestep_times(modelpath=modelpath, loc="start")
+    timemaxarray = at.get_timestep_times(modelpath=modelpath, loc="end")
     time_lower = timeminarray[timestep_min]
     time_upper = timemaxarray[timestep_max]
     title = f"{time_lower:.2f} - {time_upper:.2f} days"
@@ -100,7 +100,7 @@ def make_2d_packets_plot_pyvista(modelpath, timestep):
     # labels = dict(xlabel='vx / c', ylabel='vy / c', zlabel='vz / c')
     # p.show_grid(**labels)
     p.camera_position = "zx"
-    timeminarray = at.get_timestep_times_float(modelpath=modelpath, loc="start")
+    timeminarray = at.get_timestep_times(modelpath=modelpath, loc="start")
     time = timeminarray[timestep]
     p.add_title(f"{time:.2f} - {timeminarray[timestep + 1]:.2f} days")
     print(pv.global_theme)

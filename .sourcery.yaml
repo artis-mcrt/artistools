@@ -30,7 +30,9 @@ rule_settings:
     enable:
         - default
         - gpsg-standard-import-alias
-    disable: [] # A list of rule IDs Sourcery will never suggest.
+    disable:
+        - inline-variable
+        - missing-dict-items
     rule_types:
         - refactoring
         - suggestion

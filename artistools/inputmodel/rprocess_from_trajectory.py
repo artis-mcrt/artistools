@@ -45,7 +45,7 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
         tarfile.open(tarfilepath, "r:*").extract(path=Path(traj_root, str(particleid)), member=memberfilename)
 
     if path_extracted_file.is_file():
-        return open(path_extracted_file, encoding="utf-8")  # noqa: SIM115
+        return path_extracted_file.open(encoding="utf-8")
 
     if not tarfilepath.is_file():
         print(f"No network data found for particle {particleid} (so can't access {memberfilename})")
@@ -67,7 +67,7 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
 @lru_cache(maxsize=16)
 def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
     with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/evol.dat") as evolfile:
-        dfevol = pd.read_csv(
+        return pd.read_csv(
             evolfile,
             sep=r"\s+",
             comment="#",
@@ -77,8 +77,6 @@ def get_dfevol(traj_root: Path, particleid: int) -> pd.DataFrame:
             dtype={0: "int32[pyarrow]", 1: "float32[pyarrow]"},
             dtype_backend="pyarrow",
         )
-
-    return dfevol
 
 
 def get_closest_network_timestep(
@@ -157,7 +155,7 @@ def get_trajectory_timestepfile_nuc_abund(
 
 
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
-    """Initial cell energy [erg/g]."""
+    """Calculate initial cell energy [erg/g] from reactions t < t_model_s (reduced by work done)."""
     with open_tar_file_or_extracted(traj_root, particleid, "./Run_rprocess/energy_thermo.dat") as enthermofile:
         try:
             dfthermo: pd.DataFrame = pd.read_csv(
@@ -319,10 +317,8 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataF
         if not particlenetworkdatafound(traj_root, particleid)
     ]
     print(
-        (
-            f"Adding gridcontributions column that excludes {len(missing_particleids)} "
-            "particles without abundance data and renormalising..."
-        ),
+        f"Adding gridcontributions column that excludes {len(missing_particleids)} "
+        "particles without abundance data and renormalising...",
         end="",
     )
     # after filtering, frac_of_cellmass_includemissing will still include particles with rho but no abundance data
@@ -541,36 +537,12 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     t_model_init_days = t_model_init_seconds / (24 * 60 * 60)
 
-    wollager_profilename = "wollager_ejectaprofile_10bins.txt"
-    if Path(wollager_profilename).exists():
-        print(f"{wollager_profilename} found")
-        t_model_init_days_in = float(Path(wollager_profilename).open("rt").readline().strip().removesuffix(" day"))
-        dfdensities = pd.read_csv(
-            wollager_profilename, delim_whitespace=True, skiprows=1, names=["cellid", "velocity_outer", "rho"]
-        )
-        dfdensities["cellid"] = dfdensities["cellid"].astype(int)
-        dfdensities["velocity_inner"] = np.concatenate(([0.0], dfdensities["velocity_outer"].to_numpy()[:-1]))
-
-        t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
-        dfdensities = dfdensities.eval(
-            (
-                "cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
-                "* (1e5 * @t_model_init_seconds_in) ** 3"
-            ),
-        )
-
-        # now replace the density at the input time with the density at required time
-
-        dfdensities = dfdensities.eval(
-            (
-                "rho = cellmass_grams / ("
-                "4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
-                " * (1e5 * @t_model_init_seconds) ** 3)"
-            ),
-        )
+    wollaeger_profilename = "wollaeger_ejectaprofile_10bins.txt"
+    if Path(wollaeger_profilename).exists():
+        dfdensities = get_wollaeger_density_profile(wollaeger_profilename)
     else:
         rho = 1e-11
-        print(f"{wollager_profilename} not found. Using rho {rho} g/cm3")
+        print(f"{wollaeger_profilename} not found. Using rho {rho} g/cm3")
         dfdensities = pd.DataFrame({"rho": rho, "velocity_outer": 6.0e4}, index=[0])
 
     # print(dfdensities)
@@ -601,26 +573,51 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         A = row.N + row.Z
         rowdict[f"X_{at.get_elsymbol(row.Z)}{A}"] = row.massfrac
 
-    modeldata = []
-    for mgi, densityrow in dfdensities.iterrows():
-        # print(mgi, densityrow)
-        modeldata.append(
-            dict(
-                inputcellid=mgi + 1,
-                velocity_outer=densityrow["velocity_outer"],
-                logrho=math.log10(densityrow["rho"]),
-                **rowdict,
-            )
+    modeldata = [
+        dict(
+            inputcellid=mgi + 1,
+            velocity_outer=densityrow["velocity_outer"],
+            logrho=math.log10(densityrow["rho"]),
+            **rowdict,
         )
+        for mgi, densityrow in dfdensities.iterrows()
+    ]
     # print(modeldata)
 
     dfmodel = pd.DataFrame(modeldata)
     # print(dfmodel)
     at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, modelpath=Path(args.outputpath))
-    with open(Path(args.outputpath, "gridcontributions.txt"), "w") as fcontribs:
+    with Path(args.outputpath, "gridcontributions.txt").open("w") as fcontribs:
         fcontribs.write("particleid cellindex frac_of_cellmass\n")
         for cell in dfmodel.itertuples(index=False):
-            fcontribs.write(f"{particleid} {cell.inputcellid} {1.}\n")
+            fcontribs.write(f"{particleid} {cell.inputcellid} 1.0\n")
+
+
+def get_wollaeger_density_profile(wollaeger_profilename):
+    print(f"{wollaeger_profilename} found")
+    t_model_init_days_in = float(Path(wollaeger_profilename).open("rt").readline().strip().removesuffix(" day"))
+    result = pd.read_csv(
+        wollaeger_profilename,
+        delim_whitespace=True,
+        skiprows=1,
+        names=["cellid", "velocity_outer", "rho"],
+    )
+    result["cellid"] = result["cellid"].astype(int)
+    result["velocity_inner"] = np.concatenate(([0.0], result["velocity_outer"].to_numpy()[:-1]))
+
+    t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
+    result = result.eval(
+        "cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
+        "* (1e5 * @t_model_init_seconds_in) ** 3"
+    )
+
+    # now replace the density at the input time with the density at required time
+
+    return result.eval(
+        "rho = cellmass_grams / ("
+        "4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
+        " * (1e5 * @t_model_init_seconds) ** 3)"
+    )
 
 
 if __name__ == "__main__":

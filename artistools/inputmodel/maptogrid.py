@@ -74,15 +74,14 @@ def get_wij() -> np.ndarray:
 
 
 def kernelvals2(rij2: float, hmean: float, wij: np.ndarray) -> float:  # ist schnell berechnet aber keine Gradienten
-    hmean21 = 1.0 / (hmean * hmean)
+    hmean21 = 1.0 / hmean**2
     hmean31 = hmean21 / hmean
     v2 = rij2 * hmean21
     index = math.floor(v2 / dvtable)
     dxx = v2 - index * dvtable
     index1 = index + 1
     dwdx = (wij[index1] - wij[index]) / dvtable
-    wtij = (wij[index] + dwdx * dxx) * hmean31
-    return wtij
+    return (wij[index] + dwdx * dxx) * hmean31
 
 
 def maptogrid(
@@ -98,7 +97,7 @@ def maptogrid(
 
     def logprint(*args, **kwargs):
         print(*args, **kwargs)
-        with open(logfilepath, "at", encoding="utf-8") as logfile:
+        with logfilepath.open("a", encoding="utf-8") as logfile:
             logfile.write(" ".join([str(x) for x in args]) + "\n")
 
     wij = get_wij()
@@ -183,7 +182,7 @@ def maptogrid(
     rho = dfsnapshot["rho"].to_numpy()
     Ye = dfsnapshot["ye"].to_numpy()
 
-    with open(Path(outputfolderpath, "ejectapartanalysis.dat"), mode="w", encoding="utf-8") as fpartanalysis:
+    with Path(outputfolderpath, "ejectapartanalysis.dat").open(mode="w", encoding="utf-8") as fpartanalysis:
         for n in range(npart):
             totmass = totmass + pmass[n]
 
@@ -351,7 +350,7 @@ def maptogrid(
     with np.errstate(divide="ignore", invalid="ignore"):
         gye = np.divide(gye, grho)
 
-        with open(Path(outputfolderpath, "gridcontributions.txt"), "w", encoding="utf-8") as fcontribs:
+        with Path(outputfolderpath, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
             fcontribs.write("particleid cellindex frac_of_cellmass\n")
             for (n, i, j, k), rho_contrib in particle_rho_contribs.items():
                 gridindex = (k * ncoordgrid + j) * ncoordgrid + i + 1
@@ -400,7 +399,7 @@ def maptogrid(
 
     # output grid - adapt as you need output
 
-    with open(Path(outputfolderpath, "grid.dat"), "w", encoding="utf-8") as fgrid:
+    with Path(outputfolderpath, "grid.dat").open("w", encoding="utf-8") as fgrid:
         fgrid.write(f"{ncoordgrid**3} # ncoordgrid\n")
         fgrid.write(f"{dtextra} # extra time after explosion simulation ended (in geom units)\n")
         fgrid.write(f"{x0} # xmax\n")
