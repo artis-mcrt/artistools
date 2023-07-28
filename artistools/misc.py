@@ -71,9 +71,13 @@ class AppendPath(argparse.Action):
         # if getattr(args, self.dest) is None:
         #     setattr(args, self.dest, [])
         if isinstance(values, Iterable):
-            # avoids repeated appending of the same items when called from Python
+            pathlist = getattr(args, self.dest)
+            # not pathlist avoids repeated appending of the same items when called from Python
             # instead of from the command line
-            pathlist = getattr(args, self.dest) or [Path(pathstr) for pathstr in values]
+            if not pathlist:
+                for pathstr in values:
+                    # if Path(pathstr) not in pathlist:
+                    pathlist.append(Path(pathstr))
         else:
             setattr(args, self.dest, Path(values))
 
