@@ -33,6 +33,7 @@ rule_settings:
     disable:
         - inline-variable
         - missing-dict-items
+        - extract-method
     rule_types:
         - refactoring
         - suggestion

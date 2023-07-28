@@ -139,10 +139,12 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
 
 def add_derived_columns(
     dfpackets: pd.DataFrame,
-    modelpath: Path,
+    modelpathin: Path | str,
     colnames: Sequence[str],
     allnonemptymgilist: Sequence[int] | None = None,
 ) -> pd.DataFrame:
+    """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files."""
+    modelpath = Path(modelpathin)
     cm_to_km = 1e-5
     day_in_s = 86400
     if dfpackets.empty:
@@ -204,8 +206,10 @@ def add_derived_columns(
 
 
 def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict | None = None) -> pl.LazyFrame:
-    # we might as well add everything, since the columns only get calculated when they are actually used
+    """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
+    We might as well add everything, since the columns only get calculated when they are actually used (polars LazyFrame).
+    """
     dfpackets = dfpackets.with_columns(
         [
             (

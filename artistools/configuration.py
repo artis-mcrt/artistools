@@ -1,35 +1,16 @@
 from __future__ import annotations
 
-import subprocess
+import multiprocessing
 import typing as t
 from pathlib import Path
-
-import psutil
 
 config: dict[str, t.Any] = {}
 
 
 def setup_config() -> None:
-    # count the cores (excluding the efficiency cores on ARM)
-    try:
-        num_processes = int(
-            subprocess.run(
-                ["sysctl", "-n", "hw.perflevel0.logicalcpu"], capture_output=True, text=True, check=True
-            ).stdout
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        try:
-            num_processes = int(
-                subprocess.run(["sysctl", "-n", "hw.logicalcpu"], capture_output=True, text=True, check=True).stdout
-            )
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            num_processes = max(1, int(psutil.cpu_count(logical=False)) - 2)
-
-    # num_processes = 1
-
-    # print(f"Using {num_processes} processes")
-
-    config["num_processes"] = num_processes
+    config["num_processes"] = multiprocessing.cpu_count()
+    # config["num_processes"] = 1
+    # print(f"Using {config['num_processes']} processes")
 
     config["figwidth"] = 5
     config["codecomparisondata1path"] = Path(

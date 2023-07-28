@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Artistools - spectra related functions."""
+
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import math
 import multiprocessing
+import typing as t
 from collections import namedtuple
 from functools import partial
 from pathlib import Path
@@ -20,7 +23,7 @@ import artistools as at
 
 
 def get_packets_with_emtype_onefile(
-    emtypecolumn: str, lineindices: tuple[int], packetsfile: Path | str
+    emtypecolumn: str, lineindices: t.Sequence[int], packetsfile: Path | str
 ) -> pd.DataFrame:
     import gzip
 
@@ -33,7 +36,9 @@ def get_packets_with_emtype_onefile(
     return dfpackets.query(f"{emtypecolumn} in @lineindices", inplace=False).copy()
 
 
-def get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles=None):
+def get_packets_with_emtype(
+    modelpath: Path | str, emtypecolumn: str, lineindices: t.Sequence[int], maxpacketfiles: int | None = None
+):
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
     assert nprocs_read > 0
@@ -415,7 +420,14 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
     plt.close()
 
 
-def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, tstart, tend, maxpacketfiles=None):
+def get_packets_with_emission_conditions(
+    modelpath: str | Path,
+    emtypecolumn: str,
+    lineindices: t.Sequence[int],
+    tstart: float,
+    tend: float,
+    maxpacketfiles: int | None = None,
+) -> pd.DataFrame:
     estimators = at.estimators.read_estimators(modelpath, get_ion_values=False, get_heatingcooling=False)
 
     modeldata, _ = at.inputmodel.get_modeldata(modelpath)
@@ -470,18 +482,22 @@ def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, t
     return dfpackets_selected
 
 
-def plot_nne_te_points(axis, serieslabel, em_log10nne, em_Te, normtotalpackets, color, marker="o"):
+def plot_nne_te_points(
+    axis: plt.Axes,
+    serieslabel: str,
+    em_log10nne: t.Sequence[float],
+    em_Te: t.Sequence[float],
+    normtotalpackets: float,
+    color: float | str | None,
+    marker: str | None = "o",
+) -> None:
     # color_adj = [(c + 0.3) / 1.3 for c in mpl.colors.to_rgb(color)]
     color_adj = [(c + 0.1) / 1.1 for c in mpl.colors.to_rgb(color)]
-    hitcount = {}
+    hitcount: dict[tuple[float, float], int] = {}
     for log10nne, Te in zip(em_log10nne, em_Te):
         hitcount[(log10nne, Te)] = hitcount.get((log10nne, Te), 0) + 1
 
-    if hitcount:
-        arr_log10nne, arr_te = zip(*hitcount.keys())
-    else:
-        arr_log10nne, arr_te = np.array([]), np.array([])
-
+    arr_log10nne, arr_te = zip(*hitcount.keys()) if hitcount else ([], [])
     arr_weight = np.array([hitcount[(x, y)] for x, y in zip(arr_log10nne, arr_te)])
     arr_weight = (arr_weight / normtotalpackets) * 500
     arr_size = np.sqrt(arr_weight) * 10
@@ -623,13 +639,14 @@ def make_emitting_regions_plot(args):
                 tslist = [ts for ts in range(len(tstartlist)) if tendlist[ts] >= tstart and tstartlist[ts] <= tend]
                 for timestep in tslist:
                     for modelgridindex in modeldata.index:
-                        try:
-                            Tedata_all[modelindex][tmid].append(estimators[(timestep, modelgridindex)]["Te"])
-                            log10nnedata_all[modelindex][tmid].append(
-                                math.log10(estimators[(timestep, modelgridindex)]["nne"])
-                            )
-                        except KeyError:
-                            pass
+                        Te, log10nne = None, None
+                        with contextlib.suppress(KeyError):
+                            Te = estimators[(timestep, modelgridindex)]["Te"]
+                            log10nne = math.log10(estimators[(timestep, modelgridindex)]["nne"])
+
+                        if Te is not None and log10nne is not None:
+                            Tedata_all[modelindex][tmid].append(Te)
+                            log10nnedata_all[modelindex][tmid].append(log10nne)
 
         if modeltag != "all":
             continue

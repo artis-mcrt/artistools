@@ -11,10 +11,10 @@ import numpy as np
 import artistools as at
 
 if t.TYPE_CHECKING:
-    from io import TextIOBase
+    from io import TextIOWrapper
 
 
-def write_spectra(modelpath: str | Path, model_id: int, selected_timesteps: t.Sequence[int], outfile: Path):
+def write_spectra(modelpath: str | Path, model_id: str, selected_timesteps: t.Sequence[int], outfilepath: Path) -> None:
     spec_data = np.loadtxt(Path(modelpath, "spec.out"))
 
     times = spec_data[0, 1:]
@@ -36,24 +36,26 @@ def write_spectra(modelpath: str | Path, model_id: int, selected_timesteps: t.Se
         # 2.99792458e18 is c in Angstrom / second
         lum_lambda[n, :] = fluxes_nu[n, :] * 2.99792458e18 / lambdas[n] / lambdas[n] * area
 
-    with outfile.open("w") as f:
-        f.write(f"#NTIMES: {len(selected_timesteps)}\n")
-        f.write(f"#NWAVE: {len(lambdas)}\n")
-        f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
-        f.write("#wavelength[Ang] flux_t0[erg/s/Ang] flux_t1[erg/s/Ang] ... flux_tn[erg/s/Ang]\n")
+    with outfilepath.open("w") as outfile:
+        outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
+        outfile.write(f"#NWAVE: {len(lambdas)}\n")
+        outfile.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
+        outfile.write("#wavelength[Ang] flux_t0[erg/s/Ang] flux_t1[erg/s/Ang] ... flux_tn[erg/s/Ang]\n")
 
         for n in reversed(range(len(lambdas))):
-            f.write(f"{lambdas[n]:.2f} " + " ".join([f"{lum_lambda[n, ts]:.2e}" for ts in selected_timesteps]) + "\n")
+            outfile.write(
+                f"{lambdas[n]:.2f} " + " ".join([f"{lum_lambda[n, ts]:.2e}" for ts in selected_timesteps]) + "\n"
+            )
 
-        f.close()
+        outfile.close()
 
 
-def write_ntimes_nvel(f: TextIOBase, selected_timesteps: t.Sequence[int], modelpath: str | Path) -> None:
+def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: t.Sequence[int], modelpath: str | Path) -> None:
     times = at.get_timestep_times(modelpath)
     modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath)
-    f.write(f"#NTIMES: {len(selected_timesteps)}\n")
-    f.write(f"#NVEL: {len(modeldata)}\n")
-    f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
+    outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
+    outfile.write(f"#NVEL: {len(modeldata)}\n")
+    outfile.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
 
 
 def write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, outfile, keyname) -> None:
@@ -82,7 +84,14 @@ def write_single_estimator(modelpath, selected_timesteps, estimators, allnonempt
             f.write("\n")
 
 
-def write_ionfracts(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, outputpath):
+def write_ionfracts(
+    modelpath: Path | str,
+    model_id: str,
+    selected_timesteps: t.Sequence[int],
+    estimators: dict,
+    allnonemptymgilist: t.Sequence[int],
+    outputpath,
+) -> None:
     times = at.get_timestep_times(modelpath)
     modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath)
     elementlist = at.get_composition_data(modelpath)
@@ -155,7 +164,7 @@ def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptym
 
 
 def write_lbol_edep(
-    modelpath: str | Path, model_id: int, selected_timesteps: t.Sequence[int], outputpath: Path
+    modelpath: str | Path, model_id: str, selected_timesteps: t.Sequence[int], outputpath: Path
 ) -> None:
     # times = at.get_timestep_times(modelpath)
     dflightcurve = at.lightcurve.readfile(Path(modelpath, "light_curve.out"))[-1]
@@ -183,7 +192,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", action="store", type=Path, default=Path(), help="path for output files")
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args=None, argsraw=None, **kwargs) -> None:
     """Write ARTIS model data out in code comparison workshop format."""
     if args is None:
         parser = argparse.ArgumentParser(

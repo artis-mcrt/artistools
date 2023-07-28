@@ -71,9 +71,13 @@ class AppendPath(argparse.Action):
         # if getattr(args, self.dest) is None:
         #     setattr(args, self.dest, [])
         if isinstance(values, Iterable):
-            # avoids repeated appending of the same items when called from Python
+            pathlist = getattr(args, self.dest)
+            # not pathlist avoids repeated appending of the same items when called from Python
             # instead of from the command line
-            pathlist = getattr(args, self.dest) or [Path(pathstr) for pathstr in values]
+            if not pathlist:
+                for pathstr in values:
+                    # if Path(pathstr) not in pathlist:
+                    pathlist.append(Path(pathstr))
         else:
             setattr(args, self.dest, Path(values))
 
@@ -224,11 +228,13 @@ def match_closest_time(reftime: float, searchtimes: list[t.Any]) -> str:
 
 def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
     filename = Path(modelpath, "vpkt.txt")
-    vpkt_config: dict[str, t.Any] = {}
+
     with filename.open() as vpkt_txt:
-        vpkt_config["nobsdirections"] = int(vpkt_txt.readline())
-        vpkt_config["cos_theta"] = [float(x) for x in vpkt_txt.readline().split()]
-        vpkt_config["phi"] = [float(x) for x in vpkt_txt.readline().split()]
+        vpkt_config: dict[str, t.Any] = {
+            "nobsdirections": int(vpkt_txt.readline()),
+            "cos_theta": [float(x) for x in vpkt_txt.readline().split()],
+            "phi": [float(x) for x in vpkt_txt.readline().split()],
+        }
         nspecflag = int(vpkt_txt.readline())
 
         if nspecflag == 1:
@@ -402,7 +408,7 @@ def get_timestep_times(
     raise ValueError(msg)
 
 
-def get_timestep_of_timedays(modelpath: Path, timedays: str | float) -> int:
+def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> int:
     """Return the timestep containing the given time in days."""
     if isinstance(timedays, str):
         # could be a string like '330d'

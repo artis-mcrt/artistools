@@ -11,7 +11,7 @@ h = 6.62607004e-34  # m^2 kg / s
 c = 299792458  # m / s
 
 
-def main():
+def main() -> None:
     logfiles = glob.glob("output_0-0.txt") + glob.glob("*/output_0-0.txt") + glob.glob("*/*/output_0-0.txt")
     if not logfiles:
         print("no output log files found")
@@ -24,12 +24,12 @@ def main():
     for index, logfilename in enumerate(logfiles):
         runfolder = logfilename.split("/output_0-0.txt")[0]
 
-        timesteptimes = []
+        timesteptimes: list[str] = []
         with Path(f"{runfolder}/light_curve.out").open() as lcfile:
             timesteptimes.extend(line.split()[0] for line in lcfile)
         timesteptimes = timesteptimes[: len(timesteptimes) // 2]
 
-        stats = []
+        stats: list[dict[str, int]] = []
 
         with Path(logfilename).open() as flog:
             for line in flog:

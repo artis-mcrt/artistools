@@ -29,7 +29,5 @@ setup(
         "console_scripts": commands.get_console_scripts(),
     },
     scripts=["artistoolscompletions.sh"],
-    setup_requires=["psutil>=5.9.0", "setuptools>=45", "setuptools_scm[toml]>=6.2", "wheel"],
-    tests_require=["pytest", "pytest-runner", "pytest-cov"],
     include_package_data=True,
 )
