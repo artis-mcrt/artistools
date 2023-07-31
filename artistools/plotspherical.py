@@ -181,10 +181,10 @@ def plot_spherical(
     print(f'total packets contributed: {alldirbins.select("count").sum().to_numpy()[0][0]:.1e}')
 
     # these phi and theta angle ranges are defined differently to artis
-    phigrid = np.linspace(-np.pi, np.pi, nphibins + 1, endpoint=True)
+    phigrid = np.linspace(-np.pi, np.pi, nphibins + 1, endpoint=True, dtype=np.float64)
 
     # costhetabin zero is (0,0,-1) so theta angle
-    costhetagrid = np.linspace(-1, 1, ncosthetabins + 1, endpoint=True)
+    costhetagrid = np.linspace(-1, 1, ncosthetabins + 1, endpoint=True, dtype=np.float64)
     # for Molleweide projection, theta range is [-pi/2, +pi/2]
     thetagrid = np.pi / 2 - np.arccos(costhetagrid)
 
