@@ -100,7 +100,7 @@ def test_get_ionrecombratecalibration() -> None:
 
 
 def test_plotspherical() -> None:
-    at.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=outputpath)
+    at.plotspherical.main(argsraw=[], modelpath=modelpath, interpolate=True, outputfile=outputpath)
 
 
 def test_spencerfano() -> None:
