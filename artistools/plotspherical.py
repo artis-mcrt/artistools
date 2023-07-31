@@ -36,7 +36,6 @@ def plot_spherical(
 
     _, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=True, printwarningsonly=True)
 
-    dfpackets: pl.LazyFrame | pl.DataFrame
     nprocs_read, dfpackets = at.packets.get_packets_pl(
         modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
@@ -203,7 +202,7 @@ def plot_spherical(
         axes = [axes]
 
     for ax, plotvar in zip(axes, plotvars):
-        data = alldirbins.get_column(plotvar).to_numpy(use_pyarrow=False).reshape((ncosthetabins, nphibins))
+        data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
 
         if gaussian_sigma is not None and gaussian_sigma > 0:
             import scipy.ndimage
