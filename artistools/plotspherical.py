@@ -85,18 +85,19 @@ def plot_spherical(
 
     aggs = []
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelmeta=modelmeta)
+
     if "emvelocityoverc" in plotvars:
-        e_rf_mean = dfpackets.select("e_rf").mean().collect()
         aggs.append(
-            ((pl.col("emission_velocity") * pl.col("e_rf")).mean() / e_rf_mean / 29979245800).alias("emvelocityoverc")
+            ((pl.col("emission_velocity") * pl.col("e_rf")).mean() / pl.col("e_rf").mean() / 29979245800).alias(
+                "emvelocityoverc"
+            )
         )
 
     if "emlosvelocityoverc" in plotvars:
-        e_rf_mean = dfpackets.select("e_rf").mean().collect()
         aggs.append(
-            ((pl.col("emission_velocity_lineofsight") * pl.col("e_rf")).mean() / e_rf_mean / 29979245800).alias(
-                "emlosvelocityoverc"
-            )
+            (
+                (pl.col("emission_velocity_lineofsight") * pl.col("e_rf")).mean() / pl.col("e_rf").mean() / 29979245800
+            ).alias("emlosvelocityoverc")
         )
 
     if "luminosity" in plotvars:
@@ -161,7 +162,7 @@ def plot_spherical(
 
     aggs.append(pl.count())
 
-    dfpackets = dfpackets.groupby(["costhetabin", "phibin"]).agg(aggs)
+    dfpackets = dfpackets.collect(streaming=True).groupby(["costhetabin", "phibin"]).agg(aggs).lazy()
     dfpackets = dfpackets.select(["costhetabin", "phibin", "count", *plotvars])
 
     ndirbins = nphibins * ncosthetabins
