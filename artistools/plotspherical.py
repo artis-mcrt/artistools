@@ -13,10 +13,12 @@ import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
+from typeguard import typechecked
 
 import artistools as at
 
 
+@typechecked
 def plot_spherical(
     modelpath: str | Path,
     timemindays: float | None,
@@ -30,7 +32,7 @@ def plot_spherical(
     plotvars: list[str] | None = None,
     figscale: float = 1.0,
     cmap: str | None = None,
-) -> tuple[plt.Figure, plt.Axes]:
+) -> tuple[plt.Figure, np.ndarray[t.Any, np.dtype[plt.Axes]]]:
     if plotvars is None:
         plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc"]
 
@@ -199,7 +201,7 @@ def plot_spherical(
     )
 
     if len(plotvars) == 1:
-        axes = [axes]
+        axes = np.array([axes])
 
     for ax, plotvar in zip(axes, plotvars):
         data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
