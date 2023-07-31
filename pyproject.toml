@@ -188,6 +188,7 @@ ignore = [
     "PLR0915",  # too-many-statements
     "PLR2004",  # magic-value-comparison
     "PLW2901",  # redefined-loop-name
+    "PTH207", # glob
     "S101",  # Use of assert detected
     "S301",  # suspicious-pickle-usage
     "S307",  # suspicious-eval-usage
@@ -196,6 +197,7 @@ ignore = [
     "S603",  # subprocess-without-shell-equals-true
     "S607",  # start-process-with-partial-path
     "SLF001",  # private-member-access
+    "SIM115", # open-file-with-context-handler
     "T201",  # print found
     "TD002",  # missing-todo-author
     "TD003",  # missing-todo-link
