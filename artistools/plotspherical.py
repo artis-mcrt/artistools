@@ -30,7 +30,7 @@ def plot_spherical(
     plotvars: list[str] | None = None,
     figscale: float = 1.0,
     cmap: str | None = None,
-) -> tuple[plt.figure.Figure, plt.Axes]:
+) -> tuple[plt.Figure, plt.Axes]:
     if plotvars is None:
         plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc"]
 
