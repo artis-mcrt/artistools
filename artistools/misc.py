@@ -19,6 +19,7 @@ import pandas as pd
 import polars as pl
 import pyzstd
 import xz
+from typeguard import typechecked
 
 import artistools as at
 
@@ -66,6 +67,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         super().add_arguments(actions)
 
 
+@typechecked
 class AppendPath(argparse.Action):
     def __call__(self, parser, args, values, option_string=None) -> None:  # type: ignore[no-untyped-def] # noqa: ARG002
         # if getattr(args, self.dest) is None:

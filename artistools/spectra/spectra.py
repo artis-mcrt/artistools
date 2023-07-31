@@ -12,19 +12,18 @@ from pathlib import Path
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import polars as pl
 from astropy import constants as const
 from astropy import units as u
+from typeguard import typechecked
 
 import artistools as at
 
 if t.TYPE_CHECKING:
     import argparse
-    from collections.abc import Collection
-    from collections.abc import Sequence
 
-    import numpy.typing as npt
 
 fluxcontributiontuple = namedtuple(
     "fluxcontributiontuple", "fluxcontrib linelabel array_flambda_emission array_flambda_absorption color"
@@ -110,6 +109,7 @@ def get_spectrum_at_time(
     )[dirbin]
 
 
+@typechecked
 def get_from_packets(
     modelpath: Path,
     timelowdays: float,
@@ -121,7 +121,7 @@ def get_from_packets(
     maxpacketfiles: int | None = None,
     useinternalpackets: bool = False,
     getpacketcount: bool = False,
-    directionbins: Collection[int] | None = None,
+    directionbins: t.Collection[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     fnufilterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
@@ -328,11 +328,12 @@ def get_spec_res(
     return res_specdata
 
 
+@typechecked
 def get_spectrum(
     modelpath: Path,
     timestepmin: int,
     timestepmax: int | None = None,
-    directionbins: Sequence[int] | None = None,
+    directionbins: t.Sequence[int] | None = None,
     fnufilterfunc: t.Callable[[npt.NDArray[np.floating]], npt.NDArray[np.floating]] | None = None,
     average_over_theta: bool = False,
     average_over_phi: bool = False,
@@ -359,6 +360,7 @@ def get_spectrum(
                     pl.read_csv(at.zopen(specfilename, mode="rb"), separator=" ", infer_schema_length=0)
                     .with_columns(pl.all().cast(pl.Float64))
                     .rename({"0": "nu"})
+                    .to_pandas()
                 )
 
             except FileNotFoundError:
