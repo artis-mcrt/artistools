@@ -37,10 +37,20 @@ repos:
       rev: 23.7.0
       hooks:
           - id: black
-    - repo: https://github.com/pre-commit/mirrors-mypy
-      rev: v1.4.1
+    # - repo: https://github.com/pre-commit/mirrors-mypy
+    #   rev: v1.4.1
+    #   hooks:
+    #       - id: mypy
+    #         additional_dependencies: [numpy, types-PyYAML, pandas>=2.0.3, polars>=0.18.10]
+    #         types: [python]
+    #         require_serial: true
+    - repo: local
       hooks:
           - id: mypy
-            additional_dependencies: [numpy, types-PyYAML, pandas, polars>=0.18.10]
+            name: mypy
+            entry: dmypy
             types: [python]
+            # files: \.py$
+            language: python
             require_serial: true
+            args: [run, --, --cache-fine-grained]
