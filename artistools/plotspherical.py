@@ -202,7 +202,7 @@ def plot_spherical(
         axes = [axes]
 
     for ax, plotvar in zip(axes, plotvars):
-        data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
+        data = alldirbins.get_column(plotvar).to_numpy(use_pyarrow=False).reshape((ncosthetabins, nphibins))
 
         if gaussian_sigma is not None and gaussian_sigma > 0:
             import scipy.ndimage
