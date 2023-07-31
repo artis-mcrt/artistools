@@ -41,6 +41,6 @@ repos:
       rev: v1.4.1
       hooks:
           - id: mypy
-            additional_dependencies: [numpy, types-PyYAML, pandas, polars>=0.18.7]
+            additional_dependencies: [numpy, types-PyYAML, pandas, polars>=0.18.10]
             types: [python]
             require_serial: true
