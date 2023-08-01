@@ -52,7 +52,7 @@ jobs:
               run: source ./setuptestdata.sh
 
             - name: Test with pytest
-              run: pytest --cov=./ --cov-report=xml --durations=0
+              run: pytest --cov=./ --cov-report=xml --durations=0  --typeguard-packages=artistools
 
             - name: Report coverage
               run: coverage report
