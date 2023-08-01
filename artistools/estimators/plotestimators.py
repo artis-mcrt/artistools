@@ -16,7 +16,7 @@ import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from typeguard import type_check
+from typeguard import check_type
 from typeguard import typechecked
 
 import artistools as at
@@ -559,13 +559,13 @@ def get_xlist(
         timestepslist_out = timestepslist
     elif xvariable == "timestep":
         mgilist_out = allnonemptymgilist
-        type_check(timestepslist, t.Sequence[int])
+        check_type(timestepslist, t.Sequence[int])
         xlist = timestepslist
         timestepslist_out = timestepslist
     elif xvariable == "time":
         mgilist_out = allnonemptymgilist
         timearray = at.get_timestep_times(modelpath)
-        type_check(timestepslist, t.Sequence[t.Sequence[int]])
+        check_type(timestepslist, t.Sequence[t.Sequence[int]])
         xlist = [np.mean([timearray[ts] for ts in tslist]) for tslist in timestepslist]
         timestepslist_out = timestepslist
     else:
