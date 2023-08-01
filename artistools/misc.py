@@ -44,7 +44,6 @@ roman_numerals = (
 )
 
 
-@typechecked
 class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
         kwargs["max_help_position"] = 39
