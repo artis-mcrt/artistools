@@ -1,5 +1,5 @@
 # PYTHON_ARGCOMPLETE_OK
-from __future__ import annotations
+
 
 import argparse
 import math

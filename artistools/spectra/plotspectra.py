@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 """Artistools - spectra plotting functions."""
-from __future__ import annotations
+
 
 import argparse
 import sys
@@ -382,9 +382,10 @@ def plot_artis_spectrum(
     return dfspectrum[["lambda_angstroms", "f_lambda"]]
 
 
+@typechecked
 def make_spectrum_plot(
     speclist: t.Collection[Path | str],
-    axes: plt.Axes,
+    axes: np.ndarray[t.Any, np.dtype[plt.Axes]] | t.Sequence[plt.Axes],
     filterfunc: t.Callable[[np.ndarray], np.ndarray] | None,
     args,
     scale_to_peak: float | None = None,
@@ -859,7 +860,8 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
         # ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.BuGn_r)
 
 
-def make_plot(args) -> tuple[plt.Figure, plt.Axes, pd.DataFrame]:
+@typechecked
+def make_plot(args) -> tuple[plt.Figure, list[plt.Axes], pd.DataFrame]:
     # font = {'size': 16}
     # mpl.rc('font', **font)
 
@@ -886,8 +888,7 @@ def make_plot(args) -> tuple[plt.Figure, plt.Axes, pd.DataFrame]:
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 
-    if nrows == 1:
-        axes = [axes]
+    axes = [axes] if nrows == 1 else list(axes)
 
     filterfunc = at.get_filterfunc(args)
 
@@ -1041,6 +1042,7 @@ def make_plot(args) -> tuple[plt.Figure, plt.Axes, pd.DataFrame]:
     return fig, axes, dfalldata
 
 
+@typechecked
 def addargs(parser) -> None:
     parser.add_argument(
         "specpath",

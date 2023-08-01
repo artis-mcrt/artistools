@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-from __future__ import annotations
+
 
 import argparse
 import math
@@ -11,12 +11,10 @@ import argcomplete
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from astropy import units as u
 
 import artistools as at
-
-if t.TYPE_CHECKING:
-    import pandas as pd
 
 
 def plot_2d_initial_abundances(modelpath: Path, args: argparse.Namespace) -> None:

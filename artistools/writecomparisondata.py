@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 """Tools to get artis output in the required format for the code comparison workshop."""
-from __future__ import annotations
+
 
 import argparse
 import typing as t
+from io import TextIOWrapper
 from pathlib import Path
 
 import numpy as np
 
 import artistools as at
-
-if t.TYPE_CHECKING:
-    from io import TextIOWrapper
 
 
 def write_spectra(modelpath: str | Path, model_id: str, selected_timesteps: t.Sequence[int], outfilepath: Path) -> None:

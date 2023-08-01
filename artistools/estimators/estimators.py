@@ -4,7 +4,6 @@
 Examples are temperatures, populations, and heating/cooling rates.
 """
 
-from __future__ import annotations
 
 import argparse
 import contextlib

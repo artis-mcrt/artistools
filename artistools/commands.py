@@ -1,9 +1,12 @@
-from __future__ import annotations
-
 import argparse
+import importlib
 import subprocess
 import typing as t
 from pathlib import Path
+
+from typeguard import typechecked
+
+from .misc import CustomArgHelpFormatter
 
 cmdtype: t.TypeAlias = dict[str, t.Union[tuple[str, str], "cmdtype"]]
 
@@ -190,6 +193,36 @@ def get_console_scripts() -> list[str]:
     return [
         f"{command} = {submodulename}:{funcname}" for command, (submodulename, funcname) in get_commandlist().items()
     ]
+
+
+@typechecked
+def addsubparsers(parser: argparse.ArgumentParser, parentcommand: str, dictcommands: cmdtype, depth: int = 1) -> None:
+    def func(args: t.Any) -> None:
+        parser.print_help()
+
+    parser.set_defaults(func=func)
+    subparsers = parser.add_subparsers(dest=f"{parentcommand} command", required=False)
+
+    for subcommand, subcommands in dictcommands.items():
+        strhelp: str | None
+        if isinstance(subcommands, dict):
+            strhelp = "command group"
+            submodule = None
+        else:
+            submodulename, funcname = subcommands
+            namestr = f"artistools.{submodulename.removeprefix('artistools.')}" if submodulename else "artistools"
+            submodule = importlib.import_module(namestr, package="artistools")
+            func = getattr(submodule, funcname)
+            strhelp = func.__doc__
+
+        subparser = subparsers.add_parser(subcommand, help=strhelp, formatter_class=CustomArgHelpFormatter)
+
+        if submodule:
+            submodule.addargs(subparser)
+            subparser.set_defaults(func=func)
+        else:
+            assert not isinstance(subcommands, tuple)
+            addsubparsers(parser=subparser, parentcommand=subcommand, dictcommands=subcommands, depth=depth + 1)
 
 
 def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:

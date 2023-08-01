@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Artistools - NLTE population related functions."""
 
-from __future__ import annotations
 
 import argparse
 import contextlib

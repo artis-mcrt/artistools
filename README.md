@@ -7,7 +7,7 @@
 [![codecov](https://codecov.io/gh/artis-mcrt/artistools/branch/main/graph/badge.svg?token=XFlarJqeZd)](https://codecov.io/gh/artis-mcrt/artistools)
 
 ## Installation
-Requires Python >= 3.9
+Requires Python >= 3.10
 
 artistools can be installed from PyPI using `pip install artistools'. For development, clone the repository and make an editable install:
 ```sh

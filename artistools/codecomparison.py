@@ -4,19 +4,17 @@ codecomparison/[modelname]/[codename].
 
 e.g., codecomparison/DDC10/artisnebular
 """
-from __future__ import annotations
+
 
 import math
 import typing as t
 from pathlib import Path
 
+import matplotlib.axes
 import numpy as np
 import pandas as pd
 
 import artistools as at
-
-if t.TYPE_CHECKING:
-    import matplotlib.axes
 
 
 def get_timestep_times(

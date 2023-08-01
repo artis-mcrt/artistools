@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import hashlib
+import importlib
 import math
 import typing as t
 
@@ -12,8 +13,6 @@ outputpath = at.get_config()["path_testoutput"]
 
 
 def test_commands() -> None:
-    import importlib
-
     # ensure that the commands are pointing to valid submodule.function() targets
     for _command, (submodulename, funcname) in sorted(at.commands.get_commandlist().items()):
         submodule = importlib.import_module(submodulename, package="artistools")

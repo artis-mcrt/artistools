@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import argparse
 import errno
 import gc
