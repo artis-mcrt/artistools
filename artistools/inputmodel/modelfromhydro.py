@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
+from __future__ import annotations
+
 import argparse
 import datetime
 import math
@@ -78,10 +80,9 @@ def get_merger_time_geomunits(pathtogriddata: Path) -> float:
     sys.exit(1)
 
 
-def get_snapshot_time_geomunits(pathtogriddata: Path) -> tuple[float, float]:
-    import glob
-
-    snapshotinfofiles = glob.glob(str(Path(pathtogriddata) / "*_info.dat*"))
+def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, float]:
+    pathtogriddata = Path(pathtogriddata)
+    snapshotinfofiles = list(pathtogriddata.glob("*_info.dat*"))
     if not snapshotinfofiles:
         print("No info file found for dumpstep")
         sys.exit(1)
@@ -100,7 +101,7 @@ def get_snapshot_time_geomunits(pathtogriddata: Path) -> tuple[float, float]:
                 f"({simulation_end_time_geomunits * 4.926e-6} s)"
             )
 
-        mergertime_geomunits = get_merger_time_geomunits(Path(pathtogriddata))
+        mergertime_geomunits = get_merger_time_geomunits(pathtogriddata)
         print(f"  time since merger {(simulation_end_time_geomunits - mergertime_geomunits) * 4.926e-6} s")
 
     else:

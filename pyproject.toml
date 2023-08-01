@@ -188,7 +188,6 @@ ignore = [
     "PLR0915",  # too-many-statements
     "PLR2004",  # magic-value-comparison
     "PLW2901",  # redefined-loop-name
-    "PTH207", # glob
     "S101",  # Use of assert detected
     "S301",  # suspicious-pickle-usage
     "S307",  # suspicious-eval-usage
