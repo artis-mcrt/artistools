@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
 import math
 import sys
@@ -17,10 +19,10 @@ defaultoutputfile = "plottransitions_cell{cell:03d}_ts{timestep:02d}_{time_days:
 iontuple = namedtuple("iontuple", "Z ion_stage")
 
 
-def get_kurucz_transitions():
+def get_kurucz_transitions() -> tuple[pd.DataFrame, list[iontuple]]:
     hc_evcm = (const.h * const.c).to("eV cm").value
     transitiontuple = namedtuple(
-        "transition", "Z ionstage lambda_angstroms A lower_energy_ev upper_energy_ev lower_g upper_g"
+        "transitiontuple", "Z ionstage lambda_angstroms A lower_energy_ev upper_energy_ev lower_g upper_g"
     )
     translist = []
     ionlist = []
@@ -50,8 +52,10 @@ def get_kurucz_transitions():
     return dftransitions, ionlist
 
 
-def get_nist_transitions(filename):
-    transitiontuple = namedtuple("transition", "lambda_angstroms A lower_energy_ev upper_energy_ev lower_g upper_g")
+def get_nist_transitions(filename: Path | str) -> pd.DataFrame:
+    transitiontuple = namedtuple(
+        "transitiontuple", "lambda_angstroms A lower_energy_ev upper_energy_ev lower_g upper_g"
+    )
     translist = []
     with Path(filename).open() as fnist:
         for line in fnist:
@@ -264,14 +268,14 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     plot_xmax_wide = args.xmax * (1 + args.gaussian_window * args.sigma_v / const.c.to("km / s").value)
 
     ionlist = [
-        (26, 1),
-        (26, 2),
-        (26, 3),
-        (27, 2),
-        (27, 3),
-        (28, 2),
-        (28, 3),
-        # (28, 2),
+        iontuple(26, 1),
+        iontuple(26, 2),
+        iontuple(26, 3),
+        iontuple(27, 2),
+        iontuple(27, 3),
+        iontuple(28, 2),
+        iontuple(28, 3),
+        # iontuple(28, 2),
         # iontuple(45, 1),
         # iontuple(54, 1),
         # iontuple(54, 2),
@@ -352,7 +356,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     yvalues = np.zeros((len(temperature_list) + 1, len(ionlist), len(xvalues)))
 
     for _, ion in adata.iterrows() if args.atomicdatabase == "artis" else enumerate(ionlist):
-        ionid = (ion.Z, ion.ion_stage)
+        ionid = iontuple(ion.Z, ion.ion_stage)
         if ionid not in ionlist:
             continue
 

@@ -784,7 +784,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     if isinstance(args.elements, str):
         args.elements = [args.elements]
 
-    if isinstance(args.velocity, (float, int)):
+    if isinstance(args.velocity, float | int):
         args.velocity = [args.velocity]
 
     mgilist: list[int | float] = [int(mgi) for mgi in args.modelgridindex]

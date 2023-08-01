@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import errno
 import gc
 import math
@@ -16,21 +17,19 @@ import pandas as pd
 import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
+from typeguard import typechecked
 
 import artistools as at
 
-if t.TYPE_CHECKING:
-    import argparse
-    from collections.abc import Sequence
 
-
+@typechecked
 def read_modelfile_text(
     filename: Path | str,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
     skipnuclidemassfraccolumns: bool = False,
     dtype_backend: t.Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
-) -> tuple[pd.DataFrame, dict[str, t.Any]]:
+) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides."""
     onelinepercellformat = None
 
@@ -335,16 +334,17 @@ def read_modelfile_text(
     return dfmodel, modelmeta
 
 
+@typechecked
 def get_modeldata(
     modelpath: Path | str = Path(),
     get_elemabundances: bool = False,
-    derived_cols: Sequence[str] | None = None,
+    derived_cols: t.Sequence[str] | None = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
     skipnuclidemassfraccolumns: bool = False,
     dtype_backend: t.Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
     use_polars: bool = False,
-) -> tuple[pd.DataFrame, dict[str, t.Any]]:
+) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
 
     Parameters
@@ -460,6 +460,7 @@ def get_modeldata(
     return dfmodel, modelmeta
 
 
+@typechecked
 def get_modeldata_tuple(*args: t.Any, **kwargs: t.Any) -> tuple[pd.DataFrame, float, float]:
     """Get model from model.txt file
     DEPRECATED: Use get_modeldata() instead.
@@ -469,9 +470,10 @@ def get_modeldata_tuple(*args: t.Any, **kwargs: t.Any) -> tuple[pd.DataFrame, fl
     return dfmodel, modelmeta["t_model_init_days"], modelmeta["vmax_cmps"]
 
 
+@typechecked
 def add_derived_cols_to_modeldata(
     dfmodel: pl.DataFrame | pl.LazyFrame,
-    derived_cols: Sequence[str],
+    derived_cols: t.Sequence[str],
     dimensions: int | None = None,
     t_model_init_seconds: float | None = None,
     wid_init: float | None = None,
@@ -686,6 +688,7 @@ def get_3d_modeldata_minimal(modelpath: str | Path) -> pd.DataFrame:
     return model
 
 
+@typechecked
 def save_modeldata(
     dfmodel: pd.DataFrame,
     t_model_init_days: float | None = None,
@@ -814,7 +817,7 @@ def save_modeldata(
     print(f"Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: Sequence[int] | None = None) -> int | float:
+def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: t.Sequence[int] | None = None) -> int | float:
     """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
     If mgilist is given, then chose from these cells only.
     """
@@ -895,10 +898,11 @@ def get_initelemabundances(
     return abundancedata
 
 
+@typechecked
 def save_initelemabundances(
     dfelabundances: pd.DataFrame,
     abundancefilename: Path | str,
-    headercommentlines: Sequence[str] | None = None,
+    headercommentlines: t.Sequence[str] | None = None,
 ) -> None:
     """Save a DataFrame (same format as get_initelemabundances) to abundances.txt.
     columns must be:

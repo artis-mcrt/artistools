@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import glob
+import argparse
 import sys
 import typing as t
 from pathlib import Path
@@ -10,12 +10,9 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 from matplotlib.legend_handler import HandlerTuple
+from typeguard import typechecked
 
 import artistools as at
-
-if t.TYPE_CHECKING:
-    import argparse
-    from collections.abc import Sequence
 
 define_colours_list = [
     "k",
@@ -149,14 +146,15 @@ define_colours_list2 = [
 ]
 
 
-def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
+@typechecked
+def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[t.Sequence[int], dict[int, str]]:
     modelpath = Path(modelpath)
-    viewing_angle_data = bool(glob.glob(str(modelpath / "*_res.out*")))
+    viewing_angle_data_exists = bool(list(modelpath.glob("*_res.out*")))
     if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
         dirbins = args.plotvspecpol
-    elif args.plotviewingangle and args.plotviewingangle[0] == -1 and viewing_angle_data:
+    elif args.plotviewingangle and args.plotviewingangle[0] == -1 and viewing_angle_data_exists:
         dirbins = np.arange(0, 100, 1, dtype=int)
-    elif args.plotviewingangle and viewing_angle_data:
+    elif args.plotviewingangle and viewing_angle_data_exists:
         dirbins = args.plotviewingangle
     elif (
         args.calculate_costheta_phi_from_viewing_angle_numbers
@@ -592,7 +590,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, key, 
     # ax.set_xlabel(r'Decline Rate ($\Delta$m$_{15}$)', fontsize=14)
 
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
-        xlabel = rf"$\Delta$m$_{15}$({key})"
+        xlabel = rf"$\Delta$m$_{{15}}$({key})"
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         xlabel = "Rise Time [days]"
 

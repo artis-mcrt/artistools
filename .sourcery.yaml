@@ -33,11 +33,12 @@ rule_settings:
     disable:
         - inline-variable
         - missing-dict-items
+        - extract-method
     rule_types:
         - refactoring
         - suggestion
         - comment
-    python_version: '3.9' # A string specifying the lowest Python version your project supports. Sourcery will not suggest refactorings requiring a higher Python version.
+    python_version: '3.10' # A string specifying the lowest Python version your project supports. Sourcery will not suggest refactorings requiring a higher Python version.
 
 # rule_tags: {} # Additional rule tags.
 

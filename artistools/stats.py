@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import glob
 import sys
 from pathlib import Path
 
@@ -11,8 +10,8 @@ h = 6.62607004e-34  # m^2 kg / s
 c = 299792458  # m / s
 
 
-def main():
-    logfiles = glob.glob("output_0-0.txt") + glob.glob("*/output_0-0.txt") + glob.glob("*/*/output_0-0.txt")
+def main() -> None:
+    logfiles = list(Path().glob("**/output_0-0.txt"))
     if not logfiles:
         print("no output log files found")
         sys.exit()
@@ -22,16 +21,16 @@ def main():
     )
 
     for index, logfilename in enumerate(logfiles):
-        runfolder = logfilename.split("/output_0-0.txt")[0]
+        runfolder = logfilename.parent
 
-        timesteptimes = []
-        with Path(f"{runfolder}/light_curve.out").open() as lcfile:
+        timesteptimes: list[str] = []
+        with (runfolder / "light_curve.out").open() as lcfile:
             timesteptimes.extend(line.split()[0] for line in lcfile)
         timesteptimes = timesteptimes[: len(timesteptimes) // 2]
 
-        stats = []
+        stats: list[dict[str, int]] = []
 
-        with Path(logfilename).open() as flog:
+        with logfilename.open() as flog:
             for line in flog:
                 if line.startswith("timestep "):
                     currenttimestep = int(line.split(" ")[1].split(",")[0])

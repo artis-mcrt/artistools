@@ -14,14 +14,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib import ticker
+from matplotlib.artist import Artist
+from typeguard import typechecked
 
 import artistools as at
-
-if t.TYPE_CHECKING:
-    from collections.abc import Collection
-
-    from matplotlib.artist import Artist
-
 
 hatches = ["", "x", "-", "\\", "+", "O", ".", "", "x", "*", "\\", "+", "O", "."]  # ,
 
@@ -97,6 +93,7 @@ def plot_polarisation(modelpath: Path, args) -> None:
     print(f"Saved {figname}")
 
 
+@typechecked
 def plot_reference_spectrum(
     filename: Path | str,
     axis: plt.Axes,
@@ -195,8 +192,9 @@ def plot_filter_functions(axis: plt.Axes) -> None:
         )
 
 
+@typechecked
 def plot_artis_spectrum(
-    axes: Collection[plt.Axes],
+    axes: t.Collection[plt.Axes],
     modelpath: Path | str,
     args,
     scale_to_peak: float | None = None,
@@ -385,7 +383,7 @@ def plot_artis_spectrum(
 
 
 def make_spectrum_plot(
-    speclist: Collection[Path | str],
+    speclist: t.Collection[Path | str],
     axes: plt.Axes,
     filterfunc: t.Callable[[np.ndarray], np.ndarray] | None,
     args,
@@ -541,6 +539,7 @@ def make_spectrum_plot(
     return dfalldata
 
 
+@typechecked
 def make_emissionabsorption_plot(
     modelpath: Path,
     axis: plt.Axes,
@@ -1331,7 +1330,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     if not args.specpath:
         args.specpath = [Path()]
-    elif isinstance(args.specpath, (str, Path)):  # or not not isinstance(args.specpath, Iterable)
+    elif isinstance(args.specpath, str | Path):  # or not not isinstance(args.specpath, Iterable)
         args.specpath = [args.specpath]
 
     args.specpath = at.flatten_list(args.specpath)

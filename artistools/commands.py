@@ -1,19 +1,19 @@
 from __future__ import annotations
 
+import argparse
 import subprocess
 import typing as t
 from pathlib import Path
 
-if t.TYPE_CHECKING:
-    import argparse
-
 cmdtype: t.TypeAlias = dict[str, t.Union[tuple[str, str], "cmdtype"]]
 
+# new subparser based list
 dictcommands: cmdtype = {
     "comparetogsinetwork": ("gsinetwork", "main"),
     "deposition": ("deposition", "main_analytical"),
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
     "exportmassfractions": ("estimators.exportmassfractions", "main"),
+    "getpath": ("", "get_path"),
     "listtimesteps": ("", "showtimesteptimes"),
     "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
     "maketardismodelfromartis": ("inputmodel.maketardismodelfromartis", "main"),
@@ -54,6 +54,8 @@ dictcommands: cmdtype = {
 
 
 def get_commandlist() -> dict[str, tuple[str, str]]:
+    # direct commands (one file installed per command)
+    # we generally should phase this out except for a couple of main ones like at and artistools
     return {
         "at": ("artistools", "main"),
         "artistools": ("artistools", "main"),
