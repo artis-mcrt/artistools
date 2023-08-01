@@ -171,7 +171,7 @@ def generate_band_lightcurve_data(
     args: argparse.Namespace,
     angle: int = -1,
     modelnumber: int | None = None,
-) -> dict:
+) -> dict[str, t.Any]:
     """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
     from scipy.interpolate import interp1d
 
@@ -374,8 +374,11 @@ def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointe
     return 0.0 if flux_obs == 0.0 else -2.5 * np.log10(flux_obs / zeropointenergyflux)
 
 
-def get_band_lightcurve(band_lightcurve_data, band_name, args: argparse.Namespace) -> tuple[list[float], np.ndarray]:
-    time, brightness_in_mag = zip(
+@typechecked
+def get_band_lightcurve(
+    band_lightcurve_data: dict[str, t.Sequence[tuple[float, float]]], band_name, args: argparse.Namespace
+) -> tuple[t.Sequence[float], np.ndarray]:
+    times, brightness_in_mag = zip(
         *[
             (time, brightness)
             for time, brightness in band_lightcurve_data[band_name]
@@ -383,7 +386,7 @@ def get_band_lightcurve(band_lightcurve_data, band_name, args: argparse.Namespac
         ]
     )
 
-    return time, np.array(brightness_in_mag)
+    return times, np.array(brightness_in_mag)
 
 
 def get_colour_delta_mag(band_lightcurve_data, filter_names) -> tuple[list[float], list[float]]:

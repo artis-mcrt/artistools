@@ -17,6 +17,7 @@ import polars as pl
 from astropy import constants as const
 from extinction import apply
 from extinction import ccm89
+from typeguard import typechecked
 
 import artistools as at
 
@@ -260,6 +261,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         )
 
 
+@typechecked
 def plot_artis_lightcurve(
     modelpath: str | Path,
     axis,
@@ -274,7 +276,7 @@ def plot_artis_lightcurve(
     average_over_theta: bool = False,
     usedegrees: bool = False,
     args=None,
-) -> pd.DataFrame | None:
+) -> dict[int, pl.DataFrame] | None:
     lcfilename = None
     modelpath = Path(modelpath)
     if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/light_curve.out'
@@ -463,12 +465,12 @@ def plot_artis_lightcurve(
 
 def make_lightcurve_plot(
     modelpaths: t.Sequence[str | Path],
-    filenameout: str,
+    filenameout: str | Path,
     frompackets: bool = False,
     escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
     maxpacketfiles: int | None = None,
     args=None,
-):
+) -> None:
     """Use light_curve.out or light_curve_res.out files to plot light curve."""
     conffigwidth = float(at.get_config()["figwidth"])
     fig, axis = plt.subplots(
