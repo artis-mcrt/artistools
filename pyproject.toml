@@ -30,6 +30,7 @@ license = { file = "LICENSE.txt" }
 [tool.black]
 line-length = 120
 preview = true
+target-versions = ["py310", "py311"]
 
 [tool.isort]
 profile = "black"
