@@ -205,7 +205,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     if not args.modelpath:
         args.modelpath = [Path()]
-    elif isinstance(args.modelpath, (str, Path)):
+    elif isinstance(args.modelpath, str | Path):
         args.modelpath = [args.modelpath]
 
     modelpathlist = args.modelpath

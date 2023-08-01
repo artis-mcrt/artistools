@@ -905,7 +905,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     if not args.modelpath:
         args.modelpath = [Path()]
-    elif isinstance(args.modelpath, (str, Path)):
+    elif isinstance(args.modelpath, str | Path):
         args.modelpath = [args.modelpath]
 
     args.modelpath = at.flatten_list(args.modelpath)

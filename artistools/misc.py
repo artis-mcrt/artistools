@@ -689,7 +689,7 @@ def makelist(x: None | list | t.Sequence | str | Path) -> list[t.Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
         return []
-    return [x] if isinstance(x, (str, Path)) else list(x)
+    return [x] if isinstance(x, str | Path) else list(x)
 
 
 def trim_or_pad(requiredlength: int, *listoflistin: list[t.Any]) -> t.Iterator[list[t.Any]]:
@@ -736,7 +736,7 @@ def firstexisting(
     tryzipped: bool = True,
 ) -> Path:
     """Return the first existing file in file list. If none exist, raise exception."""
-    if isinstance(filelist, (str, Path)):
+    if isinstance(filelist, str | Path):
         filelist = [filelist]
     folder = Path(folder)
 

@@ -1330,7 +1330,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     if not args.specpath:
         args.specpath = [Path()]
-    elif isinstance(args.specpath, (str, Path)):  # or not not isinstance(args.specpath, Iterable)
+    elif isinstance(args.specpath, str | Path):  # or not not isinstance(args.specpath, Iterable)
         args.specpath = [args.specpath]
 
     args.specpath = at.flatten_list(args.specpath)

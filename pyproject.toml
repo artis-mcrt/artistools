@@ -15,7 +15,6 @@ description="Plotting and analysis tools for the ARTIS 3D radiative transfer cod
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Development Status :: 3 - Alpha",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Framework :: Matplotlib",
@@ -156,6 +155,7 @@ ignore = [
     "ANN",
     "B005",  # strip-with-multi-characters
     "B007",  # variable not used in loop body (but sometimes it is with eval)
+    "B905", # zip without explicit strict parameter
     "C901",  # complex-structure
     "COM812",  # missing-trailing-comma
     "D100",  # undocumented-public-module
@@ -188,6 +188,7 @@ ignore = [
     "PLR0915",  # too-many-statements
     "PLR2004",  # magic-value-comparison
     "PLW2901",  # redefined-loop-name
+    "RUF007",
     "S101",  # Use of assert detected
     "S301",  # suspicious-pickle-usage
     "S307",  # suspicious-eval-usage
@@ -214,7 +215,7 @@ unfixable = [
     "SIM223", # expr-and-false
 ]
 line-length = 120
-target-version = "py39"
+target-version = "py310"
 fix = true
 show-fixes = true
 ignore-init-module-imports = true
