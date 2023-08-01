@@ -6,6 +6,7 @@ Examples are temperatures, populations, and heating/cooling rates.
 
 from __future__ import annotations
 
+import argparse
 import contextlib
 import math
 import multiprocessing
@@ -16,17 +17,11 @@ from functools import partial
 from functools import reduce
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+from typeguard import typechecked
 
 import artistools as at
-
-if t.TYPE_CHECKING:
-    import argparse
-    from collections.abc import Collection
-    from collections.abc import Iterator
-    from collections.abc import Sequence
-
-    import numpy as np
 
 
 def get_variableunits(key: str | None = None) -> str | dict[str, str]:
@@ -130,7 +125,7 @@ def parse_estimfile(
     get_ion_values: bool = True,
     get_heatingcooling: bool = True,
     skip_emptycells: bool = False,
-) -> Iterator[tuple[int, int, dict]]:  # pylint: disable=unused-argument
+) -> t.Iterator[tuple[int, int, dict]]:  # pylint: disable=unused-argument
     """Generate timestep, modelgridindex, dict from estimator file."""
     with at.zopen(estfilepath) as estimfile:
         timestep: int = -1
@@ -239,7 +234,7 @@ def parse_estimfile(
 def read_estimators_from_file(
     folderpath: Path | str,
     modelpath: Path,
-    arr_velocity_outer: Sequence[float] | None,
+    arr_velocity_outer: t.Sequence[float] | None,
     mpirank: int,
     printfilename: bool = False,
     get_ion_values: bool = True,
@@ -275,10 +270,11 @@ def read_estimators_from_file(
     return estimators_thisfile
 
 
+@typechecked
 def read_estimators(
     modelpath: Path | str = Path(),
-    modelgridindex: None | int | Sequence[int] = None,
-    timestep: None | int | Sequence[int] = None,
+    modelgridindex: None | int | t.Sequence[int] = None,
+    timestep: None | int | t.Sequence[int] = None,
     mpirank: int | None = None,
     runfolder: None | str | Path = None,
     get_ion_values: bool = True,
@@ -291,7 +287,7 @@ def read_estimators(
     Speed it up by only retrieving estimators for a particular timestep(s) or modelgrid cells.
     """
     modelpath = Path(modelpath)
-    match_modelgridindex: Collection[int]
+    match_modelgridindex: t.Collection[int]
     if modelgridindex is None:
         match_modelgridindex = []
     elif isinstance(modelgridindex, int):
@@ -302,7 +298,7 @@ def read_estimators(
     if -1 in match_modelgridindex:
         match_modelgridindex = []
 
-    match_timestep: Collection[int]
+    match_timestep: t.Collection[int]
     if timestep is None:
         match_timestep = []
     elif isinstance(timestep, int):
@@ -380,7 +376,7 @@ def read_estimators(
 def get_averaged_estimators(
     modelpath: Path | str,
     estimators: dict[tuple[int, int], dict],
-    timesteps: int | Sequence[int],
+    timesteps: int | t.Sequence[int],
     modelgridindex: int,
     keys: str | list,
     avgadjcells: int = 0,

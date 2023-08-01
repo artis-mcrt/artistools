@@ -13,10 +13,12 @@ import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
+from typeguard import typechecked
 
 import artistools as at
 
 
+@typechecked
 def plot_spherical(
     modelpath: str | Path,
     timemindays: float | None,
@@ -26,18 +28,16 @@ def plot_spherical(
     maxpacketfiles: int | None = None,
     atomic_number: int | None = None,
     ion_stage: int | None = None,
-    interpolate: bool = False,
     gaussian_sigma: int | None = None,
     plotvars: list[str] | None = None,
     figscale: float = 1.0,
     cmap: str | None = None,
-) -> tuple[plt.figure.Figure, plt.Axes]:
+) -> tuple[plt.Figure, np.ndarray[t.Any, np.dtype[plt.Axes]]]:
     if plotvars is None:
         plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc"]
 
     _, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=True, printwarningsonly=True)
 
-    dfpackets: pl.LazyFrame | pl.DataFrame
     nprocs_read, dfpackets = at.packets.get_packets_pl(
         modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
@@ -86,6 +86,7 @@ def plot_spherical(
 
     aggs = []
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelmeta=modelmeta)
+
     if "emvelocityoverc" in plotvars:
         aggs.append(
             ((pl.col("emission_velocity") * pl.col("e_rf")).mean() / pl.col("e_rf").mean() / 29979245800).alias(
@@ -182,10 +183,10 @@ def plot_spherical(
     print(f'total packets contributed: {alldirbins.select("count").sum().to_numpy()[0][0]:.1e}')
 
     # these phi and theta angle ranges are defined differently to artis
-    phigrid = np.linspace(-np.pi, np.pi, nphibins + 1, endpoint=True)
+    phigrid = np.linspace(-np.pi, np.pi, nphibins + 1, endpoint=True, dtype=np.float64)
 
     # costhetabin zero is (0,0,-1) so theta angle
-    costhetagrid = np.linspace(-1, 1, ncosthetabins + 1, endpoint=True)
+    costhetagrid = np.linspace(-1, 1, ncosthetabins + 1, endpoint=True, dtype=np.float64)
     # for Molleweide projection, theta range is [-pi/2, +pi/2]
     thetagrid = np.pi / 2 - np.arccos(costhetagrid)
 
@@ -200,7 +201,7 @@ def plot_spherical(
     )
 
     if len(plotvars) == 1:
-        axes = [axes]
+        axes = np.array([axes])
 
     for ax, plotvar in zip(axes, plotvars):
         data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
@@ -211,31 +212,7 @@ def plot_spherical(
             sigma_bins = gaussian_sigma / 360 * nphibins
             data = scipy.ndimage.gaussian_filter(data, sigma=sigma_bins, mode="wrap")
 
-        if not interpolate:
-            colormesh = ax.pcolormesh(meshgrid_phi, meshgrid_theta, data, rasterized=True, cmap=cmap)
-        else:
-            ngridhighres = 1024
-            print(f"interpolating onto {ngridhighres}^2 grid")
-
-            from scipy.interpolate import CloughTocher2DInterpolator
-
-            meshgrid_phi_input, meshgrid_theta_input = np.meshgrid(
-                np.linspace(-np.pi, np.pi, nphibins, endpoint=True),
-                np.arccos(np.linspace(-1, 1, ncosthetabins, endpoint=True)) - np.pi / 2,
-            )
-            finterp = CloughTocher2DInterpolator(
-                list(zip(meshgrid_phi_input.flatten(), meshgrid_theta_input.flatten())), data.flatten()
-            )
-
-            meshgrid_phi_highres, meshgrid_theta_highres = np.meshgrid(
-                np.linspace(-np.pi, np.pi, ngridhighres + 1, endpoint=True),
-                np.linspace(-np.pi / 2.0, np.pi / 2.0, ngridhighres + 1, endpoint=True),
-            )
-            data_interp = finterp(meshgrid_phi_highres, meshgrid_theta_highres)
-
-            colormesh = ax.pcolormesh(
-                meshgrid_phi_highres, meshgrid_theta_highres, data_interp, rasterized=True, cmap=cmap
-            )
+        colormesh = ax.pcolormesh(meshgrid_phi, meshgrid_theta, data, rasterized=True, cmap=cmap)
 
         if plotvar == "emlosvelocityoverc":
             colorbartitle = r"Mean line of sight velocity [c]"
@@ -306,8 +283,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("-cmap", default=None, type=str, help="Matplotlib color map name")
 
-    parser.add_argument("--interpolate", action="store_true", help="Interpolate grid to higher resolution")
-
     parser.add_argument(
         "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 is for single-column"
     )
@@ -345,7 +320,6 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         nphibins=args.nphibins,
         ncosthetabins=args.ncosthetabins,
         maxpacketfiles=args.maxpacketfiles,
-        interpolate=args.interpolate,
         gaussian_sigma=args.gaussian_sigma,
         atomic_number=args.atomic_number,
         ion_stage=args.ion_stage,

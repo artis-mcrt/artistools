@@ -6,7 +6,6 @@ import math
 import sys
 import typing as t
 from collections.abc import Iterable
-from collections.abc import Sequence
 from pathlib import Path
 
 import argcomplete
@@ -270,7 +269,7 @@ def plot_artis_lightcurve(
     frompackets: bool = False,
     maxpacketfiles: int | None = None,
     axistherm=None,
-    directionbins: Sequence[int] | None = None,
+    directionbins: t.Sequence[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     usedegrees: bool = False,
@@ -463,7 +462,7 @@ def plot_artis_lightcurve(
 
 
 def make_lightcurve_plot(
-    modelpaths: Sequence[str | Path],
+    modelpaths: t.Sequence[str | Path],
     filenameout: str,
     frompackets: bool = False,
     escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",

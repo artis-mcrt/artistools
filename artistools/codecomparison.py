@@ -16,8 +16,6 @@ import pandas as pd
 import artistools as at
 
 if t.TYPE_CHECKING:
-    from collections.abc import Sequence
-
     import matplotlib.axes
 
 
@@ -55,8 +53,8 @@ def get_timestep_times(
 
 def read_reference_estimators(
     modelpath: str | Path,
-    modelgridindex: None | int | Sequence[int] = None,
-    timestep: None | int | Sequence[int] = None,
+    modelgridindex: None | int | t.Sequence[int] = None,
+    timestep: None | int | t.Sequence[int] = None,
 ) -> dict[tuple[int, int], t.Any]:
     """Read estimators from code comparison workshop file."""
     virtualfolder, inputmodel, codename = Path(modelpath).parts

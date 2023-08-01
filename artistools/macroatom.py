@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 import artistools as at
@@ -107,8 +108,9 @@ def make_plot(
         fontsize=8,
     )
 
-    lambda_cmf_in = 2.99792458e18 / dfmacroatom["nu_cmf_in"].to_numpy()
-    lambda_cmf_out = 2.99792458e18 / dfmacroatom["nu_cmf_out"].to_numpy()
+    with np.errstate(divide="ignore"):
+        lambda_cmf_in = 2.99792458e18 / dfmacroatom["nu_cmf_in"].to_numpy()
+        lambda_cmf_out = 2.99792458e18 / dfmacroatom["nu_cmf_out"].to_numpy()
     # axis.scatter(lambda_cmf_in, lambda_cmf_out, s=1, alpha=0.5, edgecolor='none')
     axis.plot(
         lambda_cmf_in,

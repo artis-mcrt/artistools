@@ -1,5 +1,5 @@
 [build-system]
-requires = ["psutil>=5.9.0", "setuptools>=45", "setuptools_scm[toml]>=6.3", "wheel"]
+requires = ["setuptools>=68", "setuptools_scm[toml]>=7.1", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -15,14 +15,14 @@ description="Plotting and analysis tools for the ARTIS 3D radiative transfer cod
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Development Status :: 3 - Alpha",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Framework :: Matplotlib",
     "Intended Audience :: Science/Research",
 ]
 dynamic = ["version", "dependencies", "entry-points", "readme"]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
+license = { file = "LICENSE.txt" }
 
 #[project.scripts]
 #atcompletions = "artistoolscompletions.sh"
@@ -30,9 +30,6 @@ requires-python = ">=3.9"
 [tool.black]
 line-length = 120
 preview = true
-
-[tool.setuptools.packages.find]
-where = ["."]
 
 [tool.isort]
 profile = "black"
@@ -43,44 +40,47 @@ case_sensitive = false
 sort_relative_in_force_sorted_sections = true
 
 [tool.mypy]
-python_version = '3.11'
+check_untyped_defs = false
+disallow_any_explicit = false
+disallow_any_generics = false
+disallow_any_unimported = false
+disallow_incomplete_defs = false
+disallow_subclassing_any = false
+disallow_untyped_calls = false
+disallow_untyped_defs = false
+error_summary = true
+enable_error_code = [
+  "comparison-overlap",
+  "ignore-without-code",
+  "redundant-expr",
+  "redundant-self",
+  "truthy-bool",
+  "unused-awaitable",
+]
 exclude = "(build)|(tests)"
-packages = "artistools"
 ignore_missing_imports = true
-warn_unused_configs = true
-#files = 'artistools/**/*.py'
+implicit_optional = false
+implicit_reexport = true
+packages = "artistools"
 plugins = 'numpy.typing.mypy_plugin'
+pretty = true
+python_version = '3.11'
 scripts_are_modules = true
 strict_equality = true
 strict_concatenate = true
-pretty = true
-implicit_optional = false
-disallow_untyped_calls = false
-disallow_any_generics = false
-disallow_any_explicit = false
-disallow_incomplete_defs = false
-disallow_subclassing_any = false
-disallow_untyped_defs = false
-implicit_reexport = true
-check_untyped_defs = false
-error_summary = true
-enable_error_code = [
-  "redundant-expr",
-  "truthy-bool",
-  "ignore-without-code",
-]
 warn_redundant_casts = true
+warn_unreachable = false
+warn_unused_configs = true
 warn_unused_ignores = true
 
+# a bit more strict here
 [[tool.mypy.overrides]]
 module = [
     "artistools",
     "artistools.estimators",
-    "artistools.commands",
     "artistools.inputmodel",
     "artistools.lightcurve",
     "artistools.misc",
-    "artistools.packets",
     "artistools.plotspherical",
     "artistools.spectra",
 ]
@@ -92,6 +92,22 @@ disallow_untyped_decorators = true
 warn_return_any = false
 disallow_any_generics = false
 disallow_subclassing_any = true
+
+# full strict mode
+[[tool.mypy.overrides]]
+module = [
+    "artistools.commands",
+    "artistools.packets",
+]
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+warn_return_any = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+
 
 [[tool.mypy.overrides]]
 module = "pyvista"
@@ -137,6 +153,7 @@ ignore = [
     "ANN",
     "B005",  # strip-with-multi-characters
     "B007",  # variable not used in loop body (but sometimes it is with eval)
+    "B905", # zip without explicit strict parameter
     "C901",  # complex-structure
     "COM812",  # missing-trailing-comma
     "D100",  # undocumented-public-module
@@ -169,6 +186,7 @@ ignore = [
     "PLR0915",  # too-many-statements
     "PLR2004",  # magic-value-comparison
     "PLW2901",  # redefined-loop-name
+    "RUF007",
     "S101",  # Use of assert detected
     "S301",  # suspicious-pickle-usage
     "S307",  # suspicious-eval-usage
@@ -177,7 +195,11 @@ ignore = [
     "S603",  # subprocess-without-shell-equals-true
     "S607",  # start-process-with-partial-path
     "SLF001",  # private-member-access
+    "SIM115", # open-file-with-context-handler
     "T201",  # print found
+    "TCH001",
+    "TCH002",
+    "TCH003",
     "TD002",  # missing-todo-author
     "TD003",  # missing-todo-link
     "TRY301",  # raise-within-try
@@ -191,7 +213,7 @@ unfixable = [
     "SIM223", # expr-and-false
 ]
 line-length = 120
-target-version = "py39"
+target-version = "py310"
 fix = true
 show-fixes = true
 ignore-init-module-imports = true
@@ -209,13 +231,13 @@ ignore-fully-untyped = true
 force-single-line = true
 order-by-type = false
 
-#[tool.setuptools]
-#packages = ["artistools"]
+[tool.setuptools]
+packages = ["artistools"]
+include-package-data = true
 
 [tool.setuptools.dynamic]
 readme = {file = ["README.md"]}
 dependencies = {file = ["requirements.txt"]}
-#entry-points = {attr = "artistools.commands.console_scripts"}
 
 [tool.setuptools_scm]
 write_to = "_version.py"

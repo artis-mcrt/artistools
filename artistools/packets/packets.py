@@ -11,12 +11,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import polars as pl
+from typeguard import typechecked
 
 import artistools as at
-
-if t.TYPE_CHECKING:
-    from collections.abc import Sequence
-
 
 # for the parquet files
 time_parquetschemachange = (2023, 4, 22, 12, 31, 0)
@@ -139,10 +136,12 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
 
 def add_derived_columns(
     dfpackets: pd.DataFrame,
-    modelpath: Path,
-    colnames: Sequence[str],
-    allnonemptymgilist: Sequence[int] | None = None,
+    modelpathin: Path | str,
+    colnames: t.Sequence[str],
+    allnonemptymgilist: t.Sequence[int] | None = None,
 ) -> pd.DataFrame:
+    """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files."""
+    modelpath = Path(modelpathin)
     cm_to_km = 1e-5
     day_in_s = 86400
     if dfpackets.empty:
@@ -203,9 +202,12 @@ def add_derived_columns(
     return dfpackets
 
 
+@typechecked
 def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict | None = None) -> pl.LazyFrame:
-    # we might as well add everything, since the columns only get calculated when they are actually used
+    """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
+    We might as well add everything, since the columns only get calculated when they are actually used (polars LazyFrame).
+    """
     dfpackets = dfpackets.with_columns(
         [
             (
@@ -581,6 +583,7 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame, syn_dir: tuple[flo
     return dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"])
 
 
+@typechecked
 def bin_packet_directions_lazypolars(
     dfpackets: pl.LazyFrame,
     nphibins: int | None = None,
@@ -620,6 +623,7 @@ def bin_packet_directions_lazypolars(
     )
 
 
+@typechecked
 def bin_packet_directions(modelpath: Path | str, dfpackets: pd.DataFrame) -> pd.DataFrame:
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()

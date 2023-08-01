@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Artistools - spectra related functions."""
+
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import math
 import multiprocessing
+import typing as t
 from collections import namedtuple
 from functools import partial
 from pathlib import Path
@@ -19,8 +22,36 @@ from astropy import units as u
 import artistools as at
 
 
+def print_floers_line_ratio(
+    modelpath: Path, timedays: float, arr_f_lambda: np.ndarray, arr_lambda_angstroms: np.ndarray
+) -> None:
+    def get_line_flux(
+        lambda_low: float, lambda_high: float, arr_f_lambda: np.ndarray, arr_lambda_angstroms: np.ndarray
+    ) -> float:
+        index_low, index_high = (
+            int(np.searchsorted(arr_lambda_angstroms, wl, side="left")) for wl in (lambda_low, lambda_high)
+        )
+        return abs(
+            np.trapz(
+                arr_f_lambda[index_low:index_high],
+                x=arr_lambda_angstroms[index_low:index_high],
+            )
+        )
+
+    f_12570 = get_line_flux(12570 - 200, 12570 + 200, arr_f_lambda, arr_lambda_angstroms)
+    f_7155 = get_line_flux(7000, 7350, arr_f_lambda, arr_lambda_angstroms)
+    print(f"f_12570 {f_12570:.2e} f_7155 {f_7155:.2e}")
+    if f_7155 > 0 and f_12570 > 0:
+        fratio = f_12570 / f_7155
+        print(f"f_12570/f_7122 = {fratio:.2e} (log10 is {math.log10(fratio):.2e})")
+        outfilename = Path(f"fe2_nir_vis_ratio_{modelpath.name}.txt")
+        print(f" saved to {outfilename}")
+        with outfilename.open("a+") as f:
+            f.write(f"{timedays:.1f} {fratio:.3e}\n")
+
+
 def get_packets_with_emtype_onefile(
-    emtypecolumn: str, lineindices: tuple[int], packetsfile: Path | str
+    emtypecolumn: str, lineindices: t.Sequence[int], packetsfile: Path | str
 ) -> pd.DataFrame:
     import gzip
 
@@ -33,7 +64,9 @@ def get_packets_with_emtype_onefile(
     return dfpackets.query(f"{emtypecolumn} in @lineindices", inplace=False).copy()
 
 
-def get_packets_with_emtype(modelpath, emtypecolumn, lineindices, maxpacketfiles=None):
+def get_packets_with_emtype(
+    modelpath: Path | str, emtypecolumn: str, lineindices: t.Sequence[int], maxpacketfiles: int | None = None
+):
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles=maxpacketfiles)
     nprocs_read = len(packetsfiles)
     assert nprocs_read > 0
@@ -415,7 +448,14 @@ def make_flux_ratio_plot(args: argparse.Namespace) -> None:
     plt.close()
 
 
-def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, tstart, tend, maxpacketfiles=None):
+def get_packets_with_emission_conditions(
+    modelpath: str | Path,
+    emtypecolumn: str,
+    lineindices: t.Sequence[int],
+    tstart: float,
+    tend: float,
+    maxpacketfiles: int | None = None,
+) -> pd.DataFrame:
     estimators = at.estimators.read_estimators(modelpath, get_ion_values=False, get_heatingcooling=False)
 
     modeldata, _ = at.inputmodel.get_modeldata(modelpath)
@@ -470,18 +510,22 @@ def get_packets_with_emission_conditions(modelpath, emtypecolumn, lineindices, t
     return dfpackets_selected
 
 
-def plot_nne_te_points(axis, serieslabel, em_log10nne, em_Te, normtotalpackets, color, marker="o"):
+def plot_nne_te_points(
+    axis: plt.Axes,
+    serieslabel: str,
+    em_log10nne: t.Sequence[float],
+    em_Te: t.Sequence[float],
+    normtotalpackets: float,
+    color: float | str | None,
+    marker: str | None = "o",
+) -> None:
     # color_adj = [(c + 0.3) / 1.3 for c in mpl.colors.to_rgb(color)]
     color_adj = [(c + 0.1) / 1.1 for c in mpl.colors.to_rgb(color)]
-    hitcount = {}
+    hitcount: dict[tuple[float, float], int] = {}
     for log10nne, Te in zip(em_log10nne, em_Te):
         hitcount[(log10nne, Te)] = hitcount.get((log10nne, Te), 0) + 1
 
-    if hitcount:
-        arr_log10nne, arr_te = zip(*hitcount.keys())
-    else:
-        arr_log10nne, arr_te = np.array([]), np.array([])
-
+    arr_log10nne, arr_te = zip(*hitcount.keys()) if hitcount else ([], [])
     arr_weight = np.array([hitcount[(x, y)] for x, y in zip(arr_log10nne, arr_te)])
     arr_weight = (arr_weight / normtotalpackets) * 500
     arr_size = np.sqrt(arr_weight) * 10
@@ -623,13 +667,14 @@ def make_emitting_regions_plot(args):
                 tslist = [ts for ts in range(len(tstartlist)) if tendlist[ts] >= tstart and tstartlist[ts] <= tend]
                 for timestep in tslist:
                     for modelgridindex in modeldata.index:
-                        try:
-                            Tedata_all[modelindex][tmid].append(estimators[(timestep, modelgridindex)]["Te"])
-                            log10nnedata_all[modelindex][tmid].append(
-                                math.log10(estimators[(timestep, modelgridindex)]["nne"])
-                            )
-                        except KeyError:
-                            pass
+                        Te, log10nne = None, None
+                        with contextlib.suppress(KeyError):
+                            Te = estimators[(timestep, modelgridindex)]["Te"]
+                            log10nne = math.log10(estimators[(timestep, modelgridindex)]["nne"])
+
+                        if Te is not None and log10nne is not None:
+                            Tedata_all[modelindex][tmid].append(Te)
+                            log10nnedata_all[modelindex][tmid].append(log10nne)
 
         if modeltag != "all":
             continue
@@ -860,7 +905,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     if not args.modelpath:
         args.modelpath = [Path()]
-    elif isinstance(args.modelpath, (str, Path)):
+    elif isinstance(args.modelpath, str | Path):
         args.modelpath = [args.modelpath]
 
     args.modelpath = at.flatten_list(args.modelpath)
