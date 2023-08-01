@@ -552,7 +552,7 @@ def get_xlist(
     modelpath: str | Path,
     args: t.Any,
 ) -> tuple[list[float | int], list[int | t.Sequence[int]], list[int | list[int]]]:
-    xlist: list[float | int]
+    xlist: t.Sequence[float | int]
     if xvariable in {"cellid", "modelgridindex"}:
         mgilist_out = [mgi for mgi in allnonemptymgilist if mgi <= args.xmax] if args.xmax >= 0 else allnonemptymgilist
         xlist = list(mgilist_out)
