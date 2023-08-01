@@ -20,7 +20,6 @@ ME = 9.1093897e-28
 QE = 4.80325e-10
 H_ionpot = 13.5979996 * EV
 CLIGHT = 2.99792458e10
-PI = math.pi
 
 use_collstrengths = False
 
