@@ -309,7 +309,8 @@ def bolometric_magnitude(
             integrated_flux = np.trapz(spectrum["f_lambda"], spectrum["lambda_angstroms"])
             integrated_luminosity = integrated_flux * 4 * np.pi * np.power(u.Mpc.to("cm"), 2)
             Mbol_sun = 4.74
-            magnitude = Mbol_sun - (2.5 * np.log10(integrated_luminosity / const.L_sun.to("erg/s").value))
+            with np.errstate(divide="ignore"):
+                magnitude = Mbol_sun - (2.5 * np.log10(integrated_luminosity / const.L_sun.to("erg/s").value))
             magnitudes.append(magnitude)
             times.append(time)
             # print(const.L_sun.to('erg/s').value)
