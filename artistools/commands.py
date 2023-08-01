@@ -1,11 +1,9 @@
 from __future__ import annotations
 
+import argparse
 import subprocess
 import typing as t
 from pathlib import Path
-
-if t.TYPE_CHECKING:
-    import argparse
 
 cmdtype: t.TypeAlias = dict[str, t.Union[tuple[str, str], "cmdtype"]]
 

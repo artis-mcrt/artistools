@@ -1,6 +1,7 @@
 """Artistools - spectra related functions."""
 from __future__ import annotations
 
+import argparse
 import math
 import os
 import re
@@ -20,10 +21,6 @@ from astropy import units as u
 from typeguard import typechecked
 
 import artistools as at
-
-if t.TYPE_CHECKING:
-    import argparse
-
 
 fluxcontributiontuple = namedtuple(
     "fluxcontributiontuple", "fluxcontrib linelabel array_flambda_emission array_flambda_absorption color"
@@ -1163,35 +1160,6 @@ def print_integrated_flux(
     # luminosity = integrated_flux * 4 * math.pi * (distance_megaparsec * u.megaparsec ** 2)
     # print(f'(L={luminosity.to("Lsun"):.3e})')
     return integrated_flux
-
-
-def get_line_flux(
-    lambda_low: float, lambda_high: float, arr_f_lambda: np.ndarray, arr_lambda_angstroms: np.ndarray
-) -> float:
-    index_low, index_high = (
-        int(np.searchsorted(arr_lambda_angstroms, wl, side="left")) for wl in (lambda_low, lambda_high)
-    )
-    return abs(
-        np.trapz(
-            arr_f_lambda[index_low:index_high],
-            x=arr_lambda_angstroms[index_low:index_high],
-        )
-    )
-
-
-def print_floers_line_ratio(
-    modelpath: Path, timedays: float, arr_f_lambda: np.ndarray, arr_lambda_angstroms: np.ndarray
-) -> None:
-    f_12570 = get_line_flux(12570 - 200, 12570 + 200, arr_f_lambda, arr_lambda_angstroms)
-    f_7155 = get_line_flux(7000, 7350, arr_f_lambda, arr_lambda_angstroms)
-    print(f"f_12570 {f_12570:.2e} f_7155 {f_7155:.2e}")
-    if f_7155 > 0 and f_12570 > 0:
-        fratio = f_12570 / f_7155
-        print(f"f_12570/f_7122 = {fratio:.2e} (log10 is {math.log10(fratio):.2e})")
-        outfilename = Path(f"fe2_nir_vis_ratio_{modelpath.name}.txt")
-        print(f" saved to {outfilename}")
-        with outfilename.open("a+") as f:
-            f.write(f"{timedays:.1f} {fratio:.3e}\n")
 
 
 def get_reference_spectrum(filename: Path | str) -> tuple[pd.DataFrame, dict[str, t.Any]]:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import math
 import typing as t
 from pathlib import Path
@@ -10,20 +11,18 @@ import pandas as pd
 import polars as pl
 from astropy import constants as const
 from astropy import units as u
+from typeguard import typechecked
 
 import artistools as at
 
-if t.TYPE_CHECKING:
-    import argparse
-    from collections.abc import Collection
 
-
+@typechecked
 def readfile(
     filepath: str | Path,
-) -> dict[int, pd.DataFrame]:
+) -> dict[int, pl.DataFrame]:
     """Read an ARTIS light curve file."""
     print(f"Reading {filepath}")
-    lcdata: dict[int, pd.DataFrame] = {}
+    lcdata: dict[int, pl.DataFrame] = {}
     if "_res" in str(filepath):
         # get a dict of dfs with light curves at each viewing direction bin
         lcdata_res = pl.read_csv(
@@ -60,11 +59,12 @@ def read_3d_gammalightcurve(
     return res_data
 
 
+@typechecked
 def get_from_packets(
     modelpath: str | Path,
     escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
     maxpacketfiles: int | None = None,
-    directionbins: Collection[int] | None = None,
+    directionbins: t.Collection[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     get_cmf_column: bool = True,
@@ -279,7 +279,7 @@ def generate_band_lightcurve_data(
 
 def bolometric_magnitude(
     modelpath: Path,
-    timearray: Collection[float],
+    timearray: t.Collection[float],
     args: argparse.Namespace,
     angle: int = -1,
     average_over_phi: bool = False,

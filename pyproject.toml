@@ -198,6 +198,9 @@ ignore = [
     "SLF001",  # private-member-access
     "SIM115", # open-file-with-context-handler
     "T201",  # print found
+    "TCH001",
+    "TCH002",
+    "TCH003",
     "TD002",  # missing-todo-author
     "TD003",  # missing-todo-link
     "TRY301",  # raise-within-try

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import sys
 import typing as t
 from pathlib import Path
@@ -9,12 +10,9 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 from matplotlib.legend_handler import HandlerTuple
+from typeguard import typechecked
 
 import artistools as at
-
-if t.TYPE_CHECKING:
-    import argparse
-    from collections.abc import Sequence
 
 define_colours_list = [
     "k",
@@ -148,7 +146,8 @@ define_colours_list2 = [
 ]
 
 
-def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
+@typechecked
+def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[t.Sequence[int], dict[int, str]]:
     modelpath = Path(modelpath)
     viewing_angle_data_exists = bool(list(modelpath.glob("*_res.out*")))
     if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():

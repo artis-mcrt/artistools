@@ -15,10 +15,6 @@ from typeguard import typechecked
 
 import artistools as at
 
-if t.TYPE_CHECKING:
-    from collections.abc import Sequence
-
-
 # for the parquet files
 time_parquetschemachange = (2023, 4, 22, 12, 31, 0)
 
@@ -141,8 +137,8 @@ def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
 def add_derived_columns(
     dfpackets: pd.DataFrame,
     modelpathin: Path | str,
-    colnames: Sequence[str],
-    allnonemptymgilist: Sequence[int] | None = None,
+    colnames: t.Sequence[str],
+    allnonemptymgilist: t.Sequence[int] | None = None,
 ) -> pd.DataFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files."""
     modelpath = Path(modelpathin)

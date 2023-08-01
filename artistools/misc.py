@@ -6,9 +6,6 @@ import gzip
 import math
 import typing as t
 from collections import namedtuple
-from collections.abc import Iterable
-from collections.abc import Iterator
-from collections.abc import Sequence
 from functools import lru_cache
 from itertools import chain
 from pathlib import Path
@@ -56,7 +53,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         kwargs["max_help_position"] = 39
         super().__init__(*args, **kwargs)
 
-    def add_arguments(self, actions: Iterable[argparse.Action]) -> None:
+    def add_arguments(self, actions: t.Iterable[argparse.Action]) -> None:
         getinvocation = super()._format_action_invocation
 
         def my_sort(action: argparse.Action) -> str:
@@ -72,7 +69,7 @@ class AppendPath(argparse.Action):
     def __call__(self, parser, args, values, option_string=None) -> None:  # type: ignore[no-untyped-def] # noqa: ARG002
         # if getattr(args, self.dest) is None:
         #     setattr(args, self.dest, [])
-        if isinstance(values, Iterable):
+        if isinstance(values, t.Iterable):
             pathlist = getattr(args, self.dest)
             # not pathlist avoids repeated appending of the same items when called from Python
             # instead of from the command line
@@ -320,7 +317,7 @@ def get_syn_dir(modelpath: Path) -> tuple[float, float, float]:
         return (x, y, z)
 
 
-def vec_len(vec: Sequence[float] | np.ndarray[t.Any, np.dtype[np.float64]]) -> float:
+def vec_len(vec: t.Sequence[float] | np.ndarray[t.Any, np.dtype[np.float64]]) -> float:
     return float(np.sqrt(np.dot(vec, vec)))
 
 
@@ -332,6 +329,7 @@ def get_nu_grid(modelpath: Path) -> np.ndarray[t.Any, np.dtype[np.float64]]:
     return specdata.loc[:, "0"].to_numpy()
 
 
+@typechecked
 def get_deposition(modelpath: Path | str = ".") -> pd.DataFrame:
     """Return a pandas DataFrame containing the deposition data."""
     if Path(modelpath).is_file():
@@ -431,6 +429,7 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
     raise ValueError(msg)
 
 
+@typechecked
 def get_time_range(
     modelpath: Path,
     timestep_range_str: str | None = None,
@@ -519,6 +518,7 @@ def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
     return timearray[timestep]
 
 
+@typechecked
 def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, float | None]:
     """Return the time range for which the entire model can send light signals the observer."""
     modelpath = Path(modelpath)
@@ -652,7 +652,8 @@ def get_ionstring(
 
 
 # based on code from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
-def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[t.Any]:
+@typechecked
+def parse_range(rng: str, dictvars: dict[str, int]) -> t.Iterable[t.Any]:
     """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars."""
     strparts = rng.split("-")
 
@@ -683,14 +684,15 @@ def parse_range_list(rngs: str | list, dictvars: dict | None = None) -> list[t.A
     return sorted(set(chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
 
 
-def makelist(x: None | list | Sequence | str | Path) -> list[t.Any]:
+@typechecked
+def makelist(x: None | list | t.Sequence | str | Path) -> list[t.Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
         return []
     return [x] if isinstance(x, (str, Path)) else list(x)
 
 
-def trim_or_pad(requiredlength: int, *listoflistin: list[list[t.Any]]) -> Iterator[list[t.Any]]:
+def trim_or_pad(requiredlength: int, *listoflistin: list[t.Any]) -> t.Iterator[list[t.Any]]:
     """Make lists equal in length to requiredlength either by padding with None or truncating."""
     for listin in listoflistin:
         listin = makelist(listin)
@@ -701,6 +703,7 @@ def trim_or_pad(requiredlength: int, *listoflistin: list[list[t.Any]]) -> Iterat
         yield listout
 
 
+@typechecked
 def flatten_list(listin: list[t.Any]) -> list[t.Any]:
     """Flatten a list of lists."""
     listout = []
@@ -712,6 +715,7 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
     return listout
 
 
+@typechecked
 def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any:
     """Open filename, filename.gz or filename.xz."""
     ext_fopen = [(".lz4", lz4.frame.open), (".zst", pyzstd.open), (".gz", gzip.open), (".xz", xz.open)]
@@ -725,8 +729,9 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
     return Path(filename).open(mode=mode, encoding=encoding)
 
 
+@typechecked
 def firstexisting(
-    filelist: Sequence[str | Path] | str | Path,
+    filelist: t.Sequence[str | Path] | str | Path,
     folder: Path | str = Path(),
     tryzipped: bool = True,
 ) -> Path:
@@ -755,7 +760,7 @@ def firstexisting(
 
 
 def anyexist(
-    filelist: Sequence[str | Path],
+    filelist: t.Sequence[str | Path],
     folder: Path | str = Path(),
     tryzipped: bool = True,
 ) -> bool:
@@ -900,6 +905,7 @@ def get_bflist(modelpath: Path | str) -> dict[int, tuple[int, int, int, int]]:
 linetuple = namedtuple("linetuple", "lambda_angstroms atomic_number ionstage upperlevelindex lowerlevelindex")
 
 
+@typechecked
 def read_linestatfile(filepath: Path | str) -> tuple[int, list[float], list[int], list[int], list[int], list[int]]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     print(f"Loading {filepath}")
@@ -1070,9 +1076,10 @@ def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
     return tuple(folder_timesteps)
 
 
+@typechecked
 def get_runfolders(
-    modelpath: Path | str, timestep: int | None = None, timesteps: Sequence[int] | None = None
-) -> Sequence[Path]:
+    modelpath: Path | str, timestep: int | None = None, timesteps: t.Sequence[int] | None = None
+) -> t.Sequence[Path]:
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
     The folder list may include non-ARTIS folders if a timestep is not specified.
@@ -1092,11 +1099,12 @@ def get_runfolders(
     return [folderpath for folderpath in folderlist_all if get_runfolder_timesteps(folderpath)]
 
 
+@typechecked
 def get_mpiranklist(
     modelpath: Path | str,
-    modelgridindex: Iterable[int] | int | None = None,
+    modelgridindex: t.Iterable[int] | int | None = None,
     only_ranks_withgridcells: bool = False,
-) -> Sequence[int]:
+) -> t.Sequence[int]:
     """Get a list of rank ids.
 
     - modelpath:
@@ -1111,7 +1119,7 @@ def get_mpiranklist(
             return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
         return range(get_nprocs(modelpath))
 
-    if isinstance(modelgridindex, Iterable):
+    if isinstance(modelgridindex, t.Iterable):
         mpiranklist = set()
         for mgi in modelgridindex:
             if mgi < 0:
@@ -1130,7 +1138,7 @@ def get_mpiranklist(
     return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
-def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
+def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> t.Iterable[int]:
     """Return an iterable of the cell numbers processed by a given MPI rank."""
     npts_model = get_npts_model(modelpath)
     nprocs = get_nprocs(modelpath)
@@ -1278,7 +1286,7 @@ def get_vspec_dir_labels(modelpath: str | Path, viewinganglelabelunits: str = "r
 
 
 def get_dirbin_labels(
-    dirbins: np.ndarray[t.Any, np.dtype[t.Any]] | Sequence[int] | None = None,
+    dirbins: np.ndarray[t.Any, np.dtype[t.Any]] | t.Sequence[int] | None = None,
     modelpath: Path | str | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,

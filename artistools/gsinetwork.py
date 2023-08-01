@@ -16,9 +16,6 @@ import pandas as pd
 
 import artistools as at
 
-if t.TYPE_CHECKING:
-    from collections.abc import Sequence
-
 
 def strnuc_to_latex(strnuc: str):
     """Convert a string like sr89 to $^{89}$Sr."""
@@ -33,9 +30,9 @@ def plot_qdot(
     dfpartcontrib: pd.DataFrame,
     dfmodel: pd.DataFrame,
     allparticledata: dict[int, dict[str, np.ndarray]],
-    arr_time_artis_days: Sequence[float],
-    arr_artis_ye: Sequence[float],
-    arr_time_gsi_days: Sequence[float],
+    arr_time_artis_days: t.Sequence[float],
+    arr_artis_ye: t.Sequence[float],
+    arr_time_gsi_days: t.Sequence[float],
     pdfoutpath: Path | str,
     xmax: None | float = None,
 ) -> None:
@@ -220,9 +217,9 @@ def plot_cell_abund_evolution(
     modelpath: Path,
     dfpartcontrib: pd.DataFrame,
     allparticledata,
-    arr_time_artis_days: Sequence[float],
-    arr_time_gsi_days: Sequence[float],
-    arr_strnuc: Sequence[str],
+    arr_time_artis_days: t.Sequence[float],
+    arr_time_gsi_days: t.Sequence[float],
+    arr_strnuc: t.Sequence[str],
     arr_abund_artis: dict[str, list[float]],
     t_model_init_days: float,
     dfcell: pd.DataFrame,
@@ -331,7 +328,7 @@ def plot_cell_abund_evolution(
 
 
 def get_particledata(
-    arr_time_s: Sequence[float],
+    arr_time_s: t.Sequence[float],
     arr_strnuc: list[str],
     traj_root: Path,
     particleid: int,
@@ -428,7 +425,7 @@ def get_particledata(
 
 
 def plot_qdot_abund_modelcells(
-    modelpath: Path, mgiplotlist: Sequence[int], arr_el_a: list[tuple[str, int]], xmax: None | float = None
+    modelpath: Path, mgiplotlist: t.Sequence[int], arr_el_a: list[tuple[str, int]], xmax: None | float = None
 ):
     # default values, because early model.txt didn't specify this
     griddatafolder: Path = Path("SFHo_snapshot")
