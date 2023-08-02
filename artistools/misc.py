@@ -1319,6 +1319,7 @@ def get_dirbin_labels(
 
     angle_definitions: dict[int, str] = {}
     for dirbin in dirbins:
+        dirbin = int(dirbin)
         if dirbin == -1:
             angle_definitions[dirbin] = ""
             continue
