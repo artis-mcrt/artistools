@@ -334,9 +334,11 @@ def plot_artis_spectrum(
                 .copy()
             )
 
+            linelabel_withdirbin = linelabel
             if dirbin != -1:
-                linelabel = dirbin_definitions[dirbin]
                 print(f" direction {dirbin:4d}  {dirbin_definitions[dirbin]}")
+                if len(directionbins) > 1:
+                    linelabel_withdirbin = linelabel + " " + dirbin_definitions[dirbin]
 
             at.spectra.print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
 
@@ -375,7 +377,7 @@ def plot_artis_spectrum(
             axis.plot(
                 dfspectrum["lambda_angstroms"],
                 dfspectrum[ycolumnname],
-                label=linelabel if axindex == 0 else None,
+                label=linelabel_withdirbin if axindex == 0 else None,
                 **plotkwargs,
             )
 
@@ -1309,7 +1311,8 @@ def addargs(parser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+@typechecked
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Plot spectra from ARTIS and reference data."""
     if args is None:
         parser = argparse.ArgumentParser(
@@ -1384,6 +1387,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
             args.showabsorption = True
 
         fig, axes, dfalldata = make_plot(args)
+
         strdirectionbins = (
             "_direction" + "_".join([f"{angle:02d}" for angle in args.plotviewingangle])
             if args.plotviewingangle
@@ -1394,7 +1398,6 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         )
 
         if args.write_data and not dfalldata.empty:
-            print(dfalldata)
             datafilenameout = Path(filenameout).with_suffix(".txt")
             dfalldata.to_csv(datafilenameout)
             print(f"Saved {datafilenameout}")

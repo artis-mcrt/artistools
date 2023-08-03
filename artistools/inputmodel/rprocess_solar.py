@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import math
+import typing as t
 from pathlib import Path
 
 import numpy as np
@@ -13,7 +14,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Create solar r-process pattern in ARTIS format."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

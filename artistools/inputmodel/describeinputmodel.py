@@ -2,6 +2,7 @@
 # PYTHON_ARGCOMPLETE_OK
 import argparse
 import math
+import typing as t
 from pathlib import Path
 
 import argcomplete
@@ -28,7 +29,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--getelemabundances", action="store_true", help="Get elemental abundance masses")
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Describe an ARTIS input model, such as the mass, velocity structure, and abundances."""
     if args is None:
         parser = argparse.ArgumentParser(

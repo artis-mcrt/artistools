@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import typing as t
 from pathlib import Path
 
 from astropy import units as u
@@ -20,7 +21,7 @@ def eval_mshell(dfmodel, t_model_init_seconds):
     )
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,

@@ -3,6 +3,7 @@
 
 import argparse
 import sys
+import typing as t
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -113,12 +114,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--noexcitation", action="store_true", help="Do not include collisional excitation transitions")
 
     parser.add_argument(
-        "--atomlossrate",
-        action="store_true",
-        help="Use Axelrod/Bethe atomic loss rate instead of assuming included cross sections are exhaustive",
-    )
-
-    parser.add_argument(
         "--ar1985",
         action="store_true",
         help="Use Arnaud & Rothenflug (1985, A&AS, 60, 425) for Fe ionization cross sections",
@@ -142,7 +137,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Solve Spencer-Fano equation using data from ARTIS cell at some timestep."""
     if args is None:
         parser = argparse.ArgumentParser(
@@ -157,8 +152,6 @@ def main(args=None, argsraw=None, **kwargs):
         make_ntstats_plot(args.plotstats)
         return None
 
-    # global at.nonthermal.experiment_use_Latom_in_spencerfano
-    at.nonthermal.experiment_use_Latom_in_spencerfano = args.atomlossrate
     modelpath = Path(args.modelpath)
 
     if args.workfn:
@@ -179,16 +172,19 @@ def main(args=None, argsraw=None, **kwargs):
             args.modelgridindex = at.inputmodel.get_mgi_of_velocity_kms(modelpath, args.velocity)
         else:
             args.modelgridindex = args.modelgridindex
+        assert isinstance(args.modelgridindex, int)
         estimators = at.estimators.read_estimators(
             modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex
         )
+        assert isinstance(args.timestep, int)
+        assert isinstance(args.modelgridindex, int)
         estim = estimators[(args.timestep, args.modelgridindex)]
 
         dfpops = at.nltepops.read_files(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep)
 
         if dfpops is None or dfpops.empty:
             print(f"ERROR: no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
-            return -1
+            raise AssertionError
 
         nntot = estim["populations"]["total"]
         nne = estim["nne"]

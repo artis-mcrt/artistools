@@ -47,7 +47,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     pass
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Parse and run artistools commands."""
     parser = argparse.ArgumentParser(
         formatter_class=CustomArgHelpFormatter,
@@ -58,8 +58,9 @@ def main(args=None, argsraw=None, **kwargs) -> None:
     addsubparsers(parser, "artistools", atdictcommands)
 
     argcomplete.autocomplete(parser)
-    args = parser.parse_args(argsraw)
-    args.func(args=args)
+    if args is None:
+        args = parser.parse_args(argsraw)
+        args.func(args=args)
 
 
 if __name__ == "__main__":

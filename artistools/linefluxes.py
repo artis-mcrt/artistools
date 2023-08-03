@@ -891,7 +891,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot line fluxe ratios for comparisons to Floers."""
     if args is None:
         parser = argparse.ArgumentParser(
@@ -915,6 +915,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     for i in range(len(args.label)):
         if args.label[i] is None:
+            assert hasattr(args.label, "__setitem__")
             args.label[i] = at.get_model_name(args.modelpath[i])
 
     if args.plotemittingregions:

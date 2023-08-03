@@ -4,6 +4,7 @@
 import argparse
 import math
 import sys
+import typing as t
 from collections import namedtuple
 from pathlib import Path
 
@@ -225,7 +226,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Plot estimated spectra from bound-bound transitions."""
     if args is None:
         parser = argparse.ArgumentParser(
