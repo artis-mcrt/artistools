@@ -187,7 +187,7 @@ def timeshift_double_decay(
     assert np.all(abs(elfracsum_before - elfracsum_after) < 1e-10)
 
 
-def main():
+def main() -> None:
     a = rd_sn_hydro_data(snapshot, reverse="true")
 
     # Mapping of the CMFGEN species to atomic numbers, and masking IGEs
