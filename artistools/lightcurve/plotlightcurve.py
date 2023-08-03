@@ -1553,7 +1553,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--legendframeon", action="store_true", help="Frame on in legend")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs):
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS light curve."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

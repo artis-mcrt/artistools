@@ -964,7 +964,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-o", action="store", dest="outputfile", type=Path, help="Filename for PDF file")
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs):
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot the radiation field estimators."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
@@ -1028,13 +1028,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             plot_timeevolution(modelpath, outputfile, modelgridindex, args)
         else:
             print("Unknown plot type {args.plot}")
-            return 1
+            raise AssertionError
 
     if len(pdf_list) > 1:
         print(pdf_list, modelpath_list)
         at.join_pdf_files(pdf_list, modelpath_list)
-
-    return 0
+        return
+    return
 
 
 if __name__ == "__main__":

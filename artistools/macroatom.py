@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import sys
 import typing as t
 from pathlib import Path
 
@@ -26,7 +25,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs):
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot the macroatom transitions."""
     if args is None:
         parser = argparse.ArgumentParser(
@@ -74,8 +73,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         xmax=args.xmax,
         modelgridindex=args.modelgridindex,
     )
-
-    return 0
 
 
 def make_plot(
@@ -173,4 +170,4 @@ def read_files(
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
