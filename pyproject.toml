@@ -225,6 +225,7 @@ ignore-fully-untyped = true
 
 [tool.ruff.flake8-import-conventions.extend-aliases]
 "artistools" = "at"
+"typing" = "t"
 
 [tool.ruff.per-file-ignores]
 "__init__.py" = ["F401"]
