@@ -1131,8 +1131,8 @@ def plot_lightcurve_from_refdata(
     for plotnumber, filter_name in enumerate(filter_names):
         if filter_name == "bol":
             continue
-        f = Path(filterdir / f"{filter_name}.txt").open()
-        lines = f.readlines()
+        with Path(filterdir / f"{filter_name}.txt").open() as f:
+            lines = f.readlines()
         lambda0 = float(lines[2])
 
         if filter_name == "bol":
