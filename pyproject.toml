@@ -120,7 +120,6 @@ disable = """
     broad-exception-caught,
     eval-used,
     fixme,
-    global-statement,
     missing-function-docstring,
     missing-module-docstring,
     import-outside-toplevel,
