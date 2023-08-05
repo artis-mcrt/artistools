@@ -15,8 +15,10 @@ outputpath = at.get_config()["path_testoutput"]
 def test_commands() -> None:
     # ensure that the commands are pointing to valid submodule.function() targets
     for _command, (submodulename, funcname) in sorted(at.commands.get_commandlist().items()):
-        submodule = importlib.import_module(submodulename, package="artistools")
-        assert hasattr(submodule, funcname)
+        submodule = importlib.import_module(submodulename)
+        assert hasattr(submodule, funcname) or (
+            funcname == "main" and hasattr(importlib.import_module(f"{submodulename}.__main__"), funcname)
+        )
 
     def recursive_check(dictcmd: dict[str, t.Any]) -> None:
         for cmdtarget in dictcmd.values():
@@ -25,8 +27,11 @@ def test_commands() -> None:
             else:
                 submodulename, funcname = cmdtarget
                 namestr = f"artistools.{submodulename.removeprefix('artistools.')}" if submodulename else "artistools"
+                print(namestr)
                 submodule = importlib.import_module(namestr, package="artistools")
-                assert hasattr(submodule, funcname)
+                assert hasattr(submodule, funcname) or (
+                    funcname == "main" and hasattr(importlib.import_module(f"{namestr}.__main__"), funcname)
+                )
 
     recursive_check(at.commands.dictcommands)
 
