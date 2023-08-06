@@ -47,7 +47,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     pass
 
 
-def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Parse and run artistools commands."""
     parser = argparse.ArgumentParser(
         formatter_class=CustomArgHelpFormatter,

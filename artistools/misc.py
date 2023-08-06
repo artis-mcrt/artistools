@@ -11,6 +11,7 @@ from pathlib import Path
 
 import lz4.frame
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import polars as pl
 import pyzstd
@@ -1226,7 +1227,7 @@ def get_viewingdirection_costhetabincount() -> int:
 
 
 @typechecked
-def get_phi_bins(usedegrees: bool) -> tuple[np.ndarray, np.ndarray, list[str]]:
+def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], list[str]]:
     nphibins = at.get_viewingdirection_phibincount()
     # pi/2 must be an exact boundary because of the change in behaviour there
     assert nphibins % 2 == 0
@@ -1302,7 +1303,7 @@ def get_vspec_dir_labels(modelpath: str | Path, viewinganglelabelunits: str = "r
 
 @typechecked
 def get_dirbin_labels(
-    dirbins: np.ndarray[t.Any, np.dtype[np.integer]] | t.Sequence[int] | None = None,
+    dirbins: npt.NDArray[np.int32] | t.Sequence[int] | None = None,
     modelpath: Path | str | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,

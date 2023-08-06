@@ -1,7 +1,7 @@
 from . import plotnltepops
 
 
-def main():
+def main() -> None:
     plotnltepops.main()
 
 

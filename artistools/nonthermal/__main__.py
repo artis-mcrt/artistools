@@ -1,7 +1,7 @@
 from . import plotnonthermal
 
 
-def main():
+def main() -> None:
     plotnonthermal.main()
 
 
