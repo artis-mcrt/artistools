@@ -328,11 +328,11 @@ def plot_artis_spectrum(
         )
 
         for dirbin in directionbins:
-            dfspectrum = (
-                viewinganglespectra[dirbin]
-                .query("@supxmin * 0.9 <= lambda_angstroms and lambda_angstroms <= @supxmax * 1.1")
-                .copy()
-            )
+            dfspectrum_fullrange = viewinganglespectra[dirbin]
+            dfspectrum = dfspectrum_fullrange[
+                (supxmin * 0.9 <= dfspectrum_fullrange["lambda_angstroms"])
+                & (dfspectrum_fullrange["lambda_angstroms"] <= supxmax * 1.1)
+            ].copy()
 
             linelabel_withdirbin = linelabel
             if dirbin != -1:
