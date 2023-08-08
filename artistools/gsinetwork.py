@@ -43,11 +43,6 @@ def plot_qdot(
         print("Can't do qdot plot because no deposition.out file")
         return
 
-    modelname = at.get_model_name(modelpath)
-
-    tstart = depdata["tmid_days"].min()
-    tend = depdata["tmid_days"].max()
-
     heatcols = ["hbeta", "halpha", "hbfis", "hspof", "Ye", "Qdot"]
 
     arr_heat = {col: np.zeros_like(arr_time_gsi_days) for col in heatcols}
@@ -93,7 +88,7 @@ def plot_qdot(
     axis = axes[0]
 
     # axis.set_ylim(bottom=1e7, top=2e10)
-    # axis.set_xlim(left=tstart, right=tend)
+    # axis.set_xlim(left=depdata["tmid_days"].min(), right=depdata["tmid_days"].max())
     xmin = min(arr_time_gsi_days) * 0.9
     xmax = xmax or max(arr_time_gsi_days) * 1.03
     axis.set_xlim(left=xmin, right=xmax)
@@ -207,7 +202,7 @@ def plot_qdot(
         axes[1].set_ylabel("Ye [e-/nucleon]")
         axes[1].legend(loc="best", frameon=False, handlelength=1, ncol=3, numpoints=1)
 
-    # fig.suptitle(f'{modelname}', fontsize=10)
+    # fig.suptitle(f'{at.get_model_name(modelpath)}', fontsize=10)
     at.plottools.autoscale(axis, margin=0.0)
     fig.savefig(pdfoutpath, format="pdf")
     print(f"Saved {pdfoutpath}")
@@ -261,8 +256,6 @@ def plot_cell_abund_evolution(
     )
     fig.subplots_adjust(top=0.8)
     # axis.set_xscale('log')
-
-    modelname = at.get_model_name(modelpath)
 
     axes[-1].set_xlabel("Time [days]")
     axis = axes[0]
@@ -321,7 +314,7 @@ def plot_cell_abund_evolution(
 
         at.plottools.autoscale(ax=axis)
 
-    # fig.suptitle(f"{modelname} cell {mgi}", y=0.995, fontsize=10)
+    # fig.suptitle(f"{at.get_model_name(modelpath)} cell {mgi}", y=0.995, fontsize=10)
     at.plottools.autoscale(axis, margin=0.05)
     fig.savefig(pdfoutpath, format="pdf")
     print(f"Saved {pdfoutpath}")
@@ -458,7 +451,6 @@ def plot_qdot_abund_modelcells(
     dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath)
     if "logrho" not in dfmodel.columns:
         dfmodel = dfmodel.eval("logrho = log10(rho)")
-    model_mass_grams = dfmodel.cellmass_grams.sum()
     npts_model = len(dfmodel)
 
     # these factors correct for missing mass due to skipped shells, and volume error due to Cartesian grid map
