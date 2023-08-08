@@ -3,6 +3,7 @@
 
 
 import argparse
+import contextlib
 import math
 import multiprocessing
 import typing as t
@@ -459,7 +460,7 @@ def plot_qdot_abund_modelcells(
     # WARNING sketchy inference!
     propcellcount = math.ceil(max(mgi_of_propcells.keys()) ** (1 / 3.0)) ** 3
     xmax_tmodel = vmax_cmps * t_model_init_days * 86400
-    wid_init = at.get_wid_init_at_tmodel(modelpath, propcellcount, t_model_init_days, xmax_tmodel)
+    wid_init = at.get_wid_init_at_tmodel(modelpath, propcellcount, t_model_init_days, xmax_tmodel)  # noqa: F841
     dfmodel["n_assoc_cells"] = [len(assoc_cells.get(inputcellid - 1, [])) for inputcellid in dfmodel["inputcellid"]]
 
     # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
@@ -481,7 +482,7 @@ def plot_qdot_abund_modelcells(
     artis_ye_sum: dict[int, float] = {}
     artis_ye_norm: dict[int, float] = {}
 
-    try:
+    with contextlib.suppress(FileNotFoundError):
         get_mgi_list = None if get_global_Ye else tuple(mgiplotlist)  # all cells if Ye is calculated
         estimators = at.estimators.read_estimators(modelpath, modelgridindex=get_mgi_list)
 
@@ -538,13 +539,11 @@ def plot_qdot_abund_modelcells(
                             # TODO: use mean molecular weight, but this is not needed for kilonova input files anyway
                             print(f"WARNING {popkey}={abund} not contributed")
                         else:
-                            try:
+                            with contextlib.suppress(AssertionError):
                                 z, a = at.get_z_a_nucname(popkey)
                                 cell_protoncount += z * abund * cellvolume
                                 cell_nucleoncount += a * abund * cellvolume
 
-                            except AssertionError:
-                                pass
                 cell_Ye = cell_protoncount / cell_nucleoncount
 
                 arr_abund_artis[mgi]["Ye"].append(cell_Ye)
@@ -552,9 +551,6 @@ def plot_qdot_abund_modelcells(
                 artis_ye_norm[nts] = artis_ye_norm.get(nts, 0.0) + cell_nucleoncount
 
         arr_artis_ye = [artis_ye_sum[nts] / artis_ye_norm[nts] for nts in sorted(artis_ye_sum.keys())]
-
-    except FileNotFoundError:
-        pass
 
     arr_time_artis_days_alltimesteps = at.get_timestep_times(modelpath)
     arr_time_artis_s_alltimesteps = np.array([t * 8.640000e04 for t in arr_time_artis_days_alltimesteps])
