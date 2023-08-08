@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 import argparse
+import typing as t
 from pathlib import Path
 
 import argcomplete
@@ -46,7 +47,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Folder for output")
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Tools to create an ARTIS input model."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

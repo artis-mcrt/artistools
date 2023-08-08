@@ -86,7 +86,7 @@ def calculate_dE_on_dx_ionexc(energy, n_e_bound):
     return -de_on_dx
 
 
-def main():
+def main() -> None:
     E_0_ev = 1e5  # initial energy [eV]
     E_0 = E_0_ev * CONST_EV_IN_J  # initial energy [J]
     n_e_bound_cgs = 1e5 * 26  # density of bound electrons in [cm-3]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from __future__ import annotations
+
 
 import argparse
 import math
@@ -12,8 +12,13 @@ import artistools as at
 
 
 def forward_doubledecay(
-    iso1fract0: float, iso2fract0: float, iso3fract0: float, tlate: float, meanlife1_days: float, meanlife2_days: float
-) -> tuple[float, float, float]:
+    iso1fract0: float | u.Quantity,
+    iso2fract0: float | u.Quantity,
+    iso3fract0: float | u.Quantity,
+    tlate: float | u.Quantity,
+    meanlife1_days: float | u.Quantity,
+    meanlife2_days: float | u.Quantity,
+) -> tuple[float | u.Quantity, float | u.Quantity, float | u.Quantity]:
     # get the abundances at a late time from the time zero abundances
     # e.g. Ni56 -> Co56 -> Fe56 decay
     # meanlife1 is the mean lifetime of the parent (e.g. Ni56) and meanlife2 is the mean life of the daughter nucleus (e.g. Co56)

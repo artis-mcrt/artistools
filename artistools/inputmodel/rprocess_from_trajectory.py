@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-from __future__ import annotations
+
 
 import argparse
 import io
@@ -510,7 +510,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Create ARTIS model from single trajectory abundances."""
     if args is None:
         parser = argparse.ArgumentParser(
@@ -605,7 +605,7 @@ def get_wollaeger_density_profile(wollaeger_profilename):
     result["cellid"] = result["cellid"].astype(int)
     result["velocity_inner"] = np.concatenate(([0.0], result["velocity_outer"].to_numpy()[:-1]))
 
-    t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
+    t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60  # noqa: F841
     result = result.eval(
         "cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
         "* (1e5 * @t_model_init_seconds_in) ** 3"

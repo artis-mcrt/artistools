@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-from __future__ import annotations
+
 
 import argparse
 import math
 import sys
+import typing as t
 from collections import namedtuple
 from pathlib import Path
 
@@ -177,8 +178,8 @@ def make_plot(
 
 
 def add_upper_lte_pop(dftransitions, T_exc, ionpop, ltepartfunc, columnname=None) -> pd.DataFrame:
-    K_B = const.k_B.to("eV / K").value
-    scalefactor = ionpop / ltepartfunc
+    K_B = const.k_B.to("eV / K").value  # noqa: F841
+    scalefactor = ionpop / ltepartfunc  # noqa: F841
     if columnname is None:
         columnname = f"upper_pop_lte_{T_exc:.0f}K"
     return dftransitions.eval(f"{columnname} = @scalefactor * upper_g * exp(-upper_energy_ev / @K_B / @T_exc)")
@@ -225,7 +226,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Plot estimated spectra from bound-bound transitions."""
     if args is None:
         parser = argparse.ArgumentParser(
@@ -264,8 +265,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
     # also calculate wavelengths outside the plot range to include lines whose
     # edges pass through the plot range
-    plot_xmin_wide = args.xmin * (1 - args.gaussian_window * args.sigma_v / const.c.to("km / s").value)
-    plot_xmax_wide = args.xmax * (1 + args.gaussian_window * args.sigma_v / const.c.to("km / s").value)
+    plot_xmin_wide = args.xmin * (1 - args.gaussian_window * args.sigma_v / const.c.to("km / s").value)  # noqa: F841
+    plot_xmax_wide = args.xmax * (1 + args.gaussian_window * args.sigma_v / const.c.to("km / s").value)  # noqa: F841
 
     ionlist = [
         iontuple(26, 1),
@@ -350,7 +351,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         # }
         ionpopdict = {ion: 1 for ion in ionlist}
 
-    hc = (const.h * const.c).to("eV Angstrom").value
+    hc = (const.h * const.c).to("eV Angstrom").value  # noqa: F841
 
     xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
     yvalues = np.zeros((len(temperature_list) + 1, len(ionlist), len(xvalues)))
@@ -434,7 +435,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
                     popcolumnname = f"upper_pop_lte_{T_exc:.0f}K"
                     if args.atomicdatabase == "artis":
                         dftransitions = dftransitions.eval("upper_g = @ion.levels.loc[upper].g.to_numpy()")
-                        K_B = const.k_B.to("eV / K").value
+                        K_B = const.k_B.to("eV / K").value  # noqa: F841
                         ltepartfunc = ion.levels.eval("g * exp(-energy_ev / @K_B / @T_exc)").sum()
                     else:
                         ltepartfunc = 1.0

@@ -22,7 +22,7 @@ def plot_hesma_spectrum(timeavg, axes):
 
     # Scale distance to 1 Mpc
     dist_mpc = 1e-5  # HESMA specta at 10 pc
-    hesma_spec[closest_time] = hesma_spec[closest_time] * (1e-5) ** 2  # refspecditance Mpc / 1 Mpc ** 2
+    hesma_spec[closest_time] = hesma_spec[closest_time] * (dist_mpc) ** 2  # refspecditance Mpc / 1 Mpc ** 2
 
     for ax in axes:
         ax.plot(hesma_spec["0.00"], hesma_spec[closest_time], label="HESMA model")

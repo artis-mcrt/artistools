@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from __future__ import annotations
+
 
 import math
 from collections import namedtuple
@@ -452,10 +452,10 @@ def read_colliondata(collionfilename="collion.txt", modelpath: None | str | Path
 
     collionrow = namedtuple("collionrow", ["Z", "nelec", "n", "l", "ionpot_ev", "A", "B", "C", "D"])
 
-    nrows = -1
+    _nrows = -1
     with Path(modelpath, collionfilename).open() as collionfile:
-        nrows = int(collionfile.readline().strip())
-        # print(f'Collionfile: expecting {nrows} rows')
+        _nrows = int(collionfile.readline().strip())
+        # print(f'Collionfile: expecting {_nrows} rows')
         dfcollion = pd.read_csv(collionfile, delim_whitespace=True, header=None, names=collionrow._fields)
 
     # assert len(dfcollion) == nrows  # artis enforces this, but last 10 rows were not inportant anyway (high ionized Ni)
@@ -796,7 +796,7 @@ def solve_spencerfano_differentialform(
 
     deltaen = engrid[1] - engrid[0]
     npts = len(engrid)
-    nnetot = get_nnetot(ions, ionpopdict)
+    # nnetot = get_nnetot(ions, ionpopdict)
 
     print(
         f"\nSetting up differential-form Spencer-Fano equation with {npts} energy points"
@@ -1183,7 +1183,7 @@ def calculate_Latom_excitation(ions, ionpopdict, nntot, en_ev, adata, T_exc=5000
     maxnlevelslower = 5
     maxnlevelsupper = 250
 
-    k_b = 8.617333262145179e-05  # eV / K
+    k_b = 8.617333262145179e-05  # eV / K  # noqa: F841
     for Z, ionstage in ions:
         nnion = ionpopdict[(Z, ionstage)]
 
@@ -1313,7 +1313,7 @@ def workfunction_tests(modelpath, args):
     )
     # Lelec_axelrod_nnetot = np.array([get_Lelec_axelrod(en_ev=en_ev, nne=nnetot, nnetot=nnetot, nntot=nntot) for en_ev in arr_en_ev])
 
-    Lelec_kf92_nne = np.array([lossfunction(en_ev, nne) * EV / nntot for en_ev in arr_en_ev])
+    Lelec_kf92_nne = np.array([lossfunction(en_ev, nne) * EV / nntot for en_ev in arr_en_ev])  # noqa: F841
 
     # print(f'{Lelec_axelrod[-1]=}')
     # print(f'{Lelec_kf92[-1]=}')
@@ -1378,10 +1378,10 @@ def workfunction_tests(modelpath, args):
         print(f"\n workfn_limit_ev_sim {workfn_limit_ev_sim:.2f} eV")
         print(f"   eta_ion  {ionpot_valence_ev / workfn_limit_ev_sim:.3f}")
         print(f"   eta_heat {1 - ionpot_valence_ev / workfn_limit_ev_sim:.3f}")
-        arr_workfn_limit_sim = np.array([workfn_limit_ev_sim for _ in arr_en_ev])
+        arr_workfn_limit_sim = np.array([workfn_limit_ev_sim for _ in arr_en_ev])  # noqa: F841
 
         arr_xs_ar92 = at.nonthermal.get_arxs_array_ion(arr_en_ev, dfcollion_thision, Z, ionstage)
-        Latom_ionisation_ar92 = arr_xs_ar92 * (ionpot_valence_ev * EV)
+        Latom_ionisation_ar92 = arr_xs_ar92 * (ionpot_valence_ev * EV)  # noqa: F841
 
         arr_xs_lotz = np.array(
             [
@@ -1394,14 +1394,14 @@ def workfunction_tests(modelpath, args):
 
         # Axelrod 1980 Eq 3.20, (Latom part).
         # This assumes that the every bound electron cross section is included!
-        Latom_ionisation_lotz = arr_xs_lotz * (ionpot_valence_ev * EV)
+        Latom_ionisation_lotz = arr_xs_lotz * (ionpot_valence_ev * EV)  # noqa: F841
 
         L_over_sigma = (Lelec_axelrod_nne[-1] + Latom_axelrod[-1]) / arr_xs_lotz[-1]
         workfn_limit_axelrod = L_over_sigma / EV
         print(f"\n workfn_limit_axelrod: {workfn_limit_axelrod:.2f} eV")
         print(f"   eta_ion  {ionpot_valence_ev / workfn_limit_axelrod:.3f}")
         print(f"   eta_heat {1 - ionpot_valence_ev / workfn_limit_axelrod:.3f}")
-        arr_workfn_limit_axelrod = np.array([workfn_limit_axelrod for _ in arr_en_ev])
+        arr_workfn_limit_axelrod = np.array([workfn_limit_axelrod for _ in arr_en_ev])  # noqa: F841
 
         # Approximation to Axelrod 1980 Eq 3.20 (left Latom part) where the transition energy
         # of every ionisation is just the valence potential

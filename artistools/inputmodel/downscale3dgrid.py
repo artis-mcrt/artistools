@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pathlib import Path
 
 import numpy as np
@@ -25,8 +23,6 @@ def make_downscaled_3d_grid(modelpath: str | Path, outputgridsize: int = 50, plo
     merge = grid / smallgrid
     merge = int(merge)
 
-    modelfile = at.firstexisting("model.txt", folder=modelpath)
-    abundancefile = at.firstexisting("abundances.txt", folder=modelpath)
     outfolder = Path(modelpath, f"downscale_{outputgridsize}^3")
     outfolder.mkdir(exist_ok=True)
     smallmodelfile = outfolder / "model.txt"
