@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-from __future__ import annotations
+
 
 import argparse
 import math
@@ -11,12 +11,10 @@ import argcomplete
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from astropy import units as u
 
 import artistools as at
-
-if t.TYPE_CHECKING:
-    import pandas as pd
 
 
 def plot_2d_initial_abundances(modelpath: Path, args: argparse.Namespace) -> None:
@@ -30,13 +28,13 @@ def plot_2d_initial_abundances(modelpath: Path, args: argparse.Namespace) -> Non
     with Path(modelpath, "model.txt").open() as fmodelin:
         fmodelin.readline()  # npts r, npts z
         t_model = float(fmodelin.readline())  # days
-        vmax = float(fmodelin.readline())  # v_max in [cm/s]
+        _vmax = float(fmodelin.readline())  # v_max in [cm/s]
 
     r = merge_dfs["cellpos_mid[r]"] / t_model * (u.cm / u.day).to("km/s") / 10**3
     z = merge_dfs["cellpos_mid[z]"] / t_model * (u.cm / u.day).to("km/s") / 10**3
 
     colname = f"X_{args.plotvars}"
-    font = {"weight": "bold", "size": 18}
+    _font = {"weight": "bold", "size": 18}
 
     f = plt.figure(figsize=(4, 5))
     ax = f.add_subplot(111)
@@ -106,7 +104,6 @@ def plot_slice_modelcol(ax, dfmodelslice, modelmeta, colname, plotaxis1, plotaxi
     else:
         scaledmap = None
 
-    cmps_to_kmps = 1e-5
     cmps_to_beta = 1.0 / (2.99792458e10)
     unitfactor = cmps_to_beta
     t_model_s = t_model_d * 86400.0
@@ -374,7 +371,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-surfaces3d", type=float, nargs="+", help="define positions of surfaces for 3D plots")
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Plot ARTIS input model composition."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

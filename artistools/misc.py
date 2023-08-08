@@ -1,8 +1,7 @@
-from __future__ import annotations
-
 import argparse
 import contextlib
 import gzip
+import io
 import math
 import typing as t
 from collections import namedtuple
@@ -12,6 +11,7 @@ from pathlib import Path
 
 import lz4.frame
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import polars as pl
 import pyzstd
@@ -19,9 +19,6 @@ import xz
 from typeguard import typechecked
 
 import artistools as at
-
-if t.TYPE_CHECKING:
-    import io
 
 roman_numerals = (
     "",
@@ -69,7 +66,7 @@ class AppendPath(argparse.Action):
     def __call__(self, parser, args, values, option_string=None) -> None:  # type: ignore[no-untyped-def] # noqa: ARG002
         # if getattr(args, self.dest) is None:
         #     setattr(args, self.dest, [])
-        if isinstance(values, t.Iterable):
+        if hasattr(values, "__iter__"):
             pathlist = getattr(args, self.dest)
             # not pathlist avoids repeated appending of the same items when called from Python
             # instead of from the command line
@@ -625,18 +622,24 @@ def decode_roman_numeral(strin: str) -> int:
     return -1
 
 
-def get_elsymbol(atomic_number: int) -> str:
+def get_elsymbol(atomic_number: int | np.int64) -> str:
     """Return the element symbol of an atomic number."""
     return get_elsymbolslist()[atomic_number]
 
 
 @lru_cache(maxsize=16)
+@typechecked
 def get_ionstring(
-    atomic_number: int, ionstage: int | None | t.Literal["ALL"], spectral: bool = True, nospace: bool = False
+    atomic_number: int | np.int64,
+    ionstage: None | int | np.int64 | t.Literal["ALL"],
+    spectral: bool = True,
+    nospace: bool = False,
 ) -> str:
     """Return a string with the element symbol and ionisation stage."""
     if ionstage is None or ionstage == "ALL":
         return f"{get_elsymbol(atomic_number)}"
+
+    assert not isinstance(ionstage, str)
 
     if spectral:
         return f"{get_elsymbol(atomic_number)}{'' if nospace else ' '}{roman_numerals[ionstage]}"
@@ -671,7 +674,8 @@ def parse_range(rng: str, dictvars: dict[str, int]) -> t.Iterable[t.Any]:
     return range(start, end + 1)
 
 
-def parse_range_list(rngs: str | list, dictvars: dict | None = None) -> list[t.Any]:
+@typechecked
+def parse_range_list(rngs: str | list | int, dictvars: dict | None = None) -> list[t.Any]:
     """Parse a string with comma-separated ranges or a list of range strings.
 
     Return a sorted list of integers in any of the ranges.
@@ -681,26 +685,30 @@ def parse_range_list(rngs: str | list, dictvars: dict | None = None) -> list[t.A
     elif not hasattr(rngs, "split"):
         return [rngs]
 
+    assert isinstance(rngs, str)
     return sorted(set(chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
 
 
 @typechecked
-def makelist(x: None | list | t.Sequence | str | Path) -> list[t.Any]:
+def makelist(x: None | t.Sequence[t.Any] | str | Path) -> list[t.Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
         return []
-    return [x] if isinstance(x, str | Path) else list(x)
+    return list(x) if hasattr(x, "__iter__") else [x]
 
 
-def trim_or_pad(requiredlength: int, *listoflistin: list[t.Any]) -> t.Iterator[list[t.Any]]:
+@typechecked
+def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> t.Sequence[t.Sequence[t.Any]]:
     """Make lists equal in length to requiredlength either by padding with None or truncating."""
+    list_sequence = []
     for listin in listoflistin:
         listin = makelist(listin)
 
         listout = [listin[i] if i < len(listin) else None for i in range(requiredlength)]
 
         assert len(listout) == requiredlength
-        yield listout
+        list_sequence.append(listout)
+    return list_sequence
 
 
 @typechecked
@@ -759,6 +767,7 @@ def firstexisting(
     raise FileNotFoundError(msg)
 
 
+@typechecked
 def anyexist(
     filelist: t.Sequence[str | Path],
     folder: Path | str = Path(),
@@ -773,6 +782,7 @@ def anyexist(
     return True
 
 
+@typechecked
 def stripallsuffixes(f: Path) -> Path:
     """Take a file path (e.g. packets00_0000.out.gz) and return the Path with no suffixes (e.g. packets)."""
     f_nosuffixes = Path(f)
@@ -793,6 +803,7 @@ def readnoncommentline(file: io.TextIOBase) -> str:
 
 
 @lru_cache(maxsize=24)
+@typechecked
 def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     """Return a dict of metadata for a file, either from a metadata file or from the big combined metadata file."""
     filepath = Path(filepath)
@@ -930,6 +941,7 @@ def read_linestatfile(filepath: Path | str) -> tuple[int, list[float], list[int]
     return nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
 
 
+@typechecked
 def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     textfile = at.firstexisting("linestat.out", folder=modelpath)
     parquetfile = Path(modelpath, "linelist.out.parquet")
@@ -1138,6 +1150,7 @@ def get_mpiranklist(
     return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
+@typechecked
 def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> t.Iterable[int]:
     """Return an iterable of the cell numbers processed by a given MPI rank."""
     npts_model = get_npts_model(modelpath)
@@ -1167,6 +1180,7 @@ def get_dfrankassignments(modelpath: Path | str) -> pd.DataFrame | None:
     return None
 
 
+@typechecked
 def get_mpirankofcell(modelgridindex: int, modelpath: Path | str) -> int:
     """Return the rank number of the MPI process responsible for handling a specified cell's updating and output."""
     modelpath = Path(modelpath)
@@ -1212,7 +1226,8 @@ def get_viewingdirection_costhetabincount() -> int:
     return 10
 
 
-def get_phi_bins(usedegrees: bool) -> tuple[np.ndarray, np.ndarray, list[str]]:
+@typechecked
+def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], list[str]]:
     nphibins = at.get_viewingdirection_phibincount()
     # pi/2 must be an exact boundary because of the change in behaviour there
     assert nphibins % 2 == 0
@@ -1266,6 +1281,7 @@ def get_costheta_bins(usedegrees: bool, usepiminustheta: bool = False) -> tuple[
     return costhetabins_lower, costhetabins_upper, binlabels
 
 
+@typechecked
 def get_costhetabin_phibin_labels(usedegrees: bool) -> tuple[list[str], list[str]]:
     _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees)
     _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)
@@ -1285,8 +1301,9 @@ def get_vspec_dir_labels(modelpath: str | Path, viewinganglelabelunits: str = "r
     return dirlabels
 
 
+@typechecked
 def get_dirbin_labels(
-    dirbins: np.ndarray[t.Any, np.dtype[t.Any]] | t.Sequence[int] | None = None,
+    dirbins: npt.NDArray[np.int32] | t.Sequence[int] | None = None,
     modelpath: Path | str | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,

@@ -9,12 +9,15 @@ import argparse
 import contextlib
 import math
 import sys
+import typing as t
 from pathlib import Path
 
 import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from typeguard import check_type
+from typeguard import typechecked
 
 import artistools as at
 
@@ -540,20 +543,29 @@ def plot_series(
     ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename), **plotkwargs)
 
 
+@typechecked
 def get_xlist(
-    xvariable, allnonemptymgilist, estimators, timestepslist, modelpath, args
-) -> tuple[list[float], list[float], list[float]]:
-    if xvariable in ["cellid", "modelgridindex"]:
+    xvariable: str,
+    allnonemptymgilist: t.Sequence[int],
+    estimators: dict,
+    timestepslist: t.Any,
+    modelpath: str | Path,
+    args: t.Any,
+) -> tuple[list[float | int], list[int | t.Sequence[int]], list[int | list[int]]]:
+    xlist: t.Sequence[float | int]
+    if xvariable in {"cellid", "modelgridindex"}:
         mgilist_out = [mgi for mgi in allnonemptymgilist if mgi <= args.xmax] if args.xmax >= 0 else allnonemptymgilist
-        xlist = mgilist_out
+        xlist = list(mgilist_out)
         timestepslist_out = timestepslist
     elif xvariable == "timestep":
         mgilist_out = allnonemptymgilist
+        check_type(timestepslist, t.Sequence[int])
         xlist = timestepslist
         timestepslist_out = timestepslist
     elif xvariable == "time":
         mgilist_out = allnonemptymgilist
         timearray = at.get_timestep_times(modelpath)
+        check_type(timestepslist, t.Sequence[t.Sequence[int]])
         xlist = [np.mean([timearray[ts] for ts in tslist]) for tslist in timestepslist]
         timestepslist_out = timestepslist
     else:
@@ -688,8 +700,16 @@ def plot_subplot(
             )  # prop={'size': 9})
 
 
+@typechecked
 def make_plot(
-    modelpath, timestepslist_unfiltered, allnonemptymgilist, estimators, xvariable, plotlist, args, **plotkwargs
+    modelpath: Path | str,
+    timestepslist_unfiltered: list[list[int]],
+    allnonemptymgilist: list[int],
+    estimators: dict,
+    xvariable: str,
+    plotlist,
+    args: t.Any,
+    **plotkwargs: t.Any,
 ):
     modelname = at.get_model_name(modelpath)
     fig, axes = plt.subplots(
@@ -708,6 +728,7 @@ def make_plot(
     # ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=5))
     if not args.hidexlabel:
         axes[-1].set_xlabel(f"{xvariable}{at.estimators.get_units_string(xvariable)}")
+
     xlist, mgilist, timestepslist = get_xlist(
         xvariable, allnonemptymgilist, estimators, timestepslist_unfiltered, modelpath, args
     )
@@ -716,7 +737,7 @@ def make_plot(
     dfalldata.index.name = "modelgridindex"
     dfalldata[xvariable] = xlist
 
-    xlist = np.insert(xlist, 0, 0.0) if xvariable.startswith("velocity") else np.insert(xlist, 0, xlist[0])
+    xlist = list(np.insert(xlist, 0, 0.0) if xvariable.startswith("velocity") else np.insert(xlist, 0, xlist[0]))
 
     xmin = args.xmin if args.xmin >= 0 else min(xlist)
     xmax = args.xmax if args.xmax > 0 else max(xlist)
@@ -736,7 +757,9 @@ def make_plot(
             **plotkwargs,
         )
 
-    if len(set(mgilist)) == 1 and len(timestepslist[0]) > 1:  # single grid cell versus time plot
+    if (
+        len(set(mgilist)) == 1 and not isinstance(timestepslist[0], int) and len(timestepslist[0]) > 1
+    ):  # single grid cell versus time plot
         figure_title = f"{modelname}\nCell {mgilist[0]}"
 
         defaultoutputfile = Path("plotestimators_cell{modelgridindex:03d}.pdf")
@@ -748,9 +771,11 @@ def make_plot(
     else:
         timeavg = (args.timemin + args.timemax) / 2.0
         if args.multiplot and not args.classicartis:
+            assert isinstance(timestepslist[0], list)
             tdays = estimators[(timestepslist[0][0], mgilist[0])]["tdays"]
             figure_title = f"{modelname}\nTimestep {timestepslist[0]} ({tdays:.2f}d)"
         elif args.multiplot:
+            assert isinstance(timestepslist[0], int)
             timedays = float(at.get_timestep_time(modelpath, timestepslist[0]))
             figure_title = f"{modelname}\nTimestep {timestepslist[0]} ({timedays:.2f}d)"
         else:
@@ -760,6 +785,7 @@ def make_plot(
         if Path(args.outputfile).is_dir():
             args.outputfile = str(Path(args.outputfile, defaultoutputfile))
 
+        assert isinstance(timestepslist[0], list)
         outfilename = str(args.outputfile).format(timestep=timestepslist[0][0], timeavg=timeavg)
 
     if not args.notitle:
@@ -942,7 +968,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Plot ARTIS estimators."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

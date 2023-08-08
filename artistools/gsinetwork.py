@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-from __future__ import annotations
+
 
 import argparse
+import contextlib
 import math
 import multiprocessing
 import typing as t
@@ -42,11 +43,6 @@ def plot_qdot(
     except FileNotFoundError:
         print("Can't do qdot plot because no deposition.out file")
         return
-
-    modelname = at.get_model_name(modelpath)
-
-    tstart = depdata["tmid_days"].min()
-    tend = depdata["tmid_days"].max()
 
     heatcols = ["hbeta", "halpha", "hbfis", "hspof", "Ye", "Qdot"]
 
@@ -93,7 +89,7 @@ def plot_qdot(
     axis = axes[0]
 
     # axis.set_ylim(bottom=1e7, top=2e10)
-    # axis.set_xlim(left=tstart, right=tend)
+    # axis.set_xlim(left=depdata["tmid_days"].min(), right=depdata["tmid_days"].max())
     xmin = min(arr_time_gsi_days) * 0.9
     xmax = xmax or max(arr_time_gsi_days) * 1.03
     axis.set_xlim(left=xmin, right=xmax)
@@ -207,7 +203,7 @@ def plot_qdot(
         axes[1].set_ylabel("Ye [e-/nucleon]")
         axes[1].legend(loc="best", frameon=False, handlelength=1, ncol=3, numpoints=1)
 
-    # fig.suptitle(f'{modelname}', fontsize=10)
+    # fig.suptitle(f'{at.get_model_name(modelpath)}', fontsize=10)
     at.plottools.autoscale(axis, margin=0.0)
     fig.savefig(pdfoutpath, format="pdf")
     print(f"Saved {pdfoutpath}")
@@ -261,8 +257,6 @@ def plot_cell_abund_evolution(
     )
     fig.subplots_adjust(top=0.8)
     # axis.set_xscale('log')
-
-    modelname = at.get_model_name(modelpath)
 
     axes[-1].set_xlabel("Time [days]")
     axis = axes[0]
@@ -321,7 +315,7 @@ def plot_cell_abund_evolution(
 
         at.plottools.autoscale(ax=axis)
 
-    # fig.suptitle(f"{modelname} cell {mgi}", y=0.995, fontsize=10)
+    # fig.suptitle(f"{at.get_model_name(modelpath)} cell {mgi}", y=0.995, fontsize=10)
     at.plottools.autoscale(axis, margin=0.05)
     fig.savefig(pdfoutpath, format="pdf")
     print(f"Saved {pdfoutpath}")
@@ -458,7 +452,6 @@ def plot_qdot_abund_modelcells(
     dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath)
     if "logrho" not in dfmodel.columns:
         dfmodel = dfmodel.eval("logrho = log10(rho)")
-    model_mass_grams = dfmodel.cellmass_grams.sum()
     npts_model = len(dfmodel)
 
     # these factors correct for missing mass due to skipped shells, and volume error due to Cartesian grid map
@@ -467,7 +460,7 @@ def plot_qdot_abund_modelcells(
     # WARNING sketchy inference!
     propcellcount = math.ceil(max(mgi_of_propcells.keys()) ** (1 / 3.0)) ** 3
     xmax_tmodel = vmax_cmps * t_model_init_days * 86400
-    wid_init = at.get_wid_init_at_tmodel(modelpath, propcellcount, t_model_init_days, xmax_tmodel)
+    wid_init = at.get_wid_init_at_tmodel(modelpath, propcellcount, t_model_init_days, xmax_tmodel)  # noqa: F841
     dfmodel["n_assoc_cells"] = [len(assoc_cells.get(inputcellid - 1, [])) for inputcellid in dfmodel["inputcellid"]]
 
     # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
@@ -489,7 +482,7 @@ def plot_qdot_abund_modelcells(
     artis_ye_sum: dict[int, float] = {}
     artis_ye_norm: dict[int, float] = {}
 
-    try:
+    with contextlib.suppress(FileNotFoundError):
         get_mgi_list = None if get_global_Ye else tuple(mgiplotlist)  # all cells if Ye is calculated
         estimators = at.estimators.read_estimators(modelpath, modelgridindex=get_mgi_list)
 
@@ -546,13 +539,11 @@ def plot_qdot_abund_modelcells(
                             # TODO: use mean molecular weight, but this is not needed for kilonova input files anyway
                             print(f"WARNING {popkey}={abund} not contributed")
                         else:
-                            try:
+                            with contextlib.suppress(AssertionError):
                                 z, a = at.get_z_a_nucname(popkey)
                                 cell_protoncount += z * abund * cellvolume
                                 cell_nucleoncount += a * abund * cellvolume
 
-                            except AssertionError:
-                                pass
                 cell_Ye = cell_protoncount / cell_nucleoncount
 
                 arr_abund_artis[mgi]["Ye"].append(cell_Ye)
@@ -560,9 +551,6 @@ def plot_qdot_abund_modelcells(
                 artis_ye_norm[nts] = artis_ye_norm.get(nts, 0.0) + cell_nucleoncount
 
         arr_artis_ye = [artis_ye_sum[nts] / artis_ye_norm[nts] for nts in sorted(artis_ye_sum.keys())]
-
-    except FileNotFoundError:
-        pass
 
     arr_time_artis_days_alltimesteps = at.get_timestep_times(modelpath)
     arr_time_artis_s_alltimesteps = np.array([t * 8.640000e04 for t in arr_time_artis_days_alltimesteps])
@@ -657,7 +645,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Compare the energy release and abundances from ARTIS to the GSI Network calculation."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

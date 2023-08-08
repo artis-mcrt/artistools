@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import math
+import typing as t
 from pathlib import Path
 
 import numpy as np
@@ -13,7 +14,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Create solar r-process pattern in ARTIS format."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
@@ -55,17 +56,19 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         {"Z": 28, "A": 58, "numberfrac": 0.005, "radioactive": False}, ignore_index=True
     )
 
-    normfactor = dfsolarabund_undecayed.numberfrac.sum()  # convert number fractions in solar to fractions of r-process
+    normfactor = (  # noqa: F841
+        dfsolarabund_undecayed.numberfrac.sum()
+    )  # convert number fractions in solar to fractions of r-process  # noqa: F841
     dfsolarabund_undecayed = dfsolarabund_undecayed.eval("numberfrac = numberfrac / @normfactor")
 
     dfsolarabund_undecayed = dfsolarabund_undecayed.eval("massfrac = numberfrac * A")
-    massfracnormfactor = dfsolarabund_undecayed.massfrac.sum()
+    massfracnormfactor = dfsolarabund_undecayed.massfrac.sum()  # noqa: F841
     dfsolarabund_undecayed = dfsolarabund_undecayed.eval("massfrac = massfrac / @massfracnormfactor")
 
     # print(dfsolarabund_undecayed)
 
     t_model_init_days = 0.000231481
-    t_model_init_seconds = t_model_init_days * 24 * 60 * 60
+    t_model_init_seconds = t_model_init_days * 24 * 60 * 60  # noqa: F841
 
     wollager_profilename = "wollager_ejectaprofile_10bins.txt"
     if Path(wollager_profilename).exists():
@@ -76,7 +79,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         dfdensities["cellid"] = dfdensities["cellid"].astype(int)
         dfdensities["velocity_inner"] = np.concatenate(([0.0], dfdensities["velocity_outer"].to_numpy()[:-1]))
 
-        t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
+        t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60  # noqa: F841
         dfdensities = dfdensities.eval(
             "cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
             "* (1e5 * @t_model_init_seconds_in) ** 3",

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 """Artistools - spectra plotting functions."""
-from __future__ import annotations
+
 
 import argparse
 import sys
@@ -68,9 +68,9 @@ def plot_polarisation(modelpath: Path, args) -> None:
                 sum_flux += fluxes[j]
             binned_flux.append(sum_flux / nbins)
 
-        fig = plt.plot(new_lambda_angstroms, binned_flux)
+        plt.plot(new_lambda_angstroms, binned_flux)
     else:
-        fig = stokes_params[args.stokesparam].plot(x="lambda_angstroms", y=timeavg, label=linelabel)
+        stokes_params[args.stokesparam].plot(x="lambda_angstroms", y=timeavg, label=linelabel)
 
     if args.ymax is None:
         args.ymax = 0.5
@@ -328,15 +328,17 @@ def plot_artis_spectrum(
         )
 
         for dirbin in directionbins:
-            dfspectrum = (
-                viewinganglespectra[dirbin]
-                .query("@supxmin * 0.9 <= lambda_angstroms and lambda_angstroms <= @supxmax * 1.1")
-                .copy()
-            )
+            dfspectrum_fullrange = viewinganglespectra[dirbin]
+            dfspectrum = dfspectrum_fullrange[
+                (supxmin * 0.9 <= dfspectrum_fullrange["lambda_angstroms"])
+                & (dfspectrum_fullrange["lambda_angstroms"] <= supxmax * 1.1)
+            ].copy()
 
+            linelabel_withdirbin = linelabel
             if dirbin != -1:
-                linelabel = dirbin_definitions[dirbin]
                 print(f" direction {dirbin:4d}  {dirbin_definitions[dirbin]}")
+                if len(directionbins) > 1:
+                    linelabel_withdirbin = linelabel + " " + dirbin_definitions[dirbin]
 
             at.spectra.print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
 
@@ -375,16 +377,17 @@ def plot_artis_spectrum(
             axis.plot(
                 dfspectrum["lambda_angstroms"],
                 dfspectrum[ycolumnname],
-                label=linelabel if axindex == 0 else None,
+                label=linelabel_withdirbin if axindex == 0 else None,
                 **plotkwargs,
             )
 
     return dfspectrum[["lambda_angstroms", "f_lambda"]]
 
 
+@typechecked
 def make_spectrum_plot(
     speclist: t.Collection[Path | str],
-    axes: plt.Axes,
+    axes: np.ndarray[t.Any, np.dtype[plt.Axes]] | t.Sequence[plt.Axes],
     filterfunc: t.Callable[[np.ndarray], np.ndarray] | None,
     args,
     scale_to_peak: float | None = None,
@@ -859,7 +862,8 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
         # ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.BuGn_r)
 
 
-def make_plot(args) -> tuple[plt.Figure, plt.Axes, pd.DataFrame]:
+@typechecked
+def make_plot(args) -> tuple[plt.Figure, list[plt.Axes], pd.DataFrame]:
     # font = {'size': 16}
     # mpl.rc('font', **font)
 
@@ -886,8 +890,7 @@ def make_plot(args) -> tuple[plt.Figure, plt.Axes, pd.DataFrame]:
         tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.0},
     )
 
-    if nrows == 1:
-        axes = [axes]
+    axes = [axes] if nrows == 1 else list(axes)
 
     filterfunc = at.get_filterfunc(args)
 
@@ -1041,6 +1044,7 @@ def make_plot(args) -> tuple[plt.Figure, plt.Axes, pd.DataFrame]:
     return fig, axes, dfalldata
 
 
+@typechecked
 def addargs(parser) -> None:
     parser.add_argument(
         "specpath",
@@ -1307,7 +1311,8 @@ def addargs(parser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+@typechecked
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Plot spectra from ARTIS and reference data."""
     if args is None:
         parser = argparse.ArgumentParser(
@@ -1382,6 +1387,7 @@ def main(args=None, argsraw=None, **kwargs) -> None:
             args.showabsorption = True
 
         fig, axes, dfalldata = make_plot(args)
+
         strdirectionbins = (
             "_direction" + "_".join([f"{angle:02d}" for angle in args.plotviewingangle])
             if args.plotviewingangle
@@ -1392,7 +1398,6 @@ def main(args=None, argsraw=None, **kwargs) -> None:
         )
 
         if args.write_data and not dfalldata.empty:
-            print(dfalldata)
             datafilenameout = Path(filenameout).with_suffix(".txt")
             dfalldata.to_csv(datafilenameout)
             print(f"Saved {datafilenameout}")

@@ -4,19 +4,17 @@ codecomparison/[modelname]/[codename].
 
 e.g., codecomparison/DDC10/artisnebular
 """
-from __future__ import annotations
+
 
 import math
 import typing as t
 from pathlib import Path
 
+import matplotlib.axes
 import numpy as np
 import pandas as pd
 
 import artistools as at
-
-if t.TYPE_CHECKING:
-    import matplotlib.axes
 
 
 def get_timestep_times(
@@ -126,7 +124,7 @@ def read_reference_estimators(
                     assert np.isclose(timedays, arr_timedays[cur_timestep], rtol=0.01)
 
                 elif row[0] == "#NVEL:":
-                    nvel = int(row[1])
+                    _nvel = int(row[1])
 
                 elif row[0] == "#vel_mid[km/s]":
                     row = [

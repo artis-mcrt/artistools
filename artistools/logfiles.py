@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import typing as t
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -11,7 +12,7 @@ def read_logfiles(modelpath):
     modeldata, _ = at.inputmodel.get_modeldata(modelpath)
 
     mpiranklist = at.get_mpiranklist(modelpath)
-    nprocs = at.get_nprocs(modelpath)
+    # nprocs = at.get_nprocs(modelpath)
 
     logfilepaths = []
 
@@ -123,7 +124,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter, description="Plot durations from log files."

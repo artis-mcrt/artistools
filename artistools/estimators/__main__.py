@@ -1,4 +1,9 @@
 from . import plotestimators
 
-if __name__ == "__main__":
+
+def main() -> None:
     plotestimators.main()
+
+
+if __name__ == "__main__":
+    main()

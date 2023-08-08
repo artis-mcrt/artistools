@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Artistools - NLTE population related functions."""
 
-from __future__ import annotations
 
 import argparse
 import contextlib
 import math
 import sys
+import typing as t
 from pathlib import Path
 
 import matplotlib as mpl
@@ -474,10 +474,10 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ionstage, i
 
     markers = ["o", "x", "^", "s", "8"]
     for modelnumber, modelpath in enumerate(modelpaths):
-        modelname = at.get_model_name(modelpath)
+        # modelname = at.get_model_name(modelpath)
 
         populations = {}
-        populationsLTE = {}
+        # populationsLTE = {}
 
         for timestep, mgi in zip(timesteps, modelgridindex_list):
             dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgi)
@@ -736,7 +736,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputfile", "-o", type=Path, default=defaultoutputfile, help="path/filename for PDF file")
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Plot ARTIS non-LTE populations."""
     if args is None:
         parser = argparse.ArgumentParser(description=__doc__)

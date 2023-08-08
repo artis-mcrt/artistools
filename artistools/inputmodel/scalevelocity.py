@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import math
+import typing as t
 
 import pandas as pd
 
@@ -26,7 +27,7 @@ def eval_mshell(dfmodel: pd.DataFrame, t_model_init_seconds: float) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Scale the velocity of an ARTIS model, keeping mass constant and saving back to ARTIS format."""
     if args is None:
         parser = argparse.ArgumentParser(

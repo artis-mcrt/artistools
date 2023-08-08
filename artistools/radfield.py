@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-from __future__ import annotations
+
 
 import argparse
 import math
+import typing as t
 from functools import lru_cache
 from pathlib import Path
 
@@ -963,7 +964,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-o", action="store", dest="outputfile", type=Path, help="Filename for PDF file")
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot the radiation field estimators."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)
@@ -1010,7 +1011,7 @@ def main(args=None, argsraw=None, **kwargs):
         if args.xaxis == "lambda":
             for timestep in timesteplist:
                 outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
-                if make_plot := plot_celltimestep(
+                if plot_celltimestep(
                     modelpath,
                     timestep,
                     outputfile,
@@ -1027,13 +1028,13 @@ def main(args=None, argsraw=None, **kwargs):
             plot_timeevolution(modelpath, outputfile, modelgridindex, args)
         else:
             print("Unknown plot type {args.plot}")
-            return 1
+            raise AssertionError
 
     if len(pdf_list) > 1:
         print(pdf_list, modelpath_list)
         at.join_pdf_files(pdf_list, modelpath_list)
-
-    return 0
+        return
+    return
 
 
 if __name__ == "__main__":

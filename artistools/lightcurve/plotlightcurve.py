@@ -1,5 +1,5 @@
 # PYTHON_ARGCOMPLETE_OK
-from __future__ import annotations
+
 
 import argparse
 import math
@@ -17,6 +17,7 @@ import polars as pl
 from astropy import constants as const
 from extinction import apply
 from extinction import ccm89
+from typeguard import typechecked
 
 import artistools as at
 
@@ -36,8 +37,6 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
             modelpath, skipnuclidemassfraccolumns=True, derived_cols=["vel_r_mid"], dtype_backend="pyarrow"
         )
 
-        t_model_init_days = modelmeta["t_model_init_days"]
-        vmax_cmps = modelmeta["vmax_cmps"]
         model_mass_grams = dfmodel.cellmass_grams.sum()
         print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
 
@@ -260,6 +259,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         )
 
 
+@typechecked
 def plot_artis_lightcurve(
     modelpath: str | Path,
     axis,
@@ -274,7 +274,7 @@ def plot_artis_lightcurve(
     average_over_theta: bool = False,
     usedegrees: bool = False,
     args=None,
-) -> pd.DataFrame | None:
+) -> dict[int, pl.DataFrame] | None:
     lcfilename = None
     modelpath = Path(modelpath)
     if Path(modelpath).is_file():  # handle e.g. modelpath = 'modelpath/light_curve.out'
@@ -463,12 +463,12 @@ def plot_artis_lightcurve(
 
 def make_lightcurve_plot(
     modelpaths: t.Sequence[str | Path],
-    filenameout: str,
+    filenameout: str | Path,
     frompackets: bool = False,
     escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
     maxpacketfiles: int | None = None,
     args=None,
-):
+) -> None:
     """Use light_curve.out or light_curve_res.out files to plot light curve."""
     conffigwidth = float(at.get_config()["figwidth"])
     fig, axis = plt.subplots(
@@ -1129,8 +1129,8 @@ def plot_lightcurve_from_refdata(
     for plotnumber, filter_name in enumerate(filter_names):
         if filter_name == "bol":
             continue
-        f = Path(filterdir / f"{filter_name}.txt").open()
-        lines = f.readlines()
+        with Path(filterdir / f"{filter_name}.txt").open() as f:
+            lines = f.readlines()
         lambda0 = float(lines[2])
 
         if filter_name == "bol":
@@ -1551,7 +1551,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--legendframeon", action="store_true", help="Frame on in legend")
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS light curve."""
     if args is None:
         parser = argparse.ArgumentParser(formatter_class=at.CustomArgHelpFormatter, description=__doc__)

@@ -34,6 +34,7 @@ rule_settings:
         - inline-variable
         - missing-dict-items
         - extract-method
+        - extract-duplicate-method
     rule_types:
         - refactoring
         - suggestion
@@ -53,7 +54,7 @@ rule_settings:
 #   sourcery_branch: sourcery/{base_branch}
 
 clone_detection:
-    min_lines: 4
+    min_lines: 7
     min_duplicates: 2
     identical_clones_only: false
 

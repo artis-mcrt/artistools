@@ -1,5 +1,5 @@
 """Artistools - spectra related functions."""
-from __future__ import annotations
+
 
 import argparse
 import math
@@ -63,6 +63,7 @@ def get_exspec_bins() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return array_lambdabinedges, array_lambda, delta_lambda
 
 
+@typechecked
 def stackspectra(
     spectra_and_factors: list[tuple[np.ndarray[t.Any, np.dtype[np.float64]], float]]
 ) -> np.ndarray[t.Any, np.dtype[np.float64]]:
@@ -589,7 +590,7 @@ def get_vspecpol_spectrum(
 
     f_nu = stackspectra(
         [
-            (vspecdata[vspecdata.columns[timestep + 1]], arr_tdelta[timestep])
+            (vspecdata[vspecdata.columns[timestep + 1]].to_numpy(), arr_tdelta[timestep])
             for timestep in range(timestepmin - 1, timestepmax)
         ]
     )
@@ -608,6 +609,7 @@ def get_vspecpol_spectrum(
 
 
 @lru_cache(maxsize=4)
+@typechecked
 def get_flux_contributions(
     modelpath: Path,
     filterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
@@ -783,6 +785,7 @@ def get_flux_contributions(
 
 
 @lru_cache(maxsize=4)
+@typechecked
 def get_flux_contributions_from_packets(
     modelpath: Path,
     timelowerdays: float,
@@ -899,8 +902,8 @@ def get_flux_contributions_from_packets(
 
     nprocs_read = len(packetsfiles)
     c_cgs = 29979245800.0
-    nu_min = 2.99792458e18 / lambda_max
-    nu_max = 2.99792458e18 / lambda_min
+    nu_min = 2.99792458e18 / lambda_max  # noqa: F841
+    nu_max = 2.99792458e18 / lambda_min  # noqa: F841
 
     emtypecolumn = (
         "emissiontype" if useinternalpackets else "emissiontype" if use_lastemissiontype else "trueemissiontype"
@@ -1148,7 +1151,7 @@ def sort_and_reduce_flux_contribution_list(
 
 
 def print_integrated_flux(
-    arr_f_lambda: np.ndarray, arr_lambda_angstroms: np.ndarray, distance_megaparsec: float = 1.0
+    arr_f_lambda: np.ndarray | pd.Series, arr_lambda_angstroms: np.ndarray | pd.Series, distance_megaparsec: float = 1.0
 ) -> float:
     integrated_flux = (
         abs(np.trapz(np.nan_to_num(arr_f_lambda, nan=0.0), x=arr_lambda_angstroms)) * u.erg / u.s / (u.cm**2)
@@ -1159,10 +1162,11 @@ def print_integrated_flux(
     )
     # luminosity = integrated_flux * 4 * math.pi * (distance_megaparsec * u.megaparsec ** 2)
     # print(f'(L={luminosity.to("Lsun"):.3e})')
-    return integrated_flux
+    return integrated_flux.value
 
 
-def get_reference_spectrum(filename: Path | str) -> tuple[pd.DataFrame, dict[str, t.Any]]:
+@typechecked
+def get_reference_spectrum(filename: Path | str) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:
     if Path(filename).is_file():
         filepath = Path(filename)
     else:

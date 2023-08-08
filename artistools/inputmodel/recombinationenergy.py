@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 import argparse
+import typing as t
 from pathlib import Path
 
 import argcomplete
@@ -79,7 +80,7 @@ def get_particle_elec_binding_energy_per_gram(traj_root, dictbinding, particleid
 
     dftrajnucabund["Z_be_tot_ev"] = [dictbinding.get(Z, 0.0) for Z in dftrajnucabund["Z"]]
 
-    amu_g = 1.66054e-24  # 1 atomic mass unit in grams
+    amu_g = 1.66054e-24  # 1 atomic mass unit in grams  # noqa: F841
 
     # frac_unaccounted = dftrajnucabund[dftrajnucabund['Z_be_tot_ev'] == 0].massfrac.sum()
     # print(f'frac_unaccounted {frac_unaccounted}')
@@ -120,8 +121,6 @@ def get_particles_recomb_nuc_energy(traj_root, dfbinding):
 
     tmin_s = 10
     time_s = 6 * 3600
-
-    msun_g = 1.989e33
 
     ye_list = []
     elecbinding_en_list = []
@@ -190,7 +189,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter,

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import gc
+import typing as t
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -161,9 +162,9 @@ def make_plot(args):
     y = cone["pos_y_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3
     z = cone["pos_x_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3
 
-    surf = ax.scatter3D(x, y, z, c=-cone["fni"], cmap=plt.get_cmap("viridis"))
+    _surf = ax.scatter3D(x, y, z, c=-cone["fni"], cmap=plt.get_cmap("viridis"))
 
-    # fig.colorbar(surf, shrink=0.5, aspect=5)
+    # fig.colorbar(_surf, shrink=0.5, aspect=5)
 
     ax.set_xlabel(r"x [10$^3$ km/s]")
     ax.set_ylabel(r"y [10$^3$ km/s]")
@@ -204,7 +205,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Make 1D model from cone in 3D model."""
     if args is None:
         parser = argparse.ArgumentParser(
@@ -218,14 +219,9 @@ def main(args=None, argsraw=None, **kwargs):
     if not args.modelpath:
         args.modelpath = [Path()]
 
-    args.other_axis1 = None
-    args.other_axis2 = None
     axes = ["x", "y", "z"]
-    for ax in axes:
-        if args.other_axis1 is None and ax != args.sliceaxis:
-            args.other_axis1 = ax
-        elif args.other_axis2 is None and ax != args.sliceaxis:
-            args.other_axis2 = ax
+    args.other_axis1 = next(ax for ax in axes if ax != args.sliceaxis)
+    args.other_axis2 = next(ax for ax in axes if ax not in [args.sliceaxis, args.other_axis1])
 
     # remember: models before scaling down to artis input have x and z axis swapped compared to artis input files
 

@@ -1,13 +1,10 @@
-from __future__ import annotations
-
 import gzip
 import typing as t
 from pathlib import Path
 
-import artistools as at
+import pandas as pd
 
-if t.TYPE_CHECKING:
-    import pandas as pd
+import artistools as at
 
 
 def get_atomic_composition(modelpath: Path) -> dict[int, int]:

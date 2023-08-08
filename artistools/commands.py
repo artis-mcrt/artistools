@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import argparse
 import subprocess
 import typing as t
@@ -26,7 +24,7 @@ dictcommands: cmdtype = {
     "plotmodeldeposition": ("deposition", "main"),
     "plotmacroatom": ("macroatom", "main"),
     "plotnltepops": ("nltepops.plotnltepops", "main"),
-    "plotnonthermal": ("nonthermal", "main"),
+    "plotnonthermal": ("nonthermal.plotnonthermal", "main"),
     "plotradfield": ("radfield", "main"),
     "plotspectra": ("spectra.plotspectra", "main"),
     "plotspherical": ("plotspherical", "main"),

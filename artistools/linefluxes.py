@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Artistools - spectra related functions."""
 
-from __future__ import annotations
 
 import argparse
 import contextlib
@@ -147,7 +146,7 @@ def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=N
     if arr_tend is None:
         arr_tend = at.get_timestep_times(modelpath, loc="end")
 
-    arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
+    # arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = arr_tend = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
 
     modeldata, _ = at.inputmodel.get_modeldata(modelpath)
@@ -155,7 +154,7 @@ def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=N
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
     adata = at.atomic.get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True, get_photoionisations=False)
 
-    timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
+    # timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
 
     dictlcdata = {"time": arr_tmid}
 
@@ -892,7 +891,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot line fluxe ratios for comparisons to Floers."""
     if args is None:
         parser = argparse.ArgumentParser(
@@ -916,6 +915,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     for i in range(len(args.label)):
         if args.label[i] is None:
+            assert hasattr(args.label, "__setitem__")
             args.label[i] = at.get_model_name(args.modelpath[i])
 
     if args.plotemittingregions:

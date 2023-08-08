@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import argparse
-import sys
+import typing as t
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -25,7 +25,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args=None, argsraw=None, **kwargs):
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot the macroatom transitions."""
     if args is None:
         parser = argparse.ArgumentParser(
@@ -47,7 +47,7 @@ def main(args=None, argsraw=None, **kwargs):
 
     timestepmax = timestepmin if not args.timestepmax or args.timestepmax < 0 else args.timestepmax
 
-    input_files = Path(args.modelpath).glob("**/macroatom_????.out*")
+    input_files = list(Path(args.modelpath).glob("**/macroatom_????.out*"))
 
     if not input_files:
         print("No macroatom files found")
@@ -73,8 +73,6 @@ def main(args=None, argsraw=None, **kwargs):
         xmax=args.xmax,
         modelgridindex=args.modelgridindex,
     )
-
-    return 0
 
 
 def make_plot(
@@ -134,7 +132,13 @@ def make_plot(
     plt.close()
 
 
-def read_files(files, modelgridindex=None, timestepmin=None, timestepmax=None, atomic_number=None):
+def read_files(
+    files: t.Sequence[Path | str],
+    modelgridindex: int | None = None,
+    timestepmin: int | None = None,
+    timestepmax: int | None = None,
+    atomic_number: int | None = None,
+) -> pd.DataFrame:
     dfall = None
     if not files:
         print("No files")
@@ -153,8 +157,11 @@ def read_files(files, modelgridindex=None, timestepmin=None, timestepmax=None, a
             if atomic_number:
                 df_thisfile = df_thisfile.query("Z==@atomic_number")
 
-            if df_thisfile is not None and len(df_thisfile) > 0:
-                dfall = df_thisfile.copy() if dfall is None else dfall.append(df_thisfile.copy(), ignore_index=True)
+            if df_thisfile is not None and not df_thisfile.empty:
+                if dfall is None:
+                    dfall = df_thisfile.copy()
+                else:
+                    dfall = pd.concat([dfall, df_thisfile.copy()], ignore_index=True)
 
         if dfall is None or len(dfall) == 0:
             print("No data found")
@@ -163,4 +170,4 @@ def read_files(files, modelgridindex=None, timestepmin=None, timestepmax=None, a
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import argparse
+import contextlib
+import typing as t
 from pathlib import Path
 
 import numpy as np
@@ -11,7 +13,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default="massfracs.txt", help="Path to output file of mass fractions")
 
 
-def main(args=None, argsraw=None, **kwargs) -> None:
+def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     if args is None:
         parser = argparse.ArgumentParser(
             formatter_class=at.CustomArgHelpFormatter, description="Create solar r-process pattern in ARTIS format."
@@ -35,12 +37,10 @@ def main(args=None, argsraw=None, **kwargs) -> None:
             numberdens = {}
             totaldens = 0.0  # number density times atomic mass summed over all elements
             for key in popdict:
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     atomic_number = int(key)
                     numberdens[atomic_number] = popdict[atomic_number]
                     totaldens += numberdens[atomic_number] * elmass[atomic_number]
-                except (ValueError, TypeError):
-                    pass
             massfracs = {
                 atomic_number: numberdens[atomic_number] * elmass[atomic_number] / totaldens
                 for atomic_number in numberdens
@@ -48,8 +48,8 @@ def main(args=None, argsraw=None, **kwargs) -> None:
 
             fout.write(f"{tdays}d shell {modelgridindex}\n")
             massfracsum = 0.0
-            for atomic_number in massfracs:
-                massfracsum += massfracs[atomic_number]
+            for atomic_number, value in massfracs.items():
+                massfracsum += value
                 fout.write(f"{atomic_number} {at.get_elsymbol(atomic_number)} {massfracs[atomic_number]}\n")
 
             assert np.isclose(massfracsum, 1.0)

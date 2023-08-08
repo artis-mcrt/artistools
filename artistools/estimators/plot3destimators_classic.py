@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import typing as t
 from collections import namedtuple
 from pathlib import Path
@@ -132,8 +130,8 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
     p = pv.Plotter()
     p.set_scale(1.5, 1.5, 1.5)
     single_slice = mesh.slice(normal="z")
-    actor = p.add_mesh(single_slice, scalar_bar_args=sargs)  # , clim=[100, 60000]
-    actor = p.show_bounds(
+    p.add_mesh(single_slice, scalar_bar_args=sargs)  # , clim=[100, 60000]
+    p.show_bounds(
         grid=False,
         xlabel="vx / c",
         ylabel="vy / c",
