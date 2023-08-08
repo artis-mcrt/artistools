@@ -80,10 +80,10 @@ def add_lte_pops(modelpath, dfpop, columntemperature_tuples, noprint=False, maxl
         gs_g = ionlevels.iloc[0].g
         gs_energy = ionlevels.iloc[0].energy_ev
 
-        gs_pop = dfpop.query(
-            "modelgridindex == @modelgridindex and timestep == @timestep "
-            "and Z == @Z and ion_stage == @ion_stage and level == 0"
-        ).iloc[0]["n_NLTE"]
+        # gs_pop = dfpop.query(
+        #     "modelgridindex == @modelgridindex and timestep == @timestep "
+        #     "and Z == @Z and ion_stage == @ion_stage and level == 0"
+        # ).iloc[0]["n_NLTE"]
 
         masksuperlevel = (
             (dfpop["modelgridindex"] == modelgridindex)
@@ -183,8 +183,6 @@ def read_files(
         dfqueryvars = {}
 
     mpiranklist = at.get_mpiranklist(modelpath, modelgridindex=modelgridindex)
-
-    dfpop = pd.DataFrame()
 
     nltefilepaths = [
         Path(folderpath, f"nlte_{mpirank:04d}.out")

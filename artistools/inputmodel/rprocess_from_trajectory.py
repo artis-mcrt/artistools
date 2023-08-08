@@ -605,7 +605,7 @@ def get_wollaeger_density_profile(wollaeger_profilename):
     result["cellid"] = result["cellid"].astype(int)
     result["velocity_inner"] = np.concatenate(([0.0], result["velocity_outer"].to_numpy()[:-1]))
 
-    t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
+    t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60  # noqa: F841
     result = result.eval(
         "cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
         "* (1e5 * @t_model_init_seconds_in) ** 3"

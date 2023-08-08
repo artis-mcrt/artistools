@@ -187,7 +187,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             raise AssertionError
 
         nntot = estim["populations"]["total"]
-        nne = estim["nne"]
+        # nne = estim["nne"]
         T_e = estim["Te"]
         print("WARNING: Use LTE pops at Te for now")
         deposition_density_ev = estim["heating_dep"] / 1.6021772e-12  # convert erg to eV

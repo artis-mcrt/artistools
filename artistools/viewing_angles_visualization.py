@@ -137,7 +137,6 @@ def viewing_angles_visualisation(
     dfmodel, modelmeta = at.get_modeldata(modelfile, derived_cols=["pos_mid"], dtype_backend="pyarrow")
     x, y, z = (dfmodel[f"pos_{ax}_mid"].to_numpy() for ax in ("x", "y", "z"))
     rho = dfmodel["rho"].to_numpy()
-    res = modelmeta["ncoordgrid"]
 
     if isomin is None:
         isomin = min(rho.flatten())

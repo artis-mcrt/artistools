@@ -124,7 +124,7 @@ def read_reference_estimators(
                     assert np.isclose(timedays, arr_timedays[cur_timestep], rtol=0.01)
 
                 elif row[0] == "#NVEL:":
-                    nvel = int(row[1])
+                    _nvel = int(row[1])
 
                 elif row[0] == "#vel_mid[km/s]":
                     row = [

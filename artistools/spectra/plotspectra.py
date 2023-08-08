@@ -68,9 +68,9 @@ def plot_polarisation(modelpath: Path, args) -> None:
                 sum_flux += fluxes[j]
             binned_flux.append(sum_flux / nbins)
 
-        fig = plt.plot(new_lambda_angstroms, binned_flux)
+        plt.plot(new_lambda_angstroms, binned_flux)
     else:
-        fig = stokes_params[args.stokesparam].plot(x="lambda_angstroms", y=timeavg, label=linelabel)
+        stokes_params[args.stokesparam].plot(x="lambda_angstroms", y=timeavg, label=linelabel)
 
     if args.ymax is None:
         args.ymax = 0.5

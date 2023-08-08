@@ -902,8 +902,8 @@ def get_flux_contributions_from_packets(
 
     nprocs_read = len(packetsfiles)
     c_cgs = 29979245800.0
-    nu_min = 2.99792458e18 / lambda_max
-    nu_max = 2.99792458e18 / lambda_min
+    nu_min = 2.99792458e18 / lambda_max  # noqa: F841
+    nu_max = 2.99792458e18 / lambda_min  # noqa: F841
 
     emtypecolumn = (
         "emissiontype" if useinternalpackets else "emissiontype" if use_lastemissiontype else "trueemissiontype"

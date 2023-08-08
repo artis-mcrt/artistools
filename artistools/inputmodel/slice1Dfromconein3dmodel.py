@@ -162,9 +162,9 @@ def make_plot(args):
     y = cone["pos_y_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3
     z = cone["pos_x_min"].apply(lambda x: x / args.t_model * (u.cm / u.day).to("km/s")) / 1e3
 
-    surf = ax.scatter3D(x, y, z, c=-cone["fni"], cmap=plt.get_cmap("viridis"))
+    _surf = ax.scatter3D(x, y, z, c=-cone["fni"], cmap=plt.get_cmap("viridis"))
 
-    # fig.colorbar(surf, shrink=0.5, aspect=5)
+    # fig.colorbar(_surf, shrink=0.5, aspect=5)
 
     ax.set_xlabel(r"x [10$^3$ km/s]")
     ax.set_ylabel(r"y [10$^3$ km/s]")

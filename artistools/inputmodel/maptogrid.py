@@ -41,7 +41,7 @@ def get_wij() -> np.ndarray:
             v2 = i * dvtable
             v = math.sqrt(v2)
             v3 = v * v2
-            v4 = v * v3
+            # v4 = v * v3
             vsum = 1.0 - 1.5 * v2 + 0.75 * v3
             wij[i] = cnormk * vsum
     else:

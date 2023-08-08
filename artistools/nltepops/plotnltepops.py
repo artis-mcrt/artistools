@@ -474,10 +474,10 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ionstage, i
 
     markers = ["o", "x", "^", "s", "8"]
     for modelnumber, modelpath in enumerate(modelpaths):
-        modelname = at.get_model_name(modelpath)
+        # modelname = at.get_model_name(modelpath)
 
         populations = {}
-        populationsLTE = {}
+        # populationsLTE = {}
 
         for timestep, mgi in zip(timesteps, modelgridindex_list):
             dfpop = at.nltepops.read_files(modelpath, timestep=timestep, modelgridindex=mgi)

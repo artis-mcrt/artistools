@@ -37,8 +37,6 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
             modelpath, skipnuclidemassfraccolumns=True, derived_cols=["vel_r_mid"], dtype_backend="pyarrow"
         )
 
-        t_model_init_days = modelmeta["t_model_init_days"]
-        vmax_cmps = modelmeta["vmax_cmps"]
         model_mass_grams = dfmodel.cellmass_grams.sum()
         print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
 

@@ -146,7 +146,7 @@ def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=N
     if arr_tend is None:
         arr_tend = at.get_timestep_times(modelpath, loc="end")
 
-    arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
+    # arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
     arr_tmid = arr_tend = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
 
     modeldata, _ = at.inputmodel.get_modeldata(modelpath)
@@ -154,7 +154,7 @@ def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=N
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
     adata = at.atomic.get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True, get_photoionisations=False)
 
-    timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
+    # timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
 
     dictlcdata = {"time": arr_tmid}
 

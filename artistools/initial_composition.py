@@ -28,13 +28,13 @@ def plot_2d_initial_abundances(modelpath: Path, args: argparse.Namespace) -> Non
     with Path(modelpath, "model.txt").open() as fmodelin:
         fmodelin.readline()  # npts r, npts z
         t_model = float(fmodelin.readline())  # days
-        vmax = float(fmodelin.readline())  # v_max in [cm/s]
+        _vmax = float(fmodelin.readline())  # v_max in [cm/s]
 
     r = merge_dfs["cellpos_mid[r]"] / t_model * (u.cm / u.day).to("km/s") / 10**3
     z = merge_dfs["cellpos_mid[z]"] / t_model * (u.cm / u.day).to("km/s") / 10**3
 
     colname = f"X_{args.plotvars}"
-    font = {"weight": "bold", "size": 18}
+    _font = {"weight": "bold", "size": 18}
 
     f = plt.figure(figsize=(4, 5))
     ax = f.add_subplot(111)
@@ -104,7 +104,6 @@ def plot_slice_modelcol(ax, dfmodelslice, modelmeta, colname, plotaxis1, plotaxi
     else:
         scaledmap = None
 
-    cmps_to_kmps = 1e-5
     cmps_to_beta = 1.0 / (2.99792458e10)
     unitfactor = cmps_to_beta
     t_model_s = t_model_d * 86400.0

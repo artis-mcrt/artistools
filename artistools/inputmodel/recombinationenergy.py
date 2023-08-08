@@ -80,7 +80,7 @@ def get_particle_elec_binding_energy_per_gram(traj_root, dictbinding, particleid
 
     dftrajnucabund["Z_be_tot_ev"] = [dictbinding.get(Z, 0.0) for Z in dftrajnucabund["Z"]]
 
-    amu_g = 1.66054e-24  # 1 atomic mass unit in grams
+    amu_g = 1.66054e-24  # 1 atomic mass unit in grams  # noqa: F841
 
     # frac_unaccounted = dftrajnucabund[dftrajnucabund['Z_be_tot_ev'] == 0].massfrac.sum()
     # print(f'frac_unaccounted {frac_unaccounted}')
@@ -121,8 +121,6 @@ def get_particles_recomb_nuc_energy(traj_root, dfbinding):
 
     tmin_s = 10
     time_s = 6 * 3600
-
-    msun_g = 1.989e33
 
     ye_list = []
     elecbinding_en_list = []

@@ -450,7 +450,7 @@ def get_averageexcitation(
         "modelgridindex==@modelgridindex and timestep==@timestep and Z==@atomic_number & ion_stage==@ion_stage"
     )
 
-    k_b = 8.617333262145179e-05  # eV / K
+    k_b = 8.617333262145179e-05  # eV / K  # noqa: F841
 
     ionpopsum = dfnltepops_ion.n_NLTE.sum()
     energypopsum = (

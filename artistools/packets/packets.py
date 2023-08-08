@@ -253,7 +253,7 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict | None = N
 def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataFrame:
     """Read a packets*.out(.xz) space-separated text file into a polars DataFrame."""
     print(f"Reading {packetsfile}")
-    skiprows: int = 0
+    # skiprows = 0
     column_names: list[str] | None = None
     try:
         fpackets = at.zopen(packetsfile, mode="rb")
@@ -270,7 +270,7 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataF
             dataline = fpackets.readline().decode()
             inputcolumncount = len(dataline.split())
             assert inputcolumncount == len(column_names)
-            skiprows = 1
+            # skiprows = 1
         else:
             inputcolumncount = len(firstline.split())
             column_names = get_column_names_artiscode(modelpath)

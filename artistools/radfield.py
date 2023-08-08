@@ -1011,7 +1011,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         if args.xaxis == "lambda":
             for timestep in timesteplist:
                 outputfile = str(args.outputfile).format(modelgridindex=modelgridindex, timestep=timestep)
-                if make_plot := plot_celltimestep(
+                if plot_celltimestep(
                     modelpath,
                     timestep,
                     outputfile,
