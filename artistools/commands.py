@@ -3,10 +3,10 @@ import subprocess
 import typing as t
 from pathlib import Path
 
-cmdtype: t.TypeAlias = dict[str, t.Union[tuple[str, str], "cmdtype"]]
+CommandType: t.TypeAlias = dict[str, t.Union[tuple[str, str], "CommandType"]]
 
 # new subparser based list
-dictcommands: cmdtype = {
+dictcommands: CommandType = {
     "comparetogsinetwork": ("gsinetwork", "main"),
     "deposition": ("deposition", "main_analytical"),
     "describeinputmodel": ("inputmodel.describeinputmodel", "main"),
