@@ -8,13 +8,15 @@ import typing as t
 import argcomplete
 from typeguard import typechecked
 
-from .commands import cmdtype
+from .commands import CommandType
 from .commands import dictcommands as atdictcommands
 from .misc import CustomArgHelpFormatter
 
 
 @typechecked
-def addsubparsers(parser: argparse.ArgumentParser, parentcommand: str, dictcommands: cmdtype, depth: int = 1) -> None:
+def addsubparsers(
+    parser: argparse.ArgumentParser, parentcommand: str, dictcommands: CommandType, depth: int = 1
+) -> None:
     def func(args: t.Any) -> None:
         parser.print_help()
 
