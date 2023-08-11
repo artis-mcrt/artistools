@@ -12,6 +12,4 @@ updates:
           interval: "daily"
       versioning-strategy: "increase"
       allow:
-        - dependency-type: "all"
-        - dependency-name: "all"
         - update-type: "all"
