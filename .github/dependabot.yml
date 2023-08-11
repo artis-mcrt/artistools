@@ -11,5 +11,3 @@ updates:
       schedule:
           interval: "daily"
       versioning-strategy: "increase"
-      allow:
-        - update-type: "all"
