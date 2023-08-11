@@ -6,9 +6,12 @@
 
 version: 2
 updates:
-    - package-ecosystem: pip # See documentation for possible values
-      directory: / # Location of package manifests
+    - package-ecosystem: "pip" # See documentation for possible values
+      directory: "/" # Location of package manifests
       schedule:
-          interval: daily
-      versioning-strategy: increase
-
+          interval: "daily"
+      versioning-strategy: "increase"
+      allow:
+        - dependency-type: "all"
+          dependency-name: "all"
+          update-type: "all"

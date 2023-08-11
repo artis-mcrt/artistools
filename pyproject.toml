@@ -68,7 +68,7 @@ pretty = true
 python_version = '3.11'
 scripts_are_modules = true
 strict_equality = true
-strict_concatenate = true
+extra_checks = true
 warn_redundant_casts = true
 warn_unreachable = false
 warn_unused_configs = true
@@ -188,6 +188,7 @@ ignore = [
     "PLR0915",  # too-many-statements
     "PLR2004",  # magic-value-comparison
     "PLW2901",  # redefined-loop-name
+    "PYI024",
     "RUF007", # pairwise-over-zipped
     "RUF100", # unused-noqa, Luke: false alarms in pre-commit
     "S101",  # Use of assert detected
