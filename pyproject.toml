@@ -228,6 +228,9 @@ ignore-fully-untyped = true
 
 [tool.ruff.flake8-import-conventions.extend-aliases]
 "artistools" = "at"
+"matplotlib" = "mpl"
+"matplotlib.pyplot" = "plt"
+"matplotlib.typing" = "mplt"
 "numpy.typing" = "npt"
 "typing" = "t"
 
@@ -238,13 +241,16 @@ ignore-fully-untyped = true
 force-single-line = true
 order-by-type = false
 
-[tool.setuptools]
-packages = ["artistools"]
-include-package-data = true
+#[tool.setuptools]
+#packages = ["artistools"]
+#include-package-data = true
 
 [tool.setuptools.dynamic]
 readme = {file = ["README.md"]}
 dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.packages.find]
+where = ["."]
 
 [tool.setuptools_scm]
 write_to = "_version.py"

@@ -4,6 +4,7 @@
 import importlib.util
 from pathlib import Path
 
+from setuptools import find_namespace_packages
 from setuptools import setup
 from setuptools_scm import get_version
 
@@ -16,6 +17,7 @@ setup(
     version=get_version(),
     author="ARTIS Collaboration",
     author_email="luke.shingles@gmail.com",
+    packages=find_namespace_packages(where="."),
     package_dir={"": "."},
     url="https://www.github.com/artis-mcrt/artistools/",
     long_description=(Path(__file__).absolute().parent / "README.md").open().read(),
