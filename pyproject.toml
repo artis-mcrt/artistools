@@ -20,7 +20,7 @@ classifiers = [
     "Framework :: Matplotlib",
     "Intended Audience :: Science/Research",
 ]
-dynamic = ["version", "dependencies", "entry-points", "readme"]
+dynamic = ["version", "dependencies", "entry-points", "readme", "scripts"]
 requires-python = ">=3.10"
 license = { file = "LICENSE.txt" }
 
