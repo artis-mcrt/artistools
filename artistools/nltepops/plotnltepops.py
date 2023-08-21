@@ -25,16 +25,16 @@ def annotate_emission_line(ax: plt.Axes, y: float, upperlevel: int, lowerlevel: 
     ax.annotate(
         "",
         xy=(lowerlevel, y),
-        xycoords=("data", "axes fraction"),
+        xycoords=("data", "axes fraction"),  # type: ignore[arg-type]
         xytext=(upperlevel, y),
-        textcoords=("data", "axes fraction"),
+        textcoords=("data", "axes fraction"),  # type: ignore[arg-type]
         arrowprops={"facecolor": "black", "width": 0.1, "headwidth": 6},
     )
 
     ax.annotate(
         label,
         xy=((upperlevel + lowerlevel) / 2, y),
-        xycoords=("data", "axes fraction"),
+        xycoords=("data", "axes fraction"),  # type: ignore[arg-type]
         size=10,
         va="bottom",
         ha="center",
@@ -301,7 +301,7 @@ def make_ionsubplot(
 
         ycolumnname = "departure_coeff"
 
-        next(ax._get_lines.prop_cycler)  # skip one color, since T_e is not plotted in departure mode
+        ax._get_lines.get_next_color()  # skip one color, since T_e is not plotted in departure mode
         if floers_levelnums is not None:
             ax.plot(
                 floers_levelnums,

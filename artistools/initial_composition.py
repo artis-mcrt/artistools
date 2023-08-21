@@ -171,9 +171,9 @@ def plot_3d_initial_abundances(modelpath, args=None) -> None:
 
     sliceaxis: t.Literal["x", "y", "z"] = "z"
 
-    axes: list[t.Literal["x", "y", "z"]] = ["x", "y", "z"]
-    plotaxis1: t.Literal["x", "y", "z"] = next(ax for ax in axes if ax != sliceaxis)
-    plotaxis2: t.Literal["x", "y", "z"] = next(ax for ax in axes if ax not in [sliceaxis, plotaxis1])
+    axeschars: list[t.Literal["x", "y", "z"]] = ["x", "y", "z"]
+    plotaxis1: t.Literal["x", "y", "z"] = next(ax for ax in axeschars if ax != sliceaxis)
+    plotaxis2: t.Literal["x", "y", "z"] = next(ax for ax in axeschars if ax not in [sliceaxis, plotaxis1])
 
     df2dslice = get_2D_slice_through_3d_model(
         dfmodel=dfmodel, modelmeta=modelmeta, sliceaxis=sliceaxis, plotaxis1=plotaxis1, plotaxis2=plotaxis2

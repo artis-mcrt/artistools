@@ -32,7 +32,7 @@ def plot_spherical(
     plotvars: list[str] | None = None,
     figscale: float = 1.0,
     cmap: str | None = None,
-) -> tuple[plt.Figure, np.ndarray[t.Any, np.dtype[plt.Axes]]]:
+) -> tuple[plt.Figure, t.Iterable[plt.Axes]]:
     if plotvars is None:
         plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc"]
 
@@ -201,7 +201,7 @@ def plot_spherical(
     )
 
     if len(plotvars) == 1:
-        axes = np.array([axes])
+        axes = [axes]
 
     for ax, plotvar in zip(axes, plotvars):
         data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
@@ -226,7 +226,7 @@ def plot_spherical(
             raise AssertionError
 
         cbar = fig.colorbar(colormesh, ax=ax, location="bottom")
-        cbar.outline.set_linewidth(0)
+        cbar.outline.set_linewidth(0)  # type: ignore[operator]
         cbar.ax.tick_params(axis="both", direction="out")
         cbar.ax.xaxis.set_ticks_position("top")
         # cbar.ax.set_title(colorbartitle)

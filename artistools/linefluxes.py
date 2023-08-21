@@ -518,8 +518,7 @@ def plot_nne_te_points(
     color: float | str | None,
     marker: str | None = "o",
 ) -> None:
-    # color_adj = [(c + 0.3) / 1.3 for c in mpl.colors.to_rgb(color)]
-    color_adj = [(c + 0.1) / 1.1 for c in mpl.colors.to_rgb(color)]
+    color_adj = [(c + 0.1) / 1.1 for c in mpl.colors.to_rgb(color)]  # type: ignore[arg-type]
     hitcount: dict[tuple[float, float], int] = {}
     for log10nne, Te in zip(em_log10nne, em_Te):
         hitcount[(log10nne, Te)] = hitcount.get((log10nne, Te), 0) + 1

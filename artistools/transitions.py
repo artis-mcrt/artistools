@@ -356,6 +356,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     xvalues = np.arange(args.xmin, args.xmax, step=plot_resolution)
     yvalues = np.zeros((len(temperature_list) + 1, len(ionlist), len(xvalues)))
 
+    fe2depcoeff, ni2depcoeff = None, None
     for _, ion in adata.iterrows() if args.atomicdatabase == "artis" else enumerate(ionlist):
         ionid = iontuple(ion.Z, ion.ion_stage)
         if ionid not in ionlist:
