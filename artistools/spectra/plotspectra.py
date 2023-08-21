@@ -387,7 +387,7 @@ def plot_artis_spectrum(
 @typechecked
 def make_spectrum_plot(
     speclist: t.Collection[Path | str],
-    axes: np.ndarray[t.Any, np.dtype[plt.Axes]] | t.Sequence[plt.Axes],
+    axes: t.Sequence[plt.Axes],
     filterfunc: t.Callable[[np.ndarray], np.ndarray] | None,
     args,
     scale_to_peak: float | None = None,
@@ -618,8 +618,8 @@ def make_emissionabsorption_plot(
         greyscale=args.greyscale,
     )
 
-    plotobjectlabels = []
-    plotobjects = []
+    plotobjectlabels: list[str] = []
+    plotobjects: list[plt.Artist] = []
 
     max_flambda_emission_total = max(
         flambda if (xmin < lambda_ang < xmax) else -99.0
@@ -684,7 +684,7 @@ def make_emissionabsorption_plot(
             absstackplot = axis.stackplot(
                 arraylambda_angstroms,
                 [-x.array_flambda_absorption * scalefactor for x in contributions_sorted_reduced],
-                colors=facecolors,
+                colors=facecolors,  # type: ignore[arg-type]
                 linewidth=0,
             )
             if not args.showemission:
@@ -773,7 +773,7 @@ def make_emissionabsorption_plot(
     return plotobjects, plotobjectlabels, dfaxisdata
 
 
-def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[str], args) -> None:
+def make_contrib_plot(axes: t.Iterable[plt.Axes], modelpath: Path, densityplotyvars: list[str], args) -> None:
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
@@ -850,7 +850,12 @@ def make_contrib_plot(axes: plt.Axes, modelpath: Path, densityplotyvars: list[st
             ax.set_ylabel(yvar + " " + at.estimators.get_units_string(yvar))
         # ax.plot(list_lambda, list_yvar, lw=0, marker='o', markersize=0.5)
         # ax.hexbin(list_lambda[yvar], lists_y[yvar], gridsize=100, cmap=plt.cm.BuGn_r)
-        ax.hist2d(list_lambda[yvar], lists_y[yvar], bins=(50, 30), cmap=plt.cm.Greys)  # pylint: disable=no-member
+        ax.hist2d(
+            list_lambda[yvar],
+            lists_y[yvar],
+            bins=(50, 30),
+            cmap="Greys",
+        )
         # plt.cm.Greys
         # x = np.array(list_lambda[yvar])
         # y = np.array(lists_y[yvar])

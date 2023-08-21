@@ -1080,6 +1080,7 @@ def sort_and_reduce_flux_contribution_list(
     remainder_flambda_absorption = np.zeros_like(arraylambda_angstroms, dtype=float)
     remainder_fluxcontrib = 0
 
+    color_list: list[t.Any]
     if greyscale:
         hatches = at.spectra.plotspectra.hatches
         seriescount = len(fixedionlist) if fixedionlist else maxseriescount

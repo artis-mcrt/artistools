@@ -42,7 +42,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
 
     depdata = at.get_deposition(modelpath)
 
-    # color_total = next(axis._get_lines.prop_cycler)['color']
+    # color_total = axis._get_lines.get_next_color()
 
     # axis.plot(depdata['tmid_days'], depdata['eps_erg/s/g'] * model_mass_grams, **dict(
     #     plotkwargs, **{
@@ -67,8 +67,8 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
     #             'color': color_total,
     #         }))
 
-    color_gamma = next(axis._get_lines.prop_cycler)["color"]
-    color_gamma = next(axis._get_lines.prop_cycler)["color"]
+    color_gamma = axis._get_lines.get_next_color()
+    color_gamma = axis._get_lines.get_next_color()
 
     # axis.plot(depdata['tmid_days'], depdata['eps_gamma_Lsun'] * 3.826e33, **dict(
     #     plotkwargs, **{
@@ -90,7 +90,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         },
     )
 
-    color_beta = next(axis._get_lines.prop_cycler)["color"]
+    color_beta = axis._get_lines.get_next_color()
 
     if "eps_elec_Lsun" in depdata:
         axis.plot(
@@ -135,7 +135,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
     #     label=r"Collins+23 $\dot{E}_{rad,\beta^-}$",
     # )
 
-    # color_alpha = next(axis._get_lines.prop_cycler)['color']
+    # color_alpha = axis._get_lines.get_next_color()
     color_alpha = "C1"
 
     plotalphadep = False
@@ -179,7 +179,12 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         axistherm.plot(
             depdata["tmid_days"],
             depdata["gammadep_Lsun"] / depdata["eps_gamma_Lsun"],
-            **{**plotkwargs, "label": modelname + r" $f_\gamma$", "linestyle": "solid", "color": color_gamma},
+            **{
+                **plotkwargs,
+                "label": modelname + r" $\left(\dot{E}_{dep,\gamma} \middle/ \dot{E}_{rad,\gamma}\right)$",
+                "linestyle": "solid",
+                "color": color_gamma,
+            },
         )
 
         axistherm.plot(
@@ -187,7 +192,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
             depdata["elecdep_Lsun"] / depdata["eps_elec_Lsun"],
             **{
                 **plotkwargs,
-                "label": modelname + r" $f_\beta$",
+                "label": modelname + r" $\left(\dot{E}_{dep,\beta^-} \middle/ \dot{E}_{rad,\beta^-}\right)$",
                 "linestyle": "solid",
                 "color": color_beta,
             },
@@ -200,7 +205,12 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         axistherm.plot(
             depdata["tmid_days"],
             f_alpha,
-            **{**plotkwargs, "label": modelname + r" $f_\alpha$", "linestyle": "solid", "color": color_alpha},
+            **{
+                **plotkwargs,
+                "label": modelname + r" $\left(\dot{E}_{dep,\gamma} \middle/ \dot{E}_{rad,\gamma}\right)$",
+                "linestyle": "solid",
+                "color": color_alpha,
+            },
         )
 
         ejecta_ke: float
@@ -368,6 +378,7 @@ def plot_artis_lightcurve(
         )
         nts_last, validrange_start_days, validrange_end_days = None, float("-inf"), float("inf")
 
+    colorindex = None
     for dirbin in dirbins:
         lcdata = lcdataframes[dirbin]
 
