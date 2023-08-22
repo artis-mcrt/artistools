@@ -8,6 +8,11 @@ modelpath_3d = at.get_config()["path_testartismodel"].parent / "testmodel_3d_10^
 outputpath = at.get_config()["path_testoutput"]
 
 
+def clear_modelfiles() -> None:
+    (outputpath / "model.txt").unlink(exist_ok=True)
+    (outputpath / "abundances.txt").unlink(exist_ok=True)
+
+
 def test_describeinputmodel() -> None:
     at.inputmodel.describeinputmodel.main(argsraw=[], inputfile=modelpath, get_elemabundances=True)
 
@@ -41,7 +46,9 @@ def test_get_modeldata_3d() -> None:
 
 def test_downscale_3dmodel() -> None:
     dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, get_elemabundances=True)
-    modelpath_3d_small = at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(modelpath_3d, outputgridsize=2)
+    modelpath_3d_small = at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(
+        modelpath_3d, outputgridsize=2, outputfoler=outputpath
+    )
     dfmodel_small, modelmeta_small = at.get_modeldata(modelpath_3d_small, get_elemabundances=True)
     assert np.isclose(dfmodel["cellmass_grams"].sum(), dfmodel_small["cellmass_grams"].sum())
     assert np.isclose(modelmeta["vmax_cmps"], modelmeta_small["vmax_cmps"])
@@ -56,24 +63,29 @@ def test_downscale_3dmodel() -> None:
 
 
 def test_makemodel_botyanski2017() -> None:
+    clear_modelfiles()
     at.inputmodel.botyanski2017.main(argsraw=[], outputpath=outputpath)
 
 
 def test_makemodel() -> None:
+    clear_modelfiles()
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, outputpath=outputpath)
 
 
 def test_makemodel_energyfiles() -> None:
+    clear_modelfiles()
     at.inputmodel.makeartismodel.main(
         argsraw=[], modelpath=modelpath, makeenergyinputfiles=True, modeldim=1, outputpath=outputpath
     )
 
 
 def test_maketardismodel() -> None:
+    clear_modelfiles()
     at.inputmodel.maketardismodelfromartis.main(argsraw=[], inputpath=modelpath, outputpath=outputpath)
 
 
 def test_make_empty_abundance_file() -> None:
+    clear_modelfiles()
     at.inputmodel.save_empty_abundance_file(ngrid=50, outputfilepath=outputpath)
 
 
@@ -87,6 +99,7 @@ def test_opacity_by_Ye_file() -> None:
 
 
 def test_save3Dmodel() -> None:
+    clear_modelfiles()
     dfmodel = pd.DataFrame(
         {
             "inputcellid": [1, 2, 3, 4, 5, 6, 7, 8],
