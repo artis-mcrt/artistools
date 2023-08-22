@@ -9,8 +9,8 @@ outputpath = at.get_config()["path_testoutput"]
 
 
 def clear_modelfiles() -> None:
-    (outputpath / "model.txt").unlink(exists_ok=True)
-    (outputpath / "abundances.txt").unlink(exists_ok=True)
+    (outputpath / "model.txt").unlink(missing_ok=True)
+    (outputpath / "abundances.txt").unlink(missing_ok=True)
 
 
 def test_describeinputmodel() -> None:
