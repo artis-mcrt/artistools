@@ -1033,7 +1033,7 @@ def sphericalaverage(
     dfgridcontributions: pd.DataFrame | None = None,
     nradialbins: int | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Convert 3D Cartesian grid model to 1D spherical."""
+    """Convert 3D Cartesian grid model to 1D spherical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
     xmax = vmax * t_model_init_seconds
     ngridpoints = len(dfmodel)
@@ -1064,13 +1064,11 @@ def sphericalaverage(
         dfgridcontributions is not None and "frac_of_cellmass_includemissing" in dfgridcontributions.columns
     )
 
-    # cellidmap_3d_to_1d = {}
     highest_active_radialcellid = -1
     for radialcellid, (velocity_inner, velocity_outer) in enumerate(zip(velocity_bins[:-1], velocity_bins[1:]), 1):
         assert velocity_outer > velocity_inner
         matchedcells = dfmodel.query("vel_r_mid > @velocity_inner and vel_r_mid <= @velocity_outer")
         matchedcellrhosum = matchedcells.rho.sum()
-        # cellidmap_3d_to_1d.update({cellid_3d: radialcellid for cellid_3d in matchedcells.inputcellid})
 
         if len(matchedcells) == 0:
             rhomean = 0.0
@@ -1159,7 +1157,7 @@ def scale_model_to_time(
     t_model_days: float | None = None,
     modelmeta: dict[str, t.Any] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, t.Any] | None]:
-    """Homologously expand model to targetmodeltime_days, reducing density and adjusting position columns to match."""
+    """Homologously expand model to targetmodeltime_days by reducing densities and adjusting cell positions."""
     if t_model_days is None:
         assert modelmeta is not None
         t_model_days = modelmeta["t_model_days"]
