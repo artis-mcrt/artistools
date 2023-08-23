@@ -1067,7 +1067,7 @@ def sphericalaverage(
     highest_active_radialcellid = -1
     for radialcellid, (velocity_inner, velocity_outer) in enumerate(zip(velocity_bins[:-1], velocity_bins[1:]), 1):
         assert velocity_outer > velocity_inner
-        matchedcells = dfmodel.query("vel_r_mid > @velocity_inner and vel_r_mid <= @velocity_outer")
+        matchedcells = dfmodel[(dfmodel["vel_r_mid"] > velocity_inner) & (dfmodel["vel_r_mid"] <= velocity_outer)]
         matchedcellrhosum = matchedcells.rho.sum()
 
         if len(matchedcells) == 0:
@@ -1081,7 +1081,7 @@ def sphericalaverage(
             # print(radialcellid, volumecorrection)
 
             if rhomean > 0.0 and dfgridcontributions is not None:
-                dfcellcont = dfgridcontributions.query("cellindex in @matchedcells.inputcellid.to_numpy()")
+                dfcellcont = dfgridcontributions[dfgridcontributions["cellindex"].isin(matchedcells.inputcellid)]
 
                 for particleid, dfparticlecontribs in dfcellcont.groupby("particleid"):
                     frac_of_cellmass_avg = (

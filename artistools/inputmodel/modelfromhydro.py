@@ -313,7 +313,7 @@ def makemodelfromgriddata(
     outputpath=Path(),
     targetmodeltime_days=None,
     minparticlespercell=0,
-    traj_root=None,
+    traj_root: Path | str | None = None,
     dimensions=3,
     args=None,
 ):

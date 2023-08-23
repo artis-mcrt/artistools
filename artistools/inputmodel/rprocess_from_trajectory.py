@@ -16,6 +16,7 @@ from pathlib import Path
 import argcomplete
 import numpy as np
 import pandas as pd
+from typeguard import typechecked
 
 import artistools as at
 
@@ -23,7 +24,7 @@ import artistools as at
 def get_elemabund_from_nucabund(dfnucabund: pd.DataFrame) -> dict[str, float]:
     """Return a dictionary of elemental abundances from nuclear abundance DataFrame."""
     dictelemabund: dict[str, float] = {
-        f"X_{at.get_elsymbol(atomic_number)}": dfnucabund.query("Z == @atomic_number", inplace=False).massfrac.sum()
+        f"X_{at.get_elsymbol(atomic_number)}": dfnucabund[dfnucabund["Z"] == atomic_number]["massfrac"].sum()
         for atomic_number in range(1, dfnucabund.Z.max() + 1)
     }
     return dictelemabund
@@ -302,6 +303,7 @@ def get_gridparticlecontributions(gridcontribpath: Path | str) -> pd.DataFrame:
     )
 
 
+@typechecked
 def particlenetworkdatafound(traj_root: Path, particleid: int) -> bool:
     return (
         (traj_root / f"{particleid}.tar.xz").is_file()
@@ -310,6 +312,7 @@ def particlenetworkdatafound(traj_root: Path, particleid: int) -> bool:
     )
 
 
+@typechecked
 def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataFrame) -> pd.DataFrame:
     missing_particleids = [
         particleid
@@ -365,18 +368,19 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataF
     return dfcontribs
 
 
-def save_gridparticlecontributions(dfcontribs: pd.DataFrame, gridcontribpath) -> None:
+def save_gridparticlecontributions(dfcontribs: pd.DataFrame, gridcontribpath: Path | str) -> None:
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
-        gridcontribpath = Path(gridcontribpath, "gridcontributions.txt")
+        gridcontribpath = gridcontribpath / "gridcontributions.txt"
     dfcontribs.to_csv(gridcontribpath, sep=" ", index=False, float_format="%.7e")
 
 
+@typechecked
 def add_abundancecontributions(
     dfgridcontributions: pd.DataFrame,
     dfmodel: pd.DataFrame,
     t_model_days_incpremerger: float,
-    traj_root: Path,
+    traj_root: Path | str,
     minparticlespercell: int = 0,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Contribute trajectory network calculation abundances to model cell abundances."""
@@ -392,7 +396,8 @@ def add_abundancecontributions(
         if len(dfthiscellcontribs) >= minparticlespercell
     ]
 
-    dfcontribs = dfcontribs.query("cellindex in @active_inputcellids")
+    traj_root = Path(traj_root)
+    dfcontribs = dfcontribs[dfcontribs["cellindex"].isin(active_inputcellids)]
     dfcontribs = filtermissinggridparticlecontributions(traj_root, dfcontribs)
     active_inputcellids = dfcontribs.cellindex.unique()
     active_inputcellcount = len(active_inputcellids)
