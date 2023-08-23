@@ -66,11 +66,10 @@ def plot_reference_data(ax, atomic_number: int, ion_stage: int, estimators_cellt
                 # print(depfilepath, file_nne, nne, file_Te, Te, file_TR, TR, file_W, W)
                 if math.isclose(file_nne, nne, rel_tol=0.01) and math.isclose(file_Te, Te, abs_tol=10):
                     if file_W > 0:
-                        continue
-                        # bbstr = " with dilute blackbody"
-                        # color = "C2"
-                        # marker = "+"
-                    else:  # noqa: RET507
+                        bbstr = " with dilute blackbody"
+                        color = "C2"
+                        marker = "+"
+                    else:
                         bbstr = ""
                         color = "C1"
                         marker = "^"

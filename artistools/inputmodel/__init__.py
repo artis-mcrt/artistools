@@ -8,10 +8,9 @@ from . import modelfromhydro
 from . import opacityinputfile
 from . import rprocess_from_trajectory
 from .inputmodel_misc import add_derived_cols_to_modeldata
-from .inputmodel_misc import get_2d_modeldata
 from .inputmodel_misc import get_3d_model_data_merged_model_and_abundances_minimal
 from .inputmodel_misc import get_3d_modeldata_minimal
-from .inputmodel_misc import get_cell_angle
+from .inputmodel_misc import get_cell_angle_polar
 from .inputmodel_misc import get_dfmodel_dimensions
 from .inputmodel_misc import get_initelemabundances
 from .inputmodel_misc import get_mean_cell_properties_of_angle_bin
