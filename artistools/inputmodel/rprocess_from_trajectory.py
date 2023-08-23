@@ -479,10 +479,7 @@ def add_abundancecontributions(
             "inputcellid": dfnucabundances.inputcellid,
             **{
                 f"X_{at.get_elsymbol(atomic_number)}": (
-                    dfnucabundances.eval(
-                        f'{" + ".join(elemisotopes[atomic_number])}',
-                        engine="python" if len(elemisotopes[atomic_number]) > 31 else None,
-                    )
+                    dfnucabundances[elemisotopes[atomic_number]].sum(axis=1, skipna=True)
                     if atomic_number in elemisotopes
                     else np.zeros(len(dfnucabundances))
                 )
