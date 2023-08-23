@@ -327,8 +327,7 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataF
     # after filtering, frac_of_cellmass_includemissing will still include particles with rho but no abundance data
     # frac_of_cellmass will exclude particles with no abundances
     dfcontribs["frac_of_cellmass_includemissing"] = dfcontribs["frac_of_cellmass"]
-    # dfcontribs.query('particleid not in @missing_particleids', inplace=True)
-    dfcontribs.loc[dfcontribs.eval("particleid in @missing_particleids"), "frac_of_cellmass"] = 0.0
+    dfcontribs.loc[dfcontribs["particleid"].isin(missing_particleids), "frac_of_cellmass"] = 0.0
 
     dfcontribs["frac_of_cellmass"] = [
         row.frac_of_cellmass if row.particleid not in missing_particleids else 0.0 for row in dfcontribs.itertuples()
