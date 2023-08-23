@@ -13,52 +13,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from astropy import units as u
+from matplotlib import gridspec
 
 import artistools as at
 
-
-def plot_2d_initial_abundances(modelpath: Path, args: argparse.Namespace) -> None:
-    model = at.inputmodel.get_2d_modeldata(modelpath)
-    abundances = at.inputmodel.get_initelemabundances(modelpath)
-
-    abundances["inputcellid"] = abundances["inputcellid"].apply(float)
-
-    merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
-
-    with Path(modelpath, "model.txt").open() as fmodelin:
-        fmodelin.readline()  # npts r, npts z
-        t_model = float(fmodelin.readline())  # days
-        _vmax = float(fmodelin.readline())  # v_max in [cm/s]
-
-    r = merge_dfs["cellpos_mid[r]"] / t_model * (u.cm / u.day).to("km/s") / 10**3
-    z = merge_dfs["cellpos_mid[z]"] / t_model * (u.cm / u.day).to("km/s") / 10**3
-
-    colname = f"X_{args.plotvars}"
-    _font = {"weight": "bold", "size": 18}
-
-    f = plt.figure(figsize=(4, 5))
-    ax = f.add_subplot(111)
-    im = ax.scatter(r, z, c=merge_dfs[colname], marker="8")
-
-    f.colorbar(im)
-    plt.xlabel(r"v$_x$ in 10$^3$ km/s", fontsize="x-large")  # , fontweight='bold')
-    plt.ylabel(r"v$_z$ in 10$^3$ km/s", fontsize="x-large")  # , fontweight='bold')
-    plt.text(20, 25, args.plotvars, color="white", fontweight="bold", fontsize="x-large")
-    plt.tight_layout()
-    # ax.labelsize: 'large'
-    # plt.title(f'At {sliceaxis} = {sliceposition}')
-
-    outfilename = f"plotcomposition{args.plotvars}.pdf"
-    plt.savefig(Path(modelpath) / outfilename, format="pdf")
-    print(f"Saved {outfilename}")
+AxisType: t.TypeAlias = t.Literal["x", "y", "z", "r", "z"]
 
 
 def get_2D_slice_through_3d_model(
     dfmodel: pd.DataFrame,
-    sliceaxis: t.Literal["x", "y", "z"],
+    sliceaxis: AxisType,
     modelmeta: dict[str, t.Any] | None = None,
-    plotaxis1: t.Literal["x", "y", "z"] | None = None,
-    plotaxis2: t.Literal["x", "y", "z"] | None = None,
+    plotaxis1: AxisType | None = None,
+    plotaxis2: AxisType | None = None,
     sliceindex: int | None = None,
 ) -> pd.DataFrame:
     if not sliceindex:
@@ -80,7 +47,7 @@ def get_2D_slice_through_3d_model(
     return slicedf
 
 
-def plot_slice_modelcol(ax, dfmodelslice, modelmeta, colname, plotaxis1, plotaxis2, t_model_d, args):
+def plot_slice_modelcolumn(ax, dfmodelslice, modelmeta, colname, plotaxis1, plotaxis2, t_model_d, args):
     print(f"plotting {colname}")
     colorscale = (
         dfmodelslice[colname] * dfmodelslice["rho"] if colname.startswith("X_") else dfmodelslice[colname]
@@ -108,27 +75,35 @@ def plot_slice_modelcol(ax, dfmodelslice, modelmeta, colname, plotaxis1, plotaxi
     unitfactor = cmps_to_beta
     t_model_s = t_model_d * 86400.0
 
-    # take flat array and turn in into 2D array
-    grid = colorscale.reshape((modelmeta[f"ncoordgrid{plotaxis1}"], modelmeta[f"ncoordgrid{plotaxis2}"]))
+    # turn 1D flattened array back into 2D array
+    valuegrid = colorscale.reshape((modelmeta[f"ncoordgrid{plotaxis2}"], modelmeta[f"ncoordgrid{plotaxis1}"]))
 
+    vmin_ax1 = dfmodelslice[f"pos_{plotaxis1}_min"].min() / t_model_s * unitfactor
+    vmax_ax1 = dfmodelslice[f"pos_{plotaxis1}_max"].max() / t_model_s * unitfactor
+    vmin_ax2 = dfmodelslice[f"pos_{plotaxis2}_min"].min() / t_model_s * unitfactor
+    vmax_ax2 = dfmodelslice[f"pos_{plotaxis2}_max"].max() / t_model_s * unitfactor
     im = ax.imshow(
-        grid,
+        valuegrid,
         cmap="viridis",
         interpolation="nearest",
         extent=(
-            dfmodelslice[f"pos_{plotaxis1}_min"].min() / t_model_s * unitfactor,
-            dfmodelslice[f"pos_{plotaxis1}_max"].max() / t_model_s * unitfactor,
-            dfmodelslice[f"pos_{plotaxis2}_min"].min() / t_model_s * unitfactor,
-            dfmodelslice[f"pos_{plotaxis2}_max"].max() / t_model_s * unitfactor,
+            vmin_ax1,
+            vmax_ax1,
+            vmin_ax2,
+            vmax_ax2,
         ),
         origin="lower",
         # vmin=0.0,
         # vmax=1.0,
     )
 
-    plot_vmax = 0.2
-    ax.set_ylim(bottom=-plot_vmax, top=plot_vmax)
-    ax.set_xlim(left=-plot_vmax, right=plot_vmax)
+    # plot_vmax = 0.2
+    # ax.set_ylim(bottom=-plot_vmax, top=plot_vmax)
+    # ax.set_xlim(left=-plot_vmax, right=plot_vmax)
+
+    # ax.set_xlim(left=vmin_ax1, right=vmax_ax1)
+    # ax.set_ylim(bottom=vmin_ax2, top=vmax_ax2)
+
     if "_" in colname:
         ax.annotate(
             colname.split("_")[1],
@@ -143,21 +118,19 @@ def plot_slice_modelcol(ax, dfmodelslice, modelmeta, colname, plotaxis1, plotaxi
     return im, scaledmap
 
 
-def plot_3d_initial_abundances(modelpath, args=None) -> None:
-    font = {
-        # 'weight': 'bold',
-        "size": 18
-    }
-    mpl.rc("font", **font)
-
+def plot_2d_initial_abundances(modelpath, args=None) -> None:
+    # if the species ends in a number then we need to also get the nuclear mass fractions (not just element abundances)
+    skipnuclidemassfraccolumns = all(plotvar[-1] not in "0123456789" for plotvar in args.plotvars)
+    get_elemabundances = any(plotvar[-1] not in "0123456789" for plotvar in args.plotvars)
     dfmodel, modelmeta = at.get_modeldata(
         modelpath,
-        skipnuclidemassfraccolumns=True,
-        get_elemabundances=True,
+        skipnuclidemassfraccolumns=skipnuclidemassfraccolumns,
+        get_elemabundances=get_elemabundances,
         dtype_backend="pyarrow",
-        derived_cols=["pos_max"],
+        derived_cols=["pos_min", "pos_max"],
         use_polars=False,
     )
+    assert modelmeta["dimensions"] > 1
 
     targetmodeltime_days = None
     if targetmodeltime_days is not None:
@@ -169,65 +142,62 @@ def plot_3d_initial_abundances(modelpath, args=None) -> None:
             targetmodeltime_days=targetmodeltime_days, modelmeta=modelmeta, dfmodel=dfmodel
         )
 
-    sliceaxis: t.Literal["x", "y", "z"] = "z"
+    if modelmeta["dimensions"] == 3:
+        sliceaxis: AxisType = "z"
 
-    axeschars: list[t.Literal["x", "y", "z"]] = ["x", "y", "z"]
-    plotaxis1: t.Literal["x", "y", "z"] = next(ax for ax in axeschars if ax != sliceaxis)
-    plotaxis2: t.Literal["x", "y", "z"] = next(ax for ax in axeschars if ax not in [sliceaxis, plotaxis1])
+        axeschars: list[AxisType] = ["x", "y", "z"]
+        plotaxis1 = next(ax for ax in axeschars if ax != sliceaxis)
+        plotaxis2 = next(ax for ax in axeschars if ax not in [sliceaxis, plotaxis1])
 
-    df2dslice = get_2D_slice_through_3d_model(
-        dfmodel=dfmodel, modelmeta=modelmeta, sliceaxis=sliceaxis, plotaxis1=plotaxis1, plotaxis2=plotaxis2
-    )
-
-    subplots = bool(len(args.plotvars) > 1)
-    if not subplots:
-        fig, ax = plt.subplots(1, 1, figsize=(8, 7), tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0})
-    else:
-        rows = 1
-        cols = len(args.plotvars)
-
-        fig, axes = plt.subplots(
-            nrows=rows,
-            ncols=cols,
-            sharex=True,
-            sharey=True,
-            figsize=(at.get_config()["figwidth"] * cols, at.get_config()["figwidth"] * 1.4),
-            # tight_layout={"pad": 5.0, "w_pad": 0.0, "h_pad": 0.0},
+        df2dslice = get_2D_slice_through_3d_model(
+            dfmodel=dfmodel, modelmeta=modelmeta, sliceaxis=sliceaxis, plotaxis1=plotaxis1, plotaxis2=plotaxis2
         )
-        for ax in axes:
-            ax.set(aspect="equal")
+    elif modelmeta["dimensions"] == 2:
+        df2dslice = dfmodel
+        plotaxis1 = "r"
+        plotaxis2 = "z"
+    else:
+        msg = f"Model dimensions {modelmeta['dimensions']} not supported"
+        raise ValueError(msg)
 
-    for index, plotvar in enumerate(args.plotvars):
+    nrows = 1
+    ncols = len(args.plotvars)
+    xfactor = 1 if modelmeta["dimensions"] == 3 else 0.5
+    figwidth = at.get_config()["figwidth"]
+    fig = plt.figure(
+        figsize=(figwidth * xfactor * ncols, figwidth * nrows),
+        tight_layout={"pad": 0.1, "w_pad": 0.0, "h_pad": 0.5},
+    )
+    gs = gridspec.GridSpec(nrows + 1, ncols, height_ratios=[0.05, 1], width_ratios=[1] * ncols)
+
+    axcbar = fig.add_subplot(gs[0, :])
+    axes = [fig.add_subplot(gs[1, y]) for y in range(ncols)]
+    # fig, axes = plt.subplots(
+    #     nrows=nrows,
+    #     ncols=ncols,
+    #     sharex=True,
+    #     sharey=True,
+    #     squeeze=False,
+    #     figsize=(figwidth * xfactor * ncols, figwidth * 1.4 * nrows),
+    #     tight_layout=None,
+    # )
+
+    for plotvar, ax in zip(args.plotvars, axes):
         colname = plotvar if plotvar in df2dslice.columns else f"X_{plotvar}"
 
-        if subplots:
-            ax = axes[index]
-        im, scaledmap = plot_slice_modelcol(
+        im, scaledmap = plot_slice_modelcolumn(
             ax, df2dslice, modelmeta, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
         )
 
     xlabel = rf"v$_{plotaxis1}$ [$c$]"
     ylabel = rf"v$_{plotaxis2}$ [$c$]"
 
-    if not subplots:
-        cbar = fig.colorbar(im)
-        plt.xlabel(xlabel, fontsize="x-large")  # , fontweight='bold')
-        plt.ylabel(ylabel, fontsize="x-large")  # , fontweight='bold')
-    else:
-        cbar = fig.colorbar(scaledmap, ax=axes, shrink=cols * 0.08, location="top", pad=0.8, anchor=(0.5, 3.0))
-        fig.text(0.5, 0.15, xlabel, ha="center", va="center")
-        fig.text(0.05, 0.5, ylabel, ha="center", va="center", rotation="vertical")
+    cbar = fig.colorbar(scaledmap, cax=axcbar, location="top", use_gridspec=True)
+    axes[0].set_xlabel(xlabel)
+    axes[0].set_ylabel(ylabel)
 
     if "cellYe" not in args.plotvars and "tracercount" not in args.plotvars:
-        if args.logcolorscale:
-            cbar.ax.set_title(r"log10($\rho$) [g/cm3]", size="small")
-        else:
-            cbar.ax.set_title(r"$\rho$ [g/cm3]", size="small")
-    # cbar.ax.tick_params(labelsize='x-large')
-
-    # plt.tight_layout()
-    # ax.labelsize: 'large'
-    # plt.title(f'At {sliceaxis} = {sliceposition}')
+        cbar.set_label(r"log10($\rho$) [g/cm3]" if args.logcolorscale else r"$\rho$ [g/cm3]")
 
     outfilename = args.outputfile or f"plotcomposition_{','.join(args.plotvars)}.pdf"
     plt.savefig(Path(modelpath) / outfilename, format="pdf")
@@ -387,13 +357,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         make_3d_plot(Path(args.modelpath), args)
         return
 
-    _, modelmeta = at.get_modeldata(modelpath=args.modelpath, getheadersonly=True, printwarningsonly=True)
-
-    if modelmeta["dimensions"] == 2:
-        plot_2d_initial_abundances(args.modelpath, args)
-
-    elif modelmeta["dimensions"] == 3:
-        plot_3d_initial_abundances(args.modelpath, args)
+    plot_2d_initial_abundances(args.modelpath, args)
 
 
 if __name__ == "__main__":

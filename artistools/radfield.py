@@ -101,8 +101,23 @@ def get_binaverage_field(radfielddata, modelgridindex=None, timestep=None):
     return arr_lambda, yvalues
 
 
-def j_nu_dbb(arr_nu_hz, W, T):
-    """# CGS units J_nu for dilute blackbody."""
+def j_nu_dbb(arr_nu_hz: t.Sequence[float], W: float, T: float) -> list[float]:
+    """Calculate the spectral energy density of a dilute blackbody radiation field.
+
+    Parameters
+    ----------
+    arr_nu_hz : list
+        A list of frequencies (in Hz) at which to calculate the spectral energy density.
+    W : float
+        The dilution factor of the blackbody radiation field.
+    T : float
+        The temperature of the blackbody radiation field (in Kelvin).
+
+    Returns
+    -------
+    list
+        A list of spectral energy density values (in CGS units) corresponding to the input frequencies.
+    """
     if W > 0.0:
         try:
             return [W * 1.4745007e-47 * pow(nu_hz, 3) * 1.0 / (math.expm1(H * nu_hz / T / KB)) for nu_hz in arr_nu_hz]
