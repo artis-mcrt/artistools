@@ -317,13 +317,13 @@ def makemodelfromgriddata(
     dimensions=3,
     args=None,
 ):
-    assert dimensions in [1, 3]
     headercommentlines = [f"gridfolder: {Path(gridfolderpath).resolve().parts[-1]}"]
     dfmodel, t_model_days, t_mergertime_s, vmax = at.inputmodel.modelfromhydro.read_griddat_file(
         pathtogriddata=gridfolderpath,
         targetmodeltime_days=targetmodeltime_days,
         minparticlespercell=minparticlespercell,
     )
+    modelmeta = {"dimensions": 3, "t_model_init_days": t_model_days, "vmax_cmps": vmax}
 
     if getattr(args, "fillcentralhole", False):
         dfmodel = at.inputmodel.modelfromhydro.add_mass_to_center(dfmodel, t_model_days, vmax, args)
@@ -358,8 +358,14 @@ def makemodelfromgriddata(
         dfelabundances = None
 
     if dimensions == 1:
-        dfmodel, dfelabundances, dfgridcontributions = at.inputmodel.sphericalaverage(
-            dfmodel, t_model_days, vmax, dfelabundances, dfgridcontributions
+        dfmodel, dfelabundances, dfgridcontributions, modelmeta = at.inputmodel.dimension_reduce_3d_model(
+            dfmodel=dfmodel,
+            outputdimensions=dimensions,
+            t_model_init_days=t_model_days,
+            vmax=vmax,
+            dfelabundances=dfelabundances,
+            dfgridcontributions=dfgridcontributions,
+            modelmeta=modelmeta,
         )
 
     if "cellYe" in dfmodel:
@@ -391,6 +397,7 @@ def makemodelfromgriddata(
         dimensions=dimensions,
         vmax=vmax,
         headercommentlines=headercommentlines,
+        modelmeta=modelmeta,
     )
 
 

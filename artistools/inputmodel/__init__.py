@@ -8,6 +8,7 @@ from . import modelfromhydro
 from . import opacityinputfile
 from . import rprocess_from_trajectory
 from .inputmodel_misc import add_derived_cols_to_modeldata
+from .inputmodel_misc import dimension_reduce_3d_model
 from .inputmodel_misc import get_3d_model_data_merged_model_and_abundances_minimal
 from .inputmodel_misc import get_3d_modeldata_minimal
 from .inputmodel_misc import get_cell_angle_polar
@@ -21,4 +22,3 @@ from .inputmodel_misc import save_empty_abundance_file
 from .inputmodel_misc import save_initelemabundances
 from .inputmodel_misc import save_modeldata
 from .inputmodel_misc import scale_model_to_time
-from .inputmodel_misc import sphericalaverage

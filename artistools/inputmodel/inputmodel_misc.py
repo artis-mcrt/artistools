@@ -1037,20 +1037,27 @@ def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) 
     return 2 if "pos_z_mid" in dfmodel.columns else 1
 
 
-def sphericalaverage(
+def dimension_reduce_3d_model(
     dfmodel: pd.DataFrame,
+    outputdimensions: int,
     t_model_init_days: float,
     vmax: float,
     dfelabundances: pd.DataFrame | None = None,
     dfgridcontributions: pd.DataFrame | None = None,
     nradialbins: int | None = None,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    modelmeta: dict[str, t.Any] | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, t.Any]]:
     """Convert 3D Cartesian grid model to 1D spherical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
     xmax = vmax * t_model_init_seconds
     ngridpoints = len(dfmodel)
     ncoordgridx = round(ngridpoints ** (1.0 / 3.0))
     wid_init = 2 * xmax / ncoordgridx
+
+    if modelmeta is None:
+        modelmeta = {}
+    modelmeta["vmax_cmps"] = vmax
+    modelmeta["dimensions"] = 3
 
     print(f"Spherically averaging 3D model with {ngridpoints} cells...")
     timestart = time.perf_counter()
@@ -1076,7 +1083,6 @@ def sphericalaverage(
         dfgridcontributions is not None and "frac_of_cellmass_includemissing" in dfgridcontributions.columns
     )
 
-    highest_active_radialcellid = -1
     for radialcellid, (velocity_inner, velocity_outer) in enumerate(zip(velocity_bins[:-1], velocity_bins[1:]), 1):
         assert velocity_outer > velocity_inner
         matchedcells = dfmodel[(dfmodel["vel_r_mid"] > velocity_inner) & (dfmodel["vel_r_mid"] <= velocity_outer)]
@@ -1089,8 +1095,6 @@ def sphericalaverage(
                 (velocity_outer * t_model_init_seconds) ** 3 - (velocity_inner * t_model_init_seconds) ** 3
             )
             rhomean = matchedcellrhosum * wid_init**3 / shell_volume
-            # volumecorrection = len(matchedcells) * wid_init ** 3 / shell_volume
-            # print(radialcellid, volumecorrection)
 
             if rhomean > 0.0 and dfgridcontributions is not None:
                 dfcellcont = dfgridcontributions[dfgridcontributions["cellindex"].isin(matchedcells.inputcellid)]
@@ -1122,8 +1126,6 @@ def sphericalaverage(
 
                     outgridcontributions.append(contriboutrow)
 
-        if rhomean > 0.0:
-            highest_active_radialcellid = radialcellid
         logrho = math.log10(max(1e-99, rhomean))
 
         dictcell = {
@@ -1153,14 +1155,14 @@ def sphericalaverage(
 
             outcellabundances.append(dictcellabundances)
 
-    dfmodel1d = pd.DataFrame(outcells[:highest_active_radialcellid])
+    dfmodel1d = pd.DataFrame(outcells)
 
-    dfabundances1d = pd.DataFrame(outcellabundances[:highest_active_radialcellid]) if outcellabundances else None
+    dfabundances1d = pd.DataFrame(outcellabundances) if outcellabundances else None
 
     dfgridcontributions1d = pd.DataFrame(outgridcontributions) if outgridcontributions else None
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
-    return dfmodel1d, dfabundances1d, dfgridcontributions1d
+    return dfmodel1d, dfabundances1d, dfgridcontributions1d, modelmeta
 
 
 def scale_model_to_time(
