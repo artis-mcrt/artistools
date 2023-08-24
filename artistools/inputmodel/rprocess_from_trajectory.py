@@ -50,13 +50,13 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
     tarfilepath = next((tarfilepath for tarfilepath in tarfilepaths if tarfilepath.is_file()), None)
 
     # and memberfilename.endswith(".dat")
-    if not path_extracted_file.is_file():
+    if not path_extracted_file.is_file() and tarfilepath is not None:
         tarfile.open(tarfilepath, "r:*").extract(path=Path(traj_root, str(particleid)), member=memberfilename)
 
     if path_extracted_file.is_file():
         return path_extracted_file.open(encoding="utf-8")
 
-    if not tarfilepath:
+    if tarfilepath is None:
         print(f"No network data found for particle {particleid} (so can't access {memberfilename})")
         raise FileNotFoundError
 
