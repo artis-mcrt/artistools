@@ -704,46 +704,55 @@ def get_3d_modeldata_minimal(modelpath: str | Path) -> pd.DataFrame:
 @typechecked
 def save_modeldata(
     dfmodel: pd.DataFrame,
-    t_model_init_days: float | None = None,
     filename: Path | str | None = None,
     modelpath: Path | str | None = Path(),
     vmax: float | None = None,
-    dimensions: int | None = None,
     headercommentlines: list[str] | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     twolinespercell: bool = False,
     float_format: str = ".4e",
+    **kwargs: t.Any,
 ) -> None:
-    """Save a pandas DataFrame and snapshot time into ARTIS model.txt."""
-    if modelmeta:
-        if "headercommentlines" in modelmeta:
-            assert headercommentlines is None
-            headercommentlines = modelmeta["headercommentlines"]
+    """Save an artis model.txt (density and composition versus velocity) from a pandas DataFrame of cell properties and other metadata such as the time after explosion.
 
-        if "vmax_cmps" in modelmeta:
-            assert vmax is None
-            vmax = modelmeta["vmax_cmps"]
+    1D
+    -------
+    dfmodel must contain columns inputcellid, velocity_outer, logrho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
+    modelmeta is not required
 
-        if "dimensions" in modelmeta:
-            assert dimensions is None
-            dimensions = modelmeta["dimensions"]
+    2D
+    -------
+    dfmodel must contain columns inputcellid, pos_r_mid, pos_z_mid, rho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
+    modelmeta must define: vmax, ncoordgridr and ncoordgridz
 
-        if "t_model_init_days" in modelmeta:
-            assert t_model_init_days is None
-            t_model_init_days = modelmeta["t_model_init_days"]
-
-        if "modelcellcount" in modelmeta:
-            assert len(dfmodel) == modelmeta["modelcellcount"]
-    else:
+    3D
+    -------
+    dfmodel must contain columns: inputcellid, pos_x_min, pos_y_min, pos_z_min, rho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
+    modelmeta must define: vmax, ncoordgridr and ncoordgridz
+    """
+    if modelmeta is None:
         modelmeta = {}
+    assert not set(modelmeta).intersection(kwargs)  # can't define the same thing twice
+    modelmeta |= kwargs  # add any extra keyword arguments to modelmeta
+
+    if "headercommentlines" in modelmeta:
+        assert headercommentlines is None
+        headercommentlines = modelmeta["headercommentlines"]
+
+    if "vmax_cmps" in modelmeta:
+        assert vmax is None
+        vmax = modelmeta["vmax_cmps"]
+
+    if "modelcellcount" in modelmeta:
+        assert len(dfmodel) == modelmeta["modelcellcount"]
 
     timestart = time.perf_counter()
-    if dimensions is None:
-        dimensions = modelmeta.get("dimensions", at.get_dfmodel_dimensions(dfmodel))
+    if modelmeta["dimensions"] is None:
+        modelmeta["dimensions"] = at.get_dfmodel_dimensions(dfmodel)
 
-    if dimensions == 1:
+    if modelmeta["dimensions"] == 1:
         standardcols = ["inputcellid", "velocity_outer", "logrho", "X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
-    elif dimensions == 2:
+    elif modelmeta["dimensions"] == 2:
         print(f" grid size: {len(dfmodel)} ({modelmeta['ncoordgridr']} x {modelmeta['ncoordgridz']})")
         standardcols = [
             "inputcellid",
@@ -756,7 +765,7 @@ def save_modeldata(
             "X_Fe52",
             "X_Cr48",
         ]
-    elif dimensions == 3:
+    elif modelmeta["dimensions"] == 3:
         dfmodel = dfmodel.rename(columns={"gridindex": "inputcellid"})
         griddimension = int(round(len(dfmodel) ** (1.0 / 3.0)))
         print(f" grid size: {len(dfmodel)} ({griddimension}^3)")
@@ -775,7 +784,7 @@ def save_modeldata(
             "X_Cr48",
         ]
     else:
-        msg = f"dimensions must be 1, 2, or 3, not {dimensions}"
+        msg = f"dimensions must be 1, 2, or 3, not {modelmeta['dimensions']}"
         raise ValueError(msg)
 
     # these two columns are optional, but position is important and they must appear before any other custom cols
@@ -810,12 +819,14 @@ def save_modeldata(
             fmodel.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
 
         fmodel.write(
-            f"{len(dfmodel)}\n" if dimensions != 2 else f"{modelmeta['ncoordgridr']} {modelmeta['ncoordgridz']}\n"
+            f"{len(dfmodel)}\n"
+            if modelmeta["dimensions"] != 2
+            else f"{modelmeta['ncoordgridr']} {modelmeta['ncoordgridz']}\n"
         )
 
-        fmodel.write(f"{t_model_init_days}\n")
+        fmodel.write(f"{modelmeta['t_model_init_days']}\n")
 
-        if dimensions in [2, 3]:
+        if modelmeta["dimensions"] in [2, 3]:
             fmodel.write(f"{vmax}\n")
 
         if customcols:
@@ -823,7 +834,7 @@ def save_modeldata(
 
         abundcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
 
-        if dimensions == 1:
+        if modelmeta["dimensions"] == 1:
             for cell in dfmodel.itertuples(index=False):
                 fmodel.write(f"{cell.inputcellid:d} {cell.velocity_outer:9.2f} {cell.logrho:10.8f} ")
                 fmodel.write(" ".join([f"{getattr(cell, col)}" for col in abundcols]))
@@ -832,7 +843,7 @@ def save_modeldata(
         else:
             zeroabund = " ".join(["0.0" for _ in abundcols])
             line_end = "\n" if twolinespercell else " "
-            if dimensions == 2:
+            if modelmeta["dimensions"] == 2:
                 # Luke: quite a lot of code duplication here with the 3D case,
                 # but I think adding a function call per line would be too slow
                 for inputcellid, pos_r_mid, pos_z_mid, rho, *othercolvals in dfmodel[
@@ -855,7 +866,7 @@ def save_modeldata(
                     )
                     fmodel.write("\n")
 
-            elif dimensions == 3:
+            elif modelmeta["dimensions"] == 3:
                 for inputcellid, posxmin, posymin, poszmin, rho, *othercolvals in dfmodel[
                     ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho", *abundcols]
                 ].itertuples(index=False, name=None):
@@ -1019,6 +1030,7 @@ def save_empty_abundance_file(ngrid: int, outputfilepath: str | Path = Path()) -
 
 
 def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) -> int:
+    """Guess whether the model is 1D, 2D, or 3D based on which columns are present."""
     if "pos_x_min" in dfmodel.columns:
         return 3
 
