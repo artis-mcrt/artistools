@@ -751,7 +751,7 @@ def save_modeldata(
         assert len(dfmodel) == modelmeta["modelcellcount"]
 
     timestart = time.perf_counter()
-    if modelmeta.get("dimensions", None) is None:
+    if modelmeta.get("dimensions") is None:
         modelmeta["dimensions"] = at.get_dfmodel_dimensions(dfmodel)
 
     if modelmeta["dimensions"] == 1:
