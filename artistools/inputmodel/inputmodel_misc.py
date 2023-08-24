@@ -732,7 +732,11 @@ def save_modeldata(
     """
     if modelmeta is None:
         modelmeta = {}
-    assert not set(modelmeta).intersection(kwargs)  # can't define the same thing twice
+
+    assert all(
+        key not in modelmeta or modelmeta[key] == kwargs[key] for key in kwargs
+    )  # can't define the same thing twice unless the values are the same
+
     modelmeta |= kwargs  # add any extra keyword arguments to modelmeta
 
     if "headercommentlines" in modelmeta:
@@ -740,14 +744,14 @@ def save_modeldata(
         headercommentlines = modelmeta["headercommentlines"]
 
     if "vmax_cmps" in modelmeta:
-        assert vmax is None
+        assert vmax is None or vmax == modelmeta["vmax_cmps"]
         vmax = modelmeta["vmax_cmps"]
 
     if "modelcellcount" in modelmeta:
         assert len(dfmodel) == modelmeta["modelcellcount"]
 
     timestart = time.perf_counter()
-    if modelmeta["dimensions"] is None:
+    if modelmeta.get("dimensions", None) is None:
         modelmeta["dimensions"] = at.get_dfmodel_dimensions(dfmodel)
 
     if modelmeta["dimensions"] == 1:
@@ -1055,9 +1059,10 @@ def dimension_reduce_3d_model(
     wid_init = 2 * xmax / ncoordgridx
 
     if modelmeta is None:
-        modelmeta = {}
+        modelmeta = {"dimensions": 3}
+    assert modelmeta.get("dimensions", 3) == 3
+
     modelmeta["vmax_cmps"] = vmax
-    modelmeta["dimensions"] = 3
 
     print(f"Spherically averaging 3D model with {ngridpoints} cells...")
     timestart = time.perf_counter()
