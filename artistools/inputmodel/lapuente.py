@@ -97,7 +97,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     print(f'M_tot  = {tot_mass2 /  u.solMass.to("g"):.3f} solMass (from sum of element densities)')
     print(f'M_Ni56 = {tot_ni56mass /  u.solMass.to("g"):.3f} solMass')
 
-    at.save_modeldata(dfmodel, t_model_init_days, Path(args.outputpath, "model.txt"))
+    at.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, filename=Path(args.outputpath, "model.txt"))
     at.inputmodel.save_initelemabundances(dfelabundances, Path(args.outputpath, "abundances.txt"))
 
 
