@@ -344,7 +344,7 @@ def get_spectrum(
     if directionbins is None:
         directionbins = [-1]
     # keys are direction bins (or -1 for spherical average)
-    specdata: dict[int, pd.DataFrame] = {}
+    specdata: dict[int, pl.DataFrame] = {}
 
     if -1 in directionbins:
         # spherically averaged spectra
