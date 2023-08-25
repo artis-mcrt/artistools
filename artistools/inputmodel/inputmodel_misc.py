@@ -507,11 +507,12 @@ def add_derived_cols_to_modeldata(
     match dimensions:
         case 1:
             axes = ["r"]
-            if "cellmass_grams" in derived_cols:
+            if "cellmass_grams" in derived_cols or "velocity_inner" in derived_cols:
                 dfmodel = dfmodel.with_columns(
                     pl.col("velocity_outer").shift_and_fill(0.0, periods=1).alias("velocity_inner")
                 )
 
+            if "cellmass_grams" in derived_cols:
                 newcols += [
                     (
                         pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0)

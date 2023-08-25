@@ -57,7 +57,7 @@ def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: t.Sequence[int
 
 
 def write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, outfile, keyname) -> None:
-    modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath)
+    modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath, derived_cols=["velocity_inner"])
     with Path(outfile).open("w") as f:
         write_ntimes_nvel(f, selected_timesteps, modelpath)
         if keyname == "total_dep":
