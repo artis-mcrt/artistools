@@ -146,20 +146,21 @@ define_colours_list2 = [
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[t.Sequence[int], dict[int, str]]:
     modelpath = Path(modelpath)
     viewing_angle_data_exists = bool(list(modelpath.glob("*_res.out*")))
+    dirbins = []
     if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
         dirbins = args.plotvspecpol
     elif args.plotviewingangle and args.plotviewingangle[0] == -1 and viewing_angle_data_exists:
-        dirbins = np.arange(0, 100, 1, dtype=int)
+        dirbins = np.arange(0, 100, 1, dtype=int).tolist()
     elif args.plotviewingangle and viewing_angle_data_exists:
         dirbins = args.plotviewingangle
     elif (
         args.calculate_costheta_phi_from_viewing_angle_numbers
         and args.calculate_costheta_phi_from_viewing_angle_numbers[0] == -1
     ):
-        viewing_angles = np.arange(0, 100, 1, dtype=int)
+        dirbins = np.arange(0, 100, 1, dtype=int).tolist()
     elif args.calculate_costheta_phi_from_viewing_angle_numbers:
-        viewing_angles = args.calculate_costheta_phi_from_viewing_angle_numbers
-        assert viewing_angles is not None
+        dirbins = args.calculate_costheta_phi_from_viewing_angle_numbers
+        assert dirbins is not None
     else:
         dirbins = [-1]
 
