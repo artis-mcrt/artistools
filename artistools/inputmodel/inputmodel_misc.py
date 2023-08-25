@@ -801,7 +801,7 @@ def save_modeldata(
     if modelmeta["dimensions"] == 1:
         print(f" 1D grid radial bins: {len(dfmodel)}")
     elif modelmeta["dimensions"] == 2:
-        print(f" 2D grid size: {len(dfmodel)} ({modelmeta['ncoordgridr']} x {modelmeta['ncoordgridz']})")
+        print(f" 2D grid size: {len(dfmodel)} ({modelmeta['ncoordgridrcyl']} x {modelmeta['ncoordgridz']})")
         assert modelmeta["ncoordgridrcyl"] * modelmeta["ncoordgridz"] == len(dfmodel)
     elif modelmeta["dimensions"] == 3:
         dfmodel = dfmodel.rename(columns={"gridindex": "inputcellid"})
