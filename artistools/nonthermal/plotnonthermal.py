@@ -35,10 +35,12 @@ def read_files(modelpath: Path, timestep: int = -1, modelgridindex: int = -1) ->
             # radfielddata_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
 
             if timestep >= 0:
-                nonthermaldata_thisfile = nonthermaldata_thisfile.query("timestep==@timestep")
+                nonthermaldata_thisfile = nonthermaldata_thisfile[nonthermaldata_thisfile["timestep"] == timestep]
 
             if modelgridindex >= 0:
-                nonthermaldata_thisfile = nonthermaldata_thisfile.query("modelgridindex==@modelgridindex")
+                nonthermaldata_thisfile = nonthermaldata_thisfile[
+                    nonthermaldata_thisfile["modelgridindex"] == modelgridindex
+                ]
 
             if not nonthermaldata_thisfile.empty:
                 if timestep >= 0 and modelgridindex >= 0:

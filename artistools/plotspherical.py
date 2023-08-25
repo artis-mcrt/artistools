@@ -214,16 +214,17 @@ def plot_spherical(
 
         colormesh = ax.pcolormesh(meshgrid_phi, meshgrid_theta, data, rasterized=True, cmap=cmap)
 
-        if plotvar == "emlosvelocityoverc":
-            colorbartitle = r"Mean line of sight velocity [c]"
-        elif plotvar == "emvelocityoverc":
-            colorbartitle = r"Last interaction ejecta velocity [c]"
-        elif plotvar == "luminosity":
-            colorbartitle = r"Radiant intensity $\cdot\,4π$ [{}erg/s]"
-        elif plotvar == "temperature":
-            colorbartitle = r"Temperature [{}K]"
-        else:
-            raise AssertionError
+        match plotvar:
+            case "emlosvelocityoverc":
+                colorbartitle = r"Mean line of sight velocity [c]"
+            case "emvelocityoverc":
+                colorbartitle = r"Last interaction ejecta velocity [c]"
+            case "luminosity":
+                colorbartitle = r"Radiant intensity $\cdot\,4π$ [{}erg/s]"
+            case "temperature":
+                colorbartitle = r"Temperature [{}K]"
+            case _:
+                raise AssertionError
 
         cbar = fig.colorbar(colormesh, ax=ax, location="bottom")
         cbar.outline.set_linewidth(0)  # type: ignore[operator]

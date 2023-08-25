@@ -48,7 +48,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         modelpath, get_elemabundances=(args.abundtype == "elemental")
     )
 
-    dfmodel = dfmodel.eval("rho = 10 ** logrho")
+    dfmodel["rho"] = 10 ** dfmodel["logrho"]
 
     if args.abundtype == "nuclear":
         # nuclide abundances

@@ -1,5 +1,5 @@
 import numpy as np
-import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -10,7 +10,9 @@ outputpath = at.get_config()["path_testoutput"]
 
 def clear_modelfiles() -> None:
     (outputpath / "model.txt").unlink(missing_ok=True)
+    (outputpath / "model.parquet").unlink(missing_ok=True)
     (outputpath / "abundances.txt").unlink(missing_ok=True)
+    (outputpath / "abundances.parquet").unlink(missing_ok=True)
 
 
 def test_describeinputmodel() -> None:
@@ -26,9 +28,9 @@ def test_get_modeldata_1d() -> None:
         dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=getheadersonly)
         assert np.isclose(modelmeta["vmax_cmps"], 800000000.0)
         assert modelmeta["dimensions"] == 1
-        assert modelmeta["modelcellcount"] == 1
+        assert modelmeta["npts_model"] == 1
 
-    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath)
+    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, derived_cols=["cellmass_grams"])
     assert np.isclose(dfmodel.cellmass_grams.sum(), 1.416963e33)
 
 
@@ -37,19 +39,23 @@ def test_get_modeldata_3d() -> None:
         dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, getheadersonly=getheadersonly)
         assert np.isclose(modelmeta["vmax_cmps"], 2892020000.0)
         assert modelmeta["dimensions"] == 3
-        assert modelmeta["modelcellcount"] == 1000
+        assert modelmeta["npts_model"] == 1000
         assert modelmeta["ncoordgrid"] == 10
 
-    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d)
+    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, derived_cols=["cellmass_grams"])
     assert np.isclose(dfmodel.cellmass_grams.sum(), 2.7861855e33)
 
 
 def test_downscale_3dmodel() -> None:
-    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, get_elemabundances=True)
+    dfmodel, modelmeta = at.get_modeldata(
+        modelpath=modelpath_3d, get_elemabundances=True, derived_cols=["cellmass_grams"]
+    )
     modelpath_3d_small = at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(
         modelpath_3d, outputgridsize=2, outputfoler=outputpath
     )
-    dfmodel_small, modelmeta_small = at.get_modeldata(modelpath_3d_small, get_elemabundances=True)
+    dfmodel_small, modelmeta_small = at.get_modeldata(
+        modelpath_3d_small, get_elemabundances=True, derived_cols=["cellmass_grams"]
+    )
     assert np.isclose(dfmodel["cellmass_grams"].sum(), dfmodel_small["cellmass_grams"].sum())
     assert np.isclose(modelmeta["vmax_cmps"], modelmeta_small["vmax_cmps"])
     assert np.isclose(modelmeta["t_model_init_days"], modelmeta_small["t_model_init_days"])
@@ -98,20 +104,57 @@ def test_opacity_by_Ye_file() -> None:
     at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, griddata=griddata)
 
 
-def test_save3Dmodel() -> None:
+def test_save_load_3d_model() -> None:
     clear_modelfiles()
-    dfmodel = pd.DataFrame(
-        {
-            "inputcellid": [1, 2, 3, 4, 5, 6, 7, 8],
-            "pos_x_min": [-1, 1, -1, 1, -1, 1, -1, 1],
-            "pos_y_min": [-1, -1, 1, 1, -1, -1, 1, 1],
-            "pos_z_min": [-1, -1, -1, -1, 1, 1, 1, 1],
-            "rho": [0, 2, 3, 2, 5, 7, 8, 2],
-            "cellYe": [0, 0.1, 0.2, 0.1, 0.5, 0.1, 0.3, 3],
-        }
+    dfmodel_pl, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)
+    dfmodel = dfmodel_pl.collect().to_pandas(use_pyarrow_extension_array=True)
+    dfmodel.iloc[75000]["rho"] = 1
+    dfmodel.iloc[75001]["rho"] = 2
+    dfmodel.iloc[95200]["rho"] = 3
+    dfmodel.iloc[75001]["X_Ni56"] = 0.5
+    at.inputmodel.save_modeldata(modelpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
+    dfmodel2, modelmeta2 = at.inputmodel.get_modeldata(modelpath=outputpath)
+    assert dfmodel.equals(dfmodel2)
+    assert modelmeta == modelmeta2
+
+    # next load will use the parquet file
+    dfmodel3, modelmeta3 = at.inputmodel.get_modeldata(modelpath=outputpath)
+    assert dfmodel.equals(dfmodel3)
+    assert modelmeta == modelmeta3
+
+
+def test_sphericalaverage_3d_model() -> None:
+    clear_modelfiles()
+    dfmodel3d_pl_lazy, modelmeta_3d = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)
+    dfmodel3d_pl = dfmodel3d_pl_lazy.collect()
+    mgi1 = 26 * 26 * 26 + 26 * 26 + 26
+    dfmodel3d_pl[mgi1, "rho"] = 2
+    dfmodel3d_pl[mgi1, "X_Ni56"] = 0.5
+    mgi2 = 25 * 25 * 25 + 25 * 25 + 25
+    dfmodel3d_pl[mgi2, "rho"] = 1
+    dfmodel3d_pl[mgi1, "X_Ni56"] = 0.75
+    dfmodel3d = dfmodel3d_pl.to_pandas(use_pyarrow_extension_array=True)
+    dfmodel3d = (
+        at.inputmodel.add_derived_cols_to_modeldata(
+            dfmodel=pl.DataFrame(dfmodel3d), modelmeta=modelmeta_3d, derived_cols=["cellmass_grams"]
+        )
+        .collect()
+        .to_pandas(use_pyarrow_extension_array=True)
     )
-    tmodel = 100
-    vmax = 1000
-    at.inputmodel.save_modeldata(
-        modelpath=outputpath, dfmodel=dfmodel, t_model_init_days=tmodel, vmax=vmax, dimensions=3
+
+    dfmodel1d, dfabundances_1d, dfgridcontributions_1d, modelmeta_1d = at.inputmodel.dimension_reduce_3d_model(
+        dfmodel=dfmodel3d, modelmeta=modelmeta_3d, outputdimensions=1
+    )
+    dfmodel1d = (
+        at.inputmodel.add_derived_cols_to_modeldata(
+            dfmodel=pl.DataFrame(dfmodel1d), modelmeta=modelmeta_1d, derived_cols=["cellmass_grams"]
+        )
+        .collect()
+        .to_pandas(use_pyarrow_extension_array=True)
+    )
+
+    assert np.isclose(dfmodel1d["cellmass_grams"].sum(), dfmodel3d["cellmass_grams"].sum())
+    assert np.isclose(
+        (dfmodel1d["cellmass_grams"] * dfmodel1d["X_Ni56"]).sum(),
+        (dfmodel3d["cellmass_grams"] * dfmodel3d["X_Ni56"]).sum(),
     )

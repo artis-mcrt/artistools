@@ -76,7 +76,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         )
 
     if args.makeenergyinputfiles:
-        model, _ = at.inputmodel.get_modeldata(args.modelpath[0])
+        model, _ = at.inputmodel.get_modeldata(args.modelpath[0], derived_cols=["cellmass_grams"])
         rho = 10 ** model["logrho"] if args.modeldim == 1 else model["rho"]
         Mtot_grams = model["cellmass_grams"].sum()
 

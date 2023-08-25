@@ -296,7 +296,7 @@ def get_wid_init_at_tmodel(
         dfmodel, modelmeta = at.get_modeldata(modelpath, getheadersonly=True)
         assert modelmeta["dimensions"] == 3
         ngridpoints = len(dfmodel)
-        xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400
+        xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400.0
     ncoordgridx: int = round(ngridpoints ** (1.0 / 3.0))
 
     assert xmax is not None

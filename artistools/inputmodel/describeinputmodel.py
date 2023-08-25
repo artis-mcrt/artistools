@@ -46,7 +46,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         args.getelemabundances = True
 
     dfmodel, modelmeta = at.inputmodel.get_modeldata(
-        args.inputfile, get_elemabundances=args.getelemabundances, printwarningsonly=False, dtype_backend="pyarrow"
+        args.inputfile,
+        get_elemabundances=args.getelemabundances,
+        printwarningsonly=False,
+        dtype_backend="pyarrow",
+        derived_cols=["cellmass_grams"],
     )
     t_model_init_days, vmax = modelmeta["t_model_init_days"], modelmeta["vmax_cmps"]
 

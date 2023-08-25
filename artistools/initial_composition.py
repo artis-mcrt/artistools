@@ -17,7 +17,7 @@ from matplotlib import gridspec
 
 import artistools as at
 
-AxisType: t.TypeAlias = t.Literal["x", "y", "z", "r", "z"]
+AxisType: t.TypeAlias = t.Literal["x", "y", "z", "r", "rcyl", "z"]
 
 
 def get_2D_slice_through_3d_model(
@@ -154,7 +154,7 @@ def plot_2d_initial_abundances(modelpath, args=None) -> None:
         )
     elif modelmeta["dimensions"] == 2:
         df2dslice = dfmodel
-        plotaxis1 = "r"
+        plotaxis1 = "rcyl"
         plotaxis2 = "z"
     else:
         msg = f"Model dimensions {modelmeta['dimensions']} not supported"
