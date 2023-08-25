@@ -15,12 +15,10 @@ import pandas as pd
 import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
-from typeguard import typechecked
 
 import artistools as at
 
 
-@typechecked
 def read_modelfile_text(
     filename: Path | str,
     printwarningsonly: bool = False,
@@ -290,7 +288,6 @@ def read_modelfile_text(
     return dfmodel, modelmeta
 
 
-@typechecked
 def get_modeldata(
     modelpath: Path | str = Path(),
     get_elemabundances: bool = False,
@@ -420,7 +417,6 @@ def get_modeldata(
     return dfmodel, modelmeta
 
 
-@typechecked
 def get_modeldata_tuple(*args: t.Any, **kwargs: t.Any) -> tuple[pd.DataFrame, float, float]:
     """Get model from model.txt file
     DEPRECATED: Use get_modeldata() instead.
@@ -479,7 +475,6 @@ def get_empty_3d_model(
     return dfmodel, modelmeta
 
 
-@typechecked
 def add_derived_cols_to_modeldata(
     dfmodel: pl.DataFrame | pl.LazyFrame,
     derived_cols: t.Sequence[str],
@@ -739,7 +734,6 @@ def get_standard_columns(dimensions: int, includenico57: bool = False) -> list[s
     return cols
 
 
-@typechecked
 def save_modeldata(
     dfmodel: pd.DataFrame | pl.LazyFrame | pl.DataFrame,
     filename: Path | str | None = None,
@@ -990,7 +984,6 @@ def get_initelemabundances(
     return abundancedata
 
 
-@typechecked
 def save_initelemabundances(
     dfelabundances: pd.DataFrame,
     abundancefilename: Path | str,
@@ -1160,10 +1153,11 @@ def dimension_reduce_3d_model(
 
                 outgridcontributions.append(contriboutrow)
 
-        for column in matchedcells.columns.filter(lambda c: c.startswith("X_") or c in ["cellYe", "q"]):
-            # take mass-weighted average
-            massfrac = np.dot(matchedcells[column], matchedcells.rho) / matchedcellrhosum if rhomean > 0.0 else 0.0
-            dictcell[column] = massfrac
+        for column in matchedcells.columns:
+            if column.startswith("X_") or column in ["cellYe", "q"]:
+                # take mass-weighted average mass fraction
+                massfrac = np.dot(matchedcells[column], matchedcells.rho) / matchedcellrhosum if rhomean > 0.0 else 0.0
+                dictcell[column] = massfrac
 
         outcells.append(dictcell)
 

@@ -17,7 +17,6 @@ import polars as pl
 from astropy import constants as const
 from extinction import apply
 from extinction import ccm89
-from typeguard import typechecked
 
 import artistools as at
 
@@ -272,7 +271,6 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         )
 
 
-@typechecked
 def plot_artis_lightcurve(
     modelpath: str | Path,
     axis,

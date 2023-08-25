@@ -16,7 +16,6 @@ from pathlib import Path
 import argcomplete
 import numpy as np
 import pandas as pd
-from typeguard import typechecked
 
 import artistools as at
 
@@ -311,7 +310,6 @@ def get_gridparticlecontributions(gridcontribpath: Path | str) -> pd.DataFrame:
     )
 
 
-@typechecked
 def particlenetworkdatafound(traj_root: Path, particleid: int) -> bool:
     tarfilepaths = [
         Path(traj_root, filename)
@@ -325,7 +323,6 @@ def particlenetworkdatafound(traj_root: Path, particleid: int) -> bool:
     return any(tarfilepath.is_file() for tarfilepath in tarfilepaths)
 
 
-@typechecked
 def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataFrame) -> pd.DataFrame:
     missing_particleids = [
         particleid
@@ -387,7 +384,6 @@ def save_gridparticlecontributions(dfcontribs: pd.DataFrame, gridcontribpath: Pa
     dfcontribs.to_csv(gridcontribpath, sep=" ", index=False, float_format="%.7e")
 
 
-@typechecked
 def add_abundancecontributions(
     dfgridcontributions: pd.DataFrame,
     dfmodel: pd.DataFrame,

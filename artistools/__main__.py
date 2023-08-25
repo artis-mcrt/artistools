@@ -6,14 +6,12 @@ import importlib
 import typing as t
 
 import argcomplete
-from typeguard import typechecked
 
 from .commands import CommandType
 from .commands import dictcommands as atdictcommands
 from .misc import CustomArgHelpFormatter
 
 
-@typechecked
 def addsubparsers(
     parser: argparse.ArgumentParser, parentcommand: str, dictcommands: CommandType, depth: int = 1
 ) -> None:

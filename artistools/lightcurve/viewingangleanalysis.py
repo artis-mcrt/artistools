@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 from astropy import constants as const
 from matplotlib.legend_handler import HandlerTuple
-from typeguard import typechecked
 
 import artistools as at
 
@@ -144,7 +143,6 @@ define_colours_list2 = [
 ]
 
 
-@typechecked
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[t.Sequence[int], dict[int, str]]:
     modelpath = Path(modelpath)
     viewing_angle_data_exists = bool(list(modelpath.glob("*_res.out*")))

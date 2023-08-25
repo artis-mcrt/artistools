@@ -13,12 +13,10 @@ import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
-from typeguard import typechecked
 
 import artistools as at
 
 
-@typechecked
 def plot_spherical(
     modelpath: str | Path,
     timemindays: float | None,

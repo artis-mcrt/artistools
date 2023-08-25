@@ -18,7 +18,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from typeguard import typechecked
 
 import artistools as at
 
@@ -269,7 +268,6 @@ def read_estimators_from_file(
     return estimators_thisfile
 
 
-@typechecked
 def read_estimators(
     modelpath: Path | str = Path(),
     modelgridindex: None | int | t.Sequence[int] = None,

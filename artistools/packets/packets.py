@@ -9,7 +9,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import polars as pl
-from typeguard import typechecked
 
 import artistools as at
 
@@ -200,7 +199,6 @@ def add_derived_columns(
     return dfpackets
 
 
-@typechecked
 def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict | None = None) -> pl.LazyFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
@@ -581,7 +579,6 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame, syn_dir: tuple[flo
     return dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"])
 
 
-@typechecked
 def bin_packet_directions_lazypolars(
     dfpackets: pl.LazyFrame,
     nphibins: int | None = None,
@@ -621,7 +618,6 @@ def bin_packet_directions_lazypolars(
     )
 
 
-@typechecked
 def bin_packet_directions(modelpath: Path | str, dfpackets: pd.DataFrame) -> pd.DataFrame:
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
