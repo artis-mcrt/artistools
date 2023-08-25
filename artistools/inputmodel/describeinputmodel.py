@@ -121,7 +121,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     if not args.noabund:
 
-        def sortkey(tup_species_mass_g: tuple[str, float]):
+        def sortkey(tup_species_mass_g):
             species, mass_g = tup_species_mass_g
             # return -mass_g
             # return (-speciesmasses.get(species.rstrip("0123456789"), 0.0), species)

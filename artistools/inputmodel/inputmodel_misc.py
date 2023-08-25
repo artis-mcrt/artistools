@@ -1064,7 +1064,7 @@ def dimension_reduce_3d_model(
     nradialbins: int | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     **kwargs: t.Any,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, t.Any]]:
+) -> tuple[pd.DataFrame, pd.DataFrame | None, pd.DataFrame | None, dict[str, t.Any]]:
     """Convert 3D Cartesian grid model to 1D spherical or 2D cylindrical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
     assert outputdimensions in {1, 2}
 
