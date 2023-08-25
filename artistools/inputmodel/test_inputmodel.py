@@ -157,6 +157,7 @@ def test_dimension_reduce_3d_model() -> None:
 
         # check that the total mass is conserved
         assert np.isclose(dfmodel_lowerd["cellmass_grams"].sum(), dfmodel3d["cellmass_grams"].sum())
+
         # check that the total mass of each species is conserved
         for col in dfmodel3d.columns:
             if col.startswith("X_"):
