@@ -1112,6 +1112,7 @@ def dimension_reduce_3d_model(
     for mgiout, (velocity_inner, velocity_outer) in enumerate(zip(velocity_bins[:-1], velocity_bins[1:]), 1):
         assert velocity_outer > velocity_inner
         matchedcells = dfmodel[(dfmodel["vel_r_mid"] > velocity_inner) & (dfmodel["vel_r_mid"] <= velocity_outer)]
+
         if len(matchedcells) == 0:
             logrho = -99.0
         else:
@@ -1121,6 +1122,7 @@ def dimension_reduce_3d_model(
             matchedcellrhosum = matchedcells.rho.sum()
             rhomean = matchedcellrhosum * wid_init**3 / shell_volume
             logrho = math.log10(max(1e-99, rhomean))
+
         allmatchedcells[mgiout] = (
             {"inputcellid": mgiout, "logrho": logrho, "velocity_outer": velocity_outer / km_to_cm},
             matchedcells,
@@ -1158,10 +1160,10 @@ def dimension_reduce_3d_model(
 
                 outgridcontributions.append(contriboutrow)
 
-        for column in matchedcells.columns:
-            if column.startswith("X_") or column in ["cellYe", "q"]:
-                massfrac = np.dot(matchedcells[column], matchedcells.rho) / matchedcellrhosum if rhomean > 0.0 else 0.0
-                dictcell[column] = massfrac
+        for column in matchedcells.columns.filter(lambda c: c.startswith("X_") or c in ["cellYe", "q"]):
+            # take mass-weighted average
+            massfrac = np.dot(matchedcells[column], matchedcells.rho) / matchedcellrhosum if rhomean > 0.0 else 0.0
+            dictcell[column] = massfrac
 
         outcells.append(dictcell)
 
@@ -1184,6 +1186,7 @@ def dimension_reduce_3d_model(
     dfabundances_out = pd.DataFrame(outcellabundances) if outcellabundances else None
 
     dfgridcontributions_out = pd.DataFrame(outgridcontributions) if outgridcontributions else None
+
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
     return dfmodel_out, dfabundances_out, dfgridcontributions_out, modelmeta
