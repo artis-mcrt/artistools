@@ -31,7 +31,6 @@ def read_modelfile_text(
 
     modelmeta: dict[str, t.Any] = {"headercommentlines": []}
 
-    modelpath = Path(filename).parent
     if not printwarningsonly:
         print(f"Reading {filename}")
 
@@ -47,12 +46,12 @@ def read_modelfile_text(
         if len(line.strip().split(" ")) == 2:
             modelmeta["dimensions"] = 2
             ncoordgridr, ncoordgridz = (int(n) for n in line.strip().split(" "))
-            modelmeta["ncoordgridr"] = ncoordgridr
+            modelmeta["ncoordgridrcyl"] = ncoordgridr
             modelmeta["ncoordgridz"] = ncoordgridz
             npts_model = ncoordgridr * ncoordgridz
             modelmeta["ncoordgrid"] = npts_model
             if not printwarningsonly:
-                print(f"  detected 2D model file with {ncoordgridr}x{ncoordgridz}={npts_model} cells")
+                print(f"  detected 2D model file with n_r*n_z={ncoordgridr}x{ncoordgridz}={npts_model} cells")
         else:
             npts_model = int(line)
 
@@ -213,23 +212,28 @@ def read_modelfile_text(
     elif modelmeta["dimensions"] == 2:
         if not getheadersonly:
             # check pos_rcyl_mid and pos_z_mid are correct
-            wid_init_r = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridr"]
-            wid_init_z = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"]
-            for modelgridindex in range(modelmeta["ncoordgrid"]):
-                n_r = modelgridindex % modelmeta["ncoordgridr"]
-                n_z = modelgridindex // modelmeta["ncoordgridr"]
-                r_min = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridr"] * n_r
-                z_min = (
+            wid_init_rcyl = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"]
+            wid_init_z = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"]
+            modelmeta["wid_init_rcyl"] = wid_init_rcyl
+            modelmeta["wid_init_z"] = wid_init_z
+
+            for modelgridindex, cell_pos_rcyl_mid, cell_pos_z_mid in dfmodel[
+                ["pos_rcyl_mid", "pos_z_mid"]
+            ].itertuples():
+                n_r = modelgridindex % modelmeta["ncoordgridrcyl"]
+                n_z = modelgridindex // modelmeta["ncoordgridrcyl"]
+                pos_rcyl_min = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"] * n_r
+                pos_z_min = (
                     -modelmeta["vmax_cmps"] * t_model_init_seconds
                     + 2.0 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"] * n_z
                 )
-                r_mid = r_min + 0.5 * wid_init_r
-                z_mid = z_min + 0.5 * wid_init_z
-                assert np.isclose(dfmodel.iloc[modelgridindex].pos_rcyl_mid, r_mid, atol=wid_init_r / 2.0)
-                assert np.isclose(dfmodel.iloc[modelgridindex].pos_z_mid, z_mid, atol=wid_init_z / 2.0)
+                pos_rcyl_mid = pos_rcyl_min + 0.5 * wid_init_rcyl
+                pos_z_mid = pos_z_min + 0.5 * wid_init_z
+                assert np.isclose(cell_pos_rcyl_mid, pos_rcyl_mid, atol=wid_init_rcyl / 2.0)
+                assert np.isclose(cell_pos_z_mid, pos_z_mid, atol=wid_init_z / 2.0)
 
     elif modelmeta["dimensions"] == 3:
-        wid_init = at.get_wid_init_at_tmodel(modelpath, npts_model, modelmeta["t_model_init_days"], xmax_tmodel)
+        wid_init = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridx"]
         modelmeta["wid_init"] = wid_init
 
         dfmodel = dfmodel.rename(columns={"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"})
@@ -403,9 +407,6 @@ def get_modeldata(
             dfmodel=dfmodel,
             derived_cols=derived_cols,
             modelmeta=modelmeta,
-            dimensions=modelmeta["dimensions"],
-            t_model_init_seconds=modelmeta["t_model_init_days"] * 86400.0,
-            wid_init=modelmeta.get("wid_init", None),
             modelpath=modelpath,
         )
 
@@ -479,24 +480,16 @@ def add_derived_cols_to_modeldata(
     dfmodel: pl.DataFrame | pl.LazyFrame,
     derived_cols: t.Sequence[str],
     modelmeta: dict[str, t.Any],
-    dimensions: int | None = None,
-    t_model_init_seconds: float | None = None,
-    wid_init: float | None = None,
     modelpath: Path | None = None,
 ) -> pl.LazyFrame:
     """Add columns to modeldata using e.g. derived_cols = ('velocity', 'Ye')."""
-    if dimensions is None:
-        dimensions = get_dfmodel_dimensions(dfmodel)
-
     dfmodel = dfmodel.lazy()
     newcols = []
-    if t_model_init_seconds is None:
-        t_model_init_seconds = modelmeta["t_model_init_days"] * 86400.0
+    t_model_init_seconds = modelmeta["t_model_init_days"] * 86400.0
 
-    if dimensions is None:
-        dimensions = modelmeta["dimensions"]
+    dimensions = modelmeta["dimensions"]
 
-    if wid_init is None and dimensions == 3:
+    if dimensions == 3:
         wid_init = modelmeta["wid_init"]
 
     match dimensions:
@@ -520,19 +513,35 @@ def add_derived_cols_to_modeldata(
 
         case 2:
             axes = ["rcyl", "z"]
-            wid_init_r = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridr"]
-            wid_init_z = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"]
+            wid_init_rcyl = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"]
+            wid_init_z = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"]
+
             if "pos_min" in derived_cols:
                 assert t_model_init_seconds is not None
                 newcols += [
-                    (pl.col("pos_rcyl_mid") - wid_init_r / 2.0).alias("pos_r_min"),
+                    (pl.col("pos_rcyl_mid") - wid_init_rcyl / 2.0).alias("pos_rcyl_min"),
                     (pl.col("pos_z_mid") - wid_init_z / 2.0).alias("pos_z_min"),
                 ]
+
             if "pos_max" in derived_cols:
                 assert t_model_init_seconds is not None
                 newcols += [
-                    (pl.col("pos_rcyl_mid") + wid_init_r / 2.0).alias("pos_r_max"),
+                    (pl.col("pos_rcyl_mid") + wid_init_rcyl / 2.0).alias("pos_rcyl_max"),
                     (pl.col("pos_z_mid") + wid_init_z / 2.0).alias("pos_z_max"),
+                ]
+
+            if "cellmass_grams" in derived_cols:
+                newcols += [
+                    (
+                        pl.col("rho")
+                        * 2
+                        * math.pi
+                        * (
+                            (pl.col("pos_rcyl_mid") + wid_init_rcyl / 2.0) ** 2
+                            - (pl.col("pos_rcyl_mid") - wid_init_rcyl / 2.0) ** 2
+                        )
+                        * wid_init_z
+                    ).alias("cellmass_grams")
                 ]
 
         case 3:
@@ -793,6 +802,7 @@ def save_modeldata(
         print(f" 1D grid radial bins: {len(dfmodel)}")
     elif modelmeta["dimensions"] == 2:
         print(f" 2D grid size: {len(dfmodel)} ({modelmeta['ncoordgridr']} x {modelmeta['ncoordgridz']})")
+        assert modelmeta["ncoordgridrcyl"] * modelmeta["ncoordgridz"] == len(dfmodel)
     elif modelmeta["dimensions"] == 3:
         dfmodel = dfmodel.rename(columns={"gridindex": "inputcellid"})
         griddimension = int(round(len(dfmodel) ** (1.0 / 3.0)))
@@ -1054,78 +1064,138 @@ def dimension_reduce_3d_model(
     outputdimensions: int,
     dfelabundances: pd.DataFrame | None = None,
     dfgridcontributions: pd.DataFrame | None = None,
-    nradialbins: int | None = None,
+    ncoordgridr: int | None = None,
+    ncoordgridz: int | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     **kwargs: t.Any,
 ) -> tuple[pd.DataFrame, pd.DataFrame | None, pd.DataFrame | None, dict[str, t.Any]]:
     """Convert 3D Cartesian grid model to 1D spherical or 2D cylindrical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
     assert outputdimensions in {1, 2}
 
-    modelmeta = {} if modelmeta is None else modelmeta.copy()
+    if modelmeta is None:
+        modelmeta = {}
+
+    modelmeta_out = {k: v for k, v in modelmeta.items() if not k.startswith("ncoord") and k != "wid_init"}
 
     assert all(
-        key not in modelmeta or modelmeta[key] == kwargs[key] for key in kwargs
+        key not in modelmeta_out or modelmeta_out[key] == kwargs[key] for key in kwargs
     )  # can't define the same thing twice unless the values are the same
 
-    modelmeta |= kwargs  # add any extra keyword arguments to modelmeta
+    modelmeta_out |= kwargs  # add any extra keyword arguments to modelmeta
 
     t_model_init_seconds = modelmeta["t_model_init_days"] * 24 * 60 * 60
     vmax = modelmeta["vmax_cmps"]
     xmax = vmax * t_model_init_seconds
-    ngridpoints = len(dfmodel)
-    ncoordgridx = round(ngridpoints ** (1.0 / 3.0))
+    ngridpoints = modelmeta.get("npts_model", len(dfmodel))
+    ncoordgridx = modelmeta.get("ncoordx", int(round(ngridpoints ** (1.0 / 3.0))))
     wid_init = 2 * xmax / ncoordgridx
 
     assert modelmeta.get("dimensions", 3) == 3
-    modelmeta["dimensions"] = outputdimensions
+    modelmeta_out["dimensions"] = outputdimensions
 
-    print(f"Spherically averaging 3D model with {ngridpoints} cells...")
+    print(f"Resampling 3D model with {ngridpoints} cells to {outputdimensions}D...")
     timestart = time.perf_counter()
-    # dfmodel = dfmodel.query('rho > 0.').copy()
     dfmodel = dfmodel.copy()
     celldensity = dict(dfmodel[["inputcellid", "rho"]].itertuples(index=False))
 
     for ax in ["x", "y", "z"]:
         dfmodel[f"vel_{ax}_mid"] = (dfmodel[f"pos_{ax}_min"] + (0.5 * wid_init)) / t_model_init_seconds
 
-    dfmodel["vel_r_mid"] = np.sqrt(dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2 + dfmodel["vel_z_mid"] ** 2)
-
     km_to_cm = 1e5
-    if nradialbins is None:
-        nradialbins = int(ncoordgridx / 2.0)
-    velocity_bins = [vmax * n / nradialbins for n in range(nradialbins + 1)]  # cm/s
-    outcells = []
-    outcellabundances = []
-    outgridcontributions = []
+    if ncoordgridr is None:
+        ncoordgridr = int(ncoordgridx / 2.0)
+
+    if ncoordgridz is None:
+        ncoordgridz = int(ncoordgridx)
+
+    if outputdimensions == 2:
+        dfmodel["vel_rcyl_mid"] = np.sqrt(dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2)
+        modelmeta_out["ncoordgridz"] = ncoordgridz
+        modelmeta_out["ncoordgridrcyl"] = ncoordgridr
+    else:
+        dfmodel["vel_r_mid"] = np.sqrt(
+            dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2 + dfmodel["vel_z_mid"] ** 2
+        )
+        modelmeta_out["ncoordgridrc"] = ncoordgridr
+
+    # velocities in cm/s
+    velocity_bins_z_min = (
+        [-vmax + 2 * vmax * n / ncoordgridz for n in range(ncoordgridz)] if outputdimensions == 2 else [-vmax]
+    )
+    velocity_bins_z_max = (
+        [-vmax + 2 * vmax * n / ncoordgridz for n in range(1, ncoordgridz + 1)] if outputdimensions == 2 else [vmax]
+    )
+
+    velocity_bins_r_min = [vmax * n / ncoordgridr for n in range(ncoordgridr)]
+    velocity_bins_r_max = [vmax * n / ncoordgridr for n in range(1, ncoordgridr + 1)]
+
+    allmatchedcells = {}
+    for n_z, (vel_z_min, vel_z_max) in enumerate(zip(velocity_bins_z_min, velocity_bins_z_max)):
+        # "r" is the cylindrical radius in 2D, or the spherical radius in 1D
+        for n_r, (vel_r_min, vel_r_max) in enumerate(zip(velocity_bins_r_min, velocity_bins_r_max)):
+            assert vel_r_max > vel_r_min
+            cellindexout = n_z * ncoordgridr + n_r + 1
+            if outputdimensions == 1:
+                matchedcells = dfmodel[(dfmodel["vel_r_mid"] > vel_r_min) & (dfmodel["vel_r_mid"] <= vel_r_max)]
+            elif outputdimensions == 2:
+                matchedcells = dfmodel[
+                    (dfmodel["vel_rcyl_mid"] > vel_r_min)
+                    & (dfmodel["vel_rcyl_mid"] <= vel_r_max)
+                    & (dfmodel["vel_z_mid"] > vel_z_min)
+                    & (dfmodel["vel_z_mid"] <= vel_z_max)
+                ]
+
+            if len(matchedcells) == 0:
+                rho_out = 0
+            else:
+                if outputdimensions == 1:
+                    shell_volume = (4 * math.pi / 3) * (
+                        (vel_r_max * t_model_init_seconds) ** 3 - (vel_r_min * t_model_init_seconds) ** 3
+                    )
+                elif outputdimensions == 2:
+                    shell_volume = (
+                        2
+                        * math.pi
+                        * (vel_r_max**2 - vel_r_min**2)
+                        * (vel_z_max - vel_z_min)
+                        * t_model_init_seconds**3
+                    )
+                matchedcellrhosum = matchedcells.rho.sum()
+                rho_out = matchedcellrhosum * wid_init**3 / shell_volume
+
+            cellout: dict[str, t.Any] = {"inputcellid": cellindexout}
+
+            if outputdimensions == 1:
+                cellout |= {
+                    "logrho": math.log10(max(1e-99, rho_out)) if rho_out > 0.0 else -99.0,
+                    "velocity_outer": vel_r_max / km_to_cm,
+                }
+            elif outputdimensions == 2:
+                cellout |= {
+                    "rho": rho_out,
+                    "pos_rcyl_mid": (vel_r_min + vel_r_max) / 2 * t_model_init_seconds,
+                    "pos_z_mid": (vel_z_min + vel_z_max) / 2 * t_model_init_seconds,
+                }
+
+            allmatchedcells[cellindexout] = (
+                cellout,
+                matchedcells,
+            )
+
     includemissingcolexists = (
         dfgridcontributions is not None and "frac_of_cellmass_includemissing" in dfgridcontributions.columns
     )
 
-    allmatchedcells = {}
-    for mgiout, (velocity_inner, velocity_outer) in enumerate(zip(velocity_bins[:-1], velocity_bins[1:]), 1):
-        assert velocity_outer > velocity_inner
-        matchedcells = dfmodel[(dfmodel["vel_r_mid"] > velocity_inner) & (dfmodel["vel_r_mid"] <= velocity_outer)]
+    outcells = []
+    outcellabundances = []
+    outgridcontributions = []
 
-        if len(matchedcells) == 0:
-            logrho = -99.0
-        else:
-            shell_volume = (4 * math.pi / 3) * (
-                (velocity_outer * t_model_init_seconds) ** 3 - (velocity_inner * t_model_init_seconds) ** 3
-            )
-            matchedcellrhosum = matchedcells.rho.sum()
-            rhomean = matchedcellrhosum * wid_init**3 / shell_volume
-            logrho = math.log10(max(1e-99, rhomean))
-
-        allmatchedcells[mgiout] = (
-            {"inputcellid": mgiout, "logrho": logrho, "velocity_outer": velocity_outer / km_to_cm},
-            matchedcells,
-        )
-
-    for mgiout, (dictcell, matchedcells) in allmatchedcells.items():
-        if dictcell["logrho"] > -98.0 and dfgridcontributions is not None:
+    for cellindexout, (dictcell, matchedcells) in allmatchedcells.items():
+        matchedcellrhosum = matchedcells.rho.sum()
+        nonempty = matchedcellrhosum > 0.0
+        if matchedcellrhosum > 0.0 and dfgridcontributions is not None:
             dfcellcont = dfgridcontributions[dfgridcontributions["cellindex"].isin(matchedcells.inputcellid)]
 
-            matchedcellrhosum = matchedcells.rho.sum()
             for particleid, dfparticlecontribs in dfcellcont.groupby("particleid"):
                 frac_of_cellmass_avg = (
                     sum(
@@ -1137,7 +1207,7 @@ def dimension_reduce_3d_model(
 
                 contriboutrow = {
                     "particleid": particleid,
-                    "cellindex": mgiout,
+                    "cellindex": cellindexout,
                     "frac_of_cellmass": frac_of_cellmass_avg,
                 }
 
@@ -1156,26 +1226,25 @@ def dimension_reduce_3d_model(
         for column in matchedcells.columns:
             if column.startswith("X_") or column in ["cellYe", "q"]:
                 # take mass-weighted average mass fraction
-                massfrac = np.dot(matchedcells[column], matchedcells.rho) / matchedcellrhosum if rhomean > 0.0 else 0.0
+                massfrac = np.dot(matchedcells[column], matchedcells.rho) / matchedcellrhosum if nonempty else 0.0
                 dictcell[column] = massfrac
 
         outcells.append(dictcell)
 
         if dfelabundances is not None:
-            abund_matchedcells = dfelabundances.loc[matchedcells.index] if rhomean > 0.0 else None
-            dictcellabundances = {"inputcellid": mgiout}
+            abund_matchedcells = dfelabundances.loc[matchedcells.index] if nonempty else None
+            dictcellabundances = {"inputcellid": cellindexout}
             for column in dfelabundances.columns:
                 if column.startswith("X_"):
                     massfrac = (
-                        np.dot(abund_matchedcells[column], matchedcells.rho) / matchedcellrhosum
-                        if rhomean > 0.0
-                        else 0.0
+                        np.dot(abund_matchedcells[column], matchedcells.rho) / matchedcellrhosum if nonempty else 0.0
                     )
                     dictcellabundances[column] = massfrac
 
             outcellabundances.append(dictcellabundances)
 
     dfmodel_out = pd.DataFrame(outcells)
+    modelmeta_out["npts_model"] = len(dfmodel_out)
 
     dfabundances_out = pd.DataFrame(outcellabundances) if outcellabundances else None
 
@@ -1183,7 +1252,7 @@ def dimension_reduce_3d_model(
 
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
-    return dfmodel_out, dfabundances_out, dfgridcontributions_out, modelmeta
+    return dfmodel_out, dfabundances_out, dfgridcontributions_out, modelmeta_out
 
 
 def scale_model_to_time(

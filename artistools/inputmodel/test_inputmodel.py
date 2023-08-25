@@ -123,7 +123,7 @@ def test_save_load_3d_model() -> None:
     assert modelmeta == modelmeta3
 
 
-def test_sphericalaverage_3d_model() -> None:
+def test_dimension_reduce_3d_model() -> None:
     clear_modelfiles()
     dfmodel3d_pl_lazy, modelmeta_3d = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)
     dfmodel3d_pl = dfmodel3d_pl_lazy.collect()
@@ -141,20 +141,22 @@ def test_sphericalaverage_3d_model() -> None:
         .collect()
         .to_pandas(use_pyarrow_extension_array=True)
     )
-
-    dfmodel1d, dfabundances_1d, dfgridcontributions_1d, modelmeta_1d = at.inputmodel.dimension_reduce_3d_model(
-        dfmodel=dfmodel3d, modelmeta=modelmeta_3d, outputdimensions=1
-    )
-    dfmodel1d = (
-        at.inputmodel.add_derived_cols_to_modeldata(
-            dfmodel=pl.DataFrame(dfmodel1d), modelmeta=modelmeta_1d, derived_cols=["cellmass_grams"]
+    for outputdimensions in [1, 2]:
+        dfmodel_lowerd, dfabundances_lowerd, dfgridcontributions_lowerd, modelmeta_lowerd = (
+            at.inputmodel.dimension_reduce_3d_model(
+                dfmodel=dfmodel3d, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
+            )
         )
-        .collect()
-        .to_pandas(use_pyarrow_extension_array=True)
-    )
+        dfmodel_lowerd = (
+            at.inputmodel.add_derived_cols_to_modeldata(
+                dfmodel=pl.DataFrame(dfmodel_lowerd), modelmeta=modelmeta_lowerd, derived_cols=["cellmass_grams"]
+            )
+            .collect()
+            .to_pandas(use_pyarrow_extension_array=True)
+        )
 
-    assert np.isclose(dfmodel1d["cellmass_grams"].sum(), dfmodel3d["cellmass_grams"].sum())
-    assert np.isclose(
-        (dfmodel1d["cellmass_grams"] * dfmodel1d["X_Ni56"]).sum(),
-        (dfmodel3d["cellmass_grams"] * dfmodel3d["X_Ni56"]).sum(),
-    )
+        assert np.isclose(dfmodel_lowerd["cellmass_grams"].sum(), dfmodel3d["cellmass_grams"].sum())
+        assert np.isclose(
+            (dfmodel_lowerd["cellmass_grams"] * dfmodel_lowerd["X_Ni56"]).sum(),
+            (dfmodel3d["cellmass_grams"] * dfmodel3d["X_Ni56"]).sum(),
+        )

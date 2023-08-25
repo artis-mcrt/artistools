@@ -172,8 +172,10 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
         )
         t_model_days = targetmodeltime_days
 
+    ncoordgridx = round(len(griddata) ** (1.0 / 3.0))
+    assert ncoordgridx**3 == len(griddata)
+    print(f"Grid model is {ncoordgridx} x {ncoordgridx} x {ncoordgridx} = {len(griddata)} cells")
     if minparticlespercell > 0:
-        ncoordgridx = round(len(griddata) ** (1.0 / 3.0))
         xmax = -griddata.pos_x_min.min()
         wid_init = 2 * xmax / ncoordgridx
         cellfilter = np.logical_and(griddata.tracercount < minparticlespercell, griddata.rho > 0.0)
@@ -362,7 +364,7 @@ def makemodelfromgriddata(
         print("WARNING: No abundances will be set because no nuclear network trajectories folder was specified")
         dfelabundances = None
 
-    if dimensions == 1:
+    if dimensions < 3:
         dfmodel, dfelabundances, dfgridcontributions, modelmeta = at.inputmodel.dimension_reduce_3d_model(
             dfmodel=dfmodel,
             outputdimensions=dimensions,

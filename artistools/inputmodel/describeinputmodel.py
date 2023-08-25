@@ -57,19 +57,19 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
     print(f"Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)")
 
-    if "pos_x_min" in dfmodel.columns:
-        nonemptycells = sum(dfmodel["rho"] > 0.0)
-        print(
-            f"Model contains {len(dfmodel)} Cartesian grid cells ({nonemptycells} nonempty) with "
-            f"vmax = {vmax} cm/s ({vmax * 1e-5 / 299792.458:.2f} * c)"
-        )
-        corner_vmax = math.sqrt(3 * vmax**2)
-        print(f"  corner vmax: {corner_vmax:.2e} cm/s ({corner_vmax * 1e-5 / 299792.458:.2f} * c)")
-    else:
+    if modelmeta["dimensions"] == 1:
         vmax = dfmodel["velocity_outer"].max()
         print(
             f"Model contains {len(dfmodel)} 1D spherical shells with vmax = {vmax} km/s ({vmax / 299792.458:.2f} * c)"
         )
+    else:
+        nonemptycells = sum(dfmodel["rho"] > 0.0)
+        print(
+            f"Model contains {len(dfmodel)} grid cells ({nonemptycells} nonempty) with "
+            f"vmax = {vmax} cm/s ({vmax * 1e-5 / 299792.458:.2f} * c)"
+        )
+        corner_vmax = math.sqrt(3 * vmax**2) if modelmeta["dimensions"] == 3 else math.sqrt(2 * vmax**2)
+        print(f"  corner vmax: {corner_vmax:.2e} cm/s ({corner_vmax * 1e-5 / 299792.458:.2f} * c)")
 
     if args.cell is not None:
         mgi = int(args.cell)
