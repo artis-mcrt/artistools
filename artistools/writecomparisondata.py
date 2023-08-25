@@ -57,7 +57,7 @@ def write_ntimes_nvel(outfile: TextIOWrapper, selected_timesteps: t.Sequence[int
 
 
 def write_single_estimator(modelpath, selected_timesteps, estimators, allnonemptymgilist, outfile, keyname) -> None:
-    modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath, derived_cols=["velocity_inner"])
+    modeldata, _modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["velocity_inner"])
     with Path(outfile).open("w") as f:
         write_ntimes_nvel(f, selected_timesteps, modelpath)
         if keyname == "total_dep":
@@ -69,7 +69,7 @@ def write_single_estimator(modelpath, selected_timesteps, estimators, allnonempt
         for modelgridindex, cell in modeldata.iterrows():
             if modelgridindex not in allnonemptymgilist:
                 continue
-            v_mid = (cell.velocity_inner + cell.velocity_outer) / 2.0
+            v_mid = (cell["velocity_inner"] + cell["velocity_outer"]) / 2.0
             f.write(f"{v_mid:.2f}")
             for timestep in selected_timesteps:
                 cellvalue = estimators[(timestep, modelgridindex)][keyname]
@@ -91,7 +91,7 @@ def write_ionfracts(
     outputpath,
 ) -> None:
     times = at.get_timestep_times(modelpath)
-    modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath)
+    modeldata, _modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["velocity_inner"])
     elementlist = at.get_composition_data(modelpath)
     nelements = len(elementlist)
     for element in range(nelements):
@@ -132,7 +132,7 @@ def write_ionfracts(
 
 def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptymgilist, outputpath) -> None:
     times = at.get_timestep_times(modelpath)
-    modeldata, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(modelpath)
+    modeldata, modelmeta = at.inputmodel.get_modeldata(modelpath, derived_cols=["velocity_inner"])
     with Path(outputpath, f"phys_{model_id}_artisnebular.txt").open("w") as f:
         f.write(f"#NTIMES: {len(selected_timesteps)}\n")
         f.write(f'#TIMES[d]: {" ".join([f"{times[ts]:.2f}" for ts in selected_timesteps])}\n')
@@ -146,7 +146,7 @@ def write_phys(modelpath, model_id, selected_timesteps, estimators, allnonemptym
                     continue
 
                 estimators[(timestep, modelgridindex)]["rho"] = (
-                    10**cell.logrho * (t_model_init_days / times[timestep]) ** 3
+                    10**cell.logrho * (modelmeta["t_model_init_days"] / times[timestep]) ** 3
                 )
 
                 estimators[(timestep, modelgridindex)]["nntot"] = estimators[(timestep, modelgridindex)]["populations"][
