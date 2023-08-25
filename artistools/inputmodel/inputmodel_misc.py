@@ -1108,56 +1108,55 @@ def dimension_reduce_3d_model(
         dfgridcontributions is not None and "frac_of_cellmass_includemissing" in dfgridcontributions.columns
     )
 
-    for radialcellid, (velocity_inner, velocity_outer) in enumerate(zip(velocity_bins[:-1], velocity_bins[1:]), 1):
+    allmatchedcells = {}
+    for mgiout, (velocity_inner, velocity_outer) in enumerate(zip(velocity_bins[:-1], velocity_bins[1:]), 1):
         assert velocity_outer > velocity_inner
         matchedcells = dfmodel[(dfmodel["vel_r_mid"] > velocity_inner) & (dfmodel["vel_r_mid"] <= velocity_outer)]
-        matchedcellrhosum = matchedcells.rho.sum()
-
         if len(matchedcells) == 0:
-            rhomean = 0.0
+            logrho = -99.0
         else:
             shell_volume = (4 * math.pi / 3) * (
                 (velocity_outer * t_model_init_seconds) ** 3 - (velocity_inner * t_model_init_seconds) ** 3
             )
+            matchedcellrhosum = matchedcells.rho.sum()
             rhomean = matchedcellrhosum * wid_init**3 / shell_volume
+            logrho = math.log10(max(1e-99, rhomean))
+        allmatchedcells[mgiout] = (
+            {"inputcellid": mgiout, "logrho": logrho, "velocity_outer": velocity_outer / km_to_cm},
+            matchedcells,
+        )
 
-            if rhomean > 0.0 and dfgridcontributions is not None:
-                dfcellcont = dfgridcontributions[dfgridcontributions["cellindex"].isin(matchedcells.inputcellid)]
+    for mgiout, (dictcell, matchedcells) in allmatchedcells.items():
+        if dictcell["logrho"] > -98.0 and dfgridcontributions is not None:
+            dfcellcont = dfgridcontributions[dfgridcontributions["cellindex"].isin(matchedcells.inputcellid)]
 
-                for particleid, dfparticlecontribs in dfcellcont.groupby("particleid"):
-                    frac_of_cellmass_avg = (
+            matchedcellrhosum = matchedcells.rho.sum()
+            for particleid, dfparticlecontribs in dfcellcont.groupby("particleid"):
+                frac_of_cellmass_avg = (
+                    sum(
+                        row.frac_of_cellmass * celldensity[row.cellindex]
+                        for row in dfparticlecontribs.itertuples(index=False)
+                    )
+                    / matchedcellrhosum
+                )
+
+                contriboutrow = {
+                    "particleid": particleid,
+                    "cellindex": mgiout,
+                    "frac_of_cellmass": frac_of_cellmass_avg,
+                }
+
+                if includemissingcolexists:
+                    frac_of_cellmass_includemissing_avg = (
                         sum(
-                            row.frac_of_cellmass * celldensity[row.cellindex]
+                            row.frac_of_cellmass_includemissing * celldensity[row.cellindex]
                             for row in dfparticlecontribs.itertuples(index=False)
                         )
                         / matchedcellrhosum
                     )
+                    contriboutrow["frac_of_cellmass_includemissing"] = frac_of_cellmass_includemissing_avg
 
-                    contriboutrow = {
-                        "particleid": particleid,
-                        "cellindex": radialcellid,
-                        "frac_of_cellmass": frac_of_cellmass_avg,
-                    }
-
-                    if includemissingcolexists:
-                        frac_of_cellmass_includemissing_avg = (
-                            sum(
-                                row.frac_of_cellmass_includemissing * celldensity[row.cellindex]
-                                for row in dfparticlecontribs.itertuples(index=False)
-                            )
-                            / matchedcellrhosum
-                        )
-                        contriboutrow["frac_of_cellmass_includemissing"] = frac_of_cellmass_includemissing_avg
-
-                    outgridcontributions.append(contriboutrow)
-
-        logrho = math.log10(max(1e-99, rhomean))
-
-        dictcell = {
-            "inputcellid": radialcellid,
-            "velocity_outer": velocity_outer / km_to_cm,
-            "logrho": logrho,
-        }
+                outgridcontributions.append(contriboutrow)
 
         for column in matchedcells.columns:
             if column.startswith("X_") or column in ["cellYe", "q"]:
@@ -1168,7 +1167,7 @@ def dimension_reduce_3d_model(
 
         if dfelabundances is not None:
             abund_matchedcells = dfelabundances.loc[matchedcells.index] if rhomean > 0.0 else None
-            dictcellabundances = {"inputcellid": radialcellid}
+            dictcellabundances = {"inputcellid": mgiout}
             for column in dfelabundances.columns:
                 if column.startswith("X_"):
                     massfrac = (
