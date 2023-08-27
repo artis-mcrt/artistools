@@ -40,7 +40,7 @@ def test_get_modeldata_3d() -> None:
         assert np.isclose(modelmeta["vmax_cmps"], 2892020000.0)
         assert modelmeta["dimensions"] == 3
         assert modelmeta["npts_model"] == 1000
-        assert modelmeta["ncoordgrid"] == 10
+        assert modelmeta["ncoordgridx"] == 10
 
     dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, derived_cols=["cellmass_grams"])
     assert np.isclose(dfmodel.cellmass_grams.sum(), 2.7861855e33)

@@ -49,7 +49,6 @@ def read_modelfile_text(
             modelmeta["ncoordgridrcyl"] = ncoordgridr
             modelmeta["ncoordgridz"] = ncoordgridz
             npts_model = ncoordgridr * ncoordgridz
-            modelmeta["ncoordgrid"] = npts_model
             if not printwarningsonly:
                 print(f"  detected 2D model file with n_r*n_z={ncoordgridr}x{ncoordgridz}={npts_model} cells")
         else:
@@ -210,12 +209,12 @@ def read_modelfile_text(
         modelmeta["vmax_cmps"] = dfmodel.velocity_outer.max() * 1e5
 
     elif modelmeta["dimensions"] == 2:
+        wid_init_rcyl = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"]
+        wid_init_z = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"]
+        modelmeta["wid_init_rcyl"] = wid_init_rcyl
+        modelmeta["wid_init_z"] = wid_init_z
         if not getheadersonly:
             # check pos_rcyl_mid and pos_z_mid are correct
-            wid_init_rcyl = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"]
-            wid_init_z = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"]
-            modelmeta["wid_init_rcyl"] = wid_init_rcyl
-            modelmeta["wid_init_z"] = wid_init_z
 
             for modelgridindex, cell_pos_rcyl_mid, cell_pos_z_mid in dfmodel[
                 ["pos_rcyl_mid", "pos_z_mid"]

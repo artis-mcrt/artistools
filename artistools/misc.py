@@ -1006,7 +1006,10 @@ def get_npts_model(modelpath: Path) -> int:
         else at.firstexisting("model.txt", folder=modelpath, tryzipped=True)
     )
     with zopen(modelfilepath) as modelfile:
-        return int(readnoncommentline(modelfile))
+        nptsline = readnoncommentline(modelfile).split(maxsplit=1)
+        if len(nptsline) == 1:
+            return int(nptsline[0])
+        return int(nptsline[0]) * int(nptsline[1])
 
 
 @lru_cache(maxsize=8)
