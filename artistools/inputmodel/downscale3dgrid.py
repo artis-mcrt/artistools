@@ -16,7 +16,7 @@ def make_downscaled_3d_grid(
     dfmodel, modelmeta = at.get_modeldata(modelpath, dtype_backend="pyarrow")
     dfelemabund = at.inputmodel.get_initelemabundances(modelpath, dtype_backend="pyarrow")
 
-    inputgridsize = modelmeta["npts_model"]
+    inputgridsize = modelmeta["ncoordgridx"]
     grid = int(inputgridsize)
 
     assert inputgridsize % outputgridsize == 0
