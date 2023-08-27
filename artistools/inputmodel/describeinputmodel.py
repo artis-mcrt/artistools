@@ -79,6 +79,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             print(dfmodel.iloc[0])
 
     mass_msun_rho = dfmodel["cellmass_grams"].sum() / 1.989e33
+    initial_energy = sum(mass * q for mass, q in dfmodel[["cellmass_grams", "q"]].itertuples(index=False, name=None))
+    print(f"  initial energy: {initial_energy} erg")
 
     mass_msun_isotopes = 0.0
     mass_msun_elem = 0.0
