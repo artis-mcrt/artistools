@@ -58,10 +58,12 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     print(f"Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)")
 
     if modelmeta["dimensions"] == 1:
-        vmax = dfmodel["velocity_outer"].max()
+        vmax = dfmodel["velocity_outer"].max() * 1e5
         print(
-            f"Model contains {len(dfmodel)} 1D spherical shells with vmax = {vmax} km/s ({vmax / 299792.458:.2f} * c)"
+            f"Model contains {len(dfmodel)} 1D spherical shells with vmax = {vmax/1e5} km/s"
+            f" ({vmax / 29979245800:.2f} * c)"
         )
+        dfmodel["rho"] = 10 ** dfmodel["logrho"]
     else:
         nonemptycells = sum(dfmodel["rho"] > 0.0)
         print(
@@ -76,11 +78,45 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         if mgi >= 0:
             print(f"Selected single cell mgi {mgi}:")
             dfmodel = dfmodel.query("inputcellid == (@mgi + 1)")
+
             print(dfmodel.iloc[0])
 
+    try:
+        assoc_cells, mgi_of_propcells = at.get_grid_mapping(args.inputfile)
+        print(f"  {len(assoc_cells)} model cells have >0 associated prop cells")
+    except FileNotFoundError:
+        print("  no cell mapping file found")
+        assoc_cells, mgi_of_propcells = None, None
+
+    if "q" in dfmodel.columns:
+        initial_energy = sum(
+            mass * q for mass, q in dfmodel[["cellmass_grams", "q"]].itertuples(index=False, name=None)
+        )
+        print(f"  initial energy: {initial_energy:.3e} erg")
+
     mass_msun_rho = dfmodel["cellmass_grams"].sum() / 1.989e33
-    initial_energy = sum(mass * q for mass, q in dfmodel[["cellmass_grams", "q"]].itertuples(index=False, name=None))
-    print(f"  initial energy: {initial_energy} erg")
+
+    if assoc_cells is not None and mgi_of_propcells is not None:
+        ncoordgridx = math.ceil(math.cbrt(max(mgi_of_propcells.keys())))
+        wid_init = 2 * vmax * t_model_init_seconds / ncoordgridx
+        wid_init3 = wid_init**3
+        initial_energy_mapped = 0.0
+        cellmass_mapped = [len(assoc_cells.get(mgi, [])) * wid_init3 * rho for mgi, rho in enumerate(dfmodel["rho"])]
+        if "q" in dfmodel.columns:
+            initial_energy_mapped = sum(mass * q for mass, q in zip(cellmass_mapped, dfmodel["q"]))
+            print(
+                f"  initial energy: {initial_energy_mapped:.3e} erg (when mapped to"
+                f" {ncoordgridx}x{ncoordgridx}x{ncoordgridx} cubic grid, error"
+                f" {100 * (initial_energy_mapped / initial_energy - 1):.2f}%)"
+            )
+
+        mtot_mapped_msun = sum(cellmass_mapped) / 1.989e33
+        print(
+            f'M_{"tot_rho_map":11s} {mtot_mapped_msun:8.5f} MSun (density * volume when mapped to cubic grid, error'
+            f" {100 * (mtot_mapped_msun / mass_msun_rho - 1):.2f}%)"
+        )
+
+    print(f'M_{"tot_rho":11s} {mass_msun_rho:8.5f} MSun (density * volume)')
 
     mass_msun_isotopes = 0.0
     mass_msun_elem = 0.0
@@ -109,15 +145,14 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             if speciesabund_g > 0.0:
                 speciesmasses[species] = speciesabund_g
 
-    print(f'M_{"tot_rho":9s} {mass_msun_rho:8.5f} MSun (density * volume)')
     if mass_msun_elem > 0.0:
         print(
-            f'M_{"tot_elem":9s} {mass_msun_elem:8.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)'
+            f'M_{"tot_elem":11s} {mass_msun_elem:8.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)'
         )
 
     if not args.noisotopes:
         print(
-            f'M_{"tot_iso":9s} {mass_msun_isotopes:8.5f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% '
+            f'M_{"tot_iso":11s} {mass_msun_isotopes:8.5f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% '
             "of M_tot_rho, but can be < 100% if stable isotopes not tracked)"
         )
 
@@ -142,7 +177,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 if mass_g > elem_mass * (1.0 + 1e-5):
                     strcomment += " ERROR! isotope sum is greater than element abundance"
             zstr = f"Z={atomic_number}"
-            print(f"{zstr:>5} {species:9s} {species_mass_msun:.3e} Msun    massfrac {massfrac:.3e}{strcomment}")
+            print(f"{zstr:>5} {species:11s} {species_mass_msun:.3e} Msun    massfrac {massfrac:.3e}{strcomment}")
 
 
 if __name__ == "__main__":

@@ -255,7 +255,7 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
 
     assoc_cells: dict[int, list[int]] = {}
     mgi_of_propcells: dict[int, int] = {}
-    with filename.open() as fgrid:
+    with zopen(filename) as fgrid:
         for line in fgrid:
             row = line.split()
             propcellid, mgi = int(row[0]), int(row[1])
