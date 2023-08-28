@@ -106,14 +106,14 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             initial_energy_mapped = sum(mass * q for mass, q in zip(cellmass_mapped, dfmodel["q"]))
             print(
                 f"  initial energy: {initial_energy_mapped:.3e} erg (when mapped to"
-                f" {ncoordgridx}x{ncoordgridx}x{ncoordgridx} cubic grid, error"
+                f" {ncoordgridx}^3 cubic grid, error"
                 f" {100 * (initial_energy_mapped / initial_energy - 1):.2f}%)"
             )
 
         mtot_mapped_msun = sum(cellmass_mapped) / 1.989e33
         print(
-            f'M_{"tot_rho_map":11s} {mtot_mapped_msun:8.5f} MSun (density * volume when mapped to cubic grid, error'
-            f" {100 * (mtot_mapped_msun / mass_msun_rho - 1):.2f}%)"
+            f'M_{"tot_rho_map":11s} {mtot_mapped_msun:8.5f} MSun (density * volume when mapped to {ncoordgridx}^3 cubic'
+            f" grid, error {100 * (mtot_mapped_msun / mass_msun_rho - 1):.2f}%)"
         )
 
     print(f'M_{"tot_rho":11s} {mass_msun_rho:8.5f} MSun (density * volume)')
