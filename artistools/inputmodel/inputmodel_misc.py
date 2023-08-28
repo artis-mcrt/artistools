@@ -533,7 +533,6 @@ def add_derived_cols_to_modeldata(
                 newcols += [
                     (
                         pl.col("rho")
-                        * 2
                         * math.pi
                         * (
                             (pl.col("pos_rcyl_mid") + wid_init_rcyl / 2.0) ** 2
@@ -843,7 +842,7 @@ def save_modeldata(
         fmodel.write(
             f"{len(dfmodel)}\n"
             if modelmeta["dimensions"] != 2
-            else f"{modelmeta['ncoordgridr']} {modelmeta['ncoordgridz']}\n"
+            else f"{modelmeta['ncoordgridrcyl']} {modelmeta['ncoordgridz']}\n"
         )
 
         fmodel.write(f"{modelmeta['t_model_init_days']}\n")
@@ -1153,8 +1152,7 @@ def dimension_reduce_3d_model(
                     )
                 elif outputdimensions == 2:
                     shell_volume = (
-                        2
-                        * math.pi
+                        math.pi
                         * (vel_r_max**2 - vel_r_min**2)
                         * (vel_z_max - vel_z_min)
                         * t_model_init_seconds**3
