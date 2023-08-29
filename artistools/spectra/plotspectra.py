@@ -142,7 +142,7 @@ def plot_reference_spectrum(
 
     print(" metadata: " + ", ".join([f"{k}='{v}'" if hasattr(v, "lower") else f"{k}={v}" for k, v in metadata.items()]))
 
-    specdata = specdata.query("lambda_angstroms > @xmin and lambda_angstroms < @xmax")
+    specdata = specdata[(specdata["lambda_angstroms"] > xmin) & (specdata["lambda_angstroms"] < xmax)]
 
     at.spectra.print_integrated_flux(
         specdata["f_lambda"], specdata["lambda_angstroms"], distance_megaparsec=metadata["dist_mpc"]
