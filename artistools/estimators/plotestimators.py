@@ -17,7 +17,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from typeguard import check_type
-from typeguard import typechecked
 
 import artistools as at
 
@@ -543,7 +542,6 @@ def plot_series(
     ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename), **plotkwargs)
 
 
-@typechecked
 def get_xlist(
     xvariable: str,
     allnonemptymgilist: t.Sequence[int],
@@ -700,7 +698,6 @@ def plot_subplot(
             )  # prop={'size': 9})
 
 
-@typechecked
 def make_plot(
     modelpath: Path | str,
     timestepslist_unfiltered: list[list[int]],

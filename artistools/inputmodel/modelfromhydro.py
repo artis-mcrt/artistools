@@ -172,8 +172,10 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
         )
         t_model_days = targetmodeltime_days
 
+    ncoordgridx = round(len(griddata) ** (1.0 / 3.0))
+    assert ncoordgridx**3 == len(griddata)
+    print(f"Grid model is {ncoordgridx} x {ncoordgridx} x {ncoordgridx} = {len(griddata)} cells")
     if minparticlespercell > 0:
-        ncoordgridx = round(len(griddata) ** (1.0 / 3.0))
         xmax = -griddata.pos_x_min.min()
         wid_init = 2 * xmax / ncoordgridx
         cellfilter = np.logical_and(griddata.tracercount < minparticlespercell, griddata.rho > 0.0)
@@ -313,17 +315,22 @@ def makemodelfromgriddata(
     outputpath=Path(),
     targetmodeltime_days=None,
     minparticlespercell=0,
-    traj_root=None,
+    traj_root: Path | str | None = None,
     dimensions=3,
     args=None,
 ):
-    assert dimensions in [1, 3]
-    headercommentlines = [f"gridfolder: {Path(gridfolderpath).resolve().parts[-1]}"]
     dfmodel, t_model_days, t_mergertime_s, vmax = at.inputmodel.modelfromhydro.read_griddat_file(
         pathtogriddata=gridfolderpath,
         targetmodeltime_days=targetmodeltime_days,
         minparticlespercell=minparticlespercell,
     )
+
+    modelmeta = {
+        "dimensions": 3,
+        "t_model_init_days": t_model_days,
+        "vmax_cmps": vmax,
+        "headercommentlines": [f"gridfolder: {Path(gridfolderpath).resolve().parts[-1]}"],
+    }
 
     if getattr(args, "fillcentralhole", False):
         dfmodel = at.inputmodel.modelfromhydro.add_mass_to_center(dfmodel, t_model_days, vmax, args)
@@ -339,7 +346,7 @@ def makemodelfromgriddata(
 
     if traj_root is not None:
         print(f"Nuclear network abundances from {traj_root} will be used")
-        headercommentlines.append(f"trajfolder: {Path(traj_root).resolve().parts[-1]}")
+        modelmeta["headercommentlines"].append(f"trajfolder: {Path(traj_root).resolve().parts[-1]}")
         t_model_days_incpremerger = t_model_days + (t_mergertime_s / 86400)
 
         (
@@ -357,9 +364,13 @@ def makemodelfromgriddata(
         print("WARNING: No abundances will be set because no nuclear network trajectories folder was specified")
         dfelabundances = None
 
-    if dimensions == 1:
-        dfmodel, dfelabundances, dfgridcontributions = at.inputmodel.sphericalaverage(
-            dfmodel, t_model_days, vmax, dfelabundances, dfgridcontributions
+    if dimensions < 3:
+        dfmodel, dfelabundances, dfgridcontributions, modelmeta = at.inputmodel.dimension_reduce_3d_model(
+            dfmodel=dfmodel,
+            outputdimensions=dimensions,
+            dfelabundances=dfelabundances,
+            dfgridcontributions=dfgridcontributions,
+            modelmeta=modelmeta,
         )
 
     if "cellYe" in dfmodel:
@@ -373,12 +384,14 @@ def makemodelfromgriddata(
             dfgridcontributions, Path(outputpath, "gridcontributions.txt")
         )
 
-    headercommentlines.append(f"generated at (UTC): {datetime.datetime.now(tz=datetime.timezone.utc)}")
+    modelmeta["headercommentlines"].append(f"generated at (UTC): {datetime.datetime.now(tz=datetime.timezone.utc)}")
 
     if traj_root is not None:
         print(f'Writing to {Path(outputpath) / "abundances.txt"}...')
         at.inputmodel.save_initelemabundances(
-            dfelabundances=dfelabundances, abundancefilename=outputpath, headercommentlines=headercommentlines
+            dfelabundances=dfelabundances,
+            abundancefilename=outputpath,
+            headercommentlines=modelmeta["headercommentlines"],
         )
     else:
         at.inputmodel.save_empty_abundance_file(outputfilepath=outputpath, ngrid=len(dfmodel))
@@ -387,10 +400,7 @@ def makemodelfromgriddata(
     at.inputmodel.save_modeldata(
         modelpath=outputpath,
         dfmodel=dfmodel,
-        t_model_init_days=t_model_days,
-        dimensions=dimensions,
-        vmax=vmax,
-        headercommentlines=headercommentlines,
+        modelmeta=modelmeta,
     )
 
 

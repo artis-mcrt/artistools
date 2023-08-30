@@ -15,7 +15,6 @@ import numpy as np
 import pandas as pd
 from matplotlib import ticker
 from matplotlib.artist import Artist
-from typeguard import typechecked
 
 import artistools as at
 
@@ -93,7 +92,6 @@ def plot_polarisation(modelpath: Path, args) -> None:
     print(f"Saved {figname}")
 
 
-@typechecked
 def plot_reference_spectrum(
     filename: Path | str,
     axis: plt.Axes,
@@ -144,7 +142,7 @@ def plot_reference_spectrum(
 
     print(" metadata: " + ", ".join([f"{k}='{v}'" if hasattr(v, "lower") else f"{k}={v}" for k, v in metadata.items()]))
 
-    specdata = specdata.query("lambda_angstroms > @xmin and lambda_angstroms < @xmax")
+    specdata = specdata[(specdata["lambda_angstroms"] > xmin) & (specdata["lambda_angstroms"] < xmax)]
 
     at.spectra.print_integrated_flux(
         specdata["f_lambda"], specdata["lambda_angstroms"], distance_megaparsec=metadata["dist_mpc"]
@@ -192,7 +190,6 @@ def plot_filter_functions(axis: plt.Axes) -> None:
         )
 
 
-@typechecked
 def plot_artis_spectrum(
     axes: t.Collection[plt.Axes],
     modelpath: Path | str,
@@ -384,7 +381,6 @@ def plot_artis_spectrum(
     return dfspectrum[["lambda_angstroms", "f_lambda"]]
 
 
-@typechecked
 def make_spectrum_plot(
     speclist: t.Collection[Path | str],
     axes: t.Sequence[plt.Axes],
@@ -542,7 +538,6 @@ def make_spectrum_plot(
     return dfalldata
 
 
-@typechecked
 def make_emissionabsorption_plot(
     modelpath: Path,
     axis: plt.Axes,
@@ -867,7 +862,6 @@ def make_contrib_plot(axes: t.Iterable[plt.Axes], modelpath: Path, densityplotyv
         # ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='gouraud', cmap=plt.cm.BuGn_r)
 
 
-@typechecked
 def make_plot(args) -> tuple[plt.Figure, list[plt.Axes], pd.DataFrame]:
     # font = {'size': 16}
     # mpl.rc('font', **font)
@@ -1049,7 +1043,6 @@ def make_plot(args) -> tuple[plt.Figure, list[plt.Axes], pd.DataFrame]:
     return fig, axes, dfalldata
 
 
-@typechecked
 def addargs(parser) -> None:
     parser.add_argument(
         "specpath",
@@ -1316,7 +1309,6 @@ def addargs(parser) -> None:
     )
 
 
-@typechecked
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Plot spectra from ARTIS and reference data."""
     if args is None:

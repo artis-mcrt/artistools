@@ -62,7 +62,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     print(dfelabundances)
 
     modeloutfilename = "model_fullymixed.txt"
-    at.save_modeldata(dfmodel, t_model_init_days, Path(args.outputpath, modeloutfilename))
+    at.save_modeldata(
+        dfmodel=dfmodel, t_model_init_days=t_model_init_days, filename=Path(args.outputpath, modeloutfilename)
+    )
     print(f"Saved {modeloutfilename}")
 
     abundoutfilename = "abundances_fullymixed.txt"

@@ -40,10 +40,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--makeenergyinputfiles", action="store_true", help="Downscale a 3D ARTIS model to smaller grid size"
     )
 
-    parser.add_argument(
-        "-modeldim", type=int, default=None, help="Choose how many dimensions input model has. 1, 2 or 3"
-    )
-
     parser.add_argument("-outputpath", "-o", default=".", help="Folder for output")
 
 
@@ -76,8 +72,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         )
 
     if args.makeenergyinputfiles:
-        model, _ = at.inputmodel.get_modeldata(args.modelpath[0])
-        rho = 10 ** model["logrho"] if args.modeldim == 1 else model["rho"]
+        model, modelmeta = at.inputmodel.get_modeldata(args.modelpath[0], derived_cols=["cellmass_grams"])
+        rho = 10 ** model["logrho"] if modelmeta["dimensions"] == 1 else model["rho"]
         Mtot_grams = model["cellmass_grams"].sum()
 
         print(f"total mass {Mtot_grams / 1.989e33} Msun")
