@@ -17,7 +17,7 @@ from matplotlib import gridspec
 
 import artistools as at
 
-AxisType: t.TypeAlias = t.Literal["x", "y", "z", "r", "z"]
+AxisType: t.TypeAlias = t.Literal["x", "y", "z", "r", "rcyl", "z"]
 
 
 def get_2D_slice_through_3d_model(
@@ -154,7 +154,7 @@ def plot_2d_initial_abundances(modelpath, args=None) -> None:
         )
     elif modelmeta["dimensions"] == 2:
         df2dslice = dfmodel
-        plotaxis1 = "r"
+        plotaxis1 = "rcyl"
         plotaxis2 = "z"
     else:
         msg = f"Model dimensions {modelmeta['dimensions']} not supported"
@@ -166,7 +166,7 @@ def plot_2d_initial_abundances(modelpath, args=None) -> None:
     figwidth = at.get_config()["figwidth"]
     fig = plt.figure(
         figsize=(figwidth * xfactor * ncols, figwidth * nrows),
-        tight_layout={"pad": 0.1, "w_pad": 0.0, "h_pad": 0.5},
+        tight_layout={"pad": 1.0, "w_pad": 0.0, "h_pad": 0.0},
     )
     gs = gridspec.GridSpec(nrows + 1, ncols, height_ratios=[0.05, 1], width_ratios=[1] * ncols)
 
@@ -189,8 +189,8 @@ def plot_2d_initial_abundances(modelpath, args=None) -> None:
             ax, df2dslice, modelmeta, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
         )
 
-    xlabel = rf"v$_{plotaxis1}$ [$c$]"
-    ylabel = rf"v$_{plotaxis2}$ [$c$]"
+    xlabel = r"v$_{" + f"{plotaxis1}" + r"}$ [$c$]"
+    ylabel = r"v$_{" + f"{plotaxis2}" + r"}$ [$c$]"
 
     cbar = fig.colorbar(scaledmap, cax=axcbar, location="top", use_gridspec=True)
     axes[0].set_xlabel(xlabel)

@@ -16,7 +16,6 @@ import pandas as pd
 import polars as pl
 import pyzstd
 import xz
-from typeguard import typechecked
 
 import artistools as at
 
@@ -61,7 +60,6 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         super().add_arguments(actions)
 
 
-@typechecked
 class AppendPath(argparse.Action):
     def __call__(self, parser, args, values, option_string=None) -> None:  # type: ignore[no-untyped-def] # noqa: ARG002
         # if getattr(args, self.dest) is None:
@@ -257,7 +255,7 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
 
     assoc_cells: dict[int, list[int]] = {}
     mgi_of_propcells: dict[int, int] = {}
-    with filename.open() as fgrid:
+    with zopen(filename) as fgrid:
         for line in fgrid:
             row = line.split()
             propcellid, mgi = int(row[0]), int(row[1])
@@ -296,7 +294,7 @@ def get_wid_init_at_tmodel(
         dfmodel, modelmeta = at.get_modeldata(modelpath, getheadersonly=True)
         assert modelmeta["dimensions"] == 3
         ngridpoints = len(dfmodel)
-        xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400
+        xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400.0
     ncoordgridx: int = round(ngridpoints ** (1.0 / 3.0))
 
     assert xmax is not None
@@ -326,7 +324,6 @@ def get_nu_grid(modelpath: Path) -> np.ndarray[t.Any, np.dtype[np.float64]]:
     return specdata.loc[:, "0"].to_numpy()
 
 
-@typechecked
 def get_deposition(modelpath: Path | str = ".") -> pd.DataFrame:
     """Return a pandas DataFrame containing the deposition data."""
     if Path(modelpath).is_file():
@@ -426,7 +423,6 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
     raise ValueError(msg)
 
 
-@typechecked
 def get_time_range(
     modelpath: Path,
     timestep_range_str: str | None = None,
@@ -515,7 +511,6 @@ def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
     return timearray[timestep]
 
 
-@typechecked
 def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, float | None]:
     """Return the time range for which the entire model can send light signals the observer."""
     modelpath = Path(modelpath)
@@ -628,7 +623,6 @@ def get_elsymbol(atomic_number: int | np.int64) -> str:
 
 
 @lru_cache(maxsize=16)
-@typechecked
 def get_ionstring(
     atomic_number: int | np.int64,
     ionstage: None | int | np.int64 | t.Literal["ALL"],
@@ -655,7 +649,8 @@ def get_ionstring(
 
 
 # based on code from https://gist.github.com/kgaughan/2491663/b35e9a117b02a3567c8107940ac9b2023ba34ced
-@typechecked
+
+
 def parse_range(rng: str, dictvars: dict[str, int]) -> t.Iterable[t.Any]:
     """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars."""
     strparts = rng.split("-")
@@ -674,7 +669,6 @@ def parse_range(rng: str, dictvars: dict[str, int]) -> t.Iterable[t.Any]:
     return range(start, end + 1)
 
 
-@typechecked
 def parse_range_list(rngs: str | list | int, dictvars: dict | None = None) -> list[t.Any]:
     """Parse a string with comma-separated ranges or a list of range strings.
 
@@ -689,7 +683,6 @@ def parse_range_list(rngs: str | list | int, dictvars: dict | None = None) -> li
     return sorted(set(chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
 
 
-@typechecked
 def makelist(x: None | t.Sequence[t.Any] | str | Path) -> list[t.Any]:
     """If x is not a list (or is a string), make a list containing x."""
     if x is None:
@@ -697,7 +690,6 @@ def makelist(x: None | t.Sequence[t.Any] | str | Path) -> list[t.Any]:
     return list(x) if hasattr(x, "__iter__") else [x]
 
 
-@typechecked
 def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> t.Sequence[t.Sequence[t.Any]]:
     """Make lists equal in length to requiredlength either by padding with None or truncating."""
     list_sequence = []
@@ -711,7 +703,6 @@ def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> t.Sequence[t.Seque
     return list_sequence
 
 
-@typechecked
 def flatten_list(listin: list[t.Any]) -> list[t.Any]:
     """Flatten a list of lists."""
     listout = []
@@ -723,7 +714,6 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
     return listout
 
 
-@typechecked
 def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any:
     """Open filename, filename.gz or filename.xz."""
     ext_fopen = [(".lz4", lz4.frame.open), (".zst", pyzstd.open), (".gz", gzip.open), (".xz", xz.open)]
@@ -737,7 +727,6 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
     return Path(filename).open(mode=mode, encoding=encoding)
 
 
-@typechecked
 def firstexisting(
     filelist: t.Sequence[str | Path] | str | Path,
     folder: Path | str = Path(),
@@ -767,7 +756,6 @@ def firstexisting(
     raise FileNotFoundError(msg)
 
 
-@typechecked
 def anyexist(
     filelist: t.Sequence[str | Path],
     folder: Path | str = Path(),
@@ -782,7 +770,6 @@ def anyexist(
     return True
 
 
-@typechecked
 def stripallsuffixes(f: Path) -> Path:
     """Take a file path (e.g. packets00_0000.out.gz) and return the Path with no suffixes (e.g. packets)."""
     f_nosuffixes = Path(f)
@@ -803,7 +790,6 @@ def readnoncommentline(file: io.TextIOBase) -> str:
 
 
 @lru_cache(maxsize=24)
-@typechecked
 def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     """Return a dict of metadata for a file, either from a metadata file or from the big combined metadata file."""
     filepath = Path(filepath)
@@ -916,7 +902,6 @@ def get_bflist(modelpath: Path | str) -> dict[int, tuple[int, int, int, int]]:
 linetuple = namedtuple("linetuple", "lambda_angstroms atomic_number ionstage upperlevelindex lowerlevelindex")
 
 
-@typechecked
 def read_linestatfile(filepath: Path | str) -> tuple[int, list[float], list[int], list[int], list[int], list[int]]:
     """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
     print(f"Loading {filepath}")
@@ -941,7 +926,6 @@ def read_linestatfile(filepath: Path | str) -> tuple[int, list[float], list[int]
     return nlines, lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
 
 
-@typechecked
 def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     textfile = at.firstexisting("linestat.out", folder=modelpath)
     parquetfile = Path(modelpath, "linelist.out.parquet")
@@ -1022,7 +1006,10 @@ def get_npts_model(modelpath: Path) -> int:
         else at.firstexisting("model.txt", folder=modelpath, tryzipped=True)
     )
     with zopen(modelfilepath) as modelfile:
-        return int(readnoncommentline(modelfile))
+        nptsline = readnoncommentline(modelfile).split(maxsplit=1)
+        if len(nptsline) == 1:
+            return int(nptsline[0])
+        return int(nptsline[0]) * int(nptsline[1])
 
 
 @lru_cache(maxsize=8)
@@ -1088,7 +1075,6 @@ def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
     return tuple(folder_timesteps)
 
 
-@typechecked
 def get_runfolders(
     modelpath: Path | str, timestep: int | None = None, timesteps: t.Sequence[int] | None = None
 ) -> t.Sequence[Path]:
@@ -1111,7 +1097,6 @@ def get_runfolders(
     return [folderpath for folderpath in folderlist_all if get_runfolder_timesteps(folderpath)]
 
 
-@typechecked
 def get_mpiranklist(
     modelpath: Path | str,
     modelgridindex: t.Iterable[int] | int | None = None,
@@ -1150,7 +1135,6 @@ def get_mpiranklist(
     return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
-@typechecked
 def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> t.Iterable[int]:
     """Return an iterable of the cell numbers processed by a given MPI rank."""
     npts_model = get_npts_model(modelpath)
@@ -1180,7 +1164,6 @@ def get_dfrankassignments(modelpath: Path | str) -> pd.DataFrame | None:
     return None
 
 
-@typechecked
 def get_mpirankofcell(modelgridindex: int, modelpath: Path | str) -> int:
     """Return the rank number of the MPI process responsible for handling a specified cell's updating and output."""
     modelpath = Path(modelpath)
@@ -1226,7 +1209,6 @@ def get_viewingdirection_costhetabincount() -> int:
     return 10
 
 
-@typechecked
 def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], list[str]]:
     nphibins = at.get_viewingdirection_phibincount()
     # pi/2 must be an exact boundary because of the change in behaviour there
@@ -1281,7 +1263,6 @@ def get_costheta_bins(usedegrees: bool, usepiminustheta: bool = False) -> tuple[
     return costhetabins_lower, costhetabins_upper, binlabels
 
 
-@typechecked
 def get_costhetabin_phibin_labels(usedegrees: bool) -> tuple[list[str], list[str]]:
     _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees)
     _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)
@@ -1301,7 +1282,6 @@ def get_vspec_dir_labels(modelpath: str | Path, viewinganglelabelunits: str = "r
     return dirlabels
 
 
-@typechecked
 def get_dirbin_labels(
     dirbins: npt.NDArray[np.int32] | t.Sequence[int] | None = None,
     modelpath: Path | str | None = None,

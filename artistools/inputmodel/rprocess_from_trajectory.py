@@ -23,7 +23,7 @@ import artistools as at
 def get_elemabund_from_nucabund(dfnucabund: pd.DataFrame) -> dict[str, float]:
     """Return a dictionary of elemental abundances from nuclear abundance DataFrame."""
     dictelemabund: dict[str, float] = {
-        f"X_{at.get_elsymbol(atomic_number)}": dfnucabund.query("Z == @atomic_number", inplace=False).massfrac.sum()
+        f"X_{at.get_elsymbol(atomic_number)}": dfnucabund[dfnucabund["Z"] == atomic_number]["massfrac"].sum()
         for atomic_number in range(1, dfnucabund.Z.max() + 1)
     }
     return dictelemabund
@@ -37,18 +37,26 @@ def open_tar_file_or_extracted(traj_root: Path, particleid: int, memberfilename:
     memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/evol.dat
     """
     path_extracted_file = Path(traj_root, str(particleid), memberfilename)
-    tarfilepath = Path(traj_root, f"{particleid}.tar")
-    if not tarfilepath.is_file():
-        tarfilepath = Path(traj_root, f"{particleid}.tar.xz")
+    tarfilepaths = [
+        Path(traj_root, filename)
+        for filename in [
+            f"{particleid}.tar",
+            f"{particleid:05d}.tar",
+            f"{particleid}.tar.xz",
+            f"{particleid:05d}.tar.xz",
+        ]
+    ]
+    tarfilepath = next((tarfilepath for tarfilepath in tarfilepaths if tarfilepath.is_file()), None)
 
-    if memberfilename.endswith(".dat") and not path_extracted_file.is_file():
+    # and memberfilename.endswith(".dat")
+    if not path_extracted_file.is_file() and tarfilepath is not None:
         tarfile.open(tarfilepath, "r:*").extract(path=Path(traj_root, str(particleid)), member=memberfilename)
 
     if path_extracted_file.is_file():
         return path_extracted_file.open(encoding="utf-8")
 
-    if not tarfilepath.is_file():
-        print(f"No network data found for particle {particleid} (so can't access {memberfilename})")
+    if tarfilepath is None:
+        print(f"  No network data found for particle {particleid} (so can't access {memberfilename})")
         raise FileNotFoundError
 
     # print(f"using {tarfilepath} for {memberfilename}")
@@ -213,7 +221,7 @@ def get_trajectory_abund_q(
             t_model_s = traj_time_s
 
     except FileNotFoundError:
-        # print(f' WARNING {particleid}.tar.xz file not found! ')
+        # print(f" WARNING {particleid}.tar.xz file not found! ")
         return {}
 
     massfractotal = dftrajnucabund.massfrac.sum()
@@ -303,11 +311,16 @@ def get_gridparticlecontributions(gridcontribpath: Path | str) -> pd.DataFrame:
 
 
 def particlenetworkdatafound(traj_root: Path, particleid: int) -> bool:
-    return (
-        (traj_root / f"{particleid}.tar.xz").is_file()
-        or (traj_root / f"{particleid}.tar").is_file()
-        or (traj_root / str(particleid)).is_dir()
-    )
+    tarfilepaths = [
+        Path(traj_root, filename)
+        for filename in [
+            f"{particleid}.tar",
+            f"{particleid:05d}.tar",
+            f"{particleid}.tar.xz",
+            f"{particleid:05d}.tar.xz",
+        ]
+    ]
+    return any(tarfilepath.is_file() for tarfilepath in tarfilepaths)
 
 
 def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataFrame) -> pd.DataFrame:
@@ -324,8 +337,7 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataF
     # after filtering, frac_of_cellmass_includemissing will still include particles with rho but no abundance data
     # frac_of_cellmass will exclude particles with no abundances
     dfcontribs["frac_of_cellmass_includemissing"] = dfcontribs["frac_of_cellmass"]
-    # dfcontribs.query('particleid not in @missing_particleids', inplace=True)
-    dfcontribs.loc[dfcontribs.eval("particleid in @missing_particleids"), "frac_of_cellmass"] = 0.0
+    dfcontribs.loc[dfcontribs["particleid"].isin(missing_particleids), "frac_of_cellmass"] = 0.0
 
     dfcontribs["frac_of_cellmass"] = [
         row.frac_of_cellmass if row.particleid not in missing_particleids else 0.0 for row in dfcontribs.itertuples()
@@ -365,10 +377,10 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataF
     return dfcontribs
 
 
-def save_gridparticlecontributions(dfcontribs: pd.DataFrame, gridcontribpath) -> None:
+def save_gridparticlecontributions(dfcontribs: pd.DataFrame, gridcontribpath: Path | str) -> None:
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
-        gridcontribpath = Path(gridcontribpath, "gridcontributions.txt")
+        gridcontribpath = gridcontribpath / "gridcontributions.txt"
     dfcontribs.to_csv(gridcontribpath, sep=" ", index=False, float_format="%.7e")
 
 
@@ -376,7 +388,7 @@ def add_abundancecontributions(
     dfgridcontributions: pd.DataFrame,
     dfmodel: pd.DataFrame,
     t_model_days_incpremerger: float,
-    traj_root: Path,
+    traj_root: Path | str,
     minparticlespercell: int = 0,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Contribute trajectory network calculation abundances to model cell abundances."""
@@ -392,7 +404,8 @@ def add_abundancecontributions(
         if len(dfthiscellcontribs) >= minparticlespercell
     ]
 
-    dfcontribs = dfcontribs.query("cellindex in @active_inputcellids")
+    traj_root = Path(traj_root)
+    dfcontribs = dfcontribs[dfcontribs["cellindex"].isin(active_inputcellids)]
     dfcontribs = filtermissinggridparticlecontributions(traj_root, dfcontribs)
     active_inputcellids = dfcontribs.cellindex.unique()
     active_inputcellcount = len(active_inputcellids)
@@ -475,10 +488,7 @@ def add_abundancecontributions(
             "inputcellid": dfnucabundances.inputcellid,
             **{
                 f"X_{at.get_elsymbol(atomic_number)}": (
-                    dfnucabundances.eval(
-                        f'{" + ".join(elemisotopes[atomic_number])}',
-                        engine="python" if len(elemisotopes[atomic_number]) > 31 else None,
-                    )
+                    dfnucabundances[elemisotopes[atomic_number]].sum(axis=1, skipna=True)
                     if atomic_number in elemisotopes
                     else np.zeros(len(dfnucabundances))
                 )

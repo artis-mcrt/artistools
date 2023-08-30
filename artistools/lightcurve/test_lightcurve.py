@@ -61,6 +61,20 @@ def test_band_lightcurve_plot() -> None:
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], outputfile=outputpath)
 
 
+def test_band_lightcurve_peakmag_risetime_plot() -> None:
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        filter=["bol", "B"],
+        include_delta_m40=True,
+        plotviewingangle=-1,
+        timemin=250,
+        timemax=300,
+        save_viewing_angle_peakmag_risetime_delta_m15_to_file=True,
+        outputfile=outputpath,
+    )
+
+
 def test_band_lightcurve_subplots() -> None:
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["bol", "B"], outputfile=outputpath)
 

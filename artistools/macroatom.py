@@ -149,13 +149,13 @@ def read_files(
             df_thisfile = pd.read_csv(filepath, delim_whitespace=True)
             # df_thisfile[['modelgridindex', 'timestep']].apply(pd.to_numeric)
             if modelgridindex:
-                df_thisfile = df_thisfile.query("modelgridindex==@modelgridindex")
+                df_thisfile = df_thisfile[df_thisfile["modelgridindex"] == modelgridindex]
             if timestepmin is not None:
-                df_thisfile = df_thisfile.query("timestep>=@timestepmin")
+                df_thisfile = df_thisfile[df_thisfile["timestep"] >= timestepmin]
             if timestepmax:
-                df_thisfile = df_thisfile.query("timestep<=@timestepmax")
+                df_thisfile = df_thisfile[df_thisfile["timestep"] <= timestepmax]
             if atomic_number:
-                df_thisfile = df_thisfile.query("Z==@atomic_number")
+                df_thisfile = df_thisfile[df_thisfile["Z"] == atomic_number]
 
             if df_thisfile is not None and not df_thisfile.empty:
                 if dfall is None:

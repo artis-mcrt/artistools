@@ -15,12 +15,10 @@ import pandas as pd
 import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
-from typeguard import typechecked
 
 import artistools as at
 
 
-@typechecked
 def read_modelfile_text(
     filename: Path | str,
     printwarningsonly: bool = False,
@@ -33,7 +31,6 @@ def read_modelfile_text(
 
     modelmeta: dict[str, t.Any] = {"headercommentlines": []}
 
-    modelpath = Path(filename).parent
     if not printwarningsonly:
         print(f"Reading {filename}")
 
@@ -49,16 +46,15 @@ def read_modelfile_text(
         if len(line.strip().split(" ")) == 2:
             modelmeta["dimensions"] = 2
             ncoordgridr, ncoordgridz = (int(n) for n in line.strip().split(" "))
-            modelmeta["ncoordgridr"] = ncoordgridr
+            modelmeta["ncoordgridrcyl"] = ncoordgridr
             modelmeta["ncoordgridz"] = ncoordgridz
-            modelcellcount = ncoordgridr * ncoordgridz
-            modelmeta["ncoordgrid"] = modelcellcount
+            npts_model = ncoordgridr * ncoordgridz
             if not printwarningsonly:
-                print(f"  detected 2D model file with {ncoordgridr}x{ncoordgridz}={modelcellcount} cells")
+                print(f"  detected 2D model file with n_r*n_z={ncoordgridr}x{ncoordgridz}={npts_model} cells")
         else:
-            modelcellcount = int(line)
+            npts_model = int(line)
 
-        modelmeta["npts_model"] = modelcellcount
+        modelmeta["npts_model"] = npts_model
         modelmeta["t_model_init_days"] = float(fmodel.readline())
         numheaderrows += 2
         t_model_init_seconds = modelmeta["t_model_init_days"] * 24 * 60 * 60
@@ -72,10 +68,10 @@ def read_modelfile_text(
             if "dimensions" not in modelmeta:  # not already detected as 2D
                 modelmeta["dimensions"] = 3
                 # number of grid cell steps along an axis (currently the same for xyz)
-                ncoordgridx = int(round(modelcellcount ** (1.0 / 3.0)))
-                ncoordgridy = int(round(modelcellcount ** (1.0 / 3.0)))
-                ncoordgridz = int(round(modelcellcount ** (1.0 / 3.0)))
-                assert (ncoordgridx * ncoordgridy * ncoordgridz) == modelcellcount
+                ncoordgridx = int(round(npts_model ** (1.0 / 3.0)))
+                ncoordgridy = int(round(npts_model ** (1.0 / 3.0)))
+                ncoordgridz = int(round(npts_model ** (1.0 / 3.0)))
+                assert (ncoordgridx * ncoordgridy * ncoordgridz) == npts_model
                 modelmeta["ncoordgridx"] = ncoordgridx
                 modelmeta["ncoordgridy"] = ncoordgridy
                 modelmeta["ncoordgridz"] = ncoordgridz
@@ -83,16 +79,13 @@ def read_modelfile_text(
                     modelmeta["ncoordgrid"] = ncoordgridx
 
                 if not printwarningsonly:
-                    print(
-                        "  detected 3D model file with"
-                        f" {ncoordgridx}x{ncoordgridy}x{ncoordgridz}={modelcellcount} cells"
-                    )
+                    print(f"  detected 3D model file with {ncoordgridx}x{ncoordgridy}x{ncoordgridz}={npts_model} cells")
 
         except ValueError:
-            assert modelmeta.get("dimensions", -1) != 2  # 2D model should have vmax line here
+            assert modelmeta.get("dimensions", -1) != 2, "2D model should have a vmax line here"
             if "dimensions" not in modelmeta:
                 if not printwarningsonly:
-                    print(f"  detected 1D model file with {modelcellcount} radial zones")
+                    print(f"  detected 1D model file with {npts_model} radial zones")
                 modelmeta["dimensions"] = 1
                 getheadersonly = False
 
@@ -112,51 +105,8 @@ def read_modelfile_text(
         ncols_line_odd = len(fmodel.readline().split())
 
         if columns is None:
-            if modelmeta["dimensions"] == 1:
-                columns = [
-                    "inputcellid",
-                    "velocity_outer",
-                    "logrho",
-                    "X_Fegroup",
-                    "X_Ni56",
-                    "X_Co56",
-                    "X_Fe52",
-                    "X_Cr48",
-                    "X_Ni57",
-                    "X_Co57",
-                ]
-
-            elif modelmeta["dimensions"] == 2:
-                columns = [
-                    "inputcellid",
-                    "pos_r_mid",
-                    "pos_z_mid",
-                    "rho",
-                    "X_Fegroup",
-                    "X_Ni56",
-                    "X_Co56",
-                    "X_Fe52",
-                    "X_Cr48",
-                    "X_Ni57",
-                    "X_Co57",
-                ]
-
-            elif modelmeta["dimensions"] == 3:
-                columns = [
-                    "inputcellid",
-                    "inputpos_a",
-                    "inputpos_b",
-                    "inputpos_c",
-                    "rho",
-                    "X_Fegroup",
-                    "X_Ni56",
-                    "X_Co56",
-                    "X_Fe52",
-                    "X_Cr48",
-                    "X_Ni57",
-                    "X_Co57",
-                ]
-            # last two abundances are Optional
+            columns = get_standard_columns(modelmeta["dimensions"], includenico57=True)
+            # last two abundances are optional
             assert columns is not None
             if ncols_line_even == ncols_line_odd and (ncols_line_even + ncols_line_odd) > len(columns):
                 # one line per cell format
@@ -184,37 +134,35 @@ def read_modelfile_text(
     if skipnuclidemassfraccolumns:
         if not printwarningsonly:
             print("  skipping nuclide abundance columns in model")
-        if modelmeta["dimensions"] == 1:
-            ncols_line_even = 3
-        elif modelmeta["dimensions"] == 2:
-            ncols_line_even = 4
-        elif modelmeta["dimensions"] == 3:
-            ncols_line_even = 5
+
+        match modelmeta["dimensions"]:
+            case 1:
+                ncols_line_even = 3
+            case 2:
+                ncols_line_even = 4
+            case 3:
+                ncols_line_even = 5
         ncols_line_odd = 0
 
-    nrows_read = 1 if getheadersonly else modelcellcount
+    nrows_read = 1 if getheadersonly else npts_model
 
     skiprows: list[int] | int | None
 
     skiprows = (
         numheaderrows
         if onelinepercellformat
-        else [
-            x
-            for x in range(numheaderrows + modelcellcount * 2)
-            if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
-        ]
+        else [x for x in range(numheaderrows + npts_model * 2) if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0]
     )
 
-    dtypes: defaultdict[str, str]
+    dtypes: defaultdict[str, t.Any]
     if dtype_backend == "pyarrow":
         dtypes = defaultdict(lambda: "float32[pyarrow]")
         dtypes["inputcellid"] = "int32[pyarrow]"
         dtypes["tracercount"] = "int32[pyarrow]"
     else:
         dtypes = defaultdict(lambda: "float32")
-        dtypes["inputcellid"] = "int32"
-        dtypes["tracercount"] = "int32"
+        dtypes["inputcellid"] = np.int32
+        dtypes["tracercount"] = np.int32
 
     # each cell takes up two lines in the model file
     dfmodel = pd.read_csv(
@@ -233,9 +181,7 @@ def read_modelfile_text(
     if ncols_line_odd > 0 and not onelinepercellformat:
         # read in the odd rows and merge dataframes
         skipevenrows = [
-            x
-            for x in range(numheaderrows + modelcellcount * 2)
-            if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
+            x for x in range(numheaderrows + npts_model * 2) if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
         ]
         dfmodeloddlines = pd.read_csv(
             at.zopen(filename),
@@ -252,47 +198,42 @@ def read_modelfile_text(
         dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
         del dfmodeloddlines
 
-    if len(dfmodel) > modelcellcount:
-        dfmodel = dfmodel.iloc[:modelcellcount]
+    if len(dfmodel) > npts_model:
+        dfmodel = dfmodel.iloc[:npts_model]
 
-    assert len(dfmodel) == modelcellcount or getheadersonly
+    assert len(dfmodel) == npts_model or getheadersonly
 
     dfmodel.index.name = "cellid"
-    # dfmodel.drop('inputcellid', axis=1, inplace=True)
 
     if modelmeta["dimensions"] == 1:
-        dfmodel["velocity_inner"] = np.concatenate([[0.0], dfmodel["velocity_outer"].to_numpy()[:-1]])
-        dfmodel["cellmass_grams"] = (
-            10 ** dfmodel["logrho"]
-            * (4.0 / 3.0)
-            * 3.14159265
-            * (dfmodel["velocity_outer"] ** 3 - dfmodel["velocity_inner"] ** 3)
-            * (1e5 * t_model_init_seconds) ** 3
-        )
         modelmeta["vmax_cmps"] = dfmodel.velocity_outer.max() * 1e5
 
     elif modelmeta["dimensions"] == 2:
+        wid_init_rcyl = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"]
+        wid_init_z = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"]
+        modelmeta["wid_init_rcyl"] = wid_init_rcyl
+        modelmeta["wid_init_z"] = wid_init_z
         if not getheadersonly:
-            # check pos_r_mid and pos_z_mid are correct
-            wid_init_r = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridr"]
-            wid_init_z = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"]
-            for modelgridindex in range(modelmeta["ncoordgrid"]):
-                n_r = modelgridindex % modelmeta["ncoordgridr"]
-                n_z = modelgridindex // modelmeta["ncoordgridr"]
-                r_min = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridr"] * n_r
-                z_min = (
+            # check pos_rcyl_mid and pos_z_mid are correct
+
+            for modelgridindex, cell_pos_rcyl_mid, cell_pos_z_mid in dfmodel[
+                ["pos_rcyl_mid", "pos_z_mid"]
+            ].itertuples():
+                n_r = modelgridindex % modelmeta["ncoordgridrcyl"]
+                n_z = modelgridindex // modelmeta["ncoordgridrcyl"]
+                pos_rcyl_min = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"] * n_r
+                pos_z_min = (
                     -modelmeta["vmax_cmps"] * t_model_init_seconds
                     + 2.0 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"] * n_z
                 )
-                r_mid = r_min + 0.5 * wid_init_r
-                z_mid = z_min + 0.5 * wid_init_z
-                assert np.isclose(dfmodel.iloc[modelgridindex].pos_r_mid, r_mid, atol=wid_init_r / 2.0)
-                assert np.isclose(dfmodel.iloc[modelgridindex].pos_z_mid, z_mid, atol=wid_init_z / 2.0)
+                pos_rcyl_mid = pos_rcyl_min + 0.5 * wid_init_rcyl
+                pos_z_mid = pos_z_min + 0.5 * wid_init_z
+                assert np.isclose(cell_pos_rcyl_mid, pos_rcyl_mid, atol=wid_init_rcyl / 2.0)
+                assert np.isclose(cell_pos_z_mid, pos_z_mid, atol=wid_init_z / 2.0)
 
     elif modelmeta["dimensions"] == 3:
-        wid_init = at.get_wid_init_at_tmodel(modelpath, modelcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
+        wid_init = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridx"]
         modelmeta["wid_init"] = wid_init
-        dfmodel["cellmass_grams"] = dfmodel["rho"] * wid_init**3
 
         dfmodel = dfmodel.rename(columns={"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"})
         if "pos_x_min" in dfmodel.columns and not printwarningsonly:
@@ -347,20 +288,17 @@ def read_modelfile_text(
                     columns={"inputpos_a": "pos_z_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_x_min"},
                 )
 
-    modelmeta["modelcellcount"] = modelcellcount
-
     return dfmodel, modelmeta
 
 
-@typechecked
 def get_modeldata(
     modelpath: Path | str = Path(),
     get_elemabundances: bool = False,
-    derived_cols: t.Sequence[str] | None = None,
+    derived_cols: t.Sequence[str] | str | None = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
     skipnuclidemassfraccolumns: bool = False,
-    dtype_backend: t.Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
+    dtype_backend: t.Literal["pyarrow", "numpy_nullable"] = "pyarrow",
     use_polars: bool = False,
 ) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
@@ -375,6 +313,9 @@ def get_modeldata(
         - dfmodel: a pandas DataFrame with a row for each model grid cell
         - modelmeta: a dictionary of input model parameters, with keys such as t_model_init_days, vmax_cmps, dimensions, etc.
     """
+    if isinstance(derived_cols, str):
+        derived_cols = [derived_cols]
+
     inputpath = Path(modelpath)
     if use_polars:
         dtype_backend = "pyarrow"
@@ -465,9 +406,6 @@ def get_modeldata(
             dfmodel=dfmodel,
             derived_cols=derived_cols,
             modelmeta=modelmeta,
-            dimensions=modelmeta["dimensions"],
-            t_model_init_seconds=modelmeta["t_model_init_days"] * 86400.0,
-            wid_init=modelmeta.get("wid_init", None),
             modelpath=modelpath,
         )
 
@@ -479,7 +417,6 @@ def get_modeldata(
     return dfmodel, modelmeta
 
 
-@typechecked
 def get_modeldata_tuple(*args: t.Any, **kwargs: t.Any) -> tuple[pd.DataFrame, float, float]:
     """Get model from model.txt file
     DEPRECATED: Use get_modeldata() instead.
@@ -489,43 +426,127 @@ def get_modeldata_tuple(*args: t.Any, **kwargs: t.Any) -> tuple[pd.DataFrame, fl
     return dfmodel, modelmeta["t_model_init_days"], modelmeta["vmax_cmps"]
 
 
-@typechecked
+def get_empty_3d_model(
+    ncoordgrid: int, vmax: float, t_model_init_days: float, includenico57: bool = False
+) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
+    xmax = vmax * t_model_init_days * 86400.0
+
+    modelmeta = {
+        "dimensions": 3,
+        "t_model_init_days": t_model_init_days,
+        "vmax_cmps": vmax,
+        "npts_model": ncoordgrid**3,
+        "wid_init": 2 * xmax / ncoordgrid,
+        "ncoordgrid": ncoordgrid,
+        "ncoordgridx": ncoordgrid,
+        "ncoordgridy": ncoordgrid,
+        "ncoordgridz": ncoordgrid,
+        "headercommentlines": [],
+    }
+
+    dfmodel = pl.DataFrame(
+        {"modelgridindex": range(ncoordgrid**3), "inputcellid": range(1, 1 + ncoordgrid**3)},
+        schema={"modelgridindex": pl.Int32, "inputcellid": pl.Int32},
+    ).lazy()
+
+    dfmodel = dfmodel.with_columns(
+        [
+            pl.col("modelgridindex").mod(ncoordgrid).alias("n_x"),
+            (pl.col("modelgridindex") // ncoordgrid).mod(ncoordgrid).alias("n_y"),
+            (pl.col("modelgridindex") // (ncoordgrid**2)).mod(ncoordgrid).alias("n_z"),
+        ]
+    )
+
+    dfmodel = dfmodel.with_columns(
+        [
+            (-xmax + 2 * pl.col("n_x") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_x_min"),
+            (-xmax + 2 * pl.col("n_y") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_y_min"),
+            (-xmax + 2 * pl.col("n_z") * xmax / ncoordgrid).cast(pl.Float32).alias("pos_z_min"),
+        ]
+    )
+
+    dfmodel = dfmodel.drop(["modelgridindex", "n_x", "n_y", "n_z"])
+
+    standardcols = get_standard_columns(3, includenico57=includenico57)
+    dfmodel = dfmodel.with_columns(
+        [pl.lit(0.0, dtype=pl.Float32).alias(colname) for colname in standardcols if colname not in dfmodel.columns]
+    )
+
+    return dfmodel, modelmeta
+
+
 def add_derived_cols_to_modeldata(
     dfmodel: pl.DataFrame | pl.LazyFrame,
     derived_cols: t.Sequence[str],
     modelmeta: dict[str, t.Any],
-    dimensions: int | None = None,
-    t_model_init_seconds: float | None = None,
-    wid_init: float | None = None,
     modelpath: Path | None = None,
 ) -> pl.LazyFrame:
     """Add columns to modeldata using e.g. derived_cols = ('velocity', 'Ye')."""
-    if dimensions is None:
-        dimensions = get_dfmodel_dimensions(dfmodel)
-
     dfmodel = dfmodel.lazy()
     newcols = []
+    t_model_init_seconds = modelmeta["t_model_init_days"] * 86400.0
 
-    if dimensions == 1:
-        axes = ["r"]
-    if dimensions == 2:
-        axes = ["r", "z"]
-        wid_init_r = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridr"]
-        wid_init_z = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"]
-        if "pos_min" in derived_cols:
-            assert t_model_init_seconds is not None
-            newcols += [
-                (pl.col("pos_r_mid") - wid_init_r / 2.0).alias("pos_r_min"),
-                (pl.col("pos_z_mid") - wid_init_z / 2.0).alias("pos_z_min"),
-            ]
-        if "pos_max" in derived_cols:
-            assert t_model_init_seconds is not None
-            newcols += [
-                (pl.col("pos_r_mid") + wid_init_r / 2.0).alias("pos_r_max"),
-                (pl.col("pos_z_mid") + wid_init_z / 2.0).alias("pos_z_max"),
-            ]
-    elif dimensions == 3:
-        axes = ["x", "y", "z"]
+    dimensions = modelmeta["dimensions"]
+
+    if dimensions == 3:
+        wid_init = modelmeta["wid_init"]
+
+    match dimensions:
+        case 1:
+            axes = ["r"]
+            if "cellmass_grams" in derived_cols or "velocity_inner" in derived_cols:
+                dfmodel = dfmodel.with_columns(
+                    pl.col("velocity_outer").shift_and_fill(0.0, periods=1).alias("velocity_inner")
+                )
+
+            if "cellmass_grams" in derived_cols:
+                newcols += [
+                    (
+                        pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0)
+                        * (4.0 / 3.0)
+                        * 3.14159265
+                        * (pl.col("velocity_outer") ** 3 - pl.col("velocity_inner") ** 3)
+                        * (1e5 * t_model_init_seconds) ** 3
+                    ).alias("cellmass_grams")
+                ]
+
+        case 2:
+            axes = ["rcyl", "z"]
+            wid_init_rcyl = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"]
+            wid_init_z = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"]
+
+            if "pos_min" in derived_cols:
+                assert t_model_init_seconds is not None
+                newcols += [
+                    (pl.col("pos_rcyl_mid") - wid_init_rcyl / 2.0).alias("pos_rcyl_min"),
+                    (pl.col("pos_z_mid") - wid_init_z / 2.0).alias("pos_z_min"),
+                ]
+
+            if "pos_max" in derived_cols:
+                assert t_model_init_seconds is not None
+                newcols += [
+                    (pl.col("pos_rcyl_mid") + wid_init_rcyl / 2.0).alias("pos_rcyl_max"),
+                    (pl.col("pos_z_mid") + wid_init_z / 2.0).alias("pos_z_max"),
+                ]
+
+            if "cellmass_grams" in derived_cols:
+                newcols += [
+                    (
+                        pl.col("rho")
+                        * math.pi
+                        * (
+                            (pl.col("pos_rcyl_mid") + wid_init_rcyl / 2.0) ** 2
+                            - (pl.col("pos_rcyl_mid") - wid_init_rcyl / 2.0) ** 2
+                        )
+                        * wid_init_z
+                    ).alias("cellmass_grams")
+                ]
+
+        case 3:
+            axes = ["x", "y", "z"]
+            if "cellmass_grams" in derived_cols:
+                assert wid_init is not None
+                newcols += [(pl.col("rho") * wid_init**3).alias("cellmass_grams")]
 
     if dimensions > 1:
         if "velocity" in derived_cols or "vel_min" in derived_cols:
@@ -537,6 +558,7 @@ def add_derived_cols_to_modeldata(
             newcols += [
                 ((pl.col(f"pos_{ax}_min") + wid_init) / t_model_init_seconds).alias(f"vel_{ax}_max") for ax in axes
             ]
+
     if dimensions == 3:
         if any(col in derived_cols for col in ["velocity", "vel_mid", "vel_r_mid"]):
             assert wid_init is not None
@@ -701,89 +723,97 @@ def get_3d_modeldata_minimal(modelpath: str | Path) -> pd.DataFrame:
     return model
 
 
-@typechecked
+def get_standard_columns(dimensions: int, includenico57: bool = False) -> list[str]:
+    """Get standard (artis classic) columns for modeldata DataFrame."""
+    match dimensions:
+        case 1:
+            cols = ["inputcellid", "velocity_outer", "logrho"]
+        case 2:
+            cols = ["inputcellid", "pos_rcyl_mid", "pos_z_mid", "rho"]
+        case 3:
+            cols = ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
+
+    cols += ["X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
+
+    if includenico57:
+        cols += ["X_Ni57", "X_Co57"]
+
+    return cols
+
+
 def save_modeldata(
-    dfmodel: pd.DataFrame,
-    t_model_init_days: float | None = None,
+    dfmodel: pd.DataFrame | pl.LazyFrame | pl.DataFrame,
     filename: Path | str | None = None,
     modelpath: Path | str | None = Path(),
     vmax: float | None = None,
-    dimensions: int | None = None,
     headercommentlines: list[str] | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     twolinespercell: bool = False,
     float_format: str = ".4e",
+    **kwargs: t.Any,
 ) -> None:
-    """Save a pandas DataFrame and snapshot time into ARTIS model.txt."""
-    if modelmeta:
-        if "headercommentlines" in modelmeta:
-            assert headercommentlines is None
-            headercommentlines = modelmeta["headercommentlines"]
+    """Save an artis model.txt (density and composition versus velocity) from a pandas DataFrame of cell properties and other metadata such as the time after explosion.
 
-        if "vmax_cmps" in modelmeta:
-            assert vmax is None
-            vmax = modelmeta["vmax_cmps"]
+    1D
+    -------
+    dfmodel must contain columns inputcellid, velocity_outer, logrho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
+    modelmeta is not required
 
-        if "dimensions" in modelmeta:
-            assert dimensions is None
-            dimensions = modelmeta["dimensions"]
+    2D
+    -------
+    dfmodel must contain columns inputcellid, pos_rcyl_mid, pos_z_mid, rho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
+    modelmeta must define: vmax, ncoordgridr and ncoordgridz
 
-        if "t_model_init_days" in modelmeta:
-            assert t_model_init_days is None
-            t_model_init_days = modelmeta["t_model_init_days"]
+    3D
+    -------
+    dfmodel must contain columns: inputcellid, pos_x_min, pos_y_min, pos_z_min, rho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
+    modelmeta must define: vmax, ncoordgridr and ncoordgridz
+    """
+    if isinstance(dfmodel, pl.LazyFrame | pl.DataFrame):
+        dfmodel = dfmodel.lazy().collect().to_pandas()
 
-        if "modelcellcount" in modelmeta:
-            assert len(dfmodel) == modelmeta["modelcellcount"]
-    else:
+    if modelmeta is None:
         modelmeta = {}
 
-    timestart = time.perf_counter()
-    if dimensions is None:
-        dimensions = modelmeta.get("dimensions", at.get_dfmodel_dimensions(dfmodel))
+    assert all(
+        key not in modelmeta or modelmeta[key] == kwargs[key] for key in kwargs
+    )  # can't define the same thing twice unless the values are the same
 
-    if dimensions == 1:
-        standardcols = ["inputcellid", "velocity_outer", "logrho", "X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
-    elif dimensions == 2:
-        print(f" grid size: {len(dfmodel)} ({modelmeta['ncoordgridr']} x {modelmeta['ncoordgridz']})")
-        standardcols = [
-            "inputcellid",
-            "pos_r_mid",
-            "pos_z_mid",
-            "rho",
-            "X_Fegroup",
-            "X_Ni56",
-            "X_Co56",
-            "X_Fe52",
-            "X_Cr48",
-        ]
-    elif dimensions == 3:
+    modelmeta |= kwargs  # add any extra keyword arguments to modelmeta
+
+    if "headercommentlines" in modelmeta:
+        assert headercommentlines is None
+        headercommentlines = modelmeta["headercommentlines"]
+
+    if "vmax_cmps" in modelmeta:
+        assert vmax is None or vmax == modelmeta["vmax_cmps"]
+        vmax = modelmeta["vmax_cmps"]
+
+    if "npts_model" in modelmeta:
+        assert len(dfmodel) == modelmeta["npts_model"]
+
+    timestart = time.perf_counter()
+    if modelmeta.get("dimensions") is None:
+        modelmeta["dimensions"] = at.get_dfmodel_dimensions(dfmodel)
+
+    if modelmeta["dimensions"] == 1:
+        print(f" 1D grid radial bins: {len(dfmodel)}")
+    elif modelmeta["dimensions"] == 2:
+        print(f" 2D grid size: {len(dfmodel)} ({modelmeta['ncoordgridrcyl']} x {modelmeta['ncoordgridz']})")
+        assert modelmeta["ncoordgridrcyl"] * modelmeta["ncoordgridz"] == len(dfmodel)
+    elif modelmeta["dimensions"] == 3:
         dfmodel = dfmodel.rename(columns={"gridindex": "inputcellid"})
         griddimension = int(round(len(dfmodel) ** (1.0 / 3.0)))
-        print(f" grid size: {len(dfmodel)} ({griddimension}^3)")
+        print(f" 3D grid size: {len(dfmodel)} ({griddimension}^3)")
         assert griddimension**3 == len(dfmodel)
-
-        standardcols = [
-            "inputcellid",
-            "pos_x_min",
-            "pos_y_min",
-            "pos_z_min",
-            "rho",
-            "X_Fegroup",
-            "X_Ni56",
-            "X_Co56",
-            "X_Fe52",
-            "X_Cr48",
-        ]
     else:
-        msg = f"dimensions must be 1, 2, or 3, not {dimensions}"
+        msg = f"dimensions must be 1, 2, or 3, not {modelmeta['dimensions']}"
         raise ValueError(msg)
 
-    # these two columns are optional, but position is important and they must appear before any other custom cols
-    if "X_Ni57" in dfmodel.columns:
-        standardcols.append("X_Ni57")
-
-    if "X_Co57" in dfmodel.columns:
-        standardcols.append("X_Co57")
+    # the Ni57 and Co57 columns are optional, but position is important and they must appear before any other custom cols
+    standardcols = get_standard_columns(
+        modelmeta["dimensions"], includenico57=("X_Ni57" in dfmodel.columns or "X_Co57" in dfmodel.columns)
+    )
 
     # set missing radioabundance columns to zero
     for col in standardcols:
@@ -802,20 +832,22 @@ def save_modeldata(
     modelfilepath = Path(modelpath, filename) if modelpath is not None else Path(filename)
 
     if modelfilepath.exists():
-        msg = f"{modelfilepath} already exists. Refusing to overwrite."
-        raise FileExistsError(msg)
+        oldfile = modelfilepath.rename(modelfilepath.with_suffix(".bak"))
+        print(f"{modelfilepath} already exists. Renaming existing file to {oldfile}")
 
     with modelfilepath.open("w", encoding="utf-8") as fmodel:
         if headercommentlines:
             fmodel.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
 
         fmodel.write(
-            f"{len(dfmodel)}\n" if dimensions != 2 else f"{modelmeta['ncoordgridr']} {modelmeta['ncoordgridz']}\n"
+            f"{len(dfmodel)}\n"
+            if modelmeta["dimensions"] != 2
+            else f"{modelmeta['ncoordgridrcyl']} {modelmeta['ncoordgridz']}\n"
         )
 
-        fmodel.write(f"{t_model_init_days}\n")
+        fmodel.write(f"{modelmeta['t_model_init_days']}\n")
 
-        if dimensions in [2, 3]:
+        if modelmeta["dimensions"] in [2, 3]:
             fmodel.write(f"{vmax}\n")
 
         if customcols:
@@ -823,7 +855,7 @@ def save_modeldata(
 
         abundcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
 
-        if dimensions == 1:
+        if modelmeta["dimensions"] == 1:
             for cell in dfmodel.itertuples(index=False):
                 fmodel.write(f"{cell.inputcellid:d} {cell.velocity_outer:9.2f} {cell.logrho:10.8f} ")
                 fmodel.write(" ".join([f"{getattr(cell, col)}" for col in abundcols]))
@@ -832,13 +864,13 @@ def save_modeldata(
         else:
             zeroabund = " ".join(["0.0" for _ in abundcols])
             line_end = "\n" if twolinespercell else " "
-            if dimensions == 2:
+            if modelmeta["dimensions"] == 2:
                 # Luke: quite a lot of code duplication here with the 3D case,
                 # but I think adding a function call per line would be too slow
-                for inputcellid, pos_r_mid, pos_z_mid, rho, *othercolvals in dfmodel[
-                    ["inputcellid", "pos_r_mid", "pos_z_mid", "rho", *abundcols]
+                for inputcellid, pos_rcyl_mid, pos_z_mid, rho, *othercolvals in dfmodel[
+                    ["inputcellid", "pos_rcyl_mid", "pos_z_mid", "rho", *abundcols]
                 ].itertuples(index=False, name=None):
-                    fmodel.write(f"{inputcellid:d} {pos_r_mid} {pos_z_mid} {rho}{line_end}")
+                    fmodel.write(f"{inputcellid:d} {pos_rcyl_mid} {pos_z_mid} {rho}{line_end}")
                     fmodel.write(
                         " ".join(
                             [
@@ -855,7 +887,7 @@ def save_modeldata(
                     )
                     fmodel.write("\n")
 
-            elif dimensions == 3:
+            elif modelmeta["dimensions"] == 3:
                 for inputcellid, posxmin, posymin, poszmin, rho, *othercolvals in dfmodel[
                     ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho", *abundcols]
                 ].itertuples(index=False, name=None):
@@ -960,7 +992,6 @@ def get_initelemabundances(
     return abundancedata
 
 
-@typechecked
 def save_initelemabundances(
     dfelabundances: pd.DataFrame,
     abundancefilename: Path | str,
@@ -987,8 +1018,8 @@ def save_initelemabundances(
             dfelabundances[col] = 0.0
 
     if abundancefilename.exists():
-        msg = f"{abundancefilename} already exists. Refusing to overwrite."
-        raise FileExistsError(msg)
+        oldfile = abundancefilename.rename(abundancefilename.with_suffix(".bak"))
+        print(f"{abundancefilename} already exists. Renaming existing file to {oldfile}")
 
     with Path(abundancefilename).open("w", encoding="utf-8") as fabund:
         if headercommentlines is not None:
@@ -1019,136 +1050,206 @@ def save_empty_abundance_file(ngrid: int, outputfilepath: str | Path = Path()) -
 
 
 def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) -> int:
+    """Guess whether the model is 1D, 2D, or 3D based on which columns are present."""
     if "pos_x_min" in dfmodel.columns:
         return 3
 
     return 2 if "pos_z_mid" in dfmodel.columns else 1
 
 
-def sphericalaverage(
+def dimension_reduce_3d_model(
     dfmodel: pd.DataFrame,
-    t_model_init_days: float,
-    vmax: float,
+    outputdimensions: int,
     dfelabundances: pd.DataFrame | None = None,
     dfgridcontributions: pd.DataFrame | None = None,
-    nradialbins: int | None = None,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Convert 3D Cartesian grid model to 1D spherical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
-    t_model_init_seconds = t_model_init_days * 24 * 60 * 60
+    ncoordgridr: int | None = None,
+    ncoordgridz: int | None = None,
+    modelmeta: dict[str, t.Any] | None = None,
+    **kwargs: t.Any,
+) -> tuple[pd.DataFrame, pd.DataFrame | None, pd.DataFrame | None, dict[str, t.Any]]:
+    """Convert 3D Cartesian grid model to 1D spherical or 2D cylindrical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
+    assert outputdimensions in {1, 2}
+
+    if modelmeta is None:
+        modelmeta = {}
+
+    modelmeta_out = {k: v for k, v in modelmeta.items() if not k.startswith("ncoord") and k != "wid_init"}
+
+    assert all(
+        key not in modelmeta_out or modelmeta_out[key] == kwargs[key] for key in kwargs
+    )  # can't define the same thing twice unless the values are the same
+
+    modelmeta_out |= kwargs  # add any extra keyword arguments to modelmeta
+
+    t_model_init_seconds = modelmeta["t_model_init_days"] * 24 * 60 * 60
+    vmax = modelmeta["vmax_cmps"]
     xmax = vmax * t_model_init_seconds
-    ngridpoints = len(dfmodel)
-    ncoordgridx = round(ngridpoints ** (1.0 / 3.0))
+    ngridpoints = modelmeta.get("npts_model", len(dfmodel))
+    ncoordgridx = modelmeta.get("ncoordx", int(round(ngridpoints ** (1.0 / 3.0))))
     wid_init = 2 * xmax / ncoordgridx
 
-    print(f"Spherically averaging 3D model with {ngridpoints} cells...")
-    timestart = time.perf_counter()
+    assert modelmeta.get("dimensions", 3) == 3
+    modelmeta_out["dimensions"] = outputdimensions
 
-    # dfmodel = dfmodel.query('rho > 0.').copy()
+    print(f"Resampling 3D model with {ngridpoints} cells to {outputdimensions}D...")
+    timestart = time.perf_counter()
     dfmodel = dfmodel.copy()
     celldensity = dict(dfmodel[["inputcellid", "rho"]].itertuples(index=False))
 
     for ax in ["x", "y", "z"]:
         dfmodel[f"vel_{ax}_mid"] = (dfmodel[f"pos_{ax}_min"] + (0.5 * wid_init)) / t_model_init_seconds
 
-    dfmodel["vel_r_mid"] = np.sqrt(dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2 + dfmodel["vel_z_mid"] ** 2)
-    # print(dfmodel)
-    # print(dfelabundances)
     km_to_cm = 1e5
-    if nradialbins is None:
-        nradialbins = int(ncoordgridx / 2.0)
-    velocity_bins = [vmax * n / nradialbins for n in range(nradialbins + 1)]  # cm/s
-    outcells = []
-    outcellabundances = []
-    outgridcontributions = []
+    if ncoordgridr is None:
+        ncoordgridr = int(ncoordgridx / 2.0)
+
+    if ncoordgridz is None:
+        ncoordgridz = int(ncoordgridx)
+
+    if outputdimensions == 2:
+        dfmodel["vel_rcyl_mid"] = np.sqrt(dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2)
+        modelmeta_out["ncoordgridz"] = ncoordgridz
+        modelmeta_out["ncoordgridrcyl"] = ncoordgridr
+    else:
+        dfmodel["vel_r_mid"] = np.sqrt(
+            dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2 + dfmodel["vel_z_mid"] ** 2
+        )
+        modelmeta_out["ncoordgridrc"] = ncoordgridr
+
+    # velocities in cm/s
+    velocity_bins_z_min = (
+        [-vmax + 2 * vmax * n / ncoordgridz for n in range(ncoordgridz)] if outputdimensions == 2 else [-vmax]
+    )
+    velocity_bins_z_max = (
+        [-vmax + 2 * vmax * n / ncoordgridz for n in range(1, ncoordgridz + 1)] if outputdimensions == 2 else [vmax]
+    )
+
+    velocity_bins_r_min = [vmax * n / ncoordgridr for n in range(ncoordgridr)]
+    velocity_bins_r_max = [vmax * n / ncoordgridr for n in range(1, ncoordgridr + 1)]
+
+    allmatchedcells = {}
+    for n_z, (vel_z_min, vel_z_max) in enumerate(zip(velocity_bins_z_min, velocity_bins_z_max)):
+        # "r" is the cylindrical radius in 2D, or the spherical radius in 1D
+        for n_r, (vel_r_min, vel_r_max) in enumerate(zip(velocity_bins_r_min, velocity_bins_r_max)):
+            assert vel_r_max > vel_r_min
+            cellindexout = n_z * ncoordgridr + n_r + 1
+            if outputdimensions == 1:
+                matchedcells = dfmodel[(dfmodel["vel_r_mid"] > vel_r_min) & (dfmodel["vel_r_mid"] <= vel_r_max)]
+            elif outputdimensions == 2:
+                matchedcells = dfmodel[
+                    (dfmodel["vel_rcyl_mid"] > vel_r_min)
+                    & (dfmodel["vel_rcyl_mid"] <= vel_r_max)
+                    & (dfmodel["vel_z_mid"] > vel_z_min)
+                    & (dfmodel["vel_z_mid"] <= vel_z_max)
+                ]
+
+            if len(matchedcells) == 0:
+                rho_out = 0
+            else:
+                if outputdimensions == 1:
+                    shell_volume = (4 * math.pi / 3) * (
+                        (vel_r_max * t_model_init_seconds) ** 3 - (vel_r_min * t_model_init_seconds) ** 3
+                    )
+                elif outputdimensions == 2:
+                    shell_volume = (
+                        math.pi
+                        * (vel_r_max**2 - vel_r_min**2)
+                        * (vel_z_max - vel_z_min)
+                        * t_model_init_seconds**3
+                    )
+                matchedcellrhosum = matchedcells.rho.sum()
+                rho_out = matchedcellrhosum * wid_init**3 / shell_volume
+
+            cellout: dict[str, t.Any] = {"inputcellid": cellindexout}
+
+            if outputdimensions == 1:
+                cellout |= {
+                    "logrho": math.log10(max(1e-99, rho_out)) if rho_out > 0.0 else -99.0,
+                    "velocity_outer": vel_r_max / km_to_cm,
+                }
+            elif outputdimensions == 2:
+                cellout |= {
+                    "rho": rho_out,
+                    "pos_rcyl_mid": (vel_r_min + vel_r_max) / 2 * t_model_init_seconds,
+                    "pos_z_mid": (vel_z_min + vel_z_max) / 2 * t_model_init_seconds,
+                }
+
+            allmatchedcells[cellindexout] = (
+                cellout,
+                matchedcells,
+            )
+
     includemissingcolexists = (
         dfgridcontributions is not None and "frac_of_cellmass_includemissing" in dfgridcontributions.columns
     )
 
-    highest_active_radialcellid = -1
-    for radialcellid, (velocity_inner, velocity_outer) in enumerate(zip(velocity_bins[:-1], velocity_bins[1:]), 1):
-        assert velocity_outer > velocity_inner
-        matchedcells = dfmodel.query("vel_r_mid > @velocity_inner and vel_r_mid <= @velocity_outer")
+    outcells = []
+    outcellabundances = []
+    outgridcontributions = []
+
+    for cellindexout, (dictcell, matchedcells) in allmatchedcells.items():
         matchedcellrhosum = matchedcells.rho.sum()
+        nonempty = matchedcellrhosum > 0.0
+        if matchedcellrhosum > 0.0 and dfgridcontributions is not None:
+            dfcellcont = dfgridcontributions[dfgridcontributions["cellindex"].isin(matchedcells.inputcellid)]
 
-        if len(matchedcells) == 0:
-            rhomean = 0.0
-        else:
-            shell_volume = (4 * math.pi / 3) * (
-                (velocity_outer * t_model_init_seconds) ** 3 - (velocity_inner * t_model_init_seconds) ** 3
-            )
-            rhomean = matchedcellrhosum * wid_init**3 / shell_volume
-            # volumecorrection = len(matchedcells) * wid_init ** 3 / shell_volume
-            # print(radialcellid, volumecorrection)
+            for particleid, dfparticlecontribs in dfcellcont.groupby("particleid"):
+                frac_of_cellmass_avg = (
+                    sum(
+                        row.frac_of_cellmass * celldensity[row.cellindex]
+                        for row in dfparticlecontribs.itertuples(index=False)
+                    )
+                    / matchedcellrhosum
+                )
 
-            if rhomean > 0.0 and dfgridcontributions is not None:
-                dfcellcont = dfgridcontributions.query("cellindex in @matchedcells.inputcellid.to_numpy()")
+                contriboutrow = {
+                    "particleid": particleid,
+                    "cellindex": cellindexout,
+                    "frac_of_cellmass": frac_of_cellmass_avg,
+                }
 
-                for particleid, dfparticlecontribs in dfcellcont.groupby("particleid"):
-                    frac_of_cellmass_avg = (
+                if includemissingcolexists:
+                    frac_of_cellmass_includemissing_avg = (
                         sum(
-                            row.frac_of_cellmass * celldensity[row.cellindex]
+                            row.frac_of_cellmass_includemissing * celldensity[row.cellindex]
                             for row in dfparticlecontribs.itertuples(index=False)
                         )
                         / matchedcellrhosum
                     )
+                    contriboutrow["frac_of_cellmass_includemissing"] = frac_of_cellmass_includemissing_avg
 
-                    contriboutrow = {
-                        "particleid": particleid,
-                        "cellindex": radialcellid,
-                        "frac_of_cellmass": frac_of_cellmass_avg,
-                    }
-
-                    if includemissingcolexists:
-                        frac_of_cellmass_includemissing_avg = (
-                            sum(
-                                row.frac_of_cellmass_includemissing * celldensity[row.cellindex]
-                                for row in dfparticlecontribs.itertuples(index=False)
-                            )
-                            / matchedcellrhosum
-                        )
-                        contriboutrow["frac_of_cellmass_includemissing"] = frac_of_cellmass_includemissing_avg
-
-                    outgridcontributions.append(contriboutrow)
-
-        if rhomean > 0.0:
-            highest_active_radialcellid = radialcellid
-        logrho = math.log10(max(1e-99, rhomean))
-
-        dictcell = {
-            "inputcellid": radialcellid,
-            "velocity_outer": velocity_outer / km_to_cm,
-            "logrho": logrho,
-        }
+                outgridcontributions.append(contriboutrow)
 
         for column in matchedcells.columns:
             if column.startswith("X_") or column in ["cellYe", "q"]:
-                massfrac = np.dot(matchedcells[column], matchedcells.rho) / matchedcellrhosum if rhomean > 0.0 else 0.0
+                # take mass-weighted average mass fraction
+                massfrac = np.dot(matchedcells[column], matchedcells.rho) / matchedcellrhosum if nonempty else 0.0
                 dictcell[column] = massfrac
 
         outcells.append(dictcell)
 
         if dfelabundances is not None:
-            abund_matchedcells = dfelabundances.loc[matchedcells.index] if rhomean > 0.0 else None
-            dictcellabundances = {"inputcellid": radialcellid}
+            abund_matchedcells = dfelabundances.loc[matchedcells.index] if nonempty else None
+            dictcellabundances = {"inputcellid": cellindexout}
             for column in dfelabundances.columns:
                 if column.startswith("X_"):
                     massfrac = (
-                        np.dot(abund_matchedcells[column], matchedcells.rho) / matchedcellrhosum
-                        if rhomean > 0.0
-                        else 0.0
+                        np.dot(abund_matchedcells[column], matchedcells.rho) / matchedcellrhosum if nonempty else 0.0
                     )
                     dictcellabundances[column] = massfrac
 
             outcellabundances.append(dictcellabundances)
 
-    dfmodel1d = pd.DataFrame(outcells[:highest_active_radialcellid])
+    dfmodel_out = pd.DataFrame(outcells)
+    modelmeta_out["npts_model"] = len(dfmodel_out)
 
-    dfabundances1d = pd.DataFrame(outcellabundances[:highest_active_radialcellid]) if outcellabundances else None
+    dfabundances_out = pd.DataFrame(outcellabundances) if outcellabundances else None
 
-    dfgridcontributions1d = pd.DataFrame(outgridcontributions) if outgridcontributions else None
+    dfgridcontributions_out = pd.DataFrame(outgridcontributions) if outgridcontributions else None
+
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
-    return dfmodel1d, dfabundances1d, dfgridcontributions1d
+    return dfmodel_out, dfabundances_out, dfgridcontributions_out, modelmeta_out
 
 
 def scale_model_to_time(

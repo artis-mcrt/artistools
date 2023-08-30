@@ -9,12 +9,10 @@ import pandas as pd
 import polars as pl
 from astropy import constants as const
 from astropy import units as u
-from typeguard import typechecked
 
 import artistools as at
 
 
-@typechecked
 def readfile(
     filepath: str | Path,
 ) -> dict[int, pl.DataFrame]:
@@ -57,7 +55,6 @@ def read_3d_gammalightcurve(
     return res_data
 
 
-@typechecked
 def get_from_packets(
     modelpath: str | Path,
     escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] = "TYPE_RPKT",
@@ -374,7 +371,6 @@ def evaluate_magnitudes(flux, transmission, wavelength_from_spectrum, zeropointe
     return 0.0 if flux_obs == 0.0 else -2.5 * np.log10(flux_obs / zeropointenergyflux)
 
 
-@typechecked
 def get_band_lightcurve(
     band_lightcurve_data: dict[str, t.Sequence[tuple[float, float]]], band_name, args: argparse.Namespace
 ) -> tuple[t.Sequence[float], np.ndarray]:

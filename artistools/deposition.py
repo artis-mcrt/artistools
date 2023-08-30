@@ -59,9 +59,9 @@ def main_analytical(args: argparse.Namespace | None = None, argsraw: list[str] |
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
-    dfmodel, t_model_init, _ = at.inputmodel.get_modeldata_tuple(args.modelpath)
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(args.modelpath, derived_cols=["cellmass_grams"])
 
-    t_init = t_model_init * u.day
+    t_init = modelmeta["t_model_init_days"] * u.day
 
     meanlife_ni56 = 8.8 * u.day
     meanlife_co56 = 113.7 * u.day

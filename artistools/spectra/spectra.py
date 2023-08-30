@@ -18,7 +18,6 @@ import pandas as pd
 import polars as pl
 from astropy import constants as const
 from astropy import units as u
-from typeguard import typechecked
 
 import artistools as at
 
@@ -63,7 +62,6 @@ def get_exspec_bins() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return array_lambdabinedges, array_lambda, delta_lambda
 
 
-@typechecked
 def stackspectra(
     spectra_and_factors: list[tuple[np.ndarray[t.Any, np.dtype[np.float64]], float]]
 ) -> np.ndarray[t.Any, np.dtype[np.float64]]:
@@ -107,7 +105,6 @@ def get_spectrum_at_time(
     )[dirbin]
 
 
-@typechecked
 def get_from_packets(
     modelpath: Path,
     timelowdays: float,
@@ -326,7 +323,6 @@ def get_spec_res(
     return res_specdata
 
 
-@typechecked
 def get_spectrum(
     modelpath: Path,
     timestepmin: int,
@@ -609,7 +605,6 @@ def get_vspecpol_spectrum(
 
 
 @lru_cache(maxsize=4)
-@typechecked
 def get_flux_contributions(
     modelpath: Path,
     filterfunc: t.Callable[[np.ndarray], np.ndarray] | None = None,
@@ -785,7 +780,6 @@ def get_flux_contributions(
 
 
 @lru_cache(maxsize=4)
-@typechecked
 def get_flux_contributions_from_packets(
     modelpath: Path,
     timelowerdays: float,
@@ -1166,7 +1160,6 @@ def print_integrated_flux(
     return integrated_flux.value
 
 
-@typechecked
 def get_reference_spectrum(filename: Path | str) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:
     if Path(filename).is_file():
         filepath = Path(filename)

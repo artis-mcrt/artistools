@@ -9,7 +9,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import polars as pl
-from typeguard import typechecked
 
 import artistools as at
 
@@ -200,7 +199,6 @@ def add_derived_columns(
     return dfpackets
 
 
-@typechecked
 def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict | None = None) -> pl.LazyFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
@@ -227,25 +225,48 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict | None = N
         ]
     )
 
-    if modelmeta is not None and modelmeta["dimensions"] == 3:
+    if modelmeta is not None and modelmeta["dimensions"] > 1:
         t_model_s = modelmeta["t_model_init_days"] * 86400.0
         vmax = modelmeta["vmax_cmps"]
-        vwidth = modelmeta["wid_init"] / t_model_s
-        dfpackets = dfpackets.with_columns(
-            [
-                ((pl.col(f"em_pos{ax}") / pl.col("em_time") + vmax) / vwidth).cast(pl.Int32).alias(f"coordpointnum{ax}")
-                for ax in ["x", "y", "z"]
-            ]
-        )
-        dfpackets = dfpackets.with_columns(
-            [
-                (
-                    pl.col("coordpointnumz") * modelmeta["ncoordgridy"] * modelmeta["ncoordgridx"]
-                    + pl.col("coordpointnumy") * modelmeta["ncoordgridx"]
-                    + pl.col("coordpointnumx")
-                ).alias("em_modelgridindex")
-            ]
-        )
+
+        if modelmeta["dimensions"] == 2:
+            vwidthrcyl = modelmeta["wid_init_rcyl"] / t_model_s
+            vwidthz = modelmeta["wid_init_z"] / t_model_s
+            dfpackets = dfpackets.with_columns(
+                [
+                    ((pl.col("em_posx").pow(2) + pl.col("em_posy").pow(2)).sqrt() / pl.col("em_time") / vwidthrcyl)
+                    .cast(pl.Int32)
+                    .alias("coordpointnumrcyl"),
+                    ((pl.col("em_posz") / pl.col("em_time") + vmax) / vwidthz).cast(pl.Int32).alias("coordpointnumz"),
+                ]
+            )
+            dfpackets = dfpackets.with_columns(
+                [
+                    (pl.col("coordpointnumz") * modelmeta["ncoordgridrcyl"] + pl.col("coordpointnumrcyl")).alias(
+                        "em_modelgridindex"
+                    )
+                ]
+            )
+
+        elif modelmeta["dimensions"] == 3:
+            vwidth = modelmeta["wid_init"] / t_model_s
+            dfpackets = dfpackets.with_columns(
+                [
+                    ((pl.col(f"em_pos{ax}") / pl.col("em_time") + vmax) / vwidth)
+                    .cast(pl.Int32)
+                    .alias(f"coordpointnum{ax}")
+                    for ax in ["x", "y", "z"]
+                ]
+            )
+            dfpackets = dfpackets.with_columns(
+                [
+                    (
+                        pl.col("coordpointnumz") * modelmeta["ncoordgridy"] * modelmeta["ncoordgridx"]
+                        + pl.col("coordpointnumy") * modelmeta["ncoordgridx"]
+                        + pl.col("coordpointnumx")
+                    ).alias("em_modelgridindex")
+                ]
+            )
 
     return dfpackets
 
@@ -581,7 +602,6 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame, syn_dir: tuple[flo
     return dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"])
 
 
-@typechecked
 def bin_packet_directions_lazypolars(
     dfpackets: pl.LazyFrame,
     nphibins: int | None = None,
@@ -621,7 +641,6 @@ def bin_packet_directions_lazypolars(
     )
 
 
-@typechecked
 def bin_packet_directions(modelpath: Path | str, dfpackets: pd.DataFrame) -> pd.DataFrame:
     nphibins = at.get_viewingdirection_phibincount()
     ncosthetabins = at.get_viewingdirection_costhetabincount()
