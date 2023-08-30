@@ -199,7 +199,7 @@ def add_derived_columns(
     return dfpackets
 
 
-def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict | None = None) -> pl.LazyFrame:
+def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict, dfmodel: pd.DataFrame) -> pl.LazyFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
     We might as well add everything, since the columns only get calculated when they are actually used (polars LazyFrame).
@@ -225,7 +225,7 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict | None = N
         ]
     )
 
-    if modelmeta is not None and modelmeta["dimensions"] > 1:
+    if modelmeta["dimensions"] > 1:
         t_model_s = modelmeta["t_model_init_days"] * 86400.0
         vmax = modelmeta["vmax_cmps"]
 
@@ -267,6 +267,16 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict | None = N
                     ).alias("em_modelgridindex")
                 ]
             )
+    elif modelmeta["dimensions"] == 1:
+        velbins = (dfmodel["velocity_outer"] * 1000).to_list()
+        dfpackets = dfpackets.with_columns(
+            (
+                pl.col("emission_velocity")
+                .cut(breaks=list(velbins), labels=[str(x) for x in range(-1, len(velbins))])
+                .cast(str)
+                .cast(pl.Int32)
+            ).alias("em_modelgridindex")
+        )
 
     return dfpackets
 
