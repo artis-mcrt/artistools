@@ -6,7 +6,7 @@ import artistools as at
 
 
 def make_downscaled_3d_grid(
-    modelpath: str | Path, outputgridsize: int = 50, plot: bool = False, outputfoler: Path | str | None = None
+    modelpath: str | Path, outputgridsize: int = 50, plot: bool = False, outputfolder: Path | str | None = None
 ) -> Path:
     """Get a 3D model with smallgrid^3 cells from a 3D model with grid^3 cells.
     Should be same as downscale_3d_grid.pro.
@@ -25,10 +25,10 @@ def make_downscaled_3d_grid(
     merge = grid / smallgrid
     merge = int(merge)
 
-    outputfoler = Path(modelpath, f"downscale_{outputgridsize}^3") if outputfoler is None else Path(outputfoler)
-    outputfoler.mkdir(exist_ok=True)
-    smallmodelfile = outputfoler / "model.txt"
-    smallabundancefile = outputfoler / "abundances.txt"
+    outputfolder = Path(modelpath, f"downscale_{outputgridsize}^3") if outputfolder is None else Path(outputfolder)
+    outputfolder.mkdir(exist_ok=True)
+    smallmodelfile = outputfolder / "model.txt"
+    smallabundancefile = outputfolder / "abundances.txt"
 
     abundcols = [x for x in dfmodel.columns if x.startswith("X_")]
     nabundcols = len(abundcols)
@@ -138,7 +138,7 @@ def make_downscaled_3d_grid(
             from mpl_toolkits.axes_grid1 import make_axes_locatable
         except ModuleNotFoundError:
             print("matplotlib not found, skipping")
-            return outputfoler
+            return outputfolder
 
         fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(6.8 * 1.5, 4.8))
 
@@ -170,4 +170,4 @@ def make_downscaled_3d_grid(
             bbox_inches="tight",
         )
 
-    return outputfoler
+    return outputfolder

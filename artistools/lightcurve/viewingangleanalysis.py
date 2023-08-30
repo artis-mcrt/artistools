@@ -146,6 +146,8 @@ define_colours_list2 = [
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[t.Sequence[int], dict[int, str]]:
     modelpath = Path(modelpath)
     viewing_angle_data_exists = bool(list(modelpath.glob("*_res.out*")))
+    if isinstance(args.plotviewingangle, int):
+        args.plotviewingangle = [args.plotviewingangle]
     dirbins = []
     if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
         dirbins = args.plotvspecpol
@@ -190,9 +192,10 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
 
 def save_viewing_angle_data_for_plotting(band_name, modelname, args):
     if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
+        outputfolder = Path(args.outputfile) if Path(args.outputfile).is_dir() else Path(args.outputfile).parent
         if args.include_delta_m40:
             np.savetxt(
-                band_name + "band_" + f"{modelname}" + "_viewing_angle_data.txt",
+                outputfolder / f"{band_name}band_{modelname}_viewing_angle_data.txt",
                 np.c_[
                     args.band_peakmag_polyfit,
                     args.band_risetime_polyfit,
@@ -205,7 +208,7 @@ def save_viewing_angle_data_for_plotting(band_name, modelname, args):
             )
         else:
             np.savetxt(
-                band_name + "band_" + f"{modelname}" + "_viewing_angle_data.txt",
+                outputfolder / band_name + "band_" + f"{modelname}" + "_viewing_angle_data.txt",
                 np.c_[args.band_peakmag_polyfit, args.band_risetime_polyfit, args.band_deltam15_polyfit],
                 delimiter=" ",
                 header="peak_mag_polyfit risetime_polyfit deltam15_polyfit",
