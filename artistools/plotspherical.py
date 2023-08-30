@@ -161,7 +161,7 @@ def plot_spherical(
 
     aggs.append(pl.count())
 
-    dfpackets = dfpackets.groupby(["costhetabin", "phibin"]).agg(aggs)
+    dfpackets = dfpackets.group_by(["costhetabin", "phibin"]).agg(aggs)
     dfpackets = dfpackets.select(["costhetabin", "phibin", "count", *plotvars])
 
     ndirbins = nphibins * ncosthetabins
