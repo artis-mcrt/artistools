@@ -82,7 +82,7 @@ def read_modelfile_text(
                     print(f"  detected 3D model file with {ncoordgridx}x{ncoordgridy}x{ncoordgridz}={npts_model} cells")
 
         except ValueError:
-            assert modelmeta.get("dimensions", -1) != 2  # 2D model should have vmax line here
+            assert modelmeta.get("dimensions", -1) != 2, "2D model should have a vmax line here"
             if "dimensions" not in modelmeta:
                 if not printwarningsonly:
                     print(f"  detected 1D model file with {npts_model} radial zones")
