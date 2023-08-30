@@ -70,8 +70,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             f"Model contains {len(dfmodel)} grid cells ({nonemptycells} nonempty) with "
             f"vmax = {vmax} cm/s ({vmax * 1e-5 / 299792.458:.2f} * c)"
         )
-        corner_vmax = math.sqrt(3 * vmax**2) if modelmeta["dimensions"] == 3 else math.sqrt(2 * vmax**2)
-        print(f"  corner vmax: {corner_vmax:.2e} cm/s ({corner_vmax * 1e-5 / 299792.458:.2f} * c)")
+        vmax_corner_3d = math.sqrt(3 * vmax**2)
+        print(f"  3D corner vmax: {vmax_corner_3d:.2e} cm/s ({vmax_corner_3d * 1e-5 / 299792.458:.2f} * c)")
+        if modelmeta["dimensions"] == 2:
+            vmax_corner_2d = math.sqrt(2 * vmax**2)
+            print(f"  2D corner vmax: {vmax_corner_2d:.2e} cm/s ({vmax_corner_2d * 1e-5 / 299792.458:.2f} * c)")
 
     if args.cell is not None:
         mgi = int(args.cell)

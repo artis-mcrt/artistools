@@ -293,7 +293,7 @@ def plot_artis_lightcurve(
         modelpath = Path(modelpath).parent
 
     if not modelpath.is_dir():
-        print(f"WARNING: Skipping because {modelpath} does not exist")
+        print(f"\nWARNING: Skipping because {modelpath} does not exist\n")
         return None
 
     modelname = at.get_model_name(modelpath) if label is None else label
