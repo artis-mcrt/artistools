@@ -864,7 +864,7 @@ def bin_and_sum(
     if getcounts:
         aggs.append(pl.col(bincol).count().alias("count"))
 
-    wlbins = df.groupby(f"{bincol}_bin").agg(aggs).lazy().collect()
+    wlbins = df.group_by(f"{bincol}_bin").agg(aggs).lazy().collect()
 
     # now we will include the empty bins
     dfout = pl.DataFrame(pl.Series(name=f"{bincol}_bin", values=np.arange(0, len(bins) - 1), dtype=pl.Int32))
