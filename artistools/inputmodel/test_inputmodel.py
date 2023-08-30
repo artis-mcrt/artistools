@@ -51,7 +51,7 @@ def test_downscale_3dmodel() -> None:
         modelpath=modelpath_3d, get_elemabundances=True, derived_cols=["cellmass_grams"]
     )
     modelpath_3d_small = at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(
-        modelpath_3d, outputgridsize=2, outputfoler=outputpath
+        modelpath_3d, outputgridsize=2, outputfolder=outputpath
     )
     dfmodel_small, modelmeta_small = at.get_modeldata(
         modelpath_3d_small, get_elemabundances=True, derived_cols=["cellmass_grams"]
