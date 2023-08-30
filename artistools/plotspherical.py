@@ -34,7 +34,7 @@ def plot_spherical(
     if plotvars is None:
         plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc"]
 
-    _, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=True, printwarningsonly=True)
+    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=True, printwarningsonly=True)
 
     nprocs_read, dfpackets = at.packets.get_packets_pl(
         modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
@@ -83,7 +83,7 @@ def plot_spherical(
     # dfpackets = dfpackets.filter(pl.col("dirz") > 0.9)
 
     aggs = []
-    dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelmeta=modelmeta)
+    dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelmeta=modelmeta, dfmodel=dfmodel)
 
     if "emvelocityoverc" in plotvars:
         aggs.append(
