@@ -214,7 +214,7 @@ def plot_artis_spectrum(
         modelpath = Path(modelpath).parent
 
     if not modelpath.is_dir():
-        print(f"WARNING: Skipping because {modelpath} does not exist")
+        print(f"\nWARNING: Skipping because {modelpath} does not exist\n")
         return None
 
     if directionbins is None:
