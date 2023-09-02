@@ -1000,7 +1000,7 @@ def save_initelemabundances(
     """Save a DataFrame (same format as get_initelemabundances) to abundances.txt.
     columns must be:
         - inputcellid: integer index to match model.txt (starting from 1)
-        - X_El: mass fraction of element with two-letter code 'El' (e.g., X_H, X_He, H_Li, ...).
+        - X_i: mass fraction of element with two-letter code 'i' (e.g., X_H, X_He, H_Li, ...).
     """
     timestart = time.perf_counter()
     abundancefilename = Path(abundancefilename)

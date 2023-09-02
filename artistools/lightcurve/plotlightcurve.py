@@ -209,7 +209,7 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
             f_alpha,
             **{
                 **plotkwargs,
-                "label": modelname + r" $\left(\dot{E}_{dep,\gamma} \middle/ \dot{E}_{rad,\gamma}\right)$",
+                "label": modelname + r" $\left(\dot{E}_{dep,\alpha} \middle/ \dot{E}_{rad,\alpha}\right)$",
                 "linestyle": "solid",
                 "color": color_alpha,
             },
