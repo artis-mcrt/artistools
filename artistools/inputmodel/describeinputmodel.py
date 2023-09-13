@@ -21,9 +21,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--noisotopes",
+        "--isotopes",
         action="store_true",
-        help="Give element abundances only, no isotope abundances",
+        help="Show full set of isotopic abundances",
     )
 
 
@@ -151,7 +151,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 speciesmasses[strtotiso] = speciesmasses.get(strtotiso, 0.0) + speciesabund_g
                 mass_msun_isotopes += species_mass_msun
 
-                if not args.noisotopes and speciesabund_g > 0.0:
+                if args.isotopes and speciesabund_g > 0.0:
                     speciesmasses[species] = speciesabund_g
 
             elif species.lower() != "fegroup":  # ignore special group abundance
@@ -202,7 +202,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     strcomment += f" ({mass_g / elem_mass * 100:6.2f}% of {elsymb} element mass)"
                 if mass_g > elem_mass * (1.0 + 1e-5):
                     strcomment += " ERROR! isotope sum is greater than element abundance"
-            zstr = f"Z={atomic_number}"
+            zstr = f"{atomic_number}"
             print(f"{zstr:>5} {species:11s} massfrac {massfrac:.3e}   {species_mass_msun:.3e} Msun{strcomment}")
 
 
