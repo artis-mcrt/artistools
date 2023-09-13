@@ -23,10 +23,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--noisotopes",
         action="store_true",
-        help="Give element abundances only, no isotope abundances (implies --getelemabundances)",
+        help="Give element abundances only, no isotope abundances",
     )
-
-    parser.add_argument("--getelemabundances", action="store_true", help="Get elemental abundance masses")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
@@ -42,15 +40,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
-    if args.noisotopes:
-        args.getelemabundances = True
-
     dfmodel, modelmeta = at.inputmodel.get_modeldata(
         args.inputfile,
-        get_elemabundances=args.getelemabundances,
+        get_elemabundances=True,
         printwarningsonly=False,
         dtype_backend="pyarrow",
-        derived_cols=["cellmass_grams"],
+        use_polars=False,
+        derived_cols=["cellmass_grams", "vel_r_mid"],
     )
     t_model_init_days, vmax = modelmeta["t_model_init_days"], modelmeta["vmax_cmps"]
 
@@ -95,7 +91,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         initial_energy = sum(
             mass * q for mass, q in dfmodel[["cellmass_grams", "q"]].itertuples(index=False, name=None)
         )
-        print(f"  initial energy: {initial_energy:.3e} erg")
+        print(f'  {"initial energy":19s} {initial_energy:.3e} erg')
 
     mass_msun_rho = dfmodel["cellmass_grams"].sum() / 1.989e33
 
@@ -108,21 +104,30 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         if "q" in dfmodel.columns:
             initial_energy_mapped = sum(mass * q for mass, q in zip(cellmass_mapped, dfmodel["q"]))
             print(
-                f"  initial energy: {initial_energy_mapped:.3e} erg (when mapped to"
+                f'  {"initial energy":19s} {initial_energy_mapped:.3e} erg (when mapped to'
                 f" {ncoordgridx}^3 cubic grid, error"
                 f" {100 * (initial_energy_mapped / initial_energy - 1):.2f}%)"
             )
 
         mtot_mapped_msun = sum(cellmass_mapped) / 1.989e33
         print(
-            f'M_{"tot_rho_map":11s} {mtot_mapped_msun:8.5f} MSun (density * volume when mapped to {ncoordgridx}^3 cubic'
-            f" grid, error {100 * (mtot_mapped_msun / mass_msun_rho - 1):.2f}%)"
+            f'  {"M_tot_rho_map":19s} {mtot_mapped_msun:8.5f} MSun (density * volume when mapped to {ncoordgridx}^3'
+            f" cubic grid, error {100 * (mtot_mapped_msun / mass_msun_rho - 1):.2f}%)"
         )
 
-    print(f'M_{"tot_rho":11s} {mass_msun_rho:8.5f} MSun (density * volume)')
+    print(f'  {"M_tot_rho":19s} {mass_msun_rho:8.5f} MSun (density * volume)')
+
+    if modelmeta["dimensions"] > 1:
+        corner_mass = dfmodel[dfmodel["vel_r_mid"] > vmax]["cellmass_grams"].sum() / 1.989e33
+        print(
+            f'  {"M_corners":19s} {corner_mass / 1.989e33:8.5f} MSun ('
+            f" {100 * corner_mass / mass_msun_rho:.2f}% of M_tot in cells with v_r_mid > vmax)"
+        )
 
     mass_msun_isotopes = 0.0
     mass_msun_elem = 0.0
+    mass_lanthanides_isosum = 0.0
+    mass_actinides_isosum = 0.0
     speciesmasses: dict[str, float] = {}
     for column in dfmodel.columns:
         if column.startswith("X_"):
@@ -131,33 +136,48 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
             species_mass_msun = speciesabund_g / 1.989e33
 
-            if species[-1].isdigit():  # isotopic species
-                if args.noisotopes:
-                    speciesabund_g = 0
-                else:
-                    strtotiso = species.rstrip("0123456789") + "_isosum"
-                    speciesmasses[strtotiso] = speciesmasses.get(strtotiso, 0.0) + speciesabund_g
-                    mass_msun_isotopes += species_mass_msun
+            atomic_number = at.get_atomic_number(species.rstrip("0123456789"))
+
+            if species[-1].isdigit():
+                # isotopic species
+
+                if atomic_number >= 57 and atomic_number <= 71:
+                    mass_lanthanides_isosum += species_mass_msun
+                elif atomic_number >= 89 and atomic_number <= 103:
+                    mass_actinides_isosum += species_mass_msun
+
+                elname = species.rstrip("0123456789")
+                strtotiso = f"{elname}_isosum"
+                speciesmasses[strtotiso] = speciesmasses.get(strtotiso, 0.0) + speciesabund_g
+                mass_msun_isotopes += species_mass_msun
+
+                if not args.noisotopes and speciesabund_g > 0.0:
+                    speciesmasses[species] = speciesabund_g
 
             elif species.lower() != "fegroup":  # ignore special group abundance
+                # elemental species
                 mass_msun_elem += species_mass_msun
+                if speciesabund_g > 0.0:
+                    speciesmasses[species] = speciesabund_g
 
-            else:
-                speciesabund_g = 0.0
+    print(
+        f'  {"M_tot_elem":19s} {mass_msun_elem:8.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)'
+    )
 
-            if speciesabund_g > 0.0:
-                speciesmasses[species] = speciesabund_g
+    print(
+        f'  {"M_tot_iso":19s} {mass_msun_isotopes:8.5f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% '
+        "of M_tot_rho, but can be < 100% if stable isotopes not tracked)"
+    )
 
-    if mass_msun_elem > 0.0:
-        print(
-            f'M_{"tot_elem":11s} {mass_msun_elem:8.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)'
-        )
+    print(
+        f'  {"M_lanthanide_isosum":19s} {mass_lanthanides_isosum:8.5f} MSun'
+        f" ({mass_lanthanides_isosum / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
+    )
 
-    if not args.noisotopes:
-        print(
-            f'M_{"tot_iso":11s} {mass_msun_isotopes:8.5f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% '
-            "of M_tot_rho, but can be < 100% if stable isotopes not tracked)"
-        )
+    print(
+        f'  {"M_actinide_isosum":19s} {mass_actinides_isosum:8.5f} MSun'
+        f" ({mass_actinides_isosum / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
+    )
 
     if not args.noabund:
 
@@ -172,15 +192,18 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             massfrac = species_mass_msun / mass_msun_rho
             strcomment = ""
             atomic_number = at.get_atomic_number(species)
-            if species.endswith("_isosum") and args.getelemabundances:
+            if species.endswith("_isosum"):
                 elsymb = species.replace("_isosum", "")
                 elem_mass = speciesmasses.get(elsymb, 0.0)
+                if np.isclose(mass_g, elem_mass, rtol=1e-5):
+                    # iso sum matches the element mass, so don't show it
+                    continue
                 if elem_mass > 0.0:
                     strcomment += f" ({mass_g / elem_mass * 100:6.2f}% of {elsymb} element mass)"
                 if mass_g > elem_mass * (1.0 + 1e-5):
                     strcomment += " ERROR! isotope sum is greater than element abundance"
             zstr = f"Z={atomic_number}"
-            print(f"{zstr:>5} {species:11s} {species_mass_msun:.3e} Msun    massfrac {massfrac:.3e}{strcomment}")
+            print(f"{zstr:>5} {species:11s} massfrac {massfrac:.3e}   {species_mass_msun:.3e} Msun{strcomment}")
 
 
 if __name__ == "__main__":

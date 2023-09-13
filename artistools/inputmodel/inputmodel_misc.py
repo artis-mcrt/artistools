@@ -482,8 +482,10 @@ def add_derived_cols_to_modeldata(
     modelpath: Path | None = None,
 ) -> pl.LazyFrame:
     """Add columns to modeldata using e.g. derived_cols = ('velocity', 'Ye')."""
+    # with lazy mode, we can add every column and then drop the ones we don't need
     dfmodel = dfmodel.lazy()
-    newcols = []
+    original_cols = dfmodel.columns
+
     t_model_init_seconds = modelmeta["t_model_init_days"] * 86400.0
 
     dimensions = modelmeta["dimensions"]
@@ -494,13 +496,17 @@ def add_derived_cols_to_modeldata(
     match dimensions:
         case 1:
             axes = ["r"]
-            if "cellmass_grams" in derived_cols or "velocity_inner" in derived_cols:
-                dfmodel = dfmodel.with_columns(
-                    pl.col("velocity_outer").shift_and_fill(0.0, periods=1).alias("velocity_inner")
-                )
 
-            if "cellmass_grams" in derived_cols:
-                newcols += [
+            dfmodel = dfmodel.with_columns(
+                pl.col("velocity_outer").shift_and_fill(0.0, periods=1).alias("velocity_inner")
+            )
+
+            dfmodel = dfmodel.with_columns(
+                ((pl.col("velocity_outer") + pl.col("velocity_inner")) / 2).alias("vel_r_mid")
+            )
+
+            dfmodel = dfmodel.with_columns(
+                [
                     (
                         pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0)
                         * (4.0 / 3.0)
@@ -509,28 +515,30 @@ def add_derived_cols_to_modeldata(
                         * (1e5 * t_model_init_seconds) ** 3
                     ).alias("cellmass_grams")
                 ]
+            )
 
         case 2:
             axes = ["rcyl", "z"]
             wid_init_rcyl = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"]
             wid_init_z = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"]
 
-            if "pos_min" in derived_cols:
-                assert t_model_init_seconds is not None
-                newcols += [
+            assert t_model_init_seconds is not None
+            dfmodel = dfmodel.with_columns(
+                [
                     (pl.col("pos_rcyl_mid") - wid_init_rcyl / 2.0).alias("pos_rcyl_min"),
                     (pl.col("pos_z_mid") - wid_init_z / 2.0).alias("pos_z_min"),
                 ]
+            )
 
-            if "pos_max" in derived_cols:
-                assert t_model_init_seconds is not None
-                newcols += [
+            dfmodel = dfmodel.with_columns(
+                [
                     (pl.col("pos_rcyl_mid") + wid_init_rcyl / 2.0).alias("pos_rcyl_max"),
                     (pl.col("pos_z_mid") + wid_init_z / 2.0).alias("pos_z_max"),
                 ]
+            )
 
-            if "cellmass_grams" in derived_cols:
-                newcols += [
+            dfmodel = dfmodel.with_columns(
+                [
                     (
                         pl.col("rho")
                         * math.pi
@@ -541,56 +549,54 @@ def add_derived_cols_to_modeldata(
                         * wid_init_z
                     ).alias("cellmass_grams")
                 ]
+            )
 
         case 3:
             axes = ["x", "y", "z"]
-            if "cellmass_grams" in derived_cols:
-                assert wid_init is not None
-                newcols += [(pl.col("rho") * wid_init**3).alias("cellmass_grams")]
+            dfmodel = dfmodel.with_columns([(pl.col("rho") * wid_init**3).alias("cellmass_grams")])
+
+            dfmodel = dfmodel.with_columns(
+                [(pl.col(f"pos_{ax}_min") + 0.5 * wid_init).alias(f"pos_{ax}_mid") for ax in axes]
+            )
+
+            dfmodel = dfmodel.with_columns([(pl.col(f"pos_{ax}_min") + wid_init).alias(f"pos_{ax}_max") for ax in axes])
 
     if dimensions > 1:
-        if "velocity" in derived_cols or "vel_min" in derived_cols:
-            assert t_model_init_seconds is not None
-            newcols += [(pl.col(f"pos_{ax}_min") / t_model_init_seconds).alias(f"vel_{ax}_min") for ax in axes]
+        dfmodel = dfmodel.with_columns(
+            [(pl.col(f"pos_{ax}_min") / t_model_init_seconds).alias(f"vel_{ax}_min") for ax in axes]
+        )
 
-        if "velocity" in derived_cols or "vel_max" in derived_cols:
-            assert t_model_init_seconds is not None
-            newcols += [
-                ((pl.col(f"pos_{ax}_min") + wid_init) / t_model_init_seconds).alias(f"vel_{ax}_max") for ax in axes
-            ]
+        dfmodel = dfmodel.with_columns(
+            [(pl.col(f"pos_{ax}_mid") / t_model_init_seconds).alias(f"vel_{ax}_mid") for ax in axes]
+        )
 
-    if dimensions == 3:
-        if any(col in derived_cols for col in ["velocity", "vel_mid", "vel_r_mid"]):
-            assert wid_init is not None
-            assert t_model_init_seconds is not None
-            dfmodel = dfmodel.with_columns(
-                [
-                    ((pl.col(f"pos_{ax}_min") + (0.5 * wid_init)) / t_model_init_seconds).alias(f"vel_{ax}_mid")
-                    for ax in axes
-                ]
-            )
+        dfmodel = dfmodel.with_columns(
+            [((pl.col(f"pos_{ax}_max")) / t_model_init_seconds).alias(f"vel_{ax}_max") for ax in axes]
+        )
 
-            newcols.append(
-                (pl.col("vel_x_mid").pow(2) + pl.col("vel_y_mid").pow(2) + pl.col("vel_z_mid").pow(2))
-                .sqrt()
-                .alias("vel_r_mid")
-            )
+    if dimensions == 2:
+        dfmodel = dfmodel.with_columns(
+            (pl.col("vel_rcyl_mid").pow(2) + pl.col("vel_z_mid").pow(2)).sqrt().alias("vel_r_mid")
+        )
 
-        if "pos_mid" in derived_cols or "angle_bin" in derived_cols:
-            assert wid_init is not None
-            newcols += [(pl.col(f"pos_{ax}_min") + 0.5 * wid_init).alias(f"pos_{ax}_mid") for ax in axes]
+    elif dimensions == 3:
+        dfmodel = dfmodel.with_columns(
+            (pl.col("vel_x_mid").pow(2) + pl.col("vel_y_mid").pow(2) + pl.col("vel_z_mid").pow(2))
+            .sqrt()
+            .alias("vel_r_mid")
+        )
 
-        if "pos_max" in derived_cols:
-            assert wid_init is not None
-            newcols += [(pl.col(f"pos_{ax}_min") + wid_init).alias(f"pos_{ax}_max") for ax in axes]
+    if "logrho" not in dfmodel.columns:
+        dfmodel = dfmodel.with_columns(pl.col("rho").log10().alias("logrho"))
 
-    if "logrho" in derived_cols and "logrho" not in dfmodel.columns:
-        newcols.append(pl.col("rho").log10().alias("logrho"))
+    if "rho" not in dfmodel.columns:
+        dfmodel = dfmodel.with_columns((10 ** pl.col("logrho")).alias("rho"))
 
-    if "rho" in derived_cols and "rho" not in dfmodel.columns:
-        newcols.append((10 ** pl.col("logrho")).alias("rho"))
-
-    dfmodel = dfmodel.with_columns(newcols)
+    unknown_cols = [col for col in derived_cols if col not in dfmodel.columns]
+    if unknown_cols:
+        print(f"Unknown derived columns: {unknown_cols}")
+        raise AssertionError
+    dfmodel = dfmodel.drop([col for col in dfmodel.columns if col not in original_cols and col not in derived_cols])
 
     if "angle_bin" in derived_cols:
         assert modelpath is not None
