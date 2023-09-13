@@ -490,9 +490,6 @@ def add_derived_cols_to_modeldata(
 
     dimensions = modelmeta["dimensions"]
 
-    if dimensions == 3:
-        wid_init = modelmeta["wid_init"]
-
     match dimensions:
         case 1:
             axes = ["r"]
@@ -552,6 +549,7 @@ def add_derived_cols_to_modeldata(
             )
 
         case 3:
+            wid_init = modelmeta["wid_init"]
             axes = ["x", "y", "z"]
             dfmodel = dfmodel.with_columns([(pl.col("rho") * wid_init**3).alias("cellmass_grams")])
 
