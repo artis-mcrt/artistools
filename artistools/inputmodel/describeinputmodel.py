@@ -107,24 +107,32 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     mass_msun_rho = dfmodel["cellmass_grams"].sum() / 1.989e33
 
     if assoc_cells is not None and mgi_of_propcells is not None:
-        ncoordgridx = math.ceil(math.cbrt(max(mgi_of_propcells.keys())))
-        wid_init = 2 * vmax * t_model_init_seconds / ncoordgridx
-        wid_init3 = wid_init**3
-        initial_energy_mapped = 0.0
-        cellmass_mapped = [len(assoc_cells.get(mgi, [])) * wid_init3 * rho for mgi, rho in enumerate(dfmodel["rho"])]
-        if "q" in dfmodel.columns:
-            initial_energy_mapped = float(sum(mass * q for mass, q in zip(cellmass_mapped, dfmodel["q"])))
-            print(
-                f'  {"initial energy":19s} {initial_energy_mapped:.3e} erg (when mapped to'
-                f" {ncoordgridx}^3 cubic grid, error"
-                f" {100 * (initial_energy_mapped / initial_energy - 1):.2f}%)"
-            )
-
-        mtot_mapped_msun = sum(cellmass_mapped) / 1.989e33
-        print(
-            f'  {"M_tot_rho_map":19s} {mtot_mapped_msun:8.5f} MSun (density * volume when mapped to {ncoordgridx}^3'
-            f" cubic grid, error {100 * (mtot_mapped_msun / mass_msun_rho - 1):.2f}%)"
+        direct_model_propgrid_map = all(
+            len(propcells) == 1 and mgi == propcells[0] for mgi, propcells in assoc_cells.items()
         )
+        if direct_model_propgrid_map:
+            print("  detected direct mapping of model cells to propagation grid")
+        else:
+            ncoordgridx = math.ceil(math.cbrt(max(mgi_of_propcells.keys())))
+            wid_init = 2 * vmax * t_model_init_seconds / ncoordgridx
+            wid_init3 = wid_init**3
+            initial_energy_mapped = 0.0
+            cellmass_mapped = [
+                len(assoc_cells.get(mgi, [])) * wid_init3 * rho for mgi, rho in enumerate(dfmodel["rho"])
+            ]
+            if "q" in dfmodel.columns:
+                initial_energy_mapped = float(sum(mass * q for mass, q in zip(cellmass_mapped, dfmodel["q"])))
+                print(
+                    f'  {"initial energy":19s} {initial_energy_mapped:.3e} erg (when mapped to'
+                    f" {ncoordgridx}^3 cubic grid, error"
+                    f" {100 * (initial_energy_mapped / initial_energy - 1):.2f}%)"
+                )
+
+            mtot_mapped_msun = sum(cellmass_mapped) / 1.989e33
+            print(
+                f'  {"M_tot_rho_map":19s} {mtot_mapped_msun:8.5f} MSun (density * volume when mapped to {ncoordgridx}^3'
+                f" cubic grid, error {100 * (mtot_mapped_msun / mass_msun_rho - 1):.2f}%)"
+            )
 
     print(f'  {"M_tot_rho":19s} {mass_msun_rho:8.5f} MSun (density * volume)')
 
