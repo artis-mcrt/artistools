@@ -230,6 +230,8 @@ def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
             "phi": [float(x) for x in vpkt_txt.readline().split()],
         }
         nspecflag = int(vpkt_txt.readline())
+        assert vpkt_config["nobsdirections"] == len(vpkt_config["cos_theta"])
+        assert len(vpkt_config["cos_theta"]) == len(vpkt_config["phi"])
 
         if nspecflag == 1:
             vpkt_config["nspectraperobs"] = int(vpkt_txt.readline())
