@@ -36,7 +36,6 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
             modelpath,
             skipnuclidemassfraccolumns=True,
             derived_cols=["cellmass_grams", "vel_r_mid"],
-            dtype_backend="pyarrow",
         )
 
         model_mass_grams = dfmodel.cellmass_grams.sum()

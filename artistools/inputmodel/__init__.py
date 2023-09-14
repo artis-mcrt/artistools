@@ -18,6 +18,7 @@ from .inputmodel_misc import get_initelemabundances
 from .inputmodel_misc import get_mean_cell_properties_of_angle_bin
 from .inputmodel_misc import get_mgi_of_velocity_kms
 from .inputmodel_misc import get_modeldata
+from .inputmodel_misc import get_modeldata_polars
 from .inputmodel_misc import get_modeldata_tuple
 from .inputmodel_misc import save_empty_abundance_file
 from .inputmodel_misc import save_initelemabundances
