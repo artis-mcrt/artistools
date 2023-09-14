@@ -33,6 +33,7 @@ from artistools.inputmodel import get_dfmodel_dimensions
 from artistools.inputmodel import get_mean_cell_properties_of_angle_bin
 from artistools.inputmodel import get_mgi_of_velocity_kms
 from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import get_modeldata_polars
 from artistools.inputmodel import get_modeldata_tuple
 from artistools.inputmodel import save_initelemabundances
 from artistools.inputmodel import save_modeldata

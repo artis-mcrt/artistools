@@ -126,9 +126,7 @@ def plot_2d_initial_abundances(modelpath, args=None) -> None:
         modelpath,
         skipnuclidemassfraccolumns=skipnuclidemassfraccolumns,
         get_elemabundances=get_elemabundances,
-        dtype_backend="pyarrow",
         derived_cols=["pos_min", "pos_max"],
-        use_polars=False,
     )
     assert modelmeta["dimensions"] > 1
 

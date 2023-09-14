@@ -59,7 +59,7 @@ def main_analytical(args: argparse.Namespace | None = None, argsraw: list[str] |
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(args.modelpath, derived_cols=["cellmass_grams"])
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(args.modelpath, derived_cols=["cellmass_grams", "velocity_inner"])
 
     t_init = modelmeta["t_model_init_days"] * u.day
 
