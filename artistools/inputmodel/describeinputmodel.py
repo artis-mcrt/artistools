@@ -2,11 +2,13 @@
 # PYTHON_ARGCOMPLETE_OK
 import argparse
 import math
+import os
 import typing as t
 from pathlib import Path
 
 import argcomplete
 import numpy as np
+import polars as pl
 
 import artistools as at
 
@@ -26,6 +28,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Show full set of isotopic abundances",
     )
 
+    parser.add_argument(
+        "-sort",
+        default="z",
+        choices=["z", "mass"],
+        nargs="+",
+        help="Sort order for abundances (z = atomic number, mass = mass fraction)",
+    )
+
 
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Describe an ARTIS input model, such as the mass, velocity structure, and abundances."""
@@ -40,28 +50,28 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         argcomplete.autocomplete(parser)
         args = parser.parse_args(argsraw)
 
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(
+    lazydfmodel, modelmeta = at.inputmodel.get_modeldata_polars(
         args.inputfile,
         get_elemabundances=True,
         printwarningsonly=False,
-        dtype_backend="pyarrow",
-        use_polars=False,
-        derived_cols=["cellmass_grams", "vel_r_mid"],
+        derived_cols=["cellmass_grams", "vel_r_mid", "rho"],
     )
+    dfmodel = lazydfmodel.collect()
     t_model_init_days, vmax = modelmeta["t_model_init_days"], modelmeta["vmax_cmps"]
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
     print(f"Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)")
 
     if modelmeta["dimensions"] == 1:
-        vmax = dfmodel["velocity_outer"].max() * 1e5
+        vmax_kmps = dfmodel["velocity_outer"].max()
+        assert isinstance(vmax_kmps, float)
+        vmax = vmax_kmps * 1e5
         print(
             f"Model contains {len(dfmodel)} 1D spherical shells with vmax = {vmax/1e5} km/s"
             f" ({vmax / 29979245800:.2f} * c)"
         )
-        dfmodel["rho"] = 10 ** dfmodel["logrho"]
     else:
-        nonemptycells = sum(dfmodel["rho"] > 0.0)
+        nonemptycells = dfmodel.filter(pl.col("rho") > 0.0).height
         print(
             f"Model contains {len(dfmodel)} grid cells ({nonemptycells} nonempty) with "
             f"vmax = {vmax} cm/s ({vmax * 1e-5 / 299792.458:.2f} * c)"
@@ -76,22 +86,23 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         mgi = int(args.cell)
         if mgi >= 0:
             print(f"Selected single cell mgi {mgi}:")
-            dfmodel = dfmodel.query("inputcellid == (@mgi + 1)")
+            dfmodel = dfmodel.filter(pl.col("inputcellid") == (mgi + 1))
 
-            print(dfmodel.iloc[0])
+            print(dfmodel)
 
     try:
         assoc_cells, mgi_of_propcells = at.get_grid_mapping(args.inputfile)
-        print(f"  {len(assoc_cells)} model cells have >0 associated prop cells")
+        print(f"  {len(assoc_cells)} model cells have associated prop cells")
     except FileNotFoundError:
         print("  no cell mapping file found")
         assoc_cells, mgi_of_propcells = None, None
 
     if "q" in dfmodel.columns:
-        initial_energy = sum(
-            mass * q for mass, q in dfmodel[["cellmass_grams", "q"]].itertuples(index=False, name=None)
-        )
+        initial_energy = dfmodel["cellmass_grams"].dot(dfmodel["cellmass_grams"])
+        assert initial_energy is not None
         print(f'  {"initial energy":19s} {initial_energy:.3e} erg')
+    else:
+        initial_energy = 0.0
 
     mass_msun_rho = dfmodel["cellmass_grams"].sum() / 1.989e33
 
@@ -102,7 +113,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         initial_energy_mapped = 0.0
         cellmass_mapped = [len(assoc_cells.get(mgi, [])) * wid_init3 * rho for mgi, rho in enumerate(dfmodel["rho"])]
         if "q" in dfmodel.columns:
-            initial_energy_mapped = sum(mass * q for mass, q in zip(cellmass_mapped, dfmodel["q"]))
+            initial_energy_mapped = float(sum(mass * q for mass, q in zip(cellmass_mapped, dfmodel["q"])))
             print(
                 f'  {"initial energy":19s} {initial_energy_mapped:.3e} erg (when mapped to'
                 f" {ncoordgridx}^3 cubic grid, error"
@@ -118,7 +129,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     print(f'  {"M_tot_rho":19s} {mass_msun_rho:8.5f} MSun (density * volume)')
 
     if modelmeta["dimensions"] > 1:
-        corner_mass = dfmodel[dfmodel["vel_r_mid"] > vmax]["cellmass_grams"].sum() / 1.989e33
+        corner_mass = dfmodel.filter(pl.col("vel_r_mid") > vmax)["cellmass_grams"].sum() / 1.989e33
         print(
             f'  {"M_corners":19s} {corner_mass / 1.989e33:8.5f} MSun ('
             f" {100 * corner_mass / mass_msun_rho:.2f}% of M_tot in cells with v_r_mid > vmax)"
@@ -183,10 +194,22 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         def sortkey(tup_species_mass_g):
             species, mass_g = tup_species_mass_g
-            # return -mass_g
-            # return (-speciesmasses.get(species.rstrip("0123456789"), 0.0), species)
-            return (at.get_atomic_number(species), species)
+            if args.sort == "z":
+                # for a species like C_isosum, strmassnumber is "", so use -1 to sort it first
+                strmassnumber = species.lstrip("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz").rstrip(
+                    "_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+                )
+                massnumber = int(strmassnumber) if strmassnumber else -1
+                return (at.get_atomic_number(species), massnumber, species)
 
+            return (-mass_g, species)
+
+        mass_g_min = min(speciesmasses.values())
+        mass_g_max = max(speciesmasses.values())
+        try:
+            maxbarchars = os.get_terminal_size()[0] - 65
+        except OSError:
+            maxbarchars = 20
         for species, mass_g in sorted(speciesmasses.items(), key=sortkey):
             species_mass_msun = mass_g / 1.989e33
             massfrac = species_mass_msun / mass_msun_rho
@@ -198,12 +221,15 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 if np.isclose(mass_g, elem_mass, rtol=1e-5):
                     # iso sum matches the element mass, so don't show it
                     continue
-                if elem_mass > 0.0:
-                    strcomment += f" ({mass_g / elem_mass * 100:6.2f}% of {elsymb} element mass)"
+                strcomment += f"({mass_g / elem_mass * 100:6.2f}% of {elsymb} element mass from abundances.txt)"
                 if mass_g > elem_mass * (1.0 + 1e-5):
                     strcomment += " ERROR! isotope sum is greater than element abundance"
+
             zstr = f"{atomic_number}"
-            print(f"{zstr:>5} {species:11s} massfrac {massfrac:.3e}   {species_mass_msun:.3e} Msun{strcomment}")
+            bar = "-" * int(maxbarchars * (mass_g - mass_g_min) / (mass_g_max - mass_g_min))
+            print(f"{zstr:>5} {species:11s} massfrac {massfrac:.3e}   {species_mass_msun:.3e} Msun  {bar}")
+            if strcomment:
+                print(f"    {strcomment}")
 
 
 if __name__ == "__main__":
