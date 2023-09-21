@@ -74,14 +74,14 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     if Path(wollager_profilename).exists():
         t_model_init_days_in = float(Path(wollager_profilename).open("rt").readline().strip().removesuffix(" day"))
         dfdensities = pd.read_csv(
-            wollager_profilename, delim_whitespace=True, skiprows=1, names=["cellid", "velocity_outer", "rho"]
+            wollager_profilename, delim_whitespace=True, skiprows=1, names=["cellid", "vel_r_max_kmps", "rho"]
         )
         dfdensities["cellid"] = dfdensities["cellid"].astype(int)
-        dfdensities["velocity_inner"] = np.concatenate(([0.0], dfdensities["velocity_outer"].to_numpy()[:-1]))
+        dfdensities["vel_r_min_kmps"] = np.concatenate(([0.0], dfdensities["vel_r_max_kmps"].to_numpy()[:-1]))
 
         t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60  # noqa: F841
         dfdensities = dfdensities.eval(
-            "cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
+            "cellmass_grams = rho * 4. / 3. * @math.pi * (vel_r_max_kmps ** 3 - vel_r_min_kmps ** 3)"
             "* (1e5 * @t_model_init_seconds_in) ** 3",
         )
 
@@ -89,11 +89,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         dfdensities = dfdensities.eval(
             "rho = cellmass_grams / ("
-            "4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
+            "4. / 3. * @math.pi * (vel_r_max_kmps ** 3 - vel_r_min_kmps ** 3)"
             " * (1e5 * @t_model_init_seconds) ** 3)",
         )
     else:
-        dfdensities = pd.DataFrame({"rho": 10**-3, "velocity_outer": 6.0e4}, index=[0])
+        dfdensities = pd.DataFrame({"rho": 10**-3, "vel_r_max_kmps": 6.0e4}, index=[0])
 
     # print(dfdensities)
     cellcount = len(dfdensities)
@@ -113,7 +113,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     rowdict = {
         # 'inputcellid': 1,
-        # 'velocity_outer': 6.e4,
+        # 'vel_r_max_kmps': 6.e4,
         # 'logrho': -3.,
         "X_Fegroup": 1.0,
         "X_Ni56": 0.0,
@@ -133,7 +133,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         modeldata.append(
             dict(
                 inputcellid=mgi + 1,
-                velocity_outer=densityrow["velocity_outer"],
+                vel_r_max_kmps=densityrow["vel_r_max_kmps"],
                 logrho=math.log10(densityrow["rho"]),
                 **rowdict,
             )

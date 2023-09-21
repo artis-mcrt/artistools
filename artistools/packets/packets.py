@@ -268,7 +268,7 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict, dfmodel: 
                 ]
             )
     elif modelmeta["dimensions"] == 1:
-        velbins = (dfmodel["velocity_outer"] * 1000).to_list()
+        velbins = (dfmodel["vel_r_max_kmps"] * 1000).to_list()
         dfpackets = dfpackets.with_columns(
             (
                 pl.col("emission_velocity")

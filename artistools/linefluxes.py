@@ -71,7 +71,7 @@ def get_packets_with_emtype(
     assert nprocs_read > 0
 
     model, _ = at.inputmodel.get_modeldata(modelpath)
-    # vmax = model.iloc[-1].velocity_outer * u.km / u.s
+    # vmax = model.iloc[-1].vel_r_max_kmps * u.km / u.s
     processfile = partial(get_packets_with_emtype_onefile, emtypecolumn, lineindices)
     if at.get_config()["num_processes"] > 1:
         print(f"Reading packets files with {at.get_config()['num_processes']} processes")
@@ -110,7 +110,7 @@ def get_line_fluxes_from_packets(
     arr_tmid = arr_tend = (np.array(arr_tstart) + np.array(arr_tend)) / 2.0
 
     model, _ = at.inputmodel.get_modeldata(modelpath)
-    # vmax = model.iloc[-1].velocity_outer * u.km / u.s
+    # vmax = model.iloc[-1].vel_r_max_kmps * u.km / u.s
     # betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
     timearrayplusend = np.concatenate([arr_tstart, [arr_tend[-1]]])
@@ -168,8 +168,8 @@ def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=N
         ion = adata.query("Z == @feature.atomic_number and ion_stage == @feature.ion_stage").iloc[0]
 
         for timeindex, timedays in enumerate(arr_tmid):
-            v_inner = modeldata.velocity_inner.to_numpy() * u.km / u.s
-            v_outer = modeldata.velocity_outer.to_numpy() * u.km / u.s
+            v_inner = modeldata.vel_r_min_kmps.to_numpy() * u.km / u.s
+            v_outer = modeldata.vel_r_max_kmps.to_numpy() * u.km / u.s
 
             t_sec = timedays * u.day
             shell_volumes = ((4 * math.pi / 3) * ((v_outer * t_sec) ** 3 - (v_inner * t_sec) ** 3)).to("cm3").value
@@ -200,7 +200,7 @@ def get_line_fluxes_from_pops(emfeatures, modelpath, arr_tstart=None, arr_tend=N
                         ) * u.eV.to("erg")
 
                         # l = delta_ergs * A_val * levelpop * (shell_volumes[modelgridindex] + unaccounted_shellvol)
-                        # print(f'  {modelgridindex} outer_velocity {modeldata.velocity_outer.to_numpy()[modelgridindex]}'
+                        # print(f'  {modelgridindex} outer_velocity {modeldata.vel_r_max_kmps.to_numpy()[modelgridindex]}'
                         #       f' km/s shell_vol: {shell_volumes[modelgridindex] + unaccounted_shellvol} cm3'
                         #       f' n_level {levelpop} cm-3 shell_Lum {l} erg/s')
 
@@ -465,7 +465,7 @@ def get_packets_with_emission_conditions(
 
     # model_tmids = at.get_timestep_times(modelpath, loc='mid')
     # arr_velocity_mid = tuple(list([(float(v1) + float(v2)) * 0.5 for v1, v2 in zip(
-    #     modeldata['velocity_inner'].to_numpy(), modeldata['velocity_outer'].to_numpy())]))
+    #     modeldata['vel_r_min_kmps'].to_numpy(), modeldata['vel_r_max_kmps'].to_numpy())]))
 
     # from scipy.interpolate import interp1d
     # interp_log10nne, interp_te = {}, {}

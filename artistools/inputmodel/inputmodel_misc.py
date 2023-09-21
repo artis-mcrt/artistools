@@ -19,6 +19,7 @@ import pyarrow.parquet as pq
 import artistools as at
 
 
+# @lru_cache(maxsize=3)
 def read_modelfile_text(
     filename: Path | str,
     printwarningsonly: bool = False,
@@ -200,7 +201,7 @@ def read_modelfile_text(
     dfmodel.index.name = "cellid"
 
     if modelmeta["dimensions"] == 1:
-        modelmeta["vmax_cmps"] = dfmodel.velocity_outer.max() * 1e5
+        modelmeta["vmax_cmps"] = dfmodel.vel_r_max_kmps.max() * 1e5
 
     elif modelmeta["dimensions"] == 2:
         wid_init_rcyl = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"]
@@ -503,11 +504,11 @@ def add_derived_cols_to_modeldata(
             axes = ["r"]
 
             dfmodel = dfmodel.with_columns(
-                pl.col("velocity_outer").shift_and_fill(0.0, periods=1).alias("velocity_inner")
+                pl.col("vel_r_max_kmps").shift_and_fill(0.0, periods=1).alias("vel_r_min_kmps")
             )
 
             dfmodel = dfmodel.with_columns(
-                ((pl.col("velocity_outer") + pl.col("velocity_inner")) / 2).alias("vel_r_mid")
+                ((pl.col("vel_r_max_kmps") + pl.col("vel_r_min_kmps")) / 2 * 1e5).alias("vel_r_mid")
             )
 
             dfmodel = dfmodel.with_columns(
@@ -516,7 +517,7 @@ def add_derived_cols_to_modeldata(
                         pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0)
                         * (4.0 / 3.0)
                         * 3.14159265
-                        * (pl.col("velocity_outer") ** 3 - pl.col("velocity_inner") ** 3)
+                        * (pl.col("vel_r_max_kmps") ** 3 - pl.col("vel_r_min_kmps") ** 3)
                         * (1e5 * t_model_init_seconds) ** 3
                     ).alias("cellmass_grams")
                 ]
@@ -598,10 +599,10 @@ def add_derived_cols_to_modeldata(
     if "rho" not in dfmodel.columns:
         dfmodel = dfmodel.with_columns((10 ** pl.col("logrho")).alias("rho"))
 
-    unknown_cols = [col for col in derived_cols if col not in dfmodel.columns]
-    if unknown_cols:
+    if unknown_cols := [col for col in derived_cols if col not in dfmodel.columns]:
         print(f"Unknown derived columns: {unknown_cols}")
         raise AssertionError
+
     dfmodel = dfmodel.drop([col for col in dfmodel.columns if col not in original_cols and col not in derived_cols])
 
     if "angle_bin" in derived_cols:
@@ -739,7 +740,7 @@ def get_standard_columns(dimensions: int, includenico57: bool = False) -> list[s
     """Get standard (artis classic) columns for modeldata DataFrame."""
     match dimensions:
         case 1:
-            cols = ["inputcellid", "velocity_outer", "logrho"]
+            cols = ["inputcellid", "vel_r_max_kmps", "logrho"]
         case 2:
             cols = ["inputcellid", "pos_rcyl_mid", "pos_z_mid", "rho"]
         case 3:
@@ -768,7 +769,7 @@ def save_modeldata(
 
     1D
     -------
-    dfmodel must contain columns inputcellid, velocity_outer, logrho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
+    dfmodel must contain columns inputcellid, vel_r_max_kmps, logrho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
     modelmeta is not required
 
     2D
@@ -869,7 +870,7 @@ def save_modeldata(
 
         if modelmeta["dimensions"] == 1:
             for cell in dfmodel.itertuples(index=False):
-                fmodel.write(f"{cell.inputcellid:d} {cell.velocity_outer:9.2f} {cell.logrho:10.8f} ")
+                fmodel.write(f"{cell.inputcellid:d} {cell.vel_r_max_kmps:9.2f} {cell.logrho:10.8f} ")
                 fmodel.write(" ".join([f"{getattr(cell, col)}" for col in abundcols]))
                 fmodel.write("\n")
 
@@ -933,9 +934,9 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: t.Sequenc
 
     if not mgilist:
         mgilist = list(modeldata.index)
-        arr_vouter = modeldata["velocity_outer"].to_numpy()
+        arr_vouter = modeldata["vel_r_max_kmps"].to_numpy()
     else:
-        arr_vouter = np.array([modeldata["velocity_outer"][mgi] for mgi in mgilist])
+        arr_vouter = np.array([modeldata["vel_r_max_kmps"][mgi] for mgi in mgilist])
 
     index_closestvouter = int(np.abs(arr_vouter - velocity).argmin())
 
@@ -1177,7 +1178,7 @@ def dimension_reduce_3d_model(
             if outputdimensions == 1:
                 cellout |= {
                     "logrho": math.log10(max(1e-99, rho_out)) if rho_out > 0.0 else -99.0,
-                    "velocity_outer": vel_r_max / km_to_cm,
+                    "vel_r_max_kmps": vel_r_max / km_to_cm,
                 }
             elif outputdimensions == 2:
                 cellout |= {

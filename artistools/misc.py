@@ -49,7 +49,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         kwargs["max_help_position"] = 39
         super().__init__(*args, **kwargs)
 
-    def add_arguments(self, actions: t.Iterable[argparse.Action]) -> None:
+    def add_arguments(self, actions: t.Iterable[argparse.Action]) -> None:  # noqa: PLR6301
         getinvocation = super()._format_action_invocation
 
         def my_sort(action: argparse.Action) -> str:
@@ -229,16 +229,18 @@ def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
             "cos_theta": [float(x) for x in vpkt_txt.readline().split()],
             "phi": [float(x) for x in vpkt_txt.readline().split()],
         }
-        nspecflag = int(vpkt_txt.readline())
         assert vpkt_config["nobsdirections"] == len(vpkt_config["cos_theta"])
         assert len(vpkt_config["cos_theta"]) == len(vpkt_config["phi"])
 
+        speclistline = vpkt_txt.readline().split()
+        nspecflag = int(speclistline[0])
+
         if nspecflag == 1:
-            vpkt_config["nspectraperobs"] = int(vpkt_txt.readline())
-            for _ in range(vpkt_config["nspectraperobs"]):
-                vpkt_txt.readline()
+            vpkt_config["nspectraperobs"] = int(speclistline[1])
+            vpkt_config["z_excludelist"] = [int(x) for x in speclistline[2:]]
         else:
             vpkt_config["nspectraperobs"] = 1
+            vpkt_config["z_excludelist"] = []
 
         vpkt_config["time_limits_enabled"], vpkt_config["initial_time"], vpkt_config["final_time"] = (
             int(x) for x in vpkt_txt.readline().split()

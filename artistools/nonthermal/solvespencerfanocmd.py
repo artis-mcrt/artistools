@@ -193,7 +193,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         deposition_density_ev = estim["heating_dep"] / 1.6021772e-12  # convert erg to eV
         ionpopdict = estim["populations"]
 
-        velocity = modeldata["velocity_outer"][args.modelgridindex]
+        velocity = modeldata["vel_r_max_kmps"][args.modelgridindex]
         args.timedays = float(at.get_timestep_time(modelpath, args.timestep))
         print(f"timestep {args.timestep} cell {args.modelgridindex} (v={velocity} km/s at {args.timedays:.1f}d)")
 

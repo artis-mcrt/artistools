@@ -215,8 +215,8 @@ def get_model_abundances_Msun_1D(modelpath: Path) -> pd.DataFrame:
         / 3
         * math.pi
         * (
-            (modeldata["velocity_outer"] * 1e5 * t_model_init_seconds) ** 3
-            - (modeldata["velocity_inner"] * 1e5 * t_model_init_seconds) ** 3
+            (modeldata["vel_r_max_kmps"] * 1e5 * t_model_init_seconds) ** 3
+            - (modeldata["vel_r_min_kmps"] * 1e5 * t_model_init_seconds) ** 3
         )
     )
 

@@ -39,7 +39,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     dfmodel = pd.DataFrame(
         columns=[
             "inputcellid",
-            "velocity_outer",
+            "vel_r_max_kmps",
             "logrho",
             "X_Fegroup",
             "X_Ni56",

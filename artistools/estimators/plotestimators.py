@@ -16,6 +16,7 @@ import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import polars as pl
 from typeguard import check_type
 
 import artistools as at
@@ -57,7 +58,7 @@ def plot_init_abundances(
     assert len(xlist) - 1 == len(mgilist)
 
     if seriestype == "initabundances":
-        mergemodelabundata, _, _ = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=True)
+        mergemodelabundata, _ = at.inputmodel.get_modeldata(modelpath, get_elemabundances=True)
     elif seriestype == "initmasses":
         mergemodelabundata = at.initial_composition.get_model_abundances_Msun_1D(modelpath)
 
@@ -242,7 +243,7 @@ def plot_levelpop(
                 tdeltasum += arr_tdelta[timestep]
 
             if seriestype == "levelpopulation_dn_on_dvel":
-                deltav = modeldata.loc[modelgridindex].velocity_outer - modeldata.loc[modelgridindex].velocity_inner
+                deltav = modeldata.loc[modelgridindex].vel_r_max_kmps - modeldata.loc[modelgridindex].vel_r_min_kmps
                 ylist.append(valuesum / tdeltasum * modeldata.loc[modelgridindex].modelcellvolume / deltav)
             else:
                 ylist.append(valuesum / tdeltasum)
@@ -566,6 +567,33 @@ def get_xlist(
         check_type(timestepslist, t.Sequence[t.Sequence[int]])
         xlist = [np.mean([timearray[ts] for ts in tslist]) for tslist in timestepslist]
         timestepslist_out = timestepslist
+    elif xvariable == "velocity":
+        dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["vel_r_mid"])
+        dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
+        dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
+        dfmodel = dfmodel.select(["modelgridindex", "vel_r_mid"]).sort(by="vel_r_mid")
+        if args.xmax > 0:
+            dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= args.xmax)
+        dfmodelcollect = dfmodel.collect()
+
+        # nradialbins = 10
+        # xlist = []
+        # mgilist_out = []
+        # timestepslist_out = []
+        # for i in range(nradialbins):
+        #     velmin = modelmeta["vmax_cmps"] / nradialbins * (i - 1) if i > 0 else 0
+        #     bincells = dfmodelcollect.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"] / nradialbins * i).filter(
+        #         pl.col("vel_r_mid") >= velmin
+        #     )
+        #     print(i, bincells)
+        #     if not bincells.is_empty():
+        #         mgilist_out.append(bincells["modelgridindex"].to_list())
+        #         xlist.append(float(bincells["vel_r_mid"].mean()))
+        #         timestepslist_out.append(timestepslist)
+
+        xlist = (dfmodelcollect["vel_r_mid"] / 1e5).to_list()
+        mgilist_out = dfmodelcollect["modelgridindex"].to_list()
+        timestepslist_out = timestepslist
     else:
         xlist = []
         mgilist_out = []
@@ -730,8 +758,8 @@ def make_plot(
         xvariable, allnonemptymgilist, estimators, timestepslist_unfiltered, modelpath, args
     )
 
-    dfalldata = pd.DataFrame(index=mgilist)
-    dfalldata.index.name = "modelgridindex"
+    dfalldata = pd.DataFrame()
+    # dfalldata.index.name = "modelgridindex"
     dfalldata[xvariable] = xlist
 
     xlist = list(np.insert(xlist, 0, 0.0) if xvariable.startswith("velocity") else np.insert(xlist, 0, xlist[0]))
@@ -1029,7 +1057,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['averageexcitation', ['Fe II', 'Fe III']]],
         # [['populations', ['Sr89', 'Sr90', 'Sr91', 'Sr92', 'Sr93', 'Sr94', 'Sr95']],
         #  ['_ymin', 1e-3], ['_ymax', 5]],
-        [["populations", ["Fe", "Co", "Ni", "Sr", "Nd", "U"]]],
+        # [["populations", ["Fe", "Co", "Ni", "Sr", "Nd", "U"]]],
         # [['populations', ['He I', 'He II', 'He III']]],
         # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
         # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
@@ -1054,7 +1082,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         plot_recombrates(modelpath, estimators, 28, [3, 4, 5])
 
         return
-    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+
+    modeldata, modelmeta = at.inputmodel.get_modeldata(modelpath)
 
     if args.modelgridindex > -1 or args.x in ["time", "timestep"]:
         # plot time evolution in specific cell
@@ -1070,7 +1099,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # plot a range of cells in a time snapshot showing internal structure
 
         if not args.x:
-            args.x = "velocity_outer"
+            args.x = "velocity"
 
         if args.classicartis:
             allnonemptymgilist = [

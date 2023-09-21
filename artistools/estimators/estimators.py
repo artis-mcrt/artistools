@@ -35,7 +35,7 @@ def get_variableunits(key: str | None = None) -> str | dict[str, str]:
         "heating_dep/total_dep": "Ratio",
         "cooling": "erg/s/cm3",
         "velocity": "km/s",
-        "velocity_outer": "km/s",
+        "vel_r_max_kmps": "km/s",
     }
     return variableunits[key] if key else variableunits
 
@@ -232,7 +232,6 @@ def parse_estimfile(
 def read_estimators_from_file(
     folderpath: Path | str,
     modelpath: Path,
-    arr_velocity_outer: t.Sequence[float] | None,
     mpirank: int,
     printfilename: bool = False,
     get_ion_values: bool = True,
@@ -259,10 +258,6 @@ def read_estimators_from_file(
         get_heatingcooling=get_heatingcooling,
         skip_emptycells=skip_emptycells,
     ):
-        if arr_velocity_outer is not None:
-            file_estimblock["velocity_outer"] = arr_velocity_outer[fileblock_modelgridindex]
-            file_estimblock["velocity"] = file_estimblock["velocity_outer"]
-
         estimators_thisfile[(fileblock_timestep, fileblock_modelgridindex)] = file_estimblock
 
     return estimators_thisfile
@@ -308,13 +303,6 @@ def read_estimators(
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
 
-    arr_velocity_outer = None
-    if add_velocity:
-        modeldata, _ = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
-        if "velocity_outer" in modeldata.columns:
-            modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-            arr_velocity_outer = tuple(float(v) for v in modeldata["velocity_outer"].to_numpy())
-
     mpiranklist = (
         at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex, only_ranks_withgridcells=True)
         if mpirank is None
@@ -336,7 +324,6 @@ def read_estimators(
             read_estimators_from_file,
             folderpath,
             modelpath,
-            arr_velocity_outer,
             get_ion_values=get_ion_values,
             get_heatingcooling=get_heatingcooling,
             printfilename=printfilename,

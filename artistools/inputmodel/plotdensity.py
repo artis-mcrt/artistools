@@ -59,12 +59,12 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         # total_mass = dfmodel.cellmass_grams.sum() / 1.989e33
         for cell in dfmodel.itertuples(index=False):
-            binned_xvals.extend((cell.velocity_inner / 299792.458, cell.velocity_outer / 299792.458))
-            delta_beta = (cell.velocity_outer - cell.velocity_inner) / 299792.458
+            binned_xvals.extend((cell.vel_r_min_kmps / 299792.458, cell.vel_r_max_kmps / 299792.458))
+            delta_beta = (cell.vel_r_max_kmps - cell.vel_r_min_kmps) / 299792.458
 
             yval = cell.cellmass_grams / 1.989e33 / delta_beta
             binned_yvals.extend((yval, yval))
-            enclosed_xvals.append(cell.velocity_outer / 299792.458)
+            enclosed_xvals.append(cell.vel_r_max_kmps / 299792.458)
             mass_cumulative += cell.cellmass_grams / 1.989e33
             enclosed_yvals.append(mass_cumulative)
 

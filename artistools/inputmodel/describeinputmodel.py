@@ -63,7 +63,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     print(f"Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)")
 
     if modelmeta["dimensions"] == 1:
-        vmax_kmps = dfmodel["velocity_outer"].max()
+        vmax_kmps = dfmodel["vel_r_max_kmps"].max()
         assert isinstance(vmax_kmps, float)
         vmax = vmax_kmps * 1e5
         print(

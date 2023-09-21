@@ -560,7 +560,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     else:
         rho = 1e-11
         print(f"{wollaeger_profilename} not found. Using rho {rho} g/cm3")
-        dfdensities = pd.DataFrame({"rho": rho, "velocity_outer": 6.0e4}, index=[0])
+        dfdensities = pd.DataFrame({"rho": rho, "vel_r_max_kmps": 6.0e4}, index=[0])
 
     # print(dfdensities)
 
@@ -575,7 +575,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     rowdict = {
         # 'inputcellid': 1,
-        # 'velocity_outer': 6.e4,
+        # 'vel_r_max_kmps': 6.e4,
         # 'logrho': -3.,
         "X_Fegroup": 1.0,
         "X_Ni56": 0.0,
@@ -593,7 +593,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     modeldata = [
         dict(
             inputcellid=mgi + 1,
-            velocity_outer=densityrow["velocity_outer"],
+            vel_r_max_kmps=densityrow["vel_r_max_kmps"],
             logrho=math.log10(densityrow["rho"]),
             **rowdict,
         )
@@ -617,14 +617,14 @@ def get_wollaeger_density_profile(wollaeger_profilename):
         wollaeger_profilename,
         delim_whitespace=True,
         skiprows=1,
-        names=["cellid", "velocity_outer", "rho"],
+        names=["cellid", "vel_r_max_kmps", "rho"],
     )
     result["cellid"] = result["cellid"].astype(int)
-    result["velocity_inner"] = np.concatenate(([0.0], result["velocity_outer"].to_numpy()[:-1]))
+    result["vel_r_min_kmps"] = np.concatenate(([0.0], result["vel_r_max_kmps"].to_numpy()[:-1]))
 
     t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60  # noqa: F841
     result = result.eval(
-        "cellmass_grams = rho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
+        "cellmass_grams = rho * 4. / 3. * @math.pi * (vel_r_max_kmps ** 3 - vel_r_min_kmps ** 3)"
         "* (1e5 * @t_model_init_seconds_in) ** 3"
     )
 
@@ -632,7 +632,7 @@ def get_wollaeger_density_profile(wollaeger_profilename):
 
     return result.eval(
         "rho = cellmass_grams / ("
-        "4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
+        "4. / 3. * @math.pi * (vel_r_max_kmps ** 3 - vel_r_min_kmps ** 3)"
         " * (1e5 * @t_model_init_seconds) ** 3)"
     )
 
