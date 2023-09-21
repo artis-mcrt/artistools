@@ -58,7 +58,7 @@ enable_error_code = [
   "truthy-bool",
   "unused-awaitable",
 ]
-exclude = "(build)|(tests)"
+exclude = "(build)|(dist)|(tests)"
 ignore_missing_imports = true
 implicit_optional = false
 implicit_reexport = true
