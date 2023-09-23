@@ -199,9 +199,10 @@ def read_modelfile_text(
     assert len(dfmodel) == npts_model or getheadersonly
 
     dfmodel.index.name = "cellid"
+    dfmodel = dfmodel.rename(columns={"velocity_outer": "vel_r_max_kmps"})
 
     if modelmeta["dimensions"] == 1:
-        modelmeta["vmax_cmps"] = dfmodel.vel_r_max_kmps.max() * 1e5
+        modelmeta["vmax_cmps"] = dfmodel["vel_r_max_kmps"].max() * 1e5
 
     elif modelmeta["dimensions"] == 2:
         wid_init_rcyl = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"]
@@ -227,8 +228,11 @@ def read_modelfile_text(
                 assert np.isclose(cell_pos_z_mid, pos_z_mid, atol=wid_init_z / 2.0)
 
     elif modelmeta["dimensions"] == 3:
-        wid_init = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridx"]
-        modelmeta["wid_init"] = wid_init
+        wid_init_x = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridx"]
+        modelmeta["wid_init_x"] = wid_init_x
+        modelmeta["wid_init_y"] = wid_init_x
+        modelmeta["wid_init_z"] = wid_init_x
+        modelmeta["wid_init"] = wid_init_x
 
         dfmodel = dfmodel.rename(columns={"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"})
         if "pos_x_min" in dfmodel.columns and not printwarningsonly:
@@ -236,9 +240,9 @@ def read_modelfile_text(
         elif not getheadersonly:
 
             def vectormatch(vec1: list[float], vec2: list[float]) -> bool:
-                xclose = np.isclose(vec1[0], vec2[0], atol=wid_init / 2.0)
-                yclose = np.isclose(vec1[1], vec2[1], atol=wid_init / 2.0)
-                zclose = np.isclose(vec1[2], vec2[2], atol=wid_init / 2.0)
+                xclose = np.isclose(vec1[0], vec2[0], atol=wid_init_x / 2.0)
+                yclose = np.isclose(vec1[1], vec2[1], atol=wid_init_x / 2.0)
+                zclose = np.isclose(vec1[2], vec2[2], atol=wid_init_x / 2.0)
 
                 return all([xclose, yclose, zclose])
 
@@ -498,7 +502,6 @@ def add_derived_cols_to_modeldata(
     t_model_init_seconds = modelmeta["t_model_init_days"] * 86400.0
 
     dimensions = modelmeta["dimensions"]
-
     match dimensions:
         case 1:
             axes = ["r"]
@@ -508,8 +511,13 @@ def add_derived_cols_to_modeldata(
             )
 
             dfmodel = dfmodel.with_columns(
-                ((pl.col("vel_r_max_kmps") + pl.col("vel_r_min_kmps")) / 2 * 1e5).alias("vel_r_mid")
+                [
+                    (pl.col("vel_r_min_kmps") * 1e5).alias("vel_r_min"),
+                    (pl.col("vel_r_max_kmps") * 1e5).alias("vel_r_max"),
+                ]
             )
+
+            dfmodel = dfmodel.with_columns(((pl.col("vel_r_max") + pl.col("vel_r_min")) / 2).alias("vel_r_mid"))
 
             dfmodel = dfmodel.with_columns(
                 [
@@ -525,21 +533,43 @@ def add_derived_cols_to_modeldata(
 
         case 2:
             axes = ["rcyl", "z"]
-            wid_init_rcyl = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"]
-            wid_init_z = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"]
 
             assert t_model_init_seconds is not None
+            # pos_mid is defined in the input file
+            # TODO: get wid_init from modelmeta
+            dfmodel = dfmodel.with_columns(
+                [(pl.col(f"pos_{ax}_mid") - modelmeta[f"wid_init_{ax}"] / 2.0).alias(f"pos_{ax}_min") for ax in axes]
+            )
+
+            dfmodel = dfmodel.with_columns(
+                [(pl.col(f"pos_{ax}_mid") + modelmeta[f"wid_init_{ax}"] / 2.0).alias(f"pos_{ax}_max") for ax in axes]
+            )
+
+            # add a 3D radius column
+            axes.append("r")
             dfmodel = dfmodel.with_columns(
                 [
-                    (pl.col("pos_rcyl_mid") - wid_init_rcyl / 2.0).alias("pos_rcyl_min"),
-                    (pl.col("pos_z_mid") - wid_init_z / 2.0).alias("pos_z_min"),
+                    (
+                        pl.col("pos_rcyl_min").pow(2)
+                        + pl.min_horizontal(pl.col("pos_z_min").abs(), pl.col("pos_z_max").abs()).pow(2)
+                    )
+                    .sqrt()
+                    .alias("pos_r_min")
                 ]
             )
 
             dfmodel = dfmodel.with_columns(
+                [(pl.col("pos_rcyl_mid").pow(2) + pl.col("pos_z_mid").pow(2)).sqrt().alias("pos_r_mid")]
+            )
+
+            dfmodel = dfmodel.with_columns(
                 [
-                    (pl.col("pos_rcyl_mid") + wid_init_rcyl / 2.0).alias("pos_rcyl_max"),
-                    (pl.col("pos_z_mid") + wid_init_z / 2.0).alias("pos_z_max"),
+                    (
+                        pl.col("pos_rcyl_max").pow(2)
+                        + pl.max_horizontal(pl.col("pos_z_min").abs(), pl.col("pos_z_max").abs()).pow(2)
+                    )
+                    .sqrt()
+                    .alias("pos_r_max"),
                 ]
             )
 
@@ -549,49 +579,68 @@ def add_derived_cols_to_modeldata(
                         pl.col("rho")
                         * math.pi
                         * (
-                            (pl.col("pos_rcyl_mid") + wid_init_rcyl / 2.0) ** 2
-                            - (pl.col("pos_rcyl_mid") - wid_init_rcyl / 2.0) ** 2
+                            (pl.col("pos_rcyl_mid") + modelmeta["wid_init_rcyl"] / 2.0) ** 2
+                            - (pl.col("pos_rcyl_mid") - modelmeta["wid_init_rcyl"] / 2.0) ** 2
                         )
-                        * wid_init_z
+                        * modelmeta["wid_init_z"]
                     ).alias("cellmass_grams")
                 ]
             )
 
         case 3:
-            wid_init = modelmeta["wid_init"]
             axes = ["x", "y", "z"]
-            dfmodel = dfmodel.with_columns([(pl.col("rho") * wid_init**3).alias("cellmass_grams")])
+            for ax in axes:
+                if f"wid_init_{ax}" not in modelmeta:
+                    modelmeta[f"wid_init_{ax}"] = modelmeta["wid_init"]
+            cellvolume = modelmeta["wid_init_x"] * modelmeta["wid_init_y"] * modelmeta["wid_init_z"]
+            dfmodel = dfmodel.with_columns([(pl.col("rho") * cellvolume).alias("cellmass_grams")])
 
             dfmodel = dfmodel.with_columns(
-                [(pl.col(f"pos_{ax}_min") + 0.5 * wid_init).alias(f"pos_{ax}_mid") for ax in axes]
+                [(pl.col(f"pos_{ax}_min") + 0.5 * modelmeta[f"wid_init_{ax}"]).alias(f"pos_{ax}_mid") for ax in axes]
             )
 
-            dfmodel = dfmodel.with_columns([(pl.col(f"pos_{ax}_min") + wid_init).alias(f"pos_{ax}_max") for ax in axes])
+            dfmodel = dfmodel.with_columns(
+                [(pl.col(f"pos_{ax}_min") + modelmeta[f"wid_init_{ax}"]).alias(f"pos_{ax}_max") for ax in axes]
+            )
 
-    if dimensions > 1:
-        dfmodel = dfmodel.with_columns(
-            [(pl.col(f"pos_{ax}_min") / t_model_init_seconds).alias(f"vel_{ax}_min") for ax in axes]
-        )
+            # add a 3D radius column
+            axes.append("r")
 
-        dfmodel = dfmodel.with_columns(
-            [(pl.col(f"pos_{ax}_mid") / t_model_init_seconds).alias(f"vel_{ax}_mid") for ax in axes]
-        )
+            # xyz positions can be negative, so the min xyz side of the cube can have a larger radius than the max side
+            dfmodel = dfmodel.with_columns(
+                [
+                    (
+                        pl.min_horizontal(pl.col("pos_x_min").abs(), pl.col("pos_x_max").abs()).pow(2)
+                        + pl.min_horizontal(pl.col("pos_y_min").abs(), pl.col("pos_y_max").abs()).pow(2)
+                        + pl.min_horizontal(pl.col("pos_z_min").abs(), pl.col("pos_z_max").abs()).pow(2)
+                    )
+                    .sqrt()
+                    .alias("pos_r_min")
+                ]
+            )
 
-        dfmodel = dfmodel.with_columns(
-            [((pl.col(f"pos_{ax}_max")) / t_model_init_seconds).alias(f"vel_{ax}_max") for ax in axes]
-        )
+            dfmodel = dfmodel.with_columns(
+                [
+                    (pl.col("pos_x_mid").pow(2) + pl.col("pos_y_mid").pow(2) + pl.col("pos_z_mid").pow(2))
+                    .sqrt()
+                    .alias("pos_r_mid")
+                ]
+            )
+            dfmodel = dfmodel.with_columns(
+                [
+                    (
+                        pl.max_horizontal(pl.col("pos_x_min").abs(), pl.col("pos_x_max").abs()).pow(2)
+                        + pl.max_horizontal(pl.col("pos_y_min").abs(), pl.col("pos_y_max").abs()).pow(2)
+                        + pl.max_horizontal(pl.col("pos_z_min").abs(), pl.col("pos_z_max").abs()).pow(2)
+                    )
+                    .sqrt()
+                    .alias("pos_r_max")
+                ]
+            )
 
-    if dimensions == 2:
-        dfmodel = dfmodel.with_columns(
-            (pl.col("vel_rcyl_mid").pow(2) + pl.col("vel_z_mid").pow(2)).sqrt().alias("vel_r_mid")
-        )
-
-    elif dimensions == 3:
-        dfmodel = dfmodel.with_columns(
-            (pl.col("vel_x_mid").pow(2) + pl.col("vel_y_mid").pow(2) + pl.col("vel_z_mid").pow(2))
-            .sqrt()
-            .alias("vel_r_mid")
-        )
+    for col in dfmodel.columns:
+        if col.startswith("pos_"):
+            dfmodel = dfmodel.with_columns((pl.col(col) / t_model_init_seconds).alias(col.replace("pos_", "vel_")))
 
     if "logrho" not in dfmodel.columns:
         dfmodel = dfmodel.with_columns(pl.col("rho").log10().alias("logrho"))
@@ -600,8 +649,7 @@ def add_derived_cols_to_modeldata(
         dfmodel = dfmodel.with_columns((10 ** pl.col("logrho")).alias("rho"))
 
     if unknown_cols := [col for col in derived_cols if col not in dfmodel.columns]:
-        print(f"Unknown derived columns: {unknown_cols}")
-        raise AssertionError
+        print(f"WARNING: Unknown derived columns: {unknown_cols}")
 
     dfmodel = dfmodel.drop([col for col in dfmodel.columns if col not in original_cols and col not in derived_cols])
 
@@ -1086,7 +1134,7 @@ def dimension_reduce_3d_model(
     if modelmeta is None:
         modelmeta = {}
 
-    modelmeta_out = {k: v for k, v in modelmeta.items() if not k.startswith("ncoord") and k != "wid_init"}
+    modelmeta_out = {k: v for k, v in modelmeta.items() if not k.startswith("ncoord") and not k.startswith("wid_init")}
 
     assert all(
         key not in modelmeta_out or modelmeta_out[key] == kwargs[key] for key in kwargs
@@ -1099,7 +1147,7 @@ def dimension_reduce_3d_model(
     xmax = vmax * t_model_init_seconds
     ngridpoints = modelmeta.get("npts_model", len(dfmodel))
     ncoordgridx = modelmeta.get("ncoordx", int(round(ngridpoints ** (1.0 / 3.0))))
-    wid_init = 2 * xmax / ncoordgridx
+    wid_initx = 2 * xmax / ncoordgridx
 
     assert modelmeta.get("dimensions", 3) == 3
     modelmeta_out["dimensions"] = outputdimensions
@@ -1110,7 +1158,7 @@ def dimension_reduce_3d_model(
     celldensity = dict(dfmodel[["inputcellid", "rho"]].itertuples(index=False))
 
     for ax in ["x", "y", "z"]:
-        dfmodel[f"vel_{ax}_mid"] = (dfmodel[f"pos_{ax}_min"] + (0.5 * wid_init)) / t_model_init_seconds
+        dfmodel[f"vel_{ax}_mid"] = (dfmodel[f"pos_{ax}_min"] + (0.5 * wid_initx)) / t_model_init_seconds
 
     km_to_cm = 1e5
     if ncoordgridr is None:
@@ -1123,11 +1171,14 @@ def dimension_reduce_3d_model(
         dfmodel["vel_rcyl_mid"] = np.sqrt(dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2)
         modelmeta_out["ncoordgridz"] = ncoordgridz
         modelmeta_out["ncoordgridrcyl"] = ncoordgridr
+        modelmeta_out["wid_init_z"] = xmax / ncoordgridz
+        modelmeta_out["wid_init_rcyl"] = xmax / ncoordgridr
     else:
+        # 1D
         dfmodel["vel_r_mid"] = np.sqrt(
             dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2 + dfmodel["vel_z_mid"] ** 2
         )
-        modelmeta_out["ncoordgridrc"] = ncoordgridr
+        modelmeta_out["ncoordgridr"] = ncoordgridr
 
     # velocities in cm/s
     velocity_bins_z_min = (
@@ -1171,7 +1222,7 @@ def dimension_reduce_3d_model(
                         * t_model_init_seconds**3
                     )
                 matchedcellrhosum = matchedcells.rho.sum()
-                rho_out = matchedcellrhosum * wid_init**3 / shell_volume
+                rho_out = matchedcellrhosum * wid_initx**3 / shell_volume
 
             cellout: dict[str, t.Any] = {"inputcellid": cellindexout}
 
