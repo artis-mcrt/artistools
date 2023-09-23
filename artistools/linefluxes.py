@@ -693,7 +693,7 @@ def make_emitting_regions_plot(args):
                 tight_layout={"pad": 0.2, "w_pad": 0.0, "h_pad": 0.2},
             )
 
-            for refdataindex, _f in enumerate(refdatafilenames):
+            for refdataindex in range(len(refdatafilenames)):
                 timeindex = np.abs(refdatatimes[refdataindex] - tmid).argmin()
                 axis.plot(
                     refdatapoints[refdataindex][timeindex]["ne"],

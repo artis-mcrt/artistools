@@ -443,7 +443,7 @@ def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
             vspecpol_data.append(chunk)
 
         if len(vspecpol_data_old) > 0:
-            for i, _ in enumerate(vspecpol_data):
+            for i in range(len(vspecpol_data)):
                 dftmp = vspecpol_data[i].copy()  # copy of vspectrum number i in a file
                 # add copy to the same spectrum number from previous file
                 # (don't need to copy row 1 = time or column 1 = freq)
@@ -908,7 +908,7 @@ def get_flux_contributions_from_packets(
         "emissiontype" if useinternalpackets else "emissiontype" if use_lastemissiontype else "trueemissiontype"
     )
 
-    for _index, packetsfile in enumerate(packetsfiles):
+    for packetsfile in packetsfiles:
         if useinternalpackets:
             # if we're using packets*.out files, these packets are from the last timestep
             t_seconds = at.get_timestep_times(modelpath, loc="start")[-1] * 86400.0
