@@ -426,6 +426,9 @@ def get_empty_3d_model(
         "vmax_cmps": vmax,
         "npts_model": ncoordgrid**3,
         "wid_init": 2 * xmax / ncoordgrid,
+        "wid_init_x": 2 * xmax / ncoordgrid,
+        "wid_init_y": 2 * xmax / ncoordgrid,
+        "wid_init_z": 2 * xmax / ncoordgrid,
         "ncoordgrid": ncoordgrid,
         "ncoordgridx": ncoordgrid,
         "ncoordgridy": ncoordgrid,
@@ -1171,7 +1174,7 @@ def dimension_reduce_3d_model(
         dfmodel["vel_rcyl_mid"] = np.sqrt(dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2)
         modelmeta_out["ncoordgridz"] = ncoordgridz
         modelmeta_out["ncoordgridrcyl"] = ncoordgridr
-        modelmeta_out["wid_init_z"] = xmax / ncoordgridz
+        modelmeta_out["wid_init_z"] = 2 * xmax / ncoordgridz
         modelmeta_out["wid_init_rcyl"] = xmax / ncoordgridr
     else:
         # 1D
