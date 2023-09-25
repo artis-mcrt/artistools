@@ -40,7 +40,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         ncols=1,
         sharex=True,
         sharey=False,
-        figsize=(6, 6),
+        figsize=(8, 8),
         tight_layout={"pad": 0.4, "w_pad": 0.0, "h_pad": 0.0},
     )
 
@@ -52,13 +52,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             modelpath, derived_cols=["vel_r_min", "vel_r_mid", "vel_r_max", "cellmass_grams"]
         )
         label = at.get_model_name(modelpath)
-        enclosed_xvals = []
-        enclosed_yvals = []
         binned_xvals: list[float] = []
         binned_yvals: list[float] = []
-        mass_cumulative = 0.0
-        enclosed_xvals = [0.0]
-        enclosed_yvals = [0.0]
 
         # total_mass = dfmodel.cellmass_grams.sum() / 1.989e33
         dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
@@ -67,18 +62,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         dfmodelcollect = dfmodel.select(
             ["modelgridindex", "vel_r_min", "vel_r_mid", "vel_r_max", "cellmass_grams"]
         ).collect()
-        if "vel_r_max_kmps" in dfmodel.columns:
-            for cell in dfmodelcollect.iter_rows(named=True):
-                vlower = cell["vel_r_min"]
-                vupper = cell["vel_r_max"]
 
-                binned_xvals.extend((vlower / 29979245800, vupper / 29979245800))
-                delta_beta = (vupper - vlower) / 29979245800
-                yval = cell["cellmass_grams"] / 1.989e33 / delta_beta
-                binned_yvals.extend((yval, yval))
-                mass_cumulative += cell["cellmass_grams"] / 1.989e33
-                enclosed_xvals.append(vupper / 29979245800)
-                enclosed_yvals.append(mass_cumulative)
+        vlowers = dfmodelcollect["vel_r_min"].unique().sort()
+        vuppers = dfmodelcollect["vel_r_max"].unique().sort()
+
+        if "vel_r_max_kmps" in dfmodel.columns:
+            vlowerscoarse = vlowers.to_list()
+            vupperscoarse = vuppers.to_list()
         else:
             ncoarsevelbins = int(
                 (modelmeta["ncoordgridrcyl"] if "ncoordgridrcyl" in modelmeta else modelmeta["ncoordgridx"]) / 2.0
@@ -86,33 +76,33 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             vlowerscoarse = [modelmeta["vmax_cmps"] / ncoarsevelbins * i for i in range(ncoarsevelbins)]
             vupperscoarse = [modelmeta["vmax_cmps"] / ncoarsevelbins * (i + 1) for i in range(ncoarsevelbins)]
 
-            for vlower, vupper in zip(vlowerscoarse, vupperscoarse):
-                velbinmass = dfmodelcollect.filter(pl.col("vel_r_mid").is_between(vlower, vupper, closed="left"))[
+        for vlower, vupper in zip(vlowerscoarse, vupperscoarse):
+            velbinmass = (
+                dfmodelcollect.filter(pl.col("vel_r_mid").is_between(vlower, vupper, closed="left"))[
                     "cellmass_grams"
                 ].sum()
+                / 1.989e33
+            )
 
-                binned_xvals.extend((vlower / 29979245800, vupper / 29979245800))
-                delta_beta = (vupper - vlower) / 29979245800
-                yval = velbinmass / 1.989e33 / delta_beta
-                binned_yvals.extend((yval, yval))
+            binned_xvals.extend((vlower / 29979245800, vupper / 29979245800))
+            delta_beta = (vupper - vlower) / 29979245800
+            yval = velbinmass / delta_beta
+            binned_yvals.extend((yval, yval))
 
-            vuppers = dfmodelcollect["vel_r_max"].unique().sort()
-            vlowers = [0.0, *vuppers[:-1].to_list()]
-
-            for vlower, vupper in zip(vlowers, vuppers):
-                velbinmass = dfmodelcollect.filter(pl.col("vel_r_mid").is_between(vlower, vupper, closed="left"))[
-                    "cellmass_grams"
-                ].sum()
-                mass_cumulative += velbinmass / 1.989e33
-                enclosed_xvals.append(vupper / 29979245800)
-                enclosed_yvals.append(mass_cumulative)
+        enclosed_xvals = (vuppers / 29979245800).to_list()
+        enclosed_yvals = [
+            dfmodelcollect.filter(pl.col("vel_r_max") <= vupper)["cellmass_grams"].sum() / 1.989e33
+            for vupper in vuppers
+        ]
 
         axes[0].plot(binned_xvals, binned_yvals, label=label)
         axes[1].plot(enclosed_xvals, enclosed_yvals, label=label)
+        vmax_on_c = modelmeta["vmax_cmps"] / 29979245800
+        axes[0].set_xlim(right=vmax_on_c)
 
-    axes[-1].set_xlabel("velocity [v/c]")
-    axes[0].set_ylabel(r"$\Delta$M [M$_\odot$] / $\Delta$v/c")
-    axes[1].set_ylabel(r"enclosed mass [M$_\odot$]")
+    axes[-1].set_xlabel("Velocity [$c$]")
+    axes[0].set_ylabel(r"$\Delta$M/$\Delta v$  [M$_\odot/c$]")
+    axes[1].set_ylabel(r"Mass Enclosed [M$_\odot$]")
     axes[0].legend()
 
     axes[-1].set_xlim(left=0.0)
