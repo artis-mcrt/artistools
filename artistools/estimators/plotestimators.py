@@ -540,8 +540,6 @@ def plot_series(
     ylist.insert(0, ylist[0])
 
     xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
-    assert isinstance(xlist_filtered, list)
-    assert isinstance(ylist_filtered, list)
 
     ax.plot(
         xlist_filtered, ylist_filtered, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename), **plotkwargs
