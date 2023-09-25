@@ -237,7 +237,6 @@ def read_estimators_from_file(
     get_heatingcooling: bool = True,
     skip_emptycells: bool = False,
 ) -> dict[tuple[int, int], t.Any]:
-    estimators_thisfile = {}
     estimfilename = f"estimators_{mpirank:04d}.out"
     try:
         estfilepath = at.firstexisting(estimfilename, folder=folderpath, tryzipped=True)
@@ -250,16 +249,16 @@ def read_estimators_from_file(
         filesize = Path(estfilepath).stat().st_size / 1024 / 1024
         print(f"Reading {estfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
 
-    for fileblock_timestep, fileblock_modelgridindex, file_estimblock in parse_estimfile(
-        estfilepath,
-        modelpath,
-        get_ion_values=get_ion_values,
-        get_heatingcooling=get_heatingcooling,
-        skip_emptycells=skip_emptycells,
-    ):
-        estimators_thisfile[(fileblock_timestep, fileblock_modelgridindex)] = file_estimblock
-
-    return estimators_thisfile
+    return {
+        (fileblock_timestep, fileblock_modelgridindex): file_estimblock
+        for fileblock_timestep, fileblock_modelgridindex, file_estimblock in parse_estimfile(
+            estfilepath,
+            modelpath,
+            get_ion_values=get_ion_values,
+            get_heatingcooling=get_heatingcooling,
+            skip_emptycells=skip_emptycells,
+        )
+    }
 
 
 def read_estimators(
