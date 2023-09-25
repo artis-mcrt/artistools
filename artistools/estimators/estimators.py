@@ -52,9 +52,10 @@ def get_variablelongunits(key: str | None = None) -> str | dict[str, str]:
 
 def get_dictlabelreplacements() -> dict[str, str]:
     return {
-        "lognne": "Log nne",
-        "Te": "T$_e$",
-        "TR": "T$_R$",
+        "lognne": r"Log n$_{\rm e}$",
+        "Te": r"T$_{\rm e}$",
+        "TR": r"T$_{\rm R}$",
+        "TJ": r"T$_{\rm J}$",
         "gamma_NT": r"$\Gamma_{\rm non-thermal}$ [s$^{-1}$]",
         "gamma_R_bfest": r"$\Gamma_{\rm phot}$ [s$^{-1}$]",
         "heating_dep/total_dep": "Heating fraction",
@@ -362,7 +363,7 @@ def get_averaged_estimators(
     modelgridindex: int,
     keys: str | list,
     avgadjcells: int = 0,
-) -> t.Any | float:
+) -> dict | float:
     """Get the average of estimators[(timestep, modelgridindex)][keys[0]]...[keys[-1]] across timesteps."""
     if isinstance(keys, str):
         keys = [keys]

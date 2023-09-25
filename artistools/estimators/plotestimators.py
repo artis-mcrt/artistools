@@ -483,13 +483,13 @@ def plot_series(
     ax,
     xlist,
     variablename,
-    showlegend,
+    showlegend: bool,
     timestepslist,
     mgilist,
-    modelpath,
+    modelpath: str | Path,
     estimators,
-    args,
-    nounits=False,
+    args: argparse.Namespace,
+    nounits: bool = False,
     dfalldata=None,
     **plotkwargs,
 ):
@@ -506,9 +506,10 @@ def plot_series(
         ax.set_ylabel(serieslabel)
         linelabel = None
 
-    ylist = []
+    ylist: list[float] = []
     for modelgridindex, timesteps in zip(mgilist, timestepslist):
         estimavg = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [])
+        assert isinstance(estimavg, dict)
         try:
             ylist.append(eval(variablename, {"__builtins__": math}, estimavg))
         except KeyError:
@@ -538,9 +539,13 @@ def plot_series(
 
     ylist.insert(0, ylist[0])
 
-    xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
+    xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
+    assert isinstance(xlist_filtered, list)
+    assert isinstance(ylist_filtered, list)
 
-    ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename), **plotkwargs)
+    ax.plot(
+        xlist_filtered, ylist_filtered, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename), **plotkwargs
+    )
 
 
 def get_xlist(
@@ -573,7 +578,9 @@ def get_xlist(
         dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
         dfmodel = dfmodel.select(["modelgridindex", "vel_r_mid"]).sort(by="vel_r_mid")
         if args.xmax > 0:
-            dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= args.xmax)
+            dfmodel = dfmodel.filter(pl.col("vel_r_mid") / 1e5 <= args.xmax)
+        else:
+            dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
         dfmodelcollect = dfmodel.collect()
 
         # nradialbins = 10
@@ -600,6 +607,7 @@ def get_xlist(
         timestepslist_out = []
         for modelgridindex, timesteps in zip(allnonemptymgilist, timestepslist):
             xvalue = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, xvariable)
+            assert isinstance(xvalue, float | int)
             xlist.append(xvalue)
             mgilist_out.append(modelgridindex)
             timestepslist_out.append(timesteps)
