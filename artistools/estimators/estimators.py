@@ -50,8 +50,8 @@ def get_variablelongunits(key: str | None = None) -> str | dict[str, str]:
     return variablelongunits[key] if key else variablelongunits
 
 
-def get_dictlabelreplacements(key: str | None = None) -> str | dict[str, str]:
-    dictlabelreplacements = {
+def get_dictlabelreplacements() -> dict[str, str]:
+    return {
         "lognne": "Log nne",
         "Te": "T$_e$",
         "TR": "T$_R$",
@@ -59,7 +59,6 @@ def get_dictlabelreplacements(key: str | None = None) -> str | dict[str, str]:
         "gamma_R_bfest": r"$\Gamma_{\rm phot}$ [s$^{-1}$]",
         "heating_dep/total_dep": "Heating fraction",
     }
-    return dictlabelreplacements[key] if key else dictlabelreplacements
 
 
 def apply_filters(
