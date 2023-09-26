@@ -569,7 +569,7 @@ def get_xlist(
         check_type(timestepslist, t.Sequence[t.Sequence[int]])
         xlist = [np.mean([timearray[ts] for ts in tslist]) for tslist in timestepslist]
         timestepslist_out = timestepslist
-    elif xvariable in ["velocity", "beta"]:
+    elif xvariable in {"velocity", "beta"}:
         dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["vel_r_mid"])
         dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
         dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
