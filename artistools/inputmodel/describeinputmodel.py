@@ -54,7 +54,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         args.inputfile,
         get_elemabundances=True,
         printwarningsonly=False,
-        derived_cols=["cellmass_grams", "vel_r_mid", "rho"],
+        derived_cols=["mass_g", "vel_r_mid", "rho"],
     )
     dfmodel = lazydfmodel.collect()
     t_model_init_days, vmax = modelmeta["t_model_init_days"], modelmeta["vmax_cmps"]
@@ -98,13 +98,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         assoc_cells, mgi_of_propcells = None, None
 
     if "q" in dfmodel.columns:
-        initial_energy = dfmodel["cellmass_grams"].dot(dfmodel["cellmass_grams"])
+        initial_energy = dfmodel["mass_g"].dot(dfmodel["mass_g"])
         assert initial_energy is not None
         print(f'  {"initial energy":19s} {initial_energy:.3e} erg')
     else:
         initial_energy = 0.0
 
-    mass_msun_rho = dfmodel["cellmass_grams"].sum() / 1.989e33
+    mass_msun_rho = dfmodel["mass_g"].sum() / 1.989e33
 
     if assoc_cells is not None and mgi_of_propcells is not None:
         direct_model_propgrid_map = all(
@@ -137,7 +137,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     print(f'  {"M_tot_rho":19s} {mass_msun_rho:8.5f} MSun (density * volume)')
 
     if modelmeta["dimensions"] > 1:
-        corner_mass = dfmodel.filter(pl.col("vel_r_mid") > vmax)["cellmass_grams"].sum() / 1.989e33
+        corner_mass = dfmodel.filter(pl.col("vel_r_mid") > vmax)["mass_g"].sum() / 1.989e33
         print(
             f'  {"M_corners":19s} {corner_mass / 1.989e33:8.5f} MSun ('
             f" {100 * corner_mass / mass_msun_rho:.2f}% of M_tot in cells with v_r_mid > vmax)"
@@ -151,7 +151,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     for column in dfmodel.columns:
         if column.startswith("X_"):
             species = column.replace("X_", "")
-            speciesabund_g = np.dot(dfmodel[column], dfmodel["cellmass_grams"])
+            speciesabund_g = np.dot(dfmodel[column], dfmodel["mass_g"])
 
             species_mass_msun = speciesabund_g / 1.989e33
 

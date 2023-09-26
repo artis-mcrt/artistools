@@ -197,8 +197,7 @@ def plot_levelpop(
     else:
         raise ValueError
 
-    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-    modeldata = modeldata.eval("modelcellvolume = cellmass_grams / (10 ** logrho)")
+    modeldata, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "volume"])
 
     adata = at.atomic.get_levels(modelpath)
 
@@ -244,7 +243,7 @@ def plot_levelpop(
 
             if seriestype == "levelpopulation_dn_on_dvel":
                 deltav = modeldata.loc[modelgridindex].vel_r_max_kmps - modeldata.loc[modelgridindex].vel_r_min_kmps
-                ylist.append(valuesum / tdeltasum * modeldata.loc[modelgridindex].modelcellvolume / deltav)
+                ylist.append(valuesum / tdeltasum * modeldata.loc[modelgridindex].volume / deltav)
             else:
                 ylist.append(valuesum / tdeltasum)
 

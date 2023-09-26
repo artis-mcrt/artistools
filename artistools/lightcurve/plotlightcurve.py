@@ -35,10 +35,10 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         dfmodel, modelmeta = at.inputmodel.get_modeldata(
             modelpath,
             skipnuclidemassfraccolumns=True,
-            derived_cols=["cellmass_grams", "vel_r_mid"],
+            derived_cols=["mass_g", "vel_r_mid"],
         )
 
-        model_mass_grams = dfmodel.cellmass_grams.sum()
+        model_mass_grams = dfmodel.mass_g.sum()
         print(f"  model mass: {model_mass_grams / 1.989e33:.3f} Msun")
 
     depdata = at.get_deposition(modelpath)
@@ -217,10 +217,10 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         ejecta_ke: float
         if "vel_r_mid" in dfmodel.columns:
             # vel_r_mid is in cm/s
-            ejecta_ke = (0.5 * (dfmodel["cellmass_grams"] / 1000.0) * (dfmodel["vel_r_mid"] / 100.0) ** 2).sum()
+            ejecta_ke = (0.5 * (dfmodel["mass_g"] / 1000.0) * (dfmodel["vel_r_mid"] / 100.0) ** 2).sum()
         else:
             # vel_r_min_kmps is in km/s
-            ejecta_ke = (0.5 * (dfmodel["cellmass_grams"] / 1000.0) * (1000.0 * dfmodel["vel_r_max_kmps"]) ** 2).sum()
+            ejecta_ke = (0.5 * (dfmodel["mass_g"] / 1000.0) * (1000.0 * dfmodel["vel_r_max_kmps"]) ** 2).sum()
 
         print(f"  ejecta kinetic energy: {ejecta_ke:.2e} [J] = {ejecta_ke *1e7:.2e} [erg]")
 

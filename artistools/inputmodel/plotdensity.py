@@ -49,19 +49,17 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     for modelpath in args.modelpath:
         dfmodel, modelmeta = at.get_modeldata_polars(
-            modelpath, derived_cols=["vel_r_min", "vel_r_mid", "vel_r_max", "cellmass_grams"]
+            modelpath, derived_cols=["vel_r_min", "vel_r_mid", "vel_r_max", "mass_g"]
         )
         label = at.get_model_name(modelpath)
         binned_xvals: list[float] = []
         binned_yvals: list[float] = []
 
-        # total_mass = dfmodel.cellmass_grams.sum() / 1.989e33
+        # total_mass = dfmodel.mass_g.sum() / 1.989e33
         dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
         dfmodel = dfmodel.sort(by="vel_r_mid")
 
-        dfmodelcollect = dfmodel.select(
-            ["modelgridindex", "vel_r_min", "vel_r_mid", "vel_r_max", "cellmass_grams"]
-        ).collect()
+        dfmodelcollect = dfmodel.select(["modelgridindex", "vel_r_min", "vel_r_mid", "vel_r_max", "mass_g"]).collect()
 
         vlowers = dfmodelcollect["vel_r_min"].unique().sort()
         vuppers = dfmodelcollect["vel_r_max"].unique().sort()
@@ -78,9 +76,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         for vlower, vupper in zip(vlowerscoarse, vupperscoarse):
             velbinmass = (
-                dfmodelcollect.filter(pl.col("vel_r_mid").is_between(vlower, vupper, closed="left"))[
-                    "cellmass_grams"
-                ].sum()
+                dfmodelcollect.filter(pl.col("vel_r_mid").is_between(vlower, vupper, closed="left"))["mass_g"].sum()
                 / 1.989e33
             )
 
@@ -91,8 +87,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         enclosed_xvals = (vuppers / 29979245800).to_list()
         enclosed_yvals = [
-            dfmodelcollect.filter(pl.col("vel_r_max") <= vupper)["cellmass_grams"].sum() / 1.989e33
-            for vupper in vuppers
+            dfmodelcollect.filter(pl.col("vel_r_max") <= vupper)["mass_g"].sum() / 1.989e33 for vupper in vuppers
         ]
 
         axes[0].plot(binned_xvals, binned_yvals, label=label)

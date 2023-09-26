@@ -653,7 +653,7 @@ def add_derived_cols_to_modeldata(
             (pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0)).alias("rho")
         )
 
-    dfmodel = dfmodel.with_columns([(pl.col("rho") * pl.col("volume")).alias("cellmass_grams")])
+    dfmodel = dfmodel.with_columns([(pl.col("rho") * pl.col("volume")).alias("mass_g")])
 
     if unknown_cols := [col for col in derived_cols if col not in dfmodel.columns]:
         print(f"WARNING: Unknown derived columns: {unknown_cols}")
