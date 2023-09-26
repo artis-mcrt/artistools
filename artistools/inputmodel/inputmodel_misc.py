@@ -525,12 +525,11 @@ def add_derived_cols_to_modeldata(
             dfmodel = dfmodel.with_columns(
                 [
                     (
-                        pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0)
-                        * (4.0 / 3.0)
+                        (4.0 / 3.0)
                         * 3.14159265
                         * (pl.col("vel_r_max_kmps") ** 3 - pl.col("vel_r_min_kmps") ** 3)
                         * (1e5 * t_model_init_seconds) ** 3
-                    ).alias("cellmass_grams")
+                    ).alias("volume")
                 ]
             )
 
@@ -579,14 +578,13 @@ def add_derived_cols_to_modeldata(
             dfmodel = dfmodel.with_columns(
                 [
                     (
-                        pl.col("rho")
-                        * math.pi
+                        math.pi
                         * (
                             (pl.col("pos_rcyl_mid") + modelmeta["wid_init_rcyl"] / 2.0) ** 2
                             - (pl.col("pos_rcyl_mid") - modelmeta["wid_init_rcyl"] / 2.0) ** 2
                         )
                         * modelmeta["wid_init_z"]
-                    ).alias("cellmass_grams")
+                    ).alias("volume")
                 ]
             )
 
@@ -595,8 +593,10 @@ def add_derived_cols_to_modeldata(
             for ax in axes:
                 if f"wid_init_{ax}" not in modelmeta:
                     modelmeta[f"wid_init_{ax}"] = modelmeta["wid_init"]
-            cellvolume = modelmeta["wid_init_x"] * modelmeta["wid_init_y"] * modelmeta["wid_init_z"]
-            dfmodel = dfmodel.with_columns([(pl.col("rho") * cellvolume).alias("cellmass_grams")])
+
+            dfmodel = dfmodel.with_columns(
+                [pl.lit(modelmeta["wid_init_x"] * modelmeta["wid_init_y"] * modelmeta["wid_init_z"]).alias("volume")]
+            )
 
             dfmodel = dfmodel.with_columns(
                 [(pl.col(f"pos_{ax}_min") + 0.5 * modelmeta[f"wid_init_{ax}"]).alias(f"pos_{ax}_mid") for ax in axes]
@@ -649,7 +649,11 @@ def add_derived_cols_to_modeldata(
         dfmodel = dfmodel.with_columns(pl.col("rho").log10().alias("logrho"))
 
     if "rho" not in dfmodel.columns:
-        dfmodel = dfmodel.with_columns((10 ** pl.col("logrho")).alias("rho"))
+        dfmodel = dfmodel.with_columns(
+            (pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0)).alias("rho")
+        )
+
+    dfmodel = dfmodel.with_columns([(pl.col("rho") * pl.col("volume")).alias("cellmass_grams")])
 
     if unknown_cols := [col for col in derived_cols if col not in dfmodel.columns]:
         print(f"WARNING: Unknown derived columns: {unknown_cols}")
