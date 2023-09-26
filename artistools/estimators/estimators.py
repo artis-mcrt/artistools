@@ -4,7 +4,6 @@
 Examples are temperatures, populations, and heating/cooling rates.
 """
 
-
 import argparse
 import contextlib
 import math
@@ -18,6 +17,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -468,3 +468,28 @@ def get_partiallycompletetimesteps(estimators: dict[tuple[int, int], dict]) -> l
         all_mgis.add(mgi)
 
     return [nts for nts, mgilist in timestepcells.items() if len(mgilist) < len(all_mgis)]
+
+
+def get_temperatures(modelpath: str | Path) -> pl.LazyFrame:
+    """Get a polars DataFrame containing the temperatures at every timestep and modelgridindex."""
+    dfest_parquetfile = Path(modelpath, "temperatures.parquet.tmp")
+
+    if not dfest_parquetfile.is_file():
+        estimators = at.estimators.read_estimators(
+            modelpath,
+            get_ion_values=False,
+            get_heatingcooling=False,
+            skip_emptycells=True,
+        )
+        assert len(estimators) > 0
+        pl.DataFrame(
+            {
+                "timestep": (tsmgi[0] for tsmgi in estimators),
+                "modelgridindex": (tsmgi[1] for tsmgi in estimators),
+                "TR": (estimators[tsmgi].get("TR", -1) for tsmgi in estimators),
+            },
+        ).filter(pl.col("TR") >= 0).with_columns(pl.col(pl.Int64).cast(pl.Int32)).write_parquet(
+            dfest_parquetfile, compression="zstd"
+        )
+
+    return pl.scan_parquet(dfest_parquetfile)

@@ -7,6 +7,7 @@ from .estimators import get_averageionisation
 from .estimators import get_dictlabelreplacements
 from .estimators import get_ionrecombrates_fromfile
 from .estimators import get_partiallycompletetimesteps
+from .estimators import get_temperatures
 from .estimators import get_units_string
 from .estimators import get_variablelongunits
 from .estimators import get_variableunits
