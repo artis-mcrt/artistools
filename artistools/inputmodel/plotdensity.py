@@ -67,7 +67,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         enclosed_yvals = [0.0] + [
             dfmodelcollect.filter(pl.col("vel_r_mid") <= vupper)["mass_g"].sum() / 1.989e33 for vupper in vuppers
         ]
-        axes[0].step(enclosed_xvals, enclosed_yvals, label=label, where="pre")
+        axes[0].plot(enclosed_xvals, enclosed_yvals, label=label)
 
         if "vel_r_max_kmps" in dfmodel.columns:
             vlowerscoarse = vlowers.to_list()
