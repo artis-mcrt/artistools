@@ -1228,8 +1228,7 @@ def dimension_reduce_3d_model(
                         * (vel_z_max - vel_z_min)
                         * t_model_init_seconds**3
                     )
-                matchedcellrhosum = matchedcells.rho.sum()
-                rho_out = matchedcellrhosum * wid_initx**3 / shell_volume
+                rho_out = matchedcells.mass_g.sum() / shell_volume
 
             cellout: dict[str, t.Any] = {"inputcellid": cellindexout}
 
