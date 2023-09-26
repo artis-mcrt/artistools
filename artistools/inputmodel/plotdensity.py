@@ -63,13 +63,18 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         vlowers = dfmodelcollect["vel_r_min"].unique().sort()
         vuppers = dfmodelcollect["vel_r_max"].unique().sort()
+        enclosed_xvals = [0.0, *(vuppers / 29979245800).to_list()]
+        enclosed_yvals = [0.0] + [
+            dfmodelcollect.filter(pl.col("vel_r_mid") <= vupper)["mass_g"].sum() / 1.989e33 for vupper in vuppers
+        ]
+        axes[0].step(enclosed_xvals, enclosed_yvals, label=label, where="pre")
 
         if "vel_r_max_kmps" in dfmodel.columns:
             vlowerscoarse = vlowers.to_list()
             vupperscoarse = vuppers.to_list()
         else:
             ncoarsevelbins = int(
-                (modelmeta["ncoordgridrcyl"] if "ncoordgridrcyl" in modelmeta else modelmeta["ncoordgridx"]) / 2.0
+                modelmeta["ncoordgridrcyl"] if "ncoordgridrcyl" in modelmeta else modelmeta["ncoordgridx"] / 2.0
             )
             vlowerscoarse = [modelmeta["vmax_cmps"] / ncoarsevelbins * i for i in range(ncoarsevelbins)]
             vupperscoarse = [modelmeta["vmax_cmps"] / ncoarsevelbins * (i + 1) for i in range(ncoarsevelbins)]
@@ -79,25 +84,19 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                 dfmodelcollect.filter(pl.col("vel_r_mid").is_between(vlower, vupper, closed="left"))["mass_g"].sum()
                 / 1.989e33
             )
-
+            assert vlower < vupper
             binned_xvals.extend((vlower / 29979245800, vupper / 29979245800))
             delta_beta = (vupper - vlower) / 29979245800
             yval = velbinmass / delta_beta
             binned_yvals.extend((yval, yval))
 
-        enclosed_xvals = (vuppers / 29979245800).to_list()
-        enclosed_yvals = [
-            dfmodelcollect.filter(pl.col("vel_r_max") <= vupper)["mass_g"].sum() / 1.989e33 for vupper in vuppers
-        ]
-
-        axes[0].plot(binned_xvals, binned_yvals, label=label)
-        axes[1].plot(enclosed_xvals, enclosed_yvals, label=label)
+        axes[1].plot(binned_xvals, binned_yvals, label=label)
         vmax_on_c = modelmeta["vmax_cmps"] / 29979245800
         axes[0].set_xlim(right=vmax_on_c)
 
     axes[-1].set_xlabel("Velocity [$c$]")
-    axes[0].set_ylabel(r"$\Delta$M/$\Delta v$  [M$_\odot/c$]")
-    axes[1].set_ylabel(r"Mass Enclosed [M$_\odot$]")
+    axes[0].set_ylabel(r"Mass Enclosed [M$_\odot$]")
+    axes[1].set_ylabel(r"$\Delta$M/$\Delta v$  [M$_\odot/c$]")
     axes[0].legend()
 
     axes[-1].set_xlim(left=0.0)
