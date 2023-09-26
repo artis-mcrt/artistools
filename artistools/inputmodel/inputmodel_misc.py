@@ -527,8 +527,11 @@ def add_derived_cols_to_modeldata(
                     (
                         (4.0 / 3.0)
                         * 3.14159265
-                        * (pl.col("vel_r_max_kmps") ** 3 - pl.col("vel_r_min_kmps") ** 3)
-                        * (1e5 * t_model_init_seconds) ** 3
+                        * (
+                            pl.col("vel_r_max_kmps").cast(pl.Float64).pow(3)
+                            - pl.col("vel_r_min_kmps").cast(pl.Float64).pow(3)
+                        )
+                        * pl.lit(1e5 * t_model_init_seconds).pow(3)
                     ).alias("volume")
                 ]
             )
@@ -580,8 +583,8 @@ def add_derived_cols_to_modeldata(
                     (
                         math.pi
                         * (
-                            (pl.col("pos_rcyl_mid") + modelmeta["wid_init_rcyl"] / 2.0) ** 2
-                            - (pl.col("pos_rcyl_mid") - modelmeta["wid_init_rcyl"] / 2.0) ** 2
+                            pl.col("pos_rcyl_max").cast(pl.Float64).pow(2)
+                            - pl.col("pos_rcyl_min").cast(pl.Float64).pow(2)
                         )
                         * modelmeta["wid_init_z"]
                     ).alias("volume")
