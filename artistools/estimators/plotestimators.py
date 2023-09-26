@@ -569,7 +569,7 @@ def get_xlist(
         check_type(timestepslist, t.Sequence[t.Sequence[int]])
         xlist = [np.mean([timearray[ts] for ts in tslist]) for tslist in timestepslist]
         timestepslist_out = timestepslist
-    elif xvariable == "velocity":
+    elif xvariable in ["velocity", "beta"]:
         dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["vel_r_mid"])
         dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
         dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
@@ -594,8 +594,8 @@ def get_xlist(
         #         mgilist_out.append(bincells["modelgridindex"].to_list())
         #         xlist.append(float(bincells["vel_r_mid"].mean()))
         #         timestepslist_out.append(timestepslist)
-
-        xlist = (dfmodelcollect["vel_r_mid"] / 1e5).to_list()
+        scalefactor = 1e5 if xvariable == "velocity" else 29979245800
+        xlist = (dfmodelcollect["vel_r_mid"] / scalefactor).to_list()
         mgilist_out = dfmodelcollect["modelgridindex"].to_list()
         timestepslist_out = timestepslist
     else:
@@ -767,7 +767,11 @@ def make_plot(
     # dfalldata.index.name = "modelgridindex"
     dfalldata[xvariable] = xlist
 
-    xlist = list(np.insert(xlist, 0, 0.0) if xvariable.startswith("velocity") else np.insert(xlist, 0, xlist[0]))
+    xlist = list(
+        np.insert(xlist, 0, 0.0)
+        if (xvariable.startswith("velocity") or xvariable == "beta")
+        else np.insert(xlist, 0, xlist[0])
+    )
 
     xmin = args.xmin if args.xmin >= 0 else min(xlist)
     xmax = args.xmax if args.xmax > 0 else max(xlist)
@@ -1104,7 +1108,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # plot a range of cells in a time snapshot showing internal structure
 
         if not args.x:
-            args.x = "velocity"
+            args.x = "beta" if modelmeta["vmax_cmps"] > 0.3 * 29979245800 else "velocity"
 
         if args.classicartis:
             allnonemptymgilist = [

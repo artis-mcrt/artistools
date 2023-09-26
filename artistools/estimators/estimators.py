@@ -35,6 +35,7 @@ def get_variableunits(key: str | None = None) -> str | dict[str, str]:
         "heating_dep/total_dep": "Ratio",
         "cooling": "erg/s/cm3",
         "velocity": "km/s",
+        "beta": "v/c",
         "vel_r_max_kmps": "km/s",
     }
     return variableunits[key] if key else variableunits
