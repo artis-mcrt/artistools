@@ -61,7 +61,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         dfmodelcollect = dfmodel.select(["modelgridindex", "vel_r_min", "vel_r_mid", "vel_r_max", "mass_g"]).collect()
 
-        vlowers = dfmodelcollect["vel_r_min"].unique().sort()
         vuppers = dfmodelcollect["vel_r_max"].unique().sort()
         enclosed_xvals = [0.0, *(vuppers / 29979245800).to_list()]
         enclosed_yvals = [0.0] + [
@@ -70,15 +69,14 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         axes[0].plot(enclosed_xvals, enclosed_yvals, label=label)
 
         if "vel_r_max_kmps" in dfmodel.columns:
-            vlowerscoarse = vlowers.to_list()
             vupperscoarse = vuppers.to_list()
         else:
             ncoarsevelbins = int(
                 modelmeta["ncoordgridrcyl"] if "ncoordgridrcyl" in modelmeta else modelmeta["ncoordgridx"] / 2.0
             )
-            vlowerscoarse = [modelmeta["vmax_cmps"] / ncoarsevelbins * i for i in range(ncoarsevelbins)]
             vupperscoarse = [modelmeta["vmax_cmps"] / ncoarsevelbins * (i + 1) for i in range(ncoarsevelbins)]
 
+        vlowerscoarse = [0.0] + vupperscoarse[:-1]
         for vlower, vupper in zip(vlowerscoarse, vupperscoarse):
             velbinmass = (
                 dfmodelcollect.filter(pl.col("vel_r_mid").is_between(vlower, vupper, closed="left"))["mass_g"].sum()
