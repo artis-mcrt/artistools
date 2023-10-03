@@ -365,7 +365,7 @@ def get_modeldata_polars(
                 )
                 print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
         except ImportError:
-            print("  pyarrow not installed. Skipping parquet file reading.")
+            print("WARNING: pyarrow not installed. Skipping parquet file reading.")
 
     if dfmodel is None:
         skipnuclidemassfraccolumns = False
@@ -394,7 +394,7 @@ def get_modeldata_polars(
                 # dfmodel.to_parquet(filenameparquet, compression="zstd")
                 print("  Done.")
             except ImportError:
-                print("  pyarrow not installed. Skipping parquet file creation.")
+                print("WARNING: pyarrow not installed. Skipping parquet file creation.")
 
     dfmodel = pl.from_pandas(dfmodel).lazy()
 
