@@ -33,6 +33,7 @@ jobs:
 
             - name: Install artistools
               run: |
+                  apt-get install libarrow-dev libparquet-dev
                   python -m pip install -e .
 
             - name: Cache test data
