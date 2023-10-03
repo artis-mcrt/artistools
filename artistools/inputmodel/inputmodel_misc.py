@@ -2,7 +2,7 @@ import argparse
 import errno
 import gc
 import math
-import os.path
+import os
 import pickle
 import time
 import typing as t
@@ -13,6 +13,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import polars as pl
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 import artistools as at
 
@@ -336,36 +338,31 @@ def get_modeldata_polars(
     source_textfile_details = {"st_size": filename.stat().st_size, "st_mtime": filename.stat().st_mtime}
 
     if filenameparquet.is_file() and not getheadersonly:
-        try:
-            import pyarrow.parquet as pq
+        if not printwarningsonly:
+            print(f"  reading data table from {filenameparquet}")
 
-            if not printwarningsonly:
-                print(f"  reading data table from {filenameparquet}")
+        pqmetadata = pq.read_metadata(filenameparquet)
+        if (
+            b"artismodelmeta" not in pqmetadata.metadata
+            or b"source_textfile_details" not in pqmetadata.metadata
+            or pickle.dumps(source_textfile_details) != pqmetadata.metadata[b"source_textfile_details"]
+        ):
+            print(f"  text source {filename} doesn't match file header of {filenameparquet}. Removing parquet file")
+            filenameparquet.unlink(missing_ok=True)
+        else:
+            modelmeta = pickle.loads(pqmetadata.metadata[b"artismodelmeta"])
 
-            pqmetadata = pq.read_metadata(filenameparquet)
-            if (
-                b"artismodelmeta" not in pqmetadata.metadata
-                or b"source_textfile_details" not in pqmetadata.metadata
-                or pickle.dumps(source_textfile_details) != pqmetadata.metadata[b"source_textfile_details"]
-            ):
-                print(f"  text source {filename} doesn't match file header of {filenameparquet}. Removing parquet file")
-                filenameparquet.unlink(missing_ok=True)
-            else:
-                modelmeta = pickle.loads(pqmetadata.metadata[b"artismodelmeta"])
-
-                columns = (
-                    [col for col in pqmetadata.schema.names if not col.startswith("X_")]
-                    if skipnuclidemassfraccolumns
-                    else None
-                )
-                dfmodel = pd.read_parquet(
-                    filenameparquet,
-                    columns=columns,
-                    dtype_backend="pyarrow",
-                )
-                print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
-        except ImportError:
-            print("WARNING: pyarrow not installed. Skipping parquet file reading.")
+            columns = (
+                [col for col in pqmetadata.schema.names if not col.startswith("X_")]
+                if skipnuclidemassfraccolumns
+                else None
+            )
+            dfmodel = pd.read_parquet(
+                filenameparquet,
+                columns=columns,
+                dtype_backend="pyarrow",
+            )
+            print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
 
     if dfmodel is None:
         skipnuclidemassfraccolumns = False
@@ -377,24 +374,18 @@ def get_modeldata_polars(
         )
 
         if len(dfmodel) > 15000 and not getheadersonly and not skipnuclidemassfraccolumns:
-            try:
-                import pyarrow as pa
-                import pyarrow.parquet as pq
+            print(f"Saving {filenameparquet}")
+            patable = pa.Table.from_pandas(dfmodel)
 
-                print(f"Saving {filenameparquet}")
-                patable = pa.Table.from_pandas(dfmodel)
-
-                custom_metadata = {
-                    b"source_textfile_details": pickle.dumps(source_textfile_details),
-                    b"artismodelmeta": pickle.dumps(modelmeta),
-                }
-                merged_metadata = {**custom_metadata, **(patable.schema.metadata or {})}
-                patable = patable.replace_schema_metadata(merged_metadata)
-                pq.write_table(patable, filenameparquet, compression="ZSTD")
-                # dfmodel.to_parquet(filenameparquet, compression="zstd")
-                print("  Done.")
-            except ImportError:
-                print("WARNING: pyarrow not installed. Skipping parquet file creation.")
+            custom_metadata = {
+                b"source_textfile_details": pickle.dumps(source_textfile_details),
+                b"artismodelmeta": pickle.dumps(modelmeta),
+            }
+            merged_metadata = {**custom_metadata, **(patable.schema.metadata or {})}
+            patable = patable.replace_schema_metadata(merged_metadata)
+            pq.write_table(patable, filenameparquet, compression="ZSTD")
+            # dfmodel.to_parquet(filenameparquet, compression="zstd")
+            print("  Done.")
 
     dfmodel = pl.from_pandas(dfmodel).lazy()
 

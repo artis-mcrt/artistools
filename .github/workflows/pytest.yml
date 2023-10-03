@@ -35,7 +35,6 @@ jobs:
             - name: Install artistools
               run: |
                   python -m pip install -e .
-                  python -m pip install pyarrow || true
 
             - name: Cache test data
               uses: actions/cache@v3
