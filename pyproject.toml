@@ -17,6 +17,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Framework :: Matplotlib",
     "Intended Audience :: Science/Research",
 ]
@@ -145,7 +146,7 @@ disable = """
 ignored-modules = ["astropy", "extinction"]
 
 [tool.pyright]
-exclude=['**/node_modules','**/__pycache__','**/.*', 'build']
+exclude=['**/node_modules','**/__pycache__','**/.*', 'build', 'dist']
 useLibraryCodeForTypes = false
 
 [tool.ruff]
