@@ -18,7 +18,6 @@ jobs:
               with:
                   cache: pip
                   python-version-file: .python-version
-                  allow-prereleases: true
 
             - name: Install dependencies
               run: |

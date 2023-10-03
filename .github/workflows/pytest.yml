@@ -30,7 +30,6 @@ jobs:
               with:
                   cache: pip
                   python-version: ${{ matrix.python-version }}
-                  allow-prereleases: true
 
             - name: Install artistools
               run: |
