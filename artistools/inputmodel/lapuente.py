@@ -93,9 +93,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         dfmodel.loc[cellid] = [cellid, v_outer, math.log10(rho), *radioabundances]
         dfelabundances.loc[cellid] = [cellid, *abundances[1:31]]
 
-    print(f'M_tot  = {tot_mass /  u.solMass.to("g"):.3f} solMass (from sum of specified shell masses)')
-    print(f'M_tot  = {tot_mass2 /  u.solMass.to("g"):.3f} solMass (from sum of element densities)')
-    print(f'M_Ni56 = {tot_ni56mass /  u.solMass.to("g"):.3f} solMass')
+    print(f'M_tot  = {tot_mass / u.solMass.to("g"):.3f} solMass (from sum of specified shell masses)')
+    print(f'M_tot  = {tot_mass2 / u.solMass.to("g"):.3f} solMass (from sum of element densities)')
+    print(f'M_Ni56 = {tot_ni56mass / u.solMass.to("g"):.3f} solMass')
 
     at.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, filename=Path(args.outputpath, "model.txt"))
     at.inputmodel.save_initelemabundances(dfelabundances, Path(args.outputpath, "abundances.txt"))

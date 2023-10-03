@@ -67,7 +67,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         assert isinstance(vmax_kmps, float)
         vmax = vmax_kmps * 1e5
         print(
-            f"Model contains {len(dfmodel)} 1D spherical shells with vmax = {vmax/1e5} km/s"
+            f"Model contains {len(dfmodel)} 1D spherical shells with vmax = {vmax / 1e5} km/s"
             f" ({vmax / 29979245800:.2f} * c)"
         )
     else:

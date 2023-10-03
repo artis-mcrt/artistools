@@ -1230,11 +1230,11 @@ def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.float64], npt.NDArray
     binlabels = []
     for phibin, step in enumerate(phisteps):
         if usedegrees:
-            str_phi_lower = f"{phi_lower[step]/math.pi*180:.0f}°"
-            str_phi_upper = f"{phi_upper[step]/math.pi*180:.0f}°"
+            str_phi_lower = f"{phi_lower[step] / math.pi * 180:.0f}°"
+            str_phi_upper = f"{phi_upper[step] / math.pi * 180:.0f}°"
         else:
             str_phi_lower = f"{step}π/{nphibins // 2}" if step > 0 else "0"
-            str_phi_upper = f"{step+1}π/{nphibins // 2}" if step < nphibins - 1 else "2π"
+            str_phi_upper = f"{step + 1}π/{nphibins // 2}" if step < nphibins - 1 else "2π"
 
         lower_compare = "≤" if phibin < (nphibins // 2) else "<"
         upper_compare = "≤" if phibin > (nphibins // 2) else "<"
@@ -1301,7 +1301,7 @@ def get_dirbin_labels(
         if list(modelpath.glob("*_res_00.out*")):
             # if the first direction bin file exists, check:
             # check last bin exists
-            assert list(modelpath.glob(f"*_res_{MABINS-1:02d}.out*"))
+            assert list(modelpath.glob(f"*_res_{MABINS - 1:02d}.out*"))
             # check one beyond does not exist
             assert not list(modelpath.glob(f"*_res_{MABINS:02d}.out*"))
 

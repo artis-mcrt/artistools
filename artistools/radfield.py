@@ -439,8 +439,8 @@ def get_recombination_emission(
             )
 
     alpha_ion = np.abs(np.trapz(arr_alpha_dnu, x=arr_nu_hz))
-    print(f"  {upperionstr} Alpha_R = {alpha_ion:.2e}   Alpha_R*nne = {nne*alpha_ion:.2e}")
-    print(f"  {upperionstr} Alpha_R2 = {alpha_ion2:.2e} Alpha_R2*nne = {nne*alpha_ion2:.2e}")
+    print(f"  {upperionstr} Alpha_R = {alpha_ion:.2e}   Alpha_R*nne = {nne * alpha_ion:.2e}")
+    print(f"  {upperionstr} Alpha_R2 = {alpha_ion2:.2e} Alpha_R2*nne = {nne * alpha_ion2:.2e}")
 
     # vmax = at.inputmodel.get_modeldata_tuple(modelpath)[0]['vel_r_max_kmps'].iloc[-1] * 1e5
     # t_seconds = at.get_timestep_times(modelpath, loc="start")[timestep] * 86400.0
