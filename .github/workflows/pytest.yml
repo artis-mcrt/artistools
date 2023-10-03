@@ -33,6 +33,8 @@ jobs:
 
             - name: Install artistools
               run: |
+                  DISTRO=$(lsb_release --codename --short)
+                  add-apt-repository "deb [arch=amd64] http://dl.bintray.com/apache/arrow/ubuntu $DISTRO main"
                   sudo apt-get install libarrow-dev libparquet-dev
                   python -m pip install -e .
 
