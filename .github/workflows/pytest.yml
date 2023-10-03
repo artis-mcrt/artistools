@@ -37,7 +37,7 @@ jobs:
                 wget https://apache.jfrog.io/artifactory/arrow/$(lsb_release --id --short | tr 'A-Z' 'a-z')/apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb
                 sudo apt install -y -V ./apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb
                 sudo apt-get update -y
-                arrow_version=12.0.1-1
+                arrow_version=13.0.0-1
                 sudo apt-get install -y libpq-dev libarrow-dev=${arrow_version} libarrow-glib-dev=${arrow_version} gir1.2-arrow-1.0=${arrow_version} libparquet-dev=${arrow_version} libparquet-glib-dev=${arrow_version} gir1.2-parquet-1.0=${arrow_version}
 
             - name: Install artistools
