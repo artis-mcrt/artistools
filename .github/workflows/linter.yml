@@ -68,6 +68,14 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v3
+
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                  cache: pip
+                  python-version-file: .python-version
+                  allow-prereleases: true
+
             - uses: chartboost/ruff-action@v1
 
     superlinter:
@@ -80,6 +88,13 @@ jobs:
               with:
                   # Full git history is needed to get a proper list of changed files within `super-linter`
                   fetch-depth: 0
+
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                  cache: pip
+                  python-version-file: .python-version
+                  allow-prereleases: true
 
             - name: Lint Code Base
               uses: github/super-linter/slim@v5
