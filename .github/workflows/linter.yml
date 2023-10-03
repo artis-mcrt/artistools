@@ -74,7 +74,7 @@ jobs:
                   fetch-depth: 0
 
             - name: Lint Code Base
-              uses: github/super-linter/slim@v5.0.0
+              uses: github/super-linter/slim@v5
               env:
                   LINTER_RULES_PATH: ./
                   LOG_LEVEL: WARN
