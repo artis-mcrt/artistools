@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "setuptools_scm[toml]>=7.1", "wheel"]
+requires = ["setuptools>=68.2", "setuptools_scm[toml]>=8.0", "wheel>=0.41"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -31,7 +31,7 @@ license = { file = "LICENSE.txt" }
 [tool.black]
 line-length = 120
 preview = true
-target-versions = ["py310", "py311"]
+target-versions = ["py310", "py311", "py312"]
 
 [tool.isort]
 profile = "black"
@@ -66,7 +66,7 @@ implicit_reexport = true
 packages = "artistools"
 plugins = 'numpy.typing.mypy_plugin'
 pretty = true
-python_version = '3.11'
+python_version = '3.12'
 scripts_are_modules = true
 strict_equality = true
 extra_checks = true
