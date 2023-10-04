@@ -1133,7 +1133,7 @@ def addargs(parser) -> None:
     )
 
     parser.add_argument(
-        "-xmax", "-lambdamax", dest="xmax", type=int, default=11000, help="Plot range: maximum wavelength in Angstroms"
+        "-xmax", "-lambdamax", dest="xmax", type=int, default=19000, help="Plot range: maximum wavelength in Angstroms"
     )
 
     parser.add_argument(
