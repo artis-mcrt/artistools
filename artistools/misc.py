@@ -718,8 +718,15 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
     return listout
 
 
-def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any:
-    """Open filename, filename.gz or filename.xz."""
+def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, forpolars: bool = False) -> t.Any:
+    """Open filename, filename.gz or filename.xz.
+
+    Arguments:
+    ---------
+    forpolars: if polars.read_csv can read the file directly, return a Path object instead of a file object
+    """
+    if forpolars:
+        mode = "r"
     ext_fopen = [(".lz4", lz4.frame.open), (".zst", pyzstd.open), (".gz", gzip.open), (".xz", xz.open)]
 
     for ext, fopen in ext_fopen:
@@ -728,6 +735,8 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
             return fopen(file_ext, mode=mode, encoding=encoding)
 
     # open() can raise file not found if this file doesn't exist
+    if forpolars:
+        return Path(filename)
     return Path(filename).open(mode=mode, encoding=encoding)
 
 
