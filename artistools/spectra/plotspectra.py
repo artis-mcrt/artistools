@@ -241,6 +241,7 @@ def plot_artis_spectrum(
         assert args.timemax is not None
         timeavg = (args.timemin + args.timemax) / 2.0
         timedelta = (args.timemax - args.timemin) / 2
+        linelabel_is_custom = linelabel is not None
         if linelabel is None:
             linelabel = f"{modelname}" if len(modelname) < 70 else f"...{modelname[-67:]}"
 
@@ -324,6 +325,16 @@ def plot_artis_spectrum(
             )
         )
 
+        missingdirectionbins = [dirbin for dirbin in directionbins if dirbin not in viewinganglespectra]
+        founddirectionbins = [dirbin for dirbin in directionbins if dirbin in viewinganglespectra]
+        if missingdirectionbins:
+            print(f"No data for direction bin(s): {missingdirectionbins}")
+            if founddirectionbins:
+                directionbins = founddirectionbins
+            else:
+                directionbins = [-1]
+                print("Showing spherically-averaged spectrum instead")
+
         for dirbin in directionbins:
             dfspectrum_fullrange = viewinganglespectra[dirbin]
             dfspectrum = dfspectrum_fullrange[
@@ -334,7 +345,7 @@ def plot_artis_spectrum(
             linelabel_withdirbin = linelabel
             if dirbin != -1:
                 print(f" direction {dirbin:4d}  {dirbin_definitions[dirbin]}")
-                if len(directionbins) > 1:
+                if len(directionbins) > 1 or not linelabel_is_custom:
                     linelabel_withdirbin = linelabel + " " + dirbin_definitions[dirbin]
 
             at.spectra.print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
