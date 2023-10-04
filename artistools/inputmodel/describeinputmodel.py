@@ -149,35 +149,40 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     mass_actinides_isosum = 0.0
     speciesmasses: dict[str, float] = {}
     for column in dfmodel.columns:
-        if column.startswith("X_"):
-            species = column.replace("X_", "")
-            speciesabund_g = np.dot(dfmodel[column], dfmodel["mass_g"])
+        if not column.startswith("X_"):
+            continue
 
-            species_mass_msun = speciesabund_g / 1.989e33
+        if column.startswith("X_n"):  # don't confuse neutrons with Nitrogen
+            continue
 
-            atomic_number = at.get_atomic_number(species.rstrip("0123456789"))
+        species = column.replace("X_", "")
+        speciesabund_g = np.dot(dfmodel[column], dfmodel["mass_g"])
 
-            if species[-1].isdigit():
-                # isotopic species
+        species_mass_msun = speciesabund_g / 1.989e33
 
-                if atomic_number >= 57 and atomic_number <= 71:
-                    mass_lanthanides_isosum += species_mass_msun
-                elif atomic_number >= 89 and atomic_number <= 103:
-                    mass_actinides_isosum += species_mass_msun
+        atomic_number = at.get_atomic_number(species.rstrip("0123456789"))
 
-                elname = species.rstrip("0123456789")
-                strtotiso = f"{elname}_isosum"
-                speciesmasses[strtotiso] = speciesmasses.get(strtotiso, 0.0) + speciesabund_g
-                mass_msun_isotopes += species_mass_msun
+        if species[-1].isdigit():
+            # isotopic species
 
-                if args.isotopes and speciesabund_g > 0.0:
-                    speciesmasses[species] = speciesabund_g
+            if atomic_number >= 57 and atomic_number <= 71:
+                mass_lanthanides_isosum += species_mass_msun
+            elif atomic_number >= 89 and atomic_number <= 103:
+                mass_actinides_isosum += species_mass_msun
 
-            elif species.lower() != "fegroup":  # ignore special group abundance
-                # elemental species
-                mass_msun_elem += species_mass_msun
-                if speciesabund_g > 0.0:
-                    speciesmasses[species] = speciesabund_g
+            elname = species.rstrip("0123456789")
+            strtotiso = f"{elname}_isosum"
+            speciesmasses[strtotiso] = speciesmasses.get(strtotiso, 0.0) + speciesabund_g
+            mass_msun_isotopes += species_mass_msun
+
+            if args.isotopes and speciesabund_g > 0.0:
+                speciesmasses[species] = speciesabund_g
+
+        elif species.lower() != "fegroup":  # ignore special group abundance
+            # elemental species
+            mass_msun_elem += species_mass_msun
+            if speciesabund_g > 0.0:
+                speciesmasses[species] = speciesabund_g
 
     print(
         f'  {"M_tot_elem":19s} {mass_msun_elem:8.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)'
@@ -226,10 +231,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             if species.endswith("_isosum"):
                 elsymb = species.replace("_isosum", "")
                 elem_mass = speciesmasses.get(elsymb, 0.0)
-                if np.isclose(mass_g, elem_mass, rtol=1e-5):
+                if np.isclose(mass_g, elem_mass, rtol=1e-4):
                     # iso sum matches the element mass, so don't show it
                     continue
                 strcomment += f"({mass_g / elem_mass * 100:6.2f}% of {elsymb} element mass from abundances.txt)"
+
                 if mass_g > elem_mass * (1.0 + 1e-5):
                     strcomment += " ERROR! isotope sum is greater than element abundance"
 
