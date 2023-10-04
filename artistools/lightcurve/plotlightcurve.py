@@ -177,9 +177,10 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
         )
 
     if args.plotthermalisation:
+        f_gamma = depdata["gammadep_Lsun"] / depdata["eps_gamma_Lsun"]
         axistherm.plot(
             depdata["tmid_days"],
-            depdata["gammadep_Lsun"] / depdata["eps_gamma_Lsun"],
+            f_gamma,
             **{
                 **plotkwargs,
                 "label": modelname + r" $\left(\dot{E}_{dep,\gamma} \middle/ \dot{E}_{rad,\gamma}\right)$",
@@ -188,9 +189,10 @@ def plot_deposition_thermalisation(axis, axistherm, modelpath, modelname, plotkw
             },
         )
 
+        f_beta = depdata["elecdep_Lsun"] / depdata["eps_elec_Lsun"]
         axistherm.plot(
             depdata["tmid_days"],
-            depdata["elecdep_Lsun"] / depdata["eps_elec_Lsun"],
+            f_beta,
             **{
                 **plotkwargs,
                 "label": modelname + r" $\left(\dot{E}_{dep,\beta^-} \middle/ \dot{E}_{rad,\beta^-}\right)$",
