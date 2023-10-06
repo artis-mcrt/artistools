@@ -1037,7 +1037,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
         # ['nne'],
-        ["TR", ["_yscale", "linear"]],
+        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
         # ['Te'],
         # [['averageionisation', ['Fe', 'Ni']]],
         # [['averageexcitation', ['Fe II', 'Fe III']]],
