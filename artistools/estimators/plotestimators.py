@@ -10,6 +10,7 @@ import contextlib
 import math
 import sys
 import typing as t
+from collections.abc import Iterable
 from pathlib import Path
 
 import argcomplete
@@ -571,6 +572,9 @@ def get_xlist(
         timestepslist_out = timestepslist
     elif xvariable in {"velocity", "beta"}:
         dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["vel_r_mid"])
+        if modelmeta["vmax_cmps"] > 0.3 * 29979245800:
+            args.x = "beta"
+            xvariable = "beta"
         dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
         dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
         dfmodel = dfmodel.select(["modelgridindex", "vel_r_mid"]).sort(by="vel_r_mid")
@@ -580,20 +584,6 @@ def get_xlist(
             dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
         dfmodelcollect = dfmodel.collect()
 
-        # nradialbins = 10
-        # xlist = []
-        # mgilist_out = []
-        # timestepslist_out = []
-        # for i in range(nradialbins):
-        #     velmin = modelmeta["vmax_cmps"] / nradialbins * (i - 1) if i > 0 else 0
-        #     bincells = dfmodelcollect.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"] / nradialbins * i).filter(
-        #         pl.col("vel_r_mid") >= velmin
-        #     )
-        #     print(i, bincells)
-        #     if not bincells.is_empty():
-        #         mgilist_out.append(bincells["modelgridindex"].to_list())
-        #         xlist.append(float(bincells["vel_r_mid"].mean()))
-        #         timestepslist_out.append(timestepslist)
         scalefactor = 1e5 if xvariable == "velocity" else 29979245800
         xlist = (dfmodelcollect["vel_r_mid"] / scalefactor).to_list()
         mgilist_out = dfmodelcollect["modelgridindex"].to_list()
@@ -925,6 +915,17 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
     plt.close()
 
 
+def plotlist_is_temperatures_only(plotlist) -> bool:
+    for item in plotlist:
+        if isinstance(item, str) and item != "TR":
+            return False
+        if isinstance(item, Iterable):
+            for x in item:
+                if isinstance(x, str) and x != "TR":
+                    return False
+    return True
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-modelpath", default=".", help="Paths to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)"
@@ -1027,30 +1028,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         f"({args.timemin:.1f} to {args.timemax:.1f}d)"
     )
 
-    timesteps_included = list(range(timestepmin, timestepmax + 1))
-
-    if args.classicartis:
-        import artistools.estimators.estimators_classic
-
-        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-        estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
-    else:
-        estimators = at.estimators.read_estimators(
-            modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included)
-        )
-    assert estimators is not None
-
-    for ts in reversed(timesteps_included):
-        tswithdata = [ts for (ts, mgi) in estimators]
-        for ts in timesteps_included:
-            if ts not in tswithdata:
-                timesteps_included.remove(ts)
-                print(f"ts {ts} requested but no data found. Removing.")
-
-    if not timesteps_included:
-        print("No timesteps with data are included")
-        return
-
     plotlist = args.plotlist or [
         # [['initabundances', ['Fe', 'Ni_stable', 'Ni_56']]],
         # ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
@@ -1060,7 +1037,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
         # ['nne'],
-        ["TR", "Te", "TJ", ["_yscale", "linear"]],
+        ["TR", ["_yscale", "linear"]],
         # ['Te'],
         # [['averageionisation', ['Fe', 'Ni']]],
         # [['averageexcitation', ['Fe II', 'Fe III']]],
@@ -1085,6 +1062,35 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
     ]
 
+    if temperatures_only := plotlist_is_temperatures_only(plotlist):
+        print("Plotting temperatures only (from parquet if available)")
+
+    timesteps_included = list(range(timestepmin, timestepmax + 1))
+    if args.classicartis:
+        import artistools.estimators.estimators_classic
+
+        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+        estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
+    elif temperatures_only:
+        df_estimators = at.estimators.get_temperatures(modelpath).filter(pl.col("timestep").is_in(timesteps_included))
+        estimators = df_estimators.collect().rows_by_key(key=["timestep", "modelgridindex"], named=True, unique=True)
+    else:
+        estimators = at.estimators.read_estimators(
+            modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included)
+        )
+    assert estimators is not None
+
+    for ts in reversed(timesteps_included):
+        tswithdata = [ts for (ts, mgi) in estimators]
+        for ts in timesteps_included:
+            if ts not in tswithdata:
+                timesteps_included.remove(ts)
+                print(f"ts {ts} requested but no data found. Removing.")
+
+    if not timesteps_included:
+        print("No timesteps with data are included")
+        return
+
     if args.recombrates:
         plot_recombrates(modelpath, estimators, 26, [2, 3, 4, 5])
         plot_recombrates(modelpath, estimators, 27, [3, 4])
@@ -1092,7 +1098,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         return
 
-    modeldata, modelmeta = at.inputmodel.get_modeldata(modelpath)
+    assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
 
     if args.modelgridindex > -1 or args.x in ["time", "timestep"]:
         # plot time evolution in specific cell
@@ -1100,7 +1106,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             args.x = "time"
         mgilist = [args.modelgridindex] * len(timesteps_included)
         timesteplist_unfiltered = [[ts] for ts in timesteps_included]
-        if estimators[(args.modelgridindex, timesteps_included[0])]["emptycell"]:
+        if not assoc_cells.get(args.modelgridindex, []):
             msg = f"cell {args.modelgridindex} is empty. no estimators available"
             raise ValueError(msg)
         make_plot(modelpath, timesteplist_unfiltered, mgilist, estimators, args.x, plotlist, args)
@@ -1108,20 +1114,17 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # plot a range of cells in a time snapshot showing internal structure
 
         if not args.x:
-            args.x = "beta" if modelmeta["vmax_cmps"] > 0.3 * 29979245800 else "velocity"
+            args.x = "velocity"
 
         if args.classicartis:
+            modeldata, _ = at.inputmodel.get_modeldata(modelpath)
             allnonemptymgilist = [
                 modelgridindex
                 for modelgridindex in modeldata.index
                 if (timesteps_included[0], modelgridindex) in estimators
             ]
         else:
-            allnonemptymgilist = [
-                modelgridindex
-                for modelgridindex in modeldata.index
-                if not estimators[(timesteps_included[0], modelgridindex)]["emptycell"]
-            ]
+            allnonemptymgilist = [mgi for mgi, assocpropcells in assoc_cells.items() if assocpropcells]
 
         if args.multiplot:
             pdf_list = []

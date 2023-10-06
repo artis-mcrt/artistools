@@ -485,8 +485,8 @@ def get_temperatures(modelpath: str | Path) -> pl.LazyFrame:
         assert len(estimators) > 0
         pl.DataFrame(
             {
-                "timestep": (tsmgi[0] for tsmgi in estimators),
-                "modelgridindex": (tsmgi[1] for tsmgi in estimators),
+                "timestep": (ts for ts, _ in estimators),
+                "modelgridindex": (mgi for _, mgi in estimators),
                 "TR": (estimators[tsmgi].get("TR", -1) for tsmgi in estimators),
             },
         ).filter(pl.col("TR") >= 0).with_columns(pl.col(pl.Int64).cast(pl.Int32)).write_parquet(
