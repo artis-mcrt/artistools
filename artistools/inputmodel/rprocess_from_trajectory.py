@@ -425,6 +425,10 @@ def save_gridparticlecontributions(dfcontribs: pd.DataFrame, gridcontribpath: Pa
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
         gridcontribpath = gridcontribpath / "gridcontributions.txt"
+    if gridcontribpath.is_file():
+        oldfile = gridcontribpath.rename(gridcontribpath.with_suffix(".bak"))
+        print(f"{gridcontribpath} already exists. Renaming existing file to {oldfile}")
+
     dfcontribs.to_csv(gridcontribpath, sep=" ", index=False, float_format="%.7e")
 
 
