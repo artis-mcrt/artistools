@@ -60,6 +60,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     t_model_init_days, vmax = modelmeta["t_model_init_days"], modelmeta["vmax_cmps"]
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
+    msun_g = 1.989e33
     print(f"Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)")
 
     if modelmeta["dimensions"] == 1:
@@ -104,7 +105,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     else:
         initial_energy = 0.0
 
-    mass_msun_rho = dfmodel["mass_g"].sum() / 1.989e33
+    mass_msun_rho = dfmodel["mass_g"].sum() / msun_g
 
     if assoc_cells is not None and mgi_of_propcells is not None:
         direct_model_propgrid_map = all(
@@ -128,7 +129,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     f" {100 * (initial_energy_mapped / initial_energy - 1):.2f}%)"
                 )
 
-            mtot_mapped_msun = sum(cellmass_mapped) / 1.989e33
+            mtot_mapped_msun = sum(cellmass_mapped) / msun_g
             print(
                 f'  {"M_tot_rho_map":19s} {mtot_mapped_msun:8.5f} MSun (density * volume when mapped to {ncoordgridx}^3'
                 f" cubic grid, error {100 * (mtot_mapped_msun / mass_msun_rho - 1):.2f}%)"
@@ -137,9 +138,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     print(f'  {"M_tot_rho":19s} {mass_msun_rho:8.5f} MSun (density * volume)')
 
     if modelmeta["dimensions"] > 1:
-        corner_mass = dfmodel.filter(pl.col("vel_r_mid") > vmax)["mass_g"].sum() / 1.989e33
+        corner_mass = dfmodel.filter(pl.col("vel_r_mid") > vmax)["mass_g"].sum() / msun_g
         print(
-            f'  {"M_corners":19s} {corner_mass / 1.989e33:8.5f} MSun ('
+            f'  {"M_corners":19s} {corner_mass / msun_g:8.5f} MSun ('
             f" {100 * corner_mass / mass_msun_rho:.2f}% of M_tot in cells with v_r_mid > vmax)"
         )
 
@@ -158,7 +159,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         species = column.replace("X_", "")
         speciesabund_g = np.dot(dfmodel[column], dfmodel["mass_g"])
 
-        species_mass_msun = speciesabund_g / 1.989e33
+        species_mass_msun = speciesabund_g / msun_g
 
         atomic_number = at.get_atomic_number(species.rstrip("0123456789"))
 
@@ -224,7 +225,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         except OSError:
             maxbarchars = 20
         for species, mass_g in sorted(speciesmasses.items(), key=sortkey):
-            species_mass_msun = mass_g / 1.989e33
+            species_mass_msun = mass_g / msun_g
             massfrac = species_mass_msun / mass_msun_rho
             strcomment = ""
             atomic_number = at.get_atomic_number(species)
