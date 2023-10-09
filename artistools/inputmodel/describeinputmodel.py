@@ -113,7 +113,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         if direct_model_propgrid_map:
             print("  detected direct mapping of model cells to propagation grid")
         else:
-            ncoordgridx = math.ceil(math.cbrt(max(mgi_of_propcells.keys())))
+            ncoordgridx = math.ceil(np.cbrt(max(mgi_of_propcells.keys())))
             wid_init = 2 * vmax * t_model_init_seconds / ncoordgridx
             wid_init3 = wid_init**3
             initial_energy_mapped = 0.0
