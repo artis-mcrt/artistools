@@ -494,8 +494,6 @@ def make_spectrum_plot(
                 assert np.allclose(dfalldata.index.values, seriesdata["lambda_angstroms"].to_numpy())
             dfalldata[f"f_lambda.{seriesname}"] = seriesdata["f_lambda"].to_numpy()
 
-        seriesindex += 1
-
     plottedsomething = artisindex > 0 or refspecindex > 0
     assert plottedsomething
 
