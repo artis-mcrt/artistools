@@ -1,4 +1,5 @@
 """Artistools - light curve functions."""
+
 from .lightcurve import bolometric_magnitude
 from .lightcurve import evaluate_magnitudes
 from .lightcurve import generate_band_lightcurve_data

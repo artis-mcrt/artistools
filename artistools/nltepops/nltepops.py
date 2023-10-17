@@ -1,6 +1,5 @@
 """Artistools - NLTE population related functions."""
 
-
 import math
 import multiprocessing
 import re

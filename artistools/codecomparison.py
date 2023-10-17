@@ -5,7 +5,6 @@ codecomparison/[modelname]/[codename].
 e.g., codecomparison/DDC10/artisnebular
 """
 
-
 import math
 import typing as t
 from pathlib import Path

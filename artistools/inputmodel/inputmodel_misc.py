@@ -1226,10 +1226,7 @@ def dimension_reduce_3d_model(
                     )
                 elif outputdimensions == 2:
                     shell_volume = (
-                        math.pi
-                        * (vel_r_max**2 - vel_r_min**2)
-                        * (vel_z_max - vel_z_min)
-                        * t_model_init_seconds**3
+                        math.pi * (vel_r_max**2 - vel_r_min**2) * (vel_z_max - vel_z_min) * t_model_init_seconds**3
                     )
                 rho_out = matchedcells.mass_g.sum() / shell_volume
 

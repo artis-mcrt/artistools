@@ -1,4 +1,5 @@
 """Matplotlib-related plotting functions."""
+
 import sys
 
 import matplotlib.pyplot as plt
@@ -47,10 +48,7 @@ class ExponentLabelFormatter(ticker.ScalarFormatter):
         if self.decimalplaces is not None:
             # rounding the tick labels will make the locations incorrect unless we round these too
             newlocs = [
-                (
-                    float(f"%1.{self.decimalplaces!s}f" % (x / (10**self.orderOfMagnitude)))
-                    * 10**self.orderOfMagnitude
-                )
+                (float(f"%1.{self.decimalplaces!s}f" % (x / (10**self.orderOfMagnitude))) * 10**self.orderOfMagnitude)
                 for x in self.locs
             ]
             super().set_locs(newlocs)

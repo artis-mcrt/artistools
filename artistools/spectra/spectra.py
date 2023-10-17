@@ -1,6 +1,5 @@
 """Artistools - spectra related functions."""
 
-
 import argparse
 import math
 import os
