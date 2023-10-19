@@ -217,6 +217,16 @@ def plot_artis_spectrum(
         print(f"\nWARNING: Skipping because {modelpath} does not exist\n")
         return None
 
+    use_time: t.Literal["escape", "emission", "arrival"]
+    if args.use_escapetime:
+        use_time = "escape"
+        assert from_packets
+    elif args.use_emissiontime:
+        use_time = "emission"
+        assert from_packets
+    else:
+        use_time = "arrival"
+
     if directionbins is None:
         directionbins = [-1]
 
@@ -275,7 +285,7 @@ def plot_artis_spectrum(
                 args.timemax,
                 lambda_min=supxmin * 0.9,
                 lambda_max=supxmax * 1.1,
-                use_escapetime=args.use_escapetime,
+                use_time=use_time,
                 maxpacketfiles=maxpacketfiles,
                 delta_lambda=args.deltalambda,
                 useinternalpackets=args.internalpackets,
@@ -336,6 +346,12 @@ def plot_artis_spectrum(
                 print("Showing spherically-averaged spectrum instead")
 
         for dirbin in directionbins:
+            if len(directionbins) > 1 and dirbin != directionbins[0]:
+                # only one colour was specified, but we have multiple direction bins
+                # to zero out all but the first one
+                plotkwargs = plotkwargs.copy()
+                plotkwargs["color"] = None
+
             dfspectrum_fullrange = viewinganglespectra[dirbin]
             dfspectrum = dfspectrum_fullrange[
                 (supxmin * 0.9 <= dfspectrum_fullrange["lambda_angstroms"])
@@ -409,8 +425,7 @@ def make_spectrum_plot(
         specpath = Path(specpath)
         plotkwargs: dict[str, t.Any] = {"alpha": args.linealpha[seriesindex], "linestyle": args.linestyle[seriesindex]}
 
-        if not args.plotviewingangle and not args.plotvspecpol:
-            plotkwargs["color"] = args.color[seriesindex]
+        plotkwargs["color"] = args.color[refspecindex + artisindex]
         if args.dashes[seriesindex]:
             plotkwargs["dashes"] = args.dashes[seriesindex]
         if args.linewidth[seriesindex]:
@@ -1165,6 +1180,12 @@ def addargs(parser) -> None:
         "--use_escapetime",
         action="store_true",
         help="Use the time of packet escape to the surface (instead of a plane toward the observer)",
+    )
+
+    parser.add_argument(
+        "--use_emissiontime",
+        action="store_true",
+        help="Use the time of packet last emission",
     )
 
     parser.add_argument(

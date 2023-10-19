@@ -111,7 +111,7 @@ def get_from_packets(
     lambda_min: float,
     lambda_max: float,
     delta_lambda: None | float | np.ndarray = None,
-    use_escapetime: bool = False,
+    use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
     useinternalpackets: bool = False,
     getpacketcount: bool = False,
@@ -125,7 +125,9 @@ def get_from_packets(
     if directionbins is None:
         directionbins = [-1]
 
-    if use_escapetime:
+    assert use_time in {"arrival", "emission", "escape"}
+
+    if use_time == "escape":
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)
         vmax_beta = modeldata.iloc[-1].vel_r_max_kmps * 299792.458
         escapesurfacegamma = math.sqrt(1 - vmax_beta**2)
@@ -153,21 +155,30 @@ def get_from_packets(
         modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
-    if not use_escapetime:
+    if use_time == "arrival":
         dfpackets = dfpackets.filter(
             (float(timelowdays) <= pl.col("t_arrive_d")) & (pl.col("t_arrive_d") <= float(timehighdays))
         )
-    else:
+    elif use_time == "escape":
         dfpackets = dfpackets.filter(
             (timelow <= (pl.col("escape_time") * escapesurfacegamma))
             & ((pl.col("escape_time") * escapesurfacegamma) <= timehigh)
         )
+    elif use_time == "emission":
+        mean_correction = float(
+            dfpackets.select((pl.col("em_time") - pl.col("t_arrive_d") * 86400.0).mean()).collect().to_numpy()[0][0]
+        )
+
+        em_time_low = float(timelowdays) * 86400.0 + mean_correction
+        em_time_high = float(timehighdays) * 86400.0 + mean_correction
+        dfpackets = dfpackets.filter((em_time_low <= pl.col("em_time")) & (pl.col("em_time") <= em_time_high))
+
     dfpackets = dfpackets.filter((float(nu_min) <= pl.col("nu_rf")) & (pl.col("nu_rf") <= float(nu_max)))
 
     if fnufilterfunc:
         print("Applying filter to ARTIS spectrum")
 
-    encol = "e_cmf" if use_escapetime else "e_rf"
+    encol = "e_cmf" if use_time == "escape" else "e_rf"
     getcols = ["nu_rf", encol]
     if directionbins != [-1]:
         if average_over_phi:
@@ -216,7 +227,7 @@ def get_from_packets(
             / nprocs_read
         ).to_numpy()
 
-        if use_escapetime:
+        if use_time == "escape":
             assert escapesurfacegamma is not None
             array_flambda /= escapesurfacegamma
 

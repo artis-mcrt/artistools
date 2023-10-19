@@ -324,7 +324,7 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataF
             separator=" ",
             has_header=False,
             new_columns=column_names,
-            infer_schema_length=10000,
+            infer_schema_length=20000,
         )
 
     except Exception:
