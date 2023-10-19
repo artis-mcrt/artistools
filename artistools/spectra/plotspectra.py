@@ -423,9 +423,12 @@ def make_spectrum_plot(
 
     for seriesindex, specpath in enumerate(speclist):
         specpath = Path(specpath)
-        plotkwargs: dict[str, t.Any] = {"alpha": args.linealpha[seriesindex], "linestyle": args.linestyle[seriesindex]}
+        plotkwargs: dict[str, t.Any] = {
+            "alpha": args.linealpha[seriesindex],
+            "linestyle": args.linestyle[seriesindex],
+            "color": args.color[refspecindex + artisindex],
+        }
 
-        plotkwargs["color"] = args.color[refspecindex + artisindex]
         if args.dashes[seriesindex]:
             plotkwargs["dashes"] = args.dashes[seriesindex]
         if args.linewidth[seriesindex]:
