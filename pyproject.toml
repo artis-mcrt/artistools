@@ -189,6 +189,7 @@ ignore = [
     "PLR0912",  # too-many-branches
     "PLR0913",  # too-many-arguments
     "PLR0915",  # too-many-statements
+    "PLR0916",  # too-many-boolean-expressions
     "PLR2004",  # magic-value-comparison
     "PLW2901",  # redefined-loop-name
     "PYI024",
