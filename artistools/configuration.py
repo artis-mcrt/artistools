@@ -1,4 +1,3 @@
-import multiprocessing
 import typing as t
 from pathlib import Path
 
@@ -6,8 +5,8 @@ config: dict[str, t.Any] = {}
 
 
 def setup_config() -> None:
-    config["num_processes"] = multiprocessing.cpu_count()
-    # config["num_processes"] = 1
+    # config["num_processes"] = multiprocessing.cpu_count()
+    config["num_processes"] = 1
     # print(f"Using {config['num_processes']} processes")
 
     config["figwidth"] = 5

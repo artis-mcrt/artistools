@@ -448,7 +448,11 @@ def get_time_range(
         return -1, -1, timemin, timemax
 
     if timestep_range_str is not None:
-        if "-" in timestep_range_str:
+        print("timestep_range_str =", timestep_range_str)
+        if isinstance(timestep_range_str, int):
+            timestepmin = int(timestep_range_str)
+            timestepmax = timestepmin
+        elif "-" in timestep_range_str:
             timestepmin, timestepmax = (int(nts) for nts in timestep_range_str.split("-"))
         else:
             timestepmin = int(timestep_range_str)

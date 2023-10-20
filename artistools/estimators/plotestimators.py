@@ -329,7 +329,8 @@ def plot_multi_ion_series(
 
     prev_atomic_number = iontuplelist[0][0]
     colorindex = 0
-    for atomic_number, ion_stage in iontuplelist:
+    ion_pop_column_name_list = []
+    for counter, (atomic_number, ion_stage) in enumerate(iontuplelist):
         if (atomic_number, ion_stage) in missingions:
             continue
 
@@ -465,9 +466,42 @@ def plot_multi_ion_series(
 
         xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
 
+        element_symbol = at.get_elsymbol(atomic_number)
+        ion_stage_symbol = at.roman_numerals[ion_stage]
+        ion_pop_column_name = str(element_symbol + ion_stage_symbol)
+        ion_pop_column_name_list.append(ion_pop_column_name)
+
+        if counter == 0:
+            x_list_column_name = []
+            x_list_column_name.append("xlist")
+            ion_pop_array = np.column_stack((xlist, ylist))
+
+        else:
+            ion_pop_array = np.hstack((ion_pop_array, np.array(ylist).reshape(-1, 1)))
+
+        ion_pop_array_header = x_list_column_name + ion_pop_column_name_list
+        ion_pop_array_header = " ".join(ion_pop_array_header)
+
         ax.plot(xlist, ylist, linewidth=linewidth, label=plotlabel, color=color, dashes=dashes, **plotkwargs)
         prev_atomic_number = atomic_number
         plotted_something = True
+
+    # Getting first and last ts form timestep list - if they are the same the data is for a single ts
+    last_ts_index = len(timestepslist) - 1
+    last_ts = timestepslist[last_ts_index][0]
+    ts_label_for_filename = "_ts_" + str(timestepslist[0][0]) + "_to_" + str(last_ts)
+
+    # Getting first and last grid index from mgilist - if they are the same the data is for only one grid cell
+    last_mgi_index = len(mgilist) - 1
+    last_mgi = mgilist[last_mgi_index]
+    mgi_label_for_filename = "_cell_" + str(mgilist[0]) + "_to_" + str(last_mgi)
+
+    # Setting filename for file we are saving estimators to
+    label_for_filename = ts_label_for_filename + mgi_label_for_filename
+    modelname = at.get_model_name(modelpath)
+    filename = modelname + label_for_filename + "_" + element_symbol + "_ion_populations.txt"
+    np.savetxt(filename, ion_pop_array, delimiter=" ", header=ion_pop_array_header, comments="")
+    print(f"Saving ion populations to file: {filename}")
 
     if plotted_something:
         ax.set_yscale(args.yscale)
@@ -755,7 +789,7 @@ def make_plot(
         )
 
     if (
-        len(set(mgilist)) == 1 and not isinstance(timestepslist[0], int) and len(timestepslist[0]) > 1
+        len(set(mgilist)) == 1 and not isinstance(timestepslist[0], int) and len(timestepslist) > 1
     ):  # single grid cell versus time plot
         figure_title = f"{modelname}\nCell {mgilist[0]}"
 
@@ -1062,9 +1096,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             args.x = "time"
         mgilist = [args.modelgridindex] * len(timesteps_included)
         timesteplist_unfiltered = [[ts] for ts in timesteps_included]
-        if estimators[(args.modelgridindex, timesteps_included[0])]["emptycell"]:
-            msg = f"cell {args.modelgridindex} is empty. no estimators available"
-            raise ValueError(msg)
+        # if estimators[(args.modelgridindex, timesteps_included[0])]["emptycell"]:
+        #     msg = f"cell {args.modelgridindex} is empty. no estimators available"
+        #     raise ValueError(msg)
         make_plot(modelpath, timesteplist_unfiltered, mgilist, estimators, args.x, plotlist, args)
     else:
         # plot a range of cells in a time snapshot showing internal structure
