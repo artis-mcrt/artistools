@@ -117,7 +117,7 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
     floers_levelnums, floers_levelpop_values = None, None
 
     # comparison to Andeas Floers's NLTE pops for Shingles et al. (2022)
-    if atomic_number == 26 and ion_stage in [2, 3]:
+    if atomic_number == 26 and ion_stage in {2, 3}:
         floersfilename = "andreas_level_populations_fe2.txt" if ion_stage == 2 else "andreas_level_populations_fe3.txt"
         if Path(modelpath / floersfilename).is_file():
             print(f"reading {floersfilename}")
@@ -259,7 +259,7 @@ def make_ionsubplot(
         #     ['Z', 'ion_stage', 'level', 'config', 'departure_coeff', 'texname']].to_string(index=False))
         print(
             dfpopthision.loc[
-                :, [c not in ["timestep", "modelgridindex", "Z", "parity", "texname"] for c in dfpopthision.columns]
+                :, [c not in {"timestep", "modelgridindex", "Z", "parity", "texname"} for c in dfpopthision.columns]
             ].to_string(index=False)
         )
 
@@ -746,7 +746,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     at.set_mpl_style()
 
     modelpath = args.modelpath
-    if args.x in ["time", "velocity"]:
+    if args.x in {"time", "velocity"}:
         args.modelpath = [args.modelpath]
 
         # if not args.timedays:
@@ -791,7 +791,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     if not mgilist:
         mgilist.append(0)
 
-    if args.x in ["time", "velocity"]:
+    if args.x in {"time", "velocity"}:
         make_plot_populations_with_time_or_velocity(args.modelpath, args)
         return
 

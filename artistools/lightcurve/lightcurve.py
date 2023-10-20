@@ -420,7 +420,7 @@ def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
     with hesma_modelname.open() as f:
         first_line = f.readline()
         if "#" in first_line:
-            column_names.extend(i for i in first_line if i not in ["#", " ", "\n"])
+            column_names.extend(i for i in first_line if i not in {"#", " ", "\n"})
             hesma_model = pd.read_csv(
                 hesma_modelname, delim_whitespace=True, header=None, comment="#", names=column_names
             )

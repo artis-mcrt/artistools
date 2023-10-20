@@ -79,20 +79,20 @@ def plot_init_abundances(
         linelabel = speciesstr
         linestyle = "-"
         for modelgridindex in mgilist:
-            if speciesstr.lower() in ["ni_56", "ni56", "56ni"]:
+            if speciesstr.lower() in {"ni_56", "ni56", "56ni"}:
                 yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}Ni56"]
                 linelabel = "$^{56}$Ni"
                 linestyle = "--"
-            elif speciesstr.lower() in ["ni_stb", "ni_stable"]:
+            elif speciesstr.lower() in {"ni_stb", "ni_stable"}:
                 yvalue = (
                     mergemodelabundata.loc[modelgridindex][f"{valuetype}{elsymbol}"]
                     - mergemodelabundata.loc[modelgridindex]["X_Ni56"]
                 )
                 linelabel = "Stable Ni"
-            elif speciesstr.lower() in ["co_56", "co56", "56co"]:
+            elif speciesstr.lower() in {"co_56", "co56", "56co"}:
                 yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}Co56"]
                 linelabel = "$^{56}$Co"
-            elif speciesstr.lower() in ["fegrp", "ffegroup"]:
+            elif speciesstr.lower() in {"fegrp", "ffegroup"}:
                 yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}Fegroup"]
             else:
                 yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}{elsymbol}"]
@@ -650,7 +650,7 @@ def plot_subplot(
             showlegend = True
             seriestype, params = plotitem
 
-            if seriestype in ["initabundances", "initmasses"]:
+            if seriestype in {"initabundances", "initmasses"}:
                 plot_init_abundances(ax, xlist, params, mgilist, modelpath, seriestype, dfalldata=dfalldata, args=args)
 
             elif seriestype == "levelpopulation" or seriestype.startswith("levelpopulation_"):
@@ -667,7 +667,7 @@ def plot_subplot(
                     args=args,
                 )
 
-            elif seriestype in ["averageionisation", "averageexcitation"]:
+            elif seriestype in {"averageionisation", "averageexcitation"}:
                 plot_average_ionisation_excitation(
                     ax,
                     xlist,
@@ -1100,7 +1100,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
 
-    if args.modelgridindex > -1 or args.x in ["time", "timestep"]:
+    if args.modelgridindex > -1 or args.x in {"time", "timestep"}:
         # plot time evolution in specific cell
         if not args.x:
             args.x = "time"

@@ -145,7 +145,7 @@ def plot_2d_initial_abundances(modelpath, args=None) -> None:
 
         axeschars: list[AxisType] = ["x", "y", "z"]
         plotaxis1 = next(ax for ax in axeschars if ax != sliceaxis)
-        plotaxis2 = next(ax for ax in axeschars if ax not in [sliceaxis, plotaxis1])
+        plotaxis2 = next(ax for ax in axeschars if ax not in {sliceaxis, plotaxis1})
 
         df2dslice = get_2D_slice_through_3d_model(
             dfmodel=dfmodel, modelmeta=modelmeta, sliceaxis=sliceaxis, plotaxis1=plotaxis1, plotaxis2=plotaxis2

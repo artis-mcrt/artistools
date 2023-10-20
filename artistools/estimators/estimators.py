@@ -193,7 +193,7 @@ def parse_estimfile(
 
                     estimblock[variablename][(atomic_number, ion_stage)] = value_thision
 
-                    if variablename in ["Alpha_R*nne", "AlphaR*nne"]:
+                    if variablename in {"Alpha_R*nne", "AlphaR*nne"}:
                         estimblock.setdefault("Alpha_R", {})
                         estimblock["Alpha_R"][(atomic_number, ion_stage)] = (
                             value_thision / estimblock["nne"] if estimblock["nne"] > 0.0 else float("inf")

@@ -494,7 +494,7 @@ def get_packets_pl(
     escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
 ) -> tuple[int, pl.LazyFrame]:
     if escape_type is not None:
-        assert packet_type in [None, "TYPE_ESCAPE"]
+        assert packet_type in {None, "TYPE_ESCAPE"}
         if packet_type is None:
             packet_type = "TYPE_ESCAPE"
 

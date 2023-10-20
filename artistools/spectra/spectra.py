@@ -820,9 +820,9 @@ def get_flux_contributions_from_packets(
     useinternalpackets: bool = False,
     emissionvelocitycut: float | None = None,
 ) -> tuple[list[fluxcontributiontuple], np.ndarray, np.ndarray]:
-    assert groupby in [None, "ion", "line", "upperterm", "terms"]
+    assert groupby in {None, "ion", "line", "upperterm", "terms"}
 
-    if groupby in ["terms", "upperterm"]:
+    if groupby in {"terms", "upperterm"}:
         adata = at.atomic.get_levels(modelpath)
 
     def get_emprocesslabel(

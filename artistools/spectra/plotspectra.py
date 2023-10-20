@@ -613,7 +613,7 @@ def make_emissionabsorption_plot(
         )
     else:
         arraylambda_angstroms = 2.99792458e18 / arraynu
-        assert args.groupby in [None, "ion"]
+        assert args.groupby in {None, "ion"}
         contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
             modelpath,
             filterfunc,

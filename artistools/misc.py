@@ -186,7 +186,7 @@ def average_direction_bins(
     dirbincount = at.get_viewingdirectionbincount()
     nphibins = at.get_viewingdirection_phibincount()
 
-    assert overangle in ["phi", "theta"]
+    assert overangle in {"phi", "theta"}
     if overangle == "phi":
         start_bin_range = range(0, dirbincount, nphibins)
     elif overangle == "theta":
@@ -659,7 +659,7 @@ def parse_range(rng: str, dictvars: dict[str, int]) -> t.Iterable[t.Any]:
     """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars."""
     strparts = rng.split("-")
 
-    if len(strparts) not in [1, 2]:
+    if len(strparts) not in {1, 2}:
         msg = f"Bad range: '{rng}'"
         raise ValueError(msg)
 

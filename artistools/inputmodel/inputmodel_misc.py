@@ -112,10 +112,10 @@ def read_modelfile_text(
                 # one line per cell format
                 ncols_line_odd = 0
 
-            assert len(columns) in [
+            assert len(columns) in {
                 ncols_line_even + ncols_line_odd,
                 ncols_line_even + ncols_line_odd + 2,
-            ]
+            }
             columns = columns[: ncols_line_even + ncols_line_odd]
 
         assert columns is not None
@@ -918,7 +918,7 @@ def save_modeldata(
 
         fmodel.write(f"{modelmeta['t_model_init_days']}\n")
 
-        if modelmeta["dimensions"] in [2, 3]:
+        if modelmeta["dimensions"] in {2, 3}:
             fmodel.write(f"{vmax}\n")
 
         if customcols:
@@ -1291,7 +1291,7 @@ def dimension_reduce_3d_model(
                 outgridcontributions.append(contriboutrow)
 
         for column in matchedcells.columns:
-            if column.startswith("X_") or column in ["cellYe", "q"]:
+            if column.startswith("X_") or column in {"cellYe", "q"}:
                 # take mass-weighted average mass fraction
                 massfrac = np.dot(matchedcells[column], matchedcells.rho) / matchedcellrhosum if nonempty else 0.0
                 dictcell[column] = massfrac
