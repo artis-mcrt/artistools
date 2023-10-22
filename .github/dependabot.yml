@@ -9,5 +9,5 @@ updates:
     - package-ecosystem: "pip" # See documentation for possible values
       directory: "/" # Location of package manifests
       schedule:
-          interval: "daily"
-      versioning-strategy: "increase"
+          interval: daily
+      versioning-strategy: increase
