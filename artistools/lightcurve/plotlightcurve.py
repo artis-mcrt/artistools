@@ -607,7 +607,7 @@ def make_lightcurve_plot(
             usedegrees=args.usedegrees
         )
         scaledmap = make_colorbar_viewingangles_colormap()
-        make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args)
+        make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, ax=axis)
 
     if args.logscalex:
         axis.set_xscale("log")
@@ -809,7 +809,7 @@ def make_colorbar_viewingangles(phi_viewing_angle_bins, scaledmap, args, fig=Non
             cax = plt.axes([0.2, 0.98, 0.65, 0.04])
             cbar = fig.colorbar(scaledmap, cax=cax, orientation="horizontal")
         else:
-            cbar = plt.colorbar(scaledmap)
+            cbar = plt.colorbar(scaledmap, ax=ax)
         if label:
             cbar.set_label(label, rotation=0)
         cbar.locator = mpl.ticker.FixedLocator(ticklocs)

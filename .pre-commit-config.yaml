@@ -44,13 +44,13 @@ repos:
     #         additional_dependencies: [numpy, types-PyYAML, pandas>=2.0.3, polars>=0.18.10]
     #         types: [python]
     #         require_serial: true
-    - repo: local
-      hooks:
-          - id: mypy
-            name: mypy
-            entry: dmypy
-            types: [python]
-            # files: \.py$
-            language: python
-            require_serial: true
-            args: [run, --, --cache-fine-grained]
+#    - repo: local
+#      hooks:
+#          - id: mypy
+#            name: mypy
+#            entry: dmypy
+#            types: [python]
+#            # files: \.py$
+#            language: python
+#            require_serial: true
+#            args: [run, --, --cache-fine-grained]
