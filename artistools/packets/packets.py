@@ -268,7 +268,7 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict, dfmodel: 
                 ]
             )
     elif modelmeta["dimensions"] == 1:
-        velbins = (dfmodel["velocity_outer"] * 1000).to_list()
+        velbins = (dfmodel["vel_r_max_kmps"] * 1000).to_list()
         dfpackets = dfpackets.with_columns(
             (
                 pl.col("emission_velocity")
@@ -287,7 +287,7 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataF
     # skiprows = 0
     column_names: list[str] | None = None
     try:
-        fpackets = at.zopen(packetsfile, mode="rb")
+        fpackets = at.zopen(packetsfile, mode="r")
 
         datastartpos = fpackets.tell()  # will be updated if this was actually the start of a header
         firstline = fpackets.readline().decode()
@@ -324,7 +324,7 @@ def readfile_text(packetsfile: Path | str, modelpath: Path = Path()) -> pl.DataF
             separator=" ",
             has_header=False,
             new_columns=column_names,
-            infer_schema_length=10000,
+            infer_schema_length=20000,
         )
 
     except Exception:
@@ -494,7 +494,7 @@ def get_packets_pl(
     escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
 ) -> tuple[int, pl.LazyFrame]:
     if escape_type is not None:
-        assert packet_type in [None, "TYPE_ESCAPE"]
+        assert packet_type in {None, "TYPE_ESCAPE"}
         if packet_type is None:
             packet_type = "TYPE_ESCAPE"
 

@@ -121,27 +121,7 @@ def plot_spherical(
             ).alias("em_timestep")
         )
 
-        dfest_parquetfile = Path(modelpath, "temperatures.parquet.tmp")
-
-        if not dfest_parquetfile.is_file():
-            estimators = at.estimators.read_estimators(
-                modelpath,
-                get_ion_values=False,
-                get_heatingcooling=False,
-                skip_emptycells=True,
-            )
-            assert len(estimators) > 0
-            pl.DataFrame(
-                {
-                    "timestep": (tsmgi[0] for tsmgi in estimators),
-                    "modelgridindex": (tsmgi[1] for tsmgi in estimators),
-                    "TR": (estimators[tsmgi].get("TR", -1) for tsmgi in estimators),
-                },
-            ).filter(pl.col("TR") >= 0).with_columns(pl.col(pl.Int64).cast(pl.Int32)).write_parquet(
-                dfest_parquetfile, compression="zstd"
-            )
-
-        df_estimators = pl.scan_parquet(dfest_parquetfile).rename(
+        df_estimators = at.estimators.get_temperatures(modelpath).rename(
             {"timestep": "em_timestep", "modelgridindex": "em_modelgridindex", "TR": "em_TR"}
         )
         dfpackets = dfpackets.join(df_estimators, on=["em_timestep", "em_modelgridindex"], how="left")

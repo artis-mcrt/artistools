@@ -49,7 +49,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         kwargs["max_help_position"] = 39
         super().__init__(*args, **kwargs)
 
-    def add_arguments(self, actions: t.Iterable[argparse.Action]) -> None:
+    def add_arguments(self, actions: t.Iterable[argparse.Action]) -> None:  # noqa: PLR6301
         getinvocation = super()._format_action_invocation
 
         def my_sort(action: argparse.Action) -> str:
@@ -186,7 +186,7 @@ def average_direction_bins(
     dirbincount = at.get_viewingdirectionbincount()
     nphibins = at.get_viewingdirection_phibincount()
 
-    assert overangle in ["phi", "theta"]
+    assert overangle in {"phi", "theta"}
     if overangle == "phi":
         start_bin_range = range(0, dirbincount, nphibins)
     elif overangle == "theta":
@@ -229,16 +229,18 @@ def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
             "cos_theta": [float(x) for x in vpkt_txt.readline().split()],
             "phi": [float(x) for x in vpkt_txt.readline().split()],
         }
-        nspecflag = int(vpkt_txt.readline())
         assert vpkt_config["nobsdirections"] == len(vpkt_config["cos_theta"])
         assert len(vpkt_config["cos_theta"]) == len(vpkt_config["phi"])
 
+        speclistline = vpkt_txt.readline().split()
+        nspecflag = int(speclistline[0])
+
         if nspecflag == 1:
-            vpkt_config["nspectraperobs"] = int(vpkt_txt.readline())
-            for _ in range(vpkt_config["nspectraperobs"]):
-                vpkt_txt.readline()
+            vpkt_config["nspectraperobs"] = int(speclistline[1])
+            vpkt_config["z_excludelist"] = [int(x) for x in speclistline[2:]]
         else:
             vpkt_config["nspectraperobs"] = 1
+            vpkt_config["z_excludelist"] = []
 
         vpkt_config["time_limits_enabled"], vpkt_config["initial_time"], vpkt_config["final_time"] = (
             int(x) for x in vpkt_txt.readline().split()
@@ -657,7 +659,7 @@ def parse_range(rng: str, dictvars: dict[str, int]) -> t.Iterable[t.Any]:
     """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars."""
     strparts = rng.split("-")
 
-    if len(strparts) not in [1, 2]:
+    if len(strparts) not in {1, 2}:
         msg = f"Bad range: '{rng}'"
         raise ValueError(msg)
 
@@ -716,8 +718,15 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
     return listout
 
 
-def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -> t.Any:
-    """Open filename, filename.gz or filename.xz."""
+def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, forpolars: bool = False) -> t.Any:
+    """Open filename, filename.gz or filename.xz.
+
+    Arguments:
+    ---------
+    forpolars: if polars.read_csv can read the file directly, return a Path object instead of a file object
+    """
+    if forpolars:
+        mode = "r"
     ext_fopen = [(".lz4", lz4.frame.open), (".zst", pyzstd.open), (".gz", gzip.open), (".xz", xz.open)]
 
     for ext, fopen in ext_fopen:
@@ -726,6 +735,8 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None) -
             return fopen(file_ext, mode=mode, encoding=encoding)
 
     # open() can raise file not found if this file doesn't exist
+    if forpolars:
+        return Path(filename)
     return Path(filename).open(mode=mode, encoding=encoding)
 
 
@@ -1228,11 +1239,11 @@ def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.float64], npt.NDArray
     binlabels = []
     for phibin, step in enumerate(phisteps):
         if usedegrees:
-            str_phi_lower = f"{phi_lower[step]/math.pi*180:.0f}°"
-            str_phi_upper = f"{phi_upper[step]/math.pi*180:.0f}°"
+            str_phi_lower = f"{phi_lower[step] / math.pi * 180:.0f}°"
+            str_phi_upper = f"{phi_upper[step] / math.pi * 180:.0f}°"
         else:
             str_phi_lower = f"{step}π/{nphibins // 2}" if step > 0 else "0"
-            str_phi_upper = f"{step+1}π/{nphibins // 2}" if step < nphibins - 1 else "2π"
+            str_phi_upper = f"{step + 1}π/{nphibins // 2}" if step < nphibins - 1 else "2π"
 
         lower_compare = "≤" if phibin < (nphibins // 2) else "<"
         upper_compare = "≤" if phibin > (nphibins // 2) else "<"
@@ -1299,7 +1310,7 @@ def get_dirbin_labels(
         if list(modelpath.glob("*_res_00.out*")):
             # if the first direction bin file exists, check:
             # check last bin exists
-            assert list(modelpath.glob(f"*_res_{MABINS-1:02d}.out*"))
+            assert list(modelpath.glob(f"*_res_{MABINS - 1:02d}.out*"))
             # check one beyond does not exist
             assert not list(modelpath.glob(f"*_res_{MABINS:02d}.out*"))
 

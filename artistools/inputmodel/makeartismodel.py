@@ -72,9 +72,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         )
 
     if args.makeenergyinputfiles:
-        model, modelmeta = at.inputmodel.get_modeldata(args.modelpath[0], derived_cols=["cellmass_grams"])
+        model, modelmeta = at.inputmodel.get_modeldata(args.modelpath[0], derived_cols=["mass_g"])
         rho = 10 ** model["logrho"] if modelmeta["dimensions"] == 1 else model["rho"]
-        Mtot_grams = model["cellmass_grams"].sum()
+        Mtot_grams = model["mass_g"].sum()
 
         print(f"total mass {Mtot_grams / 1.989e33} Msun")
 

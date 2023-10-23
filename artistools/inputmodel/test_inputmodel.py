@@ -30,8 +30,8 @@ def test_get_modeldata_1d() -> None:
         assert modelmeta["dimensions"] == 1
         assert modelmeta["npts_model"] == 1
 
-    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, derived_cols=["cellmass_grams"])
-    assert np.isclose(dfmodel.cellmass_grams.sum(), 1.416963e33)
+    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, derived_cols=["mass_g"])
+    assert np.isclose(dfmodel.mass_g.sum(), 1.416963e33)
 
 
 def test_get_modeldata_3d() -> None:
@@ -42,29 +42,27 @@ def test_get_modeldata_3d() -> None:
         assert modelmeta["npts_model"] == 1000
         assert modelmeta["ncoordgridx"] == 10
 
-    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, derived_cols=["cellmass_grams"])
-    assert np.isclose(dfmodel.cellmass_grams.sum(), 2.7861855e33)
+    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, derived_cols=["mass_g"])
+    assert np.isclose(dfmodel.mass_g.sum(), 2.7861855e33)
 
 
 def test_downscale_3dmodel() -> None:
-    dfmodel, modelmeta = at.get_modeldata(
-        modelpath=modelpath_3d, get_elemabundances=True, derived_cols=["cellmass_grams"]
-    )
+    dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, get_elemabundances=True, derived_cols=["mass_g"])
     modelpath_3d_small = at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(
         modelpath_3d, outputgridsize=2, outputfolder=outputpath
     )
     dfmodel_small, modelmeta_small = at.get_modeldata(
-        modelpath_3d_small, get_elemabundances=True, derived_cols=["cellmass_grams"]
+        modelpath_3d_small, get_elemabundances=True, derived_cols=["mass_g"]
     )
-    assert np.isclose(dfmodel["cellmass_grams"].sum(), dfmodel_small["cellmass_grams"].sum())
+    assert np.isclose(dfmodel["mass_g"].sum(), dfmodel_small["mass_g"].sum())
     assert np.isclose(modelmeta["vmax_cmps"], modelmeta_small["vmax_cmps"])
     assert np.isclose(modelmeta["t_model_init_days"], modelmeta_small["t_model_init_days"])
 
     abundcols = (x for x in dfmodel.columns if x.startswith("X_"))
     for abundcol in abundcols:
         assert np.isclose(
-            (dfmodel[abundcol] * dfmodel["cellmass_grams"]).sum(),
-            (dfmodel_small[abundcol] * dfmodel_small["cellmass_grams"]).sum(),
+            (dfmodel[abundcol] * dfmodel["mass_g"]).sum(),
+            (dfmodel_small[abundcol] * dfmodel_small["mass_g"]).sum(),
         )
 
 
@@ -136,7 +134,7 @@ def test_dimension_reduce_3d_model() -> None:
     dfmodel3d = dfmodel3d_pl.to_pandas(use_pyarrow_extension_array=True)
     dfmodel3d = (
         at.inputmodel.add_derived_cols_to_modeldata(
-            dfmodel=pl.DataFrame(dfmodel3d), modelmeta=modelmeta_3d, derived_cols=["cellmass_grams"]
+            dfmodel=pl.DataFrame(dfmodel3d), modelmeta=modelmeta_3d, derived_cols=["mass_g"]
         )
         .collect()
         .to_pandas(use_pyarrow_extension_array=True)
@@ -149,19 +147,19 @@ def test_dimension_reduce_3d_model() -> None:
         )
         dfmodel_lowerd = (
             at.inputmodel.add_derived_cols_to_modeldata(
-                dfmodel=pl.DataFrame(dfmodel_lowerd), modelmeta=modelmeta_lowerd, derived_cols=["cellmass_grams"]
+                dfmodel=pl.DataFrame(dfmodel_lowerd), modelmeta=modelmeta_lowerd, derived_cols=["mass_g"]
             )
             .collect()
             .to_pandas(use_pyarrow_extension_array=True)
         )
 
         # check that the total mass is conserved
-        assert np.isclose(dfmodel_lowerd["cellmass_grams"].sum(), dfmodel3d["cellmass_grams"].sum())
+        assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3d["mass_g"].sum())
 
         # check that the total mass of each species is conserved
         for col in dfmodel3d.columns:
             if col.startswith("X_"):
                 assert np.isclose(
-                    (dfmodel_lowerd["cellmass_grams"] * dfmodel_lowerd[col]).sum(),
-                    (dfmodel3d["cellmass_grams"] * dfmodel3d[col]).sum(),
+                    (dfmodel_lowerd["mass_g"] * dfmodel_lowerd[col]).sum(),
+                    (dfmodel3d["mass_g"] * dfmodel3d[col]).sum(),
                 )

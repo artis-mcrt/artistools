@@ -1,7 +1,7 @@
 ---
 repos:
     - repo: https://github.com/pre-commit/pre-commit-hooks
-      rev: v4.4.0
+      rev: v4.5.0
       hooks:
           - id: check-added-large-files
             args: [--maxkb=800]
@@ -29,12 +29,12 @@ repos:
     #   hooks:
     #       - id: yamlfmt
     - repo: https://github.com/charliermarsh/ruff-pre-commit
-      rev: v0.0.289
+      rev: v0.1.1
       hooks:
           - id: ruff
             args: [--fix, --exit-non-zero-on-fix]
     - repo: https://github.com/psf/black-pre-commit-mirror
-      rev: 23.9.1
+      rev: 23.10.0
       hooks:
           - id: black
     # - repo: https://github.com/pre-commit/mirrors-mypy
@@ -44,13 +44,11 @@ repos:
     #         additional_dependencies: [numpy, types-PyYAML, pandas>=2.0.3, polars>=0.18.10]
     #         types: [python]
     #         require_serial: true
-#    - repo: local
-#      hooks:
-#          - id: mypy
-#            name: mypy
-#            entry: dmypy
-#            types: [python]
-#            # files: \.py$
-#            language: python
-#            require_serial: true
-#            args: [run, --, --cache-fine-grained]
+    - repo: local
+      hooks:
+          - id: mypy
+            name: mypy
+            entry: mypy
+            types: [python]
+            language: python
+            args: []
