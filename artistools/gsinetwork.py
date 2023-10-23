@@ -48,7 +48,7 @@ def plot_qdot(
 
     arr_heat = {col: np.zeros_like(arr_time_gsi_days) for col in heatcols}
 
-    model_mass_grams = dfmodel.cellmass_grams.sum()
+    model_mass_grams = dfmodel.mass_g.sum()
     print(f"model mass: {model_mass_grams / 1.989e33:.3f} Msun")
 
     print("Calculating global heating rates from the individual particle heating rates...")
@@ -57,7 +57,7 @@ def plot_qdot(
         if cellindex >= len(dfmodel):
             continue
 
-        cell_mass_frac = dfmodel.iloc[cellindex - 1].cellmass_grams / model_mass_grams
+        cell_mass_frac = dfmodel.iloc[cellindex - 1].mass_g / model_mass_grams
 
         if cell_mass_frac == 0.0:
             continue
@@ -449,9 +449,9 @@ def plot_qdot_abund_modelcells(
 
     # arr_z = [at.get_atomic_number(el) for el in arr_el]
 
-    dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath)
-    if "logrho" not in dfmodel.columns:
-        dfmodel = dfmodel.eval("logrho = log10(rho)")
+    dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(
+        modelpath, derived_cols=["mass_g", "rho", "volume"]
+    )
     npts_model = len(dfmodel)
 
     # these factors correct for missing mass due to skipped shells, and volume error due to Cartesian grid map
@@ -464,12 +464,9 @@ def plot_qdot_abund_modelcells(
     dfmodel["n_assoc_cells"] = [len(assoc_cells.get(inputcellid - 1, [])) for inputcellid in dfmodel["inputcellid"]]
 
     # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
-    dfmodel = dfmodel.eval("cellmass_grams_mapped = 10 ** logrho * @wid_init ** 3 * n_assoc_cells")
+    dfmodel = dfmodel.eval("mass_g_mapped = 10 ** logrho * @wid_init ** 3 * n_assoc_cells")
     for strnuc in arr_strnuc:
-        corr = (
-            dfmodel.eval(f"X_{strnuc} * cellmass_grams_mapped").sum()
-            / dfmodel.eval(f"X_{strnuc} * cellmass_grams").sum()
-        )
+        corr = dfmodel.eval(f"X_{strnuc} * mass_g_mapped").sum() / dfmodel.eval(f"X_{strnuc} * mass_g").sum()
         # print(strnuc, corr)
         correction_factors[strnuc] = corr
 
@@ -527,12 +524,12 @@ def plot_qdot_abund_modelcells(
             if "Ye" in estimators[(nts, mgi)]:
                 cell_Ye = estimators[(nts, mgi)]["Ye"]
                 arr_abund_artis[mgi]["Ye"].append(cell_Ye)
-                artis_ye_sum[nts] = artis_ye_sum.get(nts, 0.0) + cell_Ye * dfmodel.iloc[mgi].cellmass_grams
-                artis_ye_norm[nts] = artis_ye_norm.get(nts, 0.0) + dfmodel.iloc[mgi].cellmass_grams
+                artis_ye_sum[nts] = artis_ye_sum.get(nts, 0.0) + cell_Ye * dfmodel.iloc[mgi].mass_g
+                artis_ye_norm[nts] = artis_ye_norm.get(nts, 0.0) + dfmodel.iloc[mgi].mass_g
             else:
                 cell_protoncount = 0.0
                 cell_nucleoncount = 0.0
-                cellvolume = dfmodel.iloc[mgi].cellmass_grams / rho_cgs
+                cellvolume = dfmodel.iloc[mgi].volume
                 for popkey, abund in estimators[(nts, mgi)]["populations"].items():
                     if isinstance(popkey, str) and abund > 0.0:
                         if popkey.endswith("_otherstable"):

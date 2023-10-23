@@ -11,7 +11,7 @@ def all_cells_same_opacity(modelpath, ngrid):
         fopacity.write(f"{ngrid}\n")
 
         for cellid, opacity in enumerate(cell_opacities):
-            fopacity.write(f"{cellid+1}    {opacity}\n")
+            fopacity.write(f"{cellid + 1}    {opacity}\n")
 
 
 def opacity_by_Ye(outputfilepath, griddata):

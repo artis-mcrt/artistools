@@ -62,7 +62,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     print(f"Ni56 region outer velocity = {v_ni56:.3f}, M={m:.3f}")
 
     dfmodel = pd.DataFrame(
-        columns=["inputcellid", "velocity_outer", "logrho", "X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
+        columns=["inputcellid", "vel_r_max_kmps", "logrho", "X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
     )
     dfmodel.index.name = "cellid"
     dfelabundances = pd.DataFrame(columns=["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, 31)]])

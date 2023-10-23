@@ -27,7 +27,7 @@ def get_model_recombenergy(dfbinding, args):
     msun_g = 1.989e33
     amu_g = 1.66054e-24  # 1 atomic mass unit in grams
     ev_erg = 1.60218e-12  # 1 eV in erg
-    mass_msun_rho = dfmodel["cellmass_grams"].sum() / msun_g
+    mass_msun_rho = dfmodel["mass_g"].sum() / msun_g
 
     mass_msun_accounted = 0.0
     model_el_binding_en_ev = {}
@@ -35,7 +35,7 @@ def get_model_recombenergy(dfbinding, args):
     for column in dfmodel.columns:
         if column.startswith("X_"):
             species = column.replace("X_", "")
-            speciesabund_g = np.dot(dfmodel[column], dfmodel["cellmass_grams"])
+            speciesabund_g = np.dot(dfmodel[column], dfmodel["mass_g"])
 
             species_mass_msun = speciesabund_g / msun_g
 

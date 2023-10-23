@@ -11,6 +11,13 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v3
+
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                  cache: pip
+                  python-version-file: .python-version
+
             - uses: psf/black@stable
               with:
                   options: --check --verbose
@@ -31,6 +38,7 @@ jobs:
               run: |
                   python3 -m pip install --upgrade pip wheel mypy
                   python3 -m pip install -r requirements.txt
+
             - name: Lint with mypy
               run: |
                   mypy --install-types --non-interactive
@@ -59,6 +67,13 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v3
+
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                  cache: pip
+                  python-version-file: .python-version
+
             - uses: chartboost/ruff-action@v1
 
     superlinter:
@@ -72,8 +87,14 @@ jobs:
                   # Full git history is needed to get a proper list of changed files within `super-linter`
                   fetch-depth: 0
 
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                  cache: pip
+                  python-version-file: .python-version
+
             - name: Lint Code Base
-              uses: github/super-linter/slim@v5.0.0
+              uses: github/super-linter/slim@v5
               env:
                   LINTER_RULES_PATH: ./
                   LOG_LEVEL: WARN

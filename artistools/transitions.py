@@ -313,7 +313,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         }
 
         modelname = at.get_model_name(modelpath)
-        velocity = modeldata["velocity_outer"][modelgridindex]
+        velocity = modeldata["vel_r_max_kmps"][modelgridindex]
 
         Te = estimators["Te"]
         TR = estimators["TR"]

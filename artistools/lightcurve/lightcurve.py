@@ -22,12 +22,18 @@ def readfile(
     if "_res" in str(filepath):
         # get a dict of dfs with light curves at each viewing direction bin
         lcdata_res = pl.read_csv(
-            at.zopen(filepath, "rb").read(), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
+            at.zopen(filepath, forpolars=True),
+            separator=" ",
+            has_header=False,
+            new_columns=["time", "lum", "lum_cmf"],
         )
         lcdata = at.split_dataframe_dirbins(lcdata_res, index_of_repeated_value=0, output_polarsdf=True)
     else:
         dfsphericalaverage = pl.read_csv(
-            at.zopen(filepath, "rb").read(), separator=" ", has_header=False, new_columns=["time", "lum", "lum_cmf"]
+            at.zopen(filepath, forpolars=True),
+            separator=" ",
+            has_header=False,
+            new_columns=["time", "lum", "lum_cmf"],
         )
 
         if list(dfsphericalaverage["time"].to_numpy()) != sorted(dfsphericalaverage["time"].to_numpy()):
@@ -414,7 +420,7 @@ def read_hesma_lightcurve(args: argparse.Namespace) -> pd.DataFrame:
     with hesma_modelname.open() as f:
         first_line = f.readline()
         if "#" in first_line:
-            column_names.extend(i for i in first_line if i not in ["#", " ", "\n"])
+            column_names.extend(i for i in first_line if i not in {"#", " ", "\n"})
             hesma_model = pd.read_csv(
                 hesma_modelname, delim_whitespace=True, header=None, comment="#", names=column_names
             )

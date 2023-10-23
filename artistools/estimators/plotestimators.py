@@ -10,12 +10,14 @@ import contextlib
 import math
 import sys
 import typing as t
+from collections.abc import Iterable
 from pathlib import Path
 
 import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import polars as pl
 from typeguard import check_type
 
 import artistools as at
@@ -57,7 +59,7 @@ def plot_init_abundances(
     assert len(xlist) - 1 == len(mgilist)
 
     if seriestype == "initabundances":
-        mergemodelabundata, _, _ = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=True)
+        mergemodelabundata, _ = at.inputmodel.get_modeldata(modelpath, get_elemabundances=True)
     elif seriestype == "initmasses":
         mergemodelabundata = at.initial_composition.get_model_abundances_Msun_1D(modelpath)
 
@@ -77,20 +79,20 @@ def plot_init_abundances(
         linelabel = speciesstr
         linestyle = "-"
         for modelgridindex in mgilist:
-            if speciesstr.lower() in ["ni_56", "ni56", "56ni"]:
+            if speciesstr.lower() in {"ni_56", "ni56", "56ni"}:
                 yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}Ni56"]
                 linelabel = "$^{56}$Ni"
                 linestyle = "--"
-            elif speciesstr.lower() in ["ni_stb", "ni_stable"]:
+            elif speciesstr.lower() in {"ni_stb", "ni_stable"}:
                 yvalue = (
                     mergemodelabundata.loc[modelgridindex][f"{valuetype}{elsymbol}"]
                     - mergemodelabundata.loc[modelgridindex]["X_Ni56"]
                 )
                 linelabel = "Stable Ni"
-            elif speciesstr.lower() in ["co_56", "co56", "56co"]:
+            elif speciesstr.lower() in {"co_56", "co56", "56co"}:
                 yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}Co56"]
                 linelabel = "$^{56}$Co"
-            elif speciesstr.lower() in ["fegrp", "ffegroup"]:
+            elif speciesstr.lower() in {"fegrp", "ffegroup"}:
                 yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}Fegroup"]
             else:
                 yvalue = mergemodelabundata.loc[modelgridindex][f"{valuetype}{elsymbol}"]
@@ -196,8 +198,7 @@ def plot_levelpop(
     else:
         raise ValueError
 
-    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-    modeldata = modeldata.eval("modelcellvolume = cellmass_grams / (10 ** logrho)")
+    modeldata, _ = at.inputmodel.get_modeldata(modelpath, derived_cols=["mass_g", "volume"])
 
     adata = at.atomic.get_levels(modelpath)
 
@@ -242,8 +243,8 @@ def plot_levelpop(
                 tdeltasum += arr_tdelta[timestep]
 
             if seriestype == "levelpopulation_dn_on_dvel":
-                deltav = modeldata.loc[modelgridindex].velocity_outer - modeldata.loc[modelgridindex].velocity_inner
-                ylist.append(valuesum / tdeltasum * modeldata.loc[modelgridindex].modelcellvolume / deltav)
+                deltav = modeldata.loc[modelgridindex].vel_r_max_kmps - modeldata.loc[modelgridindex].vel_r_min_kmps
+                ylist.append(valuesum / tdeltasum * modeldata.loc[modelgridindex].volume / deltav)
             else:
                 ylist.append(valuesum / tdeltasum)
 
@@ -482,13 +483,13 @@ def plot_series(
     ax,
     xlist,
     variablename,
-    showlegend,
+    showlegend: bool,
     timestepslist,
     mgilist,
-    modelpath,
+    modelpath: str | Path,
     estimators,
-    args,
-    nounits=False,
+    args: argparse.Namespace,
+    nounits: bool = False,
     dfalldata=None,
     **plotkwargs,
 ):
@@ -505,9 +506,10 @@ def plot_series(
         ax.set_ylabel(serieslabel)
         linelabel = None
 
-    ylist = []
+    ylist: list[float] = []
     for modelgridindex, timesteps in zip(mgilist, timestepslist):
         estimavg = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, [])
+        assert isinstance(estimavg, dict)
         try:
             ylist.append(eval(variablename, {"__builtins__": math}, estimavg))
         except KeyError:
@@ -537,9 +539,11 @@ def plot_series(
 
     ylist.insert(0, ylist[0])
 
-    xlist, ylist = at.estimators.apply_filters(xlist, ylist, args)
+    xlist_filtered, ylist_filtered = at.estimators.apply_filters(xlist, ylist, args)
 
-    ax.plot(xlist, ylist, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename), **plotkwargs)
+    ax.plot(
+        xlist_filtered, ylist_filtered, linewidth=1.5, label=linelabel, color=dictcolors.get(variablename), **plotkwargs
+    )
 
 
 def get_xlist(
@@ -566,12 +570,31 @@ def get_xlist(
         check_type(timestepslist, t.Sequence[t.Sequence[int]])
         xlist = [np.mean([timearray[ts] for ts in tslist]) for tslist in timestepslist]
         timestepslist_out = timestepslist
+    elif xvariable in {"velocity", "beta"}:
+        dfmodel, modelmeta = at.inputmodel.get_modeldata_polars(modelpath, derived_cols=["vel_r_mid"])
+        if modelmeta["vmax_cmps"] > 0.3 * 29979245800:
+            args.x = "beta"
+            xvariable = "beta"
+        dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
+        dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
+        dfmodel = dfmodel.select(["modelgridindex", "vel_r_mid"]).sort(by="vel_r_mid")
+        if args.xmax > 0:
+            dfmodel = dfmodel.filter(pl.col("vel_r_mid") / 1e5 <= args.xmax)
+        else:
+            dfmodel = dfmodel.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
+        dfmodelcollect = dfmodel.collect()
+
+        scalefactor = 1e5 if xvariable == "velocity" else 29979245800
+        xlist = (dfmodelcollect["vel_r_mid"] / scalefactor).to_list()
+        mgilist_out = dfmodelcollect["modelgridindex"].to_list()
+        timestepslist_out = timestepslist
     else:
         xlist = []
         mgilist_out = []
         timestepslist_out = []
         for modelgridindex, timesteps in zip(allnonemptymgilist, timestepslist):
             xvalue = at.estimators.get_averaged_estimators(modelpath, estimators, timesteps, modelgridindex, xvariable)
+            assert isinstance(xvalue, float | int)
             xlist.append(xvalue)
             mgilist_out.append(modelgridindex)
             timestepslist_out.append(timesteps)
@@ -627,7 +650,7 @@ def plot_subplot(
             showlegend = True
             seriestype, params = plotitem
 
-            if seriestype in ["initabundances", "initmasses"]:
+            if seriestype in {"initabundances", "initmasses"}:
                 plot_init_abundances(ax, xlist, params, mgilist, modelpath, seriestype, dfalldata=dfalldata, args=args)
 
             elif seriestype == "levelpopulation" or seriestype.startswith("levelpopulation_"):
@@ -644,7 +667,7 @@ def plot_subplot(
                     args=args,
                 )
 
-            elif seriestype in ["averageionisation", "averageexcitation"]:
+            elif seriestype in {"averageionisation", "averageexcitation"}:
                 plot_average_ionisation_excitation(
                     ax,
                     xlist,
@@ -730,11 +753,15 @@ def make_plot(
         xvariable, allnonemptymgilist, estimators, timestepslist_unfiltered, modelpath, args
     )
 
-    dfalldata = pd.DataFrame(index=mgilist)
-    dfalldata.index.name = "modelgridindex"
+    dfalldata = pd.DataFrame()
+    # dfalldata.index.name = "modelgridindex"
     dfalldata[xvariable] = xlist
 
-    xlist = list(np.insert(xlist, 0, 0.0) if xvariable.startswith("velocity") else np.insert(xlist, 0, xlist[0]))
+    xlist = list(
+        np.insert(xlist, 0, 0.0)
+        if (xvariable.startswith("velocity") or xvariable == "beta")
+        else np.insert(xlist, 0, xlist[0])
+    )
 
     xmin = args.xmin if args.xmin >= 0 else min(xlist)
     xmax = args.xmax if args.xmax > 0 else max(xlist)
@@ -888,6 +915,17 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
     plt.close()
 
 
+def plotlist_is_temperatures_only(plotlist) -> bool:
+    for item in plotlist:
+        if isinstance(item, str) and item != "TR":
+            return False
+        if isinstance(item, Iterable):
+            for x in item:
+                if isinstance(x, str) and x != "TR":
+                    return False
+    return True
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-modelpath", default=".", help="Paths to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)"
@@ -990,30 +1028,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         f"({args.timemin:.1f} to {args.timemax:.1f}d)"
     )
 
-    timesteps_included = list(range(timestepmin, timestepmax + 1))
-
-    if args.classicartis:
-        import artistools.estimators.estimators_classic
-
-        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-        estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
-    else:
-        estimators = at.estimators.read_estimators(
-            modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included)
-        )
-    assert estimators is not None
-
-    for ts in reversed(timesteps_included):
-        tswithdata = [ts for (ts, mgi) in estimators]
-        for ts in timesteps_included:
-            if ts not in tswithdata:
-                timesteps_included.remove(ts)
-                print(f"ts {ts} requested but no data found. Removing.")
-
-    if not timesteps_included:
-        print("No timesteps with data are included")
-        return
-
     plotlist = args.plotlist or [
         # [['initabundances', ['Fe', 'Ni_stable', 'Ni_56']]],
         # ['heating_dep', 'heating_coll', 'heating_bf', 'heating_ff',
@@ -1023,13 +1037,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
         # ['nne'],
-        ["TR", "Te", "TJ", ["_yscale", "linear"]],
+        ["TR", ["_yscale", "linear"], ["_ymin", 1000], ["_ymax", 22000]],
         # ['Te'],
         # [['averageionisation', ['Fe', 'Ni']]],
         # [['averageexcitation', ['Fe II', 'Fe III']]],
         # [['populations', ['Sr89', 'Sr90', 'Sr91', 'Sr92', 'Sr93', 'Sr94', 'Sr95']],
         #  ['_ymin', 1e-3], ['_ymax', 5]],
-        [["populations", ["Fe", "Co", "Ni", "Sr", "Nd", "U"]]],
+        # [["populations", ["Fe", "Co", "Ni", "Sr", "Nd", "U"]]],
         # [['populations', ['He I', 'He II', 'He III']]],
         # [['populations', ['C I', 'C II', 'C III', 'C IV', 'C V']]],
         # [['populations', ['O I', 'O II', 'O III', 'O IV']]],
@@ -1048,21 +1062,51 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
     ]
 
+    if temperatures_only := plotlist_is_temperatures_only(plotlist):
+        print("Plotting temperatures only (from parquet if available)")
+
+    timesteps_included = list(range(timestepmin, timestepmax + 1))
+    if args.classicartis:
+        import artistools.estimators.estimators_classic
+
+        modeldata, _ = at.inputmodel.get_modeldata(modelpath)
+        estimators = artistools.estimators.estimators_classic.read_classic_estimators(modelpath, modeldata)
+    elif temperatures_only:
+        df_estimators = at.estimators.get_temperatures(modelpath).filter(pl.col("timestep").is_in(timesteps_included))
+        estimators = df_estimators.collect().rows_by_key(key=["timestep", "modelgridindex"], named=True, unique=True)
+    else:
+        estimators = at.estimators.read_estimators(
+            modelpath=modelpath, modelgridindex=args.modelgridindex, timestep=tuple(timesteps_included)
+        )
+    assert estimators is not None
+
+    for ts in reversed(timesteps_included):
+        tswithdata = [ts for (ts, mgi) in estimators]
+        for ts in timesteps_included:
+            if ts not in tswithdata:
+                timesteps_included.remove(ts)
+                print(f"ts {ts} requested but no data found. Removing.")
+
+    if not timesteps_included:
+        print("No timesteps with data are included")
+        return
+
     if args.recombrates:
         plot_recombrates(modelpath, estimators, 26, [2, 3, 4, 5])
         plot_recombrates(modelpath, estimators, 27, [3, 4])
         plot_recombrates(modelpath, estimators, 28, [3, 4, 5])
 
         return
-    modeldata, _ = at.inputmodel.get_modeldata(modelpath)
 
-    if args.modelgridindex > -1 or args.x in ["time", "timestep"]:
+    assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
+
+    if args.modelgridindex > -1 or args.x in {"time", "timestep"}:
         # plot time evolution in specific cell
         if not args.x:
             args.x = "time"
         mgilist = [args.modelgridindex] * len(timesteps_included)
         timesteplist_unfiltered = [[ts] for ts in timesteps_included]
-        if estimators[(args.modelgridindex, timesteps_included[0])]["emptycell"]:
+        if not assoc_cells.get(args.modelgridindex, []):
             msg = f"cell {args.modelgridindex} is empty. no estimators available"
             raise ValueError(msg)
         make_plot(modelpath, timesteplist_unfiltered, mgilist, estimators, args.x, plotlist, args)
@@ -1070,20 +1114,17 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # plot a range of cells in a time snapshot showing internal structure
 
         if not args.x:
-            args.x = "velocity_outer"
+            args.x = "velocity"
 
         if args.classicartis:
+            modeldata, _ = at.inputmodel.get_modeldata(modelpath)
             allnonemptymgilist = [
                 modelgridindex
                 for modelgridindex in modeldata.index
                 if (timesteps_included[0], modelgridindex) in estimators
             ]
         else:
-            allnonemptymgilist = [
-                modelgridindex
-                for modelgridindex in modeldata.index
-                if not estimators[(timesteps_included[0], modelgridindex)]["emptycell"]
-            ]
+            allnonemptymgilist = [mgi for mgi, assocpropcells in assoc_cells.items() if assocpropcells]
 
         if args.multiplot:
             pdf_list = []

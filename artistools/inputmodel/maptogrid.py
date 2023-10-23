@@ -411,7 +411,7 @@ def maptogrid(
                 gy = y0 + dy * j
                 for i in range(ncoordgrid):
                     fgrid.write(
-                        f"{gridindex:8d} {x0+dx*i} {gy} {gz} {grho[i,j,k]} {gye[i,j,k]} {gparticlecounter[i,j,k]}\n"
+                        f"{gridindex:8d} {x0 + dx * i} {gy} {gz} {grho[i, j, k]} {gye[i, j, k]} {gparticlecounter[i, j, k]}\n"
                     )
                     # gridindex2 = ((k - 1) * ncoordgrid + (j - 1)) * ncoordgrid + (i - 1) + 1
 

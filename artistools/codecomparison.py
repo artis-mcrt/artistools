@@ -5,7 +5,6 @@ codecomparison/[modelname]/[codename].
 e.g., codecomparison/DDC10/artisnebular
 """
 
-
 import math
 import typing as t
 from pathlib import Path
@@ -96,7 +95,7 @@ def read_reference_estimators(
                 estimators[key]["nne"] = float(row[3])
                 estimators[key]["nntot"] = float(row[4])
 
-                estimators[key]["velocity_outer"] = estimators[key]["vel_mid"]
+                estimators[key]["vel_r_max_kmps"] = estimators[key]["vel_mid"]
 
     ionfracfilepaths = inputmodelfolder.glob(f"ionfrac_*_{inputmodel}_{codename}.txt")
     for ionfracfilepath in ionfracfilepaths:

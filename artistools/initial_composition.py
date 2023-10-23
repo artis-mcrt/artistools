@@ -145,7 +145,7 @@ def plot_2d_initial_abundances(modelpath, args=None) -> None:
 
         axeschars: list[AxisType] = ["x", "y", "z"]
         plotaxis1 = next(ax for ax in axeschars if ax != sliceaxis)
-        plotaxis2 = next(ax for ax in axeschars if ax not in [sliceaxis, plotaxis1])
+        plotaxis2 = next(ax for ax in axeschars if ax not in {sliceaxis, plotaxis1})
 
         df2dslice = get_2D_slice_through_3d_model(
             dfmodel=dfmodel, modelmeta=modelmeta, sliceaxis=sliceaxis, plotaxis1=plotaxis1, plotaxis2=plotaxis2
@@ -215,8 +215,8 @@ def get_model_abundances_Msun_1D(modelpath: Path) -> pd.DataFrame:
         / 3
         * math.pi
         * (
-            (modeldata["velocity_outer"] * 1e5 * t_model_init_seconds) ** 3
-            - (modeldata["velocity_inner"] * 1e5 * t_model_init_seconds) ** 3
+            (modeldata["vel_r_max_kmps"] * 1e5 * t_model_init_seconds) ** 3
+            - (modeldata["vel_r_min_kmps"] * 1e5 * t_model_init_seconds) ** 3
         )
     )
 

@@ -1,4 +1,5 @@
 """Artistools - spectra related functions."""
+
 from .plotspectra import main as plot
 from .spectra import get_exspec_bins
 from .spectra import get_flux_contributions

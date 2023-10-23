@@ -117,7 +117,7 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
     floers_levelnums, floers_levelpop_values = None, None
 
     # comparison to Andeas Floers's NLTE pops for Shingles et al. (2022)
-    if atomic_number == 26 and ion_stage in [2, 3]:
+    if atomic_number == 26 and ion_stage in {2, 3}:
         floersfilename = "andreas_level_populations_fe2.txt" if ion_stage == 2 else "andreas_level_populations_fe3.txt"
         if Path(modelpath / floersfilename).is_file():
             print(f"reading {floersfilename}")
@@ -148,7 +148,7 @@ def get_floers_data(dfpopthision, atomic_number, ion_stage, modelpath, T_e, mode
 
         if floersmultizonefilename and Path(floersmultizonefilename).is_file():
             modeldata, _ = at.inputmodel.get_modeldata(modelpath)  # TODO: move into modelpath loop
-            vel_outer = modeldata.iloc[modelgridindex].velocity_outer
+            vel_outer = modeldata.iloc[modelgridindex].vel_r_max_kmps
             print(f"  reading {floersmultizonefilename}", vel_outer, T_e)
             dffloers = pd.read_csv(floersmultizonefilename)
             for _, row in dffloers.iterrows():
@@ -259,7 +259,7 @@ def make_ionsubplot(
         #     ['Z', 'ion_stage', 'level', 'config', 'departure_coeff', 'texname']].to_string(index=False))
         print(
             dfpopthision.loc[
-                :, [c not in ["timestep", "modelgridindex", "Z", "parity", "texname"] for c in dfpopthision.columns]
+                :, [c not in {"timestep", "modelgridindex", "Z", "parity", "texname"} for c in dfpopthision.columns]
             ].to_string(index=False)
         )
 
@@ -465,7 +465,7 @@ def plot_populations_with_time_or_velocity(ax, modelpaths, timedays, ionstage, i
 
     if args.x == "velocity":
         modeldata, _ = at.inputmodel.get_modeldata(modelpaths[0])  # TODO: move into modelpath loop
-        velocity = modeldata["velocity_outer"]
+        velocity = modeldata["vel_r_max_kmps"]
         modelgridindex_list = [mgi for mgi, _ in enumerate(velocity)]
 
         timesteps = np.ones_like(modelgridindex_list)
@@ -607,7 +607,7 @@ def make_plot(modelpath, atomic_number, ionstages_displayed, mgilist, timestep, 
         subplot_title = f"{modelname}"
         if len(modelname) > 10:
             subplot_title += "\n"
-        velocity = at.inputmodel.get_modeldata_tuple(modelpath)[0]["velocity_outer"][modelgridindex]
+        velocity = at.inputmodel.get_modeldata_tuple(modelpath)[0]["vel_r_max_kmps"][modelgridindex]
         subplot_title += f" {velocity:.0f} km/s at"
 
         try:
@@ -746,7 +746,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     at.set_mpl_style()
 
     modelpath = args.modelpath
-    if args.x in ["time", "velocity"]:
+    if args.x in {"time", "velocity"}:
         args.modelpath = [args.modelpath]
 
         # if not args.timedays:
@@ -791,7 +791,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     if not mgilist:
         mgilist.append(0)
 
-    if args.x in ["time", "velocity"]:
+    if args.x in {"time", "velocity"}:
         make_plot_populations_with_time_or_velocity(args.modelpath, args)
         return
 

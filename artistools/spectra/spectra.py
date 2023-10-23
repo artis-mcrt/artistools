@@ -1,6 +1,5 @@
 """Artistools - spectra related functions."""
 
-
 import argparse
 import math
 import os
@@ -112,7 +111,7 @@ def get_from_packets(
     lambda_min: float,
     lambda_max: float,
     delta_lambda: None | float | np.ndarray = None,
-    use_escapetime: bool = False,
+    use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
     maxpacketfiles: int | None = None,
     useinternalpackets: bool = False,
     getpacketcount: bool = False,
@@ -126,9 +125,11 @@ def get_from_packets(
     if directionbins is None:
         directionbins = [-1]
 
-    if use_escapetime:
+    assert use_time in {"arrival", "emission", "escape"}
+
+    if use_time == "escape":
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-        vmax_beta = modeldata.iloc[-1].velocity_outer * 299792.458
+        vmax_beta = modeldata.iloc[-1].vel_r_max_kmps * 299792.458
         escapesurfacegamma = math.sqrt(1 - vmax_beta**2)
     else:
         escapesurfacegamma = None
@@ -154,21 +155,30 @@ def get_from_packets(
         modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
-    if not use_escapetime:
+    if use_time == "arrival":
         dfpackets = dfpackets.filter(
             (float(timelowdays) <= pl.col("t_arrive_d")) & (pl.col("t_arrive_d") <= float(timehighdays))
         )
-    else:
+    elif use_time == "escape":
         dfpackets = dfpackets.filter(
             (timelow <= (pl.col("escape_time") * escapesurfacegamma))
             & ((pl.col("escape_time") * escapesurfacegamma) <= timehigh)
         )
+    elif use_time == "emission":
+        mean_correction = float(
+            dfpackets.select((pl.col("em_time") - pl.col("t_arrive_d") * 86400.0).mean()).collect().to_numpy()[0][0]
+        )
+
+        em_time_low = float(timelowdays) * 86400.0 + mean_correction
+        em_time_high = float(timehighdays) * 86400.0 + mean_correction
+        dfpackets = dfpackets.filter((em_time_low <= pl.col("em_time")) & (pl.col("em_time") <= em_time_high))
+
     dfpackets = dfpackets.filter((float(nu_min) <= pl.col("nu_rf")) & (pl.col("nu_rf") <= float(nu_max)))
 
     if fnufilterfunc:
         print("Applying filter to ARTIS spectrum")
 
-    encol = "e_cmf" if use_escapetime else "e_rf"
+    encol = "e_cmf" if use_time == "escape" else "e_rf"
     getcols = ["nu_rf", encol]
     if directionbins != [-1]:
         if average_over_phi:
@@ -217,7 +227,7 @@ def get_from_packets(
             / nprocs_read
         ).to_numpy()
 
-        if use_escapetime:
+        if use_time == "escape":
             assert escapesurfacegamma is not None
             array_flambda /= escapesurfacegamma
 
@@ -250,7 +260,9 @@ def read_spec_res(modelpath: Path) -> dict[int, pl.DataFrame]:
     )
 
     print(f"Reading {specfilename} (in read_spec_res)")
-    res_specdata_in = pl.read_csv(at.zopen(specfilename, "rb"), separator=" ", has_header=False, infer_schema_length=0)
+    res_specdata_in = pl.read_csv(
+        at.zopen(specfilename, forpolars=True), separator=" ", has_header=False, infer_schema_length=0
+    )
 
     # drop last column of nulls (caused by trailing space on each line)
     if res_specdata_in[res_specdata_in.columns[-1]].is_null().all():
@@ -298,7 +310,7 @@ def read_emission_absorption_file(emabsfilename: str | Path) -> pl.DataFrame:
         print(f" Reading {emabsfilename}")
 
     dfemabs = pl.read_csv(
-        at.zopen(emabsfilename, "rb").read(), separator=" ", has_header=False, infer_schema_length=0
+        at.zopen(emabsfilename, forpolars=True), separator=" ", has_header=False, infer_schema_length=0
     ).with_columns(pl.all().cast(pl.Float32, strict=False))
 
     # drop last column of nulls (caused by trailing space on each line)
@@ -352,7 +364,7 @@ def get_spectrum(
 
                 specdata[-1] = (
                     pl.read_csv(
-                        at.zopen(specfilename, mode="rb"),
+                        at.zopen(specfilename, forpolars=True),
                         separator=" ",
                         infer_schema_length=0,
                         truncate_ragged_lines=True,
@@ -370,11 +382,16 @@ def get_spectrum(
 
     if any(dirbin != -1 for dirbin in directionbins):
         assert stokesparam == "I"
-        specdata |= get_spec_res(
-            modelpath=modelpath,
-            average_over_theta=average_over_theta,
-            average_over_phi=average_over_phi,
-        )
+        try:
+            specdata |= get_spec_res(
+                modelpath=modelpath,
+                average_over_theta=average_over_theta,
+                average_over_phi=average_over_phi,
+            )
+        except FileNotFoundError:
+            msg = "WARNING: Direction-resolved spectra not found. Getting only spherically averaged spectra instead."
+            print(msg)
+            directionbins = [-1]
 
     specdataout: dict[int, pd.DataFrame] = {}
     for dirbin in directionbins:
@@ -443,7 +460,7 @@ def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
             vspecpol_data.append(chunk)
 
         if len(vspecpol_data_old) > 0:
-            for i, _ in enumerate(vspecpol_data):
+            for i in range(len(vspecpol_data)):
                 dftmp = vspecpol_data[i].copy()  # copy of vspectrum number i in a file
                 # add copy to the same spectrum number from previous file
                 # (don't need to copy row 1 = time or column 1 = freq)
@@ -803,9 +820,9 @@ def get_flux_contributions_from_packets(
     useinternalpackets: bool = False,
     emissionvelocitycut: float | None = None,
 ) -> tuple[list[fluxcontributiontuple], np.ndarray, np.ndarray]:
-    assert groupby in [None, "ion", "line", "upperterm", "terms"]
+    assert groupby in {None, "ion", "line", "upperterm", "terms"}
 
-    if groupby in ["terms", "upperterm"]:
+    if groupby in {"terms", "upperterm"}:
         adata = at.atomic.get_levels(modelpath)
 
     def get_emprocesslabel(
@@ -886,7 +903,7 @@ def get_flux_contributions_from_packets(
 
     if use_escapetime:
         modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-        vmax = modeldata.iloc[-1].velocity_outer * u.km / u.s
+        vmax = modeldata.iloc[-1].vel_r_max_kmps * u.km / u.s
         betafactor = math.sqrt(1 - (vmax / const.c).decompose().value ** 2)
 
     packetsfiles = at.packets.get_packetsfilepaths(modelpath, maxpacketfiles)
@@ -908,17 +925,17 @@ def get_flux_contributions_from_packets(
         "emissiontype" if useinternalpackets else "emissiontype" if use_lastemissiontype else "trueemissiontype"
     )
 
-    for _index, packetsfile in enumerate(packetsfiles):
+    for packetsfile in packetsfiles:
         if useinternalpackets:
             # if we're using packets*.out files, these packets are from the last timestep
             t_seconds = at.get_timestep_times(modelpath, loc="start")[-1] * 86400.0
 
             if modelgridindex is not None:
-                v_inner = at.inputmodel.get_modeldata_tuple(modelpath)[0]["velocity_inner"].iloc[modelgridindex] * 1e5
-                v_outer = at.inputmodel.get_modeldata_tuple(modelpath)[0]["velocity_outer"].iloc[modelgridindex] * 1e5
+                v_inner = at.inputmodel.get_modeldata_tuple(modelpath)[0]["vel_r_min_kmps"].iloc[modelgridindex] * 1e5
+                v_outer = at.inputmodel.get_modeldata_tuple(modelpath)[0]["vel_r_max_kmps"].iloc[modelgridindex] * 1e5
             else:
                 v_inner = 0.0
-                v_outer = at.inputmodel.get_modeldata_tuple(modelpath)[0]["velocity_outer"].iloc[-1] * 1e5
+                v_outer = at.inputmodel.get_modeldata_tuple(modelpath)[0]["vel_r_max_kmps"].iloc[-1] * 1e5
 
             r_inner = t_seconds * v_inner
             r_outer = t_seconds * v_outer

@@ -98,7 +98,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         for cell in dfmodel.itertuples(index=False):
             abundlist = [f'{getattr(cell, f"X_{strnuc}"):.4e}' for strnuc in listspecies]
             fileout.write(
-                f'{cell.velocity_outer},{cell.rho:.4e},{temperature},{dilution_factor},{",".join(abundlist)}\n'
+                f'{cell.vel_r_max_kmps},{cell.rho:.4e},{temperature},{dilution_factor},{",".join(abundlist)}\n'
             )
 
     print(f"Saved {outputfilepath}")
