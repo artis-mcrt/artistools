@@ -14,13 +14,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputpath", "-o", default=".", help="Path of output files")
 
 
-def eval_mshell(dfmodel, t_model_init_seconds):
-    dfmodel = dfmodel.eval(
-        "cellmass_grams = 10 ** logrho * 4. / 3. * @math.pi * (velocity_outer ** 3 - velocity_inner ** 3)"
-        "* (1e5 * @t_model_init_seconds) ** 3",
-    )
-
-
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     if args is None:
         parser = argparse.ArgumentParser(
@@ -32,28 +25,24 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
 
-    dfmodel, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(args.inputpath)
+    dfmodel, t_model_init_days, _ = at.inputmodel.get_modeldata_tuple(args.inputpath, derived_cols=["mass_g"])
     print("Read model.txt")
     dfelabundances = at.inputmodel.get_initelemabundances(args.inputpath)
     print("Read abundances.txt")
 
-    t_model_init_seconds = t_model_init_days * 24 * 60 * 60
-
-    eval_mshell(dfmodel, t_model_init_seconds)
-
     print(dfmodel)
     print(dfelabundances)
 
-    model_mass_grams = dfmodel.cellmass_grams.sum()
+    model_mass_grams = dfmodel.mass_g.sum()
     print(f"model mass: {model_mass_grams * u.g.to('solMass'):.3f} Msun")
     for column_name in [x for x in dfmodel.columns if x.startswith("X_")]:
-        integrated_mass_grams = (dfmodel[column_name] * dfmodel.cellmass_grams).sum()
+        integrated_mass_grams = (dfmodel[column_name] * dfmodel.mass_g).sum()
         global_massfrac = integrated_mass_grams / model_mass_grams
         print(f"{column_name:>13s}: {global_massfrac:.3f}  ({integrated_mass_grams * u.g.to('solMass'):.3f} Msun)")
         dfmodel = dfmodel.eval(f"{column_name} = {global_massfrac}")
 
     for column_name in [x for x in dfelabundances.columns if x.startswith("X_")]:
-        integrated_mass_grams = (dfelabundances[column_name] * dfmodel.cellmass_grams).sum()
+        integrated_mass_grams = (dfelabundances[column_name] * dfmodel.mass_g).sum()
         global_massfrac = integrated_mass_grams / model_mass_grams
         print(f"{column_name:>13s}: {global_massfrac:.3f}  ({integrated_mass_grams * u.g.to('solMass'):.3f} Msun)")
         dfelabundances = dfelabundances.eval(f"{column_name} = {global_massfrac}")

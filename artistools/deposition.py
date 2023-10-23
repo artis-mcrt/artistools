@@ -59,7 +59,7 @@ def main_analytical(args: argparse.Namespace | None = None, argsraw: list[str] |
         addargs(parser)
         parser.set_defaults(**kwargs)
         args = parser.parse_args(argsraw)
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(args.modelpath, derived_cols=["cellmass_grams", "velocity_inner"])
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(args.modelpath, derived_cols=["mass_g", "vel_r_min_kmps"])
 
     t_init = modelmeta["t_model_init_days"] * u.day
 
@@ -84,8 +84,8 @@ def main_analytical(args: argparse.Namespace | None = None, argsraw: list[str] |
 
     global_posdep = 0.0 * u.erg / u.s
     for i, row in dfmodel.iterrows():
-        v_inner = row["velocity_inner"] * u.km / u.s
-        v_outer = row["velocity_outer"] * u.km / u.s
+        v_inner = row["vel_r_min_kmps"] * u.km / u.s
+        v_outer = row["vel_r_max_kmps"] * u.km / u.s
 
         volume_init = ((4 * math.pi / 3) * ((v_outer * t_init) ** 3 - (v_inner * t_init) ** 3)).to("cm3")
 

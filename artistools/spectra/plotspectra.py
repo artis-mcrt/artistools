@@ -217,6 +217,16 @@ def plot_artis_spectrum(
         print(f"\nWARNING: Skipping because {modelpath} does not exist\n")
         return None
 
+    use_time: t.Literal["escape", "emission", "arrival"]
+    if args.use_escapetime:
+        use_time = "escape"
+        assert from_packets
+    elif args.use_emissiontime:
+        use_time = "emission"
+        assert from_packets
+    else:
+        use_time = "arrival"
+
     if directionbins is None:
         directionbins = [-1]
 
@@ -241,6 +251,7 @@ def plot_artis_spectrum(
         assert args.timemax is not None
         timeavg = (args.timemin + args.timemax) / 2.0
         timedelta = (args.timemax - args.timemin) / 2
+        linelabel_is_custom = linelabel is not None
         if linelabel is None:
             linelabel = f"{modelname}" if len(modelname) < 70 else f"...{modelname[-67:]}"
 
@@ -274,7 +285,7 @@ def plot_artis_spectrum(
                 args.timemax,
                 lambda_min=supxmin * 0.9,
                 lambda_max=supxmax * 1.1,
-                use_escapetime=args.use_escapetime,
+                use_time=use_time,
                 maxpacketfiles=maxpacketfiles,
                 delta_lambda=args.deltalambda,
                 useinternalpackets=args.internalpackets,
@@ -324,7 +335,23 @@ def plot_artis_spectrum(
             )
         )
 
+        missingdirectionbins = [dirbin for dirbin in directionbins if dirbin not in viewinganglespectra]
+        founddirectionbins = [dirbin for dirbin in directionbins if dirbin in viewinganglespectra]
+        if missingdirectionbins:
+            print(f"No data for direction bin(s): {missingdirectionbins}")
+            if founddirectionbins:
+                directionbins = founddirectionbins
+            else:
+                directionbins = [-1]
+                print("Showing spherically-averaged spectrum instead")
+
         for dirbin in directionbins:
+            if len(directionbins) > 1 and dirbin != directionbins[0]:
+                # only one colour was specified, but we have multiple direction bins
+                # to zero out all but the first one
+                plotkwargs = plotkwargs.copy()
+                plotkwargs["color"] = None
+
             dfspectrum_fullrange = viewinganglespectra[dirbin]
             dfspectrum = dfspectrum_fullrange[
                 (supxmin * 0.9 <= dfspectrum_fullrange["lambda_angstroms"])
@@ -334,7 +361,7 @@ def plot_artis_spectrum(
             linelabel_withdirbin = linelabel
             if dirbin != -1:
                 print(f" direction {dirbin:4d}  {dirbin_definitions[dirbin]}")
-                if len(directionbins) > 1:
+                if len(directionbins) > 1 or not linelabel_is_custom:
                     linelabel_withdirbin = linelabel + " " + dirbin_definitions[dirbin]
 
             at.spectra.print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["lambda_angstroms"])
@@ -396,10 +423,12 @@ def make_spectrum_plot(
 
     for seriesindex, specpath in enumerate(speclist):
         specpath = Path(specpath)
-        plotkwargs: dict[str, t.Any] = {"alpha": args.linealpha[seriesindex], "linestyle": args.linestyle[seriesindex]}
+        plotkwargs: dict[str, t.Any] = {
+            "alpha": args.linealpha[seriesindex],
+            "linestyle": args.linestyle[seriesindex],
+            "color": args.color[refspecindex + artisindex],
+        }
 
-        if not args.plotviewingangle and not args.plotvspecpol:
-            plotkwargs["color"] = args.color[seriesindex]
         if args.dashes[seriesindex]:
             plotkwargs["dashes"] = args.dashes[seriesindex]
         if args.linewidth[seriesindex]:
@@ -482,8 +511,6 @@ def make_spectrum_plot(
                 # make sure we can share the same set of wavelengths for this series
                 assert np.allclose(dfalldata.index.values, seriesdata["lambda_angstroms"].to_numpy())
             dfalldata[f"f_lambda.{seriesname}"] = seriesdata["f_lambda"].to_numpy()
-
-        seriesindex += 1
 
     plottedsomething = artisindex > 0 or refspecindex > 0
     assert plottedsomething
@@ -586,7 +613,7 @@ def make_emissionabsorption_plot(
         )
     else:
         arraylambda_angstroms = 2.99792458e18 / arraynu
-        assert args.groupby in [None, "ion"]
+        assert args.groupby in {None, "ion"}
         contribution_list, array_flambda_emission_total = at.spectra.get_flux_contributions(
             modelpath,
             filterfunc,
@@ -1133,7 +1160,7 @@ def addargs(parser) -> None:
     )
 
     parser.add_argument(
-        "-xmax", "-lambdamax", dest="xmax", type=int, default=11000, help="Plot range: maximum wavelength in Angstroms"
+        "-xmax", "-lambdamax", dest="xmax", type=int, default=19000, help="Plot range: maximum wavelength in Angstroms"
     )
 
     parser.add_argument(
@@ -1156,6 +1183,12 @@ def addargs(parser) -> None:
         "--use_escapetime",
         action="store_true",
         help="Use the time of packet escape to the surface (instead of a plane toward the observer)",
+    )
+
+    parser.add_argument(
+        "--use_emissiontime",
+        action="store_true",
+        help="Use the time of packet last emission",
     )
 
     parser.add_argument(

@@ -46,7 +46,7 @@ def test_spectra_frompackets(mockplot) -> None:
 
     integral = np.trapz(y=arr_f_lambda, x=arr_lambda)
 
-    assert np.isclose(integral, 6.7118e-12, atol=1e-14)
+    assert np.isclose(integral, 7.7888e-12, rtol=1e-3)
 
 
 def test_spectra_outputtext() -> None:

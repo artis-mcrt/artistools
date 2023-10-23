@@ -221,7 +221,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     axes = ["x", "y", "z"]
     args.other_axis1 = next(ax for ax in axes if ax != args.sliceaxis)
-    args.other_axis2 = next(ax for ax in axes if ax not in [args.sliceaxis, args.other_axis1])
+    args.other_axis2 = next(ax for ax in axes if ax not in {args.sliceaxis, args.other_axis1})
 
     # remember: models before scaling down to artis input have x and z axis swapped compared to artis input files
 

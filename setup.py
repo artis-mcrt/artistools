@@ -14,7 +14,7 @@ spec.loader.exec_module(commands)
 
 setup(
     name="artistools",
-    version=get_version(),
+    version=get_version(local_scheme="no-local-version"),
     author="ARTIS Collaboration",
     author_email="luke.shingles@gmail.com",
     packages=find_namespace_packages(where="."),

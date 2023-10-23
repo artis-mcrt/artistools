@@ -105,7 +105,7 @@ def read_classic_estimators(
                     estimators[(timestep, modelgridindex)] = {}
 
                     if ndimensions == 1:
-                        estimators[(timestep, modelgridindex)]["velocity_outer"] = modeldata["velocity_outer"][
+                        estimators[(timestep, modelgridindex)]["vel_r_max_kmps"] = modeldata["vel_r_max_kmps"][
                             modelgridindex
                         ]
 

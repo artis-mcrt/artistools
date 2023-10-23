@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "setuptools_scm[toml]>=7.1", "wheel"]
+requires = ["setuptools>=68.2", "setuptools_scm[toml]>=8.0", "wheel>=0.41"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -17,6 +17,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Framework :: Matplotlib",
     "Intended Audience :: Science/Research",
 ]
@@ -30,7 +31,7 @@ license = { file = "LICENSE.txt" }
 [tool.black]
 line-length = 120
 preview = true
-target-versions = ["py310", "py311"]
+target-versions = ["py310", "py311", "py312"]
 
 [tool.isort]
 profile = "black"
@@ -58,14 +59,14 @@ enable_error_code = [
   "truthy-bool",
   "unused-awaitable",
 ]
-exclude = "(build)|(tests)"
+exclude = "(build)|(dist)|(tests)"
 ignore_missing_imports = true
 implicit_optional = false
 implicit_reexport = true
 packages = "artistools"
 plugins = 'numpy.typing.mypy_plugin'
 pretty = true
-python_version = '3.11'
+python_version = '3.12'
 scripts_are_modules = true
 strict_equality = true
 extra_checks = true
@@ -145,7 +146,7 @@ disable = """
 ignored-modules = ["astropy", "extinction"]
 
 [tool.pyright]
-exclude=['**/node_modules','**/__pycache__','**/.*', 'build']
+exclude=['**/node_modules','**/__pycache__','**/.*', 'build', 'dist']
 useLibraryCodeForTypes = false
 
 [tool.ruff]
@@ -158,6 +159,7 @@ ignore = [
     "B905", # zip without explicit strict parameter
     "C901",  # complex-structure
     "COM812",  # missing-trailing-comma
+    "CPY001", # missing-copyright-notice
     "D100",  # undocumented-public-module
     "D101",  # undocumented-public-class
     "D102",  # undocumented-public-method
@@ -168,6 +170,7 @@ ignore = [
     "D205",  # blank-line-after-summary
     "D213",  # multi-line-summary-second-line
     "D417",  # undocumented-param
+    "E203", # whitespace-before-punctuation
     "E501", # Line too long
     "E741", # Ambiguous variable name
     "ERA001",  # commented-out-code
@@ -222,6 +225,7 @@ target-version = "py310"
 fix = true
 show-fixes = true
 ignore-init-module-imports = true
+preview = true
 
 [tool.ruff.flake8-annotations]
 ignore-fully-untyped = true

@@ -171,13 +171,14 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
             targetmodeltime_days=targetmodeltime_days, t_model_days=t_model_days, dfmodel=griddata
         )
         t_model_days = targetmodeltime_days
+        xmax = -griddata.pos_x_min.min()
 
     ncoordgridx = round(len(griddata) ** (1.0 / 3.0))
     assert ncoordgridx**3 == len(griddata)
+    wid_init = 2 * xmax / ncoordgridx
     print(f"Grid model is {ncoordgridx} x {ncoordgridx} x {ncoordgridx} = {len(griddata)} cells")
+    griddata["mass_g"] = griddata["rho"] * wid_init**3
     if minparticlespercell > 0:
-        xmax = -griddata.pos_x_min.min()
-        wid_init = 2 * xmax / ncoordgridx
         cellfilter = np.logical_and(griddata.tracercount < minparticlespercell, griddata.rho > 0.0)
         n_ignored = np.count_nonzero(cellfilter)
         mass_ignored = griddata.loc[cellfilter].rho.sum() * wid_init**3 / 1.989e33
@@ -191,7 +192,20 @@ def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlesper
 
     print(f"Max tracers in a cell {max(griddata['tracercount'])}")
 
-    return griddata, t_model_days, t_mergertime_s, vmax
+    modelmeta = {
+        "dimensions": 3,
+        "t_model_init_days": t_model_days,
+        "vmax_cmps": vmax,
+        "ncoordgridx": ncoordgridx,
+        "ncoordgridy": ncoordgridx,
+        "ncoordgridz": ncoordgridx,
+        "wid_init_x": wid_init,
+        "wid_init_y": wid_init,
+        "wid_init_z": wid_init,
+        "headercommentlines": [f"gridfolder: {Path(pathtogriddata).resolve().parts[-1]}"],
+    }
+
+    return griddata, t_model_days, t_mergertime_s, vmax, modelmeta
 
 
 def read_mattia_grid_data_file(pathtogriddata):
@@ -319,18 +333,11 @@ def makemodelfromgriddata(
     dimensions=3,
     args=None,
 ):
-    dfmodel, t_model_days, t_mergertime_s, vmax = at.inputmodel.modelfromhydro.read_griddat_file(
+    dfmodel, t_model_days, t_mergertime_s, vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
         pathtogriddata=gridfolderpath,
         targetmodeltime_days=targetmodeltime_days,
         minparticlespercell=minparticlespercell,
     )
-
-    modelmeta = {
-        "dimensions": 3,
-        "t_model_init_days": t_model_days,
-        "vmax_cmps": vmax,
-        "headercommentlines": [f"gridfolder: {Path(gridfolderpath).resolve().parts[-1]}"],
-    }
 
     if getattr(args, "fillcentralhole", False):
         dfmodel = at.inputmodel.modelfromhydro.add_mass_to_center(dfmodel, t_model_days, vmax, args)

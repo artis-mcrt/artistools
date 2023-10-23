@@ -4,7 +4,6 @@
 Examples are temperatures, populations, and heating/cooling rates.
 """
 
-
 import argparse
 import contextlib
 import math
@@ -18,6 +17,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -35,7 +35,8 @@ def get_variableunits(key: str | None = None) -> str | dict[str, str]:
         "heating_dep/total_dep": "Ratio",
         "cooling": "erg/s/cm3",
         "velocity": "km/s",
-        "velocity_outer": "km/s",
+        "beta": "v/c",
+        "vel_r_max_kmps": "km/s",
     }
     return variableunits[key] if key else variableunits
 
@@ -50,16 +51,16 @@ def get_variablelongunits(key: str | None = None) -> str | dict[str, str]:
     return variablelongunits[key] if key else variablelongunits
 
 
-def get_dictlabelreplacements(key: str | None = None) -> str | dict[str, str]:
-    dictlabelreplacements = {
-        "lognne": "Log nne",
-        "Te": "T$_e$",
-        "TR": "T$_R$",
+def get_dictlabelreplacements() -> dict[str, str]:
+    return {
+        "lognne": r"Log n$_{\rm e}$",
+        "Te": r"T$_{\rm e}$",
+        "TR": r"T$_{\rm R}$",
+        "TJ": r"T$_{\rm J}$",
         "gamma_NT": r"$\Gamma_{\rm non-thermal}$ [s$^{-1}$]",
         "gamma_R_bfest": r"$\Gamma_{\rm phot}$ [s$^{-1}$]",
         "heating_dep/total_dep": "Heating fraction",
     }
-    return dictlabelreplacements[key] if key else dictlabelreplacements
 
 
 def apply_filters(
@@ -192,7 +193,7 @@ def parse_estimfile(
 
                     estimblock[variablename][(atomic_number, ion_stage)] = value_thision
 
-                    if variablename in ["Alpha_R*nne", "AlphaR*nne"]:
+                    if variablename in {"Alpha_R*nne", "AlphaR*nne"}:
                         estimblock.setdefault("Alpha_R", {})
                         estimblock["Alpha_R"][(atomic_number, ion_stage)] = (
                             value_thision / estimblock["nne"] if estimblock["nne"] > 0.0 else float("inf")
@@ -232,14 +233,12 @@ def parse_estimfile(
 def read_estimators_from_file(
     folderpath: Path | str,
     modelpath: Path,
-    arr_velocity_outer: t.Sequence[float] | None,
     mpirank: int,
     printfilename: bool = False,
     get_ion_values: bool = True,
     get_heatingcooling: bool = True,
     skip_emptycells: bool = False,
 ) -> dict[tuple[int, int], t.Any]:
-    estimators_thisfile = {}
     estimfilename = f"estimators_{mpirank:04d}.out"
     try:
         estfilepath = at.firstexisting(estimfilename, folder=folderpath, tryzipped=True)
@@ -252,20 +251,16 @@ def read_estimators_from_file(
         filesize = Path(estfilepath).stat().st_size / 1024 / 1024
         print(f"Reading {estfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
 
-    for fileblock_timestep, fileblock_modelgridindex, file_estimblock in parse_estimfile(
-        estfilepath,
-        modelpath,
-        get_ion_values=get_ion_values,
-        get_heatingcooling=get_heatingcooling,
-        skip_emptycells=skip_emptycells,
-    ):
-        if arr_velocity_outer is not None:
-            file_estimblock["velocity_outer"] = arr_velocity_outer[fileblock_modelgridindex]
-            file_estimblock["velocity"] = file_estimblock["velocity_outer"]
-
-        estimators_thisfile[(fileblock_timestep, fileblock_modelgridindex)] = file_estimblock
-
-    return estimators_thisfile
+    return {
+        (fileblock_timestep, fileblock_modelgridindex): file_estimblock
+        for fileblock_timestep, fileblock_modelgridindex, file_estimblock in parse_estimfile(
+            estfilepath,
+            modelpath,
+            get_ion_values=get_ion_values,
+            get_heatingcooling=get_heatingcooling,
+            skip_emptycells=skip_emptycells,
+        )
+    }
 
 
 def read_estimators(
@@ -308,13 +303,6 @@ def read_estimators(
 
     # print(f" matching cells {match_modelgridindex} and timesteps {match_timestep}")
 
-    arr_velocity_outer = None
-    if add_velocity:
-        modeldata, _ = at.inputmodel.get_modeldata(modelpath, getheadersonly=True)
-        if "velocity_outer" in modeldata.columns:
-            modeldata, _ = at.inputmodel.get_modeldata(modelpath)
-            arr_velocity_outer = tuple(float(v) for v in modeldata["velocity_outer"].to_numpy())
-
     mpiranklist = (
         at.get_mpiranklist(modelpath, modelgridindex=match_modelgridindex, only_ranks_withgridcells=True)
         if mpirank is None
@@ -336,7 +324,6 @@ def read_estimators(
             read_estimators_from_file,
             folderpath,
             modelpath,
-            arr_velocity_outer,
             get_ion_values=get_ion_values,
             get_heatingcooling=get_heatingcooling,
             printfilename=printfilename,
@@ -377,7 +364,7 @@ def get_averaged_estimators(
     modelgridindex: int,
     keys: str | list,
     avgadjcells: int = 0,
-) -> t.Any | float:
+) -> dict | float:
     """Get the average of estimators[(timestep, modelgridindex)][keys[0]]...[keys[-1]] across timesteps."""
     if isinstance(keys, str):
         keys = [keys]
@@ -482,3 +469,28 @@ def get_partiallycompletetimesteps(estimators: dict[tuple[int, int], dict]) -> l
         all_mgis.add(mgi)
 
     return [nts for nts, mgilist in timestepcells.items() if len(mgilist) < len(all_mgis)]
+
+
+def get_temperatures(modelpath: str | Path) -> pl.LazyFrame:
+    """Get a polars DataFrame containing the temperatures at every timestep and modelgridindex."""
+    dfest_parquetfile = Path(modelpath, "temperatures.parquet.tmp")
+
+    if not dfest_parquetfile.is_file():
+        estimators = at.estimators.read_estimators(
+            modelpath,
+            get_ion_values=False,
+            get_heatingcooling=False,
+            skip_emptycells=True,
+        )
+        assert len(estimators) > 0
+        pl.DataFrame(
+            {
+                "timestep": (ts for ts, _ in estimators),
+                "modelgridindex": (mgi for _, mgi in estimators),
+                "TR": (estimators[tsmgi].get("TR", -1) for tsmgi in estimators),
+            },
+        ).filter(pl.col("TR") >= 0).with_columns(pl.col(pl.Int64).cast(pl.Int32)).write_parquet(
+            dfest_parquetfile, compression="zstd"
+        )
+
+    return pl.scan_parquet(dfest_parquetfile)
