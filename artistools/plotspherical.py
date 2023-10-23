@@ -19,6 +19,7 @@ import artistools as at
 
 def plot_spherical(
     modelpath: str | Path,
+    dfpackets: pl.DataFrame,
     timemindays: float | None,
     timemaxdays: float | None,
     nphibins: int,
@@ -30,15 +31,12 @@ def plot_spherical(
     plotvars: list[str] | None = None,
     figscale: float = 1.0,
     cmap: str | None = None,
+    nprocs_read: int | None = None,
 ) -> tuple[plt.Figure, t.Iterable[plt.Axes]]:
     if plotvars is None:
         plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc"]
 
     dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath, getheadersonly=True, printwarningsonly=True)
-
-    nprocs_read, dfpackets = at.packets.get_packets_pl(
-        modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
-    )
 
     _, tmin_d_valid, tmax_d_valid = at.get_escaped_arrivalrange(modelpath)
     if tmin_d_valid is None or tmax_d_valid is None:
@@ -266,6 +264,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-figscale", type=float, default=1.0, help="Scale factor for plot area. 1.0 is for single-column"
     )
 
+    parser.add_argument("--makegif", action="store_true", help="Make a gif with time evolution")
+
     parser.add_argument(
         "-o",
         action="store",
@@ -292,23 +292,82 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         assert args.atomic_number is None
         args.atomic_number = at.get_atomic_number(args.elem)
 
-    fig, axes = plot_spherical(
-        modelpath=args.modelpath,
-        timemindays=args.timemin,
-        timemaxdays=args.timemax,
-        nphibins=args.nphibins,
-        ncosthetabins=args.ncosthetabins,
-        maxpacketfiles=args.maxpacketfiles,
-        gaussian_sigma=args.gaussian_sigma,
-        atomic_number=args.atomic_number,
-        ion_stage=args.ion_stage,
-        plotvars=args.plotvars,
-        cmap=args.cmap,
-        figscale=args.figscale,
+    nprocs_read, dfpackets = at.packets.get_packets_pl(
+        args.modelpath, args.maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
-    fig.savefig(args.outputfile)
-    print(f"Saved {args.outputfile}")
+    if args.makegif:
+        import pandas as pd
+
+        # make time arrays -- using timestep times for now.
+        timearrays = {
+            "arr_tstart": at.get_timestep_times(args.modelpath, loc="start"),
+            "arr_tend": at.get_timestep_times(args.modelpath, loc="end"),
+        }
+        # get the times between tmin and tmax
+        dftimearrrays = pd.DataFrame.from_dict(timearrays)
+        dftimearrrays.query("arr_tstart >= @args.timemin", inplace=True)
+        dftimearrrays.query("arr_tend <= @args.timemax", inplace=True)
+
+        pdf_list = []
+        modelpath_list = []
+
+        for i in dftimearrrays.index:
+            fig, axes = plot_spherical(
+                modelpath=args.modelpath,
+                dfpackets=dfpackets,
+                nprocs_read=nprocs_read,
+                timemindays=dftimearrrays["arr_tstart"][i],
+                timemaxdays=dftimearrrays["arr_tend"][i],
+                nphibins=args.nphibins,
+                ncosthetabins=args.ncosthetabins,
+                maxpacketfiles=args.maxpacketfiles,
+                gaussian_sigma=args.gaussian_sigma,
+                atomic_number=args.atomic_number,
+                ion_stage=args.ion_stage,
+                plotvars=args.plotvars,
+                cmap=args.cmap,
+                figscale=args.figscale,
+            )
+            plt.title(f'{dftimearrrays["arr_tstart"][i]:.2f}-{dftimearrrays["arr_tend"][i]:.2f} days')
+            outfilename = f'sphericalplot_{dftimearrrays["arr_tstart"][i]:.2f}-{dftimearrrays["arr_tend"][i]:.2f}d.png'
+            fig.savefig(Path(args.modelpath) / outfilename, format="png")
+            print(f"Saved {outfilename}")
+            plt.close()
+            plt.clf()
+
+            pdf_list.append(outfilename)
+            modelpath_list.append(args.modelpath)
+
+        import imageio.v2 as iio  # pip install imageio
+
+        gifname = "sphericalplot.gif"
+        with iio.get_writer(gifname, mode="I", fps=1.5) as writer:  # v2.26.1
+            for filename in pdf_list:
+                image = iio.imread(filename)
+                writer.append_data(image)
+        print(f"Created gif: {gifname}")
+
+    else:
+        fig, axes = plot_spherical(
+            modelpath=args.modelpath,
+            dfpackets=dfpackets,
+            nprocs_read=nprocs_read,
+            timemindays=args.timemin,
+            timemaxdays=args.timemax,
+            nphibins=args.nphibins,
+            ncosthetabins=args.ncosthetabins,
+            maxpacketfiles=args.maxpacketfiles,
+            gaussian_sigma=args.gaussian_sigma,
+            atomic_number=args.atomic_number,
+            ion_stage=args.ion_stage,
+            plotvars=args.plotvars,
+            cmap=args.cmap,
+            figscale=args.figscale,
+        )
+
+        fig.savefig(args.outputfile)
+        print(f"Saved {args.outputfile}")
 
 
 if __name__ == "__main__":
