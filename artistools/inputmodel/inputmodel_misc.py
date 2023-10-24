@@ -509,9 +509,7 @@ def add_derived_cols_to_modeldata(
         case 1:
             axes = ["r"]
 
-            dfmodel = dfmodel.with_columns(
-                pl.col("vel_r_max_kmps").shift_and_fill(0.0, periods=1).alias("vel_r_min_kmps")
-            )
+            dfmodel = dfmodel.with_columns(pl.col("vel_r_max_kmps").shift_and_fill(0.0, n=1).alias("vel_r_min_kmps"))
 
             dfmodel = dfmodel.with_columns(
                 [
