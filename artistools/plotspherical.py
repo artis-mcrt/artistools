@@ -19,7 +19,8 @@ import artistools as at
 
 def plot_spherical(
     modelpath: str | Path,
-    dfpackets: pl.DataFrame,
+    dfpackets: pl.LazyFrame,
+    nprocs_read: int,
     timemindays: float | None,
     timemaxdays: float | None,
     nphibins: int,
@@ -31,8 +32,7 @@ def plot_spherical(
     plotvars: list[str] | None = None,
     figscale: float = 1.0,
     cmap: str | None = None,
-    nprocs_read: int | None = None,
-) -> tuple[plt.Figure, t.Iterable[plt.Axes]]:
+) -> tuple[plt.Figure, t.Sequence[plt.Axes]]:
     if plotvars is None:
         plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc"]
 
@@ -297,64 +297,24 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     )
 
     if args.makegif:
-        import pandas as pd
-
-        # make time arrays -- using timestep times for now.
-        timearrays = {
-            "arr_tstart": at.get_timestep_times(args.modelpath, loc="start"),
-            "arr_tend": at.get_timestep_times(args.modelpath, loc="end"),
-        }
-        # get the times between tmin and tmax
-        dftimearrrays = pd.DataFrame.from_dict(timearrays)
-        dftimearrrays.query("arr_tstart >= @args.timemin", inplace=True)
-        dftimearrrays.query("arr_tend <= @args.timemax", inplace=True)
-
-        pdf_list = []
-        modelpath_list = []
-
-        for i in dftimearrrays.index:
-            fig, axes = plot_spherical(
-                modelpath=args.modelpath,
-                dfpackets=dfpackets,
-                nprocs_read=nprocs_read,
-                timemindays=dftimearrrays["arr_tstart"][i],
-                timemaxdays=dftimearrrays["arr_tend"][i],
-                nphibins=args.nphibins,
-                ncosthetabins=args.ncosthetabins,
-                maxpacketfiles=args.maxpacketfiles,
-                gaussian_sigma=args.gaussian_sigma,
-                atomic_number=args.atomic_number,
-                ion_stage=args.ion_stage,
-                plotvars=args.plotvars,
-                cmap=args.cmap,
-                figscale=args.figscale,
-            )
-            plt.title(f'{dftimearrrays["arr_tstart"][i]:.2f}-{dftimearrrays["arr_tend"][i]:.2f} days')
-            outfilename = f'sphericalplot_{dftimearrrays["arr_tstart"][i]:.2f}-{dftimearrrays["arr_tend"][i]:.2f}d.png'
-            fig.savefig(Path(args.modelpath) / outfilename, format="png")
-            print(f"Saved {outfilename}")
-            plt.close()
-            plt.clf()
-
-            pdf_list.append(outfilename)
-            modelpath_list.append(args.modelpath)
-
-        import imageio.v2 as iio  # pip install imageio
-
-        gifname = "sphericalplot.gif"
-        with iio.get_writer(gifname, mode="I", fps=1.5) as writer:  # v2.26.1
-            for filename in pdf_list:
-                image = iio.imread(filename)
-                writer.append_data(image)
-        print(f"Created gif: {gifname}")
-
+        tstarts = at.get_timestep_times(args.modelpath, loc="start")
+        tends = at.get_timestep_times(args.modelpath, loc="end")
+        time_ranges = [
+            (tstart, tend) for tstart, tend in zip(tstarts, tends) if (tstart >= args.timemin and tend <= args.timemax)
+        ]
+        outformat = "png"
     else:
+        time_ranges = [(args.timemin, args.timemax)]
+        outformat = "pdf"
+
+    outputfilenames = []
+    for tstart, tend in time_ranges:
         fig, axes = plot_spherical(
             modelpath=args.modelpath,
             dfpackets=dfpackets,
             nprocs_read=nprocs_read,
-            timemindays=args.timemin,
-            timemaxdays=args.timemax,
+            timemindays=tstart,
+            timemaxdays=tend,
             nphibins=args.nphibins,
             ncosthetabins=args.ncosthetabins,
             maxpacketfiles=args.maxpacketfiles,
@@ -366,8 +326,25 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             figscale=args.figscale,
         )
 
-        fig.savefig(args.outputfile)
-        print(f"Saved {args.outputfile}")
+        axes[0].set_title(f"{tstart:.2f}-{tend:.2f} days")
+
+        outfilename = f"sphericalplot_{tstart:.2f}-{tend:.2f}d.{outformat}" if args.makegif else args.outputfile
+        fig.savefig(outfilename, format=outformat)
+        print(f"Saved {outfilename}")
+        plt.close()
+        plt.clf()
+
+        outputfilenames.append(outfilename)
+
+    if args.makegif:
+        import imageio.v2 as iio
+
+        gifname = "sphericalplot.gif"
+        with iio.get_writer(gifname, mode="I", fps=1.5) as writer:  # v2.26.1
+            for filename in outputfilenames:
+                image = iio.imread(filename)
+                writer.append_data(image)  # type: ignore[attr-defined]
+        print(f"Created gif: {gifname}")
 
 
 if __name__ == "__main__":
