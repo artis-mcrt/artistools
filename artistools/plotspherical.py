@@ -32,7 +32,7 @@ def plot_spherical(
     plotvars: list[str] | None = None,
     figscale: float = 1.0,
     cmap: str | None = None,
-) -> tuple[plt.Figure, t.Sequence[plt.Axes]]:
+) -> tuple[plt.Figure, t.Sequence[plt.Axes], float, float]:
     if plotvars is None:
         plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc"]
 
@@ -228,7 +228,7 @@ def plot_spherical(
         #     ticks=-yticks_deg / 180 * np.pi + np.pi / 2.0, labels=[rf"${deg:.0f}\degree$" for deg in yticks_deg]
         # )
 
-    return fig, axes
+    return fig, axes, timemindays, timemaxdays
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -309,7 +309,8 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
     outputfilenames = []
     for tstart, tend in time_ranges:
-        fig, axes = plot_spherical(
+        # tstart and tend are requested, but the actual plotted time range may be different
+        fig, axes, timemindays, timemaxdays = plot_spherical(
             modelpath=args.modelpath,
             dfpackets=dfpackets,
             nprocs_read=nprocs_read,
@@ -326,9 +327,11 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             figscale=args.figscale,
         )
 
-        axes[0].set_title(f"{tstart:.2f}-{tend:.2f} days")
+        axes[0].set_title(f"{timemindays:.2f}-{timemaxdays:.2f} days")
 
-        outfilename = f"sphericalplot_{tstart:.2f}-{tend:.2f}d.{outformat}" if args.makegif else args.outputfile
+        outfilename = (
+            f"sphericalplot_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}" if args.makegif else args.outputfile
+        )
         fig.savefig(outfilename, format=outformat)
         print(f"Saved {outfilename}")
         plt.close()
