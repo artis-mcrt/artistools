@@ -43,10 +43,10 @@ with new_vpktfile.open("w") as vpktfile:
         f"{phiobs}\n"
         f"{nspectra_customlist_flag}\n"
         f"{override_tminmax} {vspec_tmin_in_days} {vspec_tmax_in_days}\n"
-        f"{flag_custom_freq_ranges} {Nrange} {lambda_min} {lambda_max}\n"
+        f"{flag_custom_freq_ranges} {Nrange} {lambda_min} {lambda_max}\n"  # this can have multiple wavelength ranges. May need changed.
         f"{overrride_thickcell_tau} {cell_is_optically_thick_vpkt}\n"
         f"{tau_max_vpkt}\n"
         f"{vgrid_on}\n"
         f"{tmin_vgrid_in_days} {tmax_vgrid_in_days}\n"
         f"{Nrange_grid} {vgrid_lambda_min} {vgrid_lambda_max}"  # this can have multiple wavelength ranges. May need changed.
-    )  # this can have multiple wavelength ranges. May need changed.
+    )
