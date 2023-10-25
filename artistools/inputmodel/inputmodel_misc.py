@@ -509,9 +509,7 @@ def add_derived_cols_to_modeldata(
         case 1:
             axes = ["r"]
 
-            dfmodel = dfmodel.with_columns(
-                pl.col("vel_r_max_kmps").shift_and_fill(0.0, periods=1).alias("vel_r_min_kmps")
-            )
+            dfmodel = dfmodel.with_columns(pl.col("vel_r_max_kmps").shift_and_fill(0.0, n=1).alias("vel_r_min_kmps"))
 
             dfmodel = dfmodel.with_columns(
                 [
@@ -748,7 +746,7 @@ def get_3d_model_data_merged_model_and_abundances_minimal(args: argparse.Namespa
     """Get 3D data without generating all the extra columns in standard routine.
     Needed for large (eg. 200^3) models.
     """
-    model = get_3d_modeldata_minimal(args.modelpath)
+    model = get_3d_modeldata_minimal(args.modelpath[0])
     abundances = get_initelemabundances(args.modelpath[0])
 
     with Path(args.modelpath[0], "model.txt").open() as fmodelin:
