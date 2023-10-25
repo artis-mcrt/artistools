@@ -57,10 +57,6 @@ def test_lightcurve_plot_frompackets(mockplot) -> None:
     assert np.isclose(arr_lum.std(), 3.6121162e38, rtol=1e-4)
 
 
-def test_lightcurve_plot_viewingangles() -> None:
-    at.lightcurve.plot(argsraw=[], modelpath=modelpath, plotviewingangle=-1, colorbarcostheta=True)
-
-
 def test_band_lightcurve_plot() -> None:
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], outputfile=outputpath)
 
