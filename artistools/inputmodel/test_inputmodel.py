@@ -68,7 +68,7 @@ def test_downscale_3dmodel() -> None:
 
 
 def test_make1dmodelfromcone() -> None:
-    at.inputmodel.slice1Dfromconein3dmodel.main(modelpath=[modelpath_3d])
+    at.inputmodel.slice1Dfromconein3dmodel.main(argsraw=[], modelpath=[modelpath_3d])
 
 
 def test_makemodel_botyanski2017() -> None:
