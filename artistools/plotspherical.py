@@ -300,7 +300,9 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         tstarts = at.get_timestep_times(args.modelpath, loc="start")
         tends = at.get_timestep_times(args.modelpath, loc="end")
         time_ranges = [
-            (tstart, tend) for tstart, tend in zip(tstarts, tends) if (tstart >= args.timemin and tend <= args.timemax)
+            (tstart, tend)
+            for tstart, tend in zip(tstarts, tends)
+            if ((args.timemin is None or tstart >= args.timemin) and (args.timemax is None or tend <= args.timemax))
         ]
         outformat = "png"
     else:
@@ -329,9 +331,14 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
         axes[0].set_title(f"{timemindays:.2f}-{timemaxdays:.2f} days")
 
+        outdir = args.outputfile if (args.outputfile).is_dir() else Path()
+
         outfilename = (
-            f"sphericalplot_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}" if args.makegif else args.outputfile
+            outdir / f"plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"
+            if args.makegif or (args.outputfile).is_dir()
+            else outdir / args.outputfile
         )
+
         fig.savefig(outfilename, format=outformat)
         print(f"Saved {outfilename}")
         plt.close()
