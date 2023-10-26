@@ -309,6 +309,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         time_ranges = [(args.timemin, args.timemax)]
         outformat = "pdf"
 
+    outdir = args.outputfile if (args.outputfile).is_dir() else Path()
     outputfilenames = []
     for tstart, tend in time_ranges:
         # tstart and tend are requested, but the actual plotted time range may be different
@@ -331,8 +332,6 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
         axes[0].set_title(f"{timemindays:.2f}-{timemaxdays:.2f} days")
 
-        outdir = args.outputfile if (args.outputfile).is_dir() else Path()
-
         outfilename = (
             outdir / f"plotspherical_{timemindays:.2f}-{timemaxdays:.2f}d.{outformat}"
             if args.makegif or (args.outputfile).is_dir()
@@ -349,7 +348,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     if args.makegif:
         import imageio.v2 as iio
 
-        gifname = "sphericalplot.gif"
+        gifname = outdir / "sphericalplot.gif" if (args.outputfile).is_dir() else args.outputfile
         with iio.get_writer(gifname, mode="I", fps=1.5) as writer:  # v2.26.1
             for filename in outputfilenames:
                 image = iio.imread(filename)
