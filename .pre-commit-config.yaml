@@ -51,4 +51,3 @@ repos:
             entry: mypy
             types: [python]
             language: python
-            args: []
