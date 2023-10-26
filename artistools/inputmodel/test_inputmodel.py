@@ -2,6 +2,7 @@ import numpy as np
 import polars as pl
 
 import artistools as at
+import artistools.inputmodel.slice1Dfromconein3dmodel
 
 modelpath = at.get_config()["path_testartismodel"]
 modelpath_3d = at.get_config()["path_testartismodel"].parent / "testmodel_3d_10^3"
@@ -64,6 +65,10 @@ def test_downscale_3dmodel() -> None:
             (dfmodel[abundcol] * dfmodel["mass_g"]).sum(),
             (dfmodel_small[abundcol] * dfmodel_small["mass_g"]).sum(),
         )
+
+
+def test_make1dmodelfromcone() -> None:
+    at.inputmodel.slice1Dfromconein3dmodel.main()
 
 
 def test_makemodel_botyanski2017() -> None:
