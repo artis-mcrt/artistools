@@ -32,7 +32,7 @@ def plot_spherical(
     plotvars: list[str] | None = None,
     figscale: float = 1.0,
     cmap: str | None = None,
-) -> tuple[plt.Figure, t.Sequence[plt.Axes], float, float]:
+) -> tuple[plt.Figure, t.Any, float, float]:
     if plotvars is None:
         plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc"]
 
@@ -177,7 +177,7 @@ def plot_spherical(
     )
 
     if len(plotvars) == 1:
-        axes = [axes]
+        axes = (axes,)
 
     for ax, plotvar in zip(axes, plotvars):
         data = alldirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
@@ -340,8 +340,8 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
         fig.savefig(outfilename, format=outformat)
         print(f"Saved {outfilename}")
-        plt.close()
-        plt.clf()
+        # plt.close()
+        # plt.clf()
 
         outputfilenames.append(outfilename)
 
@@ -349,7 +349,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         import imageio.v2 as iio
 
         gifname = outdir / "sphericalplot.gif" if (args.outputfile).is_dir() else args.outputfile
-        with iio.get_writer(gifname, mode="I", fps=1.5) as writer:  # v2.26.1
+        with iio.get_writer(gifname, mode="I", fps=1.5) as writer:
             for filename in outputfilenames:
                 image = iio.imread(filename)
                 writer.append_data(image)  # type: ignore[attr-defined]
