@@ -876,9 +876,9 @@ def get_filterfunc(
 
 def join_pdf_files(pdf_list: list[str], modelpath_list: list[Path]) -> None:
     """Merge a list of PDF files into a single PDF file."""
-    from PyPDF2 import PdfFileMerger
+    from PyPDF2 import PdfMerger
 
-    merger = PdfFileMerger()
+    merger = PdfMerger()
 
     for pdf, modelpath in zip(pdf_list, modelpath_list):
         fullpath = firstexisting([pdf], folder=modelpath)
