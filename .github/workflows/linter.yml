@@ -7,20 +7,20 @@ on:
 #    pull_request:
 
 jobs:
-    black:
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v3
+    # black:
+    #     runs-on: ubuntu-latest
+    #     steps:
+    #         - uses: actions/checkout@v3
 
-            - name: Set up Python
-              uses: actions/setup-python@v4
-              with:
-                  cache: pip
-                  python-version-file: .python-version
+    #         - name: Set up Python
+    #           uses: actions/setup-python@v4
+    #           with:
+    #               cache: pip
+    #               python-version-file: .python-version
 
-            - uses: psf/black@stable
-              with:
-                  options: --check --verbose
+    #         - uses: psf/black@stable
+    #           with:
+    #               options: --check --verbose
 
     mypy:
         runs-on: ubuntu-latest
@@ -83,7 +83,8 @@ jobs:
             - name: Run Ruff
               run: ruff check --output-format=github .
             - name: Run Ruff Format
-              run: ruff format --check --output-format=github .
+              run: ruff format --check .
+
     superlinter:
         name: Super linter
         runs-on: ubuntu-latest
