@@ -28,7 +28,6 @@ repos:
     #   rev: 0.2.3
     #   hooks:
     #       - id: yamlfmt
-<<<<<<< HEAD
 #    - repo: https://github.com/charliermarsh/ruff-pre-commit
 #      rev: v0.1.1
 #      hooks:
