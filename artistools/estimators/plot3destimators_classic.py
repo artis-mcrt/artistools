@@ -24,7 +24,7 @@ def get_modelgridcells_along_axis(modelpath):
     ArgsTuple = namedtuple("ArgsTuple", "modelpath sliceaxis other_axis1 other_axis2 positive_axis")
     args = ArgsTuple(modelpath=modelpath, sliceaxis="x", other_axis1="z", other_axis2="y", positive_axis=True)
 
-    profile1d = at.inputmodel.slice1Dfromconein3dmodel.get_profile_along_axis(args=args)
+    profile1d = at.inputmodel.slice1dfromconein3dmodel.get_profile_along_axis(args=args)
     return get_mgi_of_modeldata(profile1d, modelpath)
 
 
