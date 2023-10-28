@@ -39,7 +39,7 @@ dictcommands: CommandType = {
         "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
         "makeartismodel": ("inputmodel.makeartismodel", "main"),
         "artistools-make1dslicefrom3dmodel": ("inputmodel.1dslicefrom3d", "main"),
-        "makeartismodel1dslicefromcone": ("inputmodel.slice1Dfromconein3dmodel", "main"),
+        "makeartismodel1dslicefromcone": ("inputmodel.slice1dfromconein3dmodel", "main"),
         "makeartismodelbotyanski2017": ("inputmodel.botyanski2017", "main"),
         "makeartismodelfromshen2018": ("inputmodel.shen2018", "main"),
         "makeartismodelfromlapuente": ("inputmodel.lapuente", "main"),
@@ -77,7 +77,7 @@ def get_commandlist() -> dict[str, tuple[str, str]]:
             "main",
         ),
         "makeartismodel1dslicefromcone": (
-            "artistools.inputmodel.slice1Dfromconein3dmodel",
+            "artistools.inputmodel.slice1dfromconein3dmodel",
             "main",
         ),
         "makeartismodelbotyanski2017": (
