@@ -66,6 +66,12 @@ def test_downscale_3dmodel() -> None:
         )
 
 
+def test_get_modeldata_tuple() -> None:
+    dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=True)
+    assert np.isclose(t_model_init_days, 0.00115740740741, rtol=0.0001)
+    assert np.isclose(vmax_cmps, 800000000.0, rtol=0.0001)
+
+
 def test_make1dmodelfromcone() -> None:
     at.inputmodel.slice1dfromconein3dmodel.main(argsraw=[], modelpath=[modelpath_3d])
 
