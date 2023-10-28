@@ -21,4 +21,4 @@ artistools/initial_composition.py                 @ccollins22
 artistools/lightcurve/                            @ccollins22
 artistools/hesma_scripts.py                       @ccollins22
 
-artistools/inputmodel/slice1Dfromconein3dmodel.py @ccollins22
+artistools/inputmodel/slice1dfromconein3dmodel.py @ccollins22

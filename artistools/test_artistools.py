@@ -4,8 +4,6 @@ import importlib
 import math
 import typing as t
 
-import numpy as np
-
 import artistools as at
 
 modelpath = at.get_config()["path_testartismodel"]
@@ -69,16 +67,6 @@ def test_get_inputparams() -> None:
 
 def test_get_levels() -> None:
     at.atomic.get_levels(modelpath, get_transitions=True, get_photoionisations=True)
-
-
-def test_get_modeldata_tuple() -> None:
-    dfmodel, t_model_init_days, vmax_cmps = at.inputmodel.get_modeldata_tuple(modelpath, get_elemabundances=True)
-    assert np.isclose(t_model_init_days, 0.00115740740741, rtol=0.0001)
-    assert np.isclose(vmax_cmps, 800000000.0, rtol=0.0001)
-
-    # assert (
-    #     hashlib.sha256(pd.util.hash_pandas_object(dfmodel, index=True).values).hexdigest() ==
-    #     '40a02dfa933f6b28671d42f3cf69a182955a5a89dc93bbcd22c894192375fe9b')
 
 
 def test_macroatom() -> None:

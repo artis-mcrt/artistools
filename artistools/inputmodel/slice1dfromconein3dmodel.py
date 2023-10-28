@@ -19,31 +19,29 @@ def make_cone(args):
     theta = np.radians([angle_of_cone / 2])  # angle between line of sight and edge is half angle of cone
 
     # merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata_tuple(args.modelpath[0], dimensions=3, get_elemabundances=True)
-    merge_dfs = at.inputmodel.get_3d_model_data_merged_model_and_abundances_minimal(args)
+    # merge_dfs = at.inputmodel.get_3d_model_data_merged_model_and_abundances_minimal(args)  ## only works with old 3D format
+    dfmodel, modelmeta = at.get_modeldata(modelpath=args.modelpath[0], get_elemabundances=True)
+    args.t_model = modelmeta["t_model_init_days"]
 
     if args.positive_axis:
-        cone = merge_dfs.loc[
-            merge_dfs[f"cellpos_in[{args.sliceaxis}]"]
+        print("using positive axis")
+        cone = dfmodel.loc[
+            dfmodel[f"pos_{args.sliceaxis}_min"]
             >= 1
             / (np.tan(theta))
-            * np.sqrt(
-                (merge_dfs[f"cellpos_in[{args.other_axis2}]"]) ** 2
-                + (merge_dfs[f"cellpos_in[{args.other_axis1}]"]) ** 2
-            )
+            * np.sqrt((dfmodel[f"pos_{args.other_axis2}_min"]) ** 2 + (dfmodel[f"pos_{args.other_axis1}_min"]) ** 2)
         ]  # positive axis
     else:
-        cone = merge_dfs.loc[
-            merge_dfs[f"cellpos_in[{args.sliceaxis}]"]
+        print("using negative axis")
+        cone = dfmodel.loc[
+            dfmodel[f"pos_{args.sliceaxis}_min"]
             <= -1
             / (np.tan(theta))
-            * np.sqrt(
-                (merge_dfs[f"cellpos_in[{args.other_axis2}]"]) ** 2
-                + (merge_dfs[f"cellpos_in[{args.other_axis1}]"]) ** 2
-            )
+            * np.sqrt((dfmodel[f"pos_{args.other_axis2}_min"]) ** 2 + (dfmodel[f"pos_{args.other_axis1}_min"]) ** 2)
         ]  # negative axis
     # print(cone.loc[:, :[f'pos_{slice_on_axis}']])
 
-    del merge_dfs  # merge_dfs not needed anymore so free memory
+    del dfmodel  # merge_dfs not needed anymore so free memory
     gc.collect()
 
     return cone
@@ -61,81 +59,97 @@ def get_profile_along_axis(args=None, modeldata=None, derived_cols=False):
     ].item()
 
     if args.positive_axis:
-        profile1D = modeldata.loc[
+        profile1d = modeldata.loc[
             (modeldata[f"pos_{args.other_axis1}_min"] == position_closest_to_axis)
             & (modeldata[f"pos_{args.other_axis2}_min"] == position_closest_to_axis)
             & (modeldata[f"pos_{args.sliceaxis}_min"] > 0)
         ]
     else:
-        profile1D = modeldata.loc[
+        profile1d = modeldata.loc[
             (modeldata[f"pos_{args.other_axis1}_min"] == position_closest_to_axis)
             & (modeldata[f"pos_{args.other_axis2}_min"] == position_closest_to_axis)
             & (modeldata[f"pos_{args.sliceaxis}_min"] < 0)
         ]
 
-    return profile1D.reset_index(drop=True)
+    return profile1d.reset_index(drop=True)
 
 
-def make_1D_profile(args):
+def make_1d_profile(args):
     if args.makefromcone:
         cone = make_cone(args)
 
-        slice1D = cone.groupby([f"cellpos_in[{args.sliceaxis}]"], as_index=False).mean()
+        slice1d = cone.groupby([f"pos_{args.sliceaxis}_min"], as_index=False).mean()
         # where more than 1 X value, average rows eg. (1,0,0) (1,1,0) (1,1,1)
 
     else:  # make from along chosen axis
-        slice1D = get_profile_along_axis(args)
+        slice1d = get_profile_along_axis(args)
 
-    slice1D[f"cellpos_in[{args.sliceaxis}]"] = slice1D[f"cellpos_in[{args.sliceaxis}]"].apply(
+    slice1d[f"pos_{args.sliceaxis}_min"] = slice1d[f"pos_{args.sliceaxis}_min"].apply(
         lambda x: x / args.t_model * (u.cm / u.day).to("km/s")
     )  # Convert positions to velocities
-    slice1D = slice1D.rename(columns={f"cellpos_in[{args.sliceaxis}]": "vout_kmps"})
+    slice1d = slice1d.rename(columns={f"pos_{args.sliceaxis}_min": "vel_r_max_kmps"})
     # Convert position to velocity
 
-    slice1D = slice1D.drop(
-        ["inputcellid", f"cellpos_in[{args.other_axis1}]", f"cellpos_in[{args.other_axis2}]"], axis=1
+    slice1d = slice1d.drop(
+        ["inputcellid", f"pos_{args.other_axis1}_min", f"pos_{args.other_axis2}_min"], axis=1
     )  # Remove columns we don't need
 
-    slice1D["rho_model"] = slice1D["rho_model"].apply(lambda x: np.log10(x) if x != 0 else -100)
-    # slice1D = slice1D[slice1D['rho_model'] != -100]  # Remove empty cells
+    slice1d["rho"] = slice1d["rho"].apply(lambda x: np.log10(x) if x != 0 else -100)
+    # slice1d = slice1d[slice1d['rho_model'] != -100]  # Remove empty cells
     # TODO: fix this, -100 probably breaks things if it's not one of the outer cells that gets chopped
-    slice1D = slice1D.rename(columns={"rho_model": "log_rho"})
+    slice1d = slice1d.rename(columns={"rho": "logrho"})
 
-    slice1D.index += 1
+    slice1d.index += 1
 
     if not args.positive_axis:
         # Invert rows and *velocity by -1 to make velocities positive for slice on negative axis
-        slice1D.iloc[:] = slice1D.iloc[::-1].to_numpy()
-        slice1D["vout_kmps"] = slice1D["vout_kmps"].apply(lambda x: x * -1)
+        slice1d.iloc[:] = slice1d.iloc[::-1].to_numpy()
+        slice1d["vel_r_max_kmps"] = slice1d["vel_r_max_kmps"].apply(lambda x: x * -1)
 
     # with pd.option_context('display.max_rows', None, 'display.max_columns', None):
-    #     print(slice1D)
+    #     print(slice1d)
 
-    # print(slice1D.keys())
-    return slice1D
+    # print(slice1d.keys())
+    return slice1d
 
 
-def make_1D_model_files(args):
-    slice1D = make_1D_profile(args)
-    query_abundances_positions = slice1D.columns.str.startswith("X_")
-    model_df = slice1D.loc[:, ~query_abundances_positions]
-    abundances_df = slice1D.loc[:, query_abundances_positions]
+def make_1d_model_files(args):
+    slice1d = make_1d_profile(args)
+
+    # query_abundances_positions = slice1d.columns.str.startswith("X_")
+    query_abundances_positions = np.array(
+        [
+            (column.startswith("X_") and not (any(i.isdigit() for i in column))) and (len(column) < 5)
+            for column in slice1d.columns
+        ]
+    )
+
+    model_df = slice1d.loc[:, ~query_abundances_positions]
+    abundances_df = slice1d.loc[:, query_abundances_positions]
 
     # with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # Print all rows in df
     #     print(model_df)
 
     # print(modelpath)
-    model_df = model_df.round(decimals=5)  # model files seem to be to 5 sf
-    model_df.to_csv(args.modelpath[0] / "model_1D.txt", sep=" ", header=False)  # write model.txt
+    # model_df = model_df.round(decimals=5)  # model files seem to be to 5 sf
+    # model_df.to_csv(args.modelpath[0] / "model_1d.txt", sep=" ", header=False)  # write model.txt
 
-    abundances_df.to_csv(args.modelpath[0] / "abundances_1D.txt", sep=" ", header=False)  # write abundances.txt
+    npts_model = len(model_df)
+    inputcellid = np.arange(1, npts_model + 1)
+    model_df["inputcellid"] = inputcellid
+    abundances_df["inputcellid"] = inputcellid
 
-    with Path(args.modelpath[0], "model_1D.txt").open("r+") as f:  # add number of cells and tmodel to start of file
-        content = f.read()
-        f.seek(0, 0)
-        f.write(f"{model_df.shape[0]}\n{args.t_model}".rstrip("\r\n") + "\n" + content)
+    at.inputmodel.save_modeldata(dfmodel=model_df, t_model_init_days=args.t_model, filename=Path(".", "model_1d.txt"))
 
-    print("Saved abundances_1D.txt and model_1D.txt")
+    # abundances_df.to_csv(args.modelpath[0] / "abundances_1d.txt", sep=" ", header=False)  # write abundances.txt
+    at.inputmodel.save_initelemabundances(abundances_df, Path(".", "abundances_1d.txt"))
+
+    # with Path(args.modelpath[0], "model_1d.txt").open("r+") as f:  # add number of cells and tmodel to start of file
+    #     content = f.read()
+    #     f.seek(0, 0)
+    #     f.write(f"{model_df.shape[0]}\n{args.t_model}".rstrip("\r\n") + "\n" + content)
+
+    print("Saved abundances_1d.txt and model_1d.txt")
 
 
 # with open(args.modelpath[0]/"model
@@ -219,13 +233,15 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     if not args.modelpath:
         args.modelpath = [Path()]
 
+    print(f"making model from slice around {args.sliceaxis} axis")
+
     axes = ["x", "y", "z"]
     args.other_axis1 = next(ax for ax in axes if ax != args.sliceaxis)
     args.other_axis2 = next(ax for ax in axes if ax not in {args.sliceaxis, args.other_axis1})
 
     # remember: models before scaling down to artis input have x and z axis swapped compared to artis input files
 
-    make_1D_model_files(args)
+    make_1d_model_files(args)
 
     # make_plot(args) # Uncomment to make 3D plot todo: add command line option
 
