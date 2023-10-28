@@ -180,6 +180,7 @@ ignore = [
     #"F841", # unused-variable. ignored because variables in df.eval() are not detected
     "FBT",
     "FIX002",  # line contains TODO
+    "ISC001", # single-line-implicit-string-concatenation
     "N802",  # Function name should be lowercase
     "N803",  # Argument name should be lowercase
     "N806",  # non-lowercase-variable-in-function
@@ -228,7 +229,6 @@ target-version = "py310"
 fix = true
 show-fixes = true
 ignore-init-module-imports = true
-preview = true
 
 [tool.ruff.flake8-annotations]
 ignore-fully-untyped = true
