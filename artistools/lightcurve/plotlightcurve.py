@@ -891,9 +891,7 @@ def make_band_lightcurves_plot(modelpaths, filternames_conversion_dict, outputfo
                     ax.plot(hesma_model.t, hesma_model[band_name], color="black")
 
                 # axarr[plotnumber].axis([0, 60, -16, -19.5])
-                text_key = (
-                    filternames_conversion_dict[band_name] if band_name in filternames_conversion_dict else band_name
-                )
+                text_key = filternames_conversion_dict.get(band_name, band_name)
 
                 if args.subplots:
                     ax[plotnumber].annotate(

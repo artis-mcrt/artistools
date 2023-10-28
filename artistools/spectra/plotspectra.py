@@ -117,7 +117,7 @@ def plot_reference_spectrum(
         specdata["f_lambda"] = specdata["f_lambda"] * (metadata["dist_mpc"] / scale_to_dist_mpc) ** 2
 
     if "label" not in plotkwargs:
-        plotkwargs["label"] = metadata["label"] if "label" in metadata else filename
+        plotkwargs["label"] = metadata.get("label", filename)
 
     if scaletoreftime is not None:
         timefactor = at.spectra.timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
