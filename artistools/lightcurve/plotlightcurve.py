@@ -327,7 +327,9 @@ def plot_artis_lightcurve(
             lcfilename = (
                 "light_curve_res.out"
                 if directionbins != [-1]
-                else "gamma_light_curve.out" if escape_type == "TYPE_GAMMA" else "light_curve.out"
+                else "gamma_light_curve.out"
+                if escape_type == "TYPE_GAMMA"
+                else "light_curve.out"
             )
 
         try:
@@ -361,8 +363,9 @@ def plot_artis_lightcurve(
         costheta_viewing_angle_bins, phi_viewing_angle_bins = at.get_costhetabin_phibin_labels(usedegrees=usedegrees)
         scaledmap = make_colorbar_viewingangles_colormap()
 
-    lctimemin, lctimemax = float(lcdataframes[dirbins[0]]["time"].to_numpy().min()), float(
-        lcdataframes[dirbins[0]]["time"].to_numpy().max()
+    lctimemin, lctimemax = (
+        float(lcdataframes[dirbins[0]]["time"].to_numpy().min()),
+        float(lcdataframes[dirbins[0]]["time"].to_numpy().max()),
     )
 
     print(f" range of light curve: {lctimemin:.2f} to {lctimemax:.2f} days")

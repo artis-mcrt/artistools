@@ -340,8 +340,8 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
         fig.savefig(outfilename, format=outformat)
         print(f"Saved {outfilename}")
-        # plt.close()
-        # plt.clf()
+        plt.close()
+        plt.clf()
 
         outputfilenames.append(outfilename)
 

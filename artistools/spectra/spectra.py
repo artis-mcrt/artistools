@@ -426,9 +426,9 @@ def get_spectrum(
 def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
     nprocs = at.get_nprocs(modelpath)
     print("nprocs", nprocs)
-    vspecpol_data_old: list[pd.DataFrame] = (
-        []
-    )  # virtual packet spectra for each observer (all directions and opacity choices)
+    vspecpol_data_old: list[
+        pd.DataFrame
+    ] = []  # virtual packet spectra for each observer (all directions and opacity choices)
     vpktconfig = at.get_vpkt_config(modelpath)
     nvirtual_spectra = vpktconfig["nobsdirections"] * vpktconfig["nspectraperobs"]
     print(
