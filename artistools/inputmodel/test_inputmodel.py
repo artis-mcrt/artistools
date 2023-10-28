@@ -150,10 +150,13 @@ def test_dimension_reduce_3d_model() -> None:
         .to_pandas(use_pyarrow_extension_array=True)
     )
     for outputdimensions in [1, 2]:
-        dfmodel_lowerd, dfabundances_lowerd, dfgridcontributions_lowerd, modelmeta_lowerd = (
-            at.inputmodel.dimension_reduce_3d_model(
-                dfmodel=dfmodel3d, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
-            )
+        (
+            dfmodel_lowerd,
+            dfabundances_lowerd,
+            dfgridcontributions_lowerd,
+            modelmeta_lowerd,
+        ) = at.inputmodel.dimension_reduce_3d_model(
+            dfmodel=dfmodel3d, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
         )
         dfmodel_lowerd = (
             at.inputmodel.add_derived_cols_to_modeldata(
