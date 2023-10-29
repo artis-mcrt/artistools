@@ -52,12 +52,12 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     modeloutfilename = "model_fullymixed.txt"
     at.save_modeldata(
-        dfmodel=dfmodel, t_model_init_days=t_model_init_days, filename=Path(args.outputpath, modeloutfilename)
+        dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=Path(args.outputpath, modeloutfilename)
     )
     print(f"Saved {modeloutfilename}")
 
     abundoutfilename = "abundances_fullymixed.txt"
-    at.inputmodel.save_initelemabundances(dfelabundances, Path(args.outputpath, abundoutfilename))
+    at.inputmodel.save_initelemabundances(dfelabundances, outpath=Path(args.outputpath, abundoutfilename))
     print(f"Saved {abundoutfilename}")
 
 

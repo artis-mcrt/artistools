@@ -101,9 +101,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     print(f"M_tot = {m_tot:.3f} solMass")
 
     at.inputmodel.save_modeldata(
-        dfmodel=dfmodel, t_model_init_days=t_model_init_days, filename=Path(args.outputpath, "model.txt")
+        dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=Path(args.outputpath, "model.txt")
     )
-    at.inputmodel.save_initelemabundances(dfelabundances, Path(args.outputpath, "abundances.txt"))
+    at.inputmodel.save_initelemabundances(dfelabundances, outpath=Path(args.outputpath, "abundances.txt"))
 
 
 if __name__ == "__main__":

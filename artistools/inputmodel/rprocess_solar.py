@@ -107,7 +107,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     dfelabundances = pd.DataFrame([dict(inputcellid=mgi + 1, **dictelemabund) for mgi in range(cellcount)])
     # print(dfelabundances)
-    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, abundancefilename=args.outputpath)
+    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=Path(args.outputpath))
 
     # write model.txt
 
@@ -142,7 +142,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     dfmodel = pd.DataFrame(modeldata)
     # print(dfmodel)
-    at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, modelpath=Path(args.outputpath))
+    at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=args.outputpath)
 
 
 if __name__ == "__main__":

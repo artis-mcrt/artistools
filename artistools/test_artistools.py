@@ -96,7 +96,7 @@ def test_plotspherical() -> None:
 
 
 def test_plotspherical_gif() -> None:
-    at.plotspherical.main(argsraw=[], modelpath=modelpath, makegif=True, outputfile=outputpath)
+    at.plotspherical.main(argsraw=[], modelpath=modelpath, makegif=True, timemax=270, outputfile=outputpath)
 
 
 def test_spencerfano() -> None:
