@@ -302,7 +302,7 @@ def get_modeldata_polars(
 
     Parameters
     ----------
-        - inputpath: either a path to model.txt file, or a folder containing model.txt
+        - modelpath: either a path to model.txt file, or a folder containing model.txt
         - get_elemabundances: also read elemental abundances (abundances.txt) and
             merge with the output DataFrame
 
@@ -509,9 +509,7 @@ def add_derived_cols_to_modeldata(
         case 1:
             axes = ["r"]
 
-            dfmodel = dfmodel.with_columns(
-                pl.col("vel_r_max_kmps").shift_and_fill(n=1, fill_value=0.0).alias("vel_r_min_kmps")
-            )
+            dfmodel = dfmodel.with_columns(pl.col("vel_r_max_kmps").shift(n=1, fill_value=0.0).alias("vel_r_min_kmps"))
 
             dfmodel = dfmodel.with_columns(
                 [
@@ -814,8 +812,7 @@ def get_standard_columns(dimensions: int, includenico57: bool = False) -> list[s
 
 def save_modeldata(
     dfmodel: pd.DataFrame | pl.LazyFrame | pl.DataFrame,
-    filename: Path | str | None = None,
-    modelpath: Path | str | None = Path(),
+    outpath: Path | str | None = None,
     vmax: float | None = None,
     headercommentlines: list[str] | None = None,
     modelmeta: dict[str, t.Any] | None = None,
@@ -891,16 +888,18 @@ def save_modeldata(
         if col not in dfmodel.columns and col.startswith("X_"):
             dfmodel[col] = 0.0
 
-    dfmodel["inputcellid"] = dfmodel["inputcellid"].astype(int)
+    dfmodel = dfmodel.astype({"inputcellid": int})
     customcols = [col for col in dfmodel.columns if col not in standardcols]
     customcols.sort(
         key=lambda col: at.get_z_a_nucname(col) if col.startswith("X_") else (float("inf"), 0)
     )  # sort columns by atomic number, mass number
 
-    assert modelpath is not None or filename is not None
-    if filename is None:
-        filename = "model.txt"
-    modelfilepath = Path(modelpath, filename) if modelpath is not None else Path(filename)
+    if outpath is None:
+        modelfilepath = Path("model.txt")
+    elif Path(outpath).is_dir():
+        modelfilepath = Path(outpath) / "model.txt"
+    else:
+        modelfilepath = Path(outpath)
 
     if modelfilepath.exists():
         oldfile = modelfilepath.rename(modelfilepath.with_suffix(".bak"))
@@ -1065,7 +1064,7 @@ def get_initelemabundances(
 
 def save_initelemabundances(
     dfelabundances: pd.DataFrame,
-    abundancefilename: Path | str,
+    outpath: Path | str | None = None,
     headercommentlines: t.Sequence[str] | None = None,
 ) -> None:
     """Save a DataFrame (same format as get_initelemabundances) to abundances.txt.
@@ -1074,10 +1073,15 @@ def save_initelemabundances(
         - X_i: mass fraction of element with two-letter code 'i' (e.g., X_H, X_He, H_Li, ...).
     """
     timestart = time.perf_counter()
-    abundancefilename = Path(abundancefilename)
-    if abundancefilename.is_dir():
-        abundancefilename = abundancefilename / "abundances.txt"
-    dfelabundances["inputcellid"] = dfelabundances["inputcellid"].astype(int)
+
+    if outpath is None:
+        abundancefilename = Path("abundances.txt")
+    elif Path(outpath).is_dir():
+        abundancefilename = Path(outpath) / "abundances.txt"
+    else:
+        abundancefilename = Path(outpath)
+
+    dfelabundances = dfelabundances.astype({"inputcellid": int})
     atomic_numbers = [
         at.get_atomic_number(colname[2:]) for colname in dfelabundances.columns if colname.startswith("X_")
     ]
