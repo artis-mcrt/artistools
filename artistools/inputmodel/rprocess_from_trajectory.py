@@ -573,7 +573,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     dfelabundances = pd.DataFrame([dict(inputcellid=mgi + 1, **dictelemabund) for mgi in range(len(dfdensities))])
     # print(dfelabundances)
-    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, abundancefilename=args.outputpath)
+    at.inputmodel.save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputpath)
 
     # write model.txt
 
@@ -607,7 +607,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     dfmodel = pd.DataFrame(modeldata)
     # print(dfmodel)
-    at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, modelpath=Path(args.outputpath))
+    at.inputmodel.save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, filepath=Path(args.outputpath))
     with Path(args.outputpath, "gridcontributions.txt").open("w") as fcontribs:
         fcontribs.write("particleid cellindex frac_of_cellmass\n")
         for cell in dfmodel.itertuples(index=False):
