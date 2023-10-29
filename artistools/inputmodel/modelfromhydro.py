@@ -397,7 +397,7 @@ def makemodelfromgriddata(
         print(f'Writing to {Path(outputpath) / "abundances.txt"}...')
         at.inputmodel.save_initelemabundances(
             dfelabundances=dfelabundances,
-            abundancefilename=outputpath,
+            outpath=outputpath,
             headercommentlines=modelmeta["headercommentlines"],
         )
     else:
@@ -405,7 +405,7 @@ def makemodelfromgriddata(
 
     print(f'Writing to {Path(outputpath) / "model.txt"}...')
     at.inputmodel.save_modeldata(
-        modelpath=outputpath,
+        outpath=outputpath,
         dfmodel=dfmodel,
         modelmeta=modelmeta,
     )

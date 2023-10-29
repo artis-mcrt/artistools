@@ -73,7 +73,7 @@ def test_get_modeldata_tuple() -> None:
 
 
 def test_make1dmodelfromcone() -> None:
-    at.inputmodel.slice1dfromconein3dmodel.main(argsraw=[], modelpath=[modelpath_3d])
+    at.inputmodel.slice1dfromconein3dmodel.main(argsraw=[], modelpath=[modelpath_3d], outputpath=outputpath)
 
 
 def test_makemodel_botyanski2017() -> None:
@@ -120,7 +120,7 @@ def test_save_load_3d_model() -> None:
     dfmodel.iloc[75001]["rho"] = 2
     dfmodel.iloc[95200]["rho"] = 3
     dfmodel.iloc[75001]["X_Ni56"] = 0.5
-    at.inputmodel.save_modeldata(modelpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
+    at.inputmodel.save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
     dfmodel2, modelmeta2 = at.inputmodel.get_modeldata(modelpath=outputpath)
     assert dfmodel.equals(dfmodel2)
     assert modelmeta == modelmeta2
