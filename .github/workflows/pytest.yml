@@ -4,6 +4,8 @@ name: Installation and pytest
 on:
     push:
     merge_group:
+    schedule:
+      - cron: '0 13 * * 1'
 
 jobs:
     pytest:

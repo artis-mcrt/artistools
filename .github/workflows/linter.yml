@@ -4,6 +4,8 @@ name: Linter
 on:
     push:
     merge_group:
+    schedule:
+      - cron: '0 13 * * 1'
 #    pull_request:
 
 jobs:
