@@ -21,6 +21,8 @@ import polars as pl
 from typeguard import check_type
 
 import artistools as at
+import artistools.estimators.plot3destimators_classic
+import artistools.inputmodel.slice1Dfromconein3dmodel
 
 colors_tab10 = list(plt.get_cmap("tab10")(np.linspace(0, 1.0, 10)))
 
@@ -1062,6 +1064,25 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
     ]
 
+    read_only_selected_mgi = False
+    if read_only_selected_mgi:
+        modeldata, modelmeta = at.inputmodel.get_modeldata(
+            modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "velocity"]
+        )
+        # at.inputmodel.inputmodel_misc.get_cell_angle_polar(modeldata, modelpath)
+        #
+        # print(modeldata["cos_bin"])
+        # modeldata.query("cos_bin == 90", inplace=True)
+        # modeldata["inputcellid"] = modeldata["inputcellid"].astype(int)
+        # args.modelgridindex = modeldata["inputcellid"]
+        # # quit()
+        # # args.modelgridindex = at.estimators.plot3destimators_classic.get_modelgridcells_along_axis(modelpath=modelpath)
+        plot2dslice = True
+        if plot2dslice:
+            args.modelgridindex = at.estimators.plot3destimators_classic.get_modelgridcells_2D_slice(
+                modeldata, modelpath
+            )
+
     if temperatures_only := plotlist_is_temperatures_only(plotlist):
         print("Plotting temperatures only (from parquet if available)")
 
@@ -1090,6 +1111,24 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     if not timesteps_included:
         print("No timesteps with data are included")
         return
+
+    if read_only_selected_mgi:
+        # print(estimators)
+        # quit()
+        #
+        # modeldata["Te"] = [estimators[(int(args.timestep), mgi)]["Te"] for mgi in modeldata["inputcellid"]]
+        #
+        # quit()
+
+        if plot2dslice:
+            grid_Te, xgrid = at.estimators.plot3destimators_classic.get_Te_vs_velocity_2D(
+                modelpath, modeldata, modelmeta["vmax_cmps"], estimators, args.modelgridindex, int(args.timestep)
+            )
+            grid = round(len(modeldata["inputcellid"]) ** (1.0 / 3.0))
+            at.estimators.plot3destimators_classic.make_2d_plot(
+                grid, grid_Te, modelmeta["vmax_cmps"], modelpath, xgrid, args.timemin
+            )
+            exit()
 
     if args.recombrates:
         plot_recombrates(modelpath, estimators, 26, [2, 3, 4, 5])
