@@ -140,6 +140,7 @@ disable = """
     C,
     R,
 """
+
 [tool.pylint.typecheck]
 ignored-modules = ["astropy", "extinction"]
 

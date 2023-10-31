@@ -1261,8 +1261,10 @@ def write_spectrum(dfspectrum: pd.DataFrame, outfilepath: Path) -> None:
     with outfilepath.open("w") as spec_file:
         spec_file.write("#lambda f_lambda_1Mpc\n")
         spec_file.write("#[A] [erg/s/cm2/A]\n")
+        dfspectrum = dfspectrum[(dfspectrum.lambda_angstroms > 1500) & (dfspectrum.lambda_angstroms < 60000)]
 
         dfspectrum.to_csv(spec_file, header=False, sep=" ", index=False, columns=["lambda_angstroms", "f_lambda"])
+    print(f"Saved {outfilepath}")
 
 
 def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
@@ -1293,14 +1295,23 @@ def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
 
+    _, tmin_d_valid, tmax_d_valid = at.get_escaped_arrivalrange(modelpath)
+
     arr_tmid = at.get_timestep_times(modelpath, loc="mid")
 
     for timestep in range(timestepmin, timestepmax + 1):
         tmid = arr_tmid[timestep]
+        if tmid < tmin_d_valid or tmid > tmax_d_valid:
+            continue
 
         dfspectrum = get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]
 
         outfilepath = outdirectory / f"spectrum_ts{timestep:02.0f}_{tmid:.2f}d.txt"
         write_spectrum(dfspectrum, outfilepath)
 
-    print(f"Saved in {outdirectory}")
+        dfspectrum_polars = get_spectrum(
+            modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True, directionbins=[0]
+        )[0]
+
+        outfilepath = outdirectory / f"spectrum_polar00_ts{timestep:02.0f}_{tmid:.2f}d.txt"
+        write_spectrum(dfspectrum_polars, outfilepath)
