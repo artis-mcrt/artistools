@@ -29,7 +29,7 @@ def get_modelgridcells_along_axis(modelpath):
 
 
 def get_modelgridcells_2D_slice(modeldata, modelpath) -> list[int]:
-    sliceaxis: t.Literal["x", "y", "z"] = "z"
+    sliceaxis: t.Literal["x", "y", "z"] = "x"
 
     slicedata = at.initial_composition.get_2D_slice_through_3d_model(modeldata, sliceaxis)
     return get_mgi_of_modeldata(slicedata, modelpath)
@@ -112,40 +112,72 @@ def get_Te_vs_velocity_2D(modelpath, modeldata, vmax, estimators, readonly_mgi, 
 
 
 def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
-    # PYVISTA
-    x, y, z = np.meshgrid(xgrid, xgrid, xgrid)
-    mesh = pv.StructuredGrid(x, y, z)
-    mesh["Te [K]"] = grid_Te.ravel(order="F")
+    pyvista = False
+    if pyvista:
+        # PYVISTA
+        x, y, z = np.meshgrid(xgrid, xgrid, xgrid)
+        mesh = pv.StructuredGrid(x, y, z)
+        mesh["Te [K]"] = grid_Te.ravel(order="F")
 
-    sargs = {
-        "height": 0.75,
-        "vertical": True,
-        "position_x": 0.02,
-        "position_y": 0.1,
-        "title_font_size": 22,
-        "label_font_size": 25,
-    }
+        sargs = {
+            "height": 0.75,
+            "vertical": True,
+            "position_x": 0.02,
+            "position_y": 0.1,
+            "title_font_size": 22,
+            "label_font_size": 25,
+        }
 
-    pv.set_plot_theme("document")  # set white background
-    p = pv.Plotter()
-    p.set_scale(1.5, 1.5, 1.5)
-    single_slice = mesh.slice(normal="z")
-    p.add_mesh(single_slice, scalar_bar_args=sargs)  # , clim=[100, 60000]
-    p.show_bounds(
-        grid=False,
-        xlabel="vx / c",
-        ylabel="vy / c",
-        zlabel="vz / c",
-        ticks="inside",
-        minor_ticks=False,
-        use_2d=True,
-        font_size=26,
-        bold=False,
-    )
+        pv.set_plot_theme("document")  # set white background
+        p = pv.Plotter()
+        p.set_scale(1.5, 1.5, 1.5)
+        single_slice = mesh.slice(normal="z")
+        p.add_mesh(single_slice, scalar_bar_args=sargs)  # , clim=[100, 60000]
+        p.show_bounds(
+            grid=False,
+            xlabel="vx / c",
+            ylabel="vy / c",
+            zlabel="vz / c",
+            ticks="inside",
+            minor_ticks=False,
+            use_2d=True,
+            font_size=26,
+            bold=False,
+        )
 
-    p.camera_position = "xy"
-    p.add_title(f"{time:.1f} days")
-    p.show(screenshot=modelpath / f"3Dplot_Te{time:.1f}days_disk.png")
+        p.camera_position = "xy"
+        p.add_title(f"{time:.1f} days")
+        p.show(screenshot=modelpath / f"3Dplot_Te{time:.1f}days_disk.png")
+
+    imshow = True
+    if imshow:
+        ### imshow
+        extent = {"left": -vmax, "right": vmax, "bottom": vmax, "top": -vmax}
+        extent = extent["left"], extent["right"], extent["bottom"], extent["top"]
+        data = np.zeros((grid, grid))
+
+        for z in range(0, grid):
+            for y in range(0, grid):
+                for x in range(0, grid):
+                    # if z == round(grid/2)-1:
+                    #     data[x, y] = grid_Te[x, y, z]
+                    # if y == round(grid/2)-1:
+                    #     data[z, x] = grid_Te[x, y, z]
+                    if x == round(grid / 2) - 1:
+                        data[z, y] = grid_Te[x, y, z]
+
+        plt.imshow(data, extent=extent)
+        cbar = plt.colorbar()
+        cbar.set_label("Te [K]", rotation=90)
+        # plt.xlabel('vx / c')
+        # plt.ylabel('vy / c')
+        plt.xlabel("vy / c")
+        plt.ylabel("vz / c")
+        plt.xlim(-vmax, vmax)
+        plt.ylim(-vmax, vmax)
+        outfilename = "plotestim.pdf"
+        plt.savefig(Path(modelpath) / outfilename, format="pdf")
+        print(f"Saved {outfilename}")
 
 
 def main() -> None:
