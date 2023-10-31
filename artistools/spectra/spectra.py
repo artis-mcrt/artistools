@@ -251,6 +251,24 @@ def get_from_packets(
 
 
 @lru_cache(maxsize=16)
+def read_spec(modelpath: Path) -> pl.DataFrame:
+    specfilename = at.firstexisting("spec.out", folder=modelpath, tryzipped=True)
+    print(f"Reading {specfilename}")
+
+    return (
+        pl.read_csv(
+            at.zopen(specfilename, forpolars=True),
+            separator=" ",
+            infer_schema_length=0,
+            truncate_ragged_lines=True,
+        )
+        .with_columns(pl.all().cast(pl.Float64))
+        .rename({"0": "nu"})
+        .to_pandas()
+    )
+
+
+@lru_cache(maxsize=16)
 def read_spec_res(modelpath: Path) -> dict[int, pl.DataFrame]:
     """Return a dataframe of time-series spectra for every viewing direction."""
     specfilename = (
@@ -358,21 +376,7 @@ def get_spectrum(
         # spherically averaged spectra
         if stokesparam == "I":
             try:
-                specfilename = at.firstexisting("spec.out", folder=modelpath, tryzipped=True)
-
-                print(f"Reading {specfilename}")
-
-                specdata[-1] = (
-                    pl.read_csv(
-                        at.zopen(specfilename, forpolars=True),
-                        separator=" ",
-                        infer_schema_length=0,
-                        truncate_ragged_lines=True,
-                    )
-                    .with_columns(pl.all().cast(pl.Float64))
-                    .rename({"0": "nu"})
-                    .to_pandas()
-                )
+                specdata[-1] = read_spec(modelpath=modelpath)
 
             except FileNotFoundError:
                 specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
@@ -1253,6 +1257,14 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pd.DataFrame, dict[t.A
     return specdata, metadata
 
 
+def write_spectrum(dfspectrum: pd.DataFrame, outfilepath: Path) -> None:
+    with outfilepath.open("w") as spec_file:
+        spec_file.write("#lambda f_lambda_1Mpc\n")
+        spec_file.write("#[A] [erg/s/cm2/A]\n")
+
+        dfspectrum.to_csv(spec_file, header=False, sep=" ", index=False, columns=["lambda_angstroms", "f_lambda"])
+
+
 def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
     """Write out spectra to text files.
 
@@ -1281,27 +1293,14 @@ def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
 
-    with (outdirectory / "spectra_list.txt").open("w+") as spectra_list:
-        arr_tmid = at.get_timestep_times(modelpath, loc="mid")
+    arr_tmid = at.get_timestep_times(modelpath, loc="mid")
 
-        for timestep in range(timestepmin, timestepmax + 1):
-            dfspectrum = get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]
-            tmid = arr_tmid[timestep]
+    for timestep in range(timestepmin, timestepmax + 1):
+        tmid = arr_tmid[timestep]
 
-            outfilepath = outdirectory / f"spectrum_ts{timestep:02.0f}_{tmid:.2f}d.txt"
+        dfspectrum = get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]
 
-            with outfilepath.open("w") as spec_file:
-                spec_file.write("#lambda f_lambda_1Mpc\n")
-                spec_file.write("#[A] [erg/s/cm2/A]\n")
-
-                dfspectrum.to_csv(
-                    spec_file, header=False, sep=" ", index=False, columns=["lambda_angstroms", "f_lambda"]
-                )
-
-            spectra_list.write(str(outfilepath.absolute()) + "\n")
-
-    with (outdirectory / "time_list.txt").open("w+") as time_list:
-        for time in arr_tmid:
-            time_list.write(f"{time} \n")
+        outfilepath = outdirectory / f"spectrum_ts{timestep:02.0f}_{tmid:.2f}d.txt"
+        write_spectrum(dfspectrum, outfilepath)
 
     print(f"Saved in {outdirectory}")
