@@ -307,11 +307,12 @@ def get_wid_init_at_tmodel(
 
 def get_syn_dir(modelpath: Path) -> tuple[float, float, float]:
     """Return the direction from which theta angle is measured."""
-    if not (modelpath / "syn_dir.txt").is_file():
+    syndirpath = Path(modelpath) / "syn_dir.txt"
+    if not syndirpath.is_file():
         print(f"{modelpath / 'syn_dir.txt'} does not exist. using x,y,z = 0,0,1")
         return (0.0, 0.0, 1.0)
 
-    with (modelpath / "syn_dir.txt").open() as syn_dir_file:
+    with syndirpath.open() as syn_dir_file:
         x, y, z = (float(i) for i in syn_dir_file.readline().split())
         return (x, y, z)
 
