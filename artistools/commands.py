@@ -33,6 +33,7 @@ dictcommands: CommandType = {
     "setupcompletions": ("commands", "setup_completions"),
     "spencerfano": ("nonthermal.solvespencerfanocmd", "main"),
     "writecodecomparisondata": ("writecomparisondata", "main"),
+    "writespectra": ("spectra.writespectra", "main"),
     "inputmodel": {
         "describe": ("inputmodel.describeinputmodel", "main"),
         "maptogrid": ("inputmodel.maptogrid", "main"),

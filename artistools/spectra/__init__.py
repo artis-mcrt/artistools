@@ -1,5 +1,5 @@
 """Artistools - spectra related functions."""
-
+from . import writespectra
 from .plotspectra import main as plot
 from .spectra import get_exspec_bins
 from .spectra import get_flux_contributions
@@ -18,4 +18,4 @@ from .spectra import read_spec_res
 from .spectra import sort_and_reduce_flux_contribution_list
 from .spectra import stackspectra
 from .spectra import timeshift_fluxscale_co56law
-from .spectra import write_flambda_spectra
+from .writespectra import write_flambda_spectra
