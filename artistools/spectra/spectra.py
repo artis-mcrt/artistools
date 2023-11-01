@@ -372,18 +372,6 @@ def get_spectrum(
     # keys are direction bins (or -1 for spherical average)
     specdata: dict[int, pl.DataFrame] = {}
 
-    if -1 in directionbins:
-        # spherically averaged spectra
-        if stokesparam == "I":
-            try:
-                specdata[-1] = read_spec(modelpath=modelpath)
-
-            except FileNotFoundError:
-                specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
-
-        else:
-            specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
-
     if any(dirbin != -1 for dirbin in directionbins):
         assert stokesparam == "I"
         try:
@@ -396,6 +384,18 @@ def get_spectrum(
             msg = "WARNING: Direction-resolved spectra not found. Getting only spherically averaged spectra instead."
             print(msg)
             directionbins = [-1]
+
+    if -1 in directionbins:
+        # spherically averaged spectra
+        if stokesparam == "I":
+            try:
+                specdata[-1] = read_spec(modelpath=modelpath)
+
+            except FileNotFoundError:
+                specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
+
+        else:
+            specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
 
     specdataout: dict[int, pd.DataFrame] = {}
     for dirbin in directionbins:
@@ -1297,21 +1297,24 @@ def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
 
     _, tmin_d_valid, tmax_d_valid = at.get_escaped_arrivalrange(modelpath)
 
-    arr_tmid = at.get_timestep_times(modelpath, loc="mid")
+    tmids = at.get_timestep_times(modelpath, loc="mid")
 
-    for timestep in range(timestepmin, timestepmax + 1):
-        tmid = arr_tmid[timestep]
-        if tmid < tmin_d_valid or tmid > tmax_d_valid:
-            continue
+    timesteps = [
+        ts for ts in range(timestepmin, timestepmax + 1) if tmids[ts] >= tmin_d_valid and tmids[ts] <= tmax_d_valid
+    ]
 
+    for timestep in timesteps:
         dfspectrum = get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]
 
-        outfilepath = outdirectory / f"spectrum_ts{timestep:02.0f}_{tmid:.2f}d.txt"
-        write_spectrum(dfspectrum, outfilepath)
+        write_spectrum(dfspectrum, outfilepath=outdirectory / f"spectrum_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt")
 
-        dfspectrum_polars = get_spectrum(
+    for timestep in timesteps:
+        if dfspectrum_polar := get_spectrum(
             modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True, directionbins=[0]
-        )[0]
-
-        outfilepath = outdirectory / f"spectrum_polar00_ts{timestep:02.0f}_{tmid:.2f}d.txt"
-        write_spectrum(dfspectrum_polars, outfilepath)
+        ).get(0, None):
+            write_spectrum(
+                dfspectrum_polar,
+                outfilepath=outdirectory / f"spectrum_polar00_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt",
+            )
+        else:
+            break
