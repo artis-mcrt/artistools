@@ -196,14 +196,12 @@ ignore = [
     "S603",  # subprocess-without-shell-equals-true
     "S607",  # start-process-with-partial-path
     "SLF001",  # private-member-access
-    "SIM115", # open-file-with-context-handler
     "T201",  # print found
     "TCH001", # typing-only-first-party-import
     "TCH002", # typing-only-third-party-import
     "TCH003",  # typing-only-standard-library-imports
     "TD002",  # missing-todo-author
     "TD003",  # missing-todo-link
-    "TRY301",  # raise-within-try
 ]
 fixable = ["ALL"]
 unfixable = [

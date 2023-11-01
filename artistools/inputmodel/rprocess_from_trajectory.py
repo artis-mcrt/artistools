@@ -617,7 +617,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
 def get_wollaeger_density_profile(wollaeger_profilename):
     print(f"{wollaeger_profilename} found")
-    t_model_init_days_in = float(Path(wollaeger_profilename).open("rt").readline().strip().removesuffix(" day"))
+    with Path(wollaeger_profilename).open("rt") as f:
+        t_model_init_days_in = float(f.readline().strip().removesuffix(" day"))
     result = pd.read_csv(
         wollaeger_profilename,
         delim_whitespace=True,

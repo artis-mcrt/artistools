@@ -1221,8 +1221,8 @@ def plot_color_evolution_from_data(
 
     filter_data = []
     for i, filter_name in enumerate(filter_names):
-        f = filterdir / Path(f"{filter_name}.txt").open()
-        lines = f.readlines()
+        with (filterdir / Path(f"{filter_name}.txt")).open() as f:
+            lines = f.readlines()
         lambda0 = float(lines[2])
 
         if filter_name in filternames_conversion_dict:

@@ -737,7 +737,7 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, f
     # open() can raise file not found if this file doesn't exist
     if forpolars:
         return Path(filename)
-    return Path(filename).open(mode=mode, encoding=encoding)
+    return Path(filename).open(mode=mode, encoding=encoding)  # noqa: SIM115
 
 
 def firstexisting(
