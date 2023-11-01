@@ -340,7 +340,7 @@ def plot_phi_hist(modelpath):
     plt.clf()
 
     heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)
-    heatmap = np.log10(heatmap)
+    # heatmap = np.log10(heatmap)
 
     fig = plt.figure(figsize=[5, 4])
     ax = fig.add_axes([0.15, 0.15, 0.75, 0.75], polar=True)
