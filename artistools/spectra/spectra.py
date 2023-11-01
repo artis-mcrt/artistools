@@ -264,7 +264,6 @@ def read_spec(modelpath: Path) -> pl.DataFrame:
         )
         .with_columns(pl.all().cast(pl.Float64))
         .rename({"0": "nu"})
-        .to_pandas()
     )
 
 
@@ -389,7 +388,7 @@ def get_spectrum(
         # spherically averaged spectra
         if stokesparam == "I":
             try:
-                specdata[-1] = read_spec(modelpath=modelpath)
+                specdata[-1] = read_spec(modelpath=modelpath).to_pandas(use_pyarrow_extension_array=True)
 
             except FileNotFoundError:
                 specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
