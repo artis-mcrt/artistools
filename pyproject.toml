@@ -168,7 +168,6 @@ ignore = [
     "E501", # Line too long
     "E741", # Ambiguous variable name
     "ERA001",  # commented-out-code
-    #"F841", # unused-variable. ignored because variables in df.eval() are not detected
     "FBT",
     "FIX002",  # line contains TODO
     "ISC001", # single-line-implicit-string-concatenation
@@ -187,8 +186,6 @@ ignore = [
     "PLR2004",  # magic-value-comparison
     "PLW2901",  # redefined-loop-name
     "PYI024",
-    "RUF007", # pairwise-over-zipped
-    "RUF100", # unused-noqa, Luke: false alarms in pre-commit
     "S101",  # Use of assert detected
     "S301",  # suspicious-pickle-usage
     "S307",  # suspicious-eval-usage
@@ -197,8 +194,6 @@ ignore = [
     "S607",  # start-process-with-partial-path
     "SLF001",  # private-member-access
     "T201",  # print found
-    "TCH001", # typing-only-first-party-import
-    "TCH002", # typing-only-third-party-import
     "TCH003",  # typing-only-standard-library-imports
     "TD002",  # missing-todo-author
     "TD003",  # missing-todo-link
@@ -208,7 +203,6 @@ unfixable = [
     "COM812",  # missing-trailing-comma
     "ERA001",  # commented-out-code (will just delete it!)
     "F841",  # unused-variable
-    "RUF100", # unused-noqa
     "SIM222", # expr-or-true
     "SIM223", # expr-and-false
 ]

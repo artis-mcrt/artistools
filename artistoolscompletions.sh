@@ -132,12 +132,6 @@ else
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
-    complete -o nospace -o default -o bashdefault -F _python_argcomplete makeartismodelfromlapuente
-else
-    compdef _python_argcomplete makeartismodelfromlapuente
-fi
-
-if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete makeartismodelscalevelocity
 else
     compdef _python_argcomplete makeartismodelscalevelocity

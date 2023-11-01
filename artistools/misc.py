@@ -49,7 +49,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         kwargs["max_help_position"] = 39
         super().__init__(*args, **kwargs)
 
-    def add_arguments(self, actions: t.Iterable[argparse.Action]) -> None:  # noqa: PLR6301
+    def add_arguments(self, actions: t.Iterable[argparse.Action]) -> None:
         getinvocation = super()._format_action_invocation
 
         def my_sort(action: argparse.Action) -> str:

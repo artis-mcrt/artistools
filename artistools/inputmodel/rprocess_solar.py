@@ -58,7 +58,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     normfactor = (  # noqa: F841
         dfsolarabund_undecayed.numberfrac.sum()
-    )  # convert number fractions in solar to fractions of r-process  # noqa: F841
+    )  # convert number fractions in solar to fractions of r-process
     dfsolarabund_undecayed = dfsolarabund_undecayed.eval("numberfrac = numberfrac / @normfactor")
 
     dfsolarabund_undecayed = dfsolarabund_undecayed.eval("massfrac = numberfrac * A")
