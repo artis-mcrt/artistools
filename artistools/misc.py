@@ -825,7 +825,7 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     individualmetafile = filepath.with_suffix(f"{filepath.suffix}.meta.yml")
     if individualmetafile.exists():
         with individualmetafile.open("r") as yamlfile:
-            metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
+            metadata = yaml.safe_load(yamlfile)
 
         return add_derived_metadata(metadata)
 
@@ -833,7 +833,7 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     combinedmetafile = Path(filepath.parent.resolve(), "metadata.yml")
     if combinedmetafile.exists():
         with combinedmetafile.open("r") as yamlfile:
-            combined_metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
+            combined_metadata = yaml.safe_load(yamlfile)
         metadata = combined_metadata.get(str(filepath), {})
 
         return add_derived_metadata(metadata)

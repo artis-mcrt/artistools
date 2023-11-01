@@ -6,7 +6,7 @@ import yaml
 
 def main() -> None:
     with Path("metadata.yml").open("r") as yamlfile:
-        metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
+        metadata = yaml.safe_load(yamlfile)
 
     for obsfile in metadata:
         metafilepath = Path(obsfile).with_suffix(f"{Path(obsfile).suffix}.meta.yml")
