@@ -35,20 +35,20 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -
 
 
 def get_exspec_bins() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    MNUBINS = 1000
-    NU_MIN_R = 1e13
-    NU_MAX_R = 5e16
+    mnubins = 1000
+    nu_min_r = 1e13
+    nu_max_r = 5e16
 
     print(
-        f" assuming {MNUBINS=} {NU_MIN_R=:.1e} {NU_MAX_R=:.1e}. Check artisoptions.h if you want to exactly match"
+        f" assuming {mnubins=} {nu_min_r=:.1e} {nu_max_r=:.1e}. Check artisoptions.h if you want to exactly match"
         " exspec binning."
     )
 
     c_ang_s = 2.99792458e18
 
-    dlognu = (math.log(NU_MAX_R) - math.log(NU_MIN_R)) / MNUBINS
+    dlognu = (math.log(nu_max_r) - math.log(nu_min_r)) / mnubins
 
-    bins_nu_lower = np.array([math.exp(math.log(NU_MIN_R) + (m * (dlognu))) for m in range(MNUBINS)])
+    bins_nu_lower = np.array([math.exp(math.log(nu_min_r) + (m * (dlognu))) for m in range(mnubins)])
     # bins_nu_upper = np.array(
     #     [math.exp(math.log(NU_MIN_R) + ((m + 1) * (dlognu))) for m in range(MNUBINS)])
     bins_nu_upper = bins_nu_lower * math.exp(dlognu)
@@ -65,6 +65,7 @@ def stackspectra(
     spectra_and_factors: list[tuple[np.ndarray[t.Any, np.dtype[np.float64]], float]]
 ) -> np.ndarray[t.Any, np.dtype[np.float64]]:
     """Add spectra using weighting factors, i.e., specout[nu] = spec1[nu] * factor1 + spec2[nu] * factor2 + ...
+
     spectra_and_factors should be a list of tuples: spectra[], factor.
     """
     factor_sum = sum(factor for _, factor in spectra_and_factors)
@@ -482,19 +483,16 @@ def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
 
 
 def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
-    filenames = []
-    for vspecfile in os.listdir(args.modelpath[0]):
-        if vspecfile.startswith("vspecpol_total-"):
-            filenames.append(vspecfile)
+    filenames = [vspecfile for vspecfile in os.listdir(args.modelpath[0]) if vspecfile.startswith("vspecpol_total-")]
 
-    def sorted_by_number(l: list) -> list:
+    def sorted_by_number(lst: list) -> list:
         def convert(text: str) -> int | str:
             return int(text) if text.isdigit() else text
 
         def alphanum_key(key: str) -> list[int | str]:
             return [convert(c) for c in re.split("([0-9]+)", key)]
 
-        return sorted(l, key=alphanum_key)
+        return sorted(lst, key=alphanum_key)
 
     filenames = sorted_by_number(filenames)
 
@@ -553,9 +551,7 @@ def get_vspecpol_data(
 
 
 def split_dataframe_stokesparams(specdata: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    """DataFrames read from specpol*.out and vspecpol*.out are repeated over I, Q, U
-    parameters. Split these into a dictionary of DataFrames.
-    """
+    """DataFrames read from specpol*.out and vspecpol*.out are repeated over I, Q, U parameters. Split these into a dictionary of DataFrames."""
     specdata = specdata.rename({"0": "nu", "0.0": "nu"}, axis="columns")
     cols_to_split = [i for i, key in enumerate(specdata.keys()) if specdata.keys()[1] in key]
     stokes_params = {

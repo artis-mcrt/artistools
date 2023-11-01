@@ -61,9 +61,7 @@ def rprocess_const_and_powerlaw():
 
     rate = energy_per_gram_cumulative / E_tot
 
-    nuclear_heating_power = []
-    for time in times:
-        nuclear_heating_power.append(integrand(time, t0, epsilon0, sigma, alpha, thermalisation_factor))
+    # nuclear_heating_power = [integrand(time, t0, epsilon0, sigma, alpha, thermalisation_factor) for time in times]
 
     # times_and_rate = {'times': times/DAY, 'rate': rate, 'nuclear_heating_power': nuclear_heating_power}
     times_and_rate = {"times": times / DAY, "rate": rate}

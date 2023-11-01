@@ -154,7 +154,7 @@ ignore = [
     "C901",  # complex-structure
     "COM812",  # missing-trailing-comma
     "CPY001", # missing-copyright-notice
-    "D100",  # undocumented-public-module
+    "D100",  # undocumented-public-module
     "D101",  # undocumented-public-class
     "D102",  # undocumented-public-method
     "D103",  # undocumented-public-function
@@ -164,19 +164,16 @@ ignore = [
     "D205",  # blank-line-after-summary
     "D213",  # multi-line-summary-second-line
     "D417",  # undocumented-param
-    "E203", # whitespace-before-punctuation
     "E501", # Line too long
-    "E741", # Ambiguous variable name
     "ERA001",  # commented-out-code
     "FBT",
     "FIX002",  # line contains TODO
     "ISC001", # single-line-implicit-string-concatenation
-    "N802",  # Function name should be lowercase
-    "N803",  # Argument name should be lowercase
+    "N802",  # Function name should be lowercase
+    "N803",  # Argument name should be lowercase
     "N806",  # non-lowercase-variable-in-function
     "N999",  # invalid-module-name
     "PD901",  # df is a bad variable name
-    "PERF401", # manual-list-comprehension
     "PERF203", # try-except-in-loop
     "PGH001",  # No builtin `eval()` allowed
     "PLR0911",  # too-many-return-statements

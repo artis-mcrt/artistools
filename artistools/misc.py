@@ -586,7 +586,6 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
 def get_elsymbolslist() -> list[str]:
     """Return a list of element symbols.
 
-
     Example:
     -------
     elsymbolslist()[26] = 'Fe'.
