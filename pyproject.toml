@@ -32,14 +32,6 @@ license = { file = "LICENSE.txt" }
 line-length = 120
 target-versions = ["py310", "py311", "py312"]
 
-[tool.isort]
-profile = "black"
-src_paths = ["artistools"]
-line_length = 120
-force_single_line = true
-case_sensitive = false
-sort_relative_in_force_sorted_sections = true
-
 [tool.mypy]
 check_untyped_defs = false
 disallow_any_explicit = false
