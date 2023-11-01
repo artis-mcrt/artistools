@@ -459,7 +459,8 @@ def add_abundancecontributions(
     active_inputcellcount = len(active_inputcellids)
 
     dfcontribs_particlegroups = dfcontribs.groupby("particleid")
-    particle_count = len(dfcontribs_particlegroups)
+    particleids = dfcontribs_particlegroups.groups
+    particle_count = len(particleids)
 
     print(
         f"{active_inputcellcount} of {len(dfmodel)} model cells have >={minparticlespercell} particles contributing "
@@ -473,11 +474,11 @@ def add_abundancecontributions(
 
     if at.get_config()["num_processes"] > 1:
         with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
-            list_traj_nuc_abund = pool.map(trajworker, dfcontribs_particlegroups.groups)
+            list_traj_nuc_abund = pool.map(trajworker, particleids)
             pool.close()
             pool.join()
     else:
-        list_traj_nuc_abund = [trajworker(particleid) for particleid in dfcontribs_particlegroups.groups]
+        list_traj_nuc_abund = [trajworker(particleid) for particleid in particleids]
 
     n_missing_particles = len([d for d in list_traj_nuc_abund if not d])
     print(f"  {n_missing_particles} particles are missing network abundance data")
@@ -486,7 +487,7 @@ def add_abundancecontributions(
 
     dict_traj_nuc_abund = {
         particleid: dftrajnucabund
-        for particleid, dftrajnucabund in zip(dfcontribs_particlegroups.groups, list_traj_nuc_abund)
+        for particleid, dftrajnucabund in zip(particleids, list_traj_nuc_abund)
         if dftrajnucabund
     }
     print(f"Reading trajectory abundances took {time.perf_counter() - timestart:.1f} seconds")
