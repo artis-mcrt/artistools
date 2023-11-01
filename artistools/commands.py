@@ -42,7 +42,6 @@ dictcommands: CommandType = {
         "makeartismodel1dslicefromcone": ("inputmodel.slice1dfromconein3dmodel", "main"),
         "makeartismodelbotyanski2017": ("inputmodel.botyanski2017", "main"),
         "makeartismodelfromshen2018": ("inputmodel.shen2018", "main"),
-        "makeartismodelfromlapuente": ("inputmodel.lapuente", "main"),
         "makeartismodelscalevelocity": ("inputmodel.scalevelocity", "main"),
         "makeartismodelfullymixed": ("inputmodel.fullymixed", "main"),
         "makeartismodelsolar_rprocess": ("inputmodel.rprocess_solar", "main"),
@@ -86,10 +85,6 @@ def get_commandlist() -> dict[str, tuple[str, str]]:
         ),
         "makeartismodelfromshen2018": (
             "artistools.inputmodel.shen2018",
-            "main",
-        ),
-        "makeartismodelfromlapuente": (
-            "artistools.inputmodel.lapuente",
             "main",
         ),
         "makeartismodelscalevelocity": (
