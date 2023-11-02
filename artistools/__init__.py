@@ -28,7 +28,7 @@ from artistools.__main__ import main
 from artistools.configuration import get_config
 from artistools.configuration import set_config
 from artistools.inputmodel import add_derived_cols_to_modeldata
-from artistools.inputmodel import get_cell_angle_polar
+from artistools.inputmodel import get_cell_angle
 from artistools.inputmodel import get_dfmodel_dimensions
 from artistools.inputmodel import get_mean_cell_properties_of_angle_bin
 from artistools.inputmodel import get_mgi_of_velocity_kms
