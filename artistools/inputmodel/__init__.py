@@ -12,7 +12,7 @@ from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
 from artistools.inputmodel.inputmodel_misc import dimension_reduce_3d_model
 from artistools.inputmodel.inputmodel_misc import get_3d_model_data_merged_model_and_abundances_minimal
 from artistools.inputmodel.inputmodel_misc import get_3d_modeldata_minimal
-from artistools.inputmodel.inputmodel_misc import get_cell_angle_polar
+from artistools.inputmodel.inputmodel_misc import get_cell_angle
 from artistools.inputmodel.inputmodel_misc import get_dfmodel_dimensions
 from artistools.inputmodel.inputmodel_misc import get_empty_3d_model
 from artistools.inputmodel.inputmodel_misc import get_initelemabundances
