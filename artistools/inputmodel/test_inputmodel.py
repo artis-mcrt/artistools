@@ -95,7 +95,7 @@ def test_makemodel_energyfiles() -> None:
 
 def test_maketardismodel() -> None:
     clear_modelfiles()
-    at.inputmodel.maketardismodelfromartis.main(argsraw=[], inputpath=modelpath, outputpath=outputpath)
+    at.inputmodel.to_tardis.main(argsraw=[], inputpath=modelpath, outputpath=outputpath)
 
 
 def test_make_empty_abundance_file() -> None:
