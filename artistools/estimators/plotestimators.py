@@ -10,7 +10,6 @@ import contextlib
 import math
 import sys
 import typing as t
-from collections.abc import Iterable
 from pathlib import Path
 
 import argcomplete
@@ -357,9 +356,11 @@ def plot_multi_ion_series(
         ylist = []
         for modelgridindex, timesteps in zip(mgilist, timestepslist):
             if seriestype == "populations":
-                # if (atomic_number, ion_stage) not in estim['populations']:
-                #     print(f'Note: population for {(atomic_number, ion_stage)} not in estimators for '
-                #           f'cell {modelgridindex} timesteps {timesteps}')
+                # if (atomic_number, ion_stage) not in estimators[timesteps[0], modelgridindex]["populations"]:
+                #     print(
+                #         f"Note: population for {(atomic_number, ion_stage)} not in estimators for "
+                #         f"cell {modelgridindex} timesteps {timesteps}"
+                #     )
 
                 try:
                     estimpop = at.estimators.get_averaged_estimators(
@@ -919,14 +920,16 @@ def plot_recombrates(modelpath, estimators, atomic_number, ion_stage_list, **plo
     plt.close()
 
 
-def plotlist_is_temperatures_only(plotlist) -> bool:
-    for item in plotlist:
-        if isinstance(item, str) and item != "TR":
+def plotlist_is_temperatures_only(plotlist: str | t.Sequence) -> bool:
+    if isinstance(plotlist, str):
+        if plotlist != "TR" and not plotlist.startswith("_"):
             return False
-        if isinstance(item, Iterable):
-            for x in item:
-                if isinstance(x, str) and x != "TR":
-                    return False
+
+    elif not isinstance(plotlist[0], str) or not plotlist[0].startswith("_"):
+        for item in plotlist:
+            if not plotlist_is_temperatures_only(item):
+                return False
+
     return True
 
 
