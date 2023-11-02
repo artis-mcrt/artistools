@@ -768,12 +768,10 @@ def get_viewinganglecolor_for_colorbar(
         plotkwargs["color"] = scaledmap.to_rgba(colorindex)
     if args.colorbarphi:
         phi_index = angle % nphibins
-        colorindex = phi_index
         assert nphibins == 10
         reorderphibins = {5: 9, 6: 8, 7: 7, 8: 6, 9: 5}
         print("Reordering phi bins")
-        if colorindex in reorderphibins:
-            colorindex = reorderphibins[colorindex]
+        colorindex = reorderphibins.get(colorindex, phi_index)
         plotkwargs["color"] = scaledmap.to_rgba(colorindex)
 
     return plotkwargs, colorindex
