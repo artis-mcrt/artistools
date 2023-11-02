@@ -4,6 +4,7 @@ from artistools.inputmodel import downscale3dgrid
 from artistools.inputmodel import energyinputfiles
 from artistools.inputmodel import from_alcar
 from artistools.inputmodel import makeartismodel
+from artistools.inputmodel import maptogrid
 from artistools.inputmodel import modelfromhydro
 from artistools.inputmodel import opacityinputfile
 from artistools.inputmodel import rprocess_from_trajectory

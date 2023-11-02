@@ -2,7 +2,6 @@
 # PYTHON_ARGCOMPLETE_OK
 
 import argparse
-import datetime
 import math
 import sys
 import typing as t
@@ -391,8 +390,6 @@ def makemodelfromgriddata(
             dfgridcontributions, Path(outputpath, "gridcontributions.txt")
         )
 
-    modelmeta["headercommentlines"].append(f"generated at (UTC): {datetime.datetime.now(tz=datetime.timezone.utc)}")
-
     if traj_root is not None:
         print(f'Writing to {Path(outputpath) / "abundances.txt"}...')
         at.inputmodel.save_initelemabundances(
@@ -454,7 +451,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     gridfolderpath = args.gridfolderpath
     if not Path(gridfolderpath, "grid.dat").is_file() or not Path(gridfolderpath, "gridcontributions.txt").is_file():
         print("grid.dat and gridcontributions.txt are required. Run artistools-maptogrid")
-        return
+        raise FileNotFoundError
         # at.inputmodel.maptogrid.main()
 
     outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputpath is None else Path(args.outputpath)
