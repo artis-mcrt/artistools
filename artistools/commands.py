@@ -38,7 +38,7 @@ dictcommands: CommandType = {
         "maptogrid": ("inputmodel.maptogrid", "main"),
         "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
         "makeartismodel": ("inputmodel.makeartismodel", "main"),
-        "artistools-make1dslicefrom3dmodel": ("inputmodel.1dslicefrom3d", "main"),
+        "make1dslicefrom3dmodel": ("inputmodel.1dslicefrom3d", "main"),
         "makeartismodel1dslicefromcone": ("inputmodel.slice1dfromconein3dmodel", "main"),
         "makeartismodelbotyanski2017": ("inputmodel.botyanski2017", "main"),
         "makeartismodelfromshen2018": ("inputmodel.shen2018", "main"),
@@ -58,116 +58,30 @@ def get_commandlist() -> dict[str, tuple[str, str]]:
     return {
         "at": ("artistools", "main"),
         "artistools": ("artistools", "main"),
-        "artistools-comparetogsinetwork": ("artistools.gsinetwork", "main"),
-        "artistools-modeldeposition": (
-            "artistools.deposition",
-            "main_analytical",
-        ),
-        "getartisspencerfano": (
-            "artistools.nonthermal.solvespencerfanocmd",
-            "main",
-        ),
-        "artistools-spencerfano": (
-            "artistools.nonthermal.solvespencerfanocmd",
-            "main",
-        ),
-        "listartistimesteps": ("artistools", "showtimesteptimes"),
-        "artistools-timesteptimes": ("artistools", "showtimesteptimes"),
-        "artistools-make1dslicefrom3dmodel": (
-            "artistools.inputmodel.1dslicefrom3d",
-            "main",
-        ),
         "makeartismodel1dslicefromcone": (
             "artistools.inputmodel.slice1dfromconein3dmodel",
             "main",
         ),
-        "makeartismodelbotyanski2017": (
-            "artistools.inputmodel.botyanski2017",
-            "main",
-        ),
-        "makeartismodelfromshen2018": (
-            "artistools.inputmodel.shen2018",
-            "main",
-        ),
-        "makeartismodelscalevelocity": (
-            "artistools.inputmodel.scalevelocity",
-            "main",
-        ),
-        "makeartismodelfullymixed": (
-            "artistools.inputmodel.fullymixed",
-            "main",
-        ),
-        "makeartismodelsolar_rprocess": (
-            "artistools.inputmodel.rprocess_solar",
-            "main",
-        ),
-        "makeartismodelfromsingletrajectory": (
-            "artistools.inputmodel.rprocess_from_trajectory",
-            "main",
-        ),
-        "makeartismodelfromparticlegridmap": (
-            "artistools.inputmodel.modelfromhydro",
-            "main",
-        ),
         "makeartismodel": ("artistools.inputmodel.makeartismodel", "main"),
-        "artistools-maptogrid": ("artistools.inputmodel.maptogrid", "main"),
         "plotartismodeldensity": ("artistools.inputmodel.plotdensity", "main"),
-        "artistools-plotdensity": (
-            "artistools.inputmodel.plotdensity",
-            "main",
-        ),
         "plotartismodeldeposition": ("artistools.deposition", "main"),
-        "artistools-deposition": ("artistools.deposition", "main"),
-        "artistools-describeinputmodel": (
-            "artistools.inputmodel.describeinputmodel",
-            "main",
-        ),
         "plotartisestimators": (
             "artistools.estimators.plotestimators",
-            "main",
-        ),
-        "artistools-estimators": ("artistools.estimators", "main"),
-        "artistools-exportmassfractions": (
-            "artistools.estimators.exportmassfractions",
             "main",
         ),
         "plotartislightcurve": (
             "artistools.lightcurve.plotlightcurve",
             "main",
         ),
-        "artistools-lightcurve": ("artistools.lightcurve", "main"),
         "plotartislinefluxes": ("artistools.linefluxes", "main"),
-        "artistools-linefluxes": ("artistools.linefluxes", "main"),
         "plotartismacroatom": ("artistools.macroatom", "main"),
-        "artistools-macroatom": ("artistools.macroatom", "main"),
         "plotartisnltepops": ("artistools.nltepops.plotnltepops", "main"),
-        "artistools-nltepops": ("artistools.nltepops", "main"),
         "plotartisnonthermal": ("artistools.nonthermal", "main"),
-        "artistools-nonthermal": ("artistools.nonthermal", "main"),
         "plotartisradfield": ("artistools.radfield", "main"),
-        "artistools-radfield": ("artistools.radfield", "main"),
         "plotartisspectrum": ("artistools.spectra.plotspectra", "main"),
-        "artistools-spectrum": ("artistools.spectra", "main"),
         "plotartistransitions": ("artistools.transitions", "main"),
-        "artistools-transitions": ("artistools.transitions", "main"),
         "plotartisinitialcomposition": (
             "artistools.initial_composition",
-            "main",
-        ),
-        "artistools-initialcomposition": (
-            "artistools.initial_composition",
-            "main",
-        ),
-        "artistools-writecodecomparisondata": (
-            "artistools.writecomparisondata",
-            "main",
-        ),
-        "artistools-setup_completions": (
-            "artistools.commands",
-            "setup_completions",
-        ),
-        "artistools-viewingangles": (
-            "artistools.viewing_angles_visualization",
             "main",
         ),
         "plotartisviewingangles": (
