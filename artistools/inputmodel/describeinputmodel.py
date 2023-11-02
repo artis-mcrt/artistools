@@ -166,9 +166,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         if species[-1].isdigit():
             # isotopic species
 
-            if 57 >= atomic_number <= 71:
+            if 57 <= atomic_number <= 71:
                 mass_lanthanides_isosum += species_mass_msun
-            elif 89 >= atomic_number <= 103:
+            elif 89 <= atomic_number <= 103:
                 mass_actinides_isosum += species_mass_msun
 
             elname = species.rstrip("0123456789")
