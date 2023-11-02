@@ -192,7 +192,8 @@ def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:
     # bashcompinit
     # source artistoolscompletions.sh
     path_repo = Path(__file__).absolute().parent.parent
-    with (path_repo / "artistoolscompletions.sh").open("w", encoding="utf-8") as f:
+    completionscriptpath = path_repo / "artistoolscompletions.sh"
+    with (completionscriptpath).open("w", encoding="utf-8") as f:
         f.write("#!/usr/bin/env zsh\n")
 
         proc = subprocess.run(
@@ -212,8 +213,9 @@ def setup_completions(*args: t.Any, **kwargs: t.Any) -> None:
             completecommand = strcommandregister.replace("__MY_COMMAND__", command)
             f.write(completecommand + "\n")
 
-    print("To enable completions, add this line to your .zshrc/.bashrc")
-    print("source artistoolscompletions.sh")
+    print("To enable completions, add these line to your .zshrc/.bashrc")
+    print(f'source "{completionscriptpath}"')
+    print("autoload -Uz compinit && compinit")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

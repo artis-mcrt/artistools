@@ -26,6 +26,7 @@ __python_argcomplete_run_inner() {
 
 _python_argcomplete() {
     local IFS=$'\013'
+    local script=""
     if [[ -n "${ZSH_VERSION-}" ]]; then
         local completions
         completions=($(IFS="$IFS" \
@@ -34,7 +35,7 @@ _python_argcomplete() {
             _ARGCOMPLETE=1 \
             _ARGCOMPLETE_SHELL="zsh" \
             _ARGCOMPLETE_SUPPRESS_SPACE=1 \
-            __python_argcomplete_run "${words[1]}") )
+            __python_argcomplete_run ${script:-${words[1]}}))
         _describe "${words[1]}" completions -o nosort
     else
         local SUPPRESS_SPACE=0
@@ -49,7 +50,7 @@ _python_argcomplete() {
             _ARGCOMPLETE=1 \
             _ARGCOMPLETE_SHELL="bash" \
             _ARGCOMPLETE_SUPPRESS_SPACE=$SUPPRESS_SPACE \
-            __python_argcomplete_run "$1"))
+            __python_argcomplete_run ${script:-$1}))
         if [[ $? != 0 ]]; then
             unset COMPREPLY
         elif [[ $SUPPRESS_SPACE == 1 ]] && [[ "${COMPREPLY-}" =~ [=/:]$ ]]; then
