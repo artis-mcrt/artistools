@@ -14,7 +14,6 @@ dictcommands: CommandType = {
     "getpath": ("", "get_path"),
     "listtimesteps": ("", "showtimesteptimes"),
     "makeartismodelfromparticlegridmap": ("inputmodel.modelfromhydro", "main"),
-    "maketardismodelfromartis": ("inputmodel.maketardismodelfromartis", "main"),
     "maptogrid": ("inputmodel.maptogrid", "main"),
     "plotestimators": ("estimators.plotestimators", "main"),
     "plotinitialcomposition": ("initial_composition", "main"),
@@ -47,6 +46,8 @@ dictcommands: CommandType = {
         "makeartismodelfullymixed": ("inputmodel.fullymixed", "main"),
         "makeartismodelsolar_rprocess": ("inputmodel.rprocess_solar", "main"),
         "makeartismodelfromsingletrajectory": ("inputmodel.rprocess_from_trajectory", "main"),
+        "from_alcar": ("inputmodel.from_alcar", "main"),
+        "to_tardis": ("inputmodel.to_tardis", "main"),
     },
 }
 
@@ -109,10 +110,6 @@ def get_commandlist() -> dict[str, tuple[str, str]]:
             "main",
         ),
         "makeartismodel": ("artistools.inputmodel.makeartismodel", "main"),
-        "artistools-maketardismodelfromartis": (
-            "artistools.inputmodel.maketardismodelfromartis",
-            "main",
-        ),
         "artistools-maptogrid": ("artistools.inputmodel.maptogrid", "main"),
         "plotartismodeldensity": ("artistools.inputmodel.plotdensity", "main"),
         "artistools-plotdensity": (

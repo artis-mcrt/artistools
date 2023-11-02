@@ -169,12 +169,6 @@ else
 fi
 
 if [[ -z "${ZSH_VERSION-}" ]]; then
-    complete -o nospace -o default -o bashdefault -F _python_argcomplete artistools-maketardismodelfromartis
-else
-    compdef _python_argcomplete artistools-maketardismodelfromartis
-fi
-
-if [[ -z "${ZSH_VERSION-}" ]]; then
     complete -o nospace -o default -o bashdefault -F _python_argcomplete artistools-maptogrid
 else
     compdef _python_argcomplete artistools-maptogrid
