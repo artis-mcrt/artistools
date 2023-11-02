@@ -84,9 +84,13 @@ def verify_file_checksums(
 
     for filename, checksum_expected in checksums_expected.items():
         fullpath = Path(folder) / filename
+        m = hashlib.new(digest)
         with Path(fullpath).open("rb") as f:
-            checksums_actual[fullpath] = str(hashlib.file_digest(f, digest).hexdigest())
-            print(f"{filename}: {checksums_actual[fullpath]} expected {checksum_expected}")
+            for chunk in f:
+                m.update(chunk)
+
+        checksums_actual[fullpath] = str(m.hexdigest())
+        print(f"{filename}: {checksums_actual[fullpath]} expected {checksum_expected}")
 
     for filename, checksum_expected in checksums_expected.items():
         fullpath = Path(folder) / filename
