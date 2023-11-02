@@ -215,6 +215,9 @@ show-fixes = true
 "numpy.typing" = "npt"
 "typing" = "t"
 
+[tool.ruff.flake8-tidy-imports]
+ban-relative-imports = "all"
+
 [tool.ruff.per-file-ignores]
 "__init__.py" = ["F401"]
 
