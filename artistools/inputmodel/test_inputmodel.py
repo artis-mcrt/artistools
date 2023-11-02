@@ -132,7 +132,7 @@ def test_makeartismodelfromparticlegridmap() -> None:
         {
             "abundances.txt": "864013e0d8a7bae1bc1194bea2fda34b7de2af95da3d1072917ab5bccddb68bc",
             "model.txt": "7a3eee92f9653eb478a01080d16b711773031bedd38a90ec167c7fda98c15ef9",
-            "gridcontributions.txt": "970568194bada3d111ed1cc0a8855aef9e838c59318af4299a86d5bb53cf1a46",
+            "gridcontributions.txt": "12f006c43c0c8d1f84c3927b3c80959c1b2cecc01598be92c2f24a130892bc60",
         },
         digest="sha256",
         folder=outpath_kn,
