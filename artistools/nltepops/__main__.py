@@ -1,4 +1,4 @@
-from . import plotnltepops
+from artistools.nltepops import plotnltepops
 
 
 def main() -> None:

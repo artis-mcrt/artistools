@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from . import plotspectra
+from artistools.spectra import plotspectra
 
 
 def main() -> None:

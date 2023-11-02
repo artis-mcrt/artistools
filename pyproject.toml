@@ -149,7 +149,7 @@ ignore = [
     "ARG001", # ignored because variables in df.eval() are not detected
     "ANN",
     "B005",  # strip-with-multi-characters
-    "B007",  # variable not used in loop body (but sometimes it is with eval)
+    "B007",  # variable not used in loop body (but sometimes it is with DataFrame.eval)
     "B905", # zip without explicit strict parameter
     "C901",  # complex-structure
     "COM812",  # missing-trailing-comma
@@ -182,7 +182,7 @@ ignore = [
     "PLR0915",  # too-many-statements
     "PLR2004",  # magic-value-comparison
     "PLW2901",  # redefined-loop-name
-    "PYI024",
+    "PYI024", # Use `typing.NamedTuple` instead of `collections.namedtuple`
     "S101",  # Use of assert detected
     "S301",  # suspicious-pickle-usage
     "S307",  # suspicious-eval-usage
@@ -191,7 +191,6 @@ ignore = [
     "S607",  # start-process-with-partial-path
     "SLF001",  # private-member-access
     "T201",  # print found
-    "TCH003",  # typing-only-standard-library-imports
     "TD002",  # missing-todo-author
     "TD003",  # missing-todo-link
 ]
