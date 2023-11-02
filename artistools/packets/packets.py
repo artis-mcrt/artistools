@@ -356,7 +356,11 @@ def readfile(
     escape_type: t.Literal["TYPE_RPKT", "TYPE_GAMMA"] | None = None,
 ) -> pd.DataFrame:
     """Read a packet file into a Pandas DataFrame."""
-    return readfile_pl(packetsfile, packet_type=packet_type, escape_type=escape_type).collect().to_pandas()
+    return (
+        readfile_pl(packetsfile, packet_type=packet_type, escape_type=escape_type)
+        .collect()
+        .to_pandas(use_pyarrow_extension_array=True)
+    )
 
 
 def convert_text_to_parquet(
@@ -714,7 +718,7 @@ def make_3d_histogram_from_packets(modelpath, timestep_min, timestep_max=None, e
     only_packets_0_scatters = False
     for packetsfile in packetsfiles:
         # for npacketfile in range(0, 1):
-        dfpackets = at.packets.readfile(packetsfile)
+        dfpackets = readfile(packetsfile)
         at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
         dfpackets = dfpackets.dropna(subset=["emission_velocity"])  # drop rows where emission_vel is NaN
 
@@ -811,7 +815,7 @@ def get_mean_packet_emission_velocity_per_ts(
     )
 
     for i, packetsfile in enumerate(packetsfiles):
-        dfpackets = at.packets.readfile(packetsfile, packet_type=packet_type, escape_type=escape_type)
+        dfpackets = readfile(packetsfile, packet_type=packet_type, escape_type=escape_type)
         at.packets.add_derived_columns(dfpackets, modelpath, ["emission_velocity"])
         if escape_angles is not None:
             dfpackets = at.packets.bin_packet_directions(modelpath, dfpackets)

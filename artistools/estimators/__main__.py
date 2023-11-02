@@ -1,4 +1,4 @@
-from . import plotestimators
+from artistools.estimators import plotestimators
 
 
 def main() -> None:

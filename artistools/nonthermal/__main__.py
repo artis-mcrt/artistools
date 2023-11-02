@@ -1,4 +1,4 @@
-from . import plotnonthermal
+from artistools.nonthermal import plotnonthermal
 
 
 def main() -> None:

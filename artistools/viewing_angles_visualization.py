@@ -52,7 +52,7 @@ def get_theta_phi(anglebin):
     return None, None
 
 
-def gen_viewing_angle_df(l):
+def gen_viewing_angle_df(length):
     # Build viewing angle vector DataFrame
     viewing_angles = {
         "Angle-bin": [],
@@ -65,9 +65,9 @@ def gen_viewing_angle_df(l):
         theta, phi = get_theta_phi(i)
         assert theta is not None
         assert phi is not None
-        x_c = l * np.sin(theta) * np.cos(phi)
-        y_c = l * np.sin(theta) * np.sin(phi)
-        z_c = l * np.cos(theta)
+        x_c = length * np.sin(theta) * np.cos(phi)
+        y_c = length * np.sin(theta) * np.sin(phi)
+        z_c = length * np.cos(theta)
 
         # 0 point
         viewing_angles["Angle-bin"].append("%02d" % i)
@@ -144,8 +144,8 @@ def viewing_angles_visualisation(
         isomax = max(rho.flatten())
 
     # Generate viewing angle vectory
-    l = max(x.flatten()) * linelength
-    va = gen_viewing_angle_df(l)
+    length = max(x.flatten()) * linelength
+    va = gen_viewing_angle_df(length)
 
     # Create plot
     fig = px.line_3d(

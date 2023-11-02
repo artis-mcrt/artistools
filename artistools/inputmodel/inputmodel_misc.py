@@ -407,7 +407,8 @@ def get_modeldata_polars(
 
 
 def get_modeldata_tuple(*args: t.Any, **kwargs: t.Any) -> tuple[pd.DataFrame, float, float]:
-    """Get model from model.txt file
+    """Get model from model.txt file.
+
     DEPRECATED: Use get_modeldata() instead.
     """
     dfmodel, modelmeta = get_modeldata(*args, **kwargs)
@@ -744,6 +745,7 @@ def get_mean_cell_properties_of_angle_bin(
 
 def get_3d_model_data_merged_model_and_abundances_minimal(args: argparse.Namespace) -> pd.DataFrame:
     """Get 3D data without generating all the extra columns in standard routine.
+
     Needed for large (eg. 200^3) models.
     """
     model = get_3d_modeldata_minimal(args.modelpath[0])
@@ -769,6 +771,7 @@ def get_3d_model_data_merged_model_and_abundances_minimal(args: argparse.Namespa
 
 def get_3d_modeldata_minimal(modelpath: str | Path) -> pd.DataFrame:
     """Read 3D model without generating all the extra columns in standard routine.
+
     Needed for large (eg. 200^3) models.
     """
     model = pd.read_csv(Path(modelpath, "model.txt"), delim_whitespace=True, header=None, skiprows=3, dtype=np.float64)
@@ -983,6 +986,7 @@ def save_modeldata(
 
 def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: t.Sequence[int] | None = None) -> int | float:
     """Return the modelgridindex of the cell whose outer velocity is closest to velocity.
+
     If mgilist is given, then chose from these cells only.
     """
     modeldata, _, _ = get_modeldata_tuple(modelpath)
@@ -1068,6 +1072,7 @@ def save_initelemabundances(
     headercommentlines: t.Sequence[str] | None = None,
 ) -> None:
     """Save a DataFrame (same format as get_initelemabundances) to abundances.txt.
+
     columns must be:
         - inputcellid: integer index to match model.txt (starting from 1)
         - X_i: mass fraction of element with two-letter code 'i' (e.g., X_H, X_He, H_Li, ...).

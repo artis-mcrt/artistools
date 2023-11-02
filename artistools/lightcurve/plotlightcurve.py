@@ -768,12 +768,10 @@ def get_viewinganglecolor_for_colorbar(
         plotkwargs["color"] = scaledmap.to_rgba(colorindex)
     if args.colorbarphi:
         phi_index = angle % nphibins
-        colorindex = phi_index
         assert nphibins == 10
         reorderphibins = {5: 9, 6: 8, 7: 7, 8: 6, 9: 5}
         print("Reordering phi bins")
-        if colorindex in reorderphibins:
-            colorindex = reorderphibins[colorindex]
+        colorindex = reorderphibins.get(colorindex, phi_index)
         plotkwargs["color"] = scaledmap.to_rgba(colorindex)
 
     return plotkwargs, colorindex
@@ -1221,8 +1219,8 @@ def plot_color_evolution_from_data(
 
     filter_data = []
     for i, filter_name in enumerate(filter_names):
-        f = filterdir / Path(f"{filter_name}.txt").open()
-        lines = f.readlines()
+        with (filterdir / Path(f"{filter_name}.txt")).open() as f:
+            lines = f.readlines()
         lambda0 = float(lines[2])
 
         if filter_name in filternames_conversion_dict:

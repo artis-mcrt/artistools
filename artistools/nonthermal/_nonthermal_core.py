@@ -1018,10 +1018,10 @@ def get_Latom_axelrod(Zboundbar, en_ev):
     # vel = math.sqrt(2. * en_erg / ME)
     # beta = vel / CLIGHT
 
-    # I = ionpot_ev * EV
-    I = 280 * EV  # assumed in Axelrod thesis
+    # ionpot = ionpot_ev * EV
+    ionpot = 280 * EV  # assumed in Axelrod thesis
 
-    if 2 * ME * vel**2 < I:
+    if 2 * ME * vel**2 < ionpot:
         return 0.0
 
     # if beta > 1.:
@@ -1034,7 +1034,7 @@ def get_Latom_axelrod(Zboundbar, en_ev):
         * QE**4
         / (ME * vel**2)
         * Zboundbar
-        * (math.log(2 * ME * vel**2 / I) + math.log(1.0 / (1.0 - beta**2)) - beta**2)
+        * (math.log(2 * ME * vel**2 / ionpot) + math.log(1.0 / (1.0 - beta**2)) - beta**2)
     )
 
 

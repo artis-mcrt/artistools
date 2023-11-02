@@ -35,20 +35,20 @@ def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -
 
 
 def get_exspec_bins() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    MNUBINS = 1000
-    NU_MIN_R = 1e13
-    NU_MAX_R = 5e16
+    mnubins = 1000
+    nu_min_r = 1e13
+    nu_max_r = 5e16
 
     print(
-        f" assuming {MNUBINS=} {NU_MIN_R=:.1e} {NU_MAX_R=:.1e}. Check artisoptions.h if you want to exactly match"
+        f" assuming {mnubins=} {nu_min_r=:.1e} {nu_max_r=:.1e}. Check artisoptions.h if you want to exactly match"
         " exspec binning."
     )
 
     c_ang_s = 2.99792458e18
 
-    dlognu = (math.log(NU_MAX_R) - math.log(NU_MIN_R)) / MNUBINS
+    dlognu = (math.log(nu_max_r) - math.log(nu_min_r)) / mnubins
 
-    bins_nu_lower = np.array([math.exp(math.log(NU_MIN_R) + (m * (dlognu))) for m in range(MNUBINS)])
+    bins_nu_lower = np.array([math.exp(math.log(nu_min_r) + (m * (dlognu))) for m in range(mnubins)])
     # bins_nu_upper = np.array(
     #     [math.exp(math.log(NU_MIN_R) + ((m + 1) * (dlognu))) for m in range(MNUBINS)])
     bins_nu_upper = bins_nu_lower * math.exp(dlognu)
@@ -65,6 +65,7 @@ def stackspectra(
     spectra_and_factors: list[tuple[np.ndarray[t.Any, np.dtype[np.float64]], float]]
 ) -> np.ndarray[t.Any, np.dtype[np.float64]]:
     """Add spectra using weighting factors, i.e., specout[nu] = spec1[nu] * factor1 + spec2[nu] * factor2 + ...
+
     spectra_and_factors should be a list of tuples: spectra[], factor.
     """
     factor_sum = sum(factor for _, factor in spectra_and_factors)
@@ -251,6 +252,23 @@ def get_from_packets(
 
 
 @lru_cache(maxsize=16)
+def read_spec(modelpath: Path) -> pl.DataFrame:
+    specfilename = at.firstexisting("spec.out", folder=modelpath, tryzipped=True)
+    print(f"Reading {specfilename}")
+
+    return (
+        pl.read_csv(
+            at.zopen(specfilename, forpolars=True),
+            separator=" ",
+            infer_schema_length=0,
+            truncate_ragged_lines=True,
+        )
+        .with_columns(pl.all().cast(pl.Float64))
+        .rename({"0": "nu"})
+    )
+
+
+@lru_cache(maxsize=16)
 def read_spec_res(modelpath: Path) -> dict[int, pl.DataFrame]:
     """Return a dataframe of time-series spectra for every viewing direction."""
     specfilename = (
@@ -354,32 +372,6 @@ def get_spectrum(
     # keys are direction bins (or -1 for spherical average)
     specdata: dict[int, pl.DataFrame] = {}
 
-    if -1 in directionbins:
-        # spherically averaged spectra
-        if stokesparam == "I":
-            try:
-                specfilename = at.firstexisting("spec.out", folder=modelpath, tryzipped=True)
-
-                print(f"Reading {specfilename}")
-
-                specdata[-1] = (
-                    pl.read_csv(
-                        at.zopen(specfilename, forpolars=True),
-                        separator=" ",
-                        infer_schema_length=0,
-                        truncate_ragged_lines=True,
-                    )
-                    .with_columns(pl.all().cast(pl.Float64))
-                    .rename({"0": "nu"})
-                    .to_pandas()
-                )
-
-            except FileNotFoundError:
-                specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
-
-        else:
-            specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
-
     if any(dirbin != -1 for dirbin in directionbins):
         assert stokesparam == "I"
         try:
@@ -392,6 +384,18 @@ def get_spectrum(
             msg = "WARNING: Direction-resolved spectra not found. Getting only spherically averaged spectra instead."
             print(msg)
             directionbins = [-1]
+
+    if -1 in directionbins:
+        # spherically averaged spectra
+        if stokesparam == "I":
+            try:
+                specdata[-1] = read_spec(modelpath=modelpath).to_pandas(use_pyarrow_extension_array=True)
+
+            except FileNotFoundError:
+                specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
+
+        else:
+            specdata[-1] = get_specpol_data(angle=-1, modelpath=modelpath)[stokesparam]
 
     specdataout: dict[int, pd.DataFrame] = {}
     for dirbin in directionbins:
@@ -479,19 +483,16 @@ def make_virtual_spectra_summed_file(modelpath: Path) -> Path:
 
 
 def make_averaged_vspecfiles(args: argparse.Namespace) -> None:
-    filenames = []
-    for vspecfile in os.listdir(args.modelpath[0]):
-        if vspecfile.startswith("vspecpol_total-"):
-            filenames.append(vspecfile)
+    filenames = [vspecfile for vspecfile in os.listdir(args.modelpath[0]) if vspecfile.startswith("vspecpol_total-")]
 
-    def sorted_by_number(l: list) -> list:
+    def sorted_by_number(lst: list) -> list:
         def convert(text: str) -> int | str:
             return int(text) if text.isdigit() else text
 
         def alphanum_key(key: str) -> list[int | str]:
             return [convert(c) for c in re.split("([0-9]+)", key)]
 
-        return sorted(l, key=alphanum_key)
+        return sorted(lst, key=alphanum_key)
 
     filenames = sorted_by_number(filenames)
 
@@ -550,9 +551,7 @@ def get_vspecpol_data(
 
 
 def split_dataframe_stokesparams(specdata: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    """DataFrames read from specpol*.out and vspecpol*.out are repeated over I, Q, U
-    parameters. Split these into a dictionary of DataFrames.
-    """
+    """DataFrames read from specpol*.out and vspecpol*.out are repeated over I, Q, U parameters. Split these into a dictionary of DataFrames."""
     specdata = specdata.rename({"0": "nu", "0.0": "nu"}, axis="columns")
     cols_to_split = [i for i, key in enumerate(specdata.keys()) if specdata.keys()[1] in key]
     stokes_params = {
@@ -1251,57 +1250,3 @@ def get_reference_spectrum(filename: Path | str) -> tuple[pd.DataFrame, dict[t.A
         specdata["lambda_angstroms"] /= 1 + metadata["z"]
 
     return specdata, metadata
-
-
-def write_flambda_spectra(modelpath: Path, args: argparse.Namespace) -> None:
-    """Write out spectra to text files.
-
-    Writes lambda_angstroms and f_lambda to .txt files for all timesteps and create
-    a text file containing the time in days for each timestep.
-    """
-    outdirectory = Path(modelpath, "spectra")
-
-    outdirectory.mkdir(parents=True, exist_ok=True)
-
-    if Path(modelpath, "specpol.out").is_file():
-        specfilename = modelpath / "specpol.out"
-        specdata = pd.read_csv(specfilename, delim_whitespace=True)
-        timearray = [i for i in specdata.columns.to_numpy()[1:] if i[-2] != "."]
-    else:
-        specfilename = at.firstexisting("spec.out", folder=modelpath, tryzipped=True)
-        specdata = pd.read_csv(specfilename, delim_whitespace=True)
-        timearray = specdata.columns.to_numpy()[1:]
-
-    number_of_timesteps = len(timearray)
-
-    if not args.timestep:
-        args.timestep = f"0-{number_of_timesteps - 1}"
-
-    (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
-        modelpath, args.timestep, args.timemin, args.timemax, args.timedays
-    )
-
-    with (outdirectory / "spectra_list.txt").open("w+") as spectra_list:
-        arr_tmid = at.get_timestep_times(modelpath, loc="mid")
-
-        for timestep in range(timestepmin, timestepmax + 1):
-            dfspectrum = get_spectrum(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep)[-1]
-            tmid = arr_tmid[timestep]
-
-            outfilepath = outdirectory / f"spectrum_ts{timestep:02.0f}_{tmid:.2f}d.txt"
-
-            with outfilepath.open("w") as spec_file:
-                spec_file.write("#lambda f_lambda_1Mpc\n")
-                spec_file.write("#[A] [erg/s/cm2/A]\n")
-
-                dfspectrum.to_csv(
-                    spec_file, header=False, sep=" ", index=False, columns=["lambda_angstroms", "f_lambda"]
-                )
-
-            spectra_list.write(str(outfilepath.absolute()) + "\n")
-
-    with (outdirectory / "time_list.txt").open("w+") as time_list:
-        for time in arr_tmid:
-            time_list.write(f"{time} \n")
-
-    print(f"Saved in {outdirectory}")

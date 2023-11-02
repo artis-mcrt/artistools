@@ -117,7 +117,7 @@ def get_line_fluxes_from_packets(
 
     dictlcdata = {"time": arr_tmid}
 
-    linelistindices_allfeatures = tuple(l for feature in emfeatures for l in feature.linelistindices)
+    linelistindices_allfeatures = tuple(lineindex for feature in emfeatures for lineindex in feature.linelistindices)
 
     dfpackets, nprocs_read = get_packets_with_emtype(
         modelpath, emtypecolumn, linelistindices_allfeatures, maxpacketfiles=maxpacketfiles
@@ -629,7 +629,9 @@ def make_emitting_regions_plot(args):
 
             emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
-            linelistindices_allfeatures = tuple(l for feature in emfeatures for l in feature.linelistindices)
+            linelistindices_allfeatures = tuple(
+                lineindex for feature in emfeatures for lineindex in feature.linelistindices
+            )
 
             for tmid, tstart, tend in zip(times_days, args.timebins_tstart, args.timebins_tend):
                 dfpackets = get_packets_with_emission_conditions(

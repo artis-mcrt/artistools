@@ -143,3 +143,7 @@ def test_spectra_timeseries_subplots() -> None:
     at.spectra.plot(
         argsraw=[], specpath=modelpath, outputfile=outputpath, timedayslist=timedayslist, multispecplot=True
     )
+
+
+def test_writespectra() -> None:
+    at.spectra.writespectra.main(argsraw=[], modelpath=modelpath)

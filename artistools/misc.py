@@ -49,7 +49,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         kwargs["max_help_position"] = 39
         super().__init__(*args, **kwargs)
 
-    def add_arguments(self, actions: t.Iterable[argparse.Action]) -> None:  # noqa: PLR6301
+    def add_arguments(self, actions: t.Iterable[argparse.Action]) -> None:
         getinvocation = super()._format_action_invocation
 
         def my_sort(action: argparse.Action) -> str:
@@ -163,9 +163,9 @@ def split_dataframe_dirbins(
     prev_dfshape = None
     for i, index_value in enumerate(indexes_to_split):
         chunk = (
-            res_df[indexes_to_split[i] : indexes_to_split[i + 1], :]
+            res_df[index_value : indexes_to_split[i + 1], :]
             if index_value != indexes_to_split[-1]
-            else res_df[indexes_to_split[i] :, :]
+            else res_df[index_value:, :]
         )
 
         # the number of timesteps should match for all direction bins
@@ -307,11 +307,12 @@ def get_wid_init_at_tmodel(
 
 def get_syn_dir(modelpath: Path) -> tuple[float, float, float]:
     """Return the direction from which theta angle is measured."""
-    if not (modelpath / "syn_dir.txt").is_file():
+    syndirpath = Path(modelpath) / "syn_dir.txt"
+    if not syndirpath.is_file():
         print(f"{modelpath / 'syn_dir.txt'} does not exist. using x,y,z = 0,0,1")
         return (0.0, 0.0, 1.0)
 
-    with (modelpath / "syn_dir.txt").open() as syn_dir_file:
+    with syndirpath.open() as syn_dir_file:
         x, y, z = (float(i) for i in syn_dir_file.readline().split())
         return (x, y, z)
 
@@ -420,7 +421,7 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
     arr_tend[:-1] = arr_tstart[1:]
 
     for ts, (tstart, tend) in enumerate(zip(arr_tstart, arr_tend)):
-        if timedays_float >= tstart and timedays_float < tend:
+        if tstart <= timedays_float < tend:
             return ts
 
     msg = f"Could not find timestep bracketing time {timedays_float}"
@@ -586,7 +587,6 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
 def get_elsymbolslist() -> list[str]:
     """Return a list of element symbols.
 
-
     Example:
     -------
     elsymbolslist()[26] = 'Fe'.
@@ -737,7 +737,7 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, f
     # open() can raise file not found if this file doesn't exist
     if forpolars:
         return Path(filename)
-    return Path(filename).open(mode=mode, encoding=encoding)
+    return Path(filename).open(mode=mode, encoding=encoding)  # noqa: SIM115
 
 
 def firstexisting(
@@ -825,7 +825,7 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     individualmetafile = filepath.with_suffix(f"{filepath.suffix}.meta.yml")
     if individualmetafile.exists():
         with individualmetafile.open("r") as yamlfile:
-            metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
+            metadata = yaml.safe_load(yamlfile)
 
         return add_derived_metadata(metadata)
 
@@ -833,7 +833,7 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     combinedmetafile = Path(filepath.parent.resolve(), "metadata.yml")
     if combinedmetafile.exists():
         with combinedmetafile.open("r") as yamlfile:
-            combined_metadata = yaml.load(yamlfile, Loader=yaml.FullLoader)
+            combined_metadata = yaml.safe_load(yamlfile)
         metadata = combined_metadata.get(str(filepath), {})
 
         return add_derived_metadata(metadata)

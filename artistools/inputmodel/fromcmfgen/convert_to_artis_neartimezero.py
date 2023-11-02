@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .rd_cmfgen import rd_sn_hydro_data
+from artistools.inputmodel.fromcmfgen.rd_cmfgen import rd_sn_hydro_data
 
 msun = 1.989e33
 

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import ticker
 
-from .configuration import get_config
+from artistools.configuration import get_config
 
 
 def set_mpl_style() -> None:
