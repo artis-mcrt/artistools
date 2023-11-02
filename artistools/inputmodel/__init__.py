@@ -2,12 +2,13 @@ from artistools.inputmodel import botyanski2017
 from artistools.inputmodel import describeinputmodel
 from artistools.inputmodel import downscale3dgrid
 from artistools.inputmodel import energyinputfiles
+from artistools.inputmodel import from_alcar
 from artistools.inputmodel import makeartismodel
-from artistools.inputmodel import maketardismodelfromartis
 from artistools.inputmodel import modelfromhydro
 from artistools.inputmodel import opacityinputfile
 from artistools.inputmodel import rprocess_from_trajectory
 from artistools.inputmodel import slice1dfromconein3dmodel
+from artistools.inputmodel import to_tardis
 from artistools.inputmodel.inputmodel_misc import add_derived_cols_to_modeldata
 from artistools.inputmodel.inputmodel_misc import dimension_reduce_3d_model
 from artistools.inputmodel.inputmodel_misc import get_3d_model_data_merged_model_and_abundances_minimal
