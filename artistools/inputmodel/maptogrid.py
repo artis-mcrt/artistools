@@ -89,10 +89,14 @@ def maptogrid(
 ) -> None:
     if not ejectasnapshotpath.is_file():
         print(f"{ejectasnapshotpath} not found")
-        return
+        raise FileNotFoundError
+
+    outputfolderpath = Path(outputfolderpath)
+    if not outputfolderpath.exists():
+        outputfolderpath.mkdir(parents=True)
 
     # save the printed output to a log file
-    logfilepath = Path("maptogridlog.txt")
+    logfilepath = outputfolderpath / "maptogridlog.txt"
     logfilepath.unlink(missing_ok=True)
 
     def logprint(*args, **kwargs):
@@ -221,7 +225,7 @@ def maptogrid(
 
             fpartanalysis.write(f"{dis} {h[n]} {h[n] / dis} {vrad} {vperp} {vtot}\n")
 
-    logprint("saved ejectapartanalysis.dat")
+    logprint(f"saved {outputfolderpath / 'ejectapartanalysis.dat'}")
     rmean = rmean / npart
 
     hmean = hmean / npart
@@ -355,7 +359,7 @@ def maptogrid(
             for (n, i, j, k), rho_contrib in particle_rho_contribs.items():
                 gridindex = (k * ncoordgrid + j) * ncoordgrid + i + 1
                 fcontribs.write(f"{particleid[n]} {gridindex} {rho_contrib / grho[i, j, k]}\n")
-        logprint("saved gridcontributions.txt")
+        logprint(f"saved {outputfolderpath/'gridcontributions.txt'}")
 
     # check some stuff on the grid
 
@@ -417,7 +421,7 @@ def maptogrid(
 
                     gridindex = gridindex + 1
 
-    logprint("saved grid.dat")
+    logprint(f"saved {outputfolderpath / 'grid.dat'}")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -431,7 +435,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=1,
         help="Randomly sample particles, reducing the number by this factor (e.g. 2 will ignore half of the particles)",
     )
-    parser.add_argument("-outputfolderpath", "-o", default=".", help="Path for output files")
+    parser.add_argument("-outputpath", "-o", default=".", help="Path for output files")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
@@ -452,7 +456,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     maptogrid(
         ejectasnapshotpath=ejectasnapshotpath,
         ncoordgrid=args.ncoordgrid,
-        outputfolderpath=args.outputfolderpath,
+        outputfolderpath=args.outputpath,
         downsamplefactor=args.downsamplefactor,
     )
 

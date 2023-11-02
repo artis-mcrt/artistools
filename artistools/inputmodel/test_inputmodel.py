@@ -1,3 +1,7 @@
+import hashlib
+import shutil
+from pathlib import Path
+
 import numpy as np
 import polars as pl
 
@@ -6,6 +10,7 @@ import artistools as at
 modelpath = at.get_config()["path_testartismodel"]
 modelpath_3d = at.get_config()["path_testartismodel"].parent / "testmodel_3d_10^3"
 outputpath = at.get_config()["path_testoutput"]
+testdatapath = at.get_config()["path_testdata"]
 
 
 def clear_modelfiles() -> None:
@@ -72,6 +77,68 @@ def test_get_modeldata_tuple() -> None:
     assert np.isclose(vmax_cmps, 800000000.0, rtol=0.0001)
 
 
+def verify_file_checksums(
+    checksums_expected: dict[Path | str, str], digest: str = "sha256", folder: Path | str = Path()
+) -> None:
+    checksums_actual = {}
+
+    for filename, checksum_expected in checksums_expected.items():
+        fullpath = Path(folder) / filename
+        m = hashlib.new(digest)
+        with Path(fullpath).open("rb") as f:
+            for chunk in f:
+                m.update(chunk)
+
+        checksums_actual[fullpath] = str(m.hexdigest())
+        print(f"{filename}: {checksums_actual[fullpath]} expected {checksum_expected}")
+
+    for filename, checksum_expected in checksums_expected.items():
+        fullpath = Path(folder) / filename
+        assert (
+            checksums_actual[fullpath] == checksum_expected
+        ), f"{filename} checksum mismatch. Should be {checksum_expected} but found {checksums_actual[fullpath]}"
+
+
+def test_maptogrid() -> None:
+    outpath_kn = outputpath / "kilonova"
+    shutil.copytree(
+        testdatapath / "kilonova", outpath_kn, dirs_exist_ok=True, ignore=shutil.ignore_patterns("trajectories")
+    )
+    at.inputmodel.maptogrid.main(argsraw=[], inputpath=outpath_kn, outputpath=outpath_kn, ncoordgrid=16)
+
+    verify_file_checksums(
+        {
+            "ejectapartanalysis.dat": "7c439d76553da876343382ea35592fb7823f4a07f3b325125235135af1c259e4",
+            "grid.dat": "9d49f761801c96b05c380e82b8658b5e3cefd02a6ad78b73930ec3bb80efb5c2",
+            "gridcontributions.txt": "6524c0a838d97805fe5d7ff11e84af41c2b770ec2da9907179b4aab9e74b4d8d",
+        },
+        digest="sha256",
+        folder=outpath_kn,
+    )
+
+
+def test_makeartismodelfromparticlegridmap() -> None:
+    outpath_kn = outputpath / "kilonova"
+    at.inputmodel.modelfromhydro.main(
+        argsraw=[],
+        gridfolderpath=outpath_kn,
+        trajectoryroot=testdatapath / "kilonova" / "trajectories",
+        outputpath=outpath_kn,
+        dimensions=3,
+        targetmodeltime_days=0.1,
+    )
+
+    verify_file_checksums(
+        {
+            "abundances.txt": "5be8d583f6e63133d86567a24ff0248f84dec0211cf577317af1580b764ff354",
+            "model.txt": "47c9df4aa2af0fa94b29b7f4a7a9035823779674f2a469fecd41b29b7c43db25",
+            "gridcontributions.txt": "99aa9bfb30ab881b1c90860a823865b51c2e9e72846bc53b7dcff8e4ac7af580",
+        },
+        digest="sha256",
+        folder=outpath_kn,
+    )
+
+
 def test_make1dmodelfromcone() -> None:
     at.inputmodel.slice1dfromconein3dmodel.main(argsraw=[], modelpath=[modelpath_3d], outputpath=outputpath)
 
@@ -116,10 +183,10 @@ def test_save_load_3d_model() -> None:
     clear_modelfiles()
     dfmodel_pl, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)
     dfmodel = dfmodel_pl.collect().to_pandas(use_pyarrow_extension_array=True)
-    dfmodel.iloc[75000]["rho"] = 1
-    dfmodel.iloc[75001]["rho"] = 2
-    dfmodel.iloc[95200]["rho"] = 3
-    dfmodel.iloc[75001]["X_Ni56"] = 0.5
+    dfmodel.loc[75000, ["rho"]] = 1
+    dfmodel.loc[75001, ["rho"]] = 2
+    dfmodel.loc[95200, ["rho"]] = 3
+    dfmodel.loc[75001, ["rho"]] = 0.5
     at.inputmodel.save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
     dfmodel2, modelmeta2 = at.inputmodel.get_modeldata(modelpath=outputpath)
     assert dfmodel.equals(dfmodel2)

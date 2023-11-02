@@ -19,12 +19,11 @@ pre-commit install
 
 ## Usage
 Type "artistools" at the command-line to get a full list of commands. The most frequently used commands are:
-- plotartisestimators
-- plotartislightcurve
-- plotartisnltepops
-- plotartisnonthermal
-- plotartisradfield
-- plotartisspectrum
+- artistools plotspectra
+- artistools plotlightcurve
+- artistools plotestimators
+- artistools plotnltepops
+- artistools describeinputmodel
 
 Use the -h option to get a list of command-line arguments for each command. Most of these commands would usually be run from within an ARTIS simulation folder.
 

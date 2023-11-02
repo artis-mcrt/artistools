@@ -1,0 +1,3 @@
+# time of merger in geom units
+3835
+

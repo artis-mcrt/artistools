@@ -142,7 +142,7 @@ def get_closest_network_timestep(
 
     if cond == "nearest":
         idx = np.abs(dfevol.timesec.to_numpy() - timesec).argmin()
-        return dfevol["nstep"].to_numpy()[idx]
+        return int(dfevol["nstep"].to_numpy()[idx])
 
     if cond == "greaterthan":
         return dfevol[dfevol["timesec"] > timesec]["nstep"].min()
@@ -296,7 +296,7 @@ def get_trajectory_abund_q(
 
 
 def get_modelcellabundance(
-    dict_traj_nuc_abund: dict[int, pd.DataFrame], minparticlespercell: int, cellgroup: tuple[int, pd.DataFrame]
+    dict_traj_nuc_abund: dict[int, dict[str, float]], minparticlespercell: int, cellgroup: tuple[int, pd.DataFrame]
 ) -> dict[str, float] | None:
     cellindex: int
     dfthiscellcontribs: pd.DataFrame
@@ -495,6 +495,7 @@ def add_abundancecontributions(
     print("Generating cell abundances...")
     timestart = time.perf_counter()
     dfcontribs_cellgroups = dfcontribs.groupby("cellindex")
+
     cellabundworker = partial(get_modelcellabundance, dict_traj_nuc_abund, minparticlespercell)
 
     if at.get_config()["num_processes"] > 1:
