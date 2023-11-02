@@ -108,9 +108,9 @@ def test_maptogrid() -> None:
 
     verify_file_checksums(
         {
-            "ejectapartanalysis.dat": "7c439d76553da876343382ea35592fb7823f4a07f3b325125235135af1c259e4",
-            "grid.dat": "9d49f761801c96b05c380e82b8658b5e3cefd02a6ad78b73930ec3bb80efb5c2",
-            "gridcontributions.txt": "6524c0a838d97805fe5d7ff11e84af41c2b770ec2da9907179b4aab9e74b4d8d",
+            "ejectapartanalysis.dat": "e8694a679515c54c2b4867122122263a375d9ffa144a77310873ea053bb5a8b4",
+            "grid.dat": "ea930d0decca79d2e65ac1df1aaaa1eb427fdf45af965a623ed38240dce89954",
+            "gridcontributions.txt": "a2c09b96d32608db2376f9df61980c2ad1423066b579fbbe744f07e536f2891e",
         },
         digest="sha256",
         folder=outpath_kn,
@@ -130,9 +130,9 @@ def test_makeartismodelfromparticlegridmap() -> None:
 
     verify_file_checksums(
         {
-            "abundances.txt": "5be8d583f6e63133d86567a24ff0248f84dec0211cf577317af1580b764ff354",
-            "model.txt": "47c9df4aa2af0fa94b29b7f4a7a9035823779674f2a469fecd41b29b7c43db25",
-            "gridcontributions.txt": "99aa9bfb30ab881b1c90860a823865b51c2e9e72846bc53b7dcff8e4ac7af580",
+            "abundances.txt": "864013e0d8a7bae1bc1194bea2fda34b7de2af95da3d1072917ab5bccddb68bc",
+            "model.txt": "7a3eee92f9653eb478a01080d16b711773031bedd38a90ec167c7fda98c15ef9",
+            "gridcontributions.txt": "970568194bada3d111ed1cc0a8855aef9e838c59318af4299a86d5bb53cf1a46",
         },
         digest="sha256",
         folder=outpath_kn,
