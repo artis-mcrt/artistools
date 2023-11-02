@@ -45,15 +45,17 @@ types = {
 type_ids = {v: k for k, v in types.items()}
 
 
-def sample_planck(T, nu_max_r, nu_min_r):
-    def planck(nu, T):
-        return TWOHOVERCLIGHTSQUARED * pow(nu, 3) / (np.exp(HOVERKB * nu / T) - 1)
+def sample_planck(temperature, nu_max_r, nu_min_r):
+    def planck(nu, temperature):
+        return TWOHOVERCLIGHTSQUARED * pow(nu, 3) / (np.exp(HOVERKB * nu / temperature) - 1)
 
-    nu_peak = 5.879e10 * T
-    # if (nu_peak > nu_max_r or nu_peak < nu_min_r):
-    #     print(f"[warning] sample_planck: intensity peaks outside frequency range:"
-    #           f" T {T} nu peak {nu_peak:.2E} nu_max_r {nu_max_r:.2E} nu_min_r {nu_min_r:.2E}")
-    B_peak = planck(nu_peak, T)
+    nu_peak = 5.879e10 * temperature
+    # if nu_peak > nu_max_r or nu_peak < nu_min_r:
+    #     print(
+    #         f"[warning] sample_planck: intensity peaks outside frequency range:"
+    #         f" T {temperature} nu peak {nu_peak:.2E} nu_max_r {nu_max_r:.2E} nu_min_r {nu_min_r:.2E}"
+    #     )
+    b_peak = planck(nu_peak, temperature)
 
     i = 0
     while i < 100:
@@ -62,7 +64,7 @@ def sample_planck(T, nu_max_r, nu_min_r):
         zrand2 = random.uniform(0, 1)
         nu = nu_min_r + zrand * (nu_max_r - nu_min_r)
         # print(nu, nu_peak, nu_min_r, nu_max_r)
-        if zrand2 * B_peak <= planck(nu, T):
+        if zrand2 * b_peak <= planck(nu, temperature):
             return nu
 
     # print(f'failed to get nu. nu peak {nu_peak:.2E}')

@@ -49,11 +49,11 @@ def plot_reference_data(ax, atomic_number: int, ion_stage: int, estimators_cellt
     if Path("data", f"{elsymlower}_{ion_stage}-levelmap.txt").exists():
         # ax.set_ylim(bottom=2e-3)
         # ax.set_ylim(top=4)
-        levelmapfile = Path("data", f"{elsymlower}_{ion_stage}-levelmap.txt").open("r")
-        levelnumofconfigterm = {}
-        for line in levelmapfile:
-            row = line.split()
-            levelnumofconfigterm[(row[0], row[1])] = int(row[2]) - 1
+        with Path("data", f"{elsymlower}_{ion_stage}-levelmap.txt").open("r") as levelmapfile:
+            levelnumofconfigterm = {}
+            for line in levelmapfile:
+                row = line.split()
+                levelnumofconfigterm[(row[0], row[1])] = int(row[2]) - 1
 
         # ax.set_ylim(bottom=5e-4)
         for depfilepath in sorted(Path("data").rglob(f"chianti_{elsym}_{ion_stage}_*.txt")):

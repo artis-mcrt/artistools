@@ -1409,7 +1409,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     if args.output_spectra:
         for modelpath in args.specpath:
-            at.spectra.write_flambda_spectra(modelpath, args)
+            at.spectra.write_flambda_spectra(modelpath)
 
     else:
         if args.emissionabsorption:

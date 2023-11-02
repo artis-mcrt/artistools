@@ -1,4 +1,4 @@
-from . import plotlightcurve
+from artistools.lightcurve import plotlightcurve
 
 
 def main() -> None:

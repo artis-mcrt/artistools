@@ -6,4 +6,3 @@ global-include *.typed
 global-include *.md
 global-include *.cff
 include LICENSE.txt
-include artistoolscompletions.sh
