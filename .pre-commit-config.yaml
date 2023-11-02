@@ -49,10 +49,10 @@ repos:
     #         types: [python]
     #         require_serial: true
 
-#    - repo: local
-#      hooks:
-#          - id: mypy
-#            name: mypy
-#            entry: mypy
-#            types: [python]
-#            language: python
+    - repo: local
+      hooks:
+          - id: mypy
+            name: mypy
+            entry: mypy
+            types: [python]
+            language: python
