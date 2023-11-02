@@ -58,7 +58,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     normfactor = (  # noqa: F841
         dfsolarabund_undecayed.numberfrac.sum()
-    )  # convert number fractions in solar to fractions of r-process  # noqa: F841
+    )  # convert number fractions in solar to fractions of r-process
     dfsolarabund_undecayed = dfsolarabund_undecayed.eval("numberfrac = numberfrac / @normfactor")
 
     dfsolarabund_undecayed = dfsolarabund_undecayed.eval("massfrac = numberfrac * A")
@@ -72,7 +72,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     wollager_profilename = "wollager_ejectaprofile_10bins.txt"
     if Path(wollager_profilename).exists():
-        t_model_init_days_in = float(Path(wollager_profilename).open("rt").readline().strip().removesuffix(" day"))
+        with Path(wollager_profilename).open("rt") as f:
+            t_model_init_days_in = float(f.readline().strip().removesuffix(" day"))
         dfdensities = pd.read_csv(
             wollager_profilename, delim_whitespace=True, skiprows=1, names=["cellid", "vel_r_max_kmps", "rho"]
         )

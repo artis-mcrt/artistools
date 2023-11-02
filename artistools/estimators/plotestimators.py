@@ -64,6 +64,8 @@ def plot_init_abundances(
         mergemodelabundata, _ = at.inputmodel.get_modeldata(modelpath, get_elemabundances=True)
     elif seriestype == "initmasses":
         mergemodelabundata = at.initial_composition.get_model_abundances_Msun_1D(modelpath)
+    else:
+        raise AssertionError
 
     for speciesstr in specieslist:
         splitvariablename = speciesstr.split("_")
@@ -76,6 +78,8 @@ def plot_init_abundances(
         elif seriestype == "initmasses":
             ax.set_ylabel(r"Initial mass [M$_\odot$]")
             valuetype = "mass_X_"
+        else:
+            raise AssertionError
 
         ylist = []
         linelabel = speciesstr
@@ -275,8 +279,8 @@ def plot_multi_ion_series(
     mgilist,
     estimators,
     modelpath,
-    dfalldata=None,
-    args=None,
+    dfalldata,
+    args,
     **plotkwargs,
 ):
     """Plot an ion-specific property, e.g., populations."""

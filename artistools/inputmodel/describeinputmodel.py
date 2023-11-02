@@ -166,9 +166,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         if species[-1].isdigit():
             # isotopic species
 
-            if atomic_number >= 57 and atomic_number <= 71:
+            if 57 <= atomic_number <= 71:
                 mass_lanthanides_isosum += species_mass_msun
-            elif atomic_number >= 89 and atomic_number <= 103:
+            elif 89 <= atomic_number <= 103:
                 mass_actinides_isosum += species_mass_msun
 
             elname = species.rstrip("0123456789")
@@ -241,8 +241,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
                     strcomment += " ERROR! isotope sum is greater than element abundance"
 
             zstr = f"{atomic_number}"
-            bar = "-" * int(maxbarchars * (mass_g - mass_g_min) / (mass_g_max - mass_g_min))
-            print(f"{zstr:>5} {species:11s} massfrac {massfrac:.3e}   {species_mass_msun:.3e} Msun  {bar}")
+            barstr = "-" * int(maxbarchars * (mass_g - mass_g_min) / (mass_g_max - mass_g_min))
+            print(f"{zstr:>5} {species:11s} massfrac {massfrac:.3e}   {species_mass_msun:.3e} Msun  {barstr}")
             if strcomment:
                 print(f"    {strcomment}")
 
