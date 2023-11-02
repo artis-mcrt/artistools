@@ -311,7 +311,7 @@ def plot_phi_hist(modelpath):
     dfmodel, modelmeta = at.get_modeldata(modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "vel_r_mid"])
     # print(dfmodel.keys())
     # quit()
-    at.inputmodel.inputmodel_misc.get_cell_angle_polar(dfmodel, modelpath)
+    at.inputmodel.inputmodel_misc.get_cell_angle(dfmodel, modelpath)
     CLIGHT = 2.99792458e10
     MSUN = 1.989e33
 
