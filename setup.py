@@ -26,5 +26,4 @@ setup(
     entry_points={
         "console_scripts": commands.get_console_scripts(),
     },
-    scripts=["artistoolscompletions.sh"],
 )

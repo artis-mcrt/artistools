@@ -7,9 +7,9 @@ import typing as t
 
 import argcomplete
 
-from .commands import CommandType
-from .commands import dictcommands as atdictcommands
-from .misc import CustomArgHelpFormatter
+from artistools.commands import CommandType
+from artistools.commands import dictcommands as atdictcommands
+from artistools.misc import CustomArgHelpFormatter
 
 
 def addsubparsers(
