@@ -664,7 +664,7 @@ def add_derived_cols_to_modeldata(
 
     if "angle_bin" in derived_cols:
         assert modelpath is not None
-        dfmodel = pl.from_pandas(get_cell_angle_polar(dfmodel.collect().to_pandas(), modelpath)).lazy()
+        dfmodel = pl.from_pandas(get_cell_angle(dfmodel.collect().to_pandas(), modelpath)).lazy()
 
     # if "Ye" in derived_cols and os.path.isfile(modelpath / "Ye.txt"):
     #     dfmodel["Ye"] = at.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
@@ -674,21 +674,51 @@ def add_derived_cols_to_modeldata(
     return dfmodel
 
 
-def get_cell_angle_polar(dfmodel: pd.DataFrame, modelpath: Path) -> pd.DataFrame:
+def get_cell_angle(dfmodel: pd.DataFrame, modelpath: Path) -> pd.DataFrame:
     """Get angle between origin to cell midpoint and the syn_dir axis."""
     syn_dir = at.get_syn_dir(modelpath)
+    xhat = np.array([1.0, 0.0, 0.0])
 
     cos_theta = np.zeros(len(dfmodel))
+    phi = np.zeros(len(dfmodel))
     for i, (_, cell) in enumerate(dfmodel.iterrows()):
         mid_point = [cell["pos_x_mid"], cell["pos_y_mid"], cell["pos_z_mid"]]
         cos_theta[i] = (np.dot(mid_point, syn_dir)) / (at.vec_len(mid_point) * at.vec_len(syn_dir))
+
+        vec1 = np.cross(mid_point, syn_dir)
+        vec2 = np.cross(xhat, syn_dir)
+        cosphi = np.dot(vec1, vec2) / at.vec_len(vec1) / at.vec_len(vec2)
+
+        vec3 = np.cross(vec2, syn_dir)
+        testphi = np.dot(vec1, vec3)
+        phi[i] = math.acos(cosphi) if testphi > 0 else (math.acos(-cosphi) + np.pi)
+
     dfmodel["cos_theta"] = cos_theta
+    dfmodel["phi"] = phi
     cos_bins = [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1]  # including end bin
-    labels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]  # to agree with escaping packet bin numbers
-    assert at.get_viewingdirection_costhetabincount() == 10
-    assert at.get_viewingdirection_phibincount() == 10
+    labels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+    # assert at.get_viewingdirection_costhetabincount() == 10
+    # assert at.get_viewingdirection_phibincount() == 10
     dfmodel["cos_bin"] = pd.cut(dfmodel["cos_theta"], cos_bins, labels=labels)
     # dfmodel['cos_bin'] = np.searchsorted(cos_bins, dfmodel['cos_theta'].values) -1
+
+    # phibins = ["0", "π/5", "2π/5", "3π/5", "4π/5", "π", "6π/5", "7π/5", "8π/5", "9π/5", "2π"]
+    phibins = [
+        0,
+        np.pi / 5,
+        2 * np.pi / 5,
+        3 * np.pi / 5,
+        4 * np.pi / 5,
+        np.pi,
+        6 * np.pi / 5,
+        7 * np.pi / 5,
+        8 * np.pi / 5,
+        9 * np.pi / 5,
+        2 * np.pi,
+    ]
+    # reorderphibins = {5: 9, 6: 8, 7: 7, 8: 6, 9: 5}
+    labels = [0, 1, 2, 3, 4, 9, 8, 7, 6, 5]
+    dfmodel["phi_bin"] = pd.cut(dfmodel["phi"], phibins, labels=labels)
 
     return dfmodel
 
@@ -697,7 +727,7 @@ def get_mean_cell_properties_of_angle_bin(
     dfmodeldata: pd.DataFrame, vmax_cmps: float, modelpath: Path
 ) -> dict[int, pd.DataFrame]:
     if "cos_bin" not in dfmodeldata:
-        get_cell_angle_polar(dfmodeldata, modelpath)
+        get_cell_angle(dfmodeldata, modelpath)
 
     dfmodeldata["rho"][dfmodeldata["rho"] == 0] = None
 
