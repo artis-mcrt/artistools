@@ -156,9 +156,9 @@ def make_2d_plot(grid, grid_Te, vmax, modelpath, xgrid, time):
         extent = extent["left"], extent["right"], extent["bottom"], extent["top"]
         data = np.zeros((grid, grid))
 
-        for z in range(0, grid):
-            for y in range(0, grid):
-                for x in range(0, grid):
+        for z in range(grid):
+            for y in range(grid):
+                for x in range(grid):
                     # if z == round(grid/2)-1:
                     #     data[x, y] = grid_Te[x, y, z]
                     # if y == round(grid/2)-1:

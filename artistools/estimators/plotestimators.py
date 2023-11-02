@@ -22,7 +22,7 @@ from typeguard import check_type
 
 import artistools as at
 import artistools.estimators.plot3destimators_classic
-import artistools.inputmodel.slice1Dfromconein3dmodel
+import artistools.inputmodel.slice1dfromconein3dmodel
 
 colors_tab10 = list(plt.get_cmap("tab10")(np.linspace(0, 1.0, 10)))
 
