@@ -279,14 +279,13 @@ def create_ARTIS_modelfile(
             "q": z_reflect(q_ergperg).flatten(order="F"),
         }
     )
-    """
-    DF_model, DF_el_contribs, DF_contribs = at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
-        dfgridcontributions=DF_gridcontributions,
-        dfmodel=DF_model,
-        t_model_days_incpremerger=0.1,
-        traj_root=Path("./traj_PM/"),
-    )
-    """
+
+    # DF_model, DF_el_contribs, DF_contribs = at.inputmodel.rprocess_from_trajectory.add_abundancecontributions(
+    #     dfgridcontributions=DF_gridcontributions,
+    #     dfmodel=DF_model,
+    #     t_model_days_incpremerger=0.1,
+    #     traj_root=Path("./traj_PM/"),
+    # )
 
     # add mass fraction columns
     if "X_Fegroup" not in dfmodel.columns:
