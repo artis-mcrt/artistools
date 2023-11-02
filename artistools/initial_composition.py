@@ -313,14 +313,14 @@ def plot_phi_hist(modelpath):
     # quit()
     at.inputmodel.inputmodel_misc.get_cell_angle(dfmodel, modelpath)
     CLIGHT = 2.99792458e10
-    MSUN = 1.989e33
+    # MSUN = 1.989e33
 
     # dfmodel.query("cos_bin in [40, 50]", inplace=True)
     # mass = dfmodel["cellmass_grams"] / MSUN
     # weights = mass
     # weights = dfmodel['cellYe']
     # weights = dfmodel['q']
-    weightby = "cellYe"
+    weightby = "rho"
     weights = dfmodel[weightby]
     labeldict = {"cellYe": "Ye"}
     if weightby in labeldict:
@@ -336,7 +336,8 @@ def plot_phi_hist(modelpath):
         bins=[np.linspace(vmin, vmax, num=nvbins), np.linspace(0, 2 * np.pi, num=nphibins)],
         weights=weights,
     )
-    heatmap = heatmap / (2 * np.pi) / (vmax - vmin) / nphibins / nvbins
+    # heatmap = heatmap / (2 * np.pi) / (vmax - vmin) / nphibins / nvbins
+    print("WARNING: histogram not normalised")
     plt.clf()
 
     heatmap = np.ma.masked_where(heatmap == 0.0, heatmap)
