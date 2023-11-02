@@ -163,9 +163,9 @@ def split_dataframe_dirbins(
     prev_dfshape = None
     for i, index_value in enumerate(indexes_to_split):
         chunk = (
-            res_df[indexes_to_split[i] : indexes_to_split[i + 1], :]
+            res_df[index_value : indexes_to_split[i + 1], :]
             if index_value != indexes_to_split[-1]
-            else res_df[indexes_to_split[i] :, :]
+            else res_df[index_value:, :]
         )
 
         # the number of timesteps should match for all direction bins
@@ -421,7 +421,7 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
     arr_tend[:-1] = arr_tstart[1:]
 
     for ts, (tstart, tend) in enumerate(zip(arr_tstart, arr_tend)):
-        if timedays_float >= tstart and timedays_float < tend:
+        if tstart <= timedays_float < tend:
             return ts
 
     msg = f"Could not find timestep bracketing time {timedays_float}"
