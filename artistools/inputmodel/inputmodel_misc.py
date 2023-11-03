@@ -1041,12 +1041,13 @@ def get_initelemabundances_polars(
 
         abundancedata = pl.from_pandas(
             pd.read_csv(
-                at.zopen(abundancefilepath),
+                abundancefilepath,
                 delim_whitespace=True,
                 header=None,
                 comment="#",
                 names=colnames,
                 dtype=dtypes,
+                memory_map=True,
             )
         )
 
