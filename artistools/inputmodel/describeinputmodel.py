@@ -171,7 +171,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     if not args.isotopes:
         dfmodel = dfmodel.drop([col for col in dfmodel.columns if col.startswith("X_") and col[-1].isdigit()])
 
-    dfmodel = dfmodel.filter(pl.col("rho") > 0.0).cache()
+    dfmodel = dfmodel.filter(pl.col("rho") > 0.0).collect().lazy()
 
     for column in dfmodel.columns:
         if not column.startswith("X_"):
