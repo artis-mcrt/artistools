@@ -144,16 +144,16 @@ def read_modelfile_text(
 
     # each cell takes up two lines in the model file
     dfmodel = pd.read_csv(
-        at.zopen(filename),
+        filename,
         sep=r"\s+",
         engine="c",
         header=None,
         skiprows=skiprows,
         names=columns[:ncols_line_even],
         usecols=columns[:ncols_line_even],
-        nrows=nrows_read,
         dtype=dtypes,
         dtype_backend="pyarrow",
+        memory_map=True,
     )
 
     if ncols_line_odd > 0 and not onelinepercellformat:
@@ -1033,9 +1033,7 @@ def get_initelemabundances_polars(
     else:
         if not printwarningsonly:
             print(f"Reading {abundancefilepath}")
-        ncols = len(
-            pd.read_csv(at.zopen(abundancefilepath), delim_whitespace=True, header=None, comment="#", nrows=1).columns
-        )
+        ncols = len(pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, comment="#", nrows=1).columns)
         colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
         dtypes = {col: "float32[pyarrow]" if col.startswith("X_") else "int32[pyarrow]" for col in colnames}
 
