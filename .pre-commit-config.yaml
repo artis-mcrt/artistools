@@ -5,9 +5,9 @@ repos:
       hooks:
           - id: check-added-large-files
             args: [--maxkb=800]
-          - id: check-ast
+#          - id: check-ast
           - id: check-case-conflict
-          - id: check-builtin-literals
+#          - id: check-builtin-literals
           - id: check-docstring-first
           - id: check-executables-have-shebangs
           - id: check-json

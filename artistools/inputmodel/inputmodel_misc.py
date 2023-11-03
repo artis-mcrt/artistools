@@ -387,12 +387,15 @@ def get_modeldata_polars(
             # dfmodel.to_parquet(filenameparquet, compression="zstd")
             print("  Done.")
 
+    dfmodel["inputcellid"] = dfmodel["inputcellid"].astype(int)
+
     dfmodel = pl.from_pandas(dfmodel).lazy()
 
     if get_elemabundances:
         abundancedata = pl.from_pandas(
             get_initelemabundances(modelpath, dtype_backend="pyarrow", printwarningsonly=printwarningsonly)
         ).lazy()
+        abundancedata = abundancedata.select(pl.col("inputcellid").cast(pl.Int64))
         dfmodel = dfmodel.join(abundancedata, how="inner", on="inputcellid")
 
     if derived_cols:
