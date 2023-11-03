@@ -584,6 +584,8 @@ def get_xlist(
             xvariable = "beta"
         dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
         dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
+        if args.readonlymgi:
+            dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
         dfmodel = dfmodel.select(["modelgridindex", "vel_r_mid"]).sort(by="vel_r_mid")
         if args.xmax > 0:
             dfmodel = dfmodel.filter(pl.col("vel_r_mid") / 1e5 <= args.xmax)
@@ -1090,8 +1092,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
     ]
 
-    readonlymgi = True
-    if readonlymgi:
+    # readonlymgi = True
+    # if args.readonlymgi:
         # at.inputmodel.inputmodel_misc.get_cell_angle_polar(modeldata, modelpath)
         #
         # print(modeldata["cos_bin"])
@@ -1099,7 +1101,14 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # modeldata["inputcellid"] = modeldata["inputcellid"].astype(int)
         # args.modelgridindex = modeldata["inputcellid"]
         # # quit()
-            )
+        # alongaxis = True
+    if args.readonlymgi == "alongaxis":
+        print(f'Getting mgi along {args.axis} axis')
+        # args.sliceaxis = "z"
+        # args.positive_axis = True
+        args.modelgridindex = at.estimators.plot3destimators_classic.get_modelgridcells_along_axis(
+            modelpath=modelpath, args=args
+        )
 
         # plot2dslice = False
         # if plot2dslice:
@@ -1158,7 +1167,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
 
-    if args.modelgridindex > -1 or args.x in {"time", "timestep"}:
+    if not args.readonlymgi and (args.modelgridindex > -1 or args.x in {"time", "timestep"}):
         # plot time evolution in specific cell
         if not args.x:
             args.x = "time"
