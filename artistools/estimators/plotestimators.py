@@ -1011,6 +1011,20 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--classicartis", action="store_true", help="Flag to show using output from classic ARTIS branch"
     )
 
+    parser.add_argument(
+        "-readonlymgi",
+        default=False,
+        choices=["alongaxis"], # plan to extend this to e.g. 2D slice
+        help="Option to read only selected mgi and choice of which mgi to select. Choose which axis with args.axis",
+    )
+
+    parser.add_argument(
+        "-axis",
+        default="+z",
+        choices=["+x", "-x", "+y", "-y", "+z", "-z"],
+        help="Choose an axis for use with args.readonlymgi. Hint: for negative use e.g. -axis=-z",
+    )
+
 
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Plot ARTIS estimators."""
@@ -1031,6 +1045,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
+
+    if args.readonlymgi:
+        args.sliceaxis = args.axis[1]
+        axis_postive_negative_dict = {'+': True, '-': False}
+        args.positive_axis = axis_postive_negative_dict[args.axis[0]]
 
     print(
         f"Plotting estimators for '{modelname}' timesteps {timestepmin} to {timestepmax} "
