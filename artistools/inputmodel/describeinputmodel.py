@@ -57,6 +57,14 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         derived_cols=["mass_g", "vel_r_mid", "rho"],
     )
 
+    dfmodel = dfmodel.filter(pl.col("rho") > 0.0)
+    dfmodel = dfmodel.drop(["X_Fegroup", "X_n"])  # skip special X_Fegroup and don't confuse neutrons with Nitrogen
+
+    if not args.isotopes:
+        dfmodel = dfmodel.drop([col for col in dfmodel.columns if col.startswith("X_") and col[-1].isdigit()])
+
+    dfmodel = dfmodel.collect().lazy()
+
     t_model_init_days, vmax = modelmeta["t_model_init_days"], modelmeta["vmax_cmps"]
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
@@ -166,12 +174,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     mass_msun_lanthanides = 0.0
     mass_msun_actinides = 0.0
     speciesmasses: dict[str, float] = {}
-    dfmodel = dfmodel.drop(["X_Fegroup", "X_n"])  # skip special X_Fegroup and don't confuse neutrons with Nitrogen
-
-    if not args.isotopes:
-        dfmodel = dfmodel.drop([col for col in dfmodel.columns if col.startswith("X_") and col[-1].isdigit()])
-
-    dfmodel = dfmodel.filter(pl.col("rho") > 0.0).collect().lazy()
 
     for column in dfmodel.columns:
         if not column.startswith("X_"):
