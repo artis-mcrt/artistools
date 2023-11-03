@@ -56,7 +56,7 @@ def test_get_cell_angle() -> None:
         modelpath=modelpath_3d, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid"]
     )
     at.inputmodel.inputmodel_misc.get_cell_angle_polar(modeldata, modelpath=modelpath_3d)
-    assert "cos_bin" in modeldata.keys()
+    assert "cos_bin" in modeldata
 
 
 def test_downscale_3dmodel() -> None:
