@@ -151,6 +151,7 @@ def read_modelfile_text(
         skiprows=skiprows,
         names=columns[:ncols_line_even],
         usecols=columns[:ncols_line_even],
+        nrows=nrows_read,
         dtype=dtypes,
         dtype_backend="pyarrow",
         memory_map=True,
