@@ -829,7 +829,7 @@ def save_modeldata(
     modelmeta must define: vmax, ncoordgridr and ncoordgridz
     """
     if isinstance(dfmodel, pl.LazyFrame | pl.DataFrame):
-        dfmodel = dfmodel.lazy().collect().to_pandas()
+        dfmodel = dfmodel.lazy().collect().to_pandas(use_pyarrow_extension_array=True)
 
     if modelmeta is None:
         modelmeta = {}
