@@ -374,6 +374,8 @@ def get_modeldata_polars(
         print(f"Saving {filenameparquet}")
         dfmodel.write_parquet(filenameparquet, compression="zstd")
         print("  Done.")
+        del dfmodel
+        gc.collect()
         dfmodel = pl.scan_parquet(filenameparquet)
 
     print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
@@ -1033,12 +1035,11 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: t.Sequenc
 def get_initelemabundances(
     modelpath: Path = Path(),
     printwarningsonly: bool = False,
-    dtype_backend: t.Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
 ) -> pd.DataFrame:
     return (
         get_initelemabundances_polars(modelpath=modelpath, printwarningsonly=printwarningsonly)
         .collect()
-        .to_pandas(use_pyarrow_extension_array=(dtype_backend == "pyarrow"))
+        .to_pandas(use_pyarrow_extension_array=True)
         .set_index("modelgridindex")
     )
 
@@ -1077,6 +1078,7 @@ def get_initelemabundances_polars(
                 names=colnames,
                 dtype=dtypes,
                 memory_map=True,
+                dtype_backend="pyarrow",
             )
         )
 
@@ -1084,6 +1086,8 @@ def get_initelemabundances_polars(
             print(f"Saving {filenameparquet}")
             abundancedata.write_parquet(filenameparquet, compression="zstd")
             print("  Done.")
+            del abundancedata
+            gc.collect()
             abundancedata_lazy = pl.scan_parquet(filenameparquet)
         else:
             abundancedata_lazy = abundancedata.lazy()
