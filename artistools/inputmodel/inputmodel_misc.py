@@ -1008,6 +1008,7 @@ def get_initelemabundances(
         get_initelemabundances_polars(modelpath=modelpath, printwarningsonly=printwarningsonly)
         .collect()
         .to_pandas(use_pyarrow_extension_array=(dtype_backend == "pyarrow"))
+        .set_index("modelgridindex")
     )
 
 
