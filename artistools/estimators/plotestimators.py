@@ -1092,32 +1092,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
     ]
 
-    # readonlymgi = True
-    # if args.readonlymgi:
-        # at.inputmodel.inputmodel_misc.get_cell_angle_polar(modeldata, modelpath)
-        #
-        # print(modeldata["cos_bin"])
-        # modeldata.query("cos_bin == 90", inplace=True)
-        # modeldata["inputcellid"] = modeldata["inputcellid"].astype(int)
-        # args.modelgridindex = modeldata["inputcellid"]
-        # # quit()
-        # alongaxis = True
     if args.readonlymgi == "alongaxis":
         print(f'Getting mgi along {args.axis} axis')
-        # args.sliceaxis = "z"
-        # args.positive_axis = True
         args.modelgridindex = at.estimators.plot3destimators_classic.get_modelgridcells_along_axis(
             modelpath=modelpath, args=args
         )
-
-        # plot2dslice = False
-        # if plot2dslice:
-        #     modeldata, modelmeta = at.inputmodel.get_modeldata(
-        #         modelpath, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid", "velocity"]
-        #     )
-        #     args.modelgridindex = at.estimators.plot3destimators_classic.get_modelgridcells_2D_slice(
-        #         modeldata, modelpath
-        #     )
 
     if temperatures_only := plotlist_is_temperatures_only(plotlist):
         print("Plotting temperatures only (from parquet if available)")
@@ -1147,16 +1126,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     if not timesteps_included:
         print("No timesteps with data are included")
         return
-
-    # if plot2dslice:
-    #     grid_Te, xgrid = at.estimators.plot3destimators_classic.get_Te_vs_velocity_2D(
-    #         modelpath, modeldata, modelmeta["vmax_cmps"], estimators, args.modelgridindex, int(args.timestep)
-    #     )
-    #     grid = round(len(modeldata["inputcellid"]) ** (1.0 / 3.0))
-    #     at.estimators.plot3destimators_classic.make_2d_plot(
-    #         grid, grid_Te, modelmeta["vmax_cmps"], modelpath, xgrid, args.timemin
-    #     )
-    #     exit()
 
     if args.recombrates:
         plot_recombrates(modelpath, estimators, 26, [2, 3, 4, 5])
