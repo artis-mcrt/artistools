@@ -344,7 +344,7 @@ def get_modeldata_polars(
     dfmodel: pl.LazyFrame | None | pl.DataFrame
     if not getheadersonly and filenameparquet.is_file():
         if not printwarningsonly:
-            print(f"  reading data table from {filenameparquet}")
+            print(f"Reading data table from {filenameparquet}")
         try:
             dfmodel = pl.scan_parquet(filenameparquet)
         except pl.exceptions.ComputeError:
