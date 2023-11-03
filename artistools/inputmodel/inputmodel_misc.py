@@ -1067,20 +1067,21 @@ def get_initelemabundances_polars(
             print(f"Reading {abundancefilepath}")
         ncols = len(pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, comment="#", nrows=1).columns)
         colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
-        dtypes = {col: "float32[pyarrow]" if col.startswith("X_") else "int32[pyarrow]" for col in colnames}
-
-        abundancedata = pl.from_pandas(
-            pd.read_csv(
-                abundancefilepath,
-                delim_whitespace=True,
-                header=None,
-                comment="#",
-                names=colnames,
-                dtype=dtypes,
-                memory_map=True,
-                dtype_backend="pyarrow",
-            )
+        dtypes = {col: pl.Float32 if col.startswith("X_") else pl.Int32 for col in colnames}
+        abundancedata = pl.read_csv(
+            at.zopen(abundancefilepath, forpolars=True),
+            has_header=False,
+            separator=" ",
+            comment_char="#",
+            infer_schema_length=0,
         )
+        abundancedata = abundancedata.transpose()
+        abundancedata = pl.DataFrame(
+            [abundancedata.to_series(idx).drop_nulls() for idx in range(len(abundancedata.columns))]
+        ).transpose()
+        abundancedata = abundancedata.rename(
+            {col: colnames[idx] for idx, col in enumerate(abundancedata.columns)}
+        ).cast(dtypes)  # type: ignore[arg-type]
 
         if abundancefilepath.stat().st_size > 5 * 1024 * 1024:
             print(f"Saving {filenameparquet}")
