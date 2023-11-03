@@ -1071,8 +1071,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
     ]
 
-    read_only_selected_mgi = False
-    if read_only_selected_mgi:
+    readonlymgi = True
+    if readonlymgi:
         # at.inputmodel.inputmodel_misc.get_cell_angle_polar(modeldata, modelpath)
         #
         # print(modeldata["cos_bin"])
