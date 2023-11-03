@@ -96,9 +96,10 @@ def read_modelfile_text(
         else:
             fmodel.seek(filepos)  # undo the readline() and go back
 
-        data_line_even = fmodel.readline().split()
-        ncols_line_even = len(data_line_even)
-        ncols_line_odd = len(fmodel.readline().split())
+        data_line_even = fmodel.readline()
+        ncols_line_even = len(data_line_even.split())
+        data_line_odd = fmodel.readline()
+        ncols_line_odd = len(data_line_odd.split())
 
         if columns is None:
             columns = get_standard_columns(modelmeta["dimensions"], includenico57=True)
