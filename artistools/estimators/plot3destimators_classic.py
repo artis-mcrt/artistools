@@ -29,6 +29,7 @@ def get_modelgridcells_along_axis(modelpath, args=None):
         axes.remove(args.sliceaxis)
         args.other_axis1 = axes[0]
         args.other_axis2 = axes[1]
+
     profile1d = at.inputmodel.slice1dfromconein3dmodel.get_profile_along_axis(args=args)
     return get_mgi_of_modeldata(profile1d, modelpath)
 

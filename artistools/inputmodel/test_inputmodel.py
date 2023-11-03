@@ -1,3 +1,7 @@
+import hashlib
+import shutil
+from pathlib import Path
+
 import numpy as np
 import polars as pl
 
@@ -6,6 +10,7 @@ import artistools as at
 modelpath = at.get_config()["path_testartismodel"]
 modelpath_3d = at.get_config()["path_testartismodel"].parent / "testmodel_3d_10^3"
 outputpath = at.get_config()["path_testoutput"]
+testdatapath = at.get_config()["path_testdata"]
 
 
 def clear_modelfiles() -> None:
@@ -80,6 +85,68 @@ def test_get_modeldata_tuple() -> None:
     assert np.isclose(vmax_cmps, 800000000.0, rtol=0.0001)
 
 
+def verify_file_checksums(
+    checksums_expected: dict[Path | str, str], digest: str = "sha256", folder: Path | str = Path()
+) -> None:
+    checksums_actual = {}
+
+    for filename, checksum_expected in checksums_expected.items():
+        fullpath = Path(folder) / filename
+        m = hashlib.new(digest)
+        with Path(fullpath).open("rb") as f:
+            for chunk in f:
+                m.update(chunk)
+
+        checksums_actual[fullpath] = str(m.hexdigest())
+        print(f"{filename}: {checksums_actual[fullpath]} expected {checksum_expected}")
+
+    for filename, checksum_expected in checksums_expected.items():
+        fullpath = Path(folder) / filename
+        assert (
+            checksums_actual[fullpath] == checksum_expected
+        ), f"{filename} checksum mismatch. Should be {checksum_expected} but found {checksums_actual[fullpath]}"
+
+
+def test_maptogrid() -> None:
+    outpath_kn = outputpath / "kilonova"
+    shutil.copytree(
+        testdatapath / "kilonova", outpath_kn, dirs_exist_ok=True, ignore=shutil.ignore_patterns("trajectories")
+    )
+    at.inputmodel.maptogrid.main(argsraw=[], inputpath=outpath_kn, outputpath=outpath_kn, ncoordgrid=16)
+
+    verify_file_checksums(
+        {
+            "ejectapartanalysis.dat": "e8694a679515c54c2b4867122122263a375d9ffa144a77310873ea053bb5a8b4",
+            "grid.dat": "ea930d0decca79d2e65ac1df1aaaa1eb427fdf45af965a623ed38240dce89954",
+            "gridcontributions.txt": "a2c09b96d32608db2376f9df61980c2ad1423066b579fbbe744f07e536f2891e",
+        },
+        digest="sha256",
+        folder=outpath_kn,
+    )
+
+
+def test_makeartismodelfromparticlegridmap() -> None:
+    outpath_kn = outputpath / "kilonova"
+    at.inputmodel.modelfromhydro.main(
+        argsraw=[],
+        gridfolderpath=outpath_kn,
+        trajectoryroot=testdatapath / "kilonova" / "trajectories",
+        outputpath=outpath_kn,
+        dimensions=3,
+        targetmodeltime_days=0.1,
+    )
+
+    verify_file_checksums(
+        {
+            "abundances.txt": "864013e0d8a7bae1bc1194bea2fda34b7de2af95da3d1072917ab5bccddb68bc",
+            "model.txt": "7a3eee92f9653eb478a01080d16b711773031bedd38a90ec167c7fda98c15ef9",
+            "gridcontributions.txt": "970568194bada3d111ed1cc0a8855aef9e838c59318af4299a86d5bb53cf1a46",
+        },
+        digest="sha256",
+        folder=outpath_kn,
+    )
+
+
 def test_make1dmodelfromcone() -> None:
     at.inputmodel.slice1dfromconein3dmodel.main(argsraw=[], modelpath=[modelpath_3d], outputpath=outputpath)
 
@@ -103,7 +170,7 @@ def test_makemodel_energyfiles() -> None:
 
 def test_maketardismodel() -> None:
     clear_modelfiles()
-    at.inputmodel.maketardismodelfromartis.main(argsraw=[], inputpath=modelpath, outputpath=outputpath)
+    at.inputmodel.to_tardis.main(argsraw=[], inputpath=modelpath, outputpath=outputpath)
 
 
 def test_make_empty_abundance_file() -> None:
@@ -124,10 +191,11 @@ def test_save_load_3d_model() -> None:
     clear_modelfiles()
     dfmodel_pl, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)
     dfmodel = dfmodel_pl.collect().to_pandas(use_pyarrow_extension_array=True)
-    dfmodel.iloc[75000]["rho"] = 1
-    dfmodel.iloc[75001]["rho"] = 2
-    dfmodel.iloc[95200]["rho"] = 3
-    dfmodel.iloc[75001]["X_Ni56"] = 0.5
+    dfmodel.loc[75000, ["rho"]] = 1
+    dfmodel.loc[75001, ["rho"]] = 2
+    dfmodel.loc[95200, ["rho"]] = 3
+    dfmodel.loc[75001, ["rho"]] = 0.5
+
     at.inputmodel.save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
     dfmodel2, modelmeta2 = at.inputmodel.get_modeldata(modelpath=outputpath)
     assert dfmodel.equals(dfmodel2)
