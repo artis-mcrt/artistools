@@ -3,7 +3,6 @@ import errno
 import gc
 import math
 import os
-import pickle
 import time
 import typing as t
 from collections import defaultdict
@@ -13,8 +12,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import polars as pl
-import pyarrow as pa
-import pyarrow.parquet as pq
 
 import artistools as at
 
@@ -24,8 +21,7 @@ def read_modelfile_text(
     filename: Path | str,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
-    skipnuclidemassfraccolumns: bool = False,
-) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:
+) -> tuple[pl.DataFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides."""
     onelinepercellformat = None
 
@@ -87,7 +83,7 @@ def read_modelfile_text(
                 if not printwarningsonly:
                     print(f"  detected 1D model file with {npts_model} radial zones")
                 modelmeta["dimensions"] = 1
-                getheadersonly = False
+                getheadersonly = False  # need to find vmax from the model data
 
             fmodel.seek(filepos)  # undo the readline() and go back
 
@@ -130,19 +126,6 @@ def read_modelfile_text(
             # columns split over two lines
             assert (ncols_line_even + ncols_line_odd) == len(columns)
             onelinepercellformat = False
-
-    if skipnuclidemassfraccolumns:
-        if not printwarningsonly:
-            print("  skipping nuclide abundance columns in model")
-
-        match modelmeta["dimensions"]:
-            case 1:
-                ncols_line_even = 3
-            case 2:
-                ncols_line_even = 4
-            case 3:
-                ncols_line_even = 5
-        ncols_line_odd = 0
 
     nrows_read = 1 if getheadersonly else npts_model
 
@@ -264,15 +247,12 @@ def read_modelfile_text(
                 pos_z_min = -xmax_tmodel + 2 * zindex * xmax_tmodel / ncoordgridz
 
                 cell = dfmodel.iloc[modelgridindex]
-                if not vectormatch(
-                    [cell.inputpos_a, cell.inputpos_b, cell.inputpos_c],
-                    [pos_x_min, pos_y_min, pos_z_min],
-                ):
+                pos3_in = [cell["inputpos_a"], cell["inputpos_b"], cell["inputpos_c"]]
+
+                if not vectormatch(pos3_in, [pos_x_min, pos_y_min, pos_z_min]):
                     posmatch_xyz = False
-                if not vectormatch(
-                    [cell.inputpos_a, cell.inputpos_b, cell.inputpos_c],
-                    [pos_z_min, pos_y_min, pos_x_min],
-                ):
+
+                if not vectormatch(pos3_in, [pos_z_min, pos_y_min, pos_x_min]):
                     posmatch_zyx = False
 
             assert posmatch_xyz != posmatch_zyx  # one option must match
@@ -287,7 +267,7 @@ def read_modelfile_text(
                     columns={"inputpos_a": "pos_z_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_x_min"},
                 )
 
-    return dfmodel, modelmeta
+    return pl.from_pandas(dfmodel), modelmeta
 
 
 def get_modeldata_polars(
@@ -296,7 +276,6 @@ def get_modeldata_polars(
     derived_cols: t.Sequence[str] | str | None = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
-    skipnuclidemassfraccolumns: bool = False,
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
 
@@ -328,71 +307,51 @@ def get_modeldata_polars(
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
-    dfmodel = None
     filenameparquet = at.stripallsuffixes(Path(filename)).with_suffix(".txt.parquet")
 
     if filenameparquet.exists() and Path(filename).stat().st_mtime > filenameparquet.stat().st_mtime:
         print(f"{filename} has been modified after {filenameparquet}. Deleting out of date parquet file.")
         filenameparquet.unlink()
 
-    source_textfile_details = {"st_size": filename.stat().st_size, "st_mtime": filename.stat().st_mtime}
-
-    if filenameparquet.is_file() and not getheadersonly:
+    dfmodel: pl.LazyFrame | None | pl.DataFrame
+    if not getheadersonly and filenameparquet.is_file():
         if not printwarningsonly:
             print(f"  reading data table from {filenameparquet}")
+        try:
+            dfmodel = pl.scan_parquet(filenameparquet)
+        except pl.exceptions.ComputeError:
+            print(f"Problem reading {filenameparquet}. Will regenerate and overwite from text source.")
+            dfmodel = None
+    else:
+        dfmodel = None
 
-        pqmetadata = pq.read_metadata(filenameparquet)
-        if (
-            b"artismodelmeta" not in pqmetadata.metadata
-            or b"source_textfile_details" not in pqmetadata.metadata
-            or pickle.dumps(source_textfile_details) != pqmetadata.metadata[b"source_textfile_details"]
-        ):
-            print(f"  text source {filename} doesn't match file header of {filenameparquet}. Removing parquet file")
-            filenameparquet.unlink(missing_ok=True)
-        else:
-            modelmeta = pickle.loads(pqmetadata.metadata[b"artismodelmeta"])
+    if dfmodel is not None:
+        # already read in the model data, just need to get the metadata
+        getheadersonly = True
 
-            columns = (
-                [col for col in pqmetadata.schema.names if not col.startswith("X_")]
-                if skipnuclidemassfraccolumns
-                else None
-            )
-            dfmodel = pd.read_parquet(
-                filenameparquet,
-                columns=columns,
-                dtype_backend="pyarrow",
-            )
-            print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
+    dfmodel_in, modelmeta = read_modelfile_text(
+        filename=filename,
+        printwarningsonly=printwarningsonly,
+        getheadersonly=getheadersonly,
+    )
 
     if dfmodel is None:
-        skipnuclidemassfraccolumns = False
-        dfmodel, modelmeta = read_modelfile_text(
-            filename=filename,
-            printwarningsonly=printwarningsonly,
-            getheadersonly=getheadersonly,
-            skipnuclidemassfraccolumns=skipnuclidemassfraccolumns,
-        )
+        dfmodel = dfmodel_in
+    else:
+        assert dfmodel.schema == dfmodel_in.schema
 
-        if len(dfmodel) > 15000 and not getheadersonly and not skipnuclidemassfraccolumns:
-            print(f"Saving {filenameparquet}")
-            patable = pa.Table.from_pandas(dfmodel)
+    mebibyte = 1024 * 1024
+    if isinstance(dfmodel, pl.DataFrame) and filename.stat().st_size > 10 * mebibyte and not getheadersonly:
+        print(f"Saving {filenameparquet}")
+        dfmodel.write_parquet(filenameparquet, compression="zstd")
+        print("  Done.")
+        dfmodel = pl.scan_parquet(filenameparquet)
 
-            custom_metadata = {
-                b"source_textfile_details": pickle.dumps(source_textfile_details),
-                b"artismodelmeta": pickle.dumps(modelmeta),
-            }
-            merged_metadata = {**custom_metadata, **(patable.schema.metadata or {})}
-            patable = patable.replace_schema_metadata(merged_metadata)
-            pq.write_table(patable, filenameparquet, compression="ZSTD")
-            # dfmodel.to_parquet(filenameparquet, compression="zstd")
-            print("  Done.")
-
-    dfmodel = pl.from_pandas(dfmodel).lazy()
+    print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
+    dfmodel = dfmodel.lazy()
 
     if get_elemabundances:
-        abundancedata = pl.from_pandas(
-            get_initelemabundances(modelpath, dtype_backend="pyarrow", printwarningsonly=printwarningsonly)
-        ).lazy()
+        abundancedata = get_initelemabundances_polars(modelpath, printwarningsonly=printwarningsonly)
         dfmodel = dfmodel.join(abundancedata, how="inner", on="inputcellid")
 
     if derived_cols:
@@ -474,7 +433,6 @@ def get_modeldata(
     derived_cols: t.Sequence[str] | str | None = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
-    skipnuclidemassfraccolumns: bool = False,
 ) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:
     """Call get_modeldata_polars() and convert to pandas DataFrame."""
     pldfmodel, modelmeta = get_modeldata_polars(
@@ -483,7 +441,6 @@ def get_modeldata(
         derived_cols=derived_cols,
         printwarningsonly=printwarningsonly,
         getheadersonly=getheadersonly,
-        skipnuclidemassfraccolumns=skipnuclidemassfraccolumns,
     )
     dfmodel = pldfmodel.collect().to_pandas(use_pyarrow_extension_array=True)
     if modelmeta["npts_model"] > 100000 and not getheadersonly:
@@ -1042,12 +999,23 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: t.Sequenc
     raise AssertionError
 
 
-@lru_cache(maxsize=8)
 def get_initelemabundances(
     modelpath: Path = Path(),
     printwarningsonly: bool = False,
     dtype_backend: t.Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
 ) -> pd.DataFrame:
+    return (
+        get_initelemabundances_polars(modelpath=modelpath, printwarningsonly=printwarningsonly)
+        .collect()
+        .to_pandas(use_pyarrow_extension_array=(dtype_backend == "pyarrow"))
+    )
+
+
+@lru_cache(maxsize=8)
+def get_initelemabundances_polars(
+    modelpath: Path = Path(),
+    printwarningsonly: bool = False,
+) -> pl.LazyFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
     abundancefilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
 
@@ -1060,7 +1028,7 @@ def get_initelemabundances(
         if not printwarningsonly:
             print(f"Reading {filenameparquet}")
 
-        abundancedata = pd.read_parquet(filenameparquet, dtype_backend=dtype_backend)
+        abundancedata_lazy = pl.scan_parquet(filenameparquet)
     else:
         if not printwarningsonly:
             print(f"Reading {abundancefilepath}")
@@ -1068,32 +1036,28 @@ def get_initelemabundances(
             pd.read_csv(at.zopen(abundancefilepath), delim_whitespace=True, header=None, comment="#", nrows=1).columns
         )
         colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
-        dtypes = (
-            {col: "float32[pyarrow]" if col.startswith("X_") else "int32[pyarrow]" for col in colnames}
-            if dtype_backend == "pyarrow"
-            else {col: "float32" if col.startswith("X_") else "int32" for col in colnames}
+        dtypes = {col: "float32[pyarrow]" if col.startswith("X_") else "int32[pyarrow]" for col in colnames}
+
+        abundancedata = pl.from_pandas(
+            pd.read_csv(
+                at.zopen(abundancefilepath),
+                delim_whitespace=True,
+                header=None,
+                comment="#",
+                names=colnames,
+                dtype=dtypes,
+            )
         )
 
-        abundancedata = pd.read_csv(
-            at.zopen(abundancefilepath),
-            delim_whitespace=True,
-            header=None,
-            comment="#",
-            names=colnames,
-            dtype=dtypes,
-            dtype_backend=dtype_backend,
-        )
-
-        if len(abundancedata) > 15000:
+        if abundancefilepath.stat().st_size > 10 * 1024 * 1024:
             print(f"Saving {filenameparquet}")
-            abundancedata.to_parquet(filenameparquet, compression="zstd")
+            abundancedata.write_parquet(filenameparquet, compression="zstd")
             print("  Done.")
+            abundancedata_lazy = pl.scan_parquet(filenameparquet)
+        else:
+            abundancedata_lazy = abundancedata.lazy()
 
-    abundancedata.index.name = "modelgridindex"
-    if dtype_backend == "pyarrow":
-        abundancedata.index = abundancedata.index.astype("int32[pyarrow]")
-
-    return abundancedata
+    return abundancedata_lazy.with_row_count("modelgridindex")
 
 
 def save_initelemabundances(

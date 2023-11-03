@@ -120,11 +120,9 @@ def plot_slice_modelcolumn(ax, dfmodelslice, modelmeta, colname, plotaxis1, plot
 
 def plot_2d_initial_abundances(modelpath, args=None) -> None:
     # if the species ends in a number then we need to also get the nuclear mass fractions (not just element abundances)
-    skipnuclidemassfraccolumns = all(plotvar[-1] not in "0123456789" for plotvar in args.plotvars)
     get_elemabundances = any(plotvar[-1] not in "0123456789" for plotvar in args.plotvars)
     dfmodel, modelmeta = at.get_modeldata(
         modelpath,
-        skipnuclidemassfraccolumns=skipnuclidemassfraccolumns,
         get_elemabundances=get_elemabundances,
         derived_cols=["pos_min", "pos_max"],
     )

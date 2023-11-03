@@ -354,7 +354,7 @@ def makemodelfromgriddata(
         print(f"Nuclear network abundances from {traj_root} will be used")
         modelmeta["headercommentlines"].append(f"trajfolder: {Path(traj_root).resolve().parts[-1]}")
         t_model_days_incpremerger = t_model_days + (t_mergertime_s / 86400)
-
+        assert dfgridcontributions is not None
         (
             dfmodel,
             dfelabundances,
