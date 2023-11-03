@@ -128,66 +128,93 @@ def read_modelfile_text(
             assert (ncols_line_even + ncols_line_odd) == len(columns)
             onelinepercellformat = False
 
-    nrows_read = 1 if getheadersonly else npts_model
+    if onelinepercellformat and "  " not in data_line_even and "  " not in data_line_odd and not getheadersonly:
+        print("  using fast method polars.read_csv (requires one line per cell and single space delimiters)")
 
-    skiprows: list[int] | int | None
+        pldtypes = {col: pl.Int32 if col in {"inputcellid"} else pl.Float32 for col in columns}
 
-    skiprows = (
-        numheaderrows
-        if onelinepercellformat
-        else [x for x in range(numheaderrows + npts_model * 2) if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0]
-    )
+        dfmodel = pl.read_csv(
+            at.zopen(filename, forpolars=True),
+            separator=" ",
+            comment_char="#",
+            new_columns=columns,
+            n_rows=npts_model,
+            has_header=False,
+            skip_rows=numheaderrows,
+            dtypes=pldtypes,
+            truncate_ragged_lines=True,
+        )
+        if "tracercount" in dfmodel.columns:
+            dfmodel = dfmodel.with_columns(pl.col("tracercount").cast(pl.Int32))
+    else:
+        nrows_read = 1 if getheadersonly else npts_model
+        skiprows: list[int] | int | None = (
+            numheaderrows
+            if onelinepercellformat
+            else [
+                x
+                for x in range(numheaderrows + npts_model * 2)
+                if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
+            ]
+        )
 
-    dtypes: defaultdict[str, t.Any]
-    dtypes = defaultdict(lambda: "float32[pyarrow]")
-    dtypes["inputcellid"] = "int32[pyarrow]"
-    dtypes["tracercount"] = "int32[pyarrow]"
+        dtypes: defaultdict[str, str] = defaultdict(lambda: "float32[pyarrow]")
+        dtypes["inputcellid"] = "int32[pyarrow]"
+        dtypes["tracercount"] = "int32[pyarrow]"
 
-    # each cell takes up two lines in the model file
-    dfmodel = pd.read_csv(
-        filename,
-        sep=r"\s+",
-        engine="c",
-        header=None,
-        skiprows=skiprows,
-        names=columns[:ncols_line_even],
-        usecols=columns[:ncols_line_even],
-        nrows=nrows_read,
-        dtype=dtypes,
-        dtype_backend="pyarrow",
-        memory_map=True,
-    )
-
-    if ncols_line_odd > 0 and not onelinepercellformat:
-        # read in the odd rows and merge dataframes
-        skipevenrows = [
-            x for x in range(numheaderrows + npts_model * 2) if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
-        ]
-        dfmodeloddlines = pd.read_csv(
-            at.zopen(filename),
+        # each cell takes up two lines in the model file
+        dfmodelpd = pd.read_csv(
+            filename,
             sep=r"\s+",
             engine="c",
             header=None,
-            skiprows=skipevenrows,
-            names=columns[ncols_line_even:],
+            skiprows=skiprows,
+            names=columns[:ncols_line_even],
+            usecols=columns[:ncols_line_even],
             nrows=nrows_read,
             dtype=dtypes,
             dtype_backend="pyarrow",
+            memory_map=True,
         )
-        assert len(dfmodel) == len(dfmodeloddlines)
-        dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
-        del dfmodeloddlines
 
-    if len(dfmodel) > npts_model:
-        dfmodel = dfmodel.iloc[:npts_model]
+        if ncols_line_odd > 0 and not onelinepercellformat:
+            # read in the odd rows and merge dataframes
+            skipevenrows = [
+                x
+                for x in range(numheaderrows + npts_model * 2)
+                if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
+            ]
+            dfmodeloddlines = pd.read_csv(
+                filename,
+                sep=r"\s+",
+                engine="c",
+                header=None,
+                skiprows=skipevenrows,
+                names=columns[ncols_line_even:],
+                nrows=nrows_read,
+                dtype=dtypes,
+                dtype_backend="pyarrow",
+            )
+            assert len(dfmodelpd) == len(dfmodeloddlines)
+            dfmodelpd = dfmodelpd.merge(dfmodeloddlines, left_index=True, right_index=True)
+            del dfmodeloddlines
 
-    assert len(dfmodel) == npts_model or getheadersonly
+        if len(dfmodelpd) > npts_model:
+            dfmodelpd = dfmodelpd.iloc[:npts_model]
 
-    dfmodel.index.name = "cellid"
-    dfmodel = dfmodel.rename(columns={"velocity_outer": "vel_r_max_kmps"})
+        assert len(dfmodelpd) == npts_model or getheadersonly
+
+        dfmodelpd.index.name = "cellid"
+
+        dfmodel = pl.from_pandas(dfmodelpd)
+
+    if "velocity_outer" in dfmodel.columns:
+        dfmodel = dfmodel.rename({"velocity_outer": "vel_r_max_kmps"})
 
     if modelmeta["dimensions"] == 1:
-        modelmeta["vmax_cmps"] = dfmodel["vel_r_max_kmps"].max() * 1e5
+        vmax_kmps = dfmodel["vel_r_max_kmps"].max()
+        assert isinstance(vmax_kmps, float)
+        modelmeta["vmax_cmps"] = vmax_kmps * 1.0e5
 
     elif modelmeta["dimensions"] == 2:
         wid_init_rcyl = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"]
@@ -197,9 +224,10 @@ def read_modelfile_text(
         if not getheadersonly:
             # check pos_rcyl_mid and pos_z_mid are correct
 
-            for modelgridindex, cell_pos_rcyl_mid, cell_pos_z_mid in dfmodel[
-                ["pos_rcyl_mid", "pos_z_mid"]
-            ].itertuples():
+            for inputcellid, cell_pos_rcyl_mid, cell_pos_z_mid in dfmodel.select(
+                ["inputcellid", "pos_rcyl_mid", "pos_z_mid"]
+            ).iter_rows():
+                modelgridindex = inputcellid - 1
                 n_r = modelgridindex % modelmeta["ncoordgridrcyl"]
                 n_z = modelgridindex // modelmeta["ncoordgridrcyl"]
                 pos_rcyl_min = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"] * n_r
@@ -218,8 +246,8 @@ def read_modelfile_text(
         modelmeta["wid_init_y"] = wid_init_x
         modelmeta["wid_init_z"] = wid_init_x
         modelmeta["wid_init"] = wid_init_x
-
-        dfmodel = dfmodel.rename(columns={"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"})
+        colrenames = {"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"}
+        dfmodel = dfmodel.rename({a: b for a, b in colrenames.items() if a in dfmodel.columns})
         if "pos_x_min" in dfmodel.columns and not printwarningsonly:
             print("  model cell positions are defined in the header")
         elif not getheadersonly:
@@ -248,8 +276,7 @@ def read_modelfile_text(
                 pos_y_min = -xmax_tmodel + 2 * yindex * xmax_tmodel / ncoordgridy
                 pos_z_min = -xmax_tmodel + 2 * zindex * xmax_tmodel / ncoordgridz
 
-                cell = dfmodel.iloc[modelgridindex]
-                pos3_in = [cell["inputpos_a"], cell["inputpos_b"], cell["inputpos_c"]]
+                pos3_in = list(dfmodel.select(["inputpos_a", "inputpos_b", "inputpos_c"]).row(modelgridindex))
 
                 if not vectormatch(pos3_in, [pos_x_min, pos_y_min, pos_z_min]):
                     posmatch_xyz = False
@@ -258,18 +285,17 @@ def read_modelfile_text(
                     posmatch_zyx = False
 
             assert posmatch_xyz != posmatch_zyx  # one option must match
+            colrenames = {}
             if posmatch_xyz:
                 print("  model cell positions are consistent with x-y-z column order")
-                dfmodel = dfmodel.rename(
-                    columns={"inputpos_a": "pos_x_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_z_min"},
-                )
+                colrenames = {"inputpos_a": "pos_x_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_z_min"}
+
             if posmatch_zyx:
                 print("  cell positions are consistent with z-y-x column order")
-                dfmodel = dfmodel.rename(
-                    columns={"inputpos_a": "pos_z_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_x_min"},
-                )
+                colrenames = {"inputpos_a": "pos_z_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_x_min"}
+            dfmodel = dfmodel.rename({a: b for a, b in colrenames.items() if a in dfmodel.columns})
 
-    return pl.from_pandas(dfmodel), modelmeta
+    return dfmodel, modelmeta
 
 
 def get_modeldata_polars(
@@ -339,8 +365,9 @@ def get_modeldata_polars(
 
     if dfmodel is None:
         dfmodel = dfmodel_in
-    else:
-        assert dfmodel.schema == dfmodel_in.schema
+    elif dfmodel.schema != dfmodel_in.schema:
+        print("ERRORL: parquet schema does not match model.txt. Remove {filenameparquet} and try again.")
+        raise AssertionError
 
     mebibyte = 1024 * 1024
     if isinstance(dfmodel, pl.DataFrame) and filename.stat().st_size > 10 * mebibyte and not getheadersonly:
@@ -623,7 +650,9 @@ def add_derived_cols_to_modeldata(
 
     if "angle_bin" in derived_cols:
         assert modelpath is not None
-        dfmodel = pl.from_pandas(get_cell_angle(dfmodel.collect().to_pandas(), modelpath)).lazy()
+        dfmodel = pl.from_pandas(
+            get_cell_angle(dfmodel.collect().to_pandas(use_pyarrow_extension_array=True), modelpath)
+        ).lazy()
 
     # if "Ye" in derived_cols and os.path.isfile(modelpath / "Ye.txt"):
     #     dfmodel["Ye"] = at.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
@@ -1051,7 +1080,7 @@ def get_initelemabundances_polars(
             )
         )
 
-        if abundancefilepath.stat().st_size > 10 * 1024 * 1024:
+        if abundancefilepath.stat().st_size > 5 * 1024 * 1024:
             print(f"Saving {filenameparquet}")
             abundancedata.write_parquet(filenameparquet, compression="zstd")
             print("  Done.")
