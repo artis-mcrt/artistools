@@ -57,6 +57,10 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         derived_cols=["mass_g", "vel_r_mid", "rho"],
     )
     dfmodel = lazydfmodel.collect()
+    dfmodelsizegb = dfmodel.estimated_size("gb")
+    if dfmodelsizegb > 3:
+        print(f"The model DataFrame occupies {dfmodelsizegb:.2f} GB of memory.")
+
     t_model_init_days, vmax = modelmeta["t_model_init_days"], modelmeta["vmax_cmps"]
 
     t_model_init_seconds = t_model_init_days * 24 * 60 * 60
@@ -99,7 +103,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         assoc_cells, mgi_of_propcells = None, None
 
     if "q" in dfmodel.columns:
-        initial_energy = dfmodel["mass_g"].dot(dfmodel["mass_g"])
+        initial_energy = dfmodel["q"].dot(dfmodel["mass_g"])
         assert initial_energy is not None
         print(f'  {"initial energy":19s} {initial_energy:.3e} erg')
     else:
@@ -157,7 +161,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             continue
 
         species = column.replace("X_", "")
-        speciesabund_g = np.dot(dfmodel[column], dfmodel["mass_g"])
+        speciesabund_g = dfmodel[column].dot(dfmodel["mass_g"])
+        assert isinstance(speciesabund_g, float)
 
         species_mass_msun = speciesabund_g / msun_g
 
