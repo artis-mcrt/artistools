@@ -179,6 +179,10 @@ def test_opacity_by_Ye_file() -> None:
     at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, griddata=griddata)
 
 
+def test_plotdensity() -> None:
+    at.inputmodel.plotdensity.main(argsraw=[], modelpath=[modelpath], outputpath=outputpath)
+
+
 def test_save_load_3d_model() -> None:
     clear_modelfiles()
     dfmodel_pl, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)

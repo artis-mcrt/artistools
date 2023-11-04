@@ -385,6 +385,8 @@ def get_modeldata_polars(
         abundancedata = get_initelemabundances_polars(modelpath, printwarningsonly=printwarningsonly)
         dfmodel = dfmodel.join(abundancedata, how="inner", on="inputcellid")
 
+    dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
+
     if derived_cols:
         dfmodel = add_derived_cols_to_modeldata(
             dfmodel=dfmodel,
@@ -1068,6 +1070,7 @@ def get_initelemabundances_polars(
         ncols = len(pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, comment="#", nrows=1).columns)
         colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
         dtypes = {col: pl.Float32 if col.startswith("X_") else pl.Int32 for col in colnames}
+
         abundancedata = pl.read_csv(
             at.zopen(abundancefilepath, forpolars=True),
             has_header=False,
@@ -1075,6 +1078,8 @@ def get_initelemabundances_polars(
             comment_char="#",
             infer_schema_length=0,
         )
+
+        # fix up multiple spaces at beginning of lines
         abundancedata = abundancedata.transpose()
         abundancedata = pl.DataFrame(
             [abundancedata.to_series(idx).drop_nulls() for idx in range(len(abundancedata.columns))]
@@ -1093,7 +1098,7 @@ def get_initelemabundances_polars(
         else:
             abundancedata_lazy = abundancedata.lazy()
 
-    return abundancedata_lazy.with_row_count("modelgridindex")
+    return abundancedata_lazy
 
 
 def save_initelemabundances(

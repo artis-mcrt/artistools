@@ -56,7 +56,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         binned_yvals: list[float] = []
 
         # total_mass = dfmodel.mass_g.sum() / 1.989e33
-        dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
         dfmodel = dfmodel.sort(by="vel_r_mid")
 
         dfmodelcollect = dfmodel.select(["modelgridindex", "vel_r_min", "vel_r_mid", "vel_r_max", "mass_g"]).collect()
