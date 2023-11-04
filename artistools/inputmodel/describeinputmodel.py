@@ -154,15 +154,12 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     if modelmeta["dimensions"] > 1:
         corner_mass = (
-            float(
-                dfmodel.select(["vel_r_mid", "mass_g"])
-                .filter(pl.col("vel_r_mid") > vmax)
-                .select(pl.col("mass_g").sum())
-                .collect()
-                .to_numpy()
-            )
-            / msun_g
-        )
+            dfmodel.select(["vel_r_mid", "mass_g"])
+            .filter(pl.col("vel_r_mid") > vmax)
+            .select(pl.col("mass_g").sum())
+            .collect()
+            .item(0, 0)
+        ) / msun_g
         print(
             f'  {"M_corners":19s} {corner_mass:8.5f} MSun ('
             f" {100 * corner_mass / mass_msun_rho:.2f}% of M_tot in cells with v_r_mid > vmax)"
@@ -183,7 +180,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
         species = column.replace("X_", "")
 
-        speciesabund_g = float(dfmodel.select(pl.col(column).dot(pl.col("mass_g"))).collect().to_numpy())
+        speciesabund_g = dfmodel.select(pl.col(column).dot(pl.col("mass_g"))).collect().item(0, 0)
 
         assert isinstance(speciesabund_g, float)
 
