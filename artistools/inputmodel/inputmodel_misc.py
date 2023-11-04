@@ -301,7 +301,7 @@ def read_modelfile_text(
 def get_modeldata_polars(
     modelpath: Path | str = Path(),
     get_elemabundances: bool = False,
-    derived_cols: t.Sequence[str] | str | None = None,
+    derived_cols: list[str] | str | None = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
@@ -463,7 +463,7 @@ def get_empty_3d_model(
 def get_modeldata(
     modelpath: Path | str = Path(),
     get_elemabundances: bool = False,
-    derived_cols: t.Sequence[str] | str | None = None,
+    derived_cols: list[str] | str | None = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
 ) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:
@@ -484,7 +484,7 @@ def get_modeldata(
 
 def add_derived_cols_to_modeldata(
     dfmodel: pl.DataFrame | pl.LazyFrame,
-    derived_cols: t.Sequence[str],
+    derived_cols: list[str],
     modelmeta: dict[str, t.Any],
     modelpath: Path | None = None,
 ) -> pl.LazyFrame:
@@ -621,6 +621,7 @@ def add_derived_cols_to_modeldata(
                     .alias("pos_r_mid")
                 ]
             )
+
             dfmodel = dfmodel.with_columns(
                 [
                     (
@@ -647,8 +648,16 @@ def add_derived_cols_to_modeldata(
 
     dfmodel = dfmodel.with_columns([(pl.col("rho") * pl.col("volume")).alias("mass_g")])
 
-    if unknown_cols := [col for col in derived_cols if col not in dfmodel.columns]:
+    if unknown_cols := [
+        col for col in derived_cols if col not in dfmodel.columns and col not in {"pos_min", "pos_max"}
+    ]:
         print(f"WARNING: Unknown derived columns: {unknown_cols}")
+
+    if "pos_min" in derived_cols:
+        derived_cols.extend([f"pos_{ax}_min" for ax in axes])
+
+    if "pos_max" in derived_cols:
+        derived_cols.extend([f"pos_{ax}_max" for ax in axes])
 
     dfmodel = dfmodel.drop([col for col in dfmodel.columns if col not in original_cols and col not in derived_cols])
 
