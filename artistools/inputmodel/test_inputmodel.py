@@ -193,12 +193,12 @@ def test_save_load_3d_model() -> None:
     dfmodel.loc[75001, ["rho"]] = 0.5
     at.inputmodel.save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
     dfmodel2, modelmeta2 = at.inputmodel.get_modeldata(modelpath=outputpath)
-    assert dfmodel.equals(dfmodel2)
+    assert dfmodel.equals(dfmodel2.drop("modelgridindex", axis=1))
     assert modelmeta == modelmeta2
 
     # next load will use the parquet file
     dfmodel3, modelmeta3 = at.inputmodel.get_modeldata(modelpath=outputpath)
-    assert dfmodel.equals(dfmodel3)
+    assert dfmodel.equals(dfmodel3.drop("modelgridindex", axis=1))
     assert modelmeta == modelmeta3
 
 
