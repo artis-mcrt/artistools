@@ -60,6 +60,9 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     dfmodel = dfmodel.filter(pl.col("rho") > 0.0)
     dfmodel = dfmodel.drop(["X_Fegroup", "X_n"])  # skip special X_Fegroup and don't confuse neutrons with Nitrogen
 
+    if args.noabund:
+        dfmodel = dfmodel.drop([col for col in dfmodel.columns if col.startswith("X_")])
+
     if not args.isotopes:
         dfmodel = dfmodel.drop([col for col in dfmodel.columns if col.startswith("X_") and col[-1].isdigit()])
 
@@ -72,15 +75,14 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     print(f"Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)")
 
     if modelmeta["dimensions"] == 1:
-        vmax_kmps = float(dfmodel.select(pl.col("vel_r_max_kmps").max()).collect().to_numpy())
-        assert isinstance(vmax_kmps, float)
+        vmax_kmps = dfmodel.select(pl.col("vel_r_max_kmps").max()).collect().item(0, 0)
         vmax = vmax_kmps * 1e5
         print(
             f"Model contains {modelmeta['npts_model']} 1D spherical shells with vmax = {vmax / 1e5} km/s"
             f" ({vmax / 29979245800:.2f} * c)"
         )
     else:
-        nonemptycells = dfmodel.select(["rho"]).filter(pl.col("rho") > 0.0).collect().height
+        nonemptycells = dfmodel.select([(pl.col("rho") > 0.0).count()]).collect().item(0, 0)
         print(
             f"Model contains {modelmeta['npts_model']} grid cells ({nonemptycells} nonempty) with "
             f"vmax = {vmax} cm/s ({vmax * 1e-5 / 299792.458:.2f} * c)"
@@ -107,13 +109,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         assoc_cells, mgi_of_propcells = None, None
 
     if "q" in dfmodel.columns:
-        initial_energy = float(dfmodel.select(pl.col("q").dot(pl.col("mass_g"))).collect().to_numpy())
+        initial_energy = dfmodel.select(pl.col("q").dot(pl.col("mass_g"))).collect().item(0, 0)
         assert initial_energy is not None
         print(f'  {"initial energy":19s} {initial_energy:.3e} erg')
     else:
         initial_energy = 0.0
 
-    mass_msun_rho = float(dfmodel.select(pl.col("mass_g").sum() / msun_g).collect().to_numpy())
+    mass_msun_rho = dfmodel.select(pl.col("mass_g").sum() / msun_g).collect().item(0, 0)
 
     if assoc_cells is not None and mgi_of_propcells is not None:
         direct_model_propgrid_map = all(
@@ -127,13 +129,13 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
             wid_init3 = wid_init**3
             initial_energy_mapped = 0.0
             cellmass_mapped = [
-                float(len(assoc_cells.get(mgi, [])) * wid_init3 * rho)
-                for mgi, rho in enumerate(dfmodel.select(["rho"]).collect().to_numpy())
+                float(len(assoc_cells.get(modelgridindex, [])) * wid_init3 * rho)
+                for modelgridindex, rho in dfmodel.select(["modelgridindex", "rho"]).collect().iter_rows()
             ]
 
             if "q" in dfmodel.columns:
                 initial_energy_mapped = sum(
-                    mass * float(q) for mass, q in zip(cellmass_mapped, dfmodel.select(["q"]).collect().to_numpy())
+                    mass * float(q[0]) for mass, q in zip(cellmass_mapped, dfmodel.select(["q"]).collect().iter_rows())
                 )
 
                 print(
