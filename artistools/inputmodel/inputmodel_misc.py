@@ -1040,6 +1040,7 @@ def get_initelemabundances(
 ) -> pd.DataFrame:
     return (
         get_initelemabundances_polars(modelpath=modelpath, printwarningsonly=printwarningsonly)
+        .with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
         .collect()
         .to_pandas(use_pyarrow_extension_array=True)
         .set_index("modelgridindex")
