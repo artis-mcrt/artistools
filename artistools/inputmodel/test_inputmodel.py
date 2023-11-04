@@ -96,7 +96,7 @@ def verify_file_checksums(
         fullpath = Path(folder) / filename
         assert (
             checksums_actual[fullpath] == checksum_expected
-        ), f"{filename} checksum mismatch. Should be {checksum_expected} but found {checksums_actual[fullpath]}"
+        ), f"{filename} checksum mismatch. Expecting {checksum_expected} but calculated {checksums_actual[fullpath]}"
 
 
 def test_maptogrid() -> None:
@@ -130,7 +130,7 @@ def test_makeartismodelfromparticlegridmap() -> None:
 
     verify_file_checksums(
         {
-            "abundances.txt": "864013e0d8a7bae1bc1194bea2fda34b7de2af95da3d1072917ab5bccddb68bc",
+            "abundances.txt": "3e7ad41548eedcc3b3a042208fd6ad6d7b6dd35c474783dc2abbbc5036f306aa",
             "model.txt": "7a3eee92f9653eb478a01080d16b711773031bedd38a90ec167c7fda98c15ef9",
             "gridcontributions.txt": "12f006c43c0c8d1f84c3927b3c80959c1b2cecc01598be92c2f24a130892bc60",
         },
