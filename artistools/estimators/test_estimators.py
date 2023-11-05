@@ -43,4 +43,6 @@ def test_estimator_snapshot(mockplot) -> None:
 
 @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
 def test_estimator_timeevolution(mockplot) -> None:
-    at.estimators.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, modelgridindex=0, x="time")
+    at.estimators.plot(
+        argsraw=[], modelpath=modelpath, outputfile=outputpath, plotlist=[["Te", "nne"]], modelgridindex=0, x="time"
+    )
