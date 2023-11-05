@@ -20,8 +20,6 @@ import polars as pl
 from typeguard import check_type
 
 import artistools as at
-import artistools.estimators.plot3destimators_classic
-import artistools.inputmodel.slice1dfromconein3dmodel
 
 colors_tab10 = list(plt.get_cmap("tab10")(np.linspace(0, 1.0, 10)))
 
@@ -308,9 +306,7 @@ def plot_multi_ion_series(
     missingions = set()
     try:
         if args.classicartis:
-            import artistools.estimators.estimators_classic
-
-            compositiondata = artistools.estimators.estimators_classic.get_atomic_composition(modelpath)
+            compositiondata = at.estimators.estimators_classic.get_atomic_composition(modelpath)
         else:
             compositiondata = at.get_composition_data(modelpath)
         for atomic_number, ion_stage in iontuplelist:
@@ -1016,7 +1012,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-readonlymgi",
         default=False,
-        choices=["alongaxis"], # plan to extend this to e.g. 2D slice
+        choices=["alongaxis"],  # plan to extend this to e.g. 2D slice
         help="Option to read only selected mgi and choice of which mgi to select. Choose which axis with args.axis",
     )
 
@@ -1050,7 +1046,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     if args.readonlymgi:
         args.sliceaxis = args.axis[1]
-        axis_postive_negative_dict = {'+': True, '-': False}
+        axis_postive_negative_dict = {"+": True, "-": False}
         args.positive_axis = axis_postive_negative_dict[args.axis[0]]
 
     print(
@@ -1093,7 +1089,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     ]
 
     if args.readonlymgi == "alongaxis":
-        print(f'Getting mgi along {args.axis} axis')
+        print(f"Getting mgi along {args.axis} axis")
         args.modelgridindex = at.estimators.plot3destimators_classic.get_modelgridcells_along_axis(
             modelpath=modelpath, args=args
         )
