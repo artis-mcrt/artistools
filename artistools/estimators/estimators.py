@@ -368,6 +368,7 @@ def get_averaged_estimators(
     """Get the average of estimators[(timestep, modelgridindex)][keys[0]]...[keys[-1]] across timesteps."""
     if isinstance(keys, str):
         keys = [keys]
+    modelgridindex = int(modelgridindex)
 
     # reduce(lambda d, k: d[k], keys, dictionary) returns dictionary[keys[0]][keys[1]]...[keys[-1]]
     # applying all keys in the keys list
