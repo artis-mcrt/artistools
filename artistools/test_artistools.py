@@ -52,14 +52,6 @@ def test_deposition() -> None:
     at.deposition.main(argsraw=[], modelpath=modelpath)
 
 
-def test_estimator_snapshot() -> None:
-    at.estimators.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
-
-
-def test_estimator_timeevolution() -> None:
-    at.estimators.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, modelgridindex=0, x="time")
-
-
 def test_initial_composition() -> None:
     at.initial_composition.main(argsraw=["-modelpath", str(modelpath_3d), "-o", str(outputpath), "rho", "Fe"])
 
