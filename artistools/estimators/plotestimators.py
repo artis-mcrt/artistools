@@ -1046,8 +1046,8 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     if args.readonlymgi:
         args.sliceaxis = args.axis[1]
-        axis_postive_negative_dict = {"+": True, "-": False}
-        args.positive_axis = axis_postive_negative_dict[args.axis[0]]
+        assert args.args.axis[0] in {"+", "-"}
+        args.positive_axis = args.axis[0] == "+"
 
     print(
         f"Plotting estimators for '{modelname}' timesteps {timestepmin} to {timestepmax} "
