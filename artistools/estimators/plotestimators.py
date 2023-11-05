@@ -306,9 +306,7 @@ def plot_multi_ion_series(
     missingions = set()
     try:
         if args.classicartis:
-            import artistools.estimators.estimators_classic
-
-            compositiondata = artistools.estimators.estimators_classic.get_atomic_composition(modelpath)
+            compositiondata = at.estimators.estimators_classic.get_atomic_composition(modelpath)
         else:
             compositiondata = at.get_composition_data(modelpath)
         for atomic_number, ion_stage in iontuplelist:
@@ -582,6 +580,8 @@ def get_xlist(
             xvariable = "beta"
         dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
         dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
+        if args.readonlymgi:
+            dfmodel = dfmodel.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
         dfmodel = dfmodel.select(["modelgridindex", "vel_r_mid"]).sort(by="vel_r_mid")
         if args.xmax > 0:
             dfmodel = dfmodel.filter(pl.col("vel_r_mid") / 1e5 <= args.xmax)
@@ -1009,6 +1009,20 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--classicartis", action="store_true", help="Flag to show using output from classic ARTIS branch"
     )
 
+    parser.add_argument(
+        "-readonlymgi",
+        default=False,
+        choices=["alongaxis"],  # plan to extend this to e.g. 2D slice
+        help="Option to read only selected mgi and choice of which mgi to select. Choose which axis with args.axis",
+    )
+
+    parser.add_argument(
+        "-axis",
+        default="+z",
+        choices=["+x", "-x", "+y", "-y", "+z", "-z"],
+        help="Choose an axis for use with args.readonlymgi. Hint: for negative use e.g. -axis=-z",
+    )
+
 
 def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None = None, **kwargs) -> None:
     """Plot ARTIS estimators."""
@@ -1029,6 +1043,11 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     (timestepmin, timestepmax, args.timemin, args.timemax) = at.get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
+
+    if args.readonlymgi:
+        args.sliceaxis = args.axis[1]
+        assert args.args.axis[0] in {"+", "-"}
+        args.positive_axis = args.axis[0] == "+"
 
     print(
         f"Plotting estimators for '{modelname}' timesteps {timestepmin} to {timestepmax} "
@@ -1069,6 +1088,12 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
         # [['gamma_NT', ['Fe I', 'Fe II', 'Fe III', 'Fe IV', 'Fe V', 'Ni II']]],
     ]
 
+    if args.readonlymgi == "alongaxis":
+        print(f"Getting mgi along {args.axis} axis")
+        args.modelgridindex = at.estimators.plot3destimators_classic.get_modelgridcells_along_axis(
+            modelpath=modelpath, args=args
+        )
+
     if temperatures_only := plotlist_is_temperatures_only(plotlist):
         print("Plotting temperatures only (from parquet if available)")
 
@@ -1107,7 +1132,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     assoc_cells, mgi_of_propcells = at.get_grid_mapping(modelpath)
 
-    if args.modelgridindex > -1 or args.x in {"time", "timestep"}:
+    if not args.readonlymgi and (args.modelgridindex > -1 or args.x in {"time", "timestep"}):
         # plot time evolution in specific cell
         if not args.x:
             args.x = "time"
