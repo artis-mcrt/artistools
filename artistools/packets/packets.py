@@ -399,7 +399,7 @@ def convert_text_to_parquet(
 
     # print(f"Saving {packetsfileparquet}")
     dfpackets = dfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
-    dfpackets.collect().write_parquet(packetsfileparquet, compression="zstd", statistics=True)
+    dfpackets.collect().write_parquet(packetsfileparquet, compression="zstd", statistics=True, compression_level=6)
 
     return packetsfileparquet
 
