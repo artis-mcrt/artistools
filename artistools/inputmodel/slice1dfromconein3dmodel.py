@@ -210,7 +210,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--positive_axis", action="store", default=False, help="Make 1D model from positive axis. Default is False to use negative axis."
+        "--positive_axis",
+        action="store",
+        default=False,
+        help="Make 1D model from positive axis. Default is False to use negative axis.",
     )
 
     parser.add_argument(
