@@ -10,6 +10,7 @@ from pathlib import Path
 import argcomplete
 import numpy as np
 import pandas as pd
+import polars as pl
 from astropy import units as u
 
 import artistools as at
@@ -132,6 +133,7 @@ def read_griddat_file(
 
     if "cellYe" in griddata:
         griddata["cellYe"] = np.nan_to_num(griddata["cellYe"], nan=0.0)
+
     if "Q" in griddata:
         griddata["Q"] = np.nan_to_num(griddata["Q"], nan=0.0)
 
@@ -333,7 +335,7 @@ def makemodelfromgriddata(
     traj_root: Path | str | None = None,
     dimensions=3,
     args=None,
-):
+) -> None:
     dfmodel, t_model_days, t_mergertime_s, vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
         pathtogriddata=gridfolderpath,
         targetmodeltime_days=targetmodeltime_days,
@@ -351,6 +353,8 @@ def makemodelfromgriddata(
         if Path(gridfolderpath, "gridcontributions.txt").is_file()
         else None
     )
+
+    dfmodel = pl.from_pandas(dfmodel)
 
     if traj_root is not None:
         print(f"Nuclear network abundances from {traj_root} will be used")
@@ -401,6 +405,8 @@ def makemodelfromgriddata(
         )
     else:
         at.inputmodel.save_empty_abundance_file(outputfilepath=outputpath, npts_model=len(dfmodel))
+
+    dfmodel = dfmodel.with_columns(pl.col("tracercount").cast(pl.Int32))
 
     print(f'Writing to {Path(outputpath) / "model.txt"}...')
     at.inputmodel.save_modeldata(
