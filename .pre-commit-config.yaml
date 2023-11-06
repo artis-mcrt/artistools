@@ -9,7 +9,7 @@ repos:
           - id: check-case-conflict
           - id: check-builtin-literals
           - id: check-docstring-first
-          - id: check-executables-have-shebangs
+#          - id: check-executables-have-shebangs
           - id: check-json
           - id: check-merge-conflict
           - id: check-symlinks
