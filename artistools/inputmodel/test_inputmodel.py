@@ -194,15 +194,12 @@ def test_plotdensity() -> None:
 def test_save_load_3d_model() -> None:
     clear_modelfiles()
     lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)
-
-    rhovals = np.zeros(modelmeta["npts_model"])
-    rhovals[75000] = 1
-    rhovals[75001] = 2
-    rhovals[95200] = 3
-    rhovals[75001] = 0.5
-    lzdfmodel = lzdfmodel.with_columns(pl.Series(rhovals, dtype=pl.Float32).alias("rho"))
     dfmodel = lzdfmodel.collect()
-    print("HERE", dfmodel.filter(pl.col("rho") > 0.0))
+
+    dfmodel[75000, "rho"] = 1
+    dfmodel[75001, "rho"] = 2
+    dfmodel[95200, "rho"] = 3
+    dfmodel[75001, "rho"] = 0.5
 
     at.inputmodel.save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
     dfmodel2, modelmeta2 = at.inputmodel.get_modeldata_polars(modelpath=outputpath)
