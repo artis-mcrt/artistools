@@ -112,7 +112,7 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
 
 
 def read_griddat_file(
-    pathtogriddata, targetmodeltime_days=None, minparticlespercell=0
+    pathtogriddata, targetmodeltime_days=None
 ) -> tuple[pd.DataFrame, float, float, float, dict[str, t.Any]]:
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
 
@@ -181,17 +181,6 @@ def read_griddat_file(
     wid_init = 2 * xmax / ncoordgridx
     print(f"Grid model is {ncoordgridx} x {ncoordgridx} x {ncoordgridx} = {len(griddata)} cells")
     griddata["mass_g"] = griddata["rho"] * wid_init**3
-    if minparticlespercell > 0:
-        cellfilter = np.logical_and(griddata.tracercount < minparticlespercell, griddata.rho > 0.0)
-        n_ignored = np.count_nonzero(cellfilter)
-        mass_ignored = griddata.loc[cellfilter].rho.sum() * wid_init**3 / 1.989e33
-        mass_orig = griddata.rho.sum() * wid_init**3 / 1.989e33
-
-        print(
-            f"Ignoring {n_ignored} nonempty cells ({mass_ignored:.2e} Msun, {mass_ignored / mass_orig * 100:.2f}% of"
-            f" mass) because they have < {minparticlespercell} tracer particles"
-        )
-        griddata.loc[griddata.tracercount < minparticlespercell, ["rho", "cellYe"]] = 0.0, 0.0
 
     print(f"Max tracers in a cell {max(griddata['tracercount'])}")
 
@@ -331,7 +320,6 @@ def makemodelfromgriddata(
     gridfolderpath=Path(),
     outputpath=Path(),
     targetmodeltime_days=None,
-    minparticlespercell=0,
     traj_root: Path | str | None = None,
     dimensions=3,
     args=None,
@@ -339,7 +327,6 @@ def makemodelfromgriddata(
     dfmodel, t_model_days, t_mergertime_s, vmax, modelmeta = at.inputmodel.modelfromhydro.read_griddat_file(
         pathtogriddata=gridfolderpath,
         targetmodeltime_days=targetmodeltime_days,
-        minparticlespercell=minparticlespercell,
     )
 
     if getattr(args, "fillcentralhole", False):
@@ -369,7 +356,6 @@ def makemodelfromgriddata(
             dfgridcontributions=dfgridcontributions,
             dfmodel=dfmodel,
             t_model_days_incpremerger=t_model_days_incpremerger,
-            minparticlespercell=minparticlespercell,
             traj_root=traj_root,
         )
     else:
@@ -422,12 +408,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-gridfolderpath", "-i", default=".", help="Path to folder containing grid.dat and gridcontributions.dat"
     )
     parser.add_argument(
-        "-minparticlespercell",
-        default=0,
-        type=int,
-        help="Minimum number of SPH particles in each cell (otherwise set rho=0)",
-    )
-    parser.add_argument(
         "-trajectoryroot",
         "-trajroot",
         default=None,
@@ -470,7 +450,6 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     makemodelfromgriddata(
         gridfolderpath=gridfolderpath,
         outputpath=outputpath,
-        minparticlespercell=args.minparticlespercell,
         targetmodeltime_days=args.targetmodeltime_days,
         traj_root=args.trajectoryroot,
         dimensions=args.dimensions,

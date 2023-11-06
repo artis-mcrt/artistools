@@ -350,25 +350,29 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pl.DataF
         cell_frac_sum[cellindex] = dfparticlecontribs["frac_of_cellmass"].sum()
         cell_frac_includemissing_sum[cellindex] = dfparticlecontribs["frac_of_cellmass_includemissing"].sum()
 
-    dfcontribs = dfcontribs.with_columns(
-        [
-            pl.Series(
-                (
-                    row["frac_of_cellmass"] / cell_frac_sum[row["cellindex"]]
-                    if cell_frac_sum[row["cellindex"]] > 0.0
-                    else 0.0
-                )
-                for row in dfcontribs.iter_rows(named=True)
-            ).alias("frac_of_cellmass"),
-            pl.Series(
-                (
-                    row["frac_of_cellmass_includemissing"] / cell_frac_includemissing_sum[row["cellindex"]]
-                    if cell_frac_includemissing_sum[row["cellindex"]] > 0.0
-                    else 0.0
-                )
-                for row in dfcontribs.iter_rows(named=True)
-            ).alias("frac_of_cellmass_includemissing"),
-        ]
+    dfcontribs = (
+        dfcontribs.lazy()
+        .with_columns(
+            [
+                pl.Series(
+                    (
+                        row["frac_of_cellmass"] / cell_frac_sum[row["cellindex"]]
+                        if cell_frac_sum[row["cellindex"]] > 0.0
+                        else 0.0
+                    )
+                    for row in dfcontribs.iter_rows(named=True)
+                ).alias("frac_of_cellmass"),
+                pl.Series(
+                    (
+                        row["frac_of_cellmass_includemissing"] / cell_frac_includemissing_sum[row["cellindex"]]
+                        if cell_frac_includemissing_sum[row["cellindex"]] > 0.0
+                        else 0.0
+                    )
+                    for row in dfcontribs.iter_rows(named=True)
+                ).alias("frac_of_cellmass_includemissing"),
+            ]
+        )
+        .collect()
     )
 
     for cellindex, dfparticlecontribs in dfcontribs.group_by("cellindex"):
@@ -404,25 +408,16 @@ def add_abundancecontributions(
     dfmodel: pl.LazyFrame | pl.DataFrame,
     t_model_days_incpremerger: float,
     traj_root: Path | str,
-    minparticlespercell: int = 0,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """Contribute trajectory network calculation abundances to model cell abundances and return dfmodel, dfelabundances, dfcontribs."""
     t_model_s = t_model_days_incpremerger * 86400
     dfcontribs = dfgridcontributions
 
     dfmodel = dfmodel.lazy().collect()
-
     if "X_Fegroup" not in dfmodel.columns:
         dfmodel = dfmodel.with_columns(pl.lit(1.0).alias("X_Fegroup"))
 
-    active_inputcellids = [
-        cellindex
-        for cellindex, dfthiscellcontribs in dfcontribs.group_by("cellindex")
-        if len(dfthiscellcontribs) >= minparticlespercell
-    ]
-
     traj_root = Path(traj_root)
-    dfcontribs = dfcontribs.filter(pl.col("cellindex").is_in(active_inputcellids))
     dfcontribs = filtermissinggridparticlecontributions(traj_root, dfcontribs)
     active_inputcellids = dfcontribs["cellindex"].unique().to_list()
     active_inputcellcount = len(active_inputcellids)
@@ -431,7 +426,7 @@ def add_abundancecontributions(
     particle_count = len(particleids)
 
     print(
-        f"{active_inputcellcount} of {len(dfmodel)} model cells have >={minparticlespercell} particles contributing "
+        f"{active_inputcellcount} of {len(dfmodel)} model cells have >0 particles contributing "
         f"({len(dfcontribs)} cell contributions from {particle_count} particles after filter)"
     )
 
@@ -463,30 +458,20 @@ def add_abundancecontributions(
 
     print(f"Reading trajectory abundances took {time.perf_counter() - timestart:.1f} seconds")
 
-    print("Generating cell abundances...")
-    timestart = time.perf_counter()
-    dfcontribs_cellgroups = dfcontribs.group_by("cellindex")
-
-    print(f"  took {time.perf_counter() - timestart:.1f} seconds")
-
     timestart = time.perf_counter()
     print("Creating dfnucabundances...", end="", flush=True)
 
     dfnucabundanceslz = dfnucabundances.lazy().with_columns(
         [
-            (
-                pl.sum_horizontal(
-                    [
-                        pl.col(f"particle_{particleid}") * pl.lit(frac_of_cellmass)
-                        for particleid, frac_of_cellmass in dfthiscellcontribs[
-                            ["particleid", "frac_of_cellmass"]
-                        ].iter_rows()
-                    ]
-                )
-                if len(dfthiscellcontribs) >= minparticlespercell
-                else pl.lit(0.0)
+            pl.sum_horizontal(
+                [
+                    pl.col(f"particle_{particleid}") * pl.lit(frac_of_cellmass)
+                    for particleid, frac_of_cellmass in dfthiscellcontribs[
+                        ["particleid", "frac_of_cellmass"]
+                    ].iter_rows()
+                ]
             ).alias(f"{cellindex}")
-            for cellindex, dfthiscellcontribs in dfcontribs_cellgroups
+            for cellindex, dfthiscellcontribs in dfcontribs.group_by("cellindex")
         ]
     )
 
