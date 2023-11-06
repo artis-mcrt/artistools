@@ -222,10 +222,10 @@ def test_dimension_reduce_3d_model() -> None:
     mgi2 = 25 * 25 * 25 + 25 * 25 + 25
     dfmodel3d_pl[mgi2, "rho"] = 1
     dfmodel3d_pl[mgi1, "X_Ni56"] = 0.75
-    dfmodel3d = dfmodel3d_pl.to_pandas(use_pyarrow_extension_array=True)
+
     dfmodel3d = (
         at.inputmodel.add_derived_cols_to_modeldata(
-            dfmodel=pl.DataFrame(dfmodel3d), modelmeta=modelmeta_3d, derived_cols=["mass_g"]
+            dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, derived_cols=["mass_g"]
         )
         .collect()
         .to_pandas(use_pyarrow_extension_array=True)
@@ -239,13 +239,10 @@ def test_dimension_reduce_3d_model() -> None:
         ) = at.inputmodel.dimension_reduce_3d_model(
             dfmodel=dfmodel3d, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
         )
-        dfmodel_lowerd = (
-            at.inputmodel.add_derived_cols_to_modeldata(
-                dfmodel=pl.DataFrame(dfmodel_lowerd), modelmeta=modelmeta_lowerd, derived_cols=["mass_g"]
-            )
-            .collect()
-            .to_pandas(use_pyarrow_extension_array=True)
-        )
+
+        dfmodel_lowerd = at.inputmodel.add_derived_cols_to_modeldata(
+            dfmodel=pl.DataFrame(dfmodel_lowerd), modelmeta=modelmeta_lowerd, derived_cols=["mass_g"]
+        ).collect()
 
         # check that the total mass is conserved
         assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3d["mass_g"].sum())
