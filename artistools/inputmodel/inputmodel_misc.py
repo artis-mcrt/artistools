@@ -911,7 +911,7 @@ def save_modeldata(
 
         zeroabund = " ".join(["0.0" for _ in abundcols])
         if modelmeta["dimensions"] == 1:
-            for inputcellid, vel_r_max_kmps, pos_z_mid, logrho, *othercolvals in dfmodel.select(
+            for inputcellid, vel_r_max_kmps, logrho, *othercolvals in dfmodel.select(
                 ["inputcellid", "vel_r_max_kmps", "logrho", *abundcols]
             ).iter_rows():
                 fmodel.write(f"{inputcellid:d} {vel_r_max_kmps:9.2f} {logrho:10.8f} ")
