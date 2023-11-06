@@ -51,6 +51,14 @@ def test_get_modeldata_3d() -> None:
     assert np.isclose(dfmodel.mass_g.sum(), 2.7861855e33)
 
 
+def test_get_cell_angle() -> None:
+    modeldata, modelmeta = at.inputmodel.get_modeldata(
+        modelpath=modelpath_3d, derived_cols=["pos_x_mid", "pos_y_mid", "pos_z_mid"]
+    )
+    at.inputmodel.inputmodel_misc.get_cell_angle(modeldata, modelpath=modelpath_3d)
+    assert "cos_bin" in modeldata
+
+
 def test_downscale_3dmodel() -> None:
     dfmodel, modelmeta = at.get_modeldata(modelpath=modelpath_3d, get_elemabundances=True, derived_cols=["mass_g"])
     modelpath_3d_small = at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(
@@ -191,6 +199,7 @@ def test_save_load_3d_model() -> None:
     dfmodel.loc[75001, ["rho"]] = 2
     dfmodel.loc[95200, ["rho"]] = 3
     dfmodel.loc[75001, ["rho"]] = 0.5
+
     at.inputmodel.save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
     dfmodel2, modelmeta2 = at.inputmodel.get_modeldata(modelpath=outputpath)
     assert dfmodel.equals(dfmodel2.drop("modelgridindex", axis=1))

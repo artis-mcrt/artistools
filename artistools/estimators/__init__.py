@@ -1,6 +1,8 @@
 """Artistools - functions for handling data in estimators_????.out files (e.g., temperatures, densities, abundances)."""
 
 from artistools.estimators import estimators_classic
+from artistools.estimators import plot3destimators_classic
+from artistools.estimators import plotestimators
 from artistools.estimators.estimators import apply_filters
 from artistools.estimators.estimators import get_averaged_estimators
 from artistools.estimators.estimators import get_averageexcitation
