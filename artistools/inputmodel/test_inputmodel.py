@@ -130,7 +130,7 @@ def test_makeartismodelfromparticlegridmap() -> None:
     checksums_3d: dict[Path | str, str] = {
         "gridcontributions.txt": "12f006c43c0c8d1f84c3927b3c80959c1b2cecc01598be92c2f24a130892bc60",
         "abundances.txt": "5f782005ce879a8c81c43d0a7a791ad9b177eee8630b4771586949bf7fbca28e",
-        "model.txt": "4aa804394f80d7450fbd7604faec02794dd3aa7b6054dedf00f4487b5f56a341",
+        "model.txt": "f7de4f84bc9f5383ed520a4676cfdf069997fef052aa4a924833d431a8a7d0c0",
     }
 
     dfcontribs = {}
@@ -172,6 +172,7 @@ def test_makeartismodelfromparticlegridmap() -> None:
 
             # check that the total mass is conserved
             assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3["mass_g"].sum())
+            assert np.isclose(dfmodel_lowerd["tracercount"].sum(), dfmodel3["tracercount"].sum())
 
             # check that the total mass of each species is conserved
             for col in dfmodel3.columns:

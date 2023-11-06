@@ -143,8 +143,6 @@ def read_modelfile_text(
             dtypes=pldtypes,
             truncate_ragged_lines=True,
         )
-        if "tracercount" in dfmodel.columns:
-            dfmodel = dfmodel.with_columns(pl.col("tracercount").cast(pl.Int32))
     else:
         nrows_read = 1 if getheadersonly else npts_model
         skiprows: list[int] | int | None = (
@@ -159,7 +157,6 @@ def read_modelfile_text(
 
         dtypes: defaultdict[str, str] = defaultdict(lambda: "float32[pyarrow]")
         dtypes["inputcellid"] = "int32[pyarrow]"
-        dtypes["tracercount"] = "int32[pyarrow]"
 
         # each cell takes up two lines in the model file
         dfmodelpd = pd.read_csv(
@@ -938,6 +935,7 @@ def save_modeldata(
                 # Luke: quite a lot of code duplication here with the 3D case,
                 # but I think adding a function call per line would be too slow
                 startcols = ["inputcellid", "pos_rcyl_mid", "pos_z_mid", "rho"]
+                othercolisfloat = [x == pl.Float64 for x in dfmodel.schema.values()][len(startcols) :]
                 for inputcellid, pos_rcyl_mid, pos_z_mid, rho, *othercolvals in dfmodel.select(
                     [*startcols, *abundcols]
                 ).iter_rows():
@@ -960,6 +958,7 @@ def save_modeldata(
 
             elif modelmeta["dimensions"] == 3:
                 startcols = ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
+                othercolisfloat = [x == pl.Float64 for x in dfmodel.schema.values()][len(startcols) :]
                 for inputcellid, pos_x_min, pos_y_min, pos_z_min, rho, *othercolvals in dfmodel.select(
                     [*startcols, *abundcols]
                 ).iter_rows():
@@ -969,10 +968,10 @@ def save_modeldata(
                             [
                                 (
                                     (f"{colvalue:{float_format}}" if colvalue > 0.0 else "0.0")
-                                    if isinstance(colvalue, float)
+                                    if isfloat
                                     else f"{colvalue}"
                                 )
-                                for colvalue in othercolvals
+                                for isfloat, colvalue in zip(othercolisfloat, othercolvals)
                             ]
                         )
                         if rho > 0.0
