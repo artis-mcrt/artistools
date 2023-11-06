@@ -297,8 +297,9 @@ def get_wid_init_at_tmodel(
         assert modelpath is not None
         dfmodel, modelmeta = at.get_modeldata(modelpath, getheadersonly=True)
         assert modelmeta["dimensions"] == 3
-        ngridpoints = len(dfmodel)
+        ngridpoints = modelmeta["npts_model"]
         xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * 86400.0
+    assert ngridpoints is not None
     ncoordgridx: int = round(ngridpoints ** (1.0 / 3.0))
 
     assert xmax is not None
@@ -527,7 +528,7 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | None, 
 
     # for 3D models, the box corners can have non-zero density (allowing packet escape from tmin)
     # for 1D and 2D, the largest escape radius at tmin is the box side radius
-    vmax_tmin = cornervmax if at.inputmodel.get_dfmodel_dimensions(dfmodel) == 3 else vmax
+    vmax_tmin = cornervmax if modelmeta["dimensions"] == 3 else vmax
 
     # earliest completely valid time is tmin plus maximum possible travel time from corner to origin
     validrange_start_days = at.get_timestep_times(modelpath, loc="start")[0] * (1 + vmax_tmin / 29979245800)
