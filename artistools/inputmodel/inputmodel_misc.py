@@ -818,8 +818,10 @@ def save_modeldata(
     dfmodel must contain columns: inputcellid, pos_x_min, pos_y_min, pos_z_min, rho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
     modelmeta must define: vmax, ncoordgridr and ncoordgridz
     """
-    if isinstance(dfmodel, pl.LazyFrame | pl.DataFrame):
-        dfmodel = dfmodel.lazy().collect().to_pandas(use_pyarrow_extension_array=True)
+    if isinstance(dfmodel, pd.DataFrame):
+        dfmodel = pl.from_pandas(dfmodel)
+
+    dfmodel = dfmodel.lazy().collect()
 
     if modelmeta is None:
         modelmeta = {}
@@ -851,7 +853,8 @@ def save_modeldata(
         print(f" 2D grid size: {len(dfmodel)} ({modelmeta['ncoordgridrcyl']} x {modelmeta['ncoordgridz']})")
         assert modelmeta["ncoordgridrcyl"] * modelmeta["ncoordgridz"] == len(dfmodel)
     elif modelmeta["dimensions"] == 3:
-        dfmodel = dfmodel.rename(columns={"gridindex": "inputcellid"})
+        if "gridindex" in dfmodel.columns:
+            dfmodel = dfmodel.rename({"gridindex": "inputcellid"})
         griddimension = int(round(len(dfmodel) ** (1.0 / 3.0)))
         print(f" 3D grid size: {len(dfmodel)} ({griddimension}^3)")
         assert griddimension**3 == len(dfmodel)
@@ -869,7 +872,7 @@ def save_modeldata(
         if col not in dfmodel.columns and col.startswith("X_"):
             dfmodel[col] = 0.0
 
-    dfmodel = dfmodel.astype({"inputcellid": int})
+    dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))
     customcols = [col for col in dfmodel.columns if col not in standardcols]
     customcols.sort(
         key=lambda col: at.get_z_a_nucname(col) if col.startswith("X_") else (float("inf"), 0)
@@ -906,22 +909,38 @@ def save_modeldata(
 
         abundcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
 
+        zeroabund = " ".join(["0.0" for _ in abundcols])
         if modelmeta["dimensions"] == 1:
-            for cell in dfmodel.itertuples(index=False):
-                fmodel.write(f"{cell.inputcellid:d} {cell.vel_r_max_kmps:9.2f} {cell.logrho:10.8f} ")
-                fmodel.write(" ".join([f"{getattr(cell, col)}" for col in abundcols]))
+            for inputcellid, vel_r_max_kmps, pos_z_mid, logrho, *othercolvals in dfmodel.select(
+                ["inputcellid", "vel_r_max_kmps", "logrho", *abundcols]
+            ).iter_rows():
+                fmodel.write(f"{inputcellid:d} {vel_r_max_kmps:9.2f} {logrho:10.8f} ")
+                fmodel.write(
+                    " ".join(
+                        [
+                            (
+                                (f"{colvalue:{float_format}}" if colvalue > 0.0 else "0.0")
+                                if isinstance(colvalue, float)
+                                else f"{colvalue}"
+                            )
+                            for colvalue in othercolvals
+                        ]
+                    )
+                    if logrho > -99.0
+                    else zeroabund
+                )
                 fmodel.write("\n")
 
         else:
-            zeroabund = " ".join(["0.0" for _ in abundcols])
             line_end = "\n" if twolinespercell else " "
             if modelmeta["dimensions"] == 2:
                 # Luke: quite a lot of code duplication here with the 3D case,
                 # but I think adding a function call per line would be too slow
-                for inputcellid, pos_rcyl_mid, pos_z_mid, rho, *othercolvals in dfmodel[
-                    ["inputcellid", "pos_rcyl_mid", "pos_z_mid", "rho", *abundcols]
-                ].itertuples(index=False, name=None):
-                    fmodel.write(f"{inputcellid:d} {pos_rcyl_mid} {pos_z_mid} {rho}{line_end}")
+                startcols = "inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"
+                for inputcellid, pos_rcyl_mid, pos_z_mid, rho, *othercolvals in dfmodel.select(
+                    [*startcols, *abundcols]
+                ).iter_rows():
+                    fmodel.write(f"{inputcellid} {pos_rcyl_mid} {pos_z_mid} {rho}{line_end}")
                     fmodel.write(
                         " ".join(
                             [
@@ -939,10 +958,11 @@ def save_modeldata(
                     fmodel.write("\n")
 
             elif modelmeta["dimensions"] == 3:
-                for inputcellid, posxmin, posymin, poszmin, rho, *othercolvals in dfmodel[
-                    ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho", *abundcols]
-                ].itertuples(index=False, name=None):
-                    fmodel.write(f"{inputcellid:d} {posxmin} {posymin} {poszmin} {rho}{line_end}")
+                startcols = "inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"
+                for inputcellid, pos_x_min, pos_y_min, pos_z_min, rho, *othercolvals in dfmodel.select(
+                    [*startcols, *abundcols]
+                ).iter_rows():
+                    fmodel.write(f"{inputcellid} {pos_x_min} {pos_y_min} {pos_z_min} {rho}{line_end}")
                     fmodel.write(
                         " ".join(
                             [
