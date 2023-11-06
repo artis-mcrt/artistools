@@ -1046,7 +1046,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     if args.readonlymgi:
         args.sliceaxis = args.axis[1]
-        assert args.args.axis[0] in {"+", "-"}
+        assert args.axis[0] in {"+", "-"}
         args.positive_axis = args.axis[0] == "+"
 
     print(
