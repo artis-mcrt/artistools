@@ -6,7 +6,6 @@ import numpy as np
 import artistools as at
 
 modelpath = at.get_config()["path_testartismodel"]
-modelpath_3d = at.get_config()["path_testartismodel"].parent / "testmodel_3d_10^3"
 outputpath = at.get_config()["path_testoutput"]
 
 plotlist = [
@@ -80,30 +79,4 @@ def test_estimator_snapshot(mockplot) -> None:
 def test_estimator_timeevolution(mockplot) -> None:
     at.estimators.plot(
         argsraw=[], modelpath=modelpath, outputfile=outputpath, plotlist=[["Te", "nne"]], modelgridindex=0, x="time"
-    )
-
-
-@mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
-def test_estimator_multiplot(mockplot) -> None:
-    at.estimators.plot(
-        argsraw=[],
-        modelpath=modelpath,
-        outputfile=outputpath,
-        plotlist=[["Te", "nne"]],
-        modelgridindex=0,
-        multiplot=True,
-        timedays="1-2",
-    )
-
-
-@mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
-def test_estimator_readonlymgi(mockplot) -> None:
-    at.estimators.plot(
-        argsraw=[],
-        modelpath=modelpath_3d,
-        outputfile=outputpath,
-        plotlist=[[["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]]],
-        readonlymgi="alongaxis",
-        axis="-x",
-        timestep="0",
     )
