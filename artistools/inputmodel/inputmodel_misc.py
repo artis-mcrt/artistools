@@ -799,7 +799,6 @@ def save_modeldata(
     headercommentlines: list[str] | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     twolinespercell: bool = False,
-    float_format: str = ".4e",
     **kwargs: t.Any,
 ) -> None:
     """Save an artis model.txt (density and composition versus velocity) from a pandas DataFrame of cell properties and other metadata such as the time after explosion.
@@ -917,16 +916,7 @@ def save_modeldata(
             ).iter_rows():
                 fmodel.write(f"{inputcellid:d} {vel_r_max_kmps:9.2f} {logrho:10.8f} ")
                 fmodel.write(
-                    " ".join(
-                        [
-                            (
-                                (f"{colvalue:{float_format}}" if colvalue > 0.0 else "0.0")
-                                if isinstance(colvalue, float)
-                                else f"{colvalue}"
-                            )
-                            for colvalue in othercolvals
-                        ]
-                    )
+                    " ".join([(f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in othercolvals])
                     if logrho > -99.0
                     else zeroabund
                 )
@@ -935,21 +925,17 @@ def save_modeldata(
         else:
             startcols = get_standard_columns(modelmeta["dimensions"], includeabund=False)
             dfmodel = dfmodel.select([*startcols, *abundcols])
+
             for colvals in dfmodel.iter_rows():
                 startvals = colvals[: len(startcols)]
+                fmodel.write(" ".join(f"{val}" for val in startvals))
+                fmodel.write("\n" if twolinespercell else " ")
                 fmodel.write(
-                    " ".join(f"{val}" for val in startvals)
-                    + ("\n" if twolinespercell else " ")
-                    + (
-                        " ".join(
-                            (f"{colvalue:{float_format}}" if colvalue > 0.0 else "0.0")
-                            for colvalue in colvals[len(startcols) :]
-                        )
-                        if startvals[-1] > 0.0
-                        else zeroabund
-                    )
-                    + "\n"
+                    " ".join((f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in colvals[len(startcols) :])
+                    if startvals[-1] > 0.0
+                    else zeroabund
                 )
+                fmodel.write("\n")
 
     print(f"Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
