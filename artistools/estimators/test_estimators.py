@@ -83,27 +83,27 @@ def test_estimator_timeevolution(mockplot) -> None:
     )
 
 
-# @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
-# def test_estimator_multiplot(mockplot) -> None:
-#     at.estimators.plot(
-#         argsraw=[],
-#         modelpath=modelpath,
-#         outputfile=outputpath,
-#         plotlist=[["Te", "nne"]],
-#         modelgridindex=0,
-#         multiplot=True,
-#         timedays="1-2",
-#     )
-#
-#
-# @mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
-# def test_estimator_readonlymgi(mockplot) -> None:
-#     at.estimators.plot(
-#         argsraw=[],
-#         modelpath=modelpath_3d,
-#         outputfile=outputpath,
-#         plotlist=[[["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]]],
-#         readonlymgi="alongaxis",
-#         axis="-x",
-#         timestep="0",
-#     )
+@mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+def test_estimator_multiplot(mockplot) -> None:
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=outputpath,
+        plotlist=[["Te", "nne"]],
+        modelgridindex=0,
+        multiplot=True,
+        timedays="1-2",
+    )
+
+
+@mock.patch.object(matplotlib.axes.Axes, "plot", side_effect=matplotlib.axes.Axes.plot, autospec=True)
+def test_estimator_readonlymgi(mockplot) -> None:
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath_3d,
+        outputfile=outputpath,
+        plotlist=[[["populations", ["Fe I", "Fe II", "Fe III", "Fe IV", "Fe V"]]]],
+        readonlymgi="alongaxis",
+        axis="-x",
+        timestep="0",
+    )
