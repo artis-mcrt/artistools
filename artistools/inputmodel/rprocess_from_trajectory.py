@@ -34,6 +34,7 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pl.Data
     print("Adding up isotopes for elemental abundances and creating dfelabundances...", end="", flush=True)
     elemisotopes: dict[int, list[str]] = {}
     nuclidesincluded = 0
+
     for colname in sorted(dfnucabundances.columns):
         if not colname.startswith("X_"):
             continue
@@ -525,7 +526,9 @@ def add_abundancecontributions(
     print("Creating dfnucabundances...", end="", flush=True)
 
     dfnucabundances = (
-        pl.DataFrame(listcellnucabundances).fill_null(0.0).with_columns(pl.col("inputcellid").cast(pl.Int32))
+        pl.from_pandas(pd.DataFrame(listcellnucabundances))
+        .fill_null(0.0)
+        .with_columns(pl.col("inputcellid").cast(pl.Int32))
     )
 
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
