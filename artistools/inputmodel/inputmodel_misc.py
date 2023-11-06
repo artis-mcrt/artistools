@@ -362,7 +362,7 @@ def get_modeldata_polars(
     if dfmodel is None:
         dfmodel = dfmodel_in
     elif dfmodel.schema != dfmodel_in.schema:
-        print("ERRORL: parquet schema does not match model.txt. Remove {filenameparquet} and try again.")
+        print(f"ERROR: parquet schema does not match model.txt. Remove {filenameparquet} and try again.")
         raise AssertionError
 
     mebibyte = 1024 * 1024
