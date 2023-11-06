@@ -43,22 +43,21 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pl.Data
             elemisotopes[atomic_number].append(colname)
         else:
             elemisotopes[atomic_number] = [colname]
+
     elementsincluded = len(elemisotopes)
     dfnucabundancespd = dfnucabundances.to_pandas(use_pyarrow_extension_array=True)
-    dfelabundances_partial = pl.from_pandas(
-        pd.DataFrame(
-            {
-                "inputcellid": dfnucabundances["inputcellid"],
-                **{
-                    f"X_{at.get_elsymbol(atomic_number)}": (
-                        dfnucabundancespd[elemisotopes[atomic_number]].sum(axis=1, skipna=True)
-                        if atomic_number in elemisotopes
-                        else np.zeros(len(dfnucabundancespd))
-                    )
-                    for atomic_number in range(1, max(elemisotopes.keys()) + 1)
-                },
+    dfelabundances_partial = pl.DataFrame(
+        {
+            "inputcellid": dfnucabundances["inputcellid"],
+            **{
+                f"X_{at.get_elsymbol(atomic_number)}": (
+                    dfnucabundances.select(elemisotopes[atomic_number]).sum(axis=1)
+                    if atomic_number in elemisotopes
+                    else np.zeros(len(dfnucabundancespd))
+                )
+                for atomic_number in range(1, max(elemisotopes.keys()) + 1)
             },
-        )
+        },
     ).with_columns(pl.col("inputcellid").cast(pl.Int32))
 
     # ensure cells with no traj contributions are included
@@ -525,8 +524,10 @@ def add_abundancecontributions(
 
     timestart = time.perf_counter()
     print("Creating dfnucabundances...", end="", flush=True)
-    dfnucabundances = pl.DataFrame(listcellnucabundances)
-    dfnucabundances = dfnucabundances.fill_null(0.0).with_columns(pl.col("inputcellid").cast(pl.Int32))
+
+    dfnucabundances = (
+        pl.DataFrame(listcellnucabundances).fill_null(0.0).with_columns(pl.col("inputcellid").cast(pl.Int32))
+    )
 
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
