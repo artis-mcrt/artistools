@@ -509,10 +509,7 @@ def get_packets_pl(
     packetsdatasize_gb = nprocs_read * Path(packetsfiles[0]).stat().st_size / 1024 / 1024 / 1024
     print(f" data size is {packetsdatasize_gb:.1f} GB ({nprocs_read} * size of {packetsfiles[0].parts[-1]})")
 
-    pldfpackets = pl.concat(
-        (pl.scan_parquet(packetsfile) for packetsfile in packetsfiles),
-        how="vertical",
-    )
+    pldfpackets = pl.scan_parquet(packetsfiles)
 
     if escape_type is not None:
         assert packet_type is None or packet_type == "TYPE_ESCAPE"
