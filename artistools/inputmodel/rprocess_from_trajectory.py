@@ -62,8 +62,7 @@ def get_dfelemabund_from_dfmodel(dfmodel: pd.DataFrame, dfnucabundances: pd.Data
 
     # ensure cells with no traj contributions are included
     # dfelabundances = pd.DataFrame({"inputcellid": dfmodel["inputcellid"]})
-    dfelabundances = dfmodel[["inputcellid"]]
-    dfelabundances = dfelabundances.merge(
+    dfelabundances = dfmodel[["inputcellid"]].merge(
         dfelabundances_partial, how="left", left_on="inputcellid", right_on="inputcellid"
     )
     dfnucabundances = dfnucabundances.set_index("inputcellid", drop=False)
@@ -446,7 +445,7 @@ def save_gridparticlecontributions(dfcontribs: pd.DataFrame | pl.DataFrame, grid
 
 def add_abundancecontributions(
     dfgridcontributions: pl.DataFrame,
-    dfmodel: pd.DataFrame | pl.LazyFrame | pl.DataFrame,
+    dfmodel: pd.DataFrame,
     t_model_days_incpremerger: float,
     traj_root: Path | str,
     minparticlespercell: int = 0,
@@ -454,9 +453,6 @@ def add_abundancecontributions(
     """Contribute trajectory network calculation abundances to model cell abundances."""
     t_model_s = t_model_days_incpremerger * 86400
     dfcontribs = dfgridcontributions
-
-    if not isinstance(dfmodel, pd.DataFrame):
-        dfmodel = dfmodel.lazy().collect().to_pandas(use_pyarrow_extension_array=True)
 
     if "X_Fegroup" not in dfmodel.columns:
         # dfmodel = dfmodel.with_columns(pl.lit(1.0).alias("X_Fegroup"))
