@@ -10,7 +10,6 @@ from pathlib import Path
 import argcomplete
 import numpy as np
 import pandas as pd
-import polars as pl
 from astropy import units as u
 
 import artistools as at
@@ -350,8 +349,6 @@ def makemodelfromgriddata(
         if Path(gridfolderpath, "gridcontributions.txt").is_file()
         else None
     )
-
-    dfmodel = pl.from_pandas(dfmodel)
 
     if traj_root is not None:
         print(f"Nuclear network abundances from {traj_root} will be used")

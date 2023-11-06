@@ -29,7 +29,7 @@ def get_elemabund_from_nucabund(dfnucabund: pd.DataFrame) -> dict[str, float]:
     return dictelemabund
 
 
-def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pd.DataFrame) -> pd.DataFrame:
+def get_dfelemabund_from_dfmodel(dfmodel: pd.DataFrame, dfnucabundances: pd.DataFrame) -> pd.DataFrame:
     timestart = time.perf_counter()
     print("Adding up isotopes for elemental abundances and creating dfelabundances...", end="", flush=True)
     elemisotopes: dict[int, list[str]] = {}
@@ -61,7 +61,8 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pd.Data
     )
 
     # ensure cells with no traj contributions are included
-    dfelabundances = pd.DataFrame({"inputcellid": dfmodel["inputcellid"]})
+    # dfelabundances = pd.DataFrame({"inputcellid": dfmodel["inputcellid"]})
+    dfelabundances = dfmodel[["inputcellid"]]
     dfelabundances = dfelabundances.merge(
         dfelabundances_partial, how="left", left_on="inputcellid", right_on="inputcellid"
     )
@@ -445,19 +446,21 @@ def save_gridparticlecontributions(dfcontribs: pd.DataFrame | pl.DataFrame, grid
 
 def add_abundancecontributions(
     dfgridcontributions: pl.DataFrame,
-    dfmodel: pl.LazyFrame | pl.DataFrame,
+    dfmodel: pd.DataFrame | pl.LazyFrame | pl.DataFrame,
     t_model_days_incpremerger: float,
     traj_root: Path | str,
     minparticlespercell: int = 0,
-) -> tuple[pl.DataFrame, pd.DataFrame, pl.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pl.DataFrame]:
     """Contribute trajectory network calculation abundances to model cell abundances."""
     t_model_s = t_model_days_incpremerger * 86400
     dfcontribs = dfgridcontributions
 
-    dfmodel = dfmodel.lazy().collect()
+    if not isinstance(dfmodel, pd.DataFrame):
+        dfmodel = dfmodel.lazy().collect().to_pandas(use_pyarrow_extension_array=True)
 
     if "X_Fegroup" not in dfmodel.columns:
-        dfmodel = dfmodel.with_columns(pl.lit(1.0).alias("X_Fegroup"))
+        # dfmodel = dfmodel.with_columns(pl.lit(1.0).alias("X_Fegroup"))
+        pd.concat([dfmodel, pd.DataFrame({"X_Fegroup": np.ones(len(dfmodel))})], axis=1)
 
     active_inputcellids = [
         cellindex
@@ -534,8 +537,8 @@ def add_abundancecontributions(
 
     timestart = time.perf_counter()
     print("Merging isotopic abundances into dfmodel...", end="", flush=True)
-    dfmodel = dfmodel.join(pl.from_pandas(dfnucabundances), how="left", left_on="inputcellid", right_on="inputcellid")
-    dfmodel = dfmodel.fill_null(0.0)
+    dfmodel = dfmodel.merge(dfnucabundances, how="left", left_on="inputcellid", right_on="inputcellid")
+    dfmodel = dfmodel.fillna(0.0)
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
     return dfmodel, dfelabundances, dfcontribs

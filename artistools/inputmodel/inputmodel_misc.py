@@ -871,7 +871,7 @@ def save_modeldata(
     # set missing radioabundance columns to zero
     for col in standardcols:
         if col not in dfmodel.columns and col.startswith("X_"):
-            dfmodel[col] = 0.0
+            dfmodel = dfmodel.with_columns(pl.lit(0.0).alias(col))
 
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))
     customcols = [col for col in dfmodel.columns if col not in standardcols]
