@@ -1092,14 +1092,7 @@ def save_initelemabundances(
     elcolnames = [f"X_{at.get_elsymbol(Z)}" for Z in range(1, 1 + max_atomic_number)]
     for colname in elcolnames:
         if colname not in dfelabundances.columns:
-            dfelabundances = dfelabundances.with_columns(pl.lit(None).alias(colname))
-        else:
-            dfelabundances = dfelabundances.with_columns(
-                pl.when(pl.col(colname) == 0.0)
-                .then(None)
-                .otherwise(pl.col(colname))  # keep original value
-                .keep_name()
-            )
+            dfelabundances = dfelabundances.with_columns(pl.lit(0.0).alias(colname))
 
     # set missing elemental abundance columns to zero
     for col in elcolnames:
@@ -1113,15 +1106,10 @@ def save_initelemabundances(
     with Path(abundancefilename).open("w", encoding="utf-8") as fabund:
         if headercommentlines is not None:
             fabund.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
-        fabund.write("#")
-        fabund.flush()
-        dfelabundances.select(["inputcellid", *elcolnames]).write_csv(
-            fabund, separator=" ", float_precision=6, has_header=True, null_value="0.0"
-        )
-        # for inputcellid, *abundvals in dfelabundances.select(["inputcellid", *elcolnames]).iter_rows():
-        #     fabund.write(f"{inputcellid:} ")
-        #     fabund.write(" ".join([f"{abund:.6e}" if abund > 0 else "0." for abund in abundvals]))
-        #     fabund.write("\n")
+        for inputcellid, *abundvals in dfelabundances.select(["inputcellid", *elcolnames]).iter_rows():
+            fabund.write(f"{inputcellid:} ")
+            fabund.write(" ".join([f"{abund:.6e}" for abund in abundvals]))
+            fabund.write("\n")
 
     print(f"Saved {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
 
