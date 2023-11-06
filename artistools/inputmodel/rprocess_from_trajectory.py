@@ -460,7 +460,7 @@ def add_abundancecontributions(
 
     if "X_Fegroup" not in dfmodel.columns:
         # dfmodel = dfmodel.with_columns(pl.lit(1.0).alias("X_Fegroup"))
-        pd.concat([dfmodel, pd.DataFrame({"X_Fegroup": np.ones(len(dfmodel))})], axis=1)
+        dfmodel = pd.concat([dfmodel, pd.DataFrame({"X_Fegroup": np.ones(len(dfmodel))})], axis=1)
 
     active_inputcellids = [
         cellindex
