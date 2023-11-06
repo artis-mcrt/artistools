@@ -113,12 +113,13 @@ def test_maptogrid() -> None:
         testdatapath / "kilonova", outpath_kn, dirs_exist_ok=True, ignore=shutil.ignore_patterns("trajectories")
     )
     at.inputmodel.maptogrid.main(argsraw=[], inputpath=outpath_kn, outputpath=outpath_kn, ncoordgrid=16)
+    (outpath_kn / "gridcontributions.txt").rename(outpath_kn / "gridcontributions_maptogrid.txt")
 
     verify_file_checksums(
         {
             "ejectapartanalysis.dat": "e8694a679515c54c2b4867122122263a375d9ffa144a77310873ea053bb5a8b4",
             "grid.dat": "ea930d0decca79d2e65ac1df1aaaa1eb427fdf45af965a623ed38240dce89954",
-            "gridcontributions.txt": "a2c09b96d32608db2376f9df61980c2ad1423066b579fbbe744f07e536f2891e",
+            "gridcontributions_maptogrid.txt": "a2c09b96d32608db2376f9df61980c2ad1423066b579fbbe744f07e536f2891e",
         },
         digest="sha256",
         folder=outpath_kn,
@@ -127,6 +128,9 @@ def test_maptogrid() -> None:
 
 def test_makeartismodelfromparticlegridmap() -> None:
     outpath_kn = outputpath / "kilonova"
+
+    shutil.copyfile(outpath_kn / "gridcontributions_maptogrid.txt", outpath_kn / "gridcontributions.txt")
+
     at.inputmodel.modelfromhydro.main(
         argsraw=[],
         gridfolderpath=outpath_kn,
