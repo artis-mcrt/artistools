@@ -193,21 +193,25 @@ def test_plotdensity() -> None:
 
 def test_save_load_3d_model() -> None:
     clear_modelfiles()
-    dfmodel_pl, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)
-    dfmodel = dfmodel_pl.collect().to_pandas(use_pyarrow_extension_array=True)
-    dfmodel.loc[75000, ["rho"]] = 1
-    dfmodel.loc[75001, ["rho"]] = 2
-    dfmodel.loc[95200, ["rho"]] = 3
-    dfmodel.loc[75001, ["rho"]] = 0.5
+    lzdfmodel, modelmeta = at.inputmodel.get_empty_3d_model(ncoordgrid=50, vmax=1000, t_model_init_days=1)
+
+    rhovals = np.zeros(modelmeta["npts_model"])
+    rhovals[75000] = 1
+    rhovals[75001] = 2
+    rhovals[95200] = 3
+    rhovals[75001] = 0.5
+    lzdfmodel = lzdfmodel.with_columns(pl.Series(rhovals, dtype=pl.Float32).alias("rho"))
+    dfmodel = lzdfmodel.collect()
+    print("HERE", dfmodel.filter(pl.col("rho") > 0.0))
 
     at.inputmodel.save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
-    dfmodel2, modelmeta2 = at.inputmodel.get_modeldata(modelpath=outputpath)
-    assert dfmodel.equals(dfmodel2.drop("modelgridindex", axis=1))
+    dfmodel2, modelmeta2 = at.inputmodel.get_modeldata_polars(modelpath=outputpath)
+    assert dfmodel.frame_equal(dfmodel2.collect())
     assert modelmeta == modelmeta2
 
     # next load will use the parquet file
-    dfmodel3, modelmeta3 = at.inputmodel.get_modeldata(modelpath=outputpath)
-    assert dfmodel.equals(dfmodel3.drop("modelgridindex", axis=1))
+    dfmodel3, modelmeta3 = at.inputmodel.get_modeldata_polars(modelpath=outputpath)
+    assert dfmodel.frame_equal(dfmodel3.collect())
     assert modelmeta == modelmeta3
 
 

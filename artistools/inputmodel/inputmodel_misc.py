@@ -449,12 +449,13 @@ def get_empty_3d_model(
         ]
     )
 
-    dfmodel = dfmodel.drop(["modelgridindex", "n_x", "n_y", "n_z"])
-
     standardcols = get_standard_columns(3, includenico57=includenico57)
+
     dfmodel = dfmodel.with_columns(
         [pl.lit(0.0, dtype=pl.Float32).alias(colname) for colname in standardcols if colname not in dfmodel.columns]
     )
+
+    dfmodel = dfmodel.select([*standardcols, "modelgridindex"])
 
     return dfmodel, modelmeta
 
