@@ -1159,7 +1159,7 @@ def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) 
 
 
 def dimension_reduce_3d_model(
-    dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame,
+    dfmodel: pl.DataFrame | pl.LazyFrame,
     outputdimensions: int,
     dfelabundances: pd.DataFrame | None = None,
     dfgridcontributions: pd.DataFrame | None = None,
@@ -1171,10 +1171,7 @@ def dimension_reduce_3d_model(
     """Convert 3D Cartesian grid model to 1D spherical or 2D cylindrical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
     assert outputdimensions in {1, 2}
 
-    if isinstance(dfmodel, pd.DataFrame):
-        dfmodel = dfmodel.copy()
-    else:
-        dfmodel = dfmodel.lazy().collect().to_pandas(use_pyarrow_extension_array=True)
+    dfmodel = dfmodel.lazy().collect()
 
     if modelmeta is None:
         modelmeta = {}
@@ -1200,10 +1197,14 @@ def dimension_reduce_3d_model(
     print(f"Resampling 3D model with {ngridpoints} cells to {outputdimensions}D...")
     timestart = time.perf_counter()
 
-    celldensity = dict(dfmodel[["inputcellid", "rho"]].itertuples(index=False))
+    celldensity = dfmodel[["inputcellid", "rho"]].to_dict()
 
-    for ax in ["x", "y", "z"]:
-        dfmodel[f"vel_{ax}_mid"] = (dfmodel[f"pos_{ax}_min"] + (0.5 * wid_initx)) / t_model_init_seconds
+    dfmodel = dfmodel.with_columns(
+        [
+            ((pl.col(f"pos_{ax}_min") + (0.5 * wid_initx)) / t_model_init_seconds).alias(f"vel_{ax}_mid")
+            for ax in ["x", "y", "z"]
+        ]
+    )
 
     km_to_cm = 1e5
     if ncoordgridr is None:
@@ -1213,15 +1214,17 @@ def dimension_reduce_3d_model(
         ncoordgridz = int(ncoordgridx)
 
     if outputdimensions == 2:
-        dfmodel["vel_rcyl_mid"] = np.sqrt(dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2)
+        dfmodel = dfmodel.with_columns(
+            [(pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt().alias("vel_rcyl_mid")]
+        )
         modelmeta_out["ncoordgridz"] = ncoordgridz
         modelmeta_out["ncoordgridrcyl"] = ncoordgridr
         modelmeta_out["wid_init_z"] = 2 * xmax / ncoordgridz
         modelmeta_out["wid_init_rcyl"] = xmax / ncoordgridr
     else:
         # 1D
-        dfmodel["vel_r_mid"] = np.sqrt(
-            dfmodel["vel_x_mid"] ** 2 + dfmodel["vel_y_mid"] ** 2 + dfmodel["vel_z_mid"] ** 2
+        dfmodel = dfmodel.with_columns(
+            [(pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2 + pl.col("vel_z_mid") ** 2).sqrt().alias("vel_r_mid")]
         )
         modelmeta_out["ncoordgridr"] = ncoordgridr
 
@@ -1243,14 +1246,12 @@ def dimension_reduce_3d_model(
             assert vel_r_max > vel_r_min
             cellindexout = n_z * ncoordgridr + n_r + 1
             if outputdimensions == 1:
-                matchedcells = dfmodel[(dfmodel["vel_r_mid"] > vel_r_min) & (dfmodel["vel_r_mid"] <= vel_r_max)]
+                matchedcells = dfmodel.filter(pl.col("vel_r_mid").is_between(vel_r_min, vel_r_max, closed="right"))
             elif outputdimensions == 2:
-                matchedcells = dfmodel[
-                    (dfmodel["vel_rcyl_mid"] > vel_r_min)
-                    & (dfmodel["vel_rcyl_mid"] <= vel_r_max)
-                    & (dfmodel["vel_z_mid"] > vel_z_min)
-                    & (dfmodel["vel_z_mid"] <= vel_z_max)
-                ]
+                matchedcells = dfmodel.filter(
+                    pl.col("vel_rcyl_mid").is_between(vel_r_min, vel_r_max, closed="right")
+                    & pl.col("vel_z_mid").is_between(vel_z_min, vel_z_max, closed="right")
+                )
 
             if len(matchedcells) == 0:
                 rho_out = 0
@@ -1263,7 +1264,7 @@ def dimension_reduce_3d_model(
                     shell_volume = (
                         math.pi * (vel_r_max**2 - vel_r_min**2) * (vel_z_max - vel_z_min) * t_model_init_seconds**3
                     )
-                rho_out = matchedcells.mass_g.sum() / shell_volume
+                rho_out = matchedcells["mass_g"].sum() / shell_volume
 
             cellout: dict[str, t.Any] = {"inputcellid": cellindexout}
 
@@ -1293,10 +1294,10 @@ def dimension_reduce_3d_model(
     outgridcontributions = []
 
     for cellindexout, (dictcell, matchedcells) in allmatchedcells.items():
-        matchedcellrhosum = matchedcells.rho.sum()
+        matchedcellrhosum = matchedcells["rho"].sum()
         nonempty = matchedcellrhosum > 0.0
         if matchedcellrhosum > 0.0 and dfgridcontributions is not None:
-            dfcellcont = dfgridcontributions[dfgridcontributions["cellindex"].isin(matchedcells.inputcellid)]
+            dfcellcont = dfgridcontributions[dfgridcontributions["cellindex"].isin(matchedcells["inputcellid"])]
 
             for particleid, dfparticlecontribs in dfcellcont.groupby("particleid"):
                 frac_of_cellmass_avg = (
@@ -1328,19 +1329,23 @@ def dimension_reduce_3d_model(
         for column in matchedcells.columns:
             if column.startswith("X_") or column in {"cellYe", "q"}:
                 # take mass-weighted average mass fraction
-                massfrac = np.dot(matchedcells[column], matchedcells.rho) / matchedcellrhosum if nonempty else 0.0
+                dotprod = matchedcells[column].dot(matchedcells["rho"])
+                assert isinstance(dotprod, float)
+                massfrac = dotprod / matchedcellrhosum if nonempty else 0.0
                 dictcell[column] = massfrac
 
         outcells.append(dictcell)
 
         if dfelabundances is not None:
-            abund_matchedcells = dfelabundances.loc[matchedcells.index] if nonempty else None
-            dictcellabundances = {"inputcellid": cellindexout}
+            abund_matchedcells = (
+                dfelabundances.filter(pl.col("inputcellid").is_in(matchedcells["inputcellid"])) if nonempty else None
+            )
+            dictcellabundances: dict[str, int | float] = {"inputcellid": cellindexout}
             for column in dfelabundances.columns:
                 if column.startswith("X_"):
-                    massfrac = (
-                        np.dot(abund_matchedcells[column], matchedcells.rho) / matchedcellrhosum if nonempty else 0.0
-                    )
+                    dotprod = abund_matchedcells[column].dot(matchedcells["rho"])
+                    assert isinstance(dotprod, float)
+                    massfrac = dotprod / matchedcellrhosum if nonempty else 0.0
                     dictcellabundances[column] = massfrac
 
             outcellabundances.append(dictcellabundances)
