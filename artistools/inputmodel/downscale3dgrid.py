@@ -35,7 +35,7 @@ def make_downscaled_3d_grid(
     rho = np.zeros((grid, grid, grid))
     radioabunds = np.zeros((grid, grid, grid, nabundcols))
 
-    max_atomic_number = len(dfelemabund.columns) - 1
+    max_atomic_number = len([col for col in dfelemabund.columns if col.startswith("X_")])
     assert max_atomic_number == 30
     abund = np.zeros((grid, grid, grid, max_atomic_number + 1))
 

@@ -120,11 +120,9 @@ def plot_slice_modelcolumn(ax, dfmodelslice, modelmeta, colname, plotaxis1, plot
 
 def plot_2d_initial_abundances(modelpath, args=None) -> None:
     # if the species ends in a number then we need to also get the nuclear mass fractions (not just element abundances)
-    skipnuclidemassfraccolumns = all(plotvar[-1] not in "0123456789" for plotvar in args.plotvars)
     get_elemabundances = any(plotvar[-1] not in "0123456789" for plotvar in args.plotvars)
     dfmodel, modelmeta = at.get_modeldata(
         modelpath,
-        skipnuclidemassfraccolumns=skipnuclidemassfraccolumns,
         get_elemabundances=get_elemabundances,
         derived_cols=["pos_min", "pos_max"],
     )
@@ -197,8 +195,15 @@ def plot_2d_initial_abundances(modelpath, args=None) -> None:
     if "cellYe" not in args.plotvars and "tracercount" not in args.plotvars:
         cbar.set_label(r"log10($\rho$) [g/cm3]" if args.logcolorscale else r"$\rho$ [g/cm3]")
 
-    outfilename = args.outputfile or f"plotcomposition_{','.join(args.plotvars)}.pdf"
-    plt.savefig(Path(modelpath) / outfilename, format="pdf")
+    defaultfilename = Path(modelpath) / f"plotcomposition_{','.join(args.plotvars)}.pdf"
+    if args.outputfile.is_dir():
+        outfilename = defaultfilename
+    elif args.outputfile:
+        outfilename = args.outputfile
+    else:
+        outfilename = Path(modelpath) / defaultfilename
+
+    plt.savefig(outfilename, format="pdf")
 
     print(f"Saved {outfilename}")
 

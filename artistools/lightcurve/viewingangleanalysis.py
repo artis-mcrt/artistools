@@ -151,13 +151,13 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
     dirbins = []
     if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
         dirbins = args.plotvspecpol
-    elif args.plotviewingangle and args.plotviewingangle[0] == -1 and viewing_angle_data_exists:
+    elif args.plotviewingangle and args.plotviewingangle[0] == -2 and viewing_angle_data_exists:
         dirbins = np.arange(0, 100, 1, dtype=int).tolist()
     elif args.plotviewingangle and viewing_angle_data_exists:
         dirbins = args.plotviewingangle
     elif (
         args.calculate_costheta_phi_from_viewing_angle_numbers
-        and args.calculate_costheta_phi_from_viewing_angle_numbers[0] == -1
+        and args.calculate_costheta_phi_from_viewing_angle_numbers[0] == -2
     ):
         dirbins = np.arange(0, 100, 1, dtype=int).tolist()
     elif args.calculate_costheta_phi_from_viewing_angle_numbers:
