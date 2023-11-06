@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-
 import argparse
+import gc
 import io
 import math
 import multiprocessing
@@ -427,7 +427,7 @@ def add_abundancecontributions(
 
     print(
         f"{active_inputcellcount} of {len(dfmodel)} model cells have >0 particles contributing "
-        f"({len(dfcontribs)} cell contributions from {particle_count} particles after filter)"
+        f"({len(dfcontribs)} cell contributions from {particle_count} particles)"
     )
 
     print("Reading trajectory abundances...")
@@ -455,6 +455,8 @@ def add_abundancecontributions(
             for particleindex, particleid in enumerate(particleids)
         }
     ).with_columns(pl.all().cast(pl.Float64))
+    del list_traj_nuc_abund
+    gc.collect()
 
     print(f"Reading trajectory abundances took {time.perf_counter() - timestart:.1f} seconds")
 
