@@ -923,15 +923,16 @@ def save_modeldata(
                 fmodel.write("\n")
 
         else:
+            lineend = "\n" if twolinespercell else " "
             startcols = get_standard_columns(modelmeta["dimensions"], includeabund=False)
             dfmodel = dfmodel.select([*startcols, *abundcols])
-
+            nstartcols = len(startcols)
             for colvals in dfmodel.iter_rows():
-                startvals = colvals[: len(startcols)]
-                fmodel.write(" ".join(f"{val}" for val in startvals))
-                fmodel.write("\n" if twolinespercell else " ")
+                startvals = colvals[:nstartcols]
+                fmodel.write(" ".join(str(val) for val in startvals))
+                fmodel.write(lineend)
                 fmodel.write(
-                    " ".join((f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in colvals[len(startcols) :])
+                    " ".join((f"{colvalue:.4e}" if colvalue > 0.0 else "0.0") for colvalue in colvals[nstartcols:])
                     if startvals[-1] > 0.0
                     else zeroabund
                 )
