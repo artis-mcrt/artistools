@@ -130,7 +130,7 @@ def test_makeartismodelfromparticlegridmap() -> None:
     checksums_3d: dict[Path | str, str] = {
         "gridcontributions.txt": "12f006c43c0c8d1f84c3927b3c80959c1b2cecc01598be92c2f24a130892bc60",
         "abundances.txt": "5f782005ce879a8c81c43d0a7a791ad9b177eee8630b4771586949bf7fbca28e",
-        "model.txt": "f7de4f84bc9f5383ed520a4676cfdf069997fef052aa4a924833d431a8a7d0c0",
+        "model.txt": "9a40a97c13eb5f100628d9e69f6b773635803ef75062645d5be9141a88be471e",
     }
 
     dfcontribs = {}

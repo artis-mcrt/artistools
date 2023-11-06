@@ -771,7 +771,7 @@ def get_mean_cell_properties_of_angle_bin(
     return mean_bin_properties
 
 
-def get_standard_columns(dimensions: int, includenico57: bool = False) -> list[str]:
+def get_standard_columns(dimensions: int, includenico57: bool = False, includeabund: bool = True) -> list[str]:
     """Get standard (artis classic) columns for modeldata DataFrame."""
     match dimensions:
         case 1:
@@ -780,6 +780,9 @@ def get_standard_columns(dimensions: int, includenico57: bool = False) -> list[s
             cols = ["inputcellid", "pos_rcyl_mid", "pos_z_mid", "rho"]
         case 3:
             cols = ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
+
+    if not includeabund:
+        return cols
 
     cols += ["X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
 
@@ -930,54 +933,23 @@ def save_modeldata(
                 fmodel.write("\n")
 
         else:
-            line_end = "\n" if twolinespercell else " "
-            if modelmeta["dimensions"] == 2:
-                # Luke: quite a lot of code duplication here with the 3D case,
-                # but I think adding a function call per line would be too slow
-                startcols = ["inputcellid", "pos_rcyl_mid", "pos_z_mid", "rho"]
-                othercolisfloat = [x == pl.Float64 for x in dfmodel.schema.values()][len(startcols) :]
-                for inputcellid, pos_rcyl_mid, pos_z_mid, rho, *othercolvals in dfmodel.select(
-                    [*startcols, *abundcols]
-                ).iter_rows():
-                    fmodel.write(f"{inputcellid} {pos_rcyl_mid} {pos_z_mid} {rho}{line_end}")
-                    fmodel.write(
+            startcols = get_standard_columns(modelmeta["dimensions"], includeabund=False)
+            dfmodel = dfmodel.select([*startcols, *abundcols])
+            for colvals in dfmodel.iter_rows():
+                startvals = colvals[: len(startcols)]
+                fmodel.write(
+                    " ".join(f"{val}" for val in startvals)
+                    + ("\n" if twolinespercell else " ")
+                    + (
                         " ".join(
-                            [
-                                (
-                                    (f"{colvalue:{float_format}}" if colvalue > 0.0 else "0.0")
-                                    if isinstance(colvalue, float)
-                                    else f"{colvalue}"
-                                )
-                                for colvalue in othercolvals
-                            ]
+                            (f"{colvalue:{float_format}}" if colvalue > 0.0 else "0.0")
+                            for colvalue in colvals[len(startcols) :]
                         )
-                        if rho > 0.0
+                        if startvals[-1] > 0.0
                         else zeroabund
                     )
-                    fmodel.write("\n")
-
-            elif modelmeta["dimensions"] == 3:
-                startcols = ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
-                othercolisfloat = [x == pl.Float64 for x in dfmodel.schema.values()][len(startcols) :]
-                for inputcellid, pos_x_min, pos_y_min, pos_z_min, rho, *othercolvals in dfmodel.select(
-                    [*startcols, *abundcols]
-                ).iter_rows():
-                    fmodel.write(f"{inputcellid} {pos_x_min} {pos_y_min} {pos_z_min} {rho}{line_end}")
-                    fmodel.write(
-                        " ".join(
-                            [
-                                (
-                                    (f"{colvalue:{float_format}}" if colvalue > 0.0 else "0.0")
-                                    if isfloat
-                                    else f"{colvalue}"
-                                )
-                                for isfloat, colvalue in zip(othercolisfloat, othercolvals)
-                            ]
-                        )
-                        if rho > 0.0
-                        else zeroabund
-                    )
-                    fmodel.write("\n")
+                    + "\n"
+                )
 
     print(f"Saved {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
