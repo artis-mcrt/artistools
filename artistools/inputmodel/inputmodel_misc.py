@@ -1159,7 +1159,7 @@ def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) 
 
 
 def dimension_reduce_3d_model(
-    dfmodel: pd.DataFrame,
+    dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame,
     outputdimensions: int,
     dfelabundances: pd.DataFrame | None = None,
     dfgridcontributions: pd.DataFrame | None = None,
@@ -1170,6 +1170,11 @@ def dimension_reduce_3d_model(
 ) -> tuple[pd.DataFrame, pd.DataFrame | None, pd.DataFrame | None, dict[str, t.Any]]:
     """Convert 3D Cartesian grid model to 1D spherical or 2D cylindrical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
     assert outputdimensions in {1, 2}
+
+    if isinstance(dfmodel, pd.DataFrame):
+        dfmodel = dfmodel.copy()
+    else:
+        dfmodel = dfmodel.lazy().collect().to_pandas(use_pyarrow_extension_array=True)
 
     if modelmeta is None:
         modelmeta = {}
@@ -1194,7 +1199,7 @@ def dimension_reduce_3d_model(
 
     print(f"Resampling 3D model with {ngridpoints} cells to {outputdimensions}D...")
     timestart = time.perf_counter()
-    dfmodel = dfmodel.copy()
+
     celldensity = dict(dfmodel[["inputcellid", "rho"]].itertuples(index=False))
 
     for ax in ["x", "y", "z"]:
