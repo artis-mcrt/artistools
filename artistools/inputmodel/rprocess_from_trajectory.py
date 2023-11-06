@@ -61,9 +61,8 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pl.Data
     ).with_columns(pl.col("inputcellid").cast(pl.Int32))
 
     # ensure cells with no traj contributions are included
-    dfelabundances = pl.DataFrame({"inputcellid": dfmodel["inputcellid"]}).with_columns(
-        pl.col("inputcellid").cast(pl.Int32)
-    )
+    dfelabundances = pl.DataFrame(pl.Series(name="inputcellid", values=dfmodel["inputcellid"], dtype=pl.Int32))
+
     dfelabundances = dfelabundances.join(
         dfelabundances_partial, how="left", left_on="inputcellid", right_on="inputcellid"
     )
