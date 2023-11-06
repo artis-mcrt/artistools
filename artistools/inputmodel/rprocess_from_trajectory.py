@@ -29,7 +29,7 @@ def get_elemabund_from_nucabund(dfnucabund: pd.DataFrame) -> dict[str, float]:
     return dictelemabund
 
 
-def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pd.DataFrame) -> pd.DataFrame:
+def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pl.DataFrame) -> pl.DataFrame:
     timestart = time.perf_counter()
     print("Adding up isotopes for elemental abundances and creating dfelabundances...", end="", flush=True)
     elemisotopes: dict[int, list[str]] = {}
@@ -44,30 +44,31 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pd.Data
         else:
             elemisotopes[atomic_number] = [colname]
     elementsincluded = len(elemisotopes)
-
-    dfelabundances_partial = pd.DataFrame(
-        {
-            "inputcellid": dfnucabundances.inputcellid,
-            **{
-                f"X_{at.get_elsymbol(atomic_number)}": (
-                    dfnucabundances[elemisotopes[atomic_number]].sum(axis=1, skipna=True)
-                    if atomic_number in elemisotopes
-                    else np.zeros(len(dfnucabundances))
-                )
-                for atomic_number in range(1, max(elemisotopes.keys()) + 1)
+    dfnucabundancespd = dfnucabundances.to_pandas(use_pyarrow_extension_array=True)
+    dfelabundances_partial = pl.from_pandas(
+        pd.DataFrame(
+            {
+                "inputcellid": dfnucabundances["inputcellid"],
+                **{
+                    f"X_{at.get_elsymbol(atomic_number)}": (
+                        dfnucabundancespd[elemisotopes[atomic_number]].sum(axis=1, skipna=True)
+                        if atomic_number in elemisotopes
+                        else np.zeros(len(dfnucabundancespd))
+                    )
+                    for atomic_number in range(1, max(elemisotopes.keys()) + 1)
+                },
             },
-        },
-        index=dfnucabundances.index,
-    )
+        )
+    ).with_columns(pl.col("inputcellid").cast(pl.Int32))
 
     # ensure cells with no traj contributions are included
-    dfelabundances = pd.DataFrame({"inputcellid": dfmodel["inputcellid"]}, dtype="int32")
-    dfelabundances = dfelabundances.merge(
+    dfelabundances = pl.DataFrame({"inputcellid": dfmodel["inputcellid"]}).with_columns(
+        pl.col("inputcellid").cast(pl.Int32)
+    )
+    dfelabundances = dfelabundances.join(
         dfelabundances_partial, how="left", left_on="inputcellid", right_on="inputcellid"
     )
-    dfnucabundances = dfnucabundances.set_index("inputcellid", drop=False)
-    dfnucabundances.index.name = None
-    dfelabundances = dfelabundances.fillna(0.0)
+    dfelabundances = dfelabundances.fill_null(0.0)
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
     print(f" there are {nuclidesincluded} nuclides from {elementsincluded} elements included")
 
@@ -449,7 +450,7 @@ def add_abundancecontributions(
     t_model_days_incpremerger: float,
     traj_root: Path | str,
     minparticlespercell: int = 0,
-) -> tuple[pl.DataFrame, pd.DataFrame, pl.DataFrame]:
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """Contribute trajectory network calculation abundances to model cell abundances and return dfmodel, dfelabundances, dfcontribs."""
     t_model_s = t_model_days_incpremerger * 86400
     dfcontribs = dfgridcontributions
@@ -524,17 +525,16 @@ def add_abundancecontributions(
 
     timestart = time.perf_counter()
     print("Creating dfnucabundances...", end="", flush=True)
-    dfnucabundances = pd.DataFrame(listcellnucabundances)
-    dfnucabundances = dfnucabundances.set_index("inputcellid", drop=False)
-    dfnucabundances.index.name = None
-    dfnucabundances = dfnucabundances.fillna(0.0)
+    dfnucabundances = pl.DataFrame(listcellnucabundances)
+    dfnucabundances = dfnucabundances.fill_null(0.0).with_columns(pl.col("inputcellid").cast(pl.Int32))
+
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
     dfelabundances = get_dfelemabund_from_dfmodel(dfmodel, dfnucabundances)
 
     timestart = time.perf_counter()
     print("Merging isotopic abundances into dfmodel...", end="", flush=True)
-    dfmodel = dfmodel.join(pl.from_pandas(dfnucabundances), how="left", left_on="inputcellid", right_on="inputcellid")
+    dfmodel = dfmodel.join(dfnucabundances, how="left", left_on="inputcellid", right_on="inputcellid")
     dfmodel = dfmodel.fill_null(0.0)
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 

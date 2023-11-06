@@ -354,7 +354,7 @@ def makemodelfromgriddata(
         else None
     )
 
-    dfmodel = pl.from_pandas(dfmodel)
+    dfmodel = pl.from_pandas(dfmodel).with_columns(pl.col("inputcellid").cast(pl.Int32))
 
     if traj_root is not None:
         print(f"Nuclear network abundances from {traj_root} will be used")
