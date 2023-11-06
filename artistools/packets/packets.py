@@ -199,7 +199,7 @@ def add_derived_columns(
     return dfpackets
 
 
-def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict, dfmodel: pd.DataFrame) -> pl.LazyFrame:
+def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict, dfmodel: pd.DataFrame | None) -> pl.LazyFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
     We might as well add everything, since the columns only get calculated when they are actually used (polars LazyFrame).
@@ -268,6 +268,7 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame, modelmeta: dict, dfmodel: 
                 ]
             )
     elif modelmeta["dimensions"] == 1:
+        assert dfmodel is not None, "dfmodel must be provided for 1D models to set em_modelgridindex"
         velbins = (dfmodel["vel_r_max_kmps"] * 1000).to_list()
         dfpackets = dfpackets.with_columns(
             (
@@ -398,7 +399,7 @@ def convert_text_to_parquet(
 
     # print(f"Saving {packetsfileparquet}")
     dfpackets = dfpackets.sort(by=["type_id", "escape_type_id", "t_arrive_d"])
-    dfpackets.collect().write_parquet(packetsfileparquet, compression="zstd", statistics=True)
+    dfpackets.collect().write_parquet(packetsfileparquet, compression="zstd", statistics=True, compression_level=6)
 
     return packetsfileparquet
 
@@ -508,10 +509,7 @@ def get_packets_pl(
     packetsdatasize_gb = nprocs_read * Path(packetsfiles[0]).stat().st_size / 1024 / 1024 / 1024
     print(f" data size is {packetsdatasize_gb:.1f} GB ({nprocs_read} * size of {packetsfiles[0].parts[-1]})")
 
-    pldfpackets = pl.concat(
-        (pl.scan_parquet(packetsfile) for packetsfile in packetsfiles),
-        how="vertical",
-    )
+    pldfpackets = pl.scan_parquet(packetsfiles)
 
     if escape_type is not None:
         assert packet_type is None or packet_type == "TYPE_ESCAPE"

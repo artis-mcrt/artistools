@@ -14,6 +14,7 @@ import argcomplete
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -52,8 +53,8 @@ def plot_qdot(
     print(f"model mass: {model_mass_grams / 1.989e33:.3f} Msun")
 
     print("Calculating global heating rates from the individual particle heating rates...")
-    dfpartcontrib_nomissing = dfpartcontrib[dfpartcontrib["particleid"].isin(allparticledata.keys())]
-    for cellindex, dfpartcontribthiscell in dfpartcontrib_nomissing.groupby("cellindex"):
+    dfpartcontrib_nomissing = dfpartcontrib.filter(pl.col("particleid").is_in(allparticledata.keys()))
+    for cellindex, dfpartcontribthiscell in dfpartcontrib_nomissing.group_by("cellindex"):
         if cellindex >= len(dfmodel):
             continue
 
@@ -564,8 +565,8 @@ def plot_qdot_abund_modelcells(
     dfpartcontrib = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(modelpath)
     dfpartcontrib = dfpartcontrib[(dfpartcontrib["cellindex"] <= npts_model) & (dfpartcontrib["frac_of_cellmass"] > 0)]
 
-    mgiplotlistplus1 = (mgi + 1 for mgi in mgiplotlist)
-    list_particleids_getabund = dfpartcontrib[dfpartcontrib["cellindex"].isin(mgiplotlistplus1)].particleid.unique()
+    mgiplotlistplus1 = [mgi + 1 for mgi in mgiplotlist]
+    list_particleids_getabund = dfpartcontrib.filter(pl.col("cellindex").is_in(mgiplotlistplus1))["particleid"].unique()
     fworkerwithabund = partial(get_particledata, arr_time_gsi_s_incpremerger, arr_strnuc, traj_root, verbose=True)
 
     print(f"Reading trajectories from {traj_root}")
@@ -580,7 +581,7 @@ def plot_qdot_abund_modelcells(
         list_particledata_withabund = [fworkerwithabund(particleid) for particleid in list_particleids_getabund]
 
     list_particleids_noabund = [
-        pid for pid in dfpartcontrib.particleid.unique() if pid not in list_particleids_getabund
+        pid for pid in dfpartcontrib["particleid"].unique() if pid not in list_particleids_getabund
     ]
     fworkernoabund = partial(get_particledata, arr_time_gsi_s_incpremerger, [], traj_root)
     print(f"Reading for Qdot/thermo data (no abundances needed) for {len(list_particleids_noabund)} particles")

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
 
-
 import argparse
 import io
 import math
@@ -16,6 +15,7 @@ from pathlib import Path
 import argcomplete
 import numpy as np
 import pandas as pd
+import polars as pl
 
 import artistools as at
 
@@ -296,10 +296,10 @@ def get_trajectory_abund_q(
 
 
 def get_modelcellabundance(
-    dict_traj_nuc_abund: dict[int, dict[str, float]], minparticlespercell: int, cellgroup: tuple[int, pd.DataFrame]
+    dict_traj_nuc_abund: dict[int, dict[str, float]], minparticlespercell: int, cellgroup: tuple[int, pl.DataFrame]
 ) -> dict[str, float] | None:
     cellindex: int
-    dfthiscellcontribs: pd.DataFrame
+    dfthiscellcontribs: pl.DataFrame
     cellindex, dfthiscellcontribs = cellgroup
 
     if len(dfthiscellcontribs) < minparticlespercell:
@@ -307,9 +307,7 @@ def get_modelcellabundance(
 
     contribparticles = [
         (dict_traj_nuc_abund[particleid], frac_of_cellmass)
-        for particleid, frac_of_cellmass in dfthiscellcontribs[["particleid", "frac_of_cellmass"]].itertuples(
-            index=False
-        )
+        for particleid, frac_of_cellmass in dfthiscellcontribs[["particleid", "frac_of_cellmass"]].iter_rows()
         if particleid in dict_traj_nuc_abund
     ]
 
@@ -317,7 +315,7 @@ def get_modelcellabundance(
     cell_frac_sum = sum(frac_of_cellmass for _, frac_of_cellmass in contribparticles)
 
     nucabundcolnames = {
-        col for particleid in dfthiscellcontribs.particleid for col in dict_traj_nuc_abund.get(particleid, {})
+        col for particleid in dfthiscellcontribs["particleid"] for col in dict_traj_nuc_abund.get(particleid, {})
     }
 
     row = {
@@ -340,17 +338,17 @@ def get_modelcellabundance(
     return row
 
 
-def get_gridparticlecontributions(gridcontribpath: Path | str) -> pd.DataFrame:
-    return pd.read_csv(
-        at.zopen(Path(gridcontribpath, "gridcontributions.txt")),
-        delim_whitespace=True,
-        dtype={
-            0: "int32[pyarrow]",
-            1: "int32[pyarrow]",
-            2: "float32[pyarrow]",
-            3: "float32[pyarrow]",
+def get_gridparticlecontributions(gridcontribpath: Path | str) -> pl.DataFrame:
+    return pl.read_csv(
+        Path(gridcontribpath, "gridcontributions.txt"),
+        has_header=True,
+        separator=" ",
+        dtypes={
+            "particleid": pl.Int32,
+            "cellindex": pl.Int32,
+            "frac_of_cellmass": pl.Float32,
+            "frac_of_cellmass_includemissing": pl.Float32,
         },
-        dtype_backend="pyarrow",
     )
 
 
@@ -367,10 +365,10 @@ def particlenetworkdatafound(traj_root: Path, particleid: int) -> bool:
     return any(tarfilepath.is_file() for tarfilepath in tarfilepaths)
 
 
-def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataFrame) -> pd.DataFrame:
+def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pl.DataFrame) -> pl.DataFrame:
     missing_particleids = [
         particleid
-        for particleid in sorted(dfcontribs.particleid.unique())
+        for particleid in sorted(dfcontribs["particleid"].unique())
         if not particlenetworkdatafound(traj_root, particleid)
     ]
     print(
@@ -380,38 +378,47 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataF
     )
     # after filtering, frac_of_cellmass_includemissing will still include particles with rho but no abundance data
     # frac_of_cellmass will exclude particles with no abundances
-    dfcontribs["frac_of_cellmass_includemissing"] = dfcontribs["frac_of_cellmass"]
-    dfcontribs.loc[dfcontribs["particleid"].isin(missing_particleids), "frac_of_cellmass"] = 0.0
-
-    dfcontribs["frac_of_cellmass"] = [
-        row.frac_of_cellmass if row.particleid not in missing_particleids else 0.0 for row in dfcontribs.itertuples()
-    ]
+    dfcontribs = dfcontribs.with_columns(pl.col("frac_of_cellmass").alias("frac_of_cellmass_includemissing"))
+    dfcontribs = dfcontribs.with_columns(
+        pl.when(pl.col("particleid").is_in(missing_particleids))
+        .then(0.0)
+        .otherwise(pl.col("frac_of_cellmass"))
+        .alias("frac_of_cellmass")
+    )
 
     cell_frac_sum: dict[int, float] = {}
     cell_frac_includemissing_sum: dict[int, float] = {}
-    for cellindex, dfparticlecontribs in dfcontribs.groupby("cellindex"):
-        cell_frac_sum[cellindex] = dfparticlecontribs.frac_of_cellmass.sum()
-        cell_frac_includemissing_sum[cellindex] = dfparticlecontribs.frac_of_cellmass_includemissing.sum()
+    for cellindex, dfparticlecontribs in dfcontribs.group_by("cellindex"):
+        assert isinstance(cellindex, int)
+        cell_frac_sum[cellindex] = dfparticlecontribs["frac_of_cellmass"].sum()
+        cell_frac_includemissing_sum[cellindex] = dfparticlecontribs["frac_of_cellmass_includemissing"].sum()
 
-    dfcontribs["frac_of_cellmass"] = [
-        row.frac_of_cellmass / cell_frac_sum[row.cellindex] if cell_frac_sum[row.cellindex] > 0.0 else 0.0
-        for row in dfcontribs.itertuples()
-    ]
+    dfcontribs = dfcontribs.with_columns(
+        [
+            pl.Series(
+                (
+                    row["frac_of_cellmass"] / cell_frac_sum[row["cellindex"]]
+                    if cell_frac_sum[row["cellindex"]] > 0.0
+                    else 0.0
+                )
+                for row in dfcontribs.iter_rows(named=True)
+            ).alias("frac_of_cellmass"),
+            pl.Series(
+                (
+                    row["frac_of_cellmass_includemissing"] / cell_frac_includemissing_sum[row["cellindex"]]
+                    if cell_frac_includemissing_sum[row["cellindex"]] > 0.0
+                    else 0.0
+                )
+                for row in dfcontribs.iter_rows(named=True)
+            ).alias("frac_of_cellmass_includemissing"),
+        ]
+    )
 
-    dfcontribs["frac_of_cellmass_includemissing"] = [
-        (
-            row.frac_of_cellmass_includemissing / cell_frac_includemissing_sum[row.cellindex]
-            if cell_frac_includemissing_sum[row.cellindex] > 0.0
-            else 0.0
-        )
-        for row in dfcontribs.itertuples()
-    ]
-
-    for cellindex, dfparticlecontribs in dfcontribs.groupby("cellindex"):
-        frac_sum: float = dfparticlecontribs.frac_of_cellmass.sum()
+    for cellindex, dfparticlecontribs in dfcontribs.group_by("cellindex"):
+        frac_sum: float = dfparticlecontribs["frac_of_cellmass"].sum()
         assert frac_sum == 0.0 or np.isclose(frac_sum, 1.0, rtol=0.02)
 
-        cell_frac_includemissing_sum_thiscell: float = dfparticlecontribs.frac_of_cellmass_includemissing.sum()
+        cell_frac_includemissing_sum_thiscell: float = dfparticlecontribs["frac_of_cellmass_includemissing"].sum()
         assert cell_frac_includemissing_sum_thiscell == 0.0 or np.isclose(
             cell_frac_includemissing_sum_thiscell, 1.0, rtol=0.02
         )
@@ -421,7 +428,7 @@ def filtermissinggridparticlecontributions(traj_root: Path, dfcontribs: pd.DataF
     return dfcontribs
 
 
-def save_gridparticlecontributions(dfcontribs: pd.DataFrame, gridcontribpath: Path | str) -> None:
+def save_gridparticlecontributions(dfcontribs: pd.DataFrame | pl.DataFrame, gridcontribpath: Path | str) -> None:
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
         gridcontribpath = gridcontribpath / "gridcontributions.txt"
@@ -429,16 +436,19 @@ def save_gridparticlecontributions(dfcontribs: pd.DataFrame, gridcontribpath: Pa
         oldfile = gridcontribpath.rename(gridcontribpath.with_suffix(".bak"))
         print(f"{gridcontribpath} already exists. Renaming existing file to {oldfile}")
 
+    if isinstance(dfcontribs, pl.DataFrame):
+        dfcontribs = dfcontribs.to_pandas(use_pyarrow_extension_array=True)
+
     dfcontribs.to_csv(gridcontribpath, sep=" ", index=False, float_format="%.7e")
 
 
 def add_abundancecontributions(
-    dfgridcontributions: pd.DataFrame,
+    dfgridcontributions: pl.DataFrame,
     dfmodel: pd.DataFrame,
     t_model_days_incpremerger: float,
     traj_root: Path | str,
     minparticlespercell: int = 0,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pl.DataFrame]:
     """Contribute trajectory network calculation abundances to model cell abundances."""
     t_model_s = t_model_days_incpremerger * 86400
     dfcontribs = dfgridcontributions
@@ -448,18 +458,17 @@ def add_abundancecontributions(
 
     active_inputcellids = [
         cellindex
-        for cellindex, dfthiscellcontribs in dfcontribs.groupby("cellindex")
+        for cellindex, dfthiscellcontribs in dfcontribs.group_by("cellindex")
         if len(dfthiscellcontribs) >= minparticlespercell
     ]
 
     traj_root = Path(traj_root)
-    dfcontribs = dfcontribs[dfcontribs["cellindex"].isin(active_inputcellids)]
+    dfcontribs = dfcontribs.filter(pl.col("cellindex").is_in(active_inputcellids))
     dfcontribs = filtermissinggridparticlecontributions(traj_root, dfcontribs)
-    active_inputcellids = dfcontribs.cellindex.unique()
+    active_inputcellids = dfcontribs["cellindex"].unique().to_list()
     active_inputcellcount = len(active_inputcellids)
 
-    dfcontribs_particlegroups = dfcontribs.groupby("particleid")
-    particleids = dfcontribs_particlegroups.groups
+    particleids = dfcontribs["particleid"].unique()
     particle_count = len(particleids)
 
     print(
@@ -494,13 +503,13 @@ def add_abundancecontributions(
 
     print("Generating cell abundances...")
     timestart = time.perf_counter()
-    dfcontribs_cellgroups = dfcontribs.groupby("cellindex")
+    dfcontribs_cellgroups = dfcontribs.group_by("cellindex")
 
     cellabundworker = partial(get_modelcellabundance, dict_traj_nuc_abund, minparticlespercell)
 
     if at.get_config()["num_processes"] > 1:
-        chunksize = math.ceil(len(dfcontribs_cellgroups) / at.get_config()["num_processes"])
-        with multiprocessing.get_context("fork").Pool(processes=at.get_config()["num_processes"]) as pool:
+        chunksize = math.ceil(len(dfcontribs["cellindex"].unique()) / at.get_config()["num_processes"])
+        with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
             listcellnucabundances = pool.map(cellabundworker, dfcontribs_cellgroups, chunksize=chunksize)
             pool.close()
             pool.join()

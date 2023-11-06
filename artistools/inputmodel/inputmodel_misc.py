@@ -3,7 +3,6 @@ import errno
 import gc
 import math
 import os
-import pickle
 import time
 import typing as t
 from collections import defaultdict
@@ -13,8 +12,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import polars as pl
-import pyarrow as pa
-import pyarrow.parquet as pq
 
 import artistools as at
 
@@ -24,8 +21,7 @@ def read_modelfile_text(
     filename: Path | str,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
-    skipnuclidemassfraccolumns: bool = False,
-) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:
+) -> tuple[pl.DataFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides."""
     onelinepercellformat = None
 
@@ -87,7 +83,7 @@ def read_modelfile_text(
                 if not printwarningsonly:
                     print(f"  detected 1D model file with {npts_model} radial zones")
                 modelmeta["dimensions"] = 1
-                getheadersonly = False
+                getheadersonly = False  # need to find vmax from the model data
 
             fmodel.seek(filepos)  # undo the readline() and go back
 
@@ -100,9 +96,10 @@ def read_modelfile_text(
         else:
             fmodel.seek(filepos)  # undo the readline() and go back
 
-        data_line_even = fmodel.readline().split()
-        ncols_line_even = len(data_line_even)
-        ncols_line_odd = len(fmodel.readline().split())
+        data_line_even = fmodel.readline()
+        ncols_line_even = len(data_line_even.split())
+        data_line_odd = fmodel.readline()
+        ncols_line_odd = len(data_line_odd.split())
 
         if columns is None:
             columns = get_standard_columns(modelmeta["dimensions"], includenico57=True)
@@ -131,78 +128,93 @@ def read_modelfile_text(
             assert (ncols_line_even + ncols_line_odd) == len(columns)
             onelinepercellformat = False
 
-    if skipnuclidemassfraccolumns:
-        if not printwarningsonly:
-            print("  skipping nuclide abundance columns in model")
+    if onelinepercellformat and "  " not in data_line_even and "  " not in data_line_odd and not getheadersonly:
+        print("  using fast method polars.read_csv (requires one line per cell and single space delimiters)")
 
-        match modelmeta["dimensions"]:
-            case 1:
-                ncols_line_even = 3
-            case 2:
-                ncols_line_even = 4
-            case 3:
-                ncols_line_even = 5
-        ncols_line_odd = 0
+        pldtypes = {col: pl.Int32 if col in {"inputcellid"} else pl.Float32 for col in columns}
 
-    nrows_read = 1 if getheadersonly else npts_model
+        dfmodel = pl.read_csv(
+            at.zopen(filename, forpolars=True),
+            separator=" ",
+            comment_char="#",
+            new_columns=columns,
+            n_rows=npts_model,
+            has_header=False,
+            skip_rows=numheaderrows,
+            dtypes=pldtypes,
+            truncate_ragged_lines=True,
+        )
+        if "tracercount" in dfmodel.columns:
+            dfmodel = dfmodel.with_columns(pl.col("tracercount").cast(pl.Int32))
+    else:
+        nrows_read = 1 if getheadersonly else npts_model
+        skiprows: list[int] | int | None = (
+            numheaderrows
+            if onelinepercellformat
+            else [
+                x
+                for x in range(numheaderrows + npts_model * 2)
+                if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0
+            ]
+        )
 
-    skiprows: list[int] | int | None
+        dtypes: defaultdict[str, str] = defaultdict(lambda: "float32[pyarrow]")
+        dtypes["inputcellid"] = "int32[pyarrow]"
+        dtypes["tracercount"] = "int32[pyarrow]"
 
-    skiprows = (
-        numheaderrows
-        if onelinepercellformat
-        else [x for x in range(numheaderrows + npts_model * 2) if x < numheaderrows or (x - numheaderrows - 1) % 2 == 0]
-    )
-
-    dtypes: defaultdict[str, t.Any]
-    dtypes = defaultdict(lambda: "float32[pyarrow]")
-    dtypes["inputcellid"] = "int32[pyarrow]"
-    dtypes["tracercount"] = "int32[pyarrow]"
-
-    # each cell takes up two lines in the model file
-    dfmodel = pd.read_csv(
-        at.zopen(filename),
-        sep=r"\s+",
-        engine="c",
-        header=None,
-        skiprows=skiprows,
-        names=columns[:ncols_line_even],
-        usecols=columns[:ncols_line_even],
-        nrows=nrows_read,
-        dtype=dtypes,
-        dtype_backend="pyarrow",
-    )
-
-    if ncols_line_odd > 0 and not onelinepercellformat:
-        # read in the odd rows and merge dataframes
-        skipevenrows = [
-            x for x in range(numheaderrows + npts_model * 2) if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
-        ]
-        dfmodeloddlines = pd.read_csv(
-            at.zopen(filename),
+        # each cell takes up two lines in the model file
+        dfmodelpd = pd.read_csv(
+            filename,
             sep=r"\s+",
             engine="c",
             header=None,
-            skiprows=skipevenrows,
-            names=columns[ncols_line_even:],
+            skiprows=skiprows,
+            names=columns[:ncols_line_even],
+            usecols=columns[:ncols_line_even],
             nrows=nrows_read,
             dtype=dtypes,
             dtype_backend="pyarrow",
+            memory_map=True,
         )
-        assert len(dfmodel) == len(dfmodeloddlines)
-        dfmodel = dfmodel.merge(dfmodeloddlines, left_index=True, right_index=True)
-        del dfmodeloddlines
 
-    if len(dfmodel) > npts_model:
-        dfmodel = dfmodel.iloc[:npts_model]
+        if ncols_line_odd > 0 and not onelinepercellformat:
+            # read in the odd rows and merge dataframes
+            skipevenrows = [
+                x
+                for x in range(numheaderrows + npts_model * 2)
+                if x < numheaderrows or (x - numheaderrows - 1) % 2 == 1
+            ]
+            dfmodeloddlines = pd.read_csv(
+                filename,
+                sep=r"\s+",
+                engine="c",
+                header=None,
+                skiprows=skipevenrows,
+                names=columns[ncols_line_even:],
+                nrows=nrows_read,
+                dtype=dtypes,
+                dtype_backend="pyarrow",
+            )
+            assert len(dfmodelpd) == len(dfmodeloddlines)
+            dfmodelpd = dfmodelpd.merge(dfmodeloddlines, left_index=True, right_index=True)
+            del dfmodeloddlines
 
-    assert len(dfmodel) == npts_model or getheadersonly
+        if len(dfmodelpd) > npts_model:
+            dfmodelpd = dfmodelpd.iloc[:npts_model]
 
-    dfmodel.index.name = "cellid"
-    dfmodel = dfmodel.rename(columns={"velocity_outer": "vel_r_max_kmps"})
+        assert len(dfmodelpd) == npts_model or getheadersonly
+
+        dfmodelpd.index.name = "cellid"
+
+        dfmodel = pl.from_pandas(dfmodelpd)
+
+    if "velocity_outer" in dfmodel.columns:
+        dfmodel = dfmodel.rename({"velocity_outer": "vel_r_max_kmps"})
 
     if modelmeta["dimensions"] == 1:
-        modelmeta["vmax_cmps"] = dfmodel["vel_r_max_kmps"].max() * 1e5
+        vmax_kmps = dfmodel["vel_r_max_kmps"].max()
+        assert isinstance(vmax_kmps, float)
+        modelmeta["vmax_cmps"] = vmax_kmps * 1.0e5
 
     elif modelmeta["dimensions"] == 2:
         wid_init_rcyl = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"]
@@ -212,9 +224,10 @@ def read_modelfile_text(
         if not getheadersonly:
             # check pos_rcyl_mid and pos_z_mid are correct
 
-            for modelgridindex, cell_pos_rcyl_mid, cell_pos_z_mid in dfmodel[
-                ["pos_rcyl_mid", "pos_z_mid"]
-            ].itertuples():
+            for inputcellid, cell_pos_rcyl_mid, cell_pos_z_mid in dfmodel.select(
+                ["inputcellid", "pos_rcyl_mid", "pos_z_mid"]
+            ).iter_rows():
+                modelgridindex = inputcellid - 1
                 n_r = modelgridindex % modelmeta["ncoordgridrcyl"]
                 n_z = modelgridindex // modelmeta["ncoordgridrcyl"]
                 pos_rcyl_min = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"] * n_r
@@ -233,8 +246,8 @@ def read_modelfile_text(
         modelmeta["wid_init_y"] = wid_init_x
         modelmeta["wid_init_z"] = wid_init_x
         modelmeta["wid_init"] = wid_init_x
-
-        dfmodel = dfmodel.rename(columns={"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"})
+        colrenames = {"pos_x": "pos_x_min", "pos_y": "pos_y_min", "pos_z": "pos_z_min"}
+        dfmodel = dfmodel.rename({a: b for a, b in colrenames.items() if a in dfmodel.columns})
         if "pos_x_min" in dfmodel.columns and not printwarningsonly:
             print("  model cell positions are defined in the header")
         elif not getheadersonly:
@@ -263,29 +276,24 @@ def read_modelfile_text(
                 pos_y_min = -xmax_tmodel + 2 * yindex * xmax_tmodel / ncoordgridy
                 pos_z_min = -xmax_tmodel + 2 * zindex * xmax_tmodel / ncoordgridz
 
-                cell = dfmodel.iloc[modelgridindex]
-                if not vectormatch(
-                    [cell.inputpos_a, cell.inputpos_b, cell.inputpos_c],
-                    [pos_x_min, pos_y_min, pos_z_min],
-                ):
+                pos3_in = list(dfmodel.select(["inputpos_a", "inputpos_b", "inputpos_c"]).row(modelgridindex))
+
+                if not vectormatch(pos3_in, [pos_x_min, pos_y_min, pos_z_min]):
                     posmatch_xyz = False
-                if not vectormatch(
-                    [cell.inputpos_a, cell.inputpos_b, cell.inputpos_c],
-                    [pos_z_min, pos_y_min, pos_x_min],
-                ):
+
+                if not vectormatch(pos3_in, [pos_z_min, pos_y_min, pos_x_min]):
                     posmatch_zyx = False
 
             assert posmatch_xyz != posmatch_zyx  # one option must match
+            colrenames = {}
             if posmatch_xyz:
                 print("  model cell positions are consistent with x-y-z column order")
-                dfmodel = dfmodel.rename(
-                    columns={"inputpos_a": "pos_x_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_z_min"},
-                )
+                colrenames = {"inputpos_a": "pos_x_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_z_min"}
+
             if posmatch_zyx:
                 print("  cell positions are consistent with z-y-x column order")
-                dfmodel = dfmodel.rename(
-                    columns={"inputpos_a": "pos_z_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_x_min"},
-                )
+                colrenames = {"inputpos_a": "pos_z_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_x_min"}
+            dfmodel = dfmodel.rename({a: b for a, b in colrenames.items() if a in dfmodel.columns})
 
     return dfmodel, modelmeta
 
@@ -293,10 +301,9 @@ def read_modelfile_text(
 def get_modeldata_polars(
     modelpath: Path | str = Path(),
     get_elemabundances: bool = False,
-    derived_cols: t.Sequence[str] | str | None = None,
+    derived_cols: list[str] | str | None = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
-    skipnuclidemassfraccolumns: bool = False,
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
 
@@ -328,72 +335,57 @@ def get_modeldata_polars(
     else:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
-    dfmodel = None
     filenameparquet = at.stripallsuffixes(Path(filename)).with_suffix(".txt.parquet")
 
     if filenameparquet.exists() and Path(filename).stat().st_mtime > filenameparquet.stat().st_mtime:
         print(f"{filename} has been modified after {filenameparquet}. Deleting out of date parquet file.")
         filenameparquet.unlink()
 
-    source_textfile_details = {"st_size": filename.stat().st_size, "st_mtime": filename.stat().st_mtime}
-
-    if filenameparquet.is_file() and not getheadersonly:
+    dfmodel: pl.LazyFrame | None | pl.DataFrame
+    if not getheadersonly and filenameparquet.is_file():
         if not printwarningsonly:
-            print(f"  reading data table from {filenameparquet}")
+            print(f"Reading data table from {filenameparquet}")
+        try:
+            dfmodel = pl.scan_parquet(filenameparquet)
+        except pl.exceptions.ComputeError:
+            print(f"Problem reading {filenameparquet}. Will regenerate and overwite from text source.")
+            dfmodel = None
+    else:
+        dfmodel = None
 
-        pqmetadata = pq.read_metadata(filenameparquet)
-        if (
-            b"artismodelmeta" not in pqmetadata.metadata
-            or b"source_textfile_details" not in pqmetadata.metadata
-            or pickle.dumps(source_textfile_details) != pqmetadata.metadata[b"source_textfile_details"]
-        ):
-            print(f"  text source {filename} doesn't match file header of {filenameparquet}. Removing parquet file")
-            filenameparquet.unlink(missing_ok=True)
-        else:
-            modelmeta = pickle.loads(pqmetadata.metadata[b"artismodelmeta"])
+    if dfmodel is not None:
+        # already read in the model data, just need to get the metadata
+        getheadersonly = True
 
-            columns = (
-                [col for col in pqmetadata.schema.names if not col.startswith("X_")]
-                if skipnuclidemassfraccolumns
-                else None
-            )
-            dfmodel = pd.read_parquet(
-                filenameparquet,
-                columns=columns,
-                dtype_backend="pyarrow",
-            )
-            print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
+    dfmodel_in, modelmeta = read_modelfile_text(
+        filename=filename,
+        printwarningsonly=printwarningsonly,
+        getheadersonly=getheadersonly,
+    )
 
     if dfmodel is None:
-        skipnuclidemassfraccolumns = False
-        dfmodel, modelmeta = read_modelfile_text(
-            filename=filename,
-            printwarningsonly=printwarningsonly,
-            getheadersonly=getheadersonly,
-            skipnuclidemassfraccolumns=skipnuclidemassfraccolumns,
-        )
+        dfmodel = dfmodel_in
+    elif dfmodel.schema != dfmodel_in.schema:
+        print("ERRORL: parquet schema does not match model.txt. Remove {filenameparquet} and try again.")
+        raise AssertionError
 
-        if len(dfmodel) > 15000 and not getheadersonly and not skipnuclidemassfraccolumns:
-            print(f"Saving {filenameparquet}")
-            patable = pa.Table.from_pandas(dfmodel)
+    mebibyte = 1024 * 1024
+    if isinstance(dfmodel, pl.DataFrame) and filename.stat().st_size > 10 * mebibyte and not getheadersonly:
+        print(f"Saving {filenameparquet}")
+        dfmodel.write_parquet(filenameparquet, compression="zstd")
+        print("  Done.")
+        del dfmodel
+        gc.collect()
+        dfmodel = pl.scan_parquet(filenameparquet)
 
-            custom_metadata = {
-                b"source_textfile_details": pickle.dumps(source_textfile_details),
-                b"artismodelmeta": pickle.dumps(modelmeta),
-            }
-            merged_metadata = {**custom_metadata, **(patable.schema.metadata or {})}
-            patable = patable.replace_schema_metadata(merged_metadata)
-            pq.write_table(patable, filenameparquet, compression="ZSTD")
-            # dfmodel.to_parquet(filenameparquet, compression="zstd")
-            print("  Done.")
-
-    dfmodel = pl.from_pandas(dfmodel).lazy()
+    print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
+    dfmodel = dfmodel.lazy()
 
     if get_elemabundances:
-        abundancedata = pl.from_pandas(
-            get_initelemabundances(modelpath, dtype_backend="pyarrow", printwarningsonly=printwarningsonly)
-        ).lazy()
+        abundancedata = get_initelemabundances_polars(modelpath, printwarningsonly=printwarningsonly)
         dfmodel = dfmodel.join(abundancedata, how="inner", on="inputcellid")
+
+    dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
 
     if derived_cols:
         dfmodel = add_derived_cols_to_modeldata(
@@ -471,10 +463,9 @@ def get_empty_3d_model(
 def get_modeldata(
     modelpath: Path | str = Path(),
     get_elemabundances: bool = False,
-    derived_cols: t.Sequence[str] | str | None = None,
+    derived_cols: list[str] | str | None = None,
     printwarningsonly: bool = False,
     getheadersonly: bool = False,
-    skipnuclidemassfraccolumns: bool = False,
 ) -> tuple[pd.DataFrame, dict[t.Any, t.Any]]:
     """Call get_modeldata_polars() and convert to pandas DataFrame."""
     pldfmodel, modelmeta = get_modeldata_polars(
@@ -483,7 +474,6 @@ def get_modeldata(
         derived_cols=derived_cols,
         printwarningsonly=printwarningsonly,
         getheadersonly=getheadersonly,
-        skipnuclidemassfraccolumns=skipnuclidemassfraccolumns,
     )
     dfmodel = pldfmodel.collect().to_pandas(use_pyarrow_extension_array=True)
     if modelmeta["npts_model"] > 100000 and not getheadersonly:
@@ -494,7 +484,7 @@ def get_modeldata(
 
 def add_derived_cols_to_modeldata(
     dfmodel: pl.DataFrame | pl.LazyFrame,
-    derived_cols: t.Sequence[str],
+    derived_cols: list[str],
     modelmeta: dict[str, t.Any],
     modelpath: Path | None = None,
 ) -> pl.LazyFrame:
@@ -631,6 +621,7 @@ def add_derived_cols_to_modeldata(
                     .alias("pos_r_mid")
                 ]
             )
+
             dfmodel = dfmodel.with_columns(
                 [
                     (
@@ -657,14 +648,24 @@ def add_derived_cols_to_modeldata(
 
     dfmodel = dfmodel.with_columns([(pl.col("rho") * pl.col("volume")).alias("mass_g")])
 
-    if unknown_cols := [col for col in derived_cols if col not in dfmodel.columns]:
+    if unknown_cols := [
+        col for col in derived_cols if col not in dfmodel.columns and col not in {"pos_min", "pos_max"}
+    ]:
         print(f"WARNING: Unknown derived columns: {unknown_cols}")
+
+    if "pos_min" in derived_cols:
+        derived_cols.extend([f"pos_{ax}_min" for ax in axes])
+
+    if "pos_max" in derived_cols:
+        derived_cols.extend([f"pos_{ax}_max" for ax in axes])
 
     dfmodel = dfmodel.drop([col for col in dfmodel.columns if col not in original_cols and col not in derived_cols])
 
     if "angle_bin" in derived_cols:
         assert modelpath is not None
-        dfmodel = pl.from_pandas(get_cell_angle(dfmodel.collect().to_pandas(), modelpath)).lazy()
+        dfmodel = pl.from_pandas(
+            get_cell_angle(dfmodel.collect().to_pandas(use_pyarrow_extension_array=True), modelpath)
+        ).lazy()
 
     # if "Ye" in derived_cols and os.path.isfile(modelpath / "Ye.txt"):
     #     dfmodel["Ye"] = at.inputmodel.opacityinputfile.get_Ye_from_file(modelpath)
@@ -871,7 +872,7 @@ def save_modeldata(
     modelmeta must define: vmax, ncoordgridr and ncoordgridz
     """
     if isinstance(dfmodel, pl.LazyFrame | pl.DataFrame):
-        dfmodel = dfmodel.lazy().collect().to_pandas()
+        dfmodel = dfmodel.lazy().collect().to_pandas(use_pyarrow_extension_array=True)
 
     if modelmeta is None:
         modelmeta = {}
@@ -1042,12 +1043,24 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float, mgilist: t.Sequenc
     raise AssertionError
 
 
-@lru_cache(maxsize=8)
 def get_initelemabundances(
     modelpath: Path = Path(),
     printwarningsonly: bool = False,
-    dtype_backend: t.Literal["pyarrow", "numpy_nullable"] = "numpy_nullable",
 ) -> pd.DataFrame:
+    return (
+        get_initelemabundances_polars(modelpath=modelpath, printwarningsonly=printwarningsonly)
+        .with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
+        .collect()
+        .to_pandas(use_pyarrow_extension_array=True)
+        .set_index("modelgridindex")
+    )
+
+
+@lru_cache(maxsize=8)
+def get_initelemabundances_polars(
+    modelpath: Path = Path(),
+    printwarningsonly: bool = False,
+) -> pl.LazyFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
     abundancefilepath = at.firstexisting("abundances.txt", folder=modelpath, tryzipped=True)
 
@@ -1060,40 +1073,42 @@ def get_initelemabundances(
         if not printwarningsonly:
             print(f"Reading {filenameparquet}")
 
-        abundancedata = pd.read_parquet(filenameparquet, dtype_backend=dtype_backend)
+        abundancedata_lazy = pl.scan_parquet(filenameparquet)
     else:
         if not printwarningsonly:
             print(f"Reading {abundancefilepath}")
-        ncols = len(
-            pd.read_csv(at.zopen(abundancefilepath), delim_whitespace=True, header=None, comment="#", nrows=1).columns
-        )
+        ncols = len(pd.read_csv(abundancefilepath, delim_whitespace=True, header=None, comment="#", nrows=1).columns)
         colnames = ["inputcellid", *["X_" + at.get_elsymbol(x) for x in range(1, ncols)]]
-        dtypes = (
-            {col: "float32[pyarrow]" if col.startswith("X_") else "int32[pyarrow]" for col in colnames}
-            if dtype_backend == "pyarrow"
-            else {col: "float32" if col.startswith("X_") else "int32" for col in colnames}
+        dtypes = {col: pl.Float32 if col.startswith("X_") else pl.Int32 for col in colnames}
+
+        abundancedata = pl.read_csv(
+            at.zopen(abundancefilepath, forpolars=True),
+            has_header=False,
+            separator=" ",
+            comment_char="#",
+            infer_schema_length=0,
         )
 
-        abundancedata = pd.read_csv(
-            at.zopen(abundancefilepath),
-            delim_whitespace=True,
-            header=None,
-            comment="#",
-            names=colnames,
-            dtype=dtypes,
-            dtype_backend=dtype_backend,
-        )
+        # fix up multiple spaces at beginning of lines
+        abundancedata = abundancedata.transpose()
+        abundancedata = pl.DataFrame(
+            [abundancedata.to_series(idx).drop_nulls() for idx in range(len(abundancedata.columns))]
+        ).transpose()
+        abundancedata = abundancedata.rename(
+            {col: colnames[idx] for idx, col in enumerate(abundancedata.columns)}
+        ).cast(dtypes)  # type: ignore[arg-type]
 
-        if len(abundancedata) > 15000:
+        if abundancefilepath.stat().st_size > 5 * 1024 * 1024:
             print(f"Saving {filenameparquet}")
-            abundancedata.to_parquet(filenameparquet, compression="zstd")
+            abundancedata.write_parquet(filenameparquet, compression="zstd")
             print("  Done.")
+            del abundancedata
+            gc.collect()
+            abundancedata_lazy = pl.scan_parquet(filenameparquet)
+        else:
+            abundancedata_lazy = abundancedata.lazy()
 
-    abundancedata.index.name = "modelgridindex"
-    if dtype_backend == "pyarrow":
-        abundancedata.index = abundancedata.index.astype("int32[pyarrow]")
-
-    return abundancedata
+    return abundancedata_lazy
 
 
 def save_initelemabundances(
@@ -1135,7 +1150,7 @@ def save_initelemabundances(
         if headercommentlines is not None:
             fabund.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
         for row in dfelabundances.itertuples(index=False):
-            fabund.write(f" {row.inputcellid:6d} ")
+            fabund.write(f"{row.inputcellid:} ")
             fabund.write(" ".join([f"{getattr(row, colname, 0.):.6e}" for colname in elcolnames]))
             fabund.write("\n")
 

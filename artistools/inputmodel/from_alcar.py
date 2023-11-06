@@ -65,7 +65,7 @@ def f1corr(rcyl: np.ndarray, hsph: np.ndarray) -> np.ndarray:
     )
 
 
-def get_grid():
+def get_grid() -> tuple:
     # base = Path('/the/ojust/lustredata/luke/hmnskn_2023/138n1a6/')
     base = Path()
     dat = np.load(base / "kilonova_artis_input_138n1a6.npz")

@@ -30,6 +30,30 @@ jobs:
               run: |
                   mypy --install-types --non-interactive
 
+
+    pre-commit:
+        runs-on: ubuntu-latest
+        env:
+          RUFF_OUTPUT_FORMAT: 'github'
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v3
+
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                  cache: pip
+                  python-version-file: .python-version
+
+            - name: Install dependencies
+              run: |
+                  python3 -m pip install --upgrade pip wheel mypy
+                  python3 -m pip install -r requirements.txt
+
+            - name: Run pre-commit
+              run: |
+                  pre-commit run --all-files
+
     pylint:
         runs-on: ubuntu-latest
         steps:
