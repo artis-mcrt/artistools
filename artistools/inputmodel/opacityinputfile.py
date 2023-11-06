@@ -2,6 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import polars as pl
 
 
 def all_cells_same_opacity(modelpath, ngrid):
@@ -51,9 +52,11 @@ def get_opacity_from_file(modelpath):
     return opacity_file_contents[1]
 
 
-def write_Ye_file(outputfilepath, griddata):
+def write_Ye_file(outputfilepath: Path | str, griddata: pl.DataFrame):
     with Path(outputfilepath, "Ye.txt").open("w") as fYe:
         fYe.write(f'{len(griddata["inputcellid"])}\n')
-        griddata[["inputcellid", "cellYe"]].to_csv(fYe, sep="\t", index=False, header=False, float_format="%.10f")
+        griddata.to_pandas()[["inputcellid", "cellYe"]].to_csv(
+            fYe, sep="\t", index=False, header=False, float_format="%.10f"
+        )
 
     print("Saved Ye.txt")
