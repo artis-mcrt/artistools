@@ -110,7 +110,9 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
     return simulation_end_time_geomunits, mergertime_geomunits
 
 
-def read_griddat_file(pathtogriddata, targetmodeltime_days=None, minparticlespercell=0):
+def read_griddat_file(
+    pathtogriddata, targetmodeltime_days=None, minparticlespercell=0
+) -> tuple[pd.DataFrame, float, float, float, dict[str, t.Any]]:
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
 
     # Get simulation time for ejecta snapshot
