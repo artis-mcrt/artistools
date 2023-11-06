@@ -45,7 +45,7 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pl.Data
             elemisotopes[atomic_number] = [colname]
 
     elementsincluded = len(elemisotopes)
-    dfnucabundancespd = dfnucabundances.to_pandas(use_pyarrow_extension_array=True)
+
     dfelabundances_partial = pl.DataFrame(
         {
             "inputcellid": dfnucabundances["inputcellid"],
@@ -53,20 +53,20 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame, dfnucabundances: pl.Data
                 f"X_{at.get_elsymbol(atomic_number)}": (
                     dfnucabundances.select(elemisotopes[atomic_number]).sum(axis=1)
                     if atomic_number in elemisotopes
-                    else np.zeros(len(dfnucabundancespd))
+                    else np.zeros(len(dfnucabundances))
                 )
                 for atomic_number in range(1, max(elemisotopes.keys()) + 1)
             },
         },
-    ).with_columns(pl.col("inputcellid").cast(pl.Int32))
+    )
 
     # ensure cells with no traj contributions are included
     dfelabundances = pl.DataFrame(pl.Series(name="inputcellid", values=dfmodel["inputcellid"], dtype=pl.Int32))
 
     dfelabundances = dfelabundances.join(
         dfelabundances_partial, how="left", left_on="inputcellid", right_on="inputcellid"
-    )
-    dfelabundances = dfelabundances.fill_null(0.0)
+    ).fill_null(0.0)
+
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
     print(f" there are {nuclidesincluded} nuclides from {elementsincluded} elements included")
 
