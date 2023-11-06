@@ -1167,7 +1167,7 @@ def dimension_reduce_3d_model(
     ncoordgridz: int | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     **kwargs: t.Any,
-) -> tuple[pd.DataFrame, pd.DataFrame | None, pd.DataFrame | None, dict[str, t.Any]]:
+) -> tuple[pl.DataFrame, pl.DataFrame | None, pl.DataFrame | None, dict[str, t.Any]]:
     """Convert 3D Cartesian grid model to 1D spherical or 2D cylindrical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
     assert outputdimensions in {1, 2}
 
@@ -1345,16 +1345,21 @@ def dimension_reduce_3d_model(
 
             outcellabundances.append(dictcellabundances)
 
-    dfmodel_out = pd.DataFrame(outcells)
+    dfmodel_out = pl.from_pandas(pd.DataFrame(outcells))
     modelmeta_out["npts_model"] = len(dfmodel_out)
 
-    dfabundances_out = pd.DataFrame(outcellabundances) if outcellabundances else None
+    dfabundances_out = pl.from_pandas(pd.DataFrame(outcellabundances)) if outcellabundances else None
 
-    dfgridcontributions_out = pd.DataFrame(outgridcontributions) if outgridcontributions else None
+    dfgridcontributions_out = pl.from_pandas(pd.DataFrame(outgridcontributions)) if outgridcontributions else None
 
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
-    return dfmodel_out, dfabundances_out, dfgridcontributions_out, modelmeta_out
+    return (
+        dfmodel_out,
+        dfabundances_out,
+        dfgridcontributions_out,
+        modelmeta_out,
+    )
 
 
 def scale_model_to_time(

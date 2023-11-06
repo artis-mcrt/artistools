@@ -3,7 +3,6 @@ import shutil
 from pathlib import Path
 
 import numpy as np
-import polars as pl
 
 import artistools as at
 
@@ -227,13 +226,10 @@ def test_dimension_reduce_3d_model() -> None:
     dfmodel3d_pl[mgi2, "rho"] = 1
     dfmodel3d_pl[mgi1, "X_Ni56"] = 0.75
 
-    dfmodel3d = (
-        at.inputmodel.add_derived_cols_to_modeldata(
-            dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, derived_cols=["mass_g"]
-        )
-        .collect()
-        .to_pandas(use_pyarrow_extension_array=True)
-    )
+    dfmodel3d_pl = at.inputmodel.add_derived_cols_to_modeldata(
+        dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, derived_cols=["mass_g"]
+    ).collect()
+
     for outputdimensions in [1, 2]:
         (
             dfmodel_lowerd,
@@ -241,20 +237,20 @@ def test_dimension_reduce_3d_model() -> None:
             dfgridcontributions_lowerd,
             modelmeta_lowerd,
         ) = at.inputmodel.dimension_reduce_3d_model(
-            dfmodel=dfmodel3d, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
+            dfmodel=dfmodel3d_pl, modelmeta=modelmeta_3d, outputdimensions=outputdimensions
         )
 
         dfmodel_lowerd = at.inputmodel.add_derived_cols_to_modeldata(
-            dfmodel=pl.DataFrame(dfmodel_lowerd), modelmeta=modelmeta_lowerd, derived_cols=["mass_g"]
+            dfmodel=dfmodel_lowerd, modelmeta=modelmeta_lowerd, derived_cols=["mass_g"]
         ).collect()
 
         # check that the total mass is conserved
-        assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3d["mass_g"].sum())
+        assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3d_pl["mass_g"].sum())
 
         # check that the total mass of each species is conserved
-        for col in dfmodel3d.columns:
+        for col in dfmodel3d_pl.columns:
             if col.startswith("X_"):
                 assert np.isclose(
                     (dfmodel_lowerd["mass_g"] * dfmodel_lowerd[col]).sum(),
-                    (dfmodel3d["mass_g"] * dfmodel3d[col]).sum(),
+                    (dfmodel3d_pl["mass_g"] * dfmodel3d_pl[col]).sum(),
                 )
