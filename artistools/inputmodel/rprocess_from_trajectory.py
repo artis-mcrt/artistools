@@ -419,8 +419,7 @@ def add_abundancecontributions(
 
     traj_root = Path(traj_root)
     dfcontribs = filtermissinggridparticlecontributions(traj_root, dfcontribs)
-    active_inputcellids = dfcontribs["cellindex"].unique().to_list()
-    active_inputcellcount = len(active_inputcellids)
+    active_inputcellcount = dfcontribs["cellindex"].unique().shape[0]
 
     particleids = dfcontribs["particleid"].unique()
     particle_count = len(particleids)
@@ -482,7 +481,6 @@ def add_abundancecontributions(
         .collect()
         .transpose(include_header=True, column_names=allkeys, header_name="inputcellid")
         .with_columns(pl.col("inputcellid").cast(pl.Int32))
-        .sort(by="inputcellid")
     )
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
@@ -490,8 +488,7 @@ def add_abundancecontributions(
 
     timestart = time.perf_counter()
     print("Merging isotopic abundances into dfmodel...", end="", flush=True)
-    dfmodel = dfmodel.join(dfnucabundances, how="left", left_on="inputcellid", right_on="inputcellid")
-    dfmodel = dfmodel.fill_null(0.0)
+    dfmodel = dfmodel.join(dfnucabundances, how="left", left_on="inputcellid", right_on="inputcellid").fill_null(0.0)
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
     return dfmodel, dfelabundances, dfcontribs
