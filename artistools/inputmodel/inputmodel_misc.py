@@ -1161,8 +1161,8 @@ def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) 
 def dimension_reduce_3d_model(
     dfmodel: pl.DataFrame | pl.LazyFrame,
     outputdimensions: int,
-    dfelabundances: pd.DataFrame | None = None,
-    dfgridcontributions: pd.DataFrame | None = None,
+    dfelabundances: pl.DataFrame | None = None,
+    dfgridcontributions: pl.DataFrame | None = None,
     ncoordgridr: int | None = None,
     ncoordgridz: int | None = None,
     modelmeta: dict[str, t.Any] | None = None,
@@ -1197,7 +1197,9 @@ def dimension_reduce_3d_model(
     print(f"Resampling 3D model with {ngridpoints} cells to {outputdimensions}D...")
     timestart = time.perf_counter()
 
-    celldensity: dict[int, float] = dict(dfmodel[["inputcellid", "rho"]].iter_rows())  # type: ignore[arg-type]
+    celldensity: dict[int, float] = {
+        int(cellid): float(rho) for cellid, rho in dfmodel[["inputcellid", "rho"]].iter_rows()
+    }
 
     dfmodel = dfmodel.with_columns(
         [
@@ -1337,9 +1339,7 @@ def dimension_reduce_3d_model(
         outcells.append(dictcell)
 
         if dfelabundances is not None:
-            abund_matchedcells = (
-                dfelabundances.filter(pl.col("inputcellid").is_in(matchedcells["inputcellid"])) if nonempty else None
-            )
+            abund_matchedcells = dfelabundances.filter(pl.col("inputcellid").is_in(matchedcells["inputcellid"]))
             dictcellabundances: dict[str, int | float] = {"inputcellid": cellindexout}
             for column in dfelabundances.columns:
                 if column.startswith("X_"):

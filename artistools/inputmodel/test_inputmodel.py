@@ -97,7 +97,7 @@ def verify_file_checksums(
                 m.update(chunk)
 
         checksums_actual[fullpath] = str(m.hexdigest())
-        print(f"{filename}: {checksums_actual[fullpath]} expected {checksum_expected}")
+        print(f"{filename}: actual {checksums_actual[fullpath]} expected {checksum_expected}")
 
     for filename, checksum_expected in checksums_expected.items():
         fullpath = Path(folder) / filename
@@ -126,28 +126,60 @@ def test_maptogrid() -> None:
 
 
 def test_makeartismodelfromparticlegridmap() -> None:
-    outpath_kn = outputpath / "kilonova"
+    gridfolderpath = outputpath / "kilonova"
+    checksums_3d: dict[Path | str, str] = {
+        "gridcontributions.txt": "12f006c43c0c8d1f84c3927b3c80959c1b2cecc01598be92c2f24a130892bc60",
+        "abundances.txt": "3e7ad41548eedcc3b3a042208fd6ad6d7b6dd35c474783dc2abbbc5036f306aa",
+        "model.txt": "7a3eee92f9653eb478a01080d16b711773031bedd38a90ec167c7fda98c15ef9",
+    }
 
-    shutil.copyfile(outpath_kn / "gridcontributions_maptogrid.txt", outpath_kn / "gridcontributions.txt")
+    dfcontribs = {}
+    for dimensions in [3, 2, 1]:
+        outpath_kn = outputpath / f"kilonova_{dimensions:d}d"
+        shutil.copyfile(gridfolderpath / "gridcontributions_maptogrid.txt", gridfolderpath / "gridcontributions.txt")
 
-    at.inputmodel.modelfromhydro.main(
-        argsraw=[],
-        gridfolderpath=outpath_kn,
-        trajectoryroot=testdatapath / "kilonova" / "trajectories",
-        outputpath=outpath_kn,
-        dimensions=3,
-        targetmodeltime_days=0.1,
-    )
+        at.inputmodel.modelfromhydro.main(
+            argsraw=[],
+            gridfolderpath=gridfolderpath,
+            trajectoryroot=testdatapath / "kilonova" / "trajectories",
+            outputpath=outpath_kn,
+            dimensions=dimensions,
+            targetmodeltime_days=0.1,
+        )
 
-    verify_file_checksums(
-        {
-            "gridcontributions.txt": "12f006c43c0c8d1f84c3927b3c80959c1b2cecc01598be92c2f24a130892bc60",
-            "abundances.txt": "3e7ad41548eedcc3b3a042208fd6ad6d7b6dd35c474783dc2abbbc5036f306aa",
-            "model.txt": "7a3eee92f9653eb478a01080d16b711773031bedd38a90ec167c7fda98c15ef9",
-        },
-        digest="sha256",
-        folder=outpath_kn,
-    )
+        dfcontribs[dimensions] = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(
+            outputpath / f"kilonova_{dimensions:d}d"
+        )
+
+        if dimensions == 3:
+            verify_file_checksums(
+                checksums_3d,
+                digest="sha256",
+                folder=outpath_kn,
+            )
+            dfcontrib_source = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(gridfolderpath)
+
+            assert dfcontrib_source.frame_equal(
+                dfcontribs[3].drop("frac_of_cellmass").rename({"frac_of_cellmass_includemissing": "frac_of_cellmass"})
+            )
+        else:
+            dfmodel3lz, modelmeta3 = at.inputmodel.get_modeldata_polars(modelpath=outputpath / f"kilonova_{3:d}d")
+            dfmodel3 = dfmodel3lz.collect()
+            dfmodel_lowerdlz, modelmeta_lowerd = at.inputmodel.get_modeldata_polars(
+                modelpath=outputpath / f"kilonova_{3:d}d"
+            )
+            dfmodel_lowerd = dfmodel_lowerdlz.collect()
+
+            # check that the total mass is conserved
+            assert np.isclose(dfmodel_lowerd["mass_g"].sum(), dfmodel3["mass_g"].sum())
+
+            # check that the total mass of each species is conserved
+            for col in dfmodel3.columns:
+                if col.startswith("X_"):
+                    assert np.isclose(
+                        (dfmodel_lowerd["mass_g"] * dfmodel_lowerd[col]).sum(),
+                        (dfmodel3["mass_g"] * dfmodel3[col]).sum(),
+                    )
 
 
 def test_make1dmodelfromcone() -> None:
