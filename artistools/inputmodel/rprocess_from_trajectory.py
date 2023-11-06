@@ -277,7 +277,6 @@ def get_trajectory_abund_q(
     ]
 
     colmassfracs = list(dftrajnucabund[["nucabundcolname", "massfrac"]].itertuples(index=False))
-    colmassfracs.sort(key=lambda row: at.get_z_a_nucname(row[0]))
 
     # print(f'trajectory particle id {particleid} massfrac sum: {massfractotal:.2f}')
     # print(f' grid snapshot: {t_model_s:.2e} s, network: {traj_time_s:.2e} s (timestep {nts})')
@@ -294,49 +293,6 @@ def get_trajectory_abund_q(
         )
 
     return dict_traj_nuc_abund
-
-
-def get_modelcellabundance(
-    dict_traj_nuc_abund: dict[int, dict[str, float]], minparticlespercell: int, cellgroup: tuple[int, pl.DataFrame]
-) -> dict[str, float] | None:
-    cellindex: int
-    dfthiscellcontribs: pl.DataFrame
-    cellindex, dfthiscellcontribs = cellgroup
-
-    if len(dfthiscellcontribs) < minparticlespercell:
-        return None
-
-    contribparticles = [
-        (dict_traj_nuc_abund[particleid], frac_of_cellmass)
-        for particleid, frac_of_cellmass in dfthiscellcontribs[["particleid", "frac_of_cellmass"]].iter_rows()
-        if particleid in dict_traj_nuc_abund
-    ]
-
-    # adjust frac_of_cellmass for missing particles
-    cell_frac_sum = sum(frac_of_cellmass for _, frac_of_cellmass in contribparticles)
-
-    nucabundcolnames = {
-        col for particleid in dfthiscellcontribs["particleid"] for col in dict_traj_nuc_abund.get(particleid, {})
-    }
-
-    row = {
-        nucabundcolname: sum(
-            frac_of_cellmass * traj_nuc_abund.get(nucabundcolname, 0.0) / cell_frac_sum
-            for traj_nuc_abund, frac_of_cellmass in contribparticles
-        )
-        for nucabundcolname in nucabundcolnames
-    }
-
-    row["inputcellid"] = cellindex
-
-    # if n % 100 == 0:
-    #     functime = time.perf_counter() - timefuncstart
-    #     print(f'cell id {cellindex:6d} ('
-    #           f'{n:4d} of {active_inputcellcount:4d}, {n / active_inputcellcount * 100:4.1f}%) '
-    #           f' contributing {len(dfthiscellcontribs):4d} particles.'
-    #           f' total func time {functime:.1f} s, {n / functime:.1f} cell/s,'
-    #           f' expected time: {functime / n * active_inputcellcount:.1f}')
-    return row
 
 
 def get_gridparticlecontributions(gridcontribpath: Path | str) -> pl.DataFrame:
@@ -479,7 +435,6 @@ def add_abundancecontributions(
         f"({len(dfcontribs)} cell contributions from {particle_count} particles after filter)"
     )
 
-    listcellnucabundances = []
     print("Reading trajectory abundances...")
     timestart = time.perf_counter()
     trajworker = partial(get_trajectory_abund_q, t_model_s=t_model_s, traj_root=traj_root, getqdotintegral=True)
@@ -497,40 +452,51 @@ def add_abundancecontributions(
 
     assert particle_count > n_missing_particles
 
-    dict_traj_nuc_abund = {
-        particleid: dftrajnucabund
-        for particleid, dftrajnucabund in zip(particleids, list_traj_nuc_abund)
-        if dftrajnucabund
-    }
+    allkeys = list({k for abund in list_traj_nuc_abund for k in abund})
+
+    dfnucabundances = pl.DataFrame(
+        {
+            f"particle_{particleid}": [list_traj_nuc_abund[particleindex].get(k, 0.0) for k in allkeys]
+            for particleindex, particleid in enumerate(particleids)
+        }
+    ).with_columns(pl.all().cast(pl.Float64))
+
     print(f"Reading trajectory abundances took {time.perf_counter() - timestart:.1f} seconds")
 
     print("Generating cell abundances...")
     timestart = time.perf_counter()
     dfcontribs_cellgroups = dfcontribs.group_by("cellindex")
 
-    cellabundworker = partial(get_modelcellabundance, dict_traj_nuc_abund, minparticlespercell)
-
-    if at.get_config()["num_processes"] > 1:
-        chunksize = math.ceil(len(dfcontribs["cellindex"].unique()) / at.get_config()["num_processes"])
-        with multiprocessing.get_context("spawn").Pool(processes=at.get_config()["num_processes"]) as pool:
-            listcellnucabundances = pool.map(cellabundworker, dfcontribs_cellgroups, chunksize=chunksize)
-            pool.close()
-            pool.join()
-    else:
-        listcellnucabundances = [cellabundworker(cellgroup) for cellgroup in dfcontribs_cellgroups]
-
-    listcellnucabundances = [x for x in listcellnucabundances if x is not None]
     print(f"  took {time.perf_counter() - timestart:.1f} seconds")
 
     timestart = time.perf_counter()
     print("Creating dfnucabundances...", end="", flush=True)
 
-    dfnucabundances = (
-        pl.from_pandas(pd.DataFrame(listcellnucabundances))
-        .fill_null(0.0)
-        .with_columns(pl.col("inputcellid").cast(pl.Int32))
+    dfnucabundanceslz = dfnucabundances.lazy().with_columns(
+        [
+            (
+                pl.sum_horizontal(
+                    [
+                        pl.col(f"particle_{particleid}") * pl.lit(frac_of_cellmass)
+                        for particleid, frac_of_cellmass in dfthiscellcontribs[
+                            ["particleid", "frac_of_cellmass"]
+                        ].iter_rows()
+                    ]
+                )
+                if len(dfthiscellcontribs) >= minparticlespercell
+                else pl.lit(0.0)
+            ).alias(f"{cellindex}")
+            for cellindex, dfthiscellcontribs in dfcontribs_cellgroups
+        ]
     )
 
+    dfnucabundances = (
+        dfnucabundanceslz.drop([col for col in dfnucabundances.columns if col.startswith("particle_")])
+        .collect()
+        .transpose(include_header=True, column_names=allkeys, header_name="inputcellid")
+        .with_columns(pl.col("inputcellid").cast(pl.Int32))
+        .sort(by="inputcellid")
+    )
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
     dfelabundances = get_dfelemabund_from_dfmodel(dfmodel, dfnucabundances)

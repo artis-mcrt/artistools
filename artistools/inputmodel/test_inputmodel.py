@@ -129,8 +129,8 @@ def test_makeartismodelfromparticlegridmap() -> None:
     gridfolderpath = outputpath / "kilonova"
     checksums_3d: dict[Path | str, str] = {
         "gridcontributions.txt": "12f006c43c0c8d1f84c3927b3c80959c1b2cecc01598be92c2f24a130892bc60",
-        "abundances.txt": "3e7ad41548eedcc3b3a042208fd6ad6d7b6dd35c474783dc2abbbc5036f306aa",
-        "model.txt": "7a3eee92f9653eb478a01080d16b711773031bedd38a90ec167c7fda98c15ef9",
+        "abundances.txt": "5f782005ce879a8c81c43d0a7a791ad9b177eee8630b4771586949bf7fbca28e",
+        "model.txt": "4aa804394f80d7450fbd7604faec02794dd3aa7b6054dedf00f4487b5f56a341",
     }
 
     dfcontribs = {}
