@@ -406,7 +406,8 @@ def makemodelfromgriddata(
     else:
         at.inputmodel.save_empty_abundance_file(outputfilepath=outputpath, npts_model=len(dfmodel))
 
-    dfmodel = dfmodel.with_columns(pl.col("tracercount").cast(pl.Int32))
+    if "tracercount" in dfmodel:
+        dfmodel = dfmodel.with_columns(pl.col("tracercount").cast(pl.Int32))
 
     print(f'Writing to {Path(outputpath) / "model.txt"}...')
     at.inputmodel.save_modeldata(

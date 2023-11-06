@@ -937,7 +937,7 @@ def save_modeldata(
             if modelmeta["dimensions"] == 2:
                 # Luke: quite a lot of code duplication here with the 3D case,
                 # but I think adding a function call per line would be too slow
-                startcols = "inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"
+                startcols = ["inputcellid", "pos_rcyl_mid", "pos_z_mid", "rho"]
                 for inputcellid, pos_rcyl_mid, pos_z_mid, rho, *othercolvals in dfmodel.select(
                     [*startcols, *abundcols]
                 ).iter_rows():
@@ -959,7 +959,7 @@ def save_modeldata(
                     fmodel.write("\n")
 
             elif modelmeta["dimensions"] == 3:
-                startcols = "inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"
+                startcols = ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
                 for inputcellid, pos_x_min, pos_y_min, pos_z_min, rho, *othercolvals in dfmodel.select(
                     [*startcols, *abundcols]
                 ).iter_rows():
@@ -1197,7 +1197,7 @@ def dimension_reduce_3d_model(
     print(f"Resampling 3D model with {ngridpoints} cells to {outputdimensions}D...")
     timestart = time.perf_counter()
 
-    celldensity = dfmodel[["inputcellid", "rho"]].to_dict()
+    celldensity: dict[int, float] = dict(dfmodel[["inputcellid", "rho"]].iter_rows())  # type: ignore[arg-type]
 
     dfmodel = dfmodel.with_columns(
         [
@@ -1297,13 +1297,13 @@ def dimension_reduce_3d_model(
         matchedcellrhosum = matchedcells["rho"].sum()
         nonempty = matchedcellrhosum > 0.0
         if matchedcellrhosum > 0.0 and dfgridcontributions is not None:
-            dfcellcont = dfgridcontributions[dfgridcontributions["cellindex"].isin(matchedcells["inputcellid"])]
+            dfcellcont = dfgridcontributions.filter(pl.col("cellindex").is_in(matchedcells["inputcellid"]))
 
             for particleid, dfparticlecontribs in dfcellcont.groupby("particleid"):
                 frac_of_cellmass_avg = (
                     sum(
-                        row.frac_of_cellmass * celldensity[row.cellindex]
-                        for row in dfparticlecontribs.itertuples(index=False)
+                        row["frac_of_cellmass"] * celldensity[row["cellindex"]]
+                        for row in dfparticlecontribs.iter_rows(named=True)
                     )
                     / matchedcellrhosum
                 )
@@ -1317,8 +1317,8 @@ def dimension_reduce_3d_model(
                 if includemissingcolexists:
                     frac_of_cellmass_includemissing_avg = (
                         sum(
-                            row.frac_of_cellmass_includemissing * celldensity[row.cellindex]
-                            for row in dfparticlecontribs.itertuples(index=False)
+                            row["frac_of_cellmass_includemissing"] * celldensity[row["cellindex"]]
+                            for row in dfparticlecontribs.iter_rows(named=True)
                         )
                         / matchedcellrhosum
                     )
