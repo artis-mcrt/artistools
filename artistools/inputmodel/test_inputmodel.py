@@ -175,7 +175,7 @@ def test_maketardismodel() -> None:
 
 def test_make_empty_abundance_file() -> None:
     clear_modelfiles()
-    at.inputmodel.save_empty_abundance_file(ngrid=50, outputfilepath=outputpath)
+    at.inputmodel.save_empty_abundance_file(npts_model=50, outputfilepath=outputpath)
 
 
 def test_opacity_by_Ye_file() -> None:

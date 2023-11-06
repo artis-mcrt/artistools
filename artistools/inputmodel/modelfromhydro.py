@@ -398,7 +398,7 @@ def makemodelfromgriddata(
             headercommentlines=modelmeta["headercommentlines"],
         )
     else:
-        at.inputmodel.save_empty_abundance_file(outputfilepath=outputpath, ngrid=len(dfmodel))
+        at.inputmodel.save_empty_abundance_file(outputfilepath=outputpath, npts_model=len(dfmodel))
 
     print(f'Writing to {Path(outputpath) / "model.txt"}...')
     at.inputmodel.save_modeldata(

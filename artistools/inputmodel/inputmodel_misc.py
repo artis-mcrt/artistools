@@ -1,4 +1,3 @@
-import argparse
 import errno
 import gc
 import math
@@ -774,58 +773,6 @@ def get_mean_cell_properties_of_angle_bin(
     return mean_bin_properties
 
 
-def get_3d_model_data_merged_model_and_abundances_minimal(args: argparse.Namespace) -> pd.DataFrame:
-    """Get 3D data without generating all the extra columns in standard routine.
-
-    Needed for large (eg. 200^3) models.
-    """
-    model = get_3d_modeldata_minimal(args.modelpath[0])
-    abundances = get_initelemabundances(args.modelpath[0])
-
-    with Path(args.modelpath[0], "model.txt").open() as fmodelin:
-        fmodelin.readline()  # npts_model3d
-        args.t_model = float(fmodelin.readline())  # days
-        args.vmax = float(fmodelin.readline())  # v_max in [cm/s]
-
-    print(model.keys())
-
-    merge_dfs = model.merge(abundances, how="inner", on="inputcellid")
-
-    del model
-    del abundances
-    gc.collect()
-
-    merge_dfs.info(verbose=False, memory_usage="deep")
-
-    return merge_dfs
-
-
-def get_3d_modeldata_minimal(modelpath: str | Path) -> pd.DataFrame:
-    """Read 3D model without generating all the extra columns in standard routine.
-
-    Needed for large (eg. 200^3) models.
-    """
-    model = pd.read_csv(Path(modelpath, "model.txt"), delim_whitespace=True, header=None, skiprows=3, dtype=np.float64)
-    columns = [
-        "inputcellid",
-        "cellpos_in[z]",
-        "cellpos_in[y]",
-        "cellpos_in[x]",
-        "rho_model",
-        "X_Fegroup",
-        "X_Ni56",
-        "X_Co56",
-        "X_Fe52",
-        "X_Cr48",
-    ]
-    model = pd.DataFrame(model.to_numpy().reshape(-1, 10))
-    model.columns = columns
-
-    print("model.txt memory usage:")
-    model.info(verbose=False, memory_usage="deep")
-    return model
-
-
 def get_standard_columns(dimensions: int, includenico57: bool = False) -> list[str]:
     """Get standard (artis classic) columns for modeldata DataFrame."""
     match dimensions:
@@ -1112,7 +1059,7 @@ def get_initelemabundances_polars(
 
 
 def save_initelemabundances(
-    dfelabundances: pd.DataFrame,
+    dfelabundances: pd.DataFrame | pl.DataFrame | pl.LazyFrame,
     outpath: Path | str | None = None,
     headercommentlines: t.Sequence[str] | None = None,
 ) -> None:
@@ -1131,11 +1078,28 @@ def save_initelemabundances(
     else:
         abundancefilename = Path(outpath)
 
-    dfelabundances = dfelabundances.astype({"inputcellid": int})
+    if isinstance(dfelabundances, pd.DataFrame):
+        dfelabundances = pl.from_pandas(dfelabundances)
+
+    dfelabundances = dfelabundances.lazy().collect()
+
+    dfelabundances = dfelabundances.with_columns([pl.col("inputcellid").cast(pl.Int32)])
+
     atomic_numbers = [
         at.get_atomic_number(colname[2:]) for colname in dfelabundances.columns if colname.startswith("X_")
     ]
-    elcolnames = [f"X_{at.get_elsymbol(Z)}" for Z in range(1, 1 + max(atomic_numbers))]
+    max_atomic_number = max([30, *atomic_numbers])
+    elcolnames = [f"X_{at.get_elsymbol(Z)}" for Z in range(1, 1 + max_atomic_number)]
+    for colname in elcolnames:
+        if colname not in dfelabundances.columns:
+            dfelabundances = dfelabundances.with_columns(pl.lit(None).alias(colname))
+        else:
+            dfelabundances = dfelabundances.with_columns(
+                pl.when(pl.col(colname) == 0.0)
+                .then(None)
+                .otherwise(pl.col(colname))  # keep original value
+                .keep_name()
+            )
 
     # set missing elemental abundance columns to zero
     for col in elcolnames:
@@ -1149,29 +1113,32 @@ def save_initelemabundances(
     with Path(abundancefilename).open("w", encoding="utf-8") as fabund:
         if headercommentlines is not None:
             fabund.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
-        for row in dfelabundances.itertuples(index=False):
-            fabund.write(f"{row.inputcellid:} ")
-            fabund.write(" ".join([f"{getattr(row, colname, 0.):.6e}" for colname in elcolnames]))
-            fabund.write("\n")
+        fabund.write("#")
+        fabund.flush()
+        dfelabundances.select(["inputcellid", *elcolnames]).write_csv(
+            fabund, separator=" ", float_precision=6, has_header=True, null_value="0.0"
+        )
+        # for inputcellid, *abundvals in dfelabundances.select(["inputcellid", *elcolnames]).iter_rows():
+        #     fabund.write(f"{inputcellid:} ")
+        #     fabund.write(" ".join([f"{abund:.6e}" if abund > 0 else "0." for abund in abundvals]))
+        #     fabund.write("\n")
 
     print(f"Saved {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def save_empty_abundance_file(ngrid: int, outputfilepath: str | Path = Path()) -> None:
+def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = Path()) -> None:
     """Save dummy abundance file with only zeros."""
     if Path(outputfilepath).is_dir():
         outputfilepath = Path(outputfilepath) / "abundances.txt"
 
-    Z_atomic = np.arange(1, 31)
-
-    abundancedata: dict[str, t.Any] = {"cellid": range(1, ngrid + 1)}
-    for atomic_number in Z_atomic:
-        abundancedata[f"Z={atomic_number}"] = np.zeros(ngrid)
-
-    # abundancedata['Z=28'] = np.ones(ngrid)
-
-    dfabundances = pd.DataFrame(data=abundancedata).round(decimals=5)
-    dfabundances.to_csv(outputfilepath, header=False, sep=" ", index=False)
+    save_initelemabundances(
+        pl.DataFrame(
+            {
+                "inputcellid": range(1, npts_model + 1),
+            }
+        ),
+        outpath=outputfilepath,
+    )
 
 
 def get_dfmodel_dimensions(dfmodel: pd.DataFrame | pl.DataFrame | pl.LazyFrame) -> int:
