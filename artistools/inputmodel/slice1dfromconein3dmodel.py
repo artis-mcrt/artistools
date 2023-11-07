@@ -218,7 +218,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-axis",
-        default="+z",
+        default="+x",
         choices=["+x", "-x", "+y", "-y", "+z", "-z"],
         help="Choose an axis. USE INSTEAD OF DEPRECATED --POSITIVE_AXES AND -SLICEAXIS ARGS. Hint: for negative use e.g. -axis=-z",
     )
