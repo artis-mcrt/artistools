@@ -175,9 +175,9 @@ def maptogrid(
     vratiomean = 0.0
 
     # Propagate particles to dtextra using velocities
-    dtextra_seconds = 0.5  # in seconds ---  dtextra = 0.0 # for no extrapolation
+    # dtextra_seconds = 0.5  # in seconds ---  dtextra = 0.0 # for no extrapolation
 
-    dtextra = dtextra_seconds / 4.926e-6  # convert to geom units.
+    dtextra = args.dtextra_seconds / 4.926e-6  # convert to geom units.
 
     particleid = dfsnapshot.id.to_numpy()
     x = dfsnapshot["x"].to_numpy().copy()
@@ -436,6 +436,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-inputpath", "-i", default=".", help="Path to ejectasnapshot")
     parser.add_argument(
         "-ncoordgrid", type=int, default=50, help="Number of grid positions per axis (numcells = ncoordgrid^3)"
+    )
+    parser.add_argument(
+        "-dtextra_seconds",
+        type=float,
+        default=0.5,
+        help="Time in seconds to propagate SPH particles ballistically after end of SPH simulation."
+        " 0 for no extrapolation",
     )
     parser.add_argument(
         "-downsamplefactor",
