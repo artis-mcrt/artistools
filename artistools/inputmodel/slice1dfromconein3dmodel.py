@@ -18,8 +18,6 @@ def make_cone(args):
 
     theta = np.radians([angle_of_cone / 2])  # angle between line of sight and edge is half angle of cone
 
-    # merge_dfs, args.t_model, args.vmax = at.inputmodel.get_modeldata_tuple(args.modelpath[0], dimensions=3, get_elemabundances=True)
-    # merge_dfs = at.inputmodel.get_3d_model_data_merged_model_and_abundances_minimal(args)  ## only works with old 3D format
     dfmodel, modelmeta = at.get_modeldata(modelpath=args.modelpath[0], get_elemabundances=True)
     args.t_model = modelmeta["t_model_init_days"]
 
