@@ -415,16 +415,14 @@ def add_abundancecontributions(
         dfmodel = dfmodel.with_columns(pl.lit(1.0).alias("X_Fegroup"))
 
     traj_root = Path(traj_root)
-    dfcontribs = filtermissinggridparticlecontributions(traj_root, dfcontribs)
-    dfcontribs = dfcontribs.sort("particleid")
+    dfcontribs = filtermissinggridparticlecontributions(traj_root, dfcontribs).sort("particleid")
     active_inputcellcount = dfcontribs["cellindex"].unique().shape[0]
 
     particleids = dfcontribs["particleid"].unique()
-    particle_count = len(particleids)
 
     print(
         f"{active_inputcellcount} of {len(dfmodel)} model cells have >0 particles contributing "
-        f"({len(dfcontribs)} cell contributions from {particle_count} particles)"
+        f"({len(dfcontribs)} cell contributions from {len(particleids)} particles)"
     )
 
     print("Reading trajectory abundances...")
@@ -442,7 +440,7 @@ def add_abundancecontributions(
     n_missing_particles = len([d for d in list_traj_nuc_abund if not d])
     print(f"  {n_missing_particles} particles are missing network abundance data")
 
-    assert particle_count > n_missing_particles
+    assert len(particleids) > n_missing_particles
 
     allkeys = list({k for abund in list_traj_nuc_abund for k in abund})
 
