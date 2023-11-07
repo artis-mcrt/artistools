@@ -61,10 +61,10 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     dfmodel = dfmodel.drop(["X_Fegroup", "X_n"])  # skip special X_Fegroup and don't confuse neutrons with Nitrogen
 
     if args.noabund:
-        dfmodel = dfmodel.drop([col for col in dfmodel.columns if col.startswith("X_")])
+        dfmodel = dfmodel.drop(pl.selectors.starts_with("X_"))
 
     if not args.isotopes:
-        dfmodel = dfmodel.drop([col for col in dfmodel.columns if col.startswith("X_") and col[-1].isdigit()])
+        dfmodel = dfmodel.drop(pl.selectors.matches("X_[A-z]+[0-9]"))
 
     dfmodel = dfmodel.collect().lazy()
 
@@ -174,10 +174,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
     mass_msun_actinides = 0.0
     speciesmasses: dict[str, float] = {}
 
-    for column in dfmodel.columns:
-        if not column.startswith("X_"):
-            continue
-
+    for column in dfmodel.select(pl.selectors.starts_with("X_")).columns:
         species = column.replace("X_", "")
 
         speciesabund_g = dfmodel.select(pl.col(column).dot(pl.col("mass_g"))).collect().item(0, 0)
