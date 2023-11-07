@@ -199,23 +199,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Path to ARTIS model folders with model.txt and abundances.txt",
     )
 
-    # parser.add_argument(
-    #     "-sliceaxis",
-    #     type=str,
-    #     default="x",
-    #     help=(
-    #         "Choose x, y or z. The 1D model will be made based on this axis."
-    #         "If cone then cone made around sliceaxis. Otherwise model along axis."
-    #     ),
-    # )
-    #
-    # parser.add_argument(
-    #     "--positive_axis",
-    #     action="store",
-    #     default=False,
-    #     help="Make 1D model from positive axis. Default is False to use negative axis.",
-    # )
-
     parser.add_argument(
         "-axis",
         default="+x",
