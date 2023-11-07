@@ -85,7 +85,11 @@ def kernelvals2(rij2: float, hmean: float, wij: np.ndarray) -> float:  # ist sch
 
 
 def maptogrid(
-    ejectasnapshotpath: Path, outputfolderpath: Path | str, ncoordgrid: int = 50, downsamplefactor: int = 1
+    ejectasnapshotpath: Path,
+    outputfolderpath: Path | str,
+    args: argparse.Namespace,
+    ncoordgrid: int = 50,
+    downsamplefactor: int = 1,
 ) -> None:
     if not ejectasnapshotpath.is_file():
         print(f"{ejectasnapshotpath} not found")
@@ -156,6 +160,8 @@ def maptogrid(
         dfsnapshot = dfsnapshot.sample(len(dfsnapshot) // downsamplefactor)
 
     logprint(dfsnapshot)
+
+    logprint(f"Selected args: {args}")
 
     assert len(dfsnapshot.columns) == len(snapshot_columns_used)
 
@@ -457,6 +463,7 @@ def main(args: argparse.Namespace | None = None, argsraw: t.Sequence[str] | None
 
     maptogrid(
         ejectasnapshotpath=ejectasnapshotpath,
+        args=args,
         ncoordgrid=args.ncoordgrid,
         outputfolderpath=args.outputpath,
         downsamplefactor=args.downsamplefactor,
