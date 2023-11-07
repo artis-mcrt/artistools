@@ -148,7 +148,7 @@ def test_makeartismodelfromparticlegridmap() -> None:
 
 
 def test_make1dmodelfromcone() -> None:
-    at.inputmodel.slice1dfromconein3dmodel.main(argsraw=[], modelpath=[modelpath_3d], outputpath=outputpath)
+    at.inputmodel.slice1dfromconein3dmodel.main(argsraw=[], modelpath=[modelpath_3d], outputpath=outputpath, axis="-z")
 
 
 def test_makemodel_botyanski2017() -> None:
