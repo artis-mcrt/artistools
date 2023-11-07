@@ -21,19 +21,19 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-outputgridsize", default=50, type=int, help="Size of small model grid for downscale script")
 
     parser.add_argument(
-        "--makemodelfromgriddata", action="store_true", help="Make ARTIS model files from arepo grid.dat file"
+        "--makemodelfromgriddata", action="store_true", help="Make ARTIS model files from SPH grid.dat file"
     )
 
-    parser.add_argument("-pathtogriddata", default=".", help="Path to arepo grid.dat file")
+    parser.add_argument("-pathtogriddata", default=".", help="Path to SPH grid.dat file")
 
     parser.add_argument(
-        "--fillcentralhole", action="store_true", help="Fill hole in middle of ejecta from arepo kilonova model"
+        "--fillcentralhole", action="store_true", help="Fill hole in middle of ejecta from SPH kilonova model"
     )
 
     parser.add_argument(
         "--getcellopacityfromYe",
         action="store_true",
-        help="Make opacity.txt where opacity is set in each cell by Ye from arepo model",
+        help="Make opacity.txt where opacity is set in each cell by Ye from SPH model",
     )
 
     parser.add_argument(
